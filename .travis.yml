@@ -1,2 +1,2 @@
 language: nix
-script: nix-shell --run 'verify-registry-unique.sh'
+script: nix-shell --run './verify-registry-unique.sh'
