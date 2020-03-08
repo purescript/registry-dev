@@ -219,7 +219,6 @@
   "purescript-benchotron": "https://github.com/hdgarrood/purescript-benchotron.git",
   "purescript-bibimbap": "https://github.com/justinwoo/purescript-bibimbap.git",
   "purescript-bifunctors": "https://github.com/purescript-contrib/purescript-bifunctors.git",
-  "purescript-big-integer": "https://github.com/athanclark/purescript-big-integer.git",
   "purescript-bigints": "https://github.com/sharkdp/purescript-bigints.git",
   "purescript-bignumber": "https://github.com/athanclark/purescript-bignumber.git",
   "purescript-binary": "https://github.com/Unisay/purescript-binary.git",
