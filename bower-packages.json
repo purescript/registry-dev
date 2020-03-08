@@ -38,7 +38,6 @@
   "purescript-apparch": "https://github.com/agrafix/purescript-apparch.git",
   "purescript-applicative-lists": "https://github.com/ethul/purescript-applicative-lists.git",
   "purescript-apply-algebra": "https://github.com/morganthomas/purescript-apply-algebra.git",
-  "purescript-arb-instances": "https://github.com/purescript/purescript-arb-instances",
   "purescript-argonaut": "https://github.com/purescript-contrib/purescript-argonaut.git",
   "purescript-argonaut-aeson-generic": "https://github.com/coot/purescript-argonaut-aeson-generic.git",
   "purescript-argonaut-codecs": "https://github.com/purescript-contrib/purescript-argonaut-codecs.git",
