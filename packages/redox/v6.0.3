@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "redox"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "coot", repo = "purescript-redox" })
+    , devDependencies =
+        toMap
+          { debug = "^3.0.0", test-unit = "^11.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { free = "^4.0.0"
+          , console = "^3.0.0"
+          , var = "^2.0.0"
+          , now = "^3.0.0"
+          , aff = "^3.0.0"
+          , prelude = "^3.0.0"
+          , refs = "^3.0.0"
+          , freet = "^3.0.0"
+          , js-date = "^5.0.0"
+          }
+    }

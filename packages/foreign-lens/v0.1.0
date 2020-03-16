@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "foreign-lens"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-foreign-lens" }
+        )
+    , dependencies =
+        toMap { contravariant = "~0.2.1", const = "~0.5.0", foreign = "~0.7.0" }
+    }

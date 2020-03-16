@@ -1,0 +1,34 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "ifrit"
+    , license = Registry.License.`MPL-2.0`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "KtorZ", repo = "purescript-ifrit" })
+    , devDependencies =
+        toMap
+          { node-path = "1.0.0"
+          , node-process = "3.0.0"
+          , aff = "2.0.3"
+          , pairs = "4.0.0"
+          , test-unit = "10.1.0"
+          , node-fs = "3.0.0"
+          , psci-support = "2.0.0"
+          }
+    , dependencies =
+        toMap
+          { string-parsers = "^2.1.0"
+          , maps = "2.1.2"
+          , control = "2.0.0"
+          , either = "2.1.0"
+          , filterable = "^1.1.0"
+          , maybe = "2.0.1"
+          , argonaut-core = "2.0.1"
+          , foldable-traversable = "2.2.0"
+          , prelude = "2.3.0"
+          , argonaut-codecs = "2.0.0"
+          , decimals = "^1.2.0"
+          , tuples = "3.1.0"
+          , lists = "3.4.0"
+          }
+    }

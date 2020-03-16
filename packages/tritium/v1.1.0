@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "tritium"
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { newtype = "^2.0.0"
+          , maybe = "^3.0.0"
+          , dom = "^4.8.2"
+          , prelude = "^3.1.0"
+          , unsafe-coerce = "^3.0.0"
+          , generics-rep = "^5.3.0"
+          , tuples = "^4.1.0"
+          }
+    }

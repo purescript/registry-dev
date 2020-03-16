@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "dynamic"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "raduom", repo = "purescript-dynamic" })
+    , devDependencies = toMap { spec = "^0.13.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , typeable = "^3.0.0"
+          , prelude = "^3.1.0"
+          , functions = "^3.0.0"
+          }
+    }

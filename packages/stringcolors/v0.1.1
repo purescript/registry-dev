@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "stringcolors"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "bramblex", repo = "purescript-stringcolors" }
+        )
+    , dependencies = toMap { prelude = "^0.1.0" }
+    }

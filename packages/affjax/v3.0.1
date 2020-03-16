@@ -1,0 +1,27 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "affjax"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-affjax" }
+        )
+    , devDependencies = toMap { console = "^2.0.0" }
+    , dependencies =
+        toMap
+          { arraybuffer-types = "^0.2.0"
+          , media-types = "^2.0.0"
+          , form-urlencoded = "^2.0.0"
+          , argonaut-core = "^2.0.1"
+          , dom = "^3.1.0"
+          , aff = "^2.0.1"
+          , unsafe-coerce = "^2.0.0"
+          , refs = "^2.0.0"
+          , integers = "^2.0.0"
+          , math = "^2.0.0"
+          , foreign = "^3.0.0"
+          , http-methods = "^2.0.0"
+          , nullable = "^2.0.0"
+          }
+    }

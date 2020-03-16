@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "foreign-datetime"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "berdario", repo = "purescript-foreign-datetime" }
+        )
+    , devDependencies =
+        toMap { jack = "^3.0.0", assert = "^4.1.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { foreign-generic = "v9.0.0", prelude = "^4.1.0", js-date = "^6.0.0" }
+    }

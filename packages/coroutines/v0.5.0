@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "coroutines"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-coroutines" }
+        )
+    , dependencies = toMap { profunctor = "^0.3.1", freet = "^0.3.0" }
+    }

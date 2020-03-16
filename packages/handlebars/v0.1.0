@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "handlebars"
+    , license = Registry.License.MIT
+    , dependencies = toMap { jquery = "~0.4.0", handlebars = "~2.0.0" }
+    }

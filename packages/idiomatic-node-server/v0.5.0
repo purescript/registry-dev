@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "idiomatic-node-server"
+    , license = Registry.License.`AGPL-3.0`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/bklaric/purescript-idiomatic-node-server.git"
+        )
+    , dependencies =
+        toMap { idiomatic-node-events = "^0.4.0", nullable = "^4.0.0" }
+    }

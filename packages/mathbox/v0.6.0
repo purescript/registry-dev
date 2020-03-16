@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "mathbox"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "rintcius", repo = "purescript-mathbox" }
+        )
+    , dependencies =
+        toMap
+          { free = "5.2.0"
+          , console = "4.2.0"
+          , either = "4.1.1"
+          , lens = "4.0.0"
+          , mathbox = "~0.0.5"
+          , globals = "4.0.0"
+          , foreign = "5.0.0"
+          , signal = "10.1.0"
+          , nullable = "4.1.1"
+          }
+    }

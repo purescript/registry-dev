@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "canvas"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-canvas" })
+    , dependencies =
+        toMap
+          { exceptions = "^0.3.1"
+          , maybe = "^0.3.0"
+          , eff = "^0.1.0"
+          , functions = "^0.1.0"
+          }
+    }

@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "bignumber"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-bignumber" }
+        )
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^3.0.0"
+          , tuples-native = "^0.1.0"
+          , either = "^3.2.0"
+          , prelude = "^3.1.1"
+          , integers = "^3.2.0"
+          , record =
+              "git@github.com:athanclark/purescript-record.git#850360dbfa1bf765a19b3ec207a706622fa47ac7"
+          }
+    }

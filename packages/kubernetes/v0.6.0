@@ -1,0 +1,28 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "kubernetes"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "hoodunit", repo = "purescript-kubernetes" }
+        )
+    , dependencies =
+        toMap
+          { node-fs-aff = "^6.0.0"
+          , exceptions = "^4.0.0"
+          , newtype = "^3.0.0"
+          , console = "^4.1.0"
+          , foreign-generic = "^7.0.0"
+          , profunctor-lenses = "^4.0.0"
+          , foreign-object = "^1.0.0"
+          , node-process = "^6.0.0"
+          , node-url = "^4.0.0"
+          , debug = "^4.0.0"
+          , prelude = "^4.0.1"
+          , test-unit = "^14.0.0"
+          , node-http = "^5.0.0"
+          , simple-json = "^4.0.0"
+          , http-methods = "^4.0.1"
+          }
+    }

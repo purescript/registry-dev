@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "cookie"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-cookie" }
+        )
+    , devDependencies = toMap { conveyor = "^2.0.0", node-process = "^6.0.0" }
+    , dependencies = toMap { node-http = "^5.0.0" }
+    }

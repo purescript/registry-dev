@@ -1,0 +1,30 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "simple-moment"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "passy", repo = "purescript-simple-moment" }
+        )
+    , devDependencies =
+        toMap
+          { console = "~4.1.0"
+          , now = "^4.0.0"
+          , debug = "~4.0.0"
+          , test-unit = "~14.0.0"
+          , globals = "~4.0.0"
+          , partial = "^2.0.0"
+          , strings = "~4.0.0"
+          }
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , control = "~4.0.0"
+          , maybe = "~4.0.0"
+          , moment = "~2.22.2"
+          , prelude = "~4.0.1"
+          , datetime = "~4.0.0"
+          , functions = "~4.0.0"
+          }
+    }

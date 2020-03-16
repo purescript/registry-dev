@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "typeable"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "joneshf", repo = "purescript-typeable" }
+        )
+    , devDependencies =
+        toMap
+          { either = "~0.1.2"
+          , maybe = "~0.1.3"
+          , monoid = "*"
+          , tuples = "~0.1.2"
+          }
+    }

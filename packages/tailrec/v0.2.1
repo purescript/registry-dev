@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "tailrec"
+    , license = Registry.License.MIT
+    , dependencies = toMap { transformers = "~0.5.0" }
+    }

@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "random-words"
+    , license = Registry.License.ISC
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "freqlabs", repo = "purescript-random-words" }
+        )
+    , devDependencies = toMap { spec = "^2.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap { node-fs-aff = "^5.0.0", prelude = "^3.1.1", random = "^3.0.0" }
+    }

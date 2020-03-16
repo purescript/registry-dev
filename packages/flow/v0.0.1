@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "flow"
+    , license = Registry.License.AGPL
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "juspay", repo = "purescript-flow" })
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , foreign-generic = "^4.1.0"
+          , aff = "^3.1.0"
+          , prelude = "^3.0.0"
+          , generics = "^4.0.0"
+          }
+    }

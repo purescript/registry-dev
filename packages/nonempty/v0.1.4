@@ -1,0 +1,9 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "nonempty"
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-nonempty" })
+    , dependencies =
+        toMap { console = "^0.1.0", foldable-traversable = "^0.4.0" }
+    }

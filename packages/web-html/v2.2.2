@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "web-html"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-web", repo = "purescript-web-html" }
+        )
+    , dependencies =
+        toMap
+          { web-storage = "3"
+          , js-date = "6"
+          , web-file = "2"
+          , web-dom = "2 - 4"
+          }
+    }

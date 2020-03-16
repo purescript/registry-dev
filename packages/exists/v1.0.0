@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "exists"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-exists" }
+        )
+    , devDependencies = toMap { console = "^1.0.0" }
+    , dependencies = toMap { unsafe-coerce = "^1.0.0" }
+    }

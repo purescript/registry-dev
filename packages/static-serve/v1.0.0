@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "static-serve"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-static-serve" }
+        )
+    , dependencies =
+        toMap
+          { node-url = "^4.0.0"
+          , node-http = "^5.0.0"
+          , node-fs = "^5.0.0"
+          , strings = "^4.0.0"
+          }
+    }

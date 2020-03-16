@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "monad-logger-writer"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "cdepillabout", repo = "purescript-monad-logger-writer" }
+        )
+    , devDependencies = toMap { console = "^0.1", super-spec = "^0.8" }
+    , dependencies =
+        toMap
+          { monoid = "^0.3"
+          , prelude = "^0.1"
+          , refs = "^0.2"
+          , eff = "^0.1"
+          , tuples = "^0.4"
+          }
+    }

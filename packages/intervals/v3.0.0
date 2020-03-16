@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "intervals"
+    , license = Registry.License.`AGPL-3.0`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/colehaus/purescript-intervals.git"
+        )
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { either = "3.2.0"
+          , prelude = "^3.3.0"
+          , generics = "^4.0.0"
+          , lattice = "^0.3.0"
+          }
+    }

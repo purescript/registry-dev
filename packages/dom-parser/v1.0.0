@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "domparser"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "toastal", repo = "purescript-domparser" }
+        )
+    , devDependencies =
+        toMap { console = "^3.0.0", debug = "^3.0.0", assert = "^3.0.0" }
+    , dependencies =
+        toMap { dom = "^4.13.2", prelude = "^3.1.0", eff = "^3.1.0" }
+    }

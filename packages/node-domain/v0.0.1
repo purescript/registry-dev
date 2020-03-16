@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-domain"
+    , license = Registry.License.MIT
+    , dependencies = toMap { node-events = "~0.0.6" }
+    }

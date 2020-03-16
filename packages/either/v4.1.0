@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "either"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-either" }
+        )
+    , devDependencies =
+        toMap { effect = "^2.0.0", console = "^4.0.0", assert = "^4.0.0" }
+    , dependencies =
+        toMap
+          { control = "^4.0.0"
+          , maybe = "^4.0.0"
+          , invariant = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , prelude = "^4.0.0"
+          , bifunctors = "^4.0.0"
+          }
+    }

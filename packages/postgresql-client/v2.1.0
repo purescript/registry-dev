@@ -1,0 +1,29 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "postgresql-client"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/rightfold/purescript-postgresql-client.git"
+        )
+    , devDependencies = toMap { assert = "^3.0.0", eff = "^3.1.0" }
+    , dependencies =
+        toMap
+          { bytestrings = "^5.0.1"
+          , exceptions = "^3.0.0"
+          , newtype = "^2.0.0"
+          , either = "^3.0.0"
+          , arrays = "^4.0.1"
+          , maybe = "^3.0.0"
+          , aff = "^3.0.0"
+          , foldable-traversable = "^3.0.0"
+          , prelude = "^3.0.0"
+          , bifunctors = "^3.0.0"
+          , eff = "^3.1.0"
+          , transformers = "^3.2.0"
+          , foreign = "^4.0.0"
+          , lists = "^4.0.1"
+          , datetime = "^3.0.0"
+          }
+    }

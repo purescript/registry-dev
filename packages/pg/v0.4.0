@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pg"
+    , license = Registry.License.`AGPL-3.0`
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/bklaric/purescript-pg.git")
+    , dependencies =
+        toMap
+          { foreign-generic = "^7.0.0"
+          , idiomatic-node-errors = "^0.3.0"
+          , options = "^4.0.0"
+          , idiomatic-node-events = "^0.4.0"
+          , nullable = "^4.0.0"
+          }
+    }

@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "foreign-generic"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-foreign-generic" }
+        )
+    , devDependencies = toMap { assert = "^1.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^1.0.0"
+          , maps = "^1.0.0"
+          , console = "^1.0.0"
+          , generics = "^1.0.0"
+          , eff = "^1.0.0"
+          , globals = "^1.0.0"
+          , foreign = "^1.0.0"
+          , nullable = "^1.0.0"
+          }
+    }

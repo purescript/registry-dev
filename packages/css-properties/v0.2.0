@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "css-properties"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "nonbili", repo = "purescript-css-properties" }
+        )
+    , devDependencies = toMap { jest = "^0.3.0", psci-support = "^4.0.0" }
+    , dependencies = toMap { prelude = "^4.1.0" }
+    }

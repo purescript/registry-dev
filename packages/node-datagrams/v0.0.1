@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-datagrams"
+    , dependencies =
+        toMap
+          { exceptions = "~0.3.0"
+          , console = "^0.1.0"
+          , aff = "~0.12.0"
+          , node-buffer = "~0.1.0"
+          , functions = "~0.1.0"
+          }
+    }

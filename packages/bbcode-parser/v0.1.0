@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "bbcode-parser"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "adarqui", repo = "purescript-bbcode-parser" }
+        )
+    , dependencies =
+        toMap
+          { console = "^0.1.0"
+          , halogen-css = "^0.4.0"
+          , parsing = "^0.8.0"
+          , css = "^0.7.0"
+          , halogen = "^0.8.0"
+          , assert = "^0.1.1"
+          , nonempty-arrays = "^0.3.0"
+          , test-unit = "^6.0.0"
+          , elm-compat = "^1.0.0"
+          , transformers = "^0.8.4"
+          , colors = "^0.4.4"
+          , halogen-bootstrap = "~0.4.0"
+          }
+    }

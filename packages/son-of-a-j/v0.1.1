@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "son-of-a-j"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/paluh/purescript-son-of-a-j.git")
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.1"
+          , console = "^4.2.0"
+          , argonaut = "^6.0.0"
+          , prelude = "^4.1.1"
+          , nullable = "^4.1.1"
+          }
+    }

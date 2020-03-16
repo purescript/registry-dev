@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "neon"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "tfausak", repo = "purescript-neon" })
+    , devDependencies = toMap { test-unit = "5.0.0", quickcheck = "0.12.2" }
+    , dependencies = toMap { batteries = "0.5.4" }
+    }

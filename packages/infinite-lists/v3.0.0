@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "infinite-lists"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Thimoteus", repo = "purescript-infinite-lists" }
+        )
+    , devDependencies = toMap { console = "^4.1.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap { maybe = "^4.0.0", lazy = "^4.0.0", tuples = "^5.0.0" }
+    }

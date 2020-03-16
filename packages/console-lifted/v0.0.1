@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "console-lifted"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "matthewleon", repo = "purescript-console-lifted" }
+        )
+    , dependencies = toMap { console = "^3.0.0" }
+    }

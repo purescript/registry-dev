@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "functor-optics"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-functor-optics" }
+        )
+    , devDependencies = toMap { psci-support = "^1.0.0" }
+    , dependencies =
+        toMap
+          { functor-compose = "^0.1.0"
+          , functor-products = "^1.0.0"
+          , functor-coproducts = "^1.1.0"
+          }
+    }

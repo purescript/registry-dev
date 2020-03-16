@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "memoize"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-memoize" })
+    , devDependencies = toMap { console = "^3.0.0" }
+    , dependencies =
+        toMap
+          { either = "^3.0.0"
+          , maybe = "^3.0.0"
+          , lazy = "^3.0.0"
+          , integers = "^3.0.0"
+          , generics-rep = "^5.0.0"
+          , tuples = "^4.0.0"
+          , strings = "^3.0.0"
+          , lists = "^4.0.1"
+          }
+    }

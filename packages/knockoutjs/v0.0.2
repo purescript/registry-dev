@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "knockoutjs"
+    , license = Registry.License.MIT
+    , dependencies = toMap { globals = "~0.1.6", foreign = "~0.4.2" }
+    }

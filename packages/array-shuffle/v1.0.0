@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "array-shuffle"
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { arrays = "^4.1.2"
+          , prelude = "^3.1.0"
+          , random = "^3.0.0"
+          , tuples = "^4.1.0"
+          }
+    }

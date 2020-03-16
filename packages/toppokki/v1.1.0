@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "toppokki"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-toppokki" }
+        )
+    , devDependencies =
+        toMap
+          { node-process = "^6.0.0", test-unit = "^14.0.0", milkis = "^6.0.1" }
+    , dependencies =
+        toMap
+          { aff-promise = "^2.0.0"
+          , prelude = "^4.0.1"
+          , node-http = "^5.0.0"
+          , record = "^1.0.0"
+          , node-buffer = "^5.0.0"
+          , functions = "^4.0.0"
+          }
+    }

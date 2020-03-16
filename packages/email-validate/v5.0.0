@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "email-validate"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "cdepillabout", repo = "purescript-email-validate" }
+        )
+    , devDependencies = toMap { spec = "^4.0.0-rc1" }
+    , dependencies =
+        toMap
+          { string-parsers = "^5.0"
+          , aff = "^5.1"
+          , transformers = "^4.2"
+          , generics-rep = "^6.1"
+          }
+    }

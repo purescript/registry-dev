@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "base64"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Thimoteus", repo = "purescript-base64" }
+        )
+    , devDependencies = toMap { console = "^0.1.0", quickcheck = "~0.12.2" }
+    }

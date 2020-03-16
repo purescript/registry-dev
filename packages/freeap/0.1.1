@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "freeap"
+    , devDependencies =
+        toMap
+          { console = "~0.1.1"
+          , either = "~0.2.3"
+          , generics = "~0.6.2"
+          , integers = "~0.2.1"
+          }
+    , dependencies = toMap { exists = "~0.2.0", const = "~0.5.0" }
+    }

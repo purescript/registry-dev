@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "aws-cloud9"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/purescript-aws-sdk/purescript-aws-cloud9.git"
+        )
+    , dependencies = toMap { aws-request = "0.0.5" }
+    }

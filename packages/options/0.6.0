@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "options"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "ethul", repo = "purescript-options" })
+    , devDependencies = toMap { console = "~0.1.1" }
+    , dependencies =
+        toMap
+          { maps = "~0.5.4"
+          , maybe = "~0.3.5"
+          , monoid = "~0.3.2"
+          , contravariant = "~0.2.3"
+          , tuples = "~0.4.0"
+          , foreign = "~0.7.0"
+          }
+    }

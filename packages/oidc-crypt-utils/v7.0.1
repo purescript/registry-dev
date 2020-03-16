@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "oidc-crypt-utils"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-oidc-crypt-utils" }
+        )
+    , devDependencies = toMap { console = "^3.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^3.0.0"
+          , newtype = "^2.0.0"
+          , control = "^3.0.0"
+          , maybe = "^3.0.0"
+          , argonaut = "^3.0.0"
+          , now = "^3.0.0"
+          , integers = "^3.0.0"
+          , eff = "^3.0.0"
+          , datetime = "^3.0.0"
+          }
+    }

@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "isotypes"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "LiamGoodacre", repo = "purescript-isotypes" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^1.0.0", test-unit = "^7.0.0", psci-support = "^1.0.0" }
+    , dependencies =
+        toMap { profunctor-lenses = "^1.0.0", foldable-traversable = "^1.0.0" }
+    }

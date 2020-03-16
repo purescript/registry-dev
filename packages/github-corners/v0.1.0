@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "github-corners"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "yehzhang", repo = "purescript-github-corners" }
+        )
+    , devDependencies = toMap { spec = "^3.0.0", psci-support = "^4.0.0" }
+    , dependencies = toMap { css = "^4.0.0", smolder = "^11.0.0" }
+    }

@@ -1,0 +1,41 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "httpure"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/cprussin/purescript-httpure")
+    , dependencies =
+        toMap
+          { node-fs-aff = "^6.0.0"
+          , exceptions = "^4.0.0"
+          , newtype = "^3.0.0"
+          , effect = "^2.0.1"
+          , control = "^4.1.0"
+          , console = "^4.2.0"
+          , either = "^4.1.1"
+          , node-streams = "^4.0.0"
+          , arrays = "^5.2.0"
+          , maybe = "^4.0.1"
+          , type-equality = "^3.0.0"
+          , aff = "^5.0.0"
+          , foldable-traversable = "^4.0.0"
+          , node-child-process = "^6.0.0"
+          , prelude = "^4.0.1"
+          , bifunctors = "^4.0.0"
+          , unsafe-coerce = "^4.0.0"
+          , refs = "^4.1.0"
+          , node-http = "^5.0.0"
+          , spec = "^4.0.0"
+          , node-buffer = "^5.0.0 || ^6.0.0"
+          , node-fs = "^5.0.0"
+          , globals = "^4.1.0"
+          , options = "^5.0.0"
+          , psci-support = "^4.0.0"
+          , tuples = "^5.1.0"
+          , strings = "^4.0.0"
+          , foreign = "^5.0.0"
+          , lists = "^5.4.0"
+          , nullable = "^4.1.1"
+          }
+    }

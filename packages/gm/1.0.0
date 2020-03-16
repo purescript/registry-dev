@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "gm"
+    , dependencies =
+        toMap
+          { console = "^0.1.0"
+          , aff = "~0.13.0"
+          , node-buffer = "~0.1.0"
+          , node-fs = "~0.8.1"
+          }
+    }

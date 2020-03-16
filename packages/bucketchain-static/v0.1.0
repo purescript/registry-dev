@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "bucketchain-static"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Bucketchain", repo = "purescript-bucketchain-static" }
+        )
+    , devDependencies = toMap { assert = "^4.0.0" }
+    , dependencies = toMap { node-fs-aff = "^6.0.0", bucketchain = "^0.2.8" }
+    }

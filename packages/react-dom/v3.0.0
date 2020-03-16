@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "react-dom"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib", repo = "purescript-react-dom" }
+        )
+    , dependencies = toMap { dom = "^4.0.0", react = "^3.0.0", eff = "^3.1.0" }
+    }

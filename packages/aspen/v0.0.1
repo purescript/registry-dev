@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "aspen"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "taylor1791", repo = "purescript-aspen" }
+        )
+    , devDependencies =
+        toMap
+          { assert = "^3.0.0", generics = "^4.0.0", psci-support = "^3.0.0" }
+    , dependencies = toMap { variant = "^1.1.0", prelude = "^3.0.0" }
+    }

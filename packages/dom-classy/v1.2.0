@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "dom-classy"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "garyb", repo = "purescript-dom-classy" }
+        )
+    , dependencies = toMap { dom = "^3.4.0" }
+    }

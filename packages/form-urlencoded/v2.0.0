@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "form-urlencoded"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib"
+            , repo = "purescript-form-urlencoded"
+            }
+        )
+    , dependencies =
+        toMap
+          { maybe = "^2.0.0"
+          , prelude = "^2.0.0"
+          , generics = "^3.0.0"
+          , globals = "^2.0.0"
+          , tuples = "^3.0.0"
+          , strings = "^2.0.0"
+          }
+    }

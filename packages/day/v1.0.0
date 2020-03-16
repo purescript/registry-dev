@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "day"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-day" })
+    , devDependencies = toMap { psci-support = "^1.0.0" }
+    , dependencies = toMap { control = "^1.0.0", exists = "^1.0.0" }
+    }

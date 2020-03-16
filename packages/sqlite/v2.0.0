@@ -1,0 +1,29 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sqlite"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Risto-Stevcev", repo = "purescript-sqlite" }
+        )
+    , devDependencies =
+        toMap
+          { template-strings = "^3.0.0"
+          , test-unit = "^10.1.0"
+          , psci-support = "^2.0.0"
+          }
+    , dependencies =
+        toMap
+          { console = "^2.0.0"
+          , either = "^2.2.1"
+          , maybe = "^2.1.1"
+          , aff = "^2.0.3"
+          , integers = "^2.1.1"
+          , transformers = "^2.2.0"
+          , homogeneous-objects = "^3.0.0"
+          , foreign = "^3.2.0"
+          , functions = "^2.0.0"
+          , undefinable = "^2.0.0"
+          }
+    }

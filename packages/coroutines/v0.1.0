@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "coroutines"
+    , dependencies =
+        toMap { either = "~0.2.0", tailrec = "~0.3.0", transformers = "~0.6.1" }
+    }

@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "date-fns"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "tancc", repo = "purescript-date-fns" })
+    , devDependencies = toMap { console = "^3.0.0", psci-support = "^3.0.0" }
+    , dependencies = toMap { exceptions = "^3.1.0", unsafe-coerce = "^3.0.0" }
+    }

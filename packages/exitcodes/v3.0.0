@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "exitcodes"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Risto-Stevcev", repo = "purescript-exitcodes" }
+        )
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies = toMap { enums = "^3.0.0" }
+    }

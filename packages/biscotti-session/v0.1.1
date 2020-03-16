@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "biscotti-session"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/drewolson/purescript-biscotti-session"
+        )
+    , dependencies =
+        toMap
+          { newtype = "^v3.0.0"
+          , effect = "^v2.0.1"
+          , ordered-collections = "^v1.6.1"
+          , argonaut = "^v6.0.0"
+          , uuid = "^v6.0.0"
+          , profunctor-lenses = "^v6.2.0"
+          , aff = "^v5.1.2"
+          , biscotti-cookie = "^v0.2.0"
+          , prelude = "^v4.1.1"
+          , refs = "^v4.1.0"
+          , test-unit = "^v15.0.0"
+          , psci-support = "^v4.0.0"
+          }
+    }

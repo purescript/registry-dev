@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "enums"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-enums" }
+        )
+    , devDependencies = toMap { console = "^4.0.0", assert = "^4.0.0" }
+    , dependencies =
+        toMap
+          { newtype = "^3.0.0"
+          , control = "^4.0.0"
+          , either = "^4.0.0"
+          , maybe = "^4.0.0"
+          , unfoldable = "^4.0.0"
+          , gen = "^2.0.0"
+          , prelude = "^4.0.0"
+          , nonempty = "^5.0.0"
+          , tuples = "^5.0.0"
+          , partial = "^2.0.0"
+          }
+    }

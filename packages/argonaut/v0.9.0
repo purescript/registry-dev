@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "argonaut"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { console = "^0.1.0", strongcheck = "^0.12.0" }
+    , dependencies =
+        toMap
+          { argonaut-traversals = "^0.2.0"
+          , argonaut-core = "^0.2.0"
+          , argonaut-codecs = "^0.3.0"
+          }
+    }

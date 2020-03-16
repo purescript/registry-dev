@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "precise"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib", repo = "purescript-precise" }
+        )
+    , devDependencies =
+        toMap { quickcheck-laws = "^4.0.0", quickcheck = "^5.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , arrays = "^5.0.0"
+          , gen = "^2.1.0"
+          , integers = "^4.0.0"
+          , globals = "^4.0.0"
+          , generics-rep = "^6.0.0"
+          , strings = "^4.0.0"
+          , lists = "^5.4.0"
+          }
+    }

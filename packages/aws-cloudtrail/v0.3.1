@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "aws-cloudtrail"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/purescript-aws-sdk/purescript-aws-cloudtrail.git"
+        )
+    , dependencies = toMap { aws-request = "0.3.1" }
+    }

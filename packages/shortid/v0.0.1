@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "shortid"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "DaQuirm", repo = "purescript-shortid" }
+        )
+    , devDependencies = toMap { psci-support = "^2.0.0" }
+    , dependencies = toMap { eff = "^2.0.0" }
+    }

@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "optics"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap
+          { control = "^0.3.0"
+          , profunctor = "^0.3.0"
+          , distributive = "^0.5.0"
+          , lens = "master"
+          , bifunctors = "^0.4.0"
+          , contravariant = "^0.2.0"
+          , const = "^0.5.0"
+          , transformers = "^0.6.0"
+          , enums = "^0.5.0"
+          , lists = "^0.7.0"
+          }
+    }

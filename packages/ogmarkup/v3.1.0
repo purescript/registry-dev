@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "ogmarkup"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/ogma-project/purescript-ogmarkup.git"
+        )
+    , devDependencies = toMap { psci-support = "^1.0.0" }
+    , dependencies =
+        toMap
+          { console = "^1.0.0"
+          , parsing = "^1.0.0"
+          , generics = "^1.0.1"
+          , transformers = "^1.0.0"
+          , lists = "^1.0.1"
+          }
+    }

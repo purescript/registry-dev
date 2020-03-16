@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sijidou"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-sijidou" }
+        )
+    , devDependencies = toMap { assert = "^4.1.0" }
+    , dependencies =
+        toMap
+          { typelevel-prelude = "^5.0.0"
+          , prelude = "^4.1.1"
+          , record = "^2.0.1"
+          }
+    }

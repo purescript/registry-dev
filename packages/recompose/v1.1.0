@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "recompose"
+    , devDependencies = toMap { debug = "^2.0.0" }
+    , dependencies =
+        toMap
+          { recompose = "acdlite/recompose#0.20.2"
+          , react = "^2.0.0"
+          , functions = "^2.0.0"
+          }
+    }

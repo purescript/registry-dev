@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "qrcode-js-halogen"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "narinari", repo = "purescript-qrcode-js-halogen" }
+        )
+    , devDependencies = toMap { console = "^2.0.0", psci-support = "^2.0.0" }
+    , dependencies = toMap { qrcode-js = "^2.0.0", halogen = "^0.12.0" }
+    }

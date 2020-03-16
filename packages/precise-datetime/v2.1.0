@@ -1,0 +1,39 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "precise-datetime"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "awakesecurity", repo = "purescript-precise-datetime" }
+        )
+    , devDependencies =
+        toMap
+          { spec-discovery = "^2.0.0"
+          , spec = "^2.0.0"
+          , psci-support = "^3.0.0"
+          }
+    , dependencies =
+        toMap
+          { bigints = "^3.4.0"
+          , newtype = "^2.0.0"
+          , unicode = "^3.0.2"
+          , console = "^3.0.0"
+          , either = "^3.1.0"
+          , profunctor = "^3.2.0"
+          , arrays = "^4.2.2"
+          , maybe = "^3.0.0"
+          , formatters = "^3.0.1"
+          , foldable-traversable = "^3.7.1"
+          , prelude = "^3.1.1"
+          , integers = "^3.2.0"
+          , eff = "^3.1.0"
+          , numbers = "^5.0.0"
+          , js-date = "^4.0.0"
+          , enums = "^3.2.1"
+          , tuples = "^4.1.0"
+          , strings = "^3.5.0"
+          , lists = "^4.12.0"
+          , datetime = "^3.4.1"
+          }
+    }

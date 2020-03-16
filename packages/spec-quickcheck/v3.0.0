@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "spec-quickcheck"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "owickstrom", repo = "purescript-spec-quickcheck" }
+        )
+    , dependencies =
+        toMap
+          { aff = "^5.0.0"
+          , prelude = "^4.0.0"
+          , spec = "^3.0.0"
+          , random = "^4.0.0"
+          , quickcheck = "^5.0.0"
+          }
+    }

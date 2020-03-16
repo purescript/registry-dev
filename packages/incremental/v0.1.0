@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "incremental"
+    , dependencies =
+        toMap
+          { console = "^0.1.0"
+          , arrays = "~0.4.2"
+          , maybe = "~0.3.4"
+          , dom = "~0.2.6"
+          , unsafe-coerce = "~0.1.0"
+          , eff = "~0.1.1"
+          }
+    }

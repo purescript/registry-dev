@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "logging-journald"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/paluh/purescript-logging-journald.git"
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { generics-rep = "^6.1.1"
+          , logging = "^3.0.0"
+          , systemd-journald = "^0.2.1"
+          }
+    }

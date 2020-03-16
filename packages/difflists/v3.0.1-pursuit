@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "difflists"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Thimoteus", repo = "purescript-difflists" }
+        )
+    , devDependencies =
+        toMap
+          { sequences = "~0.4.2"
+          , benchotron = "~3.0.3"
+          , quickcheck = "~0.12.1"
+          }
+    , dependencies =
+        toMap
+          { arrays = "^0.4.4"
+          , monoid = "^0.3.2"
+          , foldable-traversable = "^0.4.2"
+          , lists = "^0.7.9"
+          , functions = "^0.1.0"
+          }
+    }

@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "stringutils"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "menelaos", repo = "purescript-stringutils" }
+        )
+    , devDependencies = toMap { console = "^1.0.0", strongcheck = "^1.1.1" }
+    , dependencies =
+        toMap
+          { either = "^1.0.0"
+          , arrays = "^1.0.0"
+          , maybe = "^1.0.0"
+          , prelude = "^1.0.1"
+          , integers = "^1.0.0"
+          , partial = "^1.1.2"
+          , strings = "^1.0.0"
+          }
+    }

@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "isometric"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "sharkdp", repo = "purescript-isometric" }
+        )
+    , devDependencies = toMap { flare = "^1.0.0" }
+    , dependencies =
+        toMap
+          { graphs = "^1.0.0"
+          , nonempty = "^1.1.0"
+          , orders = "^1.0.0"
+          , drawing = "^1.0.0"
+          , colors = "^1.0.0"
+          }
+    }

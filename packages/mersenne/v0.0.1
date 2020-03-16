@@ -1,0 +1,27 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "mersenne"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "matthewleon", repo = "purescript-mersenne" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^2.0.0"
+          , now = "^2.0.0"
+          , eff = "^2.0.0"
+          , strings = "^2.1.0"
+          , lists = "^3.4.0"
+          }
+    , dependencies =
+        toMap
+          { arrays = "^3.2.1"
+          , maybe = "^2.1.1"
+          , unfoldable = "^2.0.0"
+          , prelude = "^2.5.0"
+          , integers = "^2.1.1"
+          , tuples = "^3.2.0"
+          }
+    }

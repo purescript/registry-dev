@@ -1,0 +1,27 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "payload"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "hoodunit", repo = "purescript-payload" }
+        )
+    , devDependencies = toMap { test-unit = "15.0.0" }
+    , dependencies =
+        toMap
+          { node-fs-aff = "6.0.0"
+          , console = "4.2.0"
+          , foreign-generic = "10.0.0"
+          , aff = "5.1.1"
+          , debug = "4.0.0"
+          , typelevel-prelude = "5.0.0"
+          , prelude = "4.1.1"
+          , affjax = "9.0.0"
+          , stringutils = "0.0.8"
+          , node-http = "5.0.1"
+          , record = "2.0.1"
+          , node-fs = "5.0.0"
+          , simple-json = "6.0.0"
+          }
+    }

@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "random-secure"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/TinkerTravel/purescript-random-secure.git"
+        )
+    , dependencies =
+        toMap { bytestrings = "^2.0.0", exceptions = "^2.0.0", eff = "^2.0.0" }
+    }

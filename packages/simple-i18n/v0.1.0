@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "simple-i18n"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-simple-i18n" }
+        )
+    , devDependencies = toMap { test-unit = "^15.0.0" }
+    , dependencies =
+        toMap { record-extra = "^3.0.1", foreign-object = "^2.0.3" }
+    }

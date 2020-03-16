@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "super-spec"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "cdepillabout", repo = "purescript-super-spec" }
+        )
+    , dependencies =
+        toMap
+          { exceptions = "^0.3"
+          , console = "^0.1"
+          , aff = "^0.13"
+          , prelude = "^0.1"
+          , transformers = "^0.8"
+          , strings = "^0.7"
+          }
+    }

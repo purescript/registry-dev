@@ -1,0 +1,8 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "signal"
+    , license = Registry.License.`Apache-2.0`
+    , dependencies =
+        toMap { timers = "~0.0.5", dom = "~0.1.0", tuples = "~0.2.1" }
+    }

@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "setimmediate"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-setimmediate" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap { console = "^4.1.0", prelude = "^4.1.0", functions = "^4.0.0" }
+    }

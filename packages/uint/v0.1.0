@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "uint"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "zaquest", repo = "purescript-uint" })
+    , devDependencies = toMap { psci-support = "^1.0.0" }
+    , dependencies =
+        toMap { console = "^1.0.0", maybe = "^1.0.0", math = "^2.0.0" }
+    }

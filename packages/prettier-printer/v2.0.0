@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "prettier-printer"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paulyoung", repo = "purescript-prettier-printer" }
+        )
+    , devDependencies =
+        toMap
+          { spec-discovery =
+              "owickstrom/purescript-spec-discovery#a1a8dfd5fadb3f00199d68d20af4bbf56a048c6e"
+          , spec = "^3.0.0"
+          , psci-support = "^4.0.0"
+          , quickcheck = "^5.0.0"
+          }
+    , dependencies =
+        toMap
+          { console = "^4.0.0"
+          , prelude = "^4.0.0"
+          , tuples = "^5.0.0"
+          , lists = "^5.0.0"
+          }
+    }

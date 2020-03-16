@@ -1,0 +1,6 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "free-canvas"
+    , dependencies = toMap { free = "*", canvas = "~0.1.6" }
+    }

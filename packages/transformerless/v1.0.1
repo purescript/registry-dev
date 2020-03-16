@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "transformerless"
+    , devDependencies = toMap { console = "^1.0.0", psci-support = "^1.0.0" }
+    , dependencies = toMap { base = "^1.0.0", tailrec = "^1.0.0" }
+    }

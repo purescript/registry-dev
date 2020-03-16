@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pairing"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-pairing" })
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap { free = "^5.0.0", functors = "^3.0.0", transformers = "^4.1.0" }
+    }

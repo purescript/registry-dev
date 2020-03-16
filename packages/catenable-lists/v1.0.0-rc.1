@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "catenable-lists"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-maybe" }
+        )
+    , devDependencies =
+        toMap { console = "^1.0.0-rc.1", assert = "^1.0.0-rc.1" }
+    , dependencies = toMap { tuples = "^1.0.0-rc.1", lists = "^1.0.0-rc.1" }
+    }

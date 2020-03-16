@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "kanren"
+    , license = Registry.License.`LGPL-3.0+`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "bodil", repo = "purescript-kanren" })
+    , devDependencies = toMap { psci-support = "^1.0.0" }
+    , dependencies =
+        toMap
+          { maps = "^1.0.0"
+          , control = "^1.0.0"
+          , maybe = "^1.0.0"
+          , monoid = "^1.0.0"
+          , foldable-traversable = "^1.0.0"
+          , prelude = "^1.0.1"
+          , lists = "^1.0.1"
+          }
+    }

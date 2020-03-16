@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "form-urlencoded"
+    , dependencies =
+        toMap { generics = "~0.7.2", affjax = "~0.10.2", globals = "~0.2.2" }
+    }

@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "express"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "nkly", repo = "purescript-express" })
+    , devDependencies = toMap { test-unit = "^14.0.0" }
+    , dependencies =
+        toMap
+          { foreign-generic = "^7.0.0"
+          , data-default = "^0.1.0"
+          , node-http = "^5.0.0"
+          , foreign = "^5.0.0"
+          }
+    }

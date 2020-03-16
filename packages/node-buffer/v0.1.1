@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-buffer"
+    , license = Registry.License.MIT
+    , dependencies = toMap { maybe = "~0.3.1", eff = "~0.1.0" }
+    }

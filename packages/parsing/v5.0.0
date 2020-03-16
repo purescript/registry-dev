@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "parsing"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib", repo = "purescript-parsing" }
+        )
+    , devDependencies =
+        toMap { console = "^4.1.0", assert = "^4.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { unicode = "^4.0.0"
+          , either = "^4.0.0"
+          , arrays = "^5.0.0"
+          , maybe = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , integers = "^4.0.0"
+          , transformers = "^4.1.0"
+          , strings = "^4.0.0"
+          , identity = "^4.0.0"
+          , lists = "^5.0.0"
+          }
+    }

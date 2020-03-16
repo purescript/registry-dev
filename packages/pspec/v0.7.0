@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pspec"
+    , devDependencies =
+        toMap
+          { console = "~0.1.0"
+          , strongcheck = "~0.10.0"
+          , simple-assert = "~0.3.0"
+          , math = "~0.2.0"
+          }
+    , dependencies =
+        toMap
+          { sequences = "~0.4.1"
+          , strings = "~0.5.3"
+          , lists = "~0.7.0"
+          , functions = "~0.1.0"
+          }
+    }

@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "strongcheck"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib", repo = "purescript-strongcheck" }
+        )
+    , dependencies =
+        toMap
+          { free = "^4.0.0"
+          , exceptions = "^3.0.0"
+          , console = "^3.0.0"
+          , arrays = "^4.0.1"
+          , gen = "^1.0.0"
+          , enums = "^3.0.0"
+          , random = "^3.0.0"
+          , machines = "^4.0.0"
+          , datetime = "^3.0.0"
+          }
+    }

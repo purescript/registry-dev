@@ -1,0 +1,8 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "smolder"
+    , license = Registry.License.`LGPL-3.0+`
+    , dependencies =
+        toMap { maps = "~0.4.2", monoid = "~0.3.0", strings = "~0.6.0" }
+    }

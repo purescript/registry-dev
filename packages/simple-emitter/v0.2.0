@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "simple-emitter"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-simple-emitter" }
+        )
+    , devDependencies = toMap { console = "^3.0.0", psci-support = "^3.0.0" }
+    , dependencies = toMap { maps = "^3.5.2", refs = "^3.0.0" }
+    }

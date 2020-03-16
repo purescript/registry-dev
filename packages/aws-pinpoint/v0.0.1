@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "aws-pinpoint"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/purescript-aws-sdk/purescript-aws-pinpoint.git"
+        )
+    , dependencies = toMap { aws-request = "0.0.5" }
+    }

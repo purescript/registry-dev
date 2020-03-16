@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "dotenv"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "nicholassaunders", repo = "purescript-dotenv" }
+        )
+    , devDependencies = toMap { spec = "^4.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { node-fs-aff = "^6.0.0"
+          , effect = "^2.0.1"
+          , console = "^4.2.0"
+          , parsing = "^5.0.3"
+          , node-process = "^7.0.0"
+          , sunde = "^2.0.0"
+          , run = "^3.0.1"
+          }
+    }

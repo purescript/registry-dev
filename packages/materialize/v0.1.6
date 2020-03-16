@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "materialize"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "yehzhang", repo = "purescript-materialize" }
+        )
+    , devDependencies = toMap { spec = "^3.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { typelevel = "^4.0.0"
+          , smolder = "^11.0.0"
+          , aff = "^5.0.0"
+          , web-dom = "^1.0.0"
+          }
+    }

@@ -1,0 +1,9 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "wechaty"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/Lupino/purescript-wechaty.git")
+    , dependencies = toMap { aff-promise = "^1.0.0", aff = "^4.0.2" }
+    }

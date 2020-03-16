@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "record-show"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "matthewleon", repo = "purescript-record-show" }
+        )
+    , devDependencies = toMap { assert = "^3.0.0", psci-support = "^3.0.0" }
+    , dependencies = toMap { record = "^0.2.4", lists = "^4.11.0" }
+    }

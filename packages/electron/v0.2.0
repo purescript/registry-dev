@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "electron"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "bamboo", repo = "purescript-electron" }
+        )
+    , devDependencies = toMap { console = "^0.1.1", spec = "^0.7.2" }
+    , dependencies =
+        toMap
+          { generics = "^0.7.0", argonaut-codecs = "^0.5.1", eff = "^0.1.0" }
+    }

@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "freet"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-freet" })
+    , dependencies =
+        toMap
+          { control = "^2.0.0"
+          , console = "^2.0.0"
+          , exists = "^2.0.0"
+          , tailrec = "^2.0.0"
+          , transformers = "^2.0.1"
+          }
+    }

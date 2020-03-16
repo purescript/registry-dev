@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-postgres"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap
+          { either = "~0.1.8"
+          , arrays = "~0.3.7"
+          , aff = "~0.10.1"
+          , foldable-traversable = "~0.3.1"
+          , integers = "~0.1.0"
+          , transformers = "~0.5.5"
+          , foreign = "~0.4.2"
+          }
+    }

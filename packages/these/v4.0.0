@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "these"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib", repo = "purescript-these" }
+        )
+    , dependencies = toMap { gen = "^2.0.0", tuples = "^5.0.0" }
+    }

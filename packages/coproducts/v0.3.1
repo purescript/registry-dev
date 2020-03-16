@@ -1,0 +1,8 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "coproducts"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap { either = "~0.1.4", foldable-traversable = "~0.3.0" }
+    }

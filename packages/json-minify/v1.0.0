@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "json-minify"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "dgendill", repo = "purescript-json-minify" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^1.0.0"
+          , debug = "^1.0.0"
+          , psci-support = "^1.0.0"
+          , quickcheck = "^1.0.0"
+          }
+    }

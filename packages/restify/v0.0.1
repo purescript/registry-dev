@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "restify"
+    , license = Registry.License.ISC
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "freqlabs", repo = "purescript-restify" }
+        )
+    , dependencies =
+        toMap { foreign-generic = "^5.0.0", aff = "^4.0.2", prelude = "^3.1.1" }
+    }

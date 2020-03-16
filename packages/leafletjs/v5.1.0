@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "leafletjs"
+    , devDependencies =
+        toMap { debug = "^3.0.0", gen = "^1.1.0", random = "^3.0.0" }
+    , dependencies =
+        toMap
+          { dom-classy = "^2.1.0"
+          , control = "^3.0.0"
+          , symbols = "^3.0.0"
+          , dom = "^4.2.0"
+          , uri = "^4.0.0"
+          , prelude = "^3.0.0"
+          , st = "^3.0.0"
+          , refs = "^3.0.0"
+          , eff = "^3.1.0"
+          , transformers = "^3.2.0"
+          , canvas = "^3.0.0"
+          , math = "^2.0.0"
+          , partial = "^1.2.0"
+          , colors = "^4.0.0"
+          }
+    }

@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "electron"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "cjduncana", repo = "purescript-electron" }
+        )
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { argonaut-generic = "^1.2.0"
+          , generics = "4.0.0"
+          , argonaut-codecs = "3.2.0"
+          , eff = "3.1.0"
+          }
+    }

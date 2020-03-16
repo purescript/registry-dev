@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "proact"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "alvart", repo = "proact" })
+    , dependencies =
+        toMap
+          { react-dom = "^6.0.0"
+          , profunctor-lenses = "^4.0.0"
+          , react = "^6.0.0"
+          }
+    }

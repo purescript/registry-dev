@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pha"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "gbagan", repo = "purescript-pha" })
+    , dependencies =
+        toMap
+          { effect = "^v2.0.1", profunctor-lenses = "^v6.2.0", run = "^v3.0.1" }
+    }

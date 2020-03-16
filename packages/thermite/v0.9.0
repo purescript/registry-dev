@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "thermite"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-thermite" })
+    , dependencies =
+        toMap
+          { maybe = "^0.3.0"
+          , dom = "^0.2.0"
+          , monoid = "^0.3.0"
+          , react = "^0.12.2"
+          , eff = "^0.1.0"
+          }
+    }

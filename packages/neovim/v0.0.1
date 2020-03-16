@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "neovim"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "megalord", repo = "purescript-neovim" }
+        )
+    , devDependencies =
+        toMap
+          { maps = "~1.0.0"
+          , node-fs = "~1.0.0"
+          , psci-support = "^1.0.0"
+          , foreign = "~1.0.0"
+          }
+    , dependencies =
+        toMap { console = "^1.0.0", aff = "~1.0.0", node-buffer = "~1.0.0" }
+    }

@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "web-dom-xpath"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-web", repo = "purescript-web-dom-xpath" }
+        )
+    , devDependencies =
+        toMap
+          { dom-parser =
+              "bbarker/purescript-dom-parser#9c91afbd752f73b6f33c5c69cb541e3c4c6bf3a9"
+          , console = "^4.2.0"
+          , debug = "^4.0.0"
+          , test-unit = "^15.0.0"
+          , foreign = "^5.0.0"
+          }
+    , dependencies =
+        toMap { web-events = "^2.0.0", naturals = "^3.0.0", web-dom = "^2.0.0" }
+    }

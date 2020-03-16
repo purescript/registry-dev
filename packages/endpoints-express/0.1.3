@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "endpoints-express"
+    , dependencies =
+        toMap
+          { argonaut-core = "1.0.0"
+          , affjax = "1.1.0"
+          , argonaut-codecs = "1.0.0"
+          , node-buffer = "1.0.0"
+          }
+    }

@@ -1,0 +1,32 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "decision-theory"
+    , license = Registry.License.`AGPL-3.0-or-later`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/colehaus/purescript-decision-theory.git"
+        )
+    , devDependencies =
+        toMap
+          { colehaus-properties = "^0.3.2"
+          , rationals = "^5.0.0"
+          , spec = "^3.1.0"
+          , psci-support = "^4.0.0"
+          , spec-quickcheck = "^3.1.0"
+          , quickcheck = "^5.0.0"
+          }
+    , dependencies =
+        toMap
+          { unordered-collections = "^1.8.0"
+          , partial-order = "^0.0.1"
+          , proportion = "^0.3.0"
+          , prelude = "^4.1.0"
+          , naturals = "^3.0.0"
+          , tables = "^0.0.7"
+          , multiset-hashed = "^0.0.1"
+          , tuples = "^5.1.0"
+          , partial = "^2.0.0"
+          , lists = "^5.3.0"
+          }
+    }

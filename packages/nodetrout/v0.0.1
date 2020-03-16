@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "nodetrout"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/nsaunders/purescript-nodetrout.git"
+        )
+    , dependencies =
+        toMap
+          { effect = "^v2.0.1"
+          , console = "^v4.2.0"
+          , form-urlencoded = "^v5.0.0"
+          , argonaut = "^v6.0.0"
+          , trout = "^v0.12.2"
+          , b64 = "^v0.0.6"
+          , node-http = "^v5.0.2"
+          , spec = "^v4.0.1"
+          , encoding = "^v0.0.6"
+          , psci-support = "^v4.0.0"
+          , http-methods = "^v4.0.2"
+          }
+    }

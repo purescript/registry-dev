@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "debugger"
+    , dependencies =
+        toMap
+          { console = "^0.1.0"
+          , either = "~0.2.0"
+          , tuples = "~0.4.0"
+          , lists = "~0.7.1"
+          , node-readline = "~0.3.1"
+          }
+    }

@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "virtual-dom-typed"
+    , license = Registry.License.BSD3
+    , devDependencies = toMap { dom = "~0.1.1", refs = "~0.1.1" }
+    , dependencies =
+        toMap
+          { maps = "~0.1.1"
+          , virtual-dom = "*"
+          , maybe = "~0.2.1"
+          , tuples = "~0.2.2"
+          , foreign = "~0.2.0"
+          }
+    }

@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "validation"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-validation" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { newtype = "^3.0.0"
+          , control = "^4.0.0"
+          , either = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , prelude = "^4.0.0"
+          , bifunctors = "^4.0.0"
+          }
+    }

@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "symbols"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-symbols" }
+        )
+    , dependencies = toMap { prelude = "^3.0.0", unsafe-coerce = "^3.0.0" }
+    }

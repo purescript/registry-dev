@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-bcrypt"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "lpil", repo = "purescript-node-bcrypt" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^3.0.0", test-unit = "^13.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap { newtype = "^2.0.0", aff = "^4.0.0", prelude = "^3.1.0" }
+    }

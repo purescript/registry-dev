@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "react"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib", repo = "purescript-react" }
+        )
+    , dependencies = toMap { unsafe-coerce = "~0.1.0", eff = "~0.1.2" }
+    }

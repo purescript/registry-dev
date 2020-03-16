@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "typelevel"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "bodil", repo = "purescript-typelevel" }
+        )
+    , devDependencies = toMap { test-unit = "^10.0.0", psci-support = "^2.0.0" }
+    , dependencies =
+        toMap { prelude = "^2.1.0", tuples = "^3.0.0", partial = "^1.1.2" }
+    }

@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sorted-list"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/vladciobanu/purescript-sorted-array.git"
+        )
+    , devDependencies = toMap { assert = "^3.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { newtype = "^2.0.0"
+          , console = "^3.0.0"
+          , arrays = "^4.2.2"
+          , maybe = "^3.0.0"
+          , foldable-traversable = "^3.4.0"
+          , prelude = "^3.1.1"
+          , partial = "^1.2.1"
+          }
+    }

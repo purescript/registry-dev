@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "unicode-prelude"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/vyorkin/purescript-unicode-prelude.git"
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies = toMap { prelude = "^4.1.0" }
+    }

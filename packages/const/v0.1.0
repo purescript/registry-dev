@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "const"
+    , license = Registry.License.MIT
+    , dependencies = toMap { monoid = "~0.1.2", contravariant = "~0.0.1" }
+    }

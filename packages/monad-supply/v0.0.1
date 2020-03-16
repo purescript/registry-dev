@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "monad-supply"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "cdepillabout", repo = "purescript-monad-supply" }
+        )
+    , devDependencies = toMap { console = "^0.1", super-spec = "^0.8" }
+    , dependencies = toMap { prelude = "^0.1", transformers = "^0.8.0" }
+    }

@@ -1,0 +1,27 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "strongcheck"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap
+          { free = "^0.5.0"
+          , exceptions = "^0.3.0"
+          , console = "^0.1.0"
+          , either = "^0.2.0"
+          , arrays = "^0.4.0"
+          , maybe = "^0.3.2"
+          , invariant = "^0.3.0"
+          , lazy = "^0.4.0"
+          , foldable-traversable = "^0.4.0"
+          , integers = "^0.2.0"
+          , transformers = "^0.6.1"
+          , math = "^0.2.0"
+          , enums = "^0.5.0"
+          , random = "^0.2.0"
+          , tuples = "^0.4.0"
+          , strings = "^0.5.2"
+          , machines = "^0.7.0"
+          , lists = "^0.7.0"
+          }
+    }

@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "coercible"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "thimoteus", repo = "purescript-coercible" }
+        )
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { foldable-traversable = "^3.4.0"
+          , integers = "^3.1.0"
+          , strings = "^3.3.0"
+          , lists = "^4.9.0"
+          }
+    }

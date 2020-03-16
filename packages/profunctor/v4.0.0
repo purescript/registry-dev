@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "profunctor"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-profunctor" }
+        )
+    , dependencies =
+        toMap
+          { newtype = "^3.0.0"
+          , control = "^4.0.0"
+          , either = "^4.0.0"
+          , exists = "^4.0.0"
+          , distributive = "^4.0.0"
+          , invariant = "^4.0.0"
+          , prelude = "^4.0.0"
+          , contravariant = "^4.0.0"
+          , tuples = "^5.0.0"
+          }
+    }

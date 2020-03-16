@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "simple-datetime"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/felixmulder/purescript-simple-datetime.git"
+        )
+    , devDependencies = toMap { console = "^4.1.0", spec = "^3.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , formatters = "^4.0.0"
+          , prelude = "^4.1.0"
+          , js-date = "^6.0.0"
+          }
+    }

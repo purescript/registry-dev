@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "csv"
+    , dependencies =
+        toMap
+          { maps = "~0.5.4"
+          , console = "^0.1.0"
+          , arrays = "~0.4.1"
+          , parsing = "~0.7.1"
+          , test-unit = "~4.1.0"
+          , quickcheck = "~0.12.2"
+          }
+    }

@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "black-scholes"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "vyorkin", repo = "purescript-black-scholes" }
+        )
+    , devDependencies = toMap { psci-support = "^2.0.0" }
+    , dependencies =
+        toMap { console = "^2.0.0", prelude = "^2.1.0", math = "^2.0.0" }
+    }

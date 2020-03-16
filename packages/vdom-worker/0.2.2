@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "vdom-worker"
+    , devDependencies =
+        toMap
+          { test-unit =
+              "https://github.com/FrigoEU/purescript-test-unit.git#master"
+          }
+    , dependencies =
+        toMap
+          { webworkers = "0.1.2"
+          , exists = "2.0.0"
+          , dom = "3.1.0"
+          , unsafe-coerce = "2.0.0"
+          , argonaut-codecs = "2.0.0"
+          }
+    }

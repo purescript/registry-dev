@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "safe-coerce"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-safe-coerce" }
+        )
+    , devDependencies = toMap { console = "^4.0.0" }
+    , dependencies = toMap { unsafe-coerce = "^4.0.0" }
+    }

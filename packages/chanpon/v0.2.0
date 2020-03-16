@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "chanpon"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-chanpon" }
+        )
+    , devDependencies = toMap { node-fs-aff = "^5.0.0", test-unit = "^13.0.0" }
+    , dependencies =
+        toMap
+          { prelude = "^3.1.1"
+          , eff = "^3.2.0"
+          , record = "^0.2.6"
+          , node-sqlite3 = "^1.0.0"
+          }
+    }

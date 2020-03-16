@@ -1,0 +1,9 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "codec"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "garyb", repo = "purescript-codec" })
+    , dependencies = toMap { profunctor = "^4.0.0", transformers = "^4.0.0" }
+    }

@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-readable"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "matthewleon", repo = "purescript-node-readable" }
+        )
+    , devDependencies = toMap { console = "^3.0.0", st = "^3.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^3.1.0"
+          , newtype = "^2.0.0"
+          , arraybuffer-types = "^2.0.0"
+          , node-streams = "^3.2.0"
+          , foldable-traversable = "^3.6.1"
+          , record = "^0.2.5"
+          , functions = "^3.0.0"
+          }
+    }

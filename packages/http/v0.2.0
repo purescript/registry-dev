@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "http"
+    , license = Registry.License.MIT
+    , dependencies = toMap { maybe = "~0.2.0" }
+    }

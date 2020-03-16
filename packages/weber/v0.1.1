@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "weber"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/utkarshkukreti/purescript-weber.git"
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap { effect = "^2.0.0", console = "^4.2.0", prelude = "^4.1.0" }
+    }

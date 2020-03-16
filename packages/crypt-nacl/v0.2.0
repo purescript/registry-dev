@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "crypt-nacl"
+    , license = Registry.License.`CC0-1.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "throughnothing", repo = "purescript-crypt-nacl" }
+        )
+    , devDependencies = toMap { assert = "^2.0.0", psci-support = "^2.0.0" }
+    , dependencies =
+        toMap
+          { arraybuffer-types = "^0.2.0"
+          , either = "^2.0.0"
+          , maybe = "^2.0.1"
+          , prelude = "^2.1.0"
+          , unsafe-coerce = "^2.0.0"
+          , eff = "^2.0.0"
+          , encoding = "^0.0.3"
+          , nullable = "^2.0.0"
+          }
+    }

@@ -1,0 +1,8 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-streams"
+    , devDependencies = toMap { console = "^0.1.0" }
+    , dependencies =
+        toMap { prelude = "~0.1.2", eff = "~0.1.1", node-buffer = "~0.1.0" }
+    }

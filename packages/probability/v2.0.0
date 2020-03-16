@@ -1,0 +1,26 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "probability"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/pseudonom/purescript-probability.git"
+        )
+    , dependencies =
+        toMap
+          { newtype = "~2.0.0"
+          , maps = "~3.6.0"
+          , unique-lists = "~0.0.1"
+          , profunctor = "~3.2.0"
+          , maybe = "~3.1.0"
+          , monoid = "~3.3.0"
+          , foldable-traversable = "~3.7.1"
+          , rationals = "~4.0.0"
+          , prelude = "~3.2.0"
+          , transformers = "~3.6.0"
+          , indexed-nonempty = "~0.1.0"
+          , sets = "~3.1.0"
+          , lists = "~4.12.0"
+          }
+    }

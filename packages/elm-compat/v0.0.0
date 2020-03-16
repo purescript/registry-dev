@@ -1,0 +1,33 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "elm-compat"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "rgrempel", repo = "purescript-elm-compat" }
+        )
+    , devDependencies =
+        toMap
+          { quickcheck-laws = "~0.1.1"
+          , generics = "~0.7.2"
+          , test-unit = "~4.1.0"
+          }
+    , dependencies =
+        toMap
+          { maybe = "~0.3.5"
+          , foldable-traversable = "~0.4.2"
+          , debug = "~0.1.3"
+          , sequences = "~0.5.0"
+          , prelude = "~0.1.5"
+          , integers = "~0.2.1"
+          , orders = "~0.1.1"
+          , int-53 = "~1.0.0"
+          , partial = "~1.1.0"
+          , strings = "~0.7.1"
+          , foreign = "~0.7.2"
+          , sets = "~0.5.7"
+          , lists = "~0.7.10"
+          , datetime = "~0.9.1"
+          }
+    }

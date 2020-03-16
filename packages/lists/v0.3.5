@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "lists"
+    , dependencies =
+        toMap
+          { arrays = "~0.2.1"
+          , maybe = "~0.2.1"
+          , unfoldable = "~0.1.0"
+          , lazy = "~0.1.1"
+          , monoid = "~0.1.4"
+          , foldable-traversable = "~0.1.4"
+          , transformers = "~0.3.0"
+          , tuples = "~0.2.2"
+          , quickcheck = "~0.3.0"
+          , strings = "~0.4.1"
+          }
+    }

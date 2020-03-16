@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "distributions"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-distributions" }
+        )
+    , dependencies =
+        toMap { integers = "~0.2.1", lists = "~0.7.1", functions = "~0.1.0" }
+    }

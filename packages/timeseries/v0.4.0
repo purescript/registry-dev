@@ -1,0 +1,30 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "timeseries"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/carldata/purescript-timeseries.git"
+        )
+    , devDependencies =
+        toMap
+          { node-fs-aff = "^4.0.0"
+          , console = "^3.0.0"
+          , assert = "^3.0.0"
+          , psci-support = "^3.0.0"
+          }
+    , dependencies =
+        toMap
+          { arrays = "^4.0.1"
+          , maybe = "^3.0.0"
+          , foldable-traversable = "^3.0.0"
+          , prelude = "^3.0.0"
+          , integers = "^3.0.0"
+          , math = "^2.0.0"
+          , enums = "^3.0.0"
+          , tuples = "^4.0.0"
+          , lists = "^4.0.1"
+          , datetime = "^3.0.0"
+          }
+    }

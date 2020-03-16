@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "coercions"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "PipocaQuemada", repo = "purescript-coercions" }
+        )
+    , devDependencies = toMap { console = "^2.0.0" }
+    , dependencies =
+        toMap
+          { foldable-traversable = "^2.0.0"
+          , integers = "^2.0.0"
+          , strings = "^2.0.0"
+          , lists = "^2.0.0"
+          }
+    }

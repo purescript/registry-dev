@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "zeta-extra"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-zeta-extra" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.1"
+          , zeta = "^5.0.0"
+          , js-timers = "^4.0.1"
+          , web-html = "^2.0.0"
+          , prelude = "^4.1.0"
+          }
+    }

@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "howler"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "soupi", repo = "purescript-howler" })
+    , dependencies =
+        toMap
+          { control = "^2.0.0"
+          , maybe = "^2.0.1"
+          , prelude = "^2.1.0"
+          , eff = "^2.0.0"
+          , nullable = "^2.0.0"
+          }
+    }

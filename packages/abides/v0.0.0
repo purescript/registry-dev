@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "abides"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-abides" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { foldable-traversable = "^4.1.1"
+          , prelude = "^4.1.1"
+          , enums = "^4.0.1"
+          }
+    }

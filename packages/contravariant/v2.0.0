@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "contravariant"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-contravariant" }
+        )
+    , dependencies =
+        toMap { either = "^2.0.0", monoid = "^2.0.0", tuples = "^3.0.0" }
+    }

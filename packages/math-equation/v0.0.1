@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "math-equation"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-math-equation" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { arraybuffer-class = "^0.2.4"
+          , argonaut = "^6.0.0"
+          , foreign-object = "^2.0.2"
+          , prelude = "^4.1.1"
+          , generics-rep = "^6.1.1"
+          , math = "^2.1.1"
+          , quickcheck = "^6.1.0"
+          }
+    }

@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "simple-assert"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap
+          { assertion-error = "~0.1.1"
+          , foldable-traversable = "~0.2.1"
+          , strings = "~0.4.2"
+          }
+    }

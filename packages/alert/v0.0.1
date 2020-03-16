@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "alert"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "cdepillabout", repo = "purescript-alert" }
+        )
+    , dependencies = toMap { prelude = "^0.1", eff = "^0.1" }
+    }

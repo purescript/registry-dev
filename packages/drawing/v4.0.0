@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "drawing"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-drawing" })
+    , dependencies =
+        toMap
+          { integers = "^4.0.0"
+          , canvas = "^4.0.0"
+          , math = "^2.1.1"
+          , colors = "^5.0.0"
+          , lists = "^5.0.0"
+          }
+    }

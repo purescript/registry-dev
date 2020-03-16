@@ -1,0 +1,28 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "free"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-free" }
+        )
+    , devDependencies = toMap { console = "^4.0.0", functors = "^3.0.0" }
+    , dependencies =
+        toMap
+          { control = "^4.0.0"
+          , either = "^4.0.0"
+          , maybe = "^4.0.0"
+          , exists = "^4.0.0"
+          , distributive = "^4.0.0"
+          , invariant = "^4.0.0"
+          , lazy = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , tailrec = "^4.0.0"
+          , prelude = "^4.0.0"
+          , unsafe-coerce = "^4.0.0"
+          , transformers = "^4.0.0"
+          , catenable-lists = "^5.0.0"
+          , tuples = "^5.0.0"
+          }
+    }

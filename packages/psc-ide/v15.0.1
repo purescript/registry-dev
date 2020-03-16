@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "psc-ide"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "kRITZCREEK", repo = "purescript-psc-ide" }
+        )
+    , dependencies =
+        toMap
+          { console = "^4.1.0"
+          , arrays = "^5.0.0"
+          , maybe = "^4.0.0"
+          , argonaut = "^6.0.0"
+          , aff = "^5.0.2"
+          , node-child-process = "^6.0.0"
+          , node-fs = "^5.0.0"
+          , random = "^4.0.0"
+          , parallel = "^4.0.0"
+          }
+    }

@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "cherry"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-cherry" }
+        )
+    , devDependencies =
+        toMap
+          { pure-style = "^2.0.1"
+          , aff = "^3.1.0"
+          , rout = "^2.1.1"
+          , psci-support = "^3.0.0"
+          , tuples = "^4.1.0"
+          }
+    , dependencies =
+        toMap
+          { vom = "^1.4.0"
+          , console = "^3.0.0"
+          , simple-emitter = "^0.1.2"
+          , dom = "^4.10.0"
+          }
+    }

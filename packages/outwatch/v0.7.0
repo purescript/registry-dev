@@ -1,0 +1,27 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "outwatch"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "OutWatch", repo = "purescript-outwatch" }
+        )
+    , devDependencies =
+        toMap
+          { refs = "^3.0.0"
+          , test-unit = "^11.0.0"
+          , psci-support = "^3.0.0"
+          , quickcheck = "^4.0.0"
+          }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , profunctor = "3.0.0"
+          , foldable-traversable = "^3.0.0"
+          , prelude = "^3.0.0"
+          , snabbdom = "1.0.0"
+          , affjax = "^4.0.0"
+          , rxps = "1.4.0"
+          }
+    }

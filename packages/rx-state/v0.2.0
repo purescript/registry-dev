@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "rx-state"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "jasonzoladz", repo = "purescript-rx-state" }
+        )
+    , dependencies =
+        toMap
+          { foldable-traversable = "^2.0.0"
+          , prelude = "^2.1.0"
+          , eff = "^2.0.0"
+          }
+    }

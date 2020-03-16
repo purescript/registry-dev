@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "execa"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "ethul", repo = "purescript-execa" })
+    , devDependencies = toMap { console = "~0.1.1" }
+    , dependencies =
+        toMap
+          { aff = "~0.16.1"
+          , node-buffer = "~0.2.2"
+          , options =
+              "purescript-contrib/purescript-options#3123fcdcde26df92229811cfeada649d21ac7d93"
+          , posix-types = "~0.1.1"
+          }
+    }

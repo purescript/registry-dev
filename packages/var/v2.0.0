@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "var"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "zudov", repo = "purescript-var" })
+    , devDependencies = toMap { console = "^3.0.0" }
+    , dependencies =
+        toMap { invariant = "^3.0.0", contravariant = "^3.0.0", eff = "^3.0.0" }
+    }

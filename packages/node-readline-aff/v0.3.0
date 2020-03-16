@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-readline-aff"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "ChrisPenner", repo = "purescript-node-readline-aff" }
+        )
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , console = "^4.2.0"
+          , either = "^4.1.1"
+          , node-streams = "^4.0.1"
+          , aff = "^5.1.2"
+          , prelude = "^4.1.0"
+          , options = "^5.0.0"
+          , psci-support = "^4.0.0"
+          , node-readline = "^4.0.1"
+          }
+    }

@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "arraybuffer-class"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-arraybuffer-class" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0", quickcheck = "^6.1.0" }
+    , dependencies =
+        toMap
+          { unordered-collections = "^1.8.0"
+          , exceptions = "^4.0.0"
+          , effect = "^2.0.1"
+          , ordered-collections = "^1.6.1"
+          , foreign-object = "^2.0.2"
+          , prelude = "^4.1.1"
+          , strings = "^4.0.1"
+          , sized-vectors = "^4.0.0"
+          , arraybuffer = "^10.0.2"
+          }
+    }

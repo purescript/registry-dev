@@ -1,0 +1,26 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "soundfonts"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "newlandsvalley", repo = "purescript-soundfonts" }
+        )
+    , devDependencies =
+        toMap
+          { node-fs-aff = "^6.0.0"
+          , console = "^4.2.0"
+          , test-unit = "^15.0.0"
+          , psci-support = "^4.0.0"
+          }
+    , dependencies =
+        toMap
+          { b64 = "^0.0.5"
+          , argonaut-core = "^5.0.0"
+          , midi = "^2.2.1"
+          , prelude = "^4.1.1"
+          , affjax = "^9.0.0"
+          , parallel = "^4.0.0"
+          }
+    }

@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "orders"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-orders" }
+        )
+    , devDependencies =
+        toMap
+          { exceptions = "^2.0.0"
+          , console = "^2.0.0"
+          , arrays = "^2.0.0"
+          , foldable-traversable = "^2.0.0"
+          , tuples = "^3.0.0"
+          }
+    , dependencies = toMap { monoid = "^2.0.0" }
+    }

@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "school-of-music"
+    , devDependencies = toMap { test-unit = "^11.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { midi = "https://github.com/newlandsvalley/purescript-midi.git#1.1.0"
+          , foldable-traversable = "^3.4.0"
+          , rationals = "^4.0.0"
+          , math = "^2.0.0"
+          }
+    }

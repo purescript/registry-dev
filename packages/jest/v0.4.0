@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "jest"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "nonbili", repo = "purescript-jest" })
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , aff-promise = "^2.1.0"
+          , aff = "^5.1.1"
+          , prelude = "^4.1.0"
+          }
+    }

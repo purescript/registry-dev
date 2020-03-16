@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "type-equality"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-type-equality" }
+        )
+    , devDependencies = toMap { newtype = "^2.0.0", console = "^3.0.0" }
+    }

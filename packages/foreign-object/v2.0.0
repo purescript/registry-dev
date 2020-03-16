@@ -1,0 +1,27 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "foreign-object"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-foreign-object" }
+        )
+    , devDependencies =
+        toMap { minibench = "^2.0.0", assert = "^4.0.0", quickcheck = "^5.0.0" }
+    , dependencies =
+        toMap
+          { arrays = "^5.0.0"
+          , maybe = "^4.0.0"
+          , unfoldable = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , tailrec = "^4.0.0"
+          , gen = "^2.1.0"
+          , typelevel-prelude = "^4.0.0"
+          , prelude = "^4.1.0"
+          , st = "^4.0.0"
+          , tuples = "^5.0.0"
+          , lists = "^5.0.0"
+          , functions = "^4.0.0"
+          }
+    }

@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "milkis"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-milkis" }
+        )
+    , devDependencies = toMap { spec = "^4.0.0-rc1" }
+    , dependencies =
+        toMap
+          { arraybuffer-types = "^2.0.0"
+          , aff-promise = "^2.0.0"
+          , foreign-object = "^2.0.1"
+          , typelevel-prelude = ">=4.0.0 <6.0.0"
+          , prelude = "^4.0.0"
+          }
+    }

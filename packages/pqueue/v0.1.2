@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pqueue"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "nullobject", repo = "purescript-pqueue" }
+        )
+    , devDependencies = toMap { spec = "^0.7.2" }
+    , dependencies = toMap { sets = "^0.5.7", lists = "^0.7.10" }
+    }

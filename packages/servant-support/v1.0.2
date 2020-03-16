@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "servant-support"
+    , dependencies =
+        toMap
+          { console = "^1.0.0"
+          , either = "^1.0.0"
+          , argonaut-core = "^1.0.0"
+          , dom = "^1.0.0"
+          , foldable-traversable = "^1.0.0"
+          , prelude = "^1.0.0"
+          , affjax = "^1.1.0"
+          , globals = "^1.0.0"
+          , argonaut-generic-codecs = "^3.0.0"
+          , nullable = "^1.0.0"
+          }
+    }

@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "store"
+    , license = Registry.License.`LGPL-3.0+`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "bodil", repo = "purescript-store" })
+    , devDependencies =
+        toMap
+          { refs = "^2.0.0", test-unit = "^10.0.1", psci-support = "^2.0.0" }
+    , dependencies = toMap { foreign-generic = "^2.0.0", prelude = "^2.1.0" }
+    }

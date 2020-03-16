@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pux-undo"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "parsonsmatt", repo = "purescript-pux-undo" }
+        )
+    , dependencies =
+        toMap
+          { maybe = "^0.3.5"
+          , list-zipper =
+              "https://github.com/DavidHarrison/purescript-list-zipper.git#889f1e"
+          , pux = "^2.0.1"
+          }
+    }

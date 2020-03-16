@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "datetime"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-datetime" }
+        )
+    , dependencies =
+        toMap { globals = "^0.2.0", enums = "^0.6.0", functions = "^0.1.0" }
+    }

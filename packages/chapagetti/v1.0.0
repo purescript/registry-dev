@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "chapagetti"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-chapagetti" }
+        )
+    , devDependencies = toMap { console = "^4.1.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , typelevel-prelude = "^3.0.0"
+          , prelude = "^4.1.0"
+          , jolly-pong = "^1.0.0"
+          }
+    }

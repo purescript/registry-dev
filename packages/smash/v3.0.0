@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "smash"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-smash" })
+    , devDependencies = toMap { console = "^4.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap { day = "^10.0.0", prelude = "^4.0.0", record = "^1.0.0" }
+    }

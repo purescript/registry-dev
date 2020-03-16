@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "ips"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "chrisdotcode", repo = "purescript-ips" }
+        )
+    , dependencies = toMap { maybe = "~0.3.5" }
+    }

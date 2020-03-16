@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "argonaut-codecs"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib"
+            , repo = "purescript-argonaut-codecs"
+            }
+        )
+    , devDependencies = toMap { strongcheck = "^0.12.1" }
+    , dependencies = toMap { argonaut-core = "^0.2.0", integers = "^0.2.1" }
+    }

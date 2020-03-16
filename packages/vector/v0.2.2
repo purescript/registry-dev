@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "vector"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "jutaro", repo = "purescript-vector" })
+    , devDependencies =
+        toMap { console = "*", assert = "*", benchotron = "^2.1", random = "*" }
+    , dependencies =
+        toMap
+          { either = ">=0.2.0"
+          , arrays = "*"
+          , extensions = "*"
+          , foldable-traversable = "*"
+          , prelude = "*"
+          , generics = "^0.5.1"
+          , math = "*"
+          }
+    }

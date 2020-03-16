@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "simple-parser"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Thimoteus", repo = "purescript-simple-parser" }
+        )
+    , devDependencies = toMap { console = "^3.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { control = "^3.3.0"
+          , either = "^3.1.0"
+          , maybe = "^3.0.0"
+          , foldable-traversable = "^3.6.0"
+          , integers = "^3.1.0"
+          , globals = "^3.0.0"
+          , strings = "^3.3.1"
+          , lists = "^4.9.0"
+          }
+    }

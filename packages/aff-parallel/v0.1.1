@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "aff-parallel"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "eheitherd", repo = "purescript-aff-parallel" }
+        )
+    , devDependencies =
+        toMap { console = "^4.2.0", psci-support = "^4.0.0", random = "^4.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.1"
+          , arrays = "^5.2.0"
+          , aff = "^5.1.1"
+          , prelude = "^4.1.0"
+          , refs = "^4.1.0"
+          , tuples = "^5.1.0"
+          }
+    }

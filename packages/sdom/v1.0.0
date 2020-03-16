@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sdom"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-sdom" })
+    , devDependencies =
+        toMap
+          { profunctor-lenses = "^4.0.0"
+          , drawing = "^4.0.0"
+          , psci-support = "^4.0.0"
+          }
+    , dependencies =
+        toMap
+          { event = "^1.2.3"
+          , profunctor = "^4.0.0"
+          , web-html = "^1.0.0"
+          , refs = "^4.0.0"
+          , web-dom = "^1.0.0"
+          }
+    }

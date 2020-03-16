@@ -1,0 +1,33 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sequences"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "hdgarrood", repo = "purescript-sequences" }
+        )
+    , devDependencies =
+        toMap
+          { quickcheck-laws = "^3.0.0"
+          , benchotron = "^6.0.0"
+          , psci-support = "^3.0.0"
+          , quickcheck = "^4.0.0"
+          }
+    , dependencies =
+        toMap
+          { exceptions = "^3.0.0"
+          , newtype = "^2.0.0"
+          , control = "^3.0.0"
+          , profunctor = "^3.0.0"
+          , arrays = "^4.0.1"
+          , maybe = "^3.0.0"
+          , unfoldable = "^3.0.0"
+          , lazy = "^3.0.0"
+          , monoid = "^3.0.0"
+          , foldable-traversable = "^3.0.0"
+          , unsafe-coerce = "^3.0.0"
+          , tuples = "^4.0.0"
+          , identity = "^3.0.0"
+          }
+    }

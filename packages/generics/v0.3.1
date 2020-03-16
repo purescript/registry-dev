@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "generics"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-generics" }
+        )
+    , devDependencies = toMap { console = "~0.1.0" }
+    , dependencies =
+        toMap
+          { either = "~0.2.0"
+          , arrays = "~0.4.1"
+          , integers = "~0.2.1"
+          , tuples = "~0.4.0"
+          , strings = "~0.6.0"
+          }
+    }

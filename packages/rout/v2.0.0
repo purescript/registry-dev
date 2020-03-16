@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "rout"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "oreshinya", repo = "purescript-rout" })
+    , devDependencies =
+        toMap { maybe = "^3.0.0", assert = "^3.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { maps = "^3.0.0"
+          , console = "^3.0.0"
+          , profunctor = "^3.0.0"
+          , prelude = "^3.0.0"
+          , integers = "^3.0.0"
+          , globals = "^3.0.0"
+          , strings = "^3.0.0"
+          , lists = "^4.0.1"
+          }
+    }

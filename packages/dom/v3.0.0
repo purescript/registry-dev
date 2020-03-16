@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "dom"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib", repo = "purescript-dom" }
+        )
+    , dependencies =
+        toMap
+          { exceptions = "^2.0.0"
+          , media-types = "^2.0.0"
+          , foldable-traversable = "^2.0.0"
+          , prelude = "^2.1.0"
+          , unsafe-coerce = "^2.0.0"
+          , js-date = "^3.0.0"
+          , enums = "^2.0.0"
+          , foreign = "^3.0.0"
+          , nullable = "^2.0.0"
+          , datetime = "^2.0.0"
+          }
+    }

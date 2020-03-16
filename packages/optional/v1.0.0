@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "optional"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/erisco/purescript-optional.git")
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , foreign-generic = "^5.0.1"
+          , maybe = "^3.0.0"
+          , monoid = "^3.3.0"
+          , foldable-traversable = "^3.7.1"
+          , prelude = "^3.1.1"
+          , generics-rep = "^5.4.0"
+          , enums = "^3.2.1"
+          , functions = "^3.0.0"
+          }
+    }

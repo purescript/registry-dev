@@ -1,0 +1,27 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "phantom"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescripters", repo = "purescript-phantom" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^4.1.0"
+          , debug = "^4.0.0"
+          , test-unit = "^14.0.0"
+          , psci-support = "^4.0.0"
+          }
+    , dependencies =
+        toMap
+          { aff = "^5.0.0"
+          , prelude = "^4.0.1"
+          , generics-rep = "^6.0.0"
+          , encoding = "dgendill/purescript-encoding#compiler/0.12"
+          , foreign = "^5.0.0"
+          , nullable = "^4.0.0"
+          , datetime = "^4.0.0"
+          }
+    }

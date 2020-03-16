@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "web-file"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-web", repo = "purescript-web-file" }
+        )
+    , dependencies =
+        toMap { media-types = "4", web-dom = "2 - 4", foreign = "5" }
+    }

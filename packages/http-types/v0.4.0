@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "http-types"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "chrisdotcode", repo = "purescript-http-types" }
+        )
+    , devDependencies = toMap { console = "^2.0.0", psci-support = "^2.0.0" }
+    , dependencies =
+        toMap
+          { maps = "^2.0.2"
+          , maybe = "^2.0.1"
+          , prelude = "^2.1.0"
+          , strings = "^2.0.2"
+          , lists = "^3.3.0"
+          }
+    }

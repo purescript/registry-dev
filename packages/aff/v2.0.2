@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "aff"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "slamdata", repo = "purescript-aff" })
+    , devDependencies = toMap { partial = "^1.1.2" }
+    , dependencies =
+        toMap
+          { exceptions = "^2.0.0"
+          , console = "^2.0.0"
+          , unsafe-coerce = "^2.0.0"
+          , transformers = "^2.0.1"
+          , parallel = "^2.0.0"
+          , functions = "^2.0.0"
+          }
+    }

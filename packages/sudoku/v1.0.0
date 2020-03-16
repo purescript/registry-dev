@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sudoku"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "sanrokugomaato", repo = "purescript-sudoku" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^3.0.0", test-unit = "^11.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { arrays = "^4.0.1"
+          , maybe = "^3.0.0"
+          , prelude = "^3.0.0"
+          , eff = "^3.1.0"
+          , random = "^3.0.0"
+          , partial = "^1.2.0"
+          }
+    }

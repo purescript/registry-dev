@@ -1,0 +1,9 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "totally"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { lens = "~0.7.0" }
+    , dependencies =
+        toMap { void = "~0.2.0", either = "~0.1.4", tuples = "~0.3.0" }
+    }

@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "requestanimationframe"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "CapillarySoftware"
+            , repo = "purescript-requestAnimationFrame"
+            }
+        )
+    , dependencies = toMap { dom = "~0.2.0" }
+    }

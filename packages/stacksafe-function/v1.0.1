@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "stacksafe-function"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "safareli", repo = "purescript-stacksafe-function" }
+        )
+    , devDependencies = toMap { assert = "^3.0.0", strongcheck-laws = "^2.0.0" }
+    , dependencies = toMap { newtype = "^2.0.0", prelude = "^3.0.0" }
+    }

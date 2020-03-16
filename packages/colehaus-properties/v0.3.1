@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "colehaus-purescript-properties"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "colehaus", repo = "purescript-properties" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies = toMap { prelude = "^4.1.0" }
+    }

@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "luhncheck"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/inventvenkat/LuhnCheck")
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { arrays = "^5.0.0"
+          , prelude = "^4.1.0"
+          , numbers = "^6.0.0"
+          , strings = "^4.0.0"
+          }
+    }

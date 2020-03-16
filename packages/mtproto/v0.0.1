@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "mtproto"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "goodmind", repo = "purescript-mtproto" }
+        )
+    , devDependencies = toMap { psci-support = "^2.0.0" }
+    , dependencies =
+        toMap
+          { console = "^2.0.0"
+          , aff-promise = "^0.4.0"
+          , foreign-options =
+              "https://github.com/goodmind/purescript-foreign-options.git#v0.1.2"
+          , debug = "^2.0.0"
+          , prelude = "^2.4.0"
+          , foreign = "^3.2.0"
+          }
+    }

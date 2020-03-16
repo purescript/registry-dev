@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "snail"
+    , devDependencies =
+        toMap { console = "^1.0.0", psci-support = "^1.0.0", random = "^1.0.0" }
+    , dependencies =
+        toMap
+          { yarn = "^1.0.0"
+          , node-fs-aff = "^1.0.0"
+          , coercible = "^2.1.0"
+          , node-process = "^1.0.0"
+          , aff = "^1.0.0"
+          , node-child-process = "1.0.0"
+          , node-os = "^1.1.0"
+          }
+    }

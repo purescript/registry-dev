@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "aff-coroutines"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib", repo = "purescript-aff-coroutines" }
+        )
+    , dependencies =
+        toMap
+          { console = "^4.1.0"
+          , coroutines = "^5.0.0"
+          , aff = "^5.0.0"
+          , avar = "^3.0.0"
+          }
+    }

@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "jquery"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-jquery" })
+    , dependencies =
+        toMap { dom = "~0.2.6", eff = "~0.1.0", foreign = "~0.7.0" }
+    }

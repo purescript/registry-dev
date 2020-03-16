@@ -1,0 +1,8 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "intmap"
+    , license = Registry.License.BSD-3-Clause
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies = toMap { maps = "^3.0.0", prelude = "^3.0.0" }
+    }

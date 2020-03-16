@@ -1,0 +1,28 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "querydsl"
+    , license = Registry.License.WTFPL
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/Dretch/purescript-querydsl.git")
+    , dependencies =
+        toMap
+          { effect = "^v2.0.1"
+          , either = "^v4.1.1"
+          , arrays = "^v5.3.0"
+          , formatters = "^v4.0.1"
+          , typelevel-prelude = "^v5.0.0"
+          , prelude = "^v4.1.1"
+          , spec = "^v4.0.0-rc1"
+          , record = "^v2.0.1"
+          , node-buffer = "^v5.0.0"
+          , transformers = "^v4.2.0"
+          , node-sqlite3 = "^v6.0.0"
+          , psci-support = "^v4.0.0"
+          , tuples = "^v5.1.0"
+          , strings = "^v4.0.1"
+          , lists = "^v5.4.1"
+          , nullable = "^v4.1.1"
+          , datetime = "^v4.1.1"
+          }
+    }

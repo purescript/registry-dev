@@ -1,0 +1,26 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "psa-utils"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , ordered-collections = "^1.0.0"
+          , control = "^4.0.0"
+          , console = "^4.0.0"
+          , either = "^4.0.0"
+          , arrays = "^5.0.0"
+          , maybe = "^4.0.0"
+          , node-path = "^3.0.0"
+          , argonaut-core = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , prelude = "^4.0.0"
+          , unsafe-coerce = "^4.0.0"
+          , argonaut-codecs = "^4.0.0"
+          , ansi = "^5.0.0"
+          , tuples = "^5.0.0"
+          , strings = "^4.0.0"
+          }
+    }

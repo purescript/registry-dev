@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "uuid"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "spicydonuts", repo = "purescript-uuid" }
+        )
+    , devDependencies = toMap { console = "3.x", spec = "1.x" }
+    , dependencies = toMap { eff = "3.x" }
+    }

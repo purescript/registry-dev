@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "redux-saga"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "felixschl", repo = "purescript-redux-saga" }
+        )
+    , devDependencies = toMap { spec = "^1.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { safely = "^3.0.0"
+          , console = "^3.0.0"
+          , react-redux = "^5.1.0"
+          , pipes-aff = "^0.2.0"
+          , io = "^4.0.0"
+          , aff = "^3.0.0"
+          , prelude = "^3.1.0"
+          , pipes = "^4.2.0"
+          }
+    }

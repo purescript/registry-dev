@@ -1,0 +1,30 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "haskell-iso"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-haskell-iso" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { yarn = "^4.0.0"
+          , string-parsers = "^5.0.0"
+          , ordered-collections = "^1.4.0"
+          , bignumber = "^1.0.0"
+          , email-validate = "^4.0.0"
+          , argonaut = "4.0.1"
+          , uuid = "^5.0.0"
+          , unorm = "^1.0.0"
+          , typelevel = "^4.0.0"
+          , now = "^4.0.0"
+          , uri = "^6.0.0"
+          , prelude = "^4.1.0"
+          , numbers = "^6.0.0"
+          , js-date = "^6.0.0"
+          , quickcheck = "^5.0.0"
+          , zeromq = "^0.0.5"
+          }
+    }

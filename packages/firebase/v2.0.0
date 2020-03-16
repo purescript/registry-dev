@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "firebase"
+    , dependencies =
+        toMap
+          { console = "^1.0.0"
+          , foreign-generic = "^1.0.1"
+          , aff = "^1.1"
+          , spec = "*"
+          , transformers = "^1.0.0"
+          , foreign = "^1.1.0"
+          , nullable = "^1.0.1"
+          }
+    }

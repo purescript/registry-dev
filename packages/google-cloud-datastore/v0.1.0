@@ -1,0 +1,29 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "google-cloud-datastore"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "jamesthompson"
+            , repo = "purescript-google-cloud-datastore"
+            }
+        )
+    , devDependencies = toMap { test-unit = "^10.0.1", psci-support = "^2.0.0" }
+    , dependencies =
+        toMap
+          { newtype = "^1.1.0"
+          , profunctor-lenses = "^2.0.0"
+          , argonaut-traversals = "^2.0.0"
+          , argonaut-core = "^2.0.0"
+          , aff-promise = "^0.4.0"
+          , aff = "^2.0.1"
+          , tailrec = "^2.0.0"
+          , nonempty = "^3.0.0"
+          , argonaut-codecs = "^2.0.0"
+          , eff = "^2.0.0"
+          , transformers = "^2.0.1"
+          , foreign = "^3.0.0"
+          , eff-functions = "^2.0.0"
+          }
+    }

@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "maybe"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-maybe" }
+        )
+    , dependencies = toMap { monoid = "^3.0.0", prelude = "^3.0.0" }
+    }

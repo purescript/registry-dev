@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "wrappable"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "cyrbon", repo = "purescript-wrappable" }
+        )
+    , dependencies = toMap { prelude = "^3.0.0" }
+    }

@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "idiomatic-node-stream"
+    , license = Registry.License.`AGPL-3.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "bklaric", repo = "purescript-idiomatic-node-stream" }
+        )
+    , dependencies =
+        toMap
+          { idiomatic-node-buffer = "^0.1.0"
+          , idiomatic-node-events = "^0.2.0"
+          , nullable = "^3.0.0"
+          }
+    }

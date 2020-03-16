@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "zeta"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-zeta" }
+        )
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , arrays = "^4.2.1"
+          , uuid = "^4.0.0"
+          , js-timers = "^3.0.0"
+          , dom = "^4.13.2"
+          , now = "^3.0.0"
+          , prelude = "^3.1.1"
+          , refs = "^3.0.0"
+          , setimmediate = "^0.0.0"
+          , undefinable = "^3.0.0"
+          }
+    }

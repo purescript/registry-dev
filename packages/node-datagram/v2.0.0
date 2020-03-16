@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-datagram"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "brandonhamilton", repo = "purescript-node-datagram" }
+        )
+    , devDependencies =
+        toMap { console = "~2.0.0", assert = "~2.0.0", psci-support = "~2.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "~2.0.0"
+          , prelude = "~2.1.0"
+          , node-buffer = "~2.0.0"
+          , nullable = "~2.0.0"
+          }
+    }

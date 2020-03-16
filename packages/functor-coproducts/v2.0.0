@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "functor-coproducts"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-functor-coproducts" }
+        )
+    , dependencies = toMap { either = "^2.0.0", const = "^2.0.0" }
+    }

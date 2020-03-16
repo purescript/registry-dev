@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "list-zipper"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "DavidHarrison", repo = "purescript-list-zipper" }
+        )
+    , devDependencies =
+        toMap
+          { quickcheck-laws = "*", console = "~0.1.0", quickcheck = "~0.6.0" }
+    , dependencies = toMap { functor-compose = "~0.0.0", lists = "~0.7.0" }
+    }

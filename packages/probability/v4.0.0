@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "probability"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/colehaus/purescript-probability.git"
+        )
+    , dependencies =
+        toMap
+          { bigints = "~3.5.0"
+          , foldable-traversable = "~3.7.1"
+          , rationals = "~4.0.0"
+          , prelude = "~3.2.0"
+          , indexed-nonempty = "~0.1.0"
+          , sets = "~3.1.0"
+          , lists = "~4.12.0"
+          }
+    }

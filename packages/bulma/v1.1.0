@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "bulma"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "sectore", repo = "purescript-bulma" })
+    , devDependencies = toMap { test-unit = "^13.0.0", psci-support = "^3.0.0" }
+    , dependencies = toMap { prelude = "^3.1.1" }
+    }

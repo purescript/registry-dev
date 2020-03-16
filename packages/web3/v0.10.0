@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "web3"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "f-o-a-m", repo = "purescript-web3" })
+    , devDependencies =
+        toMap { debug = "v3.0.0", spec = "v2.0.0", psci-support = "v3.0.0" }
+    , dependencies =
+        toMap
+          { proxy = "v2.1.0"
+          , bytestrings = "v6.0.0"
+          , foreign-generic = "v5.0.0"
+          , profunctor-lenses = "v3.7.0"
+          , parsing = "v4.3.1"
+          , aff = "v4.0.0"
+          , tagged = "^1.0.0"
+          , transformers = "v3.4.0"
+          , errors = "v3.0.0"
+          , partial = "v1.2.1"
+          , identity = "v3.1.0"
+          , foreign = "v4.0.1"
+          }
+    }

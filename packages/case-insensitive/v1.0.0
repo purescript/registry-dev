@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "case-insensitive"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "rightfold", repo = "purescript-case-insensitive" }
+        )
+    , dependencies = toMap { prelude = "^1.0.1" }
+    }

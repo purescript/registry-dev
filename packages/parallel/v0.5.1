@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "parallel"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-parallel" }
+        )
+    , devDependencies = toMap { console = "^0.1.0" }
+    , dependencies = toMap { refs = "^0.2.0", transformers = "^0.8.1" }
+    }

@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "promises"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "thimoteus", repo = "purescript-promises" }
+        )
+    , devDependencies = toMap { console = "^3.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^3.1.0"
+          , prelude = "^3.1.0"
+          , transformers = "^3.4.0"
+          , datetime = "^3.3.0"
+          , functions = "^3.0.0"
+          }
+    }

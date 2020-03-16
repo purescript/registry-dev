@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "yesod-auth"
+    , devDependencies = toMap { test-unit = "~4.1.0" }
+    , dependencies =
+        toMap
+          { form-urlencoded = "^0.2.0"
+          , foreign-generic = "^0.3.0"
+          , uri = "^0.2.1"
+          , affjax = "^0.10.2"
+          }
+    }

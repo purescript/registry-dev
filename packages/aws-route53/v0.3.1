@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "aws-route53"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/purescript-aws-sdk/purescript-aws-route53.git"
+        )
+    , dependencies = toMap { aws-request = "0.3.1" }
+    }

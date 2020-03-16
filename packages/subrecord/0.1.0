@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "subrecord"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "rubenpieters", repo = "purescript-subrecord" }
+        )
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , maybe = "^3.0.0"
+          , prelude = "^3.1.1"
+          , assert = "^3.0.0"
+          , record = "^0.2.6"
+          }
+    }

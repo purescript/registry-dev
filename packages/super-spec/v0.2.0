@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "spec"
+    , dependencies =
+        toMap
+          { exceptions = "~0.2.3"
+          , arrays = "*"
+          , transformers = "~0.5.4"
+          , strings = "~0.4.5"
+          }
+    }

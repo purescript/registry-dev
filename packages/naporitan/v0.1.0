@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "naporitan"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/justinwoo/purescript-naporitan.git"
+        )
+    , devDependencies = toMap { console = "^4.1.0" }
+    , dependencies = toMap { record = "^1.0.0" }
+    }

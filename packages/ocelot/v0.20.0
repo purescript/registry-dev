@@ -1,0 +1,39 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "ocelot"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "citizennet", repo = "purescript-ocelot" }
+        )
+    , devDependencies =
+        toMap
+          { email-validate = "^5.0.0"
+          , argonaut = "^6.0.0"
+          , js-timers = "^4.0.0"
+          , debug = "^4.0.0"
+          , affjax = "^10.0.0"
+          , test-unit = "^14.0.0"
+          , numbers = "^6.0.0"
+          , halogen-storybook =
+              "https://github.com/rnons/purescript-halogen-storybook.git#de336410dde6e59ad4930f7e4296d066cb236628"
+          }
+    , dependencies =
+        toMap
+          { bigints = "^4.0.0"
+          , remotedata = "4.2.0"
+          , variant = "^6.0.1"
+          , read = "^1.0.1"
+          , halogen-renderless = "^0.0.4"
+          , formatters = "^4.0.0"
+          , svg-parser-halogen =
+              "https://github.com/rnons/purescript-svg-parser-halogen.git#ac16a7af82d739b1f9773fbc28fc7e24f0d24550"
+          , halogen-select = "^5.0.0"
+          , aff-promise = "^2.0.0"
+          , halogen = "^5.0.0"
+          , html-parser-halogen =
+              "https://github.com/rnons/purescript-html-parser-halogen.git#7d37fd6a29bff2a143d91c2ebfe5ca582ca76018"
+          , fuzzy = "^0.2.1"
+          }
+    }

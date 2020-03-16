@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "markdown-halogen"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap
+          { markdown = "^1.10.0"
+          , strongcheck = "^0.13.0"
+          , halogen = "^0.5.0"
+          , prelude = "^0.1.2"
+          , browserfeatures = "^0.4.1"
+          , validation = "^0.2.0"
+          , sets = "^0.5.0"
+          }
+    }

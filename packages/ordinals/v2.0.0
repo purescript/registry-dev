@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "ordinals"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Thimoteus", repo = "purescript-ordinals" }
+        )
+    , devDependencies = toMap { console = "^1.0.0", psci-support = "^1.0.0" }
+    , dependencies = toMap { maps = "^1.1.0", hugenums = "^2.0.1" }
+    }

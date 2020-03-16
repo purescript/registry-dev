@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "data-algebrae"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/i-am-tom/purescript-data-algebrae.git"
+        )
+    , dependencies =
+        toMap
+          { ordered-collections = "^1.0.0"
+          , arrays = "^5.0.0"
+          , maybe = "^4.0.0"
+          , foreign-object = "^1.0.0"
+          , prelude = "^4.0.0"
+          , spec = "^3.0.0"
+          , generics-rep = "^6.0.0"
+          , spec-quickcheck =
+              "https://github.com/i-am-tom/purescript-spec-quickcheck.git#master"
+          }
+    }

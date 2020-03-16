@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "game"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/3ddyy/purescript-game.git")
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.1"
+          , console = "^4.2.0"
+          , web-html = "^2.3.0"
+          , now = "^4.0.0"
+          , aff = "^5.1.2"
+          , prelude = "^4.1.1"
+          , refs = "^4.1.0"
+          , datetime = "^4.1.1"
+          }
+    }

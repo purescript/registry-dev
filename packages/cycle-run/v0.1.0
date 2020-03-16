@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "cycle-run"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-cycle-run" }
+        )
+    , devDependencies = toMap { test-unit = "^9.0.0", psci-support = "^1.0.0" }
+    , dependencies = toMap { console = "^1.0.0", xstream = "^0.3.0" }
+    }

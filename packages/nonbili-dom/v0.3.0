@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "nonbili-dom"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "nonbili", repo = "purescript-nonbili-dom" }
+        )
+    , dependencies =
+        toMap { effect = "^2.0.1", web-html = "^2.3.0", web-dom = "^4.0.0" }
+    }

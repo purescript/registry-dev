@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "flarecheck"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "sharkdp", repo = "purescript-flarecheck" }
+        )
+    , dependencies =
+        toMap { proxy = "^0.1.0", flare = "^0.4.1", globals = "^0.2.2" }
+    }

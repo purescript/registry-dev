@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "zmq"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/rightfold/purescript-zmq.git")
+    , devDependencies =
+        toMap
+          { bytestrings = "^2.3.0"
+          , aff = "^2.0.3"
+          , prelude = "^2.0.0"
+          , test-unit = "^10.1.0"
+          }
+    , dependencies =
+        toMap
+          { bytestrings = "^2.3.0"
+          , aff = "^2.0.3"
+          , prelude = "^2.0.0"
+          , transformers = "^2.3.0"
+          }
+    }

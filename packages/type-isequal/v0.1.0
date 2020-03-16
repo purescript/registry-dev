@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "type-isequal"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-type-isequal" }
+        )
+    , devDependencies = toMap { console = "^4.1.0" }
+    , dependencies = toMap { typelevel-prelude = "^3.0.0" }
+    }

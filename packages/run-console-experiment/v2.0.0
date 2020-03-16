@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "run-console-experiment"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "joneshf", repo = "purescript-run-console-experiment" }
+        )
+    , devDependencies = toMap { spec = "^2.0.0", psci-support = "^3.0.0" }
+    , dependencies = toMap { run = "^1.0.0" }
+    }

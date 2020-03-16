@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "rdkafka"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , either = "^3.0.0"
+          , foreign-generic = "^4.1.0"
+          , aff = "^3.1.0"
+          , prelude = "^3.0.0"
+          , contravariant = "^3.0.0"
+          , node-buffer = "^3.0.0"
+          , options = "^3.0.0"
+          , strings = "^3.1.0"
+          , foreign = "^4.0.0"
+          }
+    }

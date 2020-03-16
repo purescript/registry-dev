@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "rationals"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "anttih", repo = "purescript-rationals" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^2.0.0"
+          , strongcheck = "^2.0.0"
+          , strongcheck-laws = "^1.0.0"
+          }
+    , dependencies = toMap { prelude = "^2.3.0", integers = "^2.0.0" }
+    }

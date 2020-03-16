@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pseudo-random"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "opyapeus", repo = "purescript-pseudo-random" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0", quickcheck = "^6.1.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.1"
+          , console = "^4.2.0"
+          , arrays = "^5.3.0"
+          , lcg = "^2.0.0"
+          , prelude = "^4.1.1"
+          , st = "^4.0.0"
+          }
+    }

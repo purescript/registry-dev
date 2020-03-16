@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-thunk"
+    , license = Registry.License.MIT
+    , dependencies = toMap { either = "~0.1.2", globals = "~0.1.4" }
+    }

@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "radix64"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "PipocaQuemada", repo = "purescript-radix64" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^2.0.0", psci-support = "^2.0.0", quickcheck = "^3.0.0" }
+    }

@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "codec-argonaut"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "garyb", repo = "purescript-codec-argonaut" }
+        )
+    , devDependencies =
+        toMap { argonaut-codecs = "^3.2.0", quickcheck = "^4.6.1" }
+    , dependencies =
+        toMap
+          { variant = "^4.0.0"
+          , type-equality = "^2.1.0"
+          , argonaut-core = "^3.1.1"
+          , codec = "^2.1.0"
+          , typelevel-prelude = "^2.6.0"
+          , generics-rep = "^5.4.0"
+          }
+    }

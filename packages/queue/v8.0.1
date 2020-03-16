@@ -1,0 +1,26 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "queue"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-queue" }
+        )
+    , devDependencies =
+        toMap
+          { uuid = "^6.0.0"
+          , js-timers = "^4.0.1"
+          , psci-support = "^4.0.0"
+          , quickcheck = "^6.1.0"
+          }
+    , dependencies =
+        toMap
+          { console = "^4.2.0"
+          , foreign-object = "^2.0.2"
+          , aff = "^5.1.2"
+          , avar = "^3.0.0"
+          , prelude = "^4.1.1"
+          , refs = "^4.1.0"
+          }
+    }

@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sparrow-queue"
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , queue = "^6.0.0"
+          , prelude = "^3.1.1"
+          , sparrow = "git@git.localcooking.com:tooling/purescript-sparrow.git"
+          }
+    }

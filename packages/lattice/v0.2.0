@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "lattice"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Risto-Stevcev", repo = "purescript-lattice" }
+        )
+    , devDependencies =
+        toMap
+          { spec = "^1.0.0"
+          , psci-support = "^3.0.0"
+          , spec-quickcheck = "^1.0.0"
+          , properties = "^0.2.0"
+          }
+    , dependencies = toMap { console = "^3.0.0", prelude = "^3.1.0" }
+    }

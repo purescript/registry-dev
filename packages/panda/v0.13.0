@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "panda"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/i-am-tom/purescript-panda.git")
+    , devDependencies = toMap { debug = "^4.0.0" }
+    , dependencies =
+        toMap
+          { behaviors =
+              "https://github.com/justinwoo/purescript-behaviors.git#compiler/0.12"
+          , web-html = "^1.0.0"
+          , web-uievents = "^1.0.0"
+          , data-algebrae = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , prelude = "^4.0.1"
+          , affjax = "^6.0.0"
+          , generics-rep = "^6.0.0"
+          , simple-json = "^4.0.0"
+          , random = "^4.0.0"
+          }
+    }

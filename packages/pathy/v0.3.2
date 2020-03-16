@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pathy"
+    , license = Registry.License.`Apache 2`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "slamdata", repo = "purescript-pathy" })
+    , dependencies =
+        toMap
+          { exceptions = "^0.3.0"
+          , console = "^0.1.1"
+          , profunctor = "^0.3.1"
+          , transformers = "^0.8.1"
+          , strings = "^0.7.0"
+          , lists = "^0.7.4"
+          }
+    }

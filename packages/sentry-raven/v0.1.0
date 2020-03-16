@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sentry-raven"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/adamczykm/purescript-sentry-raven.git"
+        )
+    , dependencies =
+        toMap
+          { prelude = "^3.3.0"
+          , test-unit = "^13.0.0"
+          , simple-json = "^3.0.0"
+          , functions = "^3.0.0"
+          }
+    }

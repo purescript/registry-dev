@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "idiomatic-node-events"
+    , license = Registry.License.`AGPL-3.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "bklaric", repo = "purescript-idiomatic-node-events" }
+        )
+    , dependencies =
+        toMap
+          { exceptions =
+              "https://github.com/natefaubion/purescript-exceptions.git#df042ac0feebcb8d9ca4a1a5e1fc23757cd8c7b9"
+          , foreign = "^4.0.1"
+          }
+    }

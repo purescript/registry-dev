@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "trout"
+    , license = Registry.License.`MPL-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "owickstrom", repo = "purescript-trout" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^4.2.0"
+          , spec-discovery = "^3.1.0"
+          , spec = "^3.1.0"
+          , psci-support = "^4.0.0"
+          }
+    , dependencies =
+        toMap
+          { media-types = "^4.0.1"
+          , argonaut = "^5.0.0"
+          , smolder = "^11.0.1"
+          , uri = "^6.1.0"
+          , prelude = "^4.1.0"
+          }
+    }

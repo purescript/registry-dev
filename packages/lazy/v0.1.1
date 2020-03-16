@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "lazy"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap
+          { control = "~0.2.1"
+          , arrays = "~0.2.1"
+          , monoid = "~0.1.4"
+          , foldable-traversable = "~0.1.3"
+          }
+    }

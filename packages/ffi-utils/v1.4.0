@@ -1,0 +1,27 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "ffi-utils"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Risto-Stevcev", repo = "purescript-ffi-utils" }
+        )
+    , devDependencies =
+        toMap
+          { coroutines = "^3.1.0"
+          , aff-coroutines = "^4.0.0"
+          , psci-support = "^2.0.0"
+          }
+    , dependencies =
+        toMap
+          { exceptions = "^2.0.0"
+          , console = "^2.0.0"
+          , maybe = "^2.0.0"
+          , aff = "^2.0.2"
+          , eff = "^2.0.0"
+          , foreign = "^3.0.1"
+          , eff-functions = "^2.0.0"
+          , functions = "^2.0.0"
+          }
+    }

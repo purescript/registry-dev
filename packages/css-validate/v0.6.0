@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "css-validate"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "nonbili", repo = "purescript-css-validate" }
+        )
+    , devDependencies =
+        toMap
+          { jest = "^0.4.0"
+          , foldable-traversable = "^4.1.1"
+          , psci-support = "^4.0.0"
+          }
+    , dependencies = toMap { exceptions = "^4.0.0", functions = "^4.0.0" }
+    }

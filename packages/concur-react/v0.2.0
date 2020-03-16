@@ -1,0 +1,32 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "concur-react"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "ajnsit", repo = "purescript-concur" })
+    , devDependencies =
+        toMap
+          { console = "^4.1.0"
+          , argonaut-core = "^4.0.0"
+          , now = "^4.0.0"
+          , affjax = "^6.0.0"
+          , argonaut-codecs = "^4.0.0"
+          , psci-support = "^4.0.0"
+          , datetime = "^4.0.0"
+          }
+    , dependencies =
+        toMap
+          { free = "^5.0.0"
+          , arrays = "^5.0.0"
+          , react-dom = "^6.0.0"
+          , web-html = "^1.0.0"
+          , aff = "^5.0.0"
+          , react = "^6.0.0"
+          , foldable-traversable = "^4.0.0"
+          , tailrec = "^4.0.0"
+          , avar = "^3.0.0"
+          , nonempty = "^5.0.0"
+          , web-dom = "^1.0.0"
+          }
+    }

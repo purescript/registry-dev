@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "causal-graphs"
+    , license = Registry.License.`AGPL-3.0-or-later`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/colehaus/purescript-causal-graphs.git"
+        )
+    , devDependencies = toMap { spec = "^3.1.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { ordered-collections = "^1.6.1"
+          , twoset = "^0.1.0"
+          , prelude = "^4.1.0"
+          , colehaus-graphs = "^6.0.0"
+          , lists = "^5.3.0"
+          }
+    }

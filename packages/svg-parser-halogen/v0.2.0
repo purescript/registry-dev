@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "svg-parser-halogen"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "rnons", repo = "purescript-svg-parser-halogen" }
+        )
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { string-parsers = "^3.1.0"
+          , halogen = "^3.0.1"
+          , prelude = "^3.1.1"
+          , generics-rep = "^5.4.0"
+          }
+    }

@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "search"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap
+          { console = "^0.1.0"
+          , strongcheck = "^0.13.0"
+          , parsing = "^0.7.0"
+          , monoid = "^0.3.1"
+          , foldable-traversable = "^0.4.0"
+          , semirings = "^0.2.0"
+          , strings = "^0.7.0"
+          }
+    }

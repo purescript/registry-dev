@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "minimist"
+    , devDependencies =
+        toMap { spec = "^0.10.0", psci-support = "^2.0.0", tuples = "^3.1.0" }
+    , dependencies =
+        toMap
+          { maps = "^2.0.2"
+          , console = "^2.0.0"
+          , either = "^2.1.0"
+          , prelude = "^2.1.0"
+          , contravariant = "^2.0.0"
+          , transformers = "^2.0.2"
+          , options = "^2.0.0"
+          , partial = "^1.2.0"
+          , foreign = "^3.0.1"
+          }
+    }

@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "css-bem"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "aykl", repo = "purescript-css-bem" })
+    , dependencies =
+        toMap { exceptions = "^2.0.0", prelude = "^2.5.0", lists = "^3.4.0" }
+    }

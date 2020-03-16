@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "unsafe-reference"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib"
+            , repo = "purescript-unsafe-reference"
+            }
+        )
+    , devDependencies = toMap { exceptions = "^4.0.0", console = "^4.0.0" }
+    }

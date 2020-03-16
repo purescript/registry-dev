@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "react-select-basic"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/lumihq/purescript-react-select-basic.git"
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { react-basic = "^1.0.0"
+          , promises = "^3.0.0"
+          , prelude = "^4.0.0"
+          , nullable = "^4.0.0"
+          }
+    }

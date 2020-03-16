@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-websocket"
+    , license = Registry.License.`AGPL-1.0`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/juspay/purescript-node-websocket.git"
+        )
+    , devDependencies = toMap { refs = "^3.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap { console = "^3.0.0", prelude = "^3.1.1", node-http = "^4.2.0" }
+    }

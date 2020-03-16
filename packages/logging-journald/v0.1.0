@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "logging-journald"
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , profunctor-lenses = "^3.8.0"
+          , prelude = "^3.1.1"
+          , logging = "^2.0.0"
+          , systemd-journald = "^0.1.1"
+          }
+    }

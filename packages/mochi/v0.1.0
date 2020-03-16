@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "mochi"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-mochi" }
+        )
+    , devDependencies = toMap { assert = "^4.0.0" }
+    , dependencies =
+        toMap { foreign-object = "^1.1.0", typelevel-prelude = "^3.0.0" }
+    }

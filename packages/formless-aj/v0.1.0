@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "formless-aj"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/ajnsit/purescript-formless-independent.git"
+        )
+    , dependencies =
+        toMap
+          { effect = "^2.0.1"
+          , variant = "^6.0.1"
+          , profunctor-lenses = "^6.2.0"
+          , aff = "^5.1.1"
+          , heterogeneous = "^0.4.1"
+          , generics-rep = "^6.1.1"
+          , datetime = "^4.1.1"
+          }
+    }

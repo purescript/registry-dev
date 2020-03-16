@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "form-decoder"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "amderbar", repo = "purescript-form-decoder" }
+        )
+    , devDependencies = toMap { spec = "^3.1.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.1"
+          , console = "^4.2.0"
+          , prelude = "^4.1.1"
+          , numbers = "^6.0.0"
+          , validation = "^4.2.0"
+          }
+    }

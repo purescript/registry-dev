@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "graphs"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-graphs" }
+        )
+    , devDependencies = toMap { console = "^2.0.0" }
+    , dependencies = toMap { catenable-lists = "^3.0.0", sets = "^2.0.0" }
+    }

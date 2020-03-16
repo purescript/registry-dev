@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "freet"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib", repo = "purescript-freet" }
+        )
+    , devDependencies = toMap { console = "^4.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , either = "^4.0.0"
+          , exists = "^4.0.0"
+          , aff = "^5.1.1"
+          , tailrec = "^4.0.0"
+          , prelude = "^4.0.0"
+          , bifunctors = "^4.0.0"
+          , transformers = "^4.0.0"
+          }
+    }

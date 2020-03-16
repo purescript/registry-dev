@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "restify-router"
+    , license = Registry.License.ISC
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "freqlabs", repo = "purescript-restify-router" }
+        )
+    , dependencies = toMap { restify = "^0.0.1" }
+    }

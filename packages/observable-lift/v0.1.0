@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "observable-lift"
+    , license = Registry.License.`LGPL-3.0+`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-observable-lift" }
+        )
+    , devDependencies = toMap { test-unit = "^9.0.0", psci-support = "^1.0.0" }
+    , dependencies = toMap { observable = "^2.2.0", eff = "^1.0.0" }
+    }

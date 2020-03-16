@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "datetime-iso"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "jmackie", repo = "purescript-datetime-iso" }
+        )
+    , devDependencies = toMap { spec = "^4.0.0" }
+    , dependencies =
+        toMap
+          { newtype = "^3.0.0"
+          , parsing = "^5.0.3"
+          , argonaut-codecs = "^6.0.0"
+          , datetime = "^4.1.1"
+          }
+    }

@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "xorshift"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "matthewleon", repo = "purescript-xorshift" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^2.0.0"
+          , eff = "^2.0.0"
+          , console-timer = "^0.0.1"
+          , lists = "^3.4.0"
+          }
+    , dependencies =
+        toMap { prelude = "^2.5.0", integers = "^2.1.1", tuples = "^3.2.0" }
+    }

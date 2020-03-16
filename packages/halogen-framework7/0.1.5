@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "halogen-framework7"
+    , devDependencies = toMap { psci-support = "^1.0.0" }
+    , dependencies = toMap { halogen = "^0.11.0", eff = "^1.0.0" }
+    }

@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "yarn"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "thimoteus", repo = "purescript-yarn" })
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap { arrays = "^4.1.2", generics-rep = "^5.1.0", strings = "^3.3.0" }
+    }

@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "lens-simple"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-lens-simple" }
+        )
+    , dependencies = toMap { tuples = "~0.4.0" }
+    }

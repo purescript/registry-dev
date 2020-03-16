@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "react-queue"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-react-queue" }
+        )
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^3.1.0"
+          , zeta = "^0.0.6"
+          , react = "^5.1.0"
+          , queue = "^5.0.0"
+          , prelude = "^3.1.1"
+          }
+    }

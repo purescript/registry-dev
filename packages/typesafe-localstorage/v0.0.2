@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "typesafe-localstorage"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "cdepillabout"
+            , repo = "purescript-typesafe-localstorage"
+            }
+        )
+    , devDependencies = toMap { super-spec = "^0.8" }
+    , dependencies =
+        toMap
+          { either = "^0.2"
+          , maybe = "^0.3"
+          , prelude = "^0.1"
+          , argonaut-codecs = "^0.5"
+          , eff = "^0.1"
+          , webstorage = "^0.4"
+          }
+    }

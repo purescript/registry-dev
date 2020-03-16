@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "colehaus-graphs"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "colehaus", repo = "purescript-graphs" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^4.1.0"
+          , colehaus-properties = "^0.3.2"
+          , spec = "^3.1.0"
+          , psci-support = "^4.0.0"
+          , spec-quickcheck = "^3.1.0"
+          , quickcheck = "^5.0.0"
+          }
+    , dependencies =
+        toMap { ordered-collections = "^1.0.0", catenable-lists = "^5.0.0" }
+    }

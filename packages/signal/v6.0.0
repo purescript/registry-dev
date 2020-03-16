@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "signal"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "bodil", repo = "purescript-signal" })
+    , devDependencies =
+        toMap
+          { console = "^0.1.1"
+          , test-unit = "~4.1.0"
+          , lists = "~0.7.10"
+          , functions = "~0.1.0"
+          }
+    , dependencies =
+        toMap
+          { maybe = "~1.0.0"
+          , dom = "~1.0.0"
+          , foldable-traversable = "~1.0.0"
+          , prelude = "~1.0.1"
+          , refs = "~1.0.0"
+          }
+    }

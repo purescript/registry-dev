@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "uri"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "slamdata", repo = "purescript-uri" })
+    , devDependencies = toMap { test-unit = "10.x", psci-support = "2.x" }
+    , dependencies =
+        toMap
+          { pathy = "3.x"
+          , string-parsers = "2.x"
+          , maps = "2.x"
+          , unfoldable = "2.x"
+          , integers = "2.x"
+          , globals = "2.x"
+          }
+    }

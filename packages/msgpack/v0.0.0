@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "msgpack"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-msgpack" }
+        )
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^3.1.0"
+          , arraybuffer-types = "^2.0.0"
+          , console = "^3.0.0"
+          , either = "^3.1.0"
+          , argonaut = "^3.0.0"
+          , prelude = "^3.1.0"
+          , integers = "^3.1.0"
+          , node-buffer = "^3.0.1"
+          , functions = "^3.0.0"
+          }
+    }

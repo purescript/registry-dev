@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pux-form"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "b123400", repo = "purescript-pux-form" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { console = "^4.1.0"
+          , profunctor-lenses = "^4.0.0"
+          , exists = "^4.0.0"
+          , prelude = "^4.0.0"
+          , pux = "^13.0.0"
+          , generics-rep = "^6.0.0"
+          }
+    }

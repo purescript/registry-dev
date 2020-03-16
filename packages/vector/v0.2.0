@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "vector"
+    , license = Registry.License.`Apache-2.0`
+    , devDependencies =
+        toMap { console = "*", assert = "*", benchotron = "*", random = "*" }
+    , dependencies =
+        toMap
+          { either = ">=0.2.0"
+          , arrays = "*"
+          , extensions = "*"
+          , foldable-traversable = "*"
+          , prelude = "*"
+          , math = "*"
+          }
+    }

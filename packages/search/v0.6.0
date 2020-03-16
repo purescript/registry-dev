@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "search"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-search" }
+        )
+    , devDependencies = toMap { console = "^0.1.1" }
+    , dependencies =
+        toMap
+          { strongcheck = "^0.14.5"
+          , parsing = "^0.7.1"
+          , monoid = "^0.3.2"
+          , foldable-traversable = "^0.4.1"
+          , semirings = "^0.2.0"
+          , strings = "^0.7.1"
+          }
+    }

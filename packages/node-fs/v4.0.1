@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-fs"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-node", repo = "purescript-node-fs" }
+        )
+    , devDependencies = toMap { console = "^3.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^3.0.0"
+          , node-streams = "^3.0.0"
+          , node-path = "^2.0.0"
+          , unsafe-coerce = "^3.0.0"
+          , node-buffer = "^3.0.0"
+          , globals = "^3.0.0"
+          , js-date = ">= 4.0.0 < 6.0.0"
+          , foreign = "^4.0.0"
+          , nullable = "^3.0.0"
+          , datetime = "^3.0.0"
+          }
+    }

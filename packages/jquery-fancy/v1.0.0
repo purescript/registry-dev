@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "jquery-fancy"
+    , license = Registry.License.`AGPL-3.0`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/colehaus/purescript-jquery-fancy.git"
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies = toMap { prelude = "^4.1.0", jquery = "^5.0.0" }
+    }

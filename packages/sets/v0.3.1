@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sets"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap
+          { maps = "~0.3.0"
+          , arrays = "~0.3.0"
+          , maybe = "~0.2.1"
+          , foldable-traversable = "~0.3.0"
+          , tuples = "~0.3.0"
+          }
+    }

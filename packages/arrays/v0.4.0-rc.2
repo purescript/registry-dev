@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "arrays"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { console = "^0.1.0", assert = "^0.1.0" }
+    , dependencies =
+        toMap
+          { foldable-traversable = "^0.4.0", st = "^0.1.0", tuples = "^0.4.0" }
+    }

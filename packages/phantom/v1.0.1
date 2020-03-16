@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "phantom"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Risto-Stevcev", repo = "purescript-phantom" }
+        )
+    , devDependencies =
+        toMap
+          { exitcodes = "^2.0.0"
+          , test-unit = "^10.0.0"
+          , enums = "^2.0.0"
+          , psci-support = "^2.0.0"
+          }
+    , dependencies = toMap { console = "^2.0.0" }
+    }

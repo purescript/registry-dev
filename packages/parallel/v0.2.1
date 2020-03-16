@@ -1,0 +1,6 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "parallel"
+    , dependencies = toMap { refs = "~0.1.2", transformers = "~0.5.0" }
+    }

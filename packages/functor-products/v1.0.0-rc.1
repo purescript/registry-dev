@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "functor-products"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-functor-products" }
+        )
+    , dependencies =
+        toMap { foldable-traversable = "^1.0.0-rc.1", tuples = "^1.0.0-rc.1" }
+    }

@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pux-devtool"
+    , license = Registry.License.`Apache-2.0`
+    , dependencies = toMap { pux-css = "^2.0.0", pux = "^5.0.1" }
+    }

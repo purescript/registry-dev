@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sjcl"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-sjcl" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , tuples-native = "^2.0.0"
+          , arraybuffer-types = "^2.0.0"
+          , prelude = "^4.1.0"
+          , sized-vectors = "^3.1.0"
+          , nullable = "^4.1.0"
+          , functions = "^4.0.0"
+          }
+    }

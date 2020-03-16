@@ -1,0 +1,30 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "cofree-react-router"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "coot", repo = "purescript-cofree-react-router" }
+        )
+    , devDependencies =
+        toMap
+          { test-unit =
+              "git://github.com/dgendill/purescript-test-unit#2311b8907d256aba4421584f583534b947a3e454"
+          , psci-support = "^3.0.0"
+          }
+    , dependencies =
+        toMap
+          { free = "^4.0.0"
+          , newtype = "^2.0.0"
+          , maps = "^3.0.0"
+          , react-dom = "^3.0.0"
+          , profunctor-lenses = "^3.0.0"
+          , react = "^3.0.0"
+          , routing = "git://github.com/coot/purescript-routing#purescript-0.11"
+          , prelude = "^3.0.0"
+          , nonempty = "^4.0.0"
+          , generics = "^4.0.0"
+          , const = "^3.0.0"
+          }
+    }

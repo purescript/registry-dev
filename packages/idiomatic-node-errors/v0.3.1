@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "idiomatic-node-errors"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/bklaric/purescript-idiomatic-node-errors"
+        )
+    , dependencies = toMap { effect = "^2.0.0", error = "^1.0.1" }
+    }

@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "annoy"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "Kamirus", repo = "purescript-annoy" })
+    , devDependencies = toMap { test-unit = "^13.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , foreign-generic = "^5.0.1"
+          , typelevel = "^3.0.0"
+          , prelude = "^3.1.1"
+          , st = "^3.0.0"
+          , eff = "^3.2.0"
+          , node-fs = "^4.0.1"
+          , foreign = "^4.0.1"
+          , sized-vectors = "^2.2.0"
+          }
+    }

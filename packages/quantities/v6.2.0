@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "quantities"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "sharkdp", repo = "purescript-quantities" }
+        )
+    , devDependencies = toMap { test-unit = "^11.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { monoid = "^3.0.0"
+          , pairs = "^5.0.0"
+          , decimals = "^3.0.0"
+          , numbers = "^5.0.0"
+          , lists = "^4.0.1"
+          }
+    }

@@ -1,0 +1,33 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "webgl2-raw"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "chrismshelton", repo = "purescript-webgl2-raw" }
+        )
+    , devDependencies =
+        toMap
+          { foreign-generic = "^7.0.0"
+          , aff-promise = "^2.0.0"
+          , aff = "^5.0.2"
+          , avar = "^3.0.0"
+          , ansi = "^5.0.0"
+          , node-fs = "^5.0.0"
+          , generics-rep = "^6.1.0"
+          , numbers = "^6.0.0"
+          , psci-support = "^4.0.0"
+          , simple-json = "^4.2.0"
+          }
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , arraybuffer-types = "^2.0.0"
+          , maybe = "^4.0.0"
+          , web-html = "^1.0.0"
+          , prelude = "^4.0.1"
+          , unsafe-coerce = "^4.0.0"
+          , nullable = "^4.0.0"
+          }
+    }

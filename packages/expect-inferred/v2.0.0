@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "expect-inferred"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-expect-inferred" }
+        )
+    , devDependencies = toMap { console = "^4.2.0" }
+    , dependencies = toMap { typelevel-prelude = "^5.0.0", prelude = "^4.1.1" }
+    }

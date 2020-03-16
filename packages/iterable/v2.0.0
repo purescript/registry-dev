@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "iterable"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Risto-Stevcev", repo = "purescript-iterable" }
+        )
+    , devDependencies = toMap { spec = "^3.1.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap { effect = "^2.0.0", prelude = "^4.1.0", foreign = "^5.0.0" }
+    }

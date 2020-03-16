@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "kancho"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-kancho" }
+        )
+    , devDependencies = toMap { console = "^3.0.0" }
+    , dependencies =
+        toMap
+          { newtype = "^2.0.0"
+          , typelevel-prelude = "^2.4.0"
+          , strings = "^3.3.1"
+          , foreign = "^4.0.1"
+          }
+    }

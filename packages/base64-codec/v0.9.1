@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "base64-codec"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/AlexaDeWit/purescript-base64-codec.git"
+        )
+    , devDependencies = toMap { debug = "^4.0.0", quickcheck = "^5.0.0" }
+    , dependencies =
+        toMap
+          { arraybuffer-types = "^2.0.0"
+          , uint = "^4.0.0"
+          , prelude = "^4.0.0"
+          , spec = "^3.0.0"
+          , arraybuffer = "^7.0.0"
+          }
+    }

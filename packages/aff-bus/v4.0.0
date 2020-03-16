@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "aff-bus"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-aff-bus" }
+        )
+    , devDependencies = toMap { console = "^4.0.0", refs = "^4.0.0" }
+    , dependencies = toMap { avar = "^3.0.0", prelude = "^4.0.0" }
+    }

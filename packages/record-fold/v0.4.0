@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "record-fold"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/mbuszka/purescript-record-fold.git"
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { console = "^4.1.0"
+          , arrays = "^5.0.0"
+          , maybe = "^4.0.0"
+          , typelevel-prelude = "^3.0.0"
+          , prelude = "^4.0.1"
+          , record = "^1.0.0"
+          , tuples = "^5.0.0"
+          }
+    }

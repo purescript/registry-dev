@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "typelevel-prelude"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-typelevel-prelude" }
+        )
+    , dependencies =
+        toMap { proxy = "^3.0.0", type-equality = "^3.0.0", prelude = "^4.1.0" }
+    }

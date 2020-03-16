@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "react-material-ui"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/nwolverson/purescript-react-material-ui.git"
+        )
+    , dependencies =
+        toMap { react-dom = "^4.0.0", prelude = "^3.1.0", options = "^3.0.0" }
+    }

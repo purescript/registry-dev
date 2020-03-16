@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "signal-socket"
+    , license = Registry.License.`LGPL-3.0+`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "bodil", repo = "purescript-signal-socket" }
+        )
+    , devDependencies = toMap { aff = "^1.1.0", test-unit = "^7.0.1" }
+    , dependencies =
+        toMap
+          { maybe = "^1.0.0"
+          , prelude = "^1.0.1"
+          , eff = "^1.0.0"
+          , node-buffer = "^1.0.0"
+          , foreign = "^1.0.0"
+          , signal = "^6.1.0"
+          , nullable = "^1.0.1"
+          }
+    }

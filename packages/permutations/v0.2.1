@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "permutations"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some (Registry.Repo.Git "https://github.com/vmchale/ppp.git")
+    , dependencies =
+        toMap
+          { arrays = "^4.0.0"
+          , maybe = "^3.0.0"
+          , prelude = "^3.0.0"
+          , test-unit = "^13.0.0"
+          }
+    }

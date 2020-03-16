@@ -1,0 +1,28 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "phinajs"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "git+https://github.com/hansel-no-kioku/purescript-phinajs.git"
+        )
+    , devDependencies = toMap { console = "^4.3.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , newtype = "^3.0.0"
+          , effect = "^2.0.1"
+          , arrays = "^5.3.1"
+          , maybe = "^4.0.1"
+          , aff = "^5.1.2"
+          , foldable-traversable = "^4.1.1"
+          , typelevel-prelude = "^5.0.1"
+          , prelude = "^4.1.1"
+          , unsafe-coerce = "^4.0.0"
+          , transformers = "^4.1.0"
+          , tuples = "^5.1.0"
+          , nullable = "^4.0.0"
+          , functions = "^4.0.0"
+          }
+    }

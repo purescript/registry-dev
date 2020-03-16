@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "behaviors"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-behaviors" }
+        )
+    , devDependencies =
+        toMap { integers = "^3.0.0", drawing = "^3.0.0", math = "^2.0.0" }
+    , dependencies =
+        toMap { prelude = "^3.0.0", eff = "^3.0.0", sets = "^3.0.0" }
+    }

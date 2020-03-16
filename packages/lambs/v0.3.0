@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "lambs"
+    , license = Registry.License.`LGPL-3.0+`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "Glorp", repo = "purescript-lambs" })
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , parsing = "^4.2.1"
+          , prelude = "^3.0.0"
+          , generics = "^4.0.0"
+          , sets = "^3.0.0"
+          , lists = "^4.3.0"
+          }
+    }

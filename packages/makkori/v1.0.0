@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "makkori"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-makkori" }
+        )
+    , devDependencies = toMap { test-unit = "^14.0.0", milkis = "^6.0.0" }
+    , dependencies =
+        toMap
+          { prelude = "^4.0.0"
+          , node-http = "^5.0.0"
+          , record = "^1.0.0"
+          , functions = "^4.0.0"
+          }
+    }

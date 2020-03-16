@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "api-helpers"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "adarqui", repo = "purescript-api-helpers" }
+        )
+    , dependencies =
+        toMap
+          { console = "^2.0.0"
+          , arrays = "^3.2.1"
+          , aff = "^2.0.3"
+          , prelude = "^2.5.0"
+          , affjax = "^3.0.2"
+          , transformers = "^2.3.0"
+          , tuples = "^3.2.0"
+          }
+    }

@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "consable"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/8084/purescript-consable.git")
+    , devDependencies =
+        toMap { prelude = "^4.1.0", assert = "^4.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { arrays = "^5.2.0"
+          , foldable-traversable = "^4.1.1"
+          , sequences = "^2.1.0"
+          , catenable-lists = "^5.0.0"
+          , lists = "^5.3.0"
+          }
+    }

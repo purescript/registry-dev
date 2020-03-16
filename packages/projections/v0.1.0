@@ -1,0 +1,6 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "projections"
+    , dependencies = toMap { console = "^0.1.0" }
+    }

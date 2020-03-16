@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "easy-ffi"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "pelotom", repo = "purescript-easy-ffi" }
+        )
+    , devDependencies = toMap { quickcheck = "^4.4.0" }
+    , dependencies = toMap { prelude = "^3.1.0" }
+    }

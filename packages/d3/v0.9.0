@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "d3"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "pelotom", repo = "purescript-d3" })
+    , dependencies =
+        toMap
+          { d3 = "^3.4.9"
+          , easy-ffi = "^2.1.2"
+          , js-date = "^5.1.0"
+          , foreign = "^4.0.1"
+          }
+    }

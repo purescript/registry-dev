@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "filterable"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "LiamGoodacre", repo = "purescript-filterable" }
+        )
+    , devDependencies = toMap { console = "^4.0.0", assert = "^4.0.0" }
+    , dependencies =
+        toMap
+          { ordered-collections = "^1.0.0"
+          , either = "^4.0.0"
+          , arrays = "^5.0.0"
+          , foldable-traversable = "^4.0.0"
+          , identity = "^4.0.0"
+          , lists = "^5.0.0"
+          }
+    }

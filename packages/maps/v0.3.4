@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "maps"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { quickcheck = "~0.5.0" }
+    , dependencies =
+        toMap
+          { arrays = "~0.3.0"
+          , maybe = "~0.2.1"
+          , foldable-traversable = "~0.3.0"
+          , math = "~0.1.0"
+          , tuples = "~0.3.0"
+          , strings = "~0.4.2"
+          }
+    }

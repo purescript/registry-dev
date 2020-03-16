@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "aws"
+    , devDependencies = toMap { quickcheck = "*" }
+    , dependencies = toMap { parallel = "*", strings = "*", foreign = "*" }
+    }

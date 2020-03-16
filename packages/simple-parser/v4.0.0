@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "simple-parser"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Thimoteus", repo = "purescript-simple-parser" }
+        )
+    , devDependencies = toMap { console = "^0.1.1" }
+    , dependencies =
+        toMap
+          { control = "^0.3.2"
+          , either = "^0.2.3"
+          , foldable-traversable = "^0.4.2"
+          , integers = "^0.2.1"
+          , globals = "^0.2.2"
+          , strings = "^0.7.1"
+          , lists = "^0.7.10"
+          }
+    }

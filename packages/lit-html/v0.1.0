@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "lit-html"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "nonbili", repo = "purescript-lit-html" }
+        )
+    , dependencies = toMap { argonaut-codecs = "^6.0.2", web-dom = "^4.0.0" }
+    }

@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "clipboard"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-clipboard" }
+        )
+    , devDependencies = toMap { web-events = "^2.0.1", web-html = "^2.2.1" }
+    , dependencies =
+        toMap { css = "^4.0.0", prelude = "^4.1.1", web-dom = "^3.0.0" }
+    }

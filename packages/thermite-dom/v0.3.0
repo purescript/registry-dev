@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "thermite-dom"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-thermite-dom" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { react-dom = "^6.1.0"
+          , web-html = "^2.2.0"
+          , thermite = "^6.3.0"
+          , react = "^7.0.1"
+          , prelude = "^4.1.1"
+          }
+    }

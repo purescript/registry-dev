@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "tables"
+    , license = Registry.License.`AGPL-3.0-or-later`
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/colehaus/purescript-tables.git")
+    , devDependencies = toMap { spec = "^3.1.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { ordered-collections = "^1.4.0"
+          , prelude = "^4.1.0"
+          , generics-rep = "^6.1.0"
+          , tuples = "^5.1.0"
+          , partial = "^2.0.0"
+          , lists = "^5.3.0"
+          }
+    }

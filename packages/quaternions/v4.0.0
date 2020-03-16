@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "quaternions"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "hdgarrood", repo = "purescript-quaternions" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0", quickcheck = "^5.0.0" }
+    , dependencies = toMap { prelude = "^4.1.0", math = "^2.1.1" }
+    }

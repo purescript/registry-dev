@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sparkle"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "sharkdp", repo = "purescript-sparkle" }
+        )
+    , dependencies =
+        toMap
+          { proxy = "^2.1.0"
+          , flare = "^4.1.0"
+          , typelevel-prelude = "^2.6.0"
+          , generics = "^4.0.0"
+          , record = "^0.2.6"
+          , globals = "^3.0.0"
+          , numbers = "^5.0.0"
+          }
+    }

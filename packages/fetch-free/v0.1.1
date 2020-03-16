@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "fetch-free"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "ethul", repo = "purescript-fetch-free" }
+        )
+    , dependencies =
+        toMap { free = "^4.3.0", symbols = "^3.0.0", aff = "^4.1.0" }
+    }

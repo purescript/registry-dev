@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "xorshift"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "matthewleon", repo = "purescript-xorshift" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^3.0.0"
+          , arrays = "^4.2.2"
+          , unfoldable = "matthewleon/purescript-unfoldable#iterateN"
+          , eff = "^3.0.0"
+          }
+    , dependencies =
+        toMap { maybe = "^3.0.0", integers = "^3.0.0", random = "^3.0.0" }
+    }

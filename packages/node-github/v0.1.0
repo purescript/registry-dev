@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-github"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { math = "*", quickcheck = "*" }
+    , dependencies =
+        toMap
+          { either = "~0.1.4"
+          , arrays = "*"
+          , maybe = "*"
+          , foldable-traversable = "*"
+          , node-thunk =
+              "git@github.com:andyfriesen/purescript-node-thunk.git#master"
+          }
+    }

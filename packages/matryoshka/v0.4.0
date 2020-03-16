@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "matryoshka"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-matryoshka" }
+        )
+    , devDependencies = toMap { console = "^4.1.0" }
+    , dependencies =
+        toMap
+          { free = "^5.0.0"
+          , fixed-points = "^5.0.0"
+          , profunctor = "^4.0.0"
+          , prelude = "^4.0.0"
+          , transformers = "^4.1.0"
+          }
+    }

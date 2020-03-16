@@ -1,0 +1,3 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{ name = "node-path", license = Registry.License.MIT }

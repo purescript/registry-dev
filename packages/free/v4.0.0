@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "free"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-free" }
+        )
+    , devDependencies = toMap { console = "^3.0.0", functors = "^2.0.0" }
+    , dependencies =
+        toMap
+          { exists = "^3.0.0"
+          , unsafe-coerce = "^3.0.0"
+          , transformers = "^3.0.0"
+          , catenable-lists = "^4.0.0"
+          }
+    }

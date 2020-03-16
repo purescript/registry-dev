@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "quick-format"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/matthewleon/purescript-quick-format.git"
+        )
+    , devDependencies =
+        toMap { console = "^3.0.0", debug = "^3.0.0", assert = "^3.0.0" }
+    , dependencies =
+        toMap
+          { typelevel-prelude = "^2.6.0"
+          , record = "^0.2.5"
+          , strings = "^3.3.2"
+          }
+    }

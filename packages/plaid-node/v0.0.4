@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "plaid-node"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/piq9117/purescript-plaid-node")
+    , devDependencies =
+        toMap { console = "^4.2.0", either = "^4.1.1", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , effect = "^2.0.1"
+          , formatters = "^4.0.1"
+          , argonaut-core = "^5.0.0"
+          , aff = "^5.1.0"
+          , prelude = "4.1.1"
+          , affjax = "^7.0.2"
+          , argonaut-codecs = "purescript-contrib/purescript-argonaut-codecs"
+          , http-methods = "^4.0.2"
+          , nullable = "^4.1.1"
+          , datetime = "^4.1.1"
+          }
+    }

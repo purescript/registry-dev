@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-http"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-node", repo = "purescript-node-http" }
+        )
+    , devDependencies = toMap { console = "^2.0.0" }
+    , dependencies =
+        toMap
+          { maps = "^2.0.0"
+          , node-streams = "^2.0.0"
+          , node-url = "^2.0.0"
+          , unsafe-coerce = "^2.0.0"
+          , options = "^2.0.0"
+          }
+    }

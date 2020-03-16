@@ -1,0 +1,6 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "test-pontificate"
+    , dependencies = toMap { bifunctors = "~0.3.1", quickcheck = "~0.5.2" }
+    }

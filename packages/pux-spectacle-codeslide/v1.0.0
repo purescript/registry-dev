@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pux-spectacle-codeslide"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "spicydonuts"
+            , repo = "purescript-pux-spectacle-codeslide"
+            }
+        )
+    , devDependencies = toMap { psci-support = "^1.0.0" }
+    , dependencies = toMap { pux-spectacle = "^1.2.0", pux = "^5.0.3" }
+    }

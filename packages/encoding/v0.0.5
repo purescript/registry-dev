@@ -1,0 +1,27 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "encoding"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "menelaos", repo = "purescript-encoding" }
+        )
+    , devDependencies =
+        toMap
+          { unicode = "^4.0.0"
+          , console = "^4.0.0"
+          , strongcheck = "^4.0.0"
+          , unsafe-coerce = "^4.0.0"
+          , stringutils = "^0.0.8"
+          , partial = "^2.0.0"
+          }
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , arraybuffer-types = "^2.0.0"
+          , either = "^4.0.0"
+          , prelude = "^4.0.0"
+          , functions = "^4.0.0"
+          }
+    }

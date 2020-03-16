@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pipes-aff"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "felixschl", repo = "purescript-pipes-aff" }
+        )
+    , devDependencies =
+        toMap { spec = "^2.0.0", psci-support = "^3.0.0", parallel = "^3.3.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , aff = "^4.0.0"
+          , prelude = "^3.0.0"
+          , pipes = "^5.0.0"
+          }
+    }

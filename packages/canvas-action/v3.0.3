@@ -1,0 +1,33 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "canvas-action"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/3ddyy/purescript-canvas-action.git"
+        )
+    , dependencies =
+        toMap
+          { free = "^v5.2.0"
+          , exceptions = "^v4.0.0"
+          , newtype = "^v3.0.0"
+          , effect = "^v2.0.1"
+          , console = "^v4.4.0"
+          , maybe = "^v4.0.1"
+          , web-html = "^v2.3.0"
+          , foldable-traversable = "^v4.1.1"
+          , run = "^v3.0.1"
+          , typelevel-prelude = "^v5.0.2"
+          , polymorphic-vectors = "^v1.1.1"
+          , prelude = "^v4.1.1"
+          , transformers = "^v4.2.0"
+          , canvas = "^v4.0.0"
+          , math = "^v2.1.1"
+          , psci-support = "^v4.0.0"
+          , tuples = "^v5.1.0"
+          , partial = "^v2.0.1"
+          , colors = "^v5.0.0"
+          , lists = "^v5.4.1"
+          }
+    }

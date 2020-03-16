@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "msgpack-msgpack"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "nonbili", repo = "purescript-msgpack-msgpack" }
+        )
+    , devDependencies = toMap { jest = "^0.3.0", arraybuffer = "^10.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , arraybuffer-types = "^2.0.0"
+          , argonaut-codecs = "^6.0.2"
+          }
+    }

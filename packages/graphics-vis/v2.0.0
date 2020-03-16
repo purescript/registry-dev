@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "graphics-vis"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-graphics-vis" }
+        )
+    , dependencies = toMap { drawing = "^3.0.0", psci-support = "^3.0.0" }
+    }

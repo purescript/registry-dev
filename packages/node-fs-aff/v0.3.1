@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-fs-aff"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-node", repo = "purescript-node-fs-aff" }
+        )
+    , dependencies =
+        toMap
+          { either = "~0.2.2"
+          , node-path = "~0.4.0"
+          , aff = ">= 0.13.1 < 0.15.0"
+          , node-fs = "~0.10.0"
+          }
+    }

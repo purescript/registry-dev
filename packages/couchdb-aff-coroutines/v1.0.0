@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "couchdb-aff-coroutines"
+    , devDependencies = toMap { debug = "^1.0.0" }
+    , dependencies =
+        toMap
+          { console = "^1.0.0"
+          , argonaut = "^1.0.0"
+          , argonaut-core = "^1.1.0"
+          , generics = "^1.0.1"
+          , affjax = "^2.0.0"
+          , argonaut-codecs = "^1.1.0"
+          , sequential-aff-coroutines = "^2.0.0"
+          }
+    }

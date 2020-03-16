@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "maps"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-maps" }
+        )
+    , devDependencies = toMap { quickcheck = "^1.0.0-rc.1" }
+    , dependencies =
+        toMap
+          { st = "^1.0.0-rc.1"
+          , lists = "^1.0.0-rc.1"
+          , functions = "^1.0.0-rc.1"
+          }
+    }

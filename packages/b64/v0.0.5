@@ -1,0 +1,28 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "b64"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "menelaos", repo = "purescript-b64" })
+    , devDependencies =
+        toMap
+          { unicode = "^4.0.0"
+          , console = "^4.0.0"
+          , strongcheck = "^4.0.0"
+          , unsafe-coerce = "^4.0.0"
+          , stringutils = "^0.0.8"
+          }
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , arraybuffer-types = "^2.0.0"
+          , either = "^4.0.0"
+          , prelude = "^4.0.0"
+          , enums = "^4.0.0"
+          , encoding = "^0.0.5"
+          , partial = "^2.0.0"
+          , strings = "^4.0.0"
+          , functions = "^4.0.0"
+          }
+    }

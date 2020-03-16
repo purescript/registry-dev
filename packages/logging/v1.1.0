@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "logging"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "rightfold", repo = "purescript-logging" }
+        )
+    , dependencies =
+        toMap
+          { console = "^2.0.0"
+          , either = "^2.0.0"
+          , monoid = "^2.0.0"
+          , prelude = "^2.1.0"
+          , contravariant = "^2.0.0"
+          , eff = "^2.0.0"
+          , transformers = "^2.0.1"
+          , tuples = "^3.0.0"
+          }
+    }

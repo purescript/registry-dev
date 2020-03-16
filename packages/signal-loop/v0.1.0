@@ -1,0 +1,6 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "signal-loop"
+    , dependencies = toMap { signal = "~3.0.0" }
+    }

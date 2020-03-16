@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "tailrec"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-tailrec" }
+        )
+    , devDependencies = toMap { console = "^4.0.0", assert = "^4.1.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , either = "^4.0.0"
+          , maybe = "^4.0.0"
+          , prelude = "^4.0.0"
+          , bifunctors = "^4.0.0"
+          , refs = "^4.0.0"
+          , partial = "^2.0.0"
+          , identity = "^4.0.0"
+          }
+    }

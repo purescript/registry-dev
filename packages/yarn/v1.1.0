@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "yarn"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { psci-support = "^1.0.0" }
+    , dependencies =
+        toMap
+          { console = "^1.0.0"
+          , arrays = "^1.0.0"
+          , generics = "^1.0.0"
+          , strings = "^1.0.0"
+          }
+    }

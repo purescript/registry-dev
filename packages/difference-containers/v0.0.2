@@ -1,0 +1,26 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "difference-containers"
+    , license = Registry.License.`PDDL-1.0`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/8084/purescript-difference-containers.git"
+        )
+    , devDependencies =
+        toMap
+          { console = "^4.2.0"
+          , arrays = "^5.2.0"
+          , assert = "^4.0.0"
+          , benchotron = "^7.0.0"
+          , psci-support = "^4.0.0"
+          , quickcheck = "^5.0.0"
+          }
+    , dependencies =
+        toMap
+          { stacksafe-function = "^2.0.0"
+          , unfoldable = "^4.0.0"
+          , foldable-traversable = "^4.1.1"
+          , prelude = "^4.1.0"
+          }
+    }

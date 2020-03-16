@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "signal-aff"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "chrisdotcode", repo = "purescript-signal-aff" }
+        )
+    , devDependencies = toMap { console = "^2.0.0", psci-support = "^2.0.0" }
+    , dependencies =
+        toMap
+          { js-timers = "^2.0.0"
+          , dom = "^3.5.1"
+          , aff = "^2.0.3"
+          , prelude = "^2.4.0"
+          , eff = "^2.0.0"
+          , signal = "^8.0.1"
+          }
+    }

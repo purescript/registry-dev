@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "quill"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "jmackie", repo = "purescript-quill" })
+    , devDependencies = toMap { console = "^3.0.0" }
+    , dependencies =
+        toMap
+          { dom = "^4.14.0"
+          , prelude = "^3.1.1"
+          , options = "^3.1.0"
+          , colors = "^4.3.0"
+          }
+    }

@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "money"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/TinkerTravel/purescript-money.git"
+        )
+    , devDependencies = toMap { test-unit = "^14.0.0" }
+    , dependencies =
+        toMap
+          { newtype = "^3.0.0"
+          , foldable-traversable = "^4.1.1"
+          , rationals = "^5.0.0"
+          , prelude = "^4.0.0"
+          , integers = "^4.0.0"
+          , globals = "^4.0.0"
+          , math = "^2.1.1"
+          , ring-modules = "^5.0.1"
+          , lists = "^5.3.0"
+          }
+    }

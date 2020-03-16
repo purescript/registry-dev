@@ -1,0 +1,8 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "fixed-precision"
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap { bigints = "^3.4.0", maybe = "^3.0.0", integers = "^3.2.0" }
+    }

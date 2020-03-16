@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "react-mui"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/doolse/purescript-react-mui.git")
+    , devDependencies =
+        toMap
+          { console = "^4.1.0"
+          , web-html = "^1.1.1"
+          , debug = "^4.0.0"
+          , psci-support = "^4.0.0"
+          , web-dom = "^1.0.0"
+          }
+    , dependencies =
+        toMap
+          { react-dom = "^6.0.0"
+          , tscompat = "^1.0.1"
+          , react = "^6.0.0"
+          , prelude = "^4.0.1"
+          }
+    }

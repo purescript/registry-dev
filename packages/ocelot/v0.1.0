@@ -1,0 +1,34 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "ocelot"
+    , devDependencies =
+        toMap
+          { console = "^3.0.0"
+          , argonaut = "^3.1.0"
+          , js-timers = "^3.0.0"
+          , debug = "^3.0.0"
+          , affjax = "^5.0.0"
+          , stringutils = "^0.0.7"
+          , psci-support = "^3.0.0"
+          , halogen-storybook = "^0.1.0"
+          }
+    , dependencies =
+        toMap
+          { polyform = "^0.6.3"
+          , bigints = "^3.5.0"
+          , remotedata = "^2.2.0"
+          , yarn = "^3.0.1"
+          , email-validate = "^2.0.0"
+          , variant = "^4.1.0"
+          , arrays = "^4.3.0"
+          , halogen-select = "^0.3.0"
+          , halogen = "^3.1.2"
+          , aff = "^4.0.2"
+          , fuzzy = "^0.1.2"
+          , test-unit = "^13.0.0"
+          , generics-rep = "^5.4.0"
+          , numbers = "^5.0.0"
+          , validation = "^3.2.0"
+          }
+    }

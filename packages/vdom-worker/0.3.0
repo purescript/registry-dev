@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "vdom-worker"
+    , devDependencies = toMap { test-unit = "11.0.0" }
+    , dependencies =
+        toMap
+          { maps = "3.0.0"
+          , webworkers = "0.2.0"
+          , exists = "3.0.0"
+          , dom = "4.2.0"
+          , argonaut-generic = "*"
+          , unsafe-coerce = "3.0.0"
+          , argonaut-codecs = "3.0.0"
+          , eff = "3.1.0"
+          }
+    }

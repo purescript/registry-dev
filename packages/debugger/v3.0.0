@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "debugger"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-debugger" })
+    , dependencies =
+        toMap
+          { console = "^4.1.0"
+          , either = "^4.0.0"
+          , tuples = "^5.0.0"
+          , lists = "^5.3.0"
+          , node-readline = "^4.0.0"
+          }
+    }

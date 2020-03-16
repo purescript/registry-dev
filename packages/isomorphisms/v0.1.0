@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "isomorphisms"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-isomorphisms" }
+        )
+    , devDependencies =
+        toMap
+          { spec = "^0.7.1"
+          , spec-quickcheck =
+              "git@github.com:paf31/purescript-spec-quickcheck.git#be497f7b6221e5859065b6fa3bc50e13ff2b3ff0"
+          , quickcheck = "~0.7.0"
+          }
+    , dependencies =
+        toMap
+          { void = "~0.3.0"
+          , either = "~0.2.0"
+          , profunctor = "~0.3.0"
+          , bifunctors = "~0.4.0"
+          , contravariant = "~0.2.0"
+          }
+    }

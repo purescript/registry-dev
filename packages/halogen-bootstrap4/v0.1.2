@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "halogen-bootstrap4"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "mschristiansen", repo = "purescript-halogen-bootstrap4" }
+        )
+    , dependencies = toMap { halogen = "^4.0.0" }
+    }

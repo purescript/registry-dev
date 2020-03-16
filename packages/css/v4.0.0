@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "css"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "slamdata", repo = "purescript-css" })
+    , devDependencies = toMap { exceptions = "^4.0.0" }
+    , dependencies =
+        toMap
+          { these = "^4.0.0"
+          , console = "^4.1.0"
+          , profunctor = "^4.0.0"
+          , nonempty = "^5.0.0"
+          , transformers = "^4.1.0"
+          , generics-rep = "^6.0.0"
+          , strings = "^4.0.0"
+          , colors = "^5.0.0"
+          }
+    }

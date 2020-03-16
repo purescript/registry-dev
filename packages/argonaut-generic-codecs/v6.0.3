@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "argonaut-generic-codecs"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "eskimor", repo = "purescript-argonaut-generic-codecs" }
+        )
+    , devDependencies =
+        toMap { strongcheck-generics = "^1.0.0", assert = "^3.0.0" }
+    , dependencies =
+        toMap
+          { arrays = "^4.0.0"
+          , argonaut-core = "^3.1.0"
+          , generics = "^4.0.0"
+          , integers = "^3.0.0"
+          , partial = "^1.2.0"
+          }
+    }

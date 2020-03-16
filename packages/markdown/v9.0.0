@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "markdown"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-markdown" }
+        )
+    , dependencies =
+        toMap
+          { strongcheck = "^2.1.0"
+          , parsing = "^3.2.1"
+          , precise = "^1.1.0"
+          , functors = "^1.1.0"
+          , prelude = "^2.5.0"
+          , const = "^2.0.0"
+          , validation = "^2.0.0"
+          , partial = "^1.2.0"
+          , strings = "^2.1.0"
+          , sets = "^2.0.1"
+          , lists = "^3.4.0"
+          , datetime = "^2.2.0"
+          }
+    }

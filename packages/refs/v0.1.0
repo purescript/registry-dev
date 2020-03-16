@@ -1,0 +1,3 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{ name = "refs", license = Registry.License.MIT }

@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "formatters"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-formatters" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^3.0.0"
+          , aff = "^3.0.0"
+          , debug = "^3.0.0"
+          , psci-support = "^3.0.0"
+          }
+    , dependencies =
+        toMap
+          { fixed-points = "^4.0.0"
+          , parsing = "^4.0.0"
+          , prelude = "^3.0.0"
+          , datetime = "^3.0.0"
+          }
+    }

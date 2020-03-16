@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "money"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/TinkerTravel/purescript-money.git"
+        )
+    , dependencies =
+        toMap
+          { newtype = "^1.3.0"
+          , modules = "^2.1.0"
+          , prelude = "^2.5.0"
+          , generics = "^3.3.0"
+          }
+    }

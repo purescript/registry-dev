@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "transformers"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap
+          { control = "~0.2.1"
+          , either = "~0.1.3"
+          , arrays = "~0.2.1"
+          , monoid = "~0.1.4"
+          , tuples = "~0.2.1"
+          , identity = "~0.1.0"
+          }
+    }

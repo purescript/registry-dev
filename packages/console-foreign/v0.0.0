@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "console-foreign"
+    , devDependencies = toMap { psci-support = "2.0.0", quickcheck = "^3.0.0" }
+    , dependencies = toMap { console = "2.0.0", foreign = "^3.0.0" }
+    }

@@ -1,0 +1,26 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "spec"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-spec", repo = "purescript-spec" }
+        )
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , console = "^4.1.0"
+          , fork = "^4.0.0"
+          , now = "^4.0.0"
+          , aff = "^5.0.0"
+          , foldable-traversable = "^4.0.0"
+          , avar = "^3.0.0"
+          , prelude = "^4.0.0"
+          , pipes = "^6.0.0"
+          , ansi = "^5.0.0"
+          , transformers = "^4.0.0"
+          , generics-rep = "^6.0.0"
+          , strings = "^4.0.0"
+          }
+    }

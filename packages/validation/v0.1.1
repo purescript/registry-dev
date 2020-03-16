@@ -1,0 +1,6 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "validation"
+    , dependencies = toMap { control = "~0.2.5" }
+    }

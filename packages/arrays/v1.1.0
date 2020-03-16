@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "arrays"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-arrays" }
+        )
+    , devDependencies = toMap { console = "^1.0.0", assert = "^1.0.0" }
+    , dependencies =
+        toMap
+          { unfoldable = "^1.0.0"
+          , foldable-traversable = "^1.0.0"
+          , st = "^1.0.0"
+          , tuples = "^1.0.0"
+          , partial = "^1.1.0"
+          }
+    }

@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "flaredoc"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "sharkdp", repo = "purescript-flaredoc" }
+        )
+    , dependencies =
+        toMap
+          { markdown = "^8.0.0"
+          , console = "^2.0.0"
+          , argonaut = "^2.0.0"
+          , affjax = "^3.0.0"
+          , flarecheck = "^2.0.0"
+          }
+    }

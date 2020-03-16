@@ -1,0 +1,28 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "quasar"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-quasar" }
+        )
+    , devDependencies =
+        toMap
+          { node-fs-aff = "^2.0.0"
+          , node-process = "^2.0.0"
+          , node-child-process = "^2.0.0"
+          , assert = "^1.0.0"
+          }
+    , dependencies =
+        toMap
+          { free = "^1.2.0"
+          , pathy = "^2.0.0"
+          , argonaut = "^1.0.0"
+          , uri = "^1.0.0"
+          , affjax-algebra = "^2.0.0"
+          , oidc-crypt-utils = "^4.0.0"
+          , nonempty = "^1.1.0"
+          , ejson = "^1.0.0"
+          }
+    }

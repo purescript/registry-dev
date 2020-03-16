@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "avar"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "slamdata", repo = "purescript-avar" })
+    , devDependencies =
+        toMap
+          { console = "^4.1.0"
+          , assert = "^4.0.0"
+          , refs = "^4.0.0"
+          , transformers = "^4.0.0"
+          }
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , effect = "^2.0.0"
+          , either = "^4.0.0"
+          , maybe = "^4.0.0"
+          , aff = "^5.0.0"
+          , functions = "^4.0.0"
+          }
+    }

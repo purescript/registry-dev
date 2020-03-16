@@ -1,0 +1,9 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "halogen-pure"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/aij/purescript-halogen-pure.git")
+    , dependencies = toMap { halogen = "^5.0.0-rc.5" }
+    }

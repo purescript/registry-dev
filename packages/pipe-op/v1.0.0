@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pipe-op"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Risto-Stevcev", repo = "purescript-pipe-op" }
+        )
+    , devDependencies =
+        toMap { console = "^3.0.0", arrays = "^4.1.2", psci-support = "^3.0.0" }
+    , dependencies = toMap { prelude = "^3.1.0" }
+    }

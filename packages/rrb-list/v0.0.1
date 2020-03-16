@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "rrb-list"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "funkia", repo = "purescript-rrb-list" }
+        )
+    , devDependencies = toMap { spec = "^3.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { console = "^4.1.0"
+          , maybe = "^4.0.0"
+          , unfoldable = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , tailrec = "^4.0.0"
+          , prelude = "^4.0.1"
+          , nonempty = "^5.0.0"
+          , tuples = "^5.0.0"
+          , partial = "^2.0.0"
+          , functions = "^4.0.0"
+          }
+    }

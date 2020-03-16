@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "emmet"
+    , license = Registry.License.`LGPL-3.0`
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/kRITZCREEK/purescript-emmet.git")
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { newtype = "^3.0.0"
+          , console = "^4.1.0"
+          , matryoshka = "^0.4.0"
+          , parsing = "^5.0.1"
+          , node-process = "^6.0.0"
+          , prelude = "^4.1.0"
+          }
+    }

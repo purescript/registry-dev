@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "birds"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "awkure", repo = "purescript-birds" })
+    , dependencies =
+        toMap
+          { console = "^3.0.0", prelude = "^3.1.0", transformers = "^3.0.0" }
+    }

@@ -1,0 +1,28 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "benchotron"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "hdgarrood", repo = "purescript-benchotron" }
+        )
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , profunctor = "^4.0.0"
+          , arrays = "^v5.0.0"
+          , exists = "v4.0.0"
+          , lcg = "^2.0.0"
+          , now = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , node-buffer = "^5.0.0"
+          , node-fs = "^5.0.0"
+          , transformers = "^4.0.0"
+          , quickcheck = "^5.0.0"
+          , strings = "^4.0.0"
+          , identity = "^4.0.0"
+          , datetime = "^4.0.0"
+          , node-readline = "^4.0.0"
+          }
+    }

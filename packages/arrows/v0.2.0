@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "arrows"
+    , license = Registry.License.MIT
+    , dependencies = toMap { profunctor = "~0.0.2", tuples = "~0.2.3" }
+    }

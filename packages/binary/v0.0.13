@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "binary"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "Unisay", repo = "purescript-binary" })
+    , devDependencies = toMap { test-unit = "^13.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { proxy = "^2.1.0"
+          , arrays = "^4.2.1"
+          , maybe = "^3.0.0"
+          , foldable-traversable = "^3.6.1"
+          , prelude = "^3.1.0"
+          , nonempty = "^4.0.0"
+          , integers = "^3.1.0"
+          , tuples = "^4.1.0"
+          , partial = "^1.2.1"
+          , strings = "^3.3.1"
+          , conditional = "^2.0.0"
+          }
+    }

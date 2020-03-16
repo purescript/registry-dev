@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "random"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-random" }
+        )
+    , dependencies =
+        toMap { integers = "^0.2.1", eff = "^0.1.0", math = "^0.2.0" }
+    }

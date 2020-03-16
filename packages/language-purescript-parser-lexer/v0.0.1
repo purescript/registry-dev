@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "language-purescript-parser-lexer"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "cdepillabout"
+            , repo = "purescript-language-purescript-parser-lexer"
+            }
+        )
+    , dependencies =
+        toMap
+          { unicode = "^0.0.1"
+          , language-purescript-base = "^0.0.3"
+          , parsing = "file:///home/illabout/git/purescript-parsing/.git#token"
+          , prelude = "^0.1"
+          }
+    }

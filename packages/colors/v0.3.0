@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "colors"
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "sharkdp", repo = "purescript-colors" })
+    , devDependencies = toMap { flaredoc = "^0.2.0", test-unit = "^4.1.0" }
+    , dependencies =
+        toMap
+          { arrays = "^0.4.4"
+          , integers = "^0.2.1"
+          , orders = "^0.1.1"
+          , strings = "^0.7.1"
+          }
+    }

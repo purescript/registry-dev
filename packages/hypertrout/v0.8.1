@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "hypertrout"
+    , license = Registry.License.`MPL-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "owickstrom", repo = "purescript-hypertrout" }
+        )
+    , devDependencies =
+        toMap
+          { spec-discovery = "^0.5.0"
+          , argonaut-generic = "*"
+          , spec = "^0.13.0"
+          , psci-support = "^3.0.0"
+          }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , trout = "^0.8.0"
+          , prelude = "^3.0.0"
+          , hyper = "^0.7.0"
+          }
+    }

@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "memoize"
+    , dependencies =
+        toMap
+          { either = "^0.2.0"
+          , maybe = "^0.3.0"
+          , lazy = "^0.4.0"
+          , integers = "^0.2.0"
+          , tuples = "^0.4.0"
+          , lists = "^0.7.0"
+          }
+    }

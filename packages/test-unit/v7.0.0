@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "test-unit"
+    , license = Registry.License.`LGPL-3.0+`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "bodil", repo = "purescript-test-unit" }
+        )
+    , dependencies =
+        toMap
+          { free = "^1.0.0"
+          , either = "~1.0.0"
+          , aff = "~1.0.0"
+          , prelude = "~1.0.1"
+          , eff = "~1.0.0"
+          , quickcheck = "~1.0.0"
+          , strings = "^1.0.0"
+          , lists = "^1.0.1"
+          }
+    }

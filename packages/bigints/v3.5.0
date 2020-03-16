@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "bigints"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "sharkdp", repo = "purescript-bigints" }
+        )
+    , devDependencies =
+        toMap
+          { quickcheck-laws = "^3.0.0"
+          , console = "^3.0.0"
+          , assert = "^3.0.0"
+          , integers = "^3.0.0"
+          , quickcheck = "^4.0.0"
+          }
+    , dependencies =
+        toMap { maybe = "^3.0.0", integers = "^3.0.0", strings = "^3.5.0" }
+    }

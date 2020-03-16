@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "foreign"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-foreign" }
+        )
+    , devDependencies = toMap { console = "^4.0.0" }
+    , dependencies =
+        toMap
+          { either = "^4.0.0"
+          , maybe = "^4.0.0"
+          , prelude = "^4.0.0"
+          , integers = "^4.0.0"
+          , transformers = "^4.0.0"
+          , strings = "^4.0.0"
+          , identity = "^4.0.0"
+          , lists = "^5.0.0"
+          , functions = "^4.0.0"
+          }
+    }

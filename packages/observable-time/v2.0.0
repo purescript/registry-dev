@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "observable-time"
+    , license = Registry.License.`LGPL-3.0+`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "bodil", repo = "purescript-observable-time" }
+        )
+    , devDependencies =
+        toMap
+          { refs = "~2.0.0", test-unit = "~10.0.0", catenable-lists = "^3.0.0" }
+    , dependencies =
+        toMap
+          { maybe = "^2.0.0"
+          , observable = "^3.0.0"
+          , js-timers = "^2.0.0"
+          , prelude = "^2.1.0"
+          , st = "^2.0.0"
+          , eff = "^2.0.0"
+          }
+    }

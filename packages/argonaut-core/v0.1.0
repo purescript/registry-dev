@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "argonaut-core"
+    , license = Registry.License.MIT
+    , devDependencies =
+        toMap
+          { console = "^0.1.0"
+          , strongcheck = "^0.10.0"
+          , foldable-traversable = "^0.4.0"
+          , eff = "^0.1.0"
+          }
+    , dependencies =
+        toMap
+          { maps = "^0.4.0"
+          , maybe = "^0.3.2"
+          , prelude = "^0.1.0"
+          , tuples = "^0.4.0"
+          , functions = "^0.1.0"
+          }
+    }

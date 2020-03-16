@@ -1,0 +1,9 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "mostly-dom"
+    , devDependencies =
+        toMap
+          { spec-mocha = "^0.4.0", spec = "^0.12.4", psci-support = "^2.0.0" }
+    , dependencies = toMap { dom = "^3.6.0", prelude = "^2.5.0" }
+    }

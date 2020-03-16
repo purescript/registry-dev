@@ -1,0 +1,30 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "purescript-compiler-backend-utilities"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/rightfold/purescript-purescript-compiler-backend-utilities.git"
+        )
+    , devDependencies =
+        toMap
+          { debug = "^3.0.0"
+          , eff = "^3.1.0"
+          , node-buffer = "^3.0.1"
+          , node-fs = "^4.0.0"
+          }
+    , dependencies =
+        toMap
+          { exceptions = "^3.0.0"
+          , maps = "^3.3.1"
+          , arrays = "^4.1.0"
+          , maybe = "^3.0.0"
+          , argonaut-core = "^3.1.0"
+          , prelude = "^3.0.0"
+          , argonaut-codecs = "^3.1.0"
+          , transformers = "^3.4.0"
+          , partial = "^1.2.1"
+          , strings = "^3.2.1"
+          }
+    }

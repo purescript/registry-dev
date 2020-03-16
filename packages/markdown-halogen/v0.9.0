@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "markdown-halogen"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-markdown-halogen" }
+        )
+    , dependencies =
+        toMap
+          { markdown = "^1.12.2"
+          , strongcheck = "^0.14.4"
+          , halogen = "^0.6.1"
+          , prelude = "^0.1.2"
+          , browserfeatures = "^0.4.1"
+          , validation = "^0.2.0"
+          , sets = "^0.5.0"
+          }
+    }

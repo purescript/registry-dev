@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "lazy"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { quickcheck = "*" }
+    , dependencies =
+        toMap
+          { control = ">=0.2.0"
+          , arrays = ">=0.2.0"
+          , monoid = "*"
+          , foldable-traversable = "*"
+          }
+    }

@@ -1,0 +1,8 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "flow-id"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies = toMap { prelude = "^4.1.0", simple-json = "^4.3.0" }
+    }

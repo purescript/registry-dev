@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "flare"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "sharkdp", repo = "purescript-flare" })
+    , dependencies =
+        toMap
+          { dom = "^3.0.0"
+          , smolder = "^6.0.0"
+          , foldable-traversable = "^2.0.0"
+          , nonempty = "^3.0.0"
+          , drawing = "^2.0.0"
+          , canvas = "^2.0.0"
+          , signal = "^8.0.0"
+          , datetime = "^2.0.0"
+          }
+    }

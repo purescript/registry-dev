@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-streams"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-node", repo = "purescript-node-streams" }
+        )
+    , devDependencies =
+        toMap { console = "^3.0.0", assert = "^3.0.0", partial = "^1.2.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^3.0.0"
+          , either = "^3.0.0"
+          , prelude = "^3.0.0"
+          , eff = "^3.0.0"
+          , node-buffer = "^3.0.0"
+          }
+    }

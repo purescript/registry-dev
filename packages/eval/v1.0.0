@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "eval"
+    , license = Registry.License.BSD-2-Clause
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "rightfold", repo = "purescript-eval" })
+    , devDependencies = toMap { eff = "~1.0.0" }
+    , dependencies = toMap { lazy = "~1.0.0", prelude = "~1.0.1" }
+    }

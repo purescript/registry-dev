@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "impulse"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "mitchdzugan", repo = "purescript-impulse" }
+        )
+    , dependencies =
+        toMap
+          { unordered-collections = "^v1.8.2"
+          , effect = "^v2.0.1"
+          , console = "^v4.2.0"
+          , arrays = "^v5.3.1"
+          , debug = "^v4.0.0"
+          , dom-indexed = "^v7.0.0"
+          , record = "^v2.0.1"
+          , transformers = "^v4.2.0"
+          , psci-support = "^v4.0.0"
+          }
+    }

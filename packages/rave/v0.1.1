@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "rave"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/reactormonk/purescript-rave.git")
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , effect = "^2.0.1"
+          , variant = "^6.0.1"
+          , console = "^4.2.0"
+          , checked-exceptions = "^3.0.0"
+          , aff = "^5.1.1"
+          , prelude = "^4.1.1"
+          , record = "^2.0.1"
+          }
+    }

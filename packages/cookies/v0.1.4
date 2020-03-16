@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "cookies"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "dbushenko", repo = "purescript-cookies" }
+        )
+    , dependencies = toMap { maybe = "~0.3.5", eff = "latest" }
+    }

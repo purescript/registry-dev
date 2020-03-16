@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "shoronpo"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-shoronpo" }
+        )
+    , devDependencies = toMap { assert = "^4.0.0" }
+    , dependencies = toMap { record-format = "^0.1.0", prelude = "^4.0.0" }
+    }

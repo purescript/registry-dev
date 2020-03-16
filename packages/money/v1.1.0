@@ -1,0 +1,6 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "money"
+    , dependencies = toMap { prelude = "^2.5.0", generics = "^3.3.0" }
+    }

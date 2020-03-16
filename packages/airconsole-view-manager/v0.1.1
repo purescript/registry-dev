@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "airconsole-view-manager"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "mckayb", repo = "purescript-airconsole-view-manager" }
+        )
+    , dependencies =
+        toMap { prelude = "^3.1.0", eff = "^3.1.0", airconsole = "^0.2.0" }
+    }

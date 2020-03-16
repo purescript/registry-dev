@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "z85"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "athanclark", repo = "purescript-z85" })
+    , devDependencies =
+        toMap
+          { base64 = "purescript-base64-2#^2.0.0"
+          , assert = "^4.0.0"
+          , psci-support = "^4.0.0"
+          , quickcheck = "^5.0.0"
+          }
+    , dependencies =
+        toMap
+          { yarn = "^4.0.0"
+          , prelude = "^4.1.0"
+          , stringutils = "^0.0.8"
+          , numbers = "^6.0.0"
+          , sized-vectors = "^3.1.0"
+          , arraybuffer = "^10.0.0"
+          }
+    }

@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "debug"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "garyb", repo = "purescript-debug" })
+    , devDependencies = toMap { eff = "^1.0.0" }
+    , dependencies = toMap { prelude = "^1.0.0" }
+    }

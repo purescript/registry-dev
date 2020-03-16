@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "simple-child-process"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "corajr", repo = "purescript-simple-child-process" }
+        )
+    , devDependencies =
+        toMap
+          { spec-discovery = "^0.6.0"
+          , spec = "^1.0.0"
+          , psci-support = "^3.0.0"
+          }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , node-child-process = "^4.0.0"
+          , prelude = "^3.1.0"
+          }
+    }

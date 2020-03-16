@@ -1,0 +1,9 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "eff"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "purescript", repo = "purescript-eff" })
+    , dependencies = toMap { prelude = "^3.0.0" }
+    }

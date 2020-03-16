@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "react-basic-hooks"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "spicydonuts", repo = "purescript-react-basic-hooks" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , console = "^4.2.0"
+          , react-basic = "^10.0.0 || ^11.0.0 || ^12.0.0"
+          , aff = "^5.1.1"
+          , unsafe-reference = "^3.0.1"
+          , prelude = "^4.1.0"
+          , indexed-monad = "^1.0.0"
+          }
+    }

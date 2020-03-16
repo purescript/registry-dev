@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "webgl"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "jutaro", repo = "purescript-webgl" })
+    , dependencies =
+        toMap
+          { arraybuffer-types = "*"
+          , extensions = "*"
+          , typedarray = "*"
+          , matrix = "*"
+          , integers = "*"
+          , vector = "*"
+          }
+    }

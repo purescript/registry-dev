@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "modular-arithmetic"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/hdgarrood/purescript-modular-arithmetic"
+        )
+    , devDependencies =
+        toMap { quickcheck-laws = "^3.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , arrays = "^4.0.1"
+          , typelevel = "^3.0.0"
+          , nonempty = "^4.0.0"
+          , quickcheck = "^4.0.0"
+          }
+    }

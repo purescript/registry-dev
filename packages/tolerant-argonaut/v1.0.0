@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "tolerant-argonaut"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "matthew-hilty", repo = "purescript-tolerant-argonaut" }
+        )
+    , devDependencies = toMap { test-unit = "^14.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { proxying = "^1.0.0"
+          , effect = "^2.0.0"
+          , struct = "^1.0.0"
+          , console = "^4.2.0"
+          , higher-order = "^0.1.0"
+          , arrays = "^5.2.0"
+          , argonaut-core = "^5.0.0"
+          , argonaut-codecs = "^6.0.0"
+          , record = "^2.0.0"
+          , lists = "^5.4.0"
+          }
+    }

@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "leibniz"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-leibniz" })
+    , devDependencies = toMap { console = "^2.0.0", exists = "^2.0.0" }
+    , dependencies = toMap { prelude = "^2.0.0", unsafe-coerce = "^2.0.0" }
+    }

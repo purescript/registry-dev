@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "safely"
+    , dependencies =
+        toMap { console = "^0.1.0", coroutines = "~0.2.2", lists = "~0.7.1" }
+    }

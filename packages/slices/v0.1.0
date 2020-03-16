@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "slice"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "jacereda", repo = "purescript-slices" }
+        )
+    , devDependencies =
+        toMap { quickcheck-laws = "~3.0.0", quickcheck = "~4.0.0" }
+    , dependencies = toMap { arrays = "~4.0.0", maybe = "~3.0.0" }
+    }

@@ -1,0 +1,27 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "uk-modulo"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "mpetruska", repo = "uk-modulo-purescript" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^2.0.0", test-unit = "^10.1.0", psci-support = "^2.0.0" }
+    , dependencies =
+        toMap
+          { maps = "^2.1.2"
+          , either = "^2.2.1"
+          , maybe = "^2.1.1"
+          , parsing = "^3.2.1"
+          , lazy = "^2.0.0"
+          , prelude = "^2.5.0"
+          , bifunctors = "^2.0.0"
+          , integers = "^2.1.1"
+          , math = "^2.0.0"
+          , tuples = "^3.2.0"
+          , lists = "^3.4.0"
+          }
+    }

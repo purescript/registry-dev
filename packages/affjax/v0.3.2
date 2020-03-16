@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "affjax"
+    , license = Registry.License.`Apache 2.0`
+    , dependencies =
+        toMap
+          { arraybuffer-types = "~0.1.1"
+          , dom = "~0.1.2"
+          , aff = "~0.10.1"
+          , integers = "~0.1.0"
+          , foreign = "~0.4.2"
+          , nullable = "~0.1.1"
+          }
+    }

@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "fedger"
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "brakmic", repo = "purescript-fedger" })
+    , dependencies =
+        toMap
+          { console = "^0.1.0"
+          , json = "^0.5.0"
+          , aff = "^0.14.0"
+          , lens = "^0.9.1"
+          , prelude = "^0.1.4"
+          , simple-request = "^2.0.5"
+          , affjax = "^0.10.2"
+          , node-http = "^0.2.0"
+          }
+    }

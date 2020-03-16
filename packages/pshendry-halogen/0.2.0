@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pshendry-halogen"
+    , devDependencies = toMap { test-unit = "^10.0.1", psci-support = "^2.0.0" }
+    , dependencies =
+        toMap
+          { newtype = "^1.1.0"
+          , console = "^2.0.0"
+          , arrays = "^3.1.0"
+          , halogen = "^0.12.0"
+          , aff = "^2.0.1"
+          , foldable-traversable = "^2.0.0"
+          , unsafe-coerce = "^2.0.0"
+          , eff = "^2.0.0"
+          , globals = "^2.0.0"
+          , partial = "^1.1.2"
+          }
+    }

@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "strongcheck-generics"
+    , license = Registry.License.BSD3
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "zudov", repo = "purescript-strongcheck-generics" }
+        )
+    , devDependencies = toMap { console = "^2.0.0" }
+    , dependencies = toMap { strongcheck = "^2.0.2", generics = "^3.3.0" }
+    }

@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "refractor-coproduct"
+    , license = Registry.License.MIT
+    , dependencies = toMap { coproducts = "~0.4.0", lens = "~0.9.0" }
+    }

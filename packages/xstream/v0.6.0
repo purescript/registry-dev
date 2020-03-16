@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "xstream"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-xstream" }
+        )
+    , devDependencies = toMap { test-unit = "^10.0.1" }
+    , dependencies = toMap { aff-promise = "^0.4.0" }
+    }

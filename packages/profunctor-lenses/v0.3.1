@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "profunctor-lenses"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-profunctor-lenses" }
+        )
+    , devDependencies = toMap { console = "^0.1.0" }
+    , dependencies =
+        toMap
+          { maps = "~0.5.2"
+          , profunctor = "~0.3.0"
+          , unsafe-coerce = "~0.1.0"
+          , const = "~0.5.0"
+          , identity = "~0.4.0"
+          , sets = "~0.5.1"
+          , lists = "~0.7.0"
+          }
+    }

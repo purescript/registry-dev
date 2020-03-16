@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "carpenter-router"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/arthur-xavier/purescript-carpenter-router.git"
+        )
+    , dependencies = toMap { dom = "^2.0.0", carpenter = "^2.0.0" }
+    }

@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "foreign"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-foreign" }
+        )
+    , devDependencies = toMap { console = "^2.0.0" }
+    , dependencies =
+        toMap
+          { either = "^2.0.0"
+          , arrays = "^3.0.0"
+          , foldable-traversable = "^2.0.0"
+          , integers = "^2.0.0"
+          , transformers = "^2.0.0"
+          , strings = "^2.0.0"
+          , lists = "^2.1.0"
+          , functions = "^2.0.0"
+          }
+    }

@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "conveyor-basic-auth"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-conveyor-basic-auth" }
+        )
+    , dependencies = toMap { basic-auth = "^1.0.0", conveyor = "^2.1.0" }
+    }

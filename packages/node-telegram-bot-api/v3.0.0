@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-telegram-bot-api"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-node-telegram-bot-api" }
+        )
+    , devDependencies =
+        toMap
+          { node-process = "^5.0.0"
+          , test-unit = "13.0.0"
+          , validation = "^3.2.0"
+          }
+    , dependencies =
+        toMap
+          { aff = "^4.1.1"
+          , simple-json = "^3.0.0"
+          , strings = "^3.5.0"
+          , foreign = "^4.0.1"
+          }
+    }

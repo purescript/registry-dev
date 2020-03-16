@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "words-lines"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "cdepillabout", repo = "purescript-words-lines" }
+        )
+    , devDependencies = toMap { super-spec = "~0.8.3" }
+    , dependencies =
+        toMap
+          { unicode = "^0.0.1"
+          , arrays = "^0.4"
+          , foldable-traversable = "^0.4"
+          , prelude = "^0.1"
+          , strings = "^0.7"
+          , lists = "^0.7"
+          }
+    }

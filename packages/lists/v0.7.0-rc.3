@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "lists"
+    , devDependencies = toMap { console = "^0.1.0", assert = "^0.1.0" }
+    , dependencies =
+        toMap
+          { unfoldable = "^0.4.0"
+          , lazy = "^0.4.0"
+          , foldable-traversable = "^0.4.0"
+          }
+    }

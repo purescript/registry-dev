@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-buffer"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-node", repo = "purescript-node-buffer" }
+        )
+    , devDependencies =
+        toMap
+          { proxy = "^3.0.0"
+          , console = "^4.1.0"
+          , foldable-traversable = "^4.0.0"
+          , assert = "^4.0.0"
+          }
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , arraybuffer-types = "^2.0.0"
+          , maybe = "^4.0.0"
+          , st = "^4.0.0"
+          , unsafe-coerce = "^4.0.0"
+          }
+    }

@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "simplecrypto"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/alpacaaa/purescript-simplecrypto.git"
+        )
+    , devDependencies =
+        toMap
+          { console = "^4.1.0"
+          , assert = "^4.0.0"
+          , unsafe-coerce = "^4.0.0"
+          , psci-support = "^4.0.0"
+          , partial = "^2.0.0"
+          , strings = "^4.0.0"
+          }
+    , dependencies =
+        toMap { maybe = "^4.0.0", prelude = "^4.0.0", node-buffer = "^5.0.0" }
+    }

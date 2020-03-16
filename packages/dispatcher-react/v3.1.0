@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "dispatcher-react"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "doolse", repo = "purescript-dispatcher-react" }
+        )
+    , devDependencies =
+        toMap { react-dom = "^4.1.0", argonaut = "^3.1.0", affjax = "^5.0.0" }
+    , dependencies =
+        toMap
+          { type-equality = "^2.1.0"
+          , aff = "^4.0.0"
+          , react = "^5.0.0"
+          , contravariant = "^3.1.0"
+          , eff = "^3.1.0"
+          }
+    }

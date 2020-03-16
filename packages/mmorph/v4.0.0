@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "mmorph"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Thimoteus", repo = "purescript-mmorph" }
+        )
+    , devDependencies = toMap { console = "#compiler/0.12" }
+    , dependencies =
+        toMap { functors = "#compiler/0.12", transformers = "#compiler/0.12" }
+    }

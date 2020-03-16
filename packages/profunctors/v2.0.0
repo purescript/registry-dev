@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "profunctor"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-profunctor" }
+        )
+    , dependencies =
+        toMap { either = "^2.0.0", distributive = "^2.0.0", tuples = "^3.0.0" }
+    }

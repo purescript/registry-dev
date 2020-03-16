@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "with-index"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-with-index" }
+        )
+    , dependencies = toMap { newtype = "^2.0.0", monoid = "^3.3.0" }
+    }

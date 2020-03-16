@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "slides"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "soupi", repo = "purescript-slides" })
+    , dependencies =
+        toMap
+          { control = "^1.0.0"
+          , maybe = "^1.0.0"
+          , list-zipper =
+              "git://github.com/DavidHarrison/purescript-list-zipper.git#62517ee"
+          , halogen = "^0.9.0"
+          , foldable-traversable = "^1.0.0"
+          , prelude = "^1.0.1"
+          , generics = "^1.0.0"
+          }
+    }

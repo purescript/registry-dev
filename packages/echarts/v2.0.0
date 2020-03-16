@@ -1,0 +1,29 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "echarts"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-echarts" }
+        )
+    , devDependencies =
+        toMap
+          { formatters = "^0.0.4"
+          , now = "^1.0.0"
+          , debug = "^1.0.0"
+          , nonempty = "^1.1.0"
+          , random = "^1.0.0"
+          , signal = "^6.1.0"
+          }
+    , dependencies =
+        toMap
+          { echarts = "~2.1.10"
+          , argonaut = "^1.0.0"
+          , dom = "^2.0.0"
+          , unsafe-coerce = "^1.0.0"
+          , globals = "^1.1.0"
+          , js-date = "^2.0.0"
+          , datetime = "^1.0.0"
+          }
+    }

@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "basic-auth"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-basic-auth" }
+        )
+    , dependencies = toMap { node-http = "^5.0.0", crypto = "^2.0.0" }
+    }

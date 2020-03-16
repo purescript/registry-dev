@@ -1,0 +1,36 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "routing"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-routing" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^3.0.0"
+          , assert = "^3.1.0"
+          , record = "^0.2.6"
+          , generics-rep = "^5.4.0"
+          }
+    , dependencies =
+        toMap
+          { maps = "^3.0.0"
+          , control = "^3.0.0"
+          , console = "^3.0.0"
+          , either = "^3.0.0"
+          , maybe = "^3.0.0"
+          , dom = "^4.15.0"
+          , aff = "^4.0.0"
+          , foldable-traversable = "^3.7.1"
+          , prelude = "^3.0.0"
+          , integers = "^3.0.0"
+          , eff = "^3.1.0"
+          , globals = "^3.0.0"
+          , validation = "^3.0.0"
+          , tuples = "^4.0.0"
+          , semirings = "^4.0.0"
+          , lists = "^4.0.1"
+          }
+    }

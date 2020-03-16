@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "zippable"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "morganthomas", repo = "purescript-zippable" }
+        )
+    , devDependencies = toMap { psci-support = "^2.0.0" }
+    , dependencies =
+        toMap
+          { arrays = "^3.0.0"
+          , transformers = "^2.0.1"
+          , tuples = "^3.0.0"
+          , lists = "^3.2.0"
+          }
+    }

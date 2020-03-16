@@ -1,0 +1,28 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "web3-generator"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "f-o-a-m", repo = "purescript-web3-generator" }
+        )
+    , devDependencies = toMap { spec = "^3.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { fixed-points = "^5.0.0"
+          , node-fs-aff = "^6.0.0"
+          , string-parsers = "^4.0.0"
+          , ordered-collections = "^1.0.0"
+          , console = "^4.0.0"
+          , record-extra = "^1.0.0"
+          , argonaut = "^4.0.0"
+          , web3 = "^1.0.0"
+          , yargs = "^4.0.0"
+          , mkdirp =
+              "joshuahhh/purescript-mkdirp#48ecb4039d5fe3be82d0e82c3a9f2338d1af82d2"
+          , prelude = "^4.0.0"
+          , ansi = "^5.0.0"
+          , errors = "^4.0.0"
+          }
+    }

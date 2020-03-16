@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "typeable"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "joneshf", repo = "purescript-typeable" }
+        )
+    , dependencies =
+        toMap
+          { foldable-traversable = "^1.0.0"
+          , prelude = "^1.0.0"
+          , unsafe-coerce = "^1.0.0"
+          , lists = "^1.0.0"
+          , functions = "^1.0.0"
+          }
+    }

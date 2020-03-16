@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "dotlang"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/csicar/purescript-dotlang.git")
+    , devDependencies = toMap { test-unit = "^15.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { console = "^4.2.0"
+          , prelude = "^4.1.1"
+          , generics-rep = "^6.1.1"
+          , strings = "^4.0.1"
+          , colors = "^5.0.0"
+          }
+    }

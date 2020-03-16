@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "websockets-rpc"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-websockets-rpc" }
+        )
+    , devDependencies = toMap { psci-support = "~2.0.0" }
+    , dependencies =
+        toMap
+          { maps = "^2.1.2"
+          , console = "^2.0.0"
+          , argonaut = "^2.0.0"
+          , js-timers = "2.x"
+          , prelude = "~2.5.0"
+          , refs = "^2.0.0"
+          , transformers = "2.3.0"
+          , enums = "^2.0.1"
+          , websocket-moderate = "^0.0.1"
+          }
+    }

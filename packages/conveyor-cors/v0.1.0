@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "conveyor-cors"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-conveyor-cors" }
+        )
+    , devDependencies = toMap { node-process = "^4.0.0" }
+    , dependencies =
+        toMap
+          { maps = "^3.3.1"
+          , arrays = "^4.1.0"
+          , maybe = "^3.0.0"
+          , conveyor = "^0.3.2"
+          , prelude = "^3.0.0"
+          , eff = "^3.1.0"
+          , node-http = "^4.0.0"
+          , transformers = "^3.4.0"
+          , strings = "^3.2.1"
+          }
+    }

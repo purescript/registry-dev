@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "eulalie"
+    , license = Registry.License.`LGPL-3.0+`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "bodil", repo = "purescript-eulalie" })
+    , devDependencies = toMap { test-unit = "~10.0.0", quickcheck = "~3.0.0" }
+    , dependencies =
+        toMap
+          { control = "~2.0.0"
+          , maybe = "~2.0.0"
+          , monoid = "~2.0.0"
+          , foldable-traversable = "~2.0.0"
+          , generics = "~3.0.0"
+          , integers = "~2.0.0"
+          , globals = "~2.0.0"
+          , tuples = "~3.0.0"
+          , strings = "~2.0.1"
+          , sets = "~2.0.0"
+          }
+    }

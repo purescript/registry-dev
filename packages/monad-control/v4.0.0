@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "monad-control"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-monad-control" }
+        )
+    , devDependencies = toMap { psci-support = "3.0" }
+    , dependencies =
+        toMap
+          { console = "3.x"
+          , arrays = "4.x"
+          , aff = "^4.0.0"
+          , functors = "2.x"
+          , prelude = "3.x"
+          , freet = "^3.0.0"
+          , transformers = "3.x"
+          , identity = "3.x"
+          , lists = "4.x"
+          }
+    }

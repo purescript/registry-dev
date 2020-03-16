@@ -1,0 +1,30 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "specular"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/restaumatic/purescript-specular.git"
+        )
+    , devDependencies =
+        toMap
+          { console = "^4.1.0"
+          , spec = "^4.0.0"
+          , psci-support = "^4.0.0"
+          , foreign = "^5.0.0"
+          }
+    , dependencies =
+        toMap
+          { foreign-object = "^2.0.0"
+          , aff = "^5.0.1"
+          , debug = "^4.0.0"
+          , unsafe-reference = "^3.0.1"
+          , avar = "^3.0.0"
+          , typelevel-prelude = "^5.0.0"
+          , prelude = "^4.1.0"
+          , record = "^2.0.1"
+          , generics-rep = "^6.0.0"
+          , random = "^4.0.0"
+          }
+    }

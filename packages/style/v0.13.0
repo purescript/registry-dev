@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "style"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paulyoung", repo = "purescript-style" }
+        )
+    , devDependencies =
+        toMap { effect = "^2.0.0", console = "^4.1.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { newtype = "^3.0.0"
+          , variant = "^5.0.0"
+          , arrays = "^5.0.0"
+          , maybe = "^4.0.0"
+          , typelevel-prelude = "^3.0.0"
+          , prelude = "^4.0.0"
+          , integers = "^4.0.0"
+          , record = "^1.0.0"
+          , numbers = "^6.0.0"
+          , colors = "^5.0.0"
+          }
+    }

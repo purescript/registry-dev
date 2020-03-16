@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "typelevel-measures"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/csicar/purescript-typelevel-measures"
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.1"
+          , console = "^4.2.0"
+          , arrays = ">2.0.0"
+          , typelevel-prelude = "^5.0.0"
+          , prelude = "^4.1.1"
+          }
+    }

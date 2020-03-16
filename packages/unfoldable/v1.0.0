@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "unfoldable"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-unfoldable" }
+        )
+    , devDependencies = toMap { console = "^1.0.0", assert = "^1.0.0" }
+    , dependencies = toMap { tuples = "^1.0.0", partial = "^1.1.2" }
+    }

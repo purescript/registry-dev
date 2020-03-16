@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "zclipboard"
+    , license = Registry.License.`Apache 2.0`
+    , dependencies =
+        toMap
+          { eff = "^0.1.0"
+          , simple-dom = "6358414013eb3106d695e3e19488609f82d903e9"
+          }
+    }

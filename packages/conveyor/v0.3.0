@@ -1,0 +1,31 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "conveyor"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-conveyor" }
+        )
+    , devDependencies = toMap { node-process = "^4.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^3.0.0"
+          , maps = "^3.0.0"
+          , console = "^3.0.0"
+          , either = "^3.0.0"
+          , node-streams = "^3.1.0"
+          , media-types = "^3.0.0"
+          , foreign-generic = "^4.1.0"
+          , arrays = "^4.1.0"
+          , maybe = "^3.0.0"
+          , prelude = "^3.0.0"
+          , refs = "^3.0.0"
+          , eff = "^3.1.0"
+          , node-http = "^4.0.0"
+          , node-buffer = "^3.0.0"
+          , transformers = "^3.3.0"
+          , tuples = "^4.0.0"
+          , strings = "^3.1.0"
+          }
+    }

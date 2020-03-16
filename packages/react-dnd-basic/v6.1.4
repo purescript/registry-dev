@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "react-dnd-basic"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/lumihq/purescript-react-dnd-basic.git"
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { react-basic =
+              "^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0 || ^12.0.0 || ^13.0.0"
+          , promises = "^3.0.0"
+          , prelude = "^4.1.0"
+          , nullable = "^4.0.0"
+          }
+    }

@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-mongodb"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { debug = "^2.0.0", assert = "^2.0.0" }
+    , dependencies =
+        toMap
+          { string-parsers = "^2.0.0"
+          , argonaut = "^2.0.0"
+          , uri = "^2.0.0"
+          , aff = "^2.0.2"
+          , foldable-traversable = "^2.0.0"
+          , transformers = "^2.1.0"
+          , foreign = "^3.0.1"
+          , datetime = "^2.0.0"
+          }
+    }

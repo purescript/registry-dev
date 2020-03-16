@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "hash"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "rightfold", repo = "purescript-hash" })
+    , devDependencies =
+        toMap { console = "^1.0.0", assert = "^1.0.0", eff = "^1.0.0" }
+    , dependencies =
+        toMap
+          { arrays = "^1.0.0"
+          , foldable-traversable = "^1.0.0"
+          , generics = "^1.0.0"
+          , strings = "^1.0.0"
+          }
+    }

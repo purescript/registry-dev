@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sammy"
+    , license = Registry.License.MIT
+    , dependencies = toMap { sammy = "0.7.4", jquery = "*" }
+    }

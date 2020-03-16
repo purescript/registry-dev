@@ -1,0 +1,9 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "safelist"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "garyb", repo = "purescript-safelist" })
+    , dependencies = toMap { unsafe-coerce = "^3.0.0", lists = "^4.9.0" }
+    }

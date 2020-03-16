@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "zeroclipboard"
+    , license = Registry.License.`Apache 2.0`
+    , dependencies = toMap { simple-dom = "~0.0.2" }
+    }

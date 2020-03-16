@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "slides"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "soupi", repo = "purescript-slides" })
+    , dependencies =
+        toMap
+          { maybe = "*"
+          , halogen = "*"
+          , foldable-traversable = "*"
+          , prelude = "*"
+          }
+    }

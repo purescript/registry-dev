@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "data-algebrae"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/i-am-tom/purescript-data-algebrae.git"
+        )
+    , devDependencies =
+        toMap { debug = "^3.0.0", spec = "^2.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { maps = "^3.6.0"
+          , arrays = "^4.3.0"
+          , maybe = "^3.0.0"
+          , functors = "^2.2.0"
+          , prelude = "^3.1.1"
+          , generics-rep = "^5.4.0"
+          , spec-quickcheck = "^2.0.0"
+          , quickcheck = "^4.6.2"
+          , sets = "^3.1.0"
+          }
+    }

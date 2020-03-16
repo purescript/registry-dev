@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "difflist"
+    , devDependencies = toMap { quickcheck = "~0.5.2" }
+    , dependencies =
+        toMap
+          { arrays = "~0.3.7"
+          , monoid = "~0.2.0"
+          , foldable-traversable = "~0.3.1"
+          }
+    }

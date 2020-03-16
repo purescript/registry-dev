@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "suggest"
+    , devDependencies = toMap { test-unit = "^11.0.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , node-streams = "^3.0.0"
+          , node-process = "^4.0.0"
+          , refs = "^3.0.0"
+          , node-buffer = "^3.0.0"
+          , psa-utils = "^4.0.0"
+          }
+    }

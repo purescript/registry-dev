@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "test-unit"
+    , license = Registry.License.`LGPL-3.0+`
+    , dependencies = toMap { refs = "~0.2.0", transformers = "~0.6.1" }
+    }

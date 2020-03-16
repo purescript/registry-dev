@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "react"
+    , license = Registry.License.MIT
+    , dependencies = toMap { dom = "~0.1.0", react = "~0.11.1" }
+    }

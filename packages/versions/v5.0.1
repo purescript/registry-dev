@@ -1,0 +1,26 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "versions"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "hdgarrood", repo = "purescript-versions" }
+        )
+    , devDependencies = toMap { exceptions = "^4.0.0" }
+    , dependencies =
+        toMap
+          { control = "^4.0.0"
+          , console = "^4.0.0"
+          , either = "^4.0.0"
+          , maybe = "^4.0.0"
+          , parsing = "^5.0.1"
+          , foldable-traversable = "^4.0.0"
+          , integers = "^4.0.0"
+          , orders = "^4.0.0"
+          , partial = "^2.0.0"
+          , strings = "^4.0.0"
+          , lists = "^5.0.0"
+          , functions = "^4.0.0"
+          }
+    }

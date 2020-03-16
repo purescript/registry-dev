@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "options"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { console = "~0.1.0" }
+    , dependencies =
+        toMap
+          { maybe = "~0.3.2"
+          , monoid = "~0.3.0"
+          , unsafe-coerce = "~0.1.0"
+          , foreign = "~0.5.0"
+          }
+    }

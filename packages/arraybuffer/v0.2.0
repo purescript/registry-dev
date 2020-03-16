@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "arraybuffer"
+    , devDependencies = toMap { debug = "~0.1.2", quickcheck = "~0.12.0" }
+    , dependencies =
+        toMap
+          { arraybuffer-types = "~0.2.0"
+          , maybe = "~0.3.4"
+          , functions = "~0.1.0"
+          }
+    }

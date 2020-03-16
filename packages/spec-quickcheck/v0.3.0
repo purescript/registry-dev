@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "spec-quickcheck"
+    , dependencies =
+        toMap
+          { aff = "~0.11.0"
+          , spec = "https://github.com/owickstrom/purescript-spec.git#v0.6.0"
+          , random = "~0.2.0"
+          , quickcheck = "~0.6.0"
+          }
+    }

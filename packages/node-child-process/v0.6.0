@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-child-process"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-node"
+            , repo = "purescript-node-child-process"
+            }
+        )
+    , devDependencies = toMap { console = "~0.1.1" }
+    , dependencies =
+        toMap
+          { exceptions = "~0.3.4"
+          , maps = "~0.5.3"
+          , node-streams = "~0.4.0"
+          , unsafe-coerce = "~0.1.0"
+          , node-fs = "~0.10.0"
+          , posix-types = "~0.1.1"
+          , foreign = "~0.7.2"
+          , nullable = "~0.2.1"
+          , functions = "~0.1.0"
+          }
+    }

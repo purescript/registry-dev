@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "idiomatic-node-buffer"
+    , license = Registry.License.`AGPL-3.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "bklaric", repo = "purescript-idiomatic-node-buffer" }
+        )
+    , dependencies = toMap { effect = "^0.1.0", foreign = "^4.0.1" }
+    }

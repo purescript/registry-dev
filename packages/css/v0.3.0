@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "css"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { exceptions = "^0.3.0" }
+    , dependencies =
+        toMap
+          { these = "^0.3.0"
+          , profunctor = "^0.3.0"
+          , nonempty = "^0.1.1"
+          , transformers = "^0.6.1"
+          , strings = "^0.5.2"
+          }
+    }

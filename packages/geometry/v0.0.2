@@ -1,0 +1,8 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "geometry"
+    , devDependencies =
+        toMap { mocha = "~0.0.2", chai = "*", quickcheck = "~0.2.2" }
+    , dependencies = toMap { math = "~0.1.0" }
+    }

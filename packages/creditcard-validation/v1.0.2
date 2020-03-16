@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "creditcard-validation"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "ersocon", repo = "purescript-creditcard-validation" }
+        )
+    , devDependencies = toMap { spec = "^3.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , maybe = "^4.0.0"
+          , foldable-traversable = "^4.0.1"
+          , prelude = "^4.1.0"
+          , strings = "^4.0.0"
+          }
+    }

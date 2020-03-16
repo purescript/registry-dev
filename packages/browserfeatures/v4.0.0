@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "browserfeatures"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/slamdata/purescript-browserfeatures"
+        )
+    , devDependencies = toMap { console = "^3.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^3.0.0"
+          , maps = "^3.0.0"
+          , dom = "^4.0.0"
+          , prelude = "^3.0.0"
+          , refs = "^3.0.0"
+          }
+    }

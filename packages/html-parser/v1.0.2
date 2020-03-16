@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "html-parser"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "kindaro", repo = "purescript-html-parser" }
+        )
+    , dependencies =
+        toMap
+          { string-parsers = "~2.0.0"
+          , console = "^2.0.0"
+          , quickcheck = "~2.0.0"
+          }
+    }

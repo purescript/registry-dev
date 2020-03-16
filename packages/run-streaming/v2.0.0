@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "run-streaming"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "natefaubion", repo = "purescript-run-streaming" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^4.1.0"
+          , debug = "^4.0.0"
+          , assert = "^4.0.0"
+          , psci-support = "^4.0.0"
+          }
+    , dependencies = toMap { run = "^2.0.0", prelude = "^4.1.0" }
+    }

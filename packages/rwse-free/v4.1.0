@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "rwse-free"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "ethul", repo = "purescript-rwse-free" }
+        )
+    , devDependencies =
+        toMap { debug = "^3.0.0", functors = "^2.0.0", inject = "^4.0.0" }
+    , dependencies =
+        toMap { free = "^4.0.0", aff = "^4.0.0", transformers = "^3.0.0" }
+    }

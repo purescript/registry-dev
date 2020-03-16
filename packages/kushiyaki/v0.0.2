@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "kushiyaki"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/justinwoo/purescript-kushiyaki.git"
+        )
+    , devDependencies = toMap { assert = "#compiler/0.12" }
+    , dependencies =
+        toMap
+          { record-format = "kcsongor/purescript-record-format#compiler/0.12" }
+    }

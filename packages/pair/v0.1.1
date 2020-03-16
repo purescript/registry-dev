@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pair"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "parsonsmatt", repo = "purescript-pair" }
+        )
+    , devDependencies = toMap { quickcheck-laws = "^0.1.1" }
+    , dependencies =
+        toMap
+          { console = "^0.1.0"
+          , foldable-traversable = "^0.4.2"
+          , tuples = "^0.4.0"
+          , quickcheck = "^0.12.2"
+          }
+    }

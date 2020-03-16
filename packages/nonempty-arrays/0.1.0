@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "nonempty-arrays"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/stevejb71/purescript-nonempty-array"
+        )
+    , devDependencies = toMap { quickcheck = "~0.3" }
+    , dependencies = toMap { arrays = "~0.2", foldable-traversable = "~0.1" }
+    }

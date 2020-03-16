@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "uint"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "zaquest", repo = "purescript-uint" })
+    , devDependencies =
+        toMap
+          { quickcheck-laws =
+              "paulyoung/purescript-quickcheck-laws#compiler/0.12"
+          , psci-support = "^4.0.0"
+          }
+    , dependencies = toMap { maybe = "^4.0.0", math = "^2.1.1" }
+    }

@@ -1,0 +1,66 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "batteries"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "tfausak", repo = "purescript-batteries" }
+        )
+    , dependencies =
+        toMap
+          { free = "~1.0.0"
+          , proxy = "~1.0.0"
+          , exceptions = "~1.0.0"
+          , these = "~1.0.0"
+          , maps = "~1.1.0"
+          , control = "~1.0.0"
+          , console = "~1.0.0"
+          , either = "~1.0.0"
+          , profunctor = "~1.0.0"
+          , arrays = "~1.0.0"
+          , maybe = "~1.0.0"
+          , exists = "~1.0.0"
+          , distributive = "~1.0.0"
+          , unfoldable = "~1.0.0"
+          , invariant = "~1.0.0"
+          , lazy = "~1.0.0"
+          , monoid = "~1.0.0"
+          , aff = "~1.0.0"
+          , foldable-traversable = "~1.0.0"
+          , debug = "~1.0.0"
+          , tailrec = "~1.0.0"
+          , lens = "~1.0.0"
+          , prelude = "~1.0.1"
+          , inject = "~1.0.0"
+          , st = "~1.0.0"
+          , bifunctors = "~1.0.0"
+          , contravariant = "~1.0.0"
+          , assert = "~1.0.0"
+          , generics = "~1.0.1"
+          , unsafe-coerce = "~1.0.0"
+          , refs = "~1.0.0"
+          , integers = "~1.0.0"
+          , eff = "~1.0.0"
+          , orders = "~1.0.0"
+          , const = "~1.0.0"
+          , transformers = "~1.0.0"
+          , globals = "~1.0.0"
+          , math = "~2.0.0"
+          , enums = "~1.0.0"
+          , catenable-lists = "~1.0.1"
+          , validation = "~1.0.0"
+          , random = "~1.0.0"
+          , parallel = "~1.0.0"
+          , tuples = "~1.0.0"
+          , semirings = "~1.0.0"
+          , strings = "~1.0.0"
+          , identity = "~1.0.0"
+          , foreign = "~1.0.0"
+          , sets = "~1.0.0"
+          , lists = "~1.0.1"
+          , nullable = "~1.0.1"
+          , datetime = "~1.0.0"
+          , functions = "~1.0.0"
+          }
+    }

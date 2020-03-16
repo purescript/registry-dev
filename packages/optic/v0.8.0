@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "optics"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap
+          { lens = "^0.8.0"
+          , transformers = "^0.6.1"
+          , enums = "^0.7.0"
+          , lists = "^0.7.2"
+          }
+    }

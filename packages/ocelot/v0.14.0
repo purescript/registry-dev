@@ -1,0 +1,28 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "ocelot"
+    , devDependencies =
+        toMap
+          { email-validate = "^3.0.0"
+          , argonaut = "^4.0.0"
+          , js-timers = "^4.0.0"
+          , debug = "^4.0.0"
+          , affjax = "^6.0.0"
+          , test-unit = "^14.0.0"
+          , numbers = "^6.0.0"
+          , halogen-storybook = "^0.3.0"
+          }
+    , dependencies =
+        toMap
+          { polyform = "^0.7.0"
+          , remotedata = "^4.0.0"
+          , read = "^1.0.1"
+          , halogen-renderless = "^0.0.3"
+          , formatters = "^4.0.0"
+          , svg-parser-halogen = "~0.3.0"
+          , halogen-select = "^4.0.0"
+          , aff-promise = "^2.0.0"
+          , fuzzy = "^0.2.1"
+          }
+    }

@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "st-lazy-ref"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "matthewleon", repo = "purescript-st-lazy-ref" }
+        )
+    , devDependencies =
+        toMap
+          { console = "^3.0.0"
+          , arrays = "^4.0.1"
+          , console-browser-specific = "^2.0.0"
+          }
+    , dependencies =
+        toMap
+          { newtype = "^2.0.0"
+          , prelude = "^3.0.0"
+          , st = "^3.0.0"
+          , eff = "^3.1.0"
+          }
+    }

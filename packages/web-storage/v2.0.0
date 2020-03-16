@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "web-storage"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-web", repo = "purescript-web-storage" }
+        )
+    , dependencies = toMap { web-events = "^1.0.0", nullable = "^4.0.0" }
+    }

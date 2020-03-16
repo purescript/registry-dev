@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "indexed-nonempty"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/colehaus/purescript-indexed-nonempty.git"
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies = toMap { prelude = "^4.1.0", generics-rep = "^6.1.0" }
+    }

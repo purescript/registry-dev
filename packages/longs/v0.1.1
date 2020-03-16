@@ -1,0 +1,28 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "longs"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/zapph/purescript-longs.git")
+    , devDependencies =
+        toMap
+          { quickcheck-laws = "^4.0.0"
+          , debug = "^4.0.0"
+          , assert = "^4.1.0"
+          , spec = "^3.1.0"
+          , psci-support = "^4.0.0"
+          , spec-quickcheck = "^3.1.0"
+          , quickcheck = "^5.0.0"
+          }
+    , dependencies =
+        toMap
+          { effect = "^2.0.1"
+          , console = "^4.2.0"
+          , prelude = "^4.1.0"
+          , strings = "^4.0.1"
+          , foreign = "^5.0.0"
+          , nullable = "^4.1.1"
+          , functions = "^4.0.0"
+          }
+    }

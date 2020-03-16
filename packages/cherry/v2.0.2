@@ -1,0 +1,32 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "cherry"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-cherry" }
+        )
+    , devDependencies =
+        toMap
+          { pure-style = "^1.1.0"
+          , aff = "^3.1.0"
+          , rout = "^2.1.1"
+          , psci-support = "^3.0.0"
+          , tuples = "^4.1.0"
+          }
+    , dependencies =
+        toMap
+          { vom = "^1.1.2"
+          , console = "^3.0.0"
+          , maybe = "^3.0.0"
+          , simple-emitter = "^0.1.2"
+          , dom = "^4.8.0"
+          , foldable-traversable = "^3.4.0"
+          , prelude = "^3.1.0"
+          , refs = "^3.0.0"
+          , eff = "^3.1.0"
+          , foreign = "^4.0.1"
+          , lists = "^4.9.0"
+          }
+    }

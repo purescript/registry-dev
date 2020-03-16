@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "d3"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap
+          { d3 = "^3.4.9"
+          , easy-ffi = "^1.0.2"
+          , foreign = "^0.7.0"
+          , datetime = "^0.9.0"
+          }
+    }

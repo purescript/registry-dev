@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "simple-repl"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Thimoteus", repo = "purescript-simple-repl" }
+        )
+    , dependencies =
+        toMap { console = "^0.1.0", aff = "^0.16.1", node-readline = "^0.5.0" }
+    }

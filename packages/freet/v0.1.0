@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "freet"
+    , dependencies =
+        toMap
+          { control = "~0.3.0"
+          , console = "^0.1.0"
+          , exists = "~0.2.0"
+          , tailrec = "~0.3.0"
+          , transformers = "~0.6.1"
+          }
+    }

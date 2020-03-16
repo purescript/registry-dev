@@ -1,0 +1,31 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "flame"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/easafe/purescript-flame.git")
+    , devDependencies =
+        toMap
+          { debug = "^4.0.0"
+          , affjax = "^7.0.0"
+          , integers = "^4.0.0"
+          , argonaut-codecs = "^6.0.2"
+          , test-unit = "^14.0.0"
+          , psci-support = "^4.0.0"
+          , random = "^4.0.0"
+          }
+    , dependencies =
+        toMap
+          { effect = "^2.0.1"
+          , console = "^4.2.0"
+          , web-events = "^2.0.0"
+          , web-html = "^2.0.0"
+          , foreign-object = "^2.0.1"
+          , aff = "^5.1.0"
+          , prelude = "^4.1.0"
+          , web-dom = "^2.0.0"
+          , signal = "^10.1.0"
+          , nullable = "^4.1.1"
+          }
+    }

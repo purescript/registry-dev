@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "metajelo-web"
+    , license = Registry.License.BSD-3-Clause-Attribution
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "labordynamicsinstitute", repo = "metajelo-web" }
+        )
+    , dependencies =
+        toMap
+          { email-validate = "^5.0.0"
+          , profunctor = "^4.0.0"
+          , url-validator = "^1.1.0"
+          , foreign-object = "^2.0.2"
+          , prelude = "^4.1.1"
+          , stringutils = "^0.0.8"
+          , concur-react = "^0.3.8"
+          , metajelo = "^3.1.0"
+          }
+    }

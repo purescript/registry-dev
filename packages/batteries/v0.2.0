@@ -1,0 +1,66 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "batteries"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "tfausak", repo = "purescript-batteries" }
+        )
+    , dependencies =
+        toMap
+          { coproducts = "~0.4.0"
+          , free = "~0.9.0"
+          , proxy = "~0.1.0"
+          , exceptions = "~0.3.0"
+          , these = "~0.3.0"
+          , maps = "~0.5.2"
+          , control = "~0.3.1"
+          , console = "~0.1.1"
+          , either = "~0.2.3"
+          , profunctor = "~0.3.1"
+          , arrows = "~0.6.1"
+          , arrays = "~0.4.2"
+          , maybe = "~0.3.4"
+          , exists = "~0.2.0"
+          , distributive = "~0.5.1"
+          , unfoldable = "~0.4.1"
+          , invariant = "~0.3.0"
+          , lazy = "~0.4.0"
+          , monoid = "~0.3.1"
+          , aff = "~0.13.0"
+          , foldable-traversable = "~0.4.0"
+          , tailrec = "~0.3.1"
+          , sequences = "~0.4.1"
+          , prelude = "~0.1.3"
+          , inject = "~0.3.0"
+          , st = "~0.1.1"
+          , bifunctors = "~0.4.0"
+          , contravariant = "~0.2.2"
+          , assert = "~0.1.1"
+          , generics = "~0.6.2"
+          , unsafe-coerce = "~0.1.0"
+          , refs = "~0.2.0"
+          , integers = "~0.2.1"
+          , eff = "~0.1.1"
+          , const = "~0.5.0"
+          , transformers = "~0.8.1"
+          , globals = "~0.2.1"
+          , math = "~0.2.0"
+          , enums = "~0.7.0"
+          , catenable-lists = "~0.1.0"
+          , validation = "~0.2.1"
+          , random = "~0.2.2"
+          , parallel = "~0.5.1"
+          , tuples = "~0.4.0"
+          , semirings = "~0.2.0"
+          , strings = "~0.7.0"
+          , identity = "~0.4.0"
+          , foreign = "~0.7.0"
+          , sets = "~0.5.1"
+          , lists = "~0.7.6"
+          , nullable = "~0.2.1"
+          , datetime = "~0.9.0"
+          , functions = "~0.1.0"
+          }
+    }

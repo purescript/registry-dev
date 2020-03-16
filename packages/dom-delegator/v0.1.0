@@ -1,0 +1,8 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "dom-delegator"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { timers = "~0.0.8" }
+    , dependencies = toMap { dom = "~0.1.1" }
+    }

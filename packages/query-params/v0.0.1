@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "query-params"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "dgendill", repo = "purescript-query-params" }
+        )
+    , devDependencies =
+        toMap
+          { test-unit = "10.1.0", psci-support = "2.0.0", quickcheck = "3.1.1" }
+    , dependencies =
+        toMap
+          { free = "3.4.0"
+          , console = "2.0.0"
+          , prelude = "2.5.0"
+          , functions = "2.0.0"
+          }
+    }

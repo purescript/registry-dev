@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "zclipboard"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-zclipboard" }
+        )
+    , dependencies = toMap { dom = "^2.0.0", eff = "^1.0.0" }
+    }

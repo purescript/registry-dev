@@ -1,0 +1,8 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "tuples"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { math = "*", quickcheck = "*" }
+    , dependencies = toMap { arrays = "*", monoid = "*" }
+    }

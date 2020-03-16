@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pray"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { maybe = "~0.2.1", tuples = "~0.2.3" }
+    , dependencies =
+        toMap
+          { free = "~0.1.6"
+          , arrays = "~0.3.0"
+          , exists = "~0.1.0"
+          , dom = "~0.1.1"
+          , transformers = "~0.3.2"
+          , datetime = "~0.1.2"
+          }
+    }

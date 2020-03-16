@@ -1,0 +1,8 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "unfoldable"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap { arrays = "~0.3.0", maybe = "~0.2.1", tuples = "~0.3.0" }
+    }

@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "undefinable"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "ethul", repo = "purescript-undefinable" }
+        )
+    , devDependencies = toMap { console = "^1.0.0" }
+    , dependencies = toMap { maybe = "^1.0.0", functions = "^1.0.0" }
+    }

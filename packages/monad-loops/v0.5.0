@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "monad-loops"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "mlang", repo = "purescript-monad-loops" }
+        )
+    , devDependencies =
+        toMap
+          { assert = "^4.0.0"
+          , refs = "^4.1.0"
+          , transformers = "^4.1.0"
+          , psci-support = "^4.0.0"
+          }
+    , dependencies =
+        toMap
+          { maybe = "^4.0.0"
+          , tailrec = "^4.0.0"
+          , prelude = "^4.0.1"
+          , tuples = "^5.0.0"
+          , lists = "^5.0.0"
+          }
+    }

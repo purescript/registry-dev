@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "ace-halogen"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-ace-halogen" }
+        )
+    , dependencies =
+        toMap
+          { now = "^2.0.0"
+          , halogen = "^1.0.0"
+          , ace = "^3.0.0"
+          , refs = "^2.0.0"
+          , random = "^2.0.0"
+          }
+    }

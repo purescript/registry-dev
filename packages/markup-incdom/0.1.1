@@ -1,0 +1,7 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "markup-incdom"
+    , dependencies =
+        toMap { markup = "~0.1.0", dom = "~0.2.21", eff-functions = "~0.1.1" }
+    }

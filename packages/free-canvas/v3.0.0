@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "free-canvas"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-free-canvas" }
+        )
+    , dependencies = toMap { freet = "^3.0.0", canvas = "^3.0.0" }
+    }

@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "tweetnacl"
+    , license = Registry.License.`CC0-1.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "AlexaDeWit", repo = "purescript-tweetnacl" }
+        )
+    , devDependencies = toMap { assert = "^4.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , effect = "^2.0.0"
+          , arraybuffer-types = "^2.0.0"
+          , either = "^4.0.0"
+          , maybe = "^4.0.0"
+          , text-encoding = "^0.0.8"
+          , prelude = "^4.0.0"
+          , unsafe-coerce = "^4.0.0"
+          , nullable = "^4.0.0"
+          , arraybuffer = "^8.0.0"
+          }
+    }

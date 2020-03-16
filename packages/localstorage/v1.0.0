@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "localstorage"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "eskimor", repo = "purescript-localstorage" }
+        )
+    , devDependencies = toMap { console = "^1.0.0" }
+    , dependencies =
+        toMap
+          { maybe = "~1.0.0"
+          , argonaut-core = "~1.0.0"
+          , integers = "~1.0.0"
+          , argonaut-codecs = "^1.0.0"
+          , eff = "~1.0.0"
+          , partial = "~1.1.0"
+          }
+    }

@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "jtable"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-jtable" }
+        )
+    , devDependencies = toMap { strongcheck = "^2.0.0" }
+    , dependencies =
+        toMap
+          { argonaut-traversals = "^2.0.0"
+          , halogen = "^0.12.0"
+          , const = "^2.0.0"
+          , js-date = "^3.0.0"
+          , datetime = "^2.0.0"
+          }
+    }

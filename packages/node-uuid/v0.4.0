@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-uuid"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap
+          { either = "~0.1.2"
+          , argonaut = "~0.1.0"
+          , node-uuid = "~1.4.1"
+          , foreign = "~0.2.0"
+          }
+    }

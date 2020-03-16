@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "quickcheck-laws"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "garyb", repo = "purescript-quickcheck-laws" }
+        )
+    , dependencies = toMap { proxy = "^1.0.0", quickcheck = "^1.0.0" }
+    }

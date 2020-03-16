@@ -1,0 +1,30 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "react-spaces"
+    , license = Registry.License.`MPL-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "coot", repo = "purescript-react-spaces" }
+        )
+    , devDependencies =
+        toMap
+          { react-dom = "^4.0.0"
+          , react-hocs = "^0.7.1"
+          , dom = "^4.7.0"
+          , react = "^4.0.0"
+          , psci-support = "^3.0.0"
+          , foreign = "^4.0.1"
+          }
+    , dependencies =
+        toMap
+          { free = "^4.1.0"
+          , newtype = "^2.0.0"
+          , console = "^3.0.0"
+          , exists = "^3.0.0"
+          , react = "^4.0.0"
+          , prelude = "^3.1.0"
+          , record = "^0.2.0"
+          , transformers = "^3.4.0"
+          }
+    }

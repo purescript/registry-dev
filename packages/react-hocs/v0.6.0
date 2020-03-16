@@ -1,0 +1,27 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "react-hocs"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "coot", repo = "purescript-react-hocs" }
+        )
+    , devDependencies =
+        toMap
+          { enzyme = "^0.1.1"
+          , debug = "^3.0.0"
+          , karma-test-unit = "^1.0.1"
+          , test-unit = "^11.0.0"
+          , psci-support = "^3.0.0"
+          }
+    , dependencies =
+        toMap
+          { proxy = "^2.0.0"
+          , console = "^3.0.0"
+          , profunctor-lenses = "^3.2.0"
+          , react = "^4.0.0"
+          , prelude = "^3.0.0"
+          , generics = "^4.0.0"
+          }
+    }

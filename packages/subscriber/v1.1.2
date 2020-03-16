@@ -1,0 +1,31 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "subscriber"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "eskimor", repo = "purescript-subscriber" }
+        )
+    , devDependencies = toMap { psci-support = "^1.0.0" }
+    , dependencies =
+        toMap
+          { maps = "^1.0.0"
+          , console = "^1.0.0"
+          , maybe = "^1.0.0"
+          , var = "^0.2.0"
+          , profunctor-lenses = "^1.0.0"
+          , dom = "1.1.0 - 3.0.0"
+          , websocket-simple = "^0.4.0"
+          , prelude = "^1.0.0"
+          , bifunctors = "^1.0.0"
+          , generics = "^1.0.0"
+          , refs = "^1.0.0"
+          , servant-support = "1.0.3 - 5.0.0"
+          , tuples = "^1.0.0"
+          , partial = "^1.1.2"
+          , signal = "^6.0"
+          , argonaut-generic-codecs = "^3.0.0"
+          , eff-functions = "^1.0.0"
+          }
+    }

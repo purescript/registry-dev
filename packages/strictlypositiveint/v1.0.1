@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "strictlypositiveint"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "jamieyung", repo = "purescript-strictlypositiveint" }
+        )
+    , dependencies = toMap { prelude = "4.1.0" }
+    }

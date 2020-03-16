@@ -1,0 +1,29 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "unordered-collections"
+    , license = Registry.License.`MPL-2.0`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/fehrenbach/purescript-unordered-collections.git"
+        )
+    , devDependencies =
+        toMap
+          { ordered-collections = "^1.6.1"
+          , foreign-object = "^2.0.2"
+          , minibench = "^2.0.0"
+          , st = "v4.0.0"
+          , psci-support = "^4.0.0"
+          , quickcheck = "^6.1.0"
+          }
+    , dependencies =
+        toMap
+          { prelude = "^4.1.1"
+          , integers = "^4.0.0"
+          , record = "^2.0.1"
+          , enums = "^4.0.1"
+          , tuples = "^5.1.0"
+          , lists = "^5.4.1"
+          , functions = "^4.0.0"
+          }
+    }

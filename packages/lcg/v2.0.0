@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "lcg"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "purescript", repo = "purescript-lcg" })
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , maybe = "^4.0.0"
+          , prelude = "^4.0.0"
+          , integers = "^4.0.0"
+          , math = "^2.1.1"
+          , random = "^4.0.0"
+          , partial = "^2.0.0"
+          }
+    }

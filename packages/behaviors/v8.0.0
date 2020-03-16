@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "behaviors"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-behaviors" }
+        )
+    , devDependencies =
+        toMap { integers = "^4.0.0", drawing = "^4.0.0", math = "^2.1.1" }
+    , dependencies =
+        toMap
+          { event = "^1.2.4"
+          , effect = "^2.0.1"
+          , ordered-collections = "^1.6.1"
+          , filterable = "^3.0.2"
+          , web-events = "^2.0.1"
+          , web-html = "^2.2.2"
+          , web-uievents = "^2.0.0"
+          , prelude = "^4.1.1"
+          , nullable = "^4.1.1"
+          }
+    }

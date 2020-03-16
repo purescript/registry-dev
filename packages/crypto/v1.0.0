@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "crypto"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-crypto" }
+        )
+    , devDependencies = toMap { assert = "^4.0.0" }
+    , dependencies = toMap { node-buffer = "^5.0.0" }
+    }

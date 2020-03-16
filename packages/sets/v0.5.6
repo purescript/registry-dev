@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sets"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-sets" }
+        )
+    , devDependencies = toMap { console = "~0.1.1", assert = "~0.1.1" }
+    , dependencies = toMap { maps = "^0.5.0", tailrec = "^0.3.1" }
+    }

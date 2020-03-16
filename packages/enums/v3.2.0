@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "enums"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-enums" }
+        )
+    , devDependencies = toMap { console = "^3.0.0", assert = "^3.0.0" }
+    , dependencies =
+        toMap { either = "^3.0.0", unfoldable = "^3.0.0", strings = "^3.0.0" }
+    }

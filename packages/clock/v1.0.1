@@ -1,0 +1,9 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "clock"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "jacereda", repo = "purescript-clock" })
+    , devDependencies = toMap { console = "~3.0.0" }
+    }

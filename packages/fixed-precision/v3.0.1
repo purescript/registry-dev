@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "fixed-precision"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/lumihq/purescript-fixed-precision.git"
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap { bigints = "^4.0.0", maybe = "^4.0.0", integers = "^4.0.0" }
+    }

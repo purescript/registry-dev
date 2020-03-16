@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-openurl"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/jacereda/purescript-node-openurl.git"
+        )
+    , dependencies =
+        toMap
+          { node-process = "^6.0.0"
+          , node-child-process = "^5.0.0"
+          , prelude = "^4.0.1"
+          }
+    }

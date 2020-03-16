@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "thermite"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-thermite" })
+    , dependencies =
+        toMap
+          { react-dom = "^1.0.0"
+          , profunctor-lenses = "^1.0.0"
+          , dom = "^1.0.0"
+          , coroutines = "^2.0.0"
+          , aff = "^1.0.0"
+          , react = "^1.0.0"
+          , freet = "^1.0.0"
+          }
+    }

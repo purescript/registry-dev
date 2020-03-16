@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "redux-utils"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "osener", repo = "purescript-redux-utils" }
+        )
+    , dependencies =
+        toMap
+          { console = "^0.1.0"
+          , aff = "^0.16.1"
+          , eff = "^0.1.2"
+          , transformers = "^0.8.4"
+          , tuples = "^0.4.0"
+          , foreign = "^0.7.2"
+          , nullable = "^0.2.1"
+          , functions = "^0.1.0"
+          }
+    }

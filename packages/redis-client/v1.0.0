@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "redis-client"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/paluh/purescript-redis-client.git"
+        )
+    , devDependencies = toMap { test-unit = "^14.0.0", node-buffer = "^5.0.0" }
+    , dependencies =
+        toMap
+          { bytestrings = "^7.0.0"
+          , either = "^4.0.0"
+          , arrays = "^5.0.0"
+          , maybe = "^4.0.0"
+          , aff = "^5.0.1"
+          , prelude = "^4.1.0"
+          , transformers = "^4.1.0"
+          , int-53 = "^4.0.0"
+          , nullable = "^4.0.0"
+          }
+    }

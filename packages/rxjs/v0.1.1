@@ -1,0 +1,31 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "rxjs"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "jasonzoladz", repo = "purescript-rxjs" }
+        )
+    , devDependencies =
+        toMap
+          { debug = "^2.0.0"
+          , test-unit = "^10.0.1"
+          , psci-support = "^2.0.0"
+          , quickcheck = "^3.1.1"
+          }
+    , dependencies =
+        toMap
+          { exceptions = "^2.0.0"
+          , maps = "^2.1.2"
+          , console = "^2.0.0"
+          , arrays = "^3.1.0"
+          , dom = "^3.3.1"
+          , aff = "^2.0.2"
+          , prelude = "^2.1.0"
+          , st = "^2.0.0"
+          , quickcheck = "^3.1.1"
+          , eff-functions = "^2.0.0"
+          , functions = "^2.0.0"
+          }
+    }

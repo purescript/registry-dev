@@ -1,0 +1,3 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{ name = "proxy", license = Registry.License.MIT }

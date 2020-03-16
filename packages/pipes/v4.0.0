@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pipes"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "felixSchl", repo = "purescript-pipes" }
+        )
+    , dependencies =
+        toMap
+          { monoid = "^3.0.0"
+          , tailrec = "^3.0.0"
+          , prelude = "^3.0.0"
+          , mmorph = "^3.0.0"
+          , transformers = "^3.0.0"
+          , tuples = "^4.0.0"
+          , lists = "^4.0.0"
+          }
+    }

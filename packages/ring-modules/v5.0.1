@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "ring-modules"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/f-o-a-m/purescript-ring-modules.git"
+        )
+    , dependencies = toMap { prelude = "^4.0.0" }
+    }

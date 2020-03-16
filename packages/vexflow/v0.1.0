@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "vexflow"
+    , license = Registry.License.`GPL-3.0`
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/MitchStevens/purescript-vexflow")
+    , dependencies =
+        toMap
+          { free = "^5.1.0"
+          , effect = "2.0.0"
+          , console = "4.2.0"
+          , read = "1.0.1"
+          , arrays = "5.1.0"
+          , typelevel = "4.0.0"
+          , rationals = "5.0.0"
+          , prelude = "^4.0.0"
+          , simple-json = "4.3.0"
+          , partial = "2.0.0"
+          , sized-vectors = "3.1.0"
+          , vexflow = "^1.2.87"
+          }
+    }

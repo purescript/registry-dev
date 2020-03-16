@@ -1,0 +1,42 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "quickcheck"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-quickcheck" }
+        )
+    , devDependencies = toMap { assert = "^4.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , newtype = "^3.0.0"
+          , effect = "^2.0.0"
+          , control = "^4.0.0"
+          , console = "^4.0.0"
+          , either = "^4.0.0"
+          , arrays = "^5.0.0"
+          , maybe = "^4.0.0"
+          , unfoldable = "^4.0.0"
+          , lcg = "^2.0.0"
+          , lazy = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , tailrec = "^4.0.0"
+          , gen = "^2.0.0"
+          , prelude = "^4.0.0"
+          , st = "^4.0.0"
+          , nonempty = "^5.0.0"
+          , integers = "^4.0.0"
+          , record = "^1.0.0"
+          , transformers = "^4.0.0"
+          , generics-rep = "^6.0.0"
+          , math = "^2.1.1"
+          , enums = "^4.0.0"
+          , tuples = "^5.0.0"
+          , partial = "^2.0.0"
+          , strings = "^4.0.0"
+          , identity = "^4.0.0"
+          , lists = "^5.0.0"
+          }
+    }

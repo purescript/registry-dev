@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "zeromq"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-zeromq" }
+        )
+    , devDependencies =
+        toMap { uuid = "^6.0.0", encoding = "^0.0.5", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { argonaut = "^6.0.0"
+          , aff = "^5.1.1"
+          , prelude = "^4.1.1"
+          , node-buffer = "6.0.0"
+          , generics-rep = "^6.1.1"
+          , foreign = "^5.0.0"
+          , nullable = "^4.1.1"
+          }
+    }

@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "value-of-information"
+    , license = Registry.License.`AGPL-3.0`
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/colehaus/purescript-value-of-information.git"
+        )
+    , devDependencies =
+        toMap
+          { spec = "^2.0.0"
+          , psci-support = "^3.0.0"
+          , spec-quickcheck = "^2.0.0"
+          }
+    , dependencies =
+        toMap
+          { probability = "^4.0.2"
+          , tagged = "^2.0.0"
+          , prelude = "^3.2.0"
+          , nonempty = "^4.2.0"
+          , orders = "^3.0.0"
+          , sets = "^3.1.0"
+          }
+    }

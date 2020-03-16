@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "incremental-functions"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-incremental-functions" }
+        )
+    , devDependencies =
+        toMap { console = "^4.1.0", assert = "^4.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { ordered-collections = "^1.0.0"
+          , these = "^4.0.0"
+          , filterable = "^3.0.0"
+          , foldable-traversable = "^4.0.0"
+          , typelevel-prelude = "^3.0.0"
+          , record = "^1.0.0"
+          , enums = "^4.0.0"
+          , tuples = "^5.0.0"
+          }
+    }

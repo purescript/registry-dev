@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "hareactive"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/funkia/purescript-hareactive.git"
+        )
+    , devDependencies =
+        toMap { refs = "^4.1.0", spec = "^3.1.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.1"
+          , maybe = "^4.0.1"
+          , web-uievents = "^2.0.0"
+          , aff = "^5.1.1"
+          , prelude = "^4.1.1"
+          , web-dom = "^2.0.0"
+          , partial = "^2.0.1"
+          , functions = "^4.0.0"
+          }
+    }

@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "routing-bob"
+    , license = Registry.License.BSD
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paluh", repo = "purescript-routing-bob" }
+        )
+    , devDependencies =
+        toMap { debug = "1.0.0", unsafe-coerce = "1.0.0", test-unit = "7.0.0" }
+    , dependencies =
+        toMap
+          { unicode = "1.0.0"
+          , maps = "1.0.0"
+          , boomerang = "^1.1.1"
+          , uri = "git://github.com/paluh/purescript-uri.git#master"
+          , prelude = "1.0.1"
+          , nonempty = "^1.0.0"
+          , partial = "^1.0.0"
+          }
+    }

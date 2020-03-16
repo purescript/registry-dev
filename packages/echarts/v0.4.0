@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "echarts"
+    , license = Registry.License.MIT
+    , devDependencies =
+        toMap { console = "^0.1.1", random = "^0.2.0", signal = "^4.1.0" }
+    , dependencies =
+        toMap
+          { echarts = "~2.1.10"
+          , argonaut-core = "^0.2.0"
+          , dom = "^0.2.6"
+          , argonaut-codecs = "^0.2.0"
+          , globals = "^0.2.0"
+          , datetime = "^0.9.0"
+          }
+    }

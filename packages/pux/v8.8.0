@@ -1,0 +1,26 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pux"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "alexmingoia", repo = "purescript-pux" }
+        )
+    , devDependencies = toMap { argonaut = "^2.0.0", affjax = "^3.0.0" }
+    , dependencies =
+        toMap
+          { maps = "^2.0.0"
+          , profunctor = "^2.0.0"
+          , css = "^2.0.0"
+          , dom = "^3.8.0"
+          , smolder = "^6.0.0"
+          , aff = "^2.0.1"
+          , react = "^2.0.0"
+          , eff = "^2.0.0"
+          , globals = "^2.0.0"
+          , signal = "^8.0.0"
+          , lists = "^3.1.0"
+          , functions = "^2.0.0"
+          }
+    }

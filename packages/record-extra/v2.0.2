@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "record-extra"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-record-extra" }
+        )
+    , devDependencies = toMap { test-unit = "^14.0.0" }
+    , dependencies =
+        toMap
+          { arrays = "^5.2.0"
+          , typelevel-prelude = "^3.0.0"
+          , record = "^1.0.0"
+          , lists = "^5.0.0"
+          , functions = "^4.0.0"
+          }
+    }

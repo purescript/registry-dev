@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "spec-discovery"
+    , license = Registry.License.`MPL-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "owickstrom", repo = "purescript-spec-discovery" }
+        )
+    , dependencies =
+        toMap
+          { arrays = "^2.0.0"
+          , prelude = "^2.0.0"
+          , eff = "^2.0.0"
+          , spec = "^0.9.1"
+          }
+    }

@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "infinite-list"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "robertmassaioli", repo = "purescript-infinite-list" }
+        )
+    , devDependencies =
+        toMap { console = "^2.0.0", spec = "^0.10.0", psci-support = "^2.0.0" }
+    , dependencies =
+        toMap
+          { filterable = "^1.0.0"
+          , arrays = "^3.0.0"
+          , partial = "^1.2.0"
+          , lists = "^3.0.0"
+          }
+    }

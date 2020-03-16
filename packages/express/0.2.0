@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "express"
+    , license = Registry.License.BSD-3-Clause
+    , devDependencies = toMap { node-fs = "0.4.x" }
+    , dependencies =
+        toMap
+          { exceptions = "0.2.x"
+          , control = "0.2.x"
+          , either = "0.1.x"
+          , arrays = "0.3.x"
+          , maybe = "0.2.x"
+          , parsing = "0.3.x"
+          , foldable-traversable = "0.3.x"
+          , easy-ffi = "1.0.x"
+          , transformers = "0.5.x"
+          , strings = "0.4.x"
+          , foreign = "0.4.x"
+          , monad-eff = "0.1.0"
+          }
+    }

@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "halogen-storybook"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "rnons", repo = "purescript-halogen-storybook" }
+        )
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies = toMap { halogen = "^3.0.1", routing = "^6.1.2" }
+    }

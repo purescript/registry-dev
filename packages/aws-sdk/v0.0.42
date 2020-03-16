@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "aws-sdk"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/plippe/purescript-aws-sdk.git")
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , foreign-generic = "^5.0.1"
+          , aff = "^4.0.2"
+          , prelude = "^3.1.1"
+          }
+    }

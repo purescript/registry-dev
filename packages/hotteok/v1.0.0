@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "hotteok"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "justinwoo", repo = "purescript-hotteok" }
+        )
+    , devDependencies = toMap { test-unit = "^14.0.0" }
+    , dependencies =
+        toMap
+          { typelevel-prelude = "^3.0.0"
+          , prelude = "^4.1.0"
+          , foreign = "^5.0.0"
+          }
+    }

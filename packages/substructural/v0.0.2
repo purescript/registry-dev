@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "substructural"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "rightfold", repo = "purescript-substructural" }
+        )
+    , dependencies =
+        toMap
+          { arrays = "^4.1.1"
+          , prelude = "^3.0.0"
+          , st = "^3.0.0"
+          , eff = "^3.1.0"
+          }
+    }

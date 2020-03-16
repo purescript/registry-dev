@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "int-53"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "rgrempel", repo = "purescript-int-53" }
+        )
+    , devDependencies =
+        toMap { quickcheck-laws = "~0.1.1", test-unit = "~4.1.0" }
+    , dependencies =
+        toMap
+          { maybe = "~0.3.5"
+          , prelude = "~0.1.5"
+          , integers = "~0.2.1"
+          , globals = "~0.2.2"
+          , math = "~0.2.0"
+          , strings = "~0.7.1"
+          }
+    }

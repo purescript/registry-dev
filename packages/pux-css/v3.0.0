@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pux-css"
+    , license = Registry.License.`Apache-2.0`
+    , dependencies =
+        toMap
+          { css =
+              "https://github.com/chexxor/purescript-css.git#d7a98aac25226852fe24e67b6c5b5976d256c4c1"
+          , pux =
+              "https://github.com/chexxor/purescript-pux.git#6d1d846c5ab65a1e845437df2bffcb9038cc24cc"
+          }
+    }

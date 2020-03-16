@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "boolean-eq"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Risto-Stevcev", repo = "purescript-boolean-eq" }
+        )
+    , devDependencies =
+        toMap
+          { quickcheck-laws = "^3.0.0"
+          , spec = "^1.0.0"
+          , psci-support = "^3.0.0"
+          , spec-quickcheck = "^1.0.0"
+          }
+    , dependencies = toMap { console = "^3.0.0", prelude = "^3.1.0" }
+    }

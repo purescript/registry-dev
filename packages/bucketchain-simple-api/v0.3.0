@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "bucketchain-simple-api"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Bucketchain"
+            , repo = "purescript-bucketchain-simple-api"
+            }
+        )
+    , devDependencies = toMap { assert = "^4.0.0" }
+    , dependencies =
+        toMap
+          { media-types = "^4.0.1"
+          , bucketchain = "^0.3.0"
+          , simple-json = "^4.4.0"
+          }
+    }

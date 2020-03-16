@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "string-parsers"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-string-parsers" }
+        )
+    , devDependencies =
+        toMap { console = "^4.1.0", assert = "^4.0.0", math = "^2.1.1" }
+    , dependencies =
+        toMap
+          { control = "^4.0.0"
+          , either = "^4.0.0"
+          , arrays = "^5.0.0"
+          , maybe = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , tailrec = "^4.0.0"
+          , prelude = "^4.0.0"
+          , bifunctors = "^4.0.0"
+          , strings = "^4.0.0"
+          , lists = "^5.0.0"
+          }
+    }

@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "argonaut-traversals"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib"
+            , repo = "purescript-argonaut-traversals"
+            }
+        )
+    , devDependencies = toMap { quickcheck = "^6.0.0" }
+    , dependencies =
+        toMap
+          { profunctor-lenses = "^6.0.0"
+          , argonaut-core = "^5.0.0"
+          , argonaut-codecs = "^6.0.0"
+          }
+    }

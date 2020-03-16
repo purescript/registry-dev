@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "ide-purescript-core"
+    , dependencies =
+        toMap
+          { node-fs-aff = "^3.0.0"
+          , console = "^2.0.0"
+          , either = "^2.0.0"
+          , arrays = "^3.0.0"
+          , maybe = "^2.0.0"
+          , argonaut = "^2.0.0"
+          , node-process = "^3.0.0"
+          , aff = "^2.0.0"
+          , node-child-process = "^3.0.0"
+          , refs = "^2.0.0"
+          , psc-ide = "^7.0.0"
+          , node-fs = "^3.0.0"
+          , strings = "^2.0.1"
+          , nullable = "^2.0.0"
+          }
+    }

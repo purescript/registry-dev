@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "tagged"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "LiamGoodacre", repo = "purescript-tagged" }
+        )
+    , dependencies = toMap { identity = "^3.1.0" }
+    }

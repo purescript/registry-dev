@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "uint"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "zaquest", repo = "purescript-uint" })
+    , devDependencies =
+        toMap { quickcheck-laws = "^4.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { unordered-collections = "^1.6.0"
+          , maybe = "^4.0.0"
+          , argonaut = "^5.0.0"
+          , math = "^2.1.1"
+          , quickcheck = "^5.0.0"
+          }
+    }

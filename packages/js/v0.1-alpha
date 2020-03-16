@@ -1,0 +1,9 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "js"
+    , devDependencies =
+        toMap
+          { console = "^1.0.0", test-unit = "^7.0.1", psci-support = "^1.0.0" }
+    , dependencies = toMap { maybe = "^1.0.0", quickcheck = "^1.0.0" }
+    }

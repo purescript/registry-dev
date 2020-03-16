@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "spec-reporter-xunit"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "owickstrom", repo = "purescript-spec-reporter-xunit" }
+        )
+    , dependencies =
+        toMap
+          { node-fs-aff = "^6.0.0", spec = "^4.0.0", transformers = "^4.1.0" }
+    }

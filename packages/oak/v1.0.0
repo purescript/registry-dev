@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "oak"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "ehrenmurdick", repo = "purescript-oak" }
+        )
+    , devDependencies = toMap { console = "^4.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^4.0.0"
+          , either = "^4.1.1"
+          , virtual-dom = "^2.1.1"
+          , aff = "^5.1.1"
+          , prelude = "^4.0.0"
+          , st = "^4.0.0"
+          , refs = "^4.1.0"
+          , transformers = "^4.2.0"
+          , functions = "^4.0.0"
+          }
+    }

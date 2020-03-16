@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "matrices"
+    , license = Registry.License.`LGPL-3.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "kritzcreek", repo = "purescript-matrices" }
+        )
+    , devDependencies = toMap { spec = "^0.10.0", psci-support = "^2.0.0" }
+    , dependencies = toMap { arrays = "^3.0.0", strings = "^2.0.2" }
+    }

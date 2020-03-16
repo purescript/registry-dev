@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "freedom-now"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-freedom", repo = "purescript-freedom-now" }
+        )
+    , dependencies = toMap { js-timers = "^4.0.1", freedom = "^1.0.0" }
+    }

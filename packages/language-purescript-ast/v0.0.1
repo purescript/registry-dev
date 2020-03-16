@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "language-purescript-ast"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "cdepillabout"
+            , repo = "purescript-language-purescript-ast"
+            }
+        )
+    , dependencies =
+        toMap
+          { language-purescript-base = "^0.0.2"
+          , profunctor = "~0.3.2"
+          , foldable-traversable = "~0.4.2"
+          , prelude = "^0.1"
+          , sets = "~0.5.5"
+          }
+    }

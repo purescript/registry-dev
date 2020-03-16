@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "react-redux"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "ethul", repo = "purescript-react-redux" }
+        )
+    , dependencies = toMap { profunctor-lenses = "^3.2.0", react = "^3.0.0" }
+    }

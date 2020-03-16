@@ -1,0 +1,9 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-http"
+    , devDependencies = toMap { console = "^0.1.0" }
+    , dependencies =
+        toMap
+          { maps = "~0.5.0", node-streams = "~0.1.0", unsafe-coerce = "~0.1.0" }
+    }

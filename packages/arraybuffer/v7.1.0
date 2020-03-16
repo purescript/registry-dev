@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "arraybuffer"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "jacereda", repo = "purescript-arraybuffer" }
+        )
+    , devDependencies =
+        toMap { debug = "^4.0.0", partial = "^2.0.0", quickcheck = "^5.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , arraybuffer-types = "^2.0.0"
+          , maybe = "^4.0.0"
+          , uint = "^4.0.0"
+          , functions = "^4.0.0"
+          }
+    }

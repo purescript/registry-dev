@@ -1,0 +1,23 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "datareify"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/alexknvl/purescript-datareify.git"
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { unordered-collections = "^1.8.0"
+          , effect = "^2.0.1"
+          , maybe = "^4.0.1"
+          , matryoshka = "^0.4.0"
+          , lazy = "^4.0.0"
+          , foldable-traversable = "^4.1.1"
+          , prelude = "^4.1.1"
+          , stablename = "^0.3.2"
+          , transformers = "^4.2.0"
+          }
+    }

@@ -1,0 +1,25 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "hugenums"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Thimoteus", repo = "purescript-hugenums" }
+        )
+    , devDependencies =
+        toMap
+          { quickcheck-laws = "~0.1.0"
+          , debugger = "~0.1.1"
+          , benchotron = "~3.0.4"
+          , test-unit = "~4.1.0"
+          }
+    , dependencies =
+        toMap
+          { arrays = "^0.4.4"
+          , integers = "^0.2.1"
+          , globals = "^0.2.2"
+          , quickcheck = "~0.12.2"
+          , strings = "^0.7.1"
+          }
+    }

@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "gen"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "purescript", repo = "purescript-gen" })
+    , devDependencies =
+        toMap
+          { console = "^3.0.0"
+          , arrays = "^4.2.1"
+          , assert = "^3.0.0"
+          , transformers = "^3.4.0"
+          , math = "^2.1.0"
+          }
+    , dependencies =
+        toMap
+          { unfoldable = "^3.0.0"
+          , tailrec = "^3.0.0"
+          , nonempty = "^4.0.0"
+          , integers = "^3.0.0"
+          , tuples = "^4.0.0"
+          }
+    }

@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "node-readline"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-node", repo = "purescript-node-readline" }
+        )
+    , dependencies =
+        toMap
+          { console = "^0.1.0"
+          , node-streams = "~0.3.0"
+          , node-process = "~0.4.1"
+          , options = "^0.6.0"
+          , foreign = "^0.7.2"
+          }
+    }

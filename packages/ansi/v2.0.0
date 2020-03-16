@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "ansi"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "hdgarrood", repo = "purescript-ansi" })
+    , devDependencies = toMap { console = "^2.0.0", psci-support = "^2.0.0" }
+    , dependencies = toMap { strings = "^2.0.1" }
+    }

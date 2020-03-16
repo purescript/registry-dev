@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "bifunctors"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-bifunctors" }
+        )
+    , dependencies = toMap { newtype = "^2.0.0", control = "^3.0.0" }
+    }

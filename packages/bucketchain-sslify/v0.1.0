@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "bucketchain-sslify"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Bucketchain", repo = "purescript-bucketchain-sslify" }
+        )
+    , devDependencies = toMap { assert = "^4.0.0" }
+    , dependencies = toMap { bucketchain = "^0.2.3" }
+    }

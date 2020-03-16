@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "endpoints-express"
+    , dependencies =
+        toMap
+          { argonaut-core = "~0.2.3"
+          , affjax = "~0.13.0"
+          , argonaut-codecs = "~0.6.1"
+          , node-buffer = "~0.2.0"
+          , datetime =
+              "https://github.com/parsonsmatt/purescript-datetime.git#iso8601"
+          }
+    }

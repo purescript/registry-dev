@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "result"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "adius", repo = "purescript-result" })
+    , devDependencies = toMap { exceptions = "^4.0.0", console = "^4.1.0" }
+    , dependencies =
+        toMap
+          { either = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , prelude = "^4.1.0"
+          }
+    }

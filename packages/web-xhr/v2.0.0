@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "web-xhr"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-web", repo = "purescript-web-xhr" }
+        )
+    , dependencies =
+        toMap
+          { arraybuffer-types = "^2.0.0"
+          , web-file = "^1.0.0"
+          , web-dom = "^1.0.0"
+          , http-methods = "^4.0.0"
+          , datetime = "^4.0.0"
+          }
+    }

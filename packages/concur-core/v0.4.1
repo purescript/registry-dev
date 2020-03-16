@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "concur-core"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/purescript-concur/purescript-concur-core"
+        )
+    , dependencies =
+        toMap
+          { free = "^v5.2.0"
+          , console = "^v4.2.0"
+          , arrays = "^v5.3.1"
+          , profunctor-lenses = "^v6.2.0"
+          , aff = "^v5.1.2"
+          , foldable-traversable = "^v4.1.1"
+          , tailrec = "^v4.1.0"
+          , avar = "^v3.0.0"
+          , nonempty = "^v5.0.0"
+          }
+    }

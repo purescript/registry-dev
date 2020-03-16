@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "density-codensity"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/rightfold/purescript-density-codensity.git"
+        )
+    , dependencies =
+        toMap
+          { newtype = "^2.0.0"
+          , control = "^3.3.0"
+          , exists = "^3.0.0"
+          , prelude = "^3.1.0"
+          , transformers = "^3.4.0"
+          , tuples = "^4.1.0"
+          }
+    }

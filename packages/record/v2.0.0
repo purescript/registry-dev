@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "record"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-record" }
+        )
+    , devDependencies = toMap { assert = "^4.0.0" }
+    , dependencies =
+        toMap
+          { typelevel-prelude = "^4.0.0"
+          , prelude = "^4.1.0"
+          , st = "^4.0.0"
+          , unsafe-coerce = "^4.0.0"
+          , functions = "^4.0.0"
+          }
+    }

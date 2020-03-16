@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "transformers"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-transformers" }
+        )
+    , devDependencies = toMap { console = "^2.0.0" }
+    , dependencies =
+        toMap
+          { arrays = "^3.0.0"
+          , distributive = "^2.0.0"
+          , lazy = "^2.0.0"
+          , tuples = "^3.0.0"
+          }
+    }

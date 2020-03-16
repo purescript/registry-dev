@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "server-sent-events"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "MichaelXavier", repo = "purescript-server-sent-events" }
+        )
+    , devDependencies = toMap { console = "^3.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { maybe = "^3.0.0"
+          , dom = "^4.5.0"
+          , prelude = "^3.1.0"
+          , functions = "^3.0.0"
+          }
+    }

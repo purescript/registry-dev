@@ -1,0 +1,33 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "web3"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "f-o-a-m", repo = "purescript-web3" })
+    , devDependencies =
+        toMap { debug = "v3.0.0", spec = "v2.0.0", psci-support = "v3.0.0" }
+    , dependencies =
+        toMap
+          { free = "^4.2.0"
+          , proxy = "v2.1.0"
+          , bytestrings = "v6.0.0"
+          , foreign-generic = "v5.0.0"
+          , profunctor-lenses = "v3.7.0"
+          , type-equality = "^2.1.0"
+          , parsing = "v4.3.1"
+          , coroutines = "^4.0.0"
+          , aff = "v4.0.0"
+          , modules = "^3.0.0"
+          , typelevel-prelude = "^2.6.0"
+          , tagged = "v2.0.0"
+          , eth-core = "^0.0.1"
+          , mmorph = "^3.0.0"
+          , transformers = "v3.4.0"
+          , simple-json = "^2.0.1"
+          , errors = "v3.0.0"
+          , partial = "v1.2.1"
+          , identity = "v3.1.0"
+          , foreign = "v4.0.1"
+          }
+    }

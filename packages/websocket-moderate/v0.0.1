@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "websocket-moderate"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/athanclark/purescript-websocket-moderate"
+        )
+    , devDependencies = toMap { psci-support = "^2.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "2.0.0"
+          , console = "^2.0.0"
+          , prelude = "^2.5.0"
+          , eff-functions = "^2.0.0"
+          , nullable = "^2.0.0"
+          }
+    }

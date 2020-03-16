@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "mysql"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-mysql" }
+        )
+    , dependencies =
+        toMap { aff = "^4.0.0", js-date = "^5.1.0", simple-json = "^1.1.0" }
+    }

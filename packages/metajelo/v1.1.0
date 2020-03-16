@@ -1,0 +1,28 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "metajelo"
+    , license = Registry.License.`MPL-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "labordynamicsinstitute", repo = "purescript-metajelo" }
+        )
+    , devDependencies =
+        toMap
+          { debug = "^4.0.0"
+          , test-unit = "^15.0.0"
+          , psci-support = "^4.0.0"
+          , foreign = "^5.0.0"
+          }
+    , dependencies =
+        toMap
+          { email-validate = "^5.0.0"
+          , url-validator = "^1.1.0"
+          , naturals = "^3.0.0"
+          , stringutils = "^0.0.8"
+          , generics-rep = "^6.1.1"
+          , web-dom = "^3.0.0"
+          , web-dom-xpath = "^1.2.1"
+          , web-dom-parser = "^6.0.0"
+          }
+    }

@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "search"
+    , license = Registry.License.MIT
+    , dependencies =
+        toMap
+          { exceptions = "~0.2.2"
+          , strongcheck = "~0.8.0"
+          , mocha = "~0.0.3"
+          , parsing = "~0.3.1"
+          , foldable-traversable = "~0.3.0"
+          , strings = "~0.4.3"
+          }
+    }

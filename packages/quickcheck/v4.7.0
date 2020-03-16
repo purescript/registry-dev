@@ -1,0 +1,29 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "quickcheck"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-quickcheck" }
+        )
+    , devDependencies = toMap { assert = "^3.0.0" }
+    , dependencies =
+        toMap
+          { exceptions = "^3.0.0"
+          , console = "^3.0.0"
+          , either = "^3.0.0"
+          , arrays = "^4.3.0"
+          , gen = "^1.0.0"
+          , typelevel-prelude = "^2.4.0"
+          , nonempty = "^4.0.0"
+          , record = "^0.2.0"
+          , transformers = "^3.0.0"
+          , generics-rep = "^5.0.0"
+          , enums = "^3.0.0"
+          , random = "^3.0.0"
+          , partial = "^1.2.0"
+          , strings = "^3.5.0"
+          , lists = "^4.0.0"
+          }
+    }

@@ -1,0 +1,22 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "strings-extra"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib", repo = "purescript-string-extras" }
+        )
+    , devDependencies = toMap { console = "^4.1.0", assert = "^4.0.0" }
+    , dependencies =
+        toMap
+          { unicode = "^4.0.0"
+          , either = "^4.0.0"
+          , arrays = "^5.0.0"
+          , maybe = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , prelude = "^4.0.0"
+          , partial = "^2.0.0"
+          , strings = "^4.0.0"
+          }
+    }

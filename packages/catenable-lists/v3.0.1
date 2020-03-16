@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "catenable-lists"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript", repo = "purescript-catenable-lists" }
+        )
+    , devDependencies = toMap { console = "^2.0.0", assert = "^2.0.0" }
+    , dependencies =
+        toMap
+          { control = "^2.0.0"
+          , unfoldable = "^2.0.0"
+          , foldable-traversable = "^2.0.0"
+          , tuples = "^3.0.0"
+          , lists = "^3.0.0"
+          }
+    }

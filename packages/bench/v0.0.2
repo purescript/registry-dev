@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "bench"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "rightfold", repo = "purescript-bench" }
+        )
+    , devDependencies =
+        toMap { console = "^1.0.0", sets = "^1.0.0", lists = "^1.0.1" }
+    , dependencies = toMap { prelude = "^1.1.0", eff = "^1.0.0" }
+    }

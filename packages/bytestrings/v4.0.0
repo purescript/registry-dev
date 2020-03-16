@@ -1,0 +1,27 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "bytestrings"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/rightfold/purescript-bytestrings.git"
+        )
+    , devDependencies = toMap { proxy = "^2.0.0", quickcheck-laws = "^3.0.0" }
+    , dependencies =
+        toMap
+          { newtype = "^2.0.0"
+          , arrays = "^4.0.1"
+          , maybe = "^3.0.0"
+          , monoid = "^3.0.0"
+          , quotient = "^0.0.6"
+          , foldable-traversable = "^3.0.0"
+          , leibniz = "^4.0.0"
+          , prelude = "^3.0.0"
+          , unsafe-coerce = "^3.0.0"
+          , integers = "^3.0.0"
+          , eff = "^3.1.0"
+          , node-buffer = "^3.0.0"
+          , quickcheck = "^4.0.0"
+          }
+    }

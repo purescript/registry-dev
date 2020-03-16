@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "date-helpers"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "adarqui", repo = "purescript-date-helpers" }
+        )
+    , dependencies =
+        toMap
+          { argonaut = "^1.0.0"
+          , prelude = "^1.0.1"
+          , argonaut-codecs = "^1.0.0"
+          , test-unit = "^7.0.0"
+          , js-date = "^1.0.0"
+          , foreign = "^1.0.0"
+          , lists = "^1.0.1"
+          , datetime = "^1.0.0"
+          }
+    }

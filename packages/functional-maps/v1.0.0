@@ -1,0 +1,8 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "functional-maps"
+    , devDependencies = toMap { console = "^3.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap { maybe = "^3.0.0", tuples = "^4.1.0", partial = "^1.2.1" }
+    }

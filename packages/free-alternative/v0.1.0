@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "free-alternative"
+    , devDependencies =
+        toMap { aff = "^3.1.0", spec = "^1.0.0", psci-support = "^3.0.0" }
+    , dependencies =
+        toMap
+          { control = "^3.3.0"
+          , console = "^3.0.0"
+          , foldable-traversable = "^3.4.0"
+          , functors = "^2.2.0"
+          , prelude = "^3.1.0"
+          , freeap = "^3.0.1"
+          , lists = "^4.9.0"
+          }
+    }

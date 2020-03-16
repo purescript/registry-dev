@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "stdout"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-stdout" }
+        )
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , node-streams = "^3.1.0"
+          , node-process = "^5.0.0"
+          , node-buffer = "^3.0.1"
+          }
+    }

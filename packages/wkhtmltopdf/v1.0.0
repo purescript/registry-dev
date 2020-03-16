@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "wkhtmltopdf"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "kofno", repo = "purescript-wkhtmltopdf" }
+        )
+    , dependencies =
+        toMap
+          { node-fs-aff = "^0.3.0"
+          , console = "^0.1.0"
+          , node-streams = "^0.3.0"
+          , aff = "^0.14.1"
+          , generics = "^0.7.2"
+          , node-buffer = "^0.2.0"
+          , node-fs = "^0.10.0"
+          }
+    }

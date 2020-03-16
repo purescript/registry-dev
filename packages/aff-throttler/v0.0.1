@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "aff-throttler"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/LiamGoodacre/purescript-aff-throttler.git"
+        )
+    , devDependencies = toMap { console = "^4.2.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.0"
+          , aff = "^5.0.2"
+          , avar = "^3.0.0"
+          , prelude = "^4.1.0"
+          }
+    }

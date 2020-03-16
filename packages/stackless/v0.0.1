@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "stackless"
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/clinuxrulz/purescript-stackless.git"
+        )
+    , dependencies =
+        toMap
+          { console = "^0.1.0", tailrec = "~0.3.1", transformers = "~0.8.4" }
+    }

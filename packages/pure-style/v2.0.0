@@ -1,0 +1,17 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "pure-style"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-pure-style" }
+        )
+    , devDependencies = toMap { console = "^3.0.0", assert = "^3.0.0" }
+    , dependencies =
+        toMap
+          { foldable-traversable = "^3.6.1"
+          , refs = "^3.0.0"
+          , strings = "^3.3.1"
+          }
+    }

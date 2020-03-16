@@ -1,0 +1,28 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "config"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/TinkerTravel/purescript-config.git"
+        )
+    , devDependencies = toMap { test-unit = "^10.1.0" }
+    , dependencies =
+        toMap
+          { newtype = "^1.3.0"
+          , either = "^2.2.1"
+          , maybe = "^2.1.1"
+          , exists = "^2.0.0"
+          , node-process = "^3.0.0"
+          , functors = "^1.1.0"
+          , leibniz = "^3.0.0"
+          , prelude = "^2.5.0"
+          , integers = "^2.1.1"
+          , eff = "^2.0.0"
+          , freeap = "^2.0.0"
+          , validation = "^2.0.0"
+          , strings = "^2.1.0"
+          , sets = "^2.0.1"
+          }
+    }

@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "key-based-diff"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "oreshinya", repo = "purescript-key-based-diff" }
+        )
+    , devDependencies = toMap { assert = "^3.0.0", refs = "^3.0.0" }
+    , dependencies =
+        toMap { maps = "^3.5.2", eff = "^3.1.0", transformers = "^3.4.0" }
+    }

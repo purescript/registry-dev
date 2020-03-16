@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "yargs"
+    , license = Registry.License.MIT
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-yargs" })
+    , dependencies =
+        toMap
+          { exceptions = "^2.0.0"
+          , console = "^2.0.0"
+          , either = "^2.0.0"
+          , unsafe-coerce = "^2.0.0"
+          , foreign = "^3.0.0"
+          }
+    }

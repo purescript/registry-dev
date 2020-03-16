@@ -1,0 +1,21 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "sized-vectors"
+    , license = Registry.License.`LGPL-3.0+`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "bodil", repo = "purescript-sized-vectors" }
+        )
+    , devDependencies = toMap { test-unit = "^14.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { arrays = "^5.0.0"
+          , maybe = "^4.0.0"
+          , distributive = "^4.0.0"
+          , unfoldable = "^4.0.0"
+          , typelevel = "^4.0.0"
+          , foldable-traversable = "^4.0.0"
+          , prelude = "^4.0.1"
+          }
+    }

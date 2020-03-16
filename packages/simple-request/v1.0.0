@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "simple-request"
+    , dependencies =
+        toMap
+          { console = "^0.1.0"
+          , aff = "~0.11.3"
+          , http = "~0.4.0"
+          , options = "~0.4.0"
+          }
+    }

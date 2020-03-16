@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "oak"
+    , license = Registry.License.`AGPL-3.0`
+    , repository = Some
+        (Registry.Repo.Git "https://github.com/bklaric/purescript-oak.git")
+    , dependencies =
+        toMap
+          { variant = "^5.0.0"
+          , uri = "^6.0.0"
+          , record = "^1.0.0"
+          , http-methods = "^4.0.1"
+          }
+    }

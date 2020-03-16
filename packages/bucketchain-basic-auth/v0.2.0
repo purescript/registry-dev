@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "bucketchain-basic-auth"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Bucketchain"
+            , repo = "purescript-bucketchain-basic-auth"
+            }
+        )
+    , devDependencies = toMap { assert = "^4.0.0" }
+    , dependencies = toMap { basic-auth = "^1.0.0", bucketchain = "^0.3.0" }
+    }

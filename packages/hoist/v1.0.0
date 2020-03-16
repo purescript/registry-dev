@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "functor-optics"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-functor-optics" }
+        )
+    , devDependencies = toMap { psci-support = "^1.0.0" }
+    , dependencies = toMap { profunctor = "^1.0.0", day = "^2.0.0" }
+    }

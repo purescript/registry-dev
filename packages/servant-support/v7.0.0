@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "servant-support"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "eskimor", repo = "purescript-servant-support" }
+        )
+    , devDependencies = toMap { psci-support = "^2.0.0" }
+    , dependencies =
+        toMap
+          { console = "^2.0.0"
+          , either = "^2.1.0"
+          , argonaut-core = "^2.0.1"
+          , dom = "^3.5.1"
+          , foldable-traversable = "^2.2.0"
+          , prelude = "^2.4.0"
+          , affjax = "^3.0.2"
+          , globals = "^2.0.0"
+          , argonaut-generic-codecs = "^5.0.0"
+          , nullable = "^2.0.0"
+          }
+    }

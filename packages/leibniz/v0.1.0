@@ -1,0 +1,8 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "leibniz"
+    , repository = Some
+        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-leibniz" })
+    , dependencies = toMap { prelude = "~0.1.2", unsafe-coerce = "~0.1.0" }
+    }

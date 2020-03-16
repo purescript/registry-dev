@@ -1,0 +1,6 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "moonshine"
+    , dependencies = toMap { chalky = "^2.0.0", lunapark = "^0.3.0" }
+    }

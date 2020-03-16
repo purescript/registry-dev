@@ -1,0 +1,16 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "refined"
+    , license = Registry.License.MIT
+    , devDependencies = toMap { test-unit = "15.0.0", psci-support = "^4.0.0" }
+    , dependencies =
+        toMap
+          { effect = "^2.0.1"
+          , console = "^4.2.0"
+          , argonaut = "6.0.0"
+          , typelevel = "5.0.0"
+          , prelude = "^4.1.0"
+          , generics-rep = "6.1.1"
+          }
+    }

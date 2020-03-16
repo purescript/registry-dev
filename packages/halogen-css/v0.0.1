@@ -1,0 +1,15 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "halogen-css"
+    , license = Registry.License.`Apache 2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "slamdata", repo = "purescript-halogen-css" }
+        )
+    , dependencies =
+        toMap
+          { css = "^0.3.1"
+          , halogen = "4ad7f1e605c84d6eda8a9924fceca437695e658e"
+          }
+    }

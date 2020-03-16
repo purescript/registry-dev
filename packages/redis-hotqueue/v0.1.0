@@ -1,0 +1,24 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "redis-hotqueue"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/paluh/purescript-redis-hotqueue.git"
+        )
+    , devDependencies =
+        toMap
+          { sunde = "^0.1.0"
+          , debug = "^3.0.0"
+          , test-unit = "^13.0.0"
+          , psci-support = "^3.0.0"
+          }
+    , dependencies =
+        toMap
+          { console = "^3.0.0"
+          , prelude = "^3.3.0"
+          , redis-client = "^0.4.0"
+          , simple-json = "^3.0.0"
+          }
+    }

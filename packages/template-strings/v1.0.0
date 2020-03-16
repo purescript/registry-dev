@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "template-strings"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescripters", repo = "purescript-template-strings" }
+        )
+    , devDependencies = toMap { test-unit = "^7.0.0", psci-support = "^1.0.0" }
+    , dependencies =
+        toMap { console = "^1.0.0", tuples = "^1.0.0", functions = "^1.0.0" }
+    }

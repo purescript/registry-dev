@@ -1,0 +1,14 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "bucketchain-header-utils"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "Bucketchain"
+            , repo = "purescript-bucketchain-header-utils"
+            }
+        )
+    , devDependencies = toMap { assert = "^4.0.0" }
+    , dependencies = toMap { bucketchain = "^0.3.0" }
+    }

@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "dom-filereader"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/nwolverson/purescript-dom-filereader.git"
+        )
+    , devDependencies = toMap { console = "^4.1.0" }
+    , dependencies =
+        toMap
+          { arraybuffer-types = "^2.0.0"
+          , web-html = "^2.0.0"
+          , aff = "^5.0.0"
+          , web-file = "^2.0.0"
+          }
+    }

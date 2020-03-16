@@ -1,0 +1,18 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "chrono"
+    , license = Registry.License.BSD
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "rightfold", repo = "purescript-chrono" }
+        )
+    , devDependencies = toMap { console = "^0.1.1", assert = "^0.1.1" }
+    , dependencies =
+        toMap
+          { maybe = "^0.3.5"
+          , monoid = "^0.3.2"
+          , prelude = "^0.1.5"
+          , eff = "^0.1.2"
+          }
+    }

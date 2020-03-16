@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "purveyor"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paulyoung", repo = "purescript-purveyor" }
+        )
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies = toMap { console = "^3.0.0", prelude = "^3.3.0" }
+    }

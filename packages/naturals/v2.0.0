@@ -1,0 +1,12 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "naturals"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "LiamGoodacre", repo = "purescript-naturals" }
+        )
+    , devDependencies = toMap { psci-support = "^3.0.0" }
+    , dependencies = toMap { prelude = "^3.0.0" }
+    }

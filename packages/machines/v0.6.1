@@ -1,0 +1,20 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "machines"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript-contrib", repo = "purescript-machines" }
+        )
+    , dependencies =
+        toMap
+          { control = "~0.2.6"
+          , profunctor = "~0.2.1"
+          , arrows = "~0.4.0"
+          , arrays = "~0.3.7"
+          , maybe = "~0.2.2"
+          , monoid = "~0.2.0"
+          , tuples = "~0.3.4"
+          }
+    }

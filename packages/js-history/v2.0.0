@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "js-history"
+    , devDependencies = toMap { test-unit = "^10.1.0", psci-support = "^2.0.0" }
+    , dependencies =
+        toMap
+          { console = "^2.0.0"
+          , dom = "^3.6.0"
+          , prelude = "^2.5.0"
+          , refs = "^2.0.0"
+          }
+    }

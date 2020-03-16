@@ -1,0 +1,11 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "signal-loop"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "paf31", repo = "purescript-signal-loop" }
+        )
+    , devDependencies = toMap { console = "^1.0.0", node-readline = "^1.0.0" }
+    , dependencies = toMap { signal = "^6.0.0" }
+    }

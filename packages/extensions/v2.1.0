@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "extensions"
+    , license = Registry.License.`Apache-2.0`
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "jutaro", repo = "purescript-extensions" }
+        )
+    , dependencies =
+        toMap
+          { arrays = "^4.0.0"
+          , tailrec = "^3.0.0"
+          , integers = "^3.0.0"
+          , math = "^2.0.0"
+          , foreign-clone = "^0.0.1"
+          , lists = "^4.0.0"
+          }
+    }

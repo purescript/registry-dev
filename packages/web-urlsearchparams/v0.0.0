@@ -1,0 +1,19 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "web-urlsearchparams"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "athanclark", repo = "purescript-web-urlsearchparams" }
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0", quickcheck = "^5.0.0" }
+    , dependencies =
+        toMap
+          { tuples-native = "^2.0.0"
+          , foreign-object = "^1.1.0"
+          , prelude = "^4.1.0"
+          , iterable = "^2.0.0"
+          , nullable = "^4.1.1"
+          }
+    }

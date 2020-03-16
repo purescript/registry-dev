@@ -1,0 +1,10 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "typed-wire"
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "typed-wire", repo = "purescript-typed-wire" }
+        )
+    , dependencies = toMap { argonaut = "~0.12.0", datetime = "~0.9.1" }
+    }

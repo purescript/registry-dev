@@ -1,0 +1,13 @@
+let Registry = ../../RegistryV1.dhall
+
+in  Registry.Package::{
+    , name = "polymorphic-vectors"
+    , license = Registry.License.MIT
+    , repository = Some
+        ( Registry.Repo.Git
+            "https://github.com/3ddyy/purescript-polymorphic-vectors.git"
+        )
+    , devDependencies = toMap { psci-support = "^4.0.0" }
+    , dependencies =
+        toMap { prelude = "^4.1.1", canvas = "^4.0.0", math = "^2.1.1" }
+    }
