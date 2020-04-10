@@ -1,5 +1,6 @@
 {
   "purescript-halogen-hooks": "https://github.com/thomashoneyman/purescript-halogen-hooks.git",
+  "purescript-halogen-hooks-extra": "https://github.com/jordanmartinez/purescript-halogen-hooks-extra.git",
   "purescript-interpolate": "https://github.com/jordanmartinez/purescript-interpolate.git",
   "purescript-ordered-set": "https://github.com/flip111/purescript-ordered-set"
 }
