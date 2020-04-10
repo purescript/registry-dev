@@ -2,6 +2,7 @@
   "purescript-halogen-hooks": "https://github.com/thomashoneyman/purescript-halogen-hooks.git",
   "purescript-halogen-hooks-extra": "https://github.com/jordanmartinez/purescript-halogen-hooks-extra.git",
   "purescript-interpolate": "https://github.com/jordanmartinez/purescript-interpolate.git",
-  "purescript-ordered-set": "https://github.com/flip111/purescript-ordered-set",
+  "purescript-undefined-or": "https://github.com/d86leader/purescript-undefined-or.git",
+  "purescript-ordered-set": "https://github.com/flip111/purescript-ordered-set.git",
   "purescript-typelevel-rowlist-limits": "https://github.com/mwalkerwells/purescript-typelevel-rowlist-limits.git"
 }
