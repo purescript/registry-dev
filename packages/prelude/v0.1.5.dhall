@@ -12,9 +12,9 @@ in  Registry.Package::{
         )
     , targets =
         toMap
-          { src =
-              { sources = [ "src/**/*.purs" ]
-              , dependencies = [] : Registry.Dependencies
-              }
+          { src = Registry.Target::{
+            , sources = [ "src/**/*.purs" ]
+            , dependencies = [] : Registry.Dependencies
+            }
           }
     }

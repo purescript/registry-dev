@@ -75,25 +75,9 @@ Note: not all fields are compulsory when compiling the definition, and we do
 provide meaningful defaults for many of them in the ./Registry.dhall file.
 
 -}
-
-
 let Map = (./Prelude.dhall).Map.Type
 
-{-
-
-Every target can have its own dependencies and source globs.
-By convention a package needs to have at least one target called `src`. 
-Other common ones are `test`, `dev`, `bench`, etc. 
-
--}
-let Target =
-      -- A mapping between package names (as published on the Registry or
-      -- included in the Package Set) and SemVer ranges for them.
-      { dependencies : Map Text Text
-      -- Source globs for the local project to include in the compilation
-      -- alongside its dependencies.
-      , sources : List Text
-      }
+let Target = (./Target.dhall).Type
 
 let Package =
       -- The name of the package
@@ -105,19 +89,8 @@ let Package =
       -- The source for the package versions listed in the `targets`.
       -- Can be either the Registry or a PackageSet
       , packages : ./Index.dhall
-      -- The output folder for the compiled artifacts from the compiler
-      , output : Text
       -- Compilation targets for the Package
       , targets : Map Text Target
-      -- A package could be not targeted at the JS backend, and might have
-      -- a different default backend.
-      , backend :
-        -- The command to the alternate backend (if different than `purs`).
-        -- Example values: `psgo`, `pskt`, etc.
-        { cmd : Optional Text
-        -- A list of backends this package is compatible with.
-        , compatible : List Text 
-        }
       }
 
 in Package
@@ -149,27 +122,76 @@ published on the Bower registry before 2020), then we'll have to include a full 
 Bower we'd make the following manifest in `packages/prelude/v5.0.0.dhall`:
 
 ```dhall
-let Registry = ../../v1/Registry.dhall
+{-
 
-in  Registry.Package::{
-    , name = "prelude"
-    , license = Registry.License.BSD-3-Clause
-    , repository = Some
-        ( Registry.Repo.GitHub
-            { owner = "purescript"
-            , repo = "purescript-prelude"
-            , version = "v5.0.0"
-            }
-        )
-    , targets =
-        toMap
-          { src =
-              { sources = [ "src/**/*.purs" ]
-              , dependencies = [] : Registry.Dependencies
-              }
-          }
-    }
+The type of a Package version in the Registry.
 
+Note: not all fields are compulsory when compiling the definition, and we do 
+provide meaningful defaults for many of them in the ./Registry.dhall file.
+
+-}
+
+let Map = (./Prelude.dhall).Map.Type
+
+let Target = (./Target.dhall).Type
+
+let Package =
+      -- The name of the package
+      { name : Text
+      -- The SPDX code for the license under which the code is released
+      , license : ./License.dhall
+      -- The git repo the package is published at
+      , repository : Optional ./Repo.dhall
+      -- The source for the package versions listed in the `targets`.
+      -- Can be either the Registry or a PackageSet
+      , packages : ./Index.dhall
+      -- Compilation targets for the Package
+      , targets : Map Text Target
+      }
+
+in Package
+```
+
+It's useful to embed `Target` too, since it's the main component of a `Package`:
+
+```dhall
+{-
+
+A "compilation target".
+
+Every target can have its own dependencies, source globs, etc.
+By convention a package needs to have at least one target called `lib`.
+
+Other common ones are `app`, `test`, `dev`, `bench`, etc. 
+
+-}
+
+let Map = (./Prelude.dhall).Map.Type
+
+let TargetType =
+      -- A mapping between package names (as published on the Registry or
+      -- included in the Package Set) and SemVer ranges for them.
+      { dependencies : Map Text Text
+      -- Source globs for the local project to include in the compilation
+      -- alongside its dependencies.
+      , sources : List Text
+      -- Optional output folder where the compiler will put its result.
+      -- If not specified, the compiler will use "output"
+      , output : Optional Text
+      -- A target might not be pointing at the JS backend - if that's the case
+      -- we can specify here the command for the alternate backend.
+      -- Example values: `psgo`, `pskt`, etc.
+      , backend : Optional Text
+      }
+
+let default =
+      { dependencies = (toMap {=}) : Map Text Text
+      , sources = [] : List Text
+      , output = None Text
+      , backend = None Text
+      }
+
+in  { default = default, Type = TargetType }
 ```
 
 ----
@@ -238,10 +260,10 @@ in  Registry.Package::{
     , name = "my-package"
     , targets =
         toMap
-          { src =
-              { sources = [ "src/**/*.purs" ]
-              , dependencies = toMap { effect = "^2.0.0" }
-              }
+          { src = Registry.Target::{
+            , sources = [ "src/**/*.purs" ]
+            , dependencies = toMap { effect = "^2.0.0" }
+            }
           }
     }
 ```
@@ -266,10 +288,10 @@ in  Registry.Package::{
           }
     , targets =
         toMap
-          { src =
-              { sources = [ "src/**/*.purs" ]
-              , dependencies = toMap { effect = "^2.0.0" }
-              }
+          { src = Registry.Target::{
+            , sources = [ "src/**/*.purs" ]
+            , dependencies = toMap { effect = "^2.0.0" }
+            }
           }
     }
 ```
@@ -299,10 +321,10 @@ in  Registry.Package::{
           }
     , targets =
         toMap
-          { src =
-              { sources = [ "src/**/*.purs" ]
-              , dependencies = toMap { effect = "^2.0.0" }
-              }
+          { src = Registry.Target::{
+            , sources = [ "src/**/*.purs" ]
+            , dependencies = toMap { effect = "^2.0.0" }
+            }
           }
     }
 ```
@@ -324,13 +346,43 @@ in  Registry.Package::{
     , packages = Registry.Index.Registry (toMap overrides)
     , targets =
         toMap
-          { src =
-              { sources = [ "src/**/*.purs" ]
-              , dependencies = toMap { effect = "^2.0.0" }
-              }
+          { src = Registry.Target::{
+            , sources = [ "src/**/*.purs" ]
+            , dependencies = toMap { effect = "^2.0.0" }
+            }
           }
     }
 ```
+
+## Registry Trustees and manifest editing
+
+The "Registry Trustees" mentioned all across this document are a group of trusted
+janitors that have write access to this repo.
+
+Their main task will be that of editing package manifests that will need correction - most
+commonly this is necessary because version bounds will be inaccurate.
+
+> But you cannot publish two different package manifests under the same package version!  
+> That's not quite a "reproducible" build..
+
+This is right, and in fact the Trustees will have to work under a set of constraints
+so that their activity will not cause disruption, unreproducible builds, etc.
+
+First of all, if you read carefully you might notice that every package tarball has a
+SHA256 associated with it - we're not planning on changing that SHA ever, so we cannot
+actually publish a different tarball under the same version.
+
+So how will Trustees actually be able to change manifests?
+
+The constraints are:
+- we'll enforce SemVer for package versions (via CI), and authors will have the
+  `major`, `minor`, `patch` and `pre-release` segments available to them
+- ..while the `build-metadata` is reserved for Trustees to publish new versions
+
+So to recap, when Trustees need to edit a package manifest:
+- they will make a new version file
+- change whatever is necessary to override
+- and bump the `build-metadata` in the version
 
 ## Name squatting and reassigning names
 

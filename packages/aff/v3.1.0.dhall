@@ -9,22 +9,22 @@ in  Registry.Package::{
         )
     , targets =
         toMap
-          { src =
-              { sources = [ "src/**/*.purs" ]
-              , dependencies =
-                  toMap
-                    { exceptions = "^3.0.0"
-                    , console = "^3.0.0"
-                    , unsafe-coerce = "^3.0.0"
-                    , transformers = "^3.0.0"
-                    , parallel = "^3.0.0"
-                    , datetime = "^3.0.0"
-                    , functions = "^3.0.0"
-                    }
-              }
-          , test =
-              { sources = [ "src/**/*.purs", "test/**/*.purs" ]
-              , dependencies = toMap { partial = "^1.2.0" }
-              }
+          { src = Registry.Target::{
+            , sources = [ "src/**/*.purs" ]
+            , dependencies =
+                toMap
+                  { exceptions = "^3.0.0"
+                  , console = "^3.0.0"
+                  , unsafe-coerce = "^3.0.0"
+                  , transformers = "^3.0.0"
+                  , parallel = "^3.0.0"
+                  , datetime = "^3.0.0"
+                  , functions = "^3.0.0"
+                  }
+            }
+          , test = Registry.Target::{
+            , sources = [ "src/**/*.purs", "test/**/*.purs" ]
+            , dependencies = toMap { partial = "^1.2.0" }
+            }
           }
     }

@@ -23,6 +23,8 @@ let Index = ./Index.dhall
 
 let Repo = ./Repo.dhall
 
+let Target = ./Target.dhall
+
 let PackageType = ./Package.dhall
 
 let Dependencies = Prelude.Map.Type Text Text
@@ -30,8 +32,6 @@ let Dependencies = Prelude.Map.Type Text Text
 let packageDefault =
       { license = License.MIT
       , repository = None Repo
-      , backend = { cmd = None Text, compatible = [] : List Text }
-      , output = "output"
       , packages = Index.Registry ([] : Prelude.Map.Type Text Address)
       }
 
@@ -42,6 +42,7 @@ let Registry =
       , Repo = Repo
       , Prelude = Prelude
       , Dependencies = Dependencies
+      , Target = Target
       , Package = { Type = PackageType, default = packageDefault }
       }
 
