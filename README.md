@@ -96,63 +96,7 @@ let Package =
 in Package
 ```
 
-
-## Adding a package to the registry
-
-Can be done by *opening a pull request* to the repo - this operation can (and should) be entirely
-automated by the package manager the author is using.
-
-If the author is already including a package manifest that conforms to the `Package` schema
-(in the case of a build tool using it as build manifest as well - e.g. Spago), then the only
-content of this file would be a Dhall import.
-
-E.g. if we're publishing version `v5.0.0` of the `prelude` package, then we just need
-to add a file called `packages/prelude/v5.0.0.dhall`, containing the following:
-
-```dhall
-https://raw.githubusercontent.com/purescript/purescript-prelude/v5.0.0/spago.dhall
-```
-
-The above will import the `Package` manifest directly from the repo location, and it would
-be as if the file in this repo will have the same contents (when evaluated by Dhall).
-
-If there's no such manifest file in the source files (as it's the case of all the packages
-published on the Bower registry before 2020), then we'll have to include a full fledged
-`Package` manifest here. E.g. if we'd have to import the same `v5.0.0` of the `prelude` from
-Bower we'd make the following manifest in `packages/prelude/v5.0.0.dhall`:
-
-```dhall
-{-
-
-The type of a Package version in the Registry.
-
-Note: not all fields are compulsory when compiling the definition, and we do 
-provide meaningful defaults for many of them in the ./Registry.dhall file.
-
--}
-
-let Map = (./Prelude.dhall).Map.Type
-
-let Target = (./Target.dhall).Type
-
-let Package =
-      -- The name of the package
-      { name : Text
-      -- The SPDX code for the license under which the code is released
-      , license : ./License.dhall
-      -- The git repo the package is published at
-      , repository : Optional ./Repo.dhall
-      -- The source for the package versions listed in the `targets`.
-      -- Can be either the Registry or a PackageSet
-      , packages : ./Index.dhall
-      -- Compilation targets for the Package
-      , targets : Map Text Target
-      }
-
-in Package
-```
-
-It's useful to embed `Target` too, since it's the main component of a `Package`:
+It's useful to embed the definition for `Target` too, since it's the main component of a `Package`:
 
 ```dhall
 {-
@@ -192,6 +136,54 @@ let default =
       }
 
 in  { default = default, Type = TargetType }
+```
+
+
+## Adding a package to the registry
+
+Can be done by *opening a pull request* to the repo - this operation can (and should) be entirely
+automated by the package manager the author is using.
+
+If the author is already including a package manifest that conforms to the `Package` schema
+(in the case of a build tool using it as build manifest as well - e.g. Spago), then the only
+content of this file would be a Dhall import.
+
+E.g. if we're publishing version `v5.0.0` of the `prelude` package, then we just need
+to add a file called `packages/prelude/v5.0.0.dhall`, containing the following:
+
+```dhall
+https://raw.githubusercontent.com/purescript/purescript-prelude/v5.0.0/spago.dhall
+```
+
+The above will import the `Package` manifest directly from the repo location, and it would
+be as if the file in this repo will have the same contents (when evaluated by Dhall).
+
+If there's no such manifest file in the source files (as it's the case of all the packages
+published on the Bower registry before 2020), then we'll have to include a full fledged
+`Package` manifest here. E.g. if we'd have to import the same `v5.0.0` of the `prelude` from
+Bower we'd make the following manifest in `packages/prelude/v5.0.0.dhall`:
+
+```dhall
+let Registry = ../../v1/Registry.dhall
+
+in  Registry.Package::{
+    , name = "prelude"
+    , license = Registry.License.BSD-3-Clause
+    , repository = Some
+        ( Registry.Repo.GitHub
+            { owner = "purescript"
+            , repo = "purescript-prelude"
+            , version = "v5.0.0"
+            }
+        )
+    , targets =
+        toMap
+          { src = Registry.Target::{
+            , sources = [ "src/**/*.purs" ]
+            , dependencies = [] : Registry.Dependencies
+            }
+          }
+    }
 ```
 
 ----
