@@ -1,9 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "easy-ffi"
-    , license = Registry.License.MIT
-    , devDependencies =
-        toMap { console = "^0.1.0", arrays = "^0.4.0", quickcheck = "^0.6.0" }
-    , dependencies = toMap { prelude = "^0.1.0" }
-    }

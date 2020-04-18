@@ -1,8 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "datetime"
-    , license = Registry.License.MIT
-    , dependencies =
-        toMap { maybe = "~0.2.1", globals = "~0.1.5", enums = "~0.3.0" }
-    }

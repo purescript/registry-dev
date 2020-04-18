@@ -1,9 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "http"
-    , license = Registry.License.MIT
-    , repository = Some
-        (Registry.Repo.GitHub { owner = "joneshf", repo = "purescript-http" })
-    , dependencies = toMap { maybe = "~3.0.0" }
-    }

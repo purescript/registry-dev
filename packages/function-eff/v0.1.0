@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "function-eff"
-    , license = Registry.License.ISC
-    , dependencies = toMap { function-run = "~0.1.0" }
-    }

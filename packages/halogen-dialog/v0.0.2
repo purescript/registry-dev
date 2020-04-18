@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "halogen-dialog"
-    , license = Registry.License.MIT
-    , dependencies = toMap { halogen = "~0.4.1", halogen-bootstrap = "~0.1.0" }
-    }

@@ -1,9 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "halogen-monaco"
-    , devDependencies = toMap { debug = "^3.0.0", random = "^3.0.0" }
-    , dependencies =
-        toMap
-          { halogen-css = "^7.0.0", halogen = "^3.0.1", monaco = "0.0.7-alpha" }
-    }

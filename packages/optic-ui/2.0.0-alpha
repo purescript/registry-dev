@@ -1,6 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "optic-ui"
-    , license = Registry.License.BSD-3-Clause
-    }

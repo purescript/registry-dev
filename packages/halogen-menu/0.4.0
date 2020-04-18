@@ -1,6 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "halogen-menu"
-    , dependencies = toMap { halogen = "^0.5.8", generics = "^0.7.0" }
-    }

@@ -1,8 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "tscompat"
-    , devDependencies =
-        toMap { effect = "^2.0.0", console = "^4.1.0", psci-support = "^4.0.0" }
-    , dependencies = toMap { react = "^6.1.0", prelude = "^4.1.0" }
-    }

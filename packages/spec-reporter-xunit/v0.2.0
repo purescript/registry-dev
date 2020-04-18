@@ -1,6 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "spec-reporter-xunit"
-    , dependencies = toMap { spec = "0.6.1", node-fs = "0.7.1" }
-    }

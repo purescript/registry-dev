@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "parsing-extras"
-    , devDependencies = toMap { psci-support = "^3.0.0" }
-    , dependencies = toMap { parsing = "^4.3.1", prelude = "^3.1.0" }
-    }

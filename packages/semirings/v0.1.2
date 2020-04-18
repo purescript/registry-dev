@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "semirings"
-    , dependencies =
-        toMap { arrays = "~0.3.5", foldable-traversable = "~0.3.1" }
-    }

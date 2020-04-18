@@ -1,9 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "oo-ffi"
-    , license = Registry.License.MIT
-    , devDependencies =
-        toMap { mocha = "~0.0.2", chai = "*", quickcheck = "~0.3.0" }
-    , dependencies = toMap { context = "~0.0.3" }
-    }

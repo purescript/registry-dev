@@ -1,9 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "split"
-    , license = Registry.License.BSD-3-Clause
-    , repository = Some
-        (Registry.Repo.Git "https://github.com/AlexMouton/purescript-split")
-    , dependencies = toMap { arrays = "^5.0.0", prelude = "^4.0.0" }
-    }

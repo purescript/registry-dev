@@ -1,8 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "geom"
-    , license = Registry.License.`Apache-2.0`
-    , devDependencies = toMap { monoid = "~0.1.4", quickcheck = "~0.2.2" }
-    , dependencies = toMap { math = "~0.1.0" }
-    }

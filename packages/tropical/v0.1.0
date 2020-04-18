@@ -1,9 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "tropical"
-    , repository = Some
-        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-tropical" })
-    , dependencies =
-        toMap { prelude = "~0.1.2", globals = "~0.2.0", math = "~0.2.0" }
-    }

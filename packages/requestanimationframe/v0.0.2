@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "requestanimationframe"
-    , license = Registry.License.MIT
-    , devDependencies = toMap { timers = "~0.0.7", mocha = "*", chai = "*" }
-    }

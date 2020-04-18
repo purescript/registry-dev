@@ -1,8 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "webstorage"
-    , license = Registry.License.MIT
-    , dependencies =
-        toMap { maybe = "~2.0.0", eff = "~2.0.0", functions = "~2.0.0" }
-    }

@@ -1,9 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "periodic"
-    , license = Registry.License.MIT
-    , repository = Some
-        (Registry.Repo.Git "https://github.com/Lupino/purescript-periodic.git")
-    , dependencies = toMap { aff = "^4.0.2" }
-    }

@@ -1,9 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "vary"
-    , license = Registry.License.MIT
-    , repository = Some
-        (Registry.Repo.GitHub { owner = "oreshinya", repo = "purescript-vary" })
-    , dependencies = toMap { node-http = "^5.0.0" }
-    }

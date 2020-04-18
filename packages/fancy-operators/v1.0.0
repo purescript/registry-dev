@@ -1,8 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "fancy"
-    , devDependencies = toMap { console = "^0.1.0" }
-    , dependencies =
-        toMap { foldable-traversable = "~0.4.2", prelude = "~0.1.4" }
-    }

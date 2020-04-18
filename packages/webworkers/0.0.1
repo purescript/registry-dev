@@ -1,8 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "webworkers"
-    , devDependencies = toMap { timers = "*", test-unit = "*" }
-    , dependencies =
-        toMap { exceptions = "*", argonaut-codecs = "*", foreign = "*" }
-    }

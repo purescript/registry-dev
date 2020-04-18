@@ -1,9 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "metric"
-    , license = Registry.License.BSD-3-Clause
-    , repository = Some
-        (Registry.Repo.Git "https://github.com/rightfold/purescript-metric.git")
-    , dependencies = toMap { prelude = "^2.1.0", integers = "^2.1.0" }
-    }

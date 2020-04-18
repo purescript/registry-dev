@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "mocha"
-    , license = Registry.License.MIT
-    , dependencies = toMap { mocha = "~1.21.4", easy-ffi = "~1.0.1" }
-    }

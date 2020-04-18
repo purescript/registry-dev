@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "distributive"
-    , license = Registry.License.MIT
-    , dependencies = toMap { transformers = "~0.1.0" }
-    }

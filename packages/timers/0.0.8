@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "timers"
-    , license = Registry.License.MIT
-    , devDependencies = toMap { mocha = "~0.0.3", chai = "~0.0.3" }
-    }

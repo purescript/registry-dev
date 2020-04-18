@@ -1,8 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "ajax"
-    , devDependencies = toMap { quickcheck = "*" }
-    , dependencies =
-        toMap { either = "~0.1.1", arrays = "~0.1.2", http = "~0.1.0" }
-    }

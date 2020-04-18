@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "chalk"
-    , license = Registry.License.MIT
-    , dependencies = toMap { chalk = "~0.5.1" }
-    }

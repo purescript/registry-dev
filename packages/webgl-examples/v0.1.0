@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "webgl-examples"
-    , license = Registry.License.`Apache-2.0`
-    , dependencies = toMap { webgl = "*", datetime = "*" }
-    }

@@ -1,8 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "weber"
-    , devDependencies = toMap { psci-support = "^4.0.0" }
-    , dependencies =
-        toMap { effect = "^2.0.0", console = "^4.2.0", prelude = "^4.1.0" }
-    }

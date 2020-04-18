@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "react-basic"
-    , dependencies =
-        toMap { unsafe-coerce = "^3.0.0", eff = "^3.1.0", functions = "^3.0.0" }
-    }

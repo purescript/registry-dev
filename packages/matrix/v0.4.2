@@ -1,9 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "matrix"
-    , license = Registry.License.`Apache-2.0`
-    , devDependencies =
-        toMap { console = "*", assert = "*", benchotron = "*", random = "*" }
-    , dependencies = toMap { arrays = "*", extensions = "*", vector = "*" }
-    }

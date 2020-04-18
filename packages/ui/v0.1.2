@@ -1,8 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "ui"
-    , license = Registry.License.MIT
-    , dependencies =
-        toMap { thermite = "~0.5.2", foldable-traversable = "~0.3.0" }
-    }

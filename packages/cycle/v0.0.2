@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "cycle"
-    , dependencies =
-        toMap { maps = "^0.5.7", console = "^0.1.0", almost = "^0.0.1" }
-    }

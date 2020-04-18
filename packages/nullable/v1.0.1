@@ -1,9 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "nullable"
-    , license = Registry.License.MIT
-    , repository = Some
-        (Registry.Repo.GitHub { owner = "paf31", repo = "purescript-nullable" })
-    , dependencies = toMap { maybe = "^1.0.0-rc.1", functions = "^1.0.0-rc.1" }
-    }

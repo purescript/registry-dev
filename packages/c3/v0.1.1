@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "c3"
-    , license = Registry.License.MIT
-    , dependencies = toMap { d3 = "~3.4.8", dom = "~0.1.0", c3 = "~0.2.4" }
-    }

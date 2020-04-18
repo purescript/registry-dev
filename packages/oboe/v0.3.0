@@ -1,8 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "oboe"
-    , license = Registry.License.MIT
-    , dependencies =
-        toMap { exceptions = "~0.2.0", oboe = "~1.15.1", http = "~0.2.0" }
-    }

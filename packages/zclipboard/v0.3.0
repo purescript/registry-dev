@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "zclipboard"
-    , license = Registry.License.`Apache 2.0`
-    , dependencies = toMap { dom = "^0.2.6", eff = "^0.1.1" }
-    }

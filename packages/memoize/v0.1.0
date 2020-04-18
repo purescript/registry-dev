@@ -1,6 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "memo"
-    , dependencies = toMap { lazy = "~0.1.2" }
-    }

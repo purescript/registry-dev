@@ -1,6 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "react-cedar"
-    , dependencies = toMap { aff = "^1.1.0", react = "^1.1.0" }
-    }

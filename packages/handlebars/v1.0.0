@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "handlebars"
-    , license = Registry.License.MIT
-    , devDependencies = toMap { console = "^1.0.0", handlebars = "~2.0.0" }
-    }

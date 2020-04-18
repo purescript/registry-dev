@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "concurrent"
-    , license = Registry.License.MIT
-    , dependencies = toMap { refs = "~0.1.2", transformers = "~0.4.0" }
-    }

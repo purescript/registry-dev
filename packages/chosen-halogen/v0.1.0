@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "chosen-halogen"
-    , dependencies =
-        toMap { console = "^0.1.0", halogen = "~0.5.1", chosen = "~0.2.5" }
-    }

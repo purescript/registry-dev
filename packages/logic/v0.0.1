@@ -1,9 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "logic"
-    , devDependencies = toMap { psci-support = "^4.0.0" }
-    , dependencies =
-        toMap
-          { prelude = "^4.1.0", transformers = "^4.1.0", machines = "^5.1.0" }
-    }

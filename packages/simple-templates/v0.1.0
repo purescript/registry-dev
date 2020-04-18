@@ -1,7 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "simple-templates"
-    , license = Registry.License.BSD-2-Clause
-    , dependencies = toMap { foldable-traversable = "*", strings = "*" }
-    }

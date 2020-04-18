@@ -1,9 +1,0 @@
-let Registry = ../../RegistryV1.dhall
-
-in  Registry.Package::{
-    , name = "markdown"
-    , license = Registry.License.MIT
-    , devDependencies = toMap { strongcheck = "~0.10.0" }
-    , dependencies =
-        toMap { base = "~0.1.0", parsing = "~0.4.0", validation = "~0.2.0" }
-    }
