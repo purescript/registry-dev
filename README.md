@@ -48,10 +48,7 @@ Features of the current design:
 - **ease of publishing a release** is optimized for and entirely automated.
 - package manifests are **declarative**: authors need not to concern themselves with
   the "how", but just declare properties about their packages.
-- **no lockfiles**: we don't need to use any as we can lean on Dhall's
-  [secure hashing features](https://docs.dhall-lang.org/discussions/Safety-guarantees.html)
-  and Package Sets in order to get replicable builds.
-- packages **need not to depend only on published packages** in general (i.e. users
+- packages **need not depend only on published packages** in general (i.e. users
   can always have local/external overrides), but published packages will need to.
 - package manifests **integrate build, package management and publishing info**, a là Cabal.
 - **no webserver**: all the software running the Registry is designed in such a way that
