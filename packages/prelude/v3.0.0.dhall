@@ -10,11 +10,10 @@ in  Registry.Package::{
             , version = "v3.0.0"
             }
         )
-    , targets =
-        toMap
-          { src = Registry.Target::{
-            , sources = [ "src/**/*.purs" ]
-            , dependencies = [] : Registry.Dependencies
-            }
+    , targets = toMap
+        { src = Registry.Target::{
+          , sources = [ "src/**/*.purs" ]
+          , dependencies = [] : Registry.Dependencies
           }
+        }
     }

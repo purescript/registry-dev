@@ -7,21 +7,19 @@ in  Registry.Package::{
         ( Registry.Repo.GitHub
             { owner = "slamdata", repo = "purescript-aff", version = "v0.17.0" }
         )
-    , targets =
-        toMap
-          { src = Registry.Target::{
-            , sources = [ "src/**/*.purs" ]
-            , dependencies =
-                toMap
-                  { exceptions = "^1.0.0"
-                  , console = "^1.0.0"
-                  , transformers = "^1.0.0"
-                  , functions = "^1.0.0"
-                  }
-            }
-          , test = Registry.Target::{
-            , sources = [ "src/**/*.purs", "test/**/*.purs" ]
-            , dependencies = toMap { partial = "^1.1.2" }
-            }
+    , targets = toMap
+        { src = Registry.Target::{
+          , sources = [ "src/**/*.purs" ]
+          , dependencies = toMap
+              { exceptions = "^1.0.0"
+              , console = "^1.0.0"
+              , transformers = "^1.0.0"
+              , functions = "^1.0.0"
+              }
           }
+        , test = Registry.Target::{
+          , sources = [ "src/**/*.purs", "test/**/*.purs" ]
+          , dependencies = toMap { partial = "^1.1.2" }
+          }
+        }
     }
