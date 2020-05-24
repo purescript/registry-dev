@@ -4,6 +4,7 @@
   "purescript-interpolate": "https://github.com/jordanmartinez/purescript-interpolate.git",
   "purescript-undefined-or": "https://github.com/d86leader/purescript-undefined-or.git",
   "purescript-ordered-set": "https://github.com/flip111/purescript-ordered-set.git",
+  "purescript-tree-rose": "https://github.com/jordanmartinez/purescript-tree-rose.git",
   "purescript-typelevel-rowlist-limits": "https://github.com/mwalkerwells/purescript-typelevel-rowlist-limits.git",
   "purescript-apexcharts" : "https://github.com/timdeputter/purescript-apexcharts.git",
   "purescript-classnames": "https://github.com/dewey92/purescript-classnames.git"
