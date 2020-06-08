@@ -7,5 +7,6 @@
   "purescript-tree-rose": "https://github.com/jordanmartinez/purescript-tree-rose.git",
   "purescript-typelevel-rowlist-limits": "https://github.com/mwalkerwells/purescript-typelevel-rowlist-limits.git",
   "purescript-apexcharts" : "https://github.com/timdeputter/purescript-apexcharts.git",
-  "purescript-classnames": "https://github.com/dewey92/purescript-classnames.git"
+  "purescript-classnames": "https://github.com/dewey92/purescript-classnames.git",
+  "purescript-clipboardy": "https://github.com/hrajchert/purescript-clipboardy.git"
 }
