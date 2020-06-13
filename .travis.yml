@@ -1,2 +1,7 @@
 language: nix
-script: nix-shell --run './verify-registry-unique.sh'
+
+script:
+  - |
+    curl https://nixos.org/nix/install | sh
+    . "$HOME"/.nix-profile/etc/profile.d/nix.sh
+    nix-shell --run './verify-registry-unique.sh'
