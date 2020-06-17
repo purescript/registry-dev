@@ -13,5 +13,6 @@
   "purescript-grain": "https://github.com/purescript-grain/purescript-grain.git",
   "purescript-grain-portal": "https://github.com/purescript-grain/purescript-grain-portal.git",
   "purescript-grain-router": "https://github.com/purescript-grain/purescript-grain-router.git",
-  "purescript-grain-virtualized": "https://github.com/purescript-grain/purescript-grain-virtualized.git"
+  "purescript-grain-virtualized": "https://github.com/purescript-grain/purescript-grain-virtualized.git",
+  "purescript-quickcheck-mbt": "https://github.com/meeshkan/purescript-quickcheck-mbt.git"
 }
