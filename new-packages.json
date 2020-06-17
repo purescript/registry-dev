@@ -10,5 +10,9 @@
   "purescript-classnames": "https://github.com/dewey92/purescript-classnames.git",
   "purescript-clipboardy": "https://github.com/hrajchert/purescript-clipboardy.git",
   "purescript-web-url": "https://github.com/mjepronk/purescript-web-url.git",
+  "purescript-grain": "https://github.com/purescript-grain/purescript-grain.git",
+  "purescript-grain-portal": "https://github.com/purescript-grain/purescript-grain-portal.git",
+  "purescript-grain-router": "https://github.com/purescript-grain/purescript-grain-router.git",
+  "purescript-grain-virtualized": "https://github.com/purescript-grain/purescript-grain-virtualized.git",
   "purescript-quickcheck-mbt": "https://github.com/meeshkan/purescript-quickcheck-mbt.git"
 }
