@@ -15,6 +15,7 @@
   "purescript-grain-router": "https://github.com/purescript-grain/purescript-grain-router.git",
   "purescript-grain-virtualized": "https://github.com/purescript-grain/purescript-grain-virtualized.git",
   "purescript-quickcheck-mbt": "https://github.com/meeshkan/purescript-quickcheck-mbt.git",
-  "purescript-http-types-basic": "https://github.com/meeshkan/purescript-http-types.git",
-  "purescript-openapi": "https://github.com/meeshkan/purescript-openapi.git"
+  "purescript-openapi": "https://github.com/meeshkan/purescript-openapi.git",
+  "purescript-graphql-parser": "https://github.com/meeshkan/purescript-graphql-parser.git",
+  "purescript-http-types-basic": "https://github.com/meeshkan/purescript-http-types.git"
 }
