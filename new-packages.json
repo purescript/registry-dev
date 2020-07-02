@@ -19,5 +19,6 @@
   "purescript-graphql-parser": "https://github.com/meeshkan/purescript-graphql-parser.git",
   "purescript-http-types-basic": "https://github.com/meeshkan/purescript-http-types.git",
   "purescript-graphql-gen": "https://github.com/meeshkan/purescript-graphql-gen.git",
-  "purescript-graphql-validator": "https://github.com/meeshkan/purescript-graphql-validator.git"
+  "purescript-graphql-validator": "https://github.com/meeshkan/purescript-graphql-validator.git",
+  "purescript-halogen-svg": "https://github.com/JordanMartinez/purescript-halogen-svg.git"
 }
