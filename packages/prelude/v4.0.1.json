@@ -1,0 +1,18 @@
+{
+  "targets": {
+    "lib": {
+      "sources": [
+        "src/**/*.purs"
+      ],
+      "nativeDependencies": {},
+      "dependencies": {}
+    }
+  },
+  "repository": {
+    "version": "v4.0.1",
+    "owner": "purescript",
+    "repo": "purescript-prelude"
+  },
+  "name": "prelude",
+  "license": "BSD-3-Clause"
+}

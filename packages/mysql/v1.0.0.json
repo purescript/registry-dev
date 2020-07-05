@@ -1,0 +1,27 @@
+{
+  "targets": {
+    "lib": {
+      "sources": [
+        "src/**/*.purs"
+      ],
+      "nativeDependencies": {
+        "bower": "^1.8.0",
+        "mysql": "^2.15.0",
+        "pulp": "^11.0.0",
+        "purescript": "^0.11.5"
+      },
+      "dependencies": {
+        "purescript-js-date": "^5.1.0",
+        "purescript-aff": "^4.0.0",
+        "purescript-simple-json": "^1.1.0"
+      }
+    }
+  },
+  "repository": {
+    "version": "v1.0.0",
+    "owner": "oreshinya",
+    "repo": "purescript-mysql"
+  },
+  "name": "mysql",
+  "license": "MIT"
+}

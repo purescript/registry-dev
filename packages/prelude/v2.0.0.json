@@ -1,0 +1,18 @@
+{
+  "targets": {
+    "lib": {
+      "sources": [
+        "src/**/*.purs"
+      ],
+      "nativeDependencies": {},
+      "dependencies": {}
+    }
+  },
+  "repository": {
+    "version": "v2.0.0",
+    "owner": "purescript",
+    "repo": "purescript-prelude"
+  },
+  "name": "prelude",
+  "license": "MIT"
+}
