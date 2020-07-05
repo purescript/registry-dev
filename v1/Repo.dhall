@@ -7,5 +7,5 @@ not be on par sometimes.
 
 -}
 < GitHub : { owner : Text, repo : Text, version : Text }
-| Git : { url : Text, version : Text }
+| Git : { url : Text, ref : Text }
 >

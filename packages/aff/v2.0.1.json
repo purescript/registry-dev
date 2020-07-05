@@ -1,0 +1,48 @@
+{
+  "targets": {
+    "lib": {
+      "sources": [
+        "src/**/*.purs"
+      ],
+      "nativeDependencies": {},
+      "dependencies": {
+        "purescript-unsafe-coerce": "^2.0.0",
+        "purescript-transformers": "^2.0.1",
+        "purescript-parallel": "^2.0.0",
+        "purescript-functions": "^2.0.0",
+        "purescript-exceptions": "^2.0.0",
+        "purescript-console": "^2.0.0"
+      }
+    },
+    "test": {
+      "sources": [
+        "src/**/*.purs",
+        "test/**/*.purs"
+      ],
+      "nativeDependencies": {
+        "jscs": "^3.0.7",
+        "jshint": "^2.9.4",
+        "pulp": "^9.0.1",
+        "purescript-psa": "^0.3.9",
+        "purescript": "^0.10.1",
+        "rimraf": "^2.5.4"
+      },
+      "dependencies": {
+        "purescript-unsafe-coerce": "^2.0.0",
+        "purescript-transformers": "^2.0.1",
+        "purescript-parallel": "^2.0.0",
+        "purescript-functions": "^2.0.0",
+        "purescript-exceptions": "^2.0.0",
+        "purescript-console": "^2.0.0",
+        "purescript-partial": "^1.1.2"
+      }
+    }
+  },
+  "repository": {
+    "version": "v2.0.1",
+    "owner": "slamdata",
+    "repo": "purescript-aff"
+  },
+  "name": "aff",
+  "license": "Apache-2.0"
+}
