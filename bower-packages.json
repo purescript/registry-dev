@@ -569,7 +569,7 @@
   "purescript-halogen-select": "https://github.com/citizennet/purescript-halogen-select.git",
   "purescript-halogen-selects": "https://github.com/slamdata/purescript-halogen-selects.git",
   "purescript-halogen-storybook": "https://github.com/rnons/purescript-halogen-storybook.git",
-  "purescript-halogen-svg": "https://github.com/AidanDelaney/purescript-halogen-svg.git",
+  "purescript-halogen-svg": "https://github.com/statebox/purescript-halogen-svg.git",
   "purescript-halogen-vdom": "https://github.com/slamdata/purescript-halogen-vdom.git",
   "purescript-halogen-vdom-string-renderer": "https://github.com/slamdata/purescript-halogen-vdom-string-renderer.git",
   "purescript-halogen-virtual-dom": "https://github.com/slamdata/purescript-halogen-virtual-dom.git",
