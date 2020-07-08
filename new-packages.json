@@ -20,5 +20,6 @@
   "purescript-http-types-basic": "https://github.com/meeshkan/purescript-http-types.git",
   "purescript-graphql-gen": "https://github.com/meeshkan/purescript-graphql-gen.git",
   "purescript-graphql-validator": "https://github.com/meeshkan/purescript-graphql-validator.git",
-  "purescript-halogen-svg-elems": "https://github.com/JordanMartinez/purescript-halogen-svg-elems.git"
+  "purescript-halogen-svg-elems": "https://github.com/JordanMartinez/purescript-halogen-svg-elems.git",
+  "purescript-elm-license-checker": "https://github.com/kakkun61/elm-license-checker.git"
 }
