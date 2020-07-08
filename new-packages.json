@@ -21,5 +21,8 @@
   "purescript-graphql-gen": "https://github.com/meeshkan/purescript-graphql-gen.git",
   "purescript-graphql-validator": "https://github.com/meeshkan/purescript-graphql-validator.git",
   "purescript-react-basic-classic": "https://github.com/lumihq/purescript-react-basic-classic.git",
-  "purescript-halogen-svg-elems": "https://github.com/JordanMartinez/purescript-halogen-svg-elems.git"
+  "purescript-react-basic-dom": "https://github.com/lumihq/purescript-react-basic-dom.git",
+  "purescript-react-basic-compat": "https://github.com/lumihq/purescript-react-basic-compat.git",
+  "purescript-halogen-svg-elems": "https://github.com/JordanMartinez/purescript-halogen-svg-elems.git",
+  "purescript-elm-license-checker": "https://github.com/kakkun61/elm-license-checker.git"
 }
