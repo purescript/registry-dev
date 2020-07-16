@@ -26,5 +26,6 @@
   "purescript-react-basic-dnd": "https://github.com/lumihq/purescript-react-dnd-basic.git",
   "purescript-halogen-svg-elems": "https://github.com/JordanMartinez/purescript-halogen-svg-elems.git",
   "purescript-elm-license-checker": "https://github.com/kakkun61/elm-license-checker.git",
-  "purescript-arrays-zipper": "https://github.com/JordanMartinez/purescript-arrays-zipper.git"
+  "purescript-arrays-zipper": "https://github.com/JordanMartinez/purescript-arrays-zipper.git",
+  "purescript-literals": "https://github.com/jvliwanag/purescript-literals.git"
 }
