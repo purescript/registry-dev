@@ -29,5 +29,6 @@
   "purescript-arrays-zipper": "https://github.com/JordanMartinez/purescript-arrays-zipper.git",
   "purescript-literals": "https://github.com/jvliwanag/purescript-literals.git",
   "purescript-arraybuffer-builder": "https://github.com/jamesdbrock/purescript-arraybuffer-builder.git",
-  "purescript-parsing-dataview": "https://github.com/jamesdbrock/purescript-parsing-dataview.git"
+  "purescript-parsing-dataview": "https://github.com/jamesdbrock/purescript-parsing-dataview.git",
+  "purescript-quickcheck-utf8": "https://github.com/openchronology/purescript-quickcheck-utf8.git"
 }
