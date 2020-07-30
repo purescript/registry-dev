@@ -30,5 +30,6 @@
   "purescript-literals": "https://github.com/jvliwanag/purescript-literals.git",
   "purescript-arraybuffer-builder": "https://github.com/jamesdbrock/purescript-arraybuffer-builder.git",
   "purescript-parsing-dataview": "https://github.com/jamesdbrock/purescript-parsing-dataview.git",
-  "purescript-quickcheck-utf8": "https://github.com/openchronology/purescript-quickcheck-utf8.git"
+  "purescript-quickcheck-utf8": "https://github.com/openchronology/purescript-quickcheck-utf8.git",
+  "purescript-validated-molecule": "https://github.com/lukasturcani/validated-molecule.git"
 }
