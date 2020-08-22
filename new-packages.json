@@ -33,5 +33,6 @@
   "purescript-quickcheck-utf8": "https://github.com/openchronology/purescript-quickcheck-utf8.git",
   "purescript-validated-molecule": "https://github.com/lukasturcani/validated-molecule.git",
   "purescript-hetu": "https://github.com/je-l/hetu.git",
-  "purescript-npm-package-json": "https://github.com/maxdeviant/purescript-npm-package-json.git"
+  "purescript-npm-package-json": "https://github.com/maxdeviant/purescript-npm-package-json.git",
+  "purescript-mol-draw": "https://github.com/lukasturcani/mol-draw.git"
 }
