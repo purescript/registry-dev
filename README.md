@@ -119,17 +119,19 @@ let TargetType =
       -- Optional output folder where the compiler will put its result.
       -- If not specified, the compiler will use "output"
       , output : Optional Text
-      -- A target might not be pointing at the JS backend - if that's the case
-      -- we can specify here the command for the alternate backend.
-      -- Example values: `psgo`, `pskt`, etc.
-      , backend : Optional Text
+      -- A list of target backends the package supports.
+      -- In case of multiple backends, the package would contain multiple 
+      -- foreign files for the same purscript file.
+      -- An empty List would represent not using any ffi in the package itself
+      -- Example values: [], [`psgo`], [`js`, `pskt`], etc.
+      , backends : List Text
       }
 
 let default =
       { dependencies = (toMap {=}) : Map Text Text
       , sources = [] : List Text
       , output = None Text
-      , backend = None Text
+      , backends = ["js"] : List Text
       }
 
 in  { default = default, Type = TargetType }
