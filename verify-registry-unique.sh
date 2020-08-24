@@ -12,6 +12,6 @@ unique=$(cat bower-packages.json new-packages.json | jq -s "map(keys) | add | un
 if [ "$total" == "$unique" ]; then
   exit 0
 else
-  echo "New packages alredy exist in the registry!"
+  echo "New packages already exist in the registry!"
   exit 1
 fi
