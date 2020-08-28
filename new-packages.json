@@ -35,5 +35,6 @@
   "purescript-hetu": "https://github.com/je-l/hetu.git",
   "purescript-npm-package-json": "https://github.com/maxdeviant/purescript-npm-package-json.git",
   "purescript-mol-draw": "https://github.com/lukasturcani/mol-draw.git",
-  "purescript-parsing-expect": "https://github.com/markfarrell/purescript-parsing-expect.git"
+  "purescript-parsing-expect": "https://github.com/markfarrell/purescript-parsing-expect.git",
+  "purescript-dodo-printer": "https://github.com/natefaubion/purescript-dodo-printer.git"
 }
