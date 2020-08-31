@@ -6,7 +6,7 @@
   "purescript-ordered-set": "https://github.com/flip111/purescript-ordered-set.git",
   "purescript-tree-rose": "https://github.com/jordanmartinez/purescript-tree-rose.git",
   "purescript-typelevel-rowlist-limits": "https://github.com/mwalkerwells/purescript-typelevel-rowlist-limits.git",
-  "purescript-apexcharts" : "https://github.com/timdeputter/purescript-apexcharts.git",
+  "purescript-apexcharts": "https://github.com/timdeputter/purescript-apexcharts.git",
   "purescript-classnames": "https://github.com/dewey92/purescript-classnames.git",
   "purescript-clipboardy": "https://github.com/hrajchert/purescript-clipboardy.git",
   "purescript-web-url": "https://github.com/mjepronk/purescript-web-url.git",
@@ -37,5 +37,6 @@
   "purescript-mol-draw": "https://github.com/lukasturcani/mol-draw.git",
   "purescript-parsing-expect": "https://github.com/markfarrell/purescript-parsing-expect.git",
   "purescript-dodo-printer": "https://github.com/natefaubion/purescript-dodo-printer.git",
-  "purescript-gl-matrix": "https://github.com/dirkz/purescript-gl-matrix.git"
+  "purescript-gl-matrix": "https://github.com/dirkz/purescript-gl-matrix.git",
+  "purescript-teller": "https://github.com/ammanvedi/teller.git"
 }
