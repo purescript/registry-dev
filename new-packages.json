@@ -39,5 +39,6 @@
   "purescript-dodo-printer": "https://github.com/natefaubion/purescript-dodo-printer.git",
   "purescript-gl-matrix": "https://github.com/dirkz/purescript-gl-matrix.git",
   "purescript-teller": "https://github.com/ammanvedi/teller.git",
-  "purescript-parsing-repetition": "https://github.com/markfarrell/purescript-parsing-repetition.git"
+  "purescript-parsing-repetition": "https://github.com/markfarrell/purescript-parsing-repetition.git",
+  "purescript-untagged-union": "https://github.com/jvliwanag/purescript-untagged-union.git"
 }
