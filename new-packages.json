@@ -44,5 +44,6 @@
   "purescript-parsing-validation": "https://github.com/markfarrell/purescript-parsing-validation.git",
   "purescript-geometry-plane": "https://github.com/Ebmtranceboy/purescript-geometry-plane.git",
   "purescript-github-actions-toolkit": "https://github.com/purescript-contrib/purescript-github-actions-toolkit.git",
-  "purescript-point-free": "https://github.com/ursi/purescript-point-free.git"
+  "purescript-point-free": "https://github.com/ursi/purescript-point-free.git",
+  "purescript-parsing-hexadecimal": "https://github.com/markfarrell/purescript-parsing-hexadecimal.git"
 }
