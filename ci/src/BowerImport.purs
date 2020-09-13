@@ -143,7 +143,7 @@ main = Aff.launchAff_ do
       forWithIndex_ releaseIndex \name { address, releases } -> do
         -- we first check that we have a directory for every package.
         -- If not, we make one
-        let packageFolder = "../packages/" <> name
+        let packageFolder = "../examples/" <> name
         unlessM (FS.exists packageFolder) (FS.mkdir packageFolder)
         -- then we list all the files in that package directory - every file is a version
         manifests <- FS.readdir packageFolder
