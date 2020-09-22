@@ -5,7 +5,6 @@ import Prelude
 import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
-import Control.Alt ((<|>))
 import Data.Argonaut (jsonEmptyObject, (~>), (:=), (.:?), (.!=))
 import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
@@ -16,7 +15,6 @@ import Data.Either (Either(..), fromRight)
 import Data.Foldable (and)
 import Data.FoldableWithIndex (forWithIndex_)
 import Data.JSDate as JSDate
-import Data.List as List
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing)
@@ -24,12 +22,12 @@ import Data.Newtype (class Newtype, unwrap)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.String as String
-import Data.String.CodeUnits (fromCharArray)
 import Data.Time.Duration (Hours(..))
 import Data.Traversable (for_)
 import Data.TraversableWithIndex (forWithIndex)
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
+import Dhall as Dhall
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Aff as Aff
@@ -39,15 +37,11 @@ import Effect.Exception as Exception
 import Effect.Now (nowDateTime) as Time
 import Foreign.Object as Foreign
 import GitHub as GitHub
-import Node.ChildProcess as NodeProcess
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Partial.Unsafe (unsafePartial)
-import Sunde as Process
-import Text.Parsing.StringParser as Parser
-import Text.Parsing.StringParser.CodePoints as Parse
-import Text.Parsing.StringParser.Combinators as ParseC
+import Registry.Schema (Manifest, Repo(..))
 import Web.Bower.PackageMeta as Bower
 
 
@@ -75,39 +69,6 @@ instance decodePackageJson :: Json.DecodeJson PackageJson where
     devDependencies <- obj .:? "devDependencies" .!= mempty
     pure $ PackageJson { dependencies, devDependencies }
 
--- | PureScript encoding of ../v1/Manifest.dhall
-type Manifest =
-  { name :: String
-  , license :: String
-  , repository :: Repo
-  , targets :: Foreign.Object Target
-  }
-
-data Repo
-  = Git { url :: String, ref :: String }
-  | GitHub { owner :: String, repo :: String, version :: String }
-
--- | We encode it this way so that json-to-dhall can read it
--- | TODO: change this encoding so that we can add other providers
-instance repoEncodeJson :: Json.EncodeJson Repo where
-  encodeJson = case _ of
-    Git { url, ref }
-      -> "url" := url
-      ~> "ref" := ref
-      ~> jsonEmptyObject
-    GitHub { repo, owner, version }
-      -> "repo" := repo
-      ~> "owner" := owner
-      ~> "version" := version
-      ~> jsonEmptyObject
-
-type Target =
-  { dependencies :: Foreign.Object String
-  , nativeDependencies :: Foreign.Object String
-  , sources :: Array String
-  }
-
-
 main :: Effect Unit
 main = Aff.launchAff_ do
   log "Starting import from Bower.."
@@ -132,7 +93,7 @@ main = Aff.launchAff_ do
       let allPackages = bowerPackages <> newPackages
       releaseIndex <- Map.fromFoldable <$> forWithIndex allPackages \nameWithPrefix repoUrl -> do
         let name = stripPurescriptPrefix nameWithPrefix
-        let address = unsafePartial $ fromRight $ parseRepo repoUrl
+        let address = unsafePartial $ fromRight $ GitHub.parseRepo repoUrl
         releases <- withCache ("releases__" <> address.owner <> "__" <> address.repo) (Just $ Hours 24.0) $ do
           log $ "Fetching releases for package " <> show name
           Set.fromFoldable <$> GitHub.getReleases address
@@ -152,7 +113,9 @@ main = Aff.launchAff_ do
           let
             manifestIsMissing = isNothing $ Array.findIndex (_ == release.name <> ".json") manifests
             shouldSkip = Set.member (Tuple name release.name) toSkip
-            shouldFetch = manifestIsMissing && not shouldSkip
+            -- TODO: we limit the package list to these three packages just to print example manifests
+            examplePackage = Set.member name (Set.fromFoldable ["aff", "mysql", "prelude"])
+            shouldFetch = manifestIsMissing && not shouldSkip && examplePackage
           in when shouldFetch do
             -- if yes, then..
             log $ "Could not find manifest for version " <> release.name <> " of " <> show address <> ", making it.."
@@ -196,7 +159,7 @@ main = Aff.launchAff_ do
               let manifestStr = stringifyWithIndent 2 $ Json.encodeJson $ toManifest bowerfile maybePackageJson release.name address
               -- we then conform to Dhall type. If that does works out then
               -- write it to the manifest file, otherwise print the error
-              jsonToDhall manifestStr >>= case _ of
+              Dhall.jsonToDhall manifestStr >>= case _ of
                 Right _ -> do
                   FS.writeTextFile UTF8 manifestPath manifestStr
                 Left result -> error result
@@ -207,13 +170,14 @@ toManifest :: Bower.PackageMeta -> Maybe PackageJson -> String -> GitHub.Address
 toManifest (Bower.PackageMeta bowerfile) maybePackageJson version address
   = { name, license, repository, targets }
   where
+    subdir = Nothing
     name = stripPurescriptPrefix bowerfile.name
     license = String.joinWith " OR " bowerfile.license
     repository = case _.url <$> bowerfile.repository of
-      Nothing -> GitHub { repo: address.repo, owner: address.owner, version }
-      Just url -> case parseRepo url of
-        Left _err -> Git { url, ref: version }
-        Right { repo, owner } -> GitHub { repo, owner, version }
+      Nothing -> GitHub { repo: address.repo, owner: address.owner, version, subdir }
+      Just url -> case GitHub.parseRepo url of
+        Left _err -> Git { url, version, subdir }
+        Right { repo, owner } -> GitHub { repo, owner, version, subdir }
     toDepPair { packageName, versionRange } = Tuple packageName versionRange
     deps = map toDepPair $ unwrap bowerfile.dependencies
     devDeps = map toDepPair $ unwrap bowerfile.devDependencies
@@ -233,17 +197,6 @@ toManifest (Bower.PackageMeta bowerfile) maybePackageJson version address
                 ]
 
 
-jsonToDhall :: String -> Aff (Either String String)
-jsonToDhall jsonStr = do
-  let cmd = "json-to-dhall"
-  let stdin = Just jsonStr
-  let args = ["--records-loose", "--unions-strict", "../v1/Manifest.dhall"]
-  result <- Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
-  pure $ case result.exit of
-    NodeProcess.Normally 0 -> Right jsonStr
-    _ -> Left result.stderr
-
-
 -- | Are all the dependencies PureScript packages or are there any external Bower/JS packages?
 selfContainedDependencies :: ReleasesIndex -> Bower.PackageMeta -> Boolean
 selfContainedDependencies packageIndex (Bower.PackageMeta { dependencies, devDependencies }) =
@@ -260,18 +213,6 @@ stripPurescriptPrefix name
   = fromMaybe name
   $ String.stripPrefix (String.Pattern "purescript-") name
 
-
-parseRepo :: String -> Either Parser.ParseError GitHub.Address
-parseRepo = Parser.runParser do
-  void $ Parse.string "https://github.com/"
-    <|> Parse.string "git://github.com/"
-    <|> Parse.string "git@github.com:"
-  owner <- map (fromCharArray <<< List.toUnfoldable)
-    $ ParseC.manyTill (ParseC.choice [Parse.alphaNum, Parse.char '-']) (Parse.char '/')
-  repoWithSuffix <- map (fromCharArray <<< List.toUnfoldable)
-    $ ParseC.many Parse.anyChar
-  let repo = fromMaybe repoWithSuffix $ String.stripSuffix (String.Pattern ".git") repoWithSuffix
-  pure { owner, repo }
 
 
 -- | Optionally-expirable cache: when passing a Duration then we'll consider
@@ -331,6 +272,15 @@ toSkip = Set.fromFoldable
   , "concur-react" /\ "v0.3.9"
   , "concur-react" /\ "v0.4.0"
   , "const" /\ "0.0.1"
+  , "dodo-printer" /\ "v1.0.0"
+  , "dodo-printer" /\ "v1.0.1"
+  , "dodo-printer" /\ "v1.0.2"
+  , "dodo-printer" /\ "v1.0.3"
+  , "dodo-printer" /\ "v1.0.4"
+  , "dodo-printer" /\ "v1.0.5"
+  , "dodo-printer" /\ "v1.0.6"
+  , "dodo-printer" /\ "v1.0.7"
+  , "dodo-printer" /\ "v1.0.8"
   , "encoding" /\ "v0.0.6"
   , "endpoints-express" /\ "0.0.1"
   , "error" /\ "v1.0.0"

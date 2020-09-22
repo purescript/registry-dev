@@ -15,6 +15,7 @@
   , "refs"
   , "string-parsers"
   , "sunde"
+  , "test-unit"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs" ]

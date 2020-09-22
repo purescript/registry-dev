@@ -1,6 +1,8 @@
 {-
 
-The type of a Package version manifest in the Registry
+The schema for `purs.json` files.
+
+This object holds all the info that the Registry needs to know about it.
 
 -}
 
@@ -8,7 +10,7 @@ let Map = (./Prelude.dhall).Map.Type
 
 let Target = ./Target.dhall
 
-let Package =
+let Manifest =
       -- The name of the package
       { name : Text
       -- The SPDX code for the license under which the code is released
@@ -19,4 +21,4 @@ let Package =
       , targets : Map Text Target
       }
 
-in Package
+in Manifest
