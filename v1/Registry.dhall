@@ -11,7 +11,11 @@ let Repo = ./Repo.dhall
 
 let Target = ./Target.dhall
 
-let Package = ./Manifest.dhall
+let Manifest = ./Manifest.dhall
+
+let Metadata = ./Metadata.dhall
+
+let Operation = ./Operation.dhall
 
 let Dependencies = Prelude.Map.Type Text Text
 
@@ -20,7 +24,9 @@ let Registry =
       , Prelude
       , Dependencies
       , Target
-      , Package
+      , Manifest
+      , Operation
+      , Metadata
       }
 
 in  Registry

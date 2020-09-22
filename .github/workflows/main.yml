@@ -7,6 +7,15 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
+    # Setup
     - uses: actions/checkout@v2
     - uses: cachix/install-nix-action@v9
+
+    # Pro-tempore checks, should go away once new registry is in place
     - run: ./verify-registry-unique.sh
+
+    # Checks for the Registry Draft
+    - name: "Check that all Dhall compiles, and examples correctly conform to a Manifest"
+      run: ./ci/scripts/verify-dhall.sh
+    - name: "Check all the example Manifests roundtrip (read+write) through PureScript"
+      run: cd ci && nix-shell ../default.nix --command "spago run -m Registry.Check.ManifestRoundtrip"
