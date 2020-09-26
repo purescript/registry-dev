@@ -51,5 +51,6 @@
   "purescript-aff-cache": "https://github.com/jvliwanag/purescript-aff-cache.git",
   "purescript-parsing-uuid": "https://github.com/markfarrell/purescript-parsing-uuid.git",
   "purescript-heckin": "https://github.com/maxdeviant/purescript-heckin.git",
-  "purescript-which": "https://github.com/maxdeviant/purescript-which.git"
+  "purescript-which": "https://github.com/maxdeviant/purescript-which.git",
+  "purescript-pwned-passwords": "https://github.com/maxdeviant/purescript-pwned-passwords"
 }
