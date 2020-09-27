@@ -139,10 +139,6 @@ let Target =
       -- A mapping between package names (as published on the Registry or
       -- included in the Package Set) and SemVer ranges for them.
       { dependencies : Map Text Text
-      -- A mapping between package names and SemVer ranges for them.
-      -- Said dependencies are not PureScript code, and they are used
-      -- in FFI to interact with the underlying backend.
-      , nativeDependencies : Map Text Text
       -- Local source globs to include in the compilation for the target
       , sources : List Text
       }
@@ -279,7 +275,7 @@ Trustees will __not__ change the source of a package, but only its metadata in t
 Trustees are allowed to publish __new revisions__ (i.e. versions that bump the `pre-release` segment from SemVer), to:
 - relax version bounds
 - tighten version bounds
-- add/remove dependencies/native-dependencies to make the package build correctly
+- add/remove dependencies to make the package build correctly
 
 __Note: there is no API defined yet for this operation.__
 
