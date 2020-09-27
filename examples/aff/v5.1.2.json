@@ -4,7 +4,6 @@
       "sources": [
         "src/**/*.purs"
       ],
-      "nativeDependencies": {},
       "dependencies": {
         "purescript-effect": "^2.0.0",
         "purescript-datetime": "^4.0.0",
@@ -20,14 +19,6 @@
         "src/**/*.purs",
         "test/**/*.purs"
       ],
-      "nativeDependencies": {
-        "jscs": "^3.0.7",
-        "jshint": "^2.9.5",
-        "pulp": "^12.2.0",
-        "purescript-psa": "^0.6.0",
-        "purescript": "slamdata/node-purescript#0.12",
-        "rimraf": "^2.6.2"
-      },
       "dependencies": {
         "purescript-effect": "^2.0.0",
         "purescript-datetime": "^4.0.0",

@@ -4,8 +4,6 @@ import Prelude
 
 import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
-import Affjax.StatusCode (StatusCode(..))
-import Data.Argonaut (jsonEmptyObject, (~>), (:=), (.:?), (.!=))
 import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Array as Array
@@ -18,7 +16,7 @@ import Data.JSDate as JSDate
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing)
-import Data.Newtype (class Newtype, unwrap)
+import Data.Newtype (unwrap)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.String as String
@@ -49,25 +47,6 @@ type ReleasesIndex = Map String Package
 
 type Package = { address :: GitHub.Address, releases :: Set GitHub.Tag }
 
-newtype PackageJson = PackageJson
-  { dependencies :: Foreign.Object String
-  , devDependencies :: Foreign.Object String
-  }
-
-derive instance newtypePackageJson :: Newtype PackageJson _
-
-instance encodePackageJson :: Json.EncodeJson PackageJson where
-  encodeJson (PackageJson { dependencies, devDependencies })
-    = "dependencies" := dependencies
-    ~> "devDependencies" := devDependencies
-    ~> jsonEmptyObject
-
-instance decodePackageJson :: Json.DecodeJson PackageJson where
-  decodeJson json = do
-    obj <- Json.decodeJson json
-    dependencies <- obj .:? "dependencies" .!= mempty
-    devDependencies <- obj .:? "devDependencies" .!= mempty
-    pure $ PackageJson { dependencies, devDependencies }
 
 main :: Effect Unit
 main = Aff.launchAff_ do
@@ -132,31 +111,14 @@ main = Aff.launchAff_ do
                     Right { body } -> case (Json.decodeJson body) of
                       Left err -> Aff.throwError $ Exception.error $ Json.printJsonDecodeError err
                       Right (bowerfile :: Bower.PackageMeta) -> pure bowerfile
-            -- we also try to download the package.json file, if the package has one
-            -- (or use the cache as usual) to figure out the `nativeDependencies`
-            let fetchPackagesJson = do
-                  let url = "https://raw.githubusercontent.com/" <> address.owner <> "/" <> address.repo <> "/" <> release.name <> "/package.json"
-                  log $ "Fetching package.json: " <> url
-                  Http.get ResponseFormat.json url >>= case _ of
-                    Left (Http.ResponseBodyError err { status: StatusCode 404 }) -> pure Nothing
-                    Left err -> do
-                      error $ "Got error while fetching package.json, the package might not have it."
-                      error $ "Error was: " <> Http.printError err
-                      pure Nothing
-                    Right { body } -> case Json.decodeJson body of
-                      Left err -> do
-                        error $ "Got error while parsing package.json: " <> Json.printJsonDecodeError err
-                        pure Nothing
-                      Right (packageJson :: PackageJson) -> pure (Just packageJson)
             bowerfile <- withCache ("bowerfile__" <> name <> "__" <> release.name) Nothing fetchBowerfile
-            maybePackageJson <- withCache ("packageJson__" <> name <> "__" <> release.name) Nothing fetchPackagesJson
             -- then we check if all dependencies/versions are self-contained in the registry
             if (not $ selfContainedDependencies releaseIndex bowerfile)
             then error $ "Dependencies for the package " <> show name <> " are not all contained in the registry, skipping."
             else do
               -- now we should be ready to convert it
               let manifestPath = packageFolder <> "/" <> release.name <> ".json"
-              let manifestStr = stringifyWithIndent 2 $ Json.encodeJson $ toManifest bowerfile maybePackageJson release.name address
+              let manifestStr = stringifyWithIndent 2 $ Json.encodeJson $ toManifest bowerfile release.name address
               -- we then conform to Dhall type. If that does works out then
               -- write it to the manifest file, otherwise print the error
               Dhall.jsonToDhall manifestStr >>= case _ of
@@ -166,8 +128,8 @@ main = Aff.launchAff_ do
 
 
 -- | Convert a Bowerfile into a Registry Manifest
-toManifest :: Bower.PackageMeta -> Maybe PackageJson -> String -> GitHub.Address -> Manifest
-toManifest (Bower.PackageMeta bowerfile) maybePackageJson version address
+toManifest :: Bower.PackageMeta -> String -> GitHub.Address -> Manifest
+toManifest (Bower.PackageMeta bowerfile) version address
   = { name, license, repository, targets }
   where
     subdir = Nothing
@@ -185,13 +147,11 @@ toManifest (Bower.PackageMeta bowerfile) maybePackageJson version address
       [ Tuple "lib"
           { sources: ["src/**/*.purs"]
           , dependencies: Foreign.fromFoldable deps
-          , nativeDependencies: fromMaybe mempty (map (_.dependencies <<< unwrap) maybePackageJson)
           }
       ] <> if Array.null (unwrap bowerfile.devDependencies)
            then []
            else [ Tuple "test"
                     { sources: ["src/**/*.purs", "test/**/*.purs"]
-                    , nativeDependencies: fromMaybe mempty (map (_.devDependencies <<< unwrap) maybePackageJson)
                     , dependencies: Foreign.fromFoldable (deps <> devDeps)
                     }
                 ]

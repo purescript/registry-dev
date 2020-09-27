@@ -4,15 +4,6 @@
       "sources": [
         "src/**/*.purs"
       ],
-      "nativeDependencies": {
-        "bower": "^1.8.8",
-        "mysql": "^2.18.1",
-        "pulp": "^14.0.0",
-        "purescript": "^0.13.6",
-        "purescript-psa": "^0.7.3",
-        "uuid": "^3.3.3",
-        "uuid-validate": "0.0.3"
-      },
       "dependencies": {
         "purescript-simple-json": "^7.0.0",
         "purescript-aff": "^5.0.2",
@@ -24,7 +15,6 @@
         "src/**/*.purs",
         "test/**/*.purs"
       ],
-      "nativeDependencies": {},
       "dependencies": {
         "purescript-simple-json": "^7.0.0",
         "purescript-aff": "^5.0.2",

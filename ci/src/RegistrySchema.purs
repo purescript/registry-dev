@@ -19,7 +19,6 @@ type Manifest =
 
 type Target =
   { dependencies :: Foreign.Object String
-  , nativeDependencies :: Foreign.Object String
   , sources :: Array String
   }
 
