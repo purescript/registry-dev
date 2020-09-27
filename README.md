@@ -10,7 +10,7 @@ Here's a non-comprehensive list of desiderable properties/goals that we'd genera
 achieve when talking of a PureScript registry, and that we think this design covers:
 - **independent**: we're coming from a situation when relying on a third party registry has
   faulted us, so we'd need something that we can control and possibly host ourselves.
-- **immutabile**: published packages are immutable - once a version has been published
+- **immutable**: published packages are immutable - once a version has been published
   then its source code is forever packaged in the tarball uploaded to our storage(s).
   The only exception is that **unpublishing** will be possible for some time after publishing.
   This goal also directly stems from our experience with Bower, where we were not able to
@@ -74,8 +74,8 @@ for **a specific  version** of **a specific package**.
 Packages are expected to version in their sources a `purs.json` file, that conforms
 to the [`Manifest` schema](./v1/Manifest.dhall) to ensure __forwards-compatibility__
 with future schemas.
-This means that new clients will be able to read old schemas, but not viceversa.
-And the reason why forward (rathen than backwards) compatibility is needed is because
+This means that new clients will be able to read old schemas, but not vice-versa.
+And the reason why forward (rather than backwards) compatibility is needed is because
 package manifests are baked in the (immutable) package tarballs forever, which means that
 any client (especially old ones) should always be able to read that manifest.
 
@@ -233,7 +233,7 @@ You can see the schema of this file [here](./v1/Metadata.dhall), and the main re
   Note: these are going to be sorted in ascending order according to [SemVer](https://semver.org) - when in
   doubt the sorting provided by [the `semver` package on NPM](https://www.npmjs.com/package/semver#comparison) is correct.
 - unpublished versions together with the reason for unpublishing
-- GitHub handles of package maintainers, so that we'll be able to contact them if any action is needed for any of their packages
+- GitHub usernames of package maintainers, so that we'll be able to contact them if any action is needed for any of their packages
 
 ## Package Sets
 
@@ -312,10 +312,8 @@ each of these locations a "storage backend".
 
 Clients will need to be pointed at place they can store package tarballs from,
 so here we'll store a mapping between "name of the storage backend" to a function
-that given:
-1. a package name
-2. a package version
-..returns the _URL_ where the tarball for that package version can be fetched.
+that given (1) a package name and (2) a package version then returns the _URL_
+where the tarball for that package version can be fetched.
 
 We maintain the list of all the Storage Backends and the aforementioned mappings
 [here](./v1/backends.dhall).
