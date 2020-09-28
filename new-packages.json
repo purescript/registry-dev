@@ -52,5 +52,6 @@
   "purescript-parsing-uuid": "https://github.com/markfarrell/purescript-parsing-uuid.git",
   "purescript-heckin": "https://github.com/maxdeviant/purescript-heckin.git",
   "purescript-which": "https://github.com/maxdeviant/purescript-which.git",
-  "purescript-parsing-foreign": "https://github.com/markfarrell/purescript-parsing-foreign.git"
+  "purescript-parsing-foreign": "https://github.com/markfarrell/purescript-parsing-foreign.git",
+  "purescript-nested-functor": "https://github.com/acple/purescript-nested-functor.git"
 }
