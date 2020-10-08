@@ -346,7 +346,7 @@
   "purescript-creditcard-validation": "https://github.com/ersocon/purescript-creditcard-validation.git",
   "purescript-crypt-nacl": "https://github.com/throughnothing/purescript-crypt-nacl.git",
   "purescript-crypto": "https://github.com/oreshinya/purescript-crypto.git",
-  "purescript-css": "https://github.com/slamdata/purescript-css.git",
+  "purescript-css": "https://github.com/purescript-contrib/purescript-css.git",
   "purescript-css-bem": "https://github.com/aykl/purescript-css-bem.git",
   "purescript-css-properties": "https://github.com/nonbili/purescript-css-properties.git",
   "purescript-css-validate": "https://github.com/nonbili/purescript-css-validate.git",
