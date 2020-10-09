@@ -54,5 +54,6 @@
   "purescript-which": "https://github.com/maxdeviant/purescript-which.git",
   "purescript-parsing-foreign": "https://github.com/markfarrell/purescript-parsing-foreign.git",
   "purescript-nested-functor": "https://github.com/acple/purescript-nested-functor.git",
-  "purescript-pwned-passwords": "https://github.com/maxdeviant/purescript-pwned-passwords"
+  "purescript-pwned-passwords": "https://github.com/maxdeviant/purescript-pwned-passwords",
+  "purescript-pointed": "https://github.com/vladciobanu/purescript-pointed"
 }
