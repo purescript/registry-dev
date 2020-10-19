@@ -59,5 +59,6 @@
   "purescript-debugged": "https://github.com/hdgarrood/purescript-debugged",
   "purescript-task": "https://github.com/ursi/purescript-task.git",
   "purescript-downloadjs": "https://github.com/chekoopa/purescript-downloadjs.git",
-  "purescript-debuggest": "https://github.com/ursi/purescript-debuggest.git"
+  "purescript-debuggest": "https://github.com/ursi/purescript-debuggest.git",
+  "purescript-mason-prelude": "https://github.com/ursi/purescript-mason-prelude.git"
 }
