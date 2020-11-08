@@ -63,6 +63,9 @@
   "purescript-mason-prelude": "https://github.com/ursi/purescript-mason-prelude.git",
   "purescript-wire": "https://github.com/robertdp/purescript-wire.git",
   "purescript-react-halo": "https://github.com/robertdp/purescript-react-halo.git",
-  "purescript-bcrypt": "https://github.com/VFabricio/purescript-bcrypt.git",
+  "purescript-bcrypt": "https://github.com/VFabricio/purescript-bcrypt",
+  "purescript-task-http": "https://github.com/ursi/purescript-task-http.git",
+  "purescript-ffi-options": "https://github.com/ursi/purescript-ffi-options.git",
+  "purescript-whatwg-html": "https://github.com/ursi/purescript-whatwg-html.git",
   "purescript-dynamic-buffer": "https://github.com/kritzcreek/purescript-dynamic-buffer.git"
 }
