@@ -68,5 +68,6 @@
   "purescript-ffi-options": "https://github.com/ursi/purescript-ffi-options.git",
   "purescript-whatwg-html": "https://github.com/ursi/purescript-whatwg-html.git",
   "purescript-dynamic-buffer": "https://github.com/kritzcreek/purescript-dynamic-buffer.git",
+  "purescript-erlps-core": "https://github.com/erlscripten/erlps-core.git",
   "purescript-abc-parser": "https://github.com/newlandsvalley/purescript-abc-parser.git"
 }
