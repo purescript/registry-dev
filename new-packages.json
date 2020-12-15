@@ -71,5 +71,6 @@
   "purescript-erlps-core": "https://github.com/erlscripten/erlps-core.git",
   "purescript-abc-parser": "https://github.com/newlandsvalley/purescript-abc-parser.git",
   "purescript-ulid": "https://github.com/maxdeviant/purescript-ulid.git",
-  "purescript-js-fileio": "https://github.com/newlandsvalley/purescript-js-fileio.git"
+  "purescript-js-fileio": "https://github.com/newlandsvalley/purescript-js-fileio.git",
+  "purescript-simple-ulid": "https://github.com/oreshinya/purescript-simple-ulid.git"
 }
