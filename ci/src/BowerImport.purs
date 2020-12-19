@@ -129,17 +129,17 @@ main = Aff.launchAff_ do
 
 -- | Convert a Bowerfile into a Registry Manifest
 toManifest :: Bower.PackageMeta -> String -> GitHub.Address -> Manifest
-toManifest (Bower.PackageMeta bowerfile) version address
-  = { name, license, repository, targets }
+toManifest (Bower.PackageMeta bowerfile) ref address
+  = { name, license, repository, targets, version: ref }
   where
     subdir = Nothing
     name = stripPurescriptPrefix bowerfile.name
     license = String.joinWith " OR " bowerfile.license
     repository = case _.url <$> bowerfile.repository of
-      Nothing -> GitHub { repo: address.repo, owner: address.owner, version, subdir }
+      Nothing -> GitHub { repo: address.repo, owner: address.owner, ref, subdir }
       Just url -> case GitHub.parseRepo url of
-        Left _err -> Git { url, version, subdir }
-        Right { repo, owner } -> GitHub { repo, owner, version, subdir }
+        Left _err -> Git { url, ref, subdir }
+        Right { repo, owner } -> GitHub { repo, owner, ref, subdir }
     toDepPair { packageName, versionRange } = Tuple packageName versionRange
     deps = map toDepPair $ unwrap bowerfile.dependencies
     devDeps = map toDepPair $ unwrap bowerfile.devDependencies

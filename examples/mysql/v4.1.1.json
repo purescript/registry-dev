@@ -1,4 +1,5 @@
 {
+  "version": "v4.1.1",
   "targets": {
     "lib": {
       "sources": [
@@ -30,6 +31,5 @@
     "githubRepo": "purescript-mysql"
   },
   "name": "mysql",
-  "version": "v4.1.1",
   "license": "MIT"
 }

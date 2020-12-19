@@ -1,4 +1,5 @@
 {
+  "version": "v4.1.1",
   "targets": {
     "lib": {
       "sources": [
@@ -13,6 +14,5 @@
     "githubRepo": "purescript-prelude"
   },
   "name": "prelude",
-  "version": "v4.1.1",
   "license": "BSD-3-Clause"
 }

@@ -1,4 +1,5 @@
 {
+  "version": "v5.1.2",
   "targets": {
     "lib": {
       "sources": [
@@ -41,6 +42,5 @@
     "githubRepo": "purescript-aff"
   },
   "name": "aff",
-  "version": "v5.1.2",
   "license": "Apache-2.0"
 }
