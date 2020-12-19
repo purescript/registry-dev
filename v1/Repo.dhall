@@ -10,7 +10,7 @@ we can allow hosting packages on other providers too.
 -}
 
 let CommonData =
-  { version : Text
+  { ref : Text
   , subdir : Optional Text
   }
 

@@ -110,6 +110,8 @@ let Manifest =
       { name : Text
       -- The SPDX code for the license under which the code is released
       , license : Text
+      -- The version of this package
+      , version : Text
       -- The git repo the package is published at
       , repository : ./Repo.dhall
       -- Compilation targets for the Package
@@ -180,9 +182,10 @@ is an example of such link.
 
 Once the issue is open, the [CI in this repo](#The-Registry-CI) will:
 - detect if this is an `Addition`, and continue running if so
-- fetch all the releases for the package being added (looking at the `location` value in the metadata)
-- fetch the source of the last one, and run the [checks for package admission](#Checks-on-new-packages).
-  Note: package managers are expected to run the same checks locally as well, to tighten the feedback time for authors.
+- fetch the git repo the `Repo` refers to, checking out the `ref` it specifies,
+  and considering the package directory to be `subdir` if specified, or the root of the repo if not
+- run the [checks for package admission](#Checks-on-new-packages) on the package source we just checked out
+  Note: package managers are generally expected to run the same checks locally as well, to tighten the feedback time for authors.
 - if all is well, upload the tarball to the [storages](#Storage-backends).
   Note: if any of the Storage Backends is down we fail here, so that the problem can be addressed.
 - generate the [package's `Metadata` file](#Package-metadata):

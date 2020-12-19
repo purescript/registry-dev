@@ -15,6 +15,8 @@ let Manifest =
       { name : Text
       -- The SPDX code for the license under which the code is released
       , license : Text
+      -- The version of this package
+      , version : Text
       -- The git repo the package is published at
       , repository : ./Repo.dhall
       -- Compilation targets for the Package
