@@ -25,10 +25,11 @@
     }
   },
   "repository": {
-    "version": "v4.1.1",
+    "ref": "v4.1.1",
     "githubOwner": "oreshinya",
     "githubRepo": "purescript-mysql"
   },
   "name": "mysql",
+  "version": "v4.1.1",
   "license": "MIT"
 }

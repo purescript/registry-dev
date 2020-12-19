@@ -8,10 +8,11 @@
     }
   },
   "repository": {
-    "version": "v4.1.1",
+    "ref": "v4.1.1",
     "githubOwner": "purescript",
     "githubRepo": "purescript-prelude"
   },
   "name": "prelude",
+  "version": "v4.1.1",
   "license": "BSD-3-Clause"
 }

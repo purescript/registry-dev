@@ -36,10 +36,11 @@
     }
   },
   "repository": {
-    "version": "v5.1.2",
+    "ref": "v5.1.2",
     "githubOwner": "slamdata",
     "githubRepo": "purescript-aff"
   },
   "name": "aff",
+  "version": "v5.1.2",
   "license": "Apache-2.0"
 }
