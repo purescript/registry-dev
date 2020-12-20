@@ -75,5 +75,6 @@
   "purescript-simple-ulid": "https://github.com/oreshinya/purescript-simple-ulid.git",
   "purescript-js-uri": "https://github.com/purescript-contrib/purescript-js-uri.git",
   "purescript-substitute": "https://github.com/ursi/purescript-substitute.git",
-  "purescript-react-testing-library": "https://github.com/i-am-the-slime/purescript-react-testing-library.git"
+  "purescript-react-testing-library": "https://github.com/i-am-the-slime/purescript-react-testing-library.git",
+  "purescript-supply": "https://github.com/ajnsit/purescript-supply.git"
 }
