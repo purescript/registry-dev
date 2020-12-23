@@ -5,7 +5,6 @@ import Prelude
 import Data.Array as Array
 import Effect (Effect)
 import Effect.Aff as Aff
-import Effect.Class (liftEffect)
 import Effect.Class.Console (log)
 import Node.FS.Aff as FS
 import S3 as S3
@@ -29,22 +28,21 @@ upload { name, version, revision } path = Aff.launchAff_ $ do
   -- connect to the bucket
   let bucket = "purescript-registry"
   log $ "Connecting to the bucket " <> show bucket
-  s3 <- liftEffect $ S3.connect "ams3.digitaloceanspaces.com"
+  s3 <- S3.connect "ams3.digitaloceanspaces.com" bucket
   -- check that the file for that version and revision is there
   let filename
          = name <> "/"
         <> version
         <> (if revision == 0 then "" else "_r" <> show revision)
         <> ".tar.gz"
-  let listParams = { "Bucket": bucket, "Prefix": name <> "/" }
-  publishedPackages <- map _."Key" <$> S3.listObjects s3 listParams
+  publishedPackages <- map _.key <$> S3.listObjects s3 { prefix: name <> "/" }
   if Array.elem filename publishedPackages
   -- if the release is already there we crash
   then Aff.throwError $ Aff.error $ "The package " <> show filename <> " already exists"
   -- if it's not, we upload it with public read permission
   else do
     log $ "Uploading release to the bucket: " <> show filename
-    let putParams = { "Bucket": bucket, "Key": filename, "Body": fileContent, "ACL": "public-read" }
+    let putParams = { key: filename, body: fileContent, acl: S3.PublicRead }
     void $ S3.putObject s3 putParams
     log "Done."
 
