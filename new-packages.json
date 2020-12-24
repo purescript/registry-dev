@@ -76,5 +76,7 @@
   "purescript-js-uri": "https://github.com/purescript-contrib/purescript-js-uri.git",
   "purescript-substitute": "https://github.com/ursi/purescript-substitute.git",
   "purescript-react-testing-library": "https://github.com/i-am-the-slime/purescript-react-testing-library.git",
-  "purescript-supply": "https://github.com/ajnsit/purescript-supply.git"
+  "purescript-supply": "https://github.com/ajnsit/purescript-supply.git",
+  "purescript-return": "https://github.com/ursi/purescript-return.git",
+  "purescript-undefined-is-not-a-problem": "https://github.com/paluh/purescript-undefined-is-not-a-problem.git"
 }
