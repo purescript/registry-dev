@@ -43,11 +43,11 @@ data Repo
 -- | We encode it this way so that json-to-dhall can read it
 instance repoEncodeJson :: Json.EncodeJson Repo where
   encodeJson = case _ of
-    Git { subdir, url, ref }
+    Git { subdir, url }
       -> "url" := url
       ~> "subdir" :=? subdir
       ~>? jsonEmptyObject
-    GitHub { repo, owner, ref, subdir }
+    GitHub { repo, owner, subdir }
       -> "githubRepo" := repo
       ~> "githubOwner" := owner
       ~> "subdir" :=? subdir
