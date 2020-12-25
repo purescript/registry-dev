@@ -182,7 +182,7 @@ is an example of such link.
 
 Once the issue is open, the [CI in this repo](#The-Registry-CI) will:
 - detect if this is an `Addition`, and continue running if so
-- fetch the git repo the `Repo` refers to, checking out the `ref` it specifies,
+- fetch the git repo the `Repo` refers to, checking out the `ref` specified in the `Addition`,
   and considering the package directory to be `subdir` if specified, or the root of the repo if not
 - run the [checks for package admission](#Checks-on-new-packages) on the package source we just checked out
   Note: package managers are generally expected to run the same checks locally as well, to tighten the feedback time for authors.
