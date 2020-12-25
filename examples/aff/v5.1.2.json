@@ -1,4 +1,5 @@
 {
+  "version": "v5.1.2",
   "targets": {
     "lib": {
       "sources": [
@@ -36,7 +37,6 @@
     }
   },
   "repository": {
-    "version": "v5.1.2",
     "githubOwner": "slamdata",
     "githubRepo": "purescript-aff"
   },

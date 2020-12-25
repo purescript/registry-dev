@@ -12,6 +12,7 @@ import Foreign.Object as Foreign
 -- | PureScript encoding of ../v1/Manifest.dhall
 type Manifest =
   { name :: String
+  , version :: String -- TODO: we should have a newtype for this
   , license :: String
   , repository :: Repo
   , targets :: Foreign.Object Target
@@ -24,8 +25,7 @@ type Target =
 
 
 type RepoData d =
-  { version :: String
-  , subdir :: Maybe String
+  { subdir :: Maybe String
   | d
   }
 
@@ -43,28 +43,25 @@ data Repo
 -- | We encode it this way so that json-to-dhall can read it
 instance repoEncodeJson :: Json.EncodeJson Repo where
   encodeJson = case _ of
-    Git { subdir, url, version }
+    Git { subdir, url }
       -> "url" := url
-      ~> "version" := version
       ~> "subdir" :=? subdir
       ~>? jsonEmptyObject
-    GitHub { repo, owner, version, subdir }
+    GitHub { repo, owner, subdir }
       -> "githubRepo" := repo
       ~> "githubOwner" := owner
-      ~> "version" := version
       ~> "subdir" :=? subdir
       ~>? jsonEmptyObject
 
 instance repoDecodeJson :: Json.DecodeJson Repo where
   decodeJson json = do
     obj <- Json.decodeJson json
-    version <- obj .: "version"
     subdir <- obj .:? "subdir" .!= mempty
     let parseGitHub = do
           owner <- obj .: "githubOwner"
           repo <- obj .: "githubRepo"
-          pure $ GitHub { owner, repo, version, subdir }
+          pure $ GitHub { owner, repo, subdir }
     let parseGit = do
           url <- obj .: "url"
-          pure $ Git { url, version, subdir }
+          pure $ Git { url, subdir }
     parseGitHub <|> parseGit

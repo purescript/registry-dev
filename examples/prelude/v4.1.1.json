@@ -1,4 +1,5 @@
 {
+  "version": "v4.1.1",
   "targets": {
     "lib": {
       "sources": [
@@ -8,7 +9,6 @@
     }
   },
   "repository": {
-    "version": "v4.1.1",
     "githubOwner": "purescript",
     "githubRepo": "purescript-prelude"
   },
