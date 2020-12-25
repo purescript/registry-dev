@@ -136,10 +136,10 @@ toManifest (Bower.PackageMeta bowerfile) ref address
     name = stripPurescriptPrefix bowerfile.name
     license = String.joinWith " OR " bowerfile.license
     repository = case _.url <$> bowerfile.repository of
-      Nothing -> GitHub { repo: address.repo, owner: address.owner, ref, subdir }
+      Nothing -> GitHub { repo: address.repo, owner: address.owner, subdir }
       Just url -> case GitHub.parseRepo url of
-        Left _err -> Git { url, ref, subdir }
-        Right { repo, owner } -> GitHub { repo, owner, ref, subdir }
+        Left _err -> Git { url, subdir }
+        Right { repo, owner } -> GitHub { repo, owner, subdir }
     toDepPair { packageName, versionRange } = Tuple packageName versionRange
     deps = map toDepPair $ unwrap bowerfile.dependencies
     devDeps = map toDepPair $ unwrap bowerfile.devDependencies

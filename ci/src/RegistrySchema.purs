@@ -25,8 +25,7 @@ type Target =
 
 
 type RepoData d =
-  { ref :: String
-  , subdir :: Maybe String
+  { subdir :: Maybe String
   | d
   }
 
@@ -46,26 +45,23 @@ instance repoEncodeJson :: Json.EncodeJson Repo where
   encodeJson = case _ of
     Git { subdir, url, ref }
       -> "url" := url
-      ~> "ref" := ref
       ~> "subdir" :=? subdir
       ~>? jsonEmptyObject
     GitHub { repo, owner, ref, subdir }
       -> "githubRepo" := repo
       ~> "githubOwner" := owner
-      ~> "ref" := ref
       ~> "subdir" :=? subdir
       ~>? jsonEmptyObject
 
 instance repoDecodeJson :: Json.DecodeJson Repo where
   decodeJson json = do
     obj <- Json.decodeJson json
-    ref <- obj .: "ref"
     subdir <- obj .:? "subdir" .!= mempty
     let parseGitHub = do
           owner <- obj .: "githubOwner"
           repo <- obj .: "githubRepo"
-          pure $ GitHub { owner, repo, ref, subdir }
+          pure $ GitHub { owner, repo, subdir }
     let parseGit = do
           url <- obj .: "url"
-          pure $ Git { url, ref, subdir }
+          pure $ Git { url, subdir }
     parseGitHub <|> parseGit

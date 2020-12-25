@@ -1,6 +1,6 @@
 {-
 
-Coordinates for a package, i.e. "some kind of Git thing".
+Coordinates for a package, i.e. "some kind of Git place".
 
 We have special support for GitHub because it's easier for us if packages are
 there, as we use their API to do things, e.g. to fetch commit tarballs.
@@ -10,8 +10,7 @@ we can allow hosting packages on other providers too.
 -}
 
 let CommonData =
-  { ref : Text
-  , subdir : Optional Text
+  { subdir : Optional Text
   }
 
 let GitHubData = CommonData //\\

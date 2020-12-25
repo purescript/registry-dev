@@ -9,7 +9,6 @@
     }
   },
   "repository": {
-    "ref": "v4.1.1",
     "githubOwner": "purescript",
     "githubRepo": "purescript-prelude"
   },

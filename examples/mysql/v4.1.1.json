@@ -26,7 +26,6 @@
     }
   },
   "repository": {
-    "ref": "v4.1.1",
     "githubOwner": "oreshinya",
     "githubRepo": "purescript-mysql"
   },
