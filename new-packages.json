@@ -80,5 +80,6 @@
   "purescript-return": "https://github.com/ursi/purescript-return.git",
   "purescript-undefined-is-not-a-problem": "https://github.com/paluh/purescript-undefined-is-not-a-problem.git",
   "purescript-simple-csv": "https://github.com/fujisawa/purescript-simple-csv.git",
-  "purescript-either-extra": "https://github.com/bbarker/purescript-either-extra.git"
+  "purescript-either-extra": "https://github.com/bbarker/purescript-either-extra.git",
+  "purescript-react-keybind": "https://github.com/EpicOrange/purescript-react-keybind.git"
 }
