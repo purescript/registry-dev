@@ -84,5 +84,6 @@
   "purescript-simple-csv": "https://github.com/fujisawa/purescript-simple-csv.git",
   "purescript-either-extra": "https://github.com/bbarker/purescript-either-extra.git",
   "purescript-react-keybind": "https://github.com/EpicOrange/purescript-react-keybind.git",
-  "purescript-typelevel-lists": "https://github.com/PureFunctor/purescript-typelevel-lists.git"
+  "purescript-typelevel-lists": "https://github.com/PureFunctor/purescript-typelevel-lists.git",
+  "purescript-qieyun": "https://github.com/nk2028/purescript-qieyun.git"
 }
