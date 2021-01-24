@@ -6,9 +6,10 @@ import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), isJust)
+import Dhall as Dhall
 import Effect (Effect)
-import Effect.Aff (Aff)
+import Effect.Aff (Aff, launchAff_)
 import Effect.Aff as Aff
 import Effect.Class (liftEffect)
 import Effect.Class.Console (error, log)
@@ -19,8 +20,10 @@ import Node.Crypto.Hash as Hash
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS
 import PackageUpload as PackageUpload
-import Registry.Schema (Operation(..), Repo(..), Revision, Metadata)
+import Registry.BowerImport as Bower
+import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), Revision)
 import Sunde as Process
+import Tar as Tar
 import Tmp as Tmp
 
 type IssueNumber = String
@@ -31,12 +34,22 @@ type SideEffects =
   , uploadPackage :: Aff Unit
   }
 
--- main :: Effect Unit
--- main = parseOperation >=> runOperation
+main :: Effect Unit
+main = launchAff_ $ runOperation $
+  Addition
+    { packageName: "aff"
+    , fromBower: true
+    , newRef: "v5.1.2"
+    , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript-contrib", repo: "purescript-aff"}
+    , addToPackageSet: false
+    }
+
+
+-- parseOperation >=> runOperation
 
 
 {-
-TODO:
+FIXME:
 - get json from issue/issue_comment, get body out of there
 - tests for that
 -}
@@ -55,35 +68,82 @@ runOperation = case _ of
       do
         -- let's get a temp folder to do our stuffs
         tmpDir <- liftEffect $ Tmp.mkTmpDir
-        -- fetch tarball from GitHub
-        -- TODO support subdir
-        tarballPath <- case newPackageLocation of
-          Git _ -> throw "TODO: git clone not implemented"
+
+        -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
+        folderName <- case newPackageLocation of
+          Git _ -> do
+            -- TODO: remember subdir
+            throw "TODO: git clone not implemented"
           GitHub { owner, repo, subdir } -> do
+            -- Check: subdir should not be there
+            when (isJust subdir) $ throw "`subdir` is not supported for now. See #16"
+
             let tarballName = newRef <> ".tar.gz"
             let path = tmpDir <> "/" <> tarballName
             let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
+            log $ "Fetching tarball from GitHub: " <> archiveUrl
             wget archiveUrl path
-            pure path
+            liftEffect (Tar.getToplevelDir $ tmpDir <> "/" <> tarballName) >>= case _ of
+              Nothing -> throw "Could not find a toplevel dir in the tarball!"
+              Just dir -> do
+                log "Extracting the tarball..."
+                liftEffect $ Tar.extract { cwd: tmpDir, filename: tarballName }
+                pure dir
+
+        let absoluteFolderPath = tmpDir <> "/" <> folderName
+        let manifestPath = absoluteFolderPath <> "/purs.json"
+        log $ "Package extracted in " <> absoluteFolderPath
+
+        -- If we're importing from Bower then we need to convert the Bowerfile
+        -- to a Registry Manifest
         when fromBower do
-          pure unit
-          -- TODO: pull Bowerfile from the tarball, generate manifest from Bowerfile
-          -- TODO: put manifest inside the tarball again
-        -- TODO: run checks!!
-        log "Hashing the tarball.."
+          Bower.readBowerfile (absoluteFolderPath <> "/bower.json") >>= case _ of
+            Left err -> throw $ "Error while reading Bowerfile: " <> err
+            Right bowerfile -> do
+              let manifestStr
+                    = stringifyWithIndent 2 $ Json.encodeJson
+                    $ Bower.toManifest bowerfile newRef newPackageLocation
+              FS.writeTextFile UTF8 manifestPath manifestStr
+
+        -- Try to read the manifest, typechecking it
+        manifest :: Manifest <- ifM (not <$> FS.exists manifestPath)
+          (throw $ "Manifest not found at " <> manifestPath)
+          do
+            manifestStr <- FS.readTextFile UTF8 manifestPath
+            Dhall.jsonToDhall manifestStr >>= case _ of
+              Left err -> throw err
+              Right _ -> case fromJson manifestStr of
+                Left err -> throw err
+                Right res -> pure res
+
+        -- We need the version number to upload the package
+        let newVersion = manifest.version
+
+        -- TODO: run the other checks!!
+
+        -- After we pass all the checks it's time to do side effects and register the package
+        log "Packaging the tarball to upload..."
+        let newDirname = packageName <> "-" <> newVersion
+        FS.rename absoluteFolderPath (tmpDir <> "/" <> newDirname)
+        let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
+        liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
+        log "Hashing the tarball..."
         hash <- sha256sum tarballPath
-        -- upload package to the storage backend
-        -- TODO get version from manifest
-        let newVersion = "bogus"
+        log $ "Hash: " <> hash
+        log "Uploading package to the storage backend..."
         let uploadPackageInfo = { name: packageName, version: newVersion, revision: 0 }
         liftEffect $ PackageUpload.upload uploadPackageInfo tarballPath
         -- TODO: handle addToPackageSet
         log "Adding the new version to the package metadata file (hashes, etc)"
         let newMetadata = addVersionToMetadata newVersion { hash, ref: newRef } $ mkNewMetadata newPackageLocation
         FS.writeTextFile UTF8 packageMetadataFile (stringifyWithIndent 2 $ Json.encodeJson newMetadata)
+        -- FIXME: commit metadata file to master
         -- TODO: publish github comments
-  -- TODO: implement more operations
+  -- FIXME: implement more operations
   other -> throw $ "Unsupported operation: " <> show other
+
+fromJson :: forall a. Json.DecodeJson a => String -> Either String a
+fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)
 
 -- TODO: tests for parsing operation
 parseOperation :: String -> Aff Operation
@@ -100,6 +160,7 @@ mkNewMetadata location = { location, releases: mempty, unpublished: mempty, main
 addVersionToMetadata :: String -> Revision -> Metadata -> Metadata
 addVersionToMetadata version revision metadata = metadata { releases = Object.insert version [revision] metadata.releases }
 
+-- TODO: we want to leave a GitHub comment before killing the process here
 throw :: forall a. String -> Aff a
 throw = Aff.throwError <<< Aff.error
 
@@ -112,7 +173,6 @@ sha256sum filepath = do
     digest <- Hash.digest fileHash
     Buffer.toString Hex digest
 
-
 wget :: String -> String -> Aff Unit
 wget url path = do
   let cmd = "wget"
@@ -122,3 +182,5 @@ wget url path = do
   case result.exit of
     NodeProcess.Normally 0 -> pure unit
     _ -> throw $ "Error while fetching tarball: " <> result.stderr
+
+

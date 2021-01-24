@@ -1,4 +1,4 @@
-module BowerImport where
+module Registry.BowerImport where
 
 import Prelude
 
@@ -118,7 +118,11 @@ main = Aff.launchAff_ do
             else do
               -- now we should be ready to convert it
               let manifestPath = packageFolder <> "/" <> release.name <> ".json"
-              let manifestStr = stringifyWithIndent 2 $ Json.encodeJson $ toManifest bowerfile release.name address
+              let manifestStr
+                    = stringifyWithIndent 2
+                    $ Json.encodeJson
+                    $ toManifest bowerfile release.name
+                    $ GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
               -- we then conform to Dhall type. If that does works out then
               -- write it to the manifest file, otherwise print the error
               Dhall.jsonToDhall manifestStr >>= case _ of
@@ -126,9 +130,17 @@ main = Aff.launchAff_ do
                   FS.writeTextFile UTF8 manifestPath manifestStr
                 Left result -> error result
 
+readBowerfile :: String -> Aff (Either String Bower.PackageMeta)
+readBowerfile path = do
+  let fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)
+  ifM (not <$> FS.exists path)
+    (pure $ Left $ "Bowerfile not found at " <> path)
+    do
+      strResult <- FS.readTextFile UTF8 path
+      pure $ fromJson strResult
 
 -- | Convert a Bowerfile into a Registry Manifest
-toManifest :: Bower.PackageMeta -> String -> GitHub.Address -> Manifest
+toManifest :: Bower.PackageMeta -> String -> Repo -> Manifest
 toManifest (Bower.PackageMeta bowerfile) version address
   = { name, license, repository, targets, version }
   where
@@ -136,7 +148,7 @@ toManifest (Bower.PackageMeta bowerfile) version address
     name = stripPurescriptPrefix bowerfile.name
     license = String.joinWith " OR " bowerfile.license
     repository = case _.url <$> bowerfile.repository of
-      Nothing -> GitHub { repo: address.repo, owner: address.owner, subdir }
+      Nothing -> address
       Just url -> case GitHub.parseRepo url of
         Left _err -> Git { url, subdir }
         Right { repo, owner } -> GitHub { repo, owner, subdir }
@@ -172,7 +184,6 @@ stripPurescriptPrefix :: String -> String
 stripPurescriptPrefix name
   = fromMaybe name
   $ String.stripPrefix (String.Pattern "purescript-") name
-
 
 
 -- | Optionally-expirable cache: when passing a Duration then we'll consider
