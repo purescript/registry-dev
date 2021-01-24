@@ -8,6 +8,7 @@
   , "argonaut-generic"
   , "bower-json"
   , "console"
+  , "crypto"
   , "effect"
   , "node-fs-aff"
   , "now"
