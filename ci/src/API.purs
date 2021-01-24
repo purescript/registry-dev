@@ -24,6 +24,7 @@ import Registry.BowerImport as Bower
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), Revision)
 import Sunde as Process
 import Tar as Tar
+import Test.Spec.Assertions as Assert
 import Tmp as Tmp
 
 type IssueNumber = String
@@ -79,15 +80,16 @@ runOperation = case _ of
             when (isJust subdir) $ throw "`subdir` is not supported for now. See #16"
 
             let tarballName = newRef <> ".tar.gz"
-            let path = tmpDir <> "/" <> tarballName
+            let absoluteTarballPath = tmpDir <> "/" <> tarballName
             let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
             log $ "Fetching tarball from GitHub: " <> archiveUrl
-            wget archiveUrl path
-            liftEffect (Tar.getToplevelDir $ tmpDir <> "/" <> tarballName) >>= case _ of
+            wget archiveUrl absoluteTarballPath
+            log $ "Tarball downloaded in " <> absoluteTarballPath
+            liftEffect (Tar.getToplevelDir absoluteTarballPath) >>= case _ of
               Nothing -> throw "Could not find a toplevel dir in the tarball!"
               Just dir -> do
                 log "Extracting the tarball..."
-                liftEffect $ Tar.extract { cwd: tmpDir, filename: tarballName }
+                liftEffect $ Tar.extract { cwd: tmpDir, filename: absoluteTarballPath }
                 pure dir
 
         let absoluteFolderPath = tmpDir <> "/" <> folderName
@@ -100,6 +102,7 @@ runOperation = case _ of
           Bower.readBowerfile (absoluteFolderPath <> "/bower.json") >>= case _ of
             Left err -> throw $ "Error while reading Bowerfile: " <> err
             Right bowerfile -> do
+              -- FIXME: check that all dependencies are selfcontained in the registry
               let manifestStr
                     = stringifyWithIndent 2 $ Json.encodeJson
                     $ Bower.toManifest bowerfile newRef newPackageLocation
@@ -119,6 +122,13 @@ runOperation = case _ of
         -- We need the version number to upload the package
         let newVersion = manifest.version
 
+        -- Checks:
+        log "Checking that the Manifest includes the `lib` target"
+        libTarget <- case Object.lookup "lib" manifest.targets of
+          Nothing -> throw "Didn't find `lib` target in the Manifest!"
+          Just a -> pure a
+        log "Checking that `lib` target only includes `src`"
+        Assert.shouldEqual libTarget.sources ["src/**/*.purs"]
         -- TODO: run the other checks!!
 
         -- After we pass all the checks it's time to do side effects and register the package

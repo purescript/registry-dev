@@ -14,6 +14,7 @@
   , "now"
   , "psci-support"
   , "refs"
+  , "spec"
   , "string-parsers"
   , "sunde"
   , "test-unit"

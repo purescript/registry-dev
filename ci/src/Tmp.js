@@ -8,3 +8,6 @@ exports.mkTmpDirImpl = function() {
     return tmpobj.name;
   };
 };
+
+
+// TODO: tmpobj.removeCallback();
