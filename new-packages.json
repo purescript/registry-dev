@@ -86,5 +86,6 @@
   "purescript-react-keybind": "https://github.com/EpicOrange/purescript-react-keybind.git",
   "purescript-typelevel-lists": "https://github.com/PureFunctor/purescript-typelevel-lists.git",
   "purescript-qieyun": "https://github.com/nk2028/purescript-qieyun.git",
-  "purescript-react-enzyme": "https://github.com/alvart/purescript-react-enzyme.git"
+  "purescript-react-enzyme": "https://github.com/alvart/purescript-react-enzyme.git",
+  "purescript-aws-sdk-basic": "https://github.com/HivemindTechnologies/purescript-aws-sdk.git"
 }
