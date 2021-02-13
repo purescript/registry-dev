@@ -87,5 +87,9 @@
   "purescript-typelevel-lists": "https://github.com/PureFunctor/purescript-typelevel-lists.git",
   "purescript-qieyun": "https://github.com/nk2028/purescript-qieyun.git",
   "purescript-react-enzyme": "https://github.com/alvart/purescript-react-enzyme.git",
-  "purescript-aws-sdk-basic": "https://github.com/HivemindTechnologies/purescript-aws-sdk.git"
+  "purescript-aws-sdk-basic": "https://github.com/HivemindTechnologies/purescript-aws-sdk.git",
+  "purescript-web-encoding": "https://github.com/purescript-web/purescript-web-encoding.git",
+  "purescript-web-fetch": "https://github.com/purescript-web/purescript-web-fetch.git",
+  "purescript-web-promise": "https://github.com/purescript-web/purescript-web-promise.git",
+  "purescript-web-streams": "https://github.com/purescript-web/purescript-web-streams.git"
 }
