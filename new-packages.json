@@ -88,5 +88,6 @@
   "purescript-qieyun": "https://github.com/nk2028/purescript-qieyun.git",
   "purescript-react-enzyme": "https://github.com/alvart/purescript-react-enzyme.git",
   "purescript-aws-sdk-basic": "https://github.com/HivemindTechnologies/purescript-aws-sdk.git",
-  "purescript-purversion": "https://github.com/Quelklef/purversion"
+  "purescript-purversion": "https://github.com/Quelklef/purversion",
+  "purescript-parsing-replace": "https://github.com/jamesdbrock/purescript-parsing-replace.git"
 }
