@@ -91,5 +91,6 @@
   "purescript-purversion": "https://github.com/Quelklef/purversion",
   "purescript-parsing-replace": "https://github.com/jamesdbrock/purescript-parsing-replace.git",
   "purescript-web-file-directory-entries": "https://github.com/xc-jp/purescript-web-file-directory-entries.git",
-  "purescript-stac": "https://github.com/jisantuc/purescript-stac.git"
+  "purescript-stac": "https://github.com/jisantuc/purescript-stac.git",
+  "purescript-turf": "https://github.com/jisantuc/purescript-turf.git"
 }
