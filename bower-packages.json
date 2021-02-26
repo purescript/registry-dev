@@ -999,7 +999,7 @@
   "purescript-quick-format": "https://github.com/matthewleon/purescript-quick-format.git",
   "purescript-quickcheck": "https://github.com/purescript/purescript-quickcheck.git",
   "purescript-quickcheck-combinators": "https://github.com/athanclark/purescript-quickcheck-combinators.git",
-  "purescript-quickcheck-laws": "https://github.com/garyb/purescript-quickcheck-laws.git",
+  "purescript-quickcheck-laws": "https://github.com/purescript-contrib/purescript-quickcheck-laws.git",
   "purescript-quickserve": "https://github.com/paf31/purescript-quickserve.git",
   "purescript-quill": "https://github.com/jmackie/purescript-quill.git",
   "purescript-quotient": "https://github.com/rightfold/purescript-quotient.git",
