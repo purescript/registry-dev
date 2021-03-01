@@ -97,5 +97,6 @@
   "purescript-web-file-directory-entries": "https://github.com/xc-jp/purescript-web-file-directory-entries.git",
   "purescript-stac": "https://github.com/jisantuc/purescript-stac.git",
   "purescript-turf": "https://github.com/jisantuc/purescript-turf.git",
-  "purescript-monoidal": "https://github.com/mcneissue/purescript-monoidal.git"
+  "purescript-monoidal": "https://github.com/mcneissue/purescript-monoidal.git",
+  "purescript-morello": "https://github.com/sigma-andex/purescript-morello.git" 
 }
