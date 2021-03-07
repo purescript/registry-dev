@@ -453,7 +453,7 @@
   "purescript-fetch-free": "https://github.com/ethul/purescript-fetch-free.git",
   "purescript-ffi-props": "https://github.com/justinwoo/purescript-ffi-props.git",
   "purescript-ffi-utils": "https://github.com/Risto-Stevcev/purescript-ffi-utils.git",
-  "purescript-filterable": "https://github.com/LiamGoodacre/purescript-filterable.git",
+  "purescript-filterable": "https://github.com/purescript/purescript-filterable.git",
   "purescript-filterables": "https://github.com/Risto-Stevcev/purescript-filterables.git",
   "purescript-firebase": "https://github.com/mostalive/purescript-firebase.git",
   "purescript-firebase-client": "https://github.com/TinkerTravel/purescript-firebase-client.git",
