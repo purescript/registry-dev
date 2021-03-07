@@ -100,5 +100,5 @@
   "purescript-monoidal": "https://github.com/mcneissue/purescript-monoidal.git",
   "purescript-morello": "https://github.com/sigma-andex/purescript-morello.git",
   "purescript-aws-encryption-sdk": "https://github.com/HivemindTechnologies/purescript-aws-encryption-sdk",
-  "purescript-halogen-emitter": "https://github.com/purescript-halogen/purescript-halogen-emitter.git",
+  "purescript-halogen-emitter": "https://github.com/purescript-halogen/purescript-halogen-emitter.git"
 }
