@@ -6,7 +6,7 @@ import Control.Alt ((<|>))
 import Data.Argonaut (jsonEmptyObject, (~>), (~>?), (:=), (:=?), (.:), (.:?), (.!=))
 import Data.Argonaut as Json
 import Data.Generic.Rep as Generic
-import Data.Generic.Rep.Show (genericShow)
+import Data.Show.Generic (genericShow)
 import Data.Maybe (Maybe)
 import Foreign.Object as Foreign
 

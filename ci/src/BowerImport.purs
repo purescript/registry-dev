@@ -9,11 +9,11 @@ import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.DateTime (adjust) as Time
-import Data.Either (Either(..), fromRight)
+import Data.Either (Either(..), fromRight')
 import Data.Foldable (and)
 import Data.FoldableWithIndex (forWithIndex_)
 import Data.JSDate as JSDate
-import Data.Map (Map)
+import Data.Map (Map, SemigroupMap(..))
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing)
 import Data.Newtype (unwrap)
@@ -38,7 +38,7 @@ import GitHub as GitHub
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
-import Partial.Unsafe (unsafePartial)
+import Partial.Unsafe (unsafePartial, unsafeCrashWith)
 import Registry.Schema (Manifest, Repo(..))
 import Web.Bower.PackageMeta as Bower
 
@@ -69,10 +69,10 @@ main = Aff.launchAff_ do
       -- This is necessary so that we can do the "self-containment" check later.
       -- We keep a temporary cache on disk, so that it's easier to do development
       -- without consuming the GitHub request limit.
-      let allPackages = bowerPackages <> newPackages
+      let (SemigroupMap allPackages) = SemigroupMap bowerPackages <> SemigroupMap newPackages
       releaseIndex <- Map.fromFoldable <$> forWithIndex allPackages \nameWithPrefix repoUrl -> do
         let name = stripPurescriptPrefix nameWithPrefix
-        let address = unsafePartial $ fromRight $ GitHub.parseRepo repoUrl
+        let address = fromRight' (\_ -> unsafeCrashWith "Unexpected Left") $ GitHub.parseRepo repoUrl
         releases <- withCache ("releases__" <> address.owner <> "__" <> address.repo) (Just $ Hours 24.0) $ do
           log $ "Fetching releases for package " <> show name
           Set.fromFoldable <$> GitHub.getReleases address
@@ -152,7 +152,7 @@ toManifest (Bower.PackageMeta bowerfile) version address
       Just url -> case GitHub.parseRepo url of
         Left _err -> Git { url, subdir }
         Right { repo, owner } -> GitHub { repo, owner, subdir }
-    toDepPair { packageName, versionRange } = Tuple packageName versionRange
+    toDepPair { packageName, versionRange } = (stripPurescriptPrefix packageName) /\ versionRange
     deps = map toDepPair $ unwrap bowerfile.dependencies
     devDeps = map toDepPair $ unwrap bowerfile.devDependencies
     targets = Foreign.fromFoldable $
