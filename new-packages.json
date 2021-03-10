@@ -102,5 +102,5 @@
   "purescript-aws-encryption-sdk": "https://github.com/HivemindTechnologies/purescript-aws-encryption-sdk.git",
   "purescript-halogen-subscriptions": "https://github.com/purescript-halogen/purescript-halogen-subscriptions.git",
   "purescript-kafkajs": "https://github.com/HivemindTechnologies/purescript-kafkajs.git",
-  "purescript-sytc": "https://github.com/mikesol/purescript-sytc"
+  "purescript-sytc": "https://github.com/mikesol/purescript-sytc.git"
 }
