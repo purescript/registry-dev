@@ -103,5 +103,6 @@
   "purescript-halogen-subscriptions": "https://github.com/purescript-halogen/purescript-halogen-subscriptions.git",
   "purescript-kafkajs": "https://github.com/HivemindTechnologies/purescript-kafkajs.git",
   "purescript-sytc": "https://github.com/mikesol/purescript-sytc.git",
-  "purescript-typelevel-graph": "https://github.com/mikesol/purescript-typelevel-graph.git"
+  "purescript-typelevel-graph": "https://github.com/mikesol/purescript-typelevel-graph.git",
+  "purescript-barlow-lens": "https://github.com/sigma-andex/purescript-barlow-lens.git"
 }
