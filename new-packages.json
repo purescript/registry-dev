@@ -104,5 +104,6 @@
   "purescript-kafkajs": "https://github.com/HivemindTechnologies/purescript-kafkajs.git",
   "purescript-sytc": "https://github.com/mikesol/purescript-sytc.git",
   "purescript-typelevel-graph": "https://github.com/mikesol/purescript-typelevel-graph.git",
-  "purescript-barlow-lens": "https://github.com/sigma-andex/purescript-barlow-lens.git"
+  "purescript-barlow-lens": "https://github.com/sigma-andex/purescript-barlow-lens.git",
+  "purescript-painting": "https://github.com/mikesol/purescript-painting.git"
 }
