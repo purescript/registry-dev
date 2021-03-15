@@ -9,6 +9,7 @@
   "purescript-apexcharts": "https://github.com/timdeputter/purescript-apexcharts.git",
   "purescript-classnames": "https://github.com/dewey92/purescript-classnames.git",
   "purescript-clipboardy": "https://github.com/hrajchert/purescript-clipboardy.git",
+  "purescript-cirru-parser": "https://github.com/Cirru/parser.purs.git",
   "purescript-web-url": "https://github.com/mjepronk/purescript-web-url.git",
   "purescript-grain": "https://github.com/purescript-grain/purescript-grain.git",
   "purescript-grain-portal": "https://github.com/purescript-grain/purescript-grain-portal.git",
