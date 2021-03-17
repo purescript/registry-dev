@@ -193,14 +193,11 @@ runChecks metadata manifest = do
 
   -- For these we need to read all the metadatas in a hashmap:
   -- - FIXME: check that all dependencies are selfcontained in the registry
-  -- - TODO: version is unique!!
-  -- - TODO: package is unique
-
-  -- It looks like this cannot be done:
-  -- TODO: convert (and check) that all semver ranges are a.b.c <= v < d.e.f
+  -- - FIXME: version is unique!!
+  -- - FIXME: package is unique
 
 
-  -- TODO: verify that the license is a valid SPDX expression
+  -- FIXME: verify that the license is a valid SPDX expression
   -- https://www.npmjs.com/package/spdx-expression-parse
 
 
@@ -229,7 +226,7 @@ mkNewMetadata location = { location, releases: mempty, unpublished: mempty, main
 addVersionToMetadata :: String -> Revision -> Metadata -> Metadata
 addVersionToMetadata version revision metadata = metadata { releases = Object.insert version [revision] metadata.releases }
 
--- TODO: we want to leave a GitHub comment before killing the process here
+-- FIXME: we want to leave a GitHub comment before killing the process here
 throw :: forall a. String -> Aff a
 throw = Aff.throwError <<< Aff.error
 
