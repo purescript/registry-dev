@@ -93,6 +93,7 @@
   "purescript-web-fetch": "https://github.com/purescript-web/purescript-web-fetch.git",
   "purescript-web-promise": "https://github.com/purescript-web/purescript-web-promise.git",
   "purescript-web-streams": "https://github.com/purescript-web/purescript-web-streams.git",
+  "purescript-workly": "https://github.com/cakekindel/purescript-workly.git",
   "purescript-purversion": "https://github.com/Quelklef/purversion.git",
   "purescript-parsing-replace": "https://github.com/jamesdbrock/purescript-parsing-replace.git",
   "purescript-web-file-directory-entries": "https://github.com/xc-jp/purescript-web-file-directory-entries.git",
