@@ -1,0 +1,41 @@
+{
+  "action": "created",
+  "comment": {
+    "author_association": "MEMBER",
+    "body": "{\"addToPackageSet\": true,\"fromBower\": false,\"newPackageLocation\": {\"githubOwner\": \"purescript\",\"githubRepo\": \"purescript-something\"},\"newRef\": \"v1.2.3\",\"packageName\": \"something\"}",
+    "created_at": "2021-03-09T02:03:56Z",
+    "html_url": "https://github.com/purescript/registry/issues/43#issuecomment-793265839",
+    "id": 793265839,
+    "issue_url": "https://api.github.com/repos/purescript/registry/issues/43",
+    "node_id": "MDEyOklzc3VlQ29tbWVudDc5MzI2NTgzOQ==",
+    "performed_via_github_app": null,
+    "updated_at": "2021-03-09T02:03:56Z",
+    "url": "https://api.github.com/repos/purescript/registry/issues/comments/793265839"
+  },
+  "issue": {
+    "active_lock_reason": null,
+    "assignee": null,
+    "assignees": [],
+    "author_association": "MEMBER",
+    "body": "original body",
+    "closed_at": null,
+    "comments": 10,
+    "comments_url": "https://api.github.com/repos/purescript/registry/issues/43/comments",
+    "created_at": "2020-07-11T18:23:16Z",
+    "events_url": "https://api.github.com/repos/purescript/registry/issues/43/events",
+    "html_url": "https://github.com/purescript/registry/issues/43",
+    "id": 655256033,
+    "labels": [],
+    "labels_url": "https://api.github.com/repos/purescript/registry/issues/43/labels{/name}",
+    "locked": false,
+    "milestone": null,
+    "node_id": "MDU6SXNzdWU2NTUyNTYwMzM=",
+    "number": 43,
+    "performed_via_github_app": null,
+    "repository_url": "https://api.github.com/repos/purescript/registry",
+    "state": "open",
+    "title": "Add package",
+    "updated_at": "2021-03-09T02:03:57Z",
+    "url": "https://api.github.com/repos/purescript/registry/issues/43"
+  }
+}

@@ -4,11 +4,13 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Identity (Identity)
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Aff as Aff
 import Registry.API as API
 import Registry.SPDX as SPDX
+import Registry.Schema (Operation(..), Repo(..))
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -24,6 +26,7 @@ main = Aff.launchAff_ $ runSpec [consoleReporter] do
       Spec.describe "Bad package names" badPackageName
       Spec.describe "Good SPDX licenses" goodSPDXLicense
       Spec.describe "Bad SPDX licenses" badSPDXLicense
+      Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
 
 goodPackageName :: Spec
 goodPackageName = do
@@ -86,3 +89,13 @@ badSPDXLicense = do
   parseLicense "Apache-2"
   parseLicense "Apache 2"
   parseLicense "BSD-3"
+
+decodeEventsToOps :: Spec
+decodeEventsToOps = do
+  Spec.it "decodes an Update operation" do
+    res <- API.readOperation "test/fixtures/issue_created.json"
+    res `Assert.shouldEqual` API.DecodedOperation (Update { packageName: "something", updateRef: "v1.2.3", fromBower: false })
+
+  Spec.it "decodes an Addition operation" do
+    res <- API.readOperation "test/fixtures/issue_comment.json"
+    res `Assert.shouldEqual` API.DecodedOperation (Addition { packageName: "something", newRef: "v1.2.3", fromBower: false, addToPackageSet: true, newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-something" } })

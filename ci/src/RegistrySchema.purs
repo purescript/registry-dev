@@ -42,6 +42,8 @@ data Repo
   = Git GitData
   | GitHub GitHubData
 
+derive instance eqRepo :: Eq Repo
+
 derive instance genericRepo :: Generic.Generic Repo _
 
 instance showRepo :: Show Repo where
@@ -78,6 +80,8 @@ data Operation
   = Addition AdditionData
   | Update UpdateData
   | Unpublish UnpublishData
+
+derive instance eqOperation :: Eq Operation
 
 derive instance genericOperation :: Generic.Generic Operation _
 

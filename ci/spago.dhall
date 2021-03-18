@@ -11,6 +11,7 @@
   , "crypto"
   , "effect"
   , "node-fs-aff"
+  , "node-process"
   , "now"
   , "psci-support"
   , "refs"

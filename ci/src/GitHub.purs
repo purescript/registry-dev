@@ -4,7 +4,9 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Control.Promise (Promise)
+import Data.Argonaut ((.:))
 import Control.Promise as Promise
+import Data.Argonaut as Json
 import Data.Either (Either)
 import Data.Function.Uncurried (Fn2, runFn2)
 import Data.List as List
@@ -36,3 +38,15 @@ parseRepo = Parser.runParser do
 foreign import getReleasesImpl :: Fn2 String String (Effect (Promise (Array Tag)))
 getReleases :: Address -> Aff (Array Tag)
 getReleases { owner, repo } = Promise.toAffE (runFn2 getReleasesImpl owner repo)
+
+newtype EventBody = EventBody String
+
+instance eventDecodeJson :: Json.DecodeJson EventBody where
+  decodeJson json = do
+    o <- Json.decodeJson json
+    let issueComment = (_ .: "body") =<< o .: "comment"
+    let issue = (_ .: "body") =<< o .: "issue"
+    -- Note! We need to try to parse the Comment event first, because they both
+    -- have an "issue" field, but only the comment has a "comment" section, so
+    -- we can use that to distinguish them.
+    map EventBody (issueComment <|> issue)

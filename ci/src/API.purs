@@ -6,9 +6,11 @@ import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
+import Data.Generic.Rep as Generic
 import Data.List as List
 import Data.List.NonEmpty as NEL
-import Data.Maybe (Maybe(..), isJust)
+import Data.Maybe (Maybe(..), fromJust, isJust)
+import Data.Show.Generic (genericShow)
 import Data.String.CodeUnits (fromCharArray)
 import Data.String.CodeUnits as String
 import Dhall as Dhall
@@ -16,14 +18,18 @@ import Effect (Effect)
 import Effect.Aff (Aff, launchAff_)
 import Effect.Aff as Aff
 import Effect.Class (liftEffect)
-import Effect.Class.Console (error, log)
+import Effect.Class.Console (log)
 import Foreign.Object as Object
+import GitHub as GitHub
 import Node.Buffer as Buffer
 import Node.ChildProcess as NodeProcess
 import Node.Crypto.Hash as Hash
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS
+import Node.Path (FilePath)
+import Node.Process as Env
 import PackageUpload as PackageUpload
+import Partial.Unsafe (unsafePartial)
 import Registry.BowerImport (stripPurescriptPrefix)
 import Registry.BowerImport as Bower
 import Registry.SPDX (isValidSPDXLicenseId)
@@ -46,24 +52,41 @@ type SideEffects =
   }
 
 main :: Effect Unit
-main = launchAff_ $ runOperation $
-  Addition
-    { packageName: "aff"
-    , fromBower: true
-    , newRef: "v5.1.2"
-    , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript-contrib", repo: "purescript-aff"}
-    , addToPackageSet: false
-    }
+main = launchAff_ $ do
+  eventPath <- liftEffect $ Env.lookupEnv "GITHUB_EVENT_PATH"
+  readOperation (unsafePartial fromJust eventPath) >>= case _ of
+    NotJson ->
+      -- If the issue body is not just a JSON string, then we don't consider it
+      -- to be an attempted operation and it is presumably just an issue on the
+      -- registry repository.
+      pure unit
+
+    MalformedJson err ->
+      -- FIXME: Report error to the user via GitHub comment
+      pure unit
+
+    DecodedOperation op -> runOperation op
 
 
--- parseOperation >=> runOperation
+data OperationDecoding = NotJson | MalformedJson String | DecodedOperation Operation
+
+derive instance eqOperationDecoding :: Eq OperationDecoding
+
+derive instance genericOperationDecoding :: Generic.Generic OperationDecoding _
+
+instance showOperationDecoding :: Show OperationDecoding where
+  show = genericShow
 
 
-{-
-FIXME:
-- get json from issue/issue_comment, get body out of there
-- tests for that
--}
+readOperation :: FilePath -> Aff OperationDecoding
+readOperation eventPath = do
+  GitHub.EventBody body <- readJsonFile eventPath
+  pure $ case Json.jsonParser body of
+    Left err ->
+      NotJson
+    Right json -> case Json.decodeJson json of
+      Left e -> MalformedJson (Json.printJsonDecodeError e)
+      Right op -> DecodedOperation op
 
 runOperation :: Operation -> Aff Unit
 runOperation operation = ensureMetadataFolder *> case operation of
@@ -210,15 +233,6 @@ readJsonFile path = do
   case fromJson strResult of
     Left err -> throw $ "Error while parsing json from " <> path <> " : " <> err
     Right r -> pure r
-
--- TODO: tests for parsing operation
-parseOperation :: String -> Aff Operation
-parseOperation operationStr = do
-  case (Json.jsonParser operationStr >>= (lmap Json.printJsonDecodeError <<< Json.decodeJson)) of
-    Left err -> do
-      error $ "Got error while parsing Operation"
-      Aff.throwError $ Aff.error err
-    Right (op :: Operation) -> pure op
 
 mkNewMetadata :: Repo -> Metadata
 mkNewMetadata location = { location, releases: mempty, unpublished: mempty, maintainers: mempty }
