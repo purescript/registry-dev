@@ -9,6 +9,7 @@
   "purescript-apexcharts": "https://github.com/timdeputter/purescript-apexcharts.git",
   "purescript-classnames": "https://github.com/dewey92/purescript-classnames.git",
   "purescript-clipboardy": "https://github.com/hrajchert/purescript-clipboardy.git",
+  "purescript-cirru-parser": "https://github.com/Cirru/parser.purs.git",
   "purescript-web-url": "https://github.com/mjepronk/purescript-web-url.git",
   "purescript-grain": "https://github.com/purescript-grain/purescript-grain.git",
   "purescript-grain-portal": "https://github.com/purescript-grain/purescript-grain-portal.git",
@@ -100,5 +101,11 @@
   "purescript-monoidal": "https://github.com/mcneissue/purescript-monoidal.git",
   "purescript-morello": "https://github.com/sigma-andex/purescript-morello.git",
   "purescript-aws-encryption-sdk": "https://github.com/HivemindTechnologies/purescript-aws-encryption-sdk.git",
-  "purescript-halogen-subscriptions": "https://github.com/purescript-halogen/purescript-halogen-subscriptions.git"
+  "purescript-halogen-subscriptions": "https://github.com/purescript-halogen/purescript-halogen-subscriptions.git",
+  "purescript-kafkajs": "https://github.com/HivemindTechnologies/purescript-kafkajs.git",
+  "purescript-sytc": "https://github.com/mikesol/purescript-sytc.git",
+  "purescript-typelevel-graph": "https://github.com/mikesol/purescript-typelevel-graph.git",
+  "purescript-barlow-lens": "https://github.com/sigma-andex/purescript-barlow-lens.git",
+  "purescript-painting": "https://github.com/mikesol/purescript-painting.git",
+  "purescript-resourcet": "https://github.com/robertdp/purescript-resourcet.git"
 }
