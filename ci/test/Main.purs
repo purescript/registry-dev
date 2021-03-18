@@ -62,11 +62,18 @@ goodSPDXLicense = do
   parseLicense "MIT"
   parseLicense "BSD-3-Clause"
   parseLicense "CC-BY-1.0"
-  parseLicense "ADSL"
+  parseLicense "Apache-2.0"
 
   -- deprecated licenses
   parseLicense "GPL-3.0"
   parseLicense "AGPL-1.0"
+
+  -- combinations
+  parseLicense "LGPL-2.1 OR BSD-3-Clause AND MIT"
+  parseLicense "MIT AND (LGPL-2.1+ AND BSD-3-Clause)"
+
+  -- exceptions
+  parseLicense "GPL-3.0 WITH GPL-3.0-linking-exception"
 
 badSPDXLicense :: Spec
 badSPDXLicense = do
@@ -74,6 +81,8 @@ badSPDXLicense = do
     parseLicense str = Spec.it str do
       (SPDX.isValidSPDXLicenseId str) `Assert.shouldEqual` false
 
+  -- common mistakes
   parseLicense "Apache"
+  parseLicense "Apache-2"
+  parseLicense "Apache 2"
   parseLicense "BSD-3"
-  parseLicense "MIT-1"

@@ -1,8 +1,10 @@
-var ids = require("spdx-license-ids");
-var deprecatedIds = require("spdx-license-ids/deprecated");
-
-var identifiers = ids.concat(deprecatedIds);
+var parse = require("spdx-expression-parse");
 
 exports.isValidSPDXLicenseId = function (identifier) {
-  return identifiers.includes(identifier);
+  try {
+    parse(identifier);
+    return true;
+  } catch (e) {
+    return false;
+  }
 };
