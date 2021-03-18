@@ -8,6 +8,7 @@ import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Aff as Aff
+import GitHub (IssueNumber(..))
 import Registry.API as API
 import Registry.SPDX as SPDX
 import Registry.Schema (Operation(..), Repo(..))
@@ -93,9 +94,27 @@ badSPDXLicense = do
 decodeEventsToOps :: Spec
 decodeEventsToOps = do
   Spec.it "decodes an Update operation" do
+    let
+      issueNumber = IssueNumber 124
+      operation = Update
+        { packageName: "something"
+        , updateRef: "v1.2.3"
+        , fromBower: false
+        }
+
     res <- API.readOperation "test/fixtures/issue_created.json"
-    res `Assert.shouldEqual` API.DecodedOperation (Update { packageName: "something", updateRef: "v1.2.3", fromBower: false })
+    res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
   Spec.it "decodes an Addition operation" do
+    let
+      issueNumber = IssueNumber 43
+      operation = Addition
+        { packageName: "something"
+        , newRef: "v1.2.3"
+        , fromBower: false
+        , addToPackageSet: true
+        , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-something" }
+        }
+
     res <- API.readOperation "test/fixtures/issue_comment.json"
-    res `Assert.shouldEqual` API.DecodedOperation (Addition { packageName: "something", newRef: "v1.2.3", fromBower: false, addToPackageSet: true, newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-something" } })
+    res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
