@@ -6,6 +6,7 @@ import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
 import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
+import Data.Array (catMaybes)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.DateTime (adjust) as Time
@@ -16,6 +17,7 @@ import Data.JSDate as JSDate
 import Data.Map (Map, SemigroupMap(..))
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing)
+import Data.Monoid (guard)
 import Data.Newtype (unwrap)
 import Data.Set (Set)
 import Data.Set as Set
@@ -56,10 +58,13 @@ main = Aff.launchAff_ do
   -- Assumption: we are running in the `ci` folder or the registry repo
   bowerPackagesStr <- FS.readTextFile UTF8 "../bower-packages.json"
   newPackagesStr <- FS.readTextFile UTF8 "../new-packages.json"
-  let parseJsonMap str
-        = Json.jsonParser str
-        >>= (lmap Json.printJsonDecodeError <<< Json.decodeJson)
+
+  let
+    parseJsonMap str =
+      Json.jsonParser str
+        >>= (Json.decodeJson >>> lmap Json.printJsonDecodeError)
         >>> map (Map.fromFoldableWithIndex :: Foreign.Object String -> Map String String)
+
   case parseJsonMap bowerPackagesStr, parseJsonMap newPackagesStr of
     Left err, _ -> error $ "Error: couldn't parse bower-packages.json, error: " <> err
     _, Left err -> error $ "Error: couldn't parse new-packages.json, error: " <> err
@@ -97,7 +102,7 @@ main = Aff.launchAff_ do
             shouldFetch = manifestIsMissing && not shouldSkip && examplePackage
           in when shouldFetch do
             -- if yes, then..
-            log $ "Could not find manifest for version " <> release.name <> " of " <> show address <> ", making it.."
+            log $ "Could not find manifest for version " <> release.name <> " of " <> show address <> ", making it..."
             -- we download the Bower file or use the cached one if available.
             -- note that we don't need to expire the cache ever here, because the
             -- tags are supposed to be immutable
@@ -155,18 +160,16 @@ toManifest (Bower.PackageMeta bowerfile) version address
     toDepPair { packageName, versionRange } = (stripPurescriptPrefix packageName) /\ versionRange
     deps = map toDepPair $ unwrap bowerfile.dependencies
     devDeps = map toDepPair $ unwrap bowerfile.devDependencies
-    targets = Foreign.fromFoldable $
-      [ Tuple "lib"
+    targets = Foreign.fromFoldable $ catMaybes
+      [ pure $ Tuple "lib"
           { sources: ["src/**/*.purs"]
           , dependencies: Foreign.fromFoldable deps
           }
-      ] <> if Array.null (unwrap bowerfile.devDependencies)
-           then []
-           else [ Tuple "test"
-                    { sources: ["src/**/*.purs", "test/**/*.purs"]
-                    , dependencies: Foreign.fromFoldable (deps <> devDeps)
-                    }
-                ]
+      , guard (Array.null (unwrap bowerfile.devDependencies)) $ Just $ Tuple "test"
+          { sources: ["src/**/*.purs", "test/**/*.purs"]
+          , dependencies: Foreign.fromFoldable (deps <> devDeps)
+          }
+      ]
 
 
 -- | Are all the dependencies PureScript packages or are there any external Bower/JS packages?
@@ -191,7 +194,7 @@ stripPurescriptPrefix name
 -- | Otherwise, this will behave like a write-only cache.
 withCache
   :: forall a
-  .  Json.DecodeJson a
+   . Json.DecodeJson a
   => Json.EncodeJson a
   => String -> Maybe Hours -> Aff a -> Aff a
 withCache path maybeDuration action = do

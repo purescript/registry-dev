@@ -43,10 +43,10 @@ newtype EventBody = EventBody String
 
 instance eventDecodeJson :: Json.DecodeJson EventBody where
   decodeJson json = do
-    o <- Json.decodeJson json
-    let issueComment = (_ .: "body") =<< o .: "comment"
-    let issue = (_ .: "body") =<< o .: "issue"
-    -- Note! We need to try to parse the Comment event first, because they both
-    -- have an "issue" field, but only the comment has a "comment" section, so
-    -- we can use that to distinguish them.
-    map EventBody (issueComment <|> issue)
+    obj <- Json.decodeJson json
+    -- We accept issue creation and issue comment events, but both contain an
+    -- 'issue' field. However, only comments contain a 'comment' field. For that
+    -- reason we first try to parse the comment and fall back to the issue if
+    -- that fails.
+    contents <- obj .: "comment" <|> obj .: "issue"
+    map EventBody $ contents .: "body"
