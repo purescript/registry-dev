@@ -2,7 +2,6 @@ module Registry.API where
 
 import Prelude
 
--- import Control.Alt ((<|>))
 import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Bifunctor (lmap)
@@ -27,6 +26,7 @@ import Node.FS.Aff as FS
 import PackageUpload as PackageUpload
 import Registry.BowerImport (stripPurescriptPrefix)
 import Registry.BowerImport as Bower
+import Registry.SPDX (isValidSPDXLicenseId)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), Revision)
 import Sunde as Process
 import Tar as Tar
@@ -196,10 +196,10 @@ runChecks metadata manifest = do
   -- - FIXME: version is unique!!
   -- - FIXME: package is unique
 
-
-  -- FIXME: verify that the license is a valid SPDX expression
-  -- https://www.npmjs.com/package/spdx-expression-parse
-
+  if isValidSPDXLicenseId manifest.license then
+    pure unit
+  else
+    throw $ "Invalid SPDX license: " <> manifest.license
 
 fromJson :: forall a. Json.DecodeJson a => String -> Either String a
 fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)

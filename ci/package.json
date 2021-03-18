@@ -7,7 +7,7 @@
     "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "SPACES_KEY='' SPACES_SECRET='' GITHUB_TOKEN='' spago test"
   },
   "author": "",
   "license": "MIT",
