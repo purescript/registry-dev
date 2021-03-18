@@ -4,6 +4,7 @@ import Prelude
 
 import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
+import Data.Array (fold, replicate)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
 import Data.Generic.Rep as Generic
@@ -20,6 +21,7 @@ import Effect.Aff as Aff
 import Effect.Class (liftEffect)
 import Effect.Class.Console (log)
 import Foreign.Object as Object
+import GitHub (IssueNumber)
 import GitHub as GitHub
 import Node.Buffer as Buffer
 import Node.ChildProcess as NodeProcess
@@ -43,8 +45,6 @@ import Text.Parsing.StringParser.Combinators ((<?>))
 import Text.Parsing.StringParser.Combinators as ParseC
 import Tmp as Tmp
 
-type IssueNumber = String
-
 type SideEffects =
   { commentOnIssue :: IssueNumber -> Aff Unit
   , commitToTrunk :: Aff Unit
@@ -61,32 +61,42 @@ main = launchAff_ $ do
       -- registry repository.
       pure unit
 
-    MalformedJson err ->
-      -- FIXME: Report error to the user via GitHub comment
+    MalformedJson issue err -> do
+      let
+        commentBody = fold
+          [ "The JSON input for this package update is malformed:"
+          , newlines 2
+          , "```" <> err <> "```"
+          , newlines 2
+          , "You can try again by commenting on this issue with a corrected payload."
+          ]
+
+      commentId <- GitHub.createComment issue commentBody
       pure unit
 
-    DecodedOperation op -> runOperation op
+    DecodedOperation issue op ->
+      runOperation op
 
-
-data OperationDecoding = NotJson | MalformedJson String | DecodedOperation Operation
+data OperationDecoding
+  = NotJson
+  | MalformedJson IssueNumber String
+  | DecodedOperation IssueNumber Operation
 
 derive instance eqOperationDecoding :: Eq OperationDecoding
-
 derive instance genericOperationDecoding :: Generic.Generic OperationDecoding _
 
 instance showOperationDecoding :: Show OperationDecoding where
   show = genericShow
 
-
 readOperation :: FilePath -> Aff OperationDecoding
 readOperation eventPath = do
-  GitHub.EventBody body <- readJsonFile eventPath
+  GitHub.Event { issueNumber, body } <- readJsonFile eventPath
   pure $ case Json.jsonParser body of
     Left err ->
       NotJson
     Right json -> case Json.decodeJson json of
-      Left e -> MalformedJson (Json.printJsonDecodeError e)
-      Right op -> DecodedOperation op
+      Left err -> MalformedJson issueNumber (Json.printJsonDecodeError err)
+      Right op -> DecodedOperation issueNumber op
 
 runOperation :: Operation -> Aff Unit
 runOperation operation = ensureMetadataFolder *> case operation of
@@ -103,7 +113,7 @@ runOperation operation = ensureMetadataFolder *> case operation of
       do
         metadata <- readJsonFile $ metadataFile packageName
         addOrUpdate { packageName, fromBower, ref: updateRef } metadata
-      (throw "Metadata file should exists, did you mean to create an Addition?")
+      (throw "Metadata file should exist. Did you mean to create an Addition?")
 
   Unpublish _ -> throw "Unpublish not implemented!" -- TODO
 
@@ -298,3 +308,6 @@ parsePackageName = Parser.runParser do
   if String.length name > 50
   then Parser.fail "Package name cannot be longer than 50 chars"
   else pure name
+
+newlines :: Int -> String
+newlines n = fold $ replicate n "\n"
