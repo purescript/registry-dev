@@ -13,8 +13,8 @@ jobs:
     if: ${{ !github.event.issue.pull_request }}
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - run: echo ${GITHUB_EVENT_NAME}
-    - run: cat ${GITHUB_EVENT_PATH}
-    # TODO: write some PureScript that reads this file, gets the body of the issue/comment,
-    # tries to conform it to an Operation, and fails the build if that doesn't work
+      - uses: actions/checkout@v2
+      - run: echo ${GITHUB_EVENT_NAME}
+      - run: cat ${GITHUB_EVENT_PATH}
+      # TODO: write some PureScript that reads this file, gets the body of the issue/comment,
+      # tries to conform it to an Operation, and fails the build if that doesn't work
