@@ -31,5 +31,4 @@ jobs:
 
       # Run a test comment
       - run: |
-          npm install
-          cd ci && nix-shell ../default.nix --run "spago run -m CommentTest"
+          cd ci && npm install && nix-shell ../default.nix --run "spago run -m CommentTest"
