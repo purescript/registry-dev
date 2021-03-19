@@ -2,8 +2,9 @@ module Registry.API where
 
 import Prelude
 
+import Control.Monad.Error.Class (class MonadThrow)
+import Control.Monad.Reader (class MonadAsk, ReaderT, asks, runReaderT)
 import Data.Argonaut as Json
-import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Array (fold, replicate)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
@@ -11,14 +12,16 @@ import Data.Generic.Rep as Generic
 import Data.List as List
 import Data.List.NonEmpty as NEL
 import Data.Maybe (Maybe(..), fromJust, isJust)
+import Data.Newtype (class Newtype)
 import Data.Show.Generic (genericShow)
 import Data.String.CodeUnits (fromCharArray)
 import Data.String.CodeUnits as String
 import Dhall as Dhall
 import Effect (Effect)
-import Effect.Aff (Aff, launchAff_)
+import Effect.Aff (Aff, Error, launchAff_)
 import Effect.Aff as Aff
-import Effect.Class (liftEffect)
+import Effect.Aff.Class (class MonadAff, liftAff)
+import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Class.Console (log)
 import Foreign.Object as Object
 import GitHub (IssueNumber)
@@ -45,37 +48,57 @@ import Text.Parsing.StringParser.Combinators ((<?>))
 import Text.Parsing.StringParser.Combinators as ParseC
 import Tmp as Tmp
 
-type SideEffects =
-  { commentOnIssue :: IssueNumber -> Aff Unit
+newtype ApiM a = ApiM (ReaderT Env Aff a)
+
+derive instance newtypeApiM :: Newtype (ApiM a) _
+
+derive newtype instance functorApiM :: Functor ApiM
+derive newtype instance applyApiM :: Apply ApiM
+derive newtype instance applicativeApiM :: Applicative ApiM
+derive newtype instance bindApiM :: Bind ApiM
+derive newtype instance monadApiM :: Monad ApiM
+derive newtype instance monadEffectApiM :: MonadEffect ApiM
+derive newtype instance monadAffApiM :: MonadAff ApiM
+derive newtype instance monadErrorApiM :: MonadThrow Error ApiM
+derive newtype instance monadAskApiM :: MonadAsk Env ApiM
+
+runApiM :: forall a. Env -> ApiM a -> Aff a
+runApiM env (ApiM m) = runReaderT m env
+
+type Env =
+  { comment :: String -> Aff Unit
   , commitToTrunk :: Aff Unit
   , uploadPackage :: Aff Unit
+  }
+
+mkEnv :: IssueNumber -> Env
+mkEnv issue =
+  { comment: void <<< GitHub.createComment issue
+  , commitToTrunk: pure unit -- TODO
+  , uploadPackage: pure unit -- TODO
   }
 
 main :: Effect Unit
 main = launchAff_ $ do
   eventPath <- liftEffect $ Env.lookupEnv "GITHUB_EVENT_PATH"
   readOperation (unsafePartial fromJust eventPath) >>= case _ of
+    -- If the issue body is not just a JSON string, then we don't consider it
+    -- to be an attempted operation and it is presumably just an issue on the
+    -- registry repository.
     NotJson ->
-      -- If the issue body is not just a JSON string, then we don't consider it
-      -- to be an attempted operation and it is presumably just an issue on the
-      -- registry repository.
       pure unit
 
-    MalformedJson issue err -> do
-      let
-        commentBody = fold
-          [ "The JSON input for this package update is malformed:"
-          , newlines 2
-          , "```" <> err <> "```"
-          , newlines 2
-          , "You can try again by commenting on this issue with a corrected payload."
-          ]
-
-      commentId <- GitHub.createComment issue commentBody
-      pure unit
+    MalformedJson issue err -> runApiM (mkEnv issue) do
+      comment $ fold
+        [ "The JSON input for this package update is malformed:"
+        , newlines 2
+        , "```" <> err <> "```"
+        , newlines 2
+        , "You can try again by commenting on this issue with a corrected payload."
+        ]
 
     DecodedOperation issue op ->
-      runOperation op
+      runApiM (mkEnv issue) (runOperation op)
 
 data OperationDecoding
   = NotJson
@@ -90,7 +113,16 @@ instance showOperationDecoding :: Show OperationDecoding where
 
 readOperation :: FilePath -> Aff OperationDecoding
 readOperation eventPath = do
-  GitHub.Event { issueNumber, body } <- readJsonFile eventPath
+  fileContents <- FS.readTextFile UTF8 eventPath
+
+  GitHub.Event { issueNumber, body } <- case fromJson fileContents of
+    Left err ->
+      -- If we don't receive a valid event path or the contents can't be decoded
+      -- then this is a catastrophic error and we exit the workflow.
+      throw $ "Error while parsing json from " <> eventPath <> " : " <> err
+    Right event ->
+      pure event
+
   pure $ case Json.jsonParser body of
     Left err ->
       NotJson
@@ -98,24 +130,24 @@ readOperation eventPath = do
       Left err -> MalformedJson issueNumber (Json.printJsonDecodeError err)
       Right op -> DecodedOperation issueNumber op
 
-runOperation :: Operation -> Aff Unit
+runOperation :: Operation -> ApiM Unit
 runOperation operation = ensureMetadataFolder *> case operation of
   Addition { packageName, fromBower, newRef, newPackageLocation, addToPackageSet } -> do
     -- check that we don't have a metadata file for that package
-    ifM (FS.exists $ metadataFile packageName)
+    ifM (liftAff $ FS.exists $ metadataFile packageName)
       -- if the metadata file already exists then we steer this to be an Update instead
       (runOperation $ Update { packageName, fromBower, updateRef: newRef })
       do
         addOrUpdate { packageName, fromBower, ref: newRef } $ mkNewMetadata newPackageLocation
 
   Update { packageName, fromBower, updateRef } -> do
-    ifM (FS.exists $ metadataFile packageName)
+    ifM (liftAff $ FS.exists $ metadataFile packageName)
       do
         metadata <- readJsonFile $ metadataFile packageName
         addOrUpdate { packageName, fromBower, ref: updateRef } metadata
-      (throw "Metadata file should exist. Did you mean to create an Addition?")
+      (throwWithComment "Metadata file should exist. Did you mean to create an Addition?")
 
-  Unpublish _ -> throw "Unpublish not implemented!" -- TODO
+  Unpublish _ -> throwWithComment "Unpublish not implemented! Ask us for help!" -- TODO
 
 
 metadataDir :: String
@@ -124,11 +156,11 @@ metadataDir = "../metadata"
 metadataFile :: String -> String
 metadataFile packageName = metadataDir <> "/" <> packageName <> ".json"
 
-ensureMetadataFolder :: Aff Unit
-ensureMetadataFolder = whenM (not <$> FS.exists metadataDir) $ FS.mkdir metadataDir
+ensureMetadataFolder :: ApiM Unit
+ensureMetadataFolder = liftAff $ whenM (not <$> FS.exists metadataDir) $ FS.mkdir metadataDir
 
 
-addOrUpdate :: { fromBower :: Boolean, ref :: String, packageName :: String } -> Metadata -> Aff Unit
+addOrUpdate :: { fromBower :: Boolean, ref :: String, packageName :: String } -> Metadata -> ApiM Unit
 addOrUpdate { ref, fromBower, packageName } metadata = do
   -- let's get a temp folder to do our stuffs
   tmpDir <- liftEffect $ Tmp.mkTmpDir
@@ -136,10 +168,10 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   folderName <- case metadata.location of
     Git _ -> do
       -- TODO: remember subdir whenever we implement this
-      throw "Packages are only allowed to come from GitHub for now. See #15"
+      throwWithComment "Packages are only allowed to come from GitHub for now. See #15"
     GitHub { owner, repo, subdir } -> do
       -- Check: subdir should not be there
-      when (isJust subdir) $ throw "`subdir` is not supported for now. See #16"
+      when (isJust subdir) $ throwWithComment "`subdir` is not supported for now. See #16"
 
       let tarballName = ref <> ".tar.gz"
       let absoluteTarballPath = tmpDir <> "/" <> tarballName
@@ -148,7 +180,8 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
       wget archiveUrl absoluteTarballPath
       log $ "Tarball downloaded in " <> absoluteTarballPath
       liftEffect (Tar.getToplevelDir absoluteTarballPath) >>= case _ of
-        Nothing -> throw "Could not find a toplevel dir in the tarball!"
+        Nothing ->
+          throwWithComment "Could not find a toplevel dir in the tarball!"
         Just dir -> do
           log "Extracting the tarball..."
           liftEffect $ Tar.extract { cwd: tmpDir, filename: absoluteTarballPath }
@@ -160,24 +193,27 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
 
   -- If we're importing from Bower then we need to convert the Bowerfile
   -- to a Registry Manifest
-  when fromBower do
-    Bower.readBowerfile (absoluteFolderPath <> "/bower.json") >>= case _ of
-      Left err -> throw $ "Error while reading Bowerfile: " <> err
+  when fromBower $ do
+    liftAff (Bower.readBowerfile (absoluteFolderPath <> "/bower.json")) >>= case _ of
+      Left err -> throwWithComment $ "Error while reading Bowerfile: " <> err
       Right bowerfile -> do
         let manifestStr
-              = stringifyWithIndent 2 $ Json.encodeJson
+              = Json.stringifyWithIndent 2 $ Json.encodeJson
               $ Bower.toManifest bowerfile ref metadata.location
-        FS.writeTextFile UTF8 manifestPath manifestStr
+        liftAff $ FS.writeTextFile UTF8 manifestPath manifestStr
 
   -- Try to read the manifest, typechecking it
-  manifest :: Manifest <- ifM (not <$> FS.exists manifestPath)
-    (throw $ "Manifest not found at " <> manifestPath)
-    do
-      manifestStr <- FS.readTextFile UTF8 manifestPath
-      Dhall.jsonToDhall manifestStr >>= case _ of
-        Left err -> throw err
+  manifestExists <- liftAff $ FS.exists manifestPath
+  manifest :: Manifest <- if (not manifestExists)
+    then
+      throwWithComment $ "Manifest not found at " <> manifestPath
+    else do
+      manifestStr <- liftAff $ FS.readTextFile UTF8 manifestPath
+      liftAff (Dhall.jsonToDhallManifest manifestStr) >>= case _ of
+        Left err ->
+          throwWithComment $ "Could not type-check Manifest file: " <> err
         Right _ -> case fromJson manifestStr of
-          Left err -> throw err
+          Left err -> throwWithComment $ "Could not convert Manifest to JSON: " <> err
           Right res -> pure res
 
   -- TODO: pull the maintainers list from the manifest into the metadata?
@@ -190,7 +226,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
   let newDirname = packageName <> "-" <> newVersion
-  FS.rename absoluteFolderPath (tmpDir <> "/" <> newDirname)
+  liftAff $ FS.rename absoluteFolderPath (tmpDir <> "/" <> newDirname)
   let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Hashing the tarball..."
@@ -202,18 +238,18 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   -- TODO: handle addToPackageSet
   log "Adding the new version to the package metadata file (hashes, etc)"
   let newMetadata = addVersionToMetadata newVersion { hash, ref } metadata
-  FS.writeTextFile UTF8 (metadataFile packageName) (stringifyWithIndent 2 $ Json.encodeJson newMetadata)
+  liftAff $ FS.writeTextFile UTF8 (metadataFile packageName) (Json.stringifyWithIndent 2 $ Json.encodeJson newMetadata)
   -- FIXME: commit metadata file to master
   -- TODO: publish github comments
   -- TODO: upload docs to pursuit
 
 
-runChecks :: Metadata -> Manifest -> Aff Unit
+runChecks :: Metadata -> Manifest -> ApiM Unit
 runChecks metadata manifest = do
 
   log "Checking that the Manifest includes the `lib` target"
   libTarget <- case Object.lookup "lib" manifest.targets of
-    Nothing -> throw "Didn't find `lib` target in the Manifest!"
+    Nothing -> throwWithComment "Didn't find `lib` target in the Manifest!"
     Just a -> pure a
 
   log "Checking that `lib` target only includes `src`"
@@ -221,27 +257,25 @@ runChecks metadata manifest = do
 
   log "Checking that the package name fits the requirements"
   case parsePackageName manifest.name of
+    Left err -> throwWithComment $ "Package name doesn't fit the requirements: " <> show err
     Right a -> pure unit
-    Left err -> throw $ show err
 
   -- For these we need to read all the metadatas in a hashmap:
   -- - FIXME: check that all dependencies are selfcontained in the registry
   -- - FIXME: version is unique!!
   -- - FIXME: package is unique
 
-  if isValidSPDXLicenseId manifest.license then
-    pure unit
-  else
-    throw $ "Invalid SPDX license: " <> manifest.license
+  unless (isValidSPDXLicenseId manifest.license) do
+    throwWithComment $ "Invalid SPDX license: " <> manifest.license
 
 fromJson :: forall a. Json.DecodeJson a => String -> Either String a
 fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)
 
-readJsonFile :: forall a. Json.DecodeJson a => String -> Aff a
+readJsonFile :: forall a. Json.DecodeJson a => String -> ApiM a
 readJsonFile path = do
-  strResult <- FS.readTextFile UTF8 path
+  strResult <- liftAff $ FS.readTextFile UTF8 path
   case fromJson strResult of
-    Left err -> throw $ "Error while parsing json from " <> path <> " : " <> err
+    Left err -> throwWithComment $ "Error while parsing json from " <> path <> " : " <> err
     Right r -> pure r
 
 mkNewMetadata :: Repo -> Metadata
@@ -250,28 +284,38 @@ mkNewMetadata location = { location, releases: mempty, unpublished: mempty, main
 addVersionToMetadata :: String -> Revision -> Metadata -> Metadata
 addVersionToMetadata version revision metadata = metadata { releases = Object.insert version [revision] metadata.releases }
 
--- FIXME: we want to leave a GitHub comment before killing the process here
-throw :: forall a. String -> Aff a
+throw :: forall m a. MonadThrow Error m => String -> m a
 throw = Aff.throwError <<< Aff.error
 
-sha256sum :: String -> Aff String
+comment :: String -> ApiM Unit
+comment body = do
+  postComment <- asks _.comment
+  liftAff $ postComment body
+
+-- | Throw an exception after commenting on the user's issue with the error
+throwWithComment :: forall a. String -> ApiM a
+throwWithComment body = do
+  comment body
+  throw body
+
+sha256sum :: String -> ApiM String
 sha256sum filepath = do
-  fileBuffer <- FS.readFile filepath
+  fileBuffer <- liftAff $ FS.readFile filepath
   liftEffect do
     newHash <- Hash.createHash Hash.SHA256
     fileHash <- Hash.update newHash fileBuffer
     digest <- Hash.digest fileHash
     Buffer.toString Hex digest
 
-wget :: String -> String -> Aff Unit
+wget :: String -> String -> ApiM Unit
 wget url path = do
   let cmd = "wget"
   let stdin = Nothing
   let args = ["-O", path, url]
-  result <- Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
+  result <- liftAff $ Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
   case result.exit of
     NodeProcess.Normally 0 -> pure unit
-    _ -> throw $ "Error while fetching tarball: " <> result.stderr
+    _ -> throwWithComment $ "Error while fetching tarball: " <> result.stderr
 
 
 -- TODO: move this to a smart constructor for PackageName?

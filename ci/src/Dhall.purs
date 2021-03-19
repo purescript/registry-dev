@@ -8,8 +8,8 @@ import Effect.Aff (Aff)
 import Sunde as Process
 import Node.ChildProcess as NodeProcess
 
-jsonToDhall :: String -> Aff (Either String String)
-jsonToDhall jsonStr = do
+jsonToDhallManifest :: String -> Aff (Either String String)
+jsonToDhallManifest jsonStr = do
   let cmd = "json-to-dhall"
   let stdin = Just jsonStr
   let args = ["--records-loose", "--unions-strict", "../v1/Manifest.dhall"]

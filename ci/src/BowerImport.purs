@@ -130,7 +130,7 @@ main = Aff.launchAff_ do
                     $ GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
               -- we then conform to Dhall type. If that does works out then
               -- write it to the manifest file, otherwise print the error
-              Dhall.jsonToDhall manifestStr >>= case _ of
+              Dhall.jsonToDhallManifest manifestStr >>= case _ of
                 Right _ -> do
                   FS.writeTextFile UTF8 manifestPath manifestStr
                 Left result -> error result
