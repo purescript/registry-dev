@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SPACES_KEY: ${{ secrets.SPACES_KEY }}
+      SPACES_SECRET: ${{ secrets.SPACES_SECRET }}
     steps:
       # Setup
       - uses: actions/checkout@v2
