@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: "14"
 
-      - uses: actions/setup-purescript@main
+      - uses: purescript-contrib/setup-purescript@main
 
       # - uses: cachix/install-nix-action@v12
       #   with:
