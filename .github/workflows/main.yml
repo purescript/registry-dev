@@ -18,6 +18,13 @@ jobs:
         with:
           node-version: "14"
 
+      - uses: actions/cache@v2
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
       - uses: purescript-contrib/setup-purescript@main
 
       - name: Cache PureScript dependencies
@@ -43,4 +50,4 @@ jobs:
 
       # Run a test comment
       - name: "Make a test comment"
-        run: cd ci && npm install && spago run -m CommentTest
+        run: cd ci && npm ci && spago run -m CommentTest
