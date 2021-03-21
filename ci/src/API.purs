@@ -2,26 +2,19 @@ module Registry.API where
 
 import Prelude
 
-import Control.Monad.Error.Class (class MonadThrow)
-import Control.Monad.Reader (class MonadAsk, ReaderT, asks, runReaderT)
 import Data.Argonaut as Json
-import Data.Array (fold, replicate)
+import Data.Array (fold)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
 import Data.Generic.Rep as Generic
-import Data.List as List
-import Data.List.NonEmpty as NEL
 import Data.Maybe (Maybe(..), fromJust, isJust)
-import Data.Newtype (class Newtype)
 import Data.Show.Generic (genericShow)
-import Data.String.CodeUnits (fromCharArray)
-import Data.String.CodeUnits as String
 import Dhall as Dhall
 import Effect (Effect)
-import Effect.Aff (Aff, Error, launchAff_)
+import Effect.Aff (Aff, launchAff_)
 import Effect.Aff as Aff
-import Effect.Aff.Class (class MonadAff, liftAff)
-import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Aff.Class (liftAff)
+import Effect.Class (liftEffect)
 import Effect.Class.Console (log)
 import Foreign.Object as Object
 import GitHub (IssueNumber)
@@ -35,48 +28,17 @@ import Node.Path (FilePath)
 import Node.Process as Env
 import PackageUpload as PackageUpload
 import Partial.Unsafe (unsafePartial)
-import Registry.BowerImport (stripPurescriptPrefix)
 import Registry.BowerImport as Bower
+import Registry.PackageName (PackageName)
+import Registry.PackageName as PackageName
+import Registry.RegistryM (RegistryM, comment, mkEnv, runRegistryM, throwWithComment)
 import Registry.SPDX (isValidSPDXLicenseId)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), Revision)
+import Registry.Utils as Utils
 import Sunde as Process
 import Tar as Tar
 import Test.Spec.Assertions as Assert
-import Text.Parsing.StringParser as Parser
-import Text.Parsing.StringParser.CodePoints as Parse
-import Text.Parsing.StringParser.Combinators ((<?>))
-import Text.Parsing.StringParser.Combinators as ParseC
 import Tmp as Tmp
-
-newtype ApiM a = ApiM (ReaderT Env Aff a)
-
-derive instance newtypeApiM :: Newtype (ApiM a) _
-
-derive newtype instance functorApiM :: Functor ApiM
-derive newtype instance applyApiM :: Apply ApiM
-derive newtype instance applicativeApiM :: Applicative ApiM
-derive newtype instance bindApiM :: Bind ApiM
-derive newtype instance monadApiM :: Monad ApiM
-derive newtype instance monadEffectApiM :: MonadEffect ApiM
-derive newtype instance monadAffApiM :: MonadAff ApiM
-derive newtype instance monadErrorApiM :: MonadThrow Error ApiM
-derive newtype instance monadAskApiM :: MonadAsk Env ApiM
-
-runApiM :: forall a. Env -> ApiM a -> Aff a
-runApiM env (ApiM m) = runReaderT m env
-
-type Env =
-  { comment :: String -> Aff Unit
-  , commitToTrunk :: Aff Unit
-  , uploadPackage :: Aff Unit
-  }
-
-mkEnv :: IssueNumber -> Env
-mkEnv issue =
-  { comment: void <<< GitHub.createComment issue
-  , commitToTrunk: pure unit -- TODO
-  , uploadPackage: pure unit -- TODO
-  }
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -88,17 +50,17 @@ main = launchAff_ $ do
     NotJson ->
       pure unit
 
-    MalformedJson issue err -> runApiM (mkEnv issue) do
+    MalformedJson issue err -> runRegistryM (mkEnv issue) do
       comment $ fold
         [ "The JSON input for this package update is malformed:"
-        , newlines 2
+        , Utils.newlines 2
         , "```" <> err <> "```"
-        , newlines 2
+        , Utils.newlines 2
         , "You can try again by commenting on this issue with a corrected payload."
         ]
 
     DecodedOperation issue op ->
-      runApiM (mkEnv issue) (runOperation op)
+      runRegistryM (mkEnv issue) (runOperation op)
 
 data OperationDecoding
   = NotJson
@@ -119,7 +81,7 @@ readOperation eventPath = do
     Left err ->
       -- If we don't receive a valid event path or the contents can't be decoded
       -- then this is a catastrophic error and we exit the workflow.
-      throw $ "Error while parsing json from " <> eventPath <> " : " <> err
+      Aff.throwError $ Aff.error $ "Error while parsing json from " <> eventPath <> " : " <> err
     Right event ->
       pure event
 
@@ -130,7 +92,7 @@ readOperation eventPath = do
       Left err -> MalformedJson issueNumber (Json.printJsonDecodeError err)
       Right op -> DecodedOperation issueNumber op
 
-runOperation :: Operation -> ApiM Unit
+runOperation :: Operation -> RegistryM Unit
 runOperation operation = ensureMetadataFolder *> case operation of
   Addition { packageName, fromBower, newRef, newPackageLocation, addToPackageSet } -> do
     -- check that we don't have a metadata file for that package
@@ -149,18 +111,16 @@ runOperation operation = ensureMetadataFolder *> case operation of
 
   Unpublish _ -> throwWithComment "Unpublish not implemented! Ask us for help!" -- TODO
 
-
 metadataDir :: String
 metadataDir = "../metadata"
 
-metadataFile :: String -> String
-metadataFile packageName = metadataDir <> "/" <> packageName <> ".json"
+metadataFile :: PackageName -> String
+metadataFile packageName = metadataDir <> "/" <> PackageName.print packageName <> ".json"
 
-ensureMetadataFolder :: ApiM Unit
+ensureMetadataFolder :: RegistryM Unit
 ensureMetadataFolder = liftAff $ whenM (not <$> FS.exists metadataDir) $ FS.mkdir metadataDir
 
-
-addOrUpdate :: { fromBower :: Boolean, ref :: String, packageName :: String } -> Metadata -> ApiM Unit
+addOrUpdate :: { fromBower :: Boolean, ref :: String, packageName :: PackageName } -> Metadata -> RegistryM Unit
 addOrUpdate { ref, fromBower, packageName } metadata = do
   -- let's get a temp folder to do our stuffs
   tmpDir <- liftEffect $ Tmp.mkTmpDir
@@ -225,7 +185,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
-  let newDirname = packageName <> "-" <> newVersion
+  let newDirname = PackageName.print packageName <> "-" <> newVersion
   liftAff $ FS.rename absoluteFolderPath (tmpDir <> "/" <> newDirname)
   let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
@@ -244,7 +204,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   -- TODO: upload docs to pursuit
 
 
-runChecks :: Metadata -> Manifest -> ApiM Unit
+runChecks :: Metadata -> Manifest -> RegistryM Unit
 runChecks metadata manifest = do
 
   log "Checking that the Manifest includes the `lib` target"
@@ -256,7 +216,7 @@ runChecks metadata manifest = do
   Assert.shouldEqual libTarget.sources ["src/**/*.purs"]
 
   log "Checking that the package name fits the requirements"
-  case parsePackageName manifest.name of
+  case PackageName.parse manifest.name of
     Left err -> throwWithComment $ "Package name doesn't fit the requirements: " <> show err
     Right a -> pure unit
 
@@ -271,7 +231,7 @@ runChecks metadata manifest = do
 fromJson :: forall a. Json.DecodeJson a => String -> Either String a
 fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)
 
-readJsonFile :: forall a. Json.DecodeJson a => String -> ApiM a
+readJsonFile :: forall a. Json.DecodeJson a => String -> RegistryM a
 readJsonFile path = do
   strResult <- liftAff $ FS.readTextFile UTF8 path
   case fromJson strResult of
@@ -284,21 +244,7 @@ mkNewMetadata location = { location, releases: mempty, unpublished: mempty, main
 addVersionToMetadata :: String -> Revision -> Metadata -> Metadata
 addVersionToMetadata version revision metadata = metadata { releases = Object.insert version [revision] metadata.releases }
 
-throw :: forall m a. MonadThrow Error m => String -> m a
-throw = Aff.throwError <<< Aff.error
-
-comment :: String -> ApiM Unit
-comment body = do
-  postComment <- asks _.comment
-  liftAff $ postComment body
-
--- | Throw an exception after commenting on the user's issue with the error
-throwWithComment :: forall a. String -> ApiM a
-throwWithComment body = do
-  comment body
-  throw body
-
-sha256sum :: String -> ApiM String
+sha256sum :: String -> RegistryM String
 sha256sum filepath = do
   fileBuffer <- liftAff $ FS.readFile filepath
   liftEffect do
@@ -307,7 +253,7 @@ sha256sum filepath = do
     digest <- Hash.digest fileHash
     Buffer.toString Hex digest
 
-wget :: String -> String -> ApiM Unit
+wget :: String -> String -> RegistryM Unit
 wget url path = do
   let cmd = "wget"
   let stdin = Nothing
@@ -316,42 +262,3 @@ wget url path = do
   case result.exit of
     NodeProcess.Normally 0 -> pure unit
     _ -> throwWithComment $ "Error while fetching tarball: " <> result.stderr
-
-
--- TODO: move this to a smart constructor for PackageName?
-parsePackageName :: String -> Either Parser.ParseError String
-parsePackageName = Parser.runParser do
-  -- Error messages, which also define our rules for package names
-  let endErr = "Package name should end with a lower case char or digit"
-  let charErr = "Package name can contain lower case chars, digits and non-consecutive dashes"
-  let startErr = "Package name should start with a lower case char or a digit"
-  let manyDashesErr = "Package names cannot contain consecutive dashes"
-
-  let char = ParseC.choice [Parse.lowerCaseChar, Parse.anyDigit] <?> charErr
-  let dash = void $ Parse.char '-'
-  let chunk = ParseC.many1 char
-
-  -- A "chunk" is an alphanumeric word between dashes
-  firstChunk <- chunk <?> startErr
-  nextChunks <- do
-    chunks <- ParseC.many do
-      void dash
-      void $ ParseC.optionMaybe (ParseC.lookAhead Parse.anyChar) >>= case _ of
-        Just '-' -> Parser.fail manyDashesErr
-        Just _ -> pure unit
-        Nothing -> ParseC.lookAhead Parse.eof *> Parser.fail endErr
-      map (NEL.cons '-') chunk <?> endErr
-    pure chunks
-  -- Make sure that we consume all the string in input
-  Parse.eof <?> charErr
-
-  -- put together the string, stripping the "purescript-" prefix if there
-  let chars = List.concat $ map NEL.toList $ List.Cons firstChunk nextChunks
-  let name = stripPurescriptPrefix $ fromCharArray $ List.toUnfoldable $ chars
-  -- and check that it's not longer than 50 chars
-  if String.length name > 50
-  then Parser.fail "Package name cannot be longer than 50 chars"
-  else pure name
-
-newlines :: Int -> String
-newlines n = fold $ replicate n "\n"

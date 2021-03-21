@@ -6,9 +6,11 @@ import Control.Alt ((<|>))
 import Data.Argonaut (jsonEmptyObject, (~>), (~>?), (:=), (:=?), (.:), (.:?), (.!=))
 import Data.Argonaut as Json
 import Data.Generic.Rep as Generic
-import Data.Show.Generic (genericShow)
 import Data.Maybe (Maybe)
+import Data.Show.Generic (genericShow)
 import Foreign.Object as Foreign
+import Registry.PackageName (PackageName)
+import Registry.PackageName as PackageName
 
 
 -- | PureScript encoding of ../v1/Manifest.dhall
@@ -86,7 +88,14 @@ derive instance eqOperation :: Eq Operation
 derive instance genericOperation :: Generic.Generic Operation _
 
 instance showOperation :: Show Operation where
-  show = genericShow
+  show = case _ of
+    Addition inner -> "Addition (" <> show (showWithPackage inner) <> ")"
+    Update inner -> "Update (" <> show (showWithPackage inner) <> ")"
+    Unpublish inner -> "Unpublish (" <> show (showWithPackage inner) <> ")"
+    where
+    showWithPackage :: forall r. { packageName :: PackageName | r } -> { packageName :: String | r }
+    showWithPackage inner =
+      inner { packageName = "PackageName (" <> PackageName.print inner.packageName <> ")" }
 
 instance operationDecodeJson :: Json.DecodeJson Operation where
   decodeJson json = do
@@ -113,17 +122,17 @@ type AdditionData =
   , fromBower :: Boolean
   , newPackageLocation :: Repo
   , newRef :: String
-  , packageName :: String
+  , packageName :: PackageName
 }
 
 type UpdateData =
-  { packageName :: String
+  { packageName :: PackageName
   , fromBower :: Boolean
   , updateRef :: String
   }
 
 type UnpublishData =
-  { packageName :: String
+  { packageName :: PackageName
   , unpublishVersion :: String
   , unpublishReason :: String
   }

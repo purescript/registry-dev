@@ -2,14 +2,16 @@ module Test.Main where
 
 import Prelude
 
-import Data.Either (Either(..))
+import Data.Either (Either(..), fromRight')
 import Data.Identity (Identity)
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Aff as Aff
 import GitHub (IssueNumber(..))
+import Partial.Unsafe (unsafeCrashWith)
 import Registry.API as API
+import Registry.PackageName as PackageName
 import Registry.SPDX as SPDX
 import Registry.Schema (Operation(..), Repo(..))
 import Test.Spec as Spec
@@ -32,7 +34,7 @@ main = Aff.launchAff_ $ runSpec [consoleReporter] do
 goodPackageName :: Spec
 goodPackageName = do
   let parseName str res = Spec.it str do
-        (API.parsePackageName str) `Assert.shouldEqual` (Right res)
+        (PackageName.print <$> PackageName.parse str) `Assert.shouldEqual` (Right res)
 
   parseName "a" "a"
   parseName "some-dash" "some-dash"
@@ -40,7 +42,7 @@ goodPackageName = do
 badPackageName :: Spec
 badPackageName = do
   let failParse str err = Spec.it str do
-        (API.parsePackageName str) `Assert.shouldSatisfy` case _ of
+        (PackageName.print <$> PackageName.parse str) `Assert.shouldSatisfy` case _ of
           Right _ -> false
           Left { error } -> error == err
   let startErr = "Package name should start with a lower case char or a digit"
@@ -97,7 +99,7 @@ decodeEventsToOps = do
     let
       issueNumber = IssueNumber 124
       operation = Update
-        { packageName: "something"
+        { packageName: fromRight' (\_ -> unsafeCrashWith "Expected Right") (PackageName.parse "something")
         , updateRef: "v1.2.3"
         , fromBower: false
         }
@@ -109,7 +111,7 @@ decodeEventsToOps = do
     let
       issueNumber = IssueNumber 43
       operation = Addition
-        { packageName: "something"
+        { packageName: fromRight' (\_ -> unsafeCrashWith "Expected Right") (PackageName.parse "something")
         , newRef: "v1.2.3"
         , fromBower: false
         , addToPackageSet: true

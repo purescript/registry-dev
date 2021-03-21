@@ -16,7 +16,7 @@ import Data.FoldableWithIndex (forWithIndex_)
 import Data.JSDate as JSDate
 import Data.Map (Map, SemigroupMap(..))
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing)
+import Data.Maybe (Maybe(..), fromJust, isNothing)
 import Data.Monoid (guard)
 import Data.Newtype (unwrap)
 import Data.Set (Set)
@@ -42,6 +42,7 @@ import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Partial.Unsafe (unsafePartial, unsafeCrashWith)
 import Registry.Schema (Manifest, Repo(..))
+import Registry.Utils (stripPureScriptPrefix)
 import Web.Bower.PackageMeta as Bower
 
 
@@ -76,7 +77,7 @@ main = Aff.launchAff_ do
       -- without consuming the GitHub request limit.
       let (SemigroupMap allPackages) = SemigroupMap bowerPackages <> SemigroupMap newPackages
       releaseIndex <- Map.fromFoldable <$> forWithIndex allPackages \nameWithPrefix repoUrl -> do
-        let name = stripPurescriptPrefix nameWithPrefix
+        let name = stripPureScriptPrefix nameWithPrefix
         let address = fromRight' (\_ -> unsafeCrashWith "Unexpected Left") $ GitHub.parseRepo repoUrl
         releases <- withCache ("releases__" <> address.owner <> "__" <> address.repo) (Just $ Hours 24.0) $ do
           log $ "Fetching releases for package " <> show name
@@ -150,14 +151,14 @@ toManifest (Bower.PackageMeta bowerfile) version address
   = { name, license, repository, targets, version }
   where
     subdir = Nothing
-    name = stripPurescriptPrefix bowerfile.name
+    name = stripPureScriptPrefix bowerfile.name
     license = String.joinWith " OR " bowerfile.license
     repository = case _.url <$> bowerfile.repository of
       Nothing -> address
       Just url -> case GitHub.parseRepo url of
         Left _err -> Git { url, subdir }
         Right { repo, owner } -> GitHub { repo, owner, subdir }
-    toDepPair { packageName, versionRange } = (stripPurescriptPrefix packageName) /\ versionRange
+    toDepPair { packageName, versionRange } = (stripPureScriptPrefix packageName) /\ versionRange
     deps = map toDepPair $ unwrap bowerfile.dependencies
     devDeps = map toDepPair $ unwrap bowerfile.devDependencies
     targets = Foreign.fromFoldable $ catMaybes
@@ -177,17 +178,10 @@ selfContainedDependencies :: ReleasesIndex -> Bower.PackageMeta -> Boolean
 selfContainedDependencies packageIndex (Bower.PackageMeta { dependencies, devDependencies }) =
   let
     (Bower.Dependencies allDeps) = dependencies <> devDependencies
-    isInRegistry { packageName } = case Map.lookup (stripPurescriptPrefix packageName) packageIndex of
+    isInRegistry { packageName } = case Map.lookup (stripPureScriptPrefix packageName) packageIndex of
       Nothing -> false
       Just _ -> true
   in and (map isInRegistry allDeps)
-
-
-stripPurescriptPrefix :: String -> String
-stripPurescriptPrefix name
-  = fromMaybe name
-  $ String.stripPrefix (String.Pattern "purescript-") name
-
 
 -- | Optionally-expirable cache: when passing a Duration then we'll consider
 -- | the object expired if its lifetime is past the duration.
