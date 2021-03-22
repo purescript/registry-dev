@@ -7,8 +7,11 @@ import Data.Array (fold)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
 import Data.Generic.Rep as Generic
+import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, isJust)
 import Data.Show.Generic (genericShow)
+import Data.Traversable (all, for)
+import Data.Tuple.Nested ((/\))
 import Dhall as Dhall
 import Effect (Effect)
 import Effect.Aff (Aff, launchAff_)
@@ -16,6 +19,8 @@ import Effect.Aff as Aff
 import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
 import Effect.Class.Console (log)
+import Effect.Ref as Ref
+import Foreign (Foreign)
 import Foreign.Object as Object
 import GitHub (IssueNumber)
 import GitHub as GitHub
@@ -31,19 +36,31 @@ import Partial.Unsafe (unsafePartial)
 import Registry.BowerImport as Bower
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (RegistryM, comment, mkEnv, runRegistryM, throwWithComment)
-import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), Revision)
+import Registry.RegistryM (RegistryM, comment, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment)
+import Registry.Schema (Manifest, Operation(..), Repo(..), Revision, Metadata)
 import Registry.Utils as Utils
 import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Process
 import Tar as Tar
 import Test.Spec.Assertions as Assert
+import Text.Parsing.StringParser as Parser
 import Tmp as Tmp
 
 main :: Effect Unit
 main = launchAff_ $ do
   eventPath <- liftEffect $ Env.lookupEnv "GITHUB_EVENT_PATH"
+  packagesMetadata <- do
+    whenM (not <$> FS.exists metadataDir) do
+      FS.mkdir metadataDir
+    packageList <- FS.readdir metadataDir
+    packagesArray <- for packageList \rawPackageName -> do
+      packageName <- case PackageName.parse rawPackageName of
+        Right p -> pure p
+        Left err -> Aff.throwError $ Aff.error $ Parser.printParserError err
+      metadata <- readJsonFile $ metadataFile packageName
+      pure $ packageName /\ metadata
+    liftEffect $ Ref.new $ Map.fromFoldable packagesArray
   readOperation (unsafePartial fromJust eventPath) >>= case _ of
     -- If the issue body is not just a JSON string, then we don't consider it
     -- to be an attempted operation and it is presumably just an issue on the
@@ -51,7 +68,7 @@ main = launchAff_ $ do
     NotJson ->
       pure unit
 
-    MalformedJson issue err -> runRegistryM (mkEnv issue) do
+    MalformedJson issue err -> runRegistryM (mkEnv packagesMetadata issue) do
       comment $ fold
         [ "The JSON input for this package update is malformed:"
         , Utils.newlines 2
@@ -61,7 +78,7 @@ main = launchAff_ $ do
         ]
 
     DecodedOperation issue op ->
-      runRegistryM (mkEnv issue) (runOperation op)
+      runRegistryM (mkEnv packagesMetadata issue) (runOperation op)
 
 data OperationDecoding
   = NotJson
@@ -94,7 +111,7 @@ readOperation eventPath = do
       Right op -> DecodedOperation issueNumber op
 
 runOperation :: Operation -> RegistryM Unit
-runOperation operation = ensureMetadataFolder *> case operation of
+runOperation operation = case operation of
   Addition { packageName, fromBower, newRef, newPackageLocation, addToPackageSet } -> do
     -- check that we don't have a metadata file for that package
     ifM (liftAff $ FS.exists $ metadataFile packageName)
@@ -106,7 +123,9 @@ runOperation operation = ensureMetadataFolder *> case operation of
   Update { packageName, fromBower, updateRef } -> do
     ifM (liftAff $ FS.exists $ metadataFile packageName)
       do
-        metadata <- readJsonFile $ metadataFile packageName
+        metadata <- readPackagesMetadata >>= \packages -> case Map.lookup packageName packages of
+          Nothing -> throwWithComment "Couldn't read metadata file for your package"
+          Just m -> pure m
         addOrUpdate { packageName, fromBower, ref: updateRef } metadata
       (throwWithComment "Metadata file should exist. Did you mean to create an Addition?")
 
@@ -117,9 +136,6 @@ metadataDir = "../metadata"
 
 metadataFile :: PackageName -> String
 metadataFile packageName = metadataDir <> "/" <> PackageName.print packageName <> ".json"
-
-ensureMetadataFolder :: RegistryM Unit
-ensureMetadataFolder = liftAff $ whenM (not <$> FS.exists metadataDir) $ FS.mkdir metadataDir
 
 addOrUpdate :: { fromBower :: Boolean, ref :: String, packageName :: PackageName } -> Metadata -> RegistryM Unit
 addOrUpdate { ref, fromBower, packageName } metadata = do
@@ -201,12 +217,15 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   let newMetadata = addVersionToMetadata newVersion { hash, ref } metadata
   liftAff $ FS.writeTextFile UTF8 (metadataFile packageName) (Json.stringifyWithIndent 2 $ Json.encodeJson newMetadata)
   -- FIXME: commit metadata file to master
-  -- TODO: publish github comments
+  -- FIXME: update metadata in env or return it
   -- TODO: upload docs to pursuit
 
 
 runChecks :: Metadata -> Manifest -> RegistryM Unit
 runChecks metadata manifest = do
+  -- TODO: collect all errors and return them at once. Note: some of the checks
+  -- are going to fail while parsing from JSON, so we should move them here if we
+  -- want to handle everything together
 
   log "Checking that the Manifest includes the `lib` target"
   libTarget <- case Object.lookup "lib" manifest.targets of
@@ -216,36 +235,22 @@ runChecks metadata manifest = do
   log "Checking that `lib` target only includes `src`"
   Assert.shouldEqual libTarget.sources ["src/**/*.purs"]
 
-  log "Checking that the package name fits the requirements"
-  -- TODO: This has already been done via decoding; what should we do here?
-  --
-  -- NOTE: We could always write effectful encoders which throw errors and use
-  -- those instead of the instances directly. That way we still get to parse
-  -- the JSON into useful data, and we can also report the errors right away.
-  --
-  -- case PackageName.parse manifest.name of
-  --   Left err -> throwWithComment $ "Package name doesn't fit the requirements: " <> show err
-  --   Right _ -> pure unit
+  log "Check that version is unique"
+  -- FIXME: lookup in the versions map, once we know the shape of it, see #80
 
-  -- For these we need to read all the metadatas in a hashmap:
-  -- - FIXME: check that all dependencies are selfcontained in the registry
-  -- - FIXME: version is unique!!
-  -- - FIXME: package is unique
-
-  log "Checking that the license fits the requirements"
-  -- TODO: This has already been done via decoding; what should we do here?
-  -- case (SPDXLicense.parse manifest.license) of
-  --   Left err -> throwWithComment $ "Invalid SPDX license: " <> err
-  --   Right _ -> pure unit
+  log "Check that all dependencies are contained in the registry"
+  packages <- readPackagesMetadata
+  -- FIXME nice error message for this
+  all (\p -> isJust $ Map.lookup p packages) libTarget.dependencies
 
 fromJson :: forall a. Json.DecodeJson a => String -> Either String a
 fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)
 
-readJsonFile :: forall a. Json.DecodeJson a => String -> RegistryM a
+readJsonFile :: forall a. Json.DecodeJson a => String -> Aff a
 readJsonFile path = do
-  strResult <- liftAff $ FS.readTextFile UTF8 path
+  strResult <- FS.readTextFile UTF8 path
   case fromJson strResult of
-    Left err -> throwWithComment $ "Error while parsing json from " <> path <> " : " <> err
+    Left err -> Aff.throwError $ Aff.error $ "Error while parsing json from " <> path <> " : " <> err
     Right r -> pure r
 
 mkNewMetadata :: Repo -> Metadata

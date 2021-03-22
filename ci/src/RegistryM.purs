@@ -4,28 +4,36 @@ import Prelude
 
 import Control.Monad.Error.Class (class MonadThrow)
 import Control.Monad.Reader (class MonadAsk, ReaderT, asks, runReaderT)
+import Data.Map (Map)
+import Data.Map as Map
 import Data.Newtype (class Newtype)
 import Effect.Aff (Aff, Error)
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff)
-import Effect.Class (class MonadEffect)
+import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Ref (Ref)
+import Effect.Ref as Ref
 import GitHub (IssueNumber)
 import GitHub as GitHub
+import Registry.PackageName (PackageName)
+import Registry.Schema (Metadata)
 
 type Env =
   { comment :: String -> Aff Unit
   , commitToTrunk :: Aff Unit
   , uploadPackage :: Aff Unit
+  , packagesMetadata :: Ref (Map PackageName Metadata)
   }
 
-mkEnv :: IssueNumber -> Env
-mkEnv issue =
+mkEnv :: Ref (Map PackageName Metadata) -> IssueNumber -> Env
+mkEnv packagesMetadata issue =
   { comment:
       void <<< GitHub.createComment issue
   , commitToTrunk:
       pure unit -- TODO
   , uploadPackage:
       pure unit -- TODO
+  , packagesMetadata
   }
 
 newtype RegistryM a = RegistryM (ReaderT Env Aff a)
@@ -62,3 +70,11 @@ commitToTrunk = liftAff =<< asks _.commitToTrunk
 -- | Upload a package to the backend storage provider
 uploadPackage :: RegistryM Unit
 uploadPackage = liftAff =<< asks _.uploadPackage
+
+updatePackagesMetadata :: PackageName -> Metadata -> RegistryM Unit
+updatePackagesMetadata pkg metadata = do
+  packagesMetadata <- asks _.packagesMetadata
+  liftEffect $ Ref.modify_ (Map.insert pkg metadata) packagesMetadata
+
+readPackagesMetadata :: RegistryM (Map PackageName Metadata)
+readPackagesMetadata = liftEffect <<< Ref.read =<< asks _.packagesMetadata
