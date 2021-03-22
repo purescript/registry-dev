@@ -6,7 +6,7 @@ import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
 import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
-import Data.Array (catMaybes)
+import Data.Array (catMaybes, fold)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.DateTime (adjust) as Time
@@ -45,6 +45,7 @@ import Registry.SPDXLicense (SPDXConjunction(..))
 import Registry.SPDXLicense as SPDXLicense
 import Registry.Schema (Manifest, Repo(..))
 import Registry.Utils (stripPureScriptPrefix)
+import Registry.Version as Version
 import Text.Parsing.StringParser as Parser
 import Web.Bower.PackageMeta (Dependencies(..))
 import Web.Bower.PackageMeta as Bower
@@ -98,14 +99,15 @@ main = Aff.launchAff_ do
         -- then we list all the files in that package directory - every file is a version
         manifests <- FS.readdir packageFolder
         -- are there any releases that we don't have the file for?
-        for_ releases \release ->
+        for_ releases \release -> do
           let
             manifestIsMissing = isNothing $ Array.findIndex (_ == release.name <> ".json") manifests
             shouldSkip = Set.member (Tuple name release.name) toSkip
             -- TODO: we limit the package list to these three packages just to print example manifests
             examplePackage = Set.member name (Set.fromFoldable ["aff", "mysql", "prelude"])
             shouldFetch = manifestIsMissing && not shouldSkip && examplePackage
-          in when shouldFetch do
+
+          when shouldFetch do
             -- if yes, then..
             log $ "Could not find manifest for version " <> release.name <> " of " <> show address <> ", making it..."
             -- we download the Bower file or use the cached one if available.
@@ -118,13 +120,17 @@ main = Aff.launchAff_ do
                     Left err -> do
                       error $ "Got error while fetching bowerfile, you might want to add the following to the packages to skip: " <> show name <> " /\\ " <> show release.name
                       Aff.throwError $ Exception.error $ Http.printError err
-                    Right { body } -> case (Json.decodeJson body) of
+                    Right { body } -> case Json.decodeJson body of
                       Left err -> Aff.throwError $ Exception.error $ Json.printJsonDecodeError err
                       Right (bowerfile :: Bower.PackageMeta) -> pure bowerfile
             bowerfile <- withCache ("bowerfile__" <> name <> "__" <> release.name) Nothing fetchBowerfile
             -- then we check if all dependencies/versions are self-contained in the registry
-            if (not $ selfContainedDependencies releaseIndex bowerfile)
-            then error $ "Dependencies for the package " <> show name <> " are not all contained in the registry, skipping."
+            if not selfContainedDependencies releaseIndex bowerfile then
+               error $ fold
+                 [ "Dependencies for the package "
+                 , show name
+                 , " are not all contained in the registry, skipping."
+                 ]
             else do
               -- now we should be ready to convert it
               let manifestPath = packageFolder <> "/" <> release.name <> ".json"
@@ -151,9 +157,10 @@ readBowerfile path = do
 
 -- | Convert a Bowerfile into a Registry Manifest
 toManifest :: Bower.PackageMeta -> String -> Repo -> Either String Manifest
-toManifest (Bower.PackageMeta bowerfile) version address = do
+toManifest (Bower.PackageMeta bowerfile) ref address = do
   name <- lmap Parser.printParserError $ PackageName.parse $ stripPureScriptPrefix bowerfile.name
   license <- SPDXLicense.joinWith Or <$> traverse SPDXLicense.parse bowerfile.license
+  version <- Version.parse ref
   pure { name, license, repository, targets, version }
   where
   subdir = Nothing

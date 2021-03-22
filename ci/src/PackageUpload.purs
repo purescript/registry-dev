@@ -10,11 +10,13 @@ import Effect.Class.Console (log)
 import Node.FS.Aff as FS
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Version (Version)
+import Registry.Version as Version
 import S3 as S3
 
 type PackageInfo =
   { name :: PackageName
-  , version :: String
+  , version :: Version
   , revision :: Int
   }
 
@@ -40,7 +42,7 @@ upload { name, version, revision } path = Aff.launchAff_ $ do
     filename = fold
       [ packageName
       , "/"
-      , version
+      , Version.print version
       , if revision == 0 then "" else "_r" <> show revision
       , ".tar.gz"
       ]

@@ -12,11 +12,12 @@ import Foreign.Object as Foreign
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.SPDXLicense (SPDXLicense)
+import Registry.Version (Version)
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 type Manifest =
   { name :: PackageName
-  , version :: String -- TODO: we should have a newtype for this
+  , version :: Version
   , license :: SPDXLicense
   , repository :: Repo
   , targets :: Foreign.Object Target

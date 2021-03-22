@@ -24,6 +24,10 @@ instance decodeJsonSPDXLicense :: DecodeJson SPDXLicense where
 instance encodeJsonSPDXLicense :: EncodeJson SPDXLicense where
   encodeJson = encodeJson <<< print
 
+-- | Print an SPDX license identifier.
+print :: SPDXLicense -> String
+print (SPDXLicense license) = license
+
 -- | Parse a string as a SPDX license identifier.
 -- |
 -- | ```purs
@@ -35,10 +39,6 @@ instance encodeJsonSPDXLicense :: EncodeJson SPDXLicense where
 -- | ```
 parse :: String -> Either String SPDXLicense
 parse = runFn3 parseSPDXLicenseIdImpl Left (Right <<< SPDXLicense)
-
--- | Print an SPDX license identifier.
-print :: SPDXLicense -> String
-print (SPDXLicense license) = license
 
 data SPDXConjunction = And | Or
 

@@ -34,6 +34,8 @@ import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, comment, mkEnv, runRegistryM, throwWithComment)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), Revision)
 import Registry.Utils as Utils
+import Registry.Version (Version)
+import Registry.Version as Version
 import Sunde as Process
 import Tar as Tar
 import Test.Spec.Assertions as Assert
@@ -184,7 +186,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
-  let newDirname = PackageName.print packageName <> "-" <> newVersion
+  let newDirname = PackageName.print packageName <> "-" <> Version.print newVersion
   liftAff $ FS.rename absoluteFolderPath (tmpDir <> "/" <> newDirname)
   let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
@@ -249,8 +251,10 @@ readJsonFile path = do
 mkNewMetadata :: Repo -> Metadata
 mkNewMetadata location = { location, releases: mempty, unpublished: mempty, maintainers: mempty }
 
-addVersionToMetadata :: String -> Revision -> Metadata -> Metadata
-addVersionToMetadata version revision metadata = metadata { releases = Object.insert version [revision] metadata.releases }
+addVersionToMetadata :: Version -> Revision -> Metadata -> Metadata
+addVersionToMetadata version revision metadata = do
+  let version' = Version.print version
+  metadata { releases = Object.insert version' [ revision ] metadata.releases }
 
 sha256sum :: String -> RegistryM String
 sha256sum filepath = do
