@@ -109,5 +109,6 @@
   "purescript-typelevel-graph": "https://github.com/mikesol/purescript-typelevel-graph.git",
   "purescript-barlow-lens": "https://github.com/sigma-andex/purescript-barlow-lens.git",
   "purescript-painting": "https://github.com/mikesol/purescript-painting.git",
-  "purescript-resourcet": "https://github.com/robertdp/purescript-resourcet.git"
+  "purescript-resourcet": "https://github.com/robertdp/purescript-resourcet.git",
+  "purescript-veither": "https://github.com/JordanMartinez/purescript-veither.git"
 }
