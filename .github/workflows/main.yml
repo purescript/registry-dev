@@ -46,7 +46,7 @@ jobs:
 
       # Checks for the Registry Draft
       - name: "Check that all Dhall compiles, and examples correctly conform to a Manifest"
-       run: ./ci/scripts/verify-dhall.sh
+        run: ./ci/scripts/verify-dhall.sh
       - name: "Check all the example Manifests roundtrip (read+write) through PureScript"
        run: cd ci && nix-shell ../default.nix --run "spago run -m Registry.Check.ManifestRoundtrip"
 
