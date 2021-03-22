@@ -10,6 +10,7 @@
   "purescript-classnames": "https://github.com/dewey92/purescript-classnames.git",
   "purescript-clipboardy": "https://github.com/hrajchert/purescript-clipboardy.git",
   "purescript-cirru-parser": "https://github.com/Cirru/parser.purs.git",
+  "purescript-cirru-edn": "https://github.com/Cirru/cirru-edn.purs.git",
   "purescript-web-url": "https://github.com/mjepronk/purescript-web-url.git",
   "purescript-grain": "https://github.com/purescript-grain/purescript-grain.git",
   "purescript-grain-portal": "https://github.com/purescript-grain/purescript-grain-portal.git",
@@ -93,6 +94,7 @@
   "purescript-web-fetch": "https://github.com/purescript-web/purescript-web-fetch.git",
   "purescript-web-promise": "https://github.com/purescript-web/purescript-web-promise.git",
   "purescript-web-streams": "https://github.com/purescript-web/purescript-web-streams.git",
+  "purescript-workly": "https://github.com/cakekindel/purescript-workly.git",
   "purescript-purversion": "https://github.com/Quelklef/purversion.git",
   "purescript-parsing-replace": "https://github.com/jamesdbrock/purescript-parsing-replace.git",
   "purescript-web-file-directory-entries": "https://github.com/xc-jp/purescript-web-file-directory-entries.git",
@@ -107,5 +109,6 @@
   "purescript-typelevel-graph": "https://github.com/mikesol/purescript-typelevel-graph.git",
   "purescript-barlow-lens": "https://github.com/sigma-andex/purescript-barlow-lens.git",
   "purescript-painting": "https://github.com/mikesol/purescript-painting.git",
-  "purescript-resourcet": "https://github.com/robertdp/purescript-resourcet.git"
+  "purescript-resourcet": "https://github.com/robertdp/purescript-resourcet.git",
+  "purescript-veither": "https://github.com/JordanMartinez/purescript-veither.git"
 }
