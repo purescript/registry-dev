@@ -5,7 +5,7 @@ import Prelude
 import Data.Argonaut as Json
 import Data.Array (fold)
 import Data.Bifunctor (lmap)
-import Data.Either (Either(..))
+import Data.Either (Either(..), hush)
 import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, isJust)
@@ -20,7 +20,6 @@ import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
 import Effect.Class.Console (log)
 import Effect.Ref as Ref
-import Foreign (Foreign)
 import Foreign.Object as Object
 import GitHub (IssueNumber)
 import GitHub as GitHub
@@ -239,9 +238,11 @@ runChecks metadata manifest = do
   -- FIXME: lookup in the versions map, once we know the shape of it, see #80
 
   log "Check that all dependencies are contained in the registry"
-  packages <- readPackagesMetadata
   -- FIXME nice error message for this
-  all (\p -> isJust $ Map.lookup p packages) libTarget.dependencies
+  packages <- readPackagesMetadata
+  let lookupPackage = flip Map.lookup packages <=< (hush <<< PackageName.parse)
+  unless (all (isJust <<< lookupPackage) libTarget.dependencies) do
+    pure unit
 
 fromJson :: forall a. Json.DecodeJson a => String -> Either String a
 fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)
