@@ -35,7 +35,7 @@ print (SPDXLicense license) = license
 -- | Right (SPDXLicense ...)
 -- |
 -- | > parse 'MITT'
--- | Left "Invalid SPDX identifier: MIT. Did you mean MIT?"
+-- | Left "Invalid SPDX identifier: MITT. Did you mean MIT?"
 -- | ```
 parse :: String -> Either String SPDXLicense
 parse = runFn3 parseSPDXLicenseIdImpl Left (Right <<< SPDXLicense)
