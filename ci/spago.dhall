@@ -9,6 +9,7 @@
   , "bower-json"
   , "console"
   , "crypto"
+  , "debug"
   , "effect"
   , "node-fs-aff"
   , "node-process"

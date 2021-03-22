@@ -2,7 +2,7 @@ module Test.Main where
 
 import Prelude
 
-import Data.Either (Either(..), fromRight')
+import Data.Either (Either(..), fromRight', isRight)
 import Data.Identity (Identity)
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
@@ -12,7 +12,7 @@ import GitHub (IssueNumber(..))
 import Partial.Unsafe (unsafeCrashWith)
 import Registry.API as API
 import Registry.PackageName as PackageName
-import Registry.SPDX as SPDX
+import Registry.SPDXLicense as SPDXLicense
 import Registry.Schema (Operation(..), Repo(..))
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
@@ -62,7 +62,7 @@ goodSPDXLicense :: Spec
 goodSPDXLicense = do
   let
     parseLicense str = Spec.it str do
-      (SPDX.isValidSPDXLicenseId str) `Assert.shouldEqual` true
+      (SPDXLicense.print <$> SPDXLicense.parse str) `Assert.shouldSatisfy` isRight
 
   -- current licenses
   parseLicense "MIT"
@@ -84,14 +84,20 @@ goodSPDXLicense = do
 badSPDXLicense :: Spec
 badSPDXLicense = do
   let
-    parseLicense str = Spec.it str do
-      (SPDX.isValidSPDXLicenseId str) `Assert.shouldEqual` false
+    invalid str suggestion = "Invalid SPDX identifier: " <> str <> "." <> case suggestion of
+      Nothing -> ""
+      Just s -> " Did you mean " <> s <> "?"
+    parseLicense str suggestion = Spec.it str do
+      (SPDXLicense.print <$> SPDXLicense.parse str) `Assert.shouldSatisfy` case _ of
+        Right _ -> false
+        Left err -> err == invalid str suggestion
 
   -- common mistakes
-  parseLicense "Apache"
-  parseLicense "Apache-2"
-  parseLicense "Apache 2"
-  parseLicense "BSD-3"
+  parseLicense "Apache" (Just "Apache-1.0")
+  parseLicense "Apache-2" (Just "Apache-2.0")
+  parseLicense "Apache 2" (Just "Apache-2.0")
+  parseLicense "BSD-3" (Just "BSD-3-Clause")
+  parseLicense "MIT AND BSD-3" Nothing
 
 decodeEventsToOps :: Spec
 decodeEventsToOps = do
