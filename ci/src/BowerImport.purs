@@ -18,12 +18,11 @@ import Data.Map (Map, SemigroupMap(..))
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, isNothing)
 import Data.Monoid (guard)
-import Data.Newtype (unwrap)
+import Data.Newtype (un)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.String as String
 import Data.Time.Duration (Hours(..))
-import Data.Traversable (for_)
+import Data.Traversable (for_, traverse)
 import Data.TraversableWithIndex (forWithIndex)
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
@@ -41,8 +40,13 @@ import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Partial.Unsafe (unsafePartial, unsafeCrashWith)
+import Registry.PackageName as PackageName
+import Registry.SPDXLicense (SPDXConjunction(..))
+import Registry.SPDXLicense as SPDXLicense
 import Registry.Schema (Manifest, Repo(..))
 import Registry.Utils (stripPureScriptPrefix)
+import Text.Parsing.StringParser as Parser
+import Web.Bower.PackageMeta (Dependencies(..))
 import Web.Bower.PackageMeta as Bower
 
 
@@ -146,31 +150,31 @@ readBowerfile path = do
       pure $ fromJson strResult
 
 -- | Convert a Bowerfile into a Registry Manifest
-toManifest :: Bower.PackageMeta -> String -> Repo -> Manifest
-toManifest (Bower.PackageMeta bowerfile) version address
-  = { name, license, repository, targets, version }
+toManifest :: Bower.PackageMeta -> String -> Repo -> Either String Manifest
+toManifest (Bower.PackageMeta bowerfile) version address = do
+  name <- lmap Parser.printParserError $ PackageName.parse $ stripPureScriptPrefix bowerfile.name
+  license <- SPDXLicense.joinWith Or <$> traverse SPDXLicense.parse bowerfile.license
+  pure { name, license, repository, targets, version }
   where
-    subdir = Nothing
-    name = stripPureScriptPrefix bowerfile.name
-    license = String.joinWith " OR " bowerfile.license
-    repository = case _.url <$> bowerfile.repository of
-      Nothing -> address
-      Just url -> case GitHub.parseRepo url of
-        Left _err -> Git { url, subdir }
-        Right { repo, owner } -> GitHub { repo, owner, subdir }
-    toDepPair { packageName, versionRange } = (stripPureScriptPrefix packageName) /\ versionRange
-    deps = map toDepPair $ unwrap bowerfile.dependencies
-    devDeps = map toDepPair $ unwrap bowerfile.devDependencies
-    targets = Foreign.fromFoldable $ catMaybes
-      [ pure $ Tuple "lib"
-          { sources: ["src/**/*.purs"]
-          , dependencies: Foreign.fromFoldable deps
-          }
-      , guard (Array.null (unwrap bowerfile.devDependencies)) $ Just $ Tuple "test"
-          { sources: ["src/**/*.purs", "test/**/*.purs"]
-          , dependencies: Foreign.fromFoldable (deps <> devDeps)
-          }
-      ]
+  subdir = Nothing
+  repository = case _.url <$> bowerfile.repository of
+    Nothing -> address
+    Just url -> case GitHub.parseRepo url of
+      Left _err -> Git { url, subdir }
+      Right { repo, owner } -> GitHub { repo, owner, subdir }
+  toDepPair { packageName, versionRange } = (stripPureScriptPrefix packageName) /\ versionRange
+  deps = map toDepPair $ un Dependencies bowerfile.dependencies
+  devDeps = map toDepPair $ un Dependencies bowerfile.devDependencies
+  targets = Foreign.fromFoldable $ catMaybes
+    [ pure $ Tuple "lib"
+        { sources: ["src/**/*.purs"]
+        , dependencies: Foreign.fromFoldable deps
+        }
+    , guard (Array.null (un Dependencies bowerfile.devDependencies)) $ Just $ Tuple "test"
+        { sources: ["src/**/*.purs", "test/**/*.purs"]
+        , dependencies: Foreign.fromFoldable (deps <> devDeps)
+        }
+    ]
 
 
 -- | Are all the dependencies PureScript packages or are there any external Bower/JS packages?

@@ -32,7 +32,6 @@ import Registry.BowerImport as Bower
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, comment, mkEnv, runRegistryM, throwWithComment)
-import Registry.SPDXLicense as SPDXLicense
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), Revision)
 import Registry.Utils as Utils
 import Sunde as Process
@@ -216,18 +215,26 @@ runChecks metadata manifest = do
   Assert.shouldEqual libTarget.sources ["src/**/*.purs"]
 
   log "Checking that the package name fits the requirements"
-  case PackageName.parse manifest.name of
-    Left err -> throwWithComment $ "Package name doesn't fit the requirements: " <> show err
-    Right _ -> pure unit
+  -- TODO: This has already been done via decoding; what should we do here?
+  --
+  -- NOTE: We could always write effectful encoders which throw errors and use
+  -- those instead of the instances directly. That way we still get to parse
+  -- the JSON into useful data, and we can also report the errors right away.
+  --
+  -- case PackageName.parse manifest.name of
+  --   Left err -> throwWithComment $ "Package name doesn't fit the requirements: " <> show err
+  --   Right _ -> pure unit
 
   -- For these we need to read all the metadatas in a hashmap:
   -- - FIXME: check that all dependencies are selfcontained in the registry
   -- - FIXME: version is unique!!
   -- - FIXME: package is unique
 
-  case (SPDXLicense.parse manifest.license) of
-    Left err -> throwWithComment $ "Invalid SPDX license: " <> err
-    Right _ -> pure unit
+  log "Checking that the license fits the requirements"
+  -- TODO: This has already been done via decoding; what should we do here?
+  -- case (SPDXLicense.parse manifest.license) of
+  --   Left err -> throwWithComment $ "Invalid SPDX license: " <> err
+  --   Right _ -> pure unit
 
 fromJson :: forall a. Json.DecodeJson a => String -> Either String a
 fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)

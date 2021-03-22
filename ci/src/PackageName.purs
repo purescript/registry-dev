@@ -6,7 +6,7 @@ module Registry.PackageName
 
 import Prelude
 
-import Data.Argonaut (class DecodeJson, JsonDecodeError(..), decodeJson)
+import Data.Argonaut (class DecodeJson, class EncodeJson, JsonDecodeError(..), decodeJson, encodeJson)
 import Data.Bifunctor (lmap)
 import Data.Either (Either)
 import Data.List as List
@@ -29,6 +29,9 @@ instance decodeJsonPackageName :: DecodeJson PackageName where
     package <- decodeJson json
     parse package # lmap \parseError ->
       TypeMismatch $ "Expected PackageName: " <> Parser.printParserError parseError
+
+instance encodeJsonPackageName :: EncodeJson PackageName where
+  encodeJson = encodeJson <<< print
 
 print :: PackageName -> String
 print (PackageName package) = package
