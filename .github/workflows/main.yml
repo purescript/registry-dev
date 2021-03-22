@@ -23,7 +23,7 @@ jobs:
       - uses: actions/cache@v2
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-node-${{ hashFiles('./ci/**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
 
@@ -32,7 +32,7 @@ jobs:
       - name: Cache PureScript dependencies
         uses: actions/cache@v2
         with:
-          key: ${{ runner.os }}-spago-${{ hashFiles('**/*.dhall') }}
+          key: ${{ runner.os }}-spago-${{ hashFiles('./ci/**/*.dhall') }}
           path: |
             .spago
             output
@@ -49,4 +49,4 @@ jobs:
         run: ./ci/scripts/verify-dhall.sh
 
       - name: "Check all the example Manifests roundtrip (read+write) through PureScript"
-        run: cd ci && nix-shell ../default.nix --run "spago run -m Registry.Check.ManifestRoundtrip"
+        run: cd ci && npm ci && nix-shell ../default.nix --run "spago run -m Registry.Check.ManifestRoundtrip"
