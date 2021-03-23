@@ -115,11 +115,11 @@ main = Aff.launchAff_ do
             else do
               -- now we should be ready to convert it
               let manifestPath = packageFolder <> "/" <> release.name <> ".json"
-              let manifestStr
-                    = stringifyWithIndent 2
-                    $ Json.encodeJson
-                    $ toManifest bowerfile release.name
-                    $ GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
+              let manifestStr =
+                    stringifyWithIndent 2
+                      $ Json.encodeJson
+                      $ toManifest bowerfile release.name
+                      $ GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
               -- we then conform to Dhall type. If that does works out then
               -- write it to the manifest file, otherwise print the error
               Dhall.jsonToDhallManifest manifestStr >>= case _ of
