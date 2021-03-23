@@ -7,7 +7,7 @@ on:
   issue_comment:
     types: [created]
 jobs:
-  run:
+  api:
     # This condition is here because the issue_comment event is triggered
     # for PRs too, but we don't want that here
     if: ${{ !github.event.issue.pull_request }}
