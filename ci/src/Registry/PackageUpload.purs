@@ -7,8 +7,8 @@ import Effect.Aff as Aff
 import Node.FS.Aff as FS
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.SemVer (SemVer)
-import Registry.SemVer as SemVer
+import SemVer (SemVer)
+import SemVer as SemVer
 import S3 as S3
 
 type PackageInfo =

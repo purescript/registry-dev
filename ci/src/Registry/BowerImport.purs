@@ -24,9 +24,9 @@ import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Partial.Unsafe (unsafePartial, unsafeCrashWith)
 import Registry.PackageName as PackageName
-import Registry.SPDX as SPDX
+import SPDX as SPDX
 import Registry.Schema (Manifest, Repo(..))
-import Registry.SemVer as SemVer
+import SemVer as SemVer
 import Text.Parsing.StringParser as Parser
 import Web.Bower.PackageMeta (Dependencies(..))
 import Web.Bower.PackageMeta as Bower

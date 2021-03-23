@@ -1,4 +1,4 @@
-module Registry.SPDX
+module SPDX
   ( License
   , parse
   , print

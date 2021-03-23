@@ -11,8 +11,8 @@ import Data.Show.Generic (genericShow)
 import Foreign.Object as Foreign
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.SPDX (License)
-import Registry.SemVer (SemVer)
+import SPDX (License)
+import SemVer (SemVer)
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 type Manifest =

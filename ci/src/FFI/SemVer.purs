@@ -1,4 +1,4 @@
-module Registry.SemVer
+module SemVer
   ( SemVer
   , parseSemVer
   , printSemVer

@@ -23,8 +23,8 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, comment, commitToTrunk, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Operation(..), Repo(..), VersionMetadata, Metadata)
-import Registry.SemVer (SemVer)
-import Registry.SemVer as SemVer
+import SemVer (SemVer)
+import SemVer as SemVer
 import Sunde as Process
 import Tar as Tar
 import Test.Spec.Assertions as Assert

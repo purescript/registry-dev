@@ -8,9 +8,9 @@ import GitHub (IssueNumber(..))
 import Partial.Unsafe (unsafeCrashWith)
 import Registry.API as API
 import Registry.PackageName as PackageName
-import Registry.SPDX as SPDX
+import SPDX as SPDX
 import Registry.Schema (Operation(..), Repo(..))
-import Registry.SemVer as SemVer
+import SemVer as SemVer
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
