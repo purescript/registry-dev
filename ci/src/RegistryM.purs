@@ -16,7 +16,7 @@ import Registry.Schema (Metadata)
 
 type Env =
   { comment :: String -> Aff Unit
-  , commitToTrunk :: Aff Unit
+  , commitToTrunk :: FilePath -> Aff Unit
   , uploadPackage :: Upload.PackageInfo -> FilePath -> Aff Unit
   , packagesMetadata :: Ref (Map PackageName Metadata)
   }
@@ -24,7 +24,7 @@ type Env =
 mkEnv :: Ref (Map PackageName Metadata) -> IssueNumber -> Env
 mkEnv packagesMetadata issue =
   { comment: void <<< GitHub.createComment issue
-  , commitToTrunk: pure unit -- FIXME implement
+  , commitToTrunk: const $ pure unit -- FIXME implement
   , uploadPackage: Upload.upload
   , packagesMetadata
   }
@@ -49,16 +49,18 @@ runRegistryM env (RegistryM m) = runReaderT m env
 -- | Post a comment to the user's issue
 comment :: String -> RegistryM Unit
 comment body = do
-  comment' <- asks _.comment
-  liftAff $ comment' body
+  f <- asks _.comment
+  liftAff $ f body
 
 -- | Post an error to the user's issue and then throw an exception
 throwWithComment :: forall a. String -> RegistryM a
 throwWithComment body = comment body *> Aff.throwError (Aff.error body)
 
 -- | Commit a change to the default branch of the registry repository
-commitToTrunk :: RegistryM Unit
-commitToTrunk = liftAff =<< asks _.commitToTrunk
+commitToTrunk :: FilePath -> RegistryM Unit
+commitToTrunk path = do
+ f <- asks _.commitToTrunk
+ liftAff $ f path
 
 -- | Upload a package to the backend storage provider
 uploadPackage :: Upload.PackageInfo -> FilePath -> RegistryM Unit

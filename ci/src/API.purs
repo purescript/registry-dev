@@ -21,7 +21,7 @@ import Partial.Unsafe (unsafePartial)
 import Registry.BowerImport as Bower
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (RegistryM, comment, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
+import Registry.RegistryM (RegistryM, comment, commitToTrunk, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Operation(..), Repo(..), VersionMetadata, Metadata)
 import Registry.SemVer (SemVer)
 import Registry.SemVer as SemVer
@@ -115,10 +115,10 @@ runOperation operation = case operation of
 
   Unpublish _ -> throwWithComment "Unpublish not implemented! Ask us for help!" -- TODO
 
-metadataDir :: String
+metadataDir :: FilePath
 metadataDir = "../metadata"
 
-metadataFile :: PackageName -> String
+metadataFile :: PackageName -> FilePath
 metadataFile packageName = metadataDir <> "/" <> PackageName.print packageName <> ".json"
 
 addOrUpdate :: { fromBower :: Boolean, ref :: String, packageName :: PackageName } -> Metadata -> RegistryM Unit
@@ -199,9 +199,10 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   -- TODO: handle addToPackageSet
   log "Adding the new version to the package metadata file (hashes, etc)"
   let newMetadata = addVersionToMetadata newVersion { hash, ref } metadata
-  liftAff $ FS.writeTextFile UTF8 (metadataFile packageName) (Json.stringifyWithIndent 2 $ Json.encodeJson newMetadata)
+  let metadataFilePath = metadataFile packageName
+  liftAff $ FS.writeTextFile UTF8 metadataFilePath (Json.stringifyWithIndent 2 $ Json.encodeJson newMetadata)
   updatePackagesMetadata manifest.name newMetadata
-  -- FIXME: commit metadata file to master
+  commitToTrunk metadataFilePath
   -- TODO: upload docs to pursuit
 
 
