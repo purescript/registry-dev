@@ -10,24 +10,22 @@ import Effect.Aff as Aff
 import Effect.Ref as Ref
 import GitHub (IssueNumber)
 import GitHub as GitHub
+import Registry.PackageUpload as Upload
 import Registry.PackageName (PackageName)
 import Registry.Schema (Metadata)
 
 type Env =
   { comment :: String -> Aff Unit
   , commitToTrunk :: Aff Unit
-  , uploadPackage :: Aff Unit
+  , uploadPackage :: Upload.PackageInfo -> FilePath -> Aff Unit
   , packagesMetadata :: Ref (Map PackageName Metadata)
   }
 
 mkEnv :: Ref (Map PackageName Metadata) -> IssueNumber -> Env
 mkEnv packagesMetadata issue =
-  { comment:
-      void <<< GitHub.createComment issue
-  , commitToTrunk:
-      pure unit -- TODO
-  , uploadPackage:
-      pure unit -- TODO
+  { comment: void <<< GitHub.createComment issue
+  , commitToTrunk: pure unit -- FIXME implement
+  , uploadPackage: Upload.upload
   , packagesMetadata
   }
 
@@ -63,8 +61,10 @@ commitToTrunk :: RegistryM Unit
 commitToTrunk = liftAff =<< asks _.commitToTrunk
 
 -- | Upload a package to the backend storage provider
-uploadPackage :: RegistryM Unit
-uploadPackage = liftAff =<< asks _.uploadPackage
+uploadPackage :: Upload.PackageInfo -> FilePath -> RegistryM Unit
+uploadPackage info path = do
+  f <- asks _.uploadPackage
+  liftAff $ f info path
 
 updatePackagesMetadata :: PackageName -> Metadata -> RegistryM Unit
 updatePackagesMetadata pkg metadata = do

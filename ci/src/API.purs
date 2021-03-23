@@ -17,13 +17,12 @@ import Node.ChildProcess as NodeProcess
 import Node.Crypto.Hash as Hash
 import Node.FS.Aff as FS
 import Node.Process as Env
-import PackageUpload as PackageUpload
 import Partial.Unsafe (unsafePartial)
 import Registry.BowerImport as Bower
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (RegistryM, comment, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata)
-import Registry.Schema (Manifest, Operation(..), Repo(..), Revision, Metadata)
+import Registry.RegistryM (RegistryM, comment, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
+import Registry.Schema (Manifest, Operation(..), Repo(..), VersionMetadata, Metadata)
 import Registry.SemVer (SemVer)
 import Registry.SemVer as SemVer
 import Sunde as Process
@@ -196,7 +195,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   log $ "Hash: " <> hash
   log "Uploading package to the storage backend..."
   let uploadPackageInfo = { name: packageName, version: newVersion }
-  liftEffect $ PackageUpload.upload uploadPackageInfo tarballPath
+  uploadPackage uploadPackageInfo tarballPath
   -- TODO: handle addToPackageSet
   log "Adding the new version to the package metadata file (hashes, etc)"
   let newMetadata = addVersionToMetadata newVersion { hash, ref } metadata
@@ -221,7 +220,10 @@ runChecks metadata manifest = do
   Assert.shouldEqual libTarget.sources ["src/**/*.purs"]
 
   log "Check that version is unique"
-  -- FIXME: lookup in the versions map, once we know the shape of it, see #80
+  let prettyVersion = SemVer.printSemVer manifest.version
+  case Object.lookup prettyVersion metadata.releases of
+    Nothing -> pure unit
+    Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> show prettyVersion <> "\nIts metadata is: " <> show info
 
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
@@ -247,10 +249,10 @@ readJsonFile path = do
 mkNewMetadata :: Repo -> Metadata
 mkNewMetadata location = { location, releases: mempty, unpublished: mempty, maintainers: mempty }
 
-addVersionToMetadata :: SemVer -> Revision -> Metadata -> Metadata
-addVersionToMetadata version revision metadata = do
+addVersionToMetadata :: SemVer -> VersionMetadata -> Metadata -> Metadata
+addVersionToMetadata version versionMeta metadata = do
   let version' = SemVer.printSemVer version
-  metadata { releases = Object.insert version' [ revision ] metadata.releases }
+  metadata { releases = Object.insert version' [ versionMeta ] metadata.releases }
 
 sha256sum :: String -> RegistryM String
 sha256sum filepath = do

@@ -1,4 +1,4 @@
-module PackageUpload where
+module Registry.PackageUpload where
 
 import Registry.Prelude
 
@@ -16,23 +16,16 @@ type PackageInfo =
   , version :: SemVer
   }
 
-type Path = String
-
-upload :: PackageInfo -> Path -> Effect Unit
-upload { name, version } path = Aff.launchAff_ $ do
-  -- first check that the file path exists
-  fileContent <-
-    FS.exists path >>= if _ then
-      FS.readFile path
-    else
-      Aff.throwError $ Aff.error $ "File doesn't exist: " <> show path
+upload :: PackageInfo -> FilePath -> Aff Unit
+upload { name, version } path = do
+  fileContent <- FS.readFile path
 
   -- connect to the bucket
   let bucket = "purescript-registry"
   log $ "Connecting to the bucket " <> show bucket
   s3 <- S3.connect "ams3.digitaloceanspaces.com" bucket
 
-  -- check that the file for that version and revision is there
+  -- check that the file for that version is there
   let
     packageName = PackageName.print name
     filename = Array.fold

@@ -140,12 +140,12 @@ type UnpublishData =
 
 type Metadata =
   { location :: Repo
-  , releases :: Foreign.Object (Array Revision)
+  , releases :: Foreign.Object (Array VersionMetadata)
   , unpublished :: Foreign.Object String
   , maintainers :: Array String
   }
 
-type Revision =
+type VersionMetadata =
   { ref :: String
   , hash :: String
   }
