@@ -64,7 +64,7 @@ main = Aff.launchAff_ do
       let (SemigroupMap allPackages) = SemigroupMap bowerPackages <> SemigroupMap newPackages
       releaseIndex <- Map.fromFoldable <$> forWithIndex allPackages \nameWithPrefix repoUrl -> do
         let name = stripPureScriptPrefix nameWithPrefix
-        let address = fromRight' (\_ -> unsafeCrashWith "Unexpected Left") $ GitHub.parseRepo repoUrl
+        let address = fromRight' (\_ -> unsafeCrashWith $ "Failed to parse the repo url: " <> show repoUrl) $ GitHub.parseRepo repoUrl
         releases <- withCache ("releases__" <> address.owner <> "__" <> address.repo) (Just $ Hours 24.0) $ do
           log $ "Fetching releases for package " <> show name
           Set.fromFoldable <$> GitHub.getReleases address
