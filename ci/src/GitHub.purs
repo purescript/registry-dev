@@ -1,19 +1,15 @@
 module GitHub where
 
-import Prelude
+import Registry.Prelude
 
 import Control.Alt ((<|>))
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.Argonaut ((.:))
 import Data.Argonaut as Json
-import Data.Either (Either)
 import Data.List as List
-import Data.Maybe (fromMaybe)
-import Data.Newtype (class Newtype)
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
-import Effect.Aff (Aff)
 import Effect.Uncurried (EffectFn1, EffectFn3, runEffectFn1, runEffectFn3)
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as Parser

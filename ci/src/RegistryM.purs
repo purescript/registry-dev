@@ -1,17 +1,12 @@
 module Registry.RegistryM where
 
-import Prelude
+import Registry.Prelude
 
 import Control.Monad.Error.Class (class MonadThrow)
 import Control.Monad.Reader (class MonadAsk, ReaderT, asks, runReaderT)
-import Data.Map (Map)
 import Data.Map as Map
-import Data.Newtype (class Newtype)
-import Effect.Aff (Aff, Error)
+import Effect.Aff (Error)
 import Effect.Aff as Aff
-import Effect.Aff.Class (class MonadAff, liftAff)
-import Effect.Class (class MonadEffect, liftEffect)
-import Effect.Ref (Ref)
 import Effect.Ref as Ref
 import GitHub (IssueNumber)
 import GitHub as GitHub

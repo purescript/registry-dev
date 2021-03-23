@@ -4,17 +4,13 @@ module Registry.PackageName
   , print
   ) where
 
-import Prelude
+import Registry.Prelude
 
 import Data.Argonaut (class DecodeJson, class EncodeJson, JsonDecodeError(..), decodeJson, encodeJson)
-import Data.Bifunctor (lmap)
-import Data.Either (Either)
 import Data.List as List
 import Data.List.NonEmpty as NEL
-import Data.Maybe (Maybe(..))
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
-import Registry.Utils (stripPureScriptPrefix)
 import Text.Parsing.StringParser as Parser
 import Text.Parsing.StringParser.CodePoints as Parse
 import Text.Parsing.StringParser.Combinators ((<?>))

@@ -1,24 +1,13 @@
 module Registry.API where
 
-import Prelude
+import Registry.Prelude
 
 import Data.Argonaut as Json
-import Data.Array (fold)
-import Data.Bifunctor (lmap)
-import Data.Either (Either(..), hush)
+import Data.Array as Array
 import Data.Generic.Rep as Generic
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromJust, isJust)
-import Data.Show.Generic (genericShow)
-import Data.Traversable (all, for)
-import Data.Tuple.Nested ((/\))
 import Dhall as Dhall
-import Effect (Effect)
-import Effect.Aff (Aff, launchAff_)
 import Effect.Aff as Aff
-import Effect.Aff.Class (liftAff)
-import Effect.Class (liftEffect)
-import Effect.Class.Console (log)
 import Effect.Ref as Ref
 import Foreign.Object as Object
 import GitHub (IssueNumber)
@@ -26,9 +15,7 @@ import GitHub as GitHub
 import Node.Buffer as Buffer
 import Node.ChildProcess as NodeProcess
 import Node.Crypto.Hash as Hash
-import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS
-import Node.Path (FilePath)
 import Node.Process as Env
 import PackageUpload as PackageUpload
 import Partial.Unsafe (unsafePartial)
@@ -37,7 +24,6 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, comment, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Schema (Manifest, Operation(..), Repo(..), Revision, Metadata)
-import Registry.Utils as Utils
 import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Process
@@ -68,11 +54,11 @@ main = launchAff_ $ do
       pure unit
 
     MalformedJson issue err -> runRegistryM (mkEnv packagesMetadata issue) do
-      comment $ fold
+      comment $ Array.fold
         [ "The JSON input for this package update is malformed:"
-        , Utils.newlines 2
+        , newlines 2
         , "```" <> err <> "```"
-        , Utils.newlines 2
+        , newlines 2
         , "You can try again by commenting on this issue with a corrected payload."
         ]
 
@@ -238,11 +224,15 @@ runChecks metadata manifest = do
   -- FIXME: lookup in the versions map, once we know the shape of it, see #80
 
   log "Check that all dependencies are contained in the registry"
-  -- FIXME nice error message for this
   packages <- readPackagesMetadata
   let lookupPackage = flip Map.lookup packages <=< (hush <<< PackageName.parse)
-  unless (all (isJust <<< lookupPackage) libTarget.dependencies) do
-    pure unit
+  let pkgNotInRegistry name = case lookupPackage name of
+        Nothing -> Just name
+        Just p -> Nothing
+  let pkgsNotInRegistry = Array.catMaybes $ map pkgNotInRegistry $ Object.keys libTarget.dependencies
+  unless (Array.null pkgsNotInRegistry) do
+    throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
+
 
 fromJson :: forall a. Json.DecodeJson a => String -> Either String a
 fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)

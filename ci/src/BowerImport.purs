@@ -1,42 +1,25 @@
 module Registry.BowerImport where
 
-import Prelude
+import Registry.Prelude
 
 import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
 import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
-import Data.Array (catMaybes, fold)
 import Data.Array as Array
-import Data.Bifunctor (lmap)
 import Data.DateTime (adjust) as Time
-import Data.Either (Either(..), fromRight')
-import Data.Foldable (and)
-import Data.FoldableWithIndex (forWithIndex_)
 import Data.JSDate as JSDate
-import Data.Map (Map, SemigroupMap(..))
+import Data.Map (SemigroupMap(..))
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromJust, isNothing)
 import Data.Monoid (guard)
-import Data.Newtype (un)
-import Data.Set (Set)
 import Data.Set as Set
 import Data.Time.Duration (Hours(..))
-import Data.Traversable (for_, traverse)
-import Data.TraversableWithIndex (forWithIndex)
-import Data.Tuple (Tuple(..))
-import Data.Tuple.Nested ((/\))
 import Dhall as Dhall
-import Effect (Effect)
-import Effect.Aff (Aff)
 import Effect.Aff as Aff
-import Effect.Class (liftEffect)
-import Effect.Class.Console (error, log)
 import Effect.Exception as Exception
 import Effect.Now (nowDateTime) as Time
 import Foreign.Object as Foreign
 import GitHub as GitHub
-import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Partial.Unsafe (unsafePartial, unsafeCrashWith)
@@ -44,7 +27,6 @@ import Registry.PackageName as PackageName
 import Registry.SPDXLicense (SPDXConjunction(..))
 import Registry.SPDXLicense as SPDXLicense
 import Registry.Schema (Manifest, Repo(..))
-import Registry.Utils (stripPureScriptPrefix)
 import Registry.Version as Version
 import Text.Parsing.StringParser as Parser
 import Web.Bower.PackageMeta (Dependencies(..))
@@ -126,7 +108,7 @@ main = Aff.launchAff_ do
             bowerfile <- withCache ("bowerfile__" <> name <> "__" <> release.name) Nothing fetchBowerfile
             -- then we check if all dependencies/versions are self-contained in the registry
             if not selfContainedDependencies releaseIndex bowerfile then
-               error $ fold
+               error $ Array.fold
                  [ "Dependencies for the package "
                  , show name
                  , " are not all contained in the registry, skipping."
@@ -172,7 +154,7 @@ toManifest (Bower.PackageMeta bowerfile) ref address = do
   toDepPair { packageName, versionRange } = (stripPureScriptPrefix packageName) /\ versionRange
   deps = map toDepPair $ un Dependencies bowerfile.dependencies
   devDeps = map toDepPair $ un Dependencies bowerfile.devDependencies
-  targets = Foreign.fromFoldable $ catMaybes
+  targets = Foreign.fromFoldable $ Array.catMaybes
     [ pure $ Tuple "lib"
         { sources: ["src/**/*.purs"]
         , dependencies: Foreign.fromFoldable deps

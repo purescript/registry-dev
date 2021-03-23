@@ -1,10 +1,7 @@
 module Dhall where
 
-import Prelude
+import Registry.Prelude
 
-import Data.Either (Either(..))
-import Data.Maybe (Maybe(..))
-import Effect.Aff (Aff)
 import Sunde as Process
 import Node.ChildProcess as NodeProcess
 

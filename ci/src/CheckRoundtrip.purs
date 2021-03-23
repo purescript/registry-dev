@@ -1,17 +1,11 @@
 module Registry.Check.ManifestRoundtrip where
 
-import Prelude
+import Registry.Prelude
 
 import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
-import Data.Bifunctor (lmap)
-import Data.Either (Either(..))
-import Data.Traversable (for)
-import Effect (Effect)
 import Effect.Aff as Aff
 import Effect.Aff as Exception
-import Effect.Class.Console (error, log)
-import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS
 import Registry.Schema (Manifest)
 import Test.Unit.Assert as Assert

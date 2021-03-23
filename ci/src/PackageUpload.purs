@@ -1,12 +1,9 @@
 module PackageUpload where
 
-import Prelude
+import Registry.Prelude
 
-import Data.Array (fold)
 import Data.Array as Array
-import Effect (Effect)
 import Effect.Aff as Aff
-import Effect.Class.Console (log)
 import Node.FS.Aff as FS
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -39,7 +36,7 @@ upload { name, version, revision } path = Aff.launchAff_ $ do
   -- check that the file for that version and revision is there
   let
     packageName = PackageName.print name
-    filename = fold
+    filename = Array.fold
       [ packageName
       , "/"
       , Version.print version
