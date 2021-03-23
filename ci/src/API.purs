@@ -22,10 +22,10 @@ import Partial.Unsafe (unsafePartial)
 import Registry.BowerImport as Bower
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (RegistryM, comment, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment)
+import Registry.RegistryM (RegistryM, comment, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata)
 import Registry.Schema (Manifest, Operation(..), Repo(..), Revision, Metadata)
-import Registry.Version (Version)
-import Registry.Version as Version
+import Registry.SemVer (SemVer)
+import Registry.SemVer as SemVer
 import Sunde as Process
 import Tar as Tar
 import Test.Spec.Assertions as Assert
@@ -187,7 +187,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
-  let newDirname = PackageName.print packageName <> "-" <> Version.print newVersion
+  let newDirname = PackageName.print packageName <> "-" <> SemVer.printSemVer newVersion
   liftAff $ FS.rename absoluteFolderPath (tmpDir <> "/" <> newDirname)
   let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
@@ -195,14 +195,14 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   hash <- sha256sum tarballPath
   log $ "Hash: " <> hash
   log "Uploading package to the storage backend..."
-  let uploadPackageInfo = { name: packageName, version: newVersion, revision: 0 }
+  let uploadPackageInfo = { name: packageName, version: newVersion }
   liftEffect $ PackageUpload.upload uploadPackageInfo tarballPath
   -- TODO: handle addToPackageSet
   log "Adding the new version to the package metadata file (hashes, etc)"
   let newMetadata = addVersionToMetadata newVersion { hash, ref } metadata
   liftAff $ FS.writeTextFile UTF8 (metadataFile packageName) (Json.stringifyWithIndent 2 $ Json.encodeJson newMetadata)
+  updatePackagesMetadata manifest.name newMetadata
   -- FIXME: commit metadata file to master
-  -- FIXME: update metadata in env or return it
   -- TODO: upload docs to pursuit
 
 
@@ -247,9 +247,9 @@ readJsonFile path = do
 mkNewMetadata :: Repo -> Metadata
 mkNewMetadata location = { location, releases: mempty, unpublished: mempty, maintainers: mempty }
 
-addVersionToMetadata :: Version -> Revision -> Metadata -> Metadata
+addVersionToMetadata :: SemVer -> Revision -> Metadata -> Metadata
 addVersionToMetadata version revision metadata = do
-  let version' = Version.print version
+  let version' = SemVer.printSemVer version
   metadata { releases = Object.insert version' [ revision ] metadata.releases }
 
 sha256sum :: String -> RegistryM String

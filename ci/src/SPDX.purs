@@ -1,32 +1,30 @@
-module Registry.SPDXLicense
-  ( SPDXLicense
+module Registry.SPDX
+  ( License
   , parse
   , print
   , SPDXConjunction(..)
   , joinWith
   ) where
 
-import Prelude
+import Registry.Prelude
 
 import Data.Argonaut (class DecodeJson, class EncodeJson, JsonDecodeError(..), decodeJson, encodeJson)
-import Data.Bifunctor (lmap)
-import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn3, runFn3)
 import Data.String as String
 import Safe.Coerce (coerce)
 
 -- | An SPDX license identifier such as 'MIT' or 'Apache-2.0'.
-newtype SPDXLicense = SPDXLicense String
+newtype License = License String
 
-instance decodeJsonSPDXLicense :: DecodeJson SPDXLicense where
+instance decodeJsonSPDXLicense :: DecodeJson License where
   decodeJson = lmap TypeMismatch <<< parse <=< decodeJson
 
-instance encodeJsonSPDXLicense :: EncodeJson SPDXLicense where
+instance encodeJsonSPDXLicense :: EncodeJson License where
   encodeJson = encodeJson <<< print
 
 -- | Print an SPDX license identifier.
-print :: SPDXLicense -> String
-print (SPDXLicense license) = license
+print :: License -> String
+print (License license) = license
 
 -- | Parse a string as a SPDX license identifier.
 -- |
@@ -37,12 +35,12 @@ print (SPDXLicense license) = license
 -- | > parse 'MITT'
 -- | Left "Invalid SPDX identifier: MITT. Did you mean MIT?"
 -- | ```
-parse :: String -> Either String SPDXLicense
-parse = runFn3 parseSPDXLicenseIdImpl Left (Right <<< SPDXLicense)
+parse :: String -> Either String License
+parse = runFn3 parseSPDXLicenseIdImpl Left (Right <<< License)
 
 data SPDXConjunction = And | Or
 
-joinWith :: SPDXConjunction -> Array SPDXLicense -> SPDXLicense
+joinWith :: SPDXConjunction -> Array License -> License
 joinWith = case _ of
   And -> coerce <<< String.joinWith " AND " <<< coerce
   Or -> coerce <<< String.joinWith " OR " <<< coerce

@@ -11,12 +11,13 @@ import Prelude
 
 import Data.Array as Array
 import Data.Bifunctor (bimap, lmap, rmap) as Extra
-import Data.Either (Either(..), either, fromLeft, fromRight', hush) as Either
+import Data.Either (Either(..), either, fromLeft, fromRight', isRight, hush, note) as Either
 import Data.Foldable (and) as Extra
 import Data.FoldableWithIndex (forWithIndex_) as Extra
 import Data.Map (Map) as Extra
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing, isJust) as Maybe
 import Data.Newtype (un, class Newtype) as Extra
+import Data.Nullable (toMaybe, toNullable, Nullable) as Extra
 import Data.Set (Set) as Extra
 import Data.Show.Generic (genericShow) as Extra
 import Data.String as String

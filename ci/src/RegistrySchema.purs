@@ -11,14 +11,14 @@ import Data.Show.Generic (genericShow)
 import Foreign.Object as Foreign
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.SPDXLicense (SPDXLicense)
-import Registry.Version (Version)
+import Registry.SPDX (License)
+import Registry.SemVer (SemVer)
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 type Manifest =
   { name :: PackageName
-  , version :: Version
-  , license :: SPDXLicense
+  , version :: SemVer
+  , license :: License
   , repository :: Repo
   , targets :: Foreign.Object Target
   }

@@ -7,20 +7,19 @@ import Effect.Aff as Aff
 import Node.FS.Aff as FS
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Version (Version)
-import Registry.Version as Version
+import Registry.SemVer (SemVer)
+import Registry.SemVer as SemVer
 import S3 as S3
 
 type PackageInfo =
   { name :: PackageName
-  , version :: Version
-  , revision :: Int
+  , version :: SemVer
   }
 
 type Path = String
 
 upload :: PackageInfo -> Path -> Effect Unit
-upload { name, version, revision } path = Aff.launchAff_ $ do
+upload { name, version } path = Aff.launchAff_ $ do
   -- first check that the file path exists
   fileContent <-
     FS.exists path >>= if _ then
@@ -39,8 +38,7 @@ upload { name, version, revision } path = Aff.launchAff_ $ do
     filename = Array.fold
       [ packageName
       , "/"
-      , Version.print version
-      , if revision == 0 then "" else "_r" <> show revision
+      , SemVer.printSemVer version
       , ".tar.gz"
       ]
 
@@ -55,11 +53,3 @@ upload { name, version, revision } path = Aff.launchAff_ $ do
     let putParams = { key: filename, body: fileContent, acl: S3.PublicRead }
     void $ S3.putObject s3 putParams
     log "Done."
-
-{-
-
-main :: Effect Unit
-main = do
-  upload { name: "aff", version: "5.1.2", revision: 0 } "../examples/aff/v5.1.2.json"
-
--}

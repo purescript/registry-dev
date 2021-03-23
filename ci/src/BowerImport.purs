@@ -24,10 +24,9 @@ import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Partial.Unsafe (unsafePartial, unsafeCrashWith)
 import Registry.PackageName as PackageName
-import Registry.SPDXLicense (SPDXConjunction(..))
-import Registry.SPDXLicense as SPDXLicense
+import Registry.SPDX as SPDX
 import Registry.Schema (Manifest, Repo(..))
-import Registry.Version as Version
+import Registry.SemVer as SemVer
 import Text.Parsing.StringParser as Parser
 import Web.Bower.PackageMeta (Dependencies(..))
 import Web.Bower.PackageMeta as Bower
@@ -141,8 +140,8 @@ readBowerfile path = do
 toManifest :: Bower.PackageMeta -> String -> Repo -> Either String Manifest
 toManifest (Bower.PackageMeta bowerfile) ref address = do
   name <- lmap Parser.printParserError $ PackageName.parse $ stripPureScriptPrefix bowerfile.name
-  license <- SPDXLicense.joinWith Or <$> traverse SPDXLicense.parse bowerfile.license
-  version <- Version.parse ref
+  license <- SPDX.joinWith SPDX.Or <$> traverse SPDX.parse bowerfile.license
+  version <- note ("Could not parse version: " <> ref) $ SemVer.parseSemVer ref
   pure { name, license, repository, targets, version }
   where
   subdir = Nothing

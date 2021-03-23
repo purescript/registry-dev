@@ -1,19 +1,16 @@
 module Test.Main where
 
-import Prelude
+import Registry.Prelude
 
-import Data.Either (Either(..), fromRight', isRight)
 import Data.Identity (Identity)
-import Data.Maybe (Maybe(..))
-import Effect (Effect)
-import Effect.Aff (Aff)
 import Effect.Aff as Aff
 import GitHub (IssueNumber(..))
 import Partial.Unsafe (unsafeCrashWith)
 import Registry.API as API
 import Registry.PackageName as PackageName
-import Registry.SPDXLicense as SPDXLicense
+import Registry.SPDX as SPDX
 import Registry.Schema (Operation(..), Repo(..))
+import Registry.SemVer as SemVer
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -30,6 +27,7 @@ main = Aff.launchAff_ $ runSpec [consoleReporter] do
       Spec.describe "Good SPDX licenses" goodSPDXLicense
       Spec.describe "Bad SPDX licenses" badSPDXLicense
       Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
+      Spec.describe "SemVer" semVer
 
 goodPackageName :: Spec
 goodPackageName = do
@@ -62,7 +60,7 @@ goodSPDXLicense :: Spec
 goodSPDXLicense = do
   let
     parseLicense str = Spec.it str do
-      (SPDXLicense.print <$> SPDXLicense.parse str) `Assert.shouldSatisfy` isRight
+      (SPDX.print <$> SPDX.parse str) `Assert.shouldSatisfy` isRight
 
   -- current licenses
   parseLicense "MIT"
@@ -88,7 +86,7 @@ badSPDXLicense = do
       Nothing -> ""
       Just s -> " Did you mean " <> s <> "?"
     parseLicense str suggestion = Spec.it str do
-      (SPDXLicense.print <$> SPDXLicense.parse str) `Assert.shouldSatisfy` case _ of
+      (SPDX.print <$> SPDX.parse str) `Assert.shouldSatisfy` case _ of
         Right _ -> false
         Left err -> err == invalid str suggestion
 
@@ -126,3 +124,19 @@ decodeEventsToOps = do
 
     res <- API.readOperation "test/fixtures/issue_comment.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
+
+semVer :: Spec
+semVer = do
+  let parseSemVer str = Spec.it ("Parse SemVer " <> str) do
+        (SemVer.printSemVer <$> SemVer.parseSemVer str) `Assert.shouldSatisfy` isJust
+
+  parseSemVer "v1.2.3"
+  parseSemVer "1.2.3-rc2"
+  parseSemVer "0.1.2+r2"
+
+  let parseRange range expected = Spec.it ("Parse Range " <> show range <> " into " <> show expected) do
+        (SemVer.printRange <$> SemVer.parseRange range) `Assert.shouldSatisfy` case _ of
+          Just parsed -> parsed == expected
+          Nothing -> false
+
+  parseRange "^1.3.4" ">=1.3.4 <2.0.0-0"
