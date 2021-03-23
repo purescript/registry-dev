@@ -9,9 +9,9 @@ import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Array as Array
 import Data.DateTime (adjust) as Time
 import Data.JSDate as JSDate
+import Data.List as List
 import Data.Map (SemigroupMap(..))
 import Data.Map as Map
-import Data.Monoid (guard)
 import Data.Set as Set
 import Data.Time.Duration (Hours(..))
 import Dhall as Dhall
@@ -24,8 +24,8 @@ import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Partial.Unsafe (unsafePartial, unsafeCrashWith)
 import Registry.PackageName as PackageName
-import SPDX as SPDX
 import Registry.Schema (Manifest, Repo(..))
+import SPDX as SPDX
 import SemVer as SemVer
 import Text.Parsing.StringParser as Parser
 import Web.Bower.PackageMeta (Dependencies(..))
@@ -139,31 +139,39 @@ readBowerfile path = do
 -- | Convert a Bowerfile into a Registry Manifest
 toManifest :: Bower.PackageMeta -> String -> Repo -> Either String Manifest
 toManifest (Bower.PackageMeta bowerfile) ref address = do
+  let
+    toDepPair { packageName, versionRange }
+      = map (Tuple $ stripPureScriptPrefix packageName)
+      $ note ("Failed to parse range: " <> versionRange)
+      $ SemVer.parseRange versionRange
+    subdir = Nothing
+    repository = case _.url <$> bowerfile.repository of
+      Nothing -> address
+      Just url -> case GitHub.parseRepo url of
+        Left _err -> Git { url, subdir }
+        Right { repo, owner } -> GitHub { repo, owner, subdir }
+
   name <- lmap Parser.printParserError $ PackageName.parse $ stripPureScriptPrefix bowerfile.name
   license <- SPDX.joinWith SPDX.Or <$> traverse SPDX.parse bowerfile.license
   version <- note ("Could not parse version: " <> ref) $ SemVer.parseSemVer ref
-  pure { name, license, repository, targets, version }
-  where
-  subdir = Nothing
-  repository = case _.url <$> bowerfile.repository of
-    Nothing -> address
-    Just url -> case GitHub.parseRepo url of
-      Left _err -> Git { url, subdir }
-      Right { repo, owner } -> GitHub { repo, owner, subdir }
-  toDepPair { packageName, versionRange } = (stripPureScriptPrefix packageName) /\ versionRange
-  deps = map toDepPair $ un Dependencies bowerfile.dependencies
-  devDeps = map toDepPair $ un Dependencies bowerfile.devDependencies
-  targets = Foreign.fromFoldable $ Array.catMaybes
-    [ pure $ Tuple "lib"
-        { sources: ["src/**/*.purs"]
-        , dependencies: Foreign.fromFoldable deps
-        }
-    , guard (Array.null (un Dependencies bowerfile.devDependencies)) $ Just $ Tuple "test"
-        { sources: ["src/**/*.purs", "test/**/*.purs"]
-        , dependencies: Foreign.fromFoldable (deps <> devDeps)
-        }
-    ]
+  deps <- sequence $ map toDepPair $ List.fromFoldable $ un Dependencies bowerfile.dependencies
+  devDeps <- sequence $ map toDepPair $ List.fromFoldable $ un Dependencies bowerfile.devDependencies
 
+  let
+    targets = Foreign.fromFoldable $ Array.catMaybes
+      [ Just $ Tuple "lib"
+          { sources: ["src/**/*.purs"]
+          , dependencies: Foreign.fromFoldable deps
+          }
+      , if (List.null devDeps)
+        then Nothing
+        else Just $ Tuple "test"
+          { sources: ["src/**/*.purs", "test/**/*.purs"]
+          , dependencies: Foreign.fromFoldable (deps <> devDeps)
+          }
+      ]
+
+  pure { name, license, repository, targets, version }
 
 -- | Are all the dependencies PureScript packages or are there any external Bower/JS packages?
 selfContainedDependencies :: ReleasesIndex -> Bower.PackageMeta -> Boolean

@@ -251,9 +251,8 @@ mkNewMetadata :: Repo -> Metadata
 mkNewMetadata location = { location, releases: mempty, unpublished: mempty, maintainers: mempty }
 
 addVersionToMetadata :: SemVer -> VersionMetadata -> Metadata -> Metadata
-addVersionToMetadata version versionMeta metadata = do
-  let version' = SemVer.printSemVer version
-  metadata { releases = Object.insert version' [ versionMeta ] metadata.releases }
+addVersionToMetadata version versionMeta metadata =
+  metadata { releases = Object.insert (SemVer.printSemVer version) versionMeta metadata.releases }
 
 sha256sum :: String -> RegistryM String
 sha256sum filepath = do

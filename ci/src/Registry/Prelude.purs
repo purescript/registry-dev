@@ -14,6 +14,7 @@ import Data.Bifunctor (bimap, lmap, rmap) as Extra
 import Data.Either (Either(..), either, fromLeft, fromRight', isRight, hush, note) as Either
 import Data.Foldable (and) as Extra
 import Data.FoldableWithIndex (forWithIndex_) as Extra
+import Data.List (List) as Extra
 import Data.Map (Map) as Extra
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing, isJust) as Maybe
 import Data.Newtype (un, class Newtype) as Extra

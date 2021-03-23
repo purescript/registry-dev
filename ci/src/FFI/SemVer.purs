@@ -34,6 +34,9 @@ instance eqSemVer :: Eq SemVer where
 instance ordSemVer :: Ord SemVer where
   compare = compareSemVer
 
+instance showSemVer :: Show SemVer where
+  show = printSemVer
+
 instance decodeJsonSemver :: DecodeJson SemVer where
   decodeJson json = do
     version <- decodeJson json
@@ -75,6 +78,14 @@ printSemVer (SemVer v) = v.version
 newtype Range = Range String
 
 derive newtype instance eqRange :: Eq Range
+
+instance decodeJsonRange :: DecodeJson Range where
+  decodeJson json = do
+    range <- decodeJson json
+    note (TypeMismatch $ "Expected range: " <> range) (parseRange range)
+
+instance encodeJsonRange :: EncodeJson Range where
+  encodeJson = encodeJson <<< printRange
 
 foreign import parseRangeImpl :: String -> Nullable String
 parseRange :: String -> Maybe Range

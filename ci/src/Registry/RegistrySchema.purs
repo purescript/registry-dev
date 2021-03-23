@@ -12,7 +12,7 @@ import Foreign.Object as Foreign
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import SPDX (License)
-import SemVer (SemVer)
+import SemVer (SemVer, Range)
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 type Manifest =
@@ -24,7 +24,7 @@ type Manifest =
   }
 
 type Target =
-  { dependencies :: Foreign.Object String
+  { dependencies :: Foreign.Object Range
   , sources :: Array String
   }
 
@@ -134,13 +134,13 @@ type UpdateData =
 
 type UnpublishData =
   { packageName :: PackageName
-  , unpublishVersion :: String
+  , unpublishVersion :: SemVer
   , unpublishReason :: String
   }
 
 type Metadata =
   { location :: Repo
-  , releases :: Foreign.Object (Array VersionMetadata)
+  , releases :: Foreign.Object VersionMetadata
   , unpublished :: Foreign.Object String
   , maintainers :: Array String
   }
