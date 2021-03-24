@@ -154,8 +154,8 @@ toManifest (Bower.PackageMeta bowerfile) ref address = do
   name <- lmap Parser.printParserError $ PackageName.parse $ stripPureScriptPrefix bowerfile.name
   license <- SPDX.joinWith SPDX.Or <$> traverse SPDX.parse bowerfile.license
   version <- note ("Could not parse version: " <> ref) $ SemVer.parseSemVer ref
-  deps <- sequence $ map toDepPair $ List.fromFoldable $ un Dependencies bowerfile.dependencies
-  devDeps <- sequence $ map toDepPair $ List.fromFoldable $ un Dependencies bowerfile.devDependencies
+  deps <- traverse toDepPair $ List.fromFoldable $ un Dependencies bowerfile.dependencies
+  devDeps <- traverse toDepPair $ List.fromFoldable $ un Dependencies bowerfile.devDependencies
 
   let
     targets = Foreign.fromFoldable $ Array.catMaybes
