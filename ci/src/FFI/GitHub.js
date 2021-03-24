@@ -24,8 +24,14 @@ exports.getReleasesImpl = function ({ owner, repo }) {
     });
 };
 
+exports.closeIssueImpl = function ({ owner, repo }, issue_number) {
+  return octokit.issues.update({
+    owner,
+    repo,
+    issue_number,
+    state: "closed"
+  });
+}
 exports.createCommentImpl = function ({ owner, repo }, issue_number, body) {
-  return octokit.issues
-    .createComment({ owner, repo, issue_number, body })
-    .then((data) => data.id);
+  return octokit.issues.createComment({ owner, repo, issue_number, body });
 };

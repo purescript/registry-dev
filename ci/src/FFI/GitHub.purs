@@ -10,7 +10,7 @@ import Data.Argonaut as Json
 import Data.List as List
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
-import Effect.Uncurried (EffectFn1, EffectFn3, runEffectFn1, runEffectFn3)
+import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, runEffectFn1, runEffectFn2, runEffectFn3)
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as Parser
 import Text.Parsing.StringParser.CodePoints as Parse
@@ -59,19 +59,17 @@ foreign import getReleasesImpl :: EffectFn1 Address (Promise (Array Tag))
 getReleases :: Address -> Aff (Array Tag)
 getReleases = Promise.toAffE <<< runEffectFn1 getReleasesImpl
 
-newtype CommentId = CommentId String
-instance newtypeCommentId :: Newtype CommentId String
-derive newtype instance showCommentId :: Show CommentId
-
 newtype IssueNumber = IssueNumber Int
 instance newtypeIssueNumber :: Newtype IssueNumber Int
 derive newtype instance eqIssueNumber :: Eq IssueNumber
 derive newtype instance showIssueNumber :: Show IssueNumber
 
-foreign import createCommentImpl :: EffectFn3 Address Int String (Promise String)
+foreign import createCommentImpl :: EffectFn3 Address Int String (Promise Unit)
 
-createComment :: IssueNumber -> String -> Aff CommentId
-createComment issue body =
-  coerce
-    $ Promise.toAffE
-    $ runEffectFn3 createCommentImpl registryAddress (coerce issue) body
+createComment :: IssueNumber -> String -> Aff Unit
+createComment issue body = Promise.toAffE $ runEffectFn3 createCommentImpl registryAddress (coerce issue) body
+
+foreign import closeIssueImpl :: EffectFn2 Address Int (Promise Unit)
+
+closeIssue :: IssueNumber -> Aff Unit
+closeIssue issue = Promise.toAffE $ runEffectFn2 closeIssueImpl registryAddress (coerce issue)

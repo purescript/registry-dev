@@ -21,7 +21,7 @@ import Partial.Unsafe (unsafePartial)
 import Registry.BowerImport as Bower
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (RegistryM, comment, commitToTrunk, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
+import Registry.RegistryM (RegistryM, closeIssue, comment, commitToTrunk, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Operation(..), Repo(..), VersionMetadata, Metadata)
 import SemVer (SemVer)
 import SemVer as SemVer
@@ -197,12 +197,18 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   let uploadPackageInfo = { name: packageName, version: newVersion }
   uploadPackage uploadPackageInfo tarballPath
   -- TODO: handle addToPackageSet
-  log "Adding the new version to the package metadata file (hashes, etc)"
+  log $ "Adding the new version " <> SemVer.printSemVer newVersion <> " to the package metadata file (hashes, etc)"
+  log $ "Hash for ref " <> show ref <> " was " <> show hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref } metadata
   let metadataFilePath = metadataFile packageName
   liftAff $ FS.writeTextFile UTF8 metadataFilePath (Json.stringifyWithIndent 2 $ Json.encodeJson newMetadata)
   updatePackagesMetadata manifest.name newMetadata
-  commitToTrunk metadataFilePath
+  commitToTrunk packageName metadataFilePath >>= case _ of
+    Left err ->
+      comment "Package uploaded, but metadata not synced with the registry repository (cc: @purescript/packaging)"
+    Right _ -> do
+      comment "Package successfully uploaded to the registry! :tada: :rocket:"
+  closeIssue
   -- TODO: upload docs to pursuit
 
 

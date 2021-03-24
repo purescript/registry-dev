@@ -2,8 +2,8 @@ module Dhall where
 
 import Registry.Prelude
 
-import Sunde as Process
 import Node.ChildProcess as NodeProcess
+import Sunde as Process
 
 jsonToDhallManifest :: String -> Aff (Either String String)
 jsonToDhallManifest jsonStr = do
