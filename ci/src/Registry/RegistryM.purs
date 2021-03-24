@@ -95,7 +95,7 @@ pushToMaster packageName path = runExceptT do
   runGit ["config", "user.email", "<pacchettibotti@ferrai.io>"]
   runGit ["add", path]
   runGit ["commit", "-m", "Update metadata for package " <> PackageName.print packageName ]
-  runGit ["push", "origin", "api-pipeline"] -- FIXME: use master!
+  runGit ["push", "origin", "master"]
 
   where
     runGit args = ExceptT do
