@@ -9,7 +9,7 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.PACCHETTIBOTTI_TOKEN }}
       SPACES_KEY: ${{ secrets.SPACES_KEY }}
       SPACES_SECRET: ${{ secrets.SPACES_SECRET }}
     steps:

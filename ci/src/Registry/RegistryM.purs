@@ -103,5 +103,6 @@ pushToMaster packageName path = runExceptT do
       case result.exit of
         NodeProcess.Normally 0 -> do
           info result.stdout
+          info result.stderr
           pure $ Right unit
         _ -> pure $ Left result.stderr

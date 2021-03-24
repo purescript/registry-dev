@@ -207,7 +207,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   updatePackagesMetadata manifest.name newMetadata
   commitToTrunk packageName metadataFilePath >>= case _ of
     Left err ->
-      comment "Package uploaded, but metadata not synced with the registry repository (cc: @purescript/packaging)"
+      comment "Package uploaded, but metadata not synced with the registry repository (cc: @purescript/packaging )"
     Right _ -> do
       comment "Package successfully uploaded to the registry! :tada: :rocket:"
   closeIssue
