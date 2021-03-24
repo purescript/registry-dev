@@ -156,12 +156,14 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   -- to a Registry Manifest
   when fromBower $ do
     liftAff (Bower.readBowerfile (absoluteFolderPath <> "/bower.json")) >>= case _ of
-      Left err -> throwWithComment $ "Error while reading Bowerfile: " <> err
-      Right bowerfile -> do
-        let manifestStr
-              = Json.stringifyWithIndent 2 $ Json.encodeJson
-              $ Bower.toManifest bowerfile ref metadata.location
-        liftAff $ FS.writeTextFile UTF8 manifestPath manifestStr
+      Left err ->
+        throwWithComment $ "Error while reading Bowerfile: " <> err
+      Right bowerfile -> case Bower.toManifest bowerfile ref metadata.location of
+        Left err ->
+          throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
+        Right manifest -> do
+          let manifestStr = Json.stringifyWithIndent 2 $ Json.encodeJson manifest
+          liftAff $ FS.writeTextFile UTF8 manifestPath manifestStr
 
   -- Try to read the manifest, typechecking it
   manifestExists <- liftAff $ FS.exists manifestPath
