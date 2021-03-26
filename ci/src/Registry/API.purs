@@ -127,10 +127,10 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
   folderName <- case metadata.location of
     Git _ -> do
-      -- TODO: remember subdir whenever we implement this
+      -- TODO: Support non-GitHub packages. Remember subdir when implementing this. (See #15)
       throwWithComment "Packages are only allowed to come from GitHub for now. See #15"
     GitHub { owner, repo, subdir } -> do
-      -- Check: subdir should not be there
+      -- TODO: Support subdir. In the meantime, we verify subdir is not present. (See #16)
       when (isJust subdir) $ throwWithComment "`subdir` is not supported for now. See #16"
 
       let tarballName = ref <> ".tar.gz"
