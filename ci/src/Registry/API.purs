@@ -18,11 +18,11 @@ import Node.Crypto.Hash as Hash
 import Node.FS.Aff as FS
 import Node.Process as Env
 import Partial.Unsafe (unsafePartial)
-import Registry.Scripts.BowerImport as Bower
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, closeIssue, comment, commitToTrunk, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
+import Registry.Scripts.BowerImport as Bower
 import SemVer as SemVer
 import Sunde as Process
 import Tar as Tar
@@ -34,9 +34,12 @@ main :: Effect Unit
 main = launchAff_ $ do
   eventPath <- liftEffect $ Env.lookupEnv "GITHUB_EVENT_PATH"
   packagesMetadata <- do
-    whenM (not <$> FS.exists metadataDir) do
-      FS.mkdir metadataDir
-    packageList <- FS.readdir metadataDir
+    packageList <- try (FS.readdir metadataDir) >>= case _ of
+      Right list -> pure list
+      Left err -> do
+        error $ show err
+        FS.mkdir metadataDir
+        pure []
     packagesArray <- for packageList \rawPackageName -> do
       packageName <- case PackageName.parse rawPackageName of
         Right p -> pure p
@@ -165,12 +168,9 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
           liftAff $ FS.writeTextFile UTF8 manifestPath manifestStr
 
   -- Try to read the manifest, typechecking it
-  manifestExists <- liftAff $ FS.exists manifestPath
-  manifest :: Manifest <- if (not manifestExists)
-    then
-      throwWithComment $ "Manifest not found at " <> manifestPath
-    else do
-      manifestStr <- liftAff $ FS.readTextFile UTF8 manifestPath
+  manifest :: Manifest <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of
+    Left _err -> throwWithComment $ "Manifest not found at " <> manifestPath
+    Right manifestStr -> do
       liftAff (Dhall.jsonToDhallManifest manifestStr) >>= case _ of
         Left err ->
           throwWithComment $ "Could not type-check Manifest file: " <> err

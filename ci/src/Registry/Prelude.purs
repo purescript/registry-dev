@@ -27,7 +27,7 @@ import Data.TraversableWithIndex (forWithIndex) as Extra
 import Data.Tuple (Tuple(..)) as Extra
 import Data.Tuple.Nested ((/\)) as Extra
 import Effect (Effect) as Extra
-import Effect.Aff (Aff, launchAff_) as Extra
+import Effect.Aff (Aff, launchAff_, try) as Extra
 import Effect.Aff.Class (liftAff, class MonadAff) as Extra
 import Effect.Class (liftEffect, class MonadEffect) as Extra
 import Effect.Class.Console (error, log) as Extra
