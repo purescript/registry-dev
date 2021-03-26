@@ -101,28 +101,28 @@ decodeEventsToOps :: Spec
 decodeEventsToOps = do
   Spec.it "decodes an Update operation" do
     let
-      issueNumber = IssueNumber 124
+      issueNumber = IssueNumber 43
       operation = Update
         { packageName: fromRight' (\_ -> unsafeCrashWith "Expected Right") (PackageName.parse "something")
         , updateRef: "v1.2.3"
         , fromBower: false
         }
 
-    res <- API.readOperation "test/fixtures/issue_created.json"
+    res <- API.readOperation "test/fixtures/issue_comment.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
   Spec.it "decodes an Addition operation" do
     let
-      issueNumber = IssueNumber 43
+      issueNumber = IssueNumber 149
       operation = Addition
-        { packageName: fromRight' (\_ -> unsafeCrashWith "Expected Right") (PackageName.parse "something")
-        , newRef: "v1.2.3"
-        , fromBower: false
+        { packageName: fromRight' (\_ -> unsafeCrashWith "Expected Right") (PackageName.parse "prelude")
+        , newRef: "v5.0.0"
+        , fromBower: true
         , addToPackageSet: true
-        , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-something" }
+        , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
         }
 
-    res <- API.readOperation "test/fixtures/issue_comment.json"
+    res <- API.readOperation "test/fixtures/issue_created.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
 semVer :: Spec
