@@ -44,7 +44,11 @@ main = launchAff_ $ do
       packageName <- case PackageName.parse rawPackageName of
         Right p -> pure p
         Left err -> Aff.throwError $ Aff.error $ Parser.printParserError err
-      metadata <- readJsonFile $ metadataFile packageName
+      let metadataPath = metadataFile packageName
+      metadataStr <- FS.readTextFile UTF8 metadataPath
+      metadata <- case fromJson metadataStr of
+        Left err -> Aff.throwError $ Aff.error $ "Error while parsing json from " <> metadataPath <> " : " <> err
+        Right r -> pure r
       pure $ packageName /\ metadata
     liftEffect $ Ref.new $ Map.fromFoldable packagesArray
   readOperation (unsafePartial fromJust eventPath) >>= case _ of
@@ -246,13 +250,6 @@ runChecks metadata manifest = do
 
 fromJson :: forall a. Json.DecodeJson a => String -> Either String a
 fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)
-
-readJsonFile :: forall a. Json.DecodeJson a => String -> Aff a
-readJsonFile path = do
-  strResult <- FS.readTextFile UTF8 path
-  case fromJson strResult of
-    Left err -> Aff.throwError $ Aff.error $ "Error while parsing json from " <> path <> " : " <> err
-    Right r -> pure r
 
 sha256sum :: String -> RegistryM String
 sha256sum filepath = do
