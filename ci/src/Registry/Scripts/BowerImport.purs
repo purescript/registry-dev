@@ -1,4 +1,4 @@
-module Registry.BowerImport where
+module Registry.Scripts.BowerImport where
 
 import Registry.Prelude
 

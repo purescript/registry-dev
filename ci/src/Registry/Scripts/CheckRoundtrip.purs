@@ -1,4 +1,4 @@
-module Registry.Check.ManifestRoundtrip where
+module Registry.Scripts.ManifestRoundtrip where
 
 import Registry.Prelude
 
