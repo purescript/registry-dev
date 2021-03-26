@@ -1,18 +1,17 @@
 module Registry.Schema where
 
-import Prelude
+import Registry.Prelude
 
 import Control.Alt ((<|>))
 import Data.Argonaut (jsonEmptyObject, (~>), (~>?), (:=), (:=?), (.:), (.:?), (.!=))
 import Data.Argonaut as Json
 import Data.Generic.Rep as Generic
-import Data.Maybe (Maybe)
-import Data.Show.Generic (genericShow)
-import Foreign.Object as Foreign
+import Foreign.Object as Object
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import SPDX (License)
 import SemVer (SemVer, Range)
+import SemVer as SemVer
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 type Manifest =
@@ -20,11 +19,11 @@ type Manifest =
   , version :: SemVer
   , license :: License
   , repository :: Repo
-  , targets :: Foreign.Object Target
+  , targets :: Object Target
   }
 
 type Target =
-  { dependencies :: Foreign.Object Range
+  { dependencies :: Object Range
   , sources :: Array String
   }
 
@@ -140,8 +139,8 @@ type UnpublishData =
 
 type Metadata =
   { location :: Repo
-  , releases :: Foreign.Object VersionMetadata
-  , unpublished :: Foreign.Object String
+  , releases :: Object VersionMetadata
+  , unpublished :: Object String
   , maintainers :: Array String
   }
 
@@ -149,3 +148,10 @@ type VersionMetadata =
   { ref :: String
   , hash :: String
   }
+
+mkNewMetadata :: Repo -> Metadata
+mkNewMetadata location = { location, releases: mempty, unpublished: mempty, maintainers: mempty }
+
+addVersionToMetadata :: SemVer -> VersionMetadata -> Metadata -> Metadata
+addVersionToMetadata version versionMeta metadata =
+  metadata { releases = Object.insert (SemVer.printSemVer version) versionMeta metadata.releases }

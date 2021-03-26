@@ -18,12 +18,11 @@ import Node.Crypto.Hash as Hash
 import Node.FS.Aff as FS
 import Node.Process as Env
 import Partial.Unsafe (unsafePartial)
-import Registry.BowerImport as Bower
+import Registry.Scripts.BowerImport as Bower
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, closeIssue, comment, commitToTrunk, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.Schema (Manifest, Operation(..), Repo(..), VersionMetadata, Metadata)
-import SemVer (SemVer)
+import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
 import SemVer as SemVer
 import Sunde as Process
 import Tar as Tar
@@ -254,13 +253,6 @@ readJsonFile path = do
   case fromJson strResult of
     Left err -> Aff.throwError $ Aff.error $ "Error while parsing json from " <> path <> " : " <> err
     Right r -> pure r
-
-mkNewMetadata :: Repo -> Metadata
-mkNewMetadata location = { location, releases: mempty, unpublished: mempty, maintainers: mempty }
-
-addVersionToMetadata :: SemVer -> VersionMetadata -> Metadata -> Metadata
-addVersionToMetadata version versionMeta metadata =
-  metadata { releases = Object.insert (SemVer.printSemVer version) versionMeta metadata.releases }
 
 sha256sum :: String -> RegistryM String
 sha256sum filepath = do
