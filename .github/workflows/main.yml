@@ -9,14 +9,12 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     env:
-      GITHUB_TOKEN: ${{ secrets.PACCHETTIBOTTI_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SPACES_KEY: ${{ secrets.SPACES_KEY }}
       SPACES_SECRET: ${{ secrets.SPACES_SECRET }}
     steps:
       # Setup
       - uses: actions/checkout@v2
-        with:
-          token: ${{ secrets.PACCHETTIBOTTI_TOKEN }}
 
       - uses: actions/setup-node@v2
         with:
@@ -44,16 +42,14 @@ jobs:
           nix_path: nixpkgs=channel:nixos-20.09
 
       # Pro-tempore checks, should go away once new registry is in place
-      #- run: ./verify-registry-unique.sh
+      - run: ./verify-registry-unique.sh
 
       # Checks for the Registry Draft
-      #- name: "Check that all Dhall compiles, and examples correctly conform to a Manifest"
-      #   run: ./ci/scripts/verify-dhall.sh
+      - name: "Check that all Dhall compiles, and examples correctly conform to a Manifest"
+        run: ./ci/scripts/verify-dhall.sh
 
-      #- name: "Run tests"
-      #  run: cd ci && npm ci && nix-shell ../default.nix --run "spago test" && cd ..
+      - name: "Run tests"
+        run: cd ci && npm ci && nix-shell ../default.nix --run "spago test" && cd ..
 
-      # - name: "Check all the example Manifests roundtrip (read+write) through PureScript"
-      #  run: cd ci && npm ci && nix-shell ../default.nix --run "spago run -m Registry.Check.ManifestRoundtrip"
-      - name: "Test"
-        run: cd ci && npm ci && nix-shell ../default.nix --run "spago run -m TestPush"
+      - name: "Check all the example Manifests roundtrip (read+write) through PureScript"
+        run: cd ci && npm ci && nix-shell ../default.nix --run "spago run -m Registry.Scripts.ManifestRoundtrip"

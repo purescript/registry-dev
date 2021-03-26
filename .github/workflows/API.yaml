@@ -13,13 +13,14 @@ jobs:
     if: ${{ !github.event.issue.pull_request }}
     runs-on: ubuntu-latest
     env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.PACCHETTIBOTTI_TOKEN }}
       SPACES_KEY: ${{ secrets.SPACES_KEY }}
       SPACES_SECRET: ${{ secrets.SPACES_SECRET }
     steps:
       - uses: actions/checkout@v2
         with:
           token: ${{ secrets.PACCHETTIBOTTI_TOKEN }}
+          ref: master
 
       - uses: actions/setup-node@v2
         with:
