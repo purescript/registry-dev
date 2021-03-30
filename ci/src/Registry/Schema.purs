@@ -141,7 +141,6 @@ type Metadata =
   { location :: Repo
   , releases :: Object VersionMetadata
   , unpublished :: Object String
-  , maintainers :: Array String
   }
 
 type VersionMetadata =

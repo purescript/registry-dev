@@ -21,6 +21,4 @@ in
   , releases : Map SemVer VersionMetadata
   -- A mapping between a version number and the reason for unpublishing
   , unpublished : Map Text Text
-  -- The list of maintainers of a package (note: these are GitHub usernames)
-  , maintainers : List Text
   }
