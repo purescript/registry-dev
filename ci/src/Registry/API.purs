@@ -184,15 +184,12 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
           Left err -> throwWithComment $ "Could not convert Manifest to JSON: " <> err
           Right res -> pure res
 
-  -- TODO: pull the maintainers list from the manifest into the metadata?
-
-  -- We need the version number to upload the package
-  let newVersion = manifest.version
-
   runChecks metadata manifest
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
+  -- We need the version number to upload the package
+  let newVersion = manifest.version
   let newDirname = PackageName.print packageName <> "-" <> SemVer.printSemVer newVersion
   liftAff $ FS.rename absoluteFolderPath (tmpDir <> "/" <> newDirname)
   let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
@@ -203,7 +200,6 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   log "Uploading package to the storage backend..."
   let uploadPackageInfo = { name: packageName, version: newVersion }
   uploadPackage uploadPackageInfo tarballPath
-  -- TODO: handle addToPackageSet
   log $ "Adding the new version " <> SemVer.printSemVer newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show ref <> " was " <> show hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref } metadata
@@ -216,7 +212,9 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
     Right _ -> do
       comment "Package successfully uploaded to the registry! :tada: :rocket:"
   closeIssue
-  -- TODO: upload docs to pursuit (#154)
+  -- Optional steps that we'll try and that won't fail the pipeline on error:
+  -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
+  -- TODO: upload docs to pursuit (see #154)
 
 
 runChecks :: Metadata -> Manifest -> RegistryM Unit
