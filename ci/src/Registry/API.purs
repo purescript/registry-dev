@@ -2,6 +2,7 @@ module Registry.API where
 
 import Registry.Prelude
 
+import Control.Monad.Except (ExceptT(..), runExceptT)
 import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Generic.Rep as Generic
@@ -20,7 +21,8 @@ import Node.Process as Env
 import Partial.Unsafe (unsafePartial)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (RegistryM, closeIssue, comment, commitToTrunk, mkEnv, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
+import Registry.PackageUpload as Upload
+import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
 import Registry.Scripts.BowerImport as Bower
 import SemVer as SemVer
@@ -196,7 +198,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Hashing the tarball..."
-  hash <- sha256sum tarballPath
+  hash <- liftAff $ sha256sum tarballPath
   log $ "Hash: " <> hash
   log "Uploading package to the storage backend..."
   let uploadPackageInfo = { name: packageName, version: newVersion }
@@ -251,9 +253,9 @@ runChecks metadata manifest = do
 fromJson :: forall a. Json.DecodeJson a => String -> Either String a
 fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)
 
-sha256sum :: String -> RegistryM String
+sha256sum :: String -> Aff String
 sha256sum filepath = do
-  fileBuffer <- liftAff $ FS.readFile filepath
+  fileBuffer <- FS.readFile filepath
   liftEffect do
     newHash <- Hash.createHash Hash.SHA256
     fileHash <- Hash.update newHash fileBuffer
@@ -269,3 +271,30 @@ wget url path = do
   case result.exit of
     NodeProcess.Normally 0 -> pure unit
     _ -> throwWithComment $ "Error while fetching tarball: " <> result.stderr
+
+mkEnv :: Ref (Map PackageName Metadata) -> IssueNumber -> Env
+mkEnv packagesMetadata issue =
+  { comment: GitHub.createComment issue
+  , closeIssue: GitHub.closeIssue issue
+  , commitToTrunk: pushToMaster
+  , uploadPackage: Upload.upload
+  , packagesMetadata
+  }
+
+pushToMaster :: PackageName -> FilePath -> Aff (Either String Unit)
+pushToMaster packageName path = runExceptT do
+  runGit ["config", "user.name", "PacchettiBotti"]
+  runGit ["config", "user.email", "<pacchettibotti@ferrai.io>"]
+  runGit ["add", path]
+  runGit ["commit", "-m", "Update metadata for package " <> PackageName.print packageName ]
+  runGit ["push", "origin", "master"]
+
+  where
+    runGit args = ExceptT do
+      result <- Process.spawn { cmd: "git", args, stdin: Nothing } NodeProcess.defaultSpawnOptions
+      case result.exit of
+        NodeProcess.Normally 0 -> do
+          info result.stdout
+          info result.stderr
+          pure $ Right unit
+        _ -> pure $ Left result.stderr

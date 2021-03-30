@@ -30,7 +30,7 @@ import Effect (Effect) as Extra
 import Effect.Aff (Aff, launchAff_, try) as Extra
 import Effect.Aff.Class (liftAff, class MonadAff) as Extra
 import Effect.Class (liftEffect, class MonadEffect) as Extra
-import Effect.Class.Console (error, log) as Extra
+import Effect.Class.Console (error, log, info) as Extra
 import Effect.Ref (Ref) as Extra
 import Foreign.Object (Object) as Extra
 import Node.Buffer (Buffer) as Extra

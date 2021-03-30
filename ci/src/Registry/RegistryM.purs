@@ -3,21 +3,14 @@ module Registry.RegistryM where
 import Registry.Prelude
 
 import Control.Monad.Error.Class (class MonadThrow)
-import Control.Monad.Except (ExceptT(..), runExceptT)
 import Control.Monad.Reader (class MonadAsk, ReaderT, asks, runReaderT)
 import Data.Map as Map
 import Effect.Aff (Error)
 import Effect.Aff as Aff
-import Effect.Class.Console (info)
 import Effect.Ref as Ref
-import GitHub (IssueNumber)
-import GitHub as GitHub
-import Node.ChildProcess as NodeProcess
 import Registry.PackageName (PackageName)
-import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.Schema (Metadata)
-import Sunde as Process
 
 type Env =
   { comment :: String -> Aff Unit
@@ -25,15 +18,6 @@ type Env =
   , commitToTrunk :: PackageName -> FilePath -> Aff (Either String Unit)
   , uploadPackage :: Upload.PackageInfo -> FilePath -> Aff Unit
   , packagesMetadata :: Ref (Map PackageName Metadata)
-  }
-
-mkEnv :: Ref (Map PackageName Metadata) -> IssueNumber -> Env
-mkEnv packagesMetadata issue =
-  { comment: GitHub.createComment issue
-  , closeIssue: GitHub.closeIssue issue
-  , commitToTrunk: pushToMaster
-  , uploadPackage: Upload.upload
-  , packagesMetadata
   }
 
 newtype RegistryM a = RegistryM (ReaderT Env Aff a)
@@ -87,22 +71,3 @@ updatePackagesMetadata pkg metadata = do
 
 readPackagesMetadata :: RegistryM (Map PackageName Metadata)
 readPackagesMetadata = liftEffect <<< Ref.read =<< asks _.packagesMetadata
-
-
-pushToMaster :: PackageName -> FilePath -> Aff (Either String Unit)
-pushToMaster packageName path = runExceptT do
-  runGit ["config", "user.name", "PacchettiBotti"]
-  runGit ["config", "user.email", "<pacchettibotti@ferrai.io>"]
-  runGit ["add", path]
-  runGit ["commit", "-m", "Update metadata for package " <> PackageName.print packageName ]
-  runGit ["push", "origin", "master"]
-
-  where
-    runGit args = ExceptT do
-      result <- Process.spawn { cmd: "git", args, stdin: Nothing } NodeProcess.defaultSpawnOptions
-      case result.exit of
-        NodeProcess.Normally 0 -> do
-          info result.stdout
-          info result.stderr
-          pure $ Right unit
-        _ -> pure $ Left result.stderr
