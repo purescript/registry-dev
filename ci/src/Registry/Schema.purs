@@ -149,7 +149,7 @@ type VersionMetadata =
   }
 
 mkNewMetadata :: Repo -> Metadata
-mkNewMetadata location = { location, releases: mempty, unpublished: mempty, maintainers: mempty }
+mkNewMetadata location = { location, releases: mempty, unpublished: mempty }
 
 addVersionToMetadata :: SemVer -> VersionMetadata -> Metadata -> Metadata
 addVersionToMetadata version versionMeta metadata =
