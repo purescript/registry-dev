@@ -1,4 +1,4 @@
-module Tmp (mkTmpDir) where
+module Foreign.Tmp (mkTmpDir) where
 
 import Data.Function.Uncurried (Fn0, runFn0)
 import Effect (Effect)

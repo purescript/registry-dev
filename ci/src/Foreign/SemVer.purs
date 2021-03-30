@@ -1,4 +1,4 @@
-module SemVer
+module Foreign.SemVer
   ( SemVer
   , parseSemVer
   , printSemVer

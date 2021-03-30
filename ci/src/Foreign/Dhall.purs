@@ -1,4 +1,4 @@
-module Dhall where
+module Foreign.Dhall where
 
 import Registry.Prelude
 

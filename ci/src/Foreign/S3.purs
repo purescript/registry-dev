@@ -1,4 +1,4 @@
-module S3 (
+module Foreign.S3 (
   connect,
   listObjects,
   putObject,

@@ -1,4 +1,4 @@
-module SPDX
+module Foreign.SPDX
   ( License
   , parse
   , print

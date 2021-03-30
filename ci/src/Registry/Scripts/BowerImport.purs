@@ -14,19 +14,19 @@ import Data.Map (SemigroupMap(..))
 import Data.Map as Map
 import Data.Set as Set
 import Data.Time.Duration (Hours(..))
-import Dhall as Dhall
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Effect.Now (nowDateTime) as Time
+import Foreign.Dhall as Dhall
+import Foreign.GitHub as GitHub
 import Foreign.Object as Foreign
-import GitHub as GitHub
+import Foreign.SPDX as SPDX
+import Foreign.SemVer as SemVer
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Partial.Unsafe (unsafePartial, unsafeCrashWith)
 import Registry.PackageName as PackageName
 import Registry.Schema (Manifest, Repo(..))
-import SPDX as SPDX
-import SemVer as SemVer
 import Text.Parsing.StringParser as Parser
 import Web.Bower.PackageMeta (Dependencies(..))
 import Web.Bower.PackageMeta as Bower

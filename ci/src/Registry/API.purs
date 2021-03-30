@@ -7,12 +7,15 @@ import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Generic.Rep as Generic
 import Data.Map as Map
-import Dhall as Dhall
 import Effect.Aff as Aff
 import Effect.Ref as Ref
+import Foreign.Dhall as Dhall
+import Foreign.GitHub (IssueNumber)
+import Foreign.GitHub as GitHub
 import Foreign.Object as Object
-import GitHub (IssueNumber)
-import GitHub as GitHub
+import Foreign.SemVer as SemVer
+import Foreign.Tar as Tar
+import Foreign.Tmp as Tmp
 import Node.Buffer as Buffer
 import Node.ChildProcess as NodeProcess
 import Node.Crypto.Hash as Hash
@@ -25,12 +28,9 @@ import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
 import Registry.Scripts.BowerImport as Bower
-import SemVer as SemVer
 import Sunde as Process
-import Tar as Tar
 import Test.Spec.Assertions as Assert
 import Text.Parsing.StringParser as Parser
-import Tmp as Tmp
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -216,7 +216,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
     Right _ -> do
       comment "Package successfully uploaded to the registry! :tada: :rocket:"
   closeIssue
-  -- TODO: upload docs to pursuit
+  -- TODO: upload docs to pursuit (#154)
 
 
 runChecks :: Metadata -> Manifest -> RegistryM Unit

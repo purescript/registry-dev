@@ -2,15 +2,13 @@ module Test.Main where
 
 import Registry.Prelude
 
-import Data.Identity (Identity)
-import Effect.Aff as Aff
-import GitHub (IssueNumber(..))
+import Foreign.GitHub (IssueNumber(..))
+import Foreign.SPDX as SPDX
+import Foreign.SemVer as SemVer
 import Partial.Unsafe (unsafeCrashWith)
 import Registry.API as API
 import Registry.PackageName as PackageName
-import SPDX as SPDX
 import Registry.Schema (Operation(..), Repo(..))
-import SemVer as SemVer
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -19,7 +17,7 @@ import Test.Spec.Runner (runSpec)
 type Spec = Spec.SpecT Aff Unit Identity Unit
 
 main :: Effect Unit
-main = Aff.launchAff_ $ runSpec [consoleReporter] do
+main = launchAff_ $ runSpec [consoleReporter] do
   Spec.describe "API" do
     Spec.describe "Checks" do
       Spec.describe "Good package names" goodPackageName

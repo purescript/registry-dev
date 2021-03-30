@@ -1,4 +1,4 @@
-module Tar (getToplevelDir, create, extract) where
+module Foreign.Tar (getToplevelDir, create, extract) where
 
 import Prelude
 

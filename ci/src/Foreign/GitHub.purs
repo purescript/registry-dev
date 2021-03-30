@@ -1,4 +1,4 @@
-module GitHub where
+module Foreign.GitHub where
 
 import Registry.Prelude
 

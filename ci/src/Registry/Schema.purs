@@ -7,11 +7,11 @@ import Data.Argonaut (jsonEmptyObject, (~>), (~>?), (:=), (:=?), (.:), (.:?), (.
 import Data.Argonaut as Json
 import Data.Generic.Rep as Generic
 import Foreign.Object as Object
+import Foreign.SPDX (License)
+import Foreign.SemVer (SemVer, Range)
+import Foreign.SemVer as SemVer
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import SPDX (License)
-import SemVer (SemVer, Range)
-import SemVer as SemVer
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 type Manifest =

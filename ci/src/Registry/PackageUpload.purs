@@ -4,12 +4,12 @@ import Registry.Prelude
 
 import Data.Array as Array
 import Effect.Aff as Aff
+import Foreign.SemVer (SemVer)
+import Foreign.SemVer as SemVer
+import Foreign.S3 as S3
 import Node.FS.Aff as FS
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import SemVer (SemVer)
-import SemVer as SemVer
-import S3 as S3
 
 type PackageInfo =
   { name :: PackageName
