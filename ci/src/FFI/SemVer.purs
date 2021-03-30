@@ -75,21 +75,23 @@ build (SemVer v) = v.build
 printSemVer :: SemVer -> String
 printSemVer (SemVer v) = v.version
 
-newtype Range = Range String
+newtype Range = Range { original :: String, converted :: String }
 
 derive newtype instance eqRange :: Eq Range
 
 instance decodeJsonRange :: DecodeJson Range where
   decodeJson json = do
-    range <- decodeJson json
-    note (TypeMismatch $ "Expected range: " <> range) (parseRange range)
+    original <- decodeJson json
+    note (TypeMismatch $ "Expected SemVer range: " <> original) (parseRange original)
 
 instance encodeJsonRange :: EncodeJson Range where
   encodeJson = encodeJson <<< printRange
 
 foreign import parseRangeImpl :: String -> Nullable String
 parseRange :: String -> Maybe Range
-parseRange = map Range <<< toMaybe <<< parseRangeImpl
+parseRange original = do
+  converted <- toMaybe $ parseRangeImpl original
+  pure $ Range { converted, original }
 
 printRange :: Range -> String
-printRange (Range r) = r
+printRange (Range r) = _.converted r
