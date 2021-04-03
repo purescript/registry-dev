@@ -113,5 +113,6 @@
   "purescript-veither": "https://github.com/JordanMartinez/purescript-veither.git",
   "purescript-vexceptt": "https://github.com/JordanMartinez/purescript-vexceptt.git",
   "purescript-heterogeneous-extrablatt": "https://github.com/sigma-andex/purescript-heterogeneous-extrablatt.git",
-  "purescript-pretty-logs": "https://github.com/PureFunctor/purescript-pretty-logs.git"
+  "purescript-pretty-logs": "https://github.com/PureFunctor/purescript-pretty-logs.git",
+  "purescript-web-resize-observer": "https://github.com/nsaunders/purescript-web-resize-observer.git"
 }
