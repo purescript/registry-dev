@@ -29,7 +29,6 @@ import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, r
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
 import Registry.Scripts.BowerImport as Bower
 import Sunde as Process
-import Test.Spec.Assertions as Assert
 import Text.Parsing.StringParser as Parser
 
 main :: Effect Unit
@@ -101,6 +100,9 @@ readOperation eventPath = do
     Right json -> case Json.decodeJson json of
       Left err -> MalformedJson issueNumber (Json.printJsonDecodeError err)
       Right op -> DecodedOperation issueNumber op
+
+-- TODO: test all the points where the pipeline could throw, to show that we are implementing
+-- all the necessary checks
 
 runOperation :: Operation -> RegistryM Unit
 runOperation operation = case operation of
@@ -229,13 +231,18 @@ runChecks metadata manifest = do
     Just a -> pure a
 
   log "Checking that `lib` target only includes `src`"
-  Assert.shouldEqual libTarget.sources ["src/**/*.purs"]
+  when (libTarget.sources /= ["src/**/*.purs"]) do
+    throwWithComment "The `lib` target only allows the following `sources`: `src/**/*.purs`"
 
   log "Check that version is unique"
   let prettyVersion = SemVer.printSemVer manifest.version
   case Object.lookup prettyVersion metadata.releases of
     Nothing -> pure unit
     Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> show prettyVersion <> "\nIts metadata is: " <> show info
+
+  log "Check that the version does not contain any build metadata"
+  when (SemVer.build manifest.version /= []) do
+    throwWithComment "Package version should not contain any build-metadata."
 
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
