@@ -233,8 +233,7 @@ Every package will have its own file in the `packages` folder of this repo.
 You can see the schema of this file [here](./v1/Metadata.dhall), and the main reasons for this file to exist are to track:
 - the upstream location for the sources of the package
 - published versions and the SHA256 for their tarball as computed by [our CI](#Adding-a-new-package).
-  Note: these are going to be sorted in ascending order according to [SemVer](https://semver.org) - when in
-  doubt the sorting provided by [the `semver` package on NPM](https://www.npmjs.com/package/semver#comparison) is correct.
+  Note: these are going to be sorted in ascending order according to [SemVer](https://semver.org)
 - unpublished versions together with the reason for unpublishing
 - GitHub usernames of package maintainers, so that we'll be able to contact them if any action is needed for any of their packages
 
@@ -364,11 +363,11 @@ What has happened already:
   New packages are referenced [in this file](./new-packages.json), while all the packages from the Bower
   registry are referenced [here](./bower-packages.json)
 - we have drafted how the registry should behave, what's the API, how things will look like, etc (this document)
+- we set up the first [storage backend](#Storage-backends), maintained by the Packaging Team
 
 What is happening right now:
 - we're figuring out the last details of [the package `Manifest`](#The-Package-Manifest), which is the big blocker
   for proceeding further, since it will be baked into all the tarballs uploaded to the storage.
-- setting up a [storage backend](#Storage-backends) maintained by the Packaging Team
 - writing up the [CI code](#The-Registry-CI) to import the Bower packages as described above
 
 What will happen after this:

@@ -1,15 +1,12 @@
-module Dhall where
+module Foreign.Dhall where
 
-import Prelude
+import Registry.Prelude
 
-import Data.Either (Either(..))
-import Data.Maybe (Maybe(..))
-import Effect.Aff (Aff)
-import Sunde as Process
 import Node.ChildProcess as NodeProcess
+import Sunde as Process
 
-jsonToDhall :: String -> Aff (Either String String)
-jsonToDhall jsonStr = do
+jsonToDhallManifest :: String -> Aff (Either String String)
+jsonToDhallManifest jsonStr = do
   let cmd = "json-to-dhall"
   let stdin = Just jsonStr
   let args = ["--records-loose", "--unions-strict", "../v1/Manifest.dhall"]

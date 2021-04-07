@@ -7,14 +7,18 @@
     "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "SPACES_KEY='' SPACES_SECRET='' GITHUB_TOKEN='' spago test"
   },
   "author": "",
   "license": "MIT",
   "dependencies": {
     "@octokit/rest": "^18.0.0",
     "aws-sdk": "^2.814.0",
-    "semver": "^7.3.2",
+    "fuse.js": "^6.4.6",
+    "semver": "^7.3.4",
+    "spdx-expression-parse": "^3.0.1",
+    "tar": "^6.1.0",
+    "tmp": "^0.2.1",
     "xhr2": "^0.2.0"
   }
 }

@@ -1,4 +1,4 @@
-module S3 (
+module Foreign.S3 (
   connect,
   listObjects,
   putObject,
@@ -7,17 +7,12 @@ module S3 (
   ACL(..)
 ) where
 
-import Prelude
+import Registry.Prelude
 
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.Function.Uncurried (Fn1, Fn2, runFn1, runFn2)
 import Data.JSDate (JSDate)
-import Data.Traversable (for)
-import Effect (Effect)
-import Effect.Aff (Aff)
-import Effect.Class (liftEffect)
-import Node.Buffer (Buffer)
 
 
 foreign import data S3 :: Type

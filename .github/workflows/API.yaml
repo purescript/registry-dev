@@ -7,14 +7,45 @@ on:
   issue_comment:
     types: [created]
 jobs:
-  run:
+  api:
     # This condition is here because the issue_comment event is triggered
     # for PRs too, but we don't want that here
     if: ${{ !github.event.issue.pull_request }}
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.PACCHETTIBOTTI_TOKEN }}
+      SPACES_KEY: ${{ secrets.SPACES_KEY }}
+      SPACES_SECRET: ${{ secrets.SPACES_SECRET }
     steps:
-    - uses: actions/checkout@v2
-    - run: echo ${GITHUB_EVENT_NAME}
-    - run: cat ${GITHUB_EVENT_PATH}
-    # TODO: write some PureScript that reads this file, gets the body of the issue/comment,
-    # tries to conform it to an Operation, and fails the build if that doesn't work
+      - uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.PACCHETTIBOTTI_TOKEN }}
+          ref: master
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: "14"
+
+      - uses: actions/cache@v2
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('./ci/**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - uses: purescript-contrib/setup-purescript@main
+
+      - name: Cache PureScript dependencies
+        uses: actions/cache@v2
+        with:
+          key: ${{ runner.os }}-spago-${{ hashFiles('./ci/**/*.dhall') }}
+          path: |
+            .spago
+            output
+
+      - uses: cachix/install-nix-action@v12
+        with:
+          nix_path: nixpkgs=channel:nixos-20.09
+
+      - name: "Run API"
+        run: cd ci && npm ci && nix-shell ../default.nix --run "spago run -m Registry.API"

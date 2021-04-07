@@ -9,18 +9,16 @@ let Map = (./Prelude.dhall).Map.Type
 
 let Repo = ./Repo.dhall
 
-let Version = { version : Text, revision : Natural }
+let SemVer = Text
 
-let Release = { ref : Text, hash : Text }
+let VersionMetadata = { ref : Text, hash : Text }
 
 in
   {
   -- The pointer to where the code lives
   , location : Repo
   -- A mapping between versions and info about a release
-  , releases : Map Version Release
+  , releases : Map SemVer VersionMetadata
   -- A mapping between a version number and the reason for unpublishing
   , unpublished : Map Text Text
-  -- The list of maintainers of a package (note: these are GitHub usernames)
-  , maintainers : List Text
   }

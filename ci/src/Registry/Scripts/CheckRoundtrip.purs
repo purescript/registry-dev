@@ -1,20 +1,14 @@
-module Registry.Check.ManifestRoundtrip where
+module Registry.Scripts.ManifestRoundtrip where
 
-import Prelude
+import Registry.Prelude
 
 import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
-import Data.Bifunctor (lmap)
-import Data.Either (Either(..))
-import Data.Traversable (for)
-import Effect (Effect)
 import Effect.Aff as Aff
 import Effect.Aff as Exception
-import Effect.Class.Console (error, log)
-import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS
+import Partial.Unsafe (unsafeCrashWith)
 import Registry.Schema (Manifest)
-import Test.Unit.Assert as Assert
 
 main :: Effect Unit
 main = Aff.launchAff_ do
@@ -37,4 +31,9 @@ main = Aff.launchAff_ do
           -- And if that works, we then try to convert them back to JSON, and
           -- error out if any differ
           let newManifestStr = stringifyWithIndent 2 $ Json.encodeJson manifest
-          Assert.equal manifestStr newManifestStr
+          when (manifestStr /= newManifestStr) do
+            error "\nManifests don't roundtrip. Old manifest:"
+            error manifestStr
+            error "\n\nNew manifest:"
+            error newManifestStr
+            unsafeCrashWith "\n"

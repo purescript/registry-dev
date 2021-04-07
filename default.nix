@@ -1,22 +1,16 @@
 { pkgs ? import <nixpkgs> {} }:
 
 let
-  easy-ps = import (
-    pkgs.fetchFromGitHub {
-      owner = "justinwoo";
-      repo = "easy-purescript-nix";
-      rev = "0ba91d9aa9f7421f6bfe4895677159a8a999bf20";
-      sha256 = "1baq7mmd3vjas87f0gzlq83n2l1h3dlqajjqr7fgaazpa9xgzs7q";
-    }
-  ) {
-    inherit pkgs;
-  };
+  pkgs = import (builtins.fetchTarball {
+    url = "https://github.com/NixOS/nixpkgs/archive/20.09.tar.gz";
+  }) {};
+
   easy-dhall = import (
     pkgs.fetchFromGitHub {
       owner = "justinwoo";
       repo = "easy-dhall-nix";
-      rev = "3e9101c5dfd69a9fc28fe4998aff378f91bfcb64";
-      sha256 = "1nsn1n4sx4za6jipcid1293rdw8lqgj9097s0khiij3fz0bzhrg9";
+      rev = "eae7f64c4d6c70681e5a56c84198236930ba425e";
+      sha256 = "1y2x15v8a679vlpxazjpibfwajp6zph60f8wjcm4xflbvazk0dx7";
     }
   ) {
     inherit pkgs;
@@ -25,9 +19,6 @@ let
 in
 pkgs.runCommand "dummy" {
   buildInputs =
-    builtins.attrValues {
-      inherit (easy-ps) purescript spago;
-    } ++
     builtins.attrValues {
       inherit (easy-dhall) dhall-simple dhall-json-simple;
     } ++

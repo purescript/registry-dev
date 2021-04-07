@@ -1,45 +1,34 @@
-module BowerImport where
+module Registry.Scripts.BowerImport where
 
-import Prelude
+import Registry.Prelude
 
 import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
 import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Array as Array
-import Data.Bifunctor (lmap)
 import Data.DateTime (adjust) as Time
-import Data.Either (Either(..), fromRight)
-import Data.Foldable (and)
-import Data.FoldableWithIndex (forWithIndex_)
 import Data.JSDate as JSDate
-import Data.Map (Map)
+import Data.List as List
+import Data.Map (SemigroupMap(..))
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing)
-import Data.Newtype (unwrap)
-import Data.Set (Set)
 import Data.Set as Set
-import Data.String as String
 import Data.Time.Duration (Hours(..))
-import Data.Traversable (for_)
-import Data.TraversableWithIndex (forWithIndex)
-import Data.Tuple (Tuple(..))
-import Data.Tuple.Nested ((/\))
-import Dhall as Dhall
-import Effect (Effect)
-import Effect.Aff (Aff)
 import Effect.Aff as Aff
-import Effect.Class (liftEffect)
-import Effect.Class.Console (error, log)
 import Effect.Exception as Exception
 import Effect.Now (nowDateTime) as Time
+import Foreign.Dhall as Dhall
+import Foreign.GitHub as GitHub
 import Foreign.Object as Foreign
-import GitHub as GitHub
-import Node.Encoding (Encoding(..))
+import Foreign.SPDX as SPDX
+import Foreign.SemVer as SemVer
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
-import Partial.Unsafe (unsafePartial)
+import Partial.Unsafe (unsafePartial, unsafeCrashWith)
+import Registry.PackageName as PackageName
 import Registry.Schema (Manifest, Repo(..))
+import Text.Parsing.StringParser as Parser
+import Web.Bower.PackageMeta (Dependencies(..))
 import Web.Bower.PackageMeta as Bower
 
 
@@ -56,10 +45,13 @@ main = Aff.launchAff_ do
   -- Assumption: we are running in the `ci` folder or the registry repo
   bowerPackagesStr <- FS.readTextFile UTF8 "../bower-packages.json"
   newPackagesStr <- FS.readTextFile UTF8 "../new-packages.json"
-  let parseJsonMap str
-        = Json.jsonParser str
-        >>= (lmap Json.printJsonDecodeError <<< Json.decodeJson)
+
+  let
+    parseJsonMap str =
+      Json.jsonParser str
+        >>= (Json.decodeJson >>> lmap Json.printJsonDecodeError)
         >>> map (Map.fromFoldableWithIndex :: Foreign.Object String -> Map String String)
+
   case parseJsonMap bowerPackagesStr, parseJsonMap newPackagesStr of
     Left err, _ -> error $ "Error: couldn't parse bower-packages.json, error: " <> err
     _, Left err -> error $ "Error: couldn't parse new-packages.json, error: " <> err
@@ -69,10 +61,10 @@ main = Aff.launchAff_ do
       -- This is necessary so that we can do the "self-containment" check later.
       -- We keep a temporary cache on disk, so that it's easier to do development
       -- without consuming the GitHub request limit.
-      let allPackages = bowerPackages <> newPackages
+      let (SemigroupMap allPackages) = SemigroupMap bowerPackages <> SemigroupMap newPackages
       releaseIndex <- Map.fromFoldable <$> forWithIndex allPackages \nameWithPrefix repoUrl -> do
-        let name = stripPurescriptPrefix nameWithPrefix
-        let address = unsafePartial $ fromRight $ GitHub.parseRepo repoUrl
+        let name = stripPureScriptPrefix nameWithPrefix
+        let address = fromRight' (\_ -> unsafeCrashWith $ "Failed to parse the repo url: " <> show repoUrl) $ GitHub.parseRepo repoUrl
         releases <- withCache ("releases__" <> address.owner <> "__" <> address.repo) (Just $ Hours 24.0) $ do
           log $ "Fetching releases for package " <> show name
           Set.fromFoldable <$> GitHub.getReleases address
@@ -88,16 +80,17 @@ main = Aff.launchAff_ do
         -- then we list all the files in that package directory - every file is a version
         manifests <- FS.readdir packageFolder
         -- are there any releases that we don't have the file for?
-        for_ releases \release ->
+        for_ releases \release -> do
           let
             manifestIsMissing = isNothing $ Array.findIndex (_ == release.name <> ".json") manifests
             shouldSkip = Set.member (Tuple name release.name) toSkip
             -- TODO: we limit the package list to these three packages just to print example manifests
             examplePackage = Set.member name (Set.fromFoldable ["aff", "mysql", "prelude"])
             shouldFetch = manifestIsMissing && not shouldSkip && examplePackage
-          in when shouldFetch do
+
+          when shouldFetch do
             -- if yes, then..
-            log $ "Could not find manifest for version " <> release.name <> " of " <> show address <> ", making it.."
+            log $ "Could not find manifest for version " <> release.name <> " of " <> show address <> ", making it..."
             -- we download the Bower file or use the cached one if available.
             -- note that we don't need to expire the cache ever here, because the
             -- tags are supposed to be immutable
@@ -108,79 +101,94 @@ main = Aff.launchAff_ do
                     Left err -> do
                       error $ "Got error while fetching bowerfile, you might want to add the following to the packages to skip: " <> show name <> " /\\ " <> show release.name
                       Aff.throwError $ Exception.error $ Http.printError err
-                    Right { body } -> case (Json.decodeJson body) of
+                    Right { body } -> case Json.decodeJson body of
                       Left err -> Aff.throwError $ Exception.error $ Json.printJsonDecodeError err
                       Right (bowerfile :: Bower.PackageMeta) -> pure bowerfile
             bowerfile <- withCache ("bowerfile__" <> name <> "__" <> release.name) Nothing fetchBowerfile
             -- then we check if all dependencies/versions are self-contained in the registry
-            if (not $ selfContainedDependencies releaseIndex bowerfile)
-            then error $ "Dependencies for the package " <> show name <> " are not all contained in the registry, skipping."
+            if not selfContainedDependencies releaseIndex bowerfile then
+               error $ Array.fold
+                 [ "Dependencies for the package "
+                 , show name
+                 , " are not all contained in the registry, skipping."
+                 ]
             else do
               -- now we should be ready to convert it
               let manifestPath = packageFolder <> "/" <> release.name <> ".json"
-              let manifestStr = stringifyWithIndent 2 $ Json.encodeJson $ toManifest bowerfile release.name address
+              let manifestStr =
+                    stringifyWithIndent 2
+                      $ Json.encodeJson
+                      $ toManifest bowerfile release.name
+                      $ GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
               -- we then conform to Dhall type. If that does works out then
               -- write it to the manifest file, otherwise print the error
-              Dhall.jsonToDhall manifestStr >>= case _ of
+              Dhall.jsonToDhallManifest manifestStr >>= case _ of
                 Right _ -> do
                   FS.writeTextFile UTF8 manifestPath manifestStr
                 Left result -> error result
 
+readBowerfile :: String -> Aff (Either String Bower.PackageMeta)
+readBowerfile path = do
+  let fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)
+  ifM (not <$> FS.exists path)
+    (pure $ Left $ "Bowerfile not found at " <> path)
+    do
+      strResult <- FS.readTextFile UTF8 path
+      pure $ fromJson strResult
 
 -- | Convert a Bowerfile into a Registry Manifest
-toManifest :: Bower.PackageMeta -> String -> GitHub.Address -> Manifest
-toManifest (Bower.PackageMeta bowerfile) version address
-  = { name, license, repository, targets, version }
-  where
+toManifest :: Bower.PackageMeta -> String -> Repo -> Either String Manifest
+toManifest (Bower.PackageMeta bowerfile) ref address = do
+  let
+    toDepPair { packageName, versionRange }
+      = map (Tuple $ stripPureScriptPrefix packageName)
+      $ note ("Failed to parse range: " <> versionRange)
+      $ SemVer.parseRange versionRange
     subdir = Nothing
-    name = stripPurescriptPrefix bowerfile.name
-    license = String.joinWith " OR " bowerfile.license
     repository = case _.url <$> bowerfile.repository of
-      Nothing -> GitHub { repo: address.repo, owner: address.owner, subdir }
+      Nothing -> address
       Just url -> case GitHub.parseRepo url of
         Left _err -> Git { url, subdir }
         Right { repo, owner } -> GitHub { repo, owner, subdir }
-    toDepPair { packageName, versionRange } = Tuple packageName versionRange
-    deps = map toDepPair $ unwrap bowerfile.dependencies
-    devDeps = map toDepPair $ unwrap bowerfile.devDependencies
-    targets = Foreign.fromFoldable $
-      [ Tuple "lib"
+
+  name <- lmap Parser.printParserError $ PackageName.parse $ stripPureScriptPrefix bowerfile.name
+  license <- SPDX.joinWith SPDX.Or <$> traverse SPDX.parse bowerfile.license
+  version <- note ("Could not parse version: " <> ref) $ SemVer.parseSemVer ref
+  deps <- traverse toDepPair $ List.fromFoldable $ un Dependencies bowerfile.dependencies
+  devDeps <- traverse toDepPair $ List.fromFoldable $ un Dependencies bowerfile.devDependencies
+
+  let
+    targets = Foreign.fromFoldable $ Array.catMaybes
+      [ Just $ Tuple "lib"
           { sources: ["src/**/*.purs"]
           , dependencies: Foreign.fromFoldable deps
           }
-      ] <> if Array.null (unwrap bowerfile.devDependencies)
-           then []
-           else [ Tuple "test"
-                    { sources: ["src/**/*.purs", "test/**/*.purs"]
-                    , dependencies: Foreign.fromFoldable (deps <> devDeps)
-                    }
-                ]
+      , if (List.null devDeps)
+        then Nothing
+        else Just $ Tuple "test"
+          { sources: ["src/**/*.purs", "test/**/*.purs"]
+          , dependencies: Foreign.fromFoldable (deps <> devDeps)
+          }
+      ]
 
+  pure { name, license, repository, targets, version }
 
 -- | Are all the dependencies PureScript packages or are there any external Bower/JS packages?
 selfContainedDependencies :: ReleasesIndex -> Bower.PackageMeta -> Boolean
 selfContainedDependencies packageIndex (Bower.PackageMeta { dependencies, devDependencies }) =
   let
     (Bower.Dependencies allDeps) = dependencies <> devDependencies
-    isInRegistry { packageName } = case Map.lookup (stripPurescriptPrefix packageName) packageIndex of
+    isInRegistry { packageName } = case Map.lookup (stripPureScriptPrefix packageName) packageIndex of
       Nothing -> false
       Just _ -> true
   in and (map isInRegistry allDeps)
-
-
-stripPurescriptPrefix :: String -> String
-stripPurescriptPrefix name
-  = fromMaybe name
-  $ String.stripPrefix (String.Pattern "purescript-") name
-
-
 
 -- | Optionally-expirable cache: when passing a Duration then we'll consider
 -- | the object expired if its lifetime is past the duration.
 -- | Otherwise, this will behave like a write-only cache.
 withCache
   :: forall a
-  .  Json.DecodeJson a
+   . Json.DecodeJson a
   => Json.EncodeJson a
   => String -> Maybe Hours -> Aff a -> Aff a
 withCache path maybeDuration action = do
