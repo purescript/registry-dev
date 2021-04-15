@@ -115,5 +115,7 @@
   "purescript-heterogeneous-extrablatt": "https://github.com/sigma-andex/purescript-heterogeneous-extrablatt.git",
   "purescript-pretty-logs": "https://github.com/PureFunctor/purescript-pretty-logs.git",
   "purescript-web-resize-observer": "https://github.com/nsaunders/purescript-web-resize-observer.git",
-  "purescript-homogeneous": "https://github.com/paluh/purescript-homogeneous.git"
+  "purescript-homogeneous": "https://github.com/paluh/purescript-homogeneous.git",
+  "purescript-event": "https://github.com/mikesol/purescript-event.git",
+  "purescript-behaviors": "https://github.com/mikesol/purescript-behaviors.git"
 }
