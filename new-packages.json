@@ -119,7 +119,9 @@
   "purescript-open-folds": "https://github.com/purescript-open-community/purescript-open-folds.git",
   "purescript-open-memoize": "https://github.com/purescript-open-community/purescript-open-memoize.git",
   "purescript-open-pairing": "https://github.com/purescript-open-community/purescript-open-pairing.git",
-  "purescript-open-mkdirp-aff": "https://github.com/purescript-open-community/purescript-open-mkdirp-aff",
+  "purescript-open-mkdirp-aff": "https://github.com/purescript-open-community/purescript-open-mkdirp-aff.git",
+  "purescript-graphqlclient-generator": "https://github.com/purescript-graphqlclient/purescript-graphqlclient.git",
+  "purescript-graphqlclient": "https://github.com/purescript-graphqlclient/purescript-graphqlclient.git",
   "purescript-ps-cst": "https://github.com/purescript-codegen/purescript-ps-cst.git",
   "purescript-record-extra-srghma": "https://github.com/srghma/purescript-record-extra-srghma.git",
   "purescript-url-regex-safe": "https://github.com/srghma/purescript-url-regex-safe.git"
