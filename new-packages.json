@@ -126,5 +126,6 @@
   "purescript-ps-cst": "https://github.com/purescript-codegen/purescript-ps-cst.git",
   "purescript-record-extra-srghma": "https://github.com/srghma/purescript-record-extra-srghma.git",
   "purescript-url-regex-safe": "https://github.com/srghma/purescript-url-regex-safe.git",
-  "purescript-pino": "https://github.com/PureFunctor/purescript-pino.git"
+  "purescript-pino": "https://github.com/PureFunctor/purescript-pino.git",
+  "purescript-channel-stream": "https://github.com/ConnorDillon/purescript-channel-stream.git"
 }
