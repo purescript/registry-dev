@@ -128,5 +128,6 @@
   "purescript-url-regex-safe": "https://github.com/srghma/purescript-url-regex-safe.git",
   "purescript-pino": "https://github.com/PureFunctor/purescript-pino.git",
   "purescript-channel-stream": "https://github.com/ConnorDillon/purescript-channel-stream.git",
-  "purescript-options-extra": "https://github.com/PureFunctor/purescript-options-extra.git"
+  "purescript-options-extra": "https://github.com/PureFunctor/purescript-options-extra.git",
+  "purescript-halogen-store": "https://github.com/thomashoneyman/purescript-halogen-store.git",
 }
