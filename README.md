@@ -6,32 +6,32 @@ PureScript needs a way to distribute packages. We used to rely on the Bower regi
 
 ## Goals for a PureScript package registry
 
-Here's a non-comprehensive list of desiderable properties/goals that we'd generally like to
+Here’s a non-comprehensive list of desiderable properties/goals that we’d generally like to
 achieve when talking of a PureScript registry, and that we think this design covers:
-- **independent**: we're coming from a situation when relying on a third party registry has
-  faulted us, so we'd need something that we can control and possibly host ourselves.
-- **immutable**: published packages are immutable - once a version has been published
+- **independent**: we’re coming from a situation when relying on a third party registry has
+  faulted us, so we’d need something that we can control and possibly host ourselves.
+- **immutable**: published packages are immutable — once a version has been published
   then its source code is forever packaged in the tarball uploaded to our storage(s).
   The only exception is that **unpublishing** will be possible for some time after publishing.
   This goal also directly stems from our experience with Bower, where we were not able to
   prevent packages from disappearing and/or being altered, since we were not storing the source
   anywhere, but just pointing to the original location of the source, that we had no control over.  
-  This means that with this Registry if your package is building today then you're guaranteed that
-  the packages you're depending on will not disappear.
-- **with content hashes**, so that we're able to support independent storage backends
-  and be sure that the content they serve is the same, and - perhaps most importantly - that
+  This means that with this Registry if your package is building today then you’re guaranteed that
+  the packages you’re depending on will not disappear.
+- **with content hashes**, so that we’re able to support independent storage backends
+  and be sure that the content they serve is the same, and — perhaps most importantly — that
   its integrity is preserved over time.
 - **with version bounds for packages**, so that package authors can control the amount
-  of support that they want to provide for their packages - i.e. allowing a wider range of
+  of support that they want to provide for their packages — i.e. allowing a wider range of
   versions for upstream dependencies means more support.
 - **with a way for trusted editors to publish new versions**, so that under specified conditions
   faulty bounds/dependencies can be timely corrected if package authors are not around.
 - **ease of publishing a release** is optimized for and entirely automated.
 - package manifests are **declarative**: authors need not to concern themselves with
-  the "how", but just declare properties about their packages. E.g. there's no such
-  thing as NPM's `postinstall` and other similar hooks.
+  the “how” but just declare properties about their packages. E.g. there’s no such
+  thing as NPM’s `postinstall` and other similar hooks.
 - **no webserver**: all the software running the Registry is designed in such a way that
-  we don't need to authenticate people ourselves, nor need them to upload anything, nor
+  we don’t need to authenticate people ourselves, nor need them to upload anything, nor
   need to expose any webserver in general. This greatly reduces the amount of attack surface
   from the security standpoint.
 - **with first class support for Package Sets**: see the [relevant section for more info](#Package-Sets).
@@ -46,13 +46,13 @@ on the internet, such as [this one](https://github.com/ziglang/zig/issues/943) a
 Things we _do not_ aim to achieve with this design:
 - **all-purpose use**: we are going to care about hosting PureScript packages only.
 - **user-facing frontend**: this design aims to provide procedures for publishing, collecting, hosting and distributing PureScript packages.
-  The metadata about packages will be exposed publicly, but we do not concern ourselves with presenting it in a navigable/queriable way -
+  The metadata about packages will be exposed publicly, but we do not concern ourselves with presenting it in a navigable/queriable way — 
   other tools/services should be built on top of this data to achieve that.
 
-# Proposed design: "Just a GitHub Repo"
+# Proposed design: “Just a GitHub Repo”
 
 Two main ideas here:
-- the Registry is nothing more than __some data__ - in our case tarball of package sources stored somewhere public - and __some metadata__ linked to the data so that we can make sense of it - in our case this GitHub repo is our "metadata storage"
+- the Registry is nothing more than __some data__ — in our case tarball of package sources stored somewhere public — and __some metadata__ linked to the data so that we can make sense of it — in our case this GitHub repo is our “metadata storage”
 - to minimize the attack surface we will use a __pull model__ where all sources are fetched by our CI rather than having authors upload them. In practice this means that all the registry operations will run on the CI infrastructure of this repo.
 
 This repo will contain:
@@ -121,12 +121,12 @@ let Manifest =
 in Manifest
 ```
 
-It's useful to embed the definition for `Target` too, since it's the main component of a `Manifest`:
+It’s useful to embed the definition for `Target` too, since it’s the main component of a `Manifest`:
 
 ```dhall
 {-
 
-A "compilation target".
+A “compilation target”.
 
 Every target can have its own dependencies, source globs, etc.
 By convention a package needs to have at least one target called `lib`.
@@ -150,7 +150,7 @@ in  Target
 
 Note: the [`Repo` schema](./v1/Repo.dhall) includes support for packages that are
 not published from the root of the repository, by supplying the (optional) `subdir` field.
-This means that a repository could potentially host several packages (commonly called a "monorepo").
+This means that a repository could potentially host several packages (commonly called a “monorepo”).
 
 ## The Registry API
 
@@ -168,14 +168,14 @@ We can do that by *opening an issue* containing JSON that conforms to the
 schema of an [`Addition`](./v1/Operation.dhall).
 
 Note: this operation __should__ be entirely automated by the package manager, and
-transparent to the user. I.e. package authors shouldn't need to be aware of the inner
+transparent to the user. I.e. package authors shouldn’t need to be aware of the inner
 workings of the Registry in order to publish a package, and they should be able to
-tell to the package manager "publish this" and be given back either a confirmation
+tell to the package manager “publish this” and be given back either a confirmation
 of success or failure, or a place to follow updates about the fate of the publishing process.
 
-Implementation detail: how do we "automatically open a GitHub issue" while at the same
+Implementation detail: how do we “automatically open a GitHub issue” while at the same
 time not requiring a GitHub authentication token from the users? The idea is that if
-a package manager wants to avoid doing that then it's possible to generate a URL that
+a package manager wants to avoid doing that then it’s possible to generate a URL that
 the user can navigate to, so that they can preview the issue content before opening it.
 [This](https://github.com/purescript/registry/issues/new?title=Add%20package%3A%20example&body=%7B%22packageName%22%3A%22example%22%2C%22location%22%3A%22etc%22%7D)
 is an example of such link.
@@ -188,12 +188,12 @@ Once the issue is open, the [CI in this repo](#The-Registry-CI) will:
   Note: package managers are generally expected to run the same checks locally as well, to tighten the feedback time for authors.
 - if all is well, upload the tarball to the [storages](#Storage-backends).
   Note: if any of the Storage Backends is down we fail here, so that the problem can be addressed.
-- generate the [package's `Metadata` file](#Package-metadata):
+- generate the [package’s `Metadata` file](#Package-metadata):
   - add the SHA256 of the tarball
   - add the author of the release as a maintainer of the package.
     If that is unavailable (e.g. if a release is published by a bot),
-    then it's acceptable to skip this and proceed anyways, as the list of maintainers of
-    a package should be curated by Trustees in any case, as it's going to be useful only for
+    then it’s acceptable to skip this and proceed anyways, as the list of maintainers of
+    a package should be curated by Trustees in any case, as it’s going to be useful only for
     actions that require manual intervention.
 - optionally add the package to the [next Package Set](#Package-Sets)
 - upload the package documentation to [Pursuit](https://pursuit.purescript.org)
@@ -222,7 +222,7 @@ If these conditions hold, then CI will:
 - delete that package version from the storages
 
 Unpublishing is allowed for security reasons (e.g. if some package was taken over maliciously),
-but it's allowed only for a set period of time because of the `leftpad` problem (i.e. breaking everyone's builds).
+but it’s allowed only for a set period of time because of the `leftpad` problem (i.e. breaking everyone’s builds).
 
 Exceptions to this rule are legal concerns (e.g. DMCA takedown requests) for which Trustees might have to remove packages at any time.
 
@@ -235,21 +235,21 @@ You can see the schema of this file [here](./v1/Metadata.dhall), and the main re
 - published versions and the SHA256 for their tarball as computed by [our CI](#Adding-a-new-package).
   Note: these are going to be sorted in ascending order according to [SemVer](https://semver.org)
 - unpublished versions together with the reason for unpublishing
-- GitHub usernames of package maintainers, so that we'll be able to contact them if any action is needed for any of their packages
+- GitHub usernames of package maintainers, so that we’ll be able to contact them if any action is needed for any of their packages
 
 ## Package Sets
 
 As noted in the beginning, Package Sets are a first class citizen of this design.
 
-This repo will be the single source of truth for the package-sets - you can find an example [here](./v1/sets/20200911.dhall) - from
-which we'll generate various metadata files to be used by the package manager. __Further details are yet to be defined__.
+This repo will be the single source of truth for the package-sets — you can find an example [here](./v1/sets/20200911.dhall) — from
+which we’ll generate various metadata files to be used by the package manager. __Further details are yet to be defined__.
 
 ## Registry Trustees
 
-The "Registry Trustees" mentioned all across this document are a group of trusted
+The “Registry Trustees” mentioned all across this document are a group of trusted
 janitors that have write access to this repo.
 
-Their main task will be that of eventually publish - under very specific conditions - new versions/revisions of packages
+Their main task will be that of eventually publish — under very specific conditions — new versions/revisions of packages
 that will need adjustments.
 
 The reason why this is necessary (vs. only letting the authors publish new versions)
@@ -259,7 +259,7 @@ sometimes become unresponsive.
 
 And the reason why such maintenance needs to happen is because otherwise older versions of packages with
 bad bounds will still break things, even if newer versions have good bounds.
-Registries which don’t support revisions will instead support another kind of "mutation" called "yanking",
+Registries which don’t support revisions will instead support another kind of “mutation” called “yanking”,
 which allows a maintainer to tell a solver not to consider a particular version any more when constructing build plans.
 You can find [a great comparison between the two here](https://www.reddit.com/r/haskell/comments/gf7uw8/on_pvp_and_restrictive_bounds/fpv3dtg/)
 illustrating the reason why we support revisions here.
@@ -270,7 +270,7 @@ In general, trustees aim to empower and educate maintainers about the tools at t
 Being a part of this curation process is entirely optional and can be opted-out from.
 
 Trustees will try to contact the maintainer of a package for __4 weeks__ before publishing a new revision, except if the author
-has opted out from this process, in which case they won't do anything.
+has opted out from this process, in which case they won’t do anything.
 
 Trustees will __not__ change the source of a package, but only its metadata in the `Manifest` file.
 
@@ -283,7 +283,7 @@ __Note: there is no API defined yet for this operation.__
 
 ## Name squatting and reassigning names
 
-If you'd like to reuse a package name that has already been taken, you can open an issue in this repo, tagging the current owner (whose username you can find in the package's metadata file).
+If you’d like to reuse a package name that has already been taken, you can open an issue in this repo, tagging the current owner (whose username you can find in the package’s metadata file).
 
 If no agreement with the current owner has not been found after __4 weeks__, then Registry Trustees will address it.
 
@@ -297,11 +297,11 @@ I.e. the answer to the question:
 
 > How do I know which dependencies package X at version Y has?
 
-Without an index of all the package manifests you'd have to fetch the right tarball and look at its `purs.json`.
+Without an index of all the package manifests you’d have to fetch the right tarball and look at its `purs.json`.
 
-That might be a lot of work to do at scale, and there are usecases - e.g. for package-sets - where
+That might be a lot of work to do at scale, and there are usecases — e.g. for package-sets — where
 we need to lookup lots of manifests to build the dependency graph.
-So we'll store _all the package manifests_ in a separate location **yet to be defined** (it's really an
+So we’ll store _all the package manifests_ in a separate location **yet to be defined** (it’s really an
 implementation detail and will most likely be just another repository, inspired
 by [the same infrastructure for Rust](https://github.com/rust-lang/crates.io-index)).
 
@@ -309,11 +309,11 @@ by [the same infrastructure for Rust](https://github.com/rust-lang/crates.io-ind
 ## Storage Backends
 
 As noted above, this repository will hold all the metadata for packages, but the
-actual data - i.e. package tarballs - will be stored somewhere else, and we call
-each of these locations a "storage backend".
+actual data — i.e. package tarballs — will be stored somewhere else, and we call
+each of these locations a “storage backend”.
 
 Clients will need to be pointed at place they can store package tarballs from,
-so here we'll store a mapping between "name of the storage backend" to a function
+so here we’ll store a mapping between “name of the storage backend” to a function
 that given (1) a package name and (2) a package version then returns the _URL_
 where the tarball for that package version can be fetched.
 
@@ -323,8 +323,8 @@ We maintain the list of all the Storage Backends and the aforementioned mappings
 We also provide [a small utility](./v1/getBackendUrls.dhall) to demonstrate how
 to use the mappings.
 
-There can be more than one storage backend at any given time, and it's always possible
-to add more - in fact this can easily be done by:
+There can be more than one storage backend at any given time, and it’s always possible
+to add more — in fact this can easily be done by:
 - looking at all the [package metadata file](#Package-metadata) for every package, to get all the published versions
 - then downloading the tarballs from an existing backend, and uploading them to the new location
 - update the [mappings file](./v1/backends.dhall) with the new Backend.
@@ -332,7 +332,7 @@ to add more - in fact this can easily be done by:
 ### Downloading a package
 
 A package manager should download a specific version of a package in the following way:
-1. given "package name" and "version", the URL to fetch the tarball can be computed as described above
+1. given “package name” and “version”, the URL to fetch the tarball can be computed as described above
 2. fetch the tarball from one of the backends
 3. lookup the SHA256 for that tarball in the [package metadata file](#Package-metadata)
 4. verify that the SHA256 of the tarball downloaded in (2) matches the one from (3)
@@ -348,7 +348,7 @@ the storage backends (this repo).
 It is paramount that _we provide the smoothest migration path_ that we can achieve
 with the resources we have. This is because we feel the ecosystem is already close to
 maturity (at this point breaking changes happen very rarely in practice), and we
-don't want to unnecessarily mess up with everyone's workflow, especially if it's possible
+don’t want to unnecessarily mess up with everyone’s workflow, especially if it’s possible
 to avoid that with some planning.
 
 So a big chunk of our work is going towards ensuring that Bower packages are
@@ -359,24 +359,24 @@ gracefully grandfathered into the new system. This basically means that for each
   the new publishing flow
 
 What has happened already:
-- we're not relying on the Bower registry anymore for guaranteeing package uniqueness in the ecosystem.
+- we’re not relying on the Bower registry anymore for guaranteeing package uniqueness in the ecosystem.
   New packages are referenced [in this file](./new-packages.json), while all the packages from the Bower
   registry are referenced [here](./bower-packages.json)
-- we have drafted how the registry should behave, what's the API, how things will look like, etc (this document)
+- we have drafted how the registry should behave, what’s the API, how things will look like, etc (this document)
 - we set up the first [storage backend](#Storage-backends), maintained by the Packaging Team
 
 What is happening right now:
-- we're figuring out the last details of [the package `Manifest`](#The-Package-Manifest), which is the big blocker
+- we’re figuring out the last details of [the package `Manifest`](#The-Package-Manifest), which is the big blocker
   for proceeding further, since it will be baked into all the tarballs uploaded to the storage.
 - writing up the [CI code](#The-Registry-CI) to import the Bower packages as described above
 
 What will happen after this:
-- we'll start using this repo as the source of truth for publishing new package sets
-- we'll write the CI code to implement the [Registry API](#The-Registry-API), so that
+- we’ll start using this repo as the source of truth for publishing new package sets
+- we’ll write the CI code to implement the [Registry API](#The-Registry-API), so that
   authors will be able to publish new packages (albeit manually at first)
 - then implement automation to interact with the API in one package manager
   (most likely Spago)
-- then only after that we'll adjust package managers to use the tarballs from the Registry in a way that is compliant with this spec.
+- then only after that we’ll adjust package managers to use the tarballs from the Registry in a way that is compliant with this spec.
 
 
 ### The Registry CI
@@ -392,17 +392,17 @@ contains the various CI flows.
 
 ### Mirroring the Registry
 
-As noted above, "The Registry" is really just:
+As noted above, “The Registry” is really just:
 - this git repo containing metadata
 - plus various places that store the package tarballs
 
 Mirroring all of this to an alternative location would consist of:
-- mirroring the git repo - it's just another git remote and there are plenty of providers
+- mirroring the git repo — it’s just another git remote and there are plenty of providers
 - copying all the release artifacts to another hosting location. This can be done by looking at the package metadata and literally downloading all the packages listed there, then reuploading them to the new location
-- add another "tarball upload destination" to the [registry CI](#The-Registry-CI), to keep all the backends in sync
+- add another “tarball upload destination” to the [registry CI](#The-Registry-CI), to keep all the backends in sync
 - add another [Storage Backend](#Storage-backends) in this repo
 
-Additionally we could keep some kind of "RSS feed" in this repo with all the notifications from package uploads,
+Additionally we could keep some kind of “RSS feed” in this repo with all the notifications from package uploads,
 so other tools will be able to listen to these events and act on that information.
 
 
@@ -412,7 +412,7 @@ so other tools will be able to listen to these events and act on that informatio
 
 We have of course investigated other registries before rolling one.
 
-Our main requirement is to have "dependency flattening": there should be only one version
+Our main requirement is to have “dependency flattening” there should be only one version
 of every package installed for every build.
 
 All the general-purpose registries (i.e. not very tied to a specific language) that we looked at

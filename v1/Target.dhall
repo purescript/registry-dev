@@ -1,6 +1,6 @@
 {-
 
-A "compilation target".
+A “compilation target”.
 
 Every target can have its own dependencies, source globs, etc.
 By convention a package needs to have at least one target called `lib`.

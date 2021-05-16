@@ -2,7 +2,7 @@
 
 Function that returns the URL to fetch a package, for all the storage backends.
 
-Example command line invocation if you'd like to know the URL for the package
+Example command line invocation if you’d like to know the URL for the package
 `foo` at version `v1.2.3`:
 
 ```

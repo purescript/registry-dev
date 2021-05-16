@@ -1,9 +1,9 @@
 {-
 
-A "storage backend" is a function from "packageName + version" to a URL to fetch
+A “storage backend” is a function from “packageName + version” to a URL to fetch
 the tarball for that version.
 
-Here we store a mapping from "name of the backend" to their "URL function".
+Here we store a mapping from “name of the backend” to their “URL function”.
 
 See the `./getBackendUrls.dhall` file for a utility to get all the URLs of a
 package on our storage backends.
