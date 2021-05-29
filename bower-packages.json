@@ -931,7 +931,7 @@
   "purescript-plottable": "https://github.com/atomicits/purescript-plottable.git",
   "purescript-pointed-list": "https://github.com/paluh/purescript-pointed-list.git",
   "purescript-polyform": "https://github.com/purescript-polyform/polyform.git",
-  "purescript-polyform-validators": "https://github.com/purescript-polyform/batteries-core.git",
+  "purescript-polyform-validators": "https://github.com/lambdaterms/purescript-polyform-validators.git",
   "purescript-polymorphic-vectors": "https://github.com/artemisSystem/purescript-polymorphic-vectors.git",
   "purescript-polynomials": "https://github.com/hdgarrood/purescript-polynomials.git",
   "purescript-posix-types": "https://github.com/purescript-node/purescript-posix-types.git",

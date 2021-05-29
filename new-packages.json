@@ -133,5 +133,9 @@
   "purescript-options-extra": "https://github.com/PureFunctor/purescript-options-extra.git",
   "purescript-halogen-store": "https://github.com/thomashoneyman/purescript-halogen-store.git",
   "purescript-elasticsearch": "https://github.com/ConnorDillon/purescript-elasticsearch.git",
-  "purescript-read-generic": "https://github.com/Swordlash/purescript-read-generic.git"
+  "purescript-read-generic": "https://github.com/Swordlash/purescript-read-generic.git",
+  "purescript-batteries-core": "https://github.com/purescript-polyform/batteries-core.git",
+  "purescript-batteries-env": "https://github.com/purescript-polyform/batteries-env.git",
+  "purescript-batteries-json": "https://github.com/purescript-polyform/batteries-json.git",
+  "purescript-batteries-urlencoded": "https://github.com/purescript-polyform/batteries-urlencoded.git"
 }
