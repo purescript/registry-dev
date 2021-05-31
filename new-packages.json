@@ -133,5 +133,6 @@
   "purescript-options-extra": "https://github.com/PureFunctor/purescript-options-extra.git",
   "purescript-halogen-store": "https://github.com/thomashoneyman/purescript-halogen-store.git",
   "purescript-elasticsearch": "https://github.com/ConnorDillon/purescript-elasticsearch.git",
-  "purescript-read-generic": "https://github.com/Swordlash/purescript-read-generic.git"
+  "purescript-read-generic": "https://github.com/Swordlash/purescript-read-generic.git",
+  "purescript-typelevel-codec-json": "https://github.com/JordanMartinez/purescript-typelevel-codec-json.git"
 }
