@@ -15,7 +15,7 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.PACCHETTIBOTTI_TOKEN }}
       SPACES_KEY: ${{ secrets.SPACES_KEY }}
-      SPACES_SECRET: ${{ secrets.SPACES_SECRET }
+      SPACES_SECRET: ${{ secrets.SPACES_SECRET }}
     steps:
       - uses: actions/checkout@v2
         with:
