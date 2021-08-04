@@ -141,5 +141,6 @@
   "purescript-typelevel-codec-json": "https://github.com/JordanMartinez/purescript-typelevel-codec-json.git",
   "purescript-dexie": "https://github.com/mushishi78/purescript-dexie.git",
   "purescript-google-apps": "https://github.com/BBVA/purescript-google-apps.git",
-  "purescript-peregrine": "https://github.com/maxdeviant/peregrine.git"
+  "purescript-peregrine": "https://github.com/maxdeviant/peregrine.git",
+  "purescript-datetime-parsing": "https://github.com/flounders/purescript-datetime-parsing.git"
 }
