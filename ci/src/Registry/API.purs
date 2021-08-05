@@ -95,7 +95,7 @@ readOperation eventPath = do
       pure event
 
   pure $ case Json.jsonParser body of
-    Left err ->
+    Left _err ->
       NotJson
     Right json -> case Json.decodeJson json of
       Left err -> MalformedJson issueNumber (Json.printJsonDecodeError err)
@@ -106,7 +106,8 @@ readOperation eventPath = do
 
 runOperation :: Operation -> RegistryM Unit
 runOperation operation = case operation of
-  Addition { packageName, fromBower, newRef, newPackageLocation, addToPackageSet } -> do
+  -- TODO handle addToPackageSet
+  Addition { packageName, fromBower, newRef, newPackageLocation } -> do
     -- check that we don't have a metadata file for that package
     ifM (liftAff $ FS.exists $ metadataFile packageName)
       -- if the metadata file already exists then we steer this to be an Update instead
@@ -209,7 +210,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   liftAff $ FS.writeTextFile UTF8 metadataFilePath (Json.stringifyWithIndent 2 $ Json.encodeJson newMetadata)
   updatePackagesMetadata manifest.name newMetadata
   commitToTrunk packageName metadataFilePath >>= case _ of
-    Left err ->
+    Left _err ->
       comment "Package uploaded, but metadata not synced with the registry repository.\n\ncc @purescript/packaging"
     Right _ -> do
       comment "Package successfully uploaded to the registry! :tada: :rocket:"
@@ -249,7 +250,7 @@ runChecks metadata manifest = do
   let lookupPackage = flip Map.lookup packages <=< (hush <<< PackageName.parse)
   let pkgNotInRegistry name = case lookupPackage name of
         Nothing -> Just name
-        Just p -> Nothing
+        Just _p -> Nothing
   let pkgsNotInRegistry = Array.catMaybes $ map pkgNotInRegistry $ Object.keys libTarget.dependencies
   unless (Array.null pkgsNotInRegistry) do
     throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
