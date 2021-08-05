@@ -42,7 +42,7 @@ jobs:
           nix_path: nixpkgs=channel:nixos-20.09
 
       # Pro-tempore checks, should go away once new registry is in place
-      - run: ./verify-registry-unique.sh
+      - run: ./verify-registry.sh
 
       # Checks for the Registry Draft
       - name: "Check that all Dhall compiles, and examples correctly conform to a Manifest"
