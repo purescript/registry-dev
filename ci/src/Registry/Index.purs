@@ -2,6 +2,7 @@ module Registry.Index where
 
 import Registry.Prelude
 
+import Control.Alternative (guard)
 import Data.Argonaut (decodeJson, encodeJson, parseJson, stringify)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
@@ -16,11 +17,6 @@ import Partial.Unsafe (unsafeCrashWith)
 import Registry.PackageName (PackageName(..))
 import Registry.Schema (Manifest)
 
-{-
-TODO @thomashoneyman:
-- function to read the whole `registry-index` into a RegistryIndex
--}
-
 type RegistryIndex = Map PackageName (Map SemVer Manifest)
 
 -- This function must be run from the root of the registry index.
@@ -29,7 +25,17 @@ readRegistryIndex :: Aff RegistryIndex
 readRegistryIndex = do
   packagePaths <- Array.fromFoldable <$> expandGlobsCwd [ "*" ]
   let
-    packages = Array.mapMaybe (String.split (Pattern "/") >>> Array.last >>> map PackageName) packagePaths
+    -- Exclude certain files that will always be in the root of the registry index.
+    -- These files do not correspond to a package manifest file.
+    exclude :: Array String
+    exclude = [ "config.json" ]
+
+    goPath path = do
+      fileName <- Array.last $ String.split (Pattern "/") path
+      guard (not (Array.elem fileName exclude))
+      pure $ PackageName fileName
+
+    packages = Array.mapMaybe goPath packagePaths
 
   parsed <- for packages \package -> Tuple package <$> readPackage package
   let
