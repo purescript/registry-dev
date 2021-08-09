@@ -27,7 +27,6 @@ type Target =
   , sources :: Array String
   }
 
-
 type RepoData d =
   { subdir :: Maybe String
   | d
@@ -38,7 +37,7 @@ type GitHubData = RepoData
   , repo :: String
   )
 
-type GitData = RepoData ( url :: String )
+type GitData = RepoData (url :: String)
 
 data Repo
   = Git GitData
@@ -54,27 +53,29 @@ instance showRepo :: Show Repo where
 -- | We encode it this way so that json-to-dhall can read it
 instance repoEncodeJson :: Json.EncodeJson Repo where
   encodeJson = case _ of
-    Git { subdir, url }
-      -> "url" := url
-      ~> "subdir" :=? subdir
-      ~>? jsonEmptyObject
-    GitHub { repo, owner, subdir }
-      -> "githubRepo" := repo
-      ~> "githubOwner" := owner
-      ~> "subdir" :=? subdir
-      ~>? jsonEmptyObject
+    Git { subdir, url } ->
+      "url" := url
+        ~> "subdir" :=? subdir
+        ~>? jsonEmptyObject
+    GitHub { repo, owner, subdir } ->
+      "githubRepo" := repo
+        ~> "githubOwner" := owner
+        ~> "subdir" :=? subdir
+        ~>? jsonEmptyObject
 
 instance repoDecodeJson :: Json.DecodeJson Repo where
   decodeJson json = do
     obj <- Json.decodeJson json
     subdir <- obj .:? "subdir" .!= mempty
-    let parseGitHub = do
-          owner <- obj .: "githubOwner"
-          repo <- obj .: "githubRepo"
-          pure $ GitHub { owner, repo, subdir }
-    let parseGit = do
-          url <- obj .: "url"
-          pure $ Git { url, subdir }
+    let
+      parseGitHub = do
+        owner <- obj .: "githubOwner"
+        repo <- obj .: "githubRepo"
+        pure $ GitHub { owner, repo, subdir }
+    let
+      parseGit = do
+        url <- obj .: "url"
+        pure $ Git { url, subdir }
     parseGitHub <|> parseGit
 
 -- | PureScript encoding of ../v1/Operation.dhall
@@ -101,20 +102,23 @@ instance operationDecodeJson :: Json.DecodeJson Operation where
   decodeJson json = do
     o <- Json.decodeJson json
     packageName <- o .: "packageName"
-    let parseAddition = do
-          addToPackageSet <- o .: "addToPackageSet"
-          fromBower <- o .: "fromBower"
-          newPackageLocation <- o .: "newPackageLocation"
-          newRef <- o .: "newRef"
-          pure $ Addition { newRef, packageName, addToPackageSet, fromBower, newPackageLocation }
-    let parseUpdate = do
-          fromBower <- o .: "fromBower"
-          updateRef <- o .: "updateRef"
-          pure $ Update { packageName, fromBower, updateRef }
-    let parseUnpublish = do
-          unpublishVersion <- o .: "unpublishVersion"
-          unpublishReason <- o .: "unpublishReason"
-          pure $ Unpublish { packageName, unpublishVersion, unpublishReason }
+    let
+      parseAddition = do
+        addToPackageSet <- o .: "addToPackageSet"
+        fromBower <- o .: "fromBower"
+        newPackageLocation <- o .: "newPackageLocation"
+        newRef <- o .: "newRef"
+        pure $ Addition { newRef, packageName, addToPackageSet, fromBower, newPackageLocation }
+    let
+      parseUpdate = do
+        fromBower <- o .: "fromBower"
+        updateRef <- o .: "updateRef"
+        pure $ Update { packageName, fromBower, updateRef }
+    let
+      parseUnpublish = do
+        unpublishVersion <- o .: "unpublishVersion"
+        unpublishReason <- o .: "unpublishReason"
+        pure $ Unpublish { packageName, unpublishVersion, unpublishReason }
     parseAddition <|> parseUpdate <|> parseUnpublish
 
 type AdditionData =
@@ -123,7 +127,7 @@ type AdditionData =
   , newPackageLocation :: Repo
   , newRef :: String
   , packageName :: PackageName
-}
+  }
 
 type UpdateData =
   { packageName :: PackageName
