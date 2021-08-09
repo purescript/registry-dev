@@ -1,11 +1,11 @@
-module Foreign.S3 (
-  connect,
-  listObjects,
-  putObject,
-  S3,
-  Space,
-  ACL(..)
-) where
+module Foreign.S3
+  ( connect
+  , listObjects
+  , putObject
+  , S3
+  , Space
+  , ACL(..)
+  ) where
 
 import Registry.Prelude
 
@@ -13,7 +13,6 @@ import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.Function.Uncurried (Fn1, Fn2, runFn1, runFn2)
 import Data.JSDate (JSDate)
-
 
 foreign import data S3 :: Type
 
@@ -24,7 +23,6 @@ connect :: String -> String -> Aff Space
 connect region bucket = do
   conn <- liftEffect $ runFn1 connectImpl region
   pure { bucket, conn }
-
 
 -- Add more params as needed:
 -- https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html#listObjectsV2-property
@@ -51,7 +49,6 @@ listObjects space params = do
   (jsObjs :: Array JSListResponse) <- Promise.toAffE (runFn2 listObjectsImpl space.conn jsParams)
   for jsObjs \obj -> pure { key: obj."Key", size: obj."Size", eTag: obj."ETag" } -- TODO: pull more props if needed
 
-
 -- Add more params as needed:
 -- https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html#putObject-property
 type JSPutParams =
@@ -64,15 +61,16 @@ type JSPutParams =
 type JSPutResponse = { "ETag" :: String }
 
 data ACL = Private | PublicRead
-type PutParams = { key :: String,  body :: Buffer, acl :: ACL }
+type PutParams = { key :: String, body :: Buffer, acl :: ACL }
 type PutResponse = { eTag :: String }
 
 foreign import putObjectImpl :: Fn2 S3 JSPutParams (Effect (Promise JSPutResponse))
 putObject :: Space -> PutParams -> Aff PutResponse
 putObject space params = do
-  let jsACL = case params.acl of
-        Private -> "private"
-        PublicRead -> "public-read"
+  let
+    jsACL = case params.acl of
+      Private -> "private"
+      PublicRead -> "public-read"
   let jsParams = { "Bucket": space.bucket, "Key": params.key, "Body": params.body, "ACL": jsACL }
   res <- Promise.toAffE (runFn2 putObjectImpl space.conn jsParams)
   pure { eTag: res."ETag" }

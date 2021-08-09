@@ -215,10 +215,9 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
     Right _ -> do
       comment "Package successfully uploaded to the registry! :tada: :rocket:"
   closeIssue
-  -- Optional steps that we'll try and that won't fail the pipeline on error:
-  -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
-  -- TODO: upload docs to pursuit (see #154)
-
+-- Optional steps that we'll try and that won't fail the pipeline on error:
+-- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
+-- TODO: upload docs to pursuit (see #154)
 
 runChecks :: Metadata -> Manifest -> RegistryM Unit
 runChecks metadata manifest = do
@@ -232,7 +231,7 @@ runChecks metadata manifest = do
     Just a -> pure a
 
   log "Checking that `lib` target only includes `src`"
-  when (libTarget.sources /= ["src/**/*.purs"]) do
+  when (libTarget.sources /= [ "src/**/*.purs" ]) do
     throwWithComment "The `lib` target only allows the following `sources`: `src/**/*.purs`"
 
   log "Check that version is unique"
@@ -248,13 +247,13 @@ runChecks metadata manifest = do
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
   let lookupPackage = flip Map.lookup packages <=< (hush <<< PackageName.parse)
-  let pkgNotInRegistry name = case lookupPackage name of
-        Nothing -> Just name
-        Just _p -> Nothing
+  let
+    pkgNotInRegistry name = case lookupPackage name of
+      Nothing -> Just name
+      Just _p -> Nothing
   let pkgsNotInRegistry = Array.catMaybes $ map pkgNotInRegistry $ Object.keys libTarget.dependencies
   unless (Array.null pkgsNotInRegistry) do
     throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
-
 
 fromJson :: forall a. Json.DecodeJson a => String -> Either String a
 fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)
@@ -272,7 +271,7 @@ wget :: String -> String -> RegistryM Unit
 wget url path = do
   let cmd = "wget"
   let stdin = Nothing
-  let args = ["-O", path, url]
+  let args = [ "-O", path, url ]
   result <- liftAff $ Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
   case result.exit of
     NodeProcess.Normally 0 -> pure unit
@@ -289,18 +288,18 @@ mkEnv packagesMetadata issue =
 
 pushToMaster :: PackageName -> FilePath -> Aff (Either String Unit)
 pushToMaster packageName path = runExceptT do
-  runGit ["config", "user.name", "PacchettiBotti"]
-  runGit ["config", "user.email", "<pacchettibotti@ferrai.io>"]
-  runGit ["add", path]
-  runGit ["commit", "-m", "Update metadata for package " <> PackageName.print packageName ]
-  runGit ["push", "origin", "master"]
+  runGit [ "config", "user.name", "PacchettiBotti" ]
+  runGit [ "config", "user.email", "<pacchettibotti@ferrai.io>" ]
+  runGit [ "add", path ]
+  runGit [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ]
+  runGit [ "push", "origin", "master" ]
 
   where
-    runGit args = ExceptT do
-      result <- Process.spawn { cmd: "git", args, stdin: Nothing } NodeProcess.defaultSpawnOptions
-      case result.exit of
-        NodeProcess.Normally 0 -> do
-          info result.stdout
-          info result.stderr
-          pure $ Right unit
-        _ -> pure $ Left result.stderr
+  runGit args = ExceptT do
+    result <- Process.spawn { cmd: "git", args, stdin: Nothing } NodeProcess.defaultSpawnOptions
+    case result.exit of
+      NodeProcess.Normally 0 -> do
+        info result.stdout
+        info result.stderr
+        pure $ Right unit
+      _ -> pure $ Left result.stderr
