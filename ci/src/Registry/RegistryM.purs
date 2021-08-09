@@ -47,7 +47,6 @@ comment body = do
 closeIssue :: RegistryM Unit
 closeIssue = asks _.closeIssue >>= liftAff
 
-
 -- | Post an error to the user's issue and then throw an exception
 throwWithComment :: forall a. String -> RegistryM a
 throwWithComment body = comment body *> Aff.throwError (Aff.error body)
@@ -55,8 +54,8 @@ throwWithComment body = comment body *> Aff.throwError (Aff.error body)
 -- | Commit a change to the default branch of the registry repository
 commitToTrunk :: PackageName -> FilePath -> RegistryM (Either String Unit)
 commitToTrunk packageName path = do
- f <- asks _.commitToTrunk
- liftAff $ f packageName path
+  f <- asks _.commitToTrunk
+  liftAff $ f packageName path
 
 -- | Upload a package to the backend storage provider
 uploadPackage :: Upload.PackageInfo -> FilePath -> RegistryM Unit
