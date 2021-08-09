@@ -6,10 +6,12 @@ import Data.Argonaut (decodeJson, encodeJson, parseJson, stringify)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
+import Data.Map as Map
 import Data.String as String
 import Data.String.Pattern (Pattern(..))
 import Foreign.SemVer (SemVer)
 import Node.FS.Aff (readTextFile, writeTextFile)
+import Node.Glob.Basic (expandGlobsCwd)
 import Partial.Unsafe (unsafeCrashWith)
 import Registry.PackageName (PackageName(..))
 import Registry.Schema (Manifest)
@@ -20,6 +22,29 @@ TODO @thomashoneyman:
 -}
 
 type RegistryIndex = Map PackageName (Map SemVer Manifest)
+
+-- This function must be run from the root of the registry index.
+-- NOTE: Right now, this assumes that manifest files will parse
+readRegistryIndex :: Aff RegistryIndex
+readRegistryIndex = do
+  packagePaths <- Array.fromFoldable <$> expandGlobsCwd [ "*" ]
+  let
+    packages = Array.mapMaybe (String.split (Pattern "/") >>> Array.last >>> map PackageName) packagePaths
+
+  parsed <- for packages \package -> Tuple package <$> readPackage package
+  let
+    parsedPackages :: Array (Tuple PackageName (NonEmptyArray Manifest))
+    parsedPackages = Array.mapMaybe (\(Tuple package mbManifests) -> Tuple package <$> mbManifests) parsed
+
+    goManifest :: Manifest -> Tuple SemVer Manifest
+    goManifest manifest@{ version } = Tuple version manifest
+
+    goPackage :: NonEmptyArray Manifest -> Map SemVer Manifest
+    goPackage = map goManifest >>> Map.fromFoldable
+
+  pure
+    $ Map.fromFoldable
+    $ map (map goPackage) parsedPackages
 
 {-
 - function from PackageName -> FilePath
