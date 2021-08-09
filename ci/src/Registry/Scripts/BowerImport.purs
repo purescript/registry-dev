@@ -53,8 +53,7 @@ main = Aff.launchAff_ do
   log "Starting import from Bower.."
   registry <- downloadBowerRegistry
   Debug.traceM registry
-  -- TODO: upload packages
-
+-- TODO: upload packages
 
 -- | We go through all the legacy packages, and:
 -- | - collect all the releases of each package
@@ -96,8 +95,9 @@ downloadBowerRegistry = do
       -- the manifests that we're missing
       bowerRegistry <- forWithIndex releaseIndex \name { address, releases } -> do
         -- some releases should be skipped because they have issues, see `toSkip`
-        let (workingReleases :: Array GitHub.Tag) = Set.toUnfoldable $
-              Set.filter (\release -> not $ Set.member (Tuple name release.name) toSkip) releases
+        let
+          (workingReleases :: Array GitHub.Tag) = Set.toUnfoldable $
+            Set.filter (\release -> not $ Set.member (Tuple name release.name) toSkip) releases
         Map.fromFoldable <$> for workingReleases \release -> do
           manifest <- withCache ("manifest__" <> name <> "__" <> release.name) Nothing do
             -- we download the Bower file or use the cached one if available.
@@ -120,15 +120,19 @@ downloadBowerRegistry = do
               Just somePkgs ->
                 throw $ Array.fold
                   [ "Dependencies for the package "
-                  , show name, "@", release.name
+                  , show name
+                  , "@"
+                  , release.name
                   , " are not all contained in the registry, skipping."
                   , "\nDeps are:\n"
                   , show somePkgs
                   ]
               Nothing ->
-                let eitherManifest = toManifest bowerfile release.name
-                      $ GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
-                in case eitherManifest of
+                let
+                  eitherManifest = toManifest bowerfile release.name
+                    $ GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
+                in
+                  case eitherManifest of
                     Right manifest -> pure manifest
                     Left err -> throw $ "Could not make a manifest for Bowerfile: " <> show bowerfile <> "\n\nError: " <> err
 
@@ -164,11 +168,11 @@ toManifest (Bower.PackageMeta bowerfile) ref address = do
   name <- lmap Parser.printParserError $ PackageName.parse $ bowerfile.name
   -- We fix the license for some old package versions
   licenseArray <- traverse SPDX.parse case bowerfile.license of
-    ["Apache 2.0"] -> ["Apache-2.0"]
-    ["BSD"] -> ["BSD-3-Clause"]
+    [ "Apache 2.0" ] -> [ "Apache-2.0" ]
+    [ "BSD" ] -> [ "BSD-3-Clause" ]
     other -> other
-  license <- if Array.null licenseArray
-    then Left "License missing"
+  license <-
+    if Array.null licenseArray then Left "License missing"
     else Right $ SPDX.joinWith SPDX.Or licenseArray
   version <- note ("Could not parse version: " <> ref) $ SemVer.parseSemVer ref
   deps <- traverse toDepPair $ List.fromFoldable $ un Dependencies bowerfile.dependencies
@@ -198,16 +202,16 @@ selfContainedDependencies packageIndex (Bower.PackageMeta { dependencies, devDep
       Nothing -> Just $ cleanPackageName packageName
       Just _ -> Nothing
     outsideDeps = Array.catMaybes (map isInRegistry allDeps)
-  in if Array.null outsideDeps
-     then Nothing
-     else Just outsideDeps
+  in
+    if Array.null outsideDeps then Nothing
+    else Just outsideDeps
 
 -- | Optionally-expirable cache: when passing a Duration then we'll consider
 -- | the object expired if its lifetime is past the duration.
 -- | Otherwise, this will behave like a write-only cache.
 withCache
   :: forall a
-  . Json.DecodeJson a
+   . Json.DecodeJson a
   => Json.EncodeJson a
   => String
   -> Maybe Hours
@@ -248,8 +252,8 @@ withCache path maybeDuration action = do
 
 cleanPackageName :: String -> String
 cleanPackageName raw = stripPureScriptPrefix $ case String.split (String.Pattern "/") raw of
-  [p] -> p
-  [_owner, repo] -> repo -- e.g. in abc-parser@1.1.2
+  [ p ] -> p
+  [ _owner, repo ] -> repo -- e.g. in abc-parser@1.1.2
   _ -> unsafeCrashWith $ "Couldn't parse package name " <> show raw
 
 throw :: forall m a. MonadThrow Aff.Error m => String -> m a
@@ -281,10 +285,10 @@ toSkip = unsafePerformEffect $ do
       <> f o.dependenciesOutsideOfRegistry
       <> f o.invalidRelease
   where
-    f :: Foreign.Object (Array String) -> Array (Tuple String String)
-    f o =
-      let
-        unpack :: Tuple String (Array String) -> Array (Tuple String String)
-        unpack (packageName /\ versions) = map (\version -> packageName /\ version) versions
-      in
-        Array.foldMap unpack $ Foreign.toUnfoldable o
+  f :: Foreign.Object (Array String) -> Array (Tuple String String)
+  f o =
+    let
+      unpack :: Tuple String (Array String) -> Array (Tuple String String)
+      unpack (packageName /\ versions) = map (\version -> packageName /\ version) versions
+    in
+      Array.foldMap unpack $ Foreign.toUnfoldable o
