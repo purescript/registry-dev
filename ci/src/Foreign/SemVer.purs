@@ -15,6 +15,7 @@ module Foreign.SemVer
 import Registry.Prelude
 
 import Data.Argonaut (class DecodeJson, class EncodeJson, JsonDecodeError(..), decodeJson, encodeJson)
+import Data.String as String
 import Partial.Unsafe (unsafeCrashWith)
 
 type SemVerJS =
@@ -90,7 +91,16 @@ instance encodeJsonRange :: EncodeJson Range where
 foreign import parseRangeImpl :: String -> Nullable String
 parseRange :: String -> Maybe Range
 parseRange original = do
-  converted <- toMaybe $ parseRangeImpl original
+  converted <- case toMaybe (parseRangeImpl original) of
+    Just c -> pure c
+    Nothing ->
+      -- when parsing a version from a Bowerfile it could be that it's specified
+      -- in the https://giturl#version, or owner/repo#version, so we try to parse that here.
+      case String.split (String.Pattern "#") original of
+        [ _url, version ] -> case toMaybe (parseRangeImpl version) of
+          Just c -> pure c
+          _ -> Nothing
+        _ -> Nothing
   pure $ Range { converted, original }
 
 printRange :: Range -> String

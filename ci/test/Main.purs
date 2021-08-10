@@ -82,9 +82,9 @@ goodSPDXLicense = do
 badSPDXLicense :: Spec
 badSPDXLicense = do
   let
-    invalid str suggestion = "Invalid SPDX identifier: " <> str <> "." <> case suggestion of
+    invalid str suggestion = "Invalid SPDX identifier: " <> str <> case suggestion of
       Nothing -> ""
-      Just s -> " Did you mean " <> s <> "?"
+      Just s -> "\nDid you mean " <> s <> "?"
     parseLicense str suggestion = Spec.it str do
       (SPDX.print <$> SPDX.parse str) `Assert.shouldSatisfy` case _ of
         Right _ -> false
