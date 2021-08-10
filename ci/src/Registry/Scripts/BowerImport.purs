@@ -20,14 +20,12 @@ import Debug as Debug
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Effect.Now (nowDateTime) as Time
-import Effect.Unsafe (unsafePerformEffect)
 import Foreign.GitHub as GitHub
 import Foreign.Object as Foreign
 import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
-import Node.FS.Sync as FSE
 import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 import Registry.Index (RegistryIndex)
 import Registry.PackageName as PackageName
@@ -94,7 +92,8 @@ downloadBowerRegistry = do
       -- once we have the index we can go through it and write to file all
       -- the manifests that we're missing
       bowerRegistry <- forWithIndex releaseIndex \name { address, releases } -> do
-        -- some releases should be skipped because they have issues, see `toSkip`
+        -- some releases should be skipped because they have issues
+        toSkip <- readPackagesToSkip
         let
           (workingReleases :: Array GitHub.Tag) = Set.toUnfoldable $
             Set.filter (\release -> not $ Set.member (Tuple name release.name) toSkip) releases
@@ -269,9 +268,9 @@ type ToSkip =
   , invalidRelease :: Foreign.Object (Array String)
   }
 
-toSkip :: Set (Tuple String String)
-toSkip = unsafePerformEffect $ do
-  exclusionsStr <- FSE.readTextFile UTF8 "./bower-exclusions.json"
+readPackagesToSkip :: Aff (Set (Tuple String String))
+readPackagesToSkip = do
+  exclusionsStr <- FS.readTextFile UTF8 "./bower-exclusions.json"
 
   let parseJson str = Json.jsonParser str >>= (Json.decodeJson >>> lmap Json.printJsonDecodeError)
   case parseJson exclusionsStr of
