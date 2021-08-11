@@ -5,16 +5,14 @@ import Registry.Prelude
 import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
 import Control.Monad.Error.Class (class MonadThrow)
-import Data.Argonaut (class DecodeJson, class EncodeJson, Json, JsonDecodeError, decodeJson, encodeJson, fromString, parseJson, printJsonDecodeError)
+import Data.Argonaut (JsonDecodeError, decodeJson, parseJson, printJsonDecodeError)
 import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Array (fold)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
-import Data.Bitraversable (bitraverse)
 import Data.DateTime (adjust) as Time
-import Data.Foldable (class Foldable)
 import Data.JSDate as JSDate
 import Data.List as List
 import Data.Map as Map
@@ -28,7 +26,6 @@ import Effect.Exception as Exception
 import Effect.Now (nowDateTime) as Time
 import Foreign.GitHub as GitHub
 import Foreign.Object as Foreign
-import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
