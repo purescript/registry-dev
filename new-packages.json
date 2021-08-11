@@ -145,5 +145,6 @@
   "purescript-datetime-parsing": "https://github.com/flounders/purescript-datetime-parsing.git",
   "purescript-run-external-state": "https://github.com/Mateiadrielrafael/purescript-run-external-state.git",
   "purescript-ask": "https://github.com/Mateiadrielrafael/purescript-ask.git",
-  "purescript-owoify": "https://github.com/deadshot465/purescript-owoify.git"
+  "purescript-owoify": "https://github.com/deadshot465/purescript-owoify.git",
+  "purescript-typelevel-rows": "https://github.com/jordanmartinez/purescript-typelevel-rows.git"
 }
