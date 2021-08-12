@@ -15,8 +15,27 @@ import Registry.PackageName as PackageName
 -- | arrays of tuples.
 newtype PackageMap a = PackageMap (Map PackageName a)
 
+derive instance Functor PackageMap
 derive instance Newtype (PackageMap a) _
 derive newtype instance Foldable PackageMap
+
+empty :: forall a. PackageMap a
+empty = PackageMap Map.empty
+
+singleton :: forall a. PackageName -> a -> PackageMap a
+singleton k v = PackageMap $ Map.singleton k v
+
+insert :: forall a. PackageName -> a -> PackageMap a -> PackageMap a
+insert k v (PackageMap m) = PackageMap $ Map.insert k v m
+
+insertWith :: forall a. (a -> a -> a) -> PackageName -> a -> PackageMap a -> PackageMap a
+insertWith f k v (PackageMap m) = PackageMap $ Map.insertWith f k v m
+
+union :: forall a. PackageMap a -> PackageMap a -> PackageMap a
+union (PackageMap a) (PackageMap b) = PackageMap (Map.union a b)
+
+lookup :: forall a. PackageName -> PackageMap a -> Maybe a
+lookup k (PackageMap m) = Map.lookup k m
 
 instance EncodeJson a => EncodeJson (PackageMap a) where
   encodeJson (PackageMap m) = do

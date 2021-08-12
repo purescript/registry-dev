@@ -19,6 +19,7 @@
   , "foldable-traversable"
   , "foreign-object"
   , "functions"
+  , "heterogeneous"
   , "identity"
   , "js-date"
   , "lists"
