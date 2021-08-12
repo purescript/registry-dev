@@ -20,6 +20,16 @@ data ImportError
   | NoManifests
   | ManifestError ManifestError
 
+printImportErrorKey :: ImportError -> String
+printImportErrorKey = case _ of
+  NotOnGitHub -> "notOnGitHub"
+  MissingBowerfile -> "missingBowerfile"
+  MalformedBowerJson _ -> "malformedBowerJson"
+  InvalidDependencyNames _ -> "invalidDependencyNames"
+  NonRegistryDependencies _ -> "nonRegistryDependencies"
+  NoManifests -> "noManifests"
+  ManifestError err -> "manifestError." <> printManifestErrorKey err
+
 printImportError :: ImportError -> String
 printImportError = case _ of
   NotOnGitHub ->
@@ -53,6 +63,15 @@ data ManifestError
   | BadLicense String
   | BadVersion String
   | BadDependencyVersions (NonEmptyArray { dependency :: PackageName, failedBounds :: String })
+
+printManifestErrorKey :: ManifestError -> String
+printManifestErrorKey = case _ of
+  MissingName -> "missingName"
+  MismatchedName _ -> "mismatchedName"
+  MissingLicense -> "missingLicense"
+  BadLicense _ -> "badLicense"
+  BadVersion _ -> "badVersion"
+  BadDependencyVersions _ -> "badDependencyVersions"
 
 printManifestError :: ManifestError -> String
 printManifestError = case _ of

@@ -7,7 +7,7 @@ import Affjax.ResponseFormat as ResponseFormat
 import Control.Monad.Error.Class (throwError)
 import Control.Monad.Except (ExceptT, lift, mapExceptT, runExceptT)
 import Control.Monad.State (modify, runStateT)
-import Data.Argonaut (decodeJson, parseJson, printJsonDecodeError)
+import Data.Argonaut (decodeJson, encodeJson, parseJson, printJsonDecodeError)
 import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Array (fold, foldMap)
@@ -15,12 +15,13 @@ import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
 import Data.DateTime (adjust) as Time
+import Data.FoldableWithIndex (foldlWithIndex)
 import Data.JSDate as JSDate
 import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration (Hours(..))
-import Debug as Debug
+import Debug (traceM)
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Effect.Now (nowDateTime) as Time
@@ -38,7 +39,7 @@ import Registry.PackageMap as PackageMap
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
-import Registry.Scripts.BowerImport.Error (ImportError(..), ManifestError(..))
+import Registry.Scripts.BowerImport.Error (ImportError(..), ManifestError(..), printImportErrorKey)
 import Type.Proxy (Proxy(..))
 import Web.Bower.PackageMeta (Dependencies(..))
 import Web.Bower.PackageMeta as Bower
@@ -53,9 +54,8 @@ main :: Effect Unit
 main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
   { manifests, failures } <- downloadLegacyRegistry
-  Debug.traceM manifests
-  Debug.traceM failures
--- TODO: upload packages
+  FS.writeTextFile UTF8 "./trh-errors.json" $ stringifyWithIndent 2 $ encodeJson $ toExclusions failures
+  FS.writeTextFile UTF8 "./trh-manifest.json" $ stringifyWithIndent 2 $ encodeJson manifests
 
 -- | A data structure representing package names that have successfully been
 -- | imported from the old registries and can be added to the new registry.
@@ -72,7 +72,22 @@ type PackageFailures = PackageMap (Map (Maybe SemVer) ImportError)
 downloadLegacyRegistry :: Aff { manifests :: PackageManifests, failures :: PackageFailures }
 downloadLegacyRegistry = do
   allPackages <- readRegistryPackages
-  Tuple failures manifests <- convertPackages allPackages
+  let
+    -- TODO: Fix this up
+    m = Array.mapMaybe
+      ( \(Tuple k v) -> case PackageName.parse k of
+          Left _ -> Nothing
+          Right k' -> case GitHub.parseRepo v of
+            Left _ ->
+              Nothing
+            Right { owner, repo } ->
+              Just (Tuple k' $ GitHub { owner, repo, subdir: Nothing })
+      )
+      (Object.toUnfoldable allPackages)
+
+    m' = PackageMap (Map.fromFoldable m)
+
+  Tuple failures manifests <- convertPackages m'
   pure { manifests, failures }
 
 -- | Convert legacy packages to package manifests, if possible, collecting
@@ -122,18 +137,18 @@ type PackageReleases =
 -- | Find all released tags for the package.
 getReleases :: Step Repo PackageReleases
 getReleases = Step \package repo -> do
-  withCache "releaseIndex" (Just $ Hours 1.0) do
-    let name = PackageName.print package
-    address <- case repo of
-      Git _ ->
-        throwError NotOnGitHub
-      GitHub address ->
-        pure $ Record.delete (Proxy :: Proxy "subdir") address
-    let repoCache = fold [ "releases__", address.owner, "__", address.repo ]
-    releases <- withCache repoCache (Just $ Hours 24.0) do
-      log $ "Fetching releases for package " <> name
-      Set.fromFoldable <$> lift (GitHub.getReleases address)
-    pure { releases, address }
+  -- withCache "releaseIndex" (Just $ Hours 1.0) do
+  let name = PackageName.print package
+  address <- case repo of
+    Git _ ->
+      throwError NotOnGitHub
+    GitHub address ->
+      pure $ Record.delete (Proxy :: Proxy "subdir") address
+  let repoCache = fold [ "releases__", address.owner, "__", address.repo ]
+  releases <- withCache repoCache (Just $ Hours 24.0) do
+    log $ "Fetching releases for package " <> name
+    Set.fromFoldable <$> lift (GitHub.getReleases address)
+  pure { releases, address }
 
 type PackageBowerfiles =
   { address :: GitHub.Address
@@ -150,7 +165,7 @@ type Bowerfile =
 
 -- | Find the bower.json files associated with the package's relaesed tags.
 fetchBowerfiles :: Step PackageReleases PackageBowerfiles
-fetchBowerfiles = Step \_ { address, releases } -> do
+fetchBowerfiles = Step \package { address, releases } -> do
   let
     mkUrl { name } =
       "https://raw.githubusercontent.com/"
@@ -161,9 +176,10 @@ fetchBowerfiles = Step \_ { address, releases } -> do
         <> name
         <> "/bower.json"
 
-  -- TODO: Exclude releases that shouldn't be included
-  -- TODO: Use cache
-  bowerfiles <- for (Set.toUnfoldable releases :: Array _) \release -> do
+    mkCache release =
+      "bowerfile__" <> PackageName.print package <> "__" <> release.name
+
+  bowerfiles <- for (Set.toUnfoldable releases :: Array _) \release -> do --  withCache (mkCache release) Nothing do
     let url = mkUrl release
     Bower.PackageMeta bowerfile <- lift (Http.get ResponseFormat.json url) >>= case _ of
       Left _ -> do
@@ -187,7 +203,7 @@ fetchBowerfiles = Step \_ { address, releases } -> do
       -- Example:
       -- https://github.com/newlandsvalley/purescript-abc-parser/blob/1.1.2/bower.json
       normalizePackageName raw = case String.split (String.Pattern "/") raw of
-        [ package ] -> Right package
+        [ packageName ] -> Right packageName
         [ _owner, repo ] -> Right repo
         _ -> Left $ "Couldn't parse package name " <> show raw
 
@@ -195,7 +211,7 @@ fetchBowerfiles = Step \_ { address, releases } -> do
         Left _ ->
           Left packageName
         Right name ->
-          lmap (const packageName) $ PackageName.parse name
+          lmap (const packageName) $ PackageName.parse $ stripPureScriptPrefix name
 
       parsePairs = map \{ packageName, versionRange } -> case parseName packageName of
         Left e -> Left e
@@ -263,12 +279,12 @@ convertToManifest = Step \package { address, bowerfiles } -> do
 toManifest :: PackageName -> Repo -> GitHub.Tag -> Bowerfile -> ExceptT ManifestError Aff Manifest
 toManifest package repository release bowerfile = do
   name <- case PackageName.parse bowerfile.name of
-    Left _ ->
-      throwError $ MismatchedName { expected: package, received: bowerfile.name }
-    Right name | name /= package ->
-      throwError $ MismatchedName { expected: package, received: bowerfile.name }
-    Right name ->
+    Right name | name == package ->
       pure name
+    Right _ -> do
+      throwError $ MismatchedName { expected: package, received: bowerfile.name }
+    Left _ -> do
+      throwError $ MismatchedName { expected: package, received: bowerfile.name }
 
   license <- do
     let
@@ -361,16 +377,36 @@ withCache path maybeDuration action = do
   lift $ unlessM (FS.exists cacheFolder) (FS.mkdir cacheFolder)
   cacheHit >>= case _ of
     true -> lift do
-      log $ "Using cache for " <> show path
       strResult <- FS.readTextFile UTF8 objectPath
       case (fromJson strResult) of
         Right res -> pure res
         -- Here we just blindly assume that we are the only ones to serialize here
         Left err -> Aff.throwError $ Exception.error err
     false -> do
+      log $ "No cache hit for " <> show path
       result <- action
       lift $ FS.writeTextFile UTF8 objectPath (dump result)
       pure result
+
+toExclusions
+  :: PackageFailures
+  -> Object (Object (Array (Maybe SemVer)))
+toExclusions (PackageMap m) = do
+  foldlWithIndex foldFn Object.empty m
+  where
+  foldFn package exclusionMap errorMap = do
+    let new = Object.fromFoldable $ (Map.toUnfoldable :: _ -> Array _) $ reassociate package errorMap
+    Object.unionWith (Object.unionWith append) new exclusionMap
+
+  reassociate
+    :: PackageName
+    -> Map (Maybe SemVer) ImportError
+    -> Map String (Object (Array (Maybe SemVer)))
+  reassociate package semverMap = foldlWithIndex foldFn' Map.empty semverMap
+    where
+    foldFn' mbSemVer exclusionMap importError = do
+      let error = printImportErrorKey importError
+      Map.insertWith (Object.unionWith append) error (Object.singleton (PackageName.print package) [ mbSemVer ]) exclusionMap
 
 type ToSkip =
   { missingLicense :: PackageMap (Array String)
@@ -406,19 +442,22 @@ readPackagesToSkip = do
       Array.foldMap unpack $ Map.toUnfoldable m
 
 -- | Get the list of packages in the Bower and PureScript registries.
-readRegistryPackages :: Aff (PackageMap Repo)
+readRegistryPackages :: Aff (Object String)
 readRegistryPackages = do
   bowerRegistry <- readRegistry "bower-packages.json"
   purescriptRegistry <- readRegistry "new-packages.json"
-  pure $ PackageMap.union bowerRegistry purescriptRegistry
+  -- pure $ Object.union bowerRegistry purescriptRegistry
+  case Object.lookup "purescript-prelude" bowerRegistry of
+    Nothing -> unsafeCrashWith "oh no"
+    Just p -> pure $ Object.singleton "purescript-prelude" p
   where
-  readRegistry :: FilePath -> Aff (PackageMap Repo)
+  readRegistry :: FilePath -> Aff (Object String)
   readRegistry source = do
     let decodeRegistry = decodeJson <=< parseJson
     registryFile <- FS.readTextFile UTF8 ("../" <> source)
     case decodeRegistry registryFile of
       Left err -> throwError $ Aff.error $ fold
-        [ "Error: Decoding "
+        [ "Decoding "
         , source
         , "failed with error:\n\n"
         , printJsonDecodeError err
