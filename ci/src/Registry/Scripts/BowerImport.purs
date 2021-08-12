@@ -49,7 +49,6 @@ import Registry.PackageMap as PM
 import Registry.PackageMap as PackageMap
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Prelude (Aff, Effect, Either(..), Encoding(..), FilePath, Map, Maybe(..), Set, Tuple(..), Unit, bind, discard, error, for, forWithIndex, fromJust, ifM, isRight, liftAff, liftEffect, lmap, log, map, not, note, pure, show, traverse, un, unlessM, ($), (&&), (/\), (<$>), (<<<), (<=<), (<>), (>), (>=>), (>>=), (>>>))
 import Registry.Schema (Repo(..), Manifest)
 import Text.Parsing.StringParser as Parser
 import Type.Proxy (Proxy(..))
