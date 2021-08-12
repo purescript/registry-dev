@@ -37,6 +37,7 @@
   , "partial"
   , "prelude"
   , "psci-support"
+  , "record"
   , "refs"
   , "safe-coerce"
   , "spec"

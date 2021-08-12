@@ -165,16 +165,21 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
 
   -- If we're importing from Bower then we need to convert the Bowerfile
   -- to a Registry Manifest
-  when fromBower $ do
-    liftAff (Bower.readBowerfile (absoluteFolderPath <> "/bower.json")) >>= case _ of
-      Left err ->
-        throwWithComment $ "Error while reading Bowerfile: " <> err
-      Right bowerfile -> case Bower.toManifest bowerfile ref metadata.location of
-        Left err ->
-          throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
-        Right manifest -> do
-          let manifestStr = Json.stringifyWithIndent 2 $ Json.encodeJson manifest
-          liftAff $ FS.writeTextFile UTF8 manifestPath manifestStr
+  when fromBower do
+    -- TODO: Convert to use the new workflows from BowerImport, which provide
+    -- significantly better diagnostics.
+
+    -- liftAff (Bower.readBowerfile (absoluteFolderPath <> "/bower.json")) >>= case _ of
+    --   Left err ->
+    --     throwWithComment $ "Error while reading Bowerfile: " <> err
+    --   Right bowerfile -> do
+    --     runExceptT $ Bower.toManifest bowerfile ref metadata.location of
+    --     Left err ->
+    --       throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
+    --     Right manifest -> do
+    --       let manifestStr = Json.stringifyWithIndent 2 $ Json.encodeJson manifest
+    --       liftAff $ FS.writeTextFile UTF8 manifestPath manifestStr
+    pure unit
 
   -- Try to read the manifest, typechecking it
   manifest :: Manifest <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of
