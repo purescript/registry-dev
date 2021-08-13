@@ -6,6 +6,7 @@ import Data.Argonaut (JsonDecodeError, printJsonDecodeError)
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
 import Data.String as String
+import Foreign.GitHub as GitHub
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 
@@ -14,58 +15,70 @@ import Registry.PackageName as PackageName
 data ImportError
   = NotOnGitHub
   | MalformedPackageName String
-  | MissingBowerfile
-  | MalformedBowerJson JsonDecodeError
-  | InvalidDependencyNames (NonEmptyArray String)
-  | NonRegistryDependencies (NonEmptyArray PackageName)
+  | MissingBowerfile GitHub.Tag
+  | MalformedBowerJson GitHub.Tag JsonDecodeError
+  | InvalidDependencyNames GitHub.Tag (NonEmptyArray String)
+  | NonRegistryDependencies GitHub.Tag (NonEmptyArray PackageName)
   | NoManifests
-  | ManifestError ManifestError
+  | ManifestError GitHub.Tag (NonEmptyArray ManifestError)
+
+tagFromError :: ImportError -> Maybe GitHub.Tag
+tagFromError = case _ of
+  NotOnGitHub -> Nothing
+  MalformedPackageName _ -> Nothing
+  MissingBowerfile tag -> Just tag
+  MalformedBowerJson tag _ -> Just tag
+  InvalidDependencyNames tag _ -> Just tag
+  NonRegistryDependencies tag _ -> Just tag
+  NoManifests -> Nothing
+  ManifestError tag _ -> Just tag
 
 printImportErrorKey :: ImportError -> String
 printImportErrorKey = case _ of
   NotOnGitHub -> "notOnGitHub"
   MalformedPackageName _ -> "malformedPackageName"
-  MissingBowerfile -> "missingBowerfile"
-  MalformedBowerJson _ -> "malformedBowerJson"
-  InvalidDependencyNames _ -> "invalidDependencyNames"
-  NonRegistryDependencies _ -> "nonRegistryDependencies"
+  MissingBowerfile _ -> "missingBowerfile"
+  MalformedBowerJson _ _ -> "malformedBowerJson"
+  InvalidDependencyNames _ _ -> "invalidDependencyNames"
+  NonRegistryDependencies _ _ -> "nonRegistryDependencies"
   NoManifests -> "noManifests"
-  ManifestError err -> "manifestError." <> printManifestErrorKey err
+  ManifestError _ errs ->
+    "manifestError."
+      <> String.joinWith "." (printManifestErrorKey <$> NEA.toArray errs)
 
 printImportError :: ImportError -> String
 printImportError = case _ of
   NotOnGitHub ->
-    "Not available on GitHub."
+    "Not on GitHub."
 
   MalformedPackageName err ->
-    "Package name is not valid: " <> err
+    "Malformed name: " <> err
 
-  MissingBowerfile ->
-    "Missing bower file."
+  MissingBowerfile _ ->
+    "No bower file."
 
-  MalformedBowerJson err ->
-    "Malformed bower file:\n\n" <> printJsonDecodeError err
+  MalformedBowerJson _ err ->
+    "Malformed JSON:" <> printJsonDecodeError err
 
-  InvalidDependencyNames deps ->
-    "Bower file contains dependencies with malformed names:\n\n"
-      <> String.joinWith ", " (NEA.toArray deps)
+  InvalidDependencyNames _ deps ->
+    "Malformed depndency names: " <> String.joinWith ", " (NEA.toArray deps)
 
-  NonRegistryDependencies deps ->
-    "Bower file contains dependencies not in the registry:\n\n"
-      <> String.joinWith ", " (PackageName.print <$> NEA.toArray deps)
+  NonRegistryDependencies _ deps ->
+    "Non-registry dependencies: " <> String.joinWith ", " (PackageName.print <$> NEA.toArray deps)
 
   NoManifests ->
-    "No valid manifests could be produced for this package."
+    "No manifests produced"
 
-  ManifestError err ->
-    printManifestError err
+  ManifestError _ err -> case NEA.toArray err of
+    [ one ] -> printManifestError one
+    many -> String.joinWith ", " (map printManifestError many)
 
 -- | An error representing why a Bowerfile cannot be migrated into a manifest.
 data ManifestError
   = MissingName
   | MismatchedName { expected :: PackageName, received :: String }
   | MissingLicense
-  | BadLicense String
+  | BadLicense (Array String)
   | BadVersion String
   | BadDependencyVersions (NonEmptyArray { dependency :: PackageName, failedBounds :: String })
 
@@ -81,25 +94,23 @@ printManifestErrorKey = case _ of
 printManifestError :: ManifestError -> String
 printManifestError = case _ of
   MissingName ->
-    "Bower file does not contain a 'name' field."
+    "No 'name' field"
 
   MismatchedName { expected, received } ->
-    "Bower file name does not match package name. Expected '"
+    "Bower file should have name purescript-"
       <> PackageName.print expected
-      <> "' but received '"
+      <> " but has name "
       <> received
-      <> "'."
 
   MissingLicense ->
-    "Bower file does not contain a 'license' field."
+    "No 'license' field"
 
   BadLicense err ->
-    "Bower file contains non-SPDX license:\n\n" <> err
+    "Non-SPDX licenses: " <> String.joinWith ", " err
 
   BadVersion version ->
-    "Bower file declares an invalid version:\n\n" <> version
+    "Invalid 'version' field: " <> version
 
   BadDependencyVersions deps -> do
-    let fromDep { dependency, failedBounds } = PackageName.print dependency <> ": " <> failedBounds
-    "Bower file declares one or more dependencies with invalid version bounds:\n\n"
-      <> String.joinWith "\n" (fromDep <$> NEA.toArray deps)
+    let fromDep { dependency, failedBounds } = "(" <> PackageName.print dependency <> ": " <> failedBounds <> ")"
+    "Bad dependency versions: " <> String.joinWith ", " (fromDep <$> NEA.toArray deps)

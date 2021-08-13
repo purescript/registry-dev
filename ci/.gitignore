@@ -11,4 +11,3 @@ generated-docs/
 .envrc
 .cache
 .tempcache
-trh-*.json
