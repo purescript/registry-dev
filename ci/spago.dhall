@@ -46,6 +46,7 @@
   , "sunde"
   , "transformers"
   , "tuples"
+  , "unsafe-coerce"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]
