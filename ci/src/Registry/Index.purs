@@ -1,4 +1,7 @@
-module Registry.Index where
+module Registry.Index
+  ( readRegistryIndex
+  , insertManifest
+  ) where
 
 import Registry.Prelude
 
@@ -13,14 +16,15 @@ import Data.String.Pattern (Pattern(..))
 import Foreign.SemVer (SemVer)
 import Node.FS.Aff (readTextFile, writeTextFile)
 import Node.Glob.Basic (expandGlobs)
+import Node.Path as FilePath
 import Partial.Unsafe (unsafeCrashWith)
-import Registry.PackageName (PackageName(..))
+import Registry.PackageName (PackageName)
+import Registry.PackageName as PackageName
 import Registry.Schema (Manifest)
 
 type RegistryIndex = Map PackageName (Map SemVer Manifest)
 
--- This function must be run from the root of the registry index.
--- NOTE: Right now, this assumes that manifest files will parse
+-- | NOTE: Right now, this assumes that manifest files will parse
 readRegistryIndex :: FilePath -> Aff RegistryIndex
 readRegistryIndex path = do
   packagePaths <- Array.fromFoldable <$> expandGlobs path [ "*" ]
@@ -33,11 +37,11 @@ readRegistryIndex path = do
     goPath packagePath = do
       fileName <- Array.last $ String.split (Pattern "/") packagePath
       guard (not (Array.elem fileName exclude))
-      pure $ PackageName fileName
+      hush $ PackageName.parse fileName
 
     packages = Array.mapMaybe goPath packagePaths
 
-  parsed <- for packages \package -> Tuple package <$> readPackage package
+  parsed <- for packages \package -> Tuple package <$> readPackage path package
   let
     normalizePackage
       :: Tuple PackageName (Maybe (NonEmptyArray Manifest))
@@ -69,7 +73,7 @@ readRegistryIndex path = do
 -- | Format follows that used by Cargo in crates.io: https://github.com/rust-lang/crates.io-index
 -- | As documented in the Cargo book: https://doc.rust-lang.org/cargo/reference/registries.html#index-format
 getIndexDir :: PackageName -> FilePath
-getIndexDir (PackageName packageName) = case String.length packageName of
+getIndexDir = PackageName.print >>> \packageName -> case String.length packageName of
   0 -> unsafeCrashWith "Invalid PackageName"
   1 -> "1/"
   2 -> "2/"
@@ -77,16 +81,16 @@ getIndexDir (PackageName packageName) = case String.length packageName of
   _ -> String.take 2 packageName <> "/" <> String.take 2 (String.drop 2 packageName) <> "/"
 
 getIndexPath :: PackageName -> FilePath
-getIndexPath (PackageName packageName) = getIndexDir (PackageName packageName) <> packageName
+getIndexPath packageName = getIndexDir packageName <> PackageName.print packageName
 
--- Collect all manifests for given PackageName
--- This function must be run from the root of the registry index.
--- This will return Nothing if:
---   the file doesn't exist, the file is empty, or if we can't decode the Manifests
-readPackage :: PackageName -> Aff (Maybe (NonEmptyArray Manifest))
-readPackage packageName = do
+-- | Collect all manifests for given PackageName
+-- | This function must be run from the root of the registry index.
+-- | This will return Nothing if:
+-- |  the file doesn't exist, the file is empty, or if we can't decode the Manifests
+readPackage :: FilePath -> PackageName -> Aff (Maybe (NonEmptyArray Manifest))
+readPackage path' packageName = do
   let
-    path = getIndexPath packageName
+    path = FilePath.concat [ path', getIndexPath packageName ]
 
   contentsResult <- try do
     contents <- readTextFile ASCII path
@@ -99,14 +103,12 @@ readPackage packageName = do
     Right Nothing -> Nothing
     Right (Just arr) -> NEA.fromArray arr
 
--- This function must be run from the root of the registry index.
--- TODO: Should we bail on version collisions?
-insertManifest :: Manifest -> Aff Unit
-insertManifest manifest@{ name, version } = do
+insertManifest :: FilePath -> Manifest -> Aff Unit
+insertManifest path' manifest@{ name, version } = do
   let
     path = getIndexPath name
 
-  existing <- readPackage name
+  existing <- readPackage path' name
 
   let
     modifiedManifests :: NonEmptyArray Manifest

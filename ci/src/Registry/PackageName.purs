@@ -1,5 +1,5 @@
 module Registry.PackageName
-  ( PackageName(..)
+  ( PackageName
   , parse
   , print
   ) where
