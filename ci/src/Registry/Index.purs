@@ -59,21 +59,15 @@ readRegistryIndex = do
     $ Map.fromFoldable
     $ map (map goPackage) parsedPackages
 
-{-
-- function from PackageName -> FilePath
-  Following the Cargo structure: https://github.com/rust-lang/crates.io-index
-  Documentation for the format in https://doc.rust-lang.org/cargo/reference/registries.html#index-format
-  Either we can have a folder for every package and then a single JSON file for every version
-  or have a JSONLines (.jsonl) file for every package and a line for every version in there
-
-  Produce the directory containing this package in the registry index,
-  according to the following format:
-
-    * Packages with 1 character names are placed in a directory named 1.
-    * Packages with 2 character names are placed in a directory named 2.
-    * Packages with 3 character names are placed in the directory 3/{first-character} where {first-character} is the first character of the package name.
-    * All other packages are stored in directories named {first-two}/{second-two} where the top directory is the first two characters of the package name, and the next subdirectory is the third and fourth characters of the package name. For example, prelude would be stored in a file named pr/el/prelude.
--}
+-- | Produce the directory containing this package in the registry index, using the following format:
+-- |   * Packages with 1 character names are placed in a directory named 1.
+-- |   * Packages with 2 character names are placed in a directory named 2.
+-- |   * Packages with 3 character names are placed in the directory 3/{first-character} where {first-character} is the first character of the package name.
+-- |   * All other packages are stored in directories named {first-two}/{second-two} where the top directory is the first two characters of the package name, and the next subdirectory is the third and fourth characters of the package name. For example, prelude would be stored in a file named pr/el/prelude.
+-- |   * Each package file is a JSON Lines file where each line is a package manifest, stored in sorted order ascending by version.
+-- |
+-- | Format follows that used by Cargo in crates.io: https://github.com/rust-lang/crates.io-index
+-- | As documented in the Cargo book: https://doc.rust-lang.org/cargo/reference/registries.html#index-format
 getIndexDir :: PackageName -> FilePath
 getIndexDir (PackageName packageName) = case String.length packageName of
   0 -> unsafeCrashWith "Invalid PackageName"

@@ -142,5 +142,7 @@
   "purescript-dexie": "https://github.com/mushishi78/purescript-dexie.git",
   "purescript-google-apps": "https://github.com/BBVA/purescript-google-apps.git",
   "purescript-peregrine": "https://github.com/maxdeviant/peregrine.git",
-  "purescript-datetime-parsing": "https://github.com/flounders/purescript-datetime-parsing.git"
+  "purescript-datetime-parsing": "https://github.com/flounders/purescript-datetime-parsing.git",
+  "purescript-run-external-state": "https://github.com/Mateiadrielrafael/purescript-run-external-state.git",
+  "purescript-ask": "https://github.com/Mateiadrielrafael/purescript-ask.git"
 }
