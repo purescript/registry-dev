@@ -1,5 +1,6 @@
 module Registry.Index
-  ( readRegistryIndex
+  ( RegistryIndex
+  , readRegistryIndex
   , insertManifest
   ) where
 
@@ -129,4 +130,3 @@ insertManifest path' manifest@{ name, version } = do
         $ Array.fromFoldable modifiedManifests
 
   writeTextFile ASCII path contents
-  

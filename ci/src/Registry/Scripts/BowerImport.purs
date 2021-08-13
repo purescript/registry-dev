@@ -27,7 +27,6 @@ import Foreign.SemVer as SemVer
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Partial.Unsafe (unsafeCrashWith, unsafePartial)
-import Registry.Index (RegistryIndex)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
 import Text.Parsing.StringParser as Parser
@@ -57,7 +56,7 @@ main = Aff.launchAff_ do
 -- | - collect all the releases of each package
 -- | - download the bower.json file for every release, caching it
 -- | - return an index of this "Bower Registry"
-downloadBowerRegistry :: Aff RegistryIndex
+downloadBowerRegistry :: Aff (Map String (Map GitHub.Tag Manifest))
 downloadBowerRegistry = do
   -- Get the lists of packages: Bower packages and new packages
   -- Assumption: we are running in the `ci` folder or the registry repo
