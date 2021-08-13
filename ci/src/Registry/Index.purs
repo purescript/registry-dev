@@ -39,8 +39,15 @@ readRegistryIndex = do
 
   parsed <- for packages \package -> Tuple package <$> readPackage package
   let
+    normalizePackage
+      :: Tuple PackageName (Maybe (NonEmptyArray Manifest))
+      -> Tuple PackageName (NonEmptyArray Manifest)
+    normalizePackage (Tuple package mbManifests) = case mbManifests of
+      Nothing -> unsafeCrashWith "Package failed to parse"
+      Just manifests -> Tuple package manifests
+
     parsedPackages :: Array (Tuple PackageName (NonEmptyArray Manifest))
-    parsedPackages = Array.mapMaybe (\(Tuple package mbManifests) -> Tuple package <$> mbManifests) parsed
+    parsedPackages = map normalizePackage parsed
 
     goManifest :: Manifest -> Tuple SemVer Manifest
     goManifest manifest@{ version } = Tuple version manifest
