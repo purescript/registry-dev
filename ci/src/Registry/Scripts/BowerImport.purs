@@ -16,10 +16,9 @@ import Data.DateTime (adjust) as Time
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.JSDate as JSDate
 import Data.Map as Map
-import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration (Hours(..))
-import Data.Tuple (fst)
+import Data.Tuple (fst, uncurry)
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Effect.Now (nowDateTime) as Time
@@ -30,8 +29,6 @@ import Foreign.SemVer as SemVer
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Partial.Unsafe (unsafePartial)
-import Registry.PackageMap (PackageMap(..))
-import Registry.PackageMap as PackageMap
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
@@ -55,6 +52,9 @@ import Web.Bower.PackageMeta as Bower
         file only with packages truly missing bowerfiles. This maximizes our
         ability to see errors for all other reasons, but not hit the GitHub API
         to do so.
+
+  - [ ] In fact, re-evaluate all the steps we take! Maybe they could be done
+        in a better order to be composed together.
 
   - [ ] Remove the `PackageMap` and `Step` newtypes, and write new functions
         `encodeManifests` and `encodeExclusions` that just use objects.
@@ -87,7 +87,7 @@ main = Aff.launchAff_ do
 
 -- | A data structure representing package names that have successfully been
 -- | imported from the old registries and can be added to the new registry.
-type PackageManifests = PackageMap (NonEmptyArray Manifest)
+type PackageManifests = Map PackageName (NonEmptyArray Manifest)
 
 -- | A data structure representing packages and versions that do not produce a
 -- | valid manifest, along with information about why they fail to import.
@@ -97,20 +97,30 @@ type PackageFailures = Map String (Map (Maybe GitHub.Tag) ImportError)
 -- | failed packages along the way.
 downloadLegacyRegistry :: Aff { failures :: PackageFailures, manifests :: PackageManifests }
 downloadLegacyRegistry = do
+  let
+    mkManifests =
+      Map.mapMaybe \{ versions } -> NEA.fromArray $ Array.fromFoldable $ Map.values versions
+
   log "Reading registry packages..."
   init@(Tuple _ allPackages) <- readRegistryPackages
-  log "Fetching package releases..."
-  Tuple failures manifests <-
-    runStep getReleases init
-      >>= (\tup -> log "Fetching package bowerfiles..." *> runStep fetchBowerfiles tup)
-      >>= (\tup -> log "Checking package dependencies are in the registry..." *> runStep (checkSelfContained allPackages) tup)
-      >>= (\tup -> log "Converting package bowerfiles to manifests..." *> runStep convertToManifest tup)
-  pure { failures, manifests }
+
+  Tuple failures manifestMap <-
+    (\tup -> log "Getting releases..." *> runStep getReleases tup) init
+      >>= (\tup -> log "Fetching bower files..." *> (uncurry (runStepKeyed fetchBowerfiles)) tup)
+      >>= (\tup -> log "Check self contained..." *> (uncurry (runStepKeyed (checkSelfContained allPackages))) tup)
+      >>= (\tup -> log "Convert to manifest..." *> (uncurry (runStepKeyed convertToManifest)) tup)
+
+  log "Converted!"
+  pure { failures, manifests: mkManifests manifestMap }
+
+type PackageMap x a = Map PackageName (VersionsMap x a)
+
+type VersionsMap x a = { meta :: x, versions :: Map GitHub.Tag a }
 
 -- | Perform an effectful transformation on a package, returning the transformed
 -- | package. If a package cannot be transformed, throw an `ImportError`
 -- | exception via `ExceptT` and the error will be collected.
-newtype Step a b = Step (PackageName -> a -> ExceptT (Tuple (Maybe GitHub.Tag) ImportError) Aff b)
+newtype Step a b = Step (PackageName -> a -> ExceptT ImportError Aff b)
 
 -- TODO: This needs to be changed to be a nested traversal, once through the
 -- package name and then through each version. That way exceptions are raised
@@ -119,20 +129,42 @@ newtype Step a b = Step (PackageName -> a -> ExceptT (Tuple (Maybe GitHub.Tag) I
 runStep
   :: forall a b
    . Step a b
-  -> Tuple PackageFailures (PackageMap a)
-  -> Aff (Tuple PackageFailures (PackageMap b))
-runStep (Step run) (Tuple bad (PackageMap good)) = do
-  Tuple _ (Tuple bad' good') <- runStateT st (Tuple bad PackageMap.empty)
+  -> Tuple PackageFailures (Map PackageName a)
+  -> Aff (Tuple PackageFailures (Map PackageName b))
+runStep (Step run) (Tuple bad good) = do
+  Tuple _ (Tuple bad' good') <- runStateT st (Tuple bad Map.empty)
   pure $ Tuple bad' good'
   where
   st = do
     forWithIndex_ good \package a -> do
       res <- lift $ runExceptT (run package a)
       case res of
-        Left (Tuple tag err) -> do
-          modify (lmap (Map.insertWith Map.union (PackageName.print package) (Map.singleton tag err)))
+        Left err -> do
+          modify (lmap (Map.insertWith Map.union (PackageName.print package) (Map.singleton Nothing err)))
         Right v ->
-          modify (map (PackageMap.insert package v))
+          modify (map (Map.insert package v))
+
+newtype KeyedStep x a b = KeyedStep (PackageName -> GitHub.Tag -> x -> a -> ExceptT ImportError Aff b)
+
+runStepKeyed
+  :: forall x a b
+   . KeyedStep x a b
+  -> PackageFailures
+  -> PackageMap x a
+  -> Aff (Tuple PackageFailures (PackageMap x b))
+runStepKeyed (KeyedStep step) bad good = do
+  Tuple _ (Tuple bad' good') <- runStateT st (Tuple bad Map.empty)
+  pure $ Tuple bad' good'
+  where
+  st = do
+    forWithIndex_ good \package { meta, versions } -> do
+      forWithIndex_ versions \version a -> do
+        res <- lift $ runExceptT $ step package version meta a
+        case res of
+          Left err -> do
+            modify (lmap (Map.insertWith Map.union (PackageName.print package) (Map.singleton (Just version) err)))
+          Right v ->
+            modify (map (Map.insertWith (\old new -> { meta: new.meta, versions: Map.union old.versions new.versions }) package { meta, versions: Map.singleton version v }))
 
 type PackageReleases =
   { address :: GitHub.Address
@@ -140,20 +172,25 @@ type PackageReleases =
   }
 
 -- | Find all released tags for the package.
-getReleases :: Step GitHub.Address PackageReleases
+getReleases :: Step GitHub.Address (VersionsMap GitHub.Address Unit)
 getReleases = Step \package address -> do
   let
     name = PackageName.print package
     repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
-  releases <- withCache repoCache (Just $ Hours 24.0) do
-    log $ "Fetching releases for package " <> name
-    Set.fromFoldable <$> lift (GitHub.getReleases address)
-  pure { releases, address }
 
-type PackageBowerfiles =
-  { address :: GitHub.Address
-  , bowerfiles :: Map GitHub.Tag Bowerfile
-  }
+  releases <- withCache repoCache (Just $ Hours 1.0) $ do
+    log $ "Fetching releases for package " <> name
+    lift $ GitHub.getReleases address
+
+  when (Array.null releases) (throwError NoReleases)
+
+  let
+    versionsMap =
+      { meta: address
+      , versions: Map.fromFoldable $ map (\tag -> Tuple tag unit) releases
+      }
+
+  pure versionsMap
 
 -- | A normalized bowerfile type for ease of use
 type Bowerfile =
@@ -165,29 +202,19 @@ type Bowerfile =
   }
 
 -- | Find the bower.json files associated with the package's relaesed tags.
-fetchBowerfiles :: Step PackageReleases PackageBowerfiles
-fetchBowerfiles = Step \package { address, releases } -> do
+fetchBowerfiles :: KeyedStep GitHub.Address Unit Bowerfile
+fetchBowerfiles = KeyedStep \package tag address _ -> do
   let
-    mkUrl { name } =
-      "https://raw.githubusercontent.com/"
-        <> address.owner
-        <> "/"
-        <> address.repo
-        <> "/"
-        <> name
-        <> "/bower.json"
+    url = "https://raw.githubusercontent.com/" <> address.owner <> "/" <> address.repo <> "/" <> tag.name <> "/bower.json"
+    cache = "bowerfile__" <> PackageName.print package <> "__" <> tag.name
 
-    mkCache release =
-      "bowerfile__" <> PackageName.print package <> "__" <> release.name
-
-  bowerfiles <- for (Set.toUnfoldable releases :: Array _) \release -> withCache (mkCache release) Nothing do
-    let url = mkUrl release
+  withCache cache (Just $ Hours 1.0) do
     Bower.PackageMeta bowerfile <- lift (Http.get ResponseFormat.json url) >>= case _ of
       Left _ -> do
-        throwError $ Tuple (Just release) MissingBowerfile
+        throwError MissingBowerfile
       Right { body } -> case decodeJson body of
         Left err ->
-          throwError $ Tuple (Just release) $ MalformedBowerJson err
+          throwError $ MalformedBowerJson err
         Right bowerfile -> do
           pure bowerfile
 
@@ -222,7 +249,7 @@ fetchBowerfiles = Step \package { address, releases } -> do
         let { fail, success } = partitionEithers $ parsePairs deps
         case NEA.fromArray fail of
           Nothing -> pure success
-          Just errs -> throwError $ Tuple (Just release) $ InvalidDependencyNames errs
+          Just errs -> throwError $ InvalidDependencyNames errs
 
     deps <- normalizeDeps $ un Dependencies bowerfile.dependencies
     devDeps <- normalizeDeps $ un Dependencies bowerfile.devDependencies
@@ -236,43 +263,34 @@ fetchBowerfiles = Step \package { address, releases } -> do
         , source: url
         }
 
-    pure $ Tuple release normalized
-
-  pure { address, bowerfiles: Map.fromFoldable bowerfiles }
+    pure normalized
 
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
-checkSelfContained :: PackageMap GitHub.Address -> Step PackageBowerfiles PackageBowerfiles
-checkSelfContained registry = Step \_ { address, bowerfiles } -> do
-  new <- forWithIndex bowerfiles \release bowerfile@{ dependencies, devDependencies } -> do
-    let
-      allDeps :: Array (Tuple PackageName String)
-      allDeps = dependencies <> devDependencies
+checkSelfContained :: Map PackageName GitHub.Address -> KeyedStep GitHub.Address Bowerfile Bowerfile
+checkSelfContained registry = KeyedStep \_ _ _ bowerfile -> do
+  let
+    allDeps :: Array (Tuple PackageName String)
+    allDeps = bowerfile.dependencies <> bowerfile.devDependencies
 
-      outsideDeps :: Array (Maybe PackageName)
-      outsideDeps = allDeps <#> \(Tuple name _) -> case PackageMap.lookup name registry of
-        Nothing -> Just name
-        Just _ -> Nothing
+    outsideDeps :: Array (Maybe PackageName)
+    outsideDeps = allDeps <#> \(Tuple name _) -> case Map.lookup name registry of
+      Nothing -> Just name
+      Just _ -> Nothing
 
-    case NEA.fromArray $ Array.catMaybes outsideDeps of
-      Nothing ->
-        pure bowerfile
-      Just outside ->
-        throwError $ Tuple (Just release) $ NonRegistryDependencies outside
+  case NEA.fromArray $ Array.catMaybes outsideDeps of
+    Nothing ->
+      pure bowerfile
+    Just outside ->
+      throwError $ NonRegistryDependencies outside
 
-  pure { address, bowerfiles: new }
-
-convertToManifest :: Step PackageBowerfiles (NonEmptyArray Manifest)
-convertToManifest = Step \package { address, bowerfiles } -> do
+convertToManifest :: KeyedStep GitHub.Address Bowerfile Manifest
+convertToManifest = KeyedStep \package tag address bowerfile -> do
   let
     repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
-    toManifest' release meta = mapExceptT (map (lmap (Tuple (Just release) <<< ManifestError))) (toManifest package repo release meta)
-  releaseMap <- forWithIndex bowerfiles toManifest'
-  case NEA.fromArray (Array.fromFoldable $ Map.values releaseMap) of
-    Nothing ->
-      throwError $ Tuple Nothing NoManifests
-    Just manifests ->
-      pure manifests
+    liftError = map (lmap ManifestError)
+
+  mapExceptT liftError $ toManifest package repo tag bowerfile
 
 -- | Convert a package from Bower to a Manifest.
 -- This function is written a bit awkwardly because we want to collect validation
@@ -375,8 +393,8 @@ withCache
   => EncodeJson a
   => String
   -> Maybe Hours
-  -> ExceptT (Tuple (Maybe GitHub.Tag) ImportError) Aff a
-  -> ExceptT (Tuple (Maybe GitHub.Tag) ImportError) Aff a
+  -> ExceptT ImportError Aff a
+  -> ExceptT ImportError Aff a
 withCache path maybeDuration action = do
   let cacheFolder = ".cache"
   let objectPath = cacheFolder <> "/" <> path
@@ -466,7 +484,7 @@ toFailureObject m = do
       Map.insertWith (Object.unionWith append) errorKey (Object.singleton package (Object.singleton version errorDetail)) exclusionMap
 
 -- | Get the list of packages in the Bower and PureScript registries.
-readRegistryPackages :: Aff (Tuple PackageFailures (PackageMap GitHub.Address))
+readRegistryPackages :: Aff (Tuple PackageFailures (Map PackageName GitHub.Address))
 readRegistryPackages = do
   exclusions <- readExclusionsFile
   bowerRegistry <- readRegistry "bower-packages.json"
@@ -497,12 +515,12 @@ readRegistryPackages = do
       Right (v :: Object (Array (Maybe String))) ->
         pure $ Object.keys v
 
-  toPackageMap :: Object String -> Aff (Tuple PackageFailures (PackageMap GitHub.Address))
+  toPackageMap :: Object String -> Aff (Tuple PackageFailures (Map PackageName GitHub.Address))
   toPackageMap allPackages = do
-    Tuple _ (Tuple bad good) <- runStateT runPackages (Tuple Map.empty PackageMap.empty)
+    Tuple _ (Tuple bad good) <- runStateT runPackages (Tuple Map.empty Map.empty)
     pure $ Tuple bad good
     where
-    runPackages :: StateT (Tuple PackageFailures (PackageMap GitHub.Address)) Aff Unit
+    runPackages :: StateT (Tuple PackageFailures (Map PackageName GitHub.Address)) Aff Unit
     runPackages = forWithIndex_ allPackages \name repo ->
       case PackageName.parse name of
         Left _ ->
@@ -511,7 +529,7 @@ readRegistryPackages = do
           Left _ ->
             modify (lmap (Map.insert name (Map.singleton Nothing NotOnGitHub)))
           Right address ->
-            modify (map (PackageMap.insert k' address))
+            modify (map (Map.insert k' address))
 
 readBowerfile :: String -> Aff (Either String Bower.PackageMeta)
 readBowerfile path = do

@@ -13,6 +13,7 @@ import Registry.PackageName as PackageName
 -- | Bower registry.
 data ImportError
   = NotOnGitHub
+  | NoReleases
   | MalformedPackageName String
   | MissingBowerfile
   | MalformedBowerJson JsonDecodeError
@@ -24,6 +25,7 @@ data ImportError
 printImportErrorKey :: ImportError -> String
 printImportErrorKey = case _ of
   NotOnGitHub -> "notOnGitHub"
+  NoReleases -> "noReleases"
   MalformedPackageName _ -> "malformedPackageName"
   MissingBowerfile -> "missingBowerfile"
   MalformedBowerJson _ -> "malformedBowerJson"
@@ -38,6 +40,9 @@ printImportError :: ImportError -> String
 printImportError = case _ of
   NotOnGitHub ->
     "Not on GitHub."
+
+  NoReleases ->
+    "No releases."
 
   MalformedPackageName err ->
     "Malformed name: " <> err
