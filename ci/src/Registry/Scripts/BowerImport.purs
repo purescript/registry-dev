@@ -304,9 +304,12 @@ toManifest package repository release bowerfile = do
 
     eitherLicense = do
       let
+        -- TODO: Own step
         rewrite = case _ of
+          [ "Apache 2" ] -> [ "Apache-2.0" ]
           [ "Apache 2.0" ] -> [ "Apache-2.0" ]
           [ "BSD" ] -> [ "BSD-3-Clause" ]
+          [ "BSD3" ] -> [ "BSD-3-Clause" ]
           other -> other
 
         { fail, success } = partitionEithers $ SPDX.parse <$> rewrite bowerfile.license
