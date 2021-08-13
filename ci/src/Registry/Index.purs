@@ -12,7 +12,7 @@ import Data.String as String
 import Data.String.Pattern (Pattern(..))
 import Foreign.SemVer (SemVer)
 import Node.FS.Aff (readTextFile, writeTextFile)
-import Node.Glob.Basic (expandGlobsCwd)
+import Node.Glob.Basic (expandGlobs)
 import Partial.Unsafe (unsafeCrashWith)
 import Registry.PackageName (PackageName(..))
 import Registry.Schema (Manifest)
@@ -21,17 +21,17 @@ type RegistryIndex = Map PackageName (Map SemVer Manifest)
 
 -- This function must be run from the root of the registry index.
 -- NOTE: Right now, this assumes that manifest files will parse
-readRegistryIndex :: Aff RegistryIndex
-readRegistryIndex = do
-  packagePaths <- Array.fromFoldable <$> expandGlobsCwd [ "*" ]
+readRegistryIndex :: FilePath -> Aff RegistryIndex
+readRegistryIndex path = do
+  packagePaths <- Array.fromFoldable <$> expandGlobs path [ "*" ]
   let
     -- Exclude certain files that will always be in the root of the registry index.
     -- These files do not correspond to a package manifest file.
     exclude :: Array String
     exclude = [ "config.json" ]
 
-    goPath path = do
-      fileName <- Array.last $ String.split (Pattern "/") path
+    goPath packagePath = do
+      fileName <- Array.last $ String.split (Pattern "/") packagePath
       guard (not (Array.elem fileName exclude))
       pure $ PackageName fileName
 
