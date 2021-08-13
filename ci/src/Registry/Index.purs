@@ -129,3 +129,4 @@ insertManifest path' manifest@{ name, version } = do
         $ Array.fromFoldable modifiedManifests
 
   writeTextFile ASCII path contents
+  

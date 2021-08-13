@@ -28,6 +28,8 @@ jobs:
             ${{ runner.os }}-node-
 
       - uses: purescript-contrib/setup-purescript@main
+        with:
+          purs-tidy: latest
 
       - name: Cache PureScript dependencies
         uses: actions/cache@v2
@@ -53,3 +55,6 @@ jobs:
 
       - name: "Check all the example Manifests roundtrip (read+write) through PureScript"
         run: cd ci && npm ci && nix-shell ../default.nix --run "spago run -m Registry.Scripts.ManifestRoundtrip"
+
+      - name: "Verify CI code formats"
+        run: purs-tidy check ci/src ci/test

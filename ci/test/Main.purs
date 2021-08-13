@@ -17,7 +17,7 @@ import Test.Spec.Runner (runSpec)
 type Spec = Spec.SpecT Aff Unit Identity Unit
 
 main :: Effect Unit
-main = launchAff_ $ runSpec [consoleReporter] do
+main = launchAff_ $ runSpec [ consoleReporter ] do
   Spec.describe "API" do
     Spec.describe "Checks" do
       Spec.describe "Good package names" goodPackageName
@@ -29,18 +29,20 @@ main = launchAff_ $ runSpec [consoleReporter] do
 
 goodPackageName :: Spec
 goodPackageName = do
-  let parseName str res = Spec.it str do
-        (PackageName.print <$> PackageName.parse str) `Assert.shouldEqual` (Right res)
+  let
+    parseName str res = Spec.it str do
+      (PackageName.print <$> PackageName.parse str) `Assert.shouldEqual` (Right res)
 
   parseName "a" "a"
   parseName "some-dash" "some-dash"
 
 badPackageName :: Spec
 badPackageName = do
-  let failParse str err = Spec.it str do
-        (PackageName.print <$> PackageName.parse str) `Assert.shouldSatisfy` case _ of
-          Right _ -> false
-          Left { error } -> error == err
+  let
+    failParse str err = Spec.it str do
+      (PackageName.print <$> PackageName.parse str) `Assert.shouldSatisfy` case _ of
+        Right _ -> false
+        Left { error } -> error == err
   let startErr = "Package name should start with a lower case char or a digit"
   let midErr = "Package name can contain lower case chars, digits and non-consecutive dashes"
   let endErr = "Package name should end with a lower case char or digit"
@@ -80,9 +82,9 @@ goodSPDXLicense = do
 badSPDXLicense :: Spec
 badSPDXLicense = do
   let
-    invalid str suggestion = "Invalid SPDX identifier: " <> str <> "." <> case suggestion of
+    invalid str suggestion = "Invalid SPDX identifier: " <> str <> case suggestion of
       Nothing -> ""
-      Just s -> " Did you mean " <> s <> "?"
+      Just s -> "\nDid you mean " <> s <> "?"
     parseLicense str suggestion = Spec.it str do
       (SPDX.print <$> SPDX.parse str) `Assert.shouldSatisfy` case _ of
         Right _ -> false
@@ -125,16 +127,18 @@ decodeEventsToOps = do
 
 semVer :: Spec
 semVer = do
-  let parseSemVer str = Spec.it ("Parse SemVer " <> str) do
-        (SemVer.printSemVer <$> SemVer.parseSemVer str) `Assert.shouldSatisfy` isJust
+  let
+    parseSemVer str = Spec.it ("Parse SemVer " <> str) do
+      (SemVer.printSemVer <$> SemVer.parseSemVer str) `Assert.shouldSatisfy` isJust
 
   parseSemVer "v1.2.3"
   parseSemVer "1.2.3-rc2"
   parseSemVer "0.1.2+r2"
 
-  let parseRange range expected = Spec.it ("Parse Range " <> show range <> " into " <> show expected) do
-        (SemVer.printRange <$> SemVer.parseRange range) `Assert.shouldSatisfy` case _ of
-          Just parsed -> parsed == expected
-          Nothing -> false
+  let
+    parseRange range expected = Spec.it ("Parse Range " <> show range <> " into " <> show expected) do
+      (SemVer.printRange <$> SemVer.parseRange range) `Assert.shouldSatisfy` case _ of
+        Just parsed -> parsed == expected
+        Nothing -> false
 
   parseRange "^1.3.4" ">=1.3.4 <2.0.0-0"

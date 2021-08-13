@@ -48,7 +48,7 @@ parseRepo = Parser.runParser do
     <|> Parse.string "git://github.com/"
     <|> Parse.string "git@github.com:"
   owner <- map (fromCharArray <<< List.toUnfoldable)
-    $ ParseC.manyTill (ParseC.choice [Parse.alphaNum, Parse.char '-']) (Parse.char '/')
+    $ ParseC.manyTill (ParseC.choice [ Parse.alphaNum, Parse.char '-' ]) (Parse.char '/')
   repoWithSuffix <- map (fromCharArray <<< List.toUnfoldable)
     $ ParseC.many Parse.anyChar
   let repo = fromMaybe repoWithSuffix $ String.stripSuffix (String.Pattern ".git") repoWithSuffix
