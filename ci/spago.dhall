@@ -19,7 +19,6 @@
   , "foldable-traversable"
   , "foreign-object"
   , "functions"
-  , "heterogeneous"
   , "identity"
   , "js-date"
   , "lists"
@@ -37,7 +36,6 @@
   , "partial"
   , "prelude"
   , "psci-support"
-  , "record"
   , "refs"
   , "safe-coerce"
   , "spec"
@@ -46,7 +44,6 @@
   , "sunde"
   , "transformers"
   , "tuples"
-  , "unsafe-coerce"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]

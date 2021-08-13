@@ -9,7 +9,6 @@ import Control.Monad.Except (ExceptT, except, lift, mapExceptT, runExceptT)
 import Control.Monad.State (StateT, modify, runStateT)
 import Data.Argonaut (class DecodeJson, class EncodeJson, decodeJson, encodeJson, jsonParser, parseJson, printJsonDecodeError)
 import Data.Argonaut.Core (stringifyWithIndent)
-import Data.Array (fold, foldMap)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
@@ -36,22 +35,27 @@ import Registry.PackageMap as PackageMap
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
-import Registry.Scripts.BowerImport.Error (ImportError(..), ManifestError(..), printImportError, printImportErrorKey, tagFromError)
+import Registry.Scripts.BowerImport.Error (ImportError(..), ManifestError(..), printImportError, printImportErrorKey)
 import Web.Bower.PackageMeta (Dependencies(..))
 import Web.Bower.PackageMeta as Bower
 
 {- TODO
 
+  - [ ] Change `runStep` so that it iterates through the package names AND the
+        individual versions of a package, so that exceptions are raised in
+        relation to a package + a version, but the next step iterates through the
+        next version instead of dropping the package altogether.
+
   - [ ] Adjust exclusions so that packages are only excluded by particular
         versions, or by all versions, but not _always_ excluded by all versions.
         See: bifunctors.
-  - [ ] Adjust Bower importing so that we don't need to fill the exclusions
-        file with malformed names, etc. Ideally, the exclusions file is only
-        for packages where we literally cannot get a bowerfile in the first
-        place (not just if it has bad deps in there). That way we maximize our
-        ability to see errors.
-  - [ ] Determine why only one version of a package ever ends up in the errors
-        map instead of multiple versions
+
+  - [ ] Adjust the `fetchBowerfiles` step so that it only fetches the files
+        themselves with no processing. That way, we can fill the exclusions
+        file only with packages truly missing bowerfiles. This maximizes our
+        ability to see errors for all other reasons, but not hit the GitHub API
+        to do so.
+
   - [ ] Remove the `PackageMap` and `Step` newtypes, and write new functions
         `encodeManifests` and `encodeExclusions` that just use objects.
 -}
@@ -75,12 +79,11 @@ main :: Effect Unit
 main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
   { manifests, failures } <- downloadLegacyRegistry
-
-  for_ (toExclusions failures) \exclusions ->
-    FS.writeTextFile UTF8 exclusionsFile $ stringifyWithIndent 2 $ encodeJson exclusions
-
-  FS.writeTextFile UTF8 errorsFile $ stringifyWithIndent 2 $ encodeJson $ toFailureMap failures
-  FS.writeTextFile UTF8 manifestsFile $ stringifyWithIndent 2 $ encodeJson manifests
+  log "Writing exclusions, errors, and manifest files..."
+  for_ (toExclusionsObject failures) (writeJsonFile exclusionsFile)
+  writeJsonFile errorsFile (toFailureObject failures)
+  writeJsonFile manifestsFile manifests
+  log "Done!"
 
 -- | A data structure representing package names that have successfully been
 -- | imported from the old registries and can be added to the new registry.
@@ -88,32 +91,31 @@ type PackageManifests = PackageMap (NonEmptyArray Manifest)
 
 -- | A data structure representing packages and versions that do not produce a
 -- | valid manifest, along with information about why they fail to import.
-type PackageFailures = Map String (Map (Maybe String) ImportError)
+type PackageFailures = Map String (Map (Maybe GitHub.Tag) ImportError)
 
 -- | Convert legacy packages to package manifests, if possible, collecting
 -- | failed packages along the way.
 downloadLegacyRegistry :: Aff { failures :: PackageFailures, manifests :: PackageManifests }
 downloadLegacyRegistry = do
+  log "Reading registry packages..."
   init@(Tuple _ allPackages) <- readRegistryPackages
+  log "Fetching package releases..."
   Tuple failures manifests <-
     runStep getReleases init
-      >>= runStep fetchBowerfiles
-      >>= runStep (checkSelfContained allPackages)
-      >>= runStep convertToManifest
+      >>= (\tup -> log "Fetching package bowerfiles..." *> runStep fetchBowerfiles tup)
+      >>= (\tup -> log "Checking package dependencies are in the registry..." *> runStep (checkSelfContained allPackages) tup)
+      >>= (\tup -> log "Converting package bowerfiles to manifests..." *> runStep convertToManifest tup)
   pure { failures, manifests }
 
 -- | Perform an effectful transformation on a package, returning the transformed
 -- | package. If a package cannot be transformed, throw an `ImportError`
 -- | exception via `ExceptT` and the error will be collected.
---
--- TODO: Support the ability to abort a specific _version_ of a package, and not
--- just abort the entire package. This won't be possible in the 'fetch releases'
--- stage, but it will be possible once all releases are fetched.
-newtype Step a b = Step (PackageName -> a -> ExceptT ImportError Aff b)
+newtype Step a b = Step (PackageName -> a -> ExceptT (Tuple (Maybe GitHub.Tag) ImportError) Aff b)
 
--- TODO: This is pretty janky; ideally we could just compose steps without
--- having to run the state each time. But maybe type-changing state ain't a
--- viable thing.
+-- TODO: This needs to be changed to be a nested traversal, once through the
+-- package name and then through each version. That way exceptions are raised
+-- for specific versions, not for a package as a whole, and successful versions
+-- of a package still make it through.
 runStep
   :: forall a b
    . Step a b
@@ -127,9 +129,8 @@ runStep (Step run) (Tuple bad (PackageMap good)) = do
     forWithIndex_ good \package a -> do
       res <- lift $ runExceptT (run package a)
       case res of
-        Left err -> do
-          let tag = map _.name $ tagFromError err
-          modify (lmap (Map.insert (PackageName.print package) (Map.singleton tag err)))
+        Left (Tuple tag err) -> do
+          modify (lmap (Map.insertWith Map.union (PackageName.print package) (Map.singleton tag err)))
         Right v ->
           modify (map (PackageMap.insert package v))
 
@@ -143,7 +144,7 @@ getReleases :: Step GitHub.Address PackageReleases
 getReleases = Step \package address -> do
   let
     name = PackageName.print package
-    repoCache = fold [ "releases__", address.owner, "__", address.repo ]
+    repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
   releases <- withCache repoCache (Just $ Hours 24.0) do
     log $ "Fetching releases for package " <> name
     Set.fromFoldable <$> lift (GitHub.getReleases address)
@@ -183,10 +184,10 @@ fetchBowerfiles = Step \package { address, releases } -> do
     let url = mkUrl release
     Bower.PackageMeta bowerfile <- lift (Http.get ResponseFormat.json url) >>= case _ of
       Left _ -> do
-        throwError $ MissingBowerfile release
+        throwError $ Tuple (Just release) MissingBowerfile
       Right { body } -> case decodeJson body of
         Left err ->
-          throwError $ MalformedBowerJson release err
+          throwError $ Tuple (Just release) $ MalformedBowerJson err
         Right bowerfile -> do
           pure bowerfile
 
@@ -221,7 +222,7 @@ fetchBowerfiles = Step \package { address, releases } -> do
         let { fail, success } = partitionEithers $ parsePairs deps
         case NEA.fromArray fail of
           Nothing -> pure success
-          Just errs -> throwError $ InvalidDependencyNames release errs
+          Just errs -> throwError $ Tuple (Just release) $ InvalidDependencyNames errs
 
     deps <- normalizeDeps $ un Dependencies bowerfile.dependencies
     devDeps <- normalizeDeps $ un Dependencies bowerfile.devDependencies
@@ -257,7 +258,7 @@ checkSelfContained registry = Step \_ { address, bowerfiles } -> do
       Nothing ->
         pure bowerfile
       Just outside ->
-        throwError $ NonRegistryDependencies release outside
+        throwError $ Tuple (Just release) $ NonRegistryDependencies outside
 
   pure { address, bowerfiles: new }
 
@@ -265,11 +266,11 @@ convertToManifest :: Step PackageBowerfiles (NonEmptyArray Manifest)
 convertToManifest = Step \package { address, bowerfiles } -> do
   let
     repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
-    toManifest' release meta = mapExceptT (map (lmap (ManifestError release))) (toManifest package repo release meta)
+    toManifest' release meta = mapExceptT (map (lmap (Tuple (Just release) <<< ManifestError))) (toManifest package repo release meta)
   releaseMap <- forWithIndex bowerfiles toManifest'
   case NEA.fromArray (Array.fromFoldable $ Map.values releaseMap) of
     Nothing ->
-      throwError $ NoManifests
+      throwError $ Tuple Nothing NoManifests
     Just manifests ->
       pure manifests
 
@@ -374,8 +375,8 @@ withCache
   => EncodeJson a
   => String
   -> Maybe Hours
-  -> ExceptT ImportError Aff a
-  -> ExceptT ImportError Aff a
+  -> ExceptT (Tuple (Maybe GitHub.Tag) ImportError) Aff a
+  -> ExceptT (Tuple (Maybe GitHub.Tag) ImportError) Aff a
 withCache path maybeDuration action = do
   let cacheFolder = ".cache"
   let objectPath = cacheFolder <> "/" <> path
@@ -414,21 +415,22 @@ withCache path maybeDuration action = do
 -- | Bowerfile for them. For example, packages should be excluded if they are
 -- | not on GitHub, or they have a malformed package name, or they are missing a Bowerfile, or they have
 -- | a malformed Bowerfile.
-toExclusions :: PackageFailures -> Maybe (Object (Array (Maybe String)))
-toExclusions =
+toExclusionsObject :: PackageFailures -> Maybe (Object (Array (Maybe String)))
+toExclusionsObject =
   (\obj -> if Object.isEmpty obj then Nothing else Just obj)
+    <<< map (map (map _.name))
     <<< Object.fromFoldable
     <<< map (lmap stripPureScriptPrefix)
-    <<< (Map.toUnfoldable :: _ -> Array _)
+    <<< (Map.toUnfoldable :: _ -> Array (Tuple String (Array (Maybe GitHub.Tag))))
     <<< map (map fst <<< Map.toUnfoldable)
     <<< filterErrors
   where
   condition = case _ of
     NotOnGitHub -> true
     MalformedPackageName _ -> true
-    MissingBowerfile _ -> true
-    MalformedBowerJson _ _ -> true
-    InvalidDependencyNames _ _ -> true
+    MissingBowerfile -> true
+    MalformedBowerJson _ -> true
+    InvalidDependencyNames _ -> true
     _ -> false
 
   filterErrors = Map.mapMaybe \a -> case Map.filter condition a of
@@ -436,11 +438,11 @@ toExclusions =
       | Map.isEmpty newMap -> Nothing
       | otherwise -> Just newMap
 
-toFailureMap
+toFailureObject
   :: PackageFailures
   -- Map ErrorName (Map PackageName (Map (Maybe Tag) (Maybe (Array DetailedError))))
   -> Object (Object (Object String))
-toFailureMap m = do
+toFailureObject m = do
   foldlWithIndex foldFn Object.empty m
   where
   foldFn package exclusionMap errorMap = do
@@ -449,7 +451,7 @@ toFailureMap m = do
 
   reassociate
     :: String
-    -> Map (Maybe String) ImportError
+    -> Map (Maybe GitHub.Tag) ImportError
     -> Map String (Object (Object String))
   reassociate package semverMap = foldlWithIndex foldFn' Map.empty semverMap
     where
@@ -459,7 +461,7 @@ toFailureMap m = do
         errorDetail = printImportError importError
         version = case mbSemVer of
           Nothing -> "null"
-          Just tag -> tag
+          Just tag -> tag.name
 
       Map.insertWith (Object.unionWith append) errorKey (Object.singleton package (Object.singleton version errorDetail)) exclusionMap
 
@@ -477,7 +479,7 @@ readRegistryPackages = do
     let decodeRegistry = decodeJson <=< parseJson
     registryFile <- FS.readTextFile UTF8 ("../" <> source)
     case decodeRegistry registryFile of
-      Left err -> throwError $ Aff.error $ fold
+      Left err -> throwError $ Aff.error $ Array.fold
         [ "Decoding "
         , source
         , "failed with error:\n\n"
@@ -519,14 +521,3 @@ readBowerfile path = do
     do
       strResult <- FS.readTextFile UTF8 path
       pure $ fromJson strResult
-
-partitionEithers :: forall e a. Array (Either e a) -> { fail :: Array e, success :: Array a }
-partitionEithers = foldMap case _ of
-  Left err -> { fail: [ err ], success: [] }
-  Right res -> { fail: [], success: [ res ] }
-
-unpackErrors :: forall e a. Either e a -> Maybe e
-unpackErrors =
-  case _ of
-    Left e -> Just e
-    Right _ -> Nothing

@@ -6,7 +6,6 @@ import Data.Argonaut (JsonDecodeError, printJsonDecodeError)
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
 import Data.String as String
-import Foreign.GitHub as GitHub
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 
@@ -15,34 +14,23 @@ import Registry.PackageName as PackageName
 data ImportError
   = NotOnGitHub
   | MalformedPackageName String
-  | MissingBowerfile GitHub.Tag
-  | MalformedBowerJson GitHub.Tag JsonDecodeError
-  | InvalidDependencyNames GitHub.Tag (NonEmptyArray String)
-  | NonRegistryDependencies GitHub.Tag (NonEmptyArray PackageName)
+  | MissingBowerfile
+  | MalformedBowerJson JsonDecodeError
+  | InvalidDependencyNames (NonEmptyArray String)
+  | NonRegistryDependencies (NonEmptyArray PackageName)
   | NoManifests
-  | ManifestError GitHub.Tag (NonEmptyArray ManifestError)
-
-tagFromError :: ImportError -> Maybe GitHub.Tag
-tagFromError = case _ of
-  NotOnGitHub -> Nothing
-  MalformedPackageName _ -> Nothing
-  MissingBowerfile tag -> Just tag
-  MalformedBowerJson tag _ -> Just tag
-  InvalidDependencyNames tag _ -> Just tag
-  NonRegistryDependencies tag _ -> Just tag
-  NoManifests -> Nothing
-  ManifestError tag _ -> Just tag
+  | ManifestError (NonEmptyArray ManifestError)
 
 printImportErrorKey :: ImportError -> String
 printImportErrorKey = case _ of
   NotOnGitHub -> "notOnGitHub"
   MalformedPackageName _ -> "malformedPackageName"
-  MissingBowerfile _ -> "missingBowerfile"
-  MalformedBowerJson _ _ -> "malformedBowerJson"
-  InvalidDependencyNames _ _ -> "invalidDependencyNames"
-  NonRegistryDependencies _ _ -> "nonRegistryDependencies"
+  MissingBowerfile -> "missingBowerfile"
+  MalformedBowerJson _ -> "malformedBowerJson"
+  InvalidDependencyNames _ -> "invalidDependencyNames"
+  NonRegistryDependencies _ -> "nonRegistryDependencies"
   NoManifests -> "noManifests"
-  ManifestError _ errs ->
+  ManifestError errs ->
     "manifestError."
       <> String.joinWith "." (printManifestErrorKey <$> NEA.toArray errs)
 
@@ -54,22 +42,22 @@ printImportError = case _ of
   MalformedPackageName err ->
     "Malformed name: " <> err
 
-  MissingBowerfile _ ->
+  MissingBowerfile ->
     "No bower file."
 
-  MalformedBowerJson _ err ->
+  MalformedBowerJson err ->
     "Malformed JSON:" <> printJsonDecodeError err
 
-  InvalidDependencyNames _ deps ->
+  InvalidDependencyNames deps ->
     "Malformed depndency names: " <> String.joinWith ", " (NEA.toArray deps)
 
-  NonRegistryDependencies _ deps ->
+  NonRegistryDependencies deps ->
     "Non-registry dependencies: " <> String.joinWith ", " (PackageName.print <$> NEA.toArray deps)
 
   NoManifests ->
     "No manifests produced"
 
-  ManifestError _ err -> case NEA.toArray err of
+  ManifestError err -> case NEA.toArray err of
     [ one ] -> printManifestError one
     many -> String.joinWith ", " (map printManifestError many)
 

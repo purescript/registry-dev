@@ -3,12 +3,16 @@ module Registry.Prelude
   , module Extra
   , module Either
   , module Maybe
+  , partitionEithers
+  , unpackErrors
+  , writeJsonFile
   , stripPureScriptPrefix
   , newlines
   ) where
 
 import Prelude
 
+import Data.Argonaut (class EncodeJson, encodeJson, stringifyWithIndent)
 import Data.Array as Array
 import Data.Bifunctor (bimap, lmap, rmap) as Extra
 import Data.Either (Either(..), either, fromLeft, fromRight', isRight, hush, note) as Either
@@ -36,7 +40,24 @@ import Effect.Ref (Ref) as Extra
 import Foreign.Object (Object) as Extra
 import Node.Buffer (Buffer) as Extra
 import Node.Encoding (Encoding(..)) as Extra
+import Node.FS.Aff as FS
 import Node.Path (FilePath) as Extra
+
+-- | Partition an array of `Either` values into failure and success  values
+partitionEithers :: forall e a. Array (Either.Either e a) -> { fail :: Array e, success :: Array a }
+partitionEithers = Array.foldMap case _ of
+  Either.Left err -> { fail: [ err ], success: [] }
+  Either.Right res -> { fail: [], success: [ res ] }
+
+unpackErrors :: forall e a. Either.Either e a -> Maybe.Maybe e
+unpackErrors =
+  case _ of
+    Either.Left e -> Maybe.Just e
+    Either.Right _ -> Maybe.Nothing
+
+-- | Encode data as JSON and write it to the provided filepath
+writeJsonFile :: forall a. EncodeJson a => Extra.FilePath -> a -> Extra.Aff Unit
+writeJsonFile path = FS.writeTextFile Extra.UTF8 path <<< stringifyWithIndent 2 <<< encodeJson
 
 -- | Strip the "purescript-" prefix from a package name, if present.
 -- |
