@@ -20,7 +20,6 @@ import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Data.Tuple (fst, uncurry)
 import Effect.Aff as Aff
-import Effect.Exception as Exception
 import Effect.Now (nowDateTime) as Time
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
@@ -38,26 +37,22 @@ import Web.Bower.PackageMeta as Bower
 
 {- TODO
 
-  - [ ] Change `runStep` so that it iterates through the package names AND the
-        individual versions of a package, so that exceptions are raised in
-        relation to a package + a version, but the next step iterates through the
-        next version instead of dropping the package altogether.
-
   - [ ] Adjust exclusions so that packages are only excluded by particular
         versions, or by all versions, but not _always_ excluded by all versions.
-        See: bifunctors.
+        See: bifunctors. Possibly: Make a step called `filterExclusions`
 
   - [ ] Adjust the `fetchBowerfiles` step so that it only fetches the files
-        themselves with no processing. That way, we can fill the exclusions
-        file only with packages truly missing bowerfiles. This maximizes our
-        ability to see errors for all other reasons, but not hit the GitHub API
-        to do so.
+        themselves with no processing. Then, `toExclusionObject` needs to
+        only include packages that are truly missing a bowerfile, and not the
+        other error types (like malformed package dependencies).
+
+        Purpose: exclude as few packages as possible. We _have_ to exclude
+        missing bowerfiles because we can't cache a missing file, and we need
+        to avoid making requests for these missing files over and over to the
+        GitHub API.
 
   - [ ] In fact, re-evaluate all the steps we take! Maybe they could be done
         in a better order to be composed together.
-
-  - [ ] Remove the `PackageMap` and `Step` newtypes, and write new functions
-        `encodeManifests` and `encodeExclusions` that just use objects.
 -}
 
 exclusionsFile :: FilePath
@@ -79,10 +74,12 @@ main :: Effect Unit
 main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
   { manifests, failures } <- downloadLegacyRegistry
+
   log "Writing exclusions, errors, and manifest files..."
   for_ (toExclusionsObject failures) (writeJsonFile exclusionsFile)
   writeJsonFile errorsFile (toFailureObject failures)
   writeJsonFile manifestsFile manifests
+
   log "Done!"
 
 -- | A data structure representing package names that have successfully been
@@ -105,27 +102,23 @@ downloadLegacyRegistry = do
   init@(Tuple _ allPackages) <- readRegistryPackages
 
   Tuple failures manifestMap <-
-    (\tup -> log "Getting releases..." *> runStep getReleases tup) init
-      >>= (\tup -> log "Fetching bower files..." *> (uncurry (runStepKeyed fetchBowerfiles)) tup)
-      >>= (\tup -> log "Check self contained..." *> (uncurry (runStepKeyed (checkSelfContained allPackages))) tup)
-      >>= (\tup -> log "Convert to manifest..." *> (uncurry (runStepKeyed convertToManifest)) tup)
+    runStep getReleases init
+      >>= uncurry (runStepKeyed fetchBowerfiles)
+      >>= uncurry (runStepKeyed (checkSelfContained allPackages))
+      >>= uncurry (runStepKeyed convertToManifest)
 
   log "Converted!"
   pure { failures, manifests: mkManifests manifestMap }
 
-type PackageMap x a = Map PackageName (VersionsMap x a)
+type PackageMap meta a = Map PackageName (VersionsMap meta a)
 
-type VersionsMap x a = { meta :: x, versions :: Map GitHub.Tag a }
+type VersionsMap meta a = { meta :: meta, versions :: Map GitHub.Tag a }
 
 -- | Perform an effectful transformation on a package, returning the transformed
 -- | package. If a package cannot be transformed, throw an `ImportError`
 -- | exception via `ExceptT` and the error will be collected.
 newtype Step a b = Step (PackageName -> a -> ExceptT ImportError Aff b)
 
--- TODO: This needs to be changed to be a nested traversal, once through the
--- package name and then through each version. That way exceptions are raised
--- for specific versions, not for a package as a whole, and successful versions
--- of a package still make it through.
 runStep
   :: forall a b
    . Step a b
@@ -144,14 +137,14 @@ runStep (Step run) (Tuple bad good) = do
         Right v ->
           modify (map (Map.insert package v))
 
-newtype KeyedStep x a b = KeyedStep (PackageName -> GitHub.Tag -> x -> a -> ExceptT ImportError Aff b)
+newtype KeyedStep meta a b = KeyedStep (PackageName -> GitHub.Tag -> meta -> a -> ExceptT ImportError Aff b)
 
 runStepKeyed
-  :: forall x a b
-   . KeyedStep x a b
+  :: forall meta a b
+   . KeyedStep meta a b
   -> PackageFailures
-  -> PackageMap x a
-  -> Aff (Tuple PackageFailures (PackageMap x b))
+  -> PackageMap meta a
+  -> Aff (Tuple PackageFailures (PackageMap meta b))
 runStepKeyed (KeyedStep step) bad good = do
   Tuple _ (Tuple bad' good') <- runStateT st (Tuple bad Map.empty)
   pure $ Tuple bad' good'
@@ -178,7 +171,7 @@ getReleases = Step \package address -> do
     name = PackageName.print package
     repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
 
-  releases <- withCache repoCache (Just $ Hours 1.0) $ do
+  releases <- withCache repoCache (Just $ Hours 24.0) $ do
     log $ "Fetching releases for package " <> name
     lift $ GitHub.getReleases address
 
@@ -208,7 +201,7 @@ fetchBowerfiles = KeyedStep \package tag address _ -> do
     url = "https://raw.githubusercontent.com/" <> address.owner <> "/" <> address.repo <> "/" <> tag.name <> "/bower.json"
     cache = "bowerfile__" <> PackageName.print package <> "__" <> tag.name
 
-  withCache cache (Just $ Hours 1.0) do
+  withCache cache Nothing do
     Bower.PackageMeta bowerfile <- lift (Http.get ResponseFormat.json url) >>= case _ of
       Left _ -> do
         throwError MissingBowerfile
@@ -401,6 +394,7 @@ withCache path maybeDuration action = do
   let dump = encodeJson >>> stringifyWithIndent 2
   let fromJson = jsonParser >=> (decodeJson >>> lmap printJsonDecodeError)
   let yolo a = unsafePartial $ fromJust a
+
   let
     cacheHit = liftAff do
       exists <- FS.exists objectPath
@@ -415,18 +409,24 @@ withCache path maybeDuration action = do
           pure (now > expiryTime)
       pure (exists && not expired)
   lift $ unlessM (FS.exists cacheFolder) (FS.mkdir cacheFolder)
-  cacheHit >>= case _ of
-    true -> lift do
-      strResult <- FS.readTextFile UTF8 objectPath
-      case (fromJson strResult) of
-        Right res -> pure res
-        -- Here we just blindly assume that we are the only ones to serialize here
-        Left err -> Aff.throwError $ Exception.error err
-    false -> do
+
+  let
+    onMiss = do
       log $ "No cache hit for " <> show path
       result <- action
       lift $ FS.writeTextFile UTF8 objectPath (dump result)
       pure result
+
+  cacheHit >>= case _ of
+    true -> do
+      strResult <- lift $ FS.readTextFile UTF8 objectPath
+      case (fromJson strResult) of
+        Right res -> pure res
+        Left err -> do
+          log $ "Unable to read cache file " <> err
+          onMiss
+    false -> do
+      onMiss
 
 -- | Segment out packages that should be excluded from future runs of the Bower
 -- | import tool. Packages should be excluded if we cannot get a well-formed
@@ -489,6 +489,10 @@ readRegistryPackages = do
   exclusions <- readExclusionsFile
   bowerRegistry <- readRegistry "bower-packages.json"
   purescriptRegistry <- readRegistry "new-packages.json"
+  -- TODO: Don't filter out all packages that are in the exclusions file. Instead,
+  -- filter out packages at specific _versions_ that are in the exclusions file.
+  -- NOTE: This can't be done in this step and will have to be done as a `Step`
+  -- or `KeyedStep`.
   let condition = flip Array.notElem exclusions <<< stripPureScriptPrefix
   toPackageMap $ Object.filterKeys condition $ Object.union bowerRegistry purescriptRegistry
   where
