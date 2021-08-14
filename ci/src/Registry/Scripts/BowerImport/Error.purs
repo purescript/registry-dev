@@ -12,24 +12,24 @@ import Registry.PackageName as PackageName
 -- | An error representing why a package version cannot be imported from the
 -- | Bower registry.
 data ImportError
-  = NotOnGitHub
+  = InvalidGitHubRepo String
+  | ExcludedPackage
   | NoReleases
   | MalformedPackageName String
   | MissingBowerfile
   | MalformedBowerJson JsonDecodeError
-  | InvalidDependencyNames (NonEmptyArray String)
-  | NonRegistryDependencies (NonEmptyArray PackageName)
+  | NonRegistryDependencies (NonEmptyArray String)
   | NoManifests
   | ManifestError (NonEmptyArray ManifestError)
 
 printImportErrorKey :: ImportError -> String
 printImportErrorKey = case _ of
-  NotOnGitHub -> "notOnGitHub"
+  InvalidGitHubRepo _ -> "invalidGitHubRepo"
+  ExcludedPackage -> "excludedPackage"
   NoReleases -> "noReleases"
   MalformedPackageName _ -> "malformedPackageName"
   MissingBowerfile -> "missingBowerfile"
   MalformedBowerJson _ -> "malformedBowerJson"
-  InvalidDependencyNames _ -> "invalidDependencyNames"
   NonRegistryDependencies _ -> "nonRegistryDependencies"
   NoManifests -> "noManifests"
   ManifestError errs ->
@@ -38,8 +38,11 @@ printImportErrorKey = case _ of
 
 printImportError :: ImportError -> String
 printImportError = case _ of
-  NotOnGitHub ->
-    "Not on GitHub."
+  InvalidGitHubRepo err ->
+    "Invalid GitHub repo: " <> err
+
+  ExcludedPackage ->
+    "Excluded package."
 
   NoReleases ->
     "No releases."
@@ -51,13 +54,10 @@ printImportError = case _ of
     "No bower file."
 
   MalformedBowerJson err ->
-    "Malformed JSON:" <> printJsonDecodeError err
-
-  InvalidDependencyNames deps ->
-    "Malformed depndency names: " <> String.joinWith ", " (NEA.toArray deps)
+    "Malformed JSON: " <> printJsonDecodeError err
 
   NonRegistryDependencies deps ->
-    "Non-registry dependencies: " <> String.joinWith ", " (PackageName.print <$> NEA.toArray deps)
+    "Non-registry dependencies: " <> String.joinWith ", " (NEA.toArray deps)
 
   NoManifests ->
     "No manifests produced"
@@ -69,10 +69,11 @@ printImportError = case _ of
 -- | An error representing why a Bowerfile cannot be migrated into a manifest.
 data ManifestError
   = MissingName
-  | MismatchedName { expected :: PackageName, received :: String }
+  | MismatchedName { expected :: String, received :: String }
   | MissingLicense
   | BadLicense (Array String)
   | BadVersion String
+  | InvalidDependencyNames (NonEmptyArray String)
   | BadDependencyVersions (NonEmptyArray { dependency :: PackageName, failedBounds :: String })
 
 printManifestErrorKey :: ManifestError -> String
@@ -82,6 +83,7 @@ printManifestErrorKey = case _ of
   MissingLicense -> "missingLicense"
   BadLicense _ -> "badLicense"
   BadVersion _ -> "badVersion"
+  InvalidDependencyNames _ -> "invalidDependencyNames"
   BadDependencyVersions _ -> "badDependencyVersions"
 
 printManifestError :: ManifestError -> String
@@ -91,7 +93,7 @@ printManifestError = case _ of
 
   MismatchedName { expected, received } ->
     "Bower file should have name purescript-"
-      <> PackageName.print expected
+      <> expected
       <> " but has name "
       <> received
 
@@ -103,6 +105,9 @@ printManifestError = case _ of
 
   BadVersion version ->
     "Invalid 'version' field: " <> version
+
+  InvalidDependencyNames deps ->
+    "Malformed depndency names: " <> String.joinWith ", " (NEA.toArray deps)
 
   BadDependencyVersions deps -> do
     let fromDep { dependency, failedBounds } = "(" <> PackageName.print dependency <> ": " <> failedBounds <> ")"

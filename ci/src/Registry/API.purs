@@ -3,6 +3,7 @@ module Registry.API where
 import Registry.Prelude
 
 import Control.Monad.Except (ExceptT(..), runExceptT)
+import Data.Argonaut (decodeJson, jsonParser, printJsonDecodeError)
 import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Generic.Rep as Generic
@@ -30,6 +31,7 @@ import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionT
 import Registry.Scripts.BowerImport as Bower
 import Sunde as Process
 import Text.Parsing.StringParser as Parser
+import Web.Bower.PackageMeta as Bower
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -308,3 +310,12 @@ pushToMaster packageName path = runExceptT do
         info result.stderr
         pure $ Right unit
       _ -> pure $ Left result.stderr
+
+readBowerfile :: String -> Aff (Either String Bower.PackageMeta)
+readBowerfile path = do
+  let fromJson' = jsonParser >=> (decodeJson >>> lmap printJsonDecodeError)
+  ifM (not <$> FS.exists path)
+    (pure $ Left $ "Bowerfile not found at " <> path)
+    do
+      strResult <- FS.readTextFile UTF8 path
+      pure $ fromJson' strResult
