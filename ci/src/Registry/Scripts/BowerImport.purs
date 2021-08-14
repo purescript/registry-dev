@@ -226,9 +226,12 @@ toManifest package repository release (Bower.PackageMeta bowerfile) = do
       let
         rewrite = case _ of
           [ "Apache 2" ] -> [ "Apache-2.0" ]
+          [ "Apache-2" ] -> [ "Apache-2.0" ]
           [ "Apache 2.0" ] -> [ "Apache-2.0" ]
           [ "BSD" ] -> [ "BSD-3-Clause" ]
           [ "BSD3" ] -> [ "BSD-3-Clause" ]
+          [ "BSD-3" ] -> [ "BSD-3-Clause" ]
+          [ "3-Clause BSD" ] -> [ "BSD-3-Clause" ]
           other -> other
 
         { fail, success } = partitionEithers $ SPDX.parse <$> rewrite bowerfile.license
