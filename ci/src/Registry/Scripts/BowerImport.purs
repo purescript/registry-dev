@@ -6,7 +6,7 @@ import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
 import Control.Monad.Error.Class (throwError)
 import Control.Monad.Except (ExceptT, except, lift, mapExceptT, runExceptT)
-import Control.Monad.State (StateT, modify, runStateT)
+import Control.Monad.State (modify, runStateT)
 import Data.Argonaut (class DecodeJson, class EncodeJson, decodeJson, encodeJson, jsonParser, parseJson, printJsonDecodeError)
 import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Array as Array
@@ -18,7 +18,7 @@ import Data.JSDate as JSDate
 import Data.Map as Map
 import Data.String as String
 import Data.Time.Duration (Hours(..))
-import Data.Tuple (fst, uncurry)
+import Data.Tuple (fst, snd)
 import Effect.Aff as Aff
 import Effect.Now (nowDateTime) as Time
 import Foreign.GitHub as GitHub
@@ -75,6 +75,9 @@ main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
   { manifests, failures } <- downloadLegacyRegistry
 
+  -- For now we just write out some files with our results, but in the future
+  -- we should sort the packages, upload them to the registry, and add them to
+  -- the registry index.
   log "Writing exclusions, errors, and manifest files..."
   for_ (toExclusionsObject failures) (writeJsonFile exclusionsFile)
   writeJsonFile errorsFile (toFailureObject failures)
@@ -94,79 +97,34 @@ type PackageFailures = Map String (Map (Maybe GitHub.Tag) ImportError)
 -- | failed packages along the way.
 downloadLegacyRegistry :: Aff { failures :: PackageFailures, manifests :: PackageManifests }
 downloadLegacyRegistry = do
-  let
-    mkManifests =
-      Map.mapMaybe \{ versions } -> NEA.fromArray $ Array.fromFoldable $ Map.values versions
+  -- First, we read in all the legacy packages contained in the bower-packages
+  -- and new-packages files.
+  log "Reading legacy registry packages..."
+  init@{ packages: allPackages } <- readRegistryPackages
 
-  log "Reading registry packages..."
-  init@(Tuple _ allPackages) <- readRegistryPackages
-
-  Tuple failures manifestMap <-
+  -- Then we transform each package into a manifest, fixing as many packages as
+  -- we can, and collecting errors along the way.
+  log "Transforming legacy packages to manifests..."
+  { failures, packages } <-
     runStep getReleases init
-      >>= uncurry (runStepKeyed fetchBowerfiles)
-      >>= uncurry (runStepKeyed (checkSelfContained allPackages))
-      >>= uncurry (runStepKeyed convertToManifest)
+      >>= runKeyedStep fetchBowerfiles
+      >>= runKeyedStep (checkSelfContained allPackages)
+      >>= runKeyedStep convertToManifest
 
-  log "Converted!"
-  pure { failures, manifests: mkManifests manifestMap }
+  -- Finally, we pull out all successfully-transformed manifests so they can
+  -- be written out to a file. We don't need to do any other processing to the
+  -- package failures.
+  let
+    manifests = do
+      let toManifestArray { versions } = NEA.fromArray $ Array.fromFoldable $ Map.values versions
+      Map.mapMaybe toManifestArray packages
 
-type PackageMap meta a = Map PackageName (VersionsMap meta a)
-
-type VersionsMap meta a = { meta :: meta, versions :: Map GitHub.Tag a }
-
--- | Perform an effectful transformation on a package, returning the transformed
--- | package. If a package cannot be transformed, throw an `ImportError`
--- | exception via `ExceptT` and the error will be collected.
-newtype Step a b = Step (PackageName -> a -> ExceptT ImportError Aff b)
-
-runStep
-  :: forall a b
-   . Step a b
-  -> Tuple PackageFailures (Map PackageName a)
-  -> Aff (Tuple PackageFailures (Map PackageName b))
-runStep (Step run) (Tuple bad good) = do
-  Tuple _ (Tuple bad' good') <- runStateT st (Tuple bad Map.empty)
-  pure $ Tuple bad' good'
-  where
-  st = do
-    forWithIndex_ good \package a -> do
-      res <- lift $ runExceptT (run package a)
-      case res of
-        Left err -> do
-          modify (lmap (Map.insertWith Map.union (PackageName.print package) (Map.singleton Nothing err)))
-        Right v ->
-          modify (map (Map.insert package v))
-
-newtype KeyedStep meta a b = KeyedStep (PackageName -> GitHub.Tag -> meta -> a -> ExceptT ImportError Aff b)
-
-runStepKeyed
-  :: forall meta a b
-   . KeyedStep meta a b
-  -> PackageFailures
-  -> PackageMap meta a
-  -> Aff (Tuple PackageFailures (PackageMap meta b))
-runStepKeyed (KeyedStep step) bad good = do
-  Tuple _ (Tuple bad' good') <- runStateT st (Tuple bad Map.empty)
-  pure $ Tuple bad' good'
-  where
-  st = do
-    forWithIndex_ good \package { meta, versions } -> do
-      forWithIndex_ versions \version a -> do
-        res <- lift $ runExceptT $ step package version meta a
-        case res of
-          Left err -> do
-            modify (lmap (Map.insertWith Map.union (PackageName.print package) (Map.singleton (Just version) err)))
-          Right v ->
-            modify (map (Map.insertWith (\old new -> { meta: new.meta, versions: Map.union old.versions new.versions }) package { meta, versions: Map.singleton version v }))
-
-type PackageReleases =
-  { address :: GitHub.Address
-  , releases :: Set GitHub.Tag
-  }
+  log "Finished transforming legacy packages!"
+  pure { failures, manifests }
 
 -- | Find all released tags for the package.
-getReleases :: Step GitHub.Address (VersionsMap GitHub.Address Unit)
-getReleases = Step \package address -> do
+getReleases :: Step GitHub.Address { meta :: GitHub.Address, versions :: Map GitHub.Tag Unit }
+getReleases = Step "Get all released GitHub tags tags package" \package address -> do
   let
     name = PackageName.print package
     repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
@@ -196,7 +154,7 @@ type Bowerfile =
 
 -- | Find the bower.json files associated with the package's relaesed tags.
 fetchBowerfiles :: KeyedStep GitHub.Address Unit Bowerfile
-fetchBowerfiles = KeyedStep \package tag address _ -> do
+fetchBowerfiles = KeyedStep "Fetch bower.json for tag" \package address tag _ -> do
   let
     url = "https://raw.githubusercontent.com/" <> address.owner <> "/" <> address.repo <> "/" <> tag.name <> "/bower.json"
     cache = "bowerfile__" <> PackageName.print package <> "__" <> tag.name
@@ -261,7 +219,7 @@ fetchBowerfiles = KeyedStep \package tag address _ -> do
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
 checkSelfContained :: Map PackageName GitHub.Address -> KeyedStep GitHub.Address Bowerfile Bowerfile
-checkSelfContained registry = KeyedStep \_ _ _ bowerfile -> do
+checkSelfContained registry = KeyedStep "Check dependencies are all in the registry" \_ _ _ bowerfile -> do
   let
     allDeps :: Array (Tuple PackageName String)
     allDeps = bowerfile.dependencies <> bowerfile.devDependencies
@@ -278,7 +236,7 @@ checkSelfContained registry = KeyedStep \_ _ _ bowerfile -> do
       throwError $ NonRegistryDependencies outside
 
 convertToManifest :: KeyedStep GitHub.Address Bowerfile Manifest
-convertToManifest = KeyedStep \package tag address bowerfile -> do
+convertToManifest = KeyedStep "Convert Bowerfile to a manifest" \package address tag bowerfile -> do
   let
     repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
     liftError = map (lmap ManifestError)
@@ -379,6 +337,71 @@ toManifest package repository release bowerfile = do
 
     Just err ->
       throwError err
+
+-- | Perform an effectful transformation on a package, returning the transformed
+-- | package. If a package cannot be transformed, throw an `ImportError`
+-- | exception via `ExceptT` and the error will be collected.
+data Step a b = Step String (PackageName -> a -> ExceptT ImportError Aff b)
+
+-- | Execute the provided step on every package in the input packages map,
+-- | collecting failures into the `PackageFailures` and preserving successfully-
+-- | transformed packages in the returned packages map.
+runStep
+  :: forall a b
+   . Step a b
+  -> { failures :: PackageFailures, packages :: Map PackageName a }
+  -> Aff { failures :: PackageFailures, packages :: Map PackageName b }
+runStep (Step label run) input = do
+  log label
+  map snd $ runStateT iterate { failures: input.failures, packages: Map.empty }
+  where
+  iterate = forWithIndex_ input.packages \package value -> do
+    lift (runExceptT (run package value)) >>= case _ of
+      Left err -> do
+        let
+          insertFailure = Map.insertWith Map.union (PackageName.print package)
+          newFailure = Map.singleton Nothing err
+        modify \state -> state { failures = insertFailure newFailure state.failures }
+      Right res -> do
+        modify \state -> state { packages = Map.insert package res state.packages }
+
+-- | A map of package names to versions to some `a`, with the ability to
+-- | associate some data `meta` with a particular package
+type PackageMap meta a = Map PackageName { meta :: meta, versions :: Map GitHub.Tag a }
+
+-- | Perform an effectful transformation on a package at a particular version,
+-- | using additional metadata `meta` about the package. If a package cannot be
+-- | transformed, throw an `ImportError` exception via `ExceptT` and the error
+-- | will be collected.
+data KeyedStep meta a b = KeyedStep String (PackageName -> meta -> GitHub.Tag -> a -> ExceptT ImportError Aff b)
+
+-- | Execute the provided step on every package in the input packages map, at
+-- | every version of that package, collecting failures into `PackageFailures`
+-- | and preserving transformed packages in the returned packages map.
+runKeyedStep
+  :: forall meta a b
+   . KeyedStep meta a b
+  -> { failures :: PackageFailures, packages :: PackageMap meta a }
+  -> Aff { failures :: PackageFailures, packages :: PackageMap meta b }
+runKeyedStep (KeyedStep label run) input = do
+  log label
+  map snd $ runStateT iterate { failures: input.failures, packages: Map.empty }
+  where
+  iterate =
+    forWithIndex_ input.packages \package { meta, versions } ->
+      forWithIndex_ versions \version value -> do
+        lift (runExceptT (run package meta version value)) >>= case _ of
+          Left err -> do
+            let
+              insertFailure = Map.insertWith Map.union (PackageName.print package)
+              newFailure = Map.singleton (Just version) err
+            modify \state -> state { failures = insertFailure newFailure state.failures }
+          Right res -> do
+            let
+              mergeVersions old new = { meta, versions: Map.union old.versions new.versions }
+              insertPackage = Map.insertWith mergeVersions package
+              newPackage = { meta, versions: Map.singleton version res }
+            modify \state -> state { packages = insertPackage newPackage state.packages }
 
 -- | Optionally-expirable cache: when passing a Duration then we'll consider
 -- | the object expired if its lifetime is past the duration.
@@ -487,7 +510,7 @@ toFailureObject m = do
       Map.insertWith (Object.unionWith append) errorKey (Object.singleton package (Object.singleton version errorDetail)) exclusionMap
 
 -- | Get the list of packages in the Bower and PureScript registries.
-readRegistryPackages :: Aff (Tuple PackageFailures (Map PackageName GitHub.Address))
+readRegistryPackages :: Aff { failures :: PackageFailures, packages :: Map PackageName GitHub.Address }
 readRegistryPackages = do
   exclusions <- readExclusionsFile
   bowerRegistry <- readRegistry "bower-packages.json"
@@ -522,21 +545,25 @@ readRegistryPackages = do
       Right (v :: Object (Array (Maybe String))) ->
         pure $ Object.keys v
 
-  toPackageMap :: Object String -> Aff (Tuple PackageFailures (Map PackageName GitHub.Address))
-  toPackageMap allPackages = do
-    Tuple _ (Tuple bad good) <- runStateT runPackages (Tuple Map.empty Map.empty)
-    pure $ Tuple bad good
+  toPackageMap :: Object String -> Aff { failures :: PackageFailures, packages :: Map PackageName GitHub.Address }
+  toPackageMap allPackages =
+    map snd $ runStateT runPackages { failures: Map.empty, packages: Map.empty }
     where
-    runPackages :: StateT (Tuple PackageFailures (Map PackageName GitHub.Address)) Aff Unit
     runPackages = forWithIndex_ allPackages \name repo ->
       case PackageName.parse name of
-        Left _ ->
-          modify (lmap (Map.insert name (Map.singleton Nothing (MalformedPackageName name))))
-        Right k' -> case GitHub.parseRepo repo of
-          Left _ ->
-            modify (lmap (Map.insert name (Map.singleton Nothing NotOnGitHub)))
+        Left _ -> do
+          let
+            newFailure = Map.singleton Nothing (MalformedPackageName name)
+            insertFailure = Map.insertWith Map.union name
+          modify \state -> state { failures = insertFailure newFailure state.failures }
+        Right res -> case GitHub.parseRepo repo of
+          Left _ -> do
+            let
+              newFailure = Map.singleton Nothing NotOnGitHub
+              insertFailure = Map.insertWith Map.union name
+            modify \state -> state { failures = insertFailure newFailure state.failures }
           Right address ->
-            modify (map (Map.insert k' address))
+            modify \state -> state { packages = Map.insert res address state.packages }
 
 readBowerfile :: String -> Aff (Either String Bower.PackageMeta)
 readBowerfile path = do
