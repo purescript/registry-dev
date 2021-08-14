@@ -152,8 +152,7 @@ readBowerfile path = do
 toManifest :: Bower.PackageMeta -> String -> Repo -> Either String Manifest
 toManifest (Bower.PackageMeta bowerfile) ref address = do
   let
-    toDepPair { packageName, versionRange }
-      = map (Tuple $ cleanPackageName packageName)
+    toDepPair { packageName, versionRange } = map (Tuple $ cleanPackageName packageName)
       $ note ("Failed to parse range: " <> versionRange)
       $ SemVer.parseRange versionRange
     subdir = Nothing
