@@ -26,6 +26,7 @@
   , "newtype"
   , "node-buffer"
   , "node-child-process"
+  , "node-glob-basic"
   , "node-fs"
   , "node-fs-aff"
   , "node-path"
