@@ -62,9 +62,8 @@ printImportError = case _ of
   NoManifests ->
     "No manifests produced"
 
-  ManifestError err -> case NEA.toArray err of
-    [ one ] -> printManifestError one
-    many -> String.joinWith ", " (map printManifestError many)
+  ManifestError err ->
+    String.joinWith ", " $ map printManifestError $ NEA.toArray err
 
 -- | An error representing why a Bowerfile cannot be migrated into a manifest.
 data ManifestError

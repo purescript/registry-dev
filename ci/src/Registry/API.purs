@@ -2,12 +2,14 @@ module Registry.API where
 
 import Registry.Prelude
 
-import Control.Monad.Except (ExceptT(..), runExceptT)
+import Control.Monad.Except (ExceptT(..), mapExceptT, runExceptT)
 import Data.Argonaut (decodeJson, jsonParser, printJsonDecodeError)
 import Data.Argonaut as Json
 import Data.Array as Array
+import Data.Array.NonEmpty as NEA
 import Data.Generic.Rep as Generic
 import Data.Map as Map
+import Data.String as String
 import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
@@ -28,10 +30,12 @@ import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
-import Registry.Scripts.BowerImport as Bower
+import Registry.Scripts.BowerImport (toManifest)
+import Registry.Scripts.BowerImport.Error (printManifestError)
 import Sunde as Process
 import Text.Parsing.StringParser as Parser
 import Web.Bower.PackageMeta as Bower
+
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -168,20 +172,25 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   -- If we're importing from Bower then we need to convert the Bowerfile
   -- to a Registry Manifest
   when fromBower do
-    -- TODO: Convert to use the new workflows from BowerImport, which provide
-    -- significantly better diagnostics.
+    liftAff (readBowerfile (absoluteFolderPath <> "/bower.json")) >>= case _ of
+      Left err ->
+         throwWithComment $ "Error while reading Bowerfile: " <> err
+      Right bowerfile -> do
+        let
+          name =
+            PackageName.print packageName
 
-    -- liftAff (Bower.readBowerfile (absoluteFolderPath <> "/bower.json")) >>= case _ of
-    --   Left err ->
-    --     throwWithComment $ "Error while reading Bowerfile: " <> err
-    --   Right bowerfile -> do
-    --     runExceptT $ Bower.toManifest bowerfile ref metadata.location of
-    --     Left err ->
-    --       throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
-    --     Right manifest -> do
-    --       let manifestStr = Json.stringifyWithIndent 2 $ Json.encodeJson manifest
-    --       liftAff $ FS.writeTextFile UTF8 manifestPath manifestStr
-    pure unit
+          printErrors =
+            String.joinWith ", " <<< map printManifestError <<< NEA.toArray
+
+          runManifest =
+            runExceptT <<< mapExceptT (liftAff <<< map (lmap printErrors))
+
+        runManifest (toManifest name metadata.location ref bowerfile) >>= case _ of
+          Left err ->
+            throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
+          Right manifest ->
+            liftAff $ writeJsonFile manifestPath manifest
 
   -- Try to read the manifest, typechecking it
   manifest :: Manifest <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of

@@ -201,13 +201,13 @@ convertToManifest = KeyedStep "Convert Bowerfile to a manifest" \package address
     repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
     liftError = map (lmap ManifestError)
 
-  mapExceptT liftError $ toManifest package repo tag bowerfile
+  mapExceptT liftError $ toManifest package repo tag.name bowerfile
 
 -- | Convert a package from Bower to a Manifest.
 -- This function is written a bit awkwardly because we want to collect validation
 -- errors that occur rather than just throw the first one.
-toManifest :: String -> Repo -> GitHub.Tag -> Bower.PackageMeta -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
-toManifest package repository release (Bower.PackageMeta bowerfile) = do
+toManifest :: String -> Repo -> String -> Bower.PackageMeta -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
+toManifest package repository ref (Bower.PackageMeta bowerfile) = do
   let
     mkError :: forall a. ManifestError -> Either (NonEmptyArray ManifestError) a
     mkError = Left <<< NEA.singleton
@@ -243,9 +243,9 @@ toManifest package repository release (Bower.PackageMeta bowerfile) = do
         _ ->
           mkError $ BadLicense fail
 
-    eitherVersion = case SemVer.parseSemVer release.name of
+    eitherVersion = case SemVer.parseSemVer ref of
       Nothing ->
-        mkError $ BadVersion release.name
+        mkError $ BadVersion ref
       Just version ->
         Right version
 
