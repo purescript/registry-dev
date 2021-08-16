@@ -1,6 +1,12 @@
-const semver = require('semver');
+const semver = require("semver");
 
-exports.parseSemVerImpl = semver.parse;
+exports.parseSemVerImpl = (input) => {
+  try {
+    return semver.parse(input);
+  } catch (e) {
+    return null;
+  }
+};
 
 exports.compareSemVerImpl = semver.compare;
 

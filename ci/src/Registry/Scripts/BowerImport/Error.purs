@@ -2,12 +2,29 @@ module Registry.Scripts.BowerImport.Error where
 
 import Registry.Prelude
 
-import Data.Argonaut (JsonDecodeError, printJsonDecodeError)
-import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
 import Data.String as String
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Safe.Coerce (coerce)
+
+-- | An import error printed as a key usable in a map
+newtype ImportErrorKey = ImportErrorKey String
+derive instance Newtype ImportErrorKey _
+derive newtype instance Eq ImportErrorKey
+derive newtype instance Ord ImportErrorKey
+
+-- | An unprocessed package name, which may possibly be malformed.
+newtype RawPackageName = RawPackageName String
+derive instance Newtype RawPackageName _
+derive newtype instance Eq RawPackageName
+derive newtype instance Ord RawPackageName
+
+-- | An unprocessed version, taken from a GitHub tag
+newtype RawVersion = RawVersion String
+derive instance Newtype RawVersion _
+derive newtype instance Eq RawVersion
+derive newtype instance Ord RawVersion
 
 -- | An error representing why a package version cannot be imported from the
 -- | Bower registry.
@@ -17,13 +34,13 @@ data ImportError
   | NoReleases
   | MalformedPackageName String
   | MissingBowerfile
-  | MalformedBowerJson JsonDecodeError
-  | NonRegistryDependencies (NonEmptyArray String)
+  | MalformedBowerJson { error :: String, contents :: String }
+  | NonRegistryDependencies (NonEmptyArray RawPackageName)
   | NoManifests
   | ManifestError (NonEmptyArray ManifestError)
 
-printImportErrorKey :: ImportError -> String
-printImportErrorKey = case _ of
+printImportErrorKey :: ImportError -> ImportErrorKey
+printImportErrorKey = ImportErrorKey <<< case _ of
   InvalidGitHubRepo _ -> "invalidGitHubRepo"
   ExcludedPackage -> "excludedPackage"
   NoReleases -> "noReleases"
@@ -48,16 +65,16 @@ printImportError = case _ of
     "No releases."
 
   MalformedPackageName err ->
-    "Malformed name: " <> err
+    "Malformed name: " <> coerce err
 
   MissingBowerfile ->
     "No bower file."
 
-  MalformedBowerJson err ->
-    "Malformed JSON: " <> printJsonDecodeError err
+  MalformedBowerJson { error, contents } ->
+    "Malformed JSON. Error: " <> error <> ". Contents: " <> contents <> "."
 
   NonRegistryDependencies deps ->
-    "Non-registry dependencies: " <> String.joinWith ", " (NEA.toArray deps)
+    "Non-registry dependencies: " <> String.joinWith ", " (coerce (NEA.toArray deps))
 
   NoManifests ->
     "No manifests produced"
@@ -68,7 +85,7 @@ printImportError = case _ of
 -- | An error representing why a Bowerfile cannot be migrated into a manifest.
 data ManifestError
   = MissingName
-  | MismatchedName { expected :: String, received :: String }
+  | MismatchedName { expected :: PackageName, received :: RawPackageName }
   | MissingLicense
   | BadLicense (Array String)
   | BadVersion String
@@ -92,9 +109,9 @@ printManifestError = case _ of
 
   MismatchedName { expected, received } ->
     "Bower file should have name purescript-"
-      <> expected
+      <> PackageName.print expected
       <> " but has name "
-      <> received
+      <> coerce received
 
   MissingLicense ->
     "No 'license' field"
