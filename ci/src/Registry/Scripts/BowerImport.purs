@@ -35,26 +35,6 @@ import Text.Parsing.StringParser (printParserError)
 import Web.Bower.PackageMeta (Dependencies(..))
 import Web.Bower.PackageMeta as Bower
 
-{- TODO
-
-  - [ ] Adjust exclusions so that packages are only excluded by particular
-        versions, or by all versions, but not _always_ excluded by all versions.
-        See: bifunctors. Possibly: Make a step called `filterExclusions`
-
-  - [ ] Adjust the `fetchBowerfiles` step so that it only fetches the files
-        themselves with no processing. Then, `toExclusionObject` needs to
-        only include packages that are truly missing a bowerfile, and not the
-        other error types (like malformed package dependencies).
-
-        Purpose: exclude as few packages as possible. We _have_ to exclude
-        missing bowerfiles because we can't cache a missing file, and we need
-        to avoid making requests for these missing files over and over to the
-        GitHub API.
-
-  - [ ] In fact, re-evaluate all the steps we take! Maybe they could be done
-        in a better order to be composed together.
--}
-
 exclusionsFile :: FilePath
 exclusionsFile = "./bower-exclusions.json"
 
