@@ -36,7 +36,6 @@ import Sunde as Process
 import Text.Parsing.StringParser as Parser
 import Web.Bower.PackageMeta as Bower
 
-
 main :: Effect Unit
 main = launchAff_ $ do
   eventPath <- liftEffect $ Env.lookupEnv "GITHUB_EVENT_PATH"
@@ -174,7 +173,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   when fromBower do
     liftAff (readBowerfile (absoluteFolderPath <> "/bower.json")) >>= case _ of
       Left err ->
-         throwWithComment $ "Error while reading Bowerfile: " <> err
+        throwWithComment $ "Error while reading Bowerfile: " <> err
       Right bowerfile -> do
         let
           name =
