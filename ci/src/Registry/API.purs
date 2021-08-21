@@ -139,8 +139,23 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
   folderName <- case metadata.location of
     Git _ -> do
-      -- TODO: Support non-GitHub packages. Remember subdir when implementing this. (See #15)
-      throwWithComment "Packages are only allowed to come from GitHub for now. See #15"
+      -- TODO: Support non-GitHub/Sourcehut packages. Remember subdir when implementing this. (See #15)
+      throwWithComment "Packages are only allowed to come from GitHub or Sourcehut for now. See #15"
+    Sourcehut { owner, repo, subdir } -> do
+      when (isJust subdir) $ throwWithComment "`subdir` is not supported for now. See #16"
+      let tarballName = ref <> ".tar.gz"
+      let absoluteTarballPath = tmpDir <> "/" <> tarballName
+      let archiveUrl = "https://git.sr.ht/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
+      log $ "Fetching tarball from Sourcehut: " <> archiveUrl
+      wget archiveUrl absoluteTarballPath
+      log $ "Tarball downloaded in " <> absoluteTarballPath
+      liftEffect (Tar.getToplevelDir absoluteTarballPath) >>= case _ of
+        Nothing ->
+          throwWithComment "Could not find a toplevel dir in the tarball!"
+        Just dir -> do
+          log "Extracting the tarball..."
+          liftEffect $ Tar.extract { cwd: tmpDir, filename: absoluteTarballPath }
+          pure dir
     GitHub { owner, repo, subdir } -> do
       -- TODO: Support subdir. In the meantime, we verify subdir is not present. (See #16)
       when (isJust subdir) $ throwWithComment "`subdir` is not supported for now. See #16"

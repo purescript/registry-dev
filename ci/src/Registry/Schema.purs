@@ -37,11 +37,17 @@ type GitHubData = RepoData
   , repo :: String
   )
 
+type SourcehutData = RepoData
+  ( owner :: String
+  , repo :: String
+  )
+
 type GitData = RepoData (url :: String)
 
 data Repo
   = Git GitData
   | GitHub GitHubData
+  | Sourcehut SourcehutData
 
 derive instance eqRepo :: Eq Repo
 
@@ -62,6 +68,11 @@ instance repoEncodeJson :: Json.EncodeJson Repo where
         ~> "githubOwner" := owner
         ~> "subdir" :=? subdir
         ~>? jsonEmptyObject
+    Sourcehut { repo, owner, subdir } ->
+      "sourcehutRepositoryName" := repo
+        ~> "sourcehutOwnerCanonicalName" := owner
+        ~> "subdir" :=? subdir
+        ~>? jsonEmptyObject
 
 instance repoDecodeJson :: Json.DecodeJson Repo where
   decodeJson json = do
@@ -73,10 +84,15 @@ instance repoDecodeJson :: Json.DecodeJson Repo where
         repo <- obj .: "githubRepo"
         pure $ GitHub { owner, repo, subdir }
     let
+      parseSourcehut = do
+        owner <- obj .: "sourcehutOwnerCanonicalName"
+        repo <- obj .: "sourcehutRepositoryName"
+        pure $ Sourcehut { owner, repo, subdir }
+    let
       parseGit = do
         url <- obj .: "url"
         pure $ Git { url, subdir }
-    parseGitHub <|> parseGit
+    parseGitHub <|> parseSourcehut <|> parseGit
 
 -- | PureScript encoding of ../v1/Operation.dhall
 data Operation
