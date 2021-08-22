@@ -147,5 +147,6 @@
   "purescript-ask": "https://github.com/Mateiadrielrafael/purescript-ask.git",
   "purescript-owoify": "https://github.com/deadshot465/purescript-owoify.git",
   "purescript-typelevel-rows": "https://github.com/jordanmartinez/purescript-typelevel-rows.git",
-  "purescript-fast-vect": "https://github.com/sigma-andex/purescript-fast-vect.git"
+  "purescript-fast-vect": "https://github.com/sigma-andex/purescript-fast-vect.git",
+  "purescript-phaser": "https://github.com/lfarroco/purescript-phaser.git"
 }
