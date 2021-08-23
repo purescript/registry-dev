@@ -2,8 +2,7 @@ module Registry.Scripts.BowerImport.Error where
 
 import Registry.Prelude
 
-import Data.Argonaut (JsonDecodeError, printJsonDecodeError)
-import Data.Array.NonEmpty (NonEmptyArray)
+import Data.Argonaut as Json
 import Data.Array.NonEmpty as NEA
 import Data.String as String
 import Registry.PackageName (PackageName)
@@ -17,7 +16,7 @@ data ImportError
   | NoReleases
   | MalformedPackageName String
   | MissingBowerfile
-  | MalformedBowerJson JsonDecodeError
+  | MalformedBowerJson Json.JsonDecodeError
   | NonRegistryDependencies (NonEmptyArray String)
   | NoManifests
   | ManifestError (NonEmptyArray ManifestError)
@@ -54,7 +53,7 @@ printImportError = case _ of
     "No bower file."
 
   MalformedBowerJson err ->
-    "Malformed JSON: " <> printJsonDecodeError err
+    "Malformed JSON: " <> Json.printJsonDecodeError err
 
   NonRegistryDependencies deps ->
     "Non-registry dependencies: " <> String.joinWith ", " (NEA.toArray deps)

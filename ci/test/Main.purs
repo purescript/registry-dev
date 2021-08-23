@@ -5,7 +5,6 @@ import Registry.Prelude
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
-import Partial.Unsafe (unsafeCrashWith)
 import Registry.API as API
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..))

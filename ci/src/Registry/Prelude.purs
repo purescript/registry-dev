@@ -4,7 +4,6 @@ module Registry.Prelude
   , module Either
   , module Maybe
   , partitionEithers
-  , unpackErrors
   , writeJsonFile
   , stripPureScriptPrefix
   , newlines
@@ -12,12 +11,16 @@ module Registry.Prelude
 
 import Prelude
 
+import Control.Monad.Error.Class (throwError) as Extra
+import Control.Monad.Except (ExceptT(..)) as Extra
+import Control.Monad.Trans.Class (lift) as Extra
 import Data.Argonaut (class EncodeJson, encodeJson, stringifyWithIndent)
 import Data.Array as Array
+import Data.Array.NonEmpty (NonEmptyArray) as Extra
 import Data.Bifunctor (bimap, lmap, rmap) as Extra
 import Data.Either (Either(..), either, fromLeft, fromRight', isRight, hush, note) as Either
 import Data.Foldable (and) as Extra
-import Data.FoldableWithIndex (forWithIndex_) as Extra
+import Data.FoldableWithIndex (forWithIndex_, foldlWithIndex) as Extra
 import Data.Identity (Identity) as Extra
 import Data.List (List) as Extra
 import Data.Map (Map) as Extra
@@ -29,7 +32,7 @@ import Data.Show.Generic (genericShow) as Extra
 import Data.String as String
 import Data.Traversable (for, for_, traverse, sequence) as Extra
 import Data.TraversableWithIndex (forWithIndex) as Extra
-import Data.Tuple (Tuple(..)) as Extra
+import Data.Tuple (Tuple(..), fst, snd) as Extra
 import Data.Tuple.Nested ((/\)) as Extra
 import Effect (Effect) as Extra
 import Effect.Aff (Aff, launchAff_, try) as Extra
@@ -42,18 +45,13 @@ import Node.Buffer (Buffer) as Extra
 import Node.Encoding (Encoding(..)) as Extra
 import Node.FS.Aff as FS
 import Node.Path (FilePath) as Extra
+import Partial.Unsafe (unsafePartial, unsafeCrashWith) as Extra
 
 -- | Partition an array of `Either` values into failure and success  values
 partitionEithers :: forall e a. Array (Either.Either e a) -> { fail :: Array e, success :: Array a }
 partitionEithers = Array.foldMap case _ of
   Either.Left err -> { fail: [ err ], success: [] }
   Either.Right res -> { fail: [], success: [ res ] }
-
-unpackErrors :: forall e a. Either.Either e a -> Maybe.Maybe e
-unpackErrors =
-  case _ of
-    Either.Left e -> Maybe.Just e
-    Either.Right _ -> Maybe.Nothing
 
 -- | Encode data as JSON and write it to the provided filepath
 writeJsonFile :: forall a. EncodeJson a => Extra.FilePath -> a -> Extra.Aff Unit
@@ -63,6 +61,9 @@ writeJsonFile path = FS.writeTextFile Extra.UTF8 path <<< stringifyWithIndent 2 
 -- |
 -- | ```purs
 -- | > stripPureScriptPrefix "purescript-numbers"
+-- | "numbers"
+-- |
+-- | > stripPureScriptPrefix "numbers"
 -- | "numbers"
 -- | ```
 stripPureScriptPrefix :: String -> String
