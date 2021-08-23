@@ -78,11 +78,11 @@ downloadLegacyRegistry = do
   -- we can, and collecting errors along the way.
   log "Transforming legacy packages to manifests..."
   { failures, packages } <-
-    runStep getReleases { failures: Map.empty, packages: allPackages }
-      >>= runKeyedStep (skipExcluded exclusions)
-      >>= runKeyedStep fetchBowerfile
-      >>= runKeyedStep (checkSelfContained allPackages)
-      >>= runKeyedStep convertToManifest
+    runPackageTransform getReleases { failures: Map.empty, packages: allPackages }
+      >>= runPackageVersionTransform (skipExcluded exclusions)
+      >>= runPackageVersionTransform fetchBowerfile
+      >>= runPackageVersionTransform (checkSelfContained allPackages)
+      >>= runPackageVersionTransform convertToManifest
 
   -- Then, we write failed packages out to files so we can fix the errors or
   -- simply list packages that won't be included in the new registry.
@@ -100,8 +100,8 @@ downloadLegacyRegistry = do
 
 -- | Find all released tags for the package, returning the parsed repository
 -- | location and a map of tags.
-getReleases :: Step String { meta :: GitHub.Address, versions :: Map GitHub.Tag Unit }
-getReleases = Step "Get released GitHub tags" \name repo -> do
+getReleases :: PackageTransform RawPackageName { meta :: GitHub.Address, versions :: Map GitHub.Tag Unit }
+getReleases = PackageTransform "Get released GitHub tags" \name repo -> do
   address <- case GitHub.parseRepo repo of
     Left err -> throwError $ InvalidGitHubRepo $ StringParser.printParserError err
     Right address -> pure address
@@ -119,16 +119,16 @@ getReleases = Step "Get released GitHub tags" \name repo -> do
   pure { meta: address, versions }
 
 -- | Find the bower.json files associated with the package's relaesed tags.
-skipExcluded :: Map String (Array (Maybe String)) -> KeyedStep GitHub.Address Unit Unit
-skipExcluded exclusions = KeyedStep "Filter out excluded packages" \package _ tag _ -> do
+skipExcluded :: Map String (Array (Maybe String)) -> PackageVersionTransform GitHub.Address Unit Unit
+skipExcluded exclusions = PackageVersionTransform "Filter out excluded packages" \package _ tag _ -> do
   for_ (Map.lookup package exclusions) \tags ->
     when (Array.elem Nothing tags || Array.elem (Just tag.name) tags) do
       throwError ExcludedPackage
 
 -- | Find the bower.json files associated with the package's released tags,
 -- | caching the file to avoid re-fetching each time the tool runs.
-fetchBowerfile :: KeyedStep GitHub.Address Unit Bower.PackageMeta
-fetchBowerfile = KeyedStep "Fetch bower.json for tag" \package address tag _ -> do
+fetchBowerfile :: PackageVersionTransform GitHub.Address Unit Bower.PackageMeta
+fetchBowerfile = PackageVersionTransform "Fetch bower.json for tag" \package address tag _ -> do
   let
     url = "https://raw.githubusercontent.com/" <> address.owner <> "/" <> address.repo <> "/" <> tag.name <> "/bower.json"
     bowerfileCache = "bowerfile__" <> package <> "__" <> tag.name
@@ -142,9 +142,9 @@ fetchBowerfile = KeyedStep "Fetch bower.json for tag" \package address tag _ -> 
 
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
-checkSelfContained :: Map RawPackageName String -> KeyedStep GitHub.Address Bower.PackageMeta Bower.PackageMeta
+checkSelfContained :: Map RawPackageName String -> PackageVersionTransform GitHub.Address Bower.PackageMeta Bower.PackageMeta
 checkSelfContained registry =
-  KeyedStep "Check dependencies are all in the registry" \_ _ _ (Bower.PackageMeta bowerfile) -> do
+  PackageVersionTransform "Check dependencies are all in the registry" \_ _ _ (Bower.PackageMeta bowerfile) -> do
     let
       -- Packages can be specified either in 'package-name' format or
       -- in owner/package-name format. This function ensures we don't pick
@@ -171,8 +171,8 @@ checkSelfContained registry =
       Just outside ->
         throwError $ NonRegistryDependencies outside
 
-convertToManifest :: KeyedStep GitHub.Address Bower.PackageMeta Manifest
-convertToManifest = KeyedStep "Convert Bowerfile to a manifest" \package address tag bowerfile -> do
+convertToManifest :: PackageVersionTransform GitHub.Address Bower.PackageMeta Manifest
+convertToManifest = PackageVersionTransform "Convert Bowerfile to a manifest" \package address tag bowerfile -> do
   let
     repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
     liftError = map (lmap ManifestError)
@@ -182,7 +182,12 @@ convertToManifest = KeyedStep "Convert Bowerfile to a manifest" \package address
 -- | Convert a package from Bower to a Manifest.
 -- This function is written a bit awkwardly because we want to collect validation
 -- errors that occur rather than just throw the first one.
-toManifest :: String -> Repo -> String -> Bower.PackageMeta -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
+toManifest
+  :: RawPackageName
+  -> Repo
+  -> String
+  -> Bower.PackageMeta
+  -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
 toManifest package repository ref (Bower.PackageMeta bowerfile) = do
   let
     mkError :: forall a. ManifestError -> Either (NonEmptyArray ManifestError) a
@@ -303,17 +308,20 @@ toManifest package repository ref (Bower.PackageMeta bowerfile) = do
 -- | Perform an effectful transformation on a package, returning the transformed
 -- | package. If a package cannot be transformed, throw an `ImportError`
 -- | exception via `ExceptT` and the error will be collected.
-data Step a b = Step String (RawPackageName -> a -> ExceptT ImportError Aff b)
+data PackageTransform a b =
+  PackageTransform
+    String
+    (RawPackageName -> a -> ExceptT ImportError Aff b)
 
--- | Execute the provided step on every package in the input packages map,
+-- | Execute the provided transform on every package in the input packages map,
 -- | collecting failures into the `PackageFailures` and preserving successfully-
 -- | transformed packages in the returned packages map.
-runStep
+runPackageTransform
   :: forall a b
-   . Step a b
+   . PackageTransform a b
   -> { failures :: PackageFailures, packages :: Map RawPackageName a }
   -> Aff { failures :: PackageFailures, packages :: Map RawPackageName b }
-runStep (Step label run) input = do
+runPackageTransform (PackageTransform label run) input = do
   log $ "[STEP] " <> label
   map snd $ State.runStateT iterate { failures: input.failures, packages: Map.empty }
   where
@@ -335,17 +343,20 @@ type PackageMap meta a = Map RawPackageName { meta :: meta, versions :: Map GitH
 -- | using additional metadata `meta` about the package. If a package cannot be
 -- | transformed, throw an `ImportError` exception via `ExceptT` and the error
 -- | will be collected.
-data KeyedStep meta a b = KeyedStep String (RawPackageName -> meta -> GitHub.Tag -> a -> ExceptT ImportError Aff b)
+data PackageVersionTransform meta a b =
+  PackageVersionTransform
+    String
+    (RawPackageName -> meta -> GitHub.Tag -> a -> ExceptT ImportError Aff b)
 
--- | Execute the provided step on every package in the input packages map, at
+-- | Execute the provided transform on every package in the input packages map, at
 -- | every version of that package, collecting failures into `PackageFailures`
 -- | and preserving transformed packages in the returned packages map.
-runKeyedStep
+runPackageVersionTransform
   :: forall meta a b
-   . KeyedStep meta a b
+   . PackageVersionTransform meta a b
   -> { failures :: PackageFailures, packages :: PackageMap meta a }
   -> Aff { failures :: PackageFailures, packages :: PackageMap meta b }
-runKeyedStep (KeyedStep label run) input = do
+runPackageVersionTransform (PackageVersionTransform label run) input = do
   log $ "[STEP] " <> label
   map snd $ State.runStateT iterate { failures: input.failures, packages: Map.empty }
   where
