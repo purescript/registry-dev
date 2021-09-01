@@ -18,7 +18,6 @@ import Data.Newtype as Newtype
 import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration (Hours(..))
-import Debug (spy, traceM)
 import Effect.Aff as Aff
 import Effect.Now (nowDateTime) as Time
 import Foreign.GitHub as GitHub
@@ -111,8 +110,6 @@ downloadBowerRegistry = do
 
           filterFailedPackageVersions shouldAccept releaseIndex.failures _.name releaseIndex.packages
       }
-
-  traceM $ Map.lookup { name: RawPackageName "bouzuya-http-method", address: { owner: "bouzuya", repo: "purescript-bouzuya-http-method" } } validBower.packages
 
   log "Fetching package bowerfiles..."
   bowerRegistry <- forPackageVersion validBower _.name identity \{ name, address } tag _ -> do
@@ -530,37 +527,22 @@ filterFailedPackageVersions
   -> Map k (Map RawVersion v)
 filterFailedPackageVersions shouldAccept (PackageFailures failures) toPackageName = do
   let
-    failedPackages = case map (NEA.foldl1 Map.union) $ NEA.fromFoldable $ Map.values failures of
-      Nothing -> Map.empty
-      Just m -> m
+    failedPackages :: Map RawPackageName (Map (Maybe RawVersion) ImportError)
+    failedPackages =
+      fromMaybe Map.empty
+        $ map (NEA.foldl1 (Map.unionWith Map.union))
+        $ NEA.fromFoldable
+        $ Map.values failures
 
-    skipFailedVersions = Map.mapMaybeWithKey \k versions -> Just do
-      let package = toPackageName k
-      versions # Map.filterKeys \version ->
+    skipFailedVersions = Map.mapMaybeWithKey \key rawVersions -> Just do
+      let package = toPackageName key
+      rawVersions # Map.filterKeys \version ->
         case Map.lookup package failedPackages of
-          Nothing -> do
-            let _ = if package == RawPackageName "bouzuya-http-method" then spy "not in failures" package else RawPackageName ""
-            true
+          Nothing -> true
           Just failedVersions -> case Map.lookup (Just version) failedVersions of
-            Nothing -> do
-              let _ = if package == RawPackageName "bouzuya-http-method" then spy "not in failure versions" version else RawVersion ""
-              true
+            Nothing -> true
             Just failedVersion
-              | shouldAccept failedVersion -> do
-                  case failedVersion of
-                    MissingBowerfile -> do
-                      true
-                    MalformedBowerJson _ -> do
-                      true
-                    _ ->
-                      true
-              | otherwise ->
-                  case failedVersion of
-                    MissingBowerfile -> do
-                      false
-                    MalformedBowerJson _ -> do
-                      false
-                    _ ->
-                      false
+              | shouldAccept failedVersion -> true
+              | otherwise -> false
 
   Map.filter (not Map.isEmpty) <<< skipFailedVersions
