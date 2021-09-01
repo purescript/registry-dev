@@ -5,6 +5,7 @@ import Registry.Prelude
 import Data.Argonaut as Json
 import Data.Argonaut.Decode.Generic as Json.Decode.Generic
 import Data.Argonaut.Encode.Generic as Json.Encode.Generic
+import Data.Argonaut.Types.Generic as Json.Generic
 import Data.Generic.Rep (class Generic)
 import Registry.PackageName (PackageName)
 import Registry.Prelude as Maybe
@@ -69,10 +70,10 @@ data ImportError
 derive instance Generic ImportError _
 
 instance Json.EncodeJson ImportError where
-  encodeJson = Json.Encode.Generic.genericEncodeJson
+  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
 
 instance Json.DecodeJson ImportError where
-  decodeJson = Json.Decode.Generic.genericDecodeJson
+  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
 
 printImportErrorKey :: ImportError -> ImportErrorKey
 printImportErrorKey = ImportErrorKey <<< case _ of
@@ -99,10 +100,10 @@ data ManifestError
 derive instance Generic ManifestError _
 
 instance Json.EncodeJson ManifestError where
-  encodeJson = Json.Encode.Generic.genericEncodeJson
+  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
 
 instance Json.DecodeJson ManifestError where
-  decodeJson = Json.Decode.Generic.genericDecodeJson
+  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
 
 printManifestErrorKey :: ManifestError -> String
 printManifestErrorKey = case _ of
@@ -113,3 +114,6 @@ printManifestErrorKey = case _ of
   BadVersion _ -> "badVersion"
   InvalidDependencyNames _ -> "invalidDependencyNames"
   BadDependencyVersions _ -> "badDependencyVersions"
+
+encodingOptions :: Json.Generic.Encoding
+encodingOptions = Json.Generic.defaultEncoding { unwrapSingleArguments = true }
