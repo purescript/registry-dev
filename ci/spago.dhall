@@ -5,6 +5,7 @@
   , "affjax"
   , "argonaut"
   , "argonaut-core"
+  , "argonaut-generic"
   , "arrays"
   , "bifunctors"
   , "bower-json"

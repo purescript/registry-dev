@@ -8,7 +8,6 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Generic.Rep as Generic
 import Data.Map as Map
-import Data.String as String
 import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
@@ -28,8 +27,7 @@ import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
-import Registry.Scripts.BowerImport (toManifest) as BowerImport
-import Registry.Scripts.BowerImport.Error (printManifestError) as BowerImport
+import Registry.Scripts.BowerImport as BowerImport
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
 import Web.Bower.PackageMeta as Bower
@@ -175,7 +173,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
       Right bowerfile -> do
         let
           printErrors =
-            String.joinWith ", " <<< map BowerImport.printManifestError <<< NEA.toArray
+            Json.stringifyWithIndent 2 <<< Json.encodeJson <<< NEA.toArray
 
           runManifest =
             Except.runExceptT <<< Except.mapExceptT (liftAff <<< map (lmap printErrors))

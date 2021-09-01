@@ -2,11 +2,36 @@ module Registry.Scripts.BowerImport.Error where
 
 import Registry.Prelude
 
-import Data.Array.NonEmpty as NEA
-import Data.String as String
+import Data.Argonaut as Json
+import Data.Argonaut.Decode.Generic as Json.Decode.Generic
+import Data.Argonaut.Encode.Generic as Json.Encode.Generic
+import Data.Generic.Rep (class Generic)
 import Registry.PackageName (PackageName)
-import Registry.PackageName as PackageName
+import Registry.Prelude as Maybe
 import Safe.Coerce (coerce)
+
+-- | A map of error types to package names to package versions, where failed
+-- | versions contain rich information about why they failed.
+newtype PackageFailures = PackageFailures (Map ImportErrorKey (Map RawPackageName (Map (Maybe RawVersion) ImportError)))
+derive instance Newtype PackageFailures _
+
+instance Json.EncodeJson PackageFailures where
+  encodeJson failures =
+    Json.encodeJson
+      $ objectFromMap coerce
+      $ map (objectFromMap coerce)
+      $ map (map (objectFromMap (Maybe.fromMaybe "null" <<< coerce)))
+      $ un PackageFailures failures
+
+instance Json.DecodeJson PackageFailures where
+  decodeJson json = do
+    let parseTag tag = if tag == "null" then Nothing else Just (RawVersion tag)
+    failuresObject :: Object (Object (Object ImportError)) <- Json.decodeJson json
+    pure
+      $ PackageFailures
+      $ objectToMap (Just <<< ImportErrorKey)
+      $ map (objectToMap (Just <<< RawPackageName))
+      $ map (map (objectToMap (Just <<< parseTag))) failuresObject
 
 -- | An import error printed as a key usable in a map
 newtype ImportErrorKey = ImportErrorKey String
@@ -19,6 +44,8 @@ newtype RawPackageName = RawPackageName String
 derive instance Newtype RawPackageName _
 derive newtype instance Eq RawPackageName
 derive newtype instance Ord RawPackageName
+derive newtype instance Json.EncodeJson RawPackageName
+derive newtype instance Json.DecodeJson RawPackageName
 
 -- | An unprocessed version, taken from a GitHub tag
 newtype RawVersion = RawVersion String
@@ -39,6 +66,14 @@ data ImportError
   | NoManifests
   | ManifestError (NonEmptyArray ManifestError)
 
+derive instance Generic ImportError _
+
+instance Json.EncodeJson ImportError where
+  encodeJson = Json.Encode.Generic.genericEncodeJson
+
+instance Json.DecodeJson ImportError where
+  decodeJson = Json.Decode.Generic.genericDecodeJson
+
 printImportErrorKey :: ImportError -> ImportErrorKey
 printImportErrorKey = ImportErrorKey <<< case _ of
   InvalidGitHubRepo _ -> "invalidGitHubRepo"
@@ -49,38 +84,7 @@ printImportErrorKey = ImportErrorKey <<< case _ of
   MalformedBowerJson _ -> "malformedBowerJson"
   NonRegistryDependencies _ -> "nonRegistryDependencies"
   NoManifests -> "noManifests"
-  ManifestError errs ->
-    "manifestError."
-      <> String.joinWith "." (printManifestErrorKey <$> NEA.toArray errs)
-
-printImportError :: ImportError -> String
-printImportError = case _ of
-  InvalidGitHubRepo err ->
-    "Invalid GitHub repo: " <> err
-
-  ExcludedPackage ->
-    "Excluded package."
-
-  NoReleases ->
-    "No releases."
-
-  MalformedPackageName err ->
-    "Malformed name: " <> coerce err
-
-  MissingBowerfile ->
-    "No bower file."
-
-  MalformedBowerJson { error, contents } ->
-    "Malformed JSON. Error: " <> error <> ". Contents: " <> contents <> "."
-
-  NonRegistryDependencies deps ->
-    "Non-registry dependencies: " <> String.joinWith ", " (coerce (NEA.toArray deps))
-
-  NoManifests ->
-    "No manifests produced"
-
-  ManifestError err ->
-    String.joinWith ", " $ map printManifestError $ NEA.toArray err
+  ManifestError _ -> "manifestError"
 
 -- | An error representing why a Bowerfile cannot be migrated into a manifest.
 data ManifestError
@@ -92,6 +96,14 @@ data ManifestError
   | InvalidDependencyNames (NonEmptyArray String)
   | BadDependencyVersions (NonEmptyArray { dependency :: PackageName, failedBounds :: String })
 
+derive instance Generic ManifestError _
+
+instance Json.EncodeJson ManifestError where
+  encodeJson = Json.Encode.Generic.genericEncodeJson
+
+instance Json.DecodeJson ManifestError where
+  decodeJson = Json.Decode.Generic.genericDecodeJson
+
 printManifestErrorKey :: ManifestError -> String
 printManifestErrorKey = case _ of
   MissingName -> "missingName"
@@ -101,30 +113,3 @@ printManifestErrorKey = case _ of
   BadVersion _ -> "badVersion"
   InvalidDependencyNames _ -> "invalidDependencyNames"
   BadDependencyVersions _ -> "badDependencyVersions"
-
-printManifestError :: ManifestError -> String
-printManifestError = case _ of
-  MissingName ->
-    "No 'name' field"
-
-  MismatchedName { expected, received } ->
-    "Bower file should have name purescript-"
-      <> PackageName.print expected
-      <> " but has name "
-      <> coerce received
-
-  MissingLicense ->
-    "No 'license' field"
-
-  BadLicense err ->
-    "Non-SPDX licenses: " <> String.joinWith ", " err
-
-  BadVersion version ->
-    "Invalid 'version' field: " <> version
-
-  InvalidDependencyNames deps ->
-    "Malformed depndency names: " <> String.joinWith ", " (NEA.toArray deps)
-
-  BadDependencyVersions deps -> do
-    let fromDep { dependency, failedBounds } = "(" <> PackageName.print dependency <> ": " <> failedBounds <> ")"
-    "Bad dependency versions: " <> String.joinWith ", " (fromDep <$> NEA.toArray deps)

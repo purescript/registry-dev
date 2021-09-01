@@ -7,15 +7,15 @@ module Registry.Prelude
   , readJsonFile
   , writeJsonFile
   , stripPureScriptPrefix
-  , filterMapObjectWithKey
   , newlines
+  , objectFromMap
+  , objectToMap
   ) where
 
 import Prelude
 
 import Control.Monad.Error.Class (throwError) as Extra
 import Control.Monad.Except (ExceptT(..)) as Extra
-import Control.Monad.ST as ST
 import Control.Monad.Trans.Class (lift) as Extra
 import Data.Argonaut as Json
 import Data.Array as Array
@@ -27,6 +27,7 @@ import Data.FoldableWithIndex (forWithIndex_, foldlWithIndex) as Extra
 import Data.Identity (Identity) as Extra
 import Data.List (List) as Extra
 import Data.Map (Map) as Extra
+import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing, isJust) as Maybe
 import Data.Newtype (un, class Newtype) as Extra
 import Data.Nullable (toMaybe, toNullable, Nullable) as Extra
@@ -45,7 +46,6 @@ import Effect.Class.Console (error, log, info) as Extra
 import Effect.Ref (Ref) as Extra
 import Foreign.Object (Object) as Extra
 import Foreign.Object as Object
-import Foreign.Object.ST as OST
 import Node.Buffer (Buffer) as Extra
 import Node.Encoding (Encoding(..)) as Extra
 import Node.FS.Aff as FS
@@ -68,24 +68,20 @@ readJsonFile path = do
   contents <- FS.readTextFile Extra.UTF8 path
   pure $ Json.decodeJson =<< Json.parseJson contents
 
--- | Filter and map over an object's keys and values, returning `Nothing` for
--- | key / value pairs that should be filtered out, and returning `Just` for
--- | pairs that should be preserved.
-filterMapObjectWithKey
-  :: forall a b
-   . (String -> a -> (Maybe.Maybe b))
-  -> Extra.Object a
-  -> Extra.Object b
-filterMapObjectWithKey predicate object = Object.runST go
-  where
-  go :: forall r. ST.ST r (OST.STObject r b)
-  go = do
-    newObject <- OST.new
-    Object.foldM step newObject object
-    where
-    step acc k a = case predicate k a of
-      Maybe.Nothing -> pure acc
-      Maybe.Just b -> OST.poke k b acc
+-- | Convert a Map into an Object, converting its keys to strings along the way.
+objectFromMap :: forall k a. Ord k => (k -> String) -> Extra.Map k a -> Extra.Object a
+objectFromMap toString = Object.fromFoldable <<< map (Extra.lmap toString) <<< (Map.toUnfoldable :: _ -> Array _)
+
+-- | Convert an Object into a Map. Keys that cannot be parsed from a string will
+-- | be removed from the map.
+objectToMap :: forall k a. Ord k => (String -> Maybe.Maybe k) -> Extra.Object a -> Extra.Map k a
+objectToMap fromString = do
+  let
+    parse (Extra.Tuple str a) = case fromString str of
+      Maybe.Nothing -> Maybe.Nothing
+      Maybe.Just key -> Maybe.Just (Extra.Tuple key a)
+
+  Map.fromFoldable <<< Array.catMaybes <<< map parse <<< (Object.toUnfoldable :: _ -> Array _)
 
 -- | Strip the "purescript-" prefix from a package name, if present.
 -- |
