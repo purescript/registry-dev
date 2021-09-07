@@ -91,14 +91,10 @@ downloadBowerRegistry = do
 
     releases <- withCache repoCache (Just $ Hours 24.0) do
       log $ "Fetching releases for package " <> un RawPackageName name
-      do
-        result <- lift $ try $ GitHub.getReleases address
-        case result of
-          Left err -> do
-            logShow err
-            throwError NoReleases
-          Right v ->
-            pure v
+      result <- lift $ try $ GitHub.getReleases address
+      case result of
+        Left err -> logShow err *> throwError NoReleases
+        Right v -> pure v
 
     versions <- case NEA.fromArray releases of
       Nothing -> throwError NoReleases
