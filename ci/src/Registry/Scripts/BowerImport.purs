@@ -19,6 +19,7 @@ import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
+import Effect.Class.Console (logShow)
 import Effect.Now (nowDateTime) as Time
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
@@ -90,7 +91,14 @@ downloadBowerRegistry = do
 
     releases <- withCache repoCache (Just $ Hours 24.0) do
       log $ "Fetching releases for package " <> un RawPackageName name
-      lift $ GitHub.getReleases address
+      do
+        result <- lift $ try $ GitHub.getReleases address
+        case result of
+          Left err -> do
+            logShow err
+            throwError NoReleases
+          Right v ->
+            pure v
 
     versions <- case NEA.fromArray releases of
       Nothing -> throwError NoReleases
