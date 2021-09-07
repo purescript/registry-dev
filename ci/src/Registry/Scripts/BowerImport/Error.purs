@@ -2,7 +2,6 @@ module Registry.Scripts.BowerImport.Error where
 
 import Registry.Prelude
 
-import Affjax.StatusCode (StatusCode(..))
 import Data.Argonaut as Json
 import Data.Argonaut.Decode.Generic as Json.Decode.Generic
 import Data.Argonaut.Encode.Generic as Json.Encode.Generic
