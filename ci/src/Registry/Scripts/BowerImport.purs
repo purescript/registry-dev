@@ -181,9 +181,12 @@ fetchBowerfile name address tag = do
         log $ "Unable to retrieve bowerfile. Bad request: " <> Http.printError err
         throwError MissingBowerfile
       Right { body, status }
+        | status == StatusCode 404 -> do
+            log $ "Unable to retrieve bowerfile because none exists (404 error)."
+            throwError MissingBowerfile
         | status /= StatusCode 200 -> do
             log $ "Unable to retrieve bowerfile. Bad status: " <> body
-            throwError MissingBowerfile
+            throwError $ BadStatus $ un StatusCode status
         | otherwise -> case Json.parseJson body >>= Json.decodeJson of
             Left err -> do
               log $ "Unable to parse bowerfile: " <> Json.printJsonDecodeError err <> " Malformed body: " <> body <> "."
@@ -214,16 +217,6 @@ toManifest package repository version (Bower.PackageMeta bowerfile) = do
   let
     mkError :: forall a. ManifestError -> Either (NonEmptyArray ManifestError) a
     mkError = Left <<< NEA.singleton
-
-    bowerName = stripPureScriptPrefix bowerfile.name
-
-    eitherName = case PackageName.parse $ stripPureScriptPrefix bowerName of
-      Right name | bowerName == PackageName.print package ->
-        Right name
-      Right _ -> do
-        mkError $ MismatchedName { expected: package, received: RawPackageName bowerfile.name }
-      Left _ -> do
-        mkError $ MismatchedName { expected: package, received: RawPackageName bowerfile.name }
 
     eitherLicense = do
       let
@@ -302,8 +295,7 @@ toManifest package repository version (Bower.PackageMeta bowerfile) = do
         toMaybeErrors = preview _Left
 
       map NEA.concat $ NEA.fromArray $ Array.catMaybes
-        [ toMaybeErrors eitherName
-        , toMaybeErrors eitherLicense
+        [ toMaybeErrors eitherLicense
         , toMaybeErrors eitherTargets
         ]
 
@@ -311,10 +303,9 @@ toManifest package repository version (Bower.PackageMeta bowerfile) = do
     Nothing -> do
       -- Technically this shouldn't be needed, since we've already checked these
       -- for errors, but this is just so the types all work out.
-      name <- Except.except eitherName
       license <- Except.except eitherLicense
       targets <- Except.except eitherTargets
-      pure { name, license, repository, targets, version }
+      pure { name: package, license, repository, targets, version }
 
     Just err ->
       throwError err

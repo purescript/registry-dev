@@ -2,6 +2,7 @@ module Registry.Scripts.BowerImport.Error where
 
 import Registry.Prelude
 
+import Affjax.StatusCode (StatusCode(..))
 import Data.Argonaut as Json
 import Data.Argonaut.Decode.Generic as Json.Decode.Generic
 import Data.Argonaut.Encode.Generic as Json.Encode.Generic
@@ -58,7 +59,7 @@ derive newtype instance Ord RawVersion
 -- | Bower registry.
 data ImportError
   = InvalidGitHubRepo String
-  | ExcludedPackage
+  | BadStatus Int
   | NoReleases
   | MalformedPackageName String
   | MissingBowerfile
@@ -78,7 +79,7 @@ instance Json.DecodeJson ImportError where
 printImportErrorKey :: ImportError -> ImportErrorKey
 printImportErrorKey = ImportErrorKey <<< case _ of
   InvalidGitHubRepo _ -> "invalidGitHubRepo"
-  ExcludedPackage -> "excludedPackage"
+  BadStatus _ -> "badStatus"
   NoReleases -> "noReleases"
   MalformedPackageName _ -> "malformedPackageName"
   MissingBowerfile -> "missingBowerfile"
@@ -90,7 +91,6 @@ printImportErrorKey = ImportErrorKey <<< case _ of
 -- | An error representing why a Bowerfile cannot be migrated into a manifest.
 data ManifestError
   = MissingName
-  | MismatchedName { expected :: PackageName, received :: RawPackageName }
   | MissingLicense
   | BadLicense (Array String)
   | BadVersion String
@@ -108,7 +108,6 @@ instance Json.DecodeJson ManifestError where
 printManifestErrorKey :: ManifestError -> String
 printManifestErrorKey = case _ of
   MissingName -> "missingName"
-  MismatchedName _ -> "mismatchedName"
   MissingLicense -> "missingLicense"
   BadLicense _ -> "badLicense"
   BadVersion _ -> "badVersion"
