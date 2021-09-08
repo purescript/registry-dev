@@ -5,6 +5,7 @@ import Registry.Prelude
 import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
+import Control.Apply (lift2)
 import Control.Monad.Except as Except
 import Control.Monad.State as State
 import Data.Argonaut as Json
@@ -413,7 +414,7 @@ forPackage input keyToPackageName f =
         let
           errorType = BowerImport.Error.printImportErrorKey err
           name = keyToPackageName key
-          failure = Map.singleton name (Map.singleton Nothing err)
+          failure = Map.singleton name (Left err)
         State.modify \state -> state { failures = insertFailure errorType failure state.failures }
       Right (Tuple newKey result) -> do
         let insertPackage = Map.insert newKey result
@@ -445,7 +446,7 @@ forPackageVersion input keyToPackageName keyToTag f = do
               errorType = BowerImport.Error.printImportErrorKey err
               name = keyToPackageName k1
               tag = keyToTag k2
-              failure = Map.singleton name (Map.singleton (Just tag) err)
+              failure = Map.singleton name $ Right $ Map.singleton tag err
             State.modify \state -> state { failures = insertFailure errorType failure state.failures }
           Right result -> do
             let
@@ -476,7 +477,7 @@ forPackageVersionKeys input keyToPackageName keyToTag f = do
               errorType = BowerImport.Error.printImportErrorKey err
               name = keyToPackageName k1
               tag = keyToTag k2
-              failure = Map.singleton name (Map.singleton (Just tag) err)
+              failure = Map.singleton name $ Right $ Map.singleton tag err
             State.modify \state -> state { failures = insertFailure errorType failure state.failures }
           Right (Tuple k3 k4) -> do
             let
@@ -486,11 +487,11 @@ forPackageVersionKeys input keyToPackageName keyToTag f = do
 
 insertFailure
   :: ImportErrorKey
-  -> Map RawPackageName (Map (Maybe RawVersion) ImportError)
+  -> Map RawPackageName (Either ImportError (Map RawVersion ImportError))
   -> PackageFailures
   -> PackageFailures
 insertFailure key value failures = do
-  let insert = Map.insertWith (Map.unionWith Map.union) key value
+  let insert = Map.insertWith (Map.unionWith (lift2 Map.union)) key value
   Newtype.over PackageFailures insert failures
 
 -- | Remove failing packages from the set of available packages to process
@@ -502,12 +503,13 @@ filterFailedPackages
   -> Map RawPackageName v
 filterFailedPackages shouldAccept (PackageFailures failures) = do
   let
-    failedPackages :: Map RawPackageName (Map (Maybe RawVersion) ImportError)
+    failedPackages :: Map RawPackageName (Either ImportError (Map RawVersion ImportError))
     failedPackages = Map.unions $ Map.values failures
 
   Map.filterKeys \package -> case Map.lookup package failedPackages of
     Nothing -> true
-    Just versionsMap -> not any (not shouldAccept) versionsMap
+    Just (Left error) -> shouldAccept error
+    Just (Right errors) -> all shouldAccept errors
 
 -- | Remove failing package versions from the set of available package versions
 -- | to process. This will also remove packages that no longer have any versions
@@ -522,22 +524,19 @@ filterFailedPackageVersions
   -> Map k (Map RawVersion v)
 filterFailedPackageVersions shouldAccept (PackageFailures failures) toPackageName = do
   let
-    failedPackages :: Map RawPackageName (Map (Maybe RawVersion) ImportError)
+    failedPackages :: Map RawPackageName (Either ImportError (Map RawVersion ImportError))
     failedPackages =
       fromMaybe Map.empty
-        $ map (NEA.foldl1 (Map.unionWith Map.union))
+        $ map (NEA.foldl1 (Map.unionWith (lift2 Map.union)))
         $ NEA.fromFoldable
         $ Map.values failures
 
     skipFailedVersions = Map.mapMaybeWithKey \key rawVersions -> Just do
       let package = toPackageName key
-      rawVersions # Map.filterKeys \version ->
+      rawVersions # Map.filterKeys \_ ->
         case Map.lookup package failedPackages of
           Nothing -> true
-          Just failedVersions -> case Map.lookup (Just version) failedVersions of
-            Nothing -> true
-            Just failedVersion
-              | shouldAccept failedVersion -> true
-              | otherwise -> false
+          Just (Left error) -> shouldAccept error
+          Just (Right errors) -> all shouldAccept errors
 
   Map.filter (not Map.isEmpty) <<< skipFailedVersions

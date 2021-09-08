@@ -8,12 +8,11 @@ import Data.Argonaut.Encode.Generic as Json.Encode.Generic
 import Data.Argonaut.Types.Generic as Json.Generic
 import Data.Generic.Rep (class Generic)
 import Registry.PackageName (PackageName)
-import Registry.Prelude as Maybe
 import Safe.Coerce (coerce)
 
 -- | A map of error types to package names to package versions, where failed
 -- | versions contain rich information about why they failed.
-newtype PackageFailures = PackageFailures (Map ImportErrorKey (Map RawPackageName (Map (Maybe RawVersion) ImportError)))
+newtype PackageFailures = PackageFailures (Map ImportErrorKey (Map RawPackageName (Either ImportError (Map RawVersion ImportError))))
 derive instance Newtype PackageFailures _
 
 instance Json.EncodeJson PackageFailures where
@@ -21,18 +20,17 @@ instance Json.EncodeJson PackageFailures where
     Json.encodeJson
       $ objectFromMap coerce
       $ map (objectFromMap coerce)
-      $ map (map (objectFromMap (Maybe.fromMaybe "null" <<< coerce)))
+      $ map (map (map (objectFromMap coerce)))
       $ un PackageFailures failures
 
 instance Json.DecodeJson PackageFailures where
   decodeJson json = do
-    let parseTag tag = if tag == "null" then Nothing else Just (RawVersion tag)
-    failuresObject :: Object (Object (Object ImportError)) <- Json.decodeJson json
+    failuresObject :: Object (Object (Either ImportError (Object ImportError))) <- Json.decodeJson json
     pure
       $ PackageFailures
       $ objectToMap (Just <<< ImportErrorKey)
       $ map (objectToMap (Just <<< RawPackageName))
-      $ map (map (objectToMap (Just <<< parseTag))) failuresObject
+      $ map (map (map (objectToMap (Just <<< RawVersion)))) failuresObject
 
 -- | An import error printed as a key usable in a map
 newtype ImportErrorKey = ImportErrorKey String
