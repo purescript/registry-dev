@@ -14,9 +14,9 @@ module Foreign.SemVer
 
 import Registry.Prelude
 
-import Data.Argonaut (class DecodeJson, class EncodeJson, JsonDecodeError(..), decodeJson, encodeJson)
+import Data.Argonaut as Json
+import Data.Function.Uncurried (Fn2, runFn2)
 import Data.String as String
-import Partial.Unsafe (unsafeCrashWith)
 
 type SemVerJS =
   { major :: Int
@@ -38,23 +38,25 @@ instance ordSemVer :: Ord SemVer where
 instance showSemVer :: Show SemVer where
   show = printSemVer
 
-instance decodeJsonSemver :: DecodeJson SemVer where
+instance decodeJsonSemver :: Json.DecodeJson SemVer where
   decodeJson json = do
-    version <- decodeJson json
-    note (TypeMismatch $ "Expected version: " <> version) (parseSemVer version)
+    version <- Json.decodeJson json
+    note (Json.TypeMismatch $ "Expected version: " <> version) (parseSemVer version)
 
-instance encodeJsonSemver :: EncodeJson SemVer where
-  encodeJson = encodeJson <<< printSemVer
+instance encodeJsonSemver :: Json.EncodeJson SemVer where
+  encodeJson = Json.encodeJson <<< printSemVer
 
-foreign import compareSemVerImpl :: SemVerJS -> SemVerJS -> Int
+foreign import compareSemVerImpl :: Fn2 SemVerJS SemVerJS Int
+
 compareSemVer :: SemVer -> SemVer -> Ordering
-compareSemVer (SemVer v1) (SemVer v2) = case compareSemVerImpl v1 v2 of
+compareSemVer (SemVer v1) (SemVer v2) = case runFn2 compareSemVerImpl v1 v2 of
   (-1) -> LT
   0 -> EQ
   1 -> GT
   other -> unsafeCrashWith $ "Unknown ordering: " <> show other
 
 foreign import parseSemVerImpl :: String -> Nullable SemVer
+
 parseSemVer :: String -> Maybe SemVer
 parseSemVer = toMaybe <<< parseSemVerImpl
 
@@ -80,15 +82,16 @@ newtype Range = Range { original :: String, converted :: String }
 
 derive newtype instance eqRange :: Eq Range
 
-instance decodeJsonRange :: DecodeJson Range where
+instance decodeJsonRange :: Json.DecodeJson Range where
   decodeJson json = do
-    original <- decodeJson json
-    note (TypeMismatch $ "Expected SemVer range: " <> original) (parseRange original)
+    original <- Json.decodeJson json
+    note (Json.TypeMismatch $ "Expected SemVer range: " <> original) (parseRange original)
 
-instance encodeJsonRange :: EncodeJson Range where
-  encodeJson = encodeJson <<< printRange
+instance encodeJsonRange :: Json.EncodeJson Range where
+  encodeJson = Json.encodeJson <<< printRange
 
 foreign import parseRangeImpl :: String -> Nullable String
+
 parseRange :: String -> Maybe Range
 parseRange original = do
   converted <- case toMaybe (parseRangeImpl original) of

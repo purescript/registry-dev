@@ -7,18 +7,16 @@ module Registry.Index
 import Registry.Prelude
 
 import Control.Alternative (guard)
-import Data.Argonaut (decodeJson, encodeJson, parseJson, stringify)
+import Data.Argonaut as Json
 import Data.Array as Array
-import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
 import Data.String as String
 import Data.String.Pattern (Pattern(..))
 import Foreign.SemVer (SemVer)
-import Node.FS.Aff (readTextFile, writeTextFile)
-import Node.Glob.Basic (expandGlobs)
+import Node.FS.Aff as FS
+import Node.Glob.Basic as Glob
 import Node.Path as FilePath
-import Partial.Unsafe (unsafeCrashWith)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Manifest)
@@ -28,7 +26,7 @@ type RegistryIndex = Map PackageName (Map SemVer Manifest)
 -- | NOTE: Right now, this assumes that manifest files will parse
 readRegistryIndex :: FilePath -> Aff RegistryIndex
 readRegistryIndex path = do
-  packagePaths <- Array.fromFoldable <$> expandGlobs path [ "*" ]
+  packagePaths <- Array.fromFoldable <$> Glob.expandGlobs path [ "*" ]
   let
     -- Exclude certain files that will always be in the root of the registry index.
     -- These files do not correspond to a package manifest file.
@@ -94,10 +92,10 @@ readPackage path' packageName = do
     path = FilePath.concat [ path', getIndexPath packageName ]
 
   contentsResult <- try do
-    contents <- readTextFile ASCII path
+    contents <- FS.readTextFile ASCII path
     pure $ hush do
-      jsonLines <- traverse parseJson $ String.split (Pattern "\n") contents
-      traverse decodeJson jsonLines
+      jsonLines <- traverse Json.parseJson $ String.split (Pattern "\n") contents
+      traverse Json.decodeJson jsonLines
 
   pure case contentsResult of
     Left _ -> Nothing
@@ -125,8 +123,8 @@ insertManifest path' manifest@{ name, version } = do
     contents :: String
     contents =
       String.joinWith "\n"
-        $ map (encodeJson >>> stringify)
+        $ map (Json.encodeJson >>> Json.stringify)
         $ Array.sortBy (comparing _.version)
         $ Array.fromFoldable modifiedManifests
 
-  writeTextFile ASCII path contents
+  FS.writeTextFile ASCII path contents

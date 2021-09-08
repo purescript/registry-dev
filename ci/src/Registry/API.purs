@@ -2,9 +2,10 @@ module Registry.API where
 
 import Registry.Prelude
 
-import Control.Monad.Except (ExceptT(..), runExceptT)
+import Control.Monad.Except as Except
 import Data.Argonaut as Json
 import Data.Array as Array
+import Data.Array.NonEmpty as NEA
 import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Effect.Aff as Aff
@@ -21,15 +22,15 @@ import Node.ChildProcess as NodeProcess
 import Node.Crypto.Hash as Hash
 import Node.FS.Aff as FS
 import Node.Process as Env
-import Partial.Unsafe (unsafePartial)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
-import Registry.Scripts.BowerImport as Bower
+import Registry.Scripts.BowerImport as BowerImport
 import Sunde as Process
-import Text.Parsing.StringParser as Parser
+import Text.Parsing.StringParser as StringParser
+import Web.Bower.PackageMeta as Bower
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -44,7 +45,7 @@ main = launchAff_ $ do
     packagesArray <- for packageList \rawPackageName -> do
       packageName <- case PackageName.parse rawPackageName of
         Right p -> pure p
-        Left err -> Aff.throwError $ Aff.error $ Parser.printParserError err
+        Left err -> Aff.throwError $ Aff.error $ StringParser.printParserError err
       let metadataPath = metadataFile packageName
       metadataStr <- FS.readTextFile UTF8 metadataPath
       metadata <- case fromJson metadataStr of
@@ -165,16 +166,27 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
 
   -- If we're importing from Bower then we need to convert the Bowerfile
   -- to a Registry Manifest
-  when fromBower $ do
-    liftAff (Bower.readBowerfile (absoluteFolderPath <> "/bower.json")) >>= case _ of
+  when fromBower do
+    liftAff (readBowerfile (absoluteFolderPath <> "/bower.json")) >>= case _ of
       Left err ->
         throwWithComment $ "Error while reading Bowerfile: " <> err
-      Right bowerfile -> case Bower.toManifest bowerfile ref metadata.location of
-        Left err ->
-          throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
-        Right manifest -> do
-          let manifestStr = Json.stringifyWithIndent 2 $ Json.encodeJson manifest
-          liftAff $ FS.writeTextFile UTF8 manifestPath manifestStr
+      Right bowerfile -> do
+        let
+          printErrors =
+            Json.stringifyWithIndent 2 <<< Json.encodeJson <<< NEA.toArray
+
+          runManifest =
+            Except.runExceptT <<< Except.mapExceptT (liftAff <<< map (lmap printErrors))
+
+        semVer <- case SemVer.parseSemVer ref of
+          Nothing -> throwWithComment $ "Not a valid SemVer version: " <> ref
+          Just result -> pure result
+
+        runManifest (BowerImport.toManifest packageName metadata.location semVer bowerfile) >>= case _ of
+          Left err ->
+            throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
+          Right manifest ->
+            liftAff $ writeJsonFile manifestPath manifest
 
   -- Try to read the manifest, typechecking it
   manifest :: Manifest <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of
@@ -215,6 +227,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
     Right _ -> do
       comment "Package successfully uploaded to the registry! :tada: :rocket:"
   closeIssue
+
 -- Optional steps that we'll try and that won't fail the pipeline on error:
 -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
 -- TODO: upload docs to pursuit (see #154)
@@ -287,7 +300,7 @@ mkEnv packagesMetadata issue =
   }
 
 pushToMaster :: PackageName -> FilePath -> Aff (Either String Unit)
-pushToMaster packageName path = runExceptT do
+pushToMaster packageName path = Except.runExceptT do
   runGit [ "config", "user.name", "PacchettiBotti" ]
   runGit [ "config", "user.email", "<pacchettibotti@ferrai.io>" ]
   runGit [ "add", path ]
@@ -303,3 +316,12 @@ pushToMaster packageName path = runExceptT do
         info result.stderr
         pure $ Right unit
       _ -> pure $ Left result.stderr
+
+readBowerfile :: String -> Aff (Either String Bower.PackageMeta)
+readBowerfile path = do
+  let fromJson' = Json.jsonParser >=> (Json.decodeJson >>> lmap Json.printJsonDecodeError)
+  ifM (not <$> FS.exists path)
+    (pure $ Left $ "Bowerfile not found at " <> path)
+    do
+      strResult <- FS.readTextFile UTF8 path
+      pure $ fromJson' strResult

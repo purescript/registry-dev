@@ -11,3 +11,6 @@ generated-docs/
 .envrc
 .cache
 .tempcache
+
+# Files generated as part of the Bower import process
+bower-exclusions.json
