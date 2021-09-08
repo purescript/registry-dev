@@ -2,12 +2,15 @@ module Test.Main where
 
 import Registry.Prelude
 
+import Data.Argonaut as Json
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
 import Registry.API as API
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..))
+import Registry.Scripts.BowerImport.BowerFile as BowerFile
+import Test.Foreign.Jsonic (jsonic)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -25,6 +28,11 @@ main = launchAff_ $ runSpec [ consoleReporter ] do
       Spec.describe "Bad SPDX licenses" badSPDXLicense
       Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
       Spec.describe "SemVer" semVer
+  Spec.describe "BowerFile" do
+    Spec.describe "Parses" do
+      Spec.describe "Good bower files" goodBowerFiles
+  -- Spec.describe "Bad bower files" badBowerFiles
+  Spec.describe "Jsonic" jsonic
 
 goodPackageName :: Spec
 goodPackageName = do
@@ -141,3 +149,26 @@ semVer = do
         Nothing -> false
 
   parseRange "^1.3.4" ">=1.3.4 <2.0.0-0"
+
+goodBowerFiles :: Spec
+goodBowerFiles = do
+  let
+    parseBowerFile str = Spec.it str do
+      BowerFile.parse str `Assert.shouldSatisfy` isRight
+    simpleFile = Json.encodeJson { name: "my-package", version: "v1.0.0" }
+    goodBowerFile = Json.encodeJson { name: "my-package", version: "v1.0.0", dependencies: {}, devDependencies: {} }
+    completeBowerFile =
+      Json.encodeJson
+        { name: "my-package"
+        , version: "v1.0.1"
+        , dependencies:
+            { "other-package": "v0.0.1"
+            , "another-package": "v10.0.1-rc1"
+            }
+        , devDependencies:
+            { "dev-dep": "v2.0.0" }
+        }
+
+  parseBowerFile $ Json.stringify goodBowerFile
+  parseBowerFile $ Json.stringify simpleFile
+  parseBowerFile $ Json.stringify completeBowerFile
