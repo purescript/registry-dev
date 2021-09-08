@@ -60,6 +60,7 @@ getReleases :: Address -> Aff (Array Tag)
 getReleases = Promise.toAffE <<< runEffectFn1 getReleasesImpl
 
 newtype IssueNumber = IssueNumber Int
+
 instance newtypeIssueNumber :: Newtype IssueNumber Int
 derive newtype instance eqIssueNumber :: Eq IssueNumber
 derive newtype instance showIssueNumber :: Show IssueNumber

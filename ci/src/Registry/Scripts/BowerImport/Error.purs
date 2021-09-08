@@ -13,6 +13,7 @@ import Safe.Coerce (coerce)
 -- | A map of error types to package names to package versions, where failed
 -- | versions contain rich information about why they failed.
 newtype PackageFailures = PackageFailures (Map ImportErrorKey (Map RawPackageName (Either ImportError (Map RawVersion ImportError))))
+
 derive instance Newtype PackageFailures _
 
 instance Json.EncodeJson PackageFailures where
@@ -34,12 +35,14 @@ instance Json.DecodeJson PackageFailures where
 
 -- | An import error printed as a key usable in a map
 newtype ImportErrorKey = ImportErrorKey String
+
 derive instance Newtype ImportErrorKey _
 derive newtype instance Eq ImportErrorKey
 derive newtype instance Ord ImportErrorKey
 
 -- | An unprocessed package name, which may possibly be malformed.
 newtype RawPackageName = RawPackageName String
+
 derive instance Newtype RawPackageName _
 derive newtype instance Eq RawPackageName
 derive newtype instance Ord RawPackageName
@@ -48,6 +51,7 @@ derive newtype instance Json.DecodeJson RawPackageName
 
 -- | An unprocessed version, taken from a GitHub tag
 newtype RawVersion = RawVersion String
+
 derive instance Newtype RawVersion _
 derive newtype instance Eq RawVersion
 derive newtype instance Ord RawVersion

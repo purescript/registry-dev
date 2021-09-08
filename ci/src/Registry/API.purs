@@ -227,6 +227,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
     Right _ -> do
       comment "Package successfully uploaded to the registry! :tada: :rocket:"
   closeIssue
+
 -- Optional steps that we'll try and that won't fail the pipeline on error:
 -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
 -- TODO: upload docs to pursuit (see #154)

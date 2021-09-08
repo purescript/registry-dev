@@ -47,6 +47,7 @@ instance encodeJsonSemver :: Json.EncodeJson SemVer where
   encodeJson = Json.encodeJson <<< printSemVer
 
 foreign import compareSemVerImpl :: Fn2 SemVerJS SemVerJS Int
+
 compareSemVer :: SemVer -> SemVer -> Ordering
 compareSemVer (SemVer v1) (SemVer v2) = case runFn2 compareSemVerImpl v1 v2 of
   (-1) -> LT
@@ -55,6 +56,7 @@ compareSemVer (SemVer v1) (SemVer v2) = case runFn2 compareSemVerImpl v1 v2 of
   other -> unsafeCrashWith $ "Unknown ordering: " <> show other
 
 foreign import parseSemVerImpl :: String -> Nullable SemVer
+
 parseSemVer :: String -> Maybe SemVer
 parseSemVer = toMaybe <<< parseSemVerImpl
 
@@ -89,6 +91,7 @@ instance encodeJsonRange :: Json.EncodeJson Range where
   encodeJson = Json.encodeJson <<< printRange
 
 foreign import parseRangeImpl :: String -> Nullable String
+
 parseRange :: String -> Maybe Range
 parseRange original = do
   converted <- case toMaybe (parseRangeImpl original) of

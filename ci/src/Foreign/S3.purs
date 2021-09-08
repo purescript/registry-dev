@@ -19,6 +19,7 @@ foreign import data S3 :: Type
 type Space = { conn :: S3, bucket :: String }
 
 foreign import connectImpl :: Fn1 String (Effect S3)
+
 connect :: String -> String -> Aff Space
 connect region bucket = do
   conn <- liftEffect $ runFn1 connectImpl region
@@ -43,6 +44,7 @@ type ListParams = { prefix :: String }
 type ListResponse = { key :: String, size :: Int, eTag :: String }
 
 foreign import listObjectsImpl :: Fn2 S3 JSListParams (Effect (Promise (Array JSListResponse)))
+
 listObjects :: Space -> ListParams -> Aff (Array ListResponse)
 listObjects space params = do
   let jsParams = { "Bucket": space.bucket, "Prefix": params.prefix }
@@ -65,6 +67,7 @@ type PutParams = { key :: String, body :: Buffer, acl :: ACL }
 type PutResponse = { eTag :: String }
 
 foreign import putObjectImpl :: Fn2 S3 JSPutParams (Effect (Promise JSPutResponse))
+
 putObject :: Space -> PutParams -> Aff PutResponse
 putObject space params = do
   let
