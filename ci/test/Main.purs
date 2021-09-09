@@ -158,18 +158,25 @@ goodBowerFiles = do
       BowerFile.parse str `Assert.shouldSatisfy` isRight
     parseBowerFile = parseBowerFile' <<< Json.stringify
 
-    simpleFile = Json.encodeJson { version: "v1.0.0" }
-    goodBowerFile = Json.encodeJson { version: "v1.0.0", dependencies: {} }
-    extraPropsBowerFile = Json.encodeJson { extra: "value", version: "v1.1.1" }
+    simpleFile = Json.encodeJson { version: "v1.0.0", license: "MIT" }
+    goodBowerFile = Json.encodeJson { version: "v1.0.0", license: "", dependencies: {} }
+    extraPropsBowerFile =
+      Json.encodeJson
+        { extra: "value"
+        , license: "not a license"
+        , version: "v1.1.1"
+        }
     nonSemverBowerFile =
       Json.encodeJson
         { version: "notsemver"
+        , license: ""
         , dependencies: { also: "not semver" }
         , devDependencies: { lastly: "🍝" }
         }
     completeBowerFile =
       Json.encodeJson
         { version: "v1.0.1"
+        , license: [ "license" ]
         , dependencies:
             { "other-package": "v0.0.1"
             , "another-package": "v10.0.1-rc1"
