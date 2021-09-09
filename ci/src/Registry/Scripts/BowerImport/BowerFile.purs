@@ -1,36 +1,37 @@
-module Registry.Scripts.BowerImport.BowerFile (BowerFile, BowerFileParseError, parse) where
+module Registry.Scripts.BowerImport.BowerFile
+  ( BowerFile
+  , BowerFileParseError(..)
+  , parse
+  , version
+  , dependencies
+  , devDependencies
+  ) where
 
 import Registry.Prelude
 
 import Data.Argonaut (Json, (.:), (.:?))
 import Data.Argonaut as Json
-import Data.Map as Map
-import Data.Maybe (maybe)
+import Data.Generic.Rep (class Generic)
 import Foreign.Jsonic as Jsonic
-import Foreign.SemVer (SemVer)
 
 newtype BowerFile =
   BowerFile
-    { name :: String -- Does this need to be a packageName type?
-    , version :: SemVer
-    , dependencies :: Map String SemVer -- Same question as above
-    , devDependencies :: Map String SemVer -- Same question as above
+    { version :: String
+    , dependencies :: Object String
+    , devDependencies :: Object String
     }
 
 derive newtype instance Show BowerFile
 
 data BowerFileParseError
-  = GenericError
-  | JsonDecodeError Json.JsonDecodeError
+  = JsonDecodeError Json.JsonDecodeError
   | JsonParseError String
 
 derive instance Eq BowerFileParseError
+derive instance Generic BowerFileParseError _
 
 instance Show BowerFileParseError where
-  show = case _ of
-    GenericError -> "GenericError"
-    JsonDecodeError de -> "JsonDecodeError: " <> Json.printJsonDecodeError de
-    JsonParseError s -> "JsonParseError: " <> s
+  show = genericShow
 
 parse :: String -> Either BowerFileParseError BowerFile
 parse =
@@ -41,12 +42,21 @@ parse =
 parseBowerFile :: Json -> Either BowerFileParseError BowerFile
 parseBowerFile json = lmap JsonDecodeError do
   root <- Json.decodeJson json
-  name <- root .: "name"
-  version <- root .: "version"
-  dependencies <- objectToStringMap <$> root .:? "dependencies"
-  devDependencies <- objectToStringMap <$> root .:? "devDependencies"
-  pure $ BowerFile { name, version, dependencies, devDependencies }
+  version' <- root .: "version"
+  dependencies' <- fromMaybe mempty <$> root .:? "dependencies"
+  devDependencies' <- fromMaybe mempty <$> root .:? "devDependencies"
+  pure $
+    BowerFile
+      { version: version'
+      , dependencies: dependencies'
+      , devDependencies: devDependencies'
+      }
 
-objectToStringMap :: forall a. Maybe (Object a) -> Map String a
-objectToStringMap = maybe Map.empty $ objectToMap pure
+version :: BowerFile -> String
+version (BowerFile r) = r.version
 
+dependencies :: BowerFile -> Object String
+dependencies (BowerFile r) = r.dependencies
+
+devDependencies :: BowerFile -> Object String
+devDependencies (BowerFile r) = r.devDependencies

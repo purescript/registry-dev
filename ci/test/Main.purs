@@ -31,7 +31,8 @@ main = launchAff_ $ runSpec [ consoleReporter ] do
   Spec.describe "BowerFile" do
     Spec.describe "Parses" do
       Spec.describe "Good bower files" goodBowerFiles
-  -- Spec.describe "Bad bower files" badBowerFiles
+    Spec.describe "Does not parse" do
+      Spec.describe "Bad bower files" badBowerFiles
   Spec.describe "Jsonic" jsonic
 
 goodPackageName :: Spec
@@ -153,14 +154,22 @@ semVer = do
 goodBowerFiles :: Spec
 goodBowerFiles = do
   let
-    parseBowerFile str = Spec.it str do
+    parseBowerFile' str = Spec.it str do
       BowerFile.parse str `Assert.shouldSatisfy` isRight
-    simpleFile = Json.encodeJson { name: "my-package", version: "v1.0.0" }
-    goodBowerFile = Json.encodeJson { name: "my-package", version: "v1.0.0", dependencies: {}, devDependencies: {} }
+    parseBowerFile = parseBowerFile' <<< Json.stringify
+
+    simpleFile = Json.encodeJson { version: "v1.0.0" }
+    goodBowerFile = Json.encodeJson { version: "v1.0.0", dependencies: {} }
+    extraPropsBowerFile = Json.encodeJson { extra: "value", version: "v1.1.1" }
+    nonSemverBowerFile =
+      Json.encodeJson
+        { version: "notsemver"
+        , dependencies: { also: "not semver" }
+        , devDependencies: { lastly: "🍝" }
+        }
     completeBowerFile =
       Json.encodeJson
-        { name: "my-package"
-        , version: "v1.0.1"
+        { version: "v1.0.1"
         , dependencies:
             { "other-package": "v0.0.1"
             , "another-package": "v10.0.1-rc1"
@@ -169,6 +178,23 @@ goodBowerFiles = do
             { "dev-dep": "v2.0.0" }
         }
 
-  parseBowerFile $ Json.stringify goodBowerFile
-  parseBowerFile $ Json.stringify simpleFile
-  parseBowerFile $ Json.stringify completeBowerFile
+  parseBowerFile goodBowerFile
+  parseBowerFile simpleFile
+  parseBowerFile extraPropsBowerFile
+  parseBowerFile nonSemverBowerFile
+  parseBowerFile completeBowerFile
+
+badBowerFiles :: Spec
+badBowerFiles = do
+  let
+    failParseBowerFile' str = Spec.it str do
+      BowerFile.parse str `Assert.shouldNotSatisfy` isRight
+    failParseBowerFile = failParseBowerFile' <<< Json.stringify
+
+    missingNameFile = Json.encodeJson {}
+    wrongDependenciesFormat = Json.encodeJson { version: "", dependencies: ([] :: Array Int) }
+    wrongDevDependenciesFormat = Json.encodeJson { version: "", devDependencies: ([] :: Array Int) }
+
+  failParseBowerFile missingNameFile
+  failParseBowerFile wrongDependenciesFormat
+  failParseBowerFile wrongDevDependenciesFormat
