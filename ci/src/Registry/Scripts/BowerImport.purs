@@ -15,6 +15,7 @@ import Data.DateTime (adjust) as Time
 import Data.JSDate as JSDate
 import Data.Lens (_Left, preview)
 import Data.Map as Map
+import Data.Monoid (guard)
 import Data.Newtype as Newtype
 import Data.Set as Set
 import Data.String as String
@@ -48,9 +49,14 @@ import Web.Bower.PackageMeta as Bower
 main :: Effect Unit
 main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
-  _registry <- downloadBowerRegistry
-  for_ _registry \semVer -> for_ semVer \manifest ->
-    insertManifest "registry-index" manifest
+  registry <- downloadBowerRegistry
+
+  let indexPath = "registry-index"
+  log $ "Writing registry index to " <> indexPath
+
+  exists <- FS.exists indexPath
+  guard (not exists) $ FS.mkdir indexPath
+  for_ registry \semVer -> for_ semVer (insertManifest indexPath)
   log "Done!"
 
 downloadBowerRegistry :: Aff RegistryIndex
