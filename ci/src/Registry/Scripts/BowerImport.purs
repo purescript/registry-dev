@@ -29,7 +29,7 @@ import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
-import Registry.Index (RegistryIndex)
+import Registry.Index (RegistryIndex, insertManifest)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
@@ -49,6 +49,8 @@ main :: Effect Unit
 main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
   _registry <- downloadBowerRegistry
+  for_ _registry \semVer -> for_ semVer \manifest ->
+    insertManifest "registry-index" manifest
   log "Done!"
 
 downloadBowerRegistry :: Aff RegistryIndex
