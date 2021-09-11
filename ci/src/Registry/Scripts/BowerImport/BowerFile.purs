@@ -15,31 +15,29 @@ import Foreign.Jsonic as Jsonic
 
 newtype BowerFile =
   BowerFile
-    { version :: String
-    , license :: Array String
+    { license :: Array String
     , dependencies :: Object String
     , devDependencies :: Object String
     }
 
+derive newtype instance Eq BowerFile
 derive newtype instance Show BowerFile
 derive newtype instance Json.EncodeJson BowerFile
 
 instance Json.DecodeJson BowerFile where
   decodeJson json = do
     obj <- Json.decodeJson json
-    version <- obj .: "version"
     license <- decodeStringOrStringArray obj "license"
     dependencies <- fromMaybe mempty <$> obj .:? "dependencies"
     devDependencies <- fromMaybe mempty <$> obj .:? "devDependencies"
-    pure $ BowerFile { version, license, dependencies, devDependencies }
+    pure $ BowerFile { license, dependencies, devDependencies }
 
 decodeStringOrStringArray :: Object Json -> String -> Either Json.JsonDecodeError (Array String)
-decodeStringOrStringArray obj fieldName =
-  lmap
-    (const $ Json.AtKey fieldName $ Json.TypeMismatch "String or Array String")
-    do
-      value <- obj .: fieldName
-      (Json.decodeJson value <#> Array.singleton) <|> Json.decodeJson value
+decodeStringOrStringArray obj fieldName = do
+  let typeError = const $ Json.AtKey fieldName $ Json.TypeMismatch "String or Array"
+  lmap typeError do
+    value <- obj .: fieldName
+    (Json.decodeJson value <#> Array.singleton) <|> Json.decodeJson value
 
 data BowerFileParseError
   = JsonDecodeError Json.JsonDecodeError

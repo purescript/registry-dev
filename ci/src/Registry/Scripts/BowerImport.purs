@@ -204,8 +204,8 @@ fetchBowerfile name address tag = do
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
 selfContainedDependencies :: Set RawPackageName -> BowerFile -> ExceptT ImportError Aff Unit
-selfContainedDependencies registry (BowerFile {dependencies, devDependencies}) = do
-  let 
+selfContainedDependencies registry (BowerFile { dependencies, devDependencies }) = do
+  let
     allDeps = Object.keys $ dependencies <> devDependencies
   outsideDeps <- for allDeps \packageName -> do
     name <- cleanPackageName $ RawPackageName packageName
@@ -268,8 +268,8 @@ toManifest package repository version (BowerFile bowerfile) = do
             Nothing -> Left { dependency: packageName, failedBounds: versionStr }
             Just range -> Right $ Tuple (PackageName.print packageName) range
 
-      normalizedDeps <- normalizeDeps $ Object.toUnfoldable $ bowerfile.dependencies
-      normalizedDevDeps <- normalizeDeps $ Object.toUnfoldable $ bowerfile.devDependencies
+      normalizedDeps <- normalizeDeps $ Object.toUnfoldable bowerfile.dependencies
+      normalizedDevDeps <- normalizeDeps $ Object.toUnfoldable bowerfile.devDependencies
 
       let
         readDeps = map checkDepPair >>> partitionEithers >>> \{ fail, success } ->

@@ -4,11 +4,13 @@ import Registry.Prelude
 
 import Data.Argonaut as Json
 import Foreign.GitHub (IssueNumber(..))
+import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
 import Registry.API as API
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..))
+import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
 import Registry.Scripts.BowerImport.BowerFile as BowerFile
 import Test.Foreign.Jsonic (jsonic)
 import Test.Spec as Spec
@@ -33,6 +35,7 @@ main = launchAff_ $ runSpec [ consoleReporter ] do
       Spec.describe "Good bower files" goodBowerFiles
     Spec.describe "Does not parse" do
       Spec.describe "Bad bower files" badBowerFiles
+    Spec.describe "Encoding" bowerFileEncoding
   Spec.describe "Jsonic" jsonic
 
 goodPackageName :: Spec
@@ -211,3 +214,22 @@ badBowerFiles = do
   failParseBowerFile wrongLicenseFormat
   failParseBowerFile wrongDependenciesFormat
   failParseBowerFile wrongDevDependenciesFormat
+
+bowerFileEncoding :: Spec
+bowerFileEncoding = do
+  Spec.it "Can be decoded" do
+    let
+      dependencies =
+        Object.fromFoldable
+          [ Tuple "dependency-first" "v1.0.0"
+          , Tuple "dependency-second" "v2.0.0"
+          ]
+      devDependencies =
+        Object.fromFoldable
+          [ Tuple "devdependency-first" "v0.0.1"
+          , Tuple "devdependency-second" "v0.0.2"
+          ]
+      bowerFile =
+        BowerFile { license: [ "MIT" ], dependencies, devDependencies }
+    (Json.decodeJson $ Json.encodeJson bowerFile) `Assert.shouldContain` bowerFile
+
