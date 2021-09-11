@@ -32,14 +32,14 @@ goodJson = do
     complexJson = Json.encodeJson { complex: { nested: "json", bool: true } }
 
   parseTest "[1,2,3]" $ Json.encodeJson [ 1, 2, 3 ]
-  parseTest "{\"name\": \"test\"}" $ Json.encodeJson { name: "test" }
+  parseTest """{ "name": "test" }""" $ Json.encodeJson { name: "test" }
   parseTest (Json.stringify complexJson) complexJson
 
 badJson :: Spec
 badJson = do
   parseTest "name: test" $ Json.encodeJson { name: "test" }
   parseTest "{trailing: comma,}" $ Json.encodeJson { trailing: "comma" }
-  parseTest "[\"trailing comma\",]" $ Json.encodeJson [ "trailing comma" ]
+  parseTest """[ "trailing comma", ]""" $ Json.encodeJson [ "trailing comma" ]
 
 horrendousJson :: Spec
 horrendousJson = do
@@ -47,4 +47,4 @@ horrendousJson = do
     failParse str = Spec.it str do
       parseS str `Assert.shouldSatisfy` isLeft
 
-  failParse "{ \"horrendously invalid json\" }"
+  failParse """{ "horrendously invalid json" }"""

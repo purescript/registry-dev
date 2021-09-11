@@ -1,16 +1,13 @@
 module Registry.Scripts.BowerImport.BowerFile
-  ( BowerFile
+  ( BowerFile(..)
   , BowerFileParseError
   , printBowerFileParseError
   , parse
-  , version
-  , license
-  , dependencies
-  , devDependencies
   ) where
 
 import Registry.Prelude
 
+import Control.Alt ((<|>))
 import Data.Argonaut (Json, (.:), (.:?))
 import Data.Argonaut as Json
 import Data.Array as Array
@@ -25,8 +22,24 @@ newtype BowerFile =
     }
 
 derive newtype instance Show BowerFile
-derive newtype instance Json.DecodeJson BowerFile
 derive newtype instance Json.EncodeJson BowerFile
+
+instance Json.DecodeJson BowerFile where
+  decodeJson json = do
+    obj <- Json.decodeJson json
+    version <- obj .: "version"
+    license <- decodeStringOrStringArray obj "license"
+    dependencies <- fromMaybe mempty <$> obj .:? "dependencies"
+    devDependencies <- fromMaybe mempty <$> obj .:? "devDependencies"
+    pure $ BowerFile { version, license, dependencies, devDependencies }
+
+decodeStringOrStringArray :: Object Json -> String -> Either Json.JsonDecodeError (Array String)
+decodeStringOrStringArray obj fieldName =
+  lmap
+    (const $ Json.AtKey fieldName $ Json.TypeMismatch "String or Array String")
+    do
+      value <- obj .: fieldName
+      (Json.decodeJson value <#> Array.singleton) <|> Json.decodeJson value
 
 data BowerFileParseError
   = JsonDecodeError Json.JsonDecodeError
@@ -46,40 +59,5 @@ parse :: String -> Either BowerFileParseError BowerFile
 parse =
   Jsonic.parse
     >>> lmap JsonParseError
-    >=> parseBowerFile
+    >=> (Json.decodeJson >>> lmap JsonDecodeError)
 
-parseBowerFile :: Json -> Either BowerFileParseError BowerFile
-parseBowerFile json = lmap JsonDecodeError do
-  let
-    strings :: Json -> Either Json.JsonDecodeError (Array String)
-    strings = Json.caseJson
-      (const $ Left $ Json.TypeMismatch "expected string or array")
-      (const $ Left $ Json.TypeMismatch "expected string or array")
-      (const $ Left $ Json.TypeMismatch "expected string or array")
-      (Array.singleton >>> Right)
-      (traverse Json.decodeJson)
-      (const $ Left $ Json.TypeMismatch "expected string or array")
-  root <- Json.decodeJson json
-  version' <- root .: "version"
-  license' <- strings =<< root .: "license"
-  dependencies' <- fromMaybe mempty <$> root .:? "dependencies"
-  devDependencies' <- fromMaybe mempty <$> root .:? "devDependencies"
-  pure $
-    BowerFile
-      { version: version'
-      , license: license'
-      , dependencies: dependencies'
-      , devDependencies: devDependencies'
-      }
-
-version :: BowerFile -> String
-version (BowerFile r) = r.version
-
-license :: BowerFile -> Array String
-license (BowerFile r) = r.license
-
-dependencies :: BowerFile -> Object String
-dependencies (BowerFile r) = r.dependencies
-
-devDependencies :: BowerFile -> Object String
-devDependencies (BowerFile r) = r.devDependencies

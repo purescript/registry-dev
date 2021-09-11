@@ -33,7 +33,7 @@ import Registry.Index (RegistryIndex)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
-import Registry.Scripts.BowerImport.BowerFile (BowerFile)
+import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
 import Registry.Scripts.BowerImport.BowerFile as BowerFile
 import Registry.Scripts.BowerImport.Error (ImportError(..), ImportErrorKey, ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..))
 import Registry.Scripts.BowerImport.Error as BowerImport.Error
@@ -204,9 +204,9 @@ fetchBowerfile name address tag = do
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
 selfContainedDependencies :: Set RawPackageName -> BowerFile -> ExceptT ImportError Aff Unit
-selfContainedDependencies registry bowerfile = do
+selfContainedDependencies registry (BowerFile {dependencies, devDependencies}) = do
   let 
-    allDeps = Object.keys $ BowerFile.dependencies bowerfile <> BowerFile.devDependencies bowerfile
+    allDeps = Object.keys $ dependencies <> devDependencies
   outsideDeps <- for allDeps \packageName -> do
     name <- cleanPackageName $ RawPackageName packageName
     pure $ if Set.member name registry then Nothing else Just name
@@ -222,7 +222,7 @@ toManifest
   -> SemVer
   -> BowerFile
   -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
-toManifest package repository version bowerfile = do
+toManifest package repository version (BowerFile bowerfile) = do
   let
     mkError :: forall a. ManifestError -> Either (NonEmptyArray ManifestError) a
     mkError = Left <<< NEA.singleton
@@ -239,7 +239,7 @@ toManifest package repository version bowerfile = do
           [ "3-Clause BSD" ] -> [ "BSD-3-Clause" ]
           other -> other
 
-        { fail, success } = partitionEithers $ SPDX.parse <$> rewrite (BowerFile.license bowerfile)
+        { fail, success } = partitionEithers $ SPDX.parse <$> rewrite bowerfile.license
 
       case fail of
         [] -> case success of
@@ -268,8 +268,8 @@ toManifest package repository version bowerfile = do
             Nothing -> Left { dependency: packageName, failedBounds: versionStr }
             Just range -> Right $ Tuple (PackageName.print packageName) range
 
-      normalizedDeps <- normalizeDeps $ Object.toUnfoldable $ BowerFile.dependencies bowerfile
-      normalizedDevDeps <- normalizeDeps $ Object.toUnfoldable $ BowerFile.devDependencies bowerfile
+      normalizedDeps <- normalizeDeps $ Object.toUnfoldable $ bowerfile.dependencies
+      normalizedDevDeps <- normalizeDeps $ Object.toUnfoldable $ bowerfile.devDependencies
 
       let
         readDeps = map checkDepPair >>> partitionEithers >>> \{ fail, success } ->

@@ -199,9 +199,15 @@ badBowerFiles = do
     failParseBowerFile = failParseBowerFile' <<< Json.stringify
 
     missingNameFile = Json.encodeJson {}
-    wrongDependenciesFormat = Json.encodeJson { version: "", dependencies: ([] :: Array Int) }
-    wrongDevDependenciesFormat = Json.encodeJson { version: "", devDependencies: ([] :: Array Int) }
+    wrongLicenseFormat = Json.encodeJson { version: "", license: true }
+    wrongDependenciesFormat =
+      Json.encodeJson
+        { version: "", license: "", dependencies: ([] :: Array Int) }
+    wrongDevDependenciesFormat =
+      Json.encodeJson
+        { version: "", license: "", devDependencies: ([] :: Array Int) }
 
   failParseBowerFile missingNameFile
+  failParseBowerFile wrongLicenseFormat
   failParseBowerFile wrongDependenciesFormat
   failParseBowerFile wrongDevDependenciesFormat
