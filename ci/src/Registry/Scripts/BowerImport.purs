@@ -9,6 +9,7 @@ import Control.Apply (lift2)
 import Control.Monad.Except as Except
 import Control.Monad.State as State
 import Data.Argonaut as Json
+import Data.Array (catMaybes)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.DateTime (adjust) as Time
@@ -203,8 +204,7 @@ fetchBowerfile name address tag = do
             throwError $ BadStatus $ un StatusCode status
         | otherwise -> case BowerFile.parse body of
             Left err -> do
-              let
-                printedErr = BowerFile.printBowerFileParseError err
+              let printedErr = BowerFile.printBowerFileParseError err
               log $ "Unable to parse bowerfile: " <> printedErr <> " Malformed body: " <> body <> "."
               throwError $ MalformedBowerJson { error: printedErr, contents: body }
             Right bowerfile -> pure bowerfile
@@ -213,8 +213,7 @@ fetchBowerfile name address tag = do
 -- | contained within the registry.
 selfContainedDependencies :: Set RawPackageName -> BowerFile -> ExceptT ImportError Aff Unit
 selfContainedDependencies registry (BowerFile { dependencies, devDependencies }) = do
-  let
-    allDeps = Object.keys $ dependencies <> devDependencies
+  let allDeps = Object.keys $ dependencies <> devDependencies
   outsideDeps <- for allDeps \packageName -> do
     name <- cleanPackageName $ RawPackageName packageName
     pure $ if Set.member name registry then Nothing else Just name
@@ -258,15 +257,19 @@ toManifest package repository version (BowerFile bowerfile) = do
 
     eitherTargets = do
       let
-        parseName packageName =
-          lmap (const packageName) $ PackageName.parse $ stripPureScriptPrefix packageName
+        -- We trim out packages that don't begin with `purescript-`, as these
+        -- are JavaScript dependencies being specified in the Bowerfile.
+        filterNames = catMaybes <<< map \(Tuple packageName versionRange) ->
+          case String.take 11 packageName of
+            "purescript-" -> Just $ Tuple (String.drop 11 packageName) versionRange
+            _ -> Nothing
 
-        parsePairs = map \(Tuple packageName versionRange) -> case parseName packageName of
-          Left e -> Left e
+        parsePairs = map \(Tuple packageName versionRange) -> case PackageName.parse packageName of
+          Left _ -> Left packageName
           Right name -> Right (Tuple name versionRange)
 
         normalizeDeps deps = do
-          let { fail, success } = partitionEithers $ parsePairs deps
+          let { fail, success } = partitionEithers $ parsePairs $ filterNames deps
           case NEA.fromArray fail of
             Nothing -> pure success
             Just err -> mkError $ InvalidDependencyNames err
