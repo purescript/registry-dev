@@ -246,14 +246,24 @@ toManifest package repository version (BowerFile bowerfile) = do
           [ "3-Clause BSD" ] -> [ "BSD-3-Clause" ]
           other -> other
 
-        { fail, success } = partitionEithers $ SPDX.parse <$> rewrite bowerfile.license
+      case bowerfile.license of
+        Nothing -> mkError MissingLicense
+        Just licenses -> do
+          let
+            parsed = map SPDX.parse $ rewrite $ NEA.toArray licenses
+            { fail, success } = partitionEithers parsed
 
-      case fail of
-        [] -> case success of
-          [] -> mkError MissingLicense
-          arr -> Right $ SPDX.joinWith SPDX.Or arr
-        _ ->
-          mkError $ BadLicense fail
+          case fail, success of
+            -- Technically this shouldn't be a possible case because of the
+            -- NonEmptyArray, but we lose that type when using partitionEithers
+            [],
+            [] -> mkError MissingLicense
+            -- If there are no failures, then we can join the successful licenses.
+            [],
+            _ -> Right $ SPDX.joinWith SPDX.Or success
+            -- If there are any failures, then we throw an exception.
+            _,
+            _ -> mkError $ BadLicense fail
 
     eitherTargets = do
       let

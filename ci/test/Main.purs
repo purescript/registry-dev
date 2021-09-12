@@ -3,6 +3,7 @@ module Test.Main where
 import Registry.Prelude
 
 import Data.Argonaut as Json
+import Data.Array.NonEmpty as NEA
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Object as Object
 import Foreign.SPDX as SPDX
@@ -201,16 +202,17 @@ badBowerFiles = do
       BowerFile.parse str `Assert.shouldNotSatisfy` isRight
     failParseBowerFile = failParseBowerFile' <<< Json.stringify
 
-    missingNameFile = Json.encodeJson {}
-    wrongLicenseFormat = Json.encodeJson { version: "", license: true }
+    wrongLicenseFormat =
+      Json.encodeJson { version: "", license: true }
+
     wrongDependenciesFormat =
       Json.encodeJson
         { version: "", license: "", dependencies: ([] :: Array Int) }
+
     wrongDevDependenciesFormat =
       Json.encodeJson
         { version: "", license: "", devDependencies: ([] :: Array Int) }
 
-  failParseBowerFile missingNameFile
   failParseBowerFile wrongLicenseFormat
   failParseBowerFile wrongDependenciesFormat
   failParseBowerFile wrongDevDependenciesFormat
@@ -230,6 +232,6 @@ bowerFileEncoding = do
           , Tuple "devdependency-second" "v0.0.2"
           ]
       bowerFile =
-        BowerFile { license: [ "MIT" ], dependencies, devDependencies }
+        BowerFile { license: NEA.fromArray [ "MIT" ], dependencies, devDependencies }
     (Json.decodeJson $ Json.encodeJson bowerFile) `Assert.shouldContain` bowerFile
 
