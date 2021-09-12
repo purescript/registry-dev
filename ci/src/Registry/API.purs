@@ -28,9 +28,10 @@ import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
 import Registry.Scripts.BowerImport as BowerImport
+import Registry.Scripts.BowerImport.BowerFile (BowerFile)
+import Registry.Scripts.BowerImport.BowerFile as BowerFile
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
-import Web.Bower.PackageMeta as Bower
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -317,9 +318,10 @@ pushToMaster packageName path = Except.runExceptT do
         pure $ Right unit
       _ -> pure $ Left result.stderr
 
-readBowerfile :: String -> Aff (Either String Bower.PackageMeta)
+readBowerfile :: String -> Aff (Either String BowerFile)
 readBowerfile path = do
-  let fromJson' = Json.jsonParser >=> (Json.decodeJson >>> lmap Json.printJsonDecodeError)
+  let
+    fromJson' = BowerFile.parse >>> lmap BowerFile.printBowerFileParseError
   ifM (not <$> FS.exists path)
     (pure $ Left $ "Bowerfile not found at " <> path)
     do

@@ -8,7 +8,6 @@
   , "argonaut-generic"
   , "arrays"
   , "bifunctors"
-  , "bower-json"
   , "console"
   , "control"
   , "crypto"
