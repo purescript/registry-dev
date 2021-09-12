@@ -15,6 +15,7 @@ import Data.DateTime (adjust) as Time
 import Data.JSDate as JSDate
 import Data.Lens (_Left, preview)
 import Data.Map as Map
+import Data.Monoid (guard)
 import Data.Newtype as Newtype
 import Data.Set as Set
 import Data.String as String
@@ -29,15 +30,16 @@ import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
-import Registry.Index (RegistryIndex)
+import Registry.Index (RegistryIndex, insertManifest)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
+import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
+import Registry.Scripts.BowerImport.BowerFile as BowerFile
 import Registry.Scripts.BowerImport.Error (ImportError(..), ImportErrorKey, ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..))
 import Registry.Scripts.BowerImport.Error as BowerImport.Error
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as StringParser
-import Web.Bower.PackageMeta as Bower
 
 -- | This main loop uploads legacy packages to the new Registry
 -- | In order to do this, we:
@@ -48,7 +50,14 @@ import Web.Bower.PackageMeta as Bower
 main :: Effect Unit
 main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
-  _registry <- downloadBowerRegistry
+  registry <- downloadBowerRegistry
+
+  let indexPath = "registry-index"
+  log $ "Writing registry index to " <> indexPath
+
+  exists <- FS.exists indexPath
+  guard (not exists) $ FS.mkdir indexPath
+  for_ registry \semVer -> for_ semVer (insertManifest indexPath)
   log "Done!"
 
 downloadBowerRegistry :: Aff RegistryIndex
@@ -170,7 +179,7 @@ downloadBowerRegistry = do
 
 -- | Find the bower.json files associated with the package's released tags,
 -- | caching the file to avoid re-fetching each time the tool runs.
-fetchBowerfile :: RawPackageName -> GitHub.Address -> RawVersion -> ExceptT ImportError Aff Bower.PackageMeta
+fetchBowerfile :: RawPackageName -> GitHub.Address -> RawVersion -> ExceptT ImportError Aff BowerFile
 fetchBowerfile name address tag = do
   let
     url = "https://raw.githubusercontent.com/" <> address.owner <> "/" <> address.repo <> "/" <> un RawVersion tag <> "/bower.json"
@@ -192,18 +201,21 @@ fetchBowerfile name address tag = do
         | status /= StatusCode 200 -> do
             log $ "Unable to retrieve bowerfile. Bad status: " <> body
             throwError $ BadStatus $ un StatusCode status
-        | otherwise -> case Json.parseJson body >>= Json.decodeJson of
+        | otherwise -> case BowerFile.parse body of
             Left err -> do
-              log $ "Unable to parse bowerfile: " <> Json.printJsonDecodeError err <> " Malformed body: " <> body <> "."
-              throwError $ MalformedBowerJson { error: Json.printJsonDecodeError err, contents: body }
-            Right (bowerfile :: Bower.PackageMeta) -> pure bowerfile
+              let
+                printedErr = BowerFile.printBowerFileParseError err
+              log $ "Unable to parse bowerfile: " <> printedErr <> " Malformed body: " <> body <> "."
+              throwError $ MalformedBowerJson { error: printedErr, contents: body }
+            Right bowerfile -> pure bowerfile
 
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
-selfContainedDependencies :: Set RawPackageName -> Bower.PackageMeta -> ExceptT ImportError Aff Unit
-selfContainedDependencies registry (Bower.PackageMeta bowerfile) = do
-  let Bower.Dependencies allDeps = bowerfile.dependencies <> bowerfile.devDependencies
-  outsideDeps <- for allDeps \{ packageName } -> do
+selfContainedDependencies :: Set RawPackageName -> BowerFile -> ExceptT ImportError Aff Unit
+selfContainedDependencies registry (BowerFile { dependencies, devDependencies }) = do
+  let
+    allDeps = Object.keys $ dependencies <> devDependencies
+  outsideDeps <- for allDeps \packageName -> do
     name <- cleanPackageName $ RawPackageName packageName
     pure $ if Set.member name registry then Nothing else Just name
   for_ (NEA.fromArray $ Array.catMaybes outsideDeps) \outside ->
@@ -216,9 +228,9 @@ toManifest
   :: PackageName
   -> Repo
   -> SemVer
-  -> Bower.PackageMeta
+  -> BowerFile
   -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
-toManifest package repository version (Bower.PackageMeta bowerfile) = do
+toManifest package repository version (BowerFile bowerfile) = do
   let
     mkError :: forall a. ManifestError -> Either (NonEmptyArray ManifestError) a
     mkError = Left <<< NEA.singleton
@@ -249,7 +261,7 @@ toManifest package repository version (Bower.PackageMeta bowerfile) = do
         parseName packageName =
           lmap (const packageName) $ PackageName.parse $ stripPureScriptPrefix packageName
 
-        parsePairs = map \{ packageName, versionRange } -> case parseName packageName of
+        parsePairs = map \(Tuple packageName versionRange) -> case parseName packageName of
           Left e -> Left e
           Right name -> Right (Tuple name versionRange)
 
@@ -264,8 +276,8 @@ toManifest package repository version (Bower.PackageMeta bowerfile) = do
             Nothing -> Left { dependency: packageName, failedBounds: versionStr }
             Just range -> Right $ Tuple (PackageName.print packageName) range
 
-      normalizedDeps <- normalizeDeps $ un Bower.Dependencies bowerfile.dependencies
-      normalizedDevDeps <- normalizeDeps $ un Bower.Dependencies bowerfile.devDependencies
+      normalizedDeps <- normalizeDeps $ Object.toUnfoldable bowerfile.dependencies
+      normalizedDevDeps <- normalizeDeps $ Object.toUnfoldable bowerfile.devDependencies
 
       let
         readDeps = map checkDepPair >>> partitionEithers >>> \{ fail, success } ->
