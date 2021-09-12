@@ -254,16 +254,9 @@ toManifest package repository version (BowerFile bowerfile) = do
             { fail, success } = partitionEithers parsed
 
           case fail, success of
-            -- Technically this shouldn't be a possible case because of the
-            -- NonEmptyArray, but we lose that type when using partitionEithers
-            [],
-            [] -> mkError MissingLicense
-            -- If there are no failures, then we can join the successful licenses.
-            [],
-            _ -> Right $ SPDX.joinWith SPDX.Or success
-            -- If there are any failures, then we throw an exception.
-            _,
-            _ -> mkError $ BadLicense fail
+            [], [] -> mkError MissingLicense
+            [], _ -> Right $ SPDX.joinWith SPDX.Or success
+            _, _ -> mkError $ BadLicense fail
 
     eitherTargets = do
       let
