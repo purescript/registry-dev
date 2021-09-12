@@ -15,6 +15,7 @@ import Data.DateTime (adjust) as Time
 import Data.JSDate as JSDate
 import Data.Lens (_Left, preview)
 import Data.Map as Map
+import Data.Monoid (guard)
 import Data.Newtype as Newtype
 import Data.Set as Set
 import Data.String as String
@@ -29,7 +30,7 @@ import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
-import Registry.Index (RegistryIndex)
+import Registry.Index (RegistryIndex, insertManifest)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
@@ -49,7 +50,14 @@ import Text.Parsing.StringParser as StringParser
 main :: Effect Unit
 main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
-  _registry <- downloadBowerRegistry
+  registry <- downloadBowerRegistry
+
+  let indexPath = "registry-index"
+  log $ "Writing registry index to " <> indexPath
+
+  exists <- FS.exists indexPath
+  guard (not exists) $ FS.mkdir indexPath
+  for_ registry \semVer -> for_ semVer (insertManifest indexPath)
   log "Done!"
 
 downloadBowerRegistry :: Aff RegistryIndex

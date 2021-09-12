@@ -13,6 +13,7 @@ import Data.Array.NonEmpty as NEA
 import Data.Map as Map
 import Data.String as String
 import Data.String.Pattern (Pattern(..))
+import Foreign.Node.FS as Foreign.Node
 import Foreign.SemVer (SemVer)
 import Node.FS.Aff as FS
 import Node.Glob.Basic as Glob
@@ -25,8 +26,9 @@ type RegistryIndex = Map PackageName (Map SemVer Manifest)
 
 -- | NOTE: Right now, this assumes that manifest files will parse
 readRegistryIndex :: FilePath -> Aff RegistryIndex
-readRegistryIndex path = do
-  packagePaths <- Array.fromFoldable <$> Glob.expandGlobs path [ "*" ]
+readRegistryIndex directory = do
+  packagePaths <- Array.fromFoldable <$> Glob.expandGlobs directory [ "*" ]
+
   let
     -- Exclude certain files that will always be in the root of the registry index.
     -- These files do not correspond to a package manifest file.
@@ -40,7 +42,8 @@ readRegistryIndex path = do
 
     packages = Array.mapMaybe goPath packagePaths
 
-  parsed <- for packages \package -> Tuple package <$> readPackage path package
+  parsed <- for packages \package -> Tuple package <$> readPackage directory package
+
   let
     normalizePackage
       :: Tuple PackageName (Maybe (NonEmptyArray Manifest))
@@ -87,9 +90,8 @@ getIndexPath packageName = getIndexDir packageName <> PackageName.print packageN
 -- | This will return Nothing if:
 -- |  the file doesn't exist, the file is empty, or if we can't decode the Manifests
 readPackage :: FilePath -> PackageName -> Aff (Maybe (NonEmptyArray Manifest))
-readPackage path' packageName = do
-  let
-    path = FilePath.concat [ path', getIndexPath packageName ]
+readPackage directory packageName = do
+  let path = FilePath.concat [ directory, getIndexPath packageName ]
 
   contentsResult <- try do
     contents <- FS.readTextFile ASCII path
@@ -103,11 +105,9 @@ readPackage path' packageName = do
     Right (Just arr) -> NEA.fromArray arr
 
 insertManifest :: FilePath -> Manifest -> Aff Unit
-insertManifest path' manifest@{ name, version } = do
-  let
-    path = getIndexPath name
-
-  existing <- readPackage path' name
+insertManifest directory manifest@{ name, version } = do
+  let path = FilePath.concat [ directory, getIndexPath name ]
+  existing <- readPackage directory name
 
   let
     modifiedManifests :: NonEmptyArray Manifest
@@ -126,5 +126,9 @@ insertManifest path' manifest@{ name, version } = do
         $ map (Json.encodeJson >>> Json.stringify)
         $ Array.sortBy (comparing _.version)
         $ Array.fromFoldable modifiedManifests
+
+  unless (isJust existing) do
+    let dir = Array.dropEnd 1 $ String.split (String.Pattern "/") path
+    liftEffect $ Foreign.Node.mkdirSync $ FilePath.concat dir
 
   FS.writeTextFile ASCII path contents

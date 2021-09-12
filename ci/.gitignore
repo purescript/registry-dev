@@ -14,3 +14,4 @@ generated-docs/
 
 # Files generated as part of the Bower import process
 bower-exclusions.json
+registry-index
