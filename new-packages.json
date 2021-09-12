@@ -150,5 +150,6 @@
   "purescript-fast-vect": "https://github.com/sigma-andex/purescript-fast-vect.git",
   "purescript-phaser": "https://github.com/lfarroco/purescript-phaser.git",
   "purescript-typelevel-arithmetic": "https://github.com/sigma-andex/purescript-typelevel-arithmetic.git",
-  "purescript-cnchar": "https://github.com/ongyiren1994/purescript-cnchar.git"
+  "purescript-cnchar": "https://github.com/ongyiren1994/purescript-cnchar.git",
+  "purescript-grid-reactors": "https://github.com/Eugleo/purescript-grid-reactors.git"
 }
