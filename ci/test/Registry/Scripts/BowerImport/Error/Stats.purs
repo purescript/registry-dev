@@ -78,26 +78,6 @@ exampleFailures = PackageFailures $
 exampleStats :: Stats.Stats
 exampleStats = Stats.errorStats examplePackageResults
 
-comparableMap :: forall k n v. Newtype k n => Ord n => Show n => Map k v -> Map n v
-comparableMap originalMap =
-  let
-    kvPairs = (Map.toUnfoldable originalMap :: Array _) <#> \(key /\ val) -> (Newtype.unwrap key /\ val)
-  in
-    Map.fromFoldable kvPairs
-
-assertMapsEqual
-  :: forall k n v
-   . Show n
-  => Show v
-  => Eq n
-  => Eq v
-  => Newtype k n
-  => Ord n
-  => Map k v
-  -> Map k v
-  -> Aff Unit
-assertMapsEqual = Assert.shouldEqual `on` comparableMap
-
 errorStats :: Spec.Spec Unit
 errorStats = do
   Spec.describe "count successes" do
@@ -115,7 +95,7 @@ errorStats = do
 
   Spec.describe "count specific errors" do
     Spec.it "sums the number of each type of import, regardless of which packages or versions it occurred in" do
-      exampleStats.countImportErrorsByErrorType `assertMapsEqual`
+      exampleStats.countImportErrorsByErrorType `Assert.shouldEqual`
         Map.fromFoldable
           [ (printImportErrorKey MissingBowerfile) /\ 4
           , (printImportErrorKey NoReleases) /\ 2
@@ -124,7 +104,7 @@ errorStats = do
           ]
 
     Spec.it "sums the number of each type of import, regardless of which packages or versions it occurred in" do
-      exampleStats.countManifestErrorsByErrorType `assertMapsEqual`
+      exampleStats.countManifestErrorsByErrorType `Assert.shouldEqual`
         Map.fromFoldable
           [ printManifestErrorKey MissingLicense /\ 2
           , printManifestErrorKey MissingName /\ 1

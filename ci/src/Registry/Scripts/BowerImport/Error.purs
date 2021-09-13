@@ -7,6 +7,7 @@ import Data.Argonaut.Decode.Generic as Json.Decode.Generic
 import Data.Argonaut.Encode.Generic as Json.Encode.Generic
 import Data.Argonaut.Types.Generic as Json.Generic
 import Data.Generic.Rep (class Generic)
+import Data.Interpolate (i)
 import Registry.PackageName (PackageName)
 import Safe.Coerce (coerce)
 
@@ -39,6 +40,7 @@ newtype ImportErrorKey = ImportErrorKey String
 derive instance Newtype ImportErrorKey _
 derive newtype instance Eq ImportErrorKey
 derive newtype instance Ord ImportErrorKey
+instance Show ImportErrorKey where show (ImportErrorKey key) = i"(ImportErrorKey "key")"
 
 -- | An unprocessed package name, which may possibly be malformed.
 newtype RawPackageName = RawPackageName String
@@ -114,6 +116,7 @@ newtype ManifestErrorKey = ManifestErrorKey String
 derive instance Newtype ManifestErrorKey _
 derive newtype instance Eq ManifestErrorKey
 derive newtype instance Ord ManifestErrorKey
+instance Show ManifestErrorKey where show (ManifestErrorKey key) = i"(ManifestErrorKey "key")"
 
 printManifestErrorKey :: ManifestError -> ManifestErrorKey
 printManifestErrorKey = ManifestErrorKey <<< case _ of
