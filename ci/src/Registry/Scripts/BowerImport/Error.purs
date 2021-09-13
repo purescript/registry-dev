@@ -108,8 +108,9 @@ instance Json.EncodeJson ManifestError where
 
 instance Json.DecodeJson ManifestError where
   decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
-  
+
 newtype ManifestErrorKey = ManifestErrorKey String
+
 derive instance Newtype ManifestErrorKey _
 derive newtype instance Eq ManifestErrorKey
 derive newtype instance Ord ManifestErrorKey
