@@ -5,16 +5,13 @@ import Registry.Prelude
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable (intercalate)
 import Data.Map as Map
-import Registry.Scripts.BowerImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), printImportErrorKey, printManifestErrorKey)
+import Registry.Scripts.BowerImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
 import Registry.Scripts.BowerImport.Error.Stats (SucceededPackages)
 import Registry.Scripts.BowerImport.Error.Stats as Stats
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 
 infixr 6 NonEmptyArray.cons' as :|
-
-dummyManifestError :: ImportError
-dummyManifestError = ManifestError (NonEmptyArray.singleton MissingLicense)
 
 exampleSuccesses :: SucceededPackages RawPackageName RawVersion Unit 
 exampleSuccesses = 
@@ -29,7 +26,7 @@ exampleFailures = PackageFailures $
     [ printImportErrorKey MissingBowerfile /\ missingBowerfileErrors
     , printImportErrorKey NoReleases /\ noReleasesErrors
     , printImportErrorKey NoManifests /\ noManifestErrors
-    , printImportErrorKey dummyManifestError /\ manifestErrors
+    , manifestErrorKey /\ manifestErrors
     ]
 
   where 
@@ -99,7 +96,7 @@ errorStats = do
           [ printImportErrorKey MissingBowerfile /\ 4
           , printImportErrorKey NoReleases /\ 2
           , printImportErrorKey NoManifests /\ 3
-          , printImportErrorKey dummyManifestError /\ 2
+          , manifestErrorKey /\ 2
           ]
 
     Spec.it "sums the number of each type of import, regardless of which packages or versions it occurred in" do
