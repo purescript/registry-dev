@@ -12,22 +12,20 @@ import Control.Monad.Writer (execWriter, tell)
 import Data.Array as Array
 import Data.Foldable (fold, intercalate, sum)
 import Data.Function (on)
+import Data.Interpolate (i)
 import Data.List as List
 import Data.List.NonEmpty as NonEmptyList
 import Data.Map (SemigroupMap)
 import Data.Map as Map
-import Data.Newtype (unwrap)
 import Data.Ordering (invert)
 import Data.Set as Set
 import Registry.Scripts.BowerImport.Error (ImportError(..), ImportErrorKey(..), ManifestError, ManifestErrorKey, PackageFailures(..), RawPackageName, RawVersion, manifestErrorKey, printManifestErrorKey)
 import Safe.Coerce (coerce)
 
-newtype VersionFailures = VersionFailures 
-  (Map RawPackageName (Map RawVersion (Array ImportError)))
-derive instance Newtype VersionFailures _
+type VersionFailures = Map RawPackageName (Map RawVersion (Array ImportError))
 
 versionFailuresFromPackageFailures :: PackageFailures -> VersionFailures
-versionFailuresFromPackageFailures (PackageFailures failures) = VersionFailures $
+versionFailuresFromPackageFailures (PackageFailures failures) = 
   let 
     onlyVersionFailures :: List (Map RawPackageName (Map RawVersion ImportError))
     onlyVersionFailures = Map.values failures # map (Map.mapMaybe hush)
@@ -61,11 +59,18 @@ errorStats succeededPackages pFailures@(PackageFailures failures) =
     countOfPackageSuccesses = Map.size succeededPackages 
     countOfVersionSuccesses = sum $ map Map.size succeededPackages
 
-    packages = fold $ map Map.keys $ Map.values failures
-    countOfPackageFailures = Set.size packages
+    countOfPackageFailures = 
+      let packages = fold $ map Map.keys $ Map.values failures
+      in Set.size packages
+
     countOfVersionFailures = 
-      sum $ map Map.size $ unwrap $ versionFailuresFromPackageFailures pFailures
-    countImportErrorsByErrorType = map (sum <<< map (either (const 1) Map.size)) failures
+      sum $ map Map.size $ versionFailuresFromPackageFailures pFailures
+
+    countImportErrorsByErrorType = 
+      let 
+        countFailuresForPackage :: Either ImportError (Map RawVersion ImportError) -> Int
+        countFailuresForPackage = either (const 1) Map.size
+      in (sum <<< map countFailuresForPackage) <$> failures
 
     countManifestErrorsByErrorType = case Map.lookup manifestErrorKey failures of 
       Nothing -> Map.empty
@@ -86,11 +91,6 @@ errorStats succeededPackages pFailures@(PackageFailures failures) =
           # map (\v -> printManifestErrorKey (NonEmptyList.head v) /\ NonEmptyList.length v)
           # Map.fromFoldable
 
-        
-
-
--- newtype PackageFailures = 
---   PackageFailures (Map ImportErrorKey (Map RawPackageName (Either ImportError (Map RawVersion ImportError))))
 
 prettyPrintStats :: Stats -> String
 prettyPrintStats stats = 
@@ -112,14 +112,14 @@ prettyPrintStats stats =
       <#> (intercalate "\n" <<< execWriter <<< case _ of 
         (key@(ImportErrorKey keyStr) /\ errCount) 
           | key == manifestErrorKey -> do
-            tell [ "  " <> keyStr <> ": " <> show errCount <> " (total packages/versions)" ]
+            tell [ i"  "keyStr": "(show errCount)" (total packages/versions)" ]
             for_ (Map.toUnfoldable stats.countManifestErrorsByErrorType # Array.sortBy (invertCompare `on` snd)) \(err /\ count) -> do
-              tell [ "    " <> err <> ": " <> show count ]
+              tell [ i"    "err": "(show count) ]
           | otherwise -> 
-            tell [ "  " <> keyStr <> ": " <> show errCount ]
+            tell [ i"  "keyStr": "(show errCount) ]
       )
 
     invertCompare a b = invert $ compare a b 
 
 logStats :: forall m. MonadEffect m => Stats -> m Unit
-logStats = prettyPrintStats >>> log
+logStats = log <<< prettyPrintStats 
