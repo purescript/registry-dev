@@ -248,14 +248,17 @@ toManifest package repository version (BowerFile bowerfile) = do
           [ "3-Clause BSD" ] -> [ "BSD-3-Clause" ]
           other -> other
 
-        { fail, success } = partitionEithers $ SPDX.parse <$> rewrite bowerfile.license
+      case bowerfile.license of
+        Nothing -> mkError MissingLicense
+        Just licenses -> do
+          let
+            parsed = map SPDX.parse $ rewrite $ NEA.toArray licenses
+            { fail, success } = partitionEithers parsed
 
-      case fail of
-        [] -> case success of
-          [] -> mkError MissingLicense
-          arr -> Right $ SPDX.joinWith SPDX.Or arr
-        _ ->
-          mkError $ BadLicense fail
+          case fail, success of
+            [], [] -> mkError MissingLicense
+            [], _ -> Right $ SPDX.joinWith SPDX.Or success
+            _, _ -> mkError $ BadLicense fail
 
     eitherTargets = do
       let

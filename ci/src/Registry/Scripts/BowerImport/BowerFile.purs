@@ -8,13 +8,14 @@ module Registry.Scripts.BowerImport.BowerFile
 import Registry.Prelude
 
 import Control.Alt ((<|>))
-import Data.Argonaut (Json, (.:), (.:?))
+import Data.Argonaut (Json, (.:?))
 import Data.Argonaut as Json
 import Data.Array as Array
+import Data.Array.NonEmpty as NEA
 import Foreign.Jsonic as Jsonic
 
 newtype BowerFile = BowerFile
-  { license :: Array String
+  { license :: Maybe (NonEmptyArray String)
   , dependencies :: Object String
   , devDependencies :: Object String
   }
@@ -31,12 +32,19 @@ instance Json.DecodeJson BowerFile where
     devDependencies <- fromMaybe mempty <$> obj .:? "devDependencies"
     pure $ BowerFile { license, dependencies, devDependencies }
 
-decodeStringOrStringArray :: Object Json -> String -> Either Json.JsonDecodeError (Array String)
+decodeStringOrStringArray
+  :: Object Json
+  -> String
+  -> Either Json.JsonDecodeError (Maybe (NonEmptyArray String))
 decodeStringOrStringArray obj fieldName = do
   let typeError = const $ Json.AtKey fieldName $ Json.TypeMismatch "String or Array"
   lmap typeError do
-    value <- obj .: fieldName
-    (Json.decodeJson value <#> Array.singleton) <|> Json.decodeJson value
+    value <- obj .:? fieldName
+    case value of
+      Nothing -> pure Nothing
+      Just v -> do
+        decoded <- (Json.decodeJson v <#> Array.singleton) <|> Json.decodeJson v
+        pure $ NEA.fromArray decoded
 
 data BowerFileParseError
   = JsonDecodeError Json.JsonDecodeError
