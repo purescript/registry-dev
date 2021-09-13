@@ -106,12 +106,15 @@ readPackage directory packageName = do
 
 insertManifest :: FilePath -> Manifest -> Aff Unit
 insertManifest directory manifest@{ name, version } = do
-  let path = FilePath.concat [ directory, getIndexPath name ]
-  existing <- readPackage directory name
+  let
+    manifestPath = FilePath.concat [ directory, getIndexPath name ]
+    manifestDirectory = FilePath.dirname manifestPath
+
+  existingManifest <- readPackage directory name
 
   let
     modifiedManifests :: NonEmptyArray Manifest
-    modifiedManifests = case existing of
+    modifiedManifests = case existingManifest of
       Nothing -> NEA.singleton manifest
       Just manifests -> do
         case NEA.findIndex (_.version >>> eq version) manifests of
@@ -127,8 +130,8 @@ insertManifest directory manifest@{ name, version } = do
         $ Array.sortBy (comparing _.version)
         $ Array.fromFoldable modifiedManifests
 
-  unless (isJust existing) do
-    let dir = Array.dropEnd 1 $ String.split (String.Pattern "/") path
-    liftEffect $ Foreign.Node.mkdirSync $ FilePath.concat dir
+  dirExists <- FS.exists manifestDirectory
+  unless dirExists do
+    liftEffect $ Foreign.Node.mkdirSync manifestDirectory
 
-  FS.writeTextFile ASCII path contents
+  FS.writeTextFile ASCII manifestPath contents
