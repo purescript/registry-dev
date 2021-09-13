@@ -4,9 +4,7 @@ import Registry.Prelude
 
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable as Foldable
-import Data.Function (on)
 import Data.Map as Map
-import Data.Newtype as Newtype
 import Registry.Scripts.BowerImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
 import Registry.Scripts.BowerImport.Error.Stats (ProcessedPackageVersions)
 import Registry.Scripts.BowerImport.Error.Stats as Stats

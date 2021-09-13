@@ -18,7 +18,6 @@ import Data.List as List
 import Data.List.NonEmpty as NonEmptyList
 import Data.Map (SemigroupMap)
 import Data.Map as Map
-import Data.Ordering as Ordering
 import Data.Set as Set
 import Registry.Scripts.BowerImport.Error (ImportError(..), ImportErrorKey(..), ManifestError, ManifestErrorKey(..), PackageFailures(..), RawPackageName, RawVersion, manifestErrorKey, printManifestErrorKey)
 import Safe.Coerce (coerce)
