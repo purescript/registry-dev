@@ -3,22 +3,27 @@ module Test.Registry.Scripts.BowerImport.Error.Stats where
 import Registry.Prelude
 
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Foldable (intercalate)
+import Data.Foldable as Foldable
+import Data.Function (on)
 import Data.Map as Map
+import Data.Newtype as Newtype
 import Registry.Scripts.BowerImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
-import Registry.Scripts.BowerImport.Error.Stats (SucceededPackages)
+import Registry.Scripts.BowerImport.Error.Stats (ProcessedPackageVersions)
 import Registry.Scripts.BowerImport.Error.Stats as Stats
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 
 infixr 6 NonEmptyArray.cons' as :|
 
-exampleSuccesses :: SucceededPackages RawPackageName RawVersion Unit 
-exampleSuccesses = 
-  Map.fromFoldable 
-    [ RawPackageName "pkg-a" /\ Map.fromFoldable [ RawVersion "1.0.0" /\ unit, RawVersion "1.0.1" /\ unit ]
-    , RawPackageName "pkg-b" /\ Map.fromFoldable [ RawVersion "1.0.0" /\ unit, RawVersion "1.1.0" /\ unit, RawVersion "1.1.1" /\ unit ]
-    ]
+examplePackageResults :: ProcessedPackageVersions RawPackageName RawVersion Unit 
+examplePackageResults = 
+  { packages: 
+      Map.fromFoldable 
+        [ RawPackageName "pkg-a" /\ Map.fromFoldable [ RawVersion "1.0.0" /\ unit, RawVersion "1.0.1" /\ unit ]
+        , RawPackageName "pkg-b" /\ Map.fromFoldable [ RawVersion "1.0.0" /\ unit, RawVersion "1.1.0" /\ unit, RawVersion "1.1.1" /\ unit ]
+        ]
+  , failures: exampleFailures
+  }
 
 exampleFailures :: PackageFailures
 exampleFailures = PackageFailures $ 
@@ -72,7 +77,17 @@ exampleFailures = PackageFailures $
     errsByVersion = Right
 
 exampleStats :: Stats.Stats
-exampleStats = Stats.errorStats exampleSuccesses exampleFailures
+exampleStats = Stats.errorStats examplePackageResults
+
+comparableMap :: forall k n v. Newtype k n => Ord n => Show n => Map k v -> Map n v 
+comparableMap originalMap = 
+  let kvPairs = (Map.toUnfoldable originalMap :: Array _) <#> \(key /\ val) -> (Newtype.unwrap key /\ val)
+  in Map.fromFoldable kvPairs
+
+assertMapsEqual :: forall k n v
+  . Show n => Show v => Eq n => Eq v => Newtype k n => Ord n 
+  => Map k v -> Map k v -> Aff Unit
+assertMapsEqual = Assert.shouldEqual `on` comparableMap
 
 errorStats :: Spec.Spec Unit
 errorStats = do
@@ -91,16 +106,16 @@ errorStats = do
 
   Spec.describe "count specific errors" do
     Spec.it "sums the number of each type of import, regardless of which packages or versions it occurred in" do
-      exampleStats.countImportErrorsByErrorType `Assert.shouldEqual` 
+      exampleStats.countImportErrorsByErrorType `assertMapsEqual`
         Map.fromFoldable 
-          [ printImportErrorKey MissingBowerfile /\ 4
-          , printImportErrorKey NoReleases /\ 2
-          , printImportErrorKey NoManifests /\ 3
+          [ (printImportErrorKey MissingBowerfile) /\ 4
+          , (printImportErrorKey NoReleases) /\ 2
+          , (printImportErrorKey NoManifests) /\ 3
           , manifestErrorKey /\ 2
           ]
 
     Spec.it "sums the number of each type of import, regardless of which packages or versions it occurred in" do
-      exampleStats.countManifestErrorsByErrorType `Assert.shouldEqual` 
+      exampleStats.countManifestErrorsByErrorType `assertMapsEqual`
         Map.fromFoldable 
           [ printManifestErrorKey MissingLicense /\ 2
           , printManifestErrorKey MissingName /\ 1
@@ -111,7 +126,7 @@ errorStats = do
   Spec.describe "pretty print stats" do
     Spec.it "prints a sorted list of all the collected stats" do
       Stats.prettyPrintStats exampleStats `Assert.shouldEqual`
-        intercalate "\n" 
+        Foldable.intercalate "\n" 
           [ "Number of successful packages: " <> show exampleStats.countOfPackageSuccesses 
           , "Number of failed packages: " <> show exampleStats.countOfPackageFailures 
           , "Number of successful versions: " <> show exampleStats.countOfVersionSuccesses

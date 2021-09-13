@@ -39,7 +39,6 @@ newtype ImportErrorKey = ImportErrorKey String
 derive instance Newtype ImportErrorKey _
 derive newtype instance Eq ImportErrorKey
 derive newtype instance Ord ImportErrorKey
-instance Show ImportErrorKey where show (ImportErrorKey key) = "(ImportErrorKey " <> key <> ")"
 
 -- | An unprocessed package name, which may possibly be malformed.
 newtype RawPackageName = RawPackageName String
@@ -110,10 +109,13 @@ instance Json.EncodeJson ManifestError where
 instance Json.DecodeJson ManifestError where
   decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
   
-type ManifestErrorKey = String
+newtype ManifestErrorKey = ManifestErrorKey String
+derive instance Newtype ManifestErrorKey _
+derive newtype instance Eq ManifestErrorKey
+derive newtype instance Ord ManifestErrorKey
 
 printManifestErrorKey :: ManifestError -> ManifestErrorKey
-printManifestErrorKey = case _ of
+printManifestErrorKey = ManifestErrorKey <<< case _ of
   MissingName -> "missingName"
   MissingLicense -> "missingLicense"
   BadLicense _ -> "badLicense"
