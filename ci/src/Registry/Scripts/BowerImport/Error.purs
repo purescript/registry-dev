@@ -40,7 +40,8 @@ newtype ImportErrorKey = ImportErrorKey String
 derive instance Newtype ImportErrorKey _
 derive newtype instance Eq ImportErrorKey
 derive newtype instance Ord ImportErrorKey
-instance Show ImportErrorKey where show (ImportErrorKey key) = i"(ImportErrorKey "key")"
+instance Show ImportErrorKey where
+  show (ImportErrorKey key) = i "(ImportErrorKey " key ")"
 
 -- | An unprocessed package name, which may possibly be malformed.
 newtype RawPackageName = RawPackageName String
@@ -116,7 +117,8 @@ newtype ManifestErrorKey = ManifestErrorKey String
 derive instance Newtype ManifestErrorKey _
 derive newtype instance Eq ManifestErrorKey
 derive newtype instance Ord ManifestErrorKey
-instance Show ManifestErrorKey where show (ManifestErrorKey key) = i"(ManifestErrorKey "key")"
+instance Show ManifestErrorKey where
+  show (ManifestErrorKey key) = i "(ManifestErrorKey " key ")"
 
 printManifestErrorKey :: ManifestError -> ManifestErrorKey
 printManifestErrorKey = ManifestErrorKey <<< case _ of
