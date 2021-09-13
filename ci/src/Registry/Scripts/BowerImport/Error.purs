@@ -39,6 +39,7 @@ newtype ImportErrorKey = ImportErrorKey String
 derive instance Newtype ImportErrorKey _
 derive newtype instance Eq ImportErrorKey
 derive newtype instance Ord ImportErrorKey
+instance Show ImportErrorKey where show (ImportErrorKey key) = "(ImportErrorKey " <> key <> ")"
 
 -- | An unprocessed package name, which may possibly be malformed.
 newtype RawPackageName = RawPackageName String
@@ -77,17 +78,20 @@ instance Json.EncodeJson ImportError where
 instance Json.DecodeJson ImportError where
   decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
 
+manifestErrorKey :: ImportErrorKey
+manifestErrorKey = ImportErrorKey "manifestError"
+
 printImportErrorKey :: ImportError -> ImportErrorKey
-printImportErrorKey = ImportErrorKey <<< case _ of
-  InvalidGitHubRepo _ -> "invalidGitHubRepo"
-  BadStatus _ -> "badStatus"
-  NoReleases -> "noReleases"
-  MalformedPackageName _ -> "malformedPackageName"
-  MissingBowerfile -> "missingBowerfile"
-  MalformedBowerJson _ -> "malformedBowerJson"
-  NonRegistryDependencies _ -> "nonRegistryDependencies"
-  NoManifests -> "noManifests"
-  ManifestError _ -> "manifestError"
+printImportErrorKey = case _ of
+  InvalidGitHubRepo _ -> ImportErrorKey "invalidGitHubRepo"
+  BadStatus _ -> ImportErrorKey "badStatus"
+  NoReleases -> ImportErrorKey "noReleases"
+  MalformedPackageName _ -> ImportErrorKey "malformedPackageName"
+  MissingBowerfile -> ImportErrorKey "missingBowerfile"
+  MalformedBowerJson _ -> ImportErrorKey "malformedBowerJson"
+  NonRegistryDependencies _ -> ImportErrorKey "nonRegistryDependencies"
+  NoManifests -> ImportErrorKey "noManifests"
+  ManifestError _ -> manifestErrorKey
 
 -- | An error representing why a Bowerfile cannot be migrated into a manifest.
 data ManifestError
@@ -105,8 +109,10 @@ instance Json.EncodeJson ManifestError where
 
 instance Json.DecodeJson ManifestError where
   decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+  
+type ManifestErrorKey = String
 
-printManifestErrorKey :: ManifestError -> String
+printManifestErrorKey :: ManifestError -> ManifestErrorKey
 printManifestErrorKey = case _ of
   MissingName -> "missingName"
   MissingLicense -> "missingLicense"

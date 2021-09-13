@@ -39,6 +39,7 @@ import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
 import Registry.Scripts.BowerImport.BowerFile as BowerFile
 import Registry.Scripts.BowerImport.Error (ImportError(..), ImportErrorKey, ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..))
 import Registry.Scripts.BowerImport.Error as BowerImport.Error
+import Registry.Scripts.BowerImport.Error.Stats as ErrorStats
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as StringParser
 
@@ -176,6 +177,7 @@ downloadBowerRegistry = do
 
   log "Writing exclusions file..."
   writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
+  ErrorStats.logStats $ ErrorStats.errorStats manifestRegistry.packages manifestRegistry.failures
   pure registryIndex
 
 -- | Find the bower.json files associated with the package's released tags,

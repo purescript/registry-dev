@@ -12,6 +12,7 @@
   , "control"
   , "crypto"
   , "datetime"
+  , "debug"
   , "effect"
   , "either"
   , "foldable-traversable"
