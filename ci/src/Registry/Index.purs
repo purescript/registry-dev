@@ -8,14 +8,17 @@ import Registry.Prelude
 
 import Control.Alternative (guard)
 import Data.Argonaut as Json
+import Data.Array (foldMap)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
+import Data.Set as Set
 import Data.String as String
 import Data.String.Pattern (Pattern(..))
 import Foreign.Node.FS as Foreign.Node
 import Foreign.SemVer (SemVer)
 import Node.FS.Aff as FS
+import Node.FS.Stats as Stats
 import Node.Glob.Basic as Glob
 import Node.Path as FilePath
 import Registry.PackageName (PackageName)
@@ -27,7 +30,7 @@ type RegistryIndex = Map PackageName (Map SemVer Manifest)
 -- | NOTE: Right now, this assumes that manifest files will parse
 readRegistryIndex :: FilePath -> Aff RegistryIndex
 readRegistryIndex directory = do
-  packagePaths <- Array.fromFoldable <$> Glob.expandGlobs directory [ "*" ]
+  packagePaths <- Glob.expandGlobsWithStats directory [ "**/*" ]
 
   let
     -- Exclude certain files that will always be in the root of the registry index.
@@ -40,7 +43,11 @@ readRegistryIndex directory = do
       guard (not (Array.elem fileName exclude))
       hush $ PackageName.parse fileName
 
-    packages = Array.mapMaybe goPath packagePaths
+    packages =
+      Array.mapMaybe goPath
+        $ Set.toUnfoldable $ Map.keys $ Map.filter (not Stats.isDirectory) packagePaths
+
+  error (foldMap PackageName.print packages)
 
   parsed <- for packages \package -> Tuple package <$> readPackage directory package
 
@@ -49,7 +56,7 @@ readRegistryIndex directory = do
       :: Tuple PackageName (Maybe (NonEmptyArray Manifest))
       -> Tuple PackageName (NonEmptyArray Manifest)
     normalizePackage (Tuple package mbManifests) = case mbManifests of
-      Nothing -> unsafeCrashWith "Package failed to parse"
+      Nothing -> unsafeCrashWith ("Package " <> PackageName.print package <> " failed to parse")
       Just manifests -> Tuple package manifests
 
     parsedPackages :: Array (Tuple PackageName (NonEmptyArray Manifest))
