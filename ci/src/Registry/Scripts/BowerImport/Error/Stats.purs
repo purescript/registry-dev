@@ -3,6 +3,7 @@ module Registry.Scripts.BowerImport.Error.Stats
   , prettyPrintStats
   , logStats
   , Stats
+  , ErrorCounts(..)
   , ProcessedPackages
   , ProcessedPackageVersions
   ) where
@@ -13,12 +14,12 @@ import Control.Monad.Writer as Writer
 import Data.Array as Array
 import Data.Foldable as Foldable
 import Data.Function (on)
+import Data.Generic.Rep (class Generic)
 import Data.Interpolate (i)
 import Data.List as List
-import Data.List.NonEmpty as NonEmptyList
-import Data.Map (SemigroupMap)
+import Data.Map (SemigroupMap(..))
 import Data.Map as Map
-import Data.Ordering as Ordering
+import Data.Monoid.Additive as Monoid
 import Data.Set as Set
 import Registry.Scripts.BowerImport.Error (ImportError(..), ImportErrorKey(..), ManifestError, ManifestErrorKey(..), PackageFailures(..), RawPackageName, RawVersion, manifestErrorKey, printManifestErrorKey)
 import Safe.Coerce (coerce)
@@ -30,13 +31,40 @@ type ProcessedPackages k a =
 
 type ProcessedPackageVersions k1 k2 a = ProcessedPackages k1 (Map k2 a)
 
+newtype ErrorCounts = ErrorCounts
+  { countOfOccurrences :: Int
+  , countOfPackagesAffected :: Int
+  , countOfVersionsAffected :: Int
+  }
+
+derive newtype instance Eq ErrorCounts
+derive newtype instance Ord ErrorCounts 
+derive instance Generic ErrorCounts _
+
+instance Semigroup ErrorCounts where 
+  append (ErrorCounts a) (ErrorCounts b) = ErrorCounts 
+    { countOfOccurrences: a.countOfOccurrences + b.countOfOccurrences
+    , countOfPackagesAffected: a.countOfPackagesAffected + b.countOfPackagesAffected
+    , countOfVersionsAffected: a.countOfVersionsAffected + b.countOfVersionsAffected
+    }
+
+instance Monoid ErrorCounts where
+  mempty = ErrorCounts { countOfOccurrences: 0, countOfPackagesAffected: 0, countOfVersionsAffected: 0 }
+
+instance Show ErrorCounts where 
+  show = genericShow
+
+printErrorCounts :: ErrorCounts -> String
+printErrorCounts (ErrorCounts { countOfOccurrences, countOfPackagesAffected, countOfVersionsAffected }) = 
+  i (show countOfOccurrences) " occurrences (" (show countOfPackagesAffected) " packages / " (show countOfVersionsAffected) " versions)"
+
 type Stats =
   { countOfPackageSuccesses :: Int
-  , countOfPackageFailures :: Int
   , countOfVersionSuccesses :: Int
+  , countOfPackageFailures :: Int
   , countOfVersionFailures :: Int
-  , countImportErrorsByErrorType :: Map ImportErrorKey Int
-  , countManifestErrorsByErrorType :: Map ManifestErrorKey Int
+  , countImportErrorsByErrorType :: Map ImportErrorKey ErrorCounts
+  , countManifestErrorsByErrorType :: Map ManifestErrorKey ErrorCounts
   }
 
 type VersionFailures = Map RawPackageName (Map RawVersion (Array ImportError))
@@ -53,11 +81,59 @@ versionFailuresFromPackageFailures (PackageFailures failures) =
   in
     coerce (fold semigroupVersionFailures)
 
+countManifestErrors :: PackageFailures -> Map ManifestErrorKey ErrorCounts
+countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKey failures of
+  Nothing -> Map.empty
+  Just shouldBeManifestErrors -> 
+    let
+      extractManifestErrors = case _ of
+        ManifestError errs -> List.fromFoldable errs
+        _ -> List.Nil
+
+      manifestErrors :: Map RawPackageName (Either (List ManifestError) (Map RawVersion (List ManifestError)))
+      manifestErrors = shouldBeManifestErrors <#> case _ of 
+        Left errs -> Left $ extractManifestErrors errs
+        Right versionErrs -> Right (extractManifestErrors <$> versionErrs)
+
+      groupedErrors :: Map ManifestErrorKey { packageFailures :: Set RawPackageName, versionFailures :: Map RawPackageName Int }
+      groupedErrors =
+        let 
+          processOnePackage (package /\ packageOrVersionFailures) = case packageOrVersionFailures of 
+            Left errs -> 
+              let 
+                statsPerError = 
+                  { packageFailures: Set.fromFoldable [ package ]
+                  , versionFailures: SemigroupMap Map.empty
+                  }
+              in 
+                SemigroupMap $ Map.fromFoldable (errs <#> \err -> printManifestErrorKey err /\ statsPerError)
+            Right (errsByVersion :: Map RawVersion (List ManifestError)) -> 
+              let 
+                statsPerError = 
+                  { packageFailures: Set.empty
+                  , versionFailures: SemigroupMap (Map.fromFoldable [package /\ Monoid.Additive 1])
+                  }
+
+                toSemigroupMap errs =
+                  SemigroupMap $ Map.fromFoldable (errs <#> \err -> printManifestErrorKey err /\ statsPerError)
+              in 
+                fold (List.fromFoldable errsByVersion <#> toSemigroupMap) 
+        in 
+          coerce $ Array.foldMap processOnePackage $ Map.toUnfoldable manifestErrors
+
+    in
+      groupedErrors <#> (\{ packageFailures, versionFailures } -> ErrorCounts $ 
+        { countOfOccurrences: Set.size packageFailures + Foldable.sum versionFailures
+        , countOfPackagesAffected: Set.size (Map.keys versionFailures <> packageFailures)
+        , countOfVersionsAffected: Foldable.sum versionFailures
+        }
+      )
+
 errorStats :: forall package version a. ProcessedPackageVersions package version a -> Stats
 errorStats { packages: succeededPackages, failures: packageFailures@(PackageFailures failures) } =
   { countOfPackageSuccesses
-  , countOfPackageFailures
   , countOfVersionSuccesses
+  , countOfPackageFailures
   , countOfVersionFailures
   , countImportErrorsByErrorType
   , countManifestErrorsByErrorType
@@ -75,32 +151,24 @@ errorStats { packages: succeededPackages, failures: packageFailures@(PackageFail
   countOfVersionFailures =
     Foldable.sum $ map Map.size $ versionFailuresFromPackageFailures packageFailures
 
-  countImportErrorsByErrorType =
+  countImportErrorsByErrorType = 
     let
-      countFailuresForPackage :: Either ImportError (Map RawVersion ImportError) -> Int
-      countFailuresForPackage = either (const 1) Map.size
-    in
-      (Foldable.sum <<< map countFailuresForPackage) <$> failures
+      countFailuresForPackage :: Either ImportError (Map RawVersion ImportError) -> ErrorCounts
+      countFailuresForPackage = case _ of 
+        Left _ -> ErrorCounts { countOfPackagesAffected: 1, countOfOccurrences: 1, countOfVersionsAffected: 0 }
+        Right versionErrors -> ErrorCounts 
+          { countOfOccurrences: Map.size versionErrors
+          , countOfVersionsAffected: Map.size versionErrors
+          , countOfPackagesAffected: 1
+          }
 
-  countManifestErrorsByErrorType = case Map.lookup manifestErrorKey failures of
-    Nothing -> Map.empty
-    Just manifestErrors ->
-      let
-        allManifestErrors :: List ManifestError
-        allManifestErrors =
-          let
-            allImportErrors = Map.values manifestErrors >>= either List.singleton List.fromFoldable
-            extractManifestErrors = case _ of
-              ManifestError errs -> Just $ List.fromFoldable errs
-              _ -> Nothing
-          in
-            allImportErrors # List.mapMaybe extractManifestErrors # join
-      in
-        allManifestErrors
-          # List.sortBy (compare `on` printManifestErrorKey)
-          # List.groupBy (eq `on` printManifestErrorKey)
-          # map (\v -> printManifestErrorKey (NonEmptyList.head v) /\ NonEmptyList.length v)
-          # Map.fromFoldable
+      countFailuresByPackage :: Map RawPackageName (Either ImportError (Map RawVersion ImportError)) -> ErrorCounts
+      countFailuresByPackage = fold <<< map countFailuresForPackage
+    in
+      countFailuresByPackage <$> failures
+  
+  countManifestErrorsByErrorType = countManifestErrors packageFailures
+
 
 prettyPrintStats :: Stats -> String
 prettyPrintStats stats =
@@ -122,14 +190,15 @@ prettyPrintStats stats =
   sortValues = Array.sortBy (flip compare `on` snd) <<< Map.toUnfoldable
 
   writeError = Foldable.intercalate "\n" <<< Writer.execWriter <<< case _ of
-    (key@(ImportErrorKey keyStr) /\ errCount)
+    (key@(ImportErrorKey importErr) /\ importErrCounts)
       | key == manifestErrorKey -> do
-          Writer.tell [ i "  " keyStr ": " (show errCount) " (total packages/versions)" ]
+          Writer.tell [ i "  " importErr ": " (printErrorCounts importErrCounts) ]
           for_
             (sortValues stats.countManifestErrorsByErrorType)
-            \(ManifestErrorKey err /\ count) -> Writer.tell [ i "    " err ": " (show count) ]
+            \(ManifestErrorKey manifestErr /\ manifestErrCounts) -> 
+              Writer.tell [ i "    " manifestErr ": " (printErrorCounts manifestErrCounts) ]
       | otherwise ->
-          Writer.tell [ i "  " keyStr ": " (show errCount) ]
+          Writer.tell [ i "  " importErr ": " (printErrorCounts importErrCounts) ]
 
 logStats :: forall m. MonadEffect m => Stats -> m Unit
 logStats = log <<< prettyPrintStats

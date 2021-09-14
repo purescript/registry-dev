@@ -4,11 +4,9 @@ import Registry.Prelude
 
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable as Foldable
-import Data.Function (on)
 import Data.Map as Map
-import Data.Newtype as Newtype
 import Registry.Scripts.BowerImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
-import Registry.Scripts.BowerImport.Error.Stats (ProcessedPackageVersions)
+import Registry.Scripts.BowerImport.Error.Stats (ErrorCounts(..), ProcessedPackageVersions)
 import Registry.Scripts.BowerImport.Error.Stats as Stats
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
@@ -78,6 +76,9 @@ exampleFailures = PackageFailures $
 exampleStats :: Stats.Stats
 exampleStats = Stats.errorStats examplePackageResults
 
+errCounts :: Int -> Int -> Int -> ErrorCounts 
+errCounts o p v = ErrorCounts { countOfOccurrences: o, countOfPackagesAffected: p, countOfVersionsAffected: v }
+
 errorStats :: Spec.Spec Unit
 errorStats = do
   Spec.describe "count successes" do
@@ -97,19 +98,19 @@ errorStats = do
     Spec.it "sums the number of each type of import, regardless of which packages or versions it occurred in" do
       exampleStats.countImportErrorsByErrorType `Assert.shouldEqual`
         Map.fromFoldable
-          [ (printImportErrorKey MissingBowerfile) /\ 4
-          , (printImportErrorKey NoReleases) /\ 2
-          , (printImportErrorKey NoManifests) /\ 3
-          , manifestErrorKey /\ 2
+          [ (printImportErrorKey MissingBowerfile) /\ errCounts 4 2 3 
+          , (printImportErrorKey NoReleases) /\ errCounts 2 2 0 
+          , (printImportErrorKey NoManifests) /\ errCounts 3 2 3
+          , manifestErrorKey /\ errCounts 2 1 2
           ]
 
     Spec.it "sums the number of each type of import, regardless of which packages or versions it occurred in" do
       exampleStats.countManifestErrorsByErrorType `Assert.shouldEqual`
         Map.fromFoldable
-          [ printManifestErrorKey MissingLicense /\ 2
-          , printManifestErrorKey MissingName /\ 1
-          , printManifestErrorKey (BadVersion "") /\ 1
-          , printManifestErrorKey (InvalidDependencyNames (NonEmptyArray.singleton "")) /\ 1
+          [ printManifestErrorKey MissingLicense /\ errCounts 2 1 2
+          , printManifestErrorKey MissingName /\ errCounts 1 1 1
+          , printManifestErrorKey (BadVersion "") /\ errCounts 1 1 1
+          , printManifestErrorKey (InvalidDependencyNames (NonEmptyArray.singleton "")) /\ errCounts 1 1 1
           ]
 
   Spec.describe "pretty print stats" do
@@ -121,13 +122,13 @@ errorStats = do
           , "Number of successful versions: " <> show exampleStats.countOfVersionSuccesses
           , "Number of failed versions: " <> show exampleStats.countOfVersionFailures
           , "Failures by error:"
-          , "  missingBowerfile: 4"
-          , "  noManifests: 3"
-          , "  manifestError: 2 (total packages/versions)"
-          , "    missingLicense: 2"
-          , "    badVersion: 1"
-          , "    invalidDependencyNames: 1"
-          , "    missingName: 1"
-          , "  noReleases: 2"
+          , "  missingBowerfile: 4 occurrences (2 packages / 3 versions)"
+          , "  noManifests: 3 occurrences (2 packages / 3 versions)"
+          , "  noReleases: 2 occurrences (2 packages / 0 versions)"
+          , "  manifestError: 2 occurrences (1 packages / 2 versions)"
+          , "    missingLicense: 2 occurrences (1 packages / 2 versions)"
+          , "    badVersion: 1 occurrences (1 packages / 1 versions)"
+          , "    invalidDependencyNames: 1 occurrences (1 packages / 1 versions)"
+          , "    missingName: 1 occurrences (1 packages / 1 versions)"
           ]
 
