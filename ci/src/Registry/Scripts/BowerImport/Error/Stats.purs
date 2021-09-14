@@ -38,11 +38,11 @@ newtype ErrorCounts = ErrorCounts
   }
 
 derive newtype instance Eq ErrorCounts
-derive newtype instance Ord ErrorCounts 
+derive newtype instance Ord ErrorCounts
 derive instance Generic ErrorCounts _
 
-instance Semigroup ErrorCounts where 
-  append (ErrorCounts a) (ErrorCounts b) = ErrorCounts 
+instance Semigroup ErrorCounts where
+  append (ErrorCounts a) (ErrorCounts b) = ErrorCounts
     { countOfOccurrences: a.countOfOccurrences + b.countOfOccurrences
     , countOfPackagesAffected: a.countOfPackagesAffected + b.countOfPackagesAffected
     , countOfVersionsAffected: a.countOfVersionsAffected + b.countOfVersionsAffected
@@ -51,11 +51,11 @@ instance Semigroup ErrorCounts where
 instance Monoid ErrorCounts where
   mempty = ErrorCounts { countOfOccurrences: 0, countOfPackagesAffected: 0, countOfVersionsAffected: 0 }
 
-instance Show ErrorCounts where 
+instance Show ErrorCounts where
   show = genericShow
 
 printErrorCounts :: ErrorCounts -> String
-printErrorCounts (ErrorCounts { countOfOccurrences, countOfPackagesAffected, countOfVersionsAffected }) = 
+printErrorCounts (ErrorCounts { countOfOccurrences, countOfPackagesAffected, countOfVersionsAffected }) =
   i (show countOfOccurrences) " occurrences (" (show countOfPackagesAffected) " packages / " (show countOfVersionsAffected) " versions)"
 
 type Stats =
@@ -84,50 +84,51 @@ versionFailuresFromPackageFailures (PackageFailures failures) =
 countManifestErrors :: PackageFailures -> Map ManifestErrorKey ErrorCounts
 countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKey failures of
   Nothing -> Map.empty
-  Just shouldBeManifestErrors -> 
+  Just shouldBeManifestErrors ->
     let
       extractManifestErrors = case _ of
         ManifestError errs -> List.fromFoldable errs
         _ -> List.Nil
 
       manifestErrors :: Map RawPackageName (Either (List ManifestError) (Map RawVersion (List ManifestError)))
-      manifestErrors = shouldBeManifestErrors <#> case _ of 
+      manifestErrors = shouldBeManifestErrors <#> case _ of
         Left errs -> Left $ extractManifestErrors errs
         Right versionErrs -> Right (extractManifestErrors <$> versionErrs)
 
       groupedErrors :: Map ManifestErrorKey { packageFailures :: Set RawPackageName, versionFailures :: Map RawPackageName Int }
       groupedErrors =
-        let 
-          processOnePackage (package /\ packageOrVersionFailures) = case packageOrVersionFailures of 
-            Left errs -> 
-              let 
-                statsPerError = 
+        let
+          processOnePackage (package /\ packageOrVersionFailures) = case packageOrVersionFailures of
+            Left errs ->
+              let
+                statsPerError =
                   { packageFailures: Set.fromFoldable [ package ]
                   , versionFailures: SemigroupMap Map.empty
                   }
-              in 
+              in
                 SemigroupMap $ Map.fromFoldable (errs <#> \err -> printManifestErrorKey err /\ statsPerError)
-            Right (errsByVersion :: Map RawVersion (List ManifestError)) -> 
-              let 
-                statsPerError = 
+            Right (errsByVersion :: Map RawVersion (List ManifestError)) ->
+              let
+                statsPerError =
                   { packageFailures: Set.empty
-                  , versionFailures: SemigroupMap (Map.fromFoldable [package /\ Monoid.Additive 1])
+                  , versionFailures: SemigroupMap (Map.fromFoldable [ package /\ Monoid.Additive 1 ])
                   }
 
                 toSemigroupMap errs =
                   SemigroupMap $ Map.fromFoldable (errs <#> \err -> printManifestErrorKey err /\ statsPerError)
-              in 
-                fold (List.fromFoldable errsByVersion <#> toSemigroupMap) 
-        in 
+              in
+                fold (List.fromFoldable errsByVersion <#> toSemigroupMap)
+        in
           coerce $ Array.foldMap processOnePackage $ Map.toUnfoldable manifestErrors
 
     in
-      groupedErrors <#> (\{ packageFailures, versionFailures } -> ErrorCounts $ 
-        { countOfOccurrences: Set.size packageFailures + Foldable.sum versionFailures
-        , countOfPackagesAffected: Set.size (Map.keys versionFailures <> packageFailures)
-        , countOfVersionsAffected: Foldable.sum versionFailures
-        }
-      )
+      groupedErrors <#>
+        \{ packageFailures, versionFailures } ->
+          ErrorCounts $
+            { countOfOccurrences: Set.size packageFailures + Foldable.sum versionFailures
+            , countOfPackagesAffected: Set.size (Map.keys versionFailures <> packageFailures)
+            , countOfVersionsAffected: Foldable.sum versionFailures
+            }
 
 errorStats :: forall package version a. ProcessedPackageVersions package version a -> Stats
 errorStats { packages: succeededPackages, failures: packageFailures@(PackageFailures failures) } =
@@ -151,12 +152,12 @@ errorStats { packages: succeededPackages, failures: packageFailures@(PackageFail
   countOfVersionFailures =
     Foldable.sum $ map Map.size $ versionFailuresFromPackageFailures packageFailures
 
-  countImportErrorsByErrorType = 
+  countImportErrorsByErrorType =
     let
       countFailuresForPackage :: Either ImportError (Map RawVersion ImportError) -> ErrorCounts
-      countFailuresForPackage = case _ of 
+      countFailuresForPackage = case _ of
         Left _ -> ErrorCounts { countOfPackagesAffected: 1, countOfOccurrences: 1, countOfVersionsAffected: 0 }
-        Right versionErrors -> ErrorCounts 
+        Right versionErrors -> ErrorCounts
           { countOfOccurrences: Map.size versionErrors
           , countOfVersionsAffected: Map.size versionErrors
           , countOfPackagesAffected: 1
@@ -166,9 +167,8 @@ errorStats { packages: succeededPackages, failures: packageFailures@(PackageFail
       countFailuresByPackage = fold <<< map countFailuresForPackage
     in
       countFailuresByPackage <$> failures
-  
-  countManifestErrorsByErrorType = countManifestErrors packageFailures
 
+  countManifestErrorsByErrorType = countManifestErrors packageFailures
 
 prettyPrintStats :: Stats -> String
 prettyPrintStats stats =
@@ -195,7 +195,7 @@ prettyPrintStats stats =
           Writer.tell [ i "  " importErr ": " (printErrorCounts importErrCounts) ]
           for_
             (sortValues stats.countManifestErrorsByErrorType)
-            \(ManifestErrorKey manifestErr /\ manifestErrCounts) -> 
+            \(ManifestErrorKey manifestErr /\ manifestErrCounts) ->
               Writer.tell [ i "    " manifestErr ": " (printErrorCounts manifestErrCounts) ]
       | otherwise ->
           Writer.tell [ i "  " importErr ": " (printErrorCounts importErrCounts) ]

@@ -76,7 +76,7 @@ exampleFailures = PackageFailures $
 exampleStats :: Stats.Stats
 exampleStats = Stats.errorStats examplePackageResults
 
-errCounts :: Int -> Int -> Int -> ErrorCounts 
+errCounts :: Int -> Int -> Int -> ErrorCounts
 errCounts o p v = ErrorCounts { countOfOccurrences: o, countOfPackagesAffected: p, countOfVersionsAffected: v }
 
 errorStats :: Spec.Spec Unit
@@ -98,8 +98,8 @@ errorStats = do
     Spec.it "sums the number of each type of import, regardless of which packages or versions it occurred in" do
       exampleStats.countImportErrorsByErrorType `Assert.shouldEqual`
         Map.fromFoldable
-          [ (printImportErrorKey MissingBowerfile) /\ errCounts 4 2 3 
-          , (printImportErrorKey NoReleases) /\ errCounts 2 2 0 
+          [ (printImportErrorKey MissingBowerfile) /\ errCounts 4 2 3
+          , (printImportErrorKey NoReleases) /\ errCounts 2 2 0
           , (printImportErrorKey NoManifests) /\ errCounts 3 2 3
           , manifestErrorKey /\ errCounts 2 1 2
           ]
