@@ -60,8 +60,8 @@ printErrorCounts (ErrorCounts { countOfOccurrences, countOfPackagesAffected, cou
 
 type Stats =
   { countOfPackageSuccesses :: Int
-  , countOfVersionSuccesses :: Int
   , countOfPackageFailures :: Int
+  , countOfVersionSuccesses :: Int
   , countOfVersionFailures :: Int
   , countImportErrorsByErrorType :: Map ImportErrorKey ErrorCounts
   , countManifestErrorsByErrorType :: Map ManifestErrorKey ErrorCounts
@@ -122,8 +122,8 @@ countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKe
           coerce $ Array.foldMap processOnePackage $ Map.toUnfoldable manifestErrors
 
     in
-      groupedErrors <#>
-        \{ packageFailures, versionFailures } ->
+      groupedErrors
+        <#> \{ packageFailures, versionFailures } ->
           ErrorCounts $
             { countOfOccurrences: Set.size packageFailures + Foldable.sum versionFailures
             , countOfPackagesAffected: Set.size (Map.keys versionFailures <> packageFailures)
@@ -133,8 +133,8 @@ countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKe
 errorStats :: forall package version a. ProcessedPackageVersions package version a -> Stats
 errorStats { packages: succeededPackages, failures: packageFailures@(PackageFailures failures) } =
   { countOfPackageSuccesses
-  , countOfVersionSuccesses
   , countOfPackageFailures
+  , countOfVersionSuccesses
   , countOfVersionFailures
   , countImportErrorsByErrorType
   , countManifestErrorsByErrorType
