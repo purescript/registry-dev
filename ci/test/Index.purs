@@ -5,7 +5,8 @@ import Registry.Prelude
 import Data.Array as Array
 import Data.Map as Map
 import Data.Maybe as Maybe
-import Effect.Aff (bracket)
+import Debug (spy, traceM)
+import Effect.Aff (launchAff)
 import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Foreign.SemVer (SemVer)
@@ -43,7 +44,7 @@ testRegistryIndex = do
   where
   testPipeline =
     insertAndCheck ab.name ab.v1a
-      >=> insertAndCheck ab.name ab.v1b
+     -- >=> insertAndCheck ab.name ab.v1b
       >=> insertAndCheck ab.name ab.v2
       >=> insertAndCheck abc.name abc.v1
       >=> insertAndCheck abc.name abc.v2
@@ -67,14 +68,15 @@ insertAndCheck packageName { version, manifest } existingRegistry = do
   -- read file
   -- ensure read index matches in memory index
   Index.insertManifest registryDirectory manifest
+  registry <- Index.readRegistryIndex registryDirectory
+
   let
     -- Prefer later entries in the case of version collisions.
     updatedRegistry =
       Map.insertWith (flip Map.union) packageName (Map.singleton version manifest) existingRegistry
 
-  registry <- Index.readRegistryIndex registryDirectory
-
-  when (updatedRegistry == registry) do
+  --traceM { packageName, version, manifest }
+  if updatedRegistry == registry then do
     let
       errorMessage = Array.intercalate " "
         [ "Inserted"
@@ -85,8 +87,7 @@ insertAndCheck packageName { version, manifest } existingRegistry = do
         ]
 
     log errorMessage
-
-  unless (updatedRegistry == registry) do
+  else do
     let
       errorMessage = Array.intercalate " "
         [ "Failed to insert"
@@ -96,7 +97,10 @@ insertAndCheck packageName { version, manifest } existingRegistry = do
         , "to registry index."
         ]
 
-    unsafeCrashWith errorMessage
+    error errorMessage
+
+  traceM (Map.lookup (unsafeFromJust (hush $ PackageName.parse "abc")) registry)
+  traceM (Map.lookup (unsafeFromJust (hush $ PackageName.parse "abc")) updatedRegistry)
 
   pure updatedRegistry
 
@@ -132,7 +136,7 @@ ab = { name, v1a, v1b, v2 }
     }
   v1b = do
     { version: version1
-    , manifest: { name, version: version2, license, repository, targets }
+    , manifest: { name, version: version1, license, repository, targets }
     }
   v2 = do
     { version: version2

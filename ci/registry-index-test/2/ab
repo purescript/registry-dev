@@ -1,0 +1,2 @@
+{"version":"1.0.0","targets":{"lib":{"sources":["src/**/*.purs"],"dependencies":{}}},"repository":{"githubOwner":"ab-wrong-user","githubRepo":"ab"},"name":"ab","license":"MIT"}
+{"version":"2.0.0","targets":{"lib":{"sources":["src/**/*.purs"],"dependencies":{}}},"repository":{"githubOwner":"abc-user","githubRepo":"abc"},"name":"ab","license":"MIT"}
