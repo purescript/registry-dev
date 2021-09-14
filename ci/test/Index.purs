@@ -74,6 +74,18 @@ insertAndCheck packageName { version, manifest } existingRegistry = do
 
   registry <- Index.readRegistryIndex registryDirectory
 
+  when (updatedRegistry == registry) do
+    let
+      errorMessage = Array.intercalate " "
+        [ "Inserted"
+        , PackageName.print packageName
+        , "version"
+        , show version
+        , "to registry index."
+        ]
+
+    log errorMessage
+
   unless (updatedRegistry == registry) do
     let
       errorMessage = Array.intercalate " "
@@ -84,7 +96,7 @@ insertAndCheck packageName { version, manifest } existingRegistry = do
         , "to registry index."
         ]
 
-    error errorMessage
+    unsafeCrashWith errorMessage
 
   pure updatedRegistry
 

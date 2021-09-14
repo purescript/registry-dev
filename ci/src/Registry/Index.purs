@@ -8,7 +8,6 @@ import Registry.Prelude
 
 import Control.Alternative (guard)
 import Data.Argonaut as Json
-import Data.Array (foldMap)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
@@ -46,8 +45,6 @@ readRegistryIndex directory = do
     packages =
       Array.mapMaybe goPath
         $ Set.toUnfoldable $ Map.keys $ Map.filter (not Stats.isDirectory) packagePaths
-
-  error (foldMap PackageName.print packages)
 
   parsed <- for packages \package -> Tuple package <$> readPackage directory package
 
