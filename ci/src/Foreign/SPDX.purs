@@ -22,6 +22,8 @@ instance decodeJsonSPDXLicense :: DecodeJson License where
 instance encodeJsonSPDXLicense :: EncodeJson License where
   encodeJson = encodeJson <<< print
 
+derive instance eqSPDXLicense :: Eq License
+
 -- | Print an SPDX license identifier.
 print :: License -> String
 print (License license) = license

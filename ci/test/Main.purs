@@ -14,6 +14,7 @@ import Registry.Schema (Operation(..), Repo(..))
 import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
 import Registry.Scripts.BowerImport.BowerFile as BowerFile
 import Test.Foreign.Jsonic (jsonic)
+import Test.Index (testRegistryIndex)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -22,22 +23,27 @@ import Test.Spec.Runner (runSpec)
 type Spec = Spec.SpecT Aff Unit Identity Unit
 
 main :: Effect Unit
-main = launchAff_ $ runSpec [ consoleReporter ] do
-  Spec.describe "API" do
-    Spec.describe "Checks" do
-      Spec.describe "Good package names" goodPackageName
-      Spec.describe "Bad package names" badPackageName
-      Spec.describe "Good SPDX licenses" goodSPDXLicense
-      Spec.describe "Bad SPDX licenses" badSPDXLicense
-      Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
-      Spec.describe "SemVer" semVer
-  Spec.describe "BowerFile" do
-    Spec.describe "Parses" do
-      Spec.describe "Good bower files" goodBowerFiles
-    Spec.describe "Does not parse" do
-      Spec.describe "Bad bower files" badBowerFiles
-    Spec.describe "Encoding" bowerFileEncoding
-  Spec.describe "Jsonic" jsonic
+main = launchAff_ do
+  testRegistryIndex
+
+  {-
+  runSpec [ consoleReporter ] do
+    Spec.describe "API" do
+      Spec.describe "Checks" do
+        Spec.describe "Good package names" goodPackageName
+        Spec.describe "Bad package names" badPackageName
+        Spec.describe "Good SPDX licenses" goodSPDXLicense
+        Spec.describe "Bad SPDX licenses" badSPDXLicense
+        Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
+        Spec.describe "SemVer" semVer
+    Spec.describe "BowerFile" do
+      Spec.describe "Parses" do
+        Spec.describe "Good bower files" goodBowerFiles
+      Spec.describe "Does not parse" do
+        Spec.describe "Bad bower files" badBowerFiles
+      Spec.describe "Encoding" bowerFileEncoding
+    Spec.describe "Jsonic" jsonic
+-}
 
 goodPackageName :: Spec
 goodPackageName = do
