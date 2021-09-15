@@ -39,6 +39,8 @@ import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
 import Registry.Scripts.BowerImport.BowerFile as BowerFile
 import Registry.Scripts.BowerImport.Error (ImportError(..), ImportErrorKey, ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..))
 import Registry.Scripts.BowerImport.Error as BowerImport.Error
+import Registry.Scripts.BowerImport.Error.Stats (ProcessedPackages, ProcessedPackageVersions)
+import Registry.Scripts.BowerImport.Error.Stats as ErrorStats
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as StringParser
 
@@ -176,6 +178,7 @@ downloadBowerRegistry = do
 
   log "Writing exclusions file..."
   writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
+  ErrorStats.logStats $ ErrorStats.errorStats manifestRegistry
   pure registryIndex
 
 -- | Find the bower.json files associated with the package's released tags,
@@ -408,11 +411,6 @@ readRegistryFile source = do
       let toPackagesArray = Object.toArrayWithKey \k -> Tuple (RawPackageName $ stripPureScriptPrefix k)
       pure $ Map.fromFoldable $ toPackagesArray packages
 
-type ProcessedPackages k a =
-  { failures :: PackageFailures
-  , packages :: Map k a
-  }
-
 -- | Execute the provided transform on every package in the input packages map
 -- | collecting failures into `PackageFailures` and saving transformed packages.
 forPackage
@@ -437,8 +435,6 @@ forPackage input keyToPackageName f =
       Right (Tuple newKey result) -> do
         let insertPackage = Map.insert newKey result
         State.modify \state -> state { packages = insertPackage state.packages }
-
-type ProcessedPackageVersions k1 k2 a = ProcessedPackages k1 (Map k2 a)
 
 -- | Execute the provided transform on every package in the input packages map,
 -- | at every version of that package, collecting failures into `PackageFailures`

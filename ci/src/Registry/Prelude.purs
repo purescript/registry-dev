@@ -22,7 +22,7 @@ import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray) as Extra
 import Data.Bifunctor (bimap, lmap, rmap) as Extra
 import Data.Either (Either(..), either, fromLeft, fromRight', isRight, hush, note) as Either
-import Data.Foldable (and, any, all) as Extra
+import Data.Foldable (and, any, all, fold) as Extra
 import Data.FoldableWithIndex (forWithIndex_, foldlWithIndex) as Extra
 import Data.Identity (Identity) as Extra
 import Data.List (List) as Extra
