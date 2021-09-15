@@ -23,6 +23,7 @@ import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
 import Effect.Class.Console (logShow)
+import Effect.Exception (catchException)
 import Effect.Now (nowDateTime) as Time
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
@@ -30,7 +31,6 @@ import Foreign.SPDX as SPDX
 import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
 import Foreign.Tmp as Tmp
-import Node.Buffer as Buffer
 import Node.ChildProcess as ChildProcess
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
@@ -245,30 +245,21 @@ fetchBowerfile name address tag = do
               let
                 write path = liftAff <<< FS.writeTextFile UTF8 (tmp <> "/" <> path)
 
-                handleResult { error, stderr, stdout } = do
-                  for_ error \contents -> do
-                    log $ "Received Node error: " <> show contents
-
-                  err <- Buffer.toString UTF8 stderr
-                  unless (String.null err) do
-                    log $ "STDERR:\n" <> err
-
-                  out <- Buffer.toString UTF8 stdout
-                  unless (String.null out) do
-                    log $ "STDOUT:\n" <> out
-
               write "spago.dhall" spagoDhall
               write "packages.dhall" packagesDhall
 
-              void $ liftEffect $ ChildProcess.exec "git init && git add -A && git commit -m 'yeesh'"
-                (ChildProcess.defaultExecOptions { cwd = Just tmp })
-                handleResult
+              void $ liftEffect $ ChildProcess.execSync "git init && git add -A && git commit -m 'yeesh'"
+                (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
 
               log "git init and commit"
 
-              void $ liftEffect $ ChildProcess.exec "spago bump-version minor --no-dry-run"
-                (ChildProcess.defaultExecOptions { cwd = Just tmp })
-                handleResult
+              liftEffect $ catchException
+                (\errorObj -> do
+                  log $ "spago bump-version returned non-zero exit code"
+                  log $ "Error was: " <> show errorObj
+                )
+                $ void $ ChildProcess.execSync "spago bump-version minor --no-dry-run"
+                  (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
 
               log "ran spago bump-version"
 
