@@ -29,8 +29,12 @@ import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
+import Foreign.Tmp as Tmp
+import Node.Buffer as Buffer
+import Node.ChildProcess as ChildProcess
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
+import Node.FS.Sync as FS.Sync
 import Registry.Index (RegistryIndex, insertManifest)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -121,9 +125,9 @@ downloadBowerRegistry = do
           -- We filter out package versions we can't cache a bowerfile for.
           let
             shouldAccept = case _ of
-              MissingBowerfile -> false
+              MissingBowerfile -> true
               MalformedBowerJson _ -> false
-              _ -> true
+              _ -> false
 
           filterFailedPackageVersions shouldAccept releaseIndex.failures _.name releaseIndex.packages
       }
@@ -186,11 +190,32 @@ downloadBowerRegistry = do
 fetchBowerfile :: RawPackageName -> GitHub.Address -> RawVersion -> ExceptT ImportError Aff BowerFile
 fetchBowerfile name address tag = do
   let
-    url = "https://raw.githubusercontent.com/" <> address.owner <> "/" <> address.repo <> "/" <> un RawVersion tag <> "/bower.json"
+    mkRawUrl file = fold
+      [ "https://raw.githubusercontent.com/"
+      , address.owner
+      , "/"
+      , address.repo
+      , "/"
+      , un RawVersion tag
+      , "/"
+      , file
+      ]
+
+    bowerfileUrl = mkRawUrl "bower.json"
+    spagoDhallUrl = mkRawUrl "spago.dhall"
+    packagesDhallUrl = mkRawUrl "packages.dhall"
+
     bowerfileCache = "bowerfile__" <> un RawPackageName name <> "__" <> un RawVersion tag
 
+    parseBowerfile body = case BowerFile.parse body of
+      Left err -> do
+        let printedErr = BowerFile.printBowerFileParseError err
+        log $ "Unable to parse bowerfile: " <> printedErr <> " Malformed body: " <> body <> "."
+        throwError $ MalformedBowerJson { error: printedErr, contents: body }
+      Right bowerfile -> pure bowerfile
+
   withCache bowerfileCache Nothing do
-    lift (Http.get ResponseFormat.string url) >>= case _ of
+    lift (Http.get ResponseFormat.string bowerfileUrl) >>= case _ of
       -- TODO: We should retry requests if they fail, because likely GitHub
       -- rate-limited us. Or at least we should collect the errors and print them
       -- out because it's quite possible the Bowerfile actually does work and
@@ -200,17 +225,74 @@ fetchBowerfile name address tag = do
         throwError MissingBowerfile
       Right { body, status }
         | status == StatusCode 404 -> do
-            log $ "Unable to retrieve bowerfile because none exists (404 error)."
-            throwError MissingBowerfile
+            log $ Array.intercalate "\n"
+              [ "Unable to retrieve bowerfile because none exists (404 error)."
+              , "Attempting to use spago.dhall file for package: " <> un RawPackageName name
+              ]
+
+            spagoDhall <- lift (Http.get ResponseFormat.string spagoDhallUrl) >>= case _ of
+              Left _ -> throwError MissingBowerfile
+              Right res -> pure res.body
+
+            log $ "Using spago file: " <> spagoDhall
+
+            packagesDhall <- lift (Http.get ResponseFormat.string packagesDhallUrl) >>= case _ of
+              Left _ -> throwError MissingBowerfile
+              Right res -> pure res.body
+
+            results <- liftEffect do
+              tmp <- Tmp.mkTmpDir
+
+              let
+                write path = FS.Sync.writeTextFile UTF8 (tmp <> "/" <> path)
+
+                handleResult { error, stderr, stdout } = do
+                  for_ error \contents -> do
+                    log $ "Received Node error: " <> show contents
+
+                  err <- Buffer.toString UTF8 stderr
+                  unless (String.null err) do
+                    log $ "STDERR:\n" <> err
+
+                  out <- Buffer.toString UTF8 stdout
+                  unless (String.null out) do
+                    log $ "STDOUT:\n" <> out
+
+              write "spago.dhall" spagoDhall
+              write "packages.dhall" packagesDhall
+
+              void $ ChildProcess.exec "git init && git add -A && git commit -m 'yeesh'"
+                (ChildProcess.defaultExecOptions { cwd = Just tmp })
+                handleResult
+
+              log "git init and commit"
+
+              void $ ChildProcess.exec "spago bump-version minor --no-dry-run"
+                (ChildProcess.defaultExecOptions { cwd = Just tmp })
+                handleResult
+
+              log "ran spago bump-version"
+
+              files <- FS.Sync.readdir tmp
+              log $ show files
+
+              log "trying to read back bower.json file..."
+
+              try (FS.Sync.readTextFile UTF8 "bower.json")
+
+            case results of
+              Left e -> do
+                log $ "Could not read back bower.json file: " <> show e
+                throwError MissingBowerfile
+              Right contents -> do
+                log $ "Successfully fell back to spago file!"
+                parseBowerfile contents
+
         | status /= StatusCode 200 -> do
             log $ "Unable to retrieve bowerfile. Bad status: " <> body
             throwError $ BadStatus $ un StatusCode status
-        | otherwise -> case BowerFile.parse body of
-            Left err -> do
-              let printedErr = BowerFile.printBowerFileParseError err
-              log $ "Unable to parse bowerfile: " <> printedErr <> " Malformed body: " <> body <> "."
-              throwError $ MalformedBowerJson { error: printedErr, contents: body }
-            Right bowerfile -> pure bowerfile
+        | otherwise ->
+            parseBowerfile body
 
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
