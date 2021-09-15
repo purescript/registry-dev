@@ -13,6 +13,7 @@ import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..))
 import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
 import Registry.Scripts.BowerImport.BowerFile as BowerFile
+import Test.Fixtures.Manifest as Fixtures
 import Test.Foreign.Jsonic (jsonic)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
@@ -38,6 +39,27 @@ main = launchAff_ $ runSpec [ consoleReporter ] do
       Spec.describe "Bad bower files" badBowerFiles
     Spec.describe "Encoding" bowerFileEncoding
   Spec.describe "Jsonic" jsonic
+  Spec.describe "Manifest" do
+    Spec.describe "Encoding" manifestEncoding
+
+manifestEncoding :: Spec
+manifestEncoding = do
+  let
+    checkRoundtrip manifest str = case Json.parseJson str >>= Json.decodeJson of
+      Left _ -> false
+      Right manifest' -> manifest == manifest'
+
+    roundTrip manifest =
+      Spec.it (PackageName.print manifest.name <> " v" <> SemVer.printSemVer manifest.version) do
+        Json.stringify (Json.encodeJson manifest) `Assert.shouldSatisfy` checkRoundtrip manifest
+
+  roundTrip Fixtures.ab.v1a
+  roundTrip Fixtures.ab.v1b
+  roundTrip Fixtures.ab.v2
+  roundTrip Fixtures.abc.v1
+  roundTrip Fixtures.abc.v2
+  roundTrip Fixtures.abcd.v1
+  roundTrip Fixtures.abcd.v2
 
 goodPackageName :: Spec
 goodPackageName = do
