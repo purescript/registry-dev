@@ -243,22 +243,32 @@ fetchBowerfile name address tag = do
               tmp <- liftEffect Tmp.mkTmpDir
 
               let
+                fixMetadataVersionPath = "spago-fix-metadata-version.dhall"
+
                 write path = liftAff <<< FS.writeTextFile UTF8 (tmp <> "/" <> path)
 
               write "spago.dhall" spagoDhall
               write "packages.dhall" packagesDhall
+              write fixMetadataVersionPath "./spago.dhall with metadata.version = \"v0.14.0\""
 
               void $ liftEffect $ ChildProcess.execSync "git init && git add -A && git commit -m 'yeesh'"
                 (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
 
               log "git init and commit"
 
+              let
+                bumpCommand = fold
+                  [ "spago -x "
+                  , fixMetadataVersionPath
+                  , " bump-version minor --no-dry-run"
+                  ]
+
               liftEffect $ catchException
                 (\errorObj -> do
                   log $ "spago bump-version returned non-zero exit code"
                   log $ "Error was: " <> show errorObj
                 )
-                $ void $ ChildProcess.execSync "spago bump-version minor --no-dry-run"
+                $ void $ ChildProcess.execSync bumpCommand
                   (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
 
               log "ran spago bump-version"
