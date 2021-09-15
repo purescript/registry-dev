@@ -268,7 +268,7 @@ fetchBowerfile name address tag = do
 
               log "trying to read back bower.json file..."
 
-              try (liftAff $ FS.readTextFile UTF8 "bower.json")
+              try (liftAff $ FS.readTextFile UTF8 (tmp <> "/" <> "bower.json"))
 
             case results of
               Left e -> do
