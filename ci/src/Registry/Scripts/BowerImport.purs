@@ -34,7 +34,6 @@ import Node.Buffer as Buffer
 import Node.ChildProcess as ChildProcess
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
-import Node.FS.Sync as FS.Sync
 import Registry.Index (RegistryIndex, insertManifest)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -240,11 +239,11 @@ fetchBowerfile name address tag = do
               Left _ -> throwError MissingBowerfile
               Right res -> pure res.body
 
-            results <- liftEffect do
-              tmp <- Tmp.mkTmpDir
+            results <- do
+              tmp <- liftEffect Tmp.mkTmpDir
 
               let
-                write path = FS.Sync.writeTextFile UTF8 (tmp <> "/" <> path)
+                write path = liftAff <<< FS.writeTextFile UTF8 (tmp <> "/" <> path)
 
                 handleResult { error, stderr, stdout } = do
                   for_ error \contents -> do
@@ -261,29 +260,29 @@ fetchBowerfile name address tag = do
               write "spago.dhall" spagoDhall
               write "packages.dhall" packagesDhall
 
-              void $ ChildProcess.exec "git init && git add -A && git commit -m 'yeesh'"
+              void $ liftEffect $ ChildProcess.exec "git init && git add -A && git commit -m 'yeesh'"
                 (ChildProcess.defaultExecOptions { cwd = Just tmp })
                 handleResult
 
               log "git init and commit"
 
-              void $ ChildProcess.exec "spago bump-version minor --no-dry-run"
+              void $ liftEffect $ ChildProcess.exec "spago bump-version minor --no-dry-run"
                 (ChildProcess.defaultExecOptions { cwd = Just tmp })
                 handleResult
 
               log "ran spago bump-version"
 
-              files <- FS.Sync.readdir tmp
+              files <- liftAff $ FS.readdir tmp
               log $ show files
 
               log "trying to read back bower.json file..."
 
-              try (FS.Sync.readTextFile UTF8 "bower.json")
+              try (liftAff $ FS.readTextFile UTF8 "bower.json")
 
             case results of
               Left e -> do
-                log $ "Could not read back bower.json file: " <> show e
-                throwError MissingBowerfile
+                log "Could not read back bower.json file"
+                throwError e
               Right contents -> do
                 log $ "Successfully fell back to spago file!"
                 parseBowerfile contents
