@@ -17,7 +17,7 @@ import Data.Interpolate (i)
 import Data.List as List
 import Data.Map (SemigroupMap(..))
 import Data.Map as Map
-import Data.Monoid.Additive as Monoid
+import Data.Monoid.Additive (Additive(..))
 import Data.Set as Set
 import Registry.Scripts.BowerImport.Error (ImportError(..), ImportErrorKey(..), ManifestError, ManifestErrorKey(..), PackageFailures(..), RawPackageName, RawVersion, manifestErrorKey, printManifestErrorKey)
 import Registry.Scripts.BowerImport.Process (ProcessedPackageVersions)
@@ -91,36 +91,33 @@ countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKe
       groupedErrors =
         let
           processOnePackage (package /\ packageOrVersionFailures) = case packageOrVersionFailures of
-            Left errs ->
+            Left errs -> do
               let
                 statsPerError =
                   { packageFailures: Set.fromFoldable [ package ]
                   , versionFailures: SemigroupMap Map.empty
                   }
-              in
-                SemigroupMap $ Map.fromFoldable (errs <#> \err -> printManifestErrorKey err /\ statsPerError)
-            Right (errsByVersion :: Map RawVersion (List ManifestError)) ->
+              SemigroupMap $ Map.fromFoldable (errs <#> \err -> printManifestErrorKey err /\ statsPerError)
+            Right (errsByVersion :: Map RawVersion (List ManifestError)) -> do
               let
                 statsPerError =
                   { packageFailures: Set.empty
-                  , versionFailures: SemigroupMap (Map.fromFoldable [ package /\ Monoid.Additive 1 ])
+                  , versionFailures: SemigroupMap (Map.fromFoldable [ package /\ Additive 1 ])
                   }
 
                 toSemigroupMap errs =
                   SemigroupMap $ Map.fromFoldable (errs <#> \err -> printManifestErrorKey err /\ statsPerError)
-              in
-                fold (List.fromFoldable errsByVersion <#> toSemigroupMap)
+
+              fold (List.fromFoldable errsByVersion <#> toSemigroupMap)
         in
           coerce $ Array.foldMap processOnePackage $ Map.toUnfoldable manifestErrors
 
     in
-      groupedErrors
-        <#> \{ packageFailures, versionFailures } ->
-          ErrorCounts $
-            { countOfOccurrences: Set.size packageFailures + Foldable.sum versionFailures
-            , countOfPackagesAffected: Set.size (Map.keys versionFailures <> packageFailures)
-            , countOfVersionsAffected: Foldable.sum versionFailures
-            }
+      groupedErrors <#> \{ packageFailures, versionFailures } -> ErrorCounts $
+        { countOfOccurrences: Set.size packageFailures + Foldable.sum versionFailures
+        , countOfPackagesAffected: Set.size (Map.keys versionFailures <> packageFailures)
+        , countOfVersionsAffected: Foldable.sum versionFailures
+        }
 
 errorStats :: forall package version a. ProcessedPackageVersions package version a -> Stats
 errorStats { packages: succeededPackages, failures: packageFailures@(PackageFailures failures) } =
@@ -156,7 +153,7 @@ errorStats { packages: succeededPackages, failures: packageFailures@(PackageFail
           }
 
       countFailuresByPackage :: Map RawPackageName (Either ImportError (Map RawVersion ImportError)) -> ErrorCounts
-      countFailuresByPackage = fold <<< map countFailuresForPackage
+      countFailuresByPackage = Foldable.foldMap countFailuresForPackage
     in
       countFailuresByPackage <$> failures
 
