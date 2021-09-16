@@ -18,6 +18,7 @@ import Data.Monoid (guard)
 import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration (Hours(..))
+import Dotenv (loadFile) as Dotenv
 import Effect.Aff as Aff
 import Effect.Class.Console (logShow)
 import Foreign.GitHub as GitHub
@@ -48,6 +49,8 @@ import Text.Parsing.StringParser as StringParser
 -- | - go through this list: if the package is in the registry index then skip, otherwise upload
 main :: Effect Unit
 main = Aff.launchAff_ do
+  _ <- Dotenv.loadFile
+
   log "Starting import from legacy registries..."
   registry <- downloadBowerRegistry
 
@@ -90,6 +93,7 @@ downloadBowerRegistry = do
           Process.filterFailedPackages shouldAccept excludedPackages allPackages
       }
 
+  octokit <- liftEffect GitHub.mkOctokit
   log "Fetching package releases..."
   releaseIndex <- Process.forPackage initialPackages identity \name repoUrl -> do
     address <- case GitHub.parseRepo repoUrl of
@@ -100,7 +104,7 @@ downloadBowerRegistry = do
 
     releases <- Process.withCache repoCache (Just $ Hours 24.0) do
       log $ "Fetching releases for package " <> un RawPackageName name
-      result <- lift $ try $ GitHub.getReleases address
+      result <- lift $ try $ GitHub.getReleases octokit address
       case result of
         Left err -> logShow err *> throwError NoReleases
         Right v -> pure v
