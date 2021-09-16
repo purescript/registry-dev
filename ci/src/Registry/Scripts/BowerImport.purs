@@ -21,6 +21,7 @@ import Data.Newtype as Newtype
 import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration (Hours(..))
+import Effect.Aff (message)
 import Effect.Aff as Aff
 import Effect.Class.Console (logShow)
 import Effect.Exception (catchException)
@@ -263,13 +264,15 @@ fetchBowerfile name address tag = do
                   , " bump-version minor --no-dry-run"
                   ]
 
-              liftEffect $ catchException
+              maybeError <- liftEffect $ catchException
                 (\errorObj -> do
                   log $ "spago bump-version returned non-zero exit code"
-                  log $ "Error was: " <> show errorObj
+                  log $ "Error was: " <> message errorObj
+                  pure $ Just MissingBowerfile
                 )
-                $ void $ ChildProcess.execSync bumpCommand
+                $ Nothing <$ ChildProcess.execSync bumpCommand
                   (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
+              for_ maybeError throwError
 
               log "ran spago bump-version"
 
