@@ -36,6 +36,7 @@ import Text.Parsing.StringParser as StringParser
 main :: Effect Unit
 main = launchAff_ $ do
   eventPath <- liftEffect $ Env.lookupEnv "GITHUB_EVENT_PATH"
+  octokit <- liftEffect GitHub.mkOctokit
   packagesMetadata <- do
     packageList <- try (FS.readdir metadataDir) >>= case _ of
       Right list -> pure list
@@ -61,7 +62,7 @@ main = launchAff_ $ do
     NotJson ->
       pure unit
 
-    MalformedJson issue err -> runRegistryM (mkEnv packagesMetadata issue) do
+    MalformedJson issue err -> runRegistryM (mkEnv octokit packagesMetadata issue) do
       comment $ Array.fold
         [ "The JSON input for this package update is malformed:"
         , newlines 2
@@ -71,7 +72,7 @@ main = launchAff_ $ do
         ]
 
     DecodedOperation issue op ->
-      runRegistryM (mkEnv packagesMetadata issue) (runOperation op)
+      runRegistryM (mkEnv octokit packagesMetadata issue) (runOperation op)
 
 data OperationDecoding
   = NotJson
@@ -291,10 +292,10 @@ wget url path = do
     NodeProcess.Normally 0 -> pure unit
     _ -> throwWithComment $ "Error while fetching tarball: " <> result.stderr
 
-mkEnv :: Ref (Map PackageName Metadata) -> IssueNumber -> Env
-mkEnv packagesMetadata issue =
-  { comment: GitHub.createComment issue
-  , closeIssue: GitHub.closeIssue issue
+mkEnv :: GitHub.Octokit -> Ref (Map PackageName Metadata) -> IssueNumber -> Env
+mkEnv octokit packagesMetadata issue =
+  { comment: GitHub.createComment octokit issue
+  , closeIssue: GitHub.closeIssue octokit issue
   , commitToTrunk: pushToMaster
   , uploadPackage: Upload.upload
   , packagesMetadata
