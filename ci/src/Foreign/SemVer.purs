@@ -78,7 +78,7 @@ build (SemVer v) = v.build
 printSemVer :: SemVer -> String
 printSemVer (SemVer v) = v.version
 
-newtype Range = Range { original :: String, converted :: String }
+newtype Range = Range String
 
 derive newtype instance eqRange :: Eq Range
 
@@ -104,7 +104,7 @@ parseRange original = do
           Just c -> pure c
           _ -> Nothing
         _ -> Nothing
-  pure $ Range { converted, original }
+  pure $ Range converted
 
 printRange :: Range -> String
-printRange (Range r) = _.converted r
+printRange (Range r) = r
