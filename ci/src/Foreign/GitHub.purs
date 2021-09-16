@@ -10,11 +10,15 @@ import Data.Argonaut as Json
 import Data.List as List
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
-import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, runEffectFn1, runEffectFn2, runEffectFn3)
+import Effect.Uncurried (EffectFn2, EffectFn3, EffectFn4, runEffectFn2, runEffectFn3, runEffectFn4)
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as Parser
 import Text.Parsing.StringParser.CodePoints as Parse
 import Text.Parsing.StringParser.Combinators as ParseC
+
+foreign import data Octokit :: Type
+
+foreign import mkOctokit :: Effect Octokit
 
 newtype Event = Event
   { issueNumber :: IssueNumber
@@ -54,10 +58,10 @@ parseRepo = Parser.runParser do
   let repo = fromMaybe repoWithSuffix $ String.stripSuffix (String.Pattern ".git") repoWithSuffix
   pure { owner, repo }
 
-foreign import getReleasesImpl :: EffectFn1 Address (Promise (Array Tag))
+foreign import getReleasesImpl :: EffectFn2 Octokit Address (Promise (Array Tag))
 
-getReleases :: Address -> Aff (Array Tag)
-getReleases = Promise.toAffE <<< runEffectFn1 getReleasesImpl
+getReleases :: Octokit -> Address -> Aff (Array Tag)
+getReleases octokit address = Promise.toAffE $ runEffectFn2 getReleasesImpl octokit address
 
 newtype IssueNumber = IssueNumber Int
 
@@ -65,12 +69,12 @@ instance newtypeIssueNumber :: Newtype IssueNumber Int
 derive newtype instance eqIssueNumber :: Eq IssueNumber
 derive newtype instance showIssueNumber :: Show IssueNumber
 
-foreign import createCommentImpl :: EffectFn3 Address Int String (Promise Unit)
+foreign import createCommentImpl :: EffectFn4 Octokit Address Int String (Promise Unit)
 
-createComment :: IssueNumber -> String -> Aff Unit
-createComment issue body = Promise.toAffE $ runEffectFn3 createCommentImpl registryAddress (coerce issue) body
+createComment :: Octokit -> IssueNumber -> String -> Aff Unit
+createComment octokit issue body = Promise.toAffE $ runEffectFn4 createCommentImpl octokit registryAddress (coerce issue) body
 
-foreign import closeIssueImpl :: EffectFn2 Address Int (Promise Unit)
+foreign import closeIssueImpl :: EffectFn3 Octokit Address Int (Promise Unit)
 
-closeIssue :: IssueNumber -> Aff Unit
-closeIssue issue = Promise.toAffE $ runEffectFn2 closeIssueImpl registryAddress (coerce issue)
+closeIssue :: Octokit -> IssueNumber -> Aff Unit
+closeIssue octokit issue = Promise.toAffE $ runEffectFn3 closeIssueImpl octokit registryAddress (coerce issue)
