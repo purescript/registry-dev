@@ -5,11 +5,13 @@ import Registry.Prelude
 import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
+import Control.Alternative as Alternative
 import Control.Monad.Except as Except
 import Data.Argonaut as Json
 import Data.Array (catMaybes)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.Interpolate (i)
 import Data.Lens (_Left, preview)
 import Data.Map as Map
 import Data.Monoid (guard)
@@ -180,16 +182,11 @@ downloadBowerRegistry = do
 fetchBowerfile :: RawPackageName -> GitHub.Address -> RawVersion -> ExceptT ImportError Aff BowerFile
 fetchBowerfile name address tag = do
   let
-    mkRawUrl file = fold
-      [ "https://raw.githubusercontent.com/"
-      , address.owner
-      , "/"
-      , address.repo
-      , "/"
-      , un RawVersion tag
-      , "/"
-      , file
-      ]
+    mkRawUrl file =
+      i "https://raw.githubusercontent.com/" address.owner "/" address.repo "/" (un RawVersion tag) "/" file
+
+    repoStr =
+      i "https://github.com/" address.owner "/" address.repo
 
     bowerfileUrl = mkRawUrl "bower.json"
     spagoDhallUrl = mkRawUrl "spago.dhall"
@@ -214,6 +211,9 @@ fetchBowerfile name address tag = do
         log $ "Unable to retrieve bowerfile. Bad request: " <> Http.printError err
         throwError MissingBowerfile
       Right { body, status }
+        | status == StatusCode 200 ->
+            parseBowerfile body
+
         | status == StatusCode 404 -> do
             log $ Array.intercalate "\n"
               [ "Unable to retrieve bowerfile because none exists (404 error)."
@@ -222,59 +222,69 @@ fetchBowerfile name address tag = do
 
             spagoDhall <- liftAff (Http.get ResponseFormat.string spagoDhallUrl) >>= case _ of
               Right res | res.status == StatusCode 200 -> pure res.body
-              _ -> throwError MissingBowerfile
+              _ -> do
+                log "No spago.dhall file! Could not create a bower.json file."
+                throwError MissingBowerfile
 
             packagesDhall <- liftAff (Http.get ResponseFormat.string packagesDhallUrl) >>= case _ of
               Right res | res.status == StatusCode 200 -> pure res.body
-              _ -> throwError MissingBowerfile
+              _ -> do
+                log "No packages.dhall file! Could not create a bower.json file."
+                throwError MissingBowerfile
 
-            results <- do
-              tmp <- liftEffect Tmp.mkTmpDir
+            let
+              fixupDhall match val src = fromMaybe src do
+                Alternative.guard $ not String.contains (String.Pattern match) src
+                let lines = String.split (String.Pattern "\n") src
+                ix <- Array.elemIndex "}" lines
+                updated <- Array.insertAt ix val lines
+                pure $ String.joinWith "\n" updated
 
-              let
-                fixMetadataVersionPath = "spago-fix-metadata-version.dhall"
-                write path = liftAff <<< FS.writeTextFile UTF8 (tmp <> "/" <> path)
+            tmp <- liftEffect Tmp.mkTmpDir
 
-              write "spago.dhall" spagoDhall
-              write "packages.dhall" packagesDhall
-              write fixMetadataVersionPath "./spago.dhall with metadata.version = \"v0.14.0\""
+            let
+              write path = liftAff <<< FS.writeTextFile UTF8 (tmp <> "/" <> path)
+              fixMetadataVersionPath = "spago-fix-metadata-version.dhall"
 
-              void $ liftEffect $ ChildProcess.execSync "git init && git add -A && git commit -m 'yeesh'"
-                (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
+              -- If a Spago file is missing 'repository' or 'license' fields then
+              -- it will fail to generate a Bower file. However, we already
+              -- know the repository for the package, and we can insert an
+              -- empty license for the sake of generating the file. The package
+              -- will fail later with `MissingLicense`.
+              fixupSpagoDhall = fixupRepo <<< fixupLicense
+                where
+                fixupRepo = fixupDhall "repository =" (", repository = \"" <> repoStr <> "\"")
+                fixupLicense = fixupDhall "license =" ", license = \"\""
 
-              let
-                bumpCommand = fold
-                  [ "spago -x "
-                  , fixMetadataVersionPath
-                  , " bump-version minor --no-dry-run"
-                  ]
+            write "spago.dhall" (fixupSpagoDhall spagoDhall)
+            write "packages.dhall" packagesDhall
+            write fixMetadataVersionPath "./spago.dhall with metadata.version = \"v0.14.0\""
 
-              generateBower <- liftEffect $ try $ ChildProcess.execSync bumpCommand (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
-              bowerContents <- liftAff $ try $ FS.readTextFile UTF8 (tmp <> "/" <> "bower.json")
+            let
+              generateFile = liftEffect $ map (lmap Aff.message) do
+                _ <- ChildProcess.execSync "git init && git add -A && git commit -m 'yeesh'" (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
+                let bumpCommand = fold [ "spago -x ", fixMetadataVersionPath, " bump-version minor --no-dry-run" ]
+                try $ ChildProcess.execSync bumpCommand (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
 
-              case bowerContents, generateBower of
-                Left _, Left e -> pure $ Left $ Aff.message e
-                _, _ -> pure $ lmap Aff.message bowerContents
+            generated <- generateFile
+            bowerContents <- liftAff $ try $ FS.readTextFile UTF8 (tmp <> "/" <> "bower.json")
 
-            case results of
-              Left e ->
-                if String.contains (String.Pattern "↳ license") e then do
-                  log "Could not generate bower.json file because of missing LICENSE"
-                  throwError $ ManifestError (NEA.singleton MissingLicense)
-                else do
-                  log "Could not generate bower.json file:"
-                  log e
-                  throwError MissingBowerfile
-              Right contents -> do
+            case bowerContents, generated of
+              Left _, Left err -> do
+                log "Could not generate bower.json file:"
+                log err
+                throwError MissingBowerfile
+              Left _, Right _ -> do
+                log "Could not generate bower.json file:"
+                throwError MissingBowerfile
+              Right contents, _ -> do
                 log $ "Successfully fell back to spago file!"
+                log contents
                 parseBowerfile contents
 
-        | status /= StatusCode 200 -> do
+        | otherwise -> do
             log $ "Unable to retrieve bowerfile. Bad status: " <> body
             throwError $ BadStatus $ un StatusCode status
-
-        | otherwise ->
-            parseBowerfile body
 
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
