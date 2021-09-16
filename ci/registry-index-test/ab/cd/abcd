@@ -1,0 +1,2 @@
+{"version":"1.0.0","targets":{"lib":{"sources":["src/**/*.purs"],"dependencies":{"abc":">=1.0.0 <2.0.0-0"}}},"repository":{"githubOwner":"abcd-user","githubRepo":"abcd"},"name":"abcd","license":"MIT"}
+{"version":"2.0.0","targets":{"lib":{"sources":["src/**/*.purs"],"dependencies":{"abc":">=2.0.0 <3.0.0-0"}}},"repository":{"githubOwner":"abcd-user","githubRepo":"abcd"},"name":"abcd","license":"MIT"}

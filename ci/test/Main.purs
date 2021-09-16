@@ -15,6 +15,7 @@ import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
 import Registry.Scripts.BowerImport.BowerFile as BowerFile
 import Test.Fixtures.Manifest as Fixtures
 import Test.Foreign.Jsonic (jsonic)
+import Test.Index as Registry.Index
 import Test.Registry.Scripts.BowerImport.Error.Stats (errorStats)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
@@ -43,6 +44,9 @@ main = launchAff_ $ runSpec [ consoleReporter ] do
   Spec.describe "Manifest" do
     Spec.describe "Encoding" manifestEncoding
   Spec.describe "Error Stats" errorStats
+  Spec.describe "Registry Index" do
+    Spec.it "Run registry index test" do
+      Registry.Index.testRegistryIndex
 
 manifestEncoding :: Spec
 manifestEncoding = do
