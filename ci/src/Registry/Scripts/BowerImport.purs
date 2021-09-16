@@ -16,6 +16,7 @@ import Data.Monoid (guard)
 import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration (Hours(..))
+import Dotenv (loadFile) as Dotenv
 import Effect.Aff as Aff
 import Effect.Class.Console (logShow)
 import Foreign.GitHub as GitHub
@@ -44,6 +45,8 @@ import Text.Parsing.StringParser as StringParser
 -- | - go through this list: if the package is in the registry index then skip, otherwise upload
 main :: Effect Unit
 main = Aff.launchAff_ do
+  _ <- Dotenv.loadFile
+
   log "Starting import from legacy registries..."
   registry <- downloadBowerRegistry
 

@@ -12,6 +12,7 @@
   , "control"
   , "crypto"
   , "datetime"
+  , "dotenv"
   , "effect"
   , "either"
   , "foldable-traversable"
