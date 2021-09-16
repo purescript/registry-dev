@@ -1,11 +1,9 @@
-module Registry.Scripts.BowerImport.Error.Stats
+module Registry.Scripts.BowerImport.Stats
   ( errorStats
   , prettyPrintStats
   , logStats
   , Stats
   , ErrorCounts(..)
-  , ProcessedPackages
-  , ProcessedPackageVersions
   ) where
 
 import Registry.Prelude
@@ -22,14 +20,8 @@ import Data.Map as Map
 import Data.Monoid.Additive as Monoid
 import Data.Set as Set
 import Registry.Scripts.BowerImport.Error (ImportError(..), ImportErrorKey(..), ManifestError, ManifestErrorKey(..), PackageFailures(..), RawPackageName, RawVersion, manifestErrorKey, printManifestErrorKey)
+import Registry.Scripts.BowerImport.Process (ProcessedPackageVersions)
 import Safe.Coerce (coerce)
-
-type ProcessedPackages k a =
-  { failures :: PackageFailures
-  , packages :: Map k a
-  }
-
-type ProcessedPackageVersions k1 k2 a = ProcessedPackages k1 (Map k2 a)
 
 newtype ErrorCounts = ErrorCounts
   { countOfOccurrences :: Int

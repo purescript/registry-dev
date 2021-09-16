@@ -6,8 +6,9 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable as Foldable
 import Data.Map as Map
 import Registry.Scripts.BowerImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
-import Registry.Scripts.BowerImport.Error.Stats (ErrorCounts(..), ProcessedPackageVersions)
-import Registry.Scripts.BowerImport.Error.Stats as Stats
+import Registry.Scripts.BowerImport.Process (ProcessedPackageVersions)
+import Registry.Scripts.BowerImport.Stats (ErrorCounts(..))
+import Registry.Scripts.BowerImport.Stats as Stats
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 
@@ -59,7 +60,7 @@ exampleFailures = PackageFailures $
 
   twoMissingManifestVersions = Map.fromFoldable
     [ RawVersion "1.1.1" /\ NoManifests
-    , RawVersion "1.2.1" /\ NoManifests -- dupe version, but SHOULD add to count, since it's from a different package 
+    , RawVersion "1.2.1" /\ NoManifests -- dupe version, but SHOULD add to count, since it's from a different package
     ]
 
   twoVersionsWithManifestErrors = Map.fromFoldable
