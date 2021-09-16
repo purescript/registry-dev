@@ -18,6 +18,7 @@
   , "foreign-object"
   , "functions"
   , "identity"
+  , "interpolate"
   , "js-date"
   , "lists"
   , "maybe"

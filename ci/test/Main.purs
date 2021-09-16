@@ -15,6 +15,7 @@ import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
 import Registry.Scripts.BowerImport.BowerFile as BowerFile
 import Test.Fixtures.Manifest as Fixtures
 import Test.Foreign.Jsonic (jsonic)
+import Test.Registry.Scripts.BowerImport.Error.Stats (errorStats)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -41,6 +42,7 @@ main = launchAff_ $ runSpec [ consoleReporter ] do
   Spec.describe "Jsonic" jsonic
   Spec.describe "Manifest" do
     Spec.describe "Encoding" manifestEncoding
+  Spec.describe "Error Stats" errorStats
 
 manifestEncoding :: Spec
 manifestEncoding = do
