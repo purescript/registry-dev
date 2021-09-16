@@ -41,7 +41,7 @@ ab = { name, v1a, v1b, v2 }
   v2 = { name, version: version2, license, repository, targets }
 
 abc :: { name :: PackageName, v1 :: Manifest, v2 :: Manifest }
-abc = { name, v1, v2}
+abc = { name, v1, v2 }
   where
   name = unsafeFromJust $ hush $ PackageName.parse "abc"
   version1 = unsafeFromJust $ SemVer.parseSemVer "1.0.0"
