@@ -21,10 +21,8 @@ import Data.Newtype as Newtype
 import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration (Hours(..))
-import Effect.Aff (message)
 import Effect.Aff as Aff
 import Effect.Class.Console (logShow)
-import Effect.Exception (catchException)
 import Effect.Now (nowDateTime) as Time
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
@@ -125,9 +123,9 @@ downloadBowerRegistry = do
           -- We filter out package versions we can't cache a bowerfile for.
           let
             shouldAccept = case _ of
-              MissingBowerfile -> true
+              MissingBowerfile -> false
               MalformedBowerJson _ -> false
-              _ -> false
+              _ -> true
 
           filterFailedPackageVersions shouldAccept releaseIndex.failures _.name releaseIndex.packages
       }
@@ -215,7 +213,7 @@ fetchBowerfile name address tag = do
       Right bowerfile -> pure bowerfile
 
   withCache bowerfileCache Nothing do
-    lift (Http.get ResponseFormat.string bowerfileUrl) >>= case _ of
+    liftAff (Http.get ResponseFormat.string bowerfileUrl) >>= case _ of
       -- TODO: We should retry requests if they fail, because likely GitHub
       -- rate-limited us. Or at least we should collect the errors and print them
       -- out because it's quite possible the Bowerfile actually does work and
@@ -230,22 +228,19 @@ fetchBowerfile name address tag = do
               , "Attempting to use spago.dhall file for package: " <> un RawPackageName name
               ]
 
-            spagoDhall <- lift (Http.get ResponseFormat.string spagoDhallUrl) >>= case _ of
-              Left _ -> throwError MissingBowerfile
-              Right res -> pure res.body
+            spagoDhall <- liftAff (Http.get ResponseFormat.string spagoDhallUrl) >>= case _ of
+              Right res | res.status == StatusCode 200 -> pure res.body
+              _ -> throwError MissingBowerfile
 
-            log $ "Using spago file: " <> spagoDhall
-
-            packagesDhall <- lift (Http.get ResponseFormat.string packagesDhallUrl) >>= case _ of
-              Left _ -> throwError MissingBowerfile
-              Right res -> pure res.body
+            packagesDhall <- liftAff (Http.get ResponseFormat.string packagesDhallUrl) >>= case _ of
+              Right res | res.status == StatusCode 200 -> pure res.body
+              _ -> throwError MissingBowerfile
 
             results <- do
               tmp <- liftEffect Tmp.mkTmpDir
 
               let
                 fixMetadataVersionPath = "spago-fix-metadata-version.dhall"
-
                 write path = liftAff <<< FS.writeTextFile UTF8 (tmp <> "/" <> path)
 
               write "spago.dhall" spagoDhall
@@ -255,8 +250,6 @@ fetchBowerfile name address tag = do
               void $ liftEffect $ ChildProcess.execSync "git init && git add -A && git commit -m 'yeesh'"
                 (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
 
-              log "git init and commit"
-
               let
                 bumpCommand = fold
                   [ "spago -x "
@@ -264,29 +257,22 @@ fetchBowerfile name address tag = do
                   , " bump-version minor --no-dry-run"
                   ]
 
-              maybeError <- liftEffect $ catchException
-                (\errorObj -> do
-                  log $ "spago bump-version returned non-zero exit code"
-                  log $ "Error was: " <> message errorObj
-                  pure $ Just MissingBowerfile
-                )
-                $ Nothing <$ ChildProcess.execSync bumpCommand
-                  (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
-              for_ maybeError throwError
+              generateBower <- liftEffect $ try $ ChildProcess.execSync bumpCommand (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
+              bowerContents <- liftAff $ try $ FS.readTextFile UTF8 (tmp <> "/" <> "bower.json")
 
-              log "ran spago bump-version"
-
-              files <- liftAff $ FS.readdir tmp
-              log $ show files
-
-              log "trying to read back bower.json file..."
-
-              try (liftAff $ FS.readTextFile UTF8 (tmp <> "/" <> "bower.json"))
+              case bowerContents, generateBower of
+                Left _, Left e -> pure $ Left $ Aff.message e
+                _, _ -> pure $ lmap Aff.message bowerContents
 
             case results of
-              Left e -> do
-                log "Could not read back bower.json file"
-                throwError e
+              Left e ->
+                if String.contains (String.Pattern "↳ license") e then do
+                  log "Could not generate bower.json file because of missing LICENSE"
+                  throwError $ ManifestError (NEA.singleton MissingLicense)
+                else do
+                  log "Could not generate bower.json file:"
+                  log e
+                  throwError MissingBowerfile
               Right contents -> do
                 log $ "Successfully fell back to spago file!"
                 parseBowerfile contents
@@ -294,6 +280,7 @@ fetchBowerfile name address tag = do
         | status /= StatusCode 200 -> do
             log $ "Unable to retrieve bowerfile. Bad status: " <> body
             throwError $ BadStatus $ un StatusCode status
+
         | otherwise ->
             parseBowerfile body
 
