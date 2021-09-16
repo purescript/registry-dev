@@ -62,7 +62,7 @@ type Stats =
 type VersionFailures = Map RawPackageName (Map RawVersion (Array ImportError))
 
 versionFailuresFromPackageFailures :: PackageFailures -> VersionFailures
-versionFailuresFromPackageFailures (PackageFailures failures) =
+versionFailuresFromPackageFailures (PackageFailures failures) = do
   let
     onlyVersionFailures :: List (Map RawPackageName (Map RawVersion ImportError))
     onlyVersionFailures = Map.values failures # map (Map.mapMaybe hush)
@@ -70,13 +70,12 @@ versionFailuresFromPackageFailures (PackageFailures failures) =
     semigroupVersionFailures :: List (SemigroupMap RawPackageName (SemigroupMap RawVersion (Array ImportError)))
     semigroupVersionFailures = coerce (map (map (map Array.singleton)) onlyVersionFailures)
 
-  in
-    coerce (fold semigroupVersionFailures)
+  coerce (fold semigroupVersionFailures)
 
 countManifestErrors :: PackageFailures -> Map ManifestErrorKey ErrorCounts
 countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKey failures of
   Nothing -> Map.empty
-  Just shouldBeManifestErrors ->
+  Just shouldBeManifestErrors -> do
     let
       extractManifestErrors = case _ of
         ManifestError errs -> List.fromFoldable errs
@@ -88,7 +87,7 @@ countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKe
         Right versionErrs -> Right (extractManifestErrors <$> versionErrs)
 
       groupedErrors :: Map ManifestErrorKey { packageFailures :: Set RawPackageName, versionFailures :: Map RawPackageName Int }
-      groupedErrors =
+      groupedErrors = do
         let
           processOnePackage (package /\ packageOrVersionFailures) = case packageOrVersionFailures of
             Left errs -> do
@@ -109,15 +108,13 @@ countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKe
                   SemigroupMap $ Map.fromFoldable (errs <#> \err -> printManifestErrorKey err /\ statsPerError)
 
               fold (List.fromFoldable errsByVersion <#> toSemigroupMap)
-        in
-          coerce $ Array.foldMap processOnePackage $ Map.toUnfoldable manifestErrors
+        coerce $ Array.foldMap processOnePackage $ Map.toUnfoldable manifestErrors
 
-    in
-      groupedErrors <#> \{ packageFailures, versionFailures } -> ErrorCounts $
-        { countOfOccurrences: Set.size packageFailures + Foldable.sum versionFailures
-        , countOfPackagesAffected: Set.size (Map.keys versionFailures <> packageFailures)
-        , countOfVersionsAffected: Foldable.sum versionFailures
-        }
+    groupedErrors <#> \{ packageFailures, versionFailures } -> ErrorCounts $
+      { countOfOccurrences: Set.size packageFailures + Foldable.sum versionFailures
+      , countOfPackagesAffected: Set.size (Map.keys versionFailures <> packageFailures)
+      , countOfVersionsAffected: Foldable.sum versionFailures
+      }
 
 errorStats :: forall package version a. ProcessedPackageVersions package version a -> Stats
 errorStats { packages: succeededPackages, failures: packageFailures@(PackageFailures failures) } =
@@ -132,16 +129,15 @@ errorStats { packages: succeededPackages, failures: packageFailures@(PackageFail
   countOfPackageSuccesses = Map.size succeededPackages
   countOfVersionSuccesses = Foldable.sum $ map Map.size succeededPackages
 
-  countOfPackageFailures =
+  countOfPackageFailures = do
     let
       packages = fold $ map Map.keys $ Map.values failures
-    in
-      Set.size packages
+    Set.size packages
 
   countOfVersionFailures =
     Foldable.sum $ map Map.size $ versionFailuresFromPackageFailures packageFailures
 
-  countImportErrorsByErrorType =
+  countImportErrorsByErrorType = do
     let
       countFailuresForPackage :: Either ImportError (Map RawVersion ImportError) -> ErrorCounts
       countFailuresForPackage = case _ of
@@ -154,8 +150,8 @@ errorStats { packages: succeededPackages, failures: packageFailures@(PackageFail
 
       countFailuresByPackage :: Map RawPackageName (Either ImportError (Map RawVersion ImportError)) -> ErrorCounts
       countFailuresByPackage = Foldable.foldMap countFailuresForPackage
-    in
-      countFailuresByPackage <$> failures
+
+    countFailuresByPackage <$> failures
 
   countManifestErrorsByErrorType = countManifestErrors packageFailures
 
