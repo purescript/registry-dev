@@ -267,7 +267,7 @@ fetchBowerfile name address tag = do
             let
               generateFile = liftEffect $ map (lmap Aff.message) do
                 _ <- ChildProcess.execSync "git init && git add -A && git commit -m 'yeesh'" (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
-                let bumpCommand = fold [ "spago -x ", fixMetadataVersionPath, " bump-version minor --no-dry-run" ]
+                let bumpCommand = fold [ "spago -x ", spagoWithFixesFilePath, " bump-version minor --no-dry-run" ]
                 try $ ChildProcess.execSync bumpCommand (ChildProcess.defaultExecSyncOptions { cwd = Just tmp })
 
             generated <- generateFile
