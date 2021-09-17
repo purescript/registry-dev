@@ -189,8 +189,8 @@ fetchBowerfile name address tag = do
     mkRawUrl file =
       i "https://raw.githubusercontent.com/" address.owner "/" address.repo "/" (un RawVersion tag) "/" file
 
-    repoStr =
-      i "https://github.com/" address.owner "/" address.repo
+    repoStr :: String
+    repoStr = i "https://github.com/" address.owner "/" address.repo
 
     bowerfileUrl = mkRawUrl "bower.json"
     spagoDhallUrl = mkRawUrl "spago.dhall"
