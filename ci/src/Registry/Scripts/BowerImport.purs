@@ -5,7 +5,6 @@ import Registry.Prelude
 import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
-import Control.Alternative as Alternative
 import Control.Monad.Except as Except
 import Data.Argonaut as Json
 import Data.Array (catMaybes)
