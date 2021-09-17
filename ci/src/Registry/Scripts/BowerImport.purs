@@ -240,10 +240,15 @@ fetchBowerfile name address tag = do
 
             let
               write path = liftAff <<< FS.writeTextFile UTF8 (tmp <> "/" <> path)
+              appendText path = liftAff <<< FS.appendTextFile UTF8 (tmp <> "/" <> path)
               spagoWithFixesFilePath = "spago-with-fixes.dhall"
 
             write "spago.dhall" spagoDhall
             write "packages.dhall" packagesDhall
+            -- Ensure we don't get any errors like the following:
+            --    installed `purs` version: v0.14.4
+            --    minimum package-set version: v0.13.3
+            appendText "packages.dhall" "      with metadata.version = \"v0.14.0\""
 
             -- If a Spago file is missing the 'repository' or 'license' fields, then
             -- it will fail to generate a Bower file. Since we already know
@@ -253,7 +258,7 @@ fetchBowerfile name address tag = do
             -- gets generated, but the package will still fail later with `MissingLicense`
             -- if the `spago.dhall` file does not have a `license` field.
             write spagoWithFixesFilePath $
-              i "{ license = \"\", repository =\"" repoStr "\" } // ./spago.dhall with metadata.version = \"v0.14.0\""
+              i "{ license = \"\", repository =\"" repoStr "\" } // ./spago.dhall"
 
             let
               generateFile = liftEffect $ map (lmap Aff.message) do
