@@ -236,33 +236,25 @@ fetchBowerfile name address tag = do
                 log "No packages.dhall file! Could not create a bower.json file."
                 throwError MissingBowerfile
 
-            let
-              fixupDhall match val src = fromMaybe src do
-                Alternative.guard $ not String.contains (String.Pattern match) src
-                let lines = String.split (String.Pattern "\n") src
-                ix <- Array.elemIndex "}" lines
-                updated <- Array.insertAt ix val lines
-                pure $ String.joinWith "\n" updated
-
             tmp <- liftEffect Tmp.mkTmpDir
 
             let
               write path = liftAff <<< FS.writeTextFile UTF8 (tmp <> "/" <> path)
-              fixMetadataVersionPath = "spago-fix-metadata-version.dhall"
+              spagoWithFixesFilePath = "spago-with-fixes.dhall"
 
-              -- If a Spago file is missing 'repository' or 'license' fields then
-              -- it will fail to generate a Bower file. However, we already
-              -- know the repository for the package, and we can insert an
-              -- empty license for the sake of generating the file. The package
-              -- will fail later with `MissingLicense`.
-              fixupSpagoDhall = fixupRepo <<< fixupLicense
-                where
-                fixupRepo = fixupDhall "repository =" (", repository = \"" <> repoStr <> "\"")
-                fixupLicense = fixupDhall "license =" ", license = \"\""
-
-            write "spago.dhall" (fixupSpagoDhall spagoDhall)
+            write "spago.dhall" spagoDhall
             write "packages.dhall" packagesDhall
-            write fixMetadataVersionPath "./spago.dhall with metadata.version = \"v0.14.0\""
+
+            -- If a Spago file is missing the 'repository' or 'license' fields, then
+            -- it will fail to generate a Bower file. Since we already know
+            -- what the repository is, we can provide a default value if it's not
+            -- specified in the `spago.dhall` file.
+            -- Moreover, we provide a blank license field as a default so that the `bower.json` file
+            -- gets generated, but until that license field has a value,
+            -- the package will still fail later with `MissingLicense`
+            -- if the `spago.dhall` file does not have a `license` field.
+            write spagoWithFixesFilePath $
+              i "{ license = \"\", repository =\"" repoStr "\" } // ./spago.dhall with metadata.version = \"v0.14.0\""
 
             let
               generateFile = liftEffect $ map (lmap Aff.message) do
