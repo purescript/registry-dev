@@ -250,8 +250,7 @@ fetchBowerfile name address tag = do
             -- what the repository is, we can provide a default value if it's not
             -- specified in the `spago.dhall` file.
             -- Moreover, we provide a blank license field as a default so that the `bower.json` file
-            -- gets generated, but until that license field has a value,
-            -- the package will still fail later with `MissingLicense`
+            -- gets generated, but the package will still fail later with `MissingLicense`
             -- if the `spago.dhall` file does not have a `license` field.
             write spagoWithFixesFilePath $
               i "{ license = \"\", repository =\"" repoStr "\" } // ./spago.dhall with metadata.version = \"v0.14.0\""
