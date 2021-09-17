@@ -15,13 +15,11 @@ import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
 import Registry.Scripts.BowerImport.BowerFile as BowerFile
 import Test.Fixtures.Manifest as Fixtures
 import Test.Foreign.Jsonic (jsonic)
-import Test.Registry.Scripts.BowerImport.Error.Stats (errorStats)
+import Test.Registry.Scripts.BowerImport.Stats (errorStats)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpec)
-
-type Spec = Spec.SpecT Aff Unit Identity Unit
 
 main :: Effect Unit
 main = launchAff_ $ runSpec [ consoleReporter ] do
@@ -44,7 +42,7 @@ main = launchAff_ $ runSpec [ consoleReporter ] do
     Spec.describe "Encoding" manifestEncoding
   Spec.describe "Error Stats" errorStats
 
-manifestEncoding :: Spec
+manifestEncoding :: Spec.Spec Unit
 manifestEncoding = do
   let
     checkRoundtrip manifest str = case Json.parseJson str >>= Json.decodeJson of
@@ -63,7 +61,7 @@ manifestEncoding = do
   roundTrip Fixtures.abcd.v1
   roundTrip Fixtures.abcd.v2
 
-goodPackageName :: Spec
+goodPackageName :: Spec.Spec Unit
 goodPackageName = do
   let
     parseName str res = Spec.it str do
@@ -72,7 +70,7 @@ goodPackageName = do
   parseName "a" "a"
   parseName "some-dash" "some-dash"
 
-badPackageName :: Spec
+badPackageName :: Spec.Spec Unit
 badPackageName = do
   let
     failParse str err = Spec.it str do
@@ -92,7 +90,7 @@ badPackageName = do
   failParse "" startErr
   failParse "🍝" startErr
 
-goodSPDXLicense :: Spec
+goodSPDXLicense :: Spec.Spec Unit
 goodSPDXLicense = do
   let
     parseLicense str = Spec.it str do
@@ -115,7 +113,7 @@ goodSPDXLicense = do
   -- exceptions
   parseLicense "GPL-3.0 WITH GPL-3.0-linking-exception"
 
-badSPDXLicense :: Spec
+badSPDXLicense :: Spec.Spec Unit
 badSPDXLicense = do
   let
     invalid str suggestion = "Invalid SPDX identifier: " <> str <> case suggestion of
@@ -133,7 +131,7 @@ badSPDXLicense = do
   parseLicense "BSD-3" (Just "BSD-3-Clause")
   parseLicense "MIT AND BSD-3" Nothing
 
-decodeEventsToOps :: Spec
+decodeEventsToOps :: Spec.Spec Unit
 decodeEventsToOps = do
   Spec.it "decodes an Update operation" do
     let
@@ -161,7 +159,7 @@ decodeEventsToOps = do
     res <- API.readOperation "test/fixtures/issue_created.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
-semVer :: Spec
+semVer :: Spec.Spec Unit
 semVer = do
   let
     parseSemVer str = Spec.it ("Parse SemVer " <> str) do
@@ -179,7 +177,7 @@ semVer = do
 
   parseRange "^1.3.4" ">=1.3.4 <2.0.0-0"
 
-goodBowerFiles :: Spec
+goodBowerFiles :: Spec.Spec Unit
 goodBowerFiles = do
   let
     parseBowerFile' str = Spec.it str do
@@ -219,7 +217,7 @@ goodBowerFiles = do
   parseBowerFile nonSemverBowerFile
   parseBowerFile completeBowerFile
 
-badBowerFiles :: Spec
+badBowerFiles :: Spec.Spec Unit
 badBowerFiles = do
   let
     failParseBowerFile' str = Spec.it str do
@@ -241,7 +239,7 @@ badBowerFiles = do
   failParseBowerFile wrongDependenciesFormat
   failParseBowerFile wrongDevDependenciesFormat
 
-bowerFileEncoding :: Spec
+bowerFileEncoding :: Spec.Spec Unit
 bowerFileEncoding = do
   Spec.it "Can be decoded" do
     let
