@@ -16,7 +16,7 @@ import Data.Monoid (guard)
 import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration (Hours(..))
-import Dotenv (loadFile) as Dotenv
+import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Class.Console (logShow)
 import Foreign.GitHub as GitHub
