@@ -63,7 +63,8 @@ forPackageVersion
   -> (k1 -> k2 -> a -> ExceptT ImportError Aff b)
   -> Aff (ProcessedPackageVersions k1 k2 b)
 forPackageVersion input keyToPackageName keyToTag f = do
-  map snd $ State.runStateT iterate { failures: input.failures, packages: Map.empty }
+  Tuple _ processed <- State.runStateT iterate { failures: input.failures, packages: Map.empty }
+  pure $ processed { packages = Map.filter (not Map.isEmpty) processed.packages }
   where
   iterate =
     forWithIndex_ input.packages \k1 inner ->
@@ -94,7 +95,8 @@ forPackageVersionKeys
   -> (k1 -> k2 -> ExceptT ImportError Aff (Tuple k3 k4))
   -> Aff (ProcessedPackageVersions k3 k4 a)
 forPackageVersionKeys input keyToPackageName keyToTag f = do
-  map snd $ State.runStateT iterate { failures: input.failures, packages: Map.empty }
+  Tuple _ processed <- State.runStateT iterate { failures: input.failures, packages: Map.empty }
+  pure $ processed { packages = Map.filter (not Map.isEmpty) processed.packages }
   where
   iterate =
     forWithIndex_ input.packages \k1 inner ->

@@ -1,4 +1,4 @@
-module Test.Registry.Scripts.BowerImport.Error.Stats where
+module Test.Registry.Scripts.BowerImport.Stats where
 
 import Registry.Prelude
 
@@ -25,14 +25,12 @@ examplePackageResults =
   }
 
 exampleFailures :: PackageFailures
-exampleFailures = PackageFailures $
-  Map.fromFoldable
-    [ printImportErrorKey MissingBowerfile /\ missingBowerfileErrors
-    , printImportErrorKey NoReleases /\ noReleasesErrors
-    , printImportErrorKey NoManifests /\ noManifestErrors
-    , manifestErrorKey /\ manifestErrors
-    ]
-
+exampleFailures = PackageFailures $ Map.fromFoldable
+  [ printImportErrorKey MissingBowerfile /\ missingBowerfileErrors
+  , printImportErrorKey NoReleases /\ noReleasesErrors
+  , printImportErrorKey NoManifests /\ noManifestErrors
+  , manifestErrorKey /\ manifestErrors
+  ]
   where
   missingBowerfileErrors = Map.fromFoldable
     [ RawPackageName "pkg1" /\ errsByVersion threeMissingFileVersions
