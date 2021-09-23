@@ -1,9 +1,4 @@
-module Registry.Scripts.LegacyImport.Bowerfile
-  ( Bowerfile(..)
-  , BowerfileParseError
-  , printBowerfileParseError
-  , parse
-  ) where
+module Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..)) where
 
 import Registry.Prelude
 
@@ -12,7 +7,6 @@ import Data.Argonaut (Json, (.:?))
 import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
-import Foreign.Jsonic as Jsonic
 
 newtype Bowerfile = Bowerfile
   { license :: Maybe (NonEmptyArray String)
@@ -45,23 +39,3 @@ decodeStringOrStringArray obj fieldName = do
       Just v -> do
         decoded <- (Json.decodeJson v <#> Array.singleton) <|> Json.decodeJson v
         pure $ NEA.fromArray decoded
-
-data BowerfileParseError
-  = JsonDecodeError Json.JsonDecodeError
-  | JsonParseError String
-
-derive instance Eq BowerfileParseError
-
-printBowerfileParseError :: BowerfileParseError -> String
-printBowerfileParseError = case _ of
-  JsonDecodeError err -> "JsonDecodeError: " <> Json.printJsonDecodeError err
-  JsonParseError err -> "JsonParseError: " <> err
-
-instance Show BowerfileParseError where
-  show = printBowerfileParseError
-
-parse :: String -> Either BowerfileParseError Bowerfile
-parse =
-  Jsonic.parse
-    >>> lmap JsonParseError
-    >=> (Json.decodeJson >>> lmap JsonDecodeError)

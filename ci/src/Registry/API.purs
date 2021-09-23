@@ -28,8 +28,6 @@ import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
 import Registry.Scripts.LegacyImport as LegacyImport
-import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile)
-import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
 
@@ -169,10 +167,12 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   -- If we're importing from Bower then we need to convert the Bowerfile
   -- to a Registry Manifest
   when fromBower do
-    liftAff (readBowerfile (absoluteFolderPath <> "/bower.json")) >>= case _ of
+    liftAff (try (readJsonFile (absoluteFolderPath <> "/bower.json"))) >>= case _ of
       Left err ->
-        throwWithComment $ "Error while reading Bowerfile: " <> err
-      Right bowerfile -> do
+        throwWithComment $ "Error while reading Bowerfile: " <> Aff.message err
+      Right (Left err) ->
+        throwWithComment $ "Could not decode Bowerfile: " <> Json.printJsonDecodeError err
+      Right (Right bowerfile) -> do
         let
           printErrors =
             Json.stringifyWithIndent 2 <<< Json.encodeJson <<< NEA.toArray
@@ -318,13 +318,3 @@ pushToMaster packageName path = Except.runExceptT do
         info result.stderr
         pure $ Right unit
       _ -> pure $ Left result.stderr
-
-readBowerfile :: String -> Aff (Either String Bowerfile)
-readBowerfile path = do
-  let
-    fromJson' = Bowerfile.parse >>> lmap Bowerfile.printBowerfileParseError
-  ifM (not <$> FS.exists path)
-    (pure $ Left $ "Bowerfile not found at " <> path)
-    do
-      strResult <- FS.readTextFile UTF8 path
-      pure $ fromJson' strResult

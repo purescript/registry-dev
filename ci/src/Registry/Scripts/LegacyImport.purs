@@ -10,6 +10,7 @@ import Data.Argonaut as Json
 import Data.Array (catMaybes)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.Interpolate (i)
 import Data.Lens (_Left, preview)
 import Data.Map as Map
 import Data.Monoid (guard)
@@ -20,6 +21,7 @@ import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Class.Console (logShow)
 import Foreign.GitHub as GitHub
+import Foreign.Jsonic as Jsonic
 import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Foreign.SemVer (SemVer)
@@ -30,8 +32,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
-import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
-import Registry.Scripts.LegacyImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..))
+import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.Stats as Stats
 import Safe.Coerce (coerce)
@@ -57,6 +58,8 @@ main = Aff.launchAff_ do
   guard (not exists) $ FS.mkdir indexPath
   for_ registry \semVer -> for_ semVer (insertManifest indexPath)
   log "Done!"
+
+type ImportM e a = ExceptT e Aff a
 
 downloadBowerRegistry :: Aff RegistryIndex
 downloadBowerRegistry = do
@@ -179,38 +182,12 @@ downloadBowerRegistry = do
 
 -- | Find the bower.json files associated with the package's released tags,
 -- | caching the file to avoid re-fetching each time the tool runs.
-fetchBowerfile :: RawPackageName -> GitHub.Address -> RawVersion -> ExceptT ImportError Aff Bowerfile
-fetchBowerfile name address tag = do
-  let
-    url = "https://raw.githubusercontent.com/" <> address.owner <> "/" <> address.repo <> "/" <> un RawVersion tag <> "/bower.json"
-    bowerfileCache = "bowerfile__" <> un RawPackageName name <> "__" <> un RawVersion tag
-
-  Process.withCache bowerfileCache Nothing do
-    lift (Http.get ResponseFormat.string url) >>= case _ of
-      -- TODO: We should retry requests if they fail, because likely GitHub
-      -- rate-limited us. Or at least we should collect the errors and print them
-      -- out because it's quite possible the Bowerfile actually does work and
-      -- we could have more granular errors to avoid excluding those packages.
-      Left err -> do
-        log $ "Unable to retrieve bowerfile. Bad request: " <> Http.printError err
-        throwError MissingBowerfile
-      Right { body, status }
-        | status == StatusCode 404 -> do
-            log $ "Unable to retrieve bowerfile because none exists (404 error)."
-            throwError MissingBowerfile
-        | status /= StatusCode 200 -> do
-            log $ "Unable to retrieve bowerfile. Bad status: " <> body
-            throwError $ BadStatus $ un StatusCode status
-        | otherwise -> case Bowerfile.parse body of
-            Left err -> do
-              let printedErr = Bowerfile.printBowerfileParseError err
-              log $ "Unable to parse bowerfile: " <> printedErr <> " Malformed body: " <> body <> "."
-              throwError $ MalformedBowerJson { error: printedErr, contents: body }
-            Right bowerfile -> pure bowerfile
+fetchBowerfile :: RawPackageName -> GitHub.Address -> RawVersion -> ImportM ImportError Bowerfile
+fetchBowerfile name address version = bowerfileRequest name version address
 
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
-selfContainedDependencies :: Set RawPackageName -> Bowerfile -> ExceptT ImportError Aff Unit
+selfContainedDependencies :: Set RawPackageName -> Bowerfile -> ImportM ImportError Unit
 selfContainedDependencies registry (Bowerfile { dependencies, devDependencies }) = do
   let allDeps = Object.keys $ dependencies <> devDependencies
   outsideDeps <- for allDeps \packageName -> do
@@ -227,7 +204,7 @@ toManifest
   -> Repo
   -> SemVer
   -> Bowerfile
-  -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
+  -> ImportM (NonEmptyArray ManifestError) Manifest
 toManifest package repository version (Bowerfile bowerfile) = do
   let
     mkError :: forall a. ManifestError -> Either (NonEmptyArray ManifestError) a
@@ -338,7 +315,7 @@ toManifest package repository version (Bowerfile bowerfile) = do
 --
 -- Example:
 -- https://github.com/newlandsvalley/purescript-abc-parser/blob/1.1.2/bower.json
-cleanPackageName :: forall m. Monad m => RawPackageName -> ExceptT ImportError m RawPackageName
+cleanPackageName :: RawPackageName -> ImportM ImportError RawPackageName
 cleanPackageName (RawPackageName name) = do
   let
     split = String.split (String.Pattern "/") <<< coerce
@@ -360,3 +337,74 @@ readRegistryFile source = do
     Right packages -> do
       let toPackagesArray = Object.toArrayWithKey \k -> Tuple (RawPackageName $ stripPureScriptPrefix k)
       pure $ Map.fromFoldable $ toPackagesArray packages
+
+type RawManifest =
+  { name :: RawPackageName
+  , version :: RawVersion
+  , repository :: GitHub.Address
+  , license :: Maybe String
+  , dependencies :: Object String
+  , devDependencies :: Object String
+  }
+
+-- | Attempt to construct the basic fields necessary for a manifest file by reading
+-- | the package version's bower.json, spago.dhall, package.json, and LICENSE
+-- | files, if present.
+constructRawManifest
+  :: RawPackageName
+  -> RawVersion
+  -> GitHub.Address
+  -> ExceptT ImportError Aff RawManifest
+constructRawManifest _ _ _ = throwError NoReleases
+
+bowerfileRequest :: RawPackageName -> RawVersion -> GitHub.Address -> ExceptT ImportError Aff Bowerfile
+bowerfileRequest package version address = do
+  body <- fileRequest BowerJson Nothing package version address
+  case Jsonic.parseJson body >>= Json.decodeJson of
+    Left decodeError -> do
+      let printed = Json.printJsonDecodeError decodeError
+      log $ i "Unable to decode Bowerfile because of a decoding error: "
+      log printed
+      log $ i "arising from the file contents: "
+      log body
+      throwError $ MalformedBowerJson { error: printed, contents: body }
+
+    Right bowerfile ->
+      pure bowerfile
+
+fileRequest
+  :: FileResource
+  -> Maybe Hours
+  -> RawPackageName
+  -> RawVersion
+  -> GitHub.Address
+  -> ExceptT ImportError Aff String
+fileRequest resource cacheExpiry package version address = do
+  let
+    name = un RawPackageName package
+    tag = un RawVersion version
+    filePath = fileResourcePath resource
+    url = i "https://raw.githubusercontent.com/" address.owner "/" address.repo "/" tag "/" filePath
+    fileCacheName = String.replace (String.Pattern ".") (String.Replacement "_") filePath
+    cacheKey = i fileCacheName "__" name "__" tag
+    mkError = ResourceError <<< { resource: FileResource resource, error: _ }
+
+  Process.withCache cacheKey cacheExpiry do
+    liftAff (Http.get ResponseFormat.string url) >>= case _ of
+      -- TODO: We should retry requests if they fail, because likely GitHub
+      -- rate-limited us. Or at least we should collect the errors and print them
+      -- out because it's quite possible the Bowerfile actually does work and
+      -- we could have more granular errors to avoid excluding those packages.
+      Left error -> do
+        let printed = Http.printError error
+        log $ i "Unable to retrieve " filePath " because the request failed: " printed
+        throwError $ mkError BadRequest
+      Right { status: StatusCode status, body }
+        | status == 404 -> do
+            log $ i "Unable to retrieve " filePath " because none exists (404 error)."
+            throwError $ mkError $ BadStatus status
+        | status /= 200 -> do
+            log $ i "Unable to retrieve " filePath " because of a bad status code: " body
+            throwError $ mkError $ BadStatus status
+        | otherwise ->
+            pure body

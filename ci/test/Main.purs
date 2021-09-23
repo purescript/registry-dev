@@ -5,6 +5,7 @@ import Registry.Prelude
 import Data.Argonaut as Json
 import Data.Array.NonEmpty as NEA
 import Foreign.GitHub (IssueNumber(..))
+import Foreign.Jsonic as Jsonic
 import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
@@ -12,7 +13,6 @@ import Registry.API as API
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..))
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
-import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Test.Fixtures.Manifest as Fixtures
 import Test.Foreign.Jsonic (jsonic)
 import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
@@ -180,8 +180,12 @@ semVer = do
 goodBowerfiles :: Spec.Spec Unit
 goodBowerfiles = do
   let
+    parse :: String -> Either Json.JsonDecodeError Bowerfile
+    parse = Jsonic.parseJson >=> Json.decodeJson
+
     parseBowerfile' str = Spec.it str do
-      Bowerfile.parse str `Assert.shouldSatisfy` isRight
+      parse str `Assert.shouldSatisfy` isRight
+
     parseBowerfile = parseBowerfile' <<< Json.stringify
 
     simpleFile = Json.encodeJson { version: "v1.0.0", license: "MIT" }
@@ -220,8 +224,12 @@ goodBowerfiles = do
 badBowerfiles :: Spec.Spec Unit
 badBowerfiles = do
   let
+    parse :: String -> Either Json.JsonDecodeError Bowerfile
+    parse = Jsonic.parseJson >=> Json.decodeJson
+
     failParseBowerfile' str = Spec.it str do
-      Bowerfile.parse str `Assert.shouldNotSatisfy` isRight
+      parse str `Assert.shouldNotSatisfy` isRight
+
     failParseBowerfile = failParseBowerfile' <<< Json.stringify
 
     wrongLicenseFormat =

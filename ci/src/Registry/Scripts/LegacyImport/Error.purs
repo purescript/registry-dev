@@ -63,7 +63,7 @@ derive newtype instance Ord RawVersion
 -- | Bower registry.
 data ImportError
   = InvalidGitHubRepo String
-  | BadStatus Int
+  | ResourceError ResourceError
   | NoReleases
   | MalformedPackageName String
   | MissingBowerfile
@@ -86,7 +86,7 @@ manifestErrorKey = ImportErrorKey "manifestError"
 printImportErrorKey :: ImportError -> ImportErrorKey
 printImportErrorKey = case _ of
   InvalidGitHubRepo _ -> ImportErrorKey "invalidGitHubRepo"
-  BadStatus _ -> ImportErrorKey "badStatus"
+  ResourceError _ -> ImportErrorKey "resourceError"
   NoReleases -> ImportErrorKey "noReleases"
   MalformedPackageName _ -> ImportErrorKey "malformedPackageName"
   MissingBowerfile -> ImportErrorKey "missingBowerfile"
@@ -95,7 +95,20 @@ printImportErrorKey = case _ of
   NoManifests -> ImportErrorKey "noManifests"
   ManifestError _ -> manifestErrorKey
 
--- | An error representing why a Bowerfile cannot be migrated into a manifest.
+-- | An error
+type ResourceError = { resource :: RemoteResource, error :: RequestError }
+
+data RequestError = BadRequest | BadStatus Int
+
+derive instance Generic RequestError _
+
+instance Json.EncodeJson RequestError where
+  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
+
+instance Json.DecodeJson RequestError where
+  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+
+-- | An error representing why a manifest could not be produced for this package
 data ManifestError
   = MissingName
   | MissingLicense
@@ -131,3 +144,47 @@ printManifestErrorKey = ManifestErrorKey <<< case _ of
 
 encodingOptions :: Json.Generic.Encoding
 encodingOptions = Json.Generic.defaultEncoding { unwrapSingleArguments = true }
+
+-- | A resource required
+data RemoteResource = APIResource APIResource | FileResource FileResource
+
+derive instance Generic RemoteResource _
+
+instance Json.EncodeJson RemoteResource where
+  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
+
+instance Json.DecodeJson RemoteResource where
+  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+
+data APIResource = GitHubReleases
+
+derive instance Generic APIResource _
+
+instance Json.EncodeJson APIResource where
+  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
+
+instance Json.DecodeJson APIResource where
+  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+
+data FileResource
+  = BowerJson
+  | SpagoDhall
+  | PackagesDhall
+  | PackageJson
+  | LicenseFile
+
+derive instance Generic FileResource _
+
+instance Json.EncodeJson FileResource where
+  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
+
+instance Json.DecodeJson FileResource where
+  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+
+fileResourcePath :: FileResource -> FilePath
+fileResourcePath = case _ of
+  BowerJson -> "bower.json"
+  SpagoDhall -> "spago.dhall"
+  PackagesDhall -> "packages.dhall"
+  PackageJson -> "package.json"
+  LicenseFile -> "LICENSE"

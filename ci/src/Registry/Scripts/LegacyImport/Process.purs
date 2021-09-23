@@ -15,7 +15,7 @@ import Data.Time.Duration (Hours)
 import Effect.Now (nowDateTime) as Time
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
-import Registry.Scripts.LegacyImport.Error (ImportError, ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion)
+import Registry.Scripts.LegacyImport.Error (ImportError, ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion, ResourceError)
 import Registry.Scripts.LegacyImport.Error as LegacyImport.Error
 
 type ProcessedPackages k a =

@@ -44,6 +44,7 @@ import Effect.Aff.Class (liftAff, class MonadAff) as Extra
 import Effect.Class (liftEffect, class MonadEffect) as Extra
 import Effect.Class.Console (error, log, info) as Extra
 import Effect.Ref (Ref) as Extra
+import Foreign.Jsonic as Jsonic
 import Foreign.Object (Object) as Extra
 import Foreign.Object as Object
 import Node.Buffer (Buffer) as Extra
@@ -66,7 +67,7 @@ writeJsonFile path = FS.writeTextFile Extra.UTF8 path <<< Json.stringifyWithInde
 readJsonFile :: forall a. Json.DecodeJson a => Extra.FilePath -> Extra.Aff (Either.Either Json.JsonDecodeError a)
 readJsonFile path = do
   contents <- FS.readTextFile Extra.UTF8 path
-  pure $ Json.decodeJson =<< Json.parseJson contents
+  pure $ Json.decodeJson =<< Jsonic.parseJson contents
 
 -- | Convert a Map into an Object, converting its keys to strings along the way.
 objectFromMap :: forall k a. Ord k => (k -> String) -> Extra.Map k a -> Extra.Object a
