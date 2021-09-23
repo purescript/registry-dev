@@ -1,7 +1,7 @@
-module Registry.Scripts.BowerImport.BowerFile
-  ( BowerFile(..)
-  , BowerFileParseError
-  , printBowerFileParseError
+module Registry.Scripts.LegacyImport.Bowerfile
+  ( Bowerfile(..)
+  , BowerfileParseError
+  , printBowerfileParseError
   , parse
   ) where
 
@@ -14,23 +14,23 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Foreign.Jsonic as Jsonic
 
-newtype BowerFile = BowerFile
+newtype Bowerfile = Bowerfile
   { license :: Maybe (NonEmptyArray String)
   , dependencies :: Object String
   , devDependencies :: Object String
   }
 
-derive newtype instance Eq BowerFile
-derive newtype instance Show BowerFile
-derive newtype instance Json.EncodeJson BowerFile
+derive newtype instance Eq Bowerfile
+derive newtype instance Show Bowerfile
+derive newtype instance Json.EncodeJson Bowerfile
 
-instance Json.DecodeJson BowerFile where
+instance Json.DecodeJson Bowerfile where
   decodeJson json = do
     obj <- Json.decodeJson json
     license <- decodeStringOrStringArray obj "license"
     dependencies <- fromMaybe mempty <$> obj .:? "dependencies"
     devDependencies <- fromMaybe mempty <$> obj .:? "devDependencies"
-    pure $ BowerFile { license, dependencies, devDependencies }
+    pure $ Bowerfile { license, dependencies, devDependencies }
 
 decodeStringOrStringArray
   :: Object Json
@@ -46,21 +46,21 @@ decodeStringOrStringArray obj fieldName = do
         decoded <- (Json.decodeJson v <#> Array.singleton) <|> Json.decodeJson v
         pure $ NEA.fromArray decoded
 
-data BowerFileParseError
+data BowerfileParseError
   = JsonDecodeError Json.JsonDecodeError
   | JsonParseError String
 
-derive instance Eq BowerFileParseError
+derive instance Eq BowerfileParseError
 
-printBowerFileParseError :: BowerFileParseError -> String
-printBowerFileParseError = case _ of
+printBowerfileParseError :: BowerfileParseError -> String
+printBowerfileParseError = case _ of
   JsonDecodeError err -> "JsonDecodeError: " <> Json.printJsonDecodeError err
   JsonParseError err -> "JsonParseError: " <> err
 
-instance Show BowerFileParseError where
-  show = printBowerFileParseError
+instance Show BowerfileParseError where
+  show = printBowerfileParseError
 
-parse :: String -> Either BowerFileParseError BowerFile
+parse :: String -> Either BowerfileParseError Bowerfile
 parse =
   Jsonic.parse
     >>> lmap JsonParseError

@@ -27,9 +27,9 @@ import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
-import Registry.Scripts.BowerImport as BowerImport
-import Registry.Scripts.BowerImport.BowerFile (BowerFile)
-import Registry.Scripts.BowerImport.BowerFile as BowerFile
+import Registry.Scripts.LegacyImport as LegacyImport
+import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile)
+import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
 
@@ -184,7 +184,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
           Nothing -> throwWithComment $ "Not a valid SemVer version: " <> ref
           Just result -> pure result
 
-        runManifest (BowerImport.toManifest packageName metadata.location semVer bowerfile) >>= case _ of
+        runManifest (LegacyImport.toManifest packageName metadata.location semVer bowerfile) >>= case _ of
           Left err ->
             throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
           Right manifest ->
@@ -319,10 +319,10 @@ pushToMaster packageName path = Except.runExceptT do
         pure $ Right unit
       _ -> pure $ Left result.stderr
 
-readBowerfile :: String -> Aff (Either String BowerFile)
+readBowerfile :: String -> Aff (Either String Bowerfile)
 readBowerfile path = do
   let
-    fromJson' = BowerFile.parse >>> lmap BowerFile.printBowerFileParseError
+    fromJson' = Bowerfile.parse >>> lmap Bowerfile.printBowerfileParseError
   ifM (not <$> FS.exists path)
     (pure $ Left $ "Bowerfile not found at " <> path)
     do

@@ -1,4 +1,4 @@
-module Registry.Scripts.BowerImport where
+module Registry.Scripts.LegacyImport where
 
 import Registry.Prelude
 
@@ -29,11 +29,11 @@ import Registry.Index (RegistryIndex, insertManifest)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
-import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
-import Registry.Scripts.BowerImport.BowerFile as BowerFile
-import Registry.Scripts.BowerImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..))
-import Registry.Scripts.BowerImport.Process as Process
-import Registry.Scripts.BowerImport.Stats as Stats
+import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
+import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
+import Registry.Scripts.LegacyImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..))
+import Registry.Scripts.LegacyImport.Process as Process
+import Registry.Scripts.LegacyImport.Stats as Stats
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as StringParser
 
@@ -98,7 +98,7 @@ downloadBowerRegistry = do
 
     let repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
 
-    releases <- Process.withCache repoCache (Just $ Hours 24.0) do
+    releases <- Process.withCache repoCache (Just $ Hours 100.0) do
       log $ "Fetching releases for package " <> un RawPackageName name
       result <- lift $ try $ GitHub.getReleases octokit address
       case result of
@@ -179,7 +179,7 @@ downloadBowerRegistry = do
 
 -- | Find the bower.json files associated with the package's released tags,
 -- | caching the file to avoid re-fetching each time the tool runs.
-fetchBowerfile :: RawPackageName -> GitHub.Address -> RawVersion -> ExceptT ImportError Aff BowerFile
+fetchBowerfile :: RawPackageName -> GitHub.Address -> RawVersion -> ExceptT ImportError Aff Bowerfile
 fetchBowerfile name address tag = do
   let
     url = "https://raw.githubusercontent.com/" <> address.owner <> "/" <> address.repo <> "/" <> un RawVersion tag <> "/bower.json"
@@ -201,17 +201,17 @@ fetchBowerfile name address tag = do
         | status /= StatusCode 200 -> do
             log $ "Unable to retrieve bowerfile. Bad status: " <> body
             throwError $ BadStatus $ un StatusCode status
-        | otherwise -> case BowerFile.parse body of
+        | otherwise -> case Bowerfile.parse body of
             Left err -> do
-              let printedErr = BowerFile.printBowerFileParseError err
+              let printedErr = Bowerfile.printBowerfileParseError err
               log $ "Unable to parse bowerfile: " <> printedErr <> " Malformed body: " <> body <> "."
               throwError $ MalformedBowerJson { error: printedErr, contents: body }
             Right bowerfile -> pure bowerfile
 
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
-selfContainedDependencies :: Set RawPackageName -> BowerFile -> ExceptT ImportError Aff Unit
-selfContainedDependencies registry (BowerFile { dependencies, devDependencies }) = do
+selfContainedDependencies :: Set RawPackageName -> Bowerfile -> ExceptT ImportError Aff Unit
+selfContainedDependencies registry (Bowerfile { dependencies, devDependencies }) = do
   let allDeps = Object.keys $ dependencies <> devDependencies
   outsideDeps <- for allDeps \packageName -> do
     name <- cleanPackageName $ RawPackageName packageName
@@ -226,9 +226,9 @@ toManifest
   :: PackageName
   -> Repo
   -> SemVer
-  -> BowerFile
+  -> Bowerfile
   -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
-toManifest package repository version (BowerFile bowerfile) = do
+toManifest package repository version (Bowerfile bowerfile) = do
   let
     mkError :: forall a. ManifestError -> Either (NonEmptyArray ManifestError) a
     mkError = Left <<< NEA.singleton

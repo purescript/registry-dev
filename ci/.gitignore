@@ -15,6 +15,6 @@ generated-docs/
 # Keep it secret, keep it safe.
 .env
 
-# Files generated as part of the Bower import process
+# Files generated as part of the legacy import process.
 bower-exclusions.json
 registry-index

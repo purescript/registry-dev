@@ -1,14 +1,14 @@
-module Test.Registry.Scripts.BowerImport.Stats where
+module Test.Registry.Scripts.LegacyImport.Stats where
 
 import Registry.Prelude
 
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable as Foldable
 import Data.Map as Map
-import Registry.Scripts.BowerImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
-import Registry.Scripts.BowerImport.Process (ProcessedPackageVersions)
-import Registry.Scripts.BowerImport.Stats (ErrorCounts(..))
-import Registry.Scripts.BowerImport.Stats as Stats
+import Registry.Scripts.LegacyImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
+import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
+import Registry.Scripts.LegacyImport.Stats (ErrorCounts(..))
+import Registry.Scripts.LegacyImport.Stats as Stats
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 
