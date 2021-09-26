@@ -1,7 +1,6 @@
 module Registry.Scripts.LegacyImport.SpagoJson
   ( SpagoJson
-  , license
-  , packageDependencies
+  , toManifestFields
   ) where
 
 import Registry.Prelude
@@ -9,21 +8,27 @@ import Registry.Prelude
 import Data.Argonaut ((.:?))
 import Data.Argonaut as Json
 import Data.Array as Array
+import Data.Array.NonEmpty as NEA
 import Data.Map as Map
 import Foreign.Object as Object
-import Registry.Scripts.LegacyImport.Error (RawPackageName(..), RawVersion)
+import Registry.Scripts.LegacyImport.Error (RawPackageName(..), RawVersion(..))
+import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 
-license :: SpagoJson -> Maybe String
-license (SpagoJson spago) = spago.license
+toManifestFields :: SpagoJson -> ManifestFields
+toManifestFields spago@(SpagoJson { license }) =
+  { license: map NEA.singleton license
+  , dependencies: packageDependencies spago
+  , devDependencies: Object.empty
+  }
 
-packageDependencies :: SpagoJson -> Map RawPackageName RawVersion
+packageDependencies :: SpagoJson -> Object String
 packageDependencies (SpagoJson { dependencies, packages }) = do
   let
     foldFn m name = fromMaybe m do
       version <- Map.lookup name packages
-      pure $ Map.insert name version m
+      pure $ Object.insert (un RawPackageName name) (un RawVersion version) m
 
-  Array.foldl foldFn Map.empty dependencies
+  Array.foldl foldFn Object.empty dependencies
 
 newtype SpagoJson = SpagoJson
   { license :: Maybe String

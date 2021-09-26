@@ -34,7 +34,9 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile)
+import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
+import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)
 import Registry.Scripts.LegacyImport.SpagoJson as SpagoJson
@@ -219,10 +221,10 @@ toManifest package repository version manifest = do
           other -> other
 
       case manifest.license of
-        [] -> mkError MissingLicense
-        licenses -> do
+        Nothing -> mkError MissingLicense
+        Just licenses -> do
           let
-            parsed = map SPDX.parse $ rewrite licenses
+            parsed = map SPDX.parse $ rewrite $ NEA.toArray licenses
             { fail, success } = partitionEithers parsed
 
           case fail, success of
@@ -334,12 +336,6 @@ readRegistryFile source = do
       let toPackagesArray = Object.toArrayWithKey \k -> Tuple (RawPackageName $ stripPureScriptPrefix k)
       pure $ Map.fromFoldable $ toPackagesArray packages
 
-type ManifestFields =
-  { license :: Array String
-  , dependencies :: Object String
-  , devDependencies :: Object String
-  }
-
 -- | Attempt to construct the basic fields necessary for a manifest file by reading
 -- | the package version's bower.json, spago.dhall, package.json, and LICENSE
 -- | files, if present.
@@ -368,9 +364,13 @@ constructRawManifest package version address = do
 
     pure { licenseFile, bowerJson, packageJson, spagoJson }
 
+  let
+    _bowerManifest = map Bowerfile.toManifestFields files.bowerJson
+    spagoManifest = map SpagoJson.toManifestFields files.spagoJson
+
   -- We can detect the license for the project using a combination of `licensee`
   -- and reading the license directly out of the Spago file.
-  license <- detectLicense files
+  license <- detectLicense files spagoManifest
 
   -- FIXME: Implement!
   --
@@ -389,8 +389,8 @@ constructRawManifest package version address = do
 
   pure { license, dependencies, devDependencies }
   where
-  detectLicense :: _ -> ExceptT ImportError Aff (Array String)
-  detectLicense { licenseFile, bowerJson, packageJson, spagoJson } = do
+  detectLicense :: _ -> Either _ ManifestFields -> ExceptT ImportError Aff (Maybe (NonEmptyArray String))
+  detectLicense { licenseFile, bowerJson, packageJson } spagoManifest = do
     licenseeResult <- liftAff $ Licensee.detectFiles $ Array.catMaybes $ map hush
       [ bowerJson <#> Json.encodeJson >>> { name: "bower.json", contents: _ }
       , packageJson <#> Json.encodeJson >>> { name: "package.json", contents: _ }
@@ -400,15 +400,16 @@ constructRawManifest package version address = do
     detectedLicenses <- case licenseeResult of
       Left err -> do
         log $ "Licensee decoding error, ignoring: " <> err
-        pure []
+        pure Nothing
       Right { licenses: licenseArray } ->
-        pure $ map _.spdx_id licenseArray
+        pure $ NEA.fromArray $ map _.spdx_id licenseArray
 
-    spagoLicense <- case SpagoJson.license =<< hush spagoJson of
-      Nothing -> pure []
-      Just license -> pure [ license ]
+    let spagoLicense = _.license =<< hush spagoManifest
 
-    pure $ Array.concat [ detectedLicenses, spagoLicense ]
+    pure
+      $ map NEA.concat
+      $ NEA.fromArray
+      $ Array.catMaybes [ detectedLicenses, spagoLicense ]
 
   -- Attempt to construct a Spago JSON file by fetching the spago.dhall and
   -- packages.dhall files and converting them to JSON with dhall-to-json.

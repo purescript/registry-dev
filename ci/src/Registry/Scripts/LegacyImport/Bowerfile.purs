@@ -1,4 +1,7 @@
-module Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..)) where
+module Registry.Scripts.LegacyImport.Bowerfile
+  ( Bowerfile(..)
+  , toManifestFields
+  ) where
 
 import Registry.Prelude
 
@@ -7,15 +10,12 @@ import Data.Argonaut (Json, (.:?))
 import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 
--- FIXME: Just make this an instance on top of `ManifestFields`? Make it so that
--- you can encode / decode a `Bowerfile` or a `SpagoJson`, but underneath they
--- both easily transform to a `ManifestFields` type?
-newtype Bowerfile = Bowerfile
-  { license :: Maybe (NonEmptyArray String)
-  , dependencies :: Object String
-  , devDependencies :: Object String
-  }
+toManifestFields :: Bowerfile -> ManifestFields
+toManifestFields (Bowerfile fields) = fields
+
+newtype Bowerfile = Bowerfile ManifestFields
 
 derive newtype instance Eq Bowerfile
 derive newtype instance Show Bowerfile
