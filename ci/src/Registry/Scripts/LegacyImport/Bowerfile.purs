@@ -8,7 +8,7 @@ import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 
--- TODO: Just make this an instance on top of `ManifestFields`? Make it so that
+-- FIXME: Just make this an instance on top of `ManifestFields`? Make it so that
 -- you can encode / decode a `Bowerfile` or a `SpagoJson`, but underneath they
 -- both easily transform to a `ManifestFields` type?
 newtype Bowerfile = Bowerfile

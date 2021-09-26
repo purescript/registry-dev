@@ -186,6 +186,10 @@ jsonSerializer =
 stringSerializer :: Serialize String String
 stringSerializer = { encode: identity, decode: pure }
 
+-- FIXME: This needs to do something about when the action throws an exception,
+-- maybe so that we don't have to do the manual `filterFailedPackages` later on?
+-- That would make things WAY better.
+--
 -- | Optionally-expirable cache: when passing a Duration then we'll consider
 -- | the object expired if its lifetime is past the duration.
 -- | Otherwise, this will behave like a write-only cache.

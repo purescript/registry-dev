@@ -33,7 +33,7 @@ import Registry.Index (RegistryIndex, insertManifest)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
-import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
+import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile)
 import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)
@@ -179,10 +179,12 @@ downloadBowerRegistry = do
   Stats.logStats $ Stats.errorStats manifestRegistry
   pure registryIndex
 
+-- | FIXME: This is currently disabled and needs to be re-added.
+-- |
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
-selfContainedDependencies :: Set RawPackageName -> Bowerfile -> ImportM ImportError Unit
-selfContainedDependencies registry (Bowerfile { dependencies, devDependencies }) = do
+selfContainedDependencies :: Set RawPackageName -> ManifestFields -> ImportM ImportError Unit
+selfContainedDependencies registry ({ dependencies, devDependencies }) = do
   let allDeps = Object.keys $ dependencies <> devDependencies
   outsideDeps <- for allDeps \packageName -> do
     name <- cleanPackageName $ RawPackageName packageName
@@ -370,7 +372,7 @@ constructRawManifest package version address = do
   -- and reading the license directly out of the Spago file.
   license <- detectLicense files
 
-  -- TODO: Implement!
+  -- FIXME: Implement!
   --
   -- We can pull dependencies from the bower.json or spago.dhall files. If both
   -- files are present, but their dependencies differ, then we use the file with
