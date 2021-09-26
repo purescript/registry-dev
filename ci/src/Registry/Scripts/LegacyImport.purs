@@ -131,12 +131,8 @@ downloadBowerRegistry = do
           Process.filterFailedPackageVersions shouldAccept releaseIndex.failures _.name releaseIndex.packages
       }
 
-  log "Fetching package bowerfiles..."
-  legacyRegistry <- Process.forPackageVersion validBower _.name identity \{ name, address } tag _ -> do
-    constructRawManifest name tag address
-
   log "Parsing names and versions..."
-  packageRegistry <- Process.forPackageVersionKeys legacyRegistry _.name identity \{ name, address } tag -> do
+  packageRegistry <- Process.forPackageVersionKeys validBower _.name identity \{ name, address } tag -> do
     packageName <- case PackageName.parse $ un RawPackageName name of
       Left err ->
         throwError $ MalformedPackageName $ StringParser.printParserError err
@@ -155,14 +151,16 @@ downloadBowerRegistry = do
 
     pure $ Tuple outerKey innerKey
 
-  log "Converting bowerfiles to manifests..."
+  log "Converting to manifests..."
   let forPackageRegistry = Process.forPackageVersion packageRegistry _.original _.original
-  manifestRegistry <- forPackageRegistry \{ name, address } { semVer } bowerfile -> do
+  manifestRegistry <- forPackageRegistry \{ name, original: nameOriginal, address } tag _ -> do
+    manifestFields <- constructRawManifest nameOriginal tag.original address
+
     let
       repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
       liftError = map (lmap ManifestError)
 
-    Except.mapExceptT liftError $ toManifest name repo semVer bowerfile
+    Except.mapExceptT liftError $ toManifest name repo tag.semVer manifestFields
 
   let
     registryIndex :: RegistryIndex
@@ -180,11 +178,6 @@ downloadBowerRegistry = do
   writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
   Stats.logStats $ Stats.errorStats manifestRegistry
   pure registryIndex
-
--- | Find the bower.json files associated with the package's released tags,
--- | caching the file to avoid re-fetching each time the tool runs.
-fetchBowerfile :: RawPackageName -> GitHub.Address -> RawVersion -> ImportM ImportError Bowerfile
-fetchBowerfile _ _ _ = throwError NoReleases
 
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
