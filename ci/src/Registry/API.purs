@@ -28,6 +28,7 @@ import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
 import Registry.Scripts.LegacyImport as LegacyImport
+import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
 
@@ -172,7 +173,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
         throwWithComment $ "Error while reading Bowerfile: " <> Aff.message err
       Right (Left err) ->
         throwWithComment $ "Could not decode Bowerfile: " <> Json.printJsonDecodeError err
-      Right (Right bowerfile) -> do
+      Right (Right (Bowerfile bowerfile)) -> do
         let
           printErrors =
             Json.stringifyWithIndent 2 <<< Json.encodeJson <<< NEA.toArray
@@ -180,11 +181,18 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
           runManifest =
             Except.runExceptT <<< Except.mapExceptT (liftAff <<< map (lmap printErrors))
 
+          manifestFields :: LegacyImport.ManifestFields
+          manifestFields =
+            { license: fromMaybe mempty $ map NEA.toArray bowerfile.license
+            , dependencies: bowerfile.dependencies
+            , devDependencies: bowerfile.devDependencies
+            }
+
         semVer <- case SemVer.parseSemVer ref of
           Nothing -> throwWithComment $ "Not a valid SemVer version: " <> ref
           Just result -> pure result
 
-        runManifest (LegacyImport.toManifest packageName metadata.location semVer bowerfile) >>= case _ of
+        runManifest (LegacyImport.toManifest packageName metadata.location semVer manifestFields) >>= case _ of
           Left err ->
             throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
           Right manifest ->

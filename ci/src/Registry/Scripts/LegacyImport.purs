@@ -132,14 +132,11 @@ downloadBowerRegistry = do
       }
 
   log "Fetching package bowerfiles..."
-  bowerRegistry <- Process.forPackageVersion validBower _.name identity \{ name, address } tag _ -> do
-    bowerfile <- fetchBowerfile name address tag
-    let packagesWithReleases = Set.map _.name $ Map.keys releaseIndex.packages
-    selfContainedDependencies packagesWithReleases bowerfile
-    pure bowerfile
+  legacyRegistry <- Process.forPackageVersion validBower _.name identity \{ name, address } tag _ -> do
+    constructRawManifest name tag address
 
   log "Parsing names and versions..."
-  packageRegistry <- Process.forPackageVersionKeys bowerRegistry _.name identity \{ name, address } tag -> do
+  packageRegistry <- Process.forPackageVersionKeys legacyRegistry _.name identity \{ name, address } tag -> do
     packageName <- case PackageName.parse $ un RawPackageName name of
       Left err ->
         throwError $ MalformedPackageName $ StringParser.printParserError err
@@ -207,9 +204,9 @@ toManifest
   :: PackageName
   -> Repo
   -> SemVer
-  -> Bowerfile
+  -> ManifestFields
   -> ImportM (NonEmptyArray ManifestError) Manifest
-toManifest package repository version (Bowerfile bowerfile) = do
+toManifest package repository version manifest = do
   let
     mkError :: forall a. ManifestError -> Either (NonEmptyArray ManifestError) a
     mkError = Left <<< NEA.singleton
@@ -226,11 +223,11 @@ toManifest package repository version (Bowerfile bowerfile) = do
           [ "3-Clause BSD" ] -> [ "BSD-3-Clause" ]
           other -> other
 
-      case bowerfile.license of
-        Nothing -> mkError MissingLicense
-        Just licenses -> do
+      case manifest.license of
+        [] -> mkError MissingLicense
+        licenses -> do
           let
-            parsed = map SPDX.parse $ rewrite $ NEA.toArray licenses
+            parsed = map SPDX.parse $ rewrite licenses
             { fail, success } = partitionEithers parsed
 
           case fail, success of
@@ -262,8 +259,8 @@ toManifest package repository version (Bowerfile bowerfile) = do
             Nothing -> Left { dependency: packageName, failedBounds: versionStr }
             Just range -> Right $ Tuple (PackageName.print packageName) range
 
-      normalizedDeps <- normalizeDeps $ Object.toUnfoldable bowerfile.dependencies
-      normalizedDevDeps <- normalizeDeps $ Object.toUnfoldable bowerfile.devDependencies
+      normalizedDeps <- normalizeDeps $ Object.toUnfoldable manifest.dependencies
+      normalizedDevDeps <- normalizeDeps $ Object.toUnfoldable manifest.devDependencies
 
       let
         readDeps = map checkDepPair >>> partitionEithers >>> \{ fail, success } ->
@@ -342,11 +339,8 @@ readRegistryFile source = do
       let toPackagesArray = Object.toArrayWithKey \k -> Tuple (RawPackageName $ stripPureScriptPrefix k)
       pure $ Map.fromFoldable $ toPackagesArray packages
 
-type RawManifest =
-  { name :: RawPackageName
-  , version :: RawVersion
-  , repository :: GitHub.Address
-  , license :: Array String
+type ManifestFields =
+  { license :: Array String
   , dependencies :: Object String
   , devDependencies :: Object String
   }
@@ -358,7 +352,7 @@ constructRawManifest
   :: RawPackageName
   -> RawVersion
   -> GitHub.Address
-  -> ExceptT ImportError Aff RawManifest
+  -> ExceptT ImportError Aff ManifestFields
 constructRawManifest package version address = do
   -- We can construct a manifest from a package's bowerfile, package.json file,
   -- spago.dhall file, and/or LICENSE files. A package doesn't need to have all
@@ -379,10 +373,12 @@ constructRawManifest package version address = do
 
     pure { licenseFile, bowerJson, packageJson, spagoJson }
 
-  -- We can detect the license for the project using a combination of Licensee
+  -- We can detect the license for the project using a combination of `licensee`
   -- and reading the license directly out of the Spago file.
   license <- detectLicense files
 
+  -- TODO: Implement!
+  --
   -- We can pull dependencies from the bower.json or spago.dhall files. If both
   -- files are present, but their dependencies differ, then we use the file with
   -- newer dependencies; presumably, it's the more up-to-date file.
@@ -396,14 +392,7 @@ constructRawManifest package version address = do
     dependencies = Object.empty
     devDependencies = Object.empty
 
-  pure
-    { name: package
-    , version
-    , repository: address
-    , license
-    , dependencies
-    , devDependencies
-    }
+  pure { license, dependencies, devDependencies }
   where
   detectLicense :: _ -> ExceptT ImportError Aff (Array String)
   detectLicense { licenseFile, bowerJson, packageJson, spagoJson } = do
