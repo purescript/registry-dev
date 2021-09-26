@@ -13,9 +13,10 @@ import Data.Map as Map
 import Data.Newtype as Newtype
 import Data.Time.Duration (Hours)
 import Effect.Now (nowDateTime) as Time
+import Foreign.Jsonic as Jsonic
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
-import Registry.Scripts.LegacyImport.Error (ImportError, ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion, ResourceError)
+import Registry.Scripts.LegacyImport.Error (ImportError, ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion)
 import Registry.Scripts.LegacyImport.Error as LegacyImport.Error
 
 type ProcessedPackages k a =
@@ -171,27 +172,41 @@ filterFailedPackageVersions shouldAccept (PackageFailures failures) toPackageNam
 
   Map.filter (not Map.isEmpty) <<< skipFailedVersions
 
+type Serialize e a =
+  { encode :: a -> String
+  , decode :: String -> Either e a
+  }
+
+jsonSerializer :: forall a. Json.EncodeJson a => Json.DecodeJson a => Serialize String a
+jsonSerializer =
+  { encode: Json.encodeJson >>> Json.stringifyWithIndent 2
+  , decode: (Jsonic.parseJson >=> Json.decodeJson) >>> lmap Json.printJsonDecodeError
+  }
+
+stringSerializer :: Serialize String String
+stringSerializer = { encode: identity, decode: pure }
+
 -- | Optionally-expirable cache: when passing a Duration then we'll consider
 -- | the object expired if its lifetime is past the duration.
 -- | Otherwise, this will behave like a write-only cache.
 withCache
-  :: forall a
-   . Json.DecodeJson a
-  => Json.EncodeJson a
-  => FilePath
+  :: forall e a
+   . Serialize e a
+  -> FilePath
   -> Maybe Hours
   -> ExceptT ImportError Aff a
   -> ExceptT ImportError Aff a
-withCache path maybeDuration action = do
+withCache { encode, decode } path maybeDuration action = do
   let
     cacheFolder = ".cache"
     objectPath = cacheFolder <> "/" <> path
-    fromJson = Json.jsonParser >=> (Json.decodeJson >>> lmap Json.printJsonDecodeError)
+
     onCacheMiss = do
       log $ "No cache hit for " <> show path
       result <- action
-      lift $ writeJsonFile objectPath result
+      liftAff $ FS.writeTextFile UTF8 objectPath (encode result)
       pure result
+
     isCacheHit = liftAff do
       exists <- FS.exists objectPath
       expired <- case exists, maybeDuration of
@@ -208,11 +223,10 @@ withCache path maybeDuration action = do
 
   isCacheHit >>= case _ of
     true -> do
-      strResult <- lift $ FS.readTextFile UTF8 objectPath
-      case fromJson strResult of
+      result <- liftAff $ FS.readTextFile UTF8 objectPath
+      case decode result of
+        Left _ -> onCacheMiss
         Right res -> pure res
-        Left err -> do
-          log $ "Unable to read cache file " <> err
-          onCacheMiss
+
     false -> do
       onCacheMiss

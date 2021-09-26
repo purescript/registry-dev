@@ -58,6 +58,8 @@ newtype RawVersion = RawVersion String
 derive instance Newtype RawVersion _
 derive newtype instance Eq RawVersion
 derive newtype instance Ord RawVersion
+derive newtype instance Json.EncodeJson RawVersion
+derive newtype instance Json.DecodeJson RawVersion
 
 -- | An error representing why a package version cannot be imported from the
 -- | Bower registry.
@@ -98,7 +100,7 @@ printImportErrorKey = case _ of
 -- | An error
 type ResourceError = { resource :: RemoteResource, error :: RequestError }
 
-data RequestError = BadRequest | BadStatus Int
+data RequestError = BadRequest | BadStatus Int | DecodeError String
 
 derive instance Generic RequestError _
 

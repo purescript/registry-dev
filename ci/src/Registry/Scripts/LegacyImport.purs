@@ -20,12 +20,14 @@ import Data.Time.Duration (Hours(..))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Class.Console (logShow)
+import Foreign.Dhall as Dhall
 import Foreign.GitHub as GitHub
-import Foreign.Jsonic as Jsonic
+import Foreign.Licensee as Licensee
 import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
+import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Registry.Index (RegistryIndex, insertManifest)
 import Registry.PackageName (PackageName)
@@ -34,6 +36,8 @@ import Registry.Schema (Repo(..), Manifest)
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
 import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
 import Registry.Scripts.LegacyImport.Process as Process
+import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)
+import Registry.Scripts.LegacyImport.SpagoJson as SpagoJson
 import Registry.Scripts.LegacyImport.Stats as Stats
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as StringParser
@@ -63,6 +67,7 @@ type ImportM e a = ExceptT e Aff a
 
 downloadBowerRegistry :: Aff RegistryIndex
 downloadBowerRegistry = do
+  octokit <- liftEffect GitHub.mkOctokit
   bowerPackages <- readRegistryFile "bower-packages.json"
   newPackages <- readRegistryFile "new-packages.json"
 
@@ -92,7 +97,6 @@ downloadBowerRegistry = do
           Process.filterFailedPackages shouldAccept excludedPackages allPackages
       }
 
-  octokit <- liftEffect GitHub.mkOctokit
   log "Fetching package releases..."
   releaseIndex <- Process.forPackage initialPackages identity \name repoUrl -> do
     address <- case GitHub.parseRepo repoUrl of
@@ -101,7 +105,7 @@ downloadBowerRegistry = do
 
     let repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
 
-    releases <- Process.withCache repoCache (Just $ Hours 100.0) do
+    releases <- Process.withCache Process.jsonSerializer repoCache (Just $ Hours 100.0) do
       log $ "Fetching releases for package " <> un RawPackageName name
       result <- lift $ try $ GitHub.getReleases octokit address
       case result of
@@ -183,7 +187,7 @@ downloadBowerRegistry = do
 -- | Find the bower.json files associated with the package's released tags,
 -- | caching the file to avoid re-fetching each time the tool runs.
 fetchBowerfile :: RawPackageName -> GitHub.Address -> RawVersion -> ImportM ImportError Bowerfile
-fetchBowerfile name address version = bowerfileRequest name version address
+fetchBowerfile _ _ _ = throwError NoReleases
 
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
@@ -342,7 +346,7 @@ type RawManifest =
   { name :: RawPackageName
   , version :: RawVersion
   , repository :: GitHub.Address
-  , license :: Maybe String
+  , license :: Array String
   , dependencies :: Object String
   , devDependencies :: Object String
   }
@@ -355,56 +359,128 @@ constructRawManifest
   -> RawVersion
   -> GitHub.Address
   -> ExceptT ImportError Aff RawManifest
-constructRawManifest _ _ _ = throwError NoReleases
+constructRawManifest package version address = do
+  -- We can construct a manifest from a package's bowerfile, package.json file,
+  -- spago.dhall file, and/or LICENSE files. A package doesn't need to have all
+  -- of these files; several of these files duplicate information. We try to
+  -- fetch all files but won't throw an exception (yet) if they're missing.
+  files <- liftAff do
+    licenseFile <- Except.runExceptT $ fileRequest LicenseFile Process.stringSerializer
 
-bowerfileRequest :: RawPackageName -> RawVersion -> GitHub.Address -> ExceptT ImportError Aff Bowerfile
-bowerfileRequest package version address = do
-  body <- fileRequest BowerJson Nothing package version address
-  case Jsonic.parseJson body >>= Json.decodeJson of
-    Left decodeError -> do
-      let printed = Json.printJsonDecodeError decodeError
-      log $ i "Unable to decode Bowerfile because of a decoding error: "
-      log printed
-      log $ i "arising from the file contents: "
-      log body
-      throwError $ MalformedBowerJson { error: printed, contents: body }
+    bowerJson <- do
+      let (serialize :: Process.Serialize _ Bowerfile) = Process.jsonSerializer
+      Except.runExceptT $ fileRequest BowerJson serialize
 
-    Right bowerfile ->
-      pure bowerfile
+    packageJson <- do
+      let (serialize :: Process.Serialize _ (Object String)) = Process.jsonSerializer
+      Except.runExceptT $ fileRequest PackageJson serialize
 
-fileRequest
-  :: FileResource
-  -> Maybe Hours
-  -> RawPackageName
-  -> RawVersion
-  -> GitHub.Address
-  -> ExceptT ImportError Aff String
-fileRequest resource cacheExpiry package version address = do
+    spagoJson <- Except.runExceptT requestSpagoJson
+
+    pure { licenseFile, bowerJson, packageJson, spagoJson }
+
+  -- We can detect the license for the project using a combination of Licensee
+  -- and reading the license directly out of the Spago file.
+  license <- detectLicense files
+
+  -- We can pull dependencies from the bower.json or spago.dhall files. If both
+  -- files are present, but their dependencies differ, then we use the file with
+  -- newer dependencies; presumably, it's the more up-to-date file.
+  --
+  -- Since Bower users typically use ranges, but package sets use precise versions,
+  -- we check to see whether one uses later major versions than the other does.
+  --
+  -- If the files differ but it isn't clear which file is newer, then we prefer
+  -- the Bower file since it's the legacy format used for package publishing.
   let
-    name = un RawPackageName package
-    tag = un RawVersion version
-    filePath = fileResourcePath resource
-    url = i "https://raw.githubusercontent.com/" address.owner "/" address.repo "/" tag "/" filePath
-    fileCacheName = String.replace (String.Pattern ".") (String.Replacement "_") filePath
-    cacheKey = i fileCacheName "__" name "__" tag
-    mkError = ResourceError <<< { resource: FileResource resource, error: _ }
+    dependencies = Object.empty
+    devDependencies = Object.empty
 
-  Process.withCache cacheKey cacheExpiry do
-    liftAff (Http.get ResponseFormat.string url) >>= case _ of
-      -- TODO: We should retry requests if they fail, because likely GitHub
-      -- rate-limited us. Or at least we should collect the errors and print them
-      -- out because it's quite possible the Bowerfile actually does work and
-      -- we could have more granular errors to avoid excluding those packages.
-      Left error -> do
-        let printed = Http.printError error
-        log $ i "Unable to retrieve " filePath " because the request failed: " printed
-        throwError $ mkError BadRequest
-      Right { status: StatusCode status, body }
-        | status == 404 -> do
-            log $ i "Unable to retrieve " filePath " because none exists (404 error)."
-            throwError $ mkError $ BadStatus status
-        | status /= 200 -> do
-            log $ i "Unable to retrieve " filePath " because of a bad status code: " body
-            throwError $ mkError $ BadStatus status
-        | otherwise ->
-            pure body
+  pure
+    { name: package
+    , version
+    , repository: address
+    , license
+    , dependencies
+    , devDependencies
+    }
+  where
+  detectLicense :: _ -> ExceptT ImportError Aff (Array String)
+  detectLicense { licenseFile, bowerJson, packageJson, spagoJson } = do
+    licenseeResult <- liftAff $ Licensee.detectFiles $ Array.catMaybes $ map hush
+      [ bowerJson <#> Json.encodeJson >>> { name: "bower.json", contents: _ }
+      , packageJson <#> Json.encodeJson >>> { name: "package.json", contents: _ }
+      , licenseFile <#> Json.fromString >>> { name: "LICENSE", contents: _ }
+      ]
+
+    detectedLicenses <- case licenseeResult of
+      Left err -> do
+        log $ "Licensee decoding error, ignoring: " <> err
+        pure []
+      Right { licenses: licenseArray } ->
+        pure $ map _.spdx_id licenseArray
+
+    spagoLicense <- case SpagoJson.license =<< hush spagoJson of
+      Nothing -> pure []
+      Just license -> pure [ license ]
+
+    pure $ Array.concat [ detectedLicenses, spagoLicense ]
+
+  -- Attempt to construct a Spago JSON file by fetching the spago.dhall and
+  -- packages.dhall files and converting them to JSON with dhall-to-json.
+  requestSpagoJson :: ExceptT ImportError Aff SpagoJson
+  requestSpagoJson = do
+    spagoDhall <- fileRequest SpagoDhall Process.stringSerializer
+    packagesDhall <- fileRequest PackagesDhall Process.stringSerializer
+
+    tmp <- liftEffect Tmp.mkTmpDir
+    liftAff $ FS.writeTextFile UTF8 (tmp <> "/packages.dhall") packagesDhall
+
+    spagoJson <- do
+      let
+        mkError = ResourceError <<< { resource: FileResource SpagoDhall, error: _ } <<< DecodeError
+        runDhallJson = Dhall.dhallToJson { dhall: spagoDhall, cwd: Just tmp }
+
+      Except.mapExceptT (map (lmap mkError))
+        $ Except.ExceptT
+        $ map (_ >>= (Json.decodeJson >>> lmap Json.printJsonDecodeError)) runDhallJson
+
+    liftAff $ FS.rmdir tmp
+    pure spagoJson
+
+  -- Request a file from the remote repository associated with the package
+  -- version. Files will be cached using the provided serializer and
+  -- will be read from the cache up to the cache expiry time given in `Hours`.
+  fileRequest :: forall a. FileResource -> Process.Serialize String a -> ExceptT ImportError Aff a
+  fileRequest resource serialize = do
+    let
+      name = un RawPackageName package
+      tag = un RawVersion version
+      filePath = fileResourcePath resource
+      url = i "https://raw.githubusercontent.com/" address.owner "/" address.repo "/" tag "/" filePath
+      fileCacheName = String.replace (String.Pattern ".") (String.Replacement "_") filePath
+      cacheKey = i fileCacheName "__" name "__" tag
+      mkError = ResourceError <<< { resource: FileResource resource, error: _ }
+
+    Process.withCache serialize cacheKey Nothing do
+      liftAff (Http.get ResponseFormat.string url) >>= case _ of
+        Left error -> do
+          let printed = Http.printError error
+          log $ i "Unable to retrieve " filePath " because the request failed: " printed
+          throwError $ mkError BadRequest
+        Right { status: StatusCode status, body }
+          | status == 404 -> do
+              log $ i "Unable to retrieve " filePath " because none exists (404 error)."
+              throwError $ mkError $ BadStatus status
+          | status /= 200 -> do
+              log $ i "Unable to retrieve " filePath " because of a bad status code: " body
+              throwError $ mkError $ BadStatus status
+          | otherwise -> case serialize.decode body of
+              Left failure -> do
+                log $ i "Failed to decode " filePath ":"
+                log failure
+                log $ i "  arising from the body of the request:"
+                log body
+                throwError $ mkError $ DecodeError failure
+              Right result ->
+                pure result

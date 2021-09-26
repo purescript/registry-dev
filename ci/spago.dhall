@@ -1,4 +1,5 @@
 { name = "registry-ci"
+, license = "MIT"
 , dependencies =
   [ "aff"
   , "aff-promise"
