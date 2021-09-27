@@ -1,4 +1,4 @@
-module Registry.Scripts.LegacyImport.ManifestFields where
+module Registry.Scripts.BowerImport.ManifestFields where
 
 import Registry.Prelude
 

@@ -1,4 +1,4 @@
-module Registry.Scripts.LegacyImport.Stats
+module Registry.Scripts.BowerImport.Stats
   ( errorStats
   , prettyPrintStats
   , logStats
@@ -19,8 +19,8 @@ import Data.Map (SemigroupMap(..))
 import Data.Map as Map
 import Data.Monoid.Additive (Additive(..))
 import Data.Set as Set
-import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey(..), ManifestError, ManifestErrorKey(..), PackageFailures(..), RawPackageName, RawVersion, manifestErrorKey, printManifestErrorKey)
-import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
+import Registry.Scripts.BowerImport.Error (ImportError(..), ImportErrorKey(..), ManifestError, ManifestErrorKey(..), PackageFailures(..), RawPackageName, RawVersion, manifestErrorKey, printManifestErrorKey)
+import Registry.Scripts.BowerImport.Process (ProcessedPackageVersions)
 import Safe.Coerce (coerce)
 
 newtype ErrorCounts = ErrorCounts

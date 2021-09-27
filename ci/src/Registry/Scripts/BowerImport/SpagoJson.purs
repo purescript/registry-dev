@@ -1,4 +1,4 @@
-module Registry.Scripts.LegacyImport.SpagoJson
+module Registry.Scripts.BowerImport.SpagoJson
   ( SpagoJson
   , toManifestFields
   ) where
@@ -11,8 +11,8 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
 import Foreign.Object as Object
-import Registry.Scripts.LegacyImport.Error (RawPackageName(..), RawVersion(..))
-import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
+import Registry.Scripts.BowerImport.Error (RawPackageName(..), RawVersion(..))
+import Registry.Scripts.BowerImport.ManifestFields (ManifestFields)
 
 toManifestFields :: SpagoJson -> ManifestFields
 toManifestFields spago@(SpagoJson { license }) =

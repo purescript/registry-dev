@@ -1,4 +1,4 @@
-module Registry.Scripts.LegacyImport.Bowerfile
+module Registry.Scripts.BowerImport.Bowerfile
   ( Bowerfile(..)
   , toManifestFields
   ) where
@@ -10,7 +10,7 @@ import Data.Argonaut (Json, (.:?))
 import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
-import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
+import Registry.Scripts.BowerImport.ManifestFields (ManifestFields)
 
 toManifestFields :: Bowerfile -> ManifestFields
 toManifestFields (Bowerfile fields) = fields

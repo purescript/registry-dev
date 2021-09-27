@@ -19,5 +19,5 @@ $ nix-shell
 You can execute the legacy registry import script with the following command:
 
 ```console
-$ spago run -m Registry.Scripts.LegacyImport
+$ spago run -m Registry.Scripts.BowerImport
 ```
