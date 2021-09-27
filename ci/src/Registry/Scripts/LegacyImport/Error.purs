@@ -66,14 +66,13 @@ derive newtype instance Json.DecodeJson RawVersion
 data ImportError
   = InvalidGitHubRepo String
   | ResourceError ResourceError
-  | NoReleases
   | MalformedPackageName String
-  | MissingBowerfile
-  | MalformedBowerJson { error :: String, contents :: String }
+  | NoDependencyFiles
   | NonRegistryDependencies (NonEmptyArray RawPackageName)
   | NoManifests
   | ManifestError (NonEmptyArray ManifestError)
 
+derive instance Eq ImportError
 derive instance Generic ImportError _
 
 instance Json.EncodeJson ImportError where
@@ -89,19 +88,19 @@ printImportErrorKey :: ImportError -> ImportErrorKey
 printImportErrorKey = case _ of
   InvalidGitHubRepo _ -> ImportErrorKey "invalidGitHubRepo"
   ResourceError _ -> ImportErrorKey "resourceError"
-  NoReleases -> ImportErrorKey "noReleases"
   MalformedPackageName _ -> ImportErrorKey "malformedPackageName"
-  MissingBowerfile -> ImportErrorKey "missingBowerfile"
-  MalformedBowerJson _ -> ImportErrorKey "malformedBowerJson"
+  NoDependencyFiles -> ImportErrorKey "noDependencyFiles"
   NonRegistryDependencies _ -> ImportErrorKey "nonRegistryDependencies"
   NoManifests -> ImportErrorKey "noManifests"
   ManifestError _ -> manifestErrorKey
 
--- | An error
+-- | An error fetching a resource necessary to produce a Manifest for a
+-- | given package.
 type ResourceError = { resource :: RemoteResource, error :: RequestError }
 
 data RequestError = BadRequest | BadStatus Int | DecodeError String
 
+derive instance Eq RequestError
 derive instance Generic RequestError _
 
 instance Json.EncodeJson RequestError where
@@ -119,6 +118,7 @@ data ManifestError
   | InvalidDependencyNames (NonEmptyArray String)
   | BadDependencyVersions (NonEmptyArray { dependency :: PackageName, failedBounds :: String })
 
+derive instance Eq ManifestError
 derive instance Generic ManifestError _
 
 instance Json.EncodeJson ManifestError where
@@ -147,9 +147,11 @@ printManifestErrorKey = ManifestErrorKey <<< case _ of
 encodingOptions :: Json.Generic.Encoding
 encodingOptions = Json.Generic.defaultEncoding { unwrapSingleArguments = true }
 
--- | A resource required
+-- | A resource required for a package that has to be requested from a non-local
+-- | location.
 data RemoteResource = APIResource APIResource | FileResource FileResource
 
+derive instance Eq RemoteResource
 derive instance Generic RemoteResource _
 
 instance Json.EncodeJson RemoteResource where
@@ -158,8 +160,10 @@ instance Json.EncodeJson RemoteResource where
 instance Json.DecodeJson RemoteResource where
   decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
 
+-- | A resource that has to be fetched via an API
 data APIResource = GitHubReleases
 
+derive instance Eq APIResource
 derive instance Generic APIResource _
 
 instance Json.EncodeJson APIResource where
@@ -168,6 +172,7 @@ instance Json.EncodeJson APIResource where
 instance Json.DecodeJson APIResource where
   decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
 
+-- | A resource that has to be fetched via donwloading the relevant file
 data FileResource
   = BowerJson
   | SpagoDhall
@@ -175,6 +180,7 @@ data FileResource
   | PackageJson
   | LicenseFile
 
+derive instance Eq FileResource
 derive instance Generic FileResource _
 
 instance Json.EncodeJson FileResource where

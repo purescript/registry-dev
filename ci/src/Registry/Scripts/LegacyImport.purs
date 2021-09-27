@@ -6,6 +6,7 @@ import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Except as Except
+import Control.Parallel (parallel, sequential)
 import Data.Argonaut as Json
 import Data.Array (catMaybes)
 import Data.Array as Array
@@ -35,7 +36,7 @@ import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile)
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
-import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
+import Registry.Scripts.LegacyImport.Error (APIResource(..), FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)
@@ -55,7 +56,7 @@ main = Aff.launchAff_ do
   _ <- Dotenv.loadFile
 
   log "Starting import from legacy registries..."
-  registry <- downloadBowerRegistry
+  registry <- downloadLegacyRegistry
 
   let indexPath = "registry-index"
   log $ "Writing registry index to " <> indexPath
@@ -65,39 +66,15 @@ main = Aff.launchAff_ do
   for_ registry \semVer -> for_ semVer (insertManifest indexPath)
   log "Done!"
 
-type ImportM e a = ExceptT e Aff a
-
-downloadBowerRegistry :: Aff RegistryIndex
-downloadBowerRegistry = do
+downloadLegacyRegistry :: Aff RegistryIndex
+downloadLegacyRegistry = do
   octokit <- liftEffect GitHub.mkOctokit
   bowerPackages <- readRegistryFile "bower-packages.json"
   newPackages <- readRegistryFile "new-packages.json"
 
   let
-    handleError _ = do
-      log "bower-exclusions.json does not exist, writing..."
-      let failures = PackageFailures Map.empty
-      writeJsonFile "bower-exclusions.json" failures
-      pure (Right failures)
-
-  excludedPackages <- Except.catchError (readJsonFile "bower-exclusions.json") handleError >>= case _ of
-    Left error -> throwError $ Aff.error $ Json.printJsonDecodeError error
-    Right (failures :: PackageFailures) -> pure failures
-
-  let
     allPackages = Map.union bowerPackages newPackages
-    initialPackages =
-      { failures: excludedPackages
-      , packages: do
-          -- We preemptively filter out packages we can't cache releases for.
-          let
-            shouldAccept = case _ of
-              NoReleases -> false
-              InvalidGitHubRepo _ -> false
-              _ -> true
-
-          Process.filterFailedPackages shouldAccept excludedPackages allPackages
-      }
+    initialPackages = { failures: PackageFailures Map.empty, packages: allPackages }
 
   log "Fetching package releases..."
   releaseIndex <- Process.forPackage initialPackages identity \name repoUrl -> do
@@ -105,36 +82,31 @@ downloadBowerRegistry = do
       Left err -> throwError $ InvalidGitHubRepo $ StringParser.printParserError err
       Right address -> pure address
 
-    let repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
+    let
+      repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
+      mkError = ResourceError <<< { resource: APIResource GitHubReleases, error: _ }
 
-    releases <- Process.withCache Process.jsonSerializer repoCache (Just $ Hours 100.0) do
+      -- We'll cache any failure related to GitHub releases to avoid re-making
+      -- requests.
+      cacheFailure = case _ of
+        ResourceError { resource: APIResource GitHubReleases } -> true
+        _ -> false
+
+    releases <- Process.withCache Process.jsonSerializer cacheFailure repoCache (Just $ Hours 24.0) do
       log $ "Fetching releases for package " <> un RawPackageName name
       result <- lift $ try $ GitHub.getReleases octokit address
       case result of
-        Left err -> logShow err *> throwError NoReleases
+        Left err -> logShow err *> throwError (mkError $ DecodeError $ Aff.message err)
         Right v -> pure v
 
     versions <- case NEA.fromArray releases of
-      Nothing -> throwError NoReleases
+      Nothing -> throwError $ mkError $ DecodeError "No releases returned from the GitHub API."
       Just arr -> pure $ Map.fromFoldable $ map (\tag -> Tuple (RawVersion tag.name) unit) arr
 
     pure $ Tuple { name, address } versions
 
-  let
-    validBower = releaseIndex
-      { packages = do
-          -- We filter out package versions we can't cache a bowerfile for.
-          let
-            shouldAccept = case _ of
-              MissingBowerfile -> false
-              MalformedBowerJson _ -> false
-              _ -> true
-
-          Process.filterFailedPackageVersions shouldAccept releaseIndex.failures _.name releaseIndex.packages
-      }
-
   log "Parsing names and versions..."
-  packageRegistry <- Process.forPackageVersionKeys validBower _.name identity \{ name, address } tag -> do
+  packageRegistry <- Process.forPackageVersionKeys releaseIndex _.name identity \{ name, address } tag -> do
     packageName <- case PackageName.parse $ un RawPackageName name of
       Left err ->
         throwError $ MalformedPackageName $ StringParser.printParserError err
@@ -155,14 +127,19 @@ downloadBowerRegistry = do
 
   log "Converting to manifests..."
   let forPackageRegistry = Process.forPackageVersion packageRegistry _.original _.original
-  manifestRegistry <- forPackageRegistry \{ name, original: nameOriginal, address } tag _ -> do
-    manifestFields <- constructRawManifest nameOriginal tag.original address
+  manifestRegistry <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
+    manifestFields <- constructManifestFields originalName tag.original address
 
     let
       repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
       liftError = map (lmap ManifestError)
 
     Except.mapExceptT liftError $ toManifest name repo tag.semVer manifestFields
+
+  log "Checking dependencies are self-contained..."
+  containedRegistry <- Process.forPackageVersion manifestRegistry _.original _.original \_ _ manifest -> do
+    _ <- selfContainedDependencies (Map.keys allPackages) manifest
+    pure manifest
 
   let
     registryIndex :: RegistryIndex
@@ -172,7 +149,7 @@ downloadBowerRegistry = do
         packageManifests =
           map (lmap _.name)
             $ map (map (Map.fromFoldable <<< map (lmap _.semVer) <<< (Map.toUnfoldable :: _ -> Array _)))
-            $ Map.toUnfoldable manifestRegistry.packages
+            $ Map.toUnfoldable containedRegistry.packages
 
       Map.fromFoldable packageManifests
 
@@ -181,18 +158,23 @@ downloadBowerRegistry = do
   Stats.logStats $ Stats.errorStats manifestRegistry
   pure registryIndex
 
--- | FIXME: This is currently disabled and needs to be re-added.
+-- | TODO: This check can't be done on a per-package basis without ordering.
+-- | It requires that everything is first topographically-sorted.
 -- |
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
-selfContainedDependencies :: Set RawPackageName -> ManifestFields -> ImportM ImportError Unit
-selfContainedDependencies registry ({ dependencies, devDependencies }) = do
-  let allDeps = Object.keys $ dependencies <> devDependencies
+selfContainedDependencies :: Set RawPackageName -> Manifest -> ExceptT ImportError Aff Unit
+selfContainedDependencies registry { targets } = do
+  let
+    allDeps :: Array RawPackageName
+    allDeps = coerce $ Array.nub $ Array.foldMap (Object.keys <<< _.dependencies) $ Object.values targets
+
   outsideDeps <- for allDeps \packageName -> do
-    name <- cleanPackageName $ RawPackageName packageName
+    name <- cleanPackageName packageName
     pure $ if Set.member name registry then Nothing else Just name
+
   for_ (NEA.fromArray $ Array.catMaybes outsideDeps) \outside ->
-    throwError $ NonRegistryDependencies $ coerce outside
+    throwError $ NonRegistryDependencies outside
 
 -- | Convert a package from Bower to a Manifest.
 -- This function is written a bit awkwardly because we want to collect validation
@@ -202,7 +184,7 @@ toManifest
   -> Repo
   -> SemVer
   -> ManifestFields
-  -> ImportM (NonEmptyArray ManifestError) Manifest
+  -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
 toManifest package repository version manifest = do
   let
     mkError :: forall a. ManifestError -> Either (NonEmptyArray ManifestError) a
@@ -313,7 +295,7 @@ toManifest package repository version manifest = do
 --
 -- Example:
 -- https://github.com/newlandsvalley/purescript-abc-parser/blob/1.1.2/bower.json
-cleanPackageName :: RawPackageName -> ImportM ImportError RawPackageName
+cleanPackageName :: RawPackageName -> ExceptT ImportError Aff RawPackageName
 cleanPackageName (RawPackageName name) = do
   let
     split = String.split (String.Pattern "/") <<< coerce
@@ -339,53 +321,66 @@ readRegistryFile source = do
 -- | Attempt to construct the basic fields necessary for a manifest file by reading
 -- | the package version's bower.json, spago.dhall, package.json, and LICENSE
 -- | files, if present.
-constructRawManifest
+constructManifestFields
   :: RawPackageName
   -> RawVersion
   -> GitHub.Address
   -> ExceptT ImportError Aff ManifestFields
-constructRawManifest package version address = do
+constructManifestFields package version address = do
   -- We can construct a manifest from a package's bowerfile, package.json file,
   -- spago.dhall file, and/or LICENSE files. A package doesn't need to have all
   -- of these files; several of these files duplicate information. We try to
   -- fetch all files but won't throw an exception (yet) if they're missing.
-  files <- liftAff do
-    licenseFile <- Except.runExceptT $ fileRequest LicenseFile Process.stringSerializer
+  files <- liftAff $ sequential ado
+    licenseFile <- parallel $ Except.runExceptT $ fileRequest LicenseFile Process.stringSerializer
 
     bowerJson <- do
       let (serialize :: Process.Serialize _ Bowerfile) = Process.jsonSerializer
-      Except.runExceptT $ fileRequest BowerJson serialize
+      parallel $ Except.runExceptT $ fileRequest BowerJson serialize
 
     packageJson <- do
-      let (serialize :: Process.Serialize _ (Object String)) = Process.jsonSerializer
-      Except.runExceptT $ fileRequest PackageJson serialize
+      let (serialize :: Process.Serialize _ (Object Json.Json)) = Process.jsonSerializer
+      parallel $ Except.runExceptT $ fileRequest PackageJson serialize
 
-    spagoJson <- Except.runExceptT requestSpagoJson
+    spagoJson <- parallel $ Except.runExceptT requestSpagoJson
 
-    pure { licenseFile, bowerJson, packageJson, spagoJson }
+    in { licenseFile, bowerJson, packageJson, spagoJson }
 
+  -- TODO: Improve this heuristic by checking the Bower and Spago files.
+  --
+  -- We can pull dependencies from the bower.json or spago.dhall files. If both
+  -- files are present, but their dependencies differ, then we should use the
+  -- file with newer dependencies; presumably, it's the more up-to-date file.
+  --
+  -- Since Bower users typically use ranges, but package sets use precise
+  -- versions, we could check to see whether one uses later major versions
+  -- than the other does; checking minor or patch versions will be inaccurate.
+  --
+  -- If the files differ but it isn't clear which file is newer, then we should
+  -- prefer the Bower file since it's the legacy format used for package p
+  -- publishing.
+  --
+  -- For now, that's exactly what we do: use the Bower file if it is present,
+  -- and otherwise fall back to the Spago file.
   let
-    _bowerManifest = map Bowerfile.toManifestFields files.bowerJson
+    bowerManifest = map Bowerfile.toManifestFields files.bowerJson
     spagoManifest = map SpagoJson.toManifestFields files.spagoJson
+
+  { dependencies, devDependencies } <- case bowerManifest, spagoManifest of
+    Left _, Left _ -> do
+      -- TODO: We may want to report a `NonEmptyArray ImportError` so as to
+      -- report on multiple errors, such as the multiple missing files in this
+      -- situation.
+      log $ "Unable to fetch any dependencies."
+      throwError NoDependencyFiles
+    Left _, Right { dependencies, devDependencies } ->
+      pure { dependencies, devDependencies }
+    Right { dependencies, devDependencies }, _ ->
+      pure { dependencies, devDependencies }
 
   -- We can detect the license for the project using a combination of `licensee`
   -- and reading the license directly out of the Spago file.
   license <- detectLicense files spagoManifest
-
-  -- FIXME: Implement!
-  --
-  -- We can pull dependencies from the bower.json or spago.dhall files. If both
-  -- files are present, but their dependencies differ, then we use the file with
-  -- newer dependencies; presumably, it's the more up-to-date file.
-  --
-  -- Since Bower users typically use ranges, but package sets use precise versions,
-  -- we check to see whether one uses later major versions than the other does.
-  --
-  -- If the files differ but it isn't clear which file is newer, then we prefer
-  -- the Bower file since it's the legacy format used for package publishing.
-  let
-    dependencies = Object.empty
-    devDependencies = Object.empty
 
   pure { license, dependencies, devDependencies }
   where
@@ -406,31 +401,29 @@ constructRawManifest package version address = do
 
     let spagoLicense = _.license =<< hush spagoManifest
 
-    pure
-      $ map NEA.concat
-      $ NEA.fromArray
-      $ Array.catMaybes [ detectedLicenses, spagoLicense ]
+    pure $ map NEA.concat $ NEA.fromArray $ Array.catMaybes [ detectedLicenses, spagoLicense ]
 
   -- Attempt to construct a Spago JSON file by fetching the spago.dhall and
   -- packages.dhall files and converting them to JSON with dhall-to-json.
   requestSpagoJson :: ExceptT ImportError Aff SpagoJson
   requestSpagoJson = do
-    spagoDhall <- fileRequest SpagoDhall Process.stringSerializer
-    packagesDhall <- fileRequest PackagesDhall Process.stringSerializer
+    files <- sequential ado
+      spagoDhall <- parallel $ fileRequest SpagoDhall Process.stringSerializer
+      packagesDhall <- parallel $ fileRequest PackagesDhall Process.stringSerializer
+      in { spagoDhall, packagesDhall }
 
     tmp <- liftEffect Tmp.mkTmpDir
-    liftAff $ FS.writeTextFile UTF8 (tmp <> "/packages.dhall") packagesDhall
+    liftAff $ FS.writeTextFile UTF8 (tmp <> "/packages.dhall") files.packagesDhall
 
     spagoJson <- do
       let
         mkError = ResourceError <<< { resource: FileResource SpagoDhall, error: _ } <<< DecodeError
-        runDhallJson = Dhall.dhallToJson { dhall: spagoDhall, cwd: Just tmp }
+        runDhallJson = Dhall.dhallToJson { dhall: files.spagoDhall, cwd: Just tmp }
 
       Except.mapExceptT (map (lmap mkError))
         $ Except.ExceptT
         $ map (_ >>= (Json.decodeJson >>> lmap Json.printJsonDecodeError)) runDhallJson
 
-    liftAff $ FS.rmdir tmp
     pure spagoJson
 
   -- Request a file from the remote repository associated with the package
@@ -447,7 +440,21 @@ constructRawManifest package version address = do
       cacheKey = i fileCacheName "__" name "__" tag
       mkError = ResourceError <<< { resource: FileResource resource, error: _ }
 
-    Process.withCache serialize cacheKey Nothing do
+    let
+      -- We cache some failures if they relate to fetching a resource and the
+      -- failure could be temporary (for example, a `429 Too Many Requests`
+      -- error).
+      cacheFailure = case _ of
+        ResourceError { resource: FileResource _, error } -> case error of
+          BadRequest -> true
+          -- We won't re-attempt the status codes listed below, but we'll
+          -- re-attempt all others.
+          BadStatus status | status `Array.elem` [ 400, 404 ] -> true
+          BadStatus _ -> false
+          DecodeError _ -> true
+        _ -> false
+
+    Process.withCache serialize cacheFailure cacheKey Nothing do
       liftAff (Http.get ResponseFormat.string url) >>= case _ of
         Left error -> do
           let printed = Http.printError error

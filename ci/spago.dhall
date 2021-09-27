@@ -35,6 +35,7 @@
   , "now"
   , "nullable"
   , "ordered-collections"
+  , "parallel"
   , "partial"
   , "prelude"
   , "profunctor-lenses"

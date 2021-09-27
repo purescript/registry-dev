@@ -2,11 +2,11 @@ module Foreign.Licensee where
 
 import Registry.Prelude
 
+import Control.Parallel (parTraverse_)
 import Data.Argonaut as Json
 import Foreign.Jsonic as Jsonic
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
-import Node.FS.Aff as FS
 import Sunde as Process
 
 type LicenseeOutput =
@@ -28,11 +28,9 @@ type MatchedFile =
 detectFiles :: Array { name :: FilePath, contents :: Json.Json } -> Aff (Either String LicenseeOutput)
 detectFiles files = do
   tmp <- liftEffect Tmp.mkTmpDir
-  for_ files \{ name, contents } ->
+  files # parTraverse_ \{ name, contents } ->
     writeJsonFile (tmp <> "/" <> name) contents
-  result <- detect tmp
-  FS.rmdir tmp
-  pure result
+  detect tmp
 
 -- | Attempt to detect the license for the package in the given directory using
 -- | the `licensee` CLI tool.
@@ -42,9 +40,6 @@ detect directory = do
   let stdin = Nothing
   let args = [ "detect", "--json", directory ]
   result <- Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
-  pure $ case result.exit of
-    NodeProcess.Normally 0 -> lmap Json.printJsonDecodeError do
-      json <- Jsonic.parseJson result.stdout
-      Json.decodeJson json
-    _ ->
-      throwError result.stderr
+  pure $ lmap Json.printJsonDecodeError do
+    json <- Jsonic.parseJson result.stdout
+    Json.decodeJson json

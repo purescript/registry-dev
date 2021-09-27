@@ -6,7 +6,6 @@ import Control.Apply (lift2)
 import Control.Monad.Except as Except
 import Control.Monad.State as State
 import Data.Argonaut as Json
-import Data.Array.NonEmpty as NEA
 import Data.DateTime (adjust) as Time
 import Data.JSDate as JSDate
 import Data.Map as Map
@@ -125,53 +124,6 @@ insertFailure key value failures = do
   let insert = Map.insertWith (Map.unionWith (lift2 Map.union)) key value
   Newtype.over PackageFailures insert failures
 
--- | Remove failing packages from the set of available packages to process
-filterFailedPackages
-  :: forall v
-   . (ImportError -> Boolean)
-  -> PackageFailures
-  -> Map RawPackageName v
-  -> Map RawPackageName v
-filterFailedPackages shouldAccept (PackageFailures failures) = do
-  let
-    failedPackages :: Map RawPackageName (Either ImportError (Map RawVersion ImportError))
-    failedPackages = Map.unions $ Map.values failures
-
-  Map.filterKeys \package -> case Map.lookup package failedPackages of
-    Nothing -> true
-    Just (Left error) -> shouldAccept error
-    Just (Right errors) -> all shouldAccept errors
-
--- | Remove failing package versions from the set of available package versions
--- | to process. This will also remove packages that no longer have any versions
--- | after the filter is applied.
-filterFailedPackageVersions
-  :: forall k v
-   . Ord k
-  => (ImportError -> Boolean)
-  -> PackageFailures
-  -> (k -> RawPackageName)
-  -> Map k (Map RawVersion v)
-  -> Map k (Map RawVersion v)
-filterFailedPackageVersions shouldAccept (PackageFailures failures) toPackageName = do
-  let
-    failedPackages :: Map RawPackageName (Either ImportError (Map RawVersion ImportError))
-    failedPackages =
-      fromMaybe Map.empty
-        $ map (NEA.foldl1 (Map.unionWith (lift2 Map.union)))
-        $ NEA.fromFoldable
-        $ Map.values failures
-
-    skipFailedVersions = Map.mapMaybeWithKey \key rawVersions -> Just do
-      let package = toPackageName key
-      rawVersions # Map.filterKeys \_ ->
-        case Map.lookup package failedPackages of
-          Nothing -> true
-          Just (Left error) -> shouldAccept error
-          Just (Right errors) -> all shouldAccept errors
-
-  Map.filter (not Map.isEmpty) <<< skipFailedVersions
-
 type Serialize e a =
   { encode :: a -> String
   , decode :: String -> Either e a
@@ -186,30 +138,40 @@ jsonSerializer =
 stringSerializer :: Serialize String String
 stringSerializer = { encode: identity, decode: pure }
 
--- FIXME: This needs to do something about when the action throws an exception,
--- maybe so that we don't have to do the manual `filterFailedPackages` later on?
--- That would make things WAY better.
---
 -- | Optionally-expirable cache: when passing a Duration then we'll consider
 -- | the object expired if its lifetime is past the duration.
 -- | Otherwise, this will behave like a write-only cache.
 withCache
   :: forall e a
    . Serialize e a
+  -> (ImportError -> Boolean)
   -> FilePath
   -> Maybe Hours
   -> ExceptT ImportError Aff a
   -> ExceptT ImportError Aff a
-withCache { encode, decode } path maybeDuration action = do
+withCache { encode, decode } cacheFailure path maybeDuration action = do
   let
     cacheFolder = ".cache"
     objectPath = cacheFolder <> "/" <> path
 
     onCacheMiss = do
       log $ "No cache hit for " <> show path
-      result <- action
-      liftAff $ FS.writeTextFile UTF8 objectPath (encode result)
-      pure result
+
+      let
+        writeEncoded :: Either ImportError String -> Aff Unit
+        writeEncoded = writeJsonFile objectPath
+
+      liftAff (Except.runExceptT action) >>= case _ of
+        Right result -> do
+          liftAff $ writeEncoded $ Right $ encode result
+          pure result
+        -- We want to cache some files that we process, even if they fail, so that
+        -- we don't attempt to process them again.
+        Left importError | cacheFailure importError -> do
+          liftAff $ writeEncoded $ Left importError
+          throwError importError
+        Left importError ->
+          throwError importError
 
     isCacheHit = liftAff do
       exists <- FS.exists objectPath
@@ -227,10 +189,18 @@ withCache { encode, decode } path maybeDuration action = do
 
   isCacheHit >>= case _ of
     true -> do
-      result <- liftAff $ FS.readTextFile UTF8 objectPath
-      case decode result of
-        Left _ -> onCacheMiss
-        Right res -> pure res
+      result :: Either _ (Either ImportError String) <- liftAff $ readJsonFile objectPath
+      case result of
+        Left error -> do
+          log $ "Cache read failed: " <> Json.printJsonDecodeError error
+          onCacheMiss
+        Right (Left importError) ->
+          throwError importError
+        Right (Right res) -> case decode res of
+          Left _ ->
+            onCacheMiss
+          Right a ->
+            pure a
 
     false -> do
       onCacheMiss
