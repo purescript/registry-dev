@@ -4,13 +4,17 @@ import Registry.Prelude
 
 import Control.Apply (lift2)
 import Control.Monad.Except as Except
-import Control.Monad.State as State
+import Control.Parallel as Parallel
 import Data.Argonaut as Json
+import Data.Array as Array
 import Data.DateTime (adjust) as Time
 import Data.JSDate as JSDate
 import Data.Map as Map
 import Data.Newtype as Newtype
 import Data.Time.Duration (Hours)
+import Data.TraversableWithIndex (class TraversableWithIndex)
+import Effect.AVar as Effect.AVar
+import Effect.Aff.AVar as AVar
 import Effect.Now (nowDateTime) as Time
 import Foreign.Jsonic as Jsonic
 import Node.FS.Aff as FS
@@ -35,20 +39,25 @@ forPackage
   -> (k1 -> RawPackageName)
   -> (k1 -> a -> ExceptT ImportError Aff (Tuple k2 b))
   -> Aff (ProcessedPackages k2 b)
-forPackage input keyToPackageName f =
-  map snd $ State.runStateT iterate { failures: input.failures, packages: Map.empty }
-  where
-  iterate = forWithIndex_ input.packages \key value ->
-    lift (Except.runExceptT (f key value)) >>= case _ of
+forPackage input keyToPackageName f = do
+  var <- AVar.new { failures: input.failures, packages: Map.empty }
+  parBounded input.packages \key value ->
+    Except.runExceptT (f key value) >>= case _ of
       Left err -> do
         let
           errorType = BowerImport.Error.printImportErrorKey err
           name = keyToPackageName key
           failure = Map.singleton name (Left err)
-        State.modify \state -> state { failures = insertFailure errorType failure state.failures }
+          modify state = state { failures = insertFailure errorType failure state.failures }
+        state <- AVar.take var
+        AVar.put (modify state) var
       Right (Tuple newKey result) -> do
-        let insertPackage = Map.insert newKey result
-        State.modify \state -> state { packages = insertPackage state.packages }
+        let
+          insertPackage = Map.insert newKey result
+          modify state = state { packages = insertPackage state.packages }
+        state <- AVar.take var
+        AVar.put (modify state) var
+  AVar.read var
 
 -- | Execute the provided transform on every package in the input packages map,
 -- | at every version of that package, collecting failures into `PackageFailures`
@@ -63,25 +72,27 @@ forPackageVersion
   -> (k1 -> k2 -> a -> ExceptT ImportError Aff b)
   -> Aff (ProcessedPackageVersions k1 k2 b)
 forPackageVersion input keyToPackageName keyToTag f = do
-  Tuple _ processed <- State.runStateT iterate { failures: input.failures, packages: Map.empty }
-  pure $ processed { packages = Map.filter (not Map.isEmpty) processed.packages }
-  where
-  iterate =
-    forWithIndex_ input.packages \k1 inner ->
-      forWithIndex_ inner \k2 value -> do
-        lift (Except.runExceptT (f k1 k2 value)) >>= case _ of
-          Left err -> do
-            let
-              errorType = BowerImport.Error.printImportErrorKey err
-              name = keyToPackageName k1
-              tag = keyToTag k2
-              failure = Map.singleton name $ Right $ Map.singleton tag err
-            State.modify \state -> state { failures = insertFailure errorType failure state.failures }
-          Right result -> do
-            let
-              newPackage = Map.singleton k2 result
-              insertPackage = Map.insertWith Map.union k1 newPackage
-            State.modify \state -> state { packages = insertPackage state.packages }
+  var <- AVar.new { failures: input.failures, packages: Map.empty }
+  parBounded input.packages \k1 inner ->
+    parBounded inner \k2 value -> do
+      Except.runExceptT (f k1 k2 value) >>= case _ of
+        Left err -> do
+          let
+            errorType = BowerImport.Error.printImportErrorKey err
+            name = keyToPackageName k1
+            tag = keyToTag k2
+            failure = Map.singleton name $ Right $ Map.singleton tag err
+            modify state = state { failures = insertFailure errorType failure state.failures }
+          state <- AVar.take var
+          AVar.put (modify state) var
+        Right result -> do
+          let
+            newPackage = Map.singleton k2 result
+            insertPackage = Map.insertWith Map.union k1 newPackage
+            modify state = state { packages = insertPackage state.packages }
+          state <- AVar.take var
+          AVar.put (modify state) var
+  AVar.read var
 
 forPackageVersionKeys
   :: forall k1 k2 k3 k4 a
@@ -95,25 +106,27 @@ forPackageVersionKeys
   -> (k1 -> k2 -> ExceptT ImportError Aff (Tuple k3 k4))
   -> Aff (ProcessedPackageVersions k3 k4 a)
 forPackageVersionKeys input keyToPackageName keyToTag f = do
-  Tuple _ processed <- State.runStateT iterate { failures: input.failures, packages: Map.empty }
-  pure $ processed { packages = Map.filter (not Map.isEmpty) processed.packages }
-  where
-  iterate =
-    forWithIndex_ input.packages \k1 inner ->
-      forWithIndex_ inner \k2 value -> do
-        lift (Except.runExceptT (f k1 k2)) >>= case _ of
-          Left err -> do
-            let
-              errorType = BowerImport.Error.printImportErrorKey err
-              name = keyToPackageName k1
-              tag = keyToTag k2
-              failure = Map.singleton name $ Right $ Map.singleton tag err
-            State.modify \state -> state { failures = insertFailure errorType failure state.failures }
-          Right (Tuple k3 k4) -> do
-            let
-              newPackage = Map.singleton k4 value
-              insertPackage = Map.insertWith Map.union k3 newPackage
-            State.modify \state -> state { packages = insertPackage state.packages }
+  var <- AVar.new { failures: input.failures, packages: Map.empty }
+  parBounded input.packages \k1 inner ->
+    parBounded inner \k2 value -> do
+      Except.runExceptT (f k1 k2) >>= case _ of
+        Left err -> do
+          let
+            errorType = BowerImport.Error.printImportErrorKey err
+            name = keyToPackageName k1
+            tag = keyToTag k2
+            failure = Map.singleton name $ Right $ Map.singleton tag err
+            modify state = state { failures = insertFailure errorType failure state.failures }
+          state <- AVar.take var
+          AVar.put (modify state) var
+        Right (Tuple k3 k4) -> do
+          let
+            newPackage = Map.singleton k4 value
+            insertPackage = Map.insertWith Map.union k3 newPackage
+            modify state = state { packages = insertPackage state.packages }
+          state <- AVar.take var
+          AVar.put (modify state) var
+  AVar.read var
 
 insertFailure
   :: ImportErrorKey
@@ -199,8 +212,39 @@ withCache { encode, decode } cacheFailure path maybeDuration action = do
         Right (Right res) -> case decode res of
           Left _ ->
             onCacheMiss
-          Right a ->
+          Right a -> do
             pure a
 
     false -> do
       onCacheMiss
+
+-- | Run a computation over an indexed structure in parallel, using a bounded
+-- | queue to avoid issues with conflicts over resources like STDOUT.
+--
+-- Inspired by the work originally done in:
+-- https://github.com/natefaubion/purescript-dodo-printer/blob/540dba0442abe686c0b211868d6f423e5df81b69/test/Snapshot.purs#L54-L61
+parBounded
+  :: forall k t a b
+   . TraversableWithIndex k t
+  => (t a)
+  -> (k -> a -> Aff b)
+  -> Aff Unit
+parBounded t f = do
+  block <- AVar.empty
+  -- The number of threads here can be tweaked for performance, but push it too
+  -- high and you'll run into issues with STDOUT when using CLI tools, which are
+  -- used pervasively in processing.
+  for_ (Array.range 1 3) \_ -> do
+    liftEffect $ Effect.AVar.put unit block mempty
+  parForWithIndex_ t \k v -> do
+    AVar.take block
+    _ <- f k v
+    _ <- liftEffect $ Effect.AVar.put unit block mempty
+    pure unit
+  where
+  parForWithIndex_ t' f' =
+    void
+      $ Parallel.sequential
+      -- NOTE: This *must* use `TraversableWithIndex` instead of
+      -- `FoldableWithIndex` (ie. `forWithIndex_`) for stack safety.
+      $ forWithIndex t' (\i -> Parallel.parallel <<< f' i)

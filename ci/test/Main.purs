@@ -4,6 +4,7 @@ import Registry.Prelude
 
 import Data.Argonaut as Json
 import Data.Array.NonEmpty as NEA
+import Data.Time.Duration (Milliseconds(..))
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Jsonic as Jsonic
 import Foreign.Object as Object
@@ -15,14 +16,15 @@ import Registry.Schema (Operation(..), Repo(..))
 import Registry.Scripts.BowerImport.Bowerfile (Bowerfile(..))
 import Test.Fixtures.Manifest as Fixtures
 import Test.Foreign.Jsonic (jsonic)
+import Test.Foreign.Licensee (licensee)
 import Test.Registry.Scripts.BowerImport.Stats (errorStats)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
-import Test.Spec.Runner (runSpec)
+import Test.Spec.Runner (defaultConfig, runSpec')
 
 main :: Effect Unit
-main = launchAff_ $ runSpec [ consoleReporter ] do
+main = launchAff_ $ runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
   Spec.describe "API" do
     Spec.describe "Checks" do
       Spec.describe "Good package names" goodPackageName
@@ -38,6 +40,7 @@ main = launchAff_ $ runSpec [ consoleReporter ] do
       Spec.describe "Bad bower files" badBowerfiles
     Spec.describe "Encoding" bowerFileEncoding
   Spec.describe "Jsonic" jsonic
+  Spec.describe "Licensee" licensee
   Spec.describe "Manifest" do
     Spec.describe "Encoding" manifestEncoding
   Spec.describe "Error Stats" errorStats
