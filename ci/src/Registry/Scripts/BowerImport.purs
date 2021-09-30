@@ -160,7 +160,7 @@ downloadLegacyRegistry = do
   pure registryIndex
 
 -- | TODO: This check can't be done on a per-package basis without ordering.
--- | It requires that everything is first topographically-sorted.
+-- | It requires that all versions are topologically-sorted first.
 -- |
 -- | Verify that the dependencies listed in the bower.json files are all
 -- | contained within the registry.
