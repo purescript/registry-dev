@@ -145,7 +145,7 @@ decodeEventsToOps = do
         , fromBower: false
         }
 
-    res <- API.readOperation "test/fixtures/issue_comment.json"
+    res <- API.readOperation "test/Fixtures/issue_comment.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
   Spec.it "decodes an Addition operation" do
@@ -159,7 +159,7 @@ decodeEventsToOps = do
         , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
         }
 
-    res <- API.readOperation "test/fixtures/issue_created.json"
+    res <- API.readOperation "test/Fixtures/issue_created.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
 semVer :: Spec.Spec Unit
