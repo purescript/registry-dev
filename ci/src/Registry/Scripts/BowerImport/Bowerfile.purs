@@ -1,5 +1,5 @@
-module Registry.Scripts.BowerImport.Bowerfile
-  ( Bowerfile(..)
+module Registry.Scripts.BowerImport.BowerFile
+  ( BowerFile(..)
   , toManifestFields
   ) where
 
@@ -12,22 +12,22 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Registry.Scripts.BowerImport.ManifestFields (ManifestFields)
 
-toManifestFields :: Bowerfile -> ManifestFields
-toManifestFields (Bowerfile fields) = fields
+toManifestFields :: BowerFile -> ManifestFields
+toManifestFields (BowerFile fields) = fields
 
-newtype Bowerfile = Bowerfile ManifestFields
+newtype BowerFile = BowerFile ManifestFields
 
-derive newtype instance Eq Bowerfile
-derive newtype instance Show Bowerfile
-derive newtype instance Json.EncodeJson Bowerfile
+derive newtype instance Eq BowerFile
+derive newtype instance Show BowerFile
+derive newtype instance Json.EncodeJson BowerFile
 
-instance Json.DecodeJson Bowerfile where
+instance Json.DecodeJson BowerFile where
   decodeJson json = do
     obj <- Json.decodeJson json
     license <- decodeStringOrStringArray obj "license"
     dependencies <- fromMaybe mempty <$> obj .:? "dependencies"
     devDependencies <- fromMaybe mempty <$> obj .:? "devDependencies"
-    pure $ Bowerfile { license, dependencies, devDependencies }
+    pure $ BowerFile { license, dependencies, devDependencies }
 
 decodeStringOrStringArray
   :: Object Json

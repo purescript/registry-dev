@@ -13,7 +13,7 @@ import Foreign.SemVer as SemVer
 import Registry.API as API
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..))
-import Registry.Scripts.BowerImport.Bowerfile (Bowerfile(..))
+import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
 import Test.Fixtures.Manifest as Fixtures
 import Test.Foreign.Jsonic (jsonic)
 import Test.Foreign.Licensee (licensee)
@@ -33,11 +33,11 @@ main = launchAff_ $ runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_0
       Spec.describe "Bad SPDX licenses" badSPDXLicense
       Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
       Spec.describe "SemVer" semVer
-  Spec.describe "Bowerfile" do
+  Spec.describe "BowerFile" do
     Spec.describe "Parses" do
-      Spec.describe "Good bower files" goodBowerfiles
+      Spec.describe "Good bower files" goodBowerFiles
     Spec.describe "Does not parse" do
-      Spec.describe "Bad bower files" badBowerfiles
+      Spec.describe "Bad bower files" badBowerFiles
     Spec.describe "Encoding" bowerFileEncoding
   Spec.describe "Jsonic" jsonic
   Spec.describe "Licensee" licensee
@@ -180,33 +180,33 @@ semVer = do
 
   parseRange "^1.3.4" ">=1.3.4 <2.0.0-0"
 
-goodBowerfiles :: Spec.Spec Unit
-goodBowerfiles = do
+goodBowerFiles :: Spec.Spec Unit
+goodBowerFiles = do
   let
-    parse :: String -> Either Json.JsonDecodeError Bowerfile
+    parse :: String -> Either Json.JsonDecodeError BowerFile
     parse = Jsonic.parseJson >=> Json.decodeJson
 
-    parseBowerfile' str = Spec.it str do
+    parseBowerFile' str = Spec.it str do
       parse str `Assert.shouldSatisfy` isRight
 
-    parseBowerfile = parseBowerfile' <<< Json.stringify
+    parseBowerFile = parseBowerFile' <<< Json.stringify
 
     simpleFile = Json.encodeJson { version: "v1.0.0", license: "MIT" }
-    goodBowerfile = Json.encodeJson { version: "v1.0.0", license: "", dependencies: {} }
-    extraPropsBowerfile =
+    goodBowerFile = Json.encodeJson { version: "v1.0.0", license: "", dependencies: {} }
+    extraPropsBowerFile =
       Json.encodeJson
         { extra: "value"
         , license: "not a license"
         , version: "v1.1.1"
         }
-    nonSemverBowerfile =
+    nonSemverBowerFile =
       Json.encodeJson
         { version: "notsemver"
         , license: ""
         , dependencies: { also: "not semver" }
         , devDependencies: { lastly: "🍝" }
         }
-    completeBowerfile =
+    completeBowerFile =
       Json.encodeJson
         { version: "v1.0.1"
         , license: [ "license" ]
@@ -218,22 +218,22 @@ goodBowerfiles = do
             { "dev-dep": "v2.0.0" }
         }
 
-  parseBowerfile goodBowerfile
-  parseBowerfile simpleFile
-  parseBowerfile extraPropsBowerfile
-  parseBowerfile nonSemverBowerfile
-  parseBowerfile completeBowerfile
+  parseBowerFile goodBowerFile
+  parseBowerFile simpleFile
+  parseBowerFile extraPropsBowerFile
+  parseBowerFile nonSemverBowerFile
+  parseBowerFile completeBowerFile
 
-badBowerfiles :: Spec.Spec Unit
-badBowerfiles = do
+badBowerFiles :: Spec.Spec Unit
+badBowerFiles = do
   let
-    parse :: String -> Either Json.JsonDecodeError Bowerfile
+    parse :: String -> Either Json.JsonDecodeError BowerFile
     parse = Jsonic.parseJson >=> Json.decodeJson
 
-    failParseBowerfile' str = Spec.it str do
+    failParseBowerFile' str = Spec.it str do
       parse str `Assert.shouldNotSatisfy` isRight
 
-    failParseBowerfile = failParseBowerfile' <<< Json.stringify
+    failParseBowerFile = failParseBowerFile' <<< Json.stringify
 
     wrongLicenseFormat =
       Json.encodeJson { version: "", license: true }
@@ -246,9 +246,9 @@ badBowerfiles = do
       Json.encodeJson
         { version: "", license: "", devDependencies: ([] :: Array Int) }
 
-  failParseBowerfile wrongLicenseFormat
-  failParseBowerfile wrongDependenciesFormat
-  failParseBowerfile wrongDevDependenciesFormat
+  failParseBowerFile wrongLicenseFormat
+  failParseBowerFile wrongDependenciesFormat
+  failParseBowerFile wrongDevDependenciesFormat
 
 bowerFileEncoding :: Spec.Spec Unit
 bowerFileEncoding = do
@@ -265,6 +265,6 @@ bowerFileEncoding = do
           , Tuple "devdependency-second" "v0.0.2"
           ]
       bowerFile =
-        Bowerfile { license: NEA.fromArray [ "MIT" ], dependencies, devDependencies }
+        BowerFile { license: NEA.fromArray [ "MIT" ], dependencies, devDependencies }
     (Json.decodeJson $ Json.encodeJson bowerFile) `Assert.shouldContain` bowerFile
 
