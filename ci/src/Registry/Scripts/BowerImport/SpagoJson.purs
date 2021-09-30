@@ -30,6 +30,7 @@ packageDependencies (SpagoJson { dependencies, packages }) = do
 
   Array.foldl foldFn Object.empty dependencies
 
+-- | The output of calling `dhall-to-json` on a `spago.dhall` file
 newtype SpagoJson = SpagoJson
   { license :: Maybe String
   , dependencies :: Array RawPackageName
