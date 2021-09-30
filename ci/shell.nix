@@ -20,6 +20,7 @@ in pkgs.stdenv.mkDerivation {
     purs spago psa purs-tidy
 
     pkgs.nodejs-14_x
+
     pkgs.dhall-json
 
     pkgs.licensee
