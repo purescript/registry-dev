@@ -1,5 +1,5 @@
 { name = "registry-ci"
-, license = "MIT"
+, license = "BSD-3-Clause"
 , dependencies =
   [ "aff"
   , "aff-promise"
