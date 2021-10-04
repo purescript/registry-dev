@@ -1,4 +1,4 @@
-module Test.Fixtures.Manifest where
+module Test.Support.Manifest where
 
 import Registry.Prelude
 import Foreign.Object as Object

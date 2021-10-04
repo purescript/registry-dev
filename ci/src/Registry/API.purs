@@ -28,7 +28,6 @@ import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
 import Registry.Scripts.BowerImport as BowerImport
-import Registry.Scripts.BowerImport.BowerFile (BowerFile)
 import Registry.Scripts.BowerImport.BowerFile as BowerFile
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
@@ -166,16 +165,21 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   let manifestPath = absoluteFolderPath <> "/purs.json"
   log $ "Package extracted in " <> absoluteFolderPath
 
-  -- If we're importing from Bower then we need to convert the Bowerfile
+  -- If we're importing from Bower then we need to convert the BowerFile
   -- to a Registry Manifest
   when fromBower do
-    liftAff (readBowerfile (absoluteFolderPath <> "/bower.json")) >>= case _ of
+    liftAff (try (readJsonFile (absoluteFolderPath <> "/bower.json"))) >>= case _ of
       Left err ->
-        throwWithComment $ "Error while reading Bowerfile: " <> err
-      Right bowerfile -> do
+        throwWithComment $ "Error while reading BowerFile: " <> Aff.message err
+      Right (Left err) ->
+        throwWithComment $ "Could not decode BowerFile: " <> Json.printJsonDecodeError err
+      Right (Right bowerfile) -> do
         let
           printErrors =
             Json.stringifyWithIndent 2 <<< Json.encodeJson <<< NEA.toArray
+
+          manifestFields =
+            BowerFile.toManifestFields bowerfile
 
           runManifest =
             Except.runExceptT <<< Except.mapExceptT (liftAff <<< map (lmap printErrors))
@@ -184,9 +188,9 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
           Nothing -> throwWithComment $ "Not a valid SemVer version: " <> ref
           Just result -> pure result
 
-        runManifest (BowerImport.toManifest packageName metadata.location semVer bowerfile) >>= case _ of
+        runManifest (BowerImport.toManifest packageName metadata.location semVer manifestFields) >>= case _ of
           Left err ->
-            throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
+            throwWithComment $ "Unable to convert BowerFile to a manifest: " <> err
           Right manifest ->
             liftAff $ writeJsonFile manifestPath manifest
 
@@ -318,13 +322,3 @@ pushToMaster packageName path = Except.runExceptT do
         info result.stderr
         pure $ Right unit
       _ -> pure $ Left result.stderr
-
-readBowerfile :: String -> Aff (Either String BowerFile)
-readBowerfile path = do
-  let
-    fromJson' = BowerFile.parse >>> lmap BowerFile.printBowerFileParseError
-  ifM (not <$> FS.exists path)
-    (pure $ Left $ "Bowerfile not found at " <> path)
-    do
-      strResult <- FS.readTextFile UTF8 path
-      pure $ fromJson' strResult

@@ -26,20 +26,20 @@ examplePackageResults =
 
 exampleFailures :: PackageFailures
 exampleFailures = PackageFailures $ Map.fromFoldable
-  [ printImportErrorKey MissingBowerfile /\ missingBowerfileErrors
-  , printImportErrorKey NoReleases /\ noReleasesErrors
+  [ printImportErrorKey NoDependencyFiles /\ noDependencyFileErrors
+  , printImportErrorKey (MalformedPackageName "Pkg1") /\ malformedPackageNameErrors
   , printImportErrorKey NoManifests /\ noManifestErrors
   , manifestErrorKey /\ manifestErrors
   ]
   where
-  missingBowerfileErrors = Map.fromFoldable
+  noDependencyFileErrors = Map.fromFoldable
     [ RawPackageName "pkg1" /\ errsByVersion threeMissingFileVersions
-    , RawPackageName "pkg2" /\ errByPackage MissingBowerfile
+    , RawPackageName "pkg2" /\ errByPackage NoDependencyFiles
     ]
 
-  noReleasesErrors = Map.fromFoldable
-    [ RawPackageName "pkg2" /\ errByPackage NoReleases -- dupe package, shouldn't add to count
-    , RawPackageName "pkg3" /\ errByPackage NoReleases
+  malformedPackageNameErrors = Map.fromFoldable
+    [ RawPackageName "pkg2" /\ errByPackage (MalformedPackageName "pkg2") -- dupe package, shouldn't add to count
+    , RawPackageName "pkg3" /\ errByPackage (MalformedPackageName "pkg3")
     ]
 
   noManifestErrors = Map.fromFoldable
@@ -51,9 +51,9 @@ exampleFailures = PackageFailures $ Map.fromFoldable
     [ RawPackageName "pkg5" /\ errsByVersion twoVersionsWithManifestErrors ]
 
   threeMissingFileVersions = Map.fromFoldable
-    [ RawVersion "1.2.1" /\ MissingBowerfile
-    , RawVersion "1.2.2" /\ MissingBowerfile
-    , RawVersion "1.2.3" /\ MissingBowerfile
+    [ RawVersion "1.2.1" /\ NoDependencyFiles
+    , RawVersion "1.2.2" /\ NoDependencyFiles
+    , RawVersion "1.2.3" /\ NoDependencyFiles
     ]
 
   twoMissingManifestVersions = Map.fromFoldable
@@ -97,9 +97,9 @@ errorStats = do
     Spec.it "sums the number of each type of import, regardless of which packages or versions it occurred in" do
       exampleStats.countImportErrorsByErrorType `Assert.shouldEqual`
         Map.fromFoldable
-          [ (printImportErrorKey MissingBowerfile) /\ errCounts 4 2 3
-          , (printImportErrorKey NoReleases) /\ errCounts 2 2 0
-          , (printImportErrorKey NoManifests) /\ errCounts 3 2 3
+          [ printImportErrorKey NoDependencyFiles /\ errCounts 4 2 3
+          , printImportErrorKey (MalformedPackageName "Pkgs2") /\ errCounts 2 2 0
+          , printImportErrorKey NoManifests /\ errCounts 3 2 3
           , manifestErrorKey /\ errCounts 2 1 2
           ]
 
@@ -121,9 +121,9 @@ errorStats = do
           , "Number of successful versions: " <> show exampleStats.countOfVersionSuccesses
           , "Number of failed versions: " <> show exampleStats.countOfVersionFailures
           , "Failures by error:"
-          , "  missingBowerfile: 4 occurrences (2 packages / 3 versions)"
+          , "  noDependencyFiles: 4 occurrences (2 packages / 3 versions)"
           , "  noManifests: 3 occurrences (2 packages / 3 versions)"
-          , "  noReleases: 2 occurrences (2 packages / 0 versions)"
+          , "  malformedPackageName: 2 occurrences (2 packages / 0 versions)"
           , "  manifestError: 2 occurrences (1 packages / 2 versions)"
           , "    missingLicense: 2 occurrences (1 packages / 2 versions)"
           , "    badVersion: 1 occurrences (1 packages / 1 versions)"

@@ -1,4 +1,5 @@
 { name = "registry-ci"
+, license = "BSD-3-Clause"
 , dependencies =
   [ "aff"
   , "aff-promise"
@@ -7,6 +8,7 @@
   , "argonaut-core"
   , "argonaut-generic"
   , "arrays"
+  , "avar"
   , "bifunctors"
   , "console"
   , "control"
@@ -34,6 +36,7 @@
   , "now"
   , "nullable"
   , "ordered-collections"
+  , "parallel"
   , "partial"
   , "prelude"
   , "profunctor-lenses"

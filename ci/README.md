@@ -14,7 +14,7 @@ If you are running scripts in the repository, such as the legacy registry import
 $ nix-shell
 ```
 
-## Bower Import
+## Legacy Import
 
 You can execute the legacy registry import script with the following command:
 

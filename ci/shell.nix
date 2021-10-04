@@ -21,6 +21,8 @@ in pkgs.stdenv.mkDerivation {
 
     pkgs.nodejs-14_x
 
+    pkgs.dhall-json
+
     pkgs.licensee
   ];
 }
