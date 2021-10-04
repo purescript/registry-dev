@@ -16,7 +16,7 @@ import Registry.Schema (Operation(..), Repo(..))
 import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
 import Test.Foreign.Jsonic (jsonic)
 import Test.Foreign.Licensee (licensee)
-import Test.Index as Registry.Index
+import Test.Registry.Index as Registry.Index
 import Test.Registry.Scripts.BowerImport.Stats (errorStats)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
