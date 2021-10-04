@@ -28,7 +28,7 @@ import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
 import Registry.Scripts.BowerImport as BowerImport
-import Registry.Scripts.BowerImport.BowerFile as BowerFile
+import Registry.Scripts.BowerImport.Bowerfile as Bowerfile
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
 
@@ -165,21 +165,21 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   let manifestPath = absoluteFolderPath <> "/purs.json"
   log $ "Package extracted in " <> absoluteFolderPath
 
-  -- If we're importing from Bower then we need to convert the BowerFile
+  -- If we're importing from Bower then we need to convert the Bowerfile
   -- to a Registry Manifest
   when fromBower do
     liftAff (try (readJsonFile (absoluteFolderPath <> "/bower.json"))) >>= case _ of
       Left err ->
-        throwWithComment $ "Error while reading BowerFile: " <> Aff.message err
+        throwWithComment $ "Error while reading Bowerfile: " <> Aff.message err
       Right (Left err) ->
-        throwWithComment $ "Could not decode BowerFile: " <> Json.printJsonDecodeError err
+        throwWithComment $ "Could not decode Bowerfile: " <> Json.printJsonDecodeError err
       Right (Right bowerfile) -> do
         let
           printErrors =
             Json.stringifyWithIndent 2 <<< Json.encodeJson <<< NEA.toArray
 
           manifestFields =
-            BowerFile.toManifestFields bowerfile
+            Bowerfile.toManifestFields bowerfile
 
           runManifest =
             Except.runExceptT <<< Except.mapExceptT (liftAff <<< map (lmap printErrors))
@@ -190,7 +190,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
 
         runManifest (BowerImport.toManifest packageName metadata.location semVer manifestFields) >>= case _ of
           Left err ->
-            throwWithComment $ "Unable to convert BowerFile to a manifest: " <> err
+            throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
           Right manifest ->
             liftAff $ writeJsonFile manifestPath manifest
 
