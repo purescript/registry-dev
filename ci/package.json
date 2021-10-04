@@ -7,7 +7,7 @@
     "test": "test"
   },
   "scripts": {
-    "test": "SPACES_KEY='' SPACES_SECRET='' GITHUB_TOKEN='' spago test"
+    "test": "spago test"
   },
   "author": "",
   "license": "MIT",

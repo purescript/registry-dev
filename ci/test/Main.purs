@@ -4,7 +4,9 @@ import Registry.Prelude
 
 import Data.Argonaut as Json
 import Data.Array.NonEmpty as NEA
+import Data.Time.Duration (Milliseconds(..))
 import Foreign.GitHub (IssueNumber(..))
+import Foreign.Jsonic as Jsonic
 import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
@@ -12,20 +14,18 @@ import Registry.API as API
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..))
 import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
-import Registry.Scripts.BowerImport.BowerFile as BowerFile
-import Test.Fixtures.Manifest as Fixtures
 import Test.Foreign.Jsonic (jsonic)
+import Test.Foreign.Licensee (licensee)
 import Test.Index as Registry.Index
-import Test.Registry.Scripts.BowerImport.Error.Stats (errorStats)
+import Test.Registry.Scripts.BowerImport.Stats (errorStats)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
-import Test.Spec.Runner (runSpec)
-
-type Spec = Spec.SpecT Aff Unit Identity Unit
+import Test.Spec.Runner (defaultConfig, runSpec')
+import Test.Support.Manifest as Fixtures
 
 main :: Effect Unit
-main = launchAff_ $ runSpec [ consoleReporter ] do
+main = launchAff_ $ runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
   Spec.describe "API" do
     Spec.describe "Checks" do
       Spec.describe "Good package names" goodPackageName
@@ -41,6 +41,7 @@ main = launchAff_ $ runSpec [ consoleReporter ] do
       Spec.describe "Bad bower files" badBowerFiles
     Spec.describe "Encoding" bowerFileEncoding
   Spec.describe "Jsonic" jsonic
+  Spec.describe "Licensee" licensee
   Spec.describe "Manifest" do
     Spec.describe "Encoding" manifestEncoding
   Spec.describe "Error Stats" errorStats
@@ -48,7 +49,7 @@ main = launchAff_ $ runSpec [ consoleReporter ] do
     Spec.it "Run registry index test" do
       Registry.Index.testRegistryIndex
 
-manifestEncoding :: Spec
+manifestEncoding :: Spec.Spec Unit
 manifestEncoding = do
   let
     checkRoundtrip manifest str = case Json.parseJson str >>= Json.decodeJson of
@@ -67,7 +68,7 @@ manifestEncoding = do
   roundTrip Fixtures.abcd.v1
   roundTrip Fixtures.abcd.v2
 
-goodPackageName :: Spec
+goodPackageName :: Spec.Spec Unit
 goodPackageName = do
   let
     parseName str res = Spec.it str do
@@ -76,7 +77,7 @@ goodPackageName = do
   parseName "a" "a"
   parseName "some-dash" "some-dash"
 
-badPackageName :: Spec
+badPackageName :: Spec.Spec Unit
 badPackageName = do
   let
     failParse str err = Spec.it str do
@@ -96,7 +97,7 @@ badPackageName = do
   failParse "" startErr
   failParse "🍝" startErr
 
-goodSPDXLicense :: Spec
+goodSPDXLicense :: Spec.Spec Unit
 goodSPDXLicense = do
   let
     parseLicense str = Spec.it str do
@@ -119,7 +120,7 @@ goodSPDXLicense = do
   -- exceptions
   parseLicense "GPL-3.0 WITH GPL-3.0-linking-exception"
 
-badSPDXLicense :: Spec
+badSPDXLicense :: Spec.Spec Unit
 badSPDXLicense = do
   let
     invalid str suggestion = "Invalid SPDX identifier: " <> str <> case suggestion of
@@ -137,7 +138,7 @@ badSPDXLicense = do
   parseLicense "BSD-3" (Just "BSD-3-Clause")
   parseLicense "MIT AND BSD-3" Nothing
 
-decodeEventsToOps :: Spec
+decodeEventsToOps :: Spec.Spec Unit
 decodeEventsToOps = do
   Spec.it "decodes an Update operation" do
     let
@@ -165,7 +166,7 @@ decodeEventsToOps = do
     res <- API.readOperation "test/fixtures/issue_created.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
-semVer :: Spec
+semVer :: Spec.Spec Unit
 semVer = do
   let
     parseSemVer str = Spec.it ("Parse SemVer " <> str) do
@@ -183,11 +184,15 @@ semVer = do
 
   parseRange "^1.3.4" ">=1.3.4 <2.0.0-0"
 
-goodBowerFiles :: Spec
+goodBowerFiles :: Spec.Spec Unit
 goodBowerFiles = do
   let
+    parse :: String -> Either Json.JsonDecodeError BowerFile
+    parse = Jsonic.parseJson >=> Json.decodeJson
+
     parseBowerFile' str = Spec.it str do
-      BowerFile.parse str `Assert.shouldSatisfy` isRight
+      parse str `Assert.shouldSatisfy` isRight
+
     parseBowerFile = parseBowerFile' <<< Json.stringify
 
     simpleFile = Json.encodeJson { version: "v1.0.0", license: "MIT" }
@@ -223,11 +228,15 @@ goodBowerFiles = do
   parseBowerFile nonSemverBowerFile
   parseBowerFile completeBowerFile
 
-badBowerFiles :: Spec
+badBowerFiles :: Spec.Spec Unit
 badBowerFiles = do
   let
+    parse :: String -> Either Json.JsonDecodeError BowerFile
+    parse = Jsonic.parseJson >=> Json.decodeJson
+
     failParseBowerFile' str = Spec.it str do
-      BowerFile.parse str `Assert.shouldNotSatisfy` isRight
+      parse str `Assert.shouldNotSatisfy` isRight
+
     failParseBowerFile = failParseBowerFile' <<< Json.stringify
 
     wrongLicenseFormat =
@@ -245,7 +254,7 @@ badBowerFiles = do
   failParseBowerFile wrongDependenciesFormat
   failParseBowerFile wrongDevDependenciesFormat
 
-bowerFileEncoding :: Spec
+bowerFileEncoding :: Spec.Spec Unit
 bowerFileEncoding = do
   Spec.it "Can be decoded" do
     let

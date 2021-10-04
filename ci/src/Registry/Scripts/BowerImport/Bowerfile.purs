@@ -1,8 +1,6 @@
 module Registry.Scripts.BowerImport.BowerFile
   ( BowerFile(..)
-  , BowerFileParseError
-  , printBowerFileParseError
-  , parse
+  , toManifestFields
   ) where
 
 import Registry.Prelude
@@ -12,13 +10,12 @@ import Data.Argonaut (Json, (.:?))
 import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
-import Foreign.Jsonic as Jsonic
+import Registry.Scripts.BowerImport.ManifestFields (ManifestFields)
 
-newtype BowerFile = BowerFile
-  { license :: Maybe (NonEmptyArray String)
-  , dependencies :: Object String
-  , devDependencies :: Object String
-  }
+toManifestFields :: BowerFile -> ManifestFields
+toManifestFields (BowerFile fields) = fields
+
+newtype BowerFile = BowerFile ManifestFields
 
 derive newtype instance Eq BowerFile
 derive newtype instance Show BowerFile
@@ -45,23 +42,3 @@ decodeStringOrStringArray obj fieldName = do
       Just v -> do
         decoded <- (Json.decodeJson v <#> Array.singleton) <|> Json.decodeJson v
         pure $ NEA.fromArray decoded
-
-data BowerFileParseError
-  = JsonDecodeError Json.JsonDecodeError
-  | JsonParseError String
-
-derive instance Eq BowerFileParseError
-
-printBowerFileParseError :: BowerFileParseError -> String
-printBowerFileParseError = case _ of
-  JsonDecodeError err -> "JsonDecodeError: " <> Json.printJsonDecodeError err
-  JsonParseError err -> "JsonParseError: " <> err
-
-instance Show BowerFileParseError where
-  show = printBowerFileParseError
-
-parse :: String -> Either BowerFileParseError BowerFile
-parse =
-  Jsonic.parse
-    >>> lmap JsonParseError
-    >=> (Json.decodeJson >>> lmap JsonDecodeError)
