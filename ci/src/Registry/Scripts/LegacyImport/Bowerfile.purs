@@ -1,5 +1,5 @@
-module Registry.Scripts.BowerImport.BowerFile
-  ( BowerFile(..)
+module Registry.Scripts.LegacyImport.Bowerfile
+  ( Bowerfile(..)
   , toManifestFields
   ) where
 
@@ -10,24 +10,24 @@ import Data.Argonaut (Json, (.:?))
 import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
-import Registry.Scripts.BowerImport.ManifestFields (ManifestFields)
+import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 
-toManifestFields :: BowerFile -> ManifestFields
-toManifestFields (BowerFile fields) = fields
+toManifestFields :: Bowerfile -> ManifestFields
+toManifestFields (Bowerfile fields) = fields
 
-newtype BowerFile = BowerFile ManifestFields
+newtype Bowerfile = Bowerfile ManifestFields
 
-derive newtype instance Eq BowerFile
-derive newtype instance Show BowerFile
-derive newtype instance Json.EncodeJson BowerFile
+derive newtype instance Eq Bowerfile
+derive newtype instance Show Bowerfile
+derive newtype instance Json.EncodeJson Bowerfile
 
-instance Json.DecodeJson BowerFile where
+instance Json.DecodeJson Bowerfile where
   decodeJson json = do
     obj <- Json.decodeJson json
     license <- decodeStringOrStringArray obj "license"
     dependencies <- fromMaybe mempty <$> obj .:? "dependencies"
     devDependencies <- fromMaybe mempty <$> obj .:? "devDependencies"
-    pure $ BowerFile { license, dependencies, devDependencies }
+    pure $ Bowerfile { license, dependencies, devDependencies }
 
 decodeStringOrStringArray
   :: Object Json

@@ -1,4 +1,4 @@
-module Registry.Scripts.BowerImport.Error where
+module Registry.Scripts.LegacyImport.Error where
 
 import Registry.Prelude
 

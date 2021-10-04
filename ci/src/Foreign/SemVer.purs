@@ -97,7 +97,7 @@ parseRange original = do
   converted <- case toMaybe (parseRangeImpl original) of
     Just c -> pure c
     Nothing ->
-      -- when parsing a version from a BowerFile it could be that it's specified
+      -- when parsing a version from a Bowerfile it could be that it's specified
       -- in the https://giturl#version, or owner/repo#version, so we try to parse that here.
       case String.split (String.Pattern "#") original of
         [ _url, version ] -> case toMaybe (parseRangeImpl version) of
