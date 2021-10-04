@@ -27,8 +27,8 @@ import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
-import Registry.Scripts.BowerImport as BowerImport
-import Registry.Scripts.BowerImport.Bowerfile as Bowerfile
+import Registry.Scripts.LegacyImport as LegacyImport
+import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
 
@@ -188,7 +188,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
           Nothing -> throwWithComment $ "Not a valid SemVer version: " <> ref
           Just result -> pure result
 
-        runManifest (BowerImport.toManifest packageName metadata.location semVer manifestFields) >>= case _ of
+        runManifest (LegacyImport.toManifest packageName metadata.location semVer manifestFields) >>= case _ of
           Left err ->
             throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
           Right manifest ->

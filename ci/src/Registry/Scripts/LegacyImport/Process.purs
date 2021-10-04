@@ -1,4 +1,4 @@
-module Registry.Scripts.BowerImport.Process where
+module Registry.Scripts.LegacyImport.Process where
 
 import Registry.Prelude
 
@@ -19,8 +19,8 @@ import Effect.Now (nowDateTime) as Time
 import Foreign.Jsonic as Jsonic
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
-import Registry.Scripts.BowerImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion, RequestError(..), ResourceError)
-import Registry.Scripts.BowerImport.Error as BowerImport.Error
+import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion, RequestError(..))
+import Registry.Scripts.LegacyImport.Error as LegacyImport.Error
 
 type ProcessedPackages k a =
   { failures :: PackageFailures
@@ -45,7 +45,7 @@ forPackage input keyToPackageName f = do
     Except.runExceptT (f key value) >>= case _ of
       Left err -> do
         let
-          errorType = BowerImport.Error.printImportErrorKey err
+          errorType = LegacyImport.Error.printImportErrorKey err
           name = keyToPackageName key
           failure = Map.singleton name (Left err)
         var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
@@ -73,7 +73,7 @@ forPackageVersion input keyToPackageName keyToTag f = do
       Except.runExceptT (f k1 k2 value) >>= case _ of
         Left err -> do
           let
-            errorType = BowerImport.Error.printImportErrorKey err
+            errorType = LegacyImport.Error.printImportErrorKey err
             name = keyToPackageName k1
             tag = keyToTag k2
             failure = Map.singleton name $ Right $ Map.singleton tag err
@@ -103,7 +103,7 @@ forPackageVersionKeys input keyToPackageName keyToTag f = do
       Except.runExceptT (f k1 k2) >>= case _ of
         Left err -> do
           let
-            errorType = BowerImport.Error.printImportErrorKey err
+            errorType = LegacyImport.Error.printImportErrorKey err
             name = keyToPackageName k1
             tag = keyToTag k2
             failure = Map.singleton name $ Right $ Map.singleton tag err

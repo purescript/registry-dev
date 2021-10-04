@@ -1,4 +1,4 @@
-module Registry.Scripts.BowerImport where
+module Registry.Scripts.LegacyImport where
 
 import Registry.Prelude
 
@@ -36,13 +36,13 @@ import Registry.Index (RegistryIndex, insertManifest)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
-import Registry.Scripts.BowerImport.Bowerfile as Bowerfile
-import Registry.Scripts.BowerImport.Error (APIResource(..), FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
-import Registry.Scripts.BowerImport.ManifestFields (ManifestFields)
-import Registry.Scripts.BowerImport.Process as Process
-import Registry.Scripts.BowerImport.SpagoJson (SpagoJson)
-import Registry.Scripts.BowerImport.SpagoJson as SpagoJson
-import Registry.Scripts.BowerImport.Stats as Stats
+import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
+import Registry.Scripts.LegacyImport.Error (APIResource(..), FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
+import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
+import Registry.Scripts.LegacyImport.Process as Process
+import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)
+import Registry.Scripts.LegacyImport.SpagoJson as SpagoJson
+import Registry.Scripts.LegacyImport.Stats as Stats
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as StringParser
 
