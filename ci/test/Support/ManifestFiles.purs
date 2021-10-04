@@ -1,11 +1,18 @@
-module Test.Fixtures.ManifestFiles (readFiles) where
+module Test.Support.ManifestFiles (ManifestFiles, readFiles) where
 
 import Registry.Prelude
 
 import Node.FS.Aff as FS
 import Node.Path as Node.Path
 
-readFiles :: Aff { license :: String, packageJson :: String, spagoDhall :: String, bowerJson :: String }
+type ManifestFiles =
+  { license :: String
+  , packageJson :: String
+  , spagoDhall :: String
+  , bowerJson :: String
+  }
+
+readFiles :: Aff ManifestFiles
 readFiles = do
   license <- readLicense
   packageJson <- readPackageJson
@@ -14,7 +21,7 @@ readFiles = do
   pure { license, packageJson, spagoDhall, bowerJson }
 
 fixtureFile :: FilePath -> FilePath
-fixtureFile file = Node.Path.concat [ "test", "Fixtures", "halogen-hooks", file ]
+fixtureFile file = Node.Path.concat [ "test", "fixtures", "halogen-hooks", file ]
 
 readLicense :: Aff String
 readLicense = FS.readTextFile UTF8 $ fixtureFile "LICENSE"

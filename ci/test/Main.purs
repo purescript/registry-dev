@@ -14,7 +14,6 @@ import Registry.API as API
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..))
 import Registry.Scripts.BowerImport.BowerFile (BowerFile(..))
-import Test.Fixtures.Manifest as Fixtures
 import Test.Foreign.Jsonic (jsonic)
 import Test.Foreign.Licensee (licensee)
 import Test.Registry.Scripts.BowerImport.Stats (errorStats)
@@ -22,6 +21,7 @@ import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (defaultConfig, runSpec')
+import Test.Support.Manifest as Fixtures
 
 main :: Effect Unit
 main = launchAff_ $ runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
@@ -145,7 +145,7 @@ decodeEventsToOps = do
         , fromBower: false
         }
 
-    res <- API.readOperation "test/Fixtures/issue_comment.json"
+    res <- API.readOperation "test/fixtures/issue_comment.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
   Spec.it "decodes an Addition operation" do
@@ -159,7 +159,7 @@ decodeEventsToOps = do
         , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
         }
 
-    res <- API.readOperation "test/Fixtures/issue_created.json"
+    res <- API.readOperation "test/fixtures/issue_created.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
 semVer :: Spec.Spec Unit

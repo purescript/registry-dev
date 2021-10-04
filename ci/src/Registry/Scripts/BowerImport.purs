@@ -87,13 +87,7 @@ downloadLegacyRegistry = do
       repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
       mkError = ResourceError <<< { resource: APIResource GitHubReleases, error: _ }
 
-      -- We'll cache any failure related to GitHub releases to avoid re-making
-      -- requests.
-      cacheFailure = case _ of
-        ResourceError { resource: APIResource GitHubReleases } -> true
-        _ -> false
-
-    releases <- Process.withCache Process.jsonSerializer cacheFailure repoCache (Just $ Hours 24.0) do
+    releases <- Process.withCache Process.jsonSerializer repoCache (Just $ Hours 24.0) do
       log $ "Fetching releases for package " <> un RawPackageName name
       result <- lift $ try $ GitHub.getReleases octokit address
       case result of
@@ -329,7 +323,7 @@ constructManifestFields
   -> ExceptT ImportError Aff ManifestFields
 constructManifestFields package version address = do
   let cacheKey = i "manifest-fields__" (un RawPackageName package) "__" (un RawVersion version)
-  Process.withCache Process.jsonSerializer (const true) cacheKey Nothing do
+  Process.withCache Process.jsonSerializer cacheKey Nothing do
     -- We can construct a manifest from a package's bowerfile, package.json file,
     -- spago.dhall file, and/or LICENSE files. A package doesn't need to have all
     -- of these files; several of these files duplicate information. We try to
@@ -453,21 +447,7 @@ constructManifestFields package version address = do
       cacheKey = i fileCacheName "__" name "__" tag
       mkError = ResourceError <<< { resource: FileResource resource, error: _ }
 
-    let
-      -- We cache some failures if they relate to fetching a resource and the
-      -- failure could be temporary (for example, a `429 Too Many Requests`
-      -- error).
-      cacheFailure = case _ of
-        ResourceError { resource: FileResource _, error } -> case error of
-          BadRequest -> true
-          -- We won't re-attempt the status codes listed below, but we'll
-          -- re-attempt all others.
-          BadStatus status | status `Array.elem` [ 404 ] -> true
-          BadStatus _ -> false
-          DecodeError _ -> true
-        _ -> false
-
-    Process.withCache serialize cacheFailure cacheKey Nothing do
+    Process.withCache serialize cacheKey Nothing do
       liftAff (Http.get ResponseFormat.string url) >>= case _ of
         Left error -> do
           let printed = Http.printError error
@@ -475,7 +455,7 @@ constructManifestFields package version address = do
           throwError $ mkError BadRequest
         Right { status: StatusCode status, body }
           | status == 404 -> do
-              -- log $ i "Unable to retrieve " filePath " because none exists (404 error)."
+              log $ i "Unable to retrieve " filePath " because none exists (404 error)."
               throwError $ mkError $ BadStatus status
           | status /= 200 -> do
               log $ i "Unable to retrieve " filePath " because of a bad status code: " body

@@ -19,7 +19,7 @@ import Effect.Now (nowDateTime) as Time
 import Foreign.Jsonic as Jsonic
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
-import Registry.Scripts.BowerImport.Error (ImportError, ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion)
+import Registry.Scripts.BowerImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion, RequestError(..), ResourceError)
 import Registry.Scripts.BowerImport.Error as BowerImport.Error
 
 type ProcessedPackages k a =
@@ -48,15 +48,10 @@ forPackage input keyToPackageName f = do
           errorType = BowerImport.Error.printImportErrorKey err
           name = keyToPackageName key
           failure = Map.singleton name (Left err)
-          modify state = state { failures = insertFailure errorType failure state.failures }
-        state <- AVar.take var
-        AVar.put (modify state) var
+        var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
       Right (Tuple newKey result) -> do
-        let
-          insertPackage = Map.insert newKey result
-          modify state = state { packages = insertPackage state.packages }
-        state <- AVar.take var
-        AVar.put (modify state) var
+        let insertPackage = Map.insert newKey result
+        var # modifyAVar \state -> state { packages = insertPackage state.packages }
   AVar.read var
 
 -- | Execute the provided transform on every package in the input packages map,
@@ -82,16 +77,12 @@ forPackageVersion input keyToPackageName keyToTag f = do
             name = keyToPackageName k1
             tag = keyToTag k2
             failure = Map.singleton name $ Right $ Map.singleton tag err
-            modify state = state { failures = insertFailure errorType failure state.failures }
-          state <- AVar.take var
-          AVar.put (modify state) var
+          var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
         Right result -> do
           let
             newPackage = Map.singleton k2 result
             insertPackage = Map.insertWith Map.union k1 newPackage
-            modify state = state { packages = insertPackage state.packages }
-          state <- AVar.take var
-          AVar.put (modify state) var
+          var # modifyAVar \state -> state { packages = insertPackage state.packages }
   AVar.read var
 
 forPackageVersionKeys
@@ -116,16 +107,12 @@ forPackageVersionKeys input keyToPackageName keyToTag f = do
             name = keyToPackageName k1
             tag = keyToTag k2
             failure = Map.singleton name $ Right $ Map.singleton tag err
-            modify state = state { failures = insertFailure errorType failure state.failures }
-          state <- AVar.take var
-          AVar.put (modify state) var
+          var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
         Right (Tuple k3 k4) -> do
           let
             newPackage = Map.singleton k4 value
             insertPackage = Map.insertWith Map.union k3 newPackage
-            modify state = state { packages = insertPackage state.packages }
-          state <- AVar.take var
-          AVar.put (modify state) var
+          var # modifyAVar \state -> state { packages = insertPackage state.packages }
   AVar.read var
 
 insertFailure
@@ -157,15 +144,26 @@ stringSerializer = { encode: identity, decode: pure }
 withCache
   :: forall e a
    . Serialize e a
-  -> (ImportError -> Boolean)
   -> FilePath
   -> Maybe Hours
   -> ExceptT ImportError Aff a
   -> ExceptT ImportError Aff a
-withCache { encode, decode } cacheFailure path maybeDuration action = do
+withCache { encode, decode } path maybeDuration action = do
   let
     cacheFolder = ".cache"
     objectPath = cacheFolder <> "/" <> path
+
+    -- We also cache some failures if they relate to fetching a resource and
+    -- the failure is not temporary (for example, a `404 Not Found` error).
+    cacheFailure = case _ of
+      ResourceError { error } -> case error of
+        BadRequest -> true
+        -- We won't re-attempt the status codes listed below, but we'll
+        -- re-attempt all others.
+        BadStatus status | status `Array.elem` [ 404 ] -> true
+        BadStatus _ -> false
+        DecodeError _ -> true
+      _ -> false
 
     onCacheMiss = do
       log $ "No cache hit for " <> show path
@@ -248,3 +246,8 @@ parBounded t f = do
       -- NOTE: This *must* use `TraversableWithIndex` instead of
       -- `FoldableWithIndex` (ie. `forWithIndex_`) for stack safety.
       $ forWithIndex t' (\i -> Parallel.parallel <<< f' i)
+
+modifyAVar :: forall state. (state -> state) -> AVar.AVar state -> Aff Unit
+modifyAVar k var = do
+  state <- AVar.take var
+  AVar.put (k state) var
