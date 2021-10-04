@@ -1,4 +1,4 @@
-module Registry.Scripts.BowerImport where
+module Registry.Scripts.LegacyImport where
 
 import Registry.Prelude
 
@@ -36,13 +36,13 @@ import Registry.Index (RegistryIndex, insertManifest)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
-import Registry.Scripts.BowerImport.BowerFile as BowerFile
-import Registry.Scripts.BowerImport.Error (APIResource(..), FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
-import Registry.Scripts.BowerImport.ManifestFields (ManifestFields)
-import Registry.Scripts.BowerImport.Process as Process
-import Registry.Scripts.BowerImport.SpagoJson (SpagoJson)
-import Registry.Scripts.BowerImport.SpagoJson as SpagoJson
-import Registry.Scripts.BowerImport.Stats as Stats
+import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
+import Registry.Scripts.LegacyImport.Error (APIResource(..), FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
+import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
+import Registry.Scripts.LegacyImport.Process as Process
+import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)
+import Registry.Scripts.LegacyImport.SpagoJson as SpagoJson
+import Registry.Scripts.LegacyImport.Stats as Stats
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as StringParser
 
@@ -212,7 +212,7 @@ toManifest package repository version manifest = do
     eitherTargets = do
       let
         -- We trim out packages that don't begin with `purescript-`, as these
-        -- are JavaScript dependencies being specified in the BowerFile.
+        -- are JavaScript dependencies being specified in the Bowerfile.
         filterNames = catMaybes <<< map \(Tuple packageName versionRange) ->
           case String.take 11 packageName of
             "purescript-" -> Just $ Tuple (String.drop 11 packageName) versionRange
@@ -361,7 +361,7 @@ constructManifestFields package version address = do
           log result
           throwError $ ResourceError { resource: FileResource BowerJson, error: DecodeError printed }
         Right bowerfile ->
-          pure $ BowerFile.toManifestFields bowerfile
+          pure $ Bowerfile.toManifestFields bowerfile
 
     spagoJson <- liftAff $ Except.runExceptT requestSpagoJson
     let spagoManifest = map SpagoJson.toManifestFields spagoJson
