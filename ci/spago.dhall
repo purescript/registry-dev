@@ -14,7 +14,6 @@
   , "control"
   , "crypto"
   , "datetime"
-  , "debug"
   , "dotenv"
   , "effect"
   , "either"

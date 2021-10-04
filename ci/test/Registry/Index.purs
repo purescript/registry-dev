@@ -15,7 +15,7 @@ import Registry.Index as Index
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Manifest)
-import Test.Fixtures.Manifest as Fixtures
+import Test.Support.Manifest as Support.Manifest
 
 testRegistryIndex :: Aff Unit
 testRegistryIndex = do
@@ -32,21 +32,21 @@ testRegistryIndex = do
   pure unit
   where
   testPipeline tmp =
-    insertAndCheck tmp Fixtures.ab.name Fixtures.ab.v1a
+    insertAndCheck tmp Support.Manifest.ab.name Support.Manifest.ab.v1a
       -- Version collision should overwrite existing entry
-      >=> insertAndCheck tmp Fixtures.ab.name Fixtures.ab.v1b
-      >=> insertAndCheck tmp Fixtures.ab.name Fixtures.ab.v2
-      >=> insertAndCheck tmp Fixtures.abc.name Fixtures.abc.v1
-      >=> insertAndCheck tmp Fixtures.abc.name Fixtures.abc.v2
-      >=> insertAndCheck tmp Fixtures.abcd.name Fixtures.abcd.v1
-      >=> insertAndCheck tmp Fixtures.abcd.name Fixtures.abcd.v2
+      >=> insertAndCheck tmp Support.Manifest.ab.name Support.Manifest.ab.v1b
+      >=> insertAndCheck tmp Support.Manifest.ab.name Support.Manifest.ab.v2
+      >=> insertAndCheck tmp Support.Manifest.abc.name Support.Manifest.abc.v1
+      >=> insertAndCheck tmp Support.Manifest.abc.name Support.Manifest.abc.v2
+      >=> insertAndCheck tmp Support.Manifest.abcd.name Support.Manifest.abcd.v1
+      >=> insertAndCheck tmp Support.Manifest.abcd.name Support.Manifest.abcd.v2
 
 emptyIndex :: RegistryIndex
 emptyIndex = Map.empty
 
 expectedFiles :: FilePath -> Set FilePath
 expectedFiles tmp = Set.fromFoldable $ map (Node.Path.concat <<< Array.cons tmp)
-  [ [ "2" , "ab" ]
+  [ [ "2", "ab" ]
   , [ "3", "a", "abc" ]
   , [ "ab", "cd", "abcd" ]
   ]

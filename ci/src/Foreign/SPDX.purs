@@ -16,13 +16,13 @@ import Safe.Coerce (coerce)
 -- | An SPDX license identifier such as 'MIT' or 'Apache-2.0'.
 newtype License = License String
 
+derive newtype instance eqLicense :: Eq License
+
 instance decodeJsonSPDXLicense :: DecodeJson License where
   decodeJson = lmap TypeMismatch <<< parse <=< decodeJson
 
 instance encodeJsonSPDXLicense :: EncodeJson License where
   encodeJson = encodeJson <<< print
-
-derive instance eqSPDXLicense :: Eq License
 
 -- | Print an SPDX license identifier.
 print :: License -> String

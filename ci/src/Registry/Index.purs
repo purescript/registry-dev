@@ -44,7 +44,9 @@ readRegistryIndex directory = do
 
     packages =
       Array.mapMaybe goPath
-        $ Set.toUnfoldable $ Map.keys $ Map.filter (not Stats.isDirectory) packagePaths
+        $ Set.toUnfoldable
+        $ Map.keys
+        $ Map.filter (not Stats.isDirectory) packagePaths
 
   parsed <- for packages \package -> Tuple package <$> readPackage directory package
 
