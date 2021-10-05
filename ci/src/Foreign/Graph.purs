@@ -7,7 +7,7 @@ foreign import data Graph :: Type -> Type -> Type
 
 foreign import createImpl
   :: forall k v
-  . Fn2 (Array (Node k v)) (Array (Edge k)) (Graph k v)
+   . Fn2 (Array (Node k v)) (Array (Edge k)) (Graph k v)
 
 foreign import topsortImpl :: forall k v. Fn1 (Graph k v) (Array k)
 
