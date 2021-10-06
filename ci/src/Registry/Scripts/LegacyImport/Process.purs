@@ -16,6 +16,7 @@ import Data.TraversableWithIndex (class TraversableWithIndex)
 import Effect.AVar as Effect.AVar
 import Effect.Aff.AVar as AVar
 import Effect.Now (nowDateTime) as Time
+import Foreign.GitHub as GitHub
 import Foreign.Jsonic as Jsonic
 import Foreign.SemVer (SemVer)
 import Node.FS.Aff as FS
@@ -31,8 +32,8 @@ type ProcessedPackages k a =
 
 type ProcessedPackageVersions k1 k2 a = ProcessedPackages k1 (Map k2 a)
 
-type NameAndAddress = { address :: Address, name :: RawPackageName }
-type NameOriginalAndAddress = { address :: Address, name :: PackageName, original :: RawPackageName }
+type NameAndAddress = { address :: GitHub.Address, name :: RawPackageName }
+type NameOriginalAndAddress = { address :: GitHub.Address, name :: PackageName, original :: RawPackageName }
 type SemVerAndOriginal = { semVer :: SemVer, original :: RawVersion }
 
 -- | Execute the provided transform on every package in the input packages map
