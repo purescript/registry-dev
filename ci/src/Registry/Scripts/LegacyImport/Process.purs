@@ -29,24 +29,21 @@ type ProcessedPackages k a =
 
 type ProcessedPackageVersions k1 k2 a = ProcessedPackages k1 (Map k2 a)
 
+type AddressAndPackage = { address :: { owner :: String, repo ::String}, name :: RawPackageName }
+
 -- | Execute the provided transform on every package in the input packages map
 -- | collecting failures into `PackageFailures` and saving transformed packages.
 forPackage
-  :: forall k1 k2 a b
-   . Ord k1
-  => Ord k2
-  => ProcessedPackages k1 a
-  -> (k1 -> RawPackageName)
-  -> (k1 -> a -> ExceptT ImportError Aff (Tuple k2 b))
-  -> Aff (ProcessedPackages k2 b)
-forPackage input keyToPackageName f = do
+  :: ProcessedPackages RawPackageName PackageURL
+  -> (RawPackageName -> PackageURL -> ExceptT ImportError Aff (Tuple AddressAndPackage (Map RawVersion Unit)))
+  -> Aff (ProcessedPackages AddressAndPackage (Map RawVersion Unit))
+forPackage input f = do
   var <- AVar.new { failures: input.failures, packages: Map.empty }
-  parBounded input.packages \key value ->
-    Except.runExceptT (f key value) >>= case _ of
+  parBounded input.packages \name value ->
+    Except.runExceptT (f name value) >>= case _ of
       Left err -> do
         let
           errorType = LegacyImport.Error.printImportErrorKey err
-          name = keyToPackageName key
           failure = Map.singleton name (Left err)
         var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
       Right (Tuple newKey result) -> do
@@ -86,26 +83,20 @@ forPackageVersion input keyToPackageName keyToTag f = do
   AVar.read var
 
 forPackageVersionKeys
-  :: forall k1 k2 k3 k4 a
-   . Ord k1
-  => Ord k2
-  => Ord k3
+  :: forall  k3 k4 a
+   .  Ord k3
   => Ord k4
-  => ProcessedPackageVersions k1 k2 a
-  -> (k1 -> RawPackageName)
-  -> (k2 -> RawVersion)
-  -> (k1 -> k2 -> ExceptT ImportError Aff (Tuple k3 k4))
+  => ProcessedPackageVersions AddressAndPackage RawVersion a
+  -> (AddressAndPackage -> RawVersion -> ExceptT ImportError Aff (Tuple k3 k4))
   -> Aff (ProcessedPackageVersions k3 k4 a)
-forPackageVersionKeys input keyToPackageName keyToTag f = do
+forPackageVersionKeys input f = do
   var <- AVar.new { failures: input.failures, packages: Map.empty }
-  parBounded input.packages \k1 inner ->
-    parBounded inner \k2 value -> do
-      Except.runExceptT (f k1 k2) >>= case _ of
+  parBounded input.packages \k1@{name} inner ->
+    parBounded inner \tag value -> do
+      Except.runExceptT (f k1 tag) >>= case _ of
         Left err -> do
           let
             errorType = LegacyImport.Error.printImportErrorKey err
-            name = keyToPackageName k1
-            tag = keyToTag k2
             failure = Map.singleton name $ Right $ Map.singleton tag err
           var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
         Right (Tuple k3 k4) -> do

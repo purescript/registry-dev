@@ -78,7 +78,7 @@ downloadLegacyRegistry = do
     initialPackages = { failures: PackageFailures Map.empty, packages: allPackages }
 
   log "Fetching package releases..."
-  releaseIndex <- Process.forPackage initialPackages identity \name repoUrl -> do
+  releaseIndex <- Process.forPackage initialPackages \name repoUrl -> do
     address <- case GitHub.parseRepo repoUrl of
       Left err -> throwError $ InvalidGitHubRepo $ StringParser.printParserError err
       Right address -> pure address
@@ -101,7 +101,7 @@ downloadLegacyRegistry = do
     pure $ Tuple { name, address } versions
 
   log "Parsing names and versions..."
-  packageRegistry <- Process.forPackageVersionKeys releaseIndex _.name identity \{ name, address } tag -> do
+  packageRegistry <- Process.forPackageVersionKeys releaseIndex \{ name, address } tag -> do
     packageName <- case PackageName.parse $ un RawPackageName name of
       Left err ->
         throwError $ MalformedPackageName $ StringParser.printParserError err
@@ -302,7 +302,7 @@ cleanPackageName (RawPackageName name) = do
     _ -> throwError $ MalformedPackageName name
 
 -- | Read the list of packages in a registry file
-readRegistryFile :: FilePath -> Aff (Map RawPackageName String)
+readRegistryFile :: FilePath -> Aff (Map RawPackageName PackageURL)
 readRegistryFile source = do
   registryFile <- readJsonFile ("../" <> source)
   case registryFile of
