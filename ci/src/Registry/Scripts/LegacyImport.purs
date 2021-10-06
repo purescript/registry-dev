@@ -21,6 +21,7 @@ import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
+import Effect.Aff.AVar as AVar
 import Effect.Class.Console (logShow)
 import Foreign.Dhall as Dhall
 import Foreign.GitHub as GitHub
@@ -36,8 +37,9 @@ import Registry.Index (RegistryIndex, insertManifest)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
+import Registry.Scripts.LegacyImport.Process (insertFailure, modifyAVar, parBounded)
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
-import Registry.Scripts.LegacyImport.Error (APIResource(..), FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
+import Registry.Scripts.LegacyImport.Error (APIResource(..), FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), printImportErrorKey, fileResourcePath)
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)
@@ -67,6 +69,11 @@ main = Aff.launchAff_ do
   for_ registry \semVer -> for_ semVer (insertManifest indexPath)
   log "Done!"
 
+type Address = { owner :: String, repo :: String }
+type NameAndAddress = { address :: Address, name :: RawPackageName }
+type NameOriginalAndAddress = { address :: Address, name :: PackageName, original :: RawPackageName }
+type SemVerAndOriginal = { semVer :: SemVer, original :: RawVersion }
+
 downloadLegacyRegistry :: Aff RegistryIndex
 downloadLegacyRegistry = do
   octokit <- liftEffect GitHub.mkOctokit
@@ -78,27 +85,53 @@ downloadLegacyRegistry = do
     initialPackages = { failures: PackageFailures Map.empty, packages: allPackages }
 
   log "Fetching package releases..."
-  releaseIndex <- Process.forPackage initialPackages \name repoUrl -> do
-    address <- case GitHub.parseRepo repoUrl of
-      Left err -> throwError $ InvalidGitHubRepo $ StringParser.printParserError err
-      Right address -> pure address
+  let
+    doOnPackages :: RawPackageName -> PackageURL -> ExceptT ImportError Aff (Tuple NameAndAddress (Map RawVersion Unit))
+    doOnPackages name repoUrl = do
+      address <- case GitHub.parseRepo repoUrl of
+        Left err -> throwError $ InvalidGitHubRepo $ StringParser.printParserError err
+        Right address -> pure address
 
-    let
-      repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
-      mkError = ResourceError <<< { resource: APIResource GitHubReleases, error: _ }
+      let
+        repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
+        mkError = ResourceError <<< { resource: APIResource GitHubReleases, error: _ }
 
-    releases <- Process.withCache Process.jsonSerializer repoCache (Just $ Hours 24.0) do
-      log $ "Fetching releases for package " <> un RawPackageName name
-      result <- lift $ try $ GitHub.getReleases octokit address
-      case result of
-        Left err -> logShow err *> throwError (mkError $ DecodeError $ Aff.message err)
-        Right v -> pure v
+      releases <- Process.withCache Process.jsonSerializer repoCache (Just $ Hours 24.0) do
+        log $ "Fetching releases for package " <> un RawPackageName name
+        result <- lift $ try $ GitHub.getReleases octokit address
+        case result of
+          Left err -> logShow err *> throwError (mkError $ DecodeError $ Aff.message err)
+          Right v -> pure v
 
-    versions <- case NEA.fromArray releases of
-      Nothing -> throwError $ mkError $ DecodeError "No releases returned from the GitHub API."
-      Just arr -> pure $ Map.fromFoldable $ map (\tag -> Tuple (RawVersion tag.name) unit) arr
+      versions <- case NEA.fromArray releases of
+        Nothing -> throwError $ mkError $ DecodeError "No releases returned from the GitHub API."
+        Just arr -> pure $ Map.fromFoldable $ map (\tag -> Tuple (RawVersion tag.name) unit) arr
 
-    pure $ Tuple { name, address } versions
+      pure $ Tuple { name, address } versions
+    forPackage
+      :: { failures :: PackageFailures
+         , packages :: Map RawPackageName PackageURL
+         }
+      -> Aff
+           ( { failures :: PackageFailures
+             , packages :: Map NameAndAddress (Map RawVersion Unit)
+             }
+           )
+    forPackage input = do
+      var <- AVar.new { failures: input.failures, packages: Map.empty }
+      parBounded input.packages \name value ->
+        Except.runExceptT (doOnPackages name value) >>= case _ of
+          Left err -> do
+            let
+              errorType = printImportErrorKey err
+              failure = Map.singleton name (Left err)
+            var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
+          Right (Tuple newKey result) -> do
+            let insertPackage = Map.insert newKey result
+            var # modifyAVar \state -> state { packages = insertPackage state.packages }
+      AVar.read var
+
+  releaseIndex <- forPackage initialPackages
 
   log "Parsing names and versions..."
   packageRegistry <- Process.forPackageVersionKeys releaseIndex \{ name, address } tag -> do

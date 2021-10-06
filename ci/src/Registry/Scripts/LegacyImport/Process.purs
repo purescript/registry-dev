@@ -30,7 +30,7 @@ type ProcessedPackages k a =
   }
 
 type ProcessedPackageVersions k1 k2 a = ProcessedPackages k1 (Map k2 a)
-
+type Address = { owner :: String, repo :: String }
 type NameAndAddress = { address :: Address, name :: RawPackageName }
 type NameOriginalAndAddress = { address :: Address, name :: PackageName, original :: RawPackageName }
 type SemVerAndOriginal = { semVer :: SemVer, original :: RawVersion }
