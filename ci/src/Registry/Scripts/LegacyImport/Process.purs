@@ -32,16 +32,12 @@ type ProcessedPackages k a =
 
 type ProcessedPackageVersions k1 k2 a = ProcessedPackages k1 (Map k2 a)
 
-type NameAndAddress = { address :: GitHub.Address, name :: RawPackageName }
-type NameOriginalAndAddress = { address :: GitHub.Address, name :: PackageName, original :: RawPackageName }
-type SemVerAndOriginal = { semVer :: SemVer, original :: RawVersion }
-
 -- | Execute the provided transform on every package in the input packages map
 -- | collecting failures into `PackageFailures` and saving transformed packages.
 forPackage
   :: ProcessedPackages RawPackageName PackageURL
-  -> (RawPackageName -> PackageURL -> ExceptT ImportError Aff (Tuple NameAndAddress (Map RawVersion Unit)))
-  -> Aff (ProcessedPackages NameAndAddress (Map RawVersion Unit))
+  -> (RawPackageName -> PackageURL -> ExceptT ImportError Aff (Tuple { address :: GitHub.Address, name :: RawPackageName } (Map RawVersion Unit)))
+  -> Aff (ProcessedPackages { address :: GitHub.Address, name :: RawPackageName } (Map RawVersion Unit))
 forPackage input f = do
   var <- AVar.new { failures: input.failures, packages: Map.empty }
   parBounded input.packages \name value ->
@@ -61,9 +57,9 @@ forPackage input f = do
 -- | and preserving transformed packages.
 forPackageVersion
   :: forall a b
-   . ProcessedPackageVersions NameOriginalAndAddress SemVerAndOriginal a
-  -> (NameOriginalAndAddress -> SemVerAndOriginal -> a -> ExceptT ImportError Aff b)
-  -> Aff (ProcessedPackageVersions NameOriginalAndAddress SemVerAndOriginal b)
+   . ProcessedPackageVersions { address :: GitHub.Address, name :: PackageName, original :: RawPackageName } { semVer :: SemVer, original :: RawVersion } a
+  -> ({ address :: GitHub.Address, name :: PackageName, original :: RawPackageName } -> { semVer :: SemVer, original :: RawVersion } -> a -> ExceptT ImportError Aff b)
+  -> Aff (ProcessedPackageVersions { address :: GitHub.Address, name :: PackageName, original :: RawPackageName } { semVer :: SemVer, original :: RawVersion } b)
 forPackageVersion input f = do
   var <- AVar.new { failures: input.failures, packages: Map.empty }
   parBounded input.packages \k1@{ original: name } inner ->
@@ -82,9 +78,9 @@ forPackageVersion input f = do
   AVar.read var
 
 forPackageVersionKeys
-  :: ProcessedPackageVersions NameAndAddress RawVersion Unit
-  -> (NameAndAddress -> RawVersion -> ExceptT ImportError Aff (Tuple NameOriginalAndAddress SemVerAndOriginal))
-  -> Aff (ProcessedPackageVersions NameOriginalAndAddress SemVerAndOriginal Unit)
+  :: ProcessedPackageVersions { address :: GitHub.Address, name :: RawPackageName } RawVersion Unit
+  -> ({ address :: GitHub.Address, name :: RawPackageName } -> RawVersion -> ExceptT ImportError Aff (Tuple { address :: GitHub.Address, name :: PackageName, original :: RawPackageName } { semVer :: SemVer, original :: RawVersion }))
+  -> Aff (ProcessedPackageVersions { address :: GitHub.Address, name :: PackageName, original :: RawPackageName } { semVer :: SemVer, original :: RawVersion } Unit)
 forPackageVersionKeys input f = do
   var <- AVar.new { failures: input.failures, packages: Map.empty }
   parBounded input.packages \k1@{ name } inner ->
