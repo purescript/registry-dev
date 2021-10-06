@@ -108,7 +108,6 @@ downloadLegacyRegistry = do
         Just arr -> pure $ Map.fromFoldable $ map (\tag -> Tuple (RawVersion tag.name) unit) arr
 
       pure $ Tuple { name, address } versions
-
     forPackage
       :: { failures :: PackageFailures
          , packages :: Map RawPackageName PackageURL
