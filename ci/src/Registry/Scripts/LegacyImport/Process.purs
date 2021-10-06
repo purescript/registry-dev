@@ -32,7 +32,7 @@ type ProcessedPackages k a =
 type ProcessedPackageVersions k1 k2 a = ProcessedPackages k1 (Map k2 a)
 
 type NameAndAddress = { address :: Address, name :: RawPackageName }
-type NameOriginalAndAddress = { address :: { owner :: String, repo :: String }, name :: PackageName, original :: RawPackageName }
+type NameOriginalAndAddress = { address :: Address, name :: PackageName, original :: RawPackageName }
 type SemVerAndOriginal = { semVer :: SemVer, original :: RawVersion }
 
 -- | Execute the provided transform on every package in the input packages map
