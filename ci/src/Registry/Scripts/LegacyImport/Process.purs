@@ -17,8 +17,10 @@ import Effect.AVar as Effect.AVar
 import Effect.Aff.AVar as AVar
 import Effect.Now (nowDateTime) as Time
 import Foreign.Jsonic as Jsonic
+import Foreign.SemVer (SemVer)
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
+import Registry.PackageName (PackageName)
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion, RequestError(..))
 import Registry.Scripts.LegacyImport.Error as LegacyImport.Error
 
@@ -29,14 +31,16 @@ type ProcessedPackages k a =
 
 type ProcessedPackageVersions k1 k2 a = ProcessedPackages k1 (Map k2 a)
 
-type AddressAndPackage = { address :: { owner :: String, repo ::String}, name :: RawPackageName }
+type NameAndAddress = { address :: { owner :: String, repo :: String }, name :: RawPackageName }
+type NameOriginalAndAddress = { address :: { owner :: String, repo :: String }, name :: PackageName, original :: RawPackageName }
+type SemVerAndOriginal = { semVer :: SemVer, original :: RawVersion }
 
 -- | Execute the provided transform on every package in the input packages map
 -- | collecting failures into `PackageFailures` and saving transformed packages.
 forPackage
   :: ProcessedPackages RawPackageName PackageURL
-  -> (RawPackageName -> PackageURL -> ExceptT ImportError Aff (Tuple AddressAndPackage (Map RawVersion Unit)))
-  -> Aff (ProcessedPackages AddressAndPackage (Map RawVersion Unit))
+  -> (RawPackageName -> PackageURL -> ExceptT ImportError Aff (Tuple NameAndAddress (Map RawVersion Unit)))
+  -> Aff (ProcessedPackages NameAndAddress (Map RawVersion Unit))
 forPackage input f = do
   var <- AVar.new { failures: input.failures, packages: Map.empty }
   parBounded input.packages \name value ->
@@ -55,24 +59,18 @@ forPackage input f = do
 -- | at every version of that package, collecting failures into `PackageFailures`
 -- | and preserving transformed packages.
 forPackageVersion
-  :: forall k1 k2 a b
-   . Ord k1
-  => Ord k2
-  => ProcessedPackageVersions k1 k2 a
-  -> (k1 -> RawPackageName)
-  -> (k2 -> RawVersion)
-  -> (k1 -> k2 -> a -> ExceptT ImportError Aff b)
-  -> Aff (ProcessedPackageVersions k1 k2 b)
-forPackageVersion input keyToPackageName keyToTag f = do
+  :: forall a b
+   . ProcessedPackageVersions NameOriginalAndAddress SemVerAndOriginal a
+  -> (NameOriginalAndAddress -> SemVerAndOriginal -> a -> ExceptT ImportError Aff b)
+  -> Aff (ProcessedPackageVersions NameOriginalAndAddress SemVerAndOriginal b)
+forPackageVersion input f = do
   var <- AVar.new { failures: input.failures, packages: Map.empty }
-  parBounded input.packages \k1 inner ->
-    parBounded inner \k2 value -> do
+  parBounded input.packages \k1@{ original: name } inner ->
+    parBounded inner \k2@{ original: tag } value -> do
       Except.runExceptT (f k1 k2 value) >>= case _ of
         Left err -> do
           let
             errorType = LegacyImport.Error.printImportErrorKey err
-            name = keyToPackageName k1
-            tag = keyToTag k2
             failure = Map.singleton name $ Right $ Map.singleton tag err
           var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
         Right result -> do
@@ -83,15 +81,12 @@ forPackageVersion input keyToPackageName keyToTag f = do
   AVar.read var
 
 forPackageVersionKeys
-  :: forall  k3 k4 a
-   .  Ord k3
-  => Ord k4
-  => ProcessedPackageVersions AddressAndPackage RawVersion a
-  -> (AddressAndPackage -> RawVersion -> ExceptT ImportError Aff (Tuple k3 k4))
-  -> Aff (ProcessedPackageVersions k3 k4 a)
+  :: ProcessedPackageVersions NameAndAddress RawVersion Unit
+  -> (NameAndAddress -> RawVersion -> ExceptT ImportError Aff (Tuple NameOriginalAndAddress SemVerAndOriginal))
+  -> Aff (ProcessedPackageVersions NameOriginalAndAddress SemVerAndOriginal Unit)
 forPackageVersionKeys input f = do
   var <- AVar.new { failures: input.failures, packages: Map.empty }
-  parBounded input.packages \k1@{name} inner ->
+  parBounded input.packages \k1@{ name } inner ->
     parBounded inner \tag value -> do
       Except.runExceptT (f k1 tag) >>= case _ of
         Left err -> do

@@ -121,7 +121,7 @@ downloadLegacyRegistry = do
     pure $ Tuple outerKey innerKey
 
   log "Converting to manifests..."
-  let forPackageRegistry = Process.forPackageVersion packageRegistry _.original _.original
+  let forPackageRegistry = Process.forPackageVersion packageRegistry
   manifestRegistry <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
     manifestFields <- constructManifestFields originalName tag.original address
 
@@ -132,7 +132,7 @@ downloadLegacyRegistry = do
     Except.mapExceptT liftError $ toManifest name repo tag.semVer manifestFields
 
   log "Checking dependencies are self-contained..."
-  containedRegistry <- Process.forPackageVersion manifestRegistry _.original _.original \_ _ manifest -> do
+  containedRegistry <- Process.forPackageVersion manifestRegistry \_ _ manifest -> do
     _ <- selfContainedDependencies (Map.keys allPackages) manifest
     pure manifest
 
