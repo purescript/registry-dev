@@ -21,20 +21,14 @@ import Test.Support.Manifest as Support.Manifest
 
 type TestIndexEnv =
   { tmp :: FilePath
-  , readMemory :: Aff RegistryIndex
-  , writeMemory :: RegistryIndex -> Aff Unit
+  , indexRef :: Ref RegistryIndex
   }
 
 mkTestIndexEnv :: Aff TestIndexEnv
 mkTestIndexEnv = liftEffect do
   tmp <- Tmp.mkTmpDir
-  ref <- Ref.new (Map.empty :: RegistryIndex)
-
-  let
-    writeMemory index = liftEffect $ Ref.write index ref
-    readMemory = liftEffect $ Ref.read ref
-
-  pure { tmp, writeMemory, readMemory }
+  indexRef <- Ref.new (Map.empty :: RegistryIndex)
+  pure { tmp, indexRef }
 
 spec :: TestIndexEnv -> Spec.Spec Unit
 spec env = Spec.hoistSpec identity (\_ m -> Reader.runReaderT m env) testRegistryIndex
@@ -70,9 +64,11 @@ testRegistryIndex = Spec.before runBefore do
       actualPaths `Assert.shouldEqual` expectedPaths
   where
   runBefore = do
-    { tmp, readMemory, writeMemory } <- Reader.ask
-    index <- lift $ readMemory
-    pure { tmp, index, writeMemory: lift <<< writeMemory }
+    { tmp, indexRef } <- Reader.ask
+    let
+      writeMemory = liftEffect <<< flip Ref.write indexRef
+    index <- liftEffect $ Ref.read indexRef
+    pure { tmp, index, writeMemory }
 
   insertAndCheck packageName manifest = do
     let specName = "Inserts " <> PackageName.print packageName <> " version " <> show manifest.version
