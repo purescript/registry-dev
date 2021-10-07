@@ -122,7 +122,13 @@ downloadLegacyRegistry = do
 
   log "Converting to manifests..."
   let forPackageRegistry = Process.forPackageVersion packageRegistry
-  manifestRegistry <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
+  manifestRegistry :: Process.ProcessedPackageVersions
+    { address :: GitHub.Address
+    , name :: PackageName
+    , original :: RawPackageName
+    }
+    { semVer :: SemVer, original :: RawVersion }
+    Manifest <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
     manifestFields <- constructManifestFields originalName tag.original address
 
     let
@@ -132,7 +138,13 @@ downloadLegacyRegistry = do
     Except.mapExceptT liftError $ toManifest name repo tag.semVer manifestFields
 
   log "Checking dependencies are self-contained..."
-  containedRegistry <- Process.forPackageVersion manifestRegistry \_ _ manifest -> do
+  containedRegistry :: Process.ProcessedPackageVersions
+    { address :: GitHub.Address
+    , name :: PackageName
+    , original :: RawPackageName
+    }
+    { semVer :: SemVer, original :: RawVersion }
+    Manifest <- Process.forPackageVersion manifestRegistry \_ _ manifest -> do
     _ <- selfContainedDependencies (Map.keys allPackages) manifest
     pure manifest
 
