@@ -4,13 +4,20 @@ import Registry.Prelude
 
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable as Foldable
+import Data.Lens (_1, _2, over, set, traversed)
 import Data.Map as Map
+import Foreign.Object as Object
+import Foreign.SPDX (License)
+import Foreign.SemVer (SemVer)
+import Registry.PackageName (PackageName)
+import Registry.Schema (Repo(..))
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
 import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
 import Registry.Scripts.LegacyImport.Stats (ErrorCounts(..))
 import Registry.Scripts.LegacyImport.Stats as Stats
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
+import Unsafe.Coerce (unsafeCoerce)
 
 infixr 6 NonEmptyArray.cons' as :|
 
@@ -73,7 +80,58 @@ exampleFailures = PackageFailures $ Map.fromFoldable
   errsByVersion = Right
 
 exampleStats :: Stats.Stats
-exampleStats = Stats.errorStats examplePackageResults
+exampleStats = Stats.errorStats forStats
+  where
+  mockLicense :: License
+  mockLicense = unsafeCoerce "None"
+
+  mockPackageName :: PackageName
+  mockPackageName = unsafeCoerce "foo"
+
+  mockSemVer :: SemVer
+  mockSemVer = unsafeCoerce unsafeCoerce
+    { major: 0
+    , minor: 0
+    , patch: 0
+    , prerelease: []
+    , build: []
+    , version: "0.0.0"
+    }
+  forStats =
+    { failures: examplePackageResults.failures
+    , packages: Map.fromFoldable
+        $ over (traversed <<< _2)
+            ( \mp ->
+                Map.fromFoldable
+                  $ set (traversed <<< _2)
+                      { license: mockLicense
+                      , name: mockPackageName
+                      , repository: Git { subdir: Nothing, url: "https://github.com/purescript/foobar" }
+                      , targets: Object.empty
+                      , version: mockSemVer
+                      }
+                  $ over (traversed <<< _1)
+                      ( \raw ->
+                          { semVer: mockSemVer
+                          , original: raw
+                          }
+                      )
+                  $ (identity :: Array ~> Array)
+                  $ Map.toUnfoldable mp
+            )
+        $ over (traversed <<< _1)
+            ( \raw ->
+                { address:
+                    { owner: "purescript"
+                    , repo: "a-repo"
+                    }
+                , name: mockPackageName
+                , original: raw
+                }
+            )
+        $ (identity :: Array ~> Array)
+        $ Map.toUnfoldable examplePackageResults.packages
+    }
 
 errCounts :: Int -> Int -> Int -> ErrorCounts
 errCounts o p v = ErrorCounts { countOfOccurrences: o, countOfPackagesAffected: p, countOfVersionsAffected: v }

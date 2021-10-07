@@ -19,6 +19,10 @@ import Data.Map (SemigroupMap(..))
 import Data.Map as Map
 import Data.Monoid.Additive (Additive(..))
 import Data.Set as Set
+import Foreign.GitHub as GitHub
+import Foreign.SemVer (SemVer)
+import Registry.PackageName (PackageName)
+import Registry.Schema (Manifest)
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey(..), ManifestError, ManifestErrorKey(..), PackageFailures(..), RawPackageName, RawVersion, manifestErrorKey, printManifestErrorKey)
 import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
 import Safe.Coerce (coerce)
@@ -51,7 +55,10 @@ printErrorCounts (ErrorCounts { countOfOccurrences, countOfPackagesAffected, cou
   i (show countOfOccurrences) " occurrences (" (show countOfPackagesAffected) " packages / " (show countOfVersionsAffected) " versions)"
 
 type Stats =
-  { countOfPackageSuccesses :: Int
+  { totalPackages :: Int
+  , countOfPackageSuccessesWithoutFailures :: Int
+  , countOfPackageSuccesses :: Int
+  , countOfPackageFailuresWithoutSuccesses :: Int
   , countOfPackageFailures :: Int
   , countOfVersionSuccesses :: Int
   , countOfVersionFailures :: Int
@@ -116,9 +123,20 @@ countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKe
       , countOfVersionsAffected: Foldable.sum versionFailures
       }
 
-errorStats :: forall package version a. ProcessedPackageVersions package version a -> Stats
+errorStats
+  :: ProcessedPackageVersions
+       { address :: GitHub.Address
+       , name :: PackageName
+       , original :: RawPackageName
+       }
+       { semVer :: SemVer, original :: RawVersion }
+       Manifest
+  -> Stats
 errorStats { packages: succeededPackages, failures: packageFailures@(PackageFailures failures) } =
-  { countOfPackageSuccesses
+  { totalPackages
+  , countOfPackageSuccessesWithoutFailures
+  , countOfPackageSuccesses
+  , countOfPackageFailuresWithoutSuccesses
   , countOfPackageFailures
   , countOfVersionSuccesses
   , countOfVersionFailures
@@ -126,6 +144,11 @@ errorStats { packages: succeededPackages, failures: packageFailures@(PackageFail
   , countManifestErrorsByErrorType
   }
   where
+  rawSuccesses = Set.map _.original $ Map.keys succeededPackages
+  rawFailures = Foldable.fold (map Map.keys failures)
+  totalPackages = Set.size (rawSuccesses <> rawFailures)
+  countOfPackageSuccessesWithoutFailures = Set.size $ Set.difference rawSuccesses rawFailures
+  countOfPackageFailuresWithoutSuccesses = Set.size $ Set.difference rawFailures rawSuccesses
   countOfPackageSuccesses = Map.size succeededPackages
   countOfVersionSuccesses = Foldable.sum $ map Map.size succeededPackages
 
