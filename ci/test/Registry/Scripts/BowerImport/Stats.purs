@@ -122,8 +122,7 @@ exampleStats = Stats.errorStats mockStats
                 , original: raw
                 }
             )
-        $ (identity :: Array ~> Array)
-        $ Map.toUnfoldable examplePackageResults.packages
+        $ (Map.toUnfoldable examplePackageResults.packages :: _ -> Array _)
     }
 
 errCounts :: Int -> Int -> Int -> ErrorCounts
