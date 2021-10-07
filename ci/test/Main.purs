@@ -16,6 +16,7 @@ import Registry.Schema (Operation(..), Repo(..))
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
 import Test.Foreign.Jsonic (jsonic)
 import Test.Foreign.Licensee (licensee)
+import Test.Registry.Index as Registry.Index
 import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
@@ -24,26 +25,30 @@ import Test.Spec.Runner (defaultConfig, runSpec')
 import Test.Support.Manifest as Fixtures
 
 main :: Effect Unit
-main = launchAff_ $ runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
-  Spec.describe "API" do
-    Spec.describe "Checks" do
-      Spec.describe "Good package names" goodPackageName
-      Spec.describe "Bad package names" badPackageName
-      Spec.describe "Good SPDX licenses" goodSPDXLicense
-      Spec.describe "Bad SPDX licenses" badSPDXLicense
-      Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
-      Spec.describe "SemVer" semVer
-  Spec.describe "Bowerfile" do
-    Spec.describe "Parses" do
-      Spec.describe "Good bower files" goodBowerfiles
-    Spec.describe "Does not parse" do
-      Spec.describe "Bad bower files" badBowerfiles
-    Spec.describe "Encoding" bowerFileEncoding
-  Spec.describe "Jsonic" jsonic
-  Spec.describe "Licensee" licensee
-  Spec.describe "Manifest" do
-    Spec.describe "Encoding" manifestEncoding
-  Spec.describe "Error Stats" errorStats
+main = launchAff_ do
+  registryEnv <- Registry.Index.mkTestIndexEnv
+  runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
+    Spec.describe "API" do
+      Spec.describe "Checks" do
+        Spec.describe "Good package names" goodPackageName
+        Spec.describe "Bad package names" badPackageName
+        Spec.describe "Good SPDX licenses" goodSPDXLicense
+        Spec.describe "Bad SPDX licenses" badSPDXLicense
+        Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
+        Spec.describe "SemVer" semVer
+    Spec.describe "Bowerfile" do
+      Spec.describe "Parses" do
+        Spec.describe "Good bower files" goodBowerfiles
+      Spec.describe "Does not parse" do
+        Spec.describe "Bad bower files" badBowerfiles
+      Spec.describe "Encoding" bowerFileEncoding
+    Spec.describe "Jsonic" jsonic
+    Spec.describe "Licensee" licensee
+    Spec.describe "Manifest" do
+      Spec.describe "Encoding" manifestEncoding
+    Spec.describe "Error Stats" errorStats
+    Spec.describe "Registry Index" do
+      Registry.Index.spec registryEnv
 
 manifestEncoding :: Spec.Spec Unit
 manifestEncoding = do
