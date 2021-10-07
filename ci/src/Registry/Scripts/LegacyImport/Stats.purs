@@ -10,6 +10,7 @@ import Registry.Prelude
 
 import Control.Monad.Writer as Writer
 import Data.Array as Array
+import Data.Compactable (compact)
 import Data.Foldable as Foldable
 import Data.Function (on)
 import Data.Generic.Rep (class Generic)
@@ -56,11 +57,14 @@ printErrorCounts (ErrorCounts { countOfOccurrences, countOfPackagesAffected, cou
 
 type Stats =
   { totalPackages :: Int
+  , totalVersions :: Int
   , countOfPackageSuccessesWithoutFailures :: Int
   , countOfPackageSuccesses :: Int
   , countOfPackageFailuresWithoutSuccesses :: Int
   , countOfPackageFailures :: Int
+  , countOfVersionSuccessesWithoutFailures :: Int
   , countOfVersionSuccesses :: Int
+  , countOfVersionFailuresWithoutSuccesses :: Int
   , countOfVersionFailures :: Int
   , countImportErrorsByErrorType :: Map ImportErrorKey ErrorCounts
   , countManifestErrorsByErrorType :: Map ManifestErrorKey ErrorCounts
@@ -134,11 +138,14 @@ errorStats
   -> Stats
 errorStats { packages: succeededPackages, failures: packageFailures@(PackageFailures failures) } =
   { totalPackages
+  , totalVersions
   , countOfPackageSuccessesWithoutFailures
   , countOfPackageSuccesses
   , countOfPackageFailuresWithoutSuccesses
   , countOfPackageFailures
+  , countOfVersionSuccessesWithoutFailures
   , countOfVersionSuccesses
+  , countOfVersionFailuresWithoutSuccesses
   , countOfVersionFailures
   , countImportErrorsByErrorType
   , countManifestErrorsByErrorType
@@ -151,6 +158,13 @@ errorStats { packages: succeededPackages, failures: packageFailures@(PackageFail
   countOfPackageFailuresWithoutSuccesses = Set.size $ Set.difference rawFailures rawSuccesses
   countOfPackageSuccesses = Map.size succeededPackages
   countOfVersionSuccesses = Foldable.sum $ map Map.size succeededPackages
+  rawSuccessVersions = Set.map _.original $ Foldable.fold $ map Map.keys (Map.values succeededPackages)
+  rawFailedVersions = Foldable.fold
+    $ Set.fromFoldable
+    $ map (Foldable.fold <<< map Map.keys <<< compact <<< map hush <<< Map.values) (Map.values failures)
+  totalVersions = Set.size (rawSuccessVersions <> rawFailedVersions)
+  countOfVersionSuccessesWithoutFailures = Set.size $ Set.difference rawSuccessVersions rawFailedVersions
+  countOfVersionFailuresWithoutSuccesses = Set.size $ Set.difference rawFailedVersions rawSuccessVersions
 
   countOfPackageFailures = do
     let
@@ -182,10 +196,18 @@ prettyPrintStats :: Stats -> String
 prettyPrintStats stats =
   Foldable.intercalate "\n" $
     fold
-      [ [ "Number of successful packages: " <> show stats.countOfPackageSuccesses
-        , "Number of failed packages: " <> show stats.countOfPackageFailures
-        , "Number of successful versions: " <> show stats.countOfVersionSuccesses
-        , "Number of failed versions: " <> show stats.countOfVersionFailures
+      [ [ "Packages: " <> show stats.totalPackages
+            <> " total ("
+            <> show stats.countOfPackageSuccessesWithoutFailures
+            <> " with successes, "
+            <> show stats.countOfPackageFailuresWithoutSuccesses
+            <> " with failures)"
+        , "Versions: " <> show stats.totalVersions
+            <> " total ("
+            <> show stats.countOfVersionSuccessesWithoutFailures
+            <> " successful, "
+            <> show stats.countOfVersionFailuresWithoutSuccesses
+            <> " failed)"
         , "Failures by error:"
         ]
       , sortedErrors

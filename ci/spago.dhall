@@ -23,6 +23,7 @@
   , "identity"
   , "interpolate"
   , "js-date"
+  , "filterable"
   , "lists"
   , "maybe"
   , "newtype"

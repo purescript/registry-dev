@@ -80,7 +80,7 @@ exampleFailures = PackageFailures $ Map.fromFoldable
   errsByVersion = Right
 
 exampleStats :: Stats.Stats
-exampleStats = Stats.errorStats forStats
+exampleStats = Stats.errorStats mockStats
   where
   mockLicense :: License
   mockLicense = unsafeCoerce "None"
@@ -89,15 +89,8 @@ exampleStats = Stats.errorStats forStats
   mockPackageName = unsafeCoerce "foo"
 
   mockSemVer :: SemVer
-  mockSemVer = unsafeCoerce unsafeCoerce
-    { major: 0
-    , minor: 0
-    , patch: 0
-    , prerelease: []
-    , build: []
-    , version: "0.0.0"
-    }
-  forStats =
+  mockSemVer = unsafeCoerce "0.0.0"
+  mockStats =
     { failures: examplePackageResults.failures
     , packages: Map.fromFoldable
         $ over (traversed <<< _2)
@@ -174,10 +167,18 @@ errorStats = do
     Spec.it "prints a sorted list of all the collected stats" do
       Stats.prettyPrintStats exampleStats `Assert.shouldEqual`
         Foldable.intercalate "\n"
-          [ "Number of successful packages: " <> show exampleStats.countOfPackageSuccesses
-          , "Number of failed packages: " <> show exampleStats.countOfPackageFailures
-          , "Number of successful versions: " <> show exampleStats.countOfVersionSuccesses
-          , "Number of failed versions: " <> show exampleStats.countOfVersionFailures
+          [ "Packages: " <> show exampleStats.totalPackages
+              <> " total ("
+              <> show exampleStats.countOfPackageSuccessesWithoutFailures
+              <> " with successes, "
+              <> show exampleStats.countOfPackageFailuresWithoutSuccesses
+              <> " with failures)"
+          , "Versions: " <> show exampleStats.totalVersions
+              <> " total ("
+              <> show exampleStats.countOfVersionSuccessesWithoutFailures
+              <> " successful, "
+              <> show exampleStats.countOfVersionFailuresWithoutSuccesses
+              <> " failed)"
           , "Failures by error:"
           , "  noDependencyFiles: 4 occurrences (2 packages / 3 versions)"
           , "  noManifests: 3 occurrences (2 packages / 3 versions)"
