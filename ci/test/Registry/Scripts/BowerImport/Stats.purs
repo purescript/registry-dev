@@ -8,8 +8,10 @@ import Data.Lens (_1, _2, over, set, traversed)
 import Data.Map as Map
 import Foreign.Object as Object
 import Foreign.SPDX (License)
-import Foreign.SemVer (SemVer)
+import Foreign.SPDX as License
+import Foreign.SemVer (SemVer, parseSemVer)
 import Registry.PackageName (PackageName)
+import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..))
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
 import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
@@ -17,7 +19,6 @@ import Registry.Scripts.LegacyImport.Stats (ErrorCounts(..))
 import Registry.Scripts.LegacyImport.Stats as Stats
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
-import Unsafe.Coerce (unsafeCoerce)
 
 infixr 6 NonEmptyArray.cons' as :|
 
@@ -83,13 +84,13 @@ exampleStats :: Stats.Stats
 exampleStats = Stats.errorStats mockStats
   where
   mockLicense :: License
-  mockLicense = unsafeCoerce "None"
+  mockLicense = unsafePartial $ fromJust $ hush $ License.parse "MIT"
 
   mockPackageName :: PackageName
-  mockPackageName = unsafeCoerce "foo"
+  mockPackageName = unsafePartial $ fromJust $ hush $ PackageName.parse "foobarbaz"
 
   mockSemVer :: SemVer
-  mockSemVer = unsafeCoerce "0.0.0"
+  mockSemVer = unsafePartial $ fromJust $ parseSemVer "0.0.0"
   mockStats =
     { failures: examplePackageResults.failures
     , packages: Map.fromFoldable
