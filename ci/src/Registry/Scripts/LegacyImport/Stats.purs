@@ -196,18 +196,28 @@ prettyPrintStats :: Stats -> String
 prettyPrintStats stats =
   Foldable.intercalate "\n" $
     fold
-      [ [ "Packages: " <> show stats.totalPackages
+      [ [ "Packages: "
+            <> show stats.totalPackages
             <> " total ("
             <> show stats.countOfPackageSuccessesWithoutFailures
-            <> " with successes, "
+            <> " totally succeeded, "
+            <> show stats.countOfPackageSuccesses
+            <> " partially succeeded, "
             <> show stats.countOfPackageFailuresWithoutSuccesses
-            <> " with failures)"
-        , "Versions: " <> show stats.totalVersions
+            <> " totally failed, "
+            <> show stats.countOfPackageFailures
+            <> " partially failed)"
+        , "Versions: "
+            <> show stats.totalVersions
             <> " total ("
             <> show stats.countOfVersionSuccessesWithoutFailures
-            <> " successful, "
+            <> " totally succeeded, "
+            <> show stats.countOfVersionSuccesses
+            <> " partially succeeded, "
             <> show stats.countOfVersionFailuresWithoutSuccesses
-            <> " failed)"
+            <> " totally failed, "
+            <> show stats.countOfVersionFailures
+            <> " partially failed)"
         , "Failures by error:"
         ]
       , sortedErrors
