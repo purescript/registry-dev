@@ -3,7 +3,6 @@ module Test.Registry.Scripts.LegacyImport.Stats where
 import Registry.Prelude
 
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Foldable as Foldable
 import Data.Lens (_1, _2, over, set, traversed)
 import Data.Map as Map
 import Foreign.Object as Object
@@ -166,27 +165,5 @@ errorStats = do
   Spec.describe "pretty print stats" do
     Spec.it "prints a sorted list of all the collected stats" do
       Stats.prettyPrintStats exampleStats `Assert.shouldEqual`
-        Foldable.intercalate "\n"
-          [ "Packages: " <> show exampleStats.totalPackages
-              <> " total ("
-              <> show exampleStats.countOfPackageSuccessesWithoutFailures
-              <> " with successes, "
-              <> show exampleStats.countOfPackageFailuresWithoutSuccesses
-              <> " with failures)"
-          , "Versions: " <> show exampleStats.totalVersions
-              <> " total ("
-              <> show exampleStats.countOfVersionSuccessesWithoutFailures
-              <> " successful, "
-              <> show exampleStats.countOfVersionFailuresWithoutSuccesses
-              <> " failed)"
-          , "Failures by error:"
-          , "  noDependencyFiles: 4 occurrences (2 packages / 3 versions)"
-          , "  noManifests: 3 occurrences (2 packages / 3 versions)"
-          , "  malformedPackageName: 2 occurrences (2 packages / 0 versions)"
-          , "  manifestError: 2 occurrences (1 packages / 2 versions)"
-          , "    missingLicense: 2 occurrences (1 packages / 2 versions)"
-          , "    badVersion: 1 occurrences (1 packages / 1 versions)"
-          , "    invalidDependencyNames: 1 occurrences (1 packages / 1 versions)"
-          , "    missingName: 1 occurrences (1 packages / 1 versions)"
-          ]
+        "Packages: 7 total (2 totally succeeded, 2 partially succeeded, 5 totally failed, 5 partially failed)\nVersions: 8 total (2 totally succeeded, 5 partially succeeded, 4 totally failed, 7 partially failed)\nFailures by error:\n  noDependencyFiles: 3 versions across 2 packages\n  noManifests: 3 versions across 2 packages\n  malformedPackageName: 0 versions across 2 packages\n  manifestError: 2 versions across 1 packages\n    missingLicense: 2 versions across 1 packages\n    badVersion: 1 versions across 1 packages\n    invalidDependencyNames: 1 versions across 1 packages\n    missingName: 1 versions across 1 packages"
 

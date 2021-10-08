@@ -52,8 +52,8 @@ instance Show ErrorCounts where
   show = genericShow
 
 printErrorCounts :: ErrorCounts -> String
-printErrorCounts (ErrorCounts { countOfOccurrences, countOfPackagesAffected, countOfVersionsAffected }) =
-  i (show countOfOccurrences) " occurrences (" (show countOfPackagesAffected) " packages / " (show countOfVersionsAffected) " versions)"
+printErrorCounts (ErrorCounts { countOfPackagesAffected, countOfVersionsAffected }) =
+  i (show countOfVersionsAffected) " versions across " (show countOfPackagesAffected) " packages"
 
 type Stats =
   { totalPackages :: Int
