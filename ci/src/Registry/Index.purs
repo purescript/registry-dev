@@ -11,11 +11,13 @@ import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
+import Data.Set as Set
 import Data.String as String
 import Data.String.Pattern (Pattern(..))
 import Foreign.Node.FS as Foreign.Node
 import Foreign.SemVer (SemVer)
 import Node.FS.Aff as FS
+import Node.FS.Stats as Stats
 import Node.Glob.Basic as Glob
 import Node.Path as FilePath
 import Registry.PackageName (PackageName)
@@ -27,7 +29,7 @@ type RegistryIndex = Map PackageName (Map SemVer Manifest)
 -- | NOTE: Right now, this assumes that manifest files will parse
 readRegistryIndex :: FilePath -> Aff RegistryIndex
 readRegistryIndex directory = do
-  packagePaths <- Array.fromFoldable <$> Glob.expandGlobs directory [ "*" ]
+  packagePaths <- Glob.expandGlobsWithStats directory [ "**/*" ]
 
   let
     -- Exclude certain files that will always be in the root of the registry index.
@@ -40,7 +42,11 @@ readRegistryIndex directory = do
       guard (not (Array.elem fileName exclude))
       hush $ PackageName.parse fileName
 
-    packages = Array.mapMaybe goPath packagePaths
+    packages =
+      Array.mapMaybe goPath
+        $ Set.toUnfoldable
+        $ Map.keys
+        $ Map.filter (not Stats.isDirectory) packagePaths
 
   parsed <- for packages \package -> Tuple package <$> readPackage directory package
 
@@ -49,7 +55,7 @@ readRegistryIndex directory = do
       :: Tuple PackageName (Maybe (NonEmptyArray Manifest))
       -> Tuple PackageName (NonEmptyArray Manifest)
     normalizePackage (Tuple package mbManifests) = case mbManifests of
-      Nothing -> unsafeCrashWith "Package failed to parse"
+      Nothing -> unsafeCrashWith ("Package " <> PackageName.print package <> " failed to parse")
       Just manifests -> Tuple package manifests
 
     parsedPackages :: Array (Tuple PackageName (NonEmptyArray Manifest))
@@ -106,12 +112,15 @@ readPackage directory packageName = do
 
 insertManifest :: FilePath -> Manifest -> Aff Unit
 insertManifest directory manifest@{ name, version } = do
-  let path = FilePath.concat [ directory, getIndexPath name ]
-  existing <- readPackage directory name
+  let
+    manifestPath = FilePath.concat [ directory, getIndexPath name ]
+    manifestDirectory = FilePath.dirname manifestPath
+
+  existingManifest <- readPackage directory name
 
   let
     modifiedManifests :: NonEmptyArray Manifest
-    modifiedManifests = case existing of
+    modifiedManifests = case existingManifest of
       Nothing -> NEA.singleton manifest
       Just manifests -> do
         case NEA.findIndex (_.version >>> eq version) manifests of
@@ -127,8 +136,8 @@ insertManifest directory manifest@{ name, version } = do
         $ Array.sortBy (comparing _.version)
         $ Array.fromFoldable modifiedManifests
 
-  unless (isJust existing) do
-    let dir = Array.dropEnd 1 $ String.split (String.Pattern "/") path
-    liftEffect $ Foreign.Node.mkdirSync $ FilePath.concat dir
+  dirExists <- FS.exists manifestDirectory
+  unless dirExists do
+    liftEffect $ Foreign.Node.mkdirSync manifestDirectory
 
-  FS.writeTextFile ASCII path contents
+  FS.writeTextFile ASCII manifestPath contents
