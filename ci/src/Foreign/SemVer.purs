@@ -18,14 +18,7 @@ import Data.Argonaut as Json
 import Data.Function.Uncurried (Fn2, runFn2)
 import Data.String as String
 
-type SemVerJS =
-  { major :: Int
-  , minor :: Int
-  , patch :: Int
-  , prerelease :: Array String
-  , build :: Array String
-  , version :: String
-  }
+data SemVerJS
 
 newtype SemVer = SemVer SemVerJS
 
@@ -60,23 +53,29 @@ foreign import parseSemVerImpl :: String -> Nullable SemVer
 parseSemVer :: String -> Maybe SemVer
 parseSemVer = toMaybe <<< parseSemVerImpl
 
+foreign import majorImpl :: SemVerJS -> Int
 major :: SemVer -> Int
-major (SemVer v) = v.major
+major (SemVer v) = majorImpl v
 
+foreign import minorImpl :: SemVerJS -> Int
 minor :: SemVer -> Int
-minor (SemVer v) = v.minor
+minor (SemVer v) = minorImpl v
 
+foreign import patchImpl :: SemVerJS -> Int
 patch :: SemVer -> Int
-patch (SemVer v) = v.patch
+patch (SemVer v) = patchImpl v
 
+foreign import prereleaseImpl :: SemVerJS -> Array String
 prerelease :: SemVer -> Array String
-prerelease (SemVer v) = v.prerelease
+prerelease (SemVer v) = prereleaseImpl v
 
+foreign import buildImpl :: SemVerJS -> Array String
 build :: SemVer -> Array String
-build (SemVer v) = v.build
+build (SemVer v) = buildImpl v
 
+foreign import versionImpl :: SemVerJS -> String
 printSemVer :: SemVer -> String
-printSemVer (SemVer v) = v.version
+printSemVer (SemVer v) = versionImpl v
 
 newtype Range = Range String
 
