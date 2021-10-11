@@ -18,6 +18,7 @@ import Data.Maybe (maybe)
 import Data.Monoid (guard)
 import Data.Set as Set
 import Data.String as String
+import Data.String.NonEmpty as NES
 import Data.Time.Duration (Hours(..))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
@@ -200,20 +201,24 @@ toManifest package repository version manifest = do
     eitherLicense = do
       let
         rewrite = case _ of
-          [ "Apache 2" ] -> [ "Apache-2.0" ]
-          [ "Apache-2" ] -> [ "Apache-2.0" ]
-          [ "Apache 2.0" ] -> [ "Apache-2.0" ]
-          [ "BSD" ] -> [ "BSD-3-Clause" ]
-          [ "BSD3" ] -> [ "BSD-3-Clause" ]
-          [ "BSD-3" ] -> [ "BSD-3-Clause" ]
-          [ "3-Clause BSD" ] -> [ "BSD-3-Clause" ]
+          "Apache 2" -> "Apache-2.0"
+          "Apache-2" -> "Apache-2.0"
+          "Apache 2.0" -> "Apache-2.0"
+          "BSD" -> "BSD-3-Clause"
+          "BSD3" -> "BSD-3-Clause"
+          "BSD-3" -> "BSD-3-Clause"
+          "3-Clause BSD" -> "BSD-3-Clause"
           other -> other
 
       case manifest.license of
         Nothing -> mkError MissingLicense
         Just licenses -> do
           let
-            parsed = map SPDX.parse $ rewrite $ NEA.toArray licenses
+            parsed =
+              map (SPDX.parse <<< rewrite)
+                $ Array.filter (_ /= "LICENSE")
+                $ map NES.toString
+                $ NEA.toArray licenses
             { fail, success } = partitionEithers parsed
 
           case fail, success of
@@ -392,12 +397,13 @@ constructManifestFields package version address = do
     -- We can detect the license for the project using a combination of `licensee`
     -- and reading the license directly out of the Spago and Bower files (the
     -- CLI tool will not read from either file).
-    licenses <- detectLicense files
+    licenseeOutput <- detectLicense files
 
     let
       spagoLicenses = maybe [] NEA.toArray $ _.license =<< hush spagoManifest
       bowerLicenses = maybe [] NEA.toArray $ _.license =<< hush bowerManifest
-      license = NEA.fromArray $ Array.nub $ Array.concat [ licenses, spagoLicenses, bowerLicenses ]
+      licenseeLicenses = Array.catMaybes $ map NES.fromString licenseeOutput
+      license = NEA.fromArray $ Array.nub $ Array.concat [ licenseeLicenses, spagoLicenses, bowerLicenses ]
 
     when (license == Nothing) do
       log $ "No license available for " <> un RawPackageName package <> " " <> un RawVersion version
