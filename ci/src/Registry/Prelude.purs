@@ -3,6 +3,7 @@ module Registry.Prelude
   , module Extra
   , module Either
   , module Maybe
+  , PackageURL(..)
   , partitionEithers
   , readJsonFile
   , writeJsonFile
@@ -105,3 +106,11 @@ stripPureScriptPrefix pkg =
 -- | ```
 newlines :: Int -> String
 newlines n = Array.fold $ Array.replicate n "\n"
+
+newtype PackageURL = PackageURL String
+
+derive instance Extra.Newtype PackageURL _
+derive newtype instance Eq PackageURL
+derive newtype instance Ord PackageURL
+derive newtype instance Json.EncodeJson PackageURL
+derive newtype instance Json.DecodeJson PackageURL

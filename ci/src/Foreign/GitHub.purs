@@ -8,6 +8,7 @@ import Control.Promise as Promise
 import Data.Argonaut ((.:))
 import Data.Argonaut as Json
 import Data.List as List
+import Data.Newtype (unwrap)
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
 import Effect.Uncurried (EffectFn2, EffectFn3, EffectFn4, runEffectFn2, runEffectFn3, runEffectFn4)
@@ -46,8 +47,8 @@ registryAddress = { owner: "purescript", repo: "registry" }
 
 type Tag = { name :: String, sha :: String }
 
-parseRepo :: String -> Either Parser.ParseError Address
-parseRepo = Parser.runParser do
+parseRepo :: PackageURL -> Either Parser.ParseError Address
+parseRepo = unwrap >>> Parser.runParser do
   void $ Parse.string "https://github.com/"
     <|> Parse.string "git://github.com/"
     <|> Parse.string "git@github.com:"
