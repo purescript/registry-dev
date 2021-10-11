@@ -131,17 +131,18 @@ errCounts o p v = ErrorCounts { countOfOccurrences: o, countOfPackagesAffected: 
 errorStats :: Spec.Spec Unit
 errorStats = do
   Spec.describe "count successes" do
-    Spec.it "sums the number of successful packages and versions" do
-      exampleStats.countOfPackageSuccesses `Assert.shouldEqual` 2
-      exampleStats.countOfVersionSuccesses `Assert.shouldEqual` 5
+    Spec.it "sums the number of successful packages" do
+      exampleStats.countOfPackageSuccessesWithoutFailures `Assert.shouldEqual` 2
+    Spec.it "sums the number of successful versions" do
+      exampleStats.countOfVersionSuccessesWithoutFailures `Assert.shouldEqual` 5
 
   Spec.describe "count package failures" do
     Spec.it "sums the number of failed packages, regardless of how many failures per package" do
-      exampleStats.countOfPackageFailures `Assert.shouldEqual` 5
+      exampleStats.countOfPackageFailuresWithoutSuccesses `Assert.shouldEqual` 5
 
   Spec.describe "count version failures" do
     Spec.it "sums the number of failed versions, regardless of how many failures per version" do
-      exampleStats.countOfVersionFailures `Assert.shouldEqual` 7
+      exampleStats.countOfVersionFailuresWithoutSuccesses `Assert.shouldEqual` 7
 
   Spec.describe "count specific errors" do
     Spec.it "sums the number of each type of import, regardless of which packages or versions it occurred in" do
@@ -165,5 +166,5 @@ errorStats = do
   Spec.describe "pretty print stats" do
     Spec.it "prints a sorted list of all the collected stats" do
       Stats.prettyPrintStats exampleStats `Assert.shouldEqual`
-        "Packages: 7 total (2 totally succeeded, 2 partially succeeded, 5 totally failed, 5 partially failed)\nVersions: 8 total (2 totally succeeded, 5 partially succeeded, 4 totally failed, 7 partially failed)\nFailures by error:\n  noDependencyFiles: 3 versions across 2 packages\n  noManifests: 3 versions across 2 packages\n  malformedPackageName: 0 versions across 2 packages\n  manifestError: 2 versions across 1 packages\n    missingLicense: 2 versions across 1 packages\n    badVersion: 1 versions across 1 packages\n    invalidDependencyNames: 1 versions across 1 packages\n    missingName: 1 versions across 1 packages"
+        "Packages: 7 total (2 totally succeeded, 0 partially succeeded, 5 totally failed)\nVersions: 12 total (5 totally succeeded, 0 partially succeeded, 7 totally failed)\nFailures by error:\n  noDependencyFiles: 3 versions across 2 packages\n  noManifests: 3 versions across 2 packages\n  malformedPackageName: 0 versions across 2 packages\n  manifestError: 2 versions across 1 packages\n    missingLicense: 2 versions across 1 packages\n    badVersion: 1 versions across 1 packages\n    invalidDependencyNames: 1 versions across 1 packages\n    missingName: 1 versions across 1 packages"
 

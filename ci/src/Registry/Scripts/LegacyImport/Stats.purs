@@ -59,29 +59,14 @@ type Stats =
   { totalPackages :: Int
   , totalVersions :: Int
   , countOfPackageSuccessesWithoutFailures :: Int
-  , countOfPackageSuccesses :: Int
   , countOfPackageFailuresWithoutSuccesses :: Int
-  , countOfPackageFailures :: Int
   , countOfVersionSuccessesWithoutFailures :: Int
-  , countOfVersionSuccesses :: Int
   , countOfVersionFailuresWithoutSuccesses :: Int
-  , countOfVersionFailures :: Int
   , countImportErrorsByErrorType :: Map ImportErrorKey ErrorCounts
   , countManifestErrorsByErrorType :: Map ManifestErrorKey ErrorCounts
   }
 
 type VersionFailures = Map RawPackageName (Map RawVersion (Array ImportError))
-
-versionFailuresFromPackageFailures :: PackageFailures -> VersionFailures
-versionFailuresFromPackageFailures (PackageFailures failures) = do
-  let
-    onlyVersionFailures :: List (Map RawPackageName (Map RawVersion ImportError))
-    onlyVersionFailures = Map.values failures # map (Map.mapMaybe hush)
-
-    semigroupVersionFailures :: List (SemigroupMap RawPackageName (SemigroupMap RawVersion (Array ImportError)))
-    semigroupVersionFailures = coerce (map (map (map Array.singleton)) onlyVersionFailures)
-
-  coerce (fold semigroupVersionFailures)
 
 countManifestErrors :: PackageFailures -> Map ManifestErrorKey ErrorCounts
 countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKey failures of
@@ -140,13 +125,9 @@ errorStats { packages: succeededPackages, failures: packageFailures@(PackageFail
   { totalPackages
   , totalVersions
   , countOfPackageSuccessesWithoutFailures
-  , countOfPackageSuccesses
   , countOfPackageFailuresWithoutSuccesses
-  , countOfPackageFailures
   , countOfVersionSuccessesWithoutFailures
-  , countOfVersionSuccesses
   , countOfVersionFailuresWithoutSuccesses
-  , countOfVersionFailures
   , countImportErrorsByErrorType
   , countManifestErrorsByErrorType
   }
@@ -156,23 +137,24 @@ errorStats { packages: succeededPackages, failures: packageFailures@(PackageFail
   totalPackages = Set.size (rawSuccesses <> rawFailures)
   countOfPackageSuccessesWithoutFailures = Set.size $ Set.difference rawSuccesses rawFailures
   countOfPackageFailuresWithoutSuccesses = Set.size $ Set.difference rawFailures rawSuccesses
-  countOfPackageSuccesses = Map.size succeededPackages
-  countOfVersionSuccesses = Foldable.sum $ map Map.size succeededPackages
-  rawSuccessVersions = Set.map _.original $ Foldable.fold $ map Map.keys (Map.values succeededPackages)
+
+  rawSuccessVersions :: Set (Tuple RawPackageName RawVersion)
+  rawSuccessVersions = (Set.map <<< map) _.original $ Foldable.fold
+    $ map (Set.map <$> (Tuple <<< _.original <<< fst) <*> snd)
+    $ (map <<< map) Map.keys ((Map.toUnfoldable :: _ -> Array _) succeededPackages)
+
+  rawFailedVersions :: Set (Tuple RawPackageName RawVersion)
   rawFailedVersions = Foldable.fold
-    $ Set.fromFoldable
-    $ map (Foldable.fold <<< map Map.keys <<< compact <<< map hush <<< Map.values) (Map.values failures)
+    $ map (Set.map <$> (Tuple <<< fst) <*> (Map.keys <<< snd))
+    $ compact
+    $ map sequence
+    $ (map <<< map) hush
+    $ Foldable.fold
+    $ map ((Map.toUnfoldable) :: _ -> Array _) (Map.values failures)
+
   totalVersions = Set.size (rawSuccessVersions <> rawFailedVersions)
   countOfVersionSuccessesWithoutFailures = Set.size $ Set.difference rawSuccessVersions rawFailedVersions
   countOfVersionFailuresWithoutSuccesses = Set.size $ Set.difference rawFailedVersions rawSuccessVersions
-
-  countOfPackageFailures = do
-    let
-      packages = fold $ map Map.keys $ Map.values failures
-    Set.size packages
-
-  countOfVersionFailures =
-    Foldable.sum $ map Map.size $ versionFailuresFromPackageFailures packageFailures
 
   countImportErrorsByErrorType = do
     let
@@ -201,23 +183,19 @@ prettyPrintStats stats =
             <> " total ("
             <> show stats.countOfPackageSuccessesWithoutFailures
             <> " totally succeeded, "
-            <> show stats.countOfPackageSuccesses
+            <> show (stats.totalPackages - stats.countOfPackageSuccessesWithoutFailures - stats.countOfPackageFailuresWithoutSuccesses)
             <> " partially succeeded, "
             <> show stats.countOfPackageFailuresWithoutSuccesses
-            <> " totally failed, "
-            <> show stats.countOfPackageFailures
-            <> " partially failed)"
+            <> " totally failed)"
         , "Versions: "
             <> show stats.totalVersions
             <> " total ("
             <> show stats.countOfVersionSuccessesWithoutFailures
             <> " totally succeeded, "
-            <> show stats.countOfVersionSuccesses
+            <> show (stats.totalVersions - stats.countOfVersionSuccessesWithoutFailures - stats.countOfVersionFailuresWithoutSuccesses)
             <> " partially succeeded, "
             <> show stats.countOfVersionFailuresWithoutSuccesses
-            <> " totally failed, "
-            <> show stats.countOfVersionFailures
-            <> " partially failed)"
+            <> " totally failed)"
         , "Failures by error:"
         ]
       , sortedErrors
