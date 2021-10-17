@@ -153,5 +153,6 @@
   "purescript-typelevel-arithmetic": "https://github.com/sigma-andex/purescript-typelevel-arithmetic.git",
   "purescript-cnchar": "https://github.com/ongyiren1994/purescript-cnchar.git",
   "purescript-grid-reactors": "https://github.com/Eugleo/purescript-grid-reactors.git",
-  "purescript-droplet": "https://github.com/easafe/purescript-droplet.git"
+  "purescript-droplet": "https://github.com/easafe/purescript-droplet.git",
+  "purescript-html-codegen-halogen": "https://github.com/ongyiren1994/purescript-html-codegen-halogen.git"
 }
