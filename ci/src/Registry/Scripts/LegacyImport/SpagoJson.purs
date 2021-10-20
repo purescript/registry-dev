@@ -10,6 +10,8 @@ import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
+import Data.String.NonEmpty (NonEmptyString)
+import Data.String.NonEmpty as NES
 import Foreign.Object as Object
 import Registry.Scripts.LegacyImport.Error (RawPackageName(..), RawVersion(..))
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
@@ -32,7 +34,7 @@ packageDependencies (SpagoJson { dependencies, packages }) = do
 
 -- | The output of calling `dhall-to-json` on a `spago.dhall` file
 newtype SpagoJson = SpagoJson
-  { license :: Maybe String
+  { license :: Maybe NonEmptyString
   , dependencies :: Array RawPackageName
   , packages :: Map RawPackageName RawVersion
   }
@@ -60,4 +62,5 @@ instance Json.DecodeJson SpagoJson where
     let
       packagesMap = objectToMap (Just <<< RawPackageName) packageObj
       packages = map _.version packagesMap
-    pure $ SpagoJson { license: license', dependencies, packages }
+      license = NES.fromString =<< license'
+    pure $ SpagoJson { license, dependencies, packages }
