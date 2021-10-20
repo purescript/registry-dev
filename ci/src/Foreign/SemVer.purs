@@ -18,16 +18,7 @@ import Data.Argonaut as Json
 import Data.Function.Uncurried (Fn2, runFn2)
 import Data.String as String
 
-type SemVerJS =
-  { major :: Int
-  , minor :: Int
-  , patch :: Int
-  , prerelease :: Array String
-  , build :: Array String
-  , version :: String
-  }
-
-newtype SemVer = SemVer SemVerJS
+data SemVer
 
 instance eqSemVer :: Eq SemVer where
   eq v1 v2 = compare v1 v2 == EQ
@@ -46,10 +37,10 @@ instance decodeJsonSemver :: Json.DecodeJson SemVer where
 instance encodeJsonSemver :: Json.EncodeJson SemVer where
   encodeJson = Json.encodeJson <<< printSemVer
 
-foreign import compareSemVerImpl :: Fn2 SemVerJS SemVerJS Int
+foreign import compareSemVerImpl :: Fn2 SemVer SemVer Int
 
 compareSemVer :: SemVer -> SemVer -> Ordering
-compareSemVer (SemVer v1) (SemVer v2) = case runFn2 compareSemVerImpl v1 v2 of
+compareSemVer v1 v2 = case runFn2 compareSemVerImpl v1 v2 of
   (-1) -> LT
   0 -> EQ
   1 -> GT
@@ -60,23 +51,20 @@ foreign import parseSemVerImpl :: String -> Nullable SemVer
 parseSemVer :: String -> Maybe SemVer
 parseSemVer = toMaybe <<< parseSemVerImpl
 
-major :: SemVer -> Int
-major (SemVer v) = v.major
-
-minor :: SemVer -> Int
-minor (SemVer v) = v.minor
-
-patch :: SemVer -> Int
-patch (SemVer v) = v.patch
-
-prerelease :: SemVer -> Array String
-prerelease (SemVer v) = v.prerelease
-
-build :: SemVer -> Array String
-build (SemVer v) = v.build
-
 printSemVer :: SemVer -> String
-printSemVer (SemVer v) = v.version
+printSemVer = version
+
+foreign import major :: SemVer -> Int
+
+foreign import minor :: SemVer -> Int
+
+foreign import patch :: SemVer -> Int
+
+foreign import prerelease :: SemVer -> Array String
+
+foreign import build :: SemVer -> Array String
+
+foreign import version :: SemVer -> String
 
 newtype Range = Range String
 
@@ -100,7 +88,7 @@ parseRange original = do
       -- when parsing a version from a Bowerfile it could be that it's specified
       -- in the https://giturl#version, or owner/repo#version, so we try to parse that here.
       case String.split (String.Pattern "#") original of
-        [ _url, version ] -> case toMaybe (parseRangeImpl version) of
+        [ _, v ] -> case toMaybe (parseRangeImpl v) of
           Just c -> pure c
           _ -> Nothing
         _ -> Nothing

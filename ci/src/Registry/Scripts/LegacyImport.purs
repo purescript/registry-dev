@@ -78,7 +78,7 @@ downloadLegacyRegistry = do
     initialPackages = { failures: PackageFailures Map.empty, packages: allPackages }
 
   log "Fetching package releases..."
-  releaseIndex <- Process.forPackage initialPackages identity \name repoUrl -> do
+  releaseIndex <- Process.forPackage initialPackages \name repoUrl -> do
     address <- case GitHub.parseRepo repoUrl of
       Left err -> throwError $ InvalidGitHubRepo $ StringParser.printParserError err
       Right address -> pure address
@@ -101,7 +101,7 @@ downloadLegacyRegistry = do
     pure $ Tuple { name, address } versions
 
   log "Parsing names and versions..."
-  packageRegistry <- Process.forPackageVersionKeys releaseIndex _.name identity \{ name, address } tag -> do
+  packageRegistry <- Process.forPackageVersionKeys releaseIndex \{ name, address } tag -> do
     packageName <- case PackageName.parse $ un RawPackageName name of
       Left err ->
         throwError $ MalformedPackageName $ StringParser.printParserError err
@@ -121,8 +121,14 @@ downloadLegacyRegistry = do
     pure $ Tuple outerKey innerKey
 
   log "Converting to manifests..."
-  let forPackageRegistry = Process.forPackageVersion packageRegistry _.original _.original
-  manifestRegistry <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
+  let forPackageRegistry = Process.forPackageVersion packageRegistry
+  manifestRegistry :: Process.ProcessedPackageVersions
+    { address :: GitHub.Address
+    , name :: PackageName
+    , original :: RawPackageName
+    }
+    { semVer :: SemVer, original :: RawVersion }
+    Manifest <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
     manifestFields <- constructManifestFields originalName tag.original address
 
     let
@@ -132,7 +138,13 @@ downloadLegacyRegistry = do
     Except.mapExceptT liftError $ toManifest name repo tag.semVer manifestFields
 
   log "Checking dependencies are self-contained..."
-  containedRegistry <- Process.forPackageVersion manifestRegistry _.original _.original \_ _ manifest -> do
+  containedRegistry :: Process.ProcessedPackageVersions
+    { address :: GitHub.Address
+    , name :: PackageName
+    , original :: RawPackageName
+    }
+    { semVer :: SemVer, original :: RawVersion }
+    Manifest <- Process.forPackageVersion manifestRegistry \_ _ manifest -> do
     _ <- selfContainedDependencies (Map.keys allPackages) manifest
     pure manifest
 
@@ -302,7 +314,7 @@ cleanPackageName (RawPackageName name) = do
     _ -> throwError $ MalformedPackageName name
 
 -- | Read the list of packages in a registry file
-readRegistryFile :: FilePath -> Aff (Map RawPackageName String)
+readRegistryFile :: FilePath -> Aff (Map RawPackageName PackageURL)
 readRegistryFile source = do
   registryFile <- readJsonFile ("../" <> source)
   case registryFile of
