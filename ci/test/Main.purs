@@ -3,7 +3,7 @@ module Test.Main where
 import Registry.Prelude
 
 import Data.Argonaut as Json
-import Data.Array as Arary
+import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.String.NonEmpty as NES
 import Data.Time.Duration (Milliseconds(..))
@@ -272,6 +272,6 @@ bowerFileEncoding = do
           , Tuple "devdependency-second" "v0.0.2"
           ]
       bowerFile =
-        Bowerfile { license: NEA.fromArray $ Arary.catMaybes [ NES.fromString "MIT" ], dependencies, devDependencies }
+        Bowerfile { license: NEA.fromArray $ Array.catMaybes [ NES.fromString "MIT" ], dependencies, devDependencies }
     (Json.decodeJson $ Json.encodeJson bowerFile) `Assert.shouldContain` bowerFile
 
