@@ -28,12 +28,13 @@ import Foreign.GitHub as GitHub
 import Foreign.Jsonic as Jsonic
 import Foreign.Licensee as Licensee
 import Foreign.Object as Object
-import Foreign.SPDX as SPDX
 import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
+import Registry.Error (mkError)
 import Registry.Index (RegistryIndex, insertManifest)
+import Registry.License (produceLicense)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
@@ -195,37 +196,7 @@ toManifest
   -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
 toManifest package repository version manifest = do
   let
-    mkError :: forall a. ManifestError -> Either (NonEmptyArray ManifestError) a
-    mkError = Left <<< NEA.singleton
-
-    eitherLicense = do
-      let
-        rewrite = case _ of
-          "Apache 2" -> "Apache-2.0"
-          "Apache-2" -> "Apache-2.0"
-          "Apache 2.0" -> "Apache-2.0"
-          "BSD" -> "BSD-3-Clause"
-          "BSD3" -> "BSD-3-Clause"
-          "BSD-3" -> "BSD-3-Clause"
-          "3-Clause BSD" -> "BSD-3-Clause"
-          other -> other
-
-      case manifest.license of
-        Nothing -> mkError MissingLicense
-        Just licenses -> do
-          let
-            parsed =
-              map (SPDX.parse <<< rewrite)
-                $ Array.filter (_ /= "LICENSE")
-                $ map NES.toString
-                $ NEA.toArray licenses
-            { fail, success } = partitionEithers parsed
-
-          case fail, success of
-            [], [] -> mkError MissingLicense
-            [], _ -> Right $ SPDX.joinWith SPDX.Or success
-            _, _ -> mkError $ BadLicense fail
-
+    eitherLicense = produceLicense manifest.license
     eitherTargets = do
       let
         -- We trim out packages that don't begin with `purescript-`, as these
@@ -397,7 +368,7 @@ constructManifestFields package version address = do
     -- We can detect the license for the project using a combination of `licensee`
     -- and reading the license directly out of the Spago and Bower files (the
     -- CLI tool will not read from either file).
-    licenseeOutput <- detectLicense files
+    licenseeOutput <- detectLicense files ------------------ pull this out
 
     let
       spagoLicenses = maybe [] NEA.toArray $ _.license =<< hush spagoManifest

@@ -151,7 +151,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
       let absoluteTarballPath = tmpDir <> "/" <> tarballName
       let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
       log $ "Fetching tarball from GitHub: " <> archiveUrl
-      wget archiveUrl absoluteTarballPath
+      wget archiveUrl absoluteTarballPath ------------------------------ we have the git repo
       log $ "Tarball downloaded in " <> absoluteTarballPath
       liftEffect (Tar.getToplevelDir absoluteTarballPath) >>= case _ of
         Nothing ->
