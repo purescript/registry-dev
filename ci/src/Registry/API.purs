@@ -250,6 +250,7 @@ runChecks { metadata, manifest, absoluteFolderPath } = do
   case licenseFromLicensee of
     Left err -> throwWithComment $ "Could not find a license in the package: " <> err
     Right li -> when (Array.notElem (SPDX.print manifest.license) li) (throwWithComment $ "License from the manifest does not match the license detected by licensee. In manifest: " <> SPDX.print manifest.license <> ". Deteceted in package: " <> show li <> ".")
+
   log "Checking that the Manifest includes the `lib` target"
   libTarget <- case Object.lookup "lib" manifest.targets of
     Nothing -> throwWithComment "Didn't find `lib` target in the Manifest!"
