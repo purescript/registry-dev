@@ -8,6 +8,7 @@ import Data.Argonaut.Encode.Generic as Json.Encode.Generic
 import Data.Argonaut.Types.Generic as Json.Generic
 import Data.Generic.Rep (class Generic)
 import Data.Interpolate (i)
+import Registry.License as License
 import Registry.PackageName (PackageName)
 import Safe.Coerce (coerce)
 
@@ -112,8 +113,7 @@ instance Json.DecodeJson RequestError where
 -- | An error representing why a manifest could not be produced for this package
 data ManifestError
   = MissingName
-  | MissingLicense
-  | BadLicense (Array String)
+  | LicenseError License.LicenseError
   | BadVersion String
   | InvalidDependencyNames (NonEmptyArray String)
   | BadDependencyVersions (NonEmptyArray { dependency :: PackageName, failedBounds :: String })
@@ -138,8 +138,8 @@ instance Show ManifestErrorKey where
 printManifestErrorKey :: ManifestError -> ManifestErrorKey
 printManifestErrorKey = ManifestErrorKey <<< case _ of
   MissingName -> "missingName"
-  MissingLicense -> "missingLicense"
-  BadLicense _ -> "badLicense"
+  LicenseError License.MissingLicense -> "missingLicense"
+  LicenseError (License.BadLicense _) -> "badLicense"
   BadVersion _ -> "badVersion"
   InvalidDependencyNames _ -> "invalidDependencyNames"
   BadDependencyVersions _ -> "badDependencyVersions"

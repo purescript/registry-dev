@@ -12,6 +12,7 @@ import Foreign.SemVer (SemVer, parseSemVer)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..))
+import Registry.License as RLicense
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
 import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
 import Registry.Scripts.LegacyImport.Stats (ErrorCounts(..))
@@ -73,8 +74,8 @@ exampleFailures = PackageFailures $ Map.fromFoldable
     , RawVersion "2.0.0" /\ ManifestError threeManifestErrors
     ]
 
-  twoManifestErrors = MissingLicense :| [ MissingName ]
-  threeManifestErrors = MissingLicense :| [ BadVersion "x.y.z", InvalidDependencyNames ("doesn't" :| [ "exist" ]) ]
+  twoManifestErrors = (LicenseError RLicense.MissingLicense) :| [ MissingName ]
+  threeManifestErrors = (LicenseError RLicense.MissingLicense) :| [ BadVersion "x.y.z", InvalidDependencyNames ("doesn't" :| [ "exist" ]) ]
 
   errByPackage = Left
   errsByVersion = Right
@@ -157,7 +158,7 @@ errorStats = do
     Spec.it "sums the number of each type of import, regardless of which packages or versions it occurred in" do
       exampleStats.countManifestErrorsByErrorType `Assert.shouldEqual`
         Map.fromFoldable
-          [ printManifestErrorKey MissingLicense /\ errCounts 2 1 2
+          [ printManifestErrorKey (LicenseError RLicense.MissingLicense) /\ errCounts 2 1 2
           , printManifestErrorKey MissingName /\ errCounts 1 1 1
           , printManifestErrorKey (BadVersion "") /\ errCounts 1 1 1
           , printManifestErrorKey (InvalidDependencyNames (NonEmptyArray.singleton "")) /\ errCounts 1 1 1

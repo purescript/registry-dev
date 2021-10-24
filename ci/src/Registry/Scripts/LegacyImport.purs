@@ -196,7 +196,7 @@ toManifest
   -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
 toManifest package repository version manifest = do
   let
-    eitherLicense = produceLicense manifest.license
+    eitherLicense = lmap (NEA.singleton <<< LicenseError) (produceLicense manifest.license)
     eitherTargets = do
       let
         -- We trim out packages that don't begin with `purescript-`, as these
