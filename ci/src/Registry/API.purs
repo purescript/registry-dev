@@ -13,7 +13,9 @@ import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
 import Foreign.GitHub (IssueNumber)
 import Foreign.GitHub as GitHub
+import Foreign.Licensee as Licensee
 import Foreign.Object as Object
+import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
 import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
@@ -205,7 +207,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
           Left err -> throwWithComment $ "Could not convert Manifest to JSON: " <> err
           Right res -> pure res
 
-  runChecks metadata manifest
+  runChecks { metadata, manifest, absoluteFolderPath }
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
@@ -238,12 +240,16 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
 -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
 -- TODO: upload docs to pursuit (see #154)
 
-runChecks :: Metadata -> Manifest -> RegistryM Unit
-runChecks metadata manifest = do
+runChecks :: { metadata :: Metadata, manifest :: Manifest, absoluteFolderPath :: String } -> RegistryM Unit
+runChecks { metadata, manifest, absoluteFolderPath } = do
   -- TODO: collect all errors and return them at once. Note: some of the checks
   -- are going to fail while parsing from JSON, so we should move them here if we
   -- want to handle everything together
-
+  log "Checking that the SPDX license in the manifest corresponds to the one in the package"
+  licenseFromLicensee <- liftAff $ Licensee.detect absoluteFolderPath
+  case licenseFromLicensee of
+    Left err -> throwWithComment $ "Could not find a license in the package: " <> err
+    Right li -> when (Array.notElem (SPDX.print manifest.license) li) (throwWithComment $ "License from the manifest does not match the license detected by licensee. In manifest: " <> SPDX.print manifest.license <> ". Deteceted in package: " <> show li <> ".")
   log "Checking that the Manifest includes the `lib` target"
   libTarget <- case Object.lookup "lib" manifest.targets of
     Nothing -> throwWithComment "Didn't find `lib` target in the Manifest!"
