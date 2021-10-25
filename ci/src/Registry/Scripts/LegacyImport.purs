@@ -18,6 +18,7 @@ import Data.Maybe (maybe)
 import Data.Monoid (guard)
 import Data.Set as Set
 import Data.String as String
+import Data.String.NonEmpty as NES
 import Data.Time.Duration (Hours(..))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
@@ -78,7 +79,7 @@ downloadLegacyRegistry = do
     initialPackages = { failures: PackageFailures Map.empty, packages: allPackages }
 
   log "Fetching package releases..."
-  releaseIndex <- Process.forPackage initialPackages identity \name repoUrl -> do
+  releaseIndex <- Process.forPackage initialPackages \name repoUrl -> do
     address <- case GitHub.parseRepo repoUrl of
       Left err -> throwError $ InvalidGitHubRepo $ StringParser.printParserError err
       Right address -> pure address
@@ -101,7 +102,7 @@ downloadLegacyRegistry = do
     pure $ Tuple { name, address } versions
 
   log "Parsing names and versions..."
-  packageRegistry <- Process.forPackageVersionKeys releaseIndex _.name identity \{ name, address } tag -> do
+  packageRegistry <- Process.forPackageVersionKeys releaseIndex \{ name, address } tag -> do
     packageName <- case PackageName.parse $ un RawPackageName name of
       Left err ->
         throwError $ MalformedPackageName $ StringParser.printParserError err
@@ -121,8 +122,14 @@ downloadLegacyRegistry = do
     pure $ Tuple outerKey innerKey
 
   log "Converting to manifests..."
-  let forPackageRegistry = Process.forPackageVersion packageRegistry _.original _.original
-  manifestRegistry <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
+  let forPackageRegistry = Process.forPackageVersion packageRegistry
+  manifestRegistry :: Process.ProcessedPackageVersions
+    { address :: GitHub.Address
+    , name :: PackageName
+    , original :: RawPackageName
+    }
+    { semVer :: SemVer, original :: RawVersion }
+    Manifest <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
     manifestFields <- constructManifestFields originalName tag.original address
 
     let
@@ -132,7 +139,13 @@ downloadLegacyRegistry = do
     Except.mapExceptT liftError $ toManifest name repo tag.semVer manifestFields
 
   log "Checking dependencies are self-contained..."
-  containedRegistry <- Process.forPackageVersion manifestRegistry _.original _.original \_ _ manifest -> do
+  containedRegistry :: Process.ProcessedPackageVersions
+    { address :: GitHub.Address
+    , name :: PackageName
+    , original :: RawPackageName
+    }
+    { semVer :: SemVer, original :: RawVersion }
+    Manifest <- Process.forPackageVersion manifestRegistry \_ _ manifest -> do
     _ <- selfContainedDependencies (Map.keys allPackages) manifest
     pure manifest
 
@@ -188,20 +201,24 @@ toManifest package repository version manifest = do
     eitherLicense = do
       let
         rewrite = case _ of
-          [ "Apache 2" ] -> [ "Apache-2.0" ]
-          [ "Apache-2" ] -> [ "Apache-2.0" ]
-          [ "Apache 2.0" ] -> [ "Apache-2.0" ]
-          [ "BSD" ] -> [ "BSD-3-Clause" ]
-          [ "BSD3" ] -> [ "BSD-3-Clause" ]
-          [ "BSD-3" ] -> [ "BSD-3-Clause" ]
-          [ "3-Clause BSD" ] -> [ "BSD-3-Clause" ]
+          "Apache 2" -> "Apache-2.0"
+          "Apache-2" -> "Apache-2.0"
+          "Apache 2.0" -> "Apache-2.0"
+          "BSD" -> "BSD-3-Clause"
+          "BSD3" -> "BSD-3-Clause"
+          "BSD-3" -> "BSD-3-Clause"
+          "3-Clause BSD" -> "BSD-3-Clause"
           other -> other
 
       case manifest.license of
         Nothing -> mkError MissingLicense
         Just licenses -> do
           let
-            parsed = map SPDX.parse $ rewrite $ NEA.toArray licenses
+            parsed =
+              map (SPDX.parse <<< rewrite)
+                $ Array.filter (_ /= "LICENSE")
+                $ map NES.toString
+                $ NEA.toArray licenses
             { fail, success } = partitionEithers parsed
 
           case fail, success of
@@ -302,7 +319,7 @@ cleanPackageName (RawPackageName name) = do
     _ -> throwError $ MalformedPackageName name
 
 -- | Read the list of packages in a registry file
-readRegistryFile :: FilePath -> Aff (Map RawPackageName String)
+readRegistryFile :: FilePath -> Aff (Map RawPackageName PackageURL)
 readRegistryFile source = do
   registryFile <- readJsonFile ("../" <> source)
   case registryFile of
@@ -380,12 +397,13 @@ constructManifestFields package version address = do
     -- We can detect the license for the project using a combination of `licensee`
     -- and reading the license directly out of the Spago and Bower files (the
     -- CLI tool will not read from either file).
-    licenses <- detectLicense files
+    licenseeOutput <- detectLicense files
 
     let
       spagoLicenses = maybe [] NEA.toArray $ _.license =<< hush spagoManifest
       bowerLicenses = maybe [] NEA.toArray $ _.license =<< hush bowerManifest
-      license = NEA.fromArray $ Array.nub $ Array.concat [ licenses, spagoLicenses, bowerLicenses ]
+      licenseeLicenses = Array.catMaybes $ map NES.fromString licenseeOutput
+      license = NEA.fromArray $ Array.nub $ Array.concat [ licenseeLicenses, spagoLicenses, bowerLicenses ]
 
     when (license == Nothing) do
       log $ "No license available for " <> un RawPackageName package <> " " <> un RawVersion version

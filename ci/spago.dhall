@@ -17,7 +17,7 @@
   , "dotenv"
   , "effect"
   , "either"
-  , "exceptions"
+  , "filterable"
   , "foldable-traversable"
   , "foreign-object"
   , "functions"

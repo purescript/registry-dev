@@ -12,6 +12,7 @@
   "purescript-cirru-parser": "https://github.com/Cirru/parser.purs.git",
   "purescript-cirru-edn": "https://github.com/Cirru/cirru-edn.purs.git",
   "purescript-web-url": "https://github.com/mjepronk/purescript-web-url.git",
+  "purescript-bf-gun" : "https://github.com/gorillatron/purescript-bf-gun.git",
   "purescript-grain": "https://github.com/purescript-grain/purescript-grain.git",
   "purescript-grain-portal": "https://github.com/purescript-grain/purescript-grain-portal.git",
   "purescript-grain-router": "https://github.com/purescript-grain/purescript-grain-router.git",
@@ -138,6 +139,7 @@
   "purescript-batteries-env": "https://github.com/purescript-polyform/batteries-env.git",
   "purescript-batteries-json": "https://github.com/purescript-polyform/batteries-json.git",
   "purescript-batteries-urlencoded": "https://github.com/purescript-polyform/batteries-urlencoded.git",
+  "purescript-tree-sitter": "https://github.com/neppord/purescript-tree-sitter.git",
   "purescript-typelevel-codec-json": "https://github.com/JordanMartinez/purescript-typelevel-codec-json.git",
   "purescript-dexie": "https://github.com/mushishi78/purescript-dexie.git",
   "purescript-google-apps": "https://github.com/BBVA/purescript-google-apps.git",
@@ -152,5 +154,6 @@
   "purescript-typelevel-arithmetic": "https://github.com/sigma-andex/purescript-typelevel-arithmetic.git",
   "purescript-cnchar": "https://github.com/ongyiren1994/purescript-cnchar.git",
   "purescript-grid-reactors": "https://github.com/Eugleo/purescript-grid-reactors.git",
-  "purescript-droplet": "https://github.com/easafe/purescript-droplet.git"
+  "purescript-droplet": "https://github.com/easafe/purescript-droplet.git",
+  "purescript-html-codegen-halogen": "https://github.com/ongyiren1994/purescript-html-codegen-halogen.git"
 }

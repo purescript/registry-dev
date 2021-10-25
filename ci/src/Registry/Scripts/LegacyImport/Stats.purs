@@ -10,6 +10,7 @@ import Registry.Prelude
 
 import Control.Monad.Writer as Writer
 import Data.Array as Array
+import Data.Compactable (compact)
 import Data.Foldable as Foldable
 import Data.Function (on)
 import Data.Generic.Rep (class Generic)
@@ -19,6 +20,10 @@ import Data.Map (SemigroupMap(..))
 import Data.Map as Map
 import Data.Monoid.Additive (Additive(..))
 import Data.Set as Set
+import Foreign.GitHub as GitHub
+import Foreign.SemVer (SemVer)
+import Registry.PackageName (PackageName)
+import Registry.Schema (Manifest)
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey(..), ManifestError, ManifestErrorKey(..), PackageFailures(..), RawPackageName, RawVersion, manifestErrorKey, printManifestErrorKey)
 import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
 import Safe.Coerce (coerce)
@@ -47,30 +52,21 @@ instance Show ErrorCounts where
   show = genericShow
 
 printErrorCounts :: ErrorCounts -> String
-printErrorCounts (ErrorCounts { countOfOccurrences, countOfPackagesAffected, countOfVersionsAffected }) =
-  i (show countOfOccurrences) " occurrences (" (show countOfPackagesAffected) " packages / " (show countOfVersionsAffected) " versions)"
+printErrorCounts (ErrorCounts { countOfPackagesAffected, countOfVersionsAffected }) =
+  i (show countOfVersionsAffected) " versions across " (show countOfPackagesAffected) " packages"
 
 type Stats =
-  { countOfPackageSuccesses :: Int
-  , countOfPackageFailures :: Int
-  , countOfVersionSuccesses :: Int
-  , countOfVersionFailures :: Int
+  { totalPackages :: Int
+  , totalVersions :: Int
+  , countOfPackageSuccessesWithoutFailures :: Int
+  , countOfPackageFailuresWithoutSuccesses :: Int
+  , countOfVersionSuccessesWithoutFailures :: Int
+  , countOfVersionFailuresWithoutSuccesses :: Int
   , countImportErrorsByErrorType :: Map ImportErrorKey ErrorCounts
   , countManifestErrorsByErrorType :: Map ManifestErrorKey ErrorCounts
   }
 
 type VersionFailures = Map RawPackageName (Map RawVersion (Array ImportError))
-
-versionFailuresFromPackageFailures :: PackageFailures -> VersionFailures
-versionFailuresFromPackageFailures (PackageFailures failures) = do
-  let
-    onlyVersionFailures :: List (Map RawPackageName (Map RawVersion ImportError))
-    onlyVersionFailures = Map.values failures # map (Map.mapMaybe hush)
-
-    semigroupVersionFailures :: List (SemigroupMap RawPackageName (SemigroupMap RawVersion (Array ImportError)))
-    semigroupVersionFailures = coerce (map (map (map Array.singleton)) onlyVersionFailures)
-
-  coerce (fold semigroupVersionFailures)
 
 countManifestErrors :: PackageFailures -> Map ManifestErrorKey ErrorCounts
 countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKey failures of
@@ -116,26 +112,49 @@ countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKe
       , countOfVersionsAffected: Foldable.sum versionFailures
       }
 
-errorStats :: forall package version a. ProcessedPackageVersions package version a -> Stats
+errorStats
+  :: ProcessedPackageVersions
+       { address :: GitHub.Address
+       , name :: PackageName
+       , original :: RawPackageName
+       }
+       { semVer :: SemVer, original :: RawVersion }
+       Manifest
+  -> Stats
 errorStats { packages: succeededPackages, failures: packageFailures@(PackageFailures failures) } =
-  { countOfPackageSuccesses
-  , countOfPackageFailures
-  , countOfVersionSuccesses
-  , countOfVersionFailures
+  { totalPackages
+  , totalVersions
+  , countOfPackageSuccessesWithoutFailures
+  , countOfPackageFailuresWithoutSuccesses
+  , countOfVersionSuccessesWithoutFailures
+  , countOfVersionFailuresWithoutSuccesses
   , countImportErrorsByErrorType
   , countManifestErrorsByErrorType
   }
   where
-  countOfPackageSuccesses = Map.size succeededPackages
-  countOfVersionSuccesses = Foldable.sum $ map Map.size succeededPackages
+  rawSuccesses = Set.map _.original $ Map.keys succeededPackages
+  rawFailures = Foldable.fold (map Map.keys failures)
+  totalPackages = Set.size (rawSuccesses <> rawFailures)
+  countOfPackageSuccessesWithoutFailures = Set.size $ Set.difference rawSuccesses rawFailures
+  countOfPackageFailuresWithoutSuccesses = Set.size $ Set.difference rawFailures rawSuccesses
 
-  countOfPackageFailures = do
-    let
-      packages = fold $ map Map.keys $ Map.values failures
-    Set.size packages
+  rawSuccessVersions :: Set (Tuple RawPackageName RawVersion)
+  rawSuccessVersions = (Set.map <<< map) _.original $ Foldable.fold
+    $ map (Set.map <$> (Tuple <<< _.original <<< fst) <*> snd)
+    $ (map <<< map) Map.keys ((Map.toUnfoldable :: _ -> Array _) succeededPackages)
 
-  countOfVersionFailures =
-    Foldable.sum $ map Map.size $ versionFailuresFromPackageFailures packageFailures
+  rawFailedVersions :: Set (Tuple RawPackageName RawVersion)
+  rawFailedVersions = Foldable.fold
+    $ map (Set.map <$> (Tuple <<< fst) <*> (Map.keys <<< snd))
+    $ compact
+    $ map sequence
+    $ (map <<< map) hush
+    $ Foldable.fold
+    $ map ((Map.toUnfoldable) :: _ -> Array _) (Map.values failures)
+
+  totalVersions = Set.size (rawSuccessVersions <> rawFailedVersions)
+  countOfVersionSuccessesWithoutFailures = Set.size $ Set.difference rawSuccessVersions rawFailedVersions
+  countOfVersionFailuresWithoutSuccesses = Set.size $ Set.difference rawFailedVersions rawSuccessVersions
 
   countImportErrorsByErrorType = do
     let
@@ -159,10 +178,24 @@ prettyPrintStats :: Stats -> String
 prettyPrintStats stats =
   Foldable.intercalate "\n" $
     fold
-      [ [ "Number of successful packages: " <> show stats.countOfPackageSuccesses
-        , "Number of failed packages: " <> show stats.countOfPackageFailures
-        , "Number of successful versions: " <> show stats.countOfVersionSuccesses
-        , "Number of failed versions: " <> show stats.countOfVersionFailures
+      [ [ "Packages: "
+            <> show stats.totalPackages
+            <> " total ("
+            <> show stats.countOfPackageSuccessesWithoutFailures
+            <> " totally succeeded, "
+            <> show (stats.totalPackages - stats.countOfPackageSuccessesWithoutFailures - stats.countOfPackageFailuresWithoutSuccesses)
+            <> " partially succeeded, "
+            <> show stats.countOfPackageFailuresWithoutSuccesses
+            <> " totally failed)"
+        , "Versions: "
+            <> show stats.totalVersions
+            <> " total ("
+            <> show stats.countOfVersionSuccessesWithoutFailures
+            <> " totally succeeded, "
+            <> show (stats.totalVersions - stats.countOfVersionSuccessesWithoutFailures - stats.countOfVersionFailuresWithoutSuccesses)
+            <> " partially succeeded, "
+            <> show stats.countOfVersionFailuresWithoutSuccesses
+            <> " totally failed)"
         , "Failures by error:"
         ]
       , sortedErrors
