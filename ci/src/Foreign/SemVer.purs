@@ -3,6 +3,7 @@ module Foreign.SemVer
   , parseSemVer
   , printSemVer
   , major
+  , maxSatisfying
   , minor
   , patch
   , prerelease
@@ -31,8 +32,8 @@ instance showSemVer :: Show SemVer where
 
 instance decodeJsonSemver :: Json.DecodeJson SemVer where
   decodeJson json = do
-    version <- Json.decodeJson json
-    note (Json.TypeMismatch $ "Expected version: " <> version) (parseSemVer version)
+    version' <- Json.decodeJson json
+    note (Json.TypeMismatch $ "Expected version: " <> version') (parseSemVer version')
 
 instance encodeJsonSemver :: Json.EncodeJson SemVer where
   encodeJson = Json.encodeJson <<< printSemVer
@@ -69,6 +70,11 @@ foreign import version :: SemVer -> String
 newtype Range = Range String
 
 derive newtype instance eqRange :: Eq Range
+
+foreign import maxSatisfyingImpl :: Fn2 (Array String) Range (Nullable String)
+
+maxSatisfying :: Array SemVer -> Range -> Maybe SemVer
+maxSatisfying versions range = parseSemVer =<< toMaybe (runFn2 maxSatisfyingImpl (map version versions) range)
 
 instance decodeJsonRange :: Json.DecodeJson Range where
   decodeJson json = do
