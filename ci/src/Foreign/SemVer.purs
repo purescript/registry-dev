@@ -11,6 +11,7 @@ module Foreign.SemVer
   , Range
   , parseRange
   , printRange
+  , satisfies
   ) where
 
 import Registry.Prelude
@@ -70,11 +71,17 @@ foreign import version :: SemVer -> String
 newtype Range = Range String
 
 derive newtype instance eqRange :: Eq Range
+derive newtype instance ordRange :: Ord Range
 
 foreign import maxSatisfyingImpl :: Fn2 (Array String) Range (Nullable String)
 
 maxSatisfying :: Array SemVer -> Range -> Maybe SemVer
 maxSatisfying versions range = parseSemVer =<< toMaybe (runFn2 maxSatisfyingImpl (map version versions) range)
+
+foreign import satisfiesImpl :: Fn2 String Range Boolean
+
+satisfies :: SemVer -> Range -> Boolean
+satisfies version' range = runFn2 satisfiesImpl (version version') range
 
 instance decodeJsonRange :: Json.DecodeJson Range where
   decodeJson json = do

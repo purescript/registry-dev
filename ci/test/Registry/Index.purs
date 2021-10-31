@@ -5,19 +5,26 @@ import Registry.Prelude
 import Control.Monad.Reader as Reader
 import Data.Array as Array
 import Data.Foldable (sequence_)
+import Data.List as List
 import Data.Map as Map
 import Data.Set as Set
+import Debug (traceM)
 import Effect.Ref as Ref
+import Foreign.SemVer (SemVer)
 import Foreign.Tmp as Tmp
 import Node.FS.Stats as Stats
 import Node.Glob.Basic as Glob
 import Node.Path as Node.Path
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
+import Registry.PackageGraph as PackageGraph
+import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Schema (Manifest)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Support.Manifest as Support.Manifest
+import Unsafe.Coerce (unsafeCoerce)
 
 type TestIndexEnv =
   { tmp :: FilePath
@@ -85,6 +92,11 @@ testRegistryIndex = Spec.before runBefore do
         memoryIndex = Map.insertWith (flip Map.union) packageName (Map.singleton manifest.version manifest) index
 
       _ <- writeMemory memoryIndex
+
+      let
+        memoryGraph = PackageGraph.checkRegistryIndex memoryIndex
+
+      traceM memoryGraph
 
       -- Finally, we verify that the on-disk index equals the in-memory index.
       (diskIndex == memoryIndex) `Assert.shouldEqual` true
