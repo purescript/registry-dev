@@ -11,6 +11,7 @@ import Data.Map as Map
 import Data.Maybe (maybe)
 import Data.Semigroup.First (First(..))
 import Data.Set as Set
+import Debug (spy)
 import Foreign.Object as Object
 import Foreign.SemVer (Range, SemVer)
 import Foreign.SemVer as SemVer
@@ -51,28 +52,28 @@ type PackageWithVersion = { package :: PackageName, version :: SemVer }
 type PackageWithRange = { package :: PackageName, range :: Range }
 
 type ConstraintArgs =
-  { satisfied :: Set PackageWithVersion
-  , constraints :: Map PackageWithVersion (Set PackageWithRange)
+  { satisfied :: Array PackageWithVersion
+  , constraints :: Map PackageWithVersion (Array PackageWithRange)
   }
 
 type ConstraintResult =
-  { satisfied :: Set PackageWithVersion
-  , unsolved :: Map PackageWithVersion (Set PackageWithRange)
+  { satisfied :: Array PackageWithVersion
+  , unsolved :: Map PackageWithVersion (Array PackageWithRange)
   }
 
 type CheckResult =
-  { unsatisfied :: Array PackageWithVersion
+  { unsatisfied :: Map PackageWithVersion (Array PackageWithRange)
   , index :: RegistryIndex
   }
 
 checkRegistryIndex :: RegistryIndex -> CheckResult
 checkRegistryIndex index = do
   let
-    constraints :: Map PackageWithVersion (Set PackageWithRange)
-    constraints = Map.fromFoldableWith Set.union do
+    constraints :: Map PackageWithVersion (Array PackageWithRange)
+    constraints = Map.fromFoldableWith append do
       Tuple package versions' <- (Map.toUnfoldable index :: Array (Tuple PackageName (Map SemVer Manifest)))
       Tuple version manifest <- (Map.toUnfoldable versions' :: Array (Tuple SemVer Manifest))
-      [ Tuple { package, version } Set.empty ] <> do
+      [ Tuple { package, version } [] ] <> do
         lib <- maybe [] pure $ Object.lookup "lib" manifest.targets
         let
           deps :: Array PackageWithRange
@@ -81,48 +82,50 @@ checkRegistryIndex index = do
             p <- maybe [] pure $ hush $ PackageName.parse p'
             pure { package: p, range }
 
-        pure $ Tuple { package, version } (Set.fromFoldable deps)
+        pure $ Tuple { package, version } deps
 
-    constraintResults = go { satisfied: Set.empty, constraints }
+    constraintResults = go { satisfied: mempty, constraints }
 
     checkedIndex :: RegistryIndex
     checkedIndex = Map.fromFoldable do
       Tuple package versions <- (Map.toUnfoldable index :: Array _)
       pure $ Tuple package $ Map.fromFoldable do
         Tuple version manifest <- (Map.toUnfoldable versions :: Array _)
-        if Set.member { package, version } constraintResults.satisfied then
+        if Array.elem { package, version } constraintResults.satisfied then
           pure $ Tuple version manifest
         else
           []
 
-  { index: checkedIndex, unsatisfied: Array.fromFoldable (Map.keys constraintResults.unsolved) }
+  { index: checkedIndex, unsatisfied: constraintResults.unsolved }
   where
   go :: ConstraintArgs -> ConstraintResult
   go { satisfied, constraints } = do
     let
-      solved :: Set PackageWithVersion
-      solved = Set.fromFoldable do
+      solved :: Array PackageWithVersion
+      solved = do
         Tuple package dependencies <- (Map.toUnfoldable constraints :: Array _)
-        if Set.isEmpty dependencies then
+        if Array.null dependencies then
           pure package
         else
           mempty
 
-    if Set.isEmpty solved then
+    if Array.null solved then
       { satisfied, unsolved: constraints }
     else do
       let
-        constraints' :: Map PackageWithVersion (Set PackageWithRange)
+        wtf = spy "Solved" solved
+
+        constraints' :: Map PackageWithVersion (Array PackageWithRange)
         constraints' = Map.fromFoldable do
           Tuple package dependencies <- (Map.toUnfoldable constraints :: Array _)
-          if Set.member package solved then
+          if Array.elem package solved then
             []
           else do
-            pure $ Tuple package (Set.filter (isUnsolved solved) dependencies)
+            pure $ Tuple package (Array.filter (isUnsolved solved) dependencies)
 
-      go { satisfied: Set.union satisfied solved, constraints: constraints' }
+      go { satisfied: append satisfied solved, constraints: constraints' }
 
-  isUnsolved :: Set PackageWithVersion -> PackageWithRange -> Boolean
+  isUnsolved :: Array PackageWithVersion -> PackageWithRange -> Boolean
   isUnsolved solved { package: neededPackage, range } =
     foldl
       (\acc { package: solvedPackage, version } -> solvedPackage /= neededPackage && not (SemVer.satisfies version range) && acc)
