@@ -3,7 +3,7 @@ module Registry.PackageGraph where
 import Registry.Prelude
 
 import Data.Array as Array
-import Data.Foldable (foldMap, foldl)
+import Data.Foldable (foldMap)
 import Data.Graph (Graph)
 import Data.Graph as Graph
 import Data.List as List
@@ -11,7 +11,6 @@ import Data.Map as Map
 import Data.Maybe (maybe)
 import Data.Semigroup.First (First(..))
 import Data.Set as Set
-import Debug (spy)
 import Foreign.Object as Object
 import Foreign.SemVer (Range, SemVer)
 import Foreign.SemVer as SemVer
@@ -20,7 +19,6 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Manifest)
 import Safe.Coerce (coerce)
-
 
 {-
 Goal: Given a RegistryIndex, provide a maximally-valid-set of (PackageName, SemVer) pairs.
@@ -71,8 +69,8 @@ checkRegistryIndex index = do
   let
     constraints :: Map PackageWithVersion (Array PackageWithRange)
     constraints = Map.fromFoldableWith append do
-      Tuple package versions' <- (Map.toUnfoldable index :: Array (Tuple PackageName (Map SemVer Manifest)))
-      Tuple version manifest <- (Map.toUnfoldable versions' :: Array (Tuple SemVer Manifest))
+      Tuple package versions' <- (Map.toUnfoldable index :: Array _)
+      Tuple version manifest <- (Map.toUnfoldable versions' :: Array _)
       [ Tuple { package, version } [] ] <> do
         lib <- maybe [] pure $ Object.lookup "lib" manifest.targets
         let
@@ -101,36 +99,25 @@ checkRegistryIndex index = do
   go :: ConstraintArgs -> ConstraintResult
   go { satisfied, constraints } = do
     let
-      solved :: Array PackageWithVersion
-      solved = do
-        Tuple package dependencies <- (Map.toUnfoldable constraints :: Array _)
-        if Array.null dependencies then
-          pure package
+      go' (Tuple s c) (Tuple package dependencies) = do
+        let
+          dependencies' = Array.filter (not <<< isSolved (s <> satisfied)) dependencies
+        if Array.null dependencies' then
+          Tuple (s <> pure package) c
         else
-          mempty
+          Tuple s (Map.insert package dependencies' c)
+
+      Tuple solved constraints' =
+        Array.foldl go' (Tuple [] Map.empty) (Map.toUnfoldable constraints :: Array _)
 
     if Array.null solved then
-      { satisfied, unsolved: constraints }
-    else do
-      let
-        wtf = spy "Solved" solved
+      { satisfied, unsolved: constraints' }
+    else
+      go { satisfied: satisfied <> solved, constraints: constraints' }
 
-        constraints' :: Map PackageWithVersion (Array PackageWithRange)
-        constraints' = Map.fromFoldable do
-          Tuple package dependencies <- (Map.toUnfoldable constraints :: Array _)
-          if Array.elem package solved then
-            []
-          else do
-            pure $ Tuple package (Array.filter (isUnsolved solved) dependencies)
-
-      go { satisfied: append satisfied solved, constraints: constraints' }
-
-  isUnsolved :: Array PackageWithVersion -> PackageWithRange -> Boolean
-  isUnsolved solved { package: neededPackage, range } =
-    foldl
-      (\acc { package: solvedPackage, version } -> solvedPackage /= neededPackage && not (SemVer.satisfies version range) && acc)
-      true
-      solved
+  isSolved :: Array PackageWithVersion -> PackageWithRange -> Boolean
+  isSolved solved { package: neededPackage, range } =
+    Array.any (\{ package: solvedPackage, version } -> solvedPackage == neededPackage && SemVer.satisfies version range) solved
 
 type PackageGraph = Graph (Tuple PackageName SemVer) Manifest
 
@@ -171,7 +158,7 @@ toPackageGraph index =
           -- Assuming that different targets have the same version ranges for dependencies
           $ foldMap (_.dependencies >>> (coerce :: Object Range -> Object (First Range)))
           -- TODO: Do we only care about `lib`?
-          $ Object.values manifest.targets
+          $ maybe [] pure (Object.lookup "lib" manifest.targets)
     Tuple manifest deps
 
   resolveDependency :: Tuple PackageName (First Range) -> Tuple PackageName SemVer
