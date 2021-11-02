@@ -34,6 +34,7 @@ import Foreign.SemVer as SemVer
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Registry.Index (RegistryIndex, insertManifest)
+import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
@@ -138,17 +139,6 @@ downloadLegacyRegistry = do
 
     Except.mapExceptT liftError $ toManifest name repo tag.semVer manifestFields
 
-  log "Checking dependencies are self-contained..."
-  containedRegistry :: Process.ProcessedPackageVersions
-    { address :: GitHub.Address
-    , name :: PackageName
-    , original :: RawPackageName
-    }
-    { semVer :: SemVer, original :: RawVersion }
-    Manifest <- Process.forPackageVersion manifestRegistry \_ _ manifest -> do
-    _ <- selfContainedDependencies (Map.keys allPackages) manifest
-    pure manifest
-
   let
     registryIndex :: RegistryIndex
     registryIndex = do
@@ -157,32 +147,21 @@ downloadLegacyRegistry = do
         packageManifests =
           map (lmap _.name)
             $ map (map (Map.fromFoldable <<< map (lmap _.semVer) <<< (Map.toUnfoldable :: _ -> Array _)))
-            $ Map.toUnfoldable containedRegistry.packages
+            $ Map.toUnfoldable manifestRegistry.packages
 
       Map.fromFoldable packageManifests
+
+  log "Checking dependencies are self-contained..."
+  let
+    { index: checkedIndex, unsatisfied } = Graph.checkRegistryIndex registryIndex
+
+  log "Writing unsatisfied dependencies file..."
+  writeJsonFile "./unsatisfied-dependencies.json" unsatisfied
 
   log "Writing exclusions file..."
   writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
   Stats.logStats $ Stats.errorStats manifestRegistry
-  pure registryIndex
-
--- | TODO: This check can't be done on a per-package basis without ordering.
--- | It requires that all versions are topologically-sorted first.
--- |
--- | Verify that the dependencies listed in the bower.json files are all
--- | contained within the registry.
-selfContainedDependencies :: Set RawPackageName -> Manifest -> ExceptT ImportError Aff Unit
-selfContainedDependencies registry { targets } = do
-  let
-    allDeps :: Array RawPackageName
-    allDeps = coerce $ Array.nub $ Array.foldMap (Object.keys <<< _.dependencies) $ Object.values targets
-
-  outsideDeps <- for allDeps \packageName -> do
-    name <- cleanPackageName packageName
-    pure $ if Set.member name registry then Nothing else Just name
-
-  for_ (NEA.fromArray $ Array.catMaybes outsideDeps) \outside ->
-    throwError $ NonRegistryDependencies outside
+  pure checkedIndex
 
 -- | Convert a package from Bower to a Manifest.
 -- This function is written a bit awkwardly because we want to collect validation
