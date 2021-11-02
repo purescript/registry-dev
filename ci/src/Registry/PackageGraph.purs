@@ -45,79 +45,96 @@ When processing, we don't care which dependency SemVer matches a Range, just tha
 Can do a post-processing step to figure out which of the SemVer `maxSatisfying` Range
 -}
 
+-- TODO: Can we write unsatisfied to a file?
 type PackageWithVersion = { package :: PackageName, version :: SemVer }
 
 type PackageWithRange = { package :: PackageName, range :: Range }
 
+type PackageWithDependencies = { package :: PackageWithVersion, dependencies :: Array PackageWithRange }
+
 type ConstraintArgs =
-  { satisfied :: Array PackageWithVersion
-  , constraints :: Map PackageWithVersion (Array PackageWithRange)
+  { satisfied :: Map PackageName (Array SemVer)
+  , constraints :: Array PackageWithDependencies
   }
 
 type ConstraintResult =
-  { satisfied :: Array PackageWithVersion
-  , unsolved :: Map PackageWithVersion (Array PackageWithRange)
+  { satisfied :: Map PackageName (Array SemVer)
+  , unsolved :: Array PackageWithDependencies
   }
 
 type CheckResult =
-  { unsatisfied :: Map PackageWithVersion (Array PackageWithRange)
+  { unsatisfied :: Array PackageWithDependencies
   , index :: RegistryIndex
   }
 
+-- Insight: We know a RegistryIndex is a Map, so entries are unique
+-- Instead of constructing a constraint Map of constraints, use an Array
 checkRegistryIndex :: RegistryIndex -> CheckResult
 checkRegistryIndex index = do
   let
-    constraints :: Map PackageWithVersion (Array PackageWithRange)
-    constraints = Map.fromFoldableWith append do
-      Tuple package versions' <- (Map.toUnfoldable index :: Array _)
-      Tuple version manifest <- (Map.toUnfoldable versions' :: Array _)
-      [ Tuple { package, version } [] ] <> do
-        lib <- maybe [] pure $ Object.lookup "lib" manifest.targets
-        let
-          deps :: Array PackageWithRange
-          deps = do
-            Tuple p' range <- Object.toUnfoldable lib.dependencies
-            p <- maybe [] pure $ hush $ PackageName.parse p'
-            pure { package: p, range }
+    constraints :: Array { package :: PackageWithVersion, dependencies :: Array PackageWithRange }
+    constraints = Array.sortWith (_.dependencies >>> Array.length) do
+      Tuple package versions' <- Map.toUnfoldable index
+      Tuple version manifest <- Map.toUnfoldable versions'
+      let
+        -- All valid manifests have a `lib` target.
+        -- If they have no dependencies, then lib.dependencies is []
+        lib = unsafePartial fromJust $ Object.lookup "lib" manifest.targets
 
-        pure $ Tuple { package, version } deps
+        dependencies :: Array PackageWithRange
+        dependencies = do
+          Tuple p' range <- Object.toUnfoldable lib.dependencies
+          p <- maybe [] Array.singleton $ hush $ PackageName.parse p'
+          [ { package: p, range } ]
 
-    constraintResults = go { satisfied: mempty, constraints }
+      [ { package: { package, version }, dependencies } ]
+
+    constraintResults = go { satisfied: Map.empty, constraints }
 
     checkedIndex :: RegistryIndex
     checkedIndex = Map.fromFoldable do
-      Tuple package versions <- (Map.toUnfoldable index :: Array _)
-      pure $ Tuple package $ Map.fromFoldable do
-        Tuple version manifest <- (Map.toUnfoldable versions :: Array _)
-        if Array.elem { package, version } constraintResults.satisfied then
-          pure $ Tuple version manifest
+      Tuple package versions <- Map.toUnfoldable index
+      Array.singleton $ Tuple package $ Map.fromFoldable do
+        Tuple version manifest <- Map.toUnfoldable versions
+        satisfiedVersions <- maybe [] Array.singleton (Map.lookup package constraintResults.satisfied)
+        if Array.elem version satisfiedVersions then
+          [ Tuple version manifest ]
         else
           []
 
   { index: checkedIndex, unsatisfied: constraintResults.unsolved }
   where
+  -- Sorting constraints makes this somewhat faster
+  -- Is there a way to make Map return elements in order of value array length?
   go :: ConstraintArgs -> ConstraintResult
-  go { satisfied, constraints } = do
+  go args = do
     let
-      go' (Tuple s c) (Tuple package dependencies) = do
+      go' { satisfied, progress, constraints } { package, dependencies } = do
         let
-          dependencies' = Array.filter (not <<< isSolved (s <> satisfied)) dependencies
-        if Array.null dependencies' then
-          Tuple (s <> pure package) c
+          unsolved = Array.filter (negate <<< isSolved satisfied) dependencies
+        if Array.null unsolved then
+          { satisfied: Map.insertWith append package.package [ package.version ] satisfied
+          , progress: progress <> [ package ]
+          , constraints
+          }
         else
-          Tuple s (Map.insert package dependencies' c)
+          { satisfied
+          , progress
+          , constraints: constraints <> [ { package, dependencies: unsolved } ]
+          }
 
-      Tuple solved constraints' =
-        Array.foldl go' (Tuple [] Map.empty) (Map.toUnfoldable constraints :: Array _)
+      { satisfied, progress, constraints } =
+        Array.foldl go' { satisfied: args.satisfied, progress: [], constraints: [] } args.constraints
 
-    if Array.null solved then
-      { satisfied, unsolved: constraints' }
+    if Array.null progress then do
+      { satisfied, unsolved: constraints }
     else
-      go { satisfied: satisfied <> solved, constraints: constraints' }
+      go { satisfied, constraints }
 
-  isSolved :: Array PackageWithVersion -> PackageWithRange -> Boolean
-  isSolved solved { package: neededPackage, range } =
-    Array.any (\{ package: solvedPackage, version } -> solvedPackage == neededPackage && SemVer.satisfies version range) solved
+  isSolved :: Map PackageName (Array SemVer) -> PackageWithRange -> Boolean
+  isSolved solved { package, range } = fromMaybe false do
+    versions <- Map.lookup package solved
+    Just $ Array.any (flip SemVer.satisfies range) versions
 
 type PackageGraph = Graph (Tuple PackageName SemVer) Manifest
 
