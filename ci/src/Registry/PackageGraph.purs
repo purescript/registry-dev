@@ -111,7 +111,7 @@ checkRegistryIndex index = do
     let
       go' { satisfied, progress, constraints } { package, dependencies } = do
         let
-          unsolved = Array.filter (negate <<< isSolved satisfied) dependencies
+          unsolved = Array.filter (not <<< isSolved satisfied) dependencies
         if Array.null unsolved then
           { satisfied: Map.insertWith append package.package [ package.version ] satisfied
           , progress: progress <> [ package ]
