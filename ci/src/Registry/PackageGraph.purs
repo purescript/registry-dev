@@ -68,7 +68,8 @@ type CheckResult =
 checkRegistryIndex :: RegistryIndex -> CheckResult
 checkRegistryIndex original = do
   let
-    -- From a RegistryIndex, construct a list of constraints that we would like to satisfy.
+    -- From a RegistryIndex, construct a list of constraints that we would like to satisfy,
+    -- via the `dependencies` of the `lib` target of each `Manifest`.
     -- Invariant: RegistryIndex is a Map of Maps, so the entries in the constraint list will be unique.
     -- We will maintain this throughout processing.
     -- Note: We sort these constraints by the amount of dependencies so that our first solver pass
@@ -144,7 +145,9 @@ checkRegistryIndex original = do
 
 type PackageGraph = Graph (Tuple PackageName SemVer) Manifest
 
--- We will store `maxSatisfying` for all dependencies
+-- We will store `maxSatisfying` for all dependencies.
+-- Note: This function only looks at the `lib` target of a `Manifest`.
+-- This will crash if dependencies are unsatisfied. It is intended to be used after `checkRegistryIndex`.
 toPackageGraph :: RegistryIndex -> PackageGraph
 toPackageGraph index =
   Graph.fromMap
@@ -173,8 +176,10 @@ toPackageGraph index =
         (List.fromFoldable :: Array _ -> _)
           $ map resolveDependency
           $ map (lmap unsafeParsePackageName)
-          $ foldMap Object.toUnfoldable
-          $ maybe [] (_.dependencies >>> Array.singleton) (Object.lookup "lib" manifest.targets)
+          $ Object.toUnfoldable
+          $ _.dependencies
+          $ fromJust' (\_ -> unsafeCrashWith "Manifest missing lib target")
+          $ Object.lookup "lib" manifest.targets
     Tuple manifest deps
 
   resolveDependency :: Tuple PackageName Range -> Tuple PackageName SemVer
