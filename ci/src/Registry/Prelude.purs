@@ -118,4 +118,4 @@ derive newtype instance Json.DecodeJson PackageURL
 
 fromJust' :: forall a. (Unit -> a) -> Maybe.Maybe a -> a
 fromJust' _ (Maybe.Just a) = a
-fromJust' failed _  = failed unit
+fromJust' failed _ = failed unit
