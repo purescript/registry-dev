@@ -139,6 +139,10 @@ downloadLegacyRegistry = do
 
     Except.mapExceptT liftError $ toManifest name repo tag.semVer manifestFields
 
+  log "Writing exclusions file..."
+  writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
+  Stats.logStats $ Stats.errorStats manifestRegistry
+
   let
     registryIndex :: RegistryIndex
     registryIndex = do
@@ -151,16 +155,16 @@ downloadLegacyRegistry = do
 
       Map.fromFoldable packageManifests
 
-  log "Checking dependencies are self-contained..."
+  log "Constructing self-contained registry index..."
   let
     { index: checkedIndex, unsatisfied } = Graph.checkRegistryIndex registryIndex
 
-  log "Writing unsatisfied dependencies file..."
-  writeJsonFile "./unsatisfied-dependencies.json" unsatisfied
+  unless (Array.null unsatisfied) do
+    log "Writing unsatisfied dependencies file..."
+    writeJsonFile "./unsatisfied-dependencies.json" unsatisfied
 
-  log "Writing exclusions file..."
-  writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
-  Stats.logStats $ Stats.errorStats manifestRegistry
+    log (show (Array.length unsatisfied) <> " manifest entries with unsatisfied dependencies")
+
   pure checkedIndex
 
 -- | Convert a package from Bower to a Manifest.
