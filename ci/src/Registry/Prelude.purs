@@ -11,6 +11,7 @@ module Registry.Prelude
   , newlines
   , objectFromMap
   , objectToMap
+  , fromJust'
   ) where
 
 import Prelude
@@ -114,3 +115,7 @@ derive newtype instance Eq PackageURL
 derive newtype instance Ord PackageURL
 derive newtype instance Json.EncodeJson PackageURL
 derive newtype instance Json.DecodeJson PackageURL
+
+fromJust' :: forall a. (Unit -> a) -> Maybe.Maybe a -> a
+fromJust' _ (Maybe.Just a) = a
+fromJust' failed _  = failed unit
