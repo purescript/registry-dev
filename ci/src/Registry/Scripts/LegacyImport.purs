@@ -16,7 +16,6 @@ import Data.Lens (_Left, preview)
 import Data.Map as Map
 import Data.Maybe (maybe)
 import Data.Monoid (guard)
-import Data.Set as Set
 import Data.String as String
 import Data.String.NonEmpty as NES
 import Data.Time.Duration (Hours(..))

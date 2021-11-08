@@ -23,7 +23,7 @@ import Registry.Schema (Manifest)
 Goal: Given a RegistryIndex, provide a maximally self-contained RegistryIndex.
 
 Definitions:
-- A (PackageName, SemVer) pair is "valid" if all of it's dependencies (for the "lib" target) are also valid.
+- A (PackageName, SemVer) pair is "valid" if at least one version of each dependency exists.
   - (PackageName, SemVer) pairs with no dependencies in the "lib" target are trivially valid.
 
 Reason: Lots of things can go wrong when running LegacyImport to create a RegistryIndex.
@@ -32,22 +32,13 @@ Reason: Lots of things can go wrong when running LegacyImport to create a Regist
         We do this after the rest of LegacyImport because we want to avoid including a package
         but then drop one of it's dependencies for some reason later.
 
-Complications:
-Package dependencies specify a `Range`, not a concrete `SemVer`.
-If we have to drop a (PackageName, SemVer), we need to make sure we don't drop entries
-which relied on it until we have checked that there are no other valid versions which satisfy the range.
-For any given dependency, we want to use the `maxSatisfying` valid version that satisfies the range.
-
 Insight:
-When processing, we don't care which dependency SemVer matches a Range, just that one exists.
-Can do a post-processing step to figure out which of the SemVer `maxSatisfying` Range
+When processing, we only care if the PackageName dependency exists, ignore version bounds.
 -}
 
 type PackageWithVersion = { package :: PackageName, version :: SemVer }
 
-type PackageWithRange = { package :: PackageName, range :: Range }
-
-type PackageWithDependencies = { package :: PackageWithVersion, dependencies :: Array PackageWithRange }
+type PackageWithDependencies = { package :: PackageWithVersion, dependencies :: Array PackageName }
 
 type ConstraintArgs =
   { satisfied :: Map PackageName (Array SemVer)
@@ -73,7 +64,7 @@ checkRegistryIndex original = do
     -- Invariant: RegistryIndex is a Map of Maps, so the entries in the constraint list will be unique.
     -- We will maintain this throughout processing.
     -- Note: We sort these constraints by the amount of dependencies so that our first solver pass
-    -- hits root Manifests first. This seems to be slightly faster (but not as significant as I'd think).
+    -- hits root Manifests first.
     constraints :: Array PackageWithDependencies
     constraints = Array.sortWith (_.dependencies >>> Array.length) do
       Tuple package versions' <- Map.toUnfoldable original
@@ -84,11 +75,10 @@ checkRegistryIndex original = do
         lib =
           fromJust' (\_ -> unsafeCrashWith "Manifest missing lib target") $ Object.lookup "lib" manifest.targets
 
-        dependencies :: Array PackageWithRange
+        dependencies :: Array PackageName
         dependencies = do
-          Tuple p' range <- Object.toUnfoldable lib.dependencies
-          p <- maybe [] Array.singleton $ hush $ PackageName.parse p'
-          [ { package: p, range } ]
+          Tuple p' _ <- Object.toUnfoldable lib.dependencies
+          maybe [] Array.singleton $ hush $ PackageName.parse p'
 
       [ { package: { package, version }, dependencies } ]
 
@@ -138,16 +128,13 @@ checkRegistryIndex original = do
     else
       go { satisfied, constraints }
 
-  isSolved :: Map PackageName (Array SemVer) -> PackageWithRange -> Boolean
-  isSolved solved { package, range } = fromMaybe false do
-    versions <- Map.lookup package solved
-    Just $ Array.any (flip SemVer.satisfies range) versions
+  isSolved :: Map PackageName (Array SemVer) -> PackageName -> Boolean
+  isSolved solved package = Map.member package solved
 
 type PackageGraph = Graph (Tuple PackageName SemVer) Manifest
 
--- We will store `maxSatisfying` for all dependencies.
+-- We will construct an edge to each version of each dependency PackageName.
 -- Note: This function only looks at the `lib` target of a `Manifest`.
--- This will crash if dependencies are unsatisfied. It is intended to be used after `checkRegistryIndex`.
 toPackageGraph :: RegistryIndex -> PackageGraph
 toPackageGraph index =
   Graph.fromMap
@@ -174,7 +161,7 @@ toPackageGraph index =
     let
       deps =
         (List.fromFoldable :: Array _ -> _)
-          $ map resolveDependency
+          $ flip bind resolveDependency
           $ map (lmap unsafeParsePackageName)
           $ Object.toUnfoldable
           $ _.dependencies
@@ -182,19 +169,20 @@ toPackageGraph index =
           $ Object.lookup "lib" manifest.targets
     Tuple manifest deps
 
-  resolveDependency :: Tuple PackageName Range -> Tuple PackageName SemVer
-  resolveDependency (Tuple dependency range) =
-    Tuple dependency $ fromJust' (\_ -> unsafeCrashWith "Failed to resolve dependency, have you run `checkRegistryIndex`?") do
-      depVersions <- Map.lookup dependency allVersions
-      SemVer.maxSatisfying depVersions range
+  resolveDependency :: Tuple PackageName Range -> Array (Tuple PackageName SemVer)
+  resolveDependency (Tuple dependency _) = do
+    depVersions <- maybe [] Array.singleton (Map.lookup dependency allVersions)
+    version <- depVersions
+    pure $ Tuple dependency version
 
   unsafeParsePackageName :: String -> PackageName
   unsafeParsePackageName = fromRight' (\_ -> unsafeCrashWith "PackageName must parse") <<< PackageName.parse
 
--- This will crash if dependencies are unsatisfied. It is intended to be used after `checkRegistryIndex`.
-inOrder :: RegistryIndex -> List Manifest
+inOrder :: RegistryIndex -> Array Manifest
 inOrder index = do
   let graph = toPackageGraph index
 
-  List.mapMaybe (flip Graph.lookup graph)
+  Array.reverse
+    $ Array.fromFoldable
+    $ List.mapMaybe (flip Graph.lookup graph)
     $ Graph.topologicalSort graph
