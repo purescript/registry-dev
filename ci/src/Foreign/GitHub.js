@@ -11,12 +11,12 @@ exports.mkOctokit = function () {
 };
 
 exports.getReleasesImpl = function (octokit, { owner, repo }) {
-  return octokit.repos
-    .listTags({
+  return octokit
+    .paginate(octokit.repos.listTags, {
       owner,
       repo,
     })
-    .then(({ data }) => {
+    .then((data) => {
       return data.map((element) => {
         return {
           name: element.name,
