@@ -4,15 +4,18 @@ import Registry.Prelude
 
 import Effect.Console (logShow)
 import Data.Argonaut as Json
+import Data.Array as Array
+import Data.List as List
+import Data.Map as Map
 import Effect.Aff as Aff
-import Registry.Scripts.LegacyImport.Error (PackageFailures(..), RawPackageName(..), RawVersion(..))
+import Registry.Scripts.LegacyImport.Error (ImportError, PackageFailures(..), RawPackageName(..), RawVersion(..))
 
 main :: Effect Unit
 main = Aff.launchAff_ do
   bowerExclusionsFile <- readJsonFile "bower-exclusions.json"
   case bowerExclusionsFile of
     Left err -> do
-      let decodeError = "Decoding bower-exlusions.json failed with error:\n\n" <> Json.printJsonDecodeError err
+      let decodeError = "Decoding bower-exclusions.json failed with error:\n\n" <> Json.printJsonDecodeError err
       throwError $ Aff.error decodeError
     Right bowerExclusions -> do
       packageSetPackagesFile <- readJsonFile "../../package-sets/packages.json"
@@ -22,13 +25,13 @@ main = Aff.launchAff_ do
           throwError $ Aff.error decodeError
         Right packages ->
           let
-            packagesThatWillBeDropped = findPackagesThatWillBeDropped packages bowerExclusions
+            packagesThatWillBeDropped = findPackagesThatWillBeDropped packages $ dropImportErrorKeys bowerExclusions
           in
-            pure unit
-
--- pure unit
+            liftEffect $ logShow $ map (un RawPackageName) packagesThatWillBeDropped
 
 newtype PackageSet = PackageSet (Map RawPackageName PackageSetPackage)
+
+derive instance Newtype PackageSet _
 
 instance Json.DecodeJson PackageSet where
   decodeJson json = do
@@ -37,19 +40,30 @@ instance Json.DecodeJson PackageSet where
       $ PackageSet
       $ objectToMap (Just <<< RawPackageName) packagesObject
 
--- type PackageSetJson = Map String { version :: String }
-
--- type PackageSetJson = Map RawPackageName PackageSetPackage
-
 type PackageSetPackage =
   { version :: RawVersion
   }
 
-findPackagesThatWillBeDropped :: PackageSet -> PackageFailures -> Array String
-findPackagesThatWillBeDropped packageSet bowerExclusions = []
--- bowerExclusions
---   # un PackageFailures
---   # Map.values
---   # List.filter \package
+type ExcludedPackages = Map RawPackageName (Either ImportError (Map RawVersion ImportError))
 
--- willBeDropped :: PackageSetJson -> Either RawPackageName
+dropImportErrorKeys :: PackageFailures -> ExcludedPackages
+dropImportErrorKeys =
+  un PackageFailures
+    >>> Map.values
+    >>> List.foldl Map.union Map.empty
+
+findPackagesThatWillBeDropped :: PackageSet -> ExcludedPackages -> Array RawPackageName
+findPackagesThatWillBeDropped packageSet bowerExclusions =
+  packageSet
+    # un PackageSet
+    # Map.toUnfoldable
+    # Array.mapMaybe \(Tuple name { version }) -> willBeDropped name version
+  where
+  willBeDropped name version =
+    case Map.lookup name bowerExclusions of
+      Just (Left _) -> Just name
+      Just (Right excludedVersions) ->
+        case Map.lookup version excludedVersions of
+          Just _ -> Just name
+          Nothing -> Nothing
+      Nothing -> Nothing
