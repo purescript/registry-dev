@@ -20,6 +20,7 @@ import Registry.Scripts.LegacyImport.Error
   , RawVersion(..)
   )
 
+-- | A PureScript package set.
 newtype PackageSet = PackageSet (Map RawPackageName PackageSetPackage)
 
 derive instance Newtype PackageSet _
@@ -31,10 +32,12 @@ instance Json.DecodeJson PackageSet where
       $ PackageSet
       $ objectToMap (Just <<< RawPackageName) packagesObject
 
+-- | A package in the package set.
 type PackageSetPackage =
   { version :: RawVersion
   }
 
+-- | A package that will be dropped from the package set.
 type DroppedPackage =
   { name :: RawPackageName
   , version :: RawVersion
@@ -111,12 +114,16 @@ printManifestError = case _ of
   printBadDependencyVersion { dependency, failedBounds } =
     i "Dependency: " (PackageName.print dependency) "\nFailed bounds: " failedBounds
 
+-- | Drops the import keys from the `PackageFailures` collection, as we don't
+-- | need the groupings.
 dropImportErrorKeys :: PackageFailures -> ExcludedPackages
 dropImportErrorKeys =
   un PackageFailures
     >>> Map.values
     >>> List.foldl Map.union Map.empty
 
+-- | Returns an array of all packages that will be dropped from the package set
+-- | based on the packages currently excluded from the registry.
 findPackagesThatWillBeDropped :: PackageSet -> ExcludedPackages -> Array DroppedPackage
 findPackagesThatWillBeDropped packageSet bowerExclusions =
   packageSet
