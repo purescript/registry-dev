@@ -1,16 +1,30 @@
-module Registry.Scripts.LegacyImport.Error where
+module Registry.Types where
 
 import Registry.Prelude
 
+import Control.Alt ((<|>))
+import Data.Argonaut (Json, (.:?))
 import Data.Argonaut as Json
 import Data.Argonaut.Decode.Generic as Json.Decode.Generic
 import Data.Argonaut.Encode.Generic as Json.Encode.Generic
 import Data.Argonaut.Types.Generic as Json.Generic
+import Data.Array as Array
+import Data.Array.NonEmpty as NEA
 import Data.Generic.Rep (class Generic)
 import Data.Interpolate (i)
+import Data.Map as Map
+import Data.String.NonEmpty (NonEmptyString)
+import Data.String.NonEmpty as NES
+import Foreign.Object as Object
 import Registry.License as License
 import Registry.PackageName (PackageName)
 import Safe.Coerce (coerce)
+
+type ManifestFields =
+  { license :: Maybe (NonEmptyArray NonEmptyString)
+  , dependencies :: Object String
+  , devDependencies :: Object String
+  }
 
 -- | A map of error types to package names to package versions, where failed
 -- | versions contain rich information about why they failed.
@@ -196,3 +210,87 @@ fileResourcePath = case _ of
   PackagesDhall -> "packages.dhall"
   PackageJson -> "package.json"
   LicenseFile -> "LICENSE"
+
+----------- SpagoJson
+
+spagoToManifestFields :: SpagoJson -> ManifestFields
+spagoToManifestFields spago@(SpagoJson { license }) =
+  { license: map NEA.singleton license
+  , dependencies: packageDependencies spago
+  , devDependencies: Object.empty
+  }
+
+packageDependencies :: SpagoJson -> Object String
+packageDependencies (SpagoJson { dependencies, packages }) = do
+  let
+    foldFn m name = fromMaybe m do
+      version <- Map.lookup name packages
+      pure $ Object.insert (un RawPackageName name) (un RawVersion version) m
+
+  Array.foldl foldFn Object.empty dependencies
+
+-- | The output of calling `dhall-to-json` on a `spago.dhall` file
+newtype SpagoJson = SpagoJson
+  { license :: Maybe NonEmptyString
+  , dependencies :: Array RawPackageName
+  , packages :: Map RawPackageName RawVersion
+  }
+
+derive newtype instance Eq SpagoJson
+
+instance Json.EncodeJson SpagoJson where
+  encodeJson (SpagoJson spago) = do
+    let
+      packagesMap = map { version: _ } spago.packages
+      packagesObject = objectFromMap (un RawPackageName) packagesMap
+
+    Json.encodeJson
+      { license: spago.license
+      , dependencies: spago.dependencies
+      , packages: packagesObject
+      }
+
+instance Json.DecodeJson SpagoJson where
+  decodeJson json = do
+    obj <- Json.decodeJson json
+    license' <- obj .:? "license"
+    dependencies <- fromMaybe mempty <$> obj .:? "dependencies"
+    packageObj :: Object { version :: RawVersion } <- fromMaybe Object.empty <$> obj .:? "packages"
+    let
+      packagesMap = objectToMap (Just <<< RawPackageName) packageObj
+      packages = map _.version packagesMap
+      license = NES.fromString =<< license'
+    pure $ SpagoJson { license, dependencies, packages }
+
+-------------- Bower
+
+bowerToManifestFields :: Bowerfile -> ManifestFields
+bowerToManifestFields (Bowerfile fields) = fields
+
+newtype Bowerfile = Bowerfile ManifestFields
+
+derive newtype instance Eq Bowerfile
+derive newtype instance Show Bowerfile
+derive newtype instance Json.EncodeJson Bowerfile
+
+instance Json.DecodeJson Bowerfile where
+  decodeJson json = do
+    obj <- Json.decodeJson json
+    license <- decodeStringOrStringArray obj "license"
+    dependencies <- fromMaybe mempty <$> obj .:? "dependencies"
+    devDependencies <- fromMaybe mempty <$> obj .:? "devDependencies"
+    pure $ Bowerfile { license, dependencies, devDependencies }
+
+decodeStringOrStringArray
+  :: Object Json
+  -> String
+  -> Either Json.JsonDecodeError (Maybe (NonEmptyArray NonEmptyString))
+decodeStringOrStringArray obj fieldName = do
+  let typeError = const $ Json.AtKey fieldName $ Json.TypeMismatch "String or Array"
+  lmap typeError do
+    value <- obj .:? fieldName
+    case value of
+      Nothing -> pure Nothing
+      Just v -> do
+        decoded <- (Json.decodeJson v <#> Array.singleton) <|> Json.decodeJson v
+        pure $ NEA.fromArray $ Array.catMaybes $ map NES.fromString decoded

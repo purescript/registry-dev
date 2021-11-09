@@ -1,4 +1,4 @@
-module Registry.Scripts.LegacyImport.Process where
+module Registry.Process where
 
 import Registry.Prelude
 
@@ -22,8 +22,8 @@ import Foreign.SemVer (SemVer)
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Registry.PackageName (PackageName)
-import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion, RequestError(..))
-import Registry.Scripts.LegacyImport.Error as LegacyImport.Error
+import Registry.Types (ImportError(..), ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion, RequestError(..))
+import Registry.Types as Registry.Types
 
 type ProcessedPackages k a =
   { failures :: PackageFailures
@@ -47,7 +47,7 @@ forPackage input f = do
     Except.runExceptT (f name value) >>= case _ of
       Left err -> do
         let
-          errorType = LegacyImport.Error.printImportErrorKey err
+          errorType = Registry.Types.printImportErrorKey err
           failure = Map.singleton name (Left err)
         var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
       Right (Tuple newKey result) -> do
@@ -83,7 +83,7 @@ forPackageVersion input f = do
       Except.runExceptT (f k1 k2 value) >>= case _ of
         Left err -> do
           let
-            errorType = LegacyImport.Error.printImportErrorKey err
+            errorType = Registry.Types.printImportErrorKey err
             failure = Map.singleton name $ Right $ Map.singleton tag err
           var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
         Right result -> do
@@ -124,7 +124,7 @@ forPackageVersionKeys input f = do
       Except.runExceptT (f k1 tag) >>= case _ of
         Left err -> do
           let
-            errorType = LegacyImport.Error.printImportErrorKey err
+            errorType = Registry.Types.printImportErrorKey err
             failure = Map.singleton name $ Right $ Map.singleton tag err
           var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
         Right (Tuple k3 k4) -> do

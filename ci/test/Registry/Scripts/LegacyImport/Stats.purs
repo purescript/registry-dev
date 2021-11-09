@@ -13,8 +13,8 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..))
 import Registry.License as RLicense
-import Registry.Scripts.LegacyImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
-import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
+import Registry.Types (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
+import Registry.Process (ProcessedPackageVersions)
 import Registry.Scripts.LegacyImport.Stats (ErrorCounts(..))
 import Registry.Scripts.LegacyImport.Stats as Stats
 import Test.Spec as Spec

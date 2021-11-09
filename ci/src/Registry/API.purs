@@ -28,7 +28,7 @@ import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
 import Registry.Scripts.LegacyImport as LegacyImport
-import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
+import Registry.Types (bowerToManifestFields)
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
 
@@ -179,7 +179,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
             Json.stringifyWithIndent 2 <<< Json.encodeJson <<< NEA.toArray
 
           manifestFields =
-            Bowerfile.toManifestFields bowerfile
+            bowerToManifestFields bowerfile
 
           runManifest =
             Except.runExceptT <<< Except.mapExceptT (liftAff <<< map (lmap printErrors))

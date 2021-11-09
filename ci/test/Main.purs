@@ -15,7 +15,7 @@ import Foreign.SemVer as SemVer
 import Registry.API as API
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..))
-import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
+import Registry.Types (Bowerfile(..))
 import Test.Foreign.Jsonic (jsonic)
 import Test.Foreign.Licensee (licensee)
 import Test.Registry.Index as Registry.Index
