@@ -18,3 +18,6 @@ generated-docs/
 # Files generated as part of the legacy import process.
 bower-exclusions.json
 registry-index
+
+# A copy of the package set's `packages.json`, for the legacy import process.
+package-set-packages.json

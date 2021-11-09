@@ -54,7 +54,7 @@ main = Aff.launchAff_ do
       let decodeError = "Decoding bower-exclusions.json failed with error:\n\n" <> Json.printJsonDecodeError err
       throwError $ Aff.error decodeError
     Right bowerExclusions -> do
-      packageSetPackagesFile <- readJsonFile "../../package-sets/packages.json"
+      packageSetPackagesFile <- readJsonFile "package-set-packages.json"
       case packageSetPackagesFile of
         Left err -> do
           let decodeError = "Decoding packages.json failed with error:\n\n" <> Json.printJsonDecodeError err
