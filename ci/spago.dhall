@@ -47,6 +47,7 @@
   , "spec"
   , "string-parsers"
   , "strings"
+  , "stringutils"
   , "sunde"
   , "transformers"
   , "tuples"

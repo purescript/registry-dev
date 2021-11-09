@@ -5,12 +5,20 @@ import Registry.Prelude
 import Effect.Console (logShow)
 import Data.Argonaut as Json
 import Data.Array as Array
+import Data.Foldable (intercalate)
 import Data.Interpolate (i)
 import Data.List as List
 import Data.Map as Map
+import Data.String.Utils (lines)
 import Effect.Aff as Aff
-import Registry.Scripts.LegacyImport.Error (ImportError, ImportErrorKey(..), PackageFailures(..), RawPackageName(..), RawVersion(..))
-import Registry.Scripts.LegacyImport.Error as Error
+import Registry.Scripts.LegacyImport.Error
+  ( ImportError(..)
+  , ImportErrorKey(..)
+  , ManifestError(..)
+  , PackageFailures(..)
+  , RawPackageName(..)
+  , RawVersion(..)
+  )
 
 newtype PackageSet = PackageSet (Map RawPackageName PackageSetPackage)
 
@@ -53,16 +61,44 @@ main = Aff.launchAff_ do
             packagesThatWillBeDropped = findPackagesThatWillBeDropped packages $ dropImportErrorKeys bowerExclusions
           in
             liftEffect $ packagesThatWillBeDropped
-              # traverse printMessage
+              # map printMessage
+              # intercalate "\n\n"
+              # log
 
-printMessage :: DroppedPackage -> Effect Unit
-printMessage droppedPackage = log message
+printMessage :: DroppedPackage -> String
+printMessage droppedPackage = message
   where
   name = un RawPackageName droppedPackage.name
   version = un RawVersion droppedPackage.version
-  reason = un ImportErrorKey $ Error.printImportErrorKey droppedPackage.reason
+  reason = printDroppedReason droppedPackage.reason
   packageIdentifier = name <> " " <> version
-  message = i packageIdentifier " will be dropped from the package set due to: " <> reason
+  message = i packageIdentifier " will be dropped from the package set due to:\n\t" <> reason
+
+printDroppedReason :: ImportError -> String
+printDroppedReason = case _ of
+  InvalidGitHubRepo _ -> "invalid GitHub repo"
+  ResourceError _ -> "resource error"
+  MalformedPackageName _ -> "malformed package name"
+  NoDependencyFiles -> "no dependency files"
+  NonRegistryDependencies _ -> "non-registry dependencies"
+  NoManifests -> "no manifests"
+  ManifestError manifestErrors ->
+    manifestErrors
+      # map printManifestError
+      # intercalate ", "
+
+printManifestError :: ManifestError -> String
+printManifestError = case _ of
+  MissingName -> "missing name"
+  MissingLicense -> "missing license"
+  BadLicense licenses ->
+    "bad license:\n" <>
+      ( intercalate "\n" $ map ("\t\t" <> _)
+          $ Array.concatMap lines licenses
+      )
+  BadVersion version -> "bad version (" <> version <> ")"
+  InvalidDependencyNames _ -> "invalid dependency names"
+  BadDependencyVersions _ -> "bad dependency versions"
 
 dropImportErrorKeys :: PackageFailures -> ExcludedPackages
 dropImportErrorKeys =
