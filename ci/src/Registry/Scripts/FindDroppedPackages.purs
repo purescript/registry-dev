@@ -2,18 +2,18 @@ module Registry.Scripts.FindDroppedPackages where
 
 import Registry.Prelude
 
-import Effect.Console (logShow)
 import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Foldable (intercalate)
 import Data.Interpolate (i)
 import Data.List as List
 import Data.Map as Map
+import Data.Array.NonEmpty as NEA
 import Data.String.Utils (lines)
 import Effect.Aff as Aff
+import Registry.PackageName as PackageName
 import Registry.Scripts.LegacyImport.Error
   ( ImportError(..)
-  , ImportErrorKey(..)
   , ManifestError(..)
   , PackageFailures(..)
   , RawPackageName(..)
@@ -96,9 +96,20 @@ printManifestError = case _ of
       ( intercalate "\n" $ map ("\t\t" <> _)
           $ Array.concatMap lines licenses
       )
-  BadVersion version -> "bad version (" <> version <> ")"
-  InvalidDependencyNames _ -> "invalid dependency names"
-  BadDependencyVersions _ -> "bad dependency versions"
+  BadVersion version -> "bad version: " <> version
+  InvalidDependencyNames dependencyNames ->
+    "invalid dependency names:\n" <> intercalate "\n\t\t" dependencyNames
+  BadDependencyVersions badVersions ->
+    "bad dependency versions:\n" <>
+      ( intercalate "\n" $ map ("\t\t" <> _)
+          $ Array.concatMap lines
+          $ map printBadDependencyVersion
+          $ NEA.toArray badVersions
+      )
+
+  where
+  printBadDependencyVersion { dependency, failedBounds } =
+    i "Dependency: " (PackageName.print dependency) "\nFailed bounds: " failedBounds
 
 dropImportErrorKeys :: PackageFailures -> ExcludedPackages
 dropImportErrorKeys =
