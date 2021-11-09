@@ -155,5 +155,9 @@
   "purescript-cnchar": "https://github.com/ongyiren1994/purescript-cnchar.git",
   "purescript-grid-reactors": "https://github.com/Eugleo/purescript-grid-reactors.git",
   "purescript-droplet": "https://github.com/easafe/purescript-droplet.git",
-  "purescript-html-codegen-halogen": "https://github.com/ongyiren1994/purescript-html-codegen-halogen.git"
+  "purescript-html-codegen-halogen": "https://github.com/ongyiren1994/purescript-html-codegen-halogen.git",
+  "purescript-lunar-calendar": "https://github.com/running-grass/purescript-lunar-calendar.git",
+  "purescript-dissect": "https://github.com/PureFunctor/purescript-dissect.git",
+  "purescript-ssrs": "https://github.com/PureFunctor/purescript-ssrs.git",
+  "purescript-untagged-to-tagged": "https://github.com/sigma-andex/purescript-untagged-to-tagged.git"
 }
