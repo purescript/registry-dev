@@ -34,6 +34,7 @@ import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Registry.Index (RegistryIndex, insertManifest)
 import Registry.PackageGraph as Graph
+import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest)
@@ -60,12 +61,18 @@ main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
   registry <- downloadLegacyRegistry
 
+  let sortRegistry = PackageGraph.inOrder registry
+
+  when (not PackageGraph.isOrdered sortRegistry) do
+    error "Package graph is not in order! (Something has gone horribly wrong)"
+
   let indexPath = "registry-index"
   log $ "Writing registry index to " <> indexPath
 
   exists <- FS.exists indexPath
   guard (not exists) $ FS.mkdir indexPath
   for_ registry \semVer -> for_ semVer (insertManifest indexPath)
+
   log "Done!"
 
 downloadLegacyRegistry :: Aff RegistryIndex

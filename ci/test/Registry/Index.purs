@@ -95,8 +95,9 @@ testRegistryIndex = Spec.before runBefore do
 
       let
         memoryGraph = PackageGraph.checkRegistryIndex memoryIndex
-
-      traceM memoryGraph
+        sorted = PackageGraph.inOrder memoryIndex
 
       -- Finally, we verify that the on-disk index equals the in-memory index.
       (diskIndex == memoryIndex) `Assert.shouldEqual` true
+      (Array.null memoryGraph.unsatisfied) `Assert.shouldEqual` true
+      (PackageGraph.isOrdered sorted) `Assert.shouldEqual` true

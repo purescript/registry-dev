@@ -1,4 +1,11 @@
-module Registry.PackageGraph where
+module Registry.PackageGraph
+  ( CheckResult
+  , PackageWithDependencies
+  , PackageWithVersion
+  , checkRegistryIndex
+  , inOrder
+  , isOrdered
+  ) where
 
 import Registry.Prelude
 
@@ -13,7 +20,6 @@ import Data.Monoid (guard)
 import Data.Set as Set
 import Foreign.Object as Object
 import Foreign.SemVer (Range, SemVer)
-import Foreign.SemVer as SemVer
 import Registry.Index (RegistryIndex)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -164,9 +170,8 @@ toPackageGraph index =
           $ flip bind resolveDependency
           $ map (lmap unsafeParsePackageName)
           $ Object.toUnfoldable
-          $ _.dependencies
-          $ fromJust' (\_ -> unsafeCrashWith "Manifest missing lib target")
-          $ Object.lookup "lib" manifest.targets
+          $ getLibDependencies manifest
+
     Tuple manifest deps
 
   resolveDependency :: Tuple PackageName Range -> Array (Tuple PackageName SemVer)
@@ -175,14 +180,37 @@ toPackageGraph index =
     version <- depVersions
     pure $ Tuple dependency version
 
-  unsafeParsePackageName :: String -> PackageName
-  unsafeParsePackageName = fromRight' (\_ -> unsafeCrashWith "PackageName must parse") <<< PackageName.parse
-
 inOrder :: RegistryIndex -> Array Manifest
 inOrder index = do
   let graph = toPackageGraph index
-
   Array.reverse
     $ Array.fromFoldable
     $ List.mapMaybe (flip Graph.lookup graph)
     $ Graph.topologicalSort graph
+
+-- | Verify that manifests are topographically sorted by their dependencies
+isOrdered :: Array Manifest -> Boolean
+isOrdered = fst <<< Array.foldl foldFn (Tuple true Set.empty)
+  where
+  getDeps :: Manifest -> Array PackageName
+  getDeps = map unsafeParsePackageName <<< Object.keys <<< getLibDependencies
+
+  foldFn :: Tuple Boolean (Set PackageName) -> Manifest -> Tuple Boolean (Set PackageName)
+  foldFn (Tuple valid visited) manifest = do
+    let newSet = Set.insert manifest.name visited
+    if all (flip Set.member visited) (getDeps manifest) then
+      Tuple (valid && true) newSet
+    else
+      Tuple false newSet
+
+-- | For internal use only
+getLibDependencies :: Manifest -> Object Range
+getLibDependencies manifest =
+  ( fromJust'
+      (\_ -> unsafeCrashWith "Manifest has no 'lib' target in 'isOrdered'")
+      (Object.lookup "lib" manifest.targets)
+  ).dependencies
+
+-- | For internal use only
+unsafeParsePackageName :: String -> PackageName
+unsafeParsePackageName = fromRight' (\_ -> unsafeCrashWith "PackageName must parse") <<< PackageName.parse
