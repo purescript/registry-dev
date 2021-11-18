@@ -12,6 +12,7 @@
   "purescript-cirru-parser": "https://github.com/Cirru/parser.purs.git",
   "purescript-cirru-edn": "https://github.com/Cirru/cirru-edn.purs.git",
   "purescript-web-url": "https://github.com/mjepronk/purescript-web-url.git",
+  "purescript-bf-gun" : "https://github.com/gorillatron/purescript-bf-gun.git",
   "purescript-grain": "https://github.com/purescript-grain/purescript-grain.git",
   "purescript-grain-portal": "https://github.com/purescript-grain/purescript-grain-portal.git",
   "purescript-grain-router": "https://github.com/purescript-grain/purescript-grain-router.git",
@@ -153,5 +154,11 @@
   "purescript-typelevel-arithmetic": "https://github.com/sigma-andex/purescript-typelevel-arithmetic.git",
   "purescript-cnchar": "https://github.com/ongyiren1994/purescript-cnchar.git",
   "purescript-grid-reactors": "https://github.com/Eugleo/purescript-grid-reactors.git",
-  "purescript-droplet": "https://github.com/easafe/purescript-droplet.git"
+  "purescript-droplet": "https://github.com/easafe/purescript-droplet.git",
+  "purescript-html-codegen-halogen": "https://github.com/ongyiren1994/purescript-html-codegen-halogen.git",
+  "purescript-lunar-calendar": "https://github.com/running-grass/purescript-lunar-calendar.git",
+  "purescript-dissect": "https://github.com/PureFunctor/purescript-dissect.git",
+  "purescript-ssrs": "https://github.com/PureFunctor/purescript-ssrs.git",
+  "purescript-untagged-to-tagged": "https://github.com/sigma-andex/purescript-untagged-to-tagged.git",
+  "purescript-oldschool": "https://github.com/maxdeviant/purescript-oldschool.git"
 }

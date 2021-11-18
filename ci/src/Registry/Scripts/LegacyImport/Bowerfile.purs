@@ -10,6 +10,8 @@ import Data.Argonaut (Json, (.:?))
 import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.String.NonEmpty (NonEmptyString)
+import Data.String.NonEmpty as NES
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 
 toManifestFields :: Bowerfile -> ManifestFields
@@ -32,7 +34,7 @@ instance Json.DecodeJson Bowerfile where
 decodeStringOrStringArray
   :: Object Json
   -> String
-  -> Either Json.JsonDecodeError (Maybe (NonEmptyArray String))
+  -> Either Json.JsonDecodeError (Maybe (NonEmptyArray NonEmptyString))
 decodeStringOrStringArray obj fieldName = do
   let typeError = const $ Json.AtKey fieldName $ Json.TypeMismatch "String or Array"
   lmap typeError do
@@ -41,4 +43,4 @@ decodeStringOrStringArray obj fieldName = do
       Nothing -> pure Nothing
       Just v -> do
         decoded <- (Json.decodeJson v <#> Array.singleton) <|> Json.decodeJson v
-        pure $ NEA.fromArray decoded
+        pure $ NEA.fromArray $ Array.catMaybes $ map NES.fromString decoded
