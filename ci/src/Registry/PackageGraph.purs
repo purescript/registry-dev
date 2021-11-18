@@ -1,8 +1,6 @@
 module Registry.PackageGraph
-  ( CheckResult
-  , PackageWithDependencies
-  , PackageWithVersion
-  , checkRegistryIndex
+  ( checkRegistryIndex
+  , CheckResult
   , inOrder
   , isOrdered
   ) where
@@ -25,23 +23,6 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Manifest)
 
-{-
-Goal: Given a RegistryIndex, provide a maximally self-contained RegistryIndex.
-
-Definitions:
-- A (PackageName, SemVer) pair is "valid" if at least one version of each dependency exists.
-  - (PackageName, SemVer) pairs with no dependencies in the "lib" target are trivially valid.
-
-Reason: Lots of things can go wrong when running LegacyImport to create a RegistryIndex.
-        We need to construct the RegistryIndex from legacy files, and then take all of those
-        entries and prune them to only include valid entries at the end.
-        We do this after the rest of LegacyImport because we want to avoid including a package
-        but then drop one of it's dependencies for some reason later.
-
-Insight:
-When processing, we only care if the PackageName dependency exists, ignore version bounds.
--}
-
 type PackageWithVersion = { package :: PackageName, version :: SemVer }
 
 type PackageWithDependencies = { package :: PackageWithVersion, dependencies :: Array PackageName }
@@ -58,7 +39,7 @@ type ConstraintResult =
 
 type CheckResult =
   { index :: RegistryIndex
-  , unsatisfied :: Array PackageWithDependencies
+  , unsatisfied :: Array { package :: PackageName, version :: SemVer, dependencies :: Array PackageName }
   }
 
 -- Produces a maximally self-contained RegistryIndex, recording any unsatisfied dependencies.
@@ -88,7 +69,7 @@ checkRegistryIndex original = do
 
       [ { package: { package, version }, dependencies } ]
 
-    { satisfied, unsatisfied } = go { satisfied: Map.empty, constraints }
+    { satisfied, unsatisfied: allUnsatisfied } = go { satisfied: Map.empty, constraints }
 
     -- Once we have satisfied as many package dependencies as possible,
     -- prune provided RegistryIndex to only include Manifest entries with satisfied dependencies
@@ -100,6 +81,10 @@ checkRegistryIndex original = do
         Tuple version manifest <- Map.toUnfoldable versions
         satisfiedVersions <- maybe [] Array.singleton (Map.lookup package satisfied)
         guard (Array.elem version satisfiedVersions) [ Tuple version manifest ]
+
+    unsatisfied =
+      map (\{ package: { package, version }, dependencies } -> { package, version, dependencies })
+        allUnsatisfied
 
   { index, unsatisfied }
   where
@@ -180,6 +165,7 @@ toPackageGraph index =
     version <- depVersions
     pure $ Tuple dependency version
 
+-- | Produces a topologically sorted list of Manifests.
 inOrder :: RegistryIndex -> Array Manifest
 inOrder index = do
   let graph = toPackageGraph index

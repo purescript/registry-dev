@@ -18,6 +18,3 @@ exports.patch = function (sv) { return sv.patch; }
 exports.compareSemVerImpl = semver.compare;
 
 exports.parseRangeImpl = semver.validRange;
-
-exports.maxSatisfyingImpl = semver.maxSatisfying;
-exports.satisfiesImpl = semver.satisfies;
