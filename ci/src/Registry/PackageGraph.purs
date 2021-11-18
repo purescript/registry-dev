@@ -94,30 +94,30 @@ checkRegistryIndex original = do
       -- Check if the given constraint is satisfied
       -- If so, add package/version to satisfied & record progress
       -- If not, update constraint to only include unsatisfied dependencies
-      go' { satisfied, progress, constraints } { package, dependencies } = do
+      go' { satisfied, iterationProgress, constraints } { package, dependencies } = do
         let
           unsolved = Array.filter (not <<< isSolved satisfied) dependencies
         if Array.null unsolved then
           { satisfied: Map.insertWith append package.package [ package.version ] satisfied
-          , progress: progress <> [ package ]
+          , iterationProgress: true
           , constraints
           }
         else
           { satisfied
-          , progress
+          , iterationProgress
           , constraints: constraints <> [ { package, dependencies: unsolved } ]
           }
 
       -- Go through each constraint, recording satisfied manifest dependencies & updating constraints.
-      { satisfied, progress, constraints } =
-        Array.foldl go' { satisfied: args.satisfied, progress: [], constraints: [] } args.constraints
+      { satisfied, iterationProgress, constraints } =
+        Array.foldl go' { satisfied: args.satisfied, iterationProgress: false, constraints: [] } args.constraints
 
-    -- When there is no progress, we have satisfied all of the constraints possible.
     -- If there was progress, then we need to iterate through constraints again.
-    if Array.null progress then do
-      { satisfied, unsatisfied: constraints }
-    else
+    -- When there is no progress, we have satisfied all of the constraints possible.
+    if iterationProgress then do
       go { satisfied, constraints }
+    else
+      { satisfied, unsatisfied: constraints }
 
   isSolved :: Map PackageName (Array SemVer) -> PackageName -> Boolean
   isSolved solved package = Map.member package solved
