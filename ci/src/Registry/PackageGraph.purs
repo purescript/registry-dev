@@ -1,8 +1,7 @@
 module Registry.PackageGraph
-  ( checkRegistryIndex
-  , CheckResult
-  , inOrder
-  , isOrdered
+  ( CheckResult
+  , checkRegistryIndex
+  , topologicalSort
   ) where
 
 import Registry.Prelude
@@ -138,16 +137,12 @@ toPackageGraph index =
   allVersions :: Map PackageName (Array SemVer)
   allVersions = map (Map.keys >>> Set.toUnfoldable) index
 
-  flatten
-    :: Tuple PackageName (Array (Tuple SemVer Manifest))
-    -> Array (Tuple (Tuple PackageName SemVer) Manifest)
+  flatten :: Tuple PackageName (Array (Tuple SemVer Manifest)) -> Array (Tuple (Tuple PackageName SemVer) Manifest)
   flatten (Tuple packageName versions) = do
     Tuple version manifest <- versions
     pure $ Tuple (Tuple packageName version) manifest
 
-  resolveDependencies
-    :: Manifest
-    -> Tuple Manifest (List (Tuple PackageName SemVer))
+  resolveDependencies :: Manifest -> Tuple Manifest (List (Tuple PackageName SemVer))
   resolveDependencies manifest = do
     let
       deps =
@@ -165,38 +160,20 @@ toPackageGraph index =
     version <- depVersions
     pure $ Tuple dependency version
 
--- | Produces a topologically sorted list of Manifests.
-inOrder :: RegistryIndex -> Array Manifest
-inOrder index = do
+  getLibDependencies :: Manifest -> Object Range
+  getLibDependencies manifest =
+    ( fromJust'
+        (\_ -> unsafeCrashWith "Manifest has no 'lib' target in 'isOrdered'")
+        (Object.lookup "lib" manifest.targets)
+    ).dependencies
+
+  unsafeParsePackageName :: String -> PackageName
+  unsafeParsePackageName = fromRight' (\_ -> unsafeCrashWith "PackageName must parse") <<< PackageName.parse
+
+topologicalSort :: RegistryIndex -> Array Manifest
+topologicalSort index = do
   let graph = toPackageGraph index
   Array.reverse
     $ Array.fromFoldable
     $ List.mapMaybe (flip Graph.lookup graph)
     $ Graph.topologicalSort graph
-
--- | Verify that manifests are topographically sorted by their dependencies
-isOrdered :: Array Manifest -> Boolean
-isOrdered = fst <<< Array.foldl foldFn (Tuple true Set.empty)
-  where
-  getDeps :: Manifest -> Array PackageName
-  getDeps = map unsafeParsePackageName <<< Object.keys <<< getLibDependencies
-
-  foldFn :: Tuple Boolean (Set PackageName) -> Manifest -> Tuple Boolean (Set PackageName)
-  foldFn (Tuple valid visited) manifest = do
-    let newSet = Set.insert manifest.name visited
-    if all (flip Set.member visited) (getDeps manifest) then
-      Tuple (valid && true) newSet
-    else
-      Tuple false newSet
-
--- | For internal use only
-getLibDependencies :: Manifest -> Object Range
-getLibDependencies manifest =
-  ( fromJust'
-      (\_ -> unsafeCrashWith "Manifest has no 'lib' target in 'isOrdered'")
-      (Object.lookup "lib" manifest.targets)
-  ).dependencies
-
--- | For internal use only
-unsafeParsePackageName :: String -> PackageName
-unsafeParsePackageName = fromRight' (\_ -> unsafeCrashWith "PackageName must parse") <<< PackageName.parse

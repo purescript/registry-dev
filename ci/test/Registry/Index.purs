@@ -8,6 +8,8 @@ import Data.Foldable (sequence_)
 import Data.Map as Map
 import Data.Set as Set
 import Effect.Ref as Ref
+import Foreign.Object as Object
+import Foreign.SemVer (Range)
 import Foreign.Tmp as Tmp
 import Node.FS.Stats as Stats
 import Node.Glob.Basic as Glob
@@ -15,7 +17,9 @@ import Node.Path as Node.Path
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
 import Registry.PackageGraph as PackageGraph
+import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Schema (Manifest)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Support.Manifest as Support.Manifest
@@ -89,9 +93,34 @@ testRegistryIndex = Spec.before runBefore do
 
       let
         memoryGraph = PackageGraph.checkRegistryIndex memoryIndex
-        sorted = PackageGraph.inOrder memoryIndex
+        sorted = PackageGraph.topologicalSort memoryIndex
 
       -- Finally, we verify that the on-disk index equals the in-memory index.
       (diskIndex == memoryIndex) `Assert.shouldEqual` true
       (Array.null memoryGraph.unsatisfied) `Assert.shouldEqual` true
-      (PackageGraph.isOrdered sorted) `Assert.shouldEqual` true
+      (isSorted sorted) `Assert.shouldEqual` true
+
+-- | Verify that manifests are topographically sorted by their dependencies
+isSorted :: Array Manifest -> Boolean
+isSorted = fst <<< Array.foldl foldFn (Tuple true Set.empty)
+  where
+  getDeps :: Manifest -> Array PackageName
+  getDeps = map unsafeParsePackageName <<< Object.keys <<< getLibDependencies
+
+  foldFn :: Tuple Boolean (Set PackageName) -> Manifest -> Tuple Boolean (Set PackageName)
+  foldFn (Tuple valid visited) manifest = do
+    let newSet = Set.insert manifest.name visited
+    if all (flip Set.member visited) (getDeps manifest) then
+      Tuple (valid && true) newSet
+    else
+      Tuple false newSet
+
+  getLibDependencies :: Manifest -> Object Range
+  getLibDependencies manifest =
+    ( fromJust'
+        (\_ -> unsafeCrashWith "Manifest has no 'lib' target in 'isOrdered'")
+        (Object.lookup "lib" manifest.targets)
+    ).dependencies
+
+  unsafeParsePackageName :: String -> PackageName
+  unsafeParsePackageName = fromRight' (\_ -> unsafeCrashWith "PackageName must parse") <<< PackageName.parse
