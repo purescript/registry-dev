@@ -36,8 +36,9 @@ import Text.Parsing.StringParser as StringParser
 
 main :: Effect Unit
 main = launchAff_ $ do
-  eventPath <- liftEffect $
-    Env.lookupEnv "GITHUB_EVENT_PATH" >>= maybe (throw "GITHUB_EVENT_PATH not defined in the environment") pure 
+  eventPath <- liftEffect do
+    Env.lookupEnv "GITHUB_EVENT_PATH"
+      >>= maybe (throw "GITHUB_EVENT_PATH not defined in the environment") pure
   octokit <- liftEffect GitHub.mkOctokit
   packagesMetadata <- do
     packageList <- try (FS.readdir metadataDir) >>= case _ of
