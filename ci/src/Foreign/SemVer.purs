@@ -31,8 +31,8 @@ instance showSemVer :: Show SemVer where
 
 instance decodeJsonSemver :: Json.DecodeJson SemVer where
   decodeJson json = do
-    version <- Json.decodeJson json
-    note (Json.TypeMismatch $ "Expected version: " <> version) (parseSemVer version)
+    version' <- Json.decodeJson json
+    note (Json.TypeMismatch $ "Expected version: " <> version') (parseSemVer version')
 
 instance encodeJsonSemver :: Json.EncodeJson SemVer where
   encodeJson = Json.encodeJson <<< printSemVer

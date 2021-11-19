@@ -18,3 +18,4 @@ generated-docs/
 # Files generated as part of the legacy import process.
 bower-exclusions.json
 registry-index
+unsatisfied-dependencies.json

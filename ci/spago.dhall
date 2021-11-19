@@ -21,6 +21,7 @@
   , "foldable-traversable"
   , "foreign-object"
   , "functions"
+  , "graphs"
   , "identity"
   , "interpolate"
   , "js-date"
