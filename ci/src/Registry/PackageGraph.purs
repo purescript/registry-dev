@@ -6,6 +6,7 @@ module Registry.PackageGraph
 
 import Registry.Prelude
 
+import Control.Bind (bindFlipped)
 import Data.Array as Array
 import Data.Foldable (foldMap)
 import Data.Graph (Graph)
@@ -56,14 +57,11 @@ checkRegistryIndex original = do
       Tuple package versions' <- Map.toUnfoldable original
       Tuple version manifest <- Map.toUnfoldable versions'
       let
-        -- All valid manifests have a `lib` target.
-        -- If they have no dependencies, then lib.dependencies is [].
-        lib =
-          fromJust' (\_ -> unsafeCrashWith "Manifest missing lib target") $ Object.lookup "lib" manifest.targets
-
         dependencies :: Array PackageName
         dependencies = do
-          Tuple p' _ <- Object.toUnfoldable lib.dependencies
+          -- All valid manifests have a `lib` target, so this unsafe path is
+          -- unreachable.
+          Tuple p' _ <- Object.toUnfoldable $ unsafeGetLibDependencies manifest
           maybe [] Array.singleton $ hush $ PackageName.parse p'
 
       [ { package: { package, version }, dependencies } ]
@@ -121,6 +119,14 @@ checkRegistryIndex original = do
   isSolved :: Map PackageName (Array SemVer) -> PackageName -> Boolean
   isSolved solved package = Map.member package solved
 
+topologicalSort :: RegistryIndex -> Array Manifest
+topologicalSort index = do
+  let graph = toPackageGraph index
+  Array.reverse
+    $ Array.fromFoldable
+    $ List.mapMaybe (flip Graph.lookup graph)
+    $ Graph.topologicalSort graph
+
 type PackageGraph = Graph (Tuple PackageName SemVer) Manifest
 
 -- We will construct an edge to each version of each dependency PackageName.
@@ -137,7 +143,9 @@ toPackageGraph index =
   allVersions :: Map PackageName (Array SemVer)
   allVersions = map (Map.keys >>> Set.toUnfoldable) index
 
-  flatten :: Tuple PackageName (Array (Tuple SemVer Manifest)) -> Array (Tuple (Tuple PackageName SemVer) Manifest)
+  flatten
+    :: Tuple PackageName (Array (Tuple SemVer Manifest))
+    -> Array (Tuple (Tuple PackageName SemVer) Manifest)
   flatten (Tuple packageName versions) = do
     Tuple version manifest <- versions
     pure $ Tuple (Tuple packageName version) manifest
@@ -147,10 +155,10 @@ toPackageGraph index =
     let
       deps =
         (List.fromFoldable :: Array _ -> _)
-          $ flip bind resolveDependency
+          $ bindFlipped resolveDependency
           $ map (lmap unsafeParsePackageName)
           $ Object.toUnfoldable
-          $ getLibDependencies manifest
+          $ unsafeGetLibDependencies manifest
 
     Tuple manifest deps
 
@@ -160,20 +168,13 @@ toPackageGraph index =
     version <- depVersions
     pure $ Tuple dependency version
 
-  getLibDependencies :: Manifest -> Object Range
-  getLibDependencies manifest =
-    ( fromJust'
-        (\_ -> unsafeCrashWith "Manifest has no 'lib' target in 'isOrdered'")
-        (Object.lookup "lib" manifest.targets)
-    ).dependencies
-
   unsafeParsePackageName :: String -> PackageName
   unsafeParsePackageName = fromRight' (\_ -> unsafeCrashWith "PackageName must parse") <<< PackageName.parse
 
-topologicalSort :: RegistryIndex -> Array Manifest
-topologicalSort index = do
-  let graph = toPackageGraph index
-  Array.reverse
-    $ Array.fromFoldable
-    $ List.mapMaybe (flip Graph.lookup graph)
-    $ Graph.topologicalSort graph
+-- | For internal use only
+unsafeGetLibDependencies :: Manifest -> Object Range
+unsafeGetLibDependencies manifest =
+  ( fromJust'
+      (\_ -> unsafeCrashWith "Manifest has no 'lib' target in 'toPackageGraph'")
+      (Object.lookup "lib" manifest.targets)
+  ).dependencies

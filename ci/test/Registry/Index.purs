@@ -105,7 +105,7 @@ isSorted :: Array Manifest -> Boolean
 isSorted = fst <<< Array.foldl foldFn (Tuple true Set.empty)
   where
   getDeps :: Manifest -> Array PackageName
-  getDeps = map unsafeParsePackageName <<< Object.keys <<< getLibDependencies
+  getDeps = map unsafeParsePackageName <<< Object.keys <<< unsafeGetLibDependencies
 
   foldFn :: Tuple Boolean (Set PackageName) -> Manifest -> Tuple Boolean (Set PackageName)
   foldFn (Tuple valid visited) manifest = do
@@ -115,10 +115,10 @@ isSorted = fst <<< Array.foldl foldFn (Tuple true Set.empty)
     else
       Tuple false newSet
 
-  getLibDependencies :: Manifest -> Object Range
-  getLibDependencies manifest =
+  unsafeGetLibDependencies :: Manifest -> Object Range
+  unsafeGetLibDependencies manifest =
     ( fromJust'
-        (\_ -> unsafeCrashWith "Manifest has no 'lib' target in 'isOrdered'")
+        (\_ -> unsafeCrashWith "Manifest has no 'lib' target in 'isSorted'")
         (Object.lookup "lib" manifest.targets)
     ).dependencies
 
