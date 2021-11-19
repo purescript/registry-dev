@@ -8,7 +8,9 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Generic.Rep as Generic
 import Data.Map as Map
+import Data.Maybe (maybe)
 import Effect.Aff as Aff
+import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
 import Foreign.GitHub (IssueNumber)
@@ -34,7 +36,9 @@ import Text.Parsing.StringParser as StringParser
 
 main :: Effect Unit
 main = launchAff_ $ do
-  eventPath <- liftEffect $ Env.lookupEnv "GITHUB_EVENT_PATH"
+  eventPath <- liftEffect do
+    Env.lookupEnv "GITHUB_EVENT_PATH"
+      >>= maybe (throw "GITHUB_EVENT_PATH not defined in the environment") pure
   octokit <- liftEffect GitHub.mkOctokit
   packagesMetadata <- do
     packageList <- try (FS.readdir metadataDir) >>= case _ of
@@ -54,7 +58,7 @@ main = launchAff_ $ do
         Right r -> pure r
       pure $ packageName /\ metadata
     liftEffect $ Ref.new $ Map.fromFoldable packagesArray
-  readOperation (unsafePartial fromJust eventPath) >>= case _ of
+  readOperation eventPath >>= case _ of
     -- If the issue body is not just a JSON string, then we don't consider it
     -- to be an attempted operation and it is presumably just an issue on the
     -- registry repository.
