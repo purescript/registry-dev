@@ -160,5 +160,6 @@
   "purescript-dissect": "https://github.com/PureFunctor/purescript-dissect.git",
   "purescript-ssrs": "https://github.com/PureFunctor/purescript-ssrs.git",
   "purescript-untagged-to-tagged": "https://github.com/sigma-andex/purescript-untagged-to-tagged.git",
-  "purescript-oldschool": "https://github.com/maxdeviant/purescript-oldschool.git"
+  "purescript-oldschool": "https://github.com/maxdeviant/purescript-oldschool.git",
+  "purescript-glapple": "https://github.com/yukikurage/purescript-glapple.git"
 }
