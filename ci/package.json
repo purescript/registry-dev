@@ -7,7 +7,7 @@
     "test": "test"
   },
   "scripts": {
-    "test": "SPACES_KEY='' SPACES_SECRET='' GITHUB_TOKEN='' spago test"
+    "test": "spago test"
   },
   "author": "",
   "license": "MIT",
@@ -15,9 +15,10 @@
     "@octokit/rest": "^18.0.0",
     "aws-sdk": "^2.814.0",
     "fuse.js": "^6.4.6",
+    "jsonic": "^1.0.1",
     "semver": "^7.3.4",
     "spdx-expression-parse": "^3.0.1",
-    "tar": "^6.1.0",
+    "tar": "^6.1.9",
     "tmp": "^0.2.1",
     "xhr2": "^0.2.0"
   }

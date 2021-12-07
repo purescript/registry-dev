@@ -7,7 +7,6 @@ import Data.Argonaut.Core (stringifyWithIndent)
 import Effect.Aff as Aff
 import Effect.Aff as Exception
 import Node.FS.Aff as FS
-import Partial.Unsafe (unsafeCrashWith)
 import Registry.Schema (Manifest)
 
 main :: Effect Unit

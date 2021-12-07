@@ -1,20 +1,22 @@
 const { Octokit } = require("@octokit/rest");
 
-if ("GITHUB_TOKEN" in process.env) {
-} else {
-  console.log("Please set GITHUB_TOKEN envvar");
-  process.exit(1);
-}
+exports.mkOctokit = function () {
+  if ("GITHUB_TOKEN" in process.env) {
+  } else {
+    console.log("Please set GITHUB_TOKEN envvar");
+    process.exit(1);
+  }
 
-const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+  return new Octokit({ auth: process.env.GITHUB_TOKEN });
+};
 
-exports.getReleasesImpl = function ({ owner, repo }) {
-  return octokit.repos
-    .listTags({
+exports.getReleasesImpl = function (octokit, { owner, repo }) {
+  return octokit
+    .paginate(octokit.repos.listTags, {
       owner,
       repo,
     })
-    .then(({ data }) => {
+    .then((data) => {
       return data.map((element) => {
         return {
           name: element.name,
@@ -24,7 +26,7 @@ exports.getReleasesImpl = function ({ owner, repo }) {
     });
 };
 
-exports.closeIssueImpl = function ({ owner, repo }, issue_number) {
+exports.closeIssueImpl = function (octokit, { owner, repo }, issue_number) {
   return octokit.issues.update({
     owner,
     repo,
@@ -32,6 +34,6 @@ exports.closeIssueImpl = function ({ owner, repo }, issue_number) {
     state: "closed"
   });
 }
-exports.createCommentImpl = function ({ owner, repo }, issue_number, body) {
+exports.createCommentImpl = function (octokit, { owner, repo }, issue_number, body) {
   return octokit.issues.createComment({ owner, repo, issue_number, body });
 };

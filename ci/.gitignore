@@ -11,3 +11,11 @@ generated-docs/
 .envrc
 .cache
 .tempcache
+
+# Keep it secret, keep it safe.
+.env
+
+# Files generated as part of the legacy import process.
+bower-exclusions.json
+registry-index
+unsatisfied-dependencies.json

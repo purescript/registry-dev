@@ -2,45 +2,91 @@ module Test.Main where
 
 import Registry.Prelude
 
+import Data.Argonaut as Json
+import Data.Array as Array
+import Data.Array.NonEmpty as NEA
+import Data.String.NonEmpty as NES
+import Data.Time.Duration (Milliseconds(..))
 import Foreign.GitHub (IssueNumber(..))
+import Foreign.Jsonic as Jsonic
+import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
-import Partial.Unsafe (unsafeCrashWith)
 import Registry.API as API
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..))
+import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
+import Test.Foreign.Jsonic (jsonic)
+import Test.Foreign.Licensee (licensee)
+import Test.Registry.Index as Registry.Index
+import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
-import Test.Spec.Runner (runSpec)
-
-type Spec = Spec.SpecT Aff Unit Identity Unit
+import Test.Spec.Runner (defaultConfig, runSpec')
+import Test.Support.Manifest as Fixtures
 
 main :: Effect Unit
-main = launchAff_ $ runSpec [consoleReporter] do
-  Spec.describe "API" do
-    Spec.describe "Checks" do
-      Spec.describe "Good package names" goodPackageName
-      Spec.describe "Bad package names" badPackageName
-      Spec.describe "Good SPDX licenses" goodSPDXLicense
-      Spec.describe "Bad SPDX licenses" badSPDXLicense
-      Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
-      Spec.describe "SemVer" semVer
+main = launchAff_ do
+  registryEnv <- Registry.Index.mkTestIndexEnv
+  runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
+    Spec.describe "API" do
+      Spec.describe "Checks" do
+        Spec.describe "Good package names" goodPackageName
+        Spec.describe "Bad package names" badPackageName
+        Spec.describe "Good SPDX licenses" goodSPDXLicense
+        Spec.describe "Bad SPDX licenses" badSPDXLicense
+        Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
+        Spec.describe "SemVer" semVer
+    Spec.describe "Bowerfile" do
+      Spec.describe "Parses" do
+        Spec.describe "Good bower files" goodBowerfiles
+      Spec.describe "Does not parse" do
+        Spec.describe "Bad bower files" badBowerfiles
+      Spec.describe "Encoding" bowerFileEncoding
+    Spec.describe "Jsonic" jsonic
+    Spec.describe "Licensee" licensee
+    Spec.describe "Manifest" do
+      Spec.describe "Encoding" manifestEncoding
+    Spec.describe "Error Stats" errorStats
+    Spec.describe "Registry Index" do
+      Registry.Index.spec registryEnv
 
-goodPackageName :: Spec
+manifestEncoding :: Spec.Spec Unit
+manifestEncoding = do
+  let
+    checkRoundtrip manifest str = case Json.parseJson str >>= Json.decodeJson of
+      Left _ -> false
+      Right manifest' -> manifest == manifest'
+
+    roundTrip manifest =
+      Spec.it (PackageName.print manifest.name <> " v" <> SemVer.printSemVer manifest.version) do
+        Json.stringify (Json.encodeJson manifest) `Assert.shouldSatisfy` checkRoundtrip manifest
+
+  roundTrip Fixtures.ab.v1a
+  roundTrip Fixtures.ab.v1b
+  roundTrip Fixtures.ab.v2
+  roundTrip Fixtures.abc.v1
+  roundTrip Fixtures.abc.v2
+  roundTrip Fixtures.abcd.v1
+  roundTrip Fixtures.abcd.v2
+
+goodPackageName :: Spec.Spec Unit
 goodPackageName = do
-  let parseName str res = Spec.it str do
-        (PackageName.print <$> PackageName.parse str) `Assert.shouldEqual` (Right res)
+  let
+    parseName str res = Spec.it str do
+      (PackageName.print <$> PackageName.parse str) `Assert.shouldEqual` (Right res)
 
   parseName "a" "a"
   parseName "some-dash" "some-dash"
 
-badPackageName :: Spec
+badPackageName :: Spec.Spec Unit
 badPackageName = do
-  let failParse str err = Spec.it str do
-        (PackageName.print <$> PackageName.parse str) `Assert.shouldSatisfy` case _ of
-          Right _ -> false
-          Left { error } -> error == err
+  let
+    failParse str err = Spec.it str do
+      (PackageName.print <$> PackageName.parse str) `Assert.shouldSatisfy` case _ of
+        Right _ -> false
+        Left { error } -> error == err
   let startErr = "Package name should start with a lower case char or a digit"
   let midErr = "Package name can contain lower case chars, digits and non-consecutive dashes"
   let endErr = "Package name should end with a lower case char or digit"
@@ -54,7 +100,7 @@ badPackageName = do
   failParse "" startErr
   failParse "🍝" startErr
 
-goodSPDXLicense :: Spec
+goodSPDXLicense :: Spec.Spec Unit
 goodSPDXLicense = do
   let
     parseLicense str = Spec.it str do
@@ -77,12 +123,12 @@ goodSPDXLicense = do
   -- exceptions
   parseLicense "GPL-3.0 WITH GPL-3.0-linking-exception"
 
-badSPDXLicense :: Spec
+badSPDXLicense :: Spec.Spec Unit
 badSPDXLicense = do
   let
-    invalid str suggestion = "Invalid SPDX identifier: " <> str <> "." <> case suggestion of
+    invalid str suggestion = "Invalid SPDX identifier: " <> str <> case suggestion of
       Nothing -> ""
-      Just s -> " Did you mean " <> s <> "?"
+      Just s -> "\nDid you mean " <> s <> "?"
     parseLicense str suggestion = Spec.it str do
       (SPDX.print <$> SPDX.parse str) `Assert.shouldSatisfy` case _ of
         Right _ -> false
@@ -95,7 +141,7 @@ badSPDXLicense = do
   parseLicense "BSD-3" (Just "BSD-3-Clause")
   parseLicense "MIT AND BSD-3" Nothing
 
-decodeEventsToOps :: Spec
+decodeEventsToOps :: Spec.Spec Unit
 decodeEventsToOps = do
   Spec.it "decodes an Update operation" do
     let
@@ -123,18 +169,109 @@ decodeEventsToOps = do
     res <- API.readOperation "test/fixtures/issue_created.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
-semVer :: Spec
+semVer :: Spec.Spec Unit
 semVer = do
-  let parseSemVer str = Spec.it ("Parse SemVer " <> str) do
-        (SemVer.printSemVer <$> SemVer.parseSemVer str) `Assert.shouldSatisfy` isJust
+  let
+    parseSemVer str = Spec.it ("Parse SemVer " <> str) do
+      (SemVer.printSemVer <$> SemVer.parseSemVer str) `Assert.shouldSatisfy` isJust
 
   parseSemVer "v1.2.3"
   parseSemVer "1.2.3-rc2"
   parseSemVer "0.1.2+r2"
 
-  let parseRange range expected = Spec.it ("Parse Range " <> show range <> " into " <> show expected) do
-        (SemVer.printRange <$> SemVer.parseRange range) `Assert.shouldSatisfy` case _ of
-          Just parsed -> parsed == expected
-          Nothing -> false
+  let
+    parseRange range expected = Spec.it ("Parse Range " <> show range <> " into " <> show expected) do
+      (SemVer.printRange <$> SemVer.parseRange range) `Assert.shouldSatisfy` case _ of
+        Just parsed -> parsed == expected
+        Nothing -> false
 
   parseRange "^1.3.4" ">=1.3.4 <2.0.0-0"
+
+goodBowerfiles :: Spec.Spec Unit
+goodBowerfiles = do
+  let
+    parse :: String -> Either Json.JsonDecodeError Bowerfile
+    parse = Jsonic.parseJson >=> Json.decodeJson
+
+    parseBowerfile' str = Spec.it str do
+      parse str `Assert.shouldSatisfy` isRight
+
+    parseBowerfile = parseBowerfile' <<< Json.stringify
+
+    simpleFile = Json.encodeJson { version: "v1.0.0", license: "MIT" }
+    goodBowerfile = Json.encodeJson { version: "v1.0.0", license: "", dependencies: {} }
+    extraPropsBowerfile =
+      Json.encodeJson
+        { extra: "value"
+        , license: "not a license"
+        , version: "v1.1.1"
+        }
+    nonSemverBowerfile =
+      Json.encodeJson
+        { version: "notsemver"
+        , license: ""
+        , dependencies: { also: "not semver" }
+        , devDependencies: { lastly: "🍝" }
+        }
+    completeBowerfile =
+      Json.encodeJson
+        { version: "v1.0.1"
+        , license: [ "license" ]
+        , dependencies:
+            { "other-package": "v0.0.1"
+            , "another-package": "v10.0.1-rc1"
+            }
+        , devDependencies:
+            { "dev-dep": "v2.0.0" }
+        }
+
+  parseBowerfile goodBowerfile
+  parseBowerfile simpleFile
+  parseBowerfile extraPropsBowerfile
+  parseBowerfile nonSemverBowerfile
+  parseBowerfile completeBowerfile
+
+badBowerfiles :: Spec.Spec Unit
+badBowerfiles = do
+  let
+    parse :: String -> Either Json.JsonDecodeError Bowerfile
+    parse = Jsonic.parseJson >=> Json.decodeJson
+
+    failParseBowerfile' str = Spec.it str do
+      parse str `Assert.shouldNotSatisfy` isRight
+
+    failParseBowerfile = failParseBowerfile' <<< Json.stringify
+
+    wrongLicenseFormat =
+      Json.encodeJson { version: "", license: true }
+
+    wrongDependenciesFormat =
+      Json.encodeJson
+        { version: "", license: "", dependencies: ([] :: Array Int) }
+
+    wrongDevDependenciesFormat =
+      Json.encodeJson
+        { version: "", license: "", devDependencies: ([] :: Array Int) }
+
+  failParseBowerfile wrongLicenseFormat
+  failParseBowerfile wrongDependenciesFormat
+  failParseBowerfile wrongDevDependenciesFormat
+
+bowerFileEncoding :: Spec.Spec Unit
+bowerFileEncoding = do
+  Spec.it "Can be decoded" do
+    let
+      dependencies =
+        Object.fromFoldable
+          [ Tuple "dependency-first" "v1.0.0"
+          , Tuple "dependency-second" "v2.0.0"
+          ]
+      devDependencies =
+        Object.fromFoldable
+          [ Tuple "devdependency-first" "v0.0.1"
+          , Tuple "devdependency-second" "v0.0.2"
+          ]
+      bowerFile =
+        Bowerfile { license: NEA.fromArray $ Array.catMaybes [ NES.fromString "MIT" ], dependencies, devDependencies }
+    (Json.decodeJson $ Json.encodeJson bowerFile) `Assert.shouldContain` bowerFile
+

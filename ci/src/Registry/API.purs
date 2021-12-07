@@ -2,12 +2,15 @@ module Registry.API where
 
 import Registry.Prelude
 
-import Control.Monad.Except (ExceptT(..), runExceptT)
+import Control.Monad.Except as Except
 import Data.Argonaut as Json
 import Data.Array as Array
+import Data.Array.NonEmpty as NEA
 import Data.Generic.Rep as Generic
 import Data.Map as Map
+import Data.Maybe (maybe)
 import Effect.Aff as Aff
+import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
 import Foreign.GitHub (IssueNumber)
@@ -21,19 +24,22 @@ import Node.ChildProcess as NodeProcess
 import Node.Crypto.Hash as Hash
 import Node.FS.Aff as FS
 import Node.Process as Env
-import Partial.Unsafe (unsafePartial)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
-import Registry.Scripts.BowerImport as Bower
+import Registry.Scripts.LegacyImport as LegacyImport
+import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Sunde as Process
-import Text.Parsing.StringParser as Parser
+import Text.Parsing.StringParser as StringParser
 
 main :: Effect Unit
 main = launchAff_ $ do
-  eventPath <- liftEffect $ Env.lookupEnv "GITHUB_EVENT_PATH"
+  eventPath <- liftEffect do
+    Env.lookupEnv "GITHUB_EVENT_PATH"
+      >>= maybe (throw "GITHUB_EVENT_PATH not defined in the environment") pure
+  octokit <- liftEffect GitHub.mkOctokit
   packagesMetadata <- do
     packageList <- try (FS.readdir metadataDir) >>= case _ of
       Right list -> pure list
@@ -44,7 +50,7 @@ main = launchAff_ $ do
     packagesArray <- for packageList \rawPackageName -> do
       packageName <- case PackageName.parse rawPackageName of
         Right p -> pure p
-        Left err -> Aff.throwError $ Aff.error $ Parser.printParserError err
+        Left err -> Aff.throwError $ Aff.error $ StringParser.printParserError err
       let metadataPath = metadataFile packageName
       metadataStr <- FS.readTextFile UTF8 metadataPath
       metadata <- case fromJson metadataStr of
@@ -52,14 +58,14 @@ main = launchAff_ $ do
         Right r -> pure r
       pure $ packageName /\ metadata
     liftEffect $ Ref.new $ Map.fromFoldable packagesArray
-  readOperation (unsafePartial fromJust eventPath) >>= case _ of
+  readOperation eventPath >>= case _ of
     -- If the issue body is not just a JSON string, then we don't consider it
     -- to be an attempted operation and it is presumably just an issue on the
     -- registry repository.
     NotJson ->
       pure unit
 
-    MalformedJson issue err -> runRegistryM (mkEnv packagesMetadata issue) do
+    MalformedJson issue err -> runRegistryM (mkEnv octokit packagesMetadata issue) do
       comment $ Array.fold
         [ "The JSON input for this package update is malformed:"
         , newlines 2
@@ -69,7 +75,7 @@ main = launchAff_ $ do
         ]
 
     DecodedOperation issue op ->
-      runRegistryM (mkEnv packagesMetadata issue) (runOperation op)
+      runRegistryM (mkEnv octokit packagesMetadata issue) (runOperation op)
 
 data OperationDecoding
   = NotJson
@@ -95,7 +101,7 @@ readOperation eventPath = do
       pure event
 
   pure $ case Json.jsonParser body of
-    Left err ->
+    Left _err ->
       NotJson
     Right json -> case Json.decodeJson json of
       Left err -> MalformedJson issueNumber (Json.printJsonDecodeError err)
@@ -106,7 +112,8 @@ readOperation eventPath = do
 
 runOperation :: Operation -> RegistryM Unit
 runOperation operation = case operation of
-  Addition { packageName, fromBower, newRef, newPackageLocation, addToPackageSet } -> do
+  -- TODO handle addToPackageSet
+  Addition { packageName, fromBower, newRef, newPackageLocation } -> do
     -- check that we don't have a metadata file for that package
     ifM (liftAff $ FS.exists $ metadataFile packageName)
       -- if the metadata file already exists then we steer this to be an Update instead
@@ -164,16 +171,32 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
 
   -- If we're importing from Bower then we need to convert the Bowerfile
   -- to a Registry Manifest
-  when fromBower $ do
-    liftAff (Bower.readBowerfile (absoluteFolderPath <> "/bower.json")) >>= case _ of
+  when fromBower do
+    liftAff (try (readJsonFile (absoluteFolderPath <> "/bower.json"))) >>= case _ of
       Left err ->
-        throwWithComment $ "Error while reading Bowerfile: " <> err
-      Right bowerfile -> case Bower.toManifest bowerfile ref metadata.location of
-        Left err ->
-          throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
-        Right manifest -> do
-          let manifestStr = Json.stringifyWithIndent 2 $ Json.encodeJson manifest
-          liftAff $ FS.writeTextFile UTF8 manifestPath manifestStr
+        throwWithComment $ "Error while reading Bowerfile: " <> Aff.message err
+      Right (Left err) ->
+        throwWithComment $ "Could not decode Bowerfile: " <> Json.printJsonDecodeError err
+      Right (Right bowerfile) -> do
+        let
+          printErrors =
+            Json.stringifyWithIndent 2 <<< Json.encodeJson <<< NEA.toArray
+
+          manifestFields =
+            Bowerfile.toManifestFields bowerfile
+
+          runManifest =
+            Except.runExceptT <<< Except.mapExceptT (liftAff <<< map (lmap printErrors))
+
+        semVer <- case SemVer.parseSemVer ref of
+          Nothing -> throwWithComment $ "Not a valid SemVer version: " <> ref
+          Just result -> pure result
+
+        runManifest (LegacyImport.toManifest packageName metadata.location semVer manifestFields) >>= case _ of
+          Left err ->
+            throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
+          Right manifest ->
+            liftAff $ writeJsonFile manifestPath manifest
 
   -- Try to read the manifest, typechecking it
   manifest :: Manifest <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of
@@ -209,15 +232,15 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   liftAff $ FS.writeTextFile UTF8 metadataFilePath (Json.stringifyWithIndent 2 $ Json.encodeJson newMetadata)
   updatePackagesMetadata manifest.name newMetadata
   commitToTrunk packageName metadataFilePath >>= case _ of
-    Left err ->
+    Left _err ->
       comment "Package uploaded, but metadata not synced with the registry repository.\n\ncc @purescript/packaging"
     Right _ -> do
       comment "Package successfully uploaded to the registry! :tada: :rocket:"
   closeIssue
-  -- Optional steps that we'll try and that won't fail the pipeline on error:
-  -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
-  -- TODO: upload docs to pursuit (see #154)
 
+-- Optional steps that we'll try and that won't fail the pipeline on error:
+-- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
+-- TODO: upload docs to pursuit (see #154)
 
 runChecks :: Metadata -> Manifest -> RegistryM Unit
 runChecks metadata manifest = do
@@ -231,7 +254,7 @@ runChecks metadata manifest = do
     Just a -> pure a
 
   log "Checking that `lib` target only includes `src`"
-  when (libTarget.sources /= ["src/**/*.purs"]) do
+  when (libTarget.sources /= [ "src/**/*.purs" ]) do
     throwWithComment "The `lib` target only allows the following `sources`: `src/**/*.purs`"
 
   log "Check that version is unique"
@@ -247,13 +270,13 @@ runChecks metadata manifest = do
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
   let lookupPackage = flip Map.lookup packages <=< (hush <<< PackageName.parse)
-  let pkgNotInRegistry name = case lookupPackage name of
-        Nothing -> Just name
-        Just p -> Nothing
+  let
+    pkgNotInRegistry name = case lookupPackage name of
+      Nothing -> Just name
+      Just _p -> Nothing
   let pkgsNotInRegistry = Array.catMaybes $ map pkgNotInRegistry $ Object.keys libTarget.dependencies
   unless (Array.null pkgsNotInRegistry) do
     throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
-
 
 fromJson :: forall a. Json.DecodeJson a => String -> Either String a
 fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)
@@ -271,35 +294,35 @@ wget :: String -> String -> RegistryM Unit
 wget url path = do
   let cmd = "wget"
   let stdin = Nothing
-  let args = ["-O", path, url]
+  let args = [ "-O", path, url ]
   result <- liftAff $ Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
   case result.exit of
     NodeProcess.Normally 0 -> pure unit
     _ -> throwWithComment $ "Error while fetching tarball: " <> result.stderr
 
-mkEnv :: Ref (Map PackageName Metadata) -> IssueNumber -> Env
-mkEnv packagesMetadata issue =
-  { comment: GitHub.createComment issue
-  , closeIssue: GitHub.closeIssue issue
+mkEnv :: GitHub.Octokit -> Ref (Map PackageName Metadata) -> IssueNumber -> Env
+mkEnv octokit packagesMetadata issue =
+  { comment: GitHub.createComment octokit issue
+  , closeIssue: GitHub.closeIssue octokit issue
   , commitToTrunk: pushToMaster
   , uploadPackage: Upload.upload
   , packagesMetadata
   }
 
 pushToMaster :: PackageName -> FilePath -> Aff (Either String Unit)
-pushToMaster packageName path = runExceptT do
-  runGit ["config", "user.name", "PacchettiBotti"]
-  runGit ["config", "user.email", "<pacchettibotti@ferrai.io>"]
-  runGit ["add", path]
-  runGit ["commit", "-m", "Update metadata for package " <> PackageName.print packageName ]
-  runGit ["push", "origin", "master"]
+pushToMaster packageName path = Except.runExceptT do
+  runGit [ "config", "user.name", "PacchettiBotti" ]
+  runGit [ "config", "user.email", "<pacchettibotti@ferrai.io>" ]
+  runGit [ "add", path ]
+  runGit [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ]
+  runGit [ "push", "origin", "master" ]
 
   where
-    runGit args = ExceptT do
-      result <- Process.spawn { cmd: "git", args, stdin: Nothing } NodeProcess.defaultSpawnOptions
-      case result.exit of
-        NodeProcess.Normally 0 -> do
-          info result.stdout
-          info result.stderr
-          pure $ Right unit
-        _ -> pure $ Left result.stderr
+  runGit args = ExceptT do
+    result <- Process.spawn { cmd: "git", args, stdin: Nothing } NodeProcess.defaultSpawnOptions
+    case result.exit of
+      NodeProcess.Normally 0 -> do
+        info result.stdout
+        info result.stderr
+        pure $ Right unit
+      _ -> pure $ Left result.stderr

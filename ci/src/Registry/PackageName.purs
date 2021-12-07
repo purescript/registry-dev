@@ -43,7 +43,7 @@ parse = Parser.runParser do
     manyDashesErr = "Package names cannot contain consecutive dashes"
 
   let
-    char = ParseC.choice [Parse.lowerCaseChar, Parse.anyDigit] <?> charErr
+    char = ParseC.choice [ Parse.lowerCaseChar, Parse.anyDigit ] <?> charErr
     dash = void $ Parse.char '-'
     chunk = ParseC.many1 char
 

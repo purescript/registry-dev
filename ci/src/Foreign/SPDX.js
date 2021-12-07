@@ -14,10 +14,10 @@ exports.parseSPDXLicenseIdImpl = function (onError, onSuccess, identifier) {
   } catch (_) {
     const results = fuse.search(identifier);
     if (results.length < 1) {
-      return onError(`Invalid SPDX identifier: ${identifier}.`);
+      return onError(`Invalid SPDX identifier: ${identifier}`);
     } else {
       return onError(
-        `Invalid SPDX identifier: ${identifier}. Did you mean ${results[0].item}?`
+        `Invalid SPDX identifier: ${identifier}\nDid you mean ${results[0].item}?`
       );
     }
   }
