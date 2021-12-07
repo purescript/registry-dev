@@ -161,5 +161,13 @@
   "purescript-ssrs": "https://github.com/PureFunctor/purescript-ssrs.git",
   "purescript-untagged-to-tagged": "https://github.com/sigma-andex/purescript-untagged-to-tagged.git",
   "purescript-oldschool": "https://github.com/maxdeviant/purescript-oldschool.git",
+  "purescript-array-search": "https://github.com/JoelLefkowitz/purescript-array-search.git",
+  "purescript-assert-multiple": "https://github.com/JoelLefkowitz/purescript-assert-multiple.git",
+  "purescript-huffman": "https://github.com/JoelLefkowitz/purescript-huffman.git",
+  "purescript-maps-eager": "https://github.com/JoelLefkowitz/purescript-maps-eager.git",
+  "purescript-repr": "https://github.com/JoelLefkowitz/purescript-repr.git",
+  "purescript-roman": "https://github.com/JoelLefkowitz/purescript-roman.git",
   "purescript-glapple": "https://github.com/yukikurage/purescript-glapple.git"
 }
+
+
