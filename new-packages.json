@@ -168,7 +168,8 @@
   "purescript-maps-eager": "https://github.com/JoelLefkowitz/purescript-maps-eager.git",
   "purescript-repr": "https://github.com/JoelLefkowitz/purescript-repr.git",
   "purescript-roman": "https://github.com/JoelLefkowitz/purescript-roman.git",
-  "purescript-glapple": "https://github.com/yukikurage/purescript-glapple.git"
+  "purescript-glapple": "https://github.com/yukikurage/purescript-glapple.git",
+  "purescript-mdast-util-from-markdown": "https://github.com/sigma-andex/purescript-mdast-util-from-markdown.git"
 }
 
 
