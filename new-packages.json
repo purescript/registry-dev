@@ -169,7 +169,6 @@
   "purescript-repr": "https://github.com/JoelLefkowitz/purescript-repr.git",
   "purescript-roman": "https://github.com/JoelLefkowitz/purescript-roman.git",
   "purescript-glapple": "https://github.com/yukikurage/purescript-glapple.git",
+  "purescript-mdast-util-from-markdown": "https://github.com/sigma-andex/purescript-mdast-util-from-markdown.git",
   "purescript-web-speech": "https://github.com/dirkz/purescript-web-speech.git"
 }
-
-
