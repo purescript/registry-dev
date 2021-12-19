@@ -170,5 +170,6 @@
   "purescript-roman": "https://github.com/JoelLefkowitz/purescript-roman.git",
   "purescript-glapple": "https://github.com/yukikurage/purescript-glapple.git",
   "purescript-mdast-util-from-markdown": "https://github.com/sigma-andex/purescript-mdast-util-from-markdown.git",
-  "purescript-web-speech": "https://github.com/dirkz/purescript-web-speech.git"
+  "purescript-web-speech": "https://github.com/dirkz/purescript-web-speech.git",
+  "purescript-nano-id": "https://github.com/eikooc/nano-id.git"
 }
