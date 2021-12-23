@@ -31,7 +31,7 @@ upload { name, version } path = do
     filename = Array.fold
       [ packageName
       , "/"
-      , SemVer.printSemVer version
+      , SemVer.version version
       , ".tar.gz"
       ]
 

@@ -5,7 +5,6 @@ module Registry.Scripts.LegacyImport.Bowerfile
 
 import Registry.Prelude
 
-import Control.Alt ((<|>))
 import Data.Argonaut (Json, (.:?))
 import Data.Argonaut as Json
 import Data.Array as Array

@@ -203,7 +203,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   log "Packaging the tarball to upload..."
   -- We need the version number to upload the package
   let newVersion = manifest.version
-  let newDirname = PackageName.print packageName <> "-" <> SemVer.printSemVer newVersion
+  let newDirname = PackageName.print packageName <> "-" <> SemVer.version newVersion
   liftAff $ FS.rename absoluteFolderPath (tmpDir <> "/" <> newDirname)
   let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
@@ -213,7 +213,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   log "Uploading package to the storage backend..."
   let uploadPackageInfo = { name: packageName, version: newVersion }
   uploadPackage uploadPackageInfo tarballPath
-  log $ "Adding the new version " <> SemVer.printSemVer newVersion <> " to the package metadata file (hashes, etc)"
+  log $ "Adding the new version " <> SemVer.version newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show ref <> " was " <> show hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref } metadata
   let metadataFilePath = metadataFile packageName
@@ -231,10 +231,11 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
 
   -- Add to the registry index
   liftAff $ Index.insertManifest indexDir manifest
-  -- TODO: commit the registry-index
 
-  -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
-  -- TODO: upload docs to pursuit (see #154)
+-- TODO: commit the registry-index
+
+-- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
+-- TODO: upload docs to pursuit (see #154)
 
 runChecks :: Metadata -> Manifest -> RegistryM Unit
 runChecks metadata manifest = do
@@ -252,7 +253,7 @@ runChecks metadata manifest = do
     throwWithComment "The `lib` target only allows the following `sources`: `src/**/*.purs`"
 
   log "Check that version is unique"
-  let prettyVersion = SemVer.printSemVer manifest.version
+  let prettyVersion = SemVer.version manifest.version
   case Object.lookup prettyVersion metadata.releases of
     Nothing -> pure unit
     Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> show prettyVersion <> "\nIts metadata is: " <> show info
@@ -328,8 +329,8 @@ checkIndexExists = do
   log $ "Checking if the registry-index is present.."
 
   whenM (not <$> FS.exists indexDir) do
-    error "Didn't fine the 'registry-index' repo, cloning..."
-    (Except.runExceptT $ runGit [ "clone", "git@github.com:purescript/registry-index.git", indexDir ]) >>= case _ of
+    error "Didn't find the 'registry-index' repo, cloning..."
+    (Except.runExceptT $ runGit [ "clone", "https://github.com/purescript/registry-index.git", indexDir ]) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> log "Successfully cloned the 'registry-index' repo"
 

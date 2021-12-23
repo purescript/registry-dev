@@ -56,10 +56,10 @@ main :: Effect Unit
 main = Aff.launchAff_ do
   _ <- Dotenv.loadFile
 
+  API.checkIndexExists
+
   log "Starting import from legacy registries..."
   registry <- downloadLegacyRegistry
-
-  API.checkIndexExists
 
   -- Temporary: we filter packages to only deal with the ones in core
   let
@@ -76,7 +76,7 @@ main = Aff.launchAff_ do
           { addToPackageSet: false -- heh, we don't have package sets until we do this import!
           , fromBower: true
           , newPackageLocation: manifest.repository
-          , newRef: SemVer.printSemVer version
+          , newRef: SemVer.raw version
           , packageName
           }
     log $ "Uploading package: " <> show addition
@@ -86,10 +86,12 @@ main = Aff.launchAff_ do
 
 mkEnv :: Ref (Map PackageName Metadata) -> Env
 mkEnv packagesMetadata =
-  { comment: \_ -> pure unit
-  , closeIssue: pure unit
-  , commitToTrunk: \_ _ -> pure (Right unit)
-  , uploadPackage: \_ _ -> log "TODO: Fake upload" -- Upload.upload
+  { comment: \err -> error err
+  , closeIssue: log "Skipping GitHub issue closing, we're running locally.."
+  , commitToTrunk: \_ _ -> do
+      log "Skipping committing to trunk.."
+      pure (Right unit)
+  , uploadPackage: Upload.upload
   , packagesMetadata
   }
 

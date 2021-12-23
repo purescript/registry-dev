@@ -1,5 +1,6 @@
 module Registry.PackageGraph
   ( CheckResult
+  , Node
   , checkRegistryIndex
   , topologicalSort
   ) where

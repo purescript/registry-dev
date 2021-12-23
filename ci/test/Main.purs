@@ -60,7 +60,7 @@ manifestEncoding = do
       Right manifest' -> manifest == manifest'
 
     roundTrip manifest =
-      Spec.it (PackageName.print manifest.name <> " v" <> SemVer.printSemVer manifest.version) do
+      Spec.it (PackageName.print manifest.name <> " " <> SemVer.raw manifest.version) do
         Json.stringify (Json.encodeJson manifest) `Assert.shouldSatisfy` checkRoundtrip manifest
 
   roundTrip Fixtures.ab.v1a
@@ -173,7 +173,7 @@ semVer :: Spec.Spec Unit
 semVer = do
   let
     parseSemVer str = Spec.it ("Parse SemVer " <> str) do
-      (SemVer.printSemVer <$> SemVer.parseSemVer str) `Assert.shouldSatisfy` isJust
+      (SemVer.version <$> SemVer.parseSemVer str) `Assert.shouldSatisfy` isJust
 
   parseSemVer "v1.2.3"
   parseSemVer "1.2.3-rc2"

@@ -2,7 +2,6 @@ module Foreign.GitHub where
 
 import Registry.Prelude
 
-import Control.Alt ((<|>))
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.Argonaut ((.:))

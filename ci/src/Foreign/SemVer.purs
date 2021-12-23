@@ -1,7 +1,8 @@
 module Foreign.SemVer
   ( SemVer
   , parseSemVer
-  , printSemVer
+  , raw
+  , version
   , major
   , minor
   , patch
@@ -27,7 +28,7 @@ instance ordSemVer :: Ord SemVer where
   compare = compareSemVer
 
 instance showSemVer :: Show SemVer where
-  show = printSemVer
+  show = raw
 
 instance decodeJsonSemver :: Json.DecodeJson SemVer where
   decodeJson json = do
@@ -35,7 +36,7 @@ instance decodeJsonSemver :: Json.DecodeJson SemVer where
     note (Json.TypeMismatch $ "Expected version: " <> version') (parseSemVer version')
 
 instance encodeJsonSemver :: Json.EncodeJson SemVer where
-  encodeJson = Json.encodeJson <<< printSemVer
+  encodeJson = Json.encodeJson <<< version
 
 foreign import compareSemVerImpl :: Fn2 SemVer SemVer Int
 
@@ -51,9 +52,6 @@ foreign import parseSemVerImpl :: String -> Nullable SemVer
 parseSemVer :: String -> Maybe SemVer
 parseSemVer = toMaybe <<< parseSemVerImpl
 
-printSemVer :: SemVer -> String
-printSemVer = version
-
 foreign import major :: SemVer -> Int
 
 foreign import minor :: SemVer -> Int
@@ -65,6 +63,8 @@ foreign import prerelease :: SemVer -> Array String
 foreign import build :: SemVer -> Array String
 
 foreign import version :: SemVer -> String
+
+foreign import raw :: SemVer -> String
 
 newtype Range = Range String
 
