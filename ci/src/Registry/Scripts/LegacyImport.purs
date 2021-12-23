@@ -72,13 +72,14 @@ main = Aff.launchAff_ do
   packagesMetadataRef <- API.mkMetadataRef
 
   void $ for corePackages \{ manifest, version, packageName } -> do
-    let addition = Addition
-          { addToPackageSet: false -- heh, we don't have package sets until we do this import!
-          , fromBower: true
-          , newPackageLocation: manifest.repository
-          , newRef: SemVer.raw version
-          , packageName
-          }
+    let
+      addition = Addition
+        { addToPackageSet: false -- heh, we don't have package sets until we do this import!
+        , fromBower: true
+        , newPackageLocation: manifest.repository
+        , newRef: SemVer.raw version
+        , packageName
+        }
     log $ "Uploading package: " <> show addition
     runRegistryM (mkEnv packagesMetadataRef) (API.runOperation addition)
 
