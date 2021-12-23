@@ -8,14 +8,10 @@ import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Except as Except
 import Control.Parallel (parallel, sequential)
 import Data.Argonaut as Json
-import Data.Array (catMaybes)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Interpolate (i)
-import Data.Lens (_Left, preview)
 import Data.Map as Map
-import Data.Maybe (maybe)
-import Data.Monoid (guard)
 import Data.String as String
 import Data.String.NonEmpty as NES
 import Data.Time.Duration (Hours(..))
@@ -27,18 +23,21 @@ import Foreign.GitHub as GitHub
 import Foreign.Jsonic as Jsonic
 import Foreign.Licensee as Licensee
 import Foreign.Object as Object
-import Foreign.SPDX as SPDX
 import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
-import Registry.Index (RegistryIndex, insertManifest)
+import Registry.API as API
+import Registry.Index (RegistryIndex)
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Repo(..), Manifest)
+import Registry.PackageUpload as Upload
+import Registry.RegistryM (Env, runRegistryM)
+import Registry.Schema (Repo(..), Manifest, Operation(..), Metadata)
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Registry.Scripts.LegacyImport.Error (APIResource(..), FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
+import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)
@@ -60,14 +59,39 @@ main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
   registry <- downloadLegacyRegistry
 
-  let indexPath = "registry-index"
-  log $ "Writing registry index to " <> indexPath
+  API.checkIndexExists
 
-  exists <- FS.exists indexPath
-  guard (not exists) $ FS.mkdir indexPath
-  for_ registry \semVer -> for_ semVer (insertManifest indexPath)
+  -- Temporary: we filter packages to only deal with the ones in core
+  let
+    packagesToUpload = Graph.topologicalSort registry
+    isCorePackage pkg = case pkg.manifest.repository of
+      GitHub { owner: "purescript" } -> Just pkg
+      _ -> Nothing
+    corePackages = Array.mapMaybe isCorePackage packagesToUpload
+
+  packagesMetadataRef <- API.mkMetadataRef
+
+  void $ for corePackages \{ manifest, version, packageName } -> do
+    let addition = Addition
+          { addToPackageSet: false -- heh, we don't have package sets until we do this import!
+          , fromBower: true
+          , newPackageLocation: manifest.repository
+          , newRef: SemVer.printSemVer version
+          , packageName
+          }
+    log $ "Uploading package: " <> show addition
+    runRegistryM (mkEnv packagesMetadataRef) (API.runOperation addition)
 
   log "Done!"
+
+mkEnv :: Ref (Map PackageName Metadata) -> Env
+mkEnv packagesMetadata =
+  { comment: \_ -> pure unit
+  , closeIssue: pure unit
+  , commitToTrunk: \_ _ -> pure (Right unit)
+  , uploadPackage: \_ _ -> log "TODO: Fake upload" -- Upload.upload
+  , packagesMetadata
+  }
 
 downloadLegacyRegistry :: Aff RegistryIndex
 downloadLegacyRegistry = do
@@ -137,7 +161,7 @@ downloadLegacyRegistry = do
       repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
       liftError = map (lmap ManifestError)
 
-    Except.mapExceptT liftError $ toManifest name repo tag.semVer manifestFields
+    Except.mapExceptT liftError $ Manifest.toManifest name repo tag.semVer manifestFields
 
   log "Writing exclusions file..."
   writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
@@ -166,123 +190,6 @@ downloadLegacyRegistry = do
     log (show (Array.length unsatisfied) <> " manifest entries with unsatisfied dependencies")
 
   pure checkedIndex
-
--- | Convert a package from Bower to a Manifest.
--- This function is written a bit awkwardly because we want to collect validation
--- errors that occur rather than just throw the first one.
-toManifest
-  :: PackageName
-  -> Repo
-  -> SemVer
-  -> ManifestFields
-  -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
-toManifest package repository version manifest = do
-  let
-    mkError :: forall a. ManifestError -> Either (NonEmptyArray ManifestError) a
-    mkError = Left <<< NEA.singleton
-
-    eitherLicense = do
-      let
-        rewrite = case _ of
-          "Apache 2" -> "Apache-2.0"
-          "Apache-2" -> "Apache-2.0"
-          "Apache 2.0" -> "Apache-2.0"
-          "BSD" -> "BSD-3-Clause"
-          "BSD3" -> "BSD-3-Clause"
-          "BSD-3" -> "BSD-3-Clause"
-          "3-Clause BSD" -> "BSD-3-Clause"
-          other -> other
-
-      case manifest.license of
-        Nothing -> mkError MissingLicense
-        Just licenses -> do
-          let
-            parsed =
-              map (SPDX.parse <<< rewrite)
-                $ Array.filter (_ /= "LICENSE")
-                $ map NES.toString
-                $ NEA.toArray licenses
-            { fail, success } = partitionEithers parsed
-
-          case fail, success of
-            [], [] -> mkError MissingLicense
-            [], _ -> Right $ SPDX.joinWith SPDX.Or success
-            _, _ -> mkError $ BadLicense fail
-
-    eitherTargets = do
-      let
-        -- We trim out packages that don't begin with `purescript-`, as these
-        -- are JavaScript dependencies being specified in the Bowerfile.
-        filterNames = catMaybes <<< map \(Tuple packageName versionRange) ->
-          case String.take 11 packageName of
-            "purescript-" -> Just $ Tuple (String.drop 11 packageName) versionRange
-            _ -> Nothing
-
-        parsePairs = map \(Tuple packageName versionRange) -> case PackageName.parse packageName of
-          Left _ -> Left packageName
-          Right name -> Right (Tuple name versionRange)
-
-        normalizeDeps deps = do
-          let { fail, success } = partitionEithers $ parsePairs $ filterNames deps
-          case NEA.fromArray fail of
-            Nothing -> pure success
-            Just err -> mkError $ InvalidDependencyNames err
-
-        checkDepPair (Tuple packageName versionStr) =
-          case SemVer.parseRange versionStr of
-            Nothing -> Left { dependency: packageName, failedBounds: versionStr }
-            Just range -> Right $ Tuple (PackageName.print packageName) range
-
-      normalizedDeps <- normalizeDeps $ Object.toUnfoldable manifest.dependencies
-      normalizedDevDeps <- normalizeDeps $ Object.toUnfoldable manifest.devDependencies
-
-      let
-        readDeps = map checkDepPair >>> partitionEithers >>> \{ fail, success } ->
-          case NEA.fromArray fail of
-            Nothing ->
-              Right success
-            Just err ->
-              mkError $ BadDependencyVersions err
-
-        eitherDeps = readDeps normalizedDeps
-        eitherDevDeps = readDeps normalizedDevDeps
-
-      case eitherDeps, eitherDevDeps of
-        Left e1, Left e2 -> Left (e1 <> e2)
-        Left e, Right _ -> Left e
-        Right _, Left e -> Left e
-        Right deps, Right devDeps -> Right $ Object.fromFoldable $ Array.catMaybes
-          [ Just $ Tuple "lib"
-              { sources: [ "src/**/*.purs" ]
-              , dependencies: Object.fromFoldable deps
-              }
-          , if (Array.null devDeps) then Nothing
-            else Just $ Tuple "test"
-              { sources: [ "src/**/*.purs", "test/**/*.purs" ]
-              , dependencies: Object.fromFoldable (deps <> devDeps)
-              }
-          ]
-
-    errs = do
-      let
-        toMaybeErrors :: forall e a. Either e a -> Maybe e
-        toMaybeErrors = preview _Left
-
-      map NEA.concat $ NEA.fromArray $ Array.catMaybes
-        [ toMaybeErrors eitherLicense
-        , toMaybeErrors eitherTargets
-        ]
-
-  case errs of
-    Nothing -> do
-      -- Technically this shouldn't be needed, since we've already checked these
-      -- for errors, but this is just so the types all work out.
-      license <- Except.except eitherLicense
-      targets <- Except.except eitherTargets
-      pure { name: package, license, repository, targets, version }
-
-    Just err ->
-      throwError err
 
 -- Packages can be specified either in 'package-name' format or
 -- in owner/package-name format. This function ensures we don't pick

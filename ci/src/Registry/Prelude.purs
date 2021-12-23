@@ -30,7 +30,7 @@ import Data.Identity (Identity) as Extra
 import Data.List (List) as Extra
 import Data.Map (Map) as Extra
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing, isJust) as Maybe
+import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing, isJust, maybe) as Maybe
 import Data.Newtype (un, class Newtype) as Extra
 import Data.Nullable (toMaybe, toNullable, Nullable) as Extra
 import Data.Set (Set) as Extra

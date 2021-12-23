@@ -8,7 +8,6 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Generic.Rep as Generic
 import Data.Map as Map
-import Data.Maybe (maybe)
 import Effect.Aff as Aff
 import Effect.Exception (throw)
 import Effect.Ref as Ref
@@ -24,13 +23,14 @@ import Node.ChildProcess as NodeProcess
 import Node.Crypto.Hash as Hash
 import Node.FS.Aff as FS
 import Node.Process as Env
+import Registry.Index as Index
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
-import Registry.Scripts.LegacyImport as LegacyImport
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
+import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
 
@@ -40,24 +40,9 @@ main = launchAff_ $ do
     Env.lookupEnv "GITHUB_EVENT_PATH"
       >>= maybe (throw "GITHUB_EVENT_PATH not defined in the environment") pure
   octokit <- liftEffect GitHub.mkOctokit
-  packagesMetadata <- do
-    packageList <- try (FS.readdir metadataDir) >>= case _ of
-      Right list -> pure list
-      Left err -> do
-        error $ show err
-        FS.mkdir metadataDir
-        pure []
-    packagesArray <- for packageList \rawPackageName -> do
-      packageName <- case PackageName.parse rawPackageName of
-        Right p -> pure p
-        Left err -> Aff.throwError $ Aff.error $ StringParser.printParserError err
-      let metadataPath = metadataFile packageName
-      metadataStr <- FS.readTextFile UTF8 metadataPath
-      metadata <- case fromJson metadataStr of
-        Left err -> Aff.throwError $ Aff.error $ "Error while parsing json from " <> metadataPath <> " : " <> err
-        Right r -> pure r
-      pure $ packageName /\ metadata
-    liftEffect $ Ref.new $ Map.fromFoldable packagesArray
+  packagesMetadata <- mkMetadataRef
+  checkIndexExists
+
   readOperation eventPath >>= case _ of
     -- If the issue body is not just a JSON string, then we don't consider it
     -- to be an attempted operation and it is presumably just an issue on the
@@ -138,6 +123,9 @@ metadataDir = "../metadata"
 metadataFile :: PackageName -> FilePath
 metadataFile packageName = metadataDir <> "/" <> PackageName.print packageName <> ".json"
 
+indexDir :: FilePath
+indexDir = "../registry-index"
+
 addOrUpdate :: { fromBower :: Boolean, ref :: String, packageName :: PackageName } -> Metadata -> RegistryM Unit
 addOrUpdate { ref, fromBower, packageName } metadata = do
   -- let's get a temp folder to do our stuffs
@@ -192,7 +180,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
           Nothing -> throwWithComment $ "Not a valid SemVer version: " <> ref
           Just result -> pure result
 
-        runManifest (LegacyImport.toManifest packageName metadata.location semVer manifestFields) >>= case _ of
+        runManifest (Manifest.toManifest packageName metadata.location semVer manifestFields) >>= case _ of
           Left err ->
             throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
           Right manifest ->
@@ -238,9 +226,15 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
       comment "Package successfully uploaded to the registry! :tada: :rocket:"
   closeIssue
 
--- Optional steps that we'll try and that won't fail the pipeline on error:
--- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
--- TODO: upload docs to pursuit (see #154)
+  -- Optional steps below:
+  -- TODO don't fail the pipeline if one of them fails
+
+  -- Add to the registry index
+  liftAff $ Index.insertManifest indexDir manifest
+  -- TODO: commit the registry-index
+
+  -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
+  -- TODO: upload docs to pursuit (see #154)
 
 runChecks :: Metadata -> Manifest -> RegistryM Unit
 runChecks metadata manifest = do
@@ -309,6 +303,36 @@ mkEnv octokit packagesMetadata issue =
   , packagesMetadata
   }
 
+mkMetadataRef :: Aff (Ref (Map PackageName Metadata))
+mkMetadataRef = do
+  packageList <- try (FS.readdir metadataDir) >>= case _ of
+    Right list -> pure list
+    Left err -> do
+      error $ show err
+      FS.mkdir metadataDir
+      pure []
+  packagesArray <- for packageList \rawPackageName -> do
+    packageName <- case PackageName.parse rawPackageName of
+      Right p -> pure p
+      Left err -> Aff.throwError $ Aff.error $ StringParser.printParserError err
+    let metadataPath = metadataFile packageName
+    metadataStr <- FS.readTextFile UTF8 metadataPath
+    metadata <- case fromJson metadataStr of
+      Left err -> Aff.throwError $ Aff.error $ "Error while parsing json from " <> metadataPath <> " : " <> err
+      Right r -> pure r
+    pure $ packageName /\ metadata
+  liftEffect $ Ref.new $ Map.fromFoldable packagesArray
+
+checkIndexExists :: Aff Unit
+checkIndexExists = do
+  log $ "Checking if the registry-index is present.."
+
+  whenM (not <$> FS.exists indexDir) do
+    error "Didn't fine the 'registry-index' repo, cloning..."
+    (Except.runExceptT $ runGit [ "clone", "git@github.com:purescript/registry-index.git", indexDir ]) >>= case _ of
+      Left err -> Aff.throwError $ Aff.error err
+      Right _ -> log "Successfully cloned the 'registry-index' repo"
+
 pushToMaster :: PackageName -> FilePath -> Aff (Either String Unit)
 pushToMaster packageName path = Except.runExceptT do
   runGit [ "config", "user.name", "PacchettiBotti" ]
@@ -317,12 +341,12 @@ pushToMaster packageName path = Except.runExceptT do
   runGit [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ]
   runGit [ "push", "origin", "master" ]
 
-  where
-  runGit args = ExceptT do
-    result <- Process.spawn { cmd: "git", args, stdin: Nothing } NodeProcess.defaultSpawnOptions
-    case result.exit of
-      NodeProcess.Normally 0 -> do
-        info result.stdout
-        info result.stderr
-        pure $ Right unit
-      _ -> pure $ Left result.stderr
+runGit :: Array String -> ExceptT String Aff Unit
+runGit args = ExceptT do
+  result <- Process.spawn { cmd: "git", args, stdin: Nothing } NodeProcess.defaultSpawnOptions
+  case result.exit of
+    NodeProcess.Normally 0 -> do
+      info result.stdout
+      info result.stderr
+      pure $ Right unit
+    _ -> pure $ Left result.stderr

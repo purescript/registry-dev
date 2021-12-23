@@ -13,7 +13,6 @@ import Data.Graph (Graph)
 import Data.Graph as Graph
 import Data.List as List
 import Data.Map as Map
-import Data.Maybe (maybe)
 import Data.Monoid (guard)
 import Data.Set as Set
 import Foreign.Object as Object
@@ -22,6 +21,12 @@ import Registry.Index (RegistryIndex)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Manifest)
+
+type Node =
+  { manifest :: Manifest
+  , packageName :: PackageName
+  , version :: SemVer
+  }
 
 type PackageWithVersion = { package :: PackageName, version :: SemVer }
 
@@ -119,7 +124,7 @@ checkRegistryIndex original = do
   isSolved :: Map PackageName (Array SemVer) -> PackageName -> Boolean
   isSolved solved package = Map.member package solved
 
-topologicalSort :: RegistryIndex -> Array Manifest
+topologicalSort :: RegistryIndex -> Array Node
 topologicalSort index = do
   let graph = toPackageGraph index
   Array.reverse
@@ -127,7 +132,7 @@ topologicalSort index = do
     $ List.mapMaybe (flip Graph.lookup graph)
     $ Graph.topologicalSort graph
 
-type PackageGraph = Graph (Tuple PackageName SemVer) Manifest
+type PackageGraph = Graph (Tuple PackageName SemVer) Node
 
 -- We will construct an edge to each version of each dependency PackageName.
 -- Note: This function only looks at the `lib` target of a `Manifest`.
@@ -145,13 +150,13 @@ toPackageGraph index =
 
   flatten
     :: Tuple PackageName (Array (Tuple SemVer Manifest))
-    -> Array (Tuple (Tuple PackageName SemVer) Manifest)
+    -> Array (Tuple (Tuple PackageName SemVer) Node)
   flatten (Tuple packageName versions) = do
     Tuple version manifest <- versions
-    pure $ Tuple (Tuple packageName version) manifest
+    pure $ Tuple (Tuple packageName version) { packageName, version, manifest }
 
-  resolveDependencies :: Manifest -> Tuple Manifest (List (Tuple PackageName SemVer))
-  resolveDependencies manifest = do
+  resolveDependencies :: Node -> Tuple Node (List (Tuple PackageName SemVer))
+  resolveDependencies node@{ manifest } = do
     let
       deps =
         (List.fromFoldable :: Array _ -> _)
@@ -160,7 +165,7 @@ toPackageGraph index =
           $ Object.toUnfoldable
           $ unsafeGetLibDependencies manifest
 
-    Tuple manifest deps
+    Tuple node deps
 
   resolveDependency :: Tuple PackageName Range -> Array (Tuple PackageName SemVer)
   resolveDependency (Tuple dependency _) = do
