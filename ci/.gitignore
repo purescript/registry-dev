@@ -8,7 +8,6 @@ generated-docs/
 .purs*
 .psa*
 .spago
-.envrc
 .cache
 .tempcache
 
