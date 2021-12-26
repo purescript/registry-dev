@@ -297,11 +297,12 @@ constructManifestFields package version address = do
       bowerLicenses = maybe [] NEA.toArray $ _.license =<< hush bowerManifest
       licenseeLicenses = Array.catMaybes $ map NES.fromString licenseeOutput
       license = NEA.fromArray $ Array.nub $ Array.concat [ licenseeLicenses, spagoLicenses, bowerLicenses ]
+      description = join (_.description <$> hush bowerManifest)
 
     when (license == Nothing) do
       log $ "No license available for " <> un RawPackageName package <> " " <> un RawVersion version
 
-    pure { license, dependencies, devDependencies }
+    pure { license, dependencies, devDependencies, description }
   where
   detectLicense { licenseFile, packageJson } = do
     licenseeResult <- liftAff $ Licensee.detectFiles $ Array.catMaybes $ map hush

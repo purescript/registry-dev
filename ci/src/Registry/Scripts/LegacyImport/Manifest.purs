@@ -126,11 +126,13 @@ toManifest package repository version manifest = do
 
   case errs of
     Nothing -> do
+      let description = manifest.description
+
       -- Technically this shouldn't be needed, since we've already checked these
       -- for errors, but this is just so the types all work out.
       license <- Except.except eitherLicense
       targets <- Except.except eitherTargets
-      pure { name: package, license, repository, targets, version }
+      pure { name: package, license, repository, description, targets, version }
 
     Just err ->
       throwError err

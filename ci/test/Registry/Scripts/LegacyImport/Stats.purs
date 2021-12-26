@@ -101,6 +101,7 @@ exampleStats = Stats.errorStats mockStats
                       , name: mockPackageName
                       , repository: Git { subdir: Nothing, url: "https://github.com/purescript/foobar" }
                       , targets: Object.empty
+                      , description: Just "Some description"
                       , version: mockSemVer
                       }
                   $ over (traversed <<< _1)

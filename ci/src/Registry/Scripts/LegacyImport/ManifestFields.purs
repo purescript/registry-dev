@@ -6,6 +6,7 @@ import Data.String.NonEmpty (NonEmptyString)
 
 type ManifestFields =
   { license :: Maybe (NonEmptyArray NonEmptyString)
+  , description :: Maybe String
   , dependencies :: Object String
   , devDependencies :: Object String
   }

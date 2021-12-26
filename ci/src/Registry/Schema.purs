@@ -19,6 +19,7 @@ type Manifest =
   , license :: License
   , repository :: Repo
   , targets :: Object Target
+  , description :: Maybe String
   }
 
 type Target =

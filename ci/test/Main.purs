@@ -271,7 +271,8 @@ bowerFileEncoding = do
           [ Tuple "devdependency-first" "v0.0.1"
           , Tuple "devdependency-second" "v0.0.2"
           ]
+      description = Nothing
       bowerFile =
-        Bowerfile { license: NEA.fromArray $ Array.catMaybes [ NES.fromString "MIT" ], dependencies, devDependencies }
+        Bowerfile { license: NEA.fromArray $ Array.catMaybes [ NES.fromString "MIT" ], dependencies, devDependencies, description }
     (Json.decodeJson $ Json.encodeJson bowerFile) `Assert.shouldContain` bowerFile
 

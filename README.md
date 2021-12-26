@@ -108,6 +108,8 @@ let Target = ./Target.dhall
 let Manifest =
       -- The name of the package
       { name : Text
+      -- A short description of the package
+      , description : Optional Text
       -- The SPDX code for the license under which the code is released
       , license : Text
       -- The version of this package
