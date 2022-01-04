@@ -280,8 +280,8 @@ sha256sum :: String -> Aff String
 sha256sum filepath = do
   fileBuffer <- FS.readFile filepath
   liftEffect do
-    newHash <- Hash.createHash Hash.SHA256
-    fileHash <- Hash.update newHash fileBuffer
+    newHash <- Hash.createHash "sha256"
+    fileHash <- Hash.update fileBuffer newHash
     digest <- Hash.digest fileHash
     Buffer.toString Hex digest
 
