@@ -64,21 +64,21 @@ main = Aff.launchAff_ do
   -- Temporary: we filter packages to only deal with the ones in core
   let
     packagesToUpload = Graph.topologicalSort registry
-    isCorePackage pkg = case pkg.manifest.repository of
-      GitHub { owner: "purescript" } -> Just pkg
+    isCorePackage manifest = case manifest.repository of
+      GitHub { owner: "purescript" } -> Just manifest
       _ -> Nothing
     corePackages = Array.mapMaybe isCorePackage packagesToUpload
 
   packagesMetadataRef <- API.mkMetadataRef
 
-  void $ for corePackages \{ manifest, version, packageName } -> do
+  void $ for corePackages \manifest -> do
     let
       addition = Addition
         { addToPackageSet: false -- heh, we don't have package sets until we do this import!
         , fromBower: true
         , newPackageLocation: manifest.repository
-        , newRef: SemVer.raw version
-        , packageName
+        , newRef: SemVer.raw manifest.version
+        , packageName: manifest.name
         }
     log $ "Uploading package: " <> show addition
     runRegistryM (mkEnv packagesMetadataRef) (API.runOperation addition)
