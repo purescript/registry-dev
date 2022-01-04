@@ -14,6 +14,7 @@ exports.minor = function (sv) { return sv.minor; }
 exports.prerelease = function (sv) { return sv.prerelease; }
 exports.build = function (sv) { return sv.build; }
 exports.patch = function (sv) { return sv.patch; }
+exports.raw = function(sv) { return sv.raw; }
 
 exports.compareSemVerImpl = semver.compare;
 

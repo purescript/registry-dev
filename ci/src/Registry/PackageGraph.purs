@@ -13,7 +13,6 @@ import Data.Graph (Graph)
 import Data.Graph as Graph
 import Data.List as List
 import Data.Map as Map
-import Data.Maybe (maybe)
 import Data.Monoid (guard)
 import Data.Set as Set
 import Foreign.Object as Object

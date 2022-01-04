@@ -63,6 +63,8 @@ uploadPackage info path = do
   f <- asks _.uploadPackage
   liftAff $ f info path
 
+-- TODO: right now we write this to file separately, but maybe it'd be better
+-- to do everything here so we don't risk to forget this?
 updatePackagesMetadata :: PackageName -> Metadata -> RegistryM Unit
 updatePackagesMetadata pkg metadata = do
   packagesMetadata <- asks _.packagesMetadata

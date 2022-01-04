@@ -2,7 +2,6 @@ module Registry.Schema where
 
 import Registry.Prelude
 
-import Control.Alt ((<|>))
 import Data.Argonaut (jsonEmptyObject, (~>), (~>?), (:=), (:=?), (.:), (.:?), (.!=))
 import Data.Argonaut as Json
 import Data.Generic.Rep as Generic
@@ -157,4 +156,4 @@ mkNewMetadata location = { location, releases: mempty, unpublished: mempty }
 
 addVersionToMetadata :: SemVer -> VersionMetadata -> Metadata -> Metadata
 addVersionToMetadata version versionMeta metadata =
-  metadata { releases = Object.insert (SemVer.printSemVer version) versionMeta metadata.releases }
+  metadata { releases = Object.insert (SemVer.version version) versionMeta metadata.releases }
