@@ -172,5 +172,7 @@
   "purescript-mdast-util-from-markdown": "https://github.com/sigma-andex/purescript-mdast-util-from-markdown.git",
   "purescript-web-speech": "https://github.com/dirkz/purescript-web-speech.git",
   "purescript-nano-id": "https://github.com/eikooc/nano-id.git",
-  "purescript-elmish-hooks": "https://github.com/collegevine/purescript-elmish-hooks.git"
+  "purescript-elmish-hooks": "https://github.com/collegevine/purescript-elmish-hooks.git",
+  "purescript-elmish-enzyme": "https://github.com/collegevine/purescript-elmish-enzyme.git",
+  "purescript-convertable-options": "https://github.com/natefaubion/purescript-convertable-options.git"
 }
