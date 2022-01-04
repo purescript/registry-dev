@@ -1,8 +1,8 @@
 let upstream =
-      https://github.com/purescript/package-sets/releases/download/psc-0.14.1-20210613/packages.dhall sha256:5f10380b3ca7d3a32ea5c2b7535e4814a5e3f3590c70692f76e596d6ab0687b3
+      https://github.com/purescript/package-sets/releases/download/psc-0.14.4-20211109/packages.dhall sha256:e8d8d5b339f6d46d950da90037c6c38e8809f7e34f727373089ab82c080fc709
 
-let additions = 
-  { node-glob-basic =
+let additions =
+      { node-glob-basic =
         { dependencies =
           [ "aff"
           , "console"
@@ -18,6 +18,6 @@ let additions =
         , repo = "https://github.com/natefaubion/purescript-node-glob-basic.git"
         , version = "v1.1.0"
         }
-  }
+      }
 
 in  upstream // additions
