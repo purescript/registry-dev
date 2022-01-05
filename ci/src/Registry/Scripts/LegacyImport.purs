@@ -151,13 +151,14 @@ downloadLegacyRegistry = do
 
   log "Converting to manifests..."
   let forPackageRegistry = Process.forPackageVersion packageRegistry
-  manifestRegistry :: Process.ProcessedPackageVersions
-    { address :: GitHub.Address
-    , name :: PackageName
-    , original :: RawPackageName
-    }
-    { semVer :: SemVer, original :: RawVersion }
-    Manifest <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
+  manifestRegistry
+    :: Process.ProcessedPackageVersions
+         { address :: GitHub.Address
+         , name :: PackageName
+         , original :: RawPackageName
+         }
+         { semVer :: SemVer, original :: RawVersion }
+         Manifest <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
     manifestFields <- constructManifestFields originalName tag.original address
 
     let

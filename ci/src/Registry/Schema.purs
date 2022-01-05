@@ -26,8 +26,7 @@ derive instance Eq Manifest
 derive instance Newtype Manifest _
 derive newtype instance Json.DecodeJson Manifest
 instance Json.EncodeJson Manifest where
-  encodeJson (Manifest { name, version, license, repository, targets, description})
-    = "description" :=? description
+  encodeJson (Manifest { name, version, license, repository, targets, description }) = "description" :=? description
     ~>? "license" := license
     ~> "name" := name
     ~> "repository" := repository
