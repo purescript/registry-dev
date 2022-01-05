@@ -14,22 +14,25 @@ jobs:
       SPACES_SECRET: ${{ secrets.SPACES_SECRET }}
     steps:
       # Setup
-      - uses: actions/checkout@v2
+      - name: Check out source repository
+        uses: actions/checkout@v2
 
-      - uses: actions/setup-node@v2
+      - uses: cachix/install-nix-action@v16
         with:
-          node-version: "14"
+          nix_path: nixpkgs=channel:nixos-21.11
 
-      - uses: actions/cache@v2
+      - name: Setup Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: "16"
+
+      - name: Cache NPM dependencies
+        uses: actions/cache@v2
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('./ci/**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
-
-      - uses: purescript-contrib/setup-purescript@main
-        with:
-          purs-tidy: latest
 
       - name: Cache PureScript dependencies
         uses: actions/cache@v2
@@ -38,10 +41,6 @@ jobs:
           path: |
             .spago
             output
-
-      - uses: cachix/install-nix-action@v12
-        with:
-          nix_path: nixpkgs=channel:nixos-21.05
 
       # Pro-tempore checks, should go away once new registry is in place
       - run: ./verify-registry-unique.sh
@@ -54,4 +53,4 @@ jobs:
         run: cd ci && npm ci && nix-shell ../shell.nix --run "spago test" && cd ..
       
       - name: "Verify CI code formats"
-        run: purs-tidy check ci/src ci/test
+        run: nix-shell shell.nix --run "purs-tidy check ci/src ci/test"
