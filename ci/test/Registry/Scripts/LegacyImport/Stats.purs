@@ -98,14 +98,15 @@ exampleStats = Stats.errorStats mockStats
             ( \mp ->
                 Map.fromFoldable
                   $ set (traversed <<< _2)
-                      (Manifest
-                      { license: mockLicense
-                      , name: mockPackageName
-                      , repository: Git { subdir: Nothing, url: "https://github.com/purescript/foobar" }
-                      , targets: Object.empty
-                      , description: Just "Some description"
-                      , version: mockSemVer
-                      })
+                      ( Manifest
+                          { license: mockLicense
+                          , name: mockPackageName
+                          , repository: Git { subdir: Nothing, url: "https://github.com/purescript/foobar" }
+                          , targets: Object.empty
+                          , description: Just "Some description"
+                          , version: mockSemVer
+                          }
+                      )
                   $ over (traversed <<< _1)
                       ( \raw ->
                           { semVer: mockSemVer
