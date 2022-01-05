@@ -101,14 +101,14 @@ testRegistryIndex = Spec.before runBefore do
       (isSorted sorted) `Assert.shouldEqual` true
 
 -- | Verify that manifests are topographically sorted by their dependencies
-isSorted :: Array PackageGraph.Node -> Boolean
+isSorted :: Array Manifest -> Boolean
 isSorted = fst <<< Array.foldl foldFn (Tuple true Set.empty)
   where
   getDeps :: Manifest -> Array PackageName
   getDeps = map unsafeParsePackageName <<< Object.keys <<< unsafeGetLibDependencies
 
-  foldFn :: Tuple Boolean (Set PackageName) -> PackageGraph.Node -> Tuple Boolean (Set PackageName)
-  foldFn (Tuple valid visited) { manifest } = do
+  foldFn :: Tuple Boolean (Set PackageName) -> Manifest -> Tuple Boolean (Set PackageName)
+  foldFn (Tuple valid visited) manifest = do
     let newSet = Set.insert manifest.name visited
     if all (flip Set.member visited) (getDeps manifest) then
       Tuple (valid && true) newSet
