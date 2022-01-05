@@ -34,7 +34,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, runRegistryM)
-import Registry.Schema (Repo(..), Manifest, Operation(..), Metadata)
+import Registry.Schema (Repo(..), Manifest(..), Operation(..), Metadata)
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Registry.Scripts.LegacyImport.Error (APIResource(..), FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
 import Registry.Scripts.LegacyImport.Manifest as Manifest
@@ -64,7 +64,7 @@ main = Aff.launchAff_ do
   -- Temporary: we filter packages to only deal with the ones in core
   let
     packagesToUpload = Graph.topologicalSort registry
-    isCorePackage manifest = case manifest.repository of
+    isCorePackage (Manifest manifest) = case manifest.repository of
       GitHub { owner: "purescript" } -> Just manifest
       _ -> Nothing
     corePackages = Array.mapMaybe isCorePackage packagesToUpload

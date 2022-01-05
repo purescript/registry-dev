@@ -22,7 +22,7 @@ import Node.Glob.Basic as Glob
 import Node.Path as FilePath
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest)
+import Registry.Schema (Manifest(..))
 
 type RegistryIndex = Map PackageName (Map SemVer Manifest)
 
@@ -62,7 +62,7 @@ readRegistryIndex directory = do
     parsedPackages = map normalizePackage parsed
 
     goManifest :: Manifest -> Tuple SemVer Manifest
-    goManifest manifest@{ version } = Tuple version manifest
+    goManifest manifest@(Manifest { version }) = Tuple version manifest
 
     goPackage :: NonEmptyArray Manifest -> Map SemVer Manifest
     goPackage = map goManifest >>> Map.fromFoldable
@@ -111,7 +111,7 @@ readPackage directory packageName = do
     Right (Just arr) -> NEA.fromArray arr
 
 insertManifest :: FilePath -> Manifest -> Aff Unit
-insertManifest directory manifest@{ name, version } = do
+insertManifest directory manifest@(Manifest { name, version }) = do
   let
     manifestPath = FilePath.concat [ directory, getIndexPath name ]
     manifestDirectory = FilePath.dirname manifestPath
@@ -123,7 +123,7 @@ insertManifest directory manifest@{ name, version } = do
     modifiedManifests = case existingManifest of
       Nothing -> NEA.singleton manifest
       Just manifests -> do
-        case NEA.findIndex (_.version >>> eq version) manifests of
+        case NEA.findIndex (un Manifest >>> _.version >>> eq version) manifests of
           Nothing ->
             NEA.cons manifest manifests
           Just ix ->
@@ -133,7 +133,7 @@ insertManifest directory manifest@{ name, version } = do
     contents =
       String.joinWith "\n"
         $ map (Json.encodeJson >>> Json.stringify)
-        $ Array.sortBy (comparing _.version)
+        $ Array.sortBy (comparing (un Manifest >>> _.version))
         $ Array.fromFoldable modifiedManifests
 
   dirExists <- FS.exists manifestDirectory

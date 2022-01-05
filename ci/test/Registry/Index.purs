@@ -19,7 +19,7 @@ import Registry.Index as Index
 import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest)
+import Registry.Schema (Manifest(..))
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Support.Manifest as Support.Manifest
@@ -75,8 +75,8 @@ testRegistryIndex = Spec.before runBefore do
     index <- liftEffect $ Ref.read indexRef
     pure { tmp, index, writeMemory }
 
-  insertAndCheck packageName manifest = do
-    let specName = "Inserts " <> PackageName.print packageName <> " version " <> show manifest.version
+  insertAndCheck packageName manifest@(Manifest { version }) = do
+    let specName = "Inserts " <> PackageName.print packageName <> " version " <> show version
 
     Spec.it specName \{ tmp, index, writeMemory } -> do
       -- First, we insert the manifest to disk and then read back the result.
@@ -87,7 +87,7 @@ testRegistryIndex = Spec.before runBefore do
         -- Then we insert the package into the in-memory index, preferring later
         -- entries in the case of version collisions (as the regsitry index
         -- itself does).
-        memoryIndex = Map.insertWith (flip Map.union) packageName (Map.singleton manifest.version manifest) index
+        memoryIndex = Map.insertWith (flip Map.union) packageName (Map.singleton version manifest) index
 
       _ <- writeMemory memoryIndex
 
@@ -108,15 +108,15 @@ isSorted = fst <<< Array.foldl foldFn (Tuple true Set.empty)
   getDeps = map unsafeParsePackageName <<< Object.keys <<< unsafeGetLibDependencies
 
   foldFn :: Tuple Boolean (Set PackageName) -> Manifest -> Tuple Boolean (Set PackageName)
-  foldFn (Tuple valid visited) manifest = do
-    let newSet = Set.insert manifest.name visited
+  foldFn (Tuple valid visited) manifest@(Manifest { name }) = do
+    let newSet = Set.insert name visited
     if all (flip Set.member visited) (getDeps manifest) then
       Tuple (valid && true) newSet
     else
       Tuple false newSet
 
   unsafeGetLibDependencies :: Manifest -> Object Range
-  unsafeGetLibDependencies manifest =
+  unsafeGetLibDependencies (Manifest manifest) =
     ( fromJust'
         (\_ -> unsafeCrashWith "Manifest has no 'lib' target in 'isSorted'")
         (Object.lookup "lib" manifest.targets)

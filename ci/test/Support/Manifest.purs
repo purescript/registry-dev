@@ -7,7 +7,7 @@ import Foreign.SemVer as SemVer
 import Partial.Unsafe as Partial.Unsafe
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest)
+import Registry.Schema (Manifest(..))
 import Registry.Schema as Schema
 
 ab ::
@@ -37,9 +37,9 @@ ab = { name, v1a, v1b, v2 }
     , subdir: Nothing
     }
   description = Just "some description"
-  v1a = { name, version: version1, license, repository: repositoryWrong, targets, description }
-  v1b = { name, version: version1, license, repository, targets, description }
-  v2 = { name, version: version2, license, repository, targets, description }
+  v1a = Manifest { name, version: version1, license, repository: repositoryWrong, targets, description }
+  v1b = Manifest { name, version: version1, license, repository, targets, description }
+  v2 = Manifest { name, version: version2, license, repository, targets, description }
 
 abc :: { name :: PackageName, v1 :: Manifest, v2 :: Manifest }
 abc = { name, v1, v2 }
@@ -62,8 +62,8 @@ abc = { name, v1, v2 }
     , subdir: Nothing
     }
   description = Just "some description"
-  v1 = { name, version: version1, license, repository, targets: targets1, description }
-  v2 = { name, version: version2, license, repository, targets: targets2, description }
+  v1 = Manifest { name, version: version1, license, repository, targets: targets1, description }
+  v2 = Manifest { name, version: version2, license, repository, targets: targets2, description }
 
 abcd :: { name :: PackageName, v1 :: Manifest, v2 :: Manifest }
 abcd = { name, v1, v2 }
@@ -86,8 +86,8 @@ abcd = { name, v1, v2 }
     , subdir: Nothing
     }
   description = Just "some description"
-  v1 = { name, version: version1, license, repository, targets: targets1, description }
-  v2 = { name, version: version2, license, repository, targets: targets2, description }
+  v1 = Manifest { name, version: version1, license, repository, targets: targets1, description }
+  v2 = Manifest { name, version: version2, license, repository, targets: targets2, description }
 
 unsafeFromJust :: forall a. Maybe a -> a
 unsafeFromJust = Partial.Unsafe.unsafePartial fromJust

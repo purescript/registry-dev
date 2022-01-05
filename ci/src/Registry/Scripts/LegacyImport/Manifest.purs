@@ -14,7 +14,7 @@ import Foreign.SemVer as SemVer
 import Foreign.SPDX as SPDX
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Repo, Manifest)
+import Registry.Schema (Repo, Manifest(..))
 import Registry.Scripts.LegacyImport.Error (ManifestError(..))
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 
@@ -132,7 +132,7 @@ toManifest package repository version manifest = do
       -- for errors, but this is just so the types all work out.
       license <- Except.except eitherLicense
       targets <- Except.except eitherTargets
-      pure { name: package, license, repository, description, targets, version }
+      pure $ Manifest { name: package, license, repository, description, targets, version }
 
     Just err ->
       throwError err
