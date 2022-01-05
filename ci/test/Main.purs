@@ -3,18 +3,21 @@ module Test.Main where
 import Registry.Prelude
 
 import Data.Argonaut as Json
+import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.String.NonEmpty as NES
 import Data.Time.Duration (Milliseconds(..))
+import Effect.Aff as Exception
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Jsonic as Jsonic
 import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
+import Node.FS.Aff as FS
 import Registry.API as API
 import Registry.PackageName as PackageName
-import Registry.Schema (Operation(..), Repo(..))
+import Registry.Schema (Operation(..), Repo(..), Manifest(..))
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
 import Test.Foreign.Jsonic (jsonic)
 import Test.Foreign.Licensee (licensee)
@@ -28,7 +31,17 @@ import Test.Support.Manifest as Fixtures
 
 main :: Effect Unit
 main = launchAff_ do
+  -- Setup the Registry Index for tests
   registryEnv <- Registry.Index.mkTestIndexEnv
+
+  -- get Manifest examples paths
+  let examplesDir = "../examples/"
+  packages <- FS.readdir examplesDir
+  manifestExamplePaths <- join <$> for packages \package -> do
+    let packageDir = examplesDir <> package
+    manifests <- FS.readdir packageDir
+    pure $ map (\manifestFile -> packageDir <> "/" <> manifestFile) manifests
+
   runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
     Spec.describe "API" do
       Spec.describe "Checks" do
@@ -48,9 +61,25 @@ main = launchAff_ do
     Spec.describe "Licensee" licensee
     Spec.describe "Manifest" do
       Spec.describe "Encoding" manifestEncoding
+      Spec.describe "Encoding examples" (manifestExamplesRoundtrip manifestExamplePaths)
     Spec.describe "Error Stats" errorStats
     Spec.describe "Registry Index" do
       Registry.Index.spec registryEnv
+
+-- | Check all the example Manifests roundtrip (read+write) through PureScript
+manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit
+manifestExamplesRoundtrip paths = for_ paths \manifestPath -> Spec.it ("Roundrip check for " <> show manifestPath) do
+  -- Now we read every manifest to our purescript type
+  manifestStr <- FS.readTextFile UTF8 manifestPath
+  case (Json.jsonParser manifestStr >>= (lmap Json.printJsonDecodeError <<< Json.decodeJson)) of
+    Left err -> do
+      error $ "Got error while parsing manifest"
+      throwError $ Exception.error err
+    Right (manifest :: Manifest) -> do
+      -- And if that works, we then try to convert them back to JSON, and
+      -- error out if any differ
+      let newManifestStr = stringifyWithIndent 2 $ Json.encodeJson manifest
+      manifestStr `Assert.shouldEqual` newManifestStr
 
 manifestEncoding :: Spec.Spec Unit
 manifestEncoding = do
@@ -59,7 +88,7 @@ manifestEncoding = do
       Left _ -> false
       Right manifest' -> manifest == manifest'
 
-    roundTrip manifest =
+    roundTrip (Manifest manifest) =
       Spec.it (PackageName.print manifest.name <> " " <> SemVer.raw manifest.version) do
         Json.stringify (Json.encodeJson manifest) `Assert.shouldSatisfy` checkRoundtrip manifest
 
@@ -271,7 +300,8 @@ bowerFileEncoding = do
           [ Tuple "devdependency-first" "v0.0.1"
           , Tuple "devdependency-second" "v0.0.2"
           ]
+      description = Nothing
       bowerFile =
-        Bowerfile { license: NEA.fromArray $ Array.catMaybes [ NES.fromString "MIT" ], dependencies, devDependencies }
+        Bowerfile { license: NEA.fromArray $ Array.catMaybes [ NES.fromString "MIT" ], dependencies, devDependencies, description }
     (Json.decodeJson $ Json.encodeJson bowerFile) `Assert.shouldContain` bowerFile
 

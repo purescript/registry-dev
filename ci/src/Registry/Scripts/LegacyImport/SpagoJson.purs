@@ -21,6 +21,7 @@ toManifestFields spago@(SpagoJson { license }) =
   { license: map NEA.singleton license
   , dependencies: packageDependencies spago
   , devDependencies: Object.empty
+  , description: Nothing
   }
 
 packageDependencies :: SpagoJson -> Object String

@@ -28,7 +28,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.Schema (Manifest, Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
+import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Sunde as Process
@@ -187,7 +187,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
             liftAff $ writeJsonFile manifestPath manifest
 
   -- Try to read the manifest, typechecking it
-  manifest :: Manifest <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of
+  manifest@(Manifest manifestRecord) <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of
     Left _err -> throwWithComment $ "Manifest not found at " <> manifestPath
     Right manifestStr -> do
       liftAff (Dhall.jsonToDhallManifest manifestStr) >>= case _ of
@@ -202,7 +202,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
   -- We need the version number to upload the package
-  let newVersion = manifest.version
+  let newVersion = manifestRecord.version
   let newDirname = PackageName.print packageName <> "-" <> SemVer.version newVersion
   liftAff $ FS.rename absoluteFolderPath (tmpDir <> "/" <> newDirname)
   let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
@@ -218,7 +218,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   let newMetadata = addVersionToMetadata newVersion { hash, ref } metadata
   let metadataFilePath = metadataFile packageName
   liftAff $ FS.writeTextFile UTF8 metadataFilePath (Json.stringifyWithIndent 2 $ Json.encodeJson newMetadata)
-  updatePackagesMetadata manifest.name newMetadata
+  updatePackagesMetadata manifestRecord.name newMetadata
   commitToTrunk packageName metadataFilePath >>= case _ of
     Left _err ->
       comment "Package uploaded, but metadata not synced with the registry repository.\n\ncc @purescript/packaging"
@@ -238,7 +238,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
 -- TODO: upload docs to pursuit (see #154)
 
 runChecks :: Metadata -> Manifest -> RegistryM Unit
-runChecks metadata manifest = do
+runChecks metadata (Manifest manifest) = do
   -- TODO: collect all errors and return them at once. Note: some of the checks
   -- are going to fail while parsing from JSON, so we should move them here if we
   -- want to handle everything together

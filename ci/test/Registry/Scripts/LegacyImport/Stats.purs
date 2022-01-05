@@ -11,7 +11,7 @@ import Foreign.SPDX as License
 import Foreign.SemVer (SemVer, parseSemVer)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Repo(..))
+import Registry.Schema (Repo(..), Manifest(..))
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
 import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
 import Registry.Scripts.LegacyImport.Stats (ErrorCounts(..))
@@ -90,6 +90,7 @@ exampleStats = Stats.errorStats mockStats
 
   mockSemVer :: SemVer
   mockSemVer = unsafePartial $ fromJust $ parseSemVer "0.0.0"
+
   mockStats =
     { failures: examplePackageResults.failures
     , packages: Map.fromFoldable
@@ -97,12 +98,15 @@ exampleStats = Stats.errorStats mockStats
             ( \mp ->
                 Map.fromFoldable
                   $ set (traversed <<< _2)
-                      { license: mockLicense
-                      , name: mockPackageName
-                      , repository: Git { subdir: Nothing, url: "https://github.com/purescript/foobar" }
-                      , targets: Object.empty
-                      , version: mockSemVer
-                      }
+                      ( Manifest
+                          { license: mockLicense
+                          , name: mockPackageName
+                          , repository: Git { subdir: Nothing, url: "https://github.com/purescript/foobar" }
+                          , targets: Object.empty
+                          , description: Just "Some description"
+                          , version: mockSemVer
+                          }
+                      )
                   $ over (traversed <<< _1)
                       ( \raw ->
                           { semVer: mockSemVer

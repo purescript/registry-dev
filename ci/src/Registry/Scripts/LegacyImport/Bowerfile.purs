@@ -25,10 +25,11 @@ derive newtype instance Json.EncodeJson Bowerfile
 instance Json.DecodeJson Bowerfile where
   decodeJson json = do
     obj <- Json.decodeJson json
+    description <- obj .:? "description"
     license <- decodeStringOrStringArray obj "license"
     dependencies <- fromMaybe mempty <$> obj .:? "dependencies"
     devDependencies <- fromMaybe mempty <$> obj .:? "devDependencies"
-    pure $ Bowerfile { license, dependencies, devDependencies }
+    pure $ Bowerfile { description, license, dependencies, devDependencies }
 
 decodeStringOrStringArray
   :: Object Json

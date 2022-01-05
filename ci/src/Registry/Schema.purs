@@ -13,13 +13,26 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 
 -- | PureScript encoding of ../v1/Manifest.dhall
-type Manifest =
+newtype Manifest = Manifest
   { name :: PackageName
   , version :: SemVer
   , license :: License
   , repository :: Repo
   , targets :: Object Target
+  , description :: Maybe String
   }
+
+derive instance Eq Manifest
+derive instance Newtype Manifest _
+derive newtype instance Json.DecodeJson Manifest
+instance Json.EncodeJson Manifest where
+  encodeJson (Manifest { name, version, license, repository, targets, description }) = "description" :=? description
+    ~>? "license" := license
+    ~> "name" := name
+    ~> "repository" := repository
+    ~> "targets" := targets
+    ~> "version" := version
+    ~> jsonEmptyObject
 
 type Target =
   { dependencies :: Object Range

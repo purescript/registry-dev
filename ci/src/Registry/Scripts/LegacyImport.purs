@@ -34,7 +34,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, runRegistryM)
-import Registry.Schema (Repo(..), Manifest, Operation(..), Metadata)
+import Registry.Schema (Repo(..), Manifest(..), Operation(..), Metadata)
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Registry.Scripts.LegacyImport.Error (APIResource(..), FileResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
 import Registry.Scripts.LegacyImport.Manifest as Manifest
@@ -64,7 +64,7 @@ main = Aff.launchAff_ do
   -- Temporary: we filter packages to only deal with the ones in core
   let
     packagesToUpload = Graph.topologicalSort registry
-    isCorePackage manifest = case manifest.repository of
+    isCorePackage (Manifest manifest) = case manifest.repository of
       GitHub { owner: "purescript" } -> Just manifest
       _ -> Nothing
     corePackages = Array.mapMaybe isCorePackage packagesToUpload
@@ -151,13 +151,14 @@ downloadLegacyRegistry = do
 
   log "Converting to manifests..."
   let forPackageRegistry = Process.forPackageVersion packageRegistry
-  manifestRegistry :: Process.ProcessedPackageVersions
-    { address :: GitHub.Address
-    , name :: PackageName
-    , original :: RawPackageName
-    }
-    { semVer :: SemVer, original :: RawVersion }
-    Manifest <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
+  manifestRegistry
+    :: Process.ProcessedPackageVersions
+         { address :: GitHub.Address
+         , name :: PackageName
+         , original :: RawPackageName
+         }
+         { semVer :: SemVer, original :: RawVersion }
+         Manifest <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
     manifestFields <- constructManifestFields originalName tag.original address
 
     let
@@ -297,11 +298,12 @@ constructManifestFields package version address = do
       bowerLicenses = maybe [] NEA.toArray $ _.license =<< hush bowerManifest
       licenseeLicenses = Array.catMaybes $ map NES.fromString licenseeOutput
       license = NEA.fromArray $ Array.nub $ Array.concat [ licenseeLicenses, spagoLicenses, bowerLicenses ]
+      description = join (_.description <$> hush bowerManifest)
 
     when (license == Nothing) do
       log $ "No license available for " <> un RawPackageName package <> " " <> un RawVersion version
 
-    pure { license, dependencies, devDependencies }
+    pure { license, dependencies, devDependencies, description }
   where
   detectLicense { licenseFile, packageJson } = do
     licenseeResult <- liftAff $ Licensee.detectFiles $ Array.catMaybes $ map hush
