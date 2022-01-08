@@ -30,6 +30,9 @@ instance decodeJsonPackageName :: DecodeJson PackageName where
 instance encodeJsonPackageName :: EncodeJson PackageName where
   encodeJson = encodeJson <<< print
 
+instance Show PackageName where
+  show = print
+
 print :: PackageName -> String
 print (PackageName package) = package
 
