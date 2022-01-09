@@ -65,12 +65,27 @@ main = Aff.launchAff_ do
   let
     sortedPackages = Graph.topologicalSort registry
     isCorePackage (Manifest manifest) = case manifest.repository of
+      -- core
       GitHub { owner: "purescript" } -> Just manifest
+      GitHub { owner: "purescript-deprecated" } -> Just manifest
+      -- contrib
       GitHub { owner: "purescript-contrib" } -> Just manifest
-      GitHub { owner: "purescript-halogen" } -> Just manifest
       GitHub { owner: "purescript-web" } -> Just manifest
       GitHub { owner: "purescript-node" } -> Just manifest
-      GitHub { owner: "purescript-deprecated" } -> Just manifest
+      GitHub { repo: "purescript-void" } -> Just manifest
+      GitHub { repo: "purescript-index" } -> Just manifest
+      GitHub { repo: "purescript-optic" } -> Just manifest
+      GitHub { repo: "purescript-unordered-collections" } -> Just manifest
+      GitHub { repo: "purescript-text-encoding" } -> Just manifest
+      GitHub { repo: "purescript-typelevel" } -> Just manifest
+      GitHub { repo: "purescript-sized-vectors" } -> Just manifest
+      GitHub { repo: "purescript-nonempty-array" } -> Just manifest
+      GitHub { repo: "purescript-colors" } -> Just manifest
+      GitHub { repo: "purescript-eff-functions" } -> Just manifest
+      GitHub { repo: "purescript-node-events" } -> Just manifest
+      GitHub { repo: "purescript-nonempty-array" } -> Just manifest
+      GitHub { repo: "purescript-aff-promise" } -> Just manifest
+      GitHub { repo: "purescript-naturals" } -> Just manifest
       _ -> Nothing
     corePackages = Array.mapMaybe isCorePackage sortedPackages
 
