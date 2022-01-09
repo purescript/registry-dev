@@ -186,7 +186,6 @@ constructManifestFields package version address = do
           | otherwise ->
               pure body
 
-
 -- | Convert a package from Bower to a Manifest.
 -- This function is written a bit awkwardly because we want to collect validation
 -- errors that occur rather than just throw the first one.
