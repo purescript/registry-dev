@@ -5,7 +5,6 @@ import Registry.Prelude
 import Control.Monad.Except as Except
 import Data.Argonaut as Json
 import Data.Array as Array
-import Data.Array.NonEmpty as NEA
 import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Data.String as String
@@ -31,7 +30,7 @@ import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata, isVersionInMetadata)
-import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
+import Registry.Scripts.LegacyImport.Error (ImportError(..), RawPackageName(..), RawVersion(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
@@ -159,34 +158,36 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   let manifestPath = absoluteFolderPath <> "/purs.json"
   log $ "Package extracted in " <> absoluteFolderPath
 
-  -- If we're importing from Bower then we need to convert the Bowerfile
-  -- to a Registry Manifest
+  -- If we're "importing from Bower" then we need to gather information about the
+  -- legacy package and put all of that together into a Registry Manifest
   when fromBower do
-    liftAff (try (readJsonFile (absoluteFolderPath <> "/bower.json"))) >>= case _ of
+    address <- case metadata.location of
+      Git _ -> throwWithComment "Legacy packages can only come from GitHub. Aborting."
+      GitHub { owner, repo } -> pure { owner, repo }
+
+    semVer <- case SemVer.parseSemVer ref of
+      Nothing -> throwWithComment $ "Not a valid SemVer version: " <> ref
+      Just result -> pure result
+
+    let
+      printErrors =
+        Json.stringifyWithIndent 2 <<< Json.encodeJson
+
+      liftError = map (lmap ManifestImportError)
+
+      runManifest =
+        Except.runExceptT <<< Except.mapExceptT (liftAff <<< map (lmap printErrors))
+
+      gatherManifest :: ExceptT ImportError Aff Manifest
+      gatherManifest = do
+        manifestFields <- Manifest.constructManifestFields (RawPackageName $ show packageName) (RawVersion ref) address
+        Except.mapExceptT liftError $ Manifest.toManifest packageName metadata.location semVer manifestFields
+
+    runManifest (gatherManifest) >>= case _ of
       Left err ->
-        throwWithComment $ "Error while reading Bowerfile: " <> Aff.message err
-      Right (Left err) ->
-        throwWithComment $ "Could not decode Bowerfile: " <> Json.printJsonDecodeError err
-      Right (Right bowerfile) -> do
-        let
-          printErrors =
-            Json.stringifyWithIndent 2 <<< Json.encodeJson <<< NEA.toArray
-
-          manifestFields =
-            Bowerfile.toManifestFields bowerfile
-
-          runManifest =
-            Except.runExceptT <<< Except.mapExceptT (liftAff <<< map (lmap printErrors))
-
-        semVer <- case SemVer.parseSemVer ref of
-          Nothing -> throwWithComment $ "Not a valid SemVer version: " <> ref
-          Just result -> pure result
-
-        runManifest (Manifest.toManifest packageName metadata.location semVer manifestFields) >>= case _ of
-          Left err ->
-            throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
-          Right manifest ->
-            liftAff $ writeJsonFile manifestPath manifest
+        throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
+      Right manifest ->
+        liftAff $ writeJsonFile manifestPath manifest
 
   -- Try to read the manifest, typechecking it
   manifest@(Manifest manifestRecord) <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of

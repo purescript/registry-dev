@@ -69,8 +69,8 @@ exampleFailures = PackageFailures $ Map.fromFoldable
     ]
 
   twoVersionsWithManifestErrors = Map.fromFoldable
-    [ RawVersion "1.0.0" /\ ManifestError twoManifestErrors
-    , RawVersion "2.0.0" /\ ManifestError threeManifestErrors
+    [ RawVersion "1.0.0" /\ ManifestImportError twoManifestErrors
+    , RawVersion "2.0.0" /\ ManifestImportError threeManifestErrors
     ]
 
   twoManifestErrors = MissingLicense :| [ MissingName ]
