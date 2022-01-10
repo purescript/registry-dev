@@ -70,7 +70,7 @@ data ImportError
   | NoDependencyFiles
   | NonRegistryDependencies (NonEmptyArray RawPackageName)
   | NoManifests
-  | ManifestError (NonEmptyArray ManifestError)
+  | ManifestImportError (NonEmptyArray ManifestError)
 
 derive instance Eq ImportError
 derive instance Generic ImportError _
@@ -92,7 +92,7 @@ printImportErrorKey = case _ of
   NoDependencyFiles -> ImportErrorKey "noDependencyFiles"
   NonRegistryDependencies _ -> ImportErrorKey "nonRegistryDependencies"
   NoManifests -> ImportErrorKey "noManifests"
-  ManifestError _ -> manifestErrorKey
+  ManifestImportError _ -> manifestErrorKey
 
 -- | An error fetching a resource necessary to produce a Manifest for a
 -- | given package.

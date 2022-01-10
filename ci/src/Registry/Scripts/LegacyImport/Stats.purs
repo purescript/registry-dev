@@ -74,7 +74,7 @@ countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKe
   Just shouldBeManifestErrors -> do
     let
       extractManifestErrors = case _ of
-        ManifestError errs -> List.fromFoldable errs
+        ManifestImportError errs -> List.fromFoldable errs
         _ -> List.Nil
 
       manifestErrors :: Map RawPackageName (Either (List ManifestError) (Map RawVersion (List ManifestError)))
