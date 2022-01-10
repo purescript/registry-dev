@@ -183,7 +183,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
         manifestFields <- Manifest.constructManifestFields (RawPackageName $ show packageName) (RawVersion ref) address
         Except.mapExceptT liftError $ Manifest.toManifest packageName metadata.location semVer manifestFields
 
-    runManifest (gatherManifest) >>= case _ of
+    runManifest gatherManifest >>= case _ of
       Left err ->
         throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
       Right manifest ->
