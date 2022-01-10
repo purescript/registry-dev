@@ -96,3 +96,6 @@ parseRange original = do
 
 printRange :: Range -> String
 printRange (Range r) = r
+
+instance Show Range where
+  show = printRange

@@ -17,7 +17,7 @@ import Data.String.NonEmpty as NES
 import Data.Time.Duration (Hours(..))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
-import Effect.Class.Console (logShow)
+import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
 import Foreign.GitHub as GitHub
 import Foreign.Jsonic as Jsonic
@@ -61,17 +61,45 @@ main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
   registry <- downloadLegacyRegistry
 
-  -- Temporary: we filter packages to only deal with the ones in core
+  log "Temporary: we filter packages to only deal with the ones in core and other orgs we control"
   let
-    packagesToUpload = Graph.topologicalSort registry
+    sortedPackages = Graph.topologicalSort registry
     isCorePackage (Manifest manifest) = case manifest.repository of
+      -- core
       GitHub { owner: "purescript" } -> Just manifest
+      GitHub { owner: "purescript-deprecated" } -> Just manifest
+      -- contrib
+      GitHub { owner: "purescript-contrib" } -> Just manifest
+      GitHub { owner: "purescript-web" } -> Just manifest
+      GitHub { owner: "purescript-node" } -> Just manifest
+      GitHub { repo: "purescript-void" } -> Just manifest
+      GitHub { repo: "purescript-index" } -> Just manifest
+      GitHub { repo: "purescript-optic" } -> Just manifest
+      GitHub { repo: "purescript-unordered-collections" } -> Just manifest
+      GitHub { repo: "purescript-text-encoding" } -> Just manifest
+      GitHub { repo: "purescript-typelevel" } -> Just manifest
+      GitHub { repo: "purescript-sized-vectors" } -> Just manifest
+      GitHub { repo: "purescript-nonempty-array" } -> Just manifest
+      GitHub { repo: "purescript-colors" } -> Just manifest
+      GitHub { repo: "purescript-eff-functions" } -> Just manifest
+      GitHub { repo: "purescript-node-events" } -> Just manifest
+      GitHub { repo: "purescript-nonempty-array" } -> Just manifest
+      GitHub { repo: "purescript-aff-promise" } -> Just manifest
+      GitHub { repo: "purescript-naturals" } -> Just manifest
       _ -> Nothing
-    corePackages = Array.mapMaybe isCorePackage packagesToUpload
+    corePackages = Array.mapMaybe isCorePackage sortedPackages
 
+  log "Creating a Metadata Ref"
   packagesMetadataRef <- API.mkMetadataRef
 
-  void $ for corePackages \manifest -> do
+  log "Filtering out packages we already uploaded"
+  packagesMetadata <- liftEffect $ Ref.read packagesMetadataRef
+  let
+    wasPackageUploaded { name, version } = API.isPackageVersionInMetadata name version packagesMetadata
+    packagesToUpload = Array.filter (not wasPackageUploaded) corePackages
+
+  log "Starting upload..."
+  void $ for packagesToUpload \manifest -> do
     let
       addition = Addition
         { addToPackageSet: false -- heh, we don't have package sets until we do this import!
@@ -80,7 +108,10 @@ main = Aff.launchAff_ do
         , newRef: SemVer.raw manifest.version
         , packageName: manifest.name
         }
-    log $ "Uploading package: " <> show addition
+    log "\n\n----------------------------------------------------------------------"
+    log $ "UPLOADING PACKAGE: " <> show manifest.name <> " " <> show manifest.version
+    logShow addition
+    log "----------------------------------------------------------------------"
     runRegistryM (mkEnv packagesMetadataRef) (API.runOperation addition)
 
   log "Done!"

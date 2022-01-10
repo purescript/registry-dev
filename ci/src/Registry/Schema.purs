@@ -170,3 +170,10 @@ mkNewMetadata location = { location, releases: mempty, unpublished: mempty }
 addVersionToMetadata :: SemVer -> VersionMetadata -> Metadata -> Metadata
 addVersionToMetadata version versionMeta metadata =
   metadata { releases = Object.insert (SemVer.version version) versionMeta metadata.releases }
+
+isVersionInMetadata :: SemVer -> Metadata -> Boolean
+isVersionInMetadata version metadata = versionPublished || versionUnpublished
+  where
+  versionStr = SemVer.version version
+  versionPublished = isJust $ Object.lookup versionStr metadata.releases
+  versionUnpublished = isJust $ Object.lookup versionStr metadata.unpublished

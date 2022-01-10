@@ -8,6 +8,7 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Generic.Rep as Generic
 import Data.Map as Map
+import Data.String as String
 import Effect.Aff as Aff
 import Effect.Exception (throw)
 import Effect.Ref as Ref
@@ -15,6 +16,7 @@ import Foreign.Dhall as Dhall
 import Foreign.GitHub (IssueNumber)
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
+import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
 import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
@@ -28,7 +30,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata)
+import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata, isVersionInMetadata)
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Sunde as Process
@@ -223,7 +225,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
     Left _err ->
       comment "Package uploaded, but metadata not synced with the registry repository.\n\ncc @purescript/packaging"
     Right _ -> do
-      comment "Package successfully uploaded to the registry! :tada: :rocket:"
+      comment "Package successfully uploaded to the registry! 🎉 🚀"
   closeIssue
 
   -- Optional steps below:
@@ -242,6 +244,8 @@ runChecks metadata (Manifest manifest) = do
   -- TODO: collect all errors and return them at once. Note: some of the checks
   -- are going to fail while parsing from JSON, so we should move them here if we
   -- want to handle everything together
+  log "Running checks for the following manifest:"
+  logShow manifest
 
   log "Checking that the Manifest includes the `lib` target"
   libTarget <- case Object.lookup "lib" manifest.targets of
@@ -304,10 +308,13 @@ mkEnv octokit packagesMetadata issue =
   , packagesMetadata
   }
 
-mkMetadataRef :: Aff (Ref (Map PackageName Metadata))
+type MetadataMap = Map PackageName Metadata
+type MetadataRef = Ref MetadataMap
+
+mkMetadataRef :: Aff MetadataRef
 mkMetadataRef = do
   packageList <- try (FS.readdir metadataDir) >>= case _ of
-    Right list -> pure list
+    Right list -> pure $ Array.catMaybes $ map (String.stripSuffix $ String.Pattern ".json") list
     Left err -> do
       error $ show err
       FS.mkdir metadataDir
@@ -315,7 +322,9 @@ mkMetadataRef = do
   packagesArray <- for packageList \rawPackageName -> do
     packageName <- case PackageName.parse rawPackageName of
       Right p -> pure p
-      Left err -> Aff.throwError $ Aff.error $ StringParser.printParserError err
+      Left err -> do
+        log $ "Encountered error while parsing package name! It was: " <> rawPackageName
+        Aff.throwError $ Aff.error $ StringParser.printParserError err
     let metadataPath = metadataFile packageName
     metadataStr <- FS.readTextFile UTF8 metadataPath
     metadata <- case fromJson metadataStr of
@@ -323,6 +332,12 @@ mkMetadataRef = do
       Right r -> pure r
     pure $ packageName /\ metadata
   liftEffect $ Ref.new $ Map.fromFoldable packagesArray
+
+isPackageVersionInMetadata :: PackageName -> SemVer -> MetadataMap -> Boolean
+isPackageVersionInMetadata packageName version metadataMap =
+  case Map.lookup packageName metadataMap of
+    Nothing -> false
+    Just metadata -> isVersionInMetadata version metadata
 
 checkIndexExists :: Aff Unit
 checkIndexExists = do
