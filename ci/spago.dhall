@@ -10,6 +10,8 @@
   , "arrays"
   , "avar"
   , "bifunctors"
+  , "codec"
+  , "codec-argonaut"
   , "console"
   , "control"
   , "crypto"
@@ -42,6 +44,7 @@
   , "parallel"
   , "partial"
   , "prelude"
+  , "profunctor"
   , "profunctor-lenses"
   , "psci-support"
   , "refs"
@@ -52,6 +55,7 @@
   , "sunde"
   , "transformers"
   , "tuples"
+  , "variant"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]
