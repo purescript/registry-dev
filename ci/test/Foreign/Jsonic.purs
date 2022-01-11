@@ -2,8 +2,10 @@ module Test.Foreign.Jsonic (jsonic) where
 
 import Registry.Prelude
 
-import Data.Argonaut (Json)
-import Data.Argonaut as Json
+import Data.Argonaut.Core (Json, stringify)
+import Data.Codec.Argonaut (JsonDecodeError, encode)
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Record as CAR
 import Data.Either as Either
 import Foreign.Jsonic as Jsonic
 import Test.Spec as Spec
@@ -19,25 +21,36 @@ jsonic = do
   Spec.describe "Does not parse" do
     Spec.describe "Horrendous json" horrendousJson
 
-parseString :: String -> Either Json.JsonDecodeError String
-parseString = map Json.stringify <<< Jsonic.parseJson
+parseString :: String -> Either JsonDecodeError String
+parseString = map stringify <<< Jsonic.parseJson
 
 parseTest :: String -> Json -> Spec
 parseTest str json = Spec.it str do
-  parseString str `Assert.shouldContain` Json.stringify json
+  parseString str `Assert.shouldContain` stringify json
 
 goodJson :: Spec
 goodJson = do
-  let complexJson = Json.encodeJson { complex: { nested: "json", bool: true } }
-  parseTest "[1,2,3]" $ Json.encodeJson [ 1, 2, 3 ]
-  parseTest """{ "name": "test" }""" $ Json.encodeJson { name: "test" }
-  parseTest (Json.stringify complexJson) complexJson
+  let
+    nameTestCodec = CAR.object "goodJson.test" { name: CA.string }
+    complexJsonCodec = CAR.object "goodJson"
+      { complex: CAR.object "complex"
+          { nested: CA.string
+          , bool: CA.boolean
+          }
+      }
+    complexJson = encode complexJsonCodec { complex: { nested: "json", bool: true } }
+  parseTest "[1,2,3]" $ encode (CA.array CA.int) [ 1, 2, 3 ]
+  parseTest """{ "name": "test" }""" $ encode nameTestCodec { name: "test" }
+  parseTest (stringify complexJson) complexJson
 
 badJson :: Spec
 badJson = do
-  parseTest "name: test" $ Json.encodeJson { name: "test" }
-  parseTest "{trailing: comma,}" $ Json.encodeJson { trailing: "comma" }
-  parseTest """[ "trailing comma", ]""" $ Json.encodeJson [ "trailing comma" ]
+  let
+    nameTestCodec = CAR.object "badJson.test" { name: CA.string }
+    trailingCommaRecCodec = CAR.object "badJson.test" { trailing: CA.string }
+  parseTest "name: test" $ encode nameTestCodec { name: "test" }
+  parseTest "{trailing: comma,}" $ encode trailingCommaRecCodec { trailing: "comma" }
+  parseTest """[ "trailing comma", ]""" $ encode (CA.array CA.string) [ "trailing comma" ]
 
 horrendousJson :: Spec
 horrendousJson = do

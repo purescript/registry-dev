@@ -2,7 +2,8 @@ module Foreign.Dhall where
 
 import Registry.Prelude
 
-import Data.Argonaut as Json
+import Data.Argonaut.Core as Json
+import Data.Codec.Argonaut as CA
 import Foreign.Jsonic as Jsonic
 import Node.ChildProcess as NodeProcess
 import Sunde as Process
@@ -28,5 +29,5 @@ dhallToJson { dhall, cwd } = do
   let args = []
   result <- Process.spawn { cmd, stdin, args } (NodeProcess.defaultSpawnOptions { cwd = cwd })
   pure $ case result.exit of
-    NodeProcess.Normally 0 -> lmap Json.printJsonDecodeError $ Jsonic.parseJson result.stdout
+    NodeProcess.Normally 0 -> lmap CA.printJsonDecodeError $ Jsonic.parseJson result.stdout
     _ -> Left result.stderr

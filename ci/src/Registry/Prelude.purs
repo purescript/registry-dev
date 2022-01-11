@@ -4,6 +4,7 @@ module Registry.Prelude
   , module Either
   , module Maybe
   , PackageURL(..)
+  , packageUrlCodec
   , partitionEithers
   , readJsonFile
   , writeJsonFile
@@ -20,10 +21,11 @@ import Control.Alt ((<|>)) as Extra
 import Control.Monad.Error.Class (throwError) as Extra
 import Control.Monad.Except (ExceptT(..)) as Extra
 import Control.Monad.Trans.Class (lift) as Extra
-import Data.Argonaut as Json
+import Data.Argonaut.Core (stringifyWithIndent) as Json
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray) as Extra
 import Data.Bifunctor (bimap, lmap, rmap) as Extra
+import Data.Codec.Argonaut (JsonDecodeError, JsonCodec, decode, encode)
 import Data.Either (Either(..), either, fromLeft, fromRight', isRight, hush, note) as Either
 import Data.Foldable (and, any, all, fold) as Extra
 import Data.FoldableWithIndex (forWithIndex_, foldlWithIndex) as Extra
@@ -55,6 +57,7 @@ import Node.Encoding (Encoding(..)) as Extra
 import Node.FS.Aff as FS
 import Node.Path (FilePath) as Extra
 import Partial.Unsafe (unsafePartial, unsafeCrashWith) as Extra
+import Registry.Codec (newtypeStringCodec)
 
 -- | Partition an array of `Either` values into failure and success  values
 partitionEithers :: forall e a. Array (Either.Either e a) -> { fail :: Array e, success :: Array a }
@@ -63,14 +66,14 @@ partitionEithers = Array.foldMap case _ of
   Either.Right res -> { fail: [], success: [ res ] }
 
 -- | Encode data as JSON and write it to the provided filepath
-writeJsonFile :: forall a. Json.EncodeJson a => Extra.FilePath -> a -> Extra.Aff Unit
-writeJsonFile path = FS.writeTextFile Extra.UTF8 path <<< Json.stringifyWithIndent 2 <<< Json.encodeJson
+writeJsonFile :: forall a. JsonCodec a -> Extra.FilePath -> a -> Extra.Aff Unit
+writeJsonFile codec path = FS.writeTextFile Extra.UTF8 path <<< Json.stringifyWithIndent 2 <<< encode codec
 
 -- | Decode data from a JSON file at the provided filepath
-readJsonFile :: forall a. Json.DecodeJson a => Extra.FilePath -> Extra.Aff (Either.Either Json.JsonDecodeError a)
-readJsonFile path = do
+readJsonFile :: forall a. JsonCodec a -> Extra.FilePath -> Extra.Aff (Either.Either JsonDecodeError a)
+readJsonFile codec path = do
   contents <- FS.readTextFile Extra.UTF8 path
-  pure $ Json.decodeJson =<< Jsonic.parseJson contents
+  pure $ decode codec =<< Jsonic.parseJson contents
 
 -- | Convert a Map into an Object, converting its keys to strings along the way.
 objectFromMap :: forall k a. Ord k => (k -> String) -> Extra.Map k a -> Extra.Object a
@@ -114,8 +117,9 @@ newtype PackageURL = PackageURL String
 derive instance Extra.Newtype PackageURL _
 derive newtype instance Eq PackageURL
 derive newtype instance Ord PackageURL
-derive newtype instance Json.EncodeJson PackageURL
-derive newtype instance Json.DecodeJson PackageURL
+
+packageUrlCodec :: JsonCodec PackageURL
+packageUrlCodec = newtypeStringCodec "PackageURL"
 
 fromJust' :: forall a. (Unit -> a) -> Maybe.Maybe a -> a
 fromJust' _ (Maybe.Just a) = a

@@ -5,8 +5,11 @@ import Registry.Prelude
 import Control.Apply (lift2)
 import Control.Monad.Except as Except
 import Control.Parallel as Parallel
-import Data.Argonaut as Json
+import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Array as Array
+import Data.Codec.Argonaut (JsonCodec, decode, encode, printJsonDecodeError)
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as Common
 import Data.DateTime (adjust) as Time
 import Data.JSDate as JSDate
 import Data.Map as Map
@@ -22,7 +25,7 @@ import Foreign.SemVer (SemVer)
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Registry.PackageName (PackageName)
-import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion, RequestError(..))
+import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion, RequestError(..), importErrorCodec)
 import Registry.Scripts.LegacyImport.Error as LegacyImport.Error
 
 type ProcessedPackages k a =
@@ -148,10 +151,10 @@ type Serialize e a =
   , decode :: String -> Either e a
   }
 
-jsonSerializer :: forall a. Json.EncodeJson a => Json.DecodeJson a => Serialize String a
-jsonSerializer =
-  { encode: Json.encodeJson >>> Json.stringifyWithIndent 2
-  , decode: (Jsonic.parseJson >=> Json.decodeJson) >>> lmap Json.printJsonDecodeError
+jsonSerializer :: forall a. JsonCodec a -> Serialize String a
+jsonSerializer codec =
+  { encode: encode codec >>> stringifyWithIndent 2
+  , decode: (Jsonic.parseJson >=> decode codec) >>> lmap printJsonDecodeError
   }
 
 stringSerializer :: Serialize String String
@@ -184,12 +187,14 @@ withCache { encode, decode } path maybeDuration action = do
         DecodeError _ -> true
       _ -> false
 
+    eitherImportErrorStringCodec = Common.either importErrorCodec CA.string
+
     onCacheMiss = do
       log $ "No cache hit for " <> show path
 
       let
         writeEncoded :: Either ImportError String -> Aff Unit
-        writeEncoded = writeJsonFile objectPath
+        writeEncoded = writeJsonFile eitherImportErrorStringCodec objectPath
 
       liftAff (Except.runExceptT action) >>= case _ of
         Right result -> do
@@ -219,10 +224,10 @@ withCache { encode, decode } path maybeDuration action = do
 
   isCacheHit >>= case _ of
     true -> do
-      result :: Either _ (Either ImportError String) <- liftAff $ readJsonFile objectPath
+      result :: Either _ (Either ImportError String) <- liftAff $ readJsonFile eitherImportErrorStringCodec objectPath
       case result of
         Left error -> do
-          log $ "Cache read failed: " <> Json.printJsonDecodeError error
+          log $ "Cache read failed: " <> printJsonDecodeError error
           onCacheMiss
         Right (Left importError) ->
           throwError importError

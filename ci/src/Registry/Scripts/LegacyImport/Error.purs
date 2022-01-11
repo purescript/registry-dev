@@ -2,14 +2,19 @@ module Registry.Scripts.LegacyImport.Error where
 
 import Registry.Prelude
 
-import Data.Argonaut as Json
-import Data.Argonaut.Decode.Generic as Json.Decode.Generic
-import Data.Argonaut.Encode.Generic as Json.Encode.Generic
-import Data.Argonaut.Types.Generic as Json.Generic
+import Data.Codec.Argonaut (JsonCodec)
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as Common
+import Data.Codec.Argonaut.Record as CAR
+import Data.Codec.Argonaut.Variant (variantMatch)
 import Data.Generic.Rep (class Generic)
 import Data.Interpolate (i)
-import Registry.PackageName (PackageName)
-import Safe.Coerce (coerce)
+import Data.Newtype (unwrap, wrap)
+import Data.Profunctor (dimap)
+import Data.Variant as V
+import Registry.Codec (neArray, newtypeStringCodec)
+import Registry.PackageName (PackageName, packageNameCodec)
+import Type.Proxy (Proxy(..))
 
 -- | A map of error types to package names to package versions, where failed
 -- | versions contain rich information about why they failed.
@@ -17,22 +22,12 @@ newtype PackageFailures = PackageFailures (Map ImportErrorKey (Map RawPackageNam
 
 derive instance Newtype PackageFailures _
 
-instance Json.EncodeJson PackageFailures where
-  encodeJson failures =
-    Json.encodeJson
-      $ objectFromMap coerce
-      $ map (objectFromMap coerce)
-      $ map (map (map (objectFromMap coerce)))
-      $ un PackageFailures failures
-
-instance Json.DecodeJson PackageFailures where
-  decodeJson json = do
-    failuresObject :: Object (Object (Either ImportError (Object ImportError))) <- Json.decodeJson json
-    pure
-      $ PackageFailures
-      $ objectToMap (Just <<< ImportErrorKey)
-      $ map (objectToMap (Just <<< RawPackageName))
-      $ map (map (map (objectToMap (Just <<< RawVersion)))) failuresObject
+packageFailuresCodec :: JsonCodec PackageFailures
+packageFailuresCodec = dimap unwrap wrap
+  $ Common.map importErrorKeyCodec
+  $ Common.map rawPackageNameCodec
+  $ Common.either importErrorCodec
+  $ Common.map rawVersionCodec importErrorCodec
 
 -- | An import error printed as a key usable in a map
 newtype ImportErrorKey = ImportErrorKey String
@@ -43,14 +38,18 @@ derive newtype instance Ord ImportErrorKey
 instance Show ImportErrorKey where
   show (ImportErrorKey key) = i "(ImportErrorKey " key ")"
 
+importErrorKeyCodec :: JsonCodec ImportErrorKey
+importErrorKeyCodec = newtypeStringCodec "ImportErrorKey"
+
 -- | An unprocessed package name, which may possibly be malformed.
 newtype RawPackageName = RawPackageName String
 
 derive instance Newtype RawPackageName _
 derive newtype instance Eq RawPackageName
 derive newtype instance Ord RawPackageName
-derive newtype instance Json.EncodeJson RawPackageName
-derive newtype instance Json.DecodeJson RawPackageName
+
+rawPackageNameCodec :: JsonCodec RawPackageName
+rawPackageNameCodec = newtypeStringCodec "RawPackageName"
 
 -- | An unprocessed version, taken from a GitHub tag
 newtype RawVersion = RawVersion String
@@ -58,8 +57,9 @@ newtype RawVersion = RawVersion String
 derive instance Newtype RawVersion _
 derive newtype instance Eq RawVersion
 derive newtype instance Ord RawVersion
-derive newtype instance Json.EncodeJson RawVersion
-derive newtype instance Json.DecodeJson RawVersion
+
+rawVersionCodec :: JsonCodec RawVersion
+rawVersionCodec = newtypeStringCodec "RawVersion"
 
 -- | An error representing why a package version cannot be imported from the
 -- | Bower registry.
@@ -75,11 +75,34 @@ data ImportError
 derive instance Eq ImportError
 derive instance Generic ImportError _
 
-instance Json.EncodeJson ImportError where
-  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
-
-instance Json.DecodeJson ImportError where
-  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+importErrorCodec :: JsonCodec ImportError
+importErrorCodec = dimap toVariant fromVariant $ variantMatch
+  { invalidGitHubRepo: Right CA.string
+  , resourceError: Right resourceErrorCodec
+  , malformedPackageName: Right CA.string
+  , noDependencyFiles: Left unit
+  , nonRegistryDependencies: Right (neArray rawPackageNameCodec)
+  , noManifests: Left unit
+  , manifestImportError: Right (neArray manifestErrorCodec)
+  }
+  where
+  toVariant = case _ of
+    InvalidGitHubRepo a -> V.inj (Proxy :: _ "invalidGitHubRepo") a
+    ResourceError a ->  V.inj (Proxy :: _ "resourceError") a
+    MalformedPackageName a ->  V.inj (Proxy :: _ "malformedPackageName") a
+    NoDependencyFiles -> V.inj (Proxy :: _ "noDependencyFiles") unit
+    NonRegistryDependencies a ->  V.inj (Proxy :: _ "nonRegistryDependencies") a
+    NoManifests -> V.inj (Proxy :: _ "noManifests") unit
+    ManifestImportError a ->  V.inj (Proxy :: _ "manifestImportError") a
+  fromVariant = V.match
+    { invalidGitHubRepo: InvalidGitHubRepo
+    , resourceError: ResourceError
+    , malformedPackageName: MalformedPackageName
+    , noDependencyFiles: \_ -> NoDependencyFiles
+    , nonRegistryDependencies: NonRegistryDependencies
+    , noManifests: \_ -> NoManifests
+    , manifestImportError: ManifestImportError
+    }
 
 manifestErrorKey :: ImportErrorKey
 manifestErrorKey = ImportErrorKey "manifestError"
@@ -98,16 +121,33 @@ printImportErrorKey = case _ of
 -- | given package.
 type ResourceError = { resource :: RemoteResource, error :: RequestError }
 
+resourceErrorCodec :: JsonCodec ResourceError
+resourceErrorCodec = CAR.object "ResourceError"
+  { resource: remoteResourceCodec
+  , error: requestErrorCodec
+  }
+
 data RequestError = BadRequest | BadStatus Int | DecodeError String
 
 derive instance Eq RequestError
 derive instance Generic RequestError _
 
-instance Json.EncodeJson RequestError where
-  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
-
-instance Json.DecodeJson RequestError where
-  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+requestErrorCodec :: JsonCodec RequestError
+requestErrorCodec = dimap toVariant fromVariant $ variantMatch
+  { badRequest: Left unit
+  , badStatus: Right CA.int
+  , decodeError: Right CA.string
+  }
+  where
+  toVariant = case _ of
+    BadRequest -> V.inj (Proxy :: _ "badRequest") unit
+    BadStatus a -> V.inj (Proxy :: _ "badStatus") a
+    DecodeError a -> V.inj (Proxy :: _ "decodeError") a
+  fromVariant = V.match
+    { badRequest: \_ -> BadRequest
+    , badStatus: BadStatus
+    , decodeError: DecodeError
+    }
 
 -- | An error representing why a manifest could not be produced for this package
 data ManifestError
@@ -121,11 +161,35 @@ data ManifestError
 derive instance Eq ManifestError
 derive instance Generic ManifestError _
 
-instance Json.EncodeJson ManifestError where
-  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
+manifestErrorCodec :: JsonCodec ManifestError
+manifestErrorCodec = dimap toVariant fromVariant $ variantMatch
+  { missingName: Left unit
+  , missingLicense: Left unit
+  , badLicense: Right (CA.array CA.string)
+  , badVersion: Right CA.string
+  , invalidDependencyNames: Right $ neArray CA.string
+  , badDependencyVersions: Right $ neArray $ CAR.object "BadDepencencyVersionRecord"
+      { dependency: packageNameCodec
+      , failedBounds: CA.string
+      }
+  }
+  where
+  toVariant = case _ of
+    MissingName -> V.inj (Proxy :: _ "missingName") unit
+    MissingLicense -> V.inj (Proxy :: _ "missingLicense") unit
+    BadLicense a -> V.inj (Proxy :: _ "badLicense") a
+    BadVersion a -> V.inj (Proxy :: _ "badVersion") a
+    InvalidDependencyNames a -> V.inj (Proxy :: _ "invalidDependencyNames") a
+    BadDependencyVersions a -> V.inj (Proxy :: _ "badDependencyVersions") a
+  fromVariant = V.match
+    { missingName: \_ -> MissingName
+    , missingLicense: \_ -> MissingLicense
+    , badLicense: BadLicense
+    , badVersion: BadVersion
+    , invalidDependencyNames: InvalidDependencyNames
+    , badDependencyVersions: BadDependencyVersions
+    }
 
-instance Json.DecodeJson ManifestError where
-  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
 
 newtype ManifestErrorKey = ManifestErrorKey String
 
@@ -144,9 +208,6 @@ printManifestErrorKey = ManifestErrorKey <<< case _ of
   InvalidDependencyNames _ -> "invalidDependencyNames"
   BadDependencyVersions _ -> "badDependencyVersions"
 
-encodingOptions :: Json.Generic.Encoding
-encodingOptions = Json.Generic.defaultEncoding { unwrapSingleArguments = true }
-
 -- | A resource required for a package that has to be requested from a non-local
 -- | location.
 data RemoteResource = APIResource APIResource | FileResource FileResource
@@ -154,11 +215,21 @@ data RemoteResource = APIResource APIResource | FileResource FileResource
 derive instance Eq RemoteResource
 derive instance Generic RemoteResource _
 
-instance Json.EncodeJson RemoteResource where
-  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
+remoteResourceCodec :: JsonCodec RemoteResource
+remoteResourceCodec = dimap toVariant fromVariant $ variantMatch
+  { apiResource: Right apiResourceCodec
+  , fileResource: Right fileResourceCodec
+  }
+  where
+  toVariant = case _ of
+    APIResource a -> V.inj (Proxy :: _ "apiResource") a
+    FileResource a -> V.inj (Proxy :: _ "fileResource") a
 
-instance Json.DecodeJson RemoteResource where
-  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+  fromVariant = V.match
+    { apiResource: APIResource
+    , fileResource: FileResource
+    }
+
 
 -- | A resource that has to be fetched via an API
 data APIResource = GitHubReleases
@@ -166,11 +237,16 @@ data APIResource = GitHubReleases
 derive instance Eq APIResource
 derive instance Generic APIResource _
 
-instance Json.EncodeJson APIResource where
-  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
-
-instance Json.DecodeJson APIResource where
-  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+apiResourceCodec :: JsonCodec APIResource
+apiResourceCodec = dimap toVariant fromVariant $ variantMatch
+  { gitHubReleases: Left unit
+  }
+  where
+  toVariant = case _ of
+    GitHubReleases -> V.inj (Proxy :: _ "gitHubReleases") unit
+  fromVariant = V.match
+    { gitHubReleases: \_ -> GitHubReleases
+    }
 
 -- | A resource that has to be fetched via donwloading the relevant file
 data FileResource
@@ -183,11 +259,28 @@ data FileResource
 derive instance Eq FileResource
 derive instance Generic FileResource _
 
-instance Json.EncodeJson FileResource where
-  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
-
-instance Json.DecodeJson FileResource where
-  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+fileResourceCodec :: JsonCodec FileResource
+fileResourceCodec = dimap toVariant fromVariant $ variantMatch
+  { bowerJson: Left unit
+  , spagoDhall: Left unit
+  , packagesDhall: Left unit
+  , packageJson: Left unit
+  , licenseFile: Left unit
+  }
+  where
+  toVariant = case _ of
+    BowerJson -> V.inj (Proxy :: _ "bowerJson") unit
+    SpagoDhall -> V.inj (Proxy :: _ "spagoDhall") unit
+    PackagesDhall -> V.inj (Proxy :: _ "packagesDhall") unit
+    PackageJson -> V.inj (Proxy :: _ "packageJson") unit
+    LicenseFile -> V.inj (Proxy :: _ "licenseFile") unit
+  fromVariant = V.match
+    { bowerJson: \_ -> BowerJson
+    , spagoDhall: \_ -> SpagoDhall
+    , packagesDhall: \_ -> PackagesDhall
+    , packageJson: \_ -> PackageJson
+    , licenseFile: \_ -> LicenseFile
+    }
 
 fileResourcePath :: FileResource -> FilePath
 fileResourcePath = case _ of

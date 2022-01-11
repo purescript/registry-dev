@@ -7,9 +7,10 @@ import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Except as Except
 import Control.Parallel (parallel, sequential)
-import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.Codec (decode)
+import Data.Codec.Argonaut (printJsonDecodeError)
 import Data.Interpolate (i)
 import Data.Lens as Lens
 import Data.String as String
@@ -19,19 +20,20 @@ import Foreign.GitHub as GitHub
 import Foreign.Jsonic as Jsonic
 import Foreign.Licensee as Licensee
 import Foreign.Object as Object
+import Foreign.SPDX as SPDX
 import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
-import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo, Manifest(..))
+import Registry.Scripts.LegacyImport.Bowerfile (bowerfileCodec)
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
-import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
+import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields, manifestFieldsCodec)
 import Registry.Scripts.LegacyImport.Process as Process
-import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)
+import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson, spagoJsonCodec)
 import Registry.Scripts.LegacyImport.SpagoJson as SpagoJson
 
 -- | Attempt to construct the basic fields necessary for a manifest file by reading
@@ -44,7 +46,7 @@ constructManifestFields
   -> ExceptT ImportError Aff ManifestFields
 constructManifestFields package version address = do
   let cacheKey = i "manifest-fields__" (un RawPackageName package) "__" (un RawVersion version)
-  Process.withCache Process.jsonSerializer cacheKey Nothing do
+  Process.withCache (Process.jsonSerializer manifestFieldsCodec) cacheKey Nothing do
     -- We can construct a manifest from a package's bowerfile, package.json file,
     -- spago.dhall file, and/or LICENSE files. A package doesn't need to have all
     -- of these files; several of these files duplicate information. We try to
@@ -75,9 +77,9 @@ constructManifestFields package version address = do
     -- and otherwise fall back to the Spago file.
     bowerManifest <- Except.runExceptT do
       result <- Except.except files.bowerJson
-      case Jsonic.parseJson result >>= Json.decodeJson of
+      case Jsonic.parseJson result >>= decode bowerfileCodec of
         Left err -> do
-          let printed = Json.printJsonDecodeError err
+          let printed = printJsonDecodeError err
           log $ "Could not decode returned bower.json. " <> printed
           log result
           throwError $ ResourceError { resource: FileResource BowerJson, error: DecodeError printed }
@@ -152,7 +154,7 @@ constructManifestFields package version address = do
 
       Except.mapExceptT (map (lmap mkError))
         $ Except.ExceptT
-        $ map (_ >>= (Json.decodeJson >>> lmap Json.printJsonDecodeError)) runDhallJson
+        $ map (_ >>= (decode spagoJsonCodec >>> lmap printJsonDecodeError)) runDhallJson
 
     pure spagoJson
 

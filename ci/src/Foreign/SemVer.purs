@@ -1,5 +1,6 @@
 module Foreign.SemVer
   ( SemVer
+  , semVerCodec
   , parseSemVer
   , raw
   , version
@@ -9,13 +10,16 @@ module Foreign.SemVer
   , prerelease
   , build
   , Range
+  , rangeCodec
   , parseRange
   , printRange
   ) where
 
 import Registry.Prelude
 
-import Data.Argonaut as Json
+import Data.Codec (basicCodec, decode, encode)
+import Data.Codec.Argonaut (JsonDecodeError(..), JsonCodec)
+import Data.Codec.Argonaut as CA
 import Data.Function.Uncurried (Fn2, runFn2)
 import Data.String as String
 
@@ -30,13 +34,13 @@ instance ordSemVer :: Ord SemVer where
 instance showSemVer :: Show SemVer where
   show = raw
 
-instance decodeJsonSemver :: Json.DecodeJson SemVer where
-  decodeJson json = do
-    version' <- Json.decodeJson json
-    note (Json.TypeMismatch $ "Expected version: " <> version') (parseSemVer version')
-
-instance encodeJsonSemver :: Json.EncodeJson SemVer where
-  encodeJson = Json.encodeJson <<< version
+semVerCodec :: JsonCodec SemVer
+semVerCodec = basicCodec dec enc
+  where
+  enc = encode CA.string <<< version
+  dec j = do
+    version' <- decode CA.string j
+    note (TypeMismatch $ "Expected version: " <> version') (parseSemVer version')
 
 foreign import compareSemVerImpl :: Fn2 SemVer SemVer Int
 
@@ -70,13 +74,13 @@ newtype Range = Range String
 
 derive newtype instance eqRange :: Eq Range
 
-instance decodeJsonRange :: Json.DecodeJson Range where
-  decodeJson json = do
-    original <- Json.decodeJson json
-    note (Json.TypeMismatch $ "Expected SemVer range: " <> original) (parseRange original)
-
-instance encodeJsonRange :: Json.EncodeJson Range where
-  encodeJson = Json.encodeJson <<< printRange
+rangeCodec :: JsonCodec Range
+rangeCodec = basicCodec dec enc
+  where
+  enc = encode CA.string <<< printRange
+  dec j = do
+    original <- decode CA.string j
+    note (TypeMismatch $ "Expected SemVer range: " <> original) (parseRange original)
 
 foreign import parseRangeImpl :: String -> Nullable String
 

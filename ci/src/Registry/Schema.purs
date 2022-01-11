@@ -2,15 +2,23 @@ module Registry.Schema where
 
 import Registry.Prelude
 
-import Data.Argonaut (jsonEmptyObject, (~>), (~>?), (:=), (:=?), (.:), (.:?), (.!=))
-import Data.Argonaut as Json
+import Data.Codec.Argonaut (JsonCodec)
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as Common
+import Data.Codec.Argonaut.Compat as Compat
+import Data.Codec.Argonaut.Record as CAR
+import Data.Codec.Argonaut.Variant (variantMatch)
 import Data.Generic.Rep as Generic
+import Data.Newtype (unwrap, wrap)
+import Data.Profunctor (dimap)
+import Data.Variant as V
 import Foreign.Object as Object
-import Foreign.SPDX (License)
-import Foreign.SemVer (SemVer, Range)
+import Foreign.SPDX (License, licenseCodec)
+import Foreign.SemVer (Range, SemVer, rangeCodec, semVerCodec)
 import Foreign.SemVer as SemVer
-import Registry.PackageName (PackageName)
+import Registry.PackageName (PackageName, packageNameCodec)
 import Registry.PackageName as PackageName
+import Type.Proxy (Proxy(..))
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 newtype Manifest = Manifest
@@ -24,19 +32,26 @@ newtype Manifest = Manifest
 
 derive instance Eq Manifest
 derive instance Newtype Manifest _
-derive newtype instance Json.DecodeJson Manifest
-instance Json.EncodeJson Manifest where
-  encodeJson (Manifest { name, version, license, repository, targets, description }) = "description" :=? description
-    ~>? "license" := license
-    ~> "name" := name
-    ~> "repository" := repository
-    ~> "targets" := targets
-    ~> "version" := version
-    ~> jsonEmptyObject
+
+manifestCodec :: JsonCodec Manifest
+manifestCodec = dimap unwrap wrap $ CAR.object "Manifest"
+  { description: Compat.maybe CA.string
+  , license: licenseCodec
+  , name: packageNameCodec
+  , repository: repoCodec
+  , targets: Common.foreignObject targetCodec
+  , version: semVerCodec
+  }
 
 type Target =
   { dependencies :: Object Range
   , sources :: Array String
+  }
+
+targetCodec :: JsonCodec Target
+targetCodec = CAR.object "Target"
+  { dependencies: Common.foreignObject rangeCodec
+  , sources: CA.array CA.string
   }
 
 type RepoData d =
@@ -49,7 +64,20 @@ type GitHubData = RepoData
   , repo :: String
   )
 
+gitHubDataCodec :: JsonCodec GitHubData
+gitHubDataCodec = CAR.object "GitHubData"
+  { repo: CA.string
+  , owner: CA.string
+  , subdir: Compat.maybe CA.string
+  }
+
 type GitData = RepoData (url :: String)
+
+gitDataCodec :: JsonCodec GitData
+gitDataCodec = CAR.object "GitData"
+  { url: CA.string
+  , subdir: Compat.maybe CA.string
+  }
 
 data Repo
   = Git GitData
@@ -63,32 +91,19 @@ instance showRepo :: Show Repo where
   show = genericShow
 
 -- | We encode it this way so that json-to-dhall can read it
-instance repoEncodeJson :: Json.EncodeJson Repo where
-  encodeJson = case _ of
-    Git { subdir, url } ->
-      "url" := url
-        ~> "subdir" :=? subdir
-        ~>? jsonEmptyObject
-    GitHub { repo, owner, subdir } ->
-      "githubRepo" := repo
-        ~> "githubOwner" := owner
-        ~> "subdir" :=? subdir
-        ~>? jsonEmptyObject
-
-instance repoDecodeJson :: Json.DecodeJson Repo where
-  decodeJson json = do
-    obj <- Json.decodeJson json
-    subdir <- obj .:? "subdir" .!= mempty
-    let
-      parseGitHub = do
-        owner <- obj .: "githubOwner"
-        repo <- obj .: "githubRepo"
-        pure $ GitHub { owner, repo, subdir }
-    let
-      parseGit = do
-        url <- obj .: "url"
-        pure $ Git { url, subdir }
-    parseGitHub <|> parseGit
+repoCodec :: JsonCodec Repo
+repoCodec = dimap toVariant fromVariant $ variantMatch
+  { git: Right gitDataCodec
+  , gitHub: Right gitHubDataCodec
+  }
+  where
+  toVariant = case _ of
+    Git a -> V.inj (Proxy :: _ "git") a
+    GitHub a -> V.inj (Proxy :: _ "gitHub") a
+  fromVariant = V.match
+    { git: Git
+    , gitHub: GitHub
+    }
 
 -- | PureScript encoding of ../v1/Operation.dhall
 data Operation
@@ -110,28 +125,22 @@ instance showOperation :: Show Operation where
     showWithPackage inner =
       inner { packageName = "PackageName (" <> PackageName.print inner.packageName <> ")" }
 
-instance operationDecodeJson :: Json.DecodeJson Operation where
-  decodeJson json = do
-    o <- Json.decodeJson json
-    packageName <- o .: "packageName"
-    let
-      parseAddition = do
-        addToPackageSet <- o .: "addToPackageSet"
-        fromBower <- o .: "fromBower"
-        newPackageLocation <- o .: "newPackageLocation"
-        newRef <- o .: "newRef"
-        pure $ Addition { newRef, packageName, addToPackageSet, fromBower, newPackageLocation }
-    let
-      parseUpdate = do
-        fromBower <- o .: "fromBower"
-        updateRef <- o .: "updateRef"
-        pure $ Update { packageName, fromBower, updateRef }
-    let
-      parseUnpublish = do
-        unpublishVersion <- o .: "unpublishVersion"
-        unpublishReason <- o .: "unpublishReason"
-        pure $ Unpublish { packageName, unpublishVersion, unpublishReason }
-    parseAddition <|> parseUpdate <|> parseUnpublish
+operationCodec :: JsonCodec Operation
+operationCodec = dimap toVariant fromVariant $ variantMatch
+  { addition: Right additionDataCodec
+  , update: Right updateDataCodec
+  , unpublish: Right unpublishDataCodec
+  }
+  where
+  toVariant = case _ of
+    Addition a -> V.inj (Proxy :: _ "addition") a
+    Update a -> V.inj (Proxy :: _ "update") a
+    Unpublish a -> V.inj (Proxy :: _ "unpublish") a
+  fromVariant = V.match
+    { addition: Addition
+    , update: Update
+    , unpublish: Unpublish
+    }
 
 type AdditionData =
   { addToPackageSet :: Boolean
@@ -141,11 +150,27 @@ type AdditionData =
   , packageName :: PackageName
   }
 
+additionDataCodec :: JsonCodec AdditionData
+additionDataCodec = CAR.object "AdditionData"
+    { packageName: packageNameCodec
+    , addToPackageSet: CA.boolean
+    , fromBower: CA.boolean
+    , newPackageLocation: repoCodec
+    , newRef: CA.string
+    }
+
 type UpdateData =
   { packageName :: PackageName
   , fromBower :: Boolean
   , updateRef :: String
   }
+
+updateDataCodec :: JsonCodec UpdateData
+updateDataCodec = CAR.object "UpdateData"
+    { packageName: packageNameCodec
+    , fromBower: CA.boolean
+    , updateRef: CA.string
+    }
 
 type UnpublishData =
   { packageName :: PackageName
@@ -153,15 +178,35 @@ type UnpublishData =
   , unpublishReason :: String
   }
 
+unpublishDataCodec :: JsonCodec UnpublishData
+unpublishDataCodec = CAR.object "UnpublishData"
+    { packageName: packageNameCodec
+    , unpublishVersion: semVerCodec
+    , unpublishReason: CA.string
+    }
+
 type Metadata =
   { location :: Repo
   , releases :: Object VersionMetadata
   , unpublished :: Object String
   }
 
+metadataCodec :: JsonCodec Metadata
+metadataCodec = CAR.object "Metadata"
+  { location: repoCodec
+  , releases: Common.foreignObject versionMetadataCodec
+  , unpublished: Common.foreignObject CA.string
+  }
+
 type VersionMetadata =
   { ref :: String
   , hash :: String
+  }
+
+versionMetadataCodec :: JsonCodec VersionMetadata
+versionMetadataCodec = CAR.object "VersionMetadata"
+  { ref: CA.string
+  , hash: CA.string
   }
 
 mkNewMetadata :: Repo -> Metadata

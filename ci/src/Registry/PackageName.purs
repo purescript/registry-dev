@@ -1,14 +1,20 @@
 module Registry.PackageName
   ( PackageName
+  , packageNameCodec
   , parse
   , print
   ) where
 
 import Registry.Prelude
 
-import Data.Argonaut (class DecodeJson, class EncodeJson, JsonDecodeError(..), decodeJson, encodeJson)
+import Data.Codec (basicCodec, decode, encode)
+import Data.Codec.Argonaut (JsonCodec, JsonDecodeError(..))
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Compat as Compat
+import Data.Codec.Argonaut.Record as CAR
 import Data.List as List
 import Data.List.NonEmpty as NEL
+import Data.Profunctor (dimap)
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
 import Text.Parsing.StringParser as Parser
@@ -21,14 +27,13 @@ newtype PackageName = PackageName String
 derive newtype instance eqPackageName :: Eq PackageName
 derive newtype instance ordPackageName :: Ord PackageName
 
-instance decodeJsonPackageName :: DecodeJson PackageName where
-  decodeJson json = do
-    package <- decodeJson json
-    parse package # lmap \parseError ->
-      TypeMismatch $ "Expected PackageName: " <> Parser.printParserError parseError
-
-instance encodeJsonPackageName :: EncodeJson PackageName where
-  encodeJson = encodeJson <<< print
+-- adds error message for packagename
+packageNameCodec :: JsonCodec PackageName
+packageNameCodec = basicCodec dec enc
+  where
+  enc (PackageName a) = encode CA.string a
+  dec j = do
+    bimap (Named "PackageName") PackageName $ decode CA.string j
 
 instance Show PackageName where
   show = print

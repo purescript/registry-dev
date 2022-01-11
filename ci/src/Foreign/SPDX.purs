@@ -1,5 +1,6 @@
 module Foreign.SPDX
   ( License
+  , licenseCodec
   , parse
   , print
   , SPDXConjunction(..)
@@ -8,7 +9,9 @@ module Foreign.SPDX
 
 import Registry.Prelude
 
-import Data.Argonaut (class DecodeJson, class EncodeJson, JsonDecodeError(..), decodeJson, encodeJson)
+import Data.Codec (basicCodec, decode, encode)
+import Data.Codec.Argonaut (JsonCodec, JsonDecodeError(..))
+import Data.Codec.Argonaut as CA
 import Data.Function.Uncurried (Fn3, runFn3)
 import Data.String as String
 import Safe.Coerce (coerce)
@@ -18,11 +21,11 @@ newtype License = License String
 
 derive newtype instance eqLicense :: Eq License
 
-instance decodeJsonSPDXLicense :: DecodeJson License where
-  decodeJson = lmap TypeMismatch <<< parse <=< decodeJson
-
-instance encodeJsonSPDXLicense :: EncodeJson License where
-  encodeJson = encodeJson <<< print
+licenseCodec :: JsonCodec License
+licenseCodec = basicCodec dec enc
+  where
+  enc = encode CA.string <<< print
+  dec = lmap TypeMismatch <<< parse <=< decode CA.string
 
 instance Show License where
   show = print

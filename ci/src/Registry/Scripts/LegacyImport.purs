@@ -3,9 +3,11 @@ module Registry.Scripts.LegacyImport where
 import Registry.Prelude
 
 import Control.Monad.Except as Except
-import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.Codec.Argonaut.Common (printJsonDecodeError)
+import Data.Codec.Argonaut.Common as CA
+import Data.Codec.Argonaut.Record as CAR
 import Data.Map as Map
 import Data.String as String
 import Data.Time.Duration (Hours(..))
@@ -13,18 +15,17 @@ import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Foreign.GitHub as GitHub
-import Foreign.Object as Object
-import Foreign.SemVer (SemVer)
+import Foreign.SemVer (SemVer, semVerCodec)
 import Foreign.SemVer as SemVer
 import Registry.API as API
 import Registry.Index (RegistryIndex)
 import Registry.PackageGraph as Graph
-import Registry.PackageName (PackageName)
+import Registry.PackageName (PackageName, packageNameCodec)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, runRegistryM)
 import Registry.Schema (Repo(..), Manifest(..), Operation(..), Metadata)
-import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..))
+import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), packageFailuresCodec, rawPackageNameCodec)
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.Stats as Stats
@@ -131,8 +132,9 @@ downloadLegacyRegistry = do
     let
       repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
       mkError = ResourceError <<< { resource: APIResource GitHubReleases, error: _ }
+      codec = CA.array (CAR.object "" { name: CA.string, sha: CA.string })
 
-    releases <- Process.withCache Process.jsonSerializer repoCache (Just $ Hours 24.0) do
+    releases <- Process.withCache (Process.jsonSerializer codec) repoCache (Just $ Hours 24.0) do
       log $ "Fetching releases for package " <> un RawPackageName name
       result <- lift $ try $ GitHub.getReleases octokit address
       case result of
@@ -184,7 +186,7 @@ downloadLegacyRegistry = do
     Except.mapExceptT liftError $ Manifest.toManifest name repo tag.semVer manifestFields
 
   log "Writing exclusions file..."
-  writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
+  writeJsonFile packageFailuresCodec "./bower-exclusions.json" manifestRegistry.failures
   Stats.logStats $ Stats.errorStats manifestRegistry
 
   let
@@ -202,10 +204,15 @@ downloadLegacyRegistry = do
   log "Constructing self-contained registry index..."
   let
     { index: checkedIndex, unsatisfied } = Graph.checkRegistryIndex registryIndex
+    unsatisfiedDepCodec = CAR.object "Unsatisfied Dep"
+      { dependencies: CA.array packageNameCodec
+      , package: packageNameCodec
+      , version: semVerCodec
+      }
 
   unless (Array.null unsatisfied) do
     log "Writing unsatisfied dependencies file..."
-    writeJsonFile "./unsatisfied-dependencies.json" unsatisfied
+    writeJsonFile (CA.array unsatisfiedDepCodec) "./unsatisfied-dependencies.json" unsatisfied
 
     log (show (Array.length unsatisfied) <> " manifest entries with unsatisfied dependencies")
 
@@ -231,11 +238,13 @@ cleanPackageName (RawPackageName name) = do
 -- | Read the list of packages in a registry file
 readRegistryFile :: FilePath -> Aff (Map RawPackageName PackageURL)
 readRegistryFile source = do
-  registryFile <- readJsonFile ("../" <> source)
+  registryFile <- readJsonFile (CA.map rawPackageNameCodec packageUrlCodec) ("../" <> source)
   case registryFile of
     Left err -> do
-      let decodeError = "Decoding " <> source <> "failed with error:\n\n" <> Json.printJsonDecodeError err
+      let decodeError = "Decoding " <> source <> "failed with error:\n\n" <> printJsonDecodeError err
       throwError $ Aff.error decodeError
     Right packages -> do
-      let toPackagesArray = Object.toArrayWithKey \k -> Tuple (RawPackageName $ stripPureScriptPrefix k)
-      pure $ Map.fromFoldable $ toPackagesArray packages
+      pure
+        $ Map.fromFoldable
+        $ map (\(Tuple (RawPackageName k) v) -> Tuple (RawPackageName $ stripPureScriptPrefix k) v)
+        $ (Map.toUnfoldable packages :: Array (Tuple RawPackageName PackageURL))

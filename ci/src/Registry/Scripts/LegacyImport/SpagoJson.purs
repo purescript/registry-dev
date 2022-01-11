@@ -1,19 +1,23 @@
 module Registry.Scripts.LegacyImport.SpagoJson
   ( SpagoJson
   , toManifestFields
+  , spagoJsonCodec
   ) where
 
 import Registry.Prelude
 
-import Data.Argonaut ((.:?))
-import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.Codec.Argonaut (JsonCodec)
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as Common
+import Data.Codec.Argonaut.Record as CAR
 import Data.Map as Map
+import Data.Profunctor (dimap)
 import Data.String.NonEmpty (NonEmptyString)
-import Data.String.NonEmpty as NES
 import Foreign.Object as Object
-import Registry.Scripts.LegacyImport.Error (RawPackageName(..), RawVersion(..))
+import Registry.Codec (neString)
+import Registry.Scripts.LegacyImport.Error (RawPackageName(..), RawVersion(..), rawPackageNameCodec, rawVersionCodec)
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 
 toManifestFields :: SpagoJson -> ManifestFields
@@ -42,26 +46,23 @@ newtype SpagoJson = SpagoJson
 
 derive newtype instance Eq SpagoJson
 
-instance Json.EncodeJson SpagoJson where
-  encodeJson (SpagoJson spago) = do
-    let
-      packagesMap = map { version: _ } spago.packages
-      packagesObject = objectFromMap (un RawPackageName) packagesMap
+spagoJsonCodec :: JsonCodec SpagoJson
+spagoJsonCodec = dimap (\(SpagoJson a) -> a) SpagoJson $ CAR.object "SpagoJson"
+  { license: Common.maybe neString
+  , dependencies: CA.array rawPackageNameCodec
+  , packages: packagesCodec
+  }
+  where
+  packagesCodec :: JsonCodec (Map RawPackageName RawVersion)
+  packagesCodec = dimap packagesToObjVersion objVersionToPackages objVersionCodec
 
-    Json.encodeJson
-      { license: spago.license
-      , dependencies: spago.dependencies
-      , packages: packagesObject
-      }
+  objVersionCodec :: JsonCodec (Object { version :: RawVersion })
+  objVersionCodec = Common.foreignObject
+    $ CAR.object "objVersion"
+        { version: rawVersionCodec }
 
-instance Json.DecodeJson SpagoJson where
-  decodeJson json = do
-    obj <- Json.decodeJson json
-    license' <- obj .:? "license"
-    dependencies <- fromMaybe mempty <$> obj .:? "dependencies"
-    packageObj :: Object { version :: RawVersion } <- fromMaybe Object.empty <$> obj .:? "packages"
-    let
-      packagesMap = objectToMap (Just <<< RawPackageName) packageObj
-      packages = map _.version packagesMap
-      license = NES.fromString =<< license'
-    pure $ SpagoJson { license, dependencies, packages }
+  packagesToObjVersion :: Map RawPackageName RawVersion -> Object { version :: RawVersion }
+  packagesToObjVersion = objectFromMap (un RawPackageName) <<< map { version: _ }
+
+  objVersionToPackages :: Object { version :: RawVersion } -> Map RawPackageName RawVersion
+  objVersionToPackages = map _.version <<< objectToMap (Just <<< RawPackageName)

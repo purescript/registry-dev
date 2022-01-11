@@ -2,10 +2,13 @@ module Test.Main where
 
 import Registry.Prelude
 
-import Data.Argonaut as Json
-import Data.Argonaut.Core (stringifyWithIndent)
+import Data.Argonaut.Core (stringify, stringifyWithIndent)
+import Data.Argonaut.Parser (jsonParser)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.Codec.Argonaut (JsonDecodeError, decode, encode)
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Record as CAR
 import Data.String.NonEmpty as NES
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
@@ -16,9 +19,10 @@ import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
 import Node.FS.Aff as FS
 import Registry.API as API
+import Registry.Codec (parseJson)
 import Registry.PackageName as PackageName
-import Registry.Schema (Operation(..), Repo(..), Manifest(..))
-import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
+import Registry.Schema (Manifest(..), Operation(..), Repo(..), manifestCodec)
+import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..), bowerfileCodec)
 import Test.Foreign.Jsonic (jsonic)
 import Test.Foreign.Licensee (licensee)
 import Test.Registry.Index as Registry.Index
@@ -71,26 +75,26 @@ manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit
 manifestExamplesRoundtrip paths = for_ paths \manifestPath -> Spec.it ("Roundrip check for " <> show manifestPath) do
   -- Now we read every manifest to our purescript type
   manifestStr <- FS.readTextFile UTF8 manifestPath
-  case (Json.jsonParser manifestStr >>= (lmap Json.printJsonDecodeError <<< Json.decodeJson)) of
+  case (jsonParser manifestStr >>= (lmap CA.printJsonDecodeError <<< CA.decode manifestCodec)) of
     Left err -> do
       error $ "Got error while parsing manifest"
       throwError $ Exception.error err
     Right (manifest :: Manifest) -> do
       -- And if that works, we then try to convert them back to JSON, and
       -- error out if any differ
-      let newManifestStr = stringifyWithIndent 2 $ Json.encodeJson manifest
+      let newManifestStr = stringifyWithIndent 2 $ CA.encode manifestCodec manifest
       manifestStr `Assert.shouldEqual` newManifestStr
 
 manifestEncoding :: Spec.Spec Unit
 manifestEncoding = do
   let
-    checkRoundtrip manifest str = case Json.parseJson str >>= Json.decodeJson of
+    checkRoundtrip manifest str = case parseJson str >>= CA.decode manifestCodec of
       Left _ -> false
       Right manifest' -> manifest == manifest'
 
-    roundTrip (Manifest manifest) =
+    roundTrip m@(Manifest manifest) =
       Spec.it (PackageName.print manifest.name <> " " <> SemVer.raw manifest.version) do
-        Json.stringify (Json.encodeJson manifest) `Assert.shouldSatisfy` checkRoundtrip manifest
+        stringify (encode manifestCodec m) `Assert.shouldSatisfy` checkRoundtrip m
 
   roundTrip Fixtures.ab.v1a
   roundTrip Fixtures.ab.v1b
@@ -219,31 +223,49 @@ semVer = do
 goodBowerfiles :: Spec.Spec Unit
 goodBowerfiles = do
   let
-    parse :: String -> Either Json.JsonDecodeError Bowerfile
-    parse = Jsonic.parseJson >=> Json.decodeJson
+    parse :: String -> Either JsonDecodeError Bowerfile
+    parse = Jsonic.parseJson >=> CA.decode bowerfileCodec
 
     parseBowerfile' str = Spec.it str do
       parse str `Assert.shouldSatisfy` isRight
 
-    parseBowerfile = parseBowerfile' <<< Json.stringify
+    parseBowerfile = parseBowerfile' <<< stringify
 
-    simpleFile = Json.encodeJson { version: "v1.0.0", license: "MIT" }
-    goodBowerfile = Json.encodeJson { version: "v1.0.0", license: "", dependencies: {} }
+    simpleFile =
+      encode (CAR.object "simpleFile" { version: CA.string, license: CA.string })
+        { version: "v1.0.0", license: "MIT" }
+    goodBowerfile =
+      encode (CAR.object "goodBowerFile" { version: CA.string, license: CA.string, dependencies: CAR.object "dependencies" {} })
+        { version: "v1.0.0", license: "", dependencies: {} }
     extraPropsBowerfile =
-      Json.encodeJson
+      encode (CAR.object "extraPropsBowerFile" { extra: CA.string, license: CA.string, version: CA.string })
         { extra: "value"
         , license: "not a license"
         , version: "v1.1.1"
         }
     nonSemverBowerfile =
-      Json.encodeJson
+      encode
+        (CAR.object "nonSemverBowerfile"
+          { version: CA.string
+          , license: CA.string
+          , dependencies: CAR.object "also" { also: CA.string }
+          , devDependencies: CAR.object "lastly" { lastly: CA.string }
+          }
+        )
         { version: "notsemver"
         , license: ""
         , dependencies: { also: "not semver" }
         , devDependencies: { lastly: "🍝" }
         }
     completeBowerfile =
-      Json.encodeJson
+      encode
+        (CAR.object "completeBowerfile"
+          { version: CA.string
+          , license: CA.array CA.string
+          , dependencies: CAR.object "dependencies" { "other-package": CA.string, "another-package": CA.string }
+          , devDependencies: CAR.object "devDependencies" { "dev-dep": CA.string }
+          }
+        )
         { version: "v1.0.1"
         , license: [ "license" ]
         , dependencies:
@@ -263,23 +285,24 @@ goodBowerfiles = do
 badBowerfiles :: Spec.Spec Unit
 badBowerfiles = do
   let
-    parse :: String -> Either Json.JsonDecodeError Bowerfile
-    parse = Jsonic.parseJson >=> Json.decodeJson
+    parse :: String -> Either JsonDecodeError Bowerfile
+    parse = Jsonic.parseJson >=> decode bowerfileCodec
 
     failParseBowerfile' str = Spec.it str do
       parse str `Assert.shouldNotSatisfy` isRight
 
-    failParseBowerfile = failParseBowerfile' <<< Json.stringify
+    failParseBowerfile = failParseBowerfile' <<< stringify
 
     wrongLicenseFormat =
-      Json.encodeJson { version: "", license: true }
+      encode (CAR.object "simpleFile" { version: CA.string, license: CA.boolean })
+        { version: "", license: true }
 
     wrongDependenciesFormat =
-      Json.encodeJson
+      encode (CAR.object "simpleFile" { version: CA.string, license: CA.string, dependencies: CA.array CA.int })
         { version: "", license: "", dependencies: ([] :: Array Int) }
 
     wrongDevDependenciesFormat =
-      Json.encodeJson
+      encode (CAR.object "simpleFile" { version: CA.string, license: CA.string, devDependencies: CA.array CA.int })
         { version: "", license: "", devDependencies: ([] :: Array Int) }
 
   failParseBowerfile wrongLicenseFormat
@@ -303,5 +326,5 @@ bowerFileEncoding = do
       description = Nothing
       bowerFile =
         Bowerfile { license: NEA.fromArray $ Array.catMaybes [ NES.fromString "MIT" ], dependencies, devDependencies, description }
-    (Json.decodeJson $ Json.encodeJson bowerFile) `Assert.shouldContain` bowerFile
+    (decode bowerfileCodec $ encode bowerfileCodec bowerFile) `Assert.shouldContain` bowerFile
 

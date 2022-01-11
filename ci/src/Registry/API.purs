@@ -3,8 +3,11 @@ module Registry.API where
 import Registry.Prelude
 
 import Control.Monad.Except as Except
-import Data.Argonaut as Json
+import Data.Argonaut.Core (stringifyWithIndent)
+import Data.Argonaut.Parser (jsonParser)
 import Data.Array as Array
+import Data.Codec (decode, encode)
+import Data.Codec.Argonaut (JsonCodec, printJsonDecodeError)
 import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Data.String as String
@@ -12,7 +15,7 @@ import Effect.Aff as Aff
 import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
-import Foreign.GitHub (IssueNumber)
+import Foreign.GitHub (IssueNumber, eventCodec)
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
 import Foreign.SemVer (SemVer)
@@ -29,8 +32,8 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata, isVersionInMetadata)
-import Registry.Scripts.LegacyImport.Error (ImportError(..), RawPackageName(..), RawVersion(..))
+import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), addVersionToMetadata, isVersionInMetadata, manifestCodec, metadataCodec, mkNewMetadata, operationCodec)
+import Registry.Scripts.LegacyImport.Error (ImportError(..), RawPackageName(..), RawVersion(..), importErrorCodec)
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
@@ -78,7 +81,7 @@ readOperation :: FilePath -> Aff OperationDecoding
 readOperation eventPath = do
   fileContents <- FS.readTextFile UTF8 eventPath
 
-  GitHub.Event { issueNumber, body } <- case fromJson fileContents of
+  GitHub.Event { issueNumber, body } <- case fromJson eventCodec fileContents of
     Left err ->
       -- If we don't receive a valid event path or the contents can't be decoded
       -- then this is a catastrophic error and we exit the workflow.
@@ -86,11 +89,11 @@ readOperation eventPath = do
     Right event ->
       pure event
 
-  pure $ case Json.jsonParser body of
-    Left _err ->
+  pure $ case jsonParser body of
+    Left _ ->
       NotJson
-    Right json -> case Json.decodeJson json of
-      Left err -> MalformedJson issueNumber (Json.printJsonDecodeError err)
+    Right json -> case decode operationCodec json of
+      Left err -> MalformedJson issueNumber (printJsonDecodeError err)
       Right op -> DecodedOperation issueNumber op
 
 -- TODO: test all the points where the pipeline could throw, to show that we are implementing
@@ -171,7 +174,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
 
     let
       printErrors =
-        Json.stringifyWithIndent 2 <<< Json.encodeJson
+        stringifyWithIndent 2 <<< encode importErrorCodec
 
       liftError = map (lmap ManifestImportError)
 
@@ -187,7 +190,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
       Left err ->
         throwWithComment $ "Unable to convert Bowerfile to a manifest: " <> err
       Right manifest ->
-        liftAff $ writeJsonFile manifestPath manifest
+        liftAff $ writeJsonFile manifestCodec manifestPath manifest
 
   -- Try to read the manifest, typechecking it
   manifest@(Manifest manifestRecord) <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of
@@ -196,7 +199,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
       liftAff (Dhall.jsonToDhallManifest manifestStr) >>= case _ of
         Left err ->
           throwWithComment $ "Could not type-check Manifest file: " <> err
-        Right _ -> case fromJson manifestStr of
+        Right _ -> case fromJson manifestCodec manifestStr of
           Left err -> throwWithComment $ "Could not convert Manifest to JSON: " <> err
           Right res -> pure res
 
@@ -220,7 +223,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   log $ "Hash for ref " <> show ref <> " was " <> show hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref } metadata
   let metadataFilePath = metadataFile packageName
-  liftAff $ FS.writeTextFile UTF8 metadataFilePath (Json.stringifyWithIndent 2 $ Json.encodeJson newMetadata)
+  liftAff $ FS.writeTextFile UTF8 metadataFilePath (stringifyWithIndent 2 $ encode metadataCodec newMetadata)
   updatePackagesMetadata manifestRecord.name newMetadata
   commitToTrunk packageName metadataFilePath >>= case _ of
     Left _err ->
@@ -278,8 +281,8 @@ runChecks metadata (Manifest manifest) = do
   unless (Array.null pkgsNotInRegistry) do
     throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
 
-fromJson :: forall a. Json.DecodeJson a => String -> Either String a
-fromJson = Json.jsonParser >=> (lmap Json.printJsonDecodeError <<< Json.decodeJson)
+fromJson :: forall a. JsonCodec a -> String -> Either String a
+fromJson codec = jsonParser >=> (lmap printJsonDecodeError <<< decode codec)
 
 sha256sum :: String -> Aff String
 sha256sum filepath = do
@@ -328,7 +331,7 @@ mkMetadataRef = do
         Aff.throwError $ Aff.error $ StringParser.printParserError err
     let metadataPath = metadataFile packageName
     metadataStr <- FS.readTextFile UTF8 metadataPath
-    metadata <- case fromJson metadataStr of
+    metadata <- case fromJson metadataCodec metadataStr of
       Left err -> Aff.throwError $ Aff.error $ "Error while parsing json from " <> metadataPath <> " : " <> err
       Right r -> pure r
     pure $ packageName /\ metadata

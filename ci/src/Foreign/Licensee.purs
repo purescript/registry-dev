@@ -3,11 +3,13 @@ module Foreign.Licensee where
 import Registry.Prelude
 
 import Control.Parallel as Parallel
-import Data.Argonaut as Json
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Record as CAR
 import Data.String as String
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
+import Registry.Codec (parseJson)
 import Sunde as Process
 
 -- | Attempt to detect the license associated with a set of provided files
@@ -31,16 +33,19 @@ detect directory = do
     -- but we consider this valid Licensee output.
     NodeProcess.Normally n | n == 0 || n == 1 -> do
       let
-        parse :: String -> Either Json.JsonDecodeError (Array String)
-        parse str = Json.parseJson (String.trim str) >>= \json -> do
-          obj <- Json.decodeJson json
-          licenses <- obj `Json.getField` "licenses"
-          spdxIds <- traverse (_ `Json.getField` "spdx_id") licenses
-          pure spdxIds
+        licensesCodec :: CA.JsonCodec { licenses :: Array { spdx_id :: String }}
+        licensesCodec = CAR.object "SPDX"
+          { licenses: CA.array $ CAR.object "licenses"
+              { spdx_id: CA.string }
+          }
+        parse :: String -> Either CA.JsonDecodeError (Array String)
+        parse str = parseJson (String.trim str) >>= \json -> do
+          { licenses } <- CA.decode licensesCodec json
+          pure $ map _.spdx_id licenses
 
       case parse result.stdout of
         Left err -> do
-          let printed = Json.printJsonDecodeError err
+          let printed = CA.printJsonDecodeError err
           log "Licensee failed to decode output: "
           log printed
           log "arising from the result: "

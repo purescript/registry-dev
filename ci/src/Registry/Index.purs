@@ -7,9 +7,10 @@ module Registry.Index
 import Registry.Prelude
 
 import Control.Alternative (guard)
-import Data.Argonaut as Json
+import Data.Argonaut.Core as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.Codec (decode, encode)
 import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
@@ -20,9 +21,10 @@ import Node.FS.Aff as FS
 import Node.FS.Stats as Stats
 import Node.Glob.Basic as Glob
 import Node.Path as FilePath
+import Registry.Codec (parseJson)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..))
+import Registry.Schema (Manifest(..), manifestCodec)
 
 type RegistryIndex = Map PackageName (Map SemVer Manifest)
 
@@ -102,8 +104,8 @@ readPackage directory packageName = do
   contentsResult <- try do
     contents <- FS.readTextFile ASCII path
     pure $ hush do
-      jsonLines <- traverse Json.parseJson $ String.split (Pattern "\n") contents
-      traverse Json.decodeJson jsonLines
+      jsonLines <- traverse parseJson $ String.split (Pattern "\n") contents
+      traverse (decode manifestCodec) jsonLines
 
   pure case contentsResult of
     Left _ -> Nothing
@@ -132,7 +134,7 @@ insertManifest directory manifest@(Manifest { name, version }) = do
     contents :: String
     contents =
       String.joinWith "\n"
-        $ map (Json.encodeJson >>> Json.stringify)
+        $ map (encode manifestCodec >>> Json.stringify)
         $ Array.sortBy (comparing (un Manifest >>> _.version))
         $ Array.fromFoldable modifiedManifests
 
