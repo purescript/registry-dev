@@ -225,7 +225,7 @@ toManifest package repository version manifest = do
 
           case fail, success of
             [], [] -> mkError MissingLicense
-            [], _ -> Right $ SPDX.joinWith SPDX.Or success
+            [], _ -> Right $ SPDX.joinWith SPDX.And success
             _, _ -> mkError $ BadLicense fail
 
     eitherTargets = do
