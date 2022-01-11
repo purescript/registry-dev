@@ -4,10 +4,12 @@ import Registry.Prelude
 
 import Control.Promise (Promise)
 import Control.Promise as Promise
-import Data.Argonaut ((.:))
-import Data.Argonaut as Json
+import Data.Codec.Argonaut (JsonCodec)
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Record as CAR
 import Data.List as List
-import Data.Newtype (unwrap)
+import Data.Newtype (unwrap, wrap)
+import Data.Profunctor (dimap)
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
 import Effect.Uncurried (EffectFn2, EffectFn3, EffectFn4, runEffectFn2, runEffectFn3, runEffectFn4)
@@ -27,17 +29,23 @@ newtype Event = Event
 
 derive instance newtypeEvent :: Newtype Event _
 
-instance eventDecodeJson :: Json.DecodeJson Event where
-  decodeJson json = do
-    obj <- Json.decodeJson json
-    issue <- obj .: "issue"
-    issueNumber <- issue .: "number"
-    -- We accept issue creation and issue comment events, but both contain an
-    -- 'issue' field. However, only comments contain a 'comment' field. For that
-    -- reason we first try to parse the comment and fall back to the issue if
-    -- that fails.
-    body <- (_ .: "body") =<< obj .: "comment" <|> pure issue
-    pure $ Event { body, issueNumber: IssueNumber issueNumber }
+eventCodec :: JsonCodec Event
+eventCodec = dimap unwrap wrap $ CAR.object "Event"
+  { issueNumber: dimap unwrap wrap CA.int
+  , body: CA.string
+  }
+
+-- instance eventDecodeJson :: Json.DecodeJson Event where
+--   decodeJson json = do
+--     obj <- Json.decodeJson json
+--     issue <- obj .: "issue"
+--     issueNumber <- issue .: "number"
+--     -- We accept issue creation and issue comment events, but both contain an
+--     -- 'issue' field. However, only comments contain a 'comment' field. For that
+--     -- reason we first try to parse the comment and fall back to the issue if
+--     -- that fails.
+--     body <- (_ .: "body") =<< obj .: "comment" <|> pure issue
+--     pure $ Event { body, issueNumber: IssueNumber issueNumber }
 
 type Address = { owner :: String, repo :: String }
 
