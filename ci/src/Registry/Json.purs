@@ -39,7 +39,7 @@ import Registry.Prelude
 
 import Control.Monad.State (State, runState)
 import Control.Monad.State as State
-import Data.Argonaut.Core (Json) as Exports
+import Data.Argonaut.Core (Json, stringify) as Exports
 import Data.Argonaut.Core as Core
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA

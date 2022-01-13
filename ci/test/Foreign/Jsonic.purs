@@ -2,10 +2,9 @@ module Test.Foreign.Jsonic (jsonic) where
 
 import Registry.Prelude
 
-import Data.Argonaut (Json)
-import Data.Argonaut as Json
 import Data.Either as Either
-import Foreign.Jsonic as Jsonic
+import Registry.Json (Json)
+import Registry.Json as Json
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 
@@ -19,8 +18,8 @@ jsonic = do
   Spec.describe "Does not parse" do
     Spec.describe "Horrendous json" horrendousJson
 
-parseString :: String -> Either Json.JsonDecodeError String
-parseString = map Json.stringify <<< Jsonic.parseJson
+parseString :: String -> Either String String
+parseString = map Json.stringify <<< Json.parseJson
 
 parseTest :: String -> Json -> Spec
 parseTest str json = Spec.it str do
@@ -28,16 +27,16 @@ parseTest str json = Spec.it str do
 
 goodJson :: Spec
 goodJson = do
-  let complexJson = Json.encodeJson { complex: { nested: "json", bool: true } }
-  parseTest "[1,2,3]" $ Json.encodeJson [ 1, 2, 3 ]
-  parseTest """{ "name": "test" }""" $ Json.encodeJson { name: "test" }
+  let complexJson = Json.encode { complex: { nested: "json", bool: true } }
+  parseTest "[1,2,3]" $ Json.encode [ 1, 2, 3 ]
+  parseTest """{ "name": "test" }""" $ Json.encode { name: "test" }
   parseTest (Json.stringify complexJson) complexJson
 
 badJson :: Spec
 badJson = do
-  parseTest "name: test" $ Json.encodeJson { name: "test" }
-  parseTest "{trailing: comma,}" $ Json.encodeJson { trailing: "comma" }
-  parseTest """[ "trailing comma", ]""" $ Json.encodeJson [ "trailing comma" ]
+  parseTest "name: test" $ Json.encode { name: "test" }
+  parseTest "{trailing: comma,}" $ Json.encode { trailing: "comma" }
+  parseTest """[ "trailing comma", ]""" $ Json.encode [ "trailing comma" ]
 
 horrendousJson :: Spec
 horrendousJson = do

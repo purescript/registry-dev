@@ -7,7 +7,6 @@ import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Except as Except
 import Control.Parallel (parallel, sequential)
-import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Interpolate (i)
@@ -24,6 +23,7 @@ import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
+import Registry.Json as Json
 import Registry.Json as RegistryJson
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -152,7 +152,7 @@ constructManifestFields package version address = do
 
       Except.mapExceptT (map (lmap mkError))
         $ Except.ExceptT
-        $ map (_ >>= (Json.decodeJson >>> lmap Json.printJsonDecodeError)) runDhallJson
+        $ map (_ >>= Json.decode) runDhallJson
 
     pure spagoJson
 

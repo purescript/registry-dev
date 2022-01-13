@@ -8,9 +8,10 @@ module Foreign.SPDX
 
 import Registry.Prelude
 
-import Data.Argonaut (class DecodeJson, class EncodeJson, JsonDecodeError(..), decodeJson, encodeJson)
 import Data.Function.Uncurried (Fn3, runFn3)
 import Data.String as String
+import Registry.Json (class RegistryJson)
+import Registry.Json as Json
 import Safe.Coerce (coerce)
 
 -- | An SPDX license identifier such as 'MIT' or 'Apache-2.0'.
@@ -18,11 +19,9 @@ newtype License = License String
 
 derive newtype instance eqLicense :: Eq License
 
-instance decodeJsonSPDXLicense :: DecodeJson License where
-  decodeJson = lmap TypeMismatch <<< parse <=< decodeJson
-
-instance encodeJsonSPDXLicense :: EncodeJson License where
-  encodeJson = encodeJson <<< print
+instance RegistryJson License where
+  encode = Json.encode <<< print
+  decode = parse <=< Json.decode
 
 instance Show License where
   show = print

@@ -2,13 +2,13 @@ module Registry.Schema where
 
 import Registry.Prelude
 
-import Data.Argonaut (jsonEmptyObject, (~>), (~>?), (:=), (:=?), (.:), (.:?), (.!=))
-import Data.Argonaut as Json
 import Data.Generic.Rep as Generic
 import Foreign.Object as Object
 import Foreign.SPDX (License)
 import Foreign.SemVer (SemVer, Range)
 import Foreign.SemVer as SemVer
+import Registry.Json (class RegistryJson, (.:), (.:?), (:=))
+import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 
@@ -24,15 +24,17 @@ newtype Manifest = Manifest
 
 derive instance Eq Manifest
 derive instance Newtype Manifest _
-derive newtype instance Json.DecodeJson Manifest
-instance Json.EncodeJson Manifest where
-  encodeJson (Manifest { name, version, license, repository, targets, description }) = "description" :=? description
-    ~>? "license" := license
-    ~> "name" := name
-    ~> "repository" := repository
-    ~> "targets" := targets
-    ~> "version" := version
-    ~> jsonEmptyObject
+
+instance RegistryJson Manifest where
+  encode (Manifest fields) = Json.encodeObject do
+    "description" := fields.description
+    "license" := fields.license
+    "name" := fields.name
+    "repository" := fields.repository
+    "targets" := fields.targets
+    "version" := fields.version
+
+  decode json = Manifest <$> Json.decode json
 
 type Target =
   { dependencies :: Object Range
@@ -63,22 +65,19 @@ instance showRepo :: Show Repo where
   show = genericShow
 
 -- | We encode it this way so that json-to-dhall can read it
-instance repoEncodeJson :: Json.EncodeJson Repo where
-  encodeJson = case _ of
-    Git { subdir, url } ->
+instance RegistryJson Repo where
+  encode = Json.encodeObject <<< case _ of
+    Git { subdir, url } -> do
       "url" := url
-        ~> "subdir" :=? subdir
-        ~>? jsonEmptyObject
-    GitHub { repo, owner, subdir } ->
+      "subdir" := subdir
+    GitHub { repo, owner, subdir } -> do
       "githubRepo" := repo
-        ~> "githubOwner" := owner
-        ~> "subdir" :=? subdir
-        ~>? jsonEmptyObject
+      "githubOwner" := owner
+      "subdir" := subdir
 
-instance repoDecodeJson :: Json.DecodeJson Repo where
-  decodeJson json = do
-    obj <- Json.decodeJson json
-    subdir <- obj .:? "subdir" .!= mempty
+  decode json = do
+    obj <- Json.decode json
+    subdir <- fromMaybe mempty <$> obj .:? "subdir"
     let
       parseGitHub = do
         owner <- obj .: "githubOwner"
@@ -110,27 +109,16 @@ instance showOperation :: Show Operation where
     showWithPackage inner =
       inner { packageName = "PackageName (" <> PackageName.print inner.packageName <> ")" }
 
-instance operationDecodeJson :: Json.DecodeJson Operation where
-  decodeJson json = do
-    o <- Json.decodeJson json
-    packageName <- o .: "packageName"
-    let
-      parseAddition = do
-        addToPackageSet <- o .: "addToPackageSet"
-        fromBower <- o .: "fromBower"
-        newPackageLocation <- o .: "newPackageLocation"
-        newRef <- o .: "newRef"
-        pure $ Addition { newRef, packageName, addToPackageSet, fromBower, newPackageLocation }
-    let
-      parseUpdate = do
-        fromBower <- o .: "fromBower"
-        updateRef <- o .: "updateRef"
-        pure $ Update { packageName, fromBower, updateRef }
-    let
-      parseUnpublish = do
-        unpublishVersion <- o .: "unpublishVersion"
-        unpublishReason <- o .: "unpublishReason"
-        pure $ Unpublish { packageName, unpublishVersion, unpublishReason }
+instance RegistryJson Operation where
+  encode = case _ of
+    Addition fields -> Json.encode fields
+    Update fields -> Json.encode fields
+    Unpublish fields -> Json.encode fields
+
+  decode json = do
+    let parseAddition = Addition <$> Json.decode json
+    let parseUpdate = Update <$> Json.decode json
+    let parseUnpublish = Unpublish <$> Json.decode json
     parseAddition <|> parseUpdate <|> parseUnpublish
 
 type AdditionData =

@@ -5,7 +5,6 @@ import Registry.Prelude
 import Control.Apply (lift2)
 import Control.Monad.Except as Except
 import Control.Parallel as Parallel
-import Data.Argonaut as Json
 import Data.Array as Array
 import Data.DateTime (adjust) as Time
 import Data.JSDate as JSDate
@@ -16,11 +15,13 @@ import Data.TraversableWithIndex (class TraversableWithIndex)
 import Effect.AVar as Effect.AVar
 import Effect.Aff.AVar as AVar
 import Effect.Now (nowDateTime) as Time
+import Foreign.GitHub (PackageURL)
 import Foreign.GitHub as GitHub
-import Foreign.Jsonic as Jsonic
 import Foreign.SemVer (SemVer)
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
+import Registry.Json (class RegistryJson)
+import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion, RequestError(..))
 import Registry.Scripts.LegacyImport.Error as LegacyImport.Error
@@ -148,10 +149,10 @@ type Serialize e a =
   , decode :: String -> Either e a
   }
 
-jsonSerializer :: forall a. Json.EncodeJson a => Json.DecodeJson a => Serialize String a
+jsonSerializer :: forall a. RegistryJson a => Serialize String a
 jsonSerializer =
-  { encode: Json.encodeJson >>> Json.stringifyWithIndent 2
-  , decode: (Jsonic.parseJson >=> Json.decodeJson) >>> lmap Json.printJsonDecodeError
+  { encode: Json.printJson
+  , decode: Json.parseJson
   }
 
 stringSerializer :: Serialize String String
@@ -189,7 +190,7 @@ withCache { encode, decode } path maybeDuration action = do
 
       let
         writeEncoded :: Either ImportError String -> Aff Unit
-        writeEncoded = writeJsonFile objectPath
+        writeEncoded = Json.writeJsonFile objectPath
 
       liftAff (Except.runExceptT action) >>= case _ of
         Right result -> do
@@ -219,10 +220,10 @@ withCache { encode, decode } path maybeDuration action = do
 
   isCacheHit >>= case _ of
     true -> do
-      result :: Either _ (Either ImportError String) <- liftAff $ readJsonFile objectPath
+      result :: Either _ (Either ImportError String) <- liftAff $ Json.readJsonFile objectPath
       case result of
         Left error -> do
-          log $ "Cache read failed: " <> Json.printJsonDecodeError error
+          log $ "Cache read failed: " <> error
           onCacheMiss
         Right (Left importError) ->
           throwError importError

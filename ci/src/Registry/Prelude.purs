@@ -3,10 +3,7 @@ module Registry.Prelude
   , module Extra
   , module Either
   , module Maybe
-  , PackageURL(..)
   , partitionEithers
-  , readJsonFile
-  , writeJsonFile
   , stripPureScriptPrefix
   , newlines
   , objectFromMap
@@ -20,7 +17,6 @@ import Control.Alt ((<|>)) as Extra
 import Control.Monad.Error.Class (throwError) as Extra
 import Control.Monad.Except (ExceptT(..)) as Extra
 import Control.Monad.Trans.Class (lift) as Extra
-import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray) as Extra
 import Data.Bifunctor (bimap, lmap, rmap) as Extra
@@ -47,12 +43,10 @@ import Effect.Aff.Class (liftAff, class MonadAff) as Extra
 import Effect.Class (liftEffect, class MonadEffect) as Extra
 import Effect.Class.Console (error, log, info, logShow) as Extra
 import Effect.Ref (Ref) as Extra
-import Foreign.Jsonic as Jsonic
 import Foreign.Object (Object) as Extra
 import Foreign.Object as Object
 import Node.Buffer (Buffer) as Extra
 import Node.Encoding (Encoding(..)) as Extra
-import Node.FS.Aff as FS
 import Node.Path (FilePath) as Extra
 import Partial.Unsafe (unsafePartial, unsafeCrashWith) as Extra
 
@@ -61,16 +55,6 @@ partitionEithers :: forall e a. Array (Either.Either e a) -> { fail :: Array e, 
 partitionEithers = Array.foldMap case _ of
   Either.Left err -> { fail: [ err ], success: [] }
   Either.Right res -> { fail: [], success: [ res ] }
-
--- | Encode data as JSON and write it to the provided filepath
-writeJsonFile :: forall a. Json.EncodeJson a => Extra.FilePath -> a -> Extra.Aff Unit
-writeJsonFile path = FS.writeTextFile Extra.UTF8 path <<< Json.stringifyWithIndent 2 <<< Json.encodeJson
-
--- | Decode data from a JSON file at the provided filepath
-readJsonFile :: forall a. Json.DecodeJson a => Extra.FilePath -> Extra.Aff (Either.Either Json.JsonDecodeError a)
-readJsonFile path = do
-  contents <- FS.readTextFile Extra.UTF8 path
-  pure $ Json.decodeJson =<< Jsonic.parseJson contents
 
 -- | Convert a Map into an Object, converting its keys to strings along the way.
 objectFromMap :: forall k a. Ord k => (k -> String) -> Extra.Map k a -> Extra.Object a
@@ -108,14 +92,6 @@ stripPureScriptPrefix pkg =
 -- | ```
 newlines :: Int -> String
 newlines n = Array.fold $ Array.replicate n "\n"
-
-newtype PackageURL = PackageURL String
-
-derive instance Extra.Newtype PackageURL _
-derive newtype instance Eq PackageURL
-derive newtype instance Ord PackageURL
-derive newtype instance Json.EncodeJson PackageURL
-derive newtype instance Json.DecodeJson PackageURL
 
 fromJust' :: forall a. (Unit -> a) -> Maybe.Maybe a -> a
 fromJust' _ (Maybe.Just a) = a
