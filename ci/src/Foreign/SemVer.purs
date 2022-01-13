@@ -17,7 +17,6 @@ import Registry.Prelude
 
 import Data.Function.Uncurried (Fn2, runFn2)
 import Data.String as String
-import Registry.Json (class RegistryJson)
 import Registry.Json as Json
 
 data SemVer

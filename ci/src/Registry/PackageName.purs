@@ -10,7 +10,6 @@ import Data.List as List
 import Data.List.NonEmpty as NEL
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
-import Registry.Json (class RegistryJson)
 import Registry.Json as Json
 import Text.Parsing.StringParser as Parser
 import Text.Parsing.StringParser.CodePoints as Parse

@@ -3,6 +3,8 @@ module Registry.Prelude
   , module Extra
   , module Either
   , module Maybe
+  , module Registry.Json
+  , module Registry.Types
   , partitionEithers
   , stripPureScriptPrefix
   , newlines
@@ -45,6 +47,8 @@ import Node.Buffer (Buffer) as Extra
 import Node.Encoding (Encoding(..)) as Extra
 import Node.Path (FilePath) as Extra
 import Partial.Unsafe (unsafePartial, unsafeCrashWith) as Extra
+import Registry.Json (Json, class RegistryJson) as Registry.Json
+import Registry.Types (RawPackageName(..), RawVersion(..)) as Registry.Types
 
 -- | Partition an array of `Either` values into failure and success  values
 partitionEithers :: forall e a. Array (Either.Either e a) -> { fail :: Array e, success :: Array a }

@@ -20,7 +20,6 @@ import Foreign.GitHub as GitHub
 import Foreign.SemVer (SemVer)
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
-import Registry.Json (class RegistryJson)
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RequestError(..))

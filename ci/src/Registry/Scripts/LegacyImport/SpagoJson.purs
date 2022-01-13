@@ -9,10 +9,9 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
 import Data.String.NonEmpty (NonEmptyString)
-import Registry.Json (class RegistryJson, (.:?))
+import Registry.Json ((.:?))
 import Registry.Json as Json
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
-import Registry.Types (RawPackageName(..), RawVersion)
 
 toManifestFields :: SpagoJson -> ManifestFields
 toManifestFields (SpagoJson { license, dependencies, packages }) =

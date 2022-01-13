@@ -9,7 +9,7 @@ import Data.Newtype (unwrap)
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
 import Effect.Uncurried (EffectFn2, EffectFn3, EffectFn4, runEffectFn2, runEffectFn3, runEffectFn4)
-import Registry.Json (class RegistryJson, (.:))
+import Registry.Json ((.:))
 import Registry.Json as Json
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as Parser

@@ -35,7 +35,7 @@ module Registry.Json
   , decodeRecordField
   ) where
 
-import Registry.Prelude
+import Prelude
 
 import Control.Monad.State (State, runState)
 import Control.Monad.State as State
@@ -43,19 +43,29 @@ import Data.Argonaut.Core (Json, stringify) as Exports
 import Data.Argonaut.Core as Core
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.Array.NonEmpty (NonEmptyArray)
+import Data.Either (Either(..), either, note)
 import Data.Int as Int
+import Data.Map (Map)
 import Data.Map as Map
+import Data.Maybe (Maybe(..), maybe)
 import Data.String.NonEmpty (NonEmptyString)
 import Data.String.NonEmpty as NES
 import Data.Symbol (class IsSymbol)
 import Data.Symbol as Symbol
+import Data.Traversable (traverse)
+import Data.Tuple (Tuple, snd)
+import Effect.Aff (Aff)
 import Foreign.Jsonic as Jsonic
+import Foreign.Object (Object)
 import Foreign.Object as Object
+import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS
+import Node.Path (FilePath)
+import Prim.Coerce (class Coercible)
 import Prim.Row as Row
 import Prim.RowList as RL
 import Record as Record
-import Prim.Coerce (class Coercible)
 import Safe.Coerce (coerce)
 import Type.Proxy (Proxy(..))
 

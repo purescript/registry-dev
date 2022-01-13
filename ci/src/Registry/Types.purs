@@ -1,7 +1,8 @@
 module Registry.Types where
 
-import Registry.Prelude
+import Prelude
 
+import Data.Newtype (class Newtype)
 import Registry.Json (class RegistryJson)
 
 -- | An unprocessed package name, which may possibly be malformed.

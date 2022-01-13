@@ -10,7 +10,6 @@ import Registry.Prelude
 
 import Data.Function.Uncurried (Fn3, runFn3)
 import Data.String as String
-import Registry.Json (class RegistryJson)
 import Registry.Json as Json
 import Safe.Coerce (coerce)
 

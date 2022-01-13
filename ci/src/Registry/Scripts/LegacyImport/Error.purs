@@ -3,10 +3,9 @@ module Registry.Scripts.LegacyImport.Error where
 import Registry.Prelude
 
 import Data.Interpolate (i)
-import Registry.Json (class RegistryJson, (.:))
+import Registry.Json ((.:))
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
-import Registry.Types (RawPackageName(..), RawVersion(..))
 
 -- | A map of error types to package names to package versions, where failed
 -- | versions contain rich information about why they failed.

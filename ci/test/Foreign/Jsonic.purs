@@ -3,7 +3,6 @@ module Test.Foreign.Jsonic (jsonic) where
 import Registry.Prelude
 
 import Data.Either as Either
-import Registry.Json (Json)
 import Registry.Json as Json
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert

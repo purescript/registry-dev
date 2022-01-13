@@ -17,7 +17,6 @@ import Registry.Json as Json
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..), Manifest(..))
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
-import Registry.Types (RawPackageName(..), RawVersion(..))
 import Safe.Coerce (coerce)
 import Test.Foreign.Jsonic (jsonic)
 import Test.Foreign.Licensee (licensee)
