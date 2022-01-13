@@ -1,411 +1,417 @@
-{ compiler = "v0.14.0"
-, packages =
-  { abides = "v0.0.1"
-  , ace = "v7.0.0"
-  , aff = "v5.1.2"
-  , aff-bus = "v4.0.0"
-  , aff-coroutines = "v7.0.0"
-  , aff-promise = "v2.1.0"
-  , aff-retry = "v1.2.1"
-  , affjax = "v10.1.0"
-  , ansi = "v5.0.0"
-  , argonaut = "v7.0.0"
-  , argonaut-codecs = "v7.0.0"
-  , argonaut-core = "v5.1.0"
-  , argonaut-generic = "v6.0.0"
-  , argonaut-traversals = "v8.0.0"
-  , array-views = "v0.0.2"
-  , arraybuffer = "v10.0.2"
-  , arraybuffer-builder = "v1.0.0"
-  , arraybuffer-class = "v0.2.5"
-  , arraybuffer-types = "v2.0.0"
-  , arrays = "v5.3.1"
-  , arrays-zipper = "v1.1.1"
-  , `assert` = "v4.1.0"
-  , avar = "v3.0.0"
-  , axios = "v1.1.2"
-  , b64 = "v0.0.6"
-  , basic-auth = "v1.0.3"
-  , behaviors = "v8.0.0"
-  , bifunctors = "v4.0.0"
-  , bigints = "v4.0.0"
-  , bip39 = "v1.0.1"
-  , biscotti-cookie = "v0.2.0"
-  , biscotti-session = "v0.1.2"
-  , bower-json = "v2.0.0"
-  , bucketchain = "v0.3.0"
-  , bucketchain-basic-auth = "v0.2.0"
-  , bucketchain-conditional = "v0.2.0"
-  , bucketchain-cors = "v0.3.0"
-  , bucketchain-csrf = "v0.1.0"
-  , bucketchain-header-utils = "v0.3.0"
-  , bucketchain-health = "v0.2.0"
-  , bucketchain-history-api-fallback = "v0.3.0"
-  , bucketchain-logger = "v0.3.0"
-  , bucketchain-secure = "v0.1.0"
-  , bucketchain-simple-api = "v3.0.0"
-  , bucketchain-sslify = "v0.2.0"
-  , bucketchain-static = "v0.3.0"
-  , byte-codec = "v0.0.1"
-  , bytestrings = "v8.0.0"
-  , call-by-name = "v2.0.0"
-  , canvas = "v4.0.0"
-  , canvas-action = "v5.0.1"
-  , cartesian = "v1.0.4"
-  , catenable-lists = "v5.0.1"
-  , checked-exceptions = "v3.1.0"
-  , cheerio = "v0.2.3"
-  , chirashi = "v1.0.0"
-  , choco-pie = "v5.0.0"
-  , classnames = "v0.1.1"
-  , clipboardy = "v1.0.3"
-  , codec = "v3.0.0"
-  , codec-argonaut = "v7.1.0"
-  , colors = "v5.0.0"
-  , concur-core = "v0.4.2"
-  , concur-react = "v0.4.2"
-  , console = "v4.4.0"
-  , const = "v4.1.0"
-  , contravariant = "v4.0.1"
-  , control = "v4.2.0"
-  , coroutines = "v5.0.1"
-  , crypto = "v2.0.1"
-  , css = "v4.0.0"
-  , cssom = "v0.0.2"
-  , data-algebrae = "v4.0.0"
-  , data-default = "v0.3.2"
-  , datetime = "v4.1.1"
-  , debug = "v4.0.0"
-  , decimals = "v5.0.0"
-  , distributive = "v4.0.0"
-  , dom-filereader = "v5.0.0"
-  , dom-indexed = "v7.0.0"
-  , dotenv = "v1.1.0"
-  , drawing = "v4.0.0"
-  , easy-ffi = "v2.1.2"
-  , effect = "v2.0.1"
-  , either = "v4.1.1"
-  , email-validate = "v5.0.0"
-  , encoding = "v0.0.6"
-  , enums = "v4.0.1"
-  , errors = "v4.1.0"
-  , event = "v1.3.0"
-  , exceptions = "v4.0.0"
-  , exists = "v4.0.0"
-  , exitcodes = "v4.0.0"
-  , expect-inferred = "v2.0.0"
-  , express = "v0.8.0"
-  , filterable = "v3.0.2"
-  , fixed-points = "v5.1.0"
-  , fixed-precision = "v4.3.1"
-  , flare = "v6.0.0"
-  , float32 = "v0.2.0"
-  , flow-id = "v1.0.0"
-  , foldable-traversable = "v4.1.1"
-  , folds = "v5.2.0"
-  , foreign = "v5.0.0"
-  , foreign-generic = "v10.0.0"
-  , foreign-object = "v2.0.3"
-  , fork = "v4.0.0"
-  , form-urlencoded = "v5.0.0"
-  , format = "v4.0.0"
-  , format-nix = "v0.3.0"
-  , formatters = "v4.0.1"
-  , free = "v5.2.0"
-  , freeap = "v5.0.1"
-  , freedom = "v2.2.0"
-  , freedom-now = "v3.0.0"
-  , freedom-portal = "v2.0.0"
-  , freedom-router = "v2.0.0"
-  , freedom-transition = "v2.0.0"
-  , freedom-virtualized = "v3.0.1"
-  , freedom-window-resize = "v2.0.0"
-  , freet = "v5.0.0"
-  , functions = "v4.0.0"
-  , functors = "v3.1.1"
-  , fuzzy = "v0.3.0"
-  , game = "v2.0.0"
-  , gen = "v2.1.1"
-  , generics-rep = "v6.1.1"
-  , geometry-plane = "v1.0.1"
-  , github-actions-toolkit = "v0.1.0"
-  , gl-matrix = "v2.0.1"
-  , globals = "v4.1.0"
-  , gomtang-basic = "v0.2.0"
-  , grain = "v0.7.0"
-  , grain-router = "v0.7.0"
-  , grain-virtualized = "v0.7.0"
-  , group = "v4.1.1"
-  , halogen = "v5.0.1"
-  , halogen-bootstrap = "v8.0.0"
-  , halogen-bootstrap4 = "v0.1.4"
-  , halogen-css = "v8.0.0"
-  , halogen-formless = "v1.0.0-rc.2"
-  , halogen-hooks = "v0.4.2"
-  , halogen-hooks-extra = "v0.7.1"
-  , halogen-select = "v5.0.0"
-  , halogen-storybook = "v1.0.0-rc.1"
-  , halogen-svg-elems = "v2.0.1"
-  , halogen-vdom = "v6.1.3"
-  , heterogeneous = "v0.4.1"
-  , higher-order = "v0.2.0"
-  , html-parser-halogen = "v1.0.0-rc.2"
-  , http-methods = "v4.0.2"
-  , httpure = "v0.10.0"
-  , httpure-contrib-biscotti = "v0.1.2"
-  , hyper = "v0.11.0"
-  , hypertrout = "v0.11.1"
-  , identity = "v4.1.0"
-  , identy = "v2.1.0"
-  , indexed-monad = "v1.2.0"
-  , inflection = "v1.0.1"
-  , int-53 = "v4.0.0"
-  , integers = "v4.0.0"
-  , interpolate = "v2.0.1"
-  , intmap = "v0.0.0"
-  , invariant = "v4.1.0"
-  , jajanmen = "v1.0.0"
-  , jquery = "v5.0.0"
-  , js-date = "v6.0.0"
-  , js-timers = "v4.0.1"
-  , json-pointer = "v1.1.0"
-  , json-schema = "v0.0.1"
-  , jwt = "v0.0.7"
-  , kancho = "v2.0.0"
-  , kishimen = "v1.0.1"
-  , lazy = "v4.0.0"
-  , lcg = "v2.0.0"
-  , leibniz = "v5.0.0"
-  , lenient-html-parser = "v4.0.0"
-  , lists = "v5.4.1"
-  , literals = "v0.1.1"
-  , logging = "v3.0.0"
-  , logging-journald = "v0.3.2"
-  , machines = "v5.1.0"
-  , makkori = "v1.0.0"
-  , math = "v2.1.1"
-  , matrices = "v5.0.1"
-  , maybe = "v4.0.1"
-  , media-types = "v4.0.1"
-  , memoize = "v5.0.0"
-  , metadata = "v0.13.8"
-  , milkis = "v7.4.0"
-  , minibench = "v2.0.0"
-  , mmorph = "v5.1.0"
-  , mol-draw = "v1.0.16"
-  , monad-control = "v5.0.0"
-  , monad-logger = "v1.3.1"
-  , monad-loops = "v0.5.0"
-  , monad-unlift = "v1.0.1"
-  , money = "v8.0.0"
-  , motsunabe = "v2.0.0"
-  , mysql = "v4.1.1"
-  , naporitan = "v1.0.0"
-  , naturals = "v3.0.0"
-  , newtype = "v3.0.0"
-  , node-buffer = "v6.0.0"
-  , node-child-process = "v6.0.0"
-  , node-electron = "v0.0.2"
-  , node-fs = "v5.0.1"
-  , node-fs-aff = "v6.0.0"
-  , node-he = "v0.2.0"
-  , node-http = "v5.0.2"
-  , node-net = "v1.0.0"
-  , node-path = "v3.0.0"
-  , node-postgres = "v5.0.0"
-  , node-process = "v7.0.0"
-  , node-readline = "v4.0.1"
-  , node-sqlite3 = "v6.0.0"
-  , node-streams = "v4.0.1"
-  , node-telegram-bot-api = "v4.0.0"
-  , node-url = "v4.0.0"
-  , nodemailer = "v2.0.2"
-  , nodetrout = "v0.0.1"
-  , nonempty = "v5.0.0"
-  , now = "v4.0.0"
-  , nullable = "v4.1.1"
-  , numbers = "v7.0.0"
-  , options = "v5.0.0"
-  , optlicative = "v6.0.1"
-  , optparse = "v3.0.1"
-  , ordered-collections = "v1.6.1"
-  , ordered-set = "v0.4.0"
-  , orders = "v4.0.0"
-  , pairing = "v5.1.0"
-  , pairs = "v7.0.0"
-  , parallel = "v4.0.0"
-  , parseint = "v1.1.1"
-  , parsing = "v5.0.3"
-  , parsing-dataview = "v1.1.1"
-  , parsing-expect = "v0.0.3"
-  , parsing-repetition = "v0.0.6"
-  , parsing-validation = "v0.1.2"
-  , partial = "v2.0.1"
-  , pathy = "v7.0.1"
-  , payload = "v0.3.0"
-  , phoenix = "v4.0.0"
-  , pipes = "v6.0.0"
-  , pointed-list = "v0.4.0"
-  , polyform = "v0.8.2"
-  , polymorphic-vectors = "v1.1.2"
-  , posix-types = "v4.0.0"
-  , precise-datetime = "v5.1.1"
-  , prelude = "v4.1.1"
-  , prettier = "v0.3.0"
-  , profunctor = "v4.1.0"
-  , profunctor-lenses = "v6.3.0"
-  , promises = "v3.1.1"
-  , proxy = "v3.0.0"
-  , proxying = "v1.1.0"
-  , psa-utils = "v7.0.0"
-  , psc-ide = "v16.0.0"
-  , psci-support = "v4.0.0"
-  , quantities = "v10.0.0"
-  , querydsl = "v0.10.1"
-  , queue = "v8.0.2"
-  , quickcheck = "v6.1.0"
-  , quickcheck-combinators = "v0.1.3"
-  , quickcheck-laws = "v5.1.0"
-  , quickcheck-utf8 = "v0.0.0"
-  , quotient = "v3.0.0"
-  , radox = "v1.0.0"
-  , random = "v4.0.0"
-  , rationals = "v5.0.0"
-  , rave = "v0.1.1"
-  , react = "v8.0.0"
-  , react-basic = "v15.0.0"
-  , react-basic-classic = "v1.0.1"
-  , react-basic-compat = "v1.0.1"
-  , react-basic-dnd = "v7.0.0"
-  , react-basic-dom = "v3.1.0"
-  , react-basic-emotion = "v5.0.0"
-  , react-basic-hooks = "v6.1.1"
-  , react-basic-native = "v0.1.3"
-  , react-dom = "v6.1.0"
-  , react-queue = "v1.3.2"
-  , react-radox = "v0.0.5"
-  , react-stylesheet = "v0.0.2"
-  , read = "v1.0.1"
-  , record = "v2.0.2"
-  , record-extra = "v3.0.1"
-  , record-format = "v2.0.0"
-  , redis-client = "v1.0.1"
-  , redis-hotqueue = "v0.2.1"
-  , redux-devtools = "v0.1.0"
-  , refined = "v1.0.0"
-  , refs = "v4.1.0"
-  , remotedata = "v4.2.0"
-  , result = "v1.0.3"
-  , ring-modules = "v5.0.1"
-  , routing = "v9.0.1"
-  , routing-duplex = "v0.4.1"
-  , row-extra = "v0.0.1"
-  , run = "v3.0.1"
-  , run-halogen = "v0.1.0"
-  , run-profunctor-lenses = "v0.1.0"
-  , run-streaming = "v2.0.0"
-  , safely = "v4.0.1"
-  , scrypt = "v1.0.1"
-  , search-trie = "v1.0.0"
-  , selection-foldable = "v0.2.0"
-  , selective = "v0.1.1"
-  , semirings = "v5.0.0"
-  , server-sent-events = "v0.2.0"
-  , setimmediate = "v1.0.2"
-  , shoronpo = "v0.3.0"
-  , signal = "v10.1.0"
-  , sijidou = "v1.0.0"
-  , simple-ajax = "v2.0.0"
-  , simple-emitter = "v1.0.0"
-  , simple-i18n = "v0.1.2"
-  , simple-json = "v7.0.0"
-  , simple-json-generics = "v0.1.0"
-  , simple-json-utils = "v0.1.0"
-  , simple-jwt = "v2.0.0"
-  , simple-timestamp = "v3.0.0"
-  , sized-matrices = "v1.0.0"
-  , sized-vectors = "v5.0.1"
-  , sjcl = "v0.0.1"
-  , slug = "v2.0.0"
-  , smolder = "v12.3.0"
-  , snabbdom = "v1.0.1"
-  , sodium = "v2.1.0"
-  , sparse-matrices = "v1.1.0"
-  , sparse-polynomials = "v1.0.3"
-  , spec = "v4.0.1"
-  , spec-discovery = "v4.0.0"
-  , spec-quickcheck = "v3.1.0"
-  , spork = "v1.0.0"
-  , st = "v4.1.1"
-  , string-parsers = "v5.0.1"
-  , strings = "v4.0.2"
-  , strings-extra = "v2.1.0"
-  , stringutils = "v0.0.10"
-  , struct = "v1.1.0"
-  , stylesheet = "v0.0.3"
-  , subcategory = "v0.2.0"
-  , subtlecrypto = "v0.0.1"
-  , suggest = "v5.0.0"
-  , sunde = "v2.0.0"
-  , svg-parser = "v1.0.0"
-  , svg-parser-halogen = "v2.0.0-rc.1"
-  , systemd-journald = "v0.2.1"
-  , tailrec = "v4.1.1"
-  , test-unit = "v15.0.0"
-  , text-encoding = "v1.0.0"
-  , thermite = "v6.3.1"
-  , thermite-dom = "v0.3.1"
-  , these = "v4.0.0"
-  , tolerant-argonaut = "v2.0.0"
-  , toppokki = "v2.4.0"
-  , tortellini = "v5.1.0"
-  , transformers = "v4.2.0"
-  , tree-rose = "v2.0.0"
-  , trout = "v0.12.3"
-  , trout-client = "v0.13.0"
-  , tuples = "v5.1.0"
-  , tuples-native = "v2.1.0"
-  , type-equality = "v3.0.0"
-  , type-isequal = "v0.1.0"
-  , typedenv = "v0.0.1"
-  , typelevel = "v6.0.0"
-  , typelevel-peano = "v0.1.8"
-  , typelevel-prelude = "v5.0.2"
-  , typelevel-rowlist-limits = "v0.0.6"
-  , uint = "v5.1.4"
-  , uint-instances = "v0.0.2"
-  , undefinable = "v4.0.0"
-  , undefined = "v1.0.2"
-  , undefined-or = "v1.0.1"
-  , unfoldable = "v4.1.0"
-  , unicode = "v4.0.1"
-  , unordered-collections = "v1.8.3"
-  , unorm = "v1.0.1"
-  , unsafe-coerce = "v4.0.0"
-  , unsafe-reference = "v3.0.1"
-  , untagged-union = "v0.1.1"
-  , uri = "v7.0.0"
-  , uuid = "v6.1.0"
-  , validated-molecule = "v1.0.5"
-  , validation = "v4.2.0"
-  , variant = "v6.0.1"
-  , vectorfield = "v1.0.1"
-  , web-clipboard = "v2.0.0"
-  , web-dom = "v4.1.0"
-  , web-events = "v2.0.1"
-  , web-file = "v2.3.0"
-  , web-html = "v2.3.0"
-  , web-socket = "v2.0.0"
-  , web-storage = "v3.0.0"
-  , web-touchevents = "v2.0.0"
-  , web-uievents = "v2.0.0"
-  , web-url = "v1.0.2"
-  , web-xhr = "v3.0.2"
-  , websocket-moderate = "v7.0.2"
-  , xiaomian = "v0.1.0"
-  , yargs = "v4.0.0"
-  , z85 = "v0.0.2"
-  , zeta = "v6.0.0"
-  , zeta-extra = "v0.0.1"
+let Address = ../Address.dhall
+
+let PackageSet = ../PackageSet.dhall
+
+let compiler = "v0.14.0"
+
+let packages =
+  { abides = Address.Registry { name = "abides", version = "v0.0.1" }
+  , ace = Address.Registry { name = "ace", version = "v7.0.0" }
+  , aff = Address.Registry { name = "aff", version = "v5.1.2" }
+  , aff-bus = Address.Registry { name = "aff-bus", version = "v4.0.0" }
+  , aff-coroutines = Address.Registry { name = "aff-coroutines", version = "v7.0.0" }
+  , aff-promise = Address.Registry { name = "aff-promise", version = "v2.1.0" }
+  , aff-retry = Address.Registry { name = "aff-retry", version = "v1.2.1" }
+  , affjax = Address.Registry { name = "affjax", version = "v10.1.0" }
+  , ansi = Address.Registry { name = "ansi", version = "v5.0.0" }
+  , argonaut = Address.Registry { name = "argonaut", version = "v7.0.0" }
+  , argonaut-codecs = Address.Registry { name = "argonaut-codecs", version = "v7.0.0" }
+  , argonaut-core = Address.Registry { name = "argonaut-core", version = "v5.1.0" }
+  , argonaut-generic = Address.Registry { name = "argonaut-generic", version = "v6.0.0" }
+  , argonaut-traversals = Address.Registry { name = "argonaut-traversals", version = "v8.0.0" }
+  , array-views = Address.Registry { name = "array-views", version = "v0.0.2" }
+  , arraybuffer = Address.Registry { name = "arraybuffer", version = "v10.0.2" }
+  , arraybuffer-builder = Address.Registry { name = "arraybuffer-builder", version = "v1.0.0" }
+  , arraybuffer-class = Address.Registry { name = "arraybuffer-class", version = "v0.2.5" }
+  , arraybuffer-types = Address.Registry { name = "arraybuffer-types", version = "v2.0.0" }
+  , arrays = Address.Registry { name = "arrays", version = "v5.3.1" }
+  , arrays-zipper = Address.Registry { name = "arrays-zipper", version = "v1.1.1" }
+  , `assert` = Address.Registry { name = "`assert`", version = "v4.1.0" }
+  , avar = Address.Registry { name = "avar", version = "v3.0.0" }
+  , axios = Address.Registry { name = "axios", version = "v1.1.2" }
+  , b64 = Address.Registry { name = "b64", version = "v0.0.6" }
+  , basic-auth = Address.Registry { name = "basic-auth", version = "v1.0.3" }
+  , behaviors = Address.Registry { name = "behaviors", version = "v8.0.0" }
+  , bifunctors = Address.Registry { name = "bifunctors", version = "v4.0.0" }
+  , bigints = Address.Registry { name = "bigints", version = "v4.0.0" }
+  , bip39 = Address.Registry { name = "bip39", version = "v1.0.1" }
+  , biscotti-cookie = Address.Registry { name = "biscotti-cookie", version = "v0.2.0" }
+  , biscotti-session = Address.Registry { name = "biscotti-session", version = "v0.1.2" }
+  , bower-json = Address.Registry { name = "bower-json", version = "v2.0.0" }
+  , bucketchain = Address.Registry { name = "bucketchain", version = "v0.3.0" }
+  , bucketchain-basic-auth = Address.Registry { name = "bucketchain-basic-auth", version = "v0.2.0" }
+  , bucketchain-conditional = Address.Registry { name = "bucketchain-conditional", version = "v0.2.0" }
+  , bucketchain-cors = Address.Registry { name = "bucketchain-cors", version = "v0.3.0" }
+  , bucketchain-csrf = Address.Registry { name = "bucketchain-csrf", version = "v0.1.0" }
+  , bucketchain-header-utils = Address.Registry { name = "bucketchain-header-utils", version = "v0.3.0" }
+  , bucketchain-health = Address.Registry { name = "bucketchain-health", version = "v0.2.0" }
+  , bucketchain-history-api-fallback = Address.Registry { name = "bucketchain-history-api-fallback", version = "v0.3.0" }
+  , bucketchain-logger = Address.Registry { name = "bucketchain-logger", version = "v0.3.0" }
+  , bucketchain-secure = Address.Registry { name = "bucketchain-secure", version = "v0.1.0" }
+  , bucketchain-simple-api = Address.Registry { name = "bucketchain-simple-api", version = "v3.0.0" }
+  , bucketchain-sslify = Address.Registry { name = "bucketchain-sslify", version = "v0.2.0" }
+  , bucketchain-static = Address.Registry { name = "bucketchain-static", version = "v0.3.0" }
+  , byte-codec = Address.Registry { name = "byte-codec", version = "v0.0.1" }
+  , bytestrings = Address.Registry { name = "bytestrings", version = "v8.0.0" }
+  , call-by-name = Address.Registry { name = "call-by-name", version = "v2.0.0" }
+  , canvas = Address.Registry { name = "canvas", version = "v4.0.0" }
+  , canvas-action = Address.Registry { name = "canvas-action", version = "v5.0.1" }
+  , cartesian = Address.Registry { name = "cartesian", version = "v1.0.4" }
+  , catenable-lists = Address.Registry { name = "catenable-lists", version = "v5.0.1" }
+  , checked-exceptions = Address.Registry { name = "checked-exceptions", version = "v3.1.0" }
+  , cheerio = Address.Registry { name = "cheerio", version = "v0.2.3" }
+  , chirashi = Address.Registry { name = "chirashi", version = "v1.0.0" }
+  , choco-pie = Address.Registry { name = "choco-pie", version = "v5.0.0" }
+  , classnames = Address.Registry { name = "classnames", version = "v0.1.1" }
+  , clipboardy = Address.Registry { name = "clipboardy", version = "v1.0.3" }
+  , codec = Address.Registry { name = "codec", version = "v3.0.0" }
+  , codec-argonaut = Address.Registry { name = "codec-argonaut", version = "v7.1.0" }
+  , colors = Address.Registry { name = "colors", version = "v5.0.0" }
+  , concur-core = Address.Registry { name = "concur-core", version = "v0.4.2" }
+  , concur-react = Address.Registry { name = "concur-react", version = "v0.4.2" }
+  , console = Address.Registry { name = "console", version = "v4.4.0" }
+  , const = Address.Registry { name = "const", version = "v4.1.0" }
+  , contravariant = Address.Registry { name = "contravariant", version = "v4.0.1" }
+  , control = Address.Registry { name = "control", version = "v4.2.0" }
+  , coroutines = Address.Registry { name = "coroutines", version = "v5.0.1" }
+  , crypto = Address.Registry { name = "crypto", version = "v2.0.1" }
+  , css = Address.Registry { name = "css", version = "v4.0.0" }
+  , cssom = Address.Registry { name = "cssom", version = "v0.0.2" }
+  , data-algebrae = Address.Registry { name = "data-algebrae", version = "v4.0.0" }
+  , data-default = Address.Registry { name = "data-default", version = "v0.3.2" }
+  , datetime = Address.Registry { name = "datetime", version = "v4.1.1" }
+  , debug = Address.Registry { name = "debug", version = "v4.0.0" }
+  , decimals = Address.Registry { name = "decimals", version = "v5.0.0" }
+  , distributive = Address.Registry { name = "distributive", version = "v4.0.0" }
+  , dom-filereader = Address.Registry { name = "dom-filereader", version = "v5.0.0" }
+  , dom-indexed = Address.Registry { name = "dom-indexed", version = "v7.0.0" }
+  , dotenv = Address.Registry { name = "dotenv", version = "v1.1.0" }
+  , drawing = Address.Registry { name = "drawing", version = "v4.0.0" }
+  , easy-ffi = Address.Registry { name = "easy-ffi", version = "v2.1.2" }
+  , effect = Address.Registry { name = "effect", version = "v2.0.1" }
+  , either = Address.Registry { name = "either", version = "v4.1.1" }
+  , email-validate = Address.Registry { name = "email-validate", version = "v5.0.0" }
+  , encoding = Address.Registry { name = "encoding", version = "v0.0.6" }
+  , enums = Address.Registry { name = "enums", version = "v4.0.1" }
+  , errors = Address.Registry { name = "errors", version = "v4.1.0" }
+  , event = Address.Registry { name = "event", version = "v1.3.0" }
+  , exceptions = Address.Registry { name = "exceptions", version = "v4.0.0" }
+  , exists = Address.Registry { name = "exists", version = "v4.0.0" }
+  , exitcodes = Address.Registry { name = "exitcodes", version = "v4.0.0" }
+  , expect-inferred = Address.Registry { name = "expect-inferred", version = "v2.0.0" }
+  , express = Address.Registry { name = "express", version = "v0.8.0" }
+  , filterable = Address.Registry { name = "filterable", version = "v3.0.2" }
+  , fixed-points = Address.Registry { name = "fixed-points", version = "v5.1.0" }
+  , fixed-precision = Address.Registry { name = "fixed-precision", version = "v4.3.1" }
+  , flare = Address.Registry { name = "flare", version = "v6.0.0" }
+  , float32 = Address.Registry { name = "float32", version = "v0.2.0" }
+  , flow-id = Address.Registry { name = "flow-id", version = "v1.0.0" }
+  , foldable-traversable = Address.Registry { name = "foldable-traversable", version = "v4.1.1" }
+  , folds = Address.Registry { name = "folds", version = "v5.2.0" }
+  , foreign = Address.Registry { name = "foreign", version = "v5.0.0" }
+  , foreign-generic = Address.Registry { name = "foreign-generic", version = "v10.0.0" }
+  , foreign-object = Address.Registry { name = "foreign-object", version = "v2.0.3" }
+  , fork = Address.Registry { name = "fork", version = "v4.0.0" }
+  , form-urlencoded = Address.Registry { name = "form-urlencoded", version = "v5.0.0" }
+  , format = Address.Registry { name = "format", version = "v4.0.0" }
+  , format-nix = Address.Registry { name = "format-nix", version = "v0.3.0" }
+  , formatters = Address.Registry { name = "formatters", version = "v4.0.1" }
+  , free = Address.Registry { name = "free", version = "v5.2.0" }
+  , freeap = Address.Registry { name = "freeap", version = "v5.0.1" }
+  , freedom = Address.Registry { name = "freedom", version = "v2.2.0" }
+  , freedom-now = Address.Registry { name = "freedom-now", version = "v3.0.0" }
+  , freedom-portal = Address.Registry { name = "freedom-portal", version = "v2.0.0" }
+  , freedom-router = Address.Registry { name = "freedom-router", version = "v2.0.0" }
+  , freedom-transition = Address.Registry { name = "freedom-transition", version = "v2.0.0" }
+  , freedom-virtualized = Address.Registry { name = "freedom-virtualized", version = "v3.0.1" }
+  , freedom-window-resize = Address.Registry { name = "freedom-window-resize", version = "v2.0.0" }
+  , freet = Address.Registry { name = "freet", version = "v5.0.0" }
+  , functions = Address.Registry { name = "functions", version = "v4.0.0" }
+  , functors = Address.Registry { name = "functors", version = "v3.1.1" }
+  , fuzzy = Address.Registry { name = "fuzzy", version = "v0.3.0" }
+  , game = Address.Registry { name = "game", version = "v2.0.0" }
+  , gen = Address.Registry { name = "gen", version = "v2.1.1" }
+  , generics-rep = Address.Registry { name = "generics-rep", version = "v6.1.1" }
+  , geometry-plane = Address.Registry { name = "geometry-plane", version = "v1.0.1" }
+  , github-actions-toolkit = Address.Registry { name = "github-actions-toolkit", version = "v0.1.0" }
+  , gl-matrix = Address.Registry { name = "gl-matrix", version = "v2.0.1" }
+  , globals = Address.Registry { name = "globals", version = "v4.1.0" }
+  , gomtang-basic = Address.Registry { name = "gomtang-basic", version = "v0.2.0" }
+  , grain = Address.Registry { name = "grain", version = "v0.7.0" }
+  , grain-router = Address.Registry { name = "grain-router", version = "v0.7.0" }
+  , grain-virtualized = Address.Registry { name = "grain-virtualized", version = "v0.7.0" }
+  , group = Address.Registry { name = "group", version = "v4.1.1" }
+  , halogen = Address.Registry { name = "halogen", version = "v5.0.1" }
+  , halogen-bootstrap = Address.Registry { name = "halogen-bootstrap", version = "v8.0.0" }
+  , halogen-bootstrap4 = Address.Registry { name = "halogen-bootstrap4", version = "v0.1.4" }
+  , halogen-css = Address.Registry { name = "halogen-css", version = "v8.0.0" }
+  , halogen-formless = Address.Registry { name = "halogen-formless", version = "v1.0.0-rc.2" }
+  , halogen-hooks = Address.Registry { name = "halogen-hooks", version = "v0.4.2" }
+  , halogen-hooks-extra = Address.Registry { name = "halogen-hooks-extra", version = "v0.7.1" }
+  , halogen-select = Address.Registry { name = "halogen-select", version = "v5.0.0" }
+  , halogen-storybook = Address.Registry { name = "halogen-storybook", version = "v1.0.0-rc.1" }
+  , halogen-svg-elems = Address.Registry { name = "halogen-svg-elems", version = "v2.0.1" }
+  , halogen-vdom = Address.Registry { name = "halogen-vdom", version = "v6.1.3" }
+  , heterogeneous = Address.Registry { name = "heterogeneous", version = "v0.4.1" }
+  , higher-order = Address.Registry { name = "higher-order", version = "v0.2.0" }
+  , html-parser-halogen = Address.Registry { name = "html-parser-halogen", version = "v1.0.0-rc.2" }
+  , http-methods = Address.Registry { name = "http-methods", version = "v4.0.2" }
+  , httpure = Address.Registry { name = "httpure", version = "v0.10.0" }
+  , httpure-contrib-biscotti = Address.Registry { name = "httpure-contrib-biscotti", version = "v0.1.2" }
+  , hyper = Address.Registry { name = "hyper", version = "v0.11.0" }
+  , hypertrout = Address.Registry { name = "hypertrout", version = "v0.11.1" }
+  , identity = Address.Registry { name = "identity", version = "v4.1.0" }
+  , identy = Address.Registry { name = "identy", version = "v2.1.0" }
+  , indexed-monad = Address.Registry { name = "indexed-monad", version = "v1.2.0" }
+  , inflection = Address.Registry { name = "inflection", version = "v1.0.1" }
+  , int-53 = Address.Registry { name = "int-53", version = "v4.0.0" }
+  , integers = Address.Registry { name = "integers", version = "v4.0.0" }
+  , interpolate = Address.Registry { name = "interpolate", version = "v2.0.1" }
+  , intmap = Address.Registry { name = "intmap", version = "v0.0.0" }
+  , invariant = Address.Registry { name = "invariant", version = "v4.1.0" }
+  , jajanmen = Address.Registry { name = "jajanmen", version = "v1.0.0" }
+  , jquery = Address.Registry { name = "jquery", version = "v5.0.0" }
+  , js-date = Address.Registry { name = "js-date", version = "v6.0.0" }
+  , js-timers = Address.Registry { name = "js-timers", version = "v4.0.1" }
+  , json-pointer = Address.Registry { name = "json-pointer", version = "v1.1.0" }
+  , json-schema = Address.Registry { name = "json-schema", version = "v0.0.1" }
+  , jwt = Address.Registry { name = "jwt", version = "v0.0.7" }
+  , kancho = Address.Registry { name = "kancho", version = "v2.0.0" }
+  , kishimen = Address.Registry { name = "kishimen", version = "v1.0.1" }
+  , lazy = Address.Registry { name = "lazy", version = "v4.0.0" }
+  , lcg = Address.Registry { name = "lcg", version = "v2.0.0" }
+  , leibniz = Address.Registry { name = "leibniz", version = "v5.0.0" }
+  , lenient-html-parser = Address.Registry { name = "lenient-html-parser", version = "v4.0.0" }
+  , lists = Address.Registry { name = "lists", version = "v5.4.1" }
+  , literals = Address.Registry { name = "literals", version = "v0.1.1" }
+  , logging = Address.Registry { name = "logging", version = "v3.0.0" }
+  , logging-journald = Address.Registry { name = "logging-journald", version = "v0.3.2" }
+  , machines = Address.Registry { name = "machines", version = "v5.1.0" }
+  , makkori = Address.Registry { name = "makkori", version = "v1.0.0" }
+  , math = Address.Registry { name = "math", version = "v2.1.1" }
+  , matrices = Address.Registry { name = "matrices", version = "v5.0.1" }
+  , maybe = Address.Registry { name = "maybe", version = "v4.0.1" }
+  , media-types = Address.Registry { name = "media-types", version = "v4.0.1" }
+  , memoize = Address.Registry { name = "memoize", version = "v5.0.0" }
+  , metadata = Address.Registry { name = "metadata", version = "v0.13.8" }
+  , milkis = Address.Registry { name = "milkis", version = "v7.4.0" }
+  , minibench = Address.Registry { name = "minibench", version = "v2.0.0" }
+  , mmorph = Address.Registry { name = "mmorph", version = "v5.1.0" }
+  , mol-draw = Address.Registry { name = "mol-draw", version = "v1.0.16" }
+  , monad-control = Address.Registry { name = "monad-control", version = "v5.0.0" }
+  , monad-logger = Address.Registry { name = "monad-logger", version = "v1.3.1" }
+  , monad-loops = Address.Registry { name = "monad-loops", version = "v0.5.0" }
+  , monad-unlift = Address.Registry { name = "monad-unlift", version = "v1.0.1" }
+  , money = Address.Registry { name = "money", version = "v8.0.0" }
+  , motsunabe = Address.Registry { name = "motsunabe", version = "v2.0.0" }
+  , mysql = Address.Registry { name = "mysql", version = "v4.1.1" }
+  , naporitan = Address.Registry { name = "naporitan", version = "v1.0.0" }
+  , naturals = Address.Registry { name = "naturals", version = "v3.0.0" }
+  , newtype = Address.Registry { name = "newtype", version = "v3.0.0" }
+  , node-buffer = Address.Registry { name = "node-buffer", version = "v6.0.0" }
+  , node-child-process = Address.Registry { name = "node-child-process", version = "v6.0.0" }
+  , node-electron = Address.Registry { name = "node-electron", version = "v0.0.2" }
+  , node-fs = Address.Registry { name = "node-fs", version = "v5.0.1" }
+  , node-fs-aff = Address.Registry { name = "node-fs-aff", version = "v6.0.0" }
+  , node-he = Address.Registry { name = "node-he", version = "v0.2.0" }
+  , node-http = Address.Registry { name = "node-http", version = "v5.0.2" }
+  , node-net = Address.Registry { name = "node-net", version = "v1.0.0" }
+  , node-path = Address.Registry { name = "node-path", version = "v3.0.0" }
+  , node-postgres = Address.Registry { name = "node-postgres", version = "v5.0.0" }
+  , node-process = Address.Registry { name = "node-process", version = "v7.0.0" }
+  , node-readline = Address.Registry { name = "node-readline", version = "v4.0.1" }
+  , node-sqlite3 = Address.Registry { name = "node-sqlite3", version = "v6.0.0" }
+  , node-streams = Address.Registry { name = "node-streams", version = "v4.0.1" }
+  , node-telegram-bot-api = Address.Registry { name = "node-telegram-bot-api", version = "v4.0.0" }
+  , node-url = Address.Registry { name = "node-url", version = "v4.0.0" }
+  , nodemailer = Address.Registry { name = "nodemailer", version = "v2.0.2" }
+  , nodetrout = Address.Registry { name = "nodetrout", version = "v0.0.1" }
+  , nonempty = Address.Registry { name = "nonempty", version = "v5.0.0" }
+  , now = Address.Registry { name = "now", version = "v4.0.0" }
+  , nullable = Address.Registry { name = "nullable", version = "v4.1.1" }
+  , numbers = Address.Registry { name = "numbers", version = "v7.0.0" }
+  , options = Address.Registry { name = "options", version = "v5.0.0" }
+  , optlicative = Address.Registry { name = "optlicative", version = "v6.0.1" }
+  , optparse = Address.Registry { name = "optparse", version = "v3.0.1" }
+  , ordered-collections = Address.Registry { name = "ordered-collections", version = "v1.6.1" }
+  , ordered-set = Address.Registry { name = "ordered-set", version = "v0.4.0" }
+  , orders = Address.Registry { name = "orders", version = "v4.0.0" }
+  , pairing = Address.Registry { name = "pairing", version = "v5.1.0" }
+  , pairs = Address.Registry { name = "pairs", version = "v7.0.0" }
+  , parallel = Address.Registry { name = "parallel", version = "v4.0.0" }
+  , parseint = Address.Registry { name = "parseint", version = "v1.1.1" }
+  , parsing = Address.Registry { name = "parsing", version = "v5.0.3" }
+  , parsing-dataview = Address.Registry { name = "parsing-dataview", version = "v1.1.1" }
+  , parsing-expect = Address.Registry { name = "parsing-expect", version = "v0.0.3" }
+  , parsing-repetition = Address.Registry { name = "parsing-repetition", version = "v0.0.6" }
+  , parsing-validation = Address.Registry { name = "parsing-validation", version = "v0.1.2" }
+  , partial = Address.Registry { name = "partial", version = "v2.0.1" }
+  , pathy = Address.Registry { name = "pathy", version = "v7.0.1" }
+  , payload = Address.Registry { name = "payload", version = "v0.3.0" }
+  , phoenix = Address.Registry { name = "phoenix", version = "v4.0.0" }
+  , pipes = Address.Registry { name = "pipes", version = "v6.0.0" }
+  , pointed-list = Address.Registry { name = "pointed-list", version = "v0.4.0" }
+  , polyform = Address.Registry { name = "polyform", version = "v0.8.2" }
+  , polymorphic-vectors = Address.Registry { name = "polymorphic-vectors", version = "v1.1.2" }
+  , posix-types = Address.Registry { name = "posix-types", version = "v4.0.0" }
+  , precise-datetime = Address.Registry { name = "precise-datetime", version = "v5.1.1" }
+  , prelude = Address.Registry { name = "prelude", version = "v4.1.1" }
+  , prettier = Address.Registry { name = "prettier", version = "v0.3.0" }
+  , profunctor = Address.Registry { name = "profunctor", version = "v4.1.0" }
+  , profunctor-lenses = Address.Registry { name = "profunctor-lenses", version = "v6.3.0" }
+  , promises = Address.Registry { name = "promises", version = "v3.1.1" }
+  , proxy = Address.Registry { name = "proxy", version = "v3.0.0" }
+  , proxying = Address.Registry { name = "proxying", version = "v1.1.0" }
+  , psa-utils = Address.Registry { name = "psa-utils", version = "v7.0.0" }
+  , psc-ide = Address.Registry { name = "psc-ide", version = "v16.0.0" }
+  , psci-support = Address.Registry { name = "psci-support", version = "v4.0.0" }
+  , quantities = Address.Registry { name = "quantities", version = "v10.0.0" }
+  , querydsl = Address.Registry { name = "querydsl", version = "v0.10.1" }
+  , queue = Address.Registry { name = "queue", version = "v8.0.2" }
+  , quickcheck = Address.Registry { name = "quickcheck", version = "v6.1.0" }
+  , quickcheck-combinators = Address.Registry { name = "quickcheck-combinators", version = "v0.1.3" }
+  , quickcheck-laws = Address.Registry { name = "quickcheck-laws", version = "v5.1.0" }
+  , quickcheck-utf8 = Address.Registry { name = "quickcheck-utf8", version = "v0.0.0" }
+  , quotient = Address.Registry { name = "quotient", version = "v3.0.0" }
+  , radox = Address.Registry { name = "radox", version = "v1.0.0" }
+  , random = Address.Registry { name = "random", version = "v4.0.0" }
+  , rationals = Address.Registry { name = "rationals", version = "v5.0.0" }
+  , rave = Address.Registry { name = "rave", version = "v0.1.1" }
+  , react = Address.Registry { name = "react", version = "v8.0.0" }
+  , react-basic = Address.Registry { name = "react-basic", version = "v15.0.0" }
+  , react-basic-classic = Address.Registry { name = "react-basic-classic", version = "v1.0.1" }
+  , react-basic-compat = Address.Registry { name = "react-basic-compat", version = "v1.0.1" }
+  , react-basic-dnd = Address.Registry { name = "react-basic-dnd", version = "v7.0.0" }
+  , react-basic-dom = Address.Registry { name = "react-basic-dom", version = "v3.1.0" }
+  , react-basic-emotion = Address.Registry { name = "react-basic-emotion", version = "v5.0.0" }
+  , react-basic-hooks = Address.Registry { name = "react-basic-hooks", version = "v6.1.1" }
+  , react-basic-native = Address.Registry { name = "react-basic-native", version = "v0.1.3" }
+  , react-dom = Address.Registry { name = "react-dom", version = "v6.1.0" }
+  , react-queue = Address.Registry { name = "react-queue", version = "v1.3.2" }
+  , react-radox = Address.Registry { name = "react-radox", version = "v0.0.5" }
+  , react-stylesheet = Address.Registry { name = "react-stylesheet", version = "v0.0.2" }
+  , read = Address.Registry { name = "read", version = "v1.0.1" }
+  , record = Address.Registry { name = "record", version = "v2.0.2" }
+  , record-extra = Address.Registry { name = "record-extra", version = "v3.0.1" }
+  , record-format = Address.Registry { name = "record-format", version = "v2.0.0" }
+  , redis-client = Address.Registry { name = "redis-client", version = "v1.0.1" }
+  , redis-hotqueue = Address.Registry { name = "redis-hotqueue", version = "v0.2.1" }
+  , redux-devtools = Address.Registry { name = "redux-devtools", version = "v0.1.0" }
+  , refined = Address.Registry { name = "refined", version = "v1.0.0" }
+  , refs = Address.Registry { name = "refs", version = "v4.1.0" }
+  , remotedata = Address.Registry { name = "remotedata", version = "v4.2.0" }
+  , result = Address.Registry { name = "result", version = "v1.0.3" }
+  , ring-modules = Address.Registry { name = "ring-modules", version = "v5.0.1" }
+  , routing = Address.Registry { name = "routing", version = "v9.0.1" }
+  , routing-duplex = Address.Registry { name = "routing-duplex", version = "v0.4.1" }
+  , row-extra = Address.Registry { name = "row-extra", version = "v0.0.1" }
+  , run = Address.Registry { name = "run", version = "v3.0.1" }
+  , run-halogen = Address.Registry { name = "run-halogen", version = "v0.1.0" }
+  , run-profunctor-lenses = Address.Registry { name = "run-profunctor-lenses", version = "v0.1.0" }
+  , run-streaming = Address.Registry { name = "run-streaming", version = "v2.0.0" }
+  , safely = Address.Registry { name = "safely", version = "v4.0.1" }
+  , scrypt = Address.Registry { name = "scrypt", version = "v1.0.1" }
+  , search-trie = Address.Registry { name = "search-trie", version = "v1.0.0" }
+  , selection-foldable = Address.Registry { name = "selection-foldable", version = "v0.2.0" }
+  , selective = Address.Registry { name = "selective", version = "v0.1.1" }
+  , semirings = Address.Registry { name = "semirings", version = "v5.0.0" }
+  , server-sent-events = Address.Registry { name = "server-sent-events", version = "v0.2.0" }
+  , setimmediate = Address.Registry { name = "setimmediate", version = "v1.0.2" }
+  , shoronpo = Address.Registry { name = "shoronpo", version = "v0.3.0" }
+  , signal = Address.Registry { name = "signal", version = "v10.1.0" }
+  , sijidou = Address.Registry { name = "sijidou", version = "v1.0.0" }
+  , simple-ajax = Address.Registry { name = "simple-ajax", version = "v2.0.0" }
+  , simple-emitter = Address.Registry { name = "simple-emitter", version = "v1.0.0" }
+  , simple-i18n = Address.Registry { name = "simple-i18n", version = "v0.1.2" }
+  , simple-json = Address.Registry { name = "simple-json", version = "v7.0.0" }
+  , simple-json-generics = Address.Registry { name = "simple-json-generics", version = "v0.1.0" }
+  , simple-json-utils = Address.Registry { name = "simple-json-utils", version = "v0.1.0" }
+  , simple-jwt = Address.Registry { name = "simple-jwt", version = "v2.0.0" }
+  , simple-timestamp = Address.Registry { name = "simple-timestamp", version = "v3.0.0" }
+  , sized-matrices = Address.Registry { name = "sized-matrices", version = "v1.0.0" }
+  , sized-vectors = Address.Registry { name = "sized-vectors", version = "v5.0.1" }
+  , sjcl = Address.Registry { name = "sjcl", version = "v0.0.1" }
+  , slug = Address.Registry { name = "slug", version = "v2.0.0" }
+  , smolder = Address.Registry { name = "smolder", version = "v12.3.0" }
+  , snabbdom = Address.Registry { name = "snabbdom", version = "v1.0.1" }
+  , sodium = Address.Registry { name = "sodium", version = "v2.1.0" }
+  , sparse-matrices = Address.Registry { name = "sparse-matrices", version = "v1.1.0" }
+  , sparse-polynomials = Address.Registry { name = "sparse-polynomials", version = "v1.0.3" }
+  , spec = Address.Registry { name = "spec", version = "v4.0.1" }
+  , spec-discovery = Address.Registry { name = "spec-discovery", version = "v4.0.0" }
+  , spec-quickcheck = Address.Registry { name = "spec-quickcheck", version = "v3.1.0" }
+  , spork = Address.Registry { name = "spork", version = "v1.0.0" }
+  , st = Address.Registry { name = "st", version = "v4.1.1" }
+  , string-parsers = Address.Registry { name = "string-parsers", version = "v5.0.1" }
+  , strings = Address.Registry { name = "strings", version = "v4.0.2" }
+  , strings-extra = Address.Registry { name = "strings-extra", version = "v2.1.0" }
+  , stringutils = Address.Registry { name = "stringutils", version = "v0.0.10" }
+  , struct = Address.Registry { name = "struct", version = "v1.1.0" }
+  , stylesheet = Address.Registry { name = "stylesheet", version = "v0.0.3" }
+  , subcategory = Address.Registry { name = "subcategory", version = "v0.2.0" }
+  , subtlecrypto = Address.Registry { name = "subtlecrypto", version = "v0.0.1" }
+  , suggest = Address.Registry { name = "suggest", version = "v5.0.0" }
+  , sunde = Address.Registry { name = "sunde", version = "v2.0.0" }
+  , svg-parser = Address.Registry { name = "svg-parser", version = "v1.0.0" }
+  , svg-parser-halogen = Address.Registry { name = "svg-parser-halogen", version = "v2.0.0-rc.1" }
+  , systemd-journald = Address.Registry { name = "systemd-journald", version = "v0.2.1" }
+  , tailrec = Address.Registry { name = "tailrec", version = "v4.1.1" }
+  , test-unit = Address.Registry { name = "test-unit", version = "v15.0.0" }
+  , text-encoding = Address.Registry { name = "text-encoding", version = "v1.0.0" }
+  , thermite = Address.Registry { name = "thermite", version = "v6.3.1" }
+  , thermite-dom = Address.Registry { name = "thermite-dom", version = "v0.3.1" }
+  , these = Address.Registry { name = "these", version = "v4.0.0" }
+  , tolerant-argonaut = Address.Registry { name = "tolerant-argonaut", version = "v2.0.0" }
+  , toppokki = Address.Registry { name = "toppokki", version = "v2.4.0" }
+  , tortellini = Address.Registry { name = "tortellini", version = "v5.1.0" }
+  , transformers = Address.Registry { name = "transformers", version = "v4.2.0" }
+  , tree-rose = Address.Registry { name = "tree-rose", version = "v2.0.0" }
+  , trout = Address.Registry { name = "trout", version = "v0.12.3" }
+  , trout-client = Address.Registry { name = "trout-client", version = "v0.13.0" }
+  , tuples = Address.Registry { name = "tuples", version = "v5.1.0" }
+  , tuples-native = Address.Registry { name = "tuples-native", version = "v2.1.0" }
+  , type-equality = Address.Registry { name = "type-equality", version = "v3.0.0" }
+  , type-isequal = Address.Registry { name = "type-isequal", version = "v0.1.0" }
+  , typedenv = Address.Registry { name = "typedenv", version = "v0.0.1" }
+  , typelevel = Address.Registry { name = "typelevel", version = "v6.0.0" }
+  , typelevel-peano = Address.Registry { name = "typelevel-peano", version = "v0.1.8" }
+  , typelevel-prelude = Address.Registry { name = "typelevel-prelude", version = "v5.0.2" }
+  , typelevel-rowlist-limits = Address.Registry { name = "typelevel-rowlist-limits", version = "v0.0.6" }
+  , uint = Address.Registry { name = "uint", version = "v5.1.4" }
+  , uint-instances = Address.Registry { name = "uint-instances", version = "v0.0.2" }
+  , undefinable = Address.Registry { name = "undefinable", version = "v4.0.0" }
+  , undefined = Address.Registry { name = "undefined", version = "v1.0.2" }
+  , undefined-or = Address.Registry { name = "undefined-or", version = "v1.0.1" }
+  , unfoldable = Address.Registry { name = "unfoldable", version = "v4.1.0" }
+  , unicode = Address.Registry { name = "unicode", version = "v4.0.1" }
+  , unordered-collections = Address.Registry { name = "unordered-collections", version = "v1.8.3" }
+  , unorm = Address.Registry { name = "unorm", version = "v1.0.1" }
+  , unsafe-coerce = Address.Registry { name = "unsafe-coerce", version = "v4.0.0" }
+  , unsafe-reference = Address.Registry { name = "unsafe-reference", version = "v3.0.1" }
+  , untagged-union = Address.Registry { name = "untagged-union", version = "v0.1.1" }
+  , uri = Address.Registry { name = "uri", version = "v7.0.0" }
+  , uuid = Address.Registry { name = "uuid", version = "v6.1.0" }
+  , validated-molecule = Address.Registry { name = "validated-molecule", version = "v1.0.5" }
+  , validation = Address.Registry { name = "validation", version = "v4.2.0" }
+  , variant = Address.Registry { name = "variant", version = "v6.0.1" }
+  , vectorfield = Address.Registry { name = "vectorfield", version = "v1.0.1" }
+  , web-clipboard = Address.Registry { name = "web-clipboard", version = "v2.0.0" }
+  , web-dom = Address.Registry { name = "web-dom", version = "v4.1.0" }
+  , web-events = Address.Registry { name = "web-events", version = "v2.0.1" }
+  , web-file = Address.Registry { name = "web-file", version = "v2.3.0" }
+  , web-html = Address.Registry { name = "web-html", version = "v2.3.0" }
+  , web-socket = Address.Registry { name = "web-socket", version = "v2.0.0" }
+  , web-storage = Address.Registry { name = "web-storage", version = "v3.0.0" }
+  , web-touchevents = Address.Registry { name = "web-touchevents", version = "v2.0.0" }
+  , web-uievents = Address.Registry { name = "web-uievents", version = "v2.0.0" }
+  , web-url = Address.Registry { name = "web-url", version = "v1.0.2" }
+  , web-xhr = Address.Registry { name = "web-xhr", version = "v3.0.2" }
+  , websocket-moderate = Address.Registry { name = "websocket-moderate", version = "v7.0.2" }
+  , xiaomian = Address.Registry { name = "xiaomian", version = "v0.1.0" }
+  , yargs = Address.Registry { name = "yargs", version = "v4.0.0" }
+  , z85 = Address.Registry { name = "z85", version = "v0.0.2" }
+  , zeta = Address.Registry { name = "zeta", version = "v6.0.0" }
+  , zeta-extra = Address.Registry { name = "zeta-extra", version = "v0.0.1" }
   }
-}
+
+in { packages, compiler }
