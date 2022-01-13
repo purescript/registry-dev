@@ -6,12 +6,12 @@ import Data.Argonaut as Json
 import Data.Argonaut.Core (stringifyWithIndent)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.Map as Map
 import Data.String.NonEmpty as NES
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Jsonic as Jsonic
-import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
 import Node.FS.Aff as FS
@@ -19,6 +19,8 @@ import Registry.API as API
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..), Manifest(..))
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
+import Registry.Scripts.LegacyImport.Error (RawPackageName(..), RawVersion(..))
+import Safe.Coerce (coerce)
 import Test.Foreign.Jsonic (jsonic)
 import Test.Foreign.Licensee (licensee)
 import Test.Registry.Index as Registry.Index
@@ -291,17 +293,21 @@ bowerFileEncoding = do
   Spec.it "Can be decoded" do
     let
       dependencies =
-        Object.fromFoldable
+        Map.fromFoldable $ map coerce
           [ Tuple "dependency-first" "v1.0.0"
           , Tuple "dependency-second" "v2.0.0"
           ]
       devDependencies =
-        Object.fromFoldable
+        Map.fromFoldable $ map coerce
           [ Tuple "devdependency-first" "v0.0.1"
           , Tuple "devdependency-second" "v0.0.2"
           ]
       description = Nothing
-      bowerFile =
-        Bowerfile { license: NEA.fromArray $ Array.catMaybes [ NES.fromString "MIT" ], dependencies, devDependencies, description }
+      bowerFile = Bowerfile
+        { license: NEA.fromArray $ Array.catMaybes [ NES.fromString "MIT" ]
+        , dependencies
+        , devDependencies
+        , description
+        }
     (Json.decodeJson $ Json.encodeJson bowerFile) `Assert.shouldContain` bowerFile
 

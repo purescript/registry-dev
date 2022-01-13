@@ -9,6 +9,7 @@ import Data.Argonaut (Json, (.:?))
 import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.Map as Map
 import Data.String.NonEmpty (NonEmptyString)
 import Data.String.NonEmpty as NES
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
@@ -27,8 +28,8 @@ instance Json.DecodeJson Bowerfile where
     obj <- Json.decodeJson json
     description <- obj .:? "description"
     license <- decodeStringOrStringArray obj "license"
-    dependencies <- fromMaybe mempty <$> obj .:? "dependencies"
-    devDependencies <- fromMaybe mempty <$> obj .:? "devDependencies"
+    dependencies <- fromMaybe Map.empty <$> obj .:? "dependencies"
+    devDependencies <- fromMaybe Map.empty <$> obj .:? "devDependencies"
     pure $ Bowerfile { description, license, dependencies, devDependencies }
 
 decodeStringOrStringArray

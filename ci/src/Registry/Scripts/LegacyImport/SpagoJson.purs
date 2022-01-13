@@ -13,25 +13,18 @@ import Data.Map as Map
 import Data.String.NonEmpty (NonEmptyString)
 import Data.String.NonEmpty as NES
 import Foreign.Object as Object
-import Registry.Scripts.LegacyImport.Error (RawPackageName(..), RawVersion(..))
+import Registry.Scripts.LegacyImport.Error (RawPackageName(..), RawVersion)
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 
 toManifestFields :: SpagoJson -> ManifestFields
-toManifestFields spago@(SpagoJson { license }) =
+toManifestFields (SpagoJson { license, dependencies, packages }) =
   { license: map NEA.singleton license
-  , dependencies: packageDependencies spago
-  , devDependencies: Object.empty
+  , dependencies: do
+      let foldFn deps name = maybe deps (\v -> Map.insert name v deps) (Map.lookup name packages)
+      Array.foldl foldFn Map.empty dependencies
+  , devDependencies: Map.empty
   , description: Nothing
   }
-
-packageDependencies :: SpagoJson -> Object String
-packageDependencies (SpagoJson { dependencies, packages }) = do
-  let
-    foldFn m name = fromMaybe m do
-      version <- Map.lookup name packages
-      pure $ Object.insert (un RawPackageName name) (un RawVersion version) m
-
-  Array.foldl foldFn Object.empty dependencies
 
 -- | The output of calling `dhall-to-json` on a `spago.dhall` file
 newtype SpagoJson = SpagoJson

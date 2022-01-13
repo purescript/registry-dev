@@ -12,6 +12,7 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Interpolate (i)
 import Data.Lens as Lens
+import Data.Map as Map
 import Data.String as String
 import Data.String.NonEmpty as NES
 import Foreign.Dhall as Dhall
@@ -19,9 +20,9 @@ import Foreign.GitHub as GitHub
 import Foreign.Jsonic as Jsonic
 import Foreign.Licensee as Licensee
 import Foreign.Object as Object
+import Foreign.SPDX as SPDX
 import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
-import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Registry.PackageName (PackageName)
@@ -232,7 +233,7 @@ toManifest package repository version manifest = do
       let
         -- We trim out packages that don't begin with `purescript-`, as these
         -- are JavaScript dependencies being specified in the Bowerfile.
-        filterNames = Array.catMaybes <<< map \(Tuple packageName versionRange) ->
+        filterNames = Array.catMaybes <<< map \(Tuple (RawPackageName packageName) (RawVersion versionRange)) ->
           case String.take 11 packageName of
             "purescript-" -> Just $ Tuple (String.drop 11 packageName) versionRange
             _ -> Nothing
@@ -252,8 +253,8 @@ toManifest package repository version manifest = do
             Nothing -> Left { dependency: packageName, failedBounds: versionStr }
             Just range -> Right $ Tuple (PackageName.print packageName) range
 
-      normalizedDeps <- normalizeDeps $ Object.toUnfoldable manifest.dependencies
-      normalizedDevDeps <- normalizeDeps $ Object.toUnfoldable manifest.devDependencies
+      normalizedDeps <- normalizeDeps $ Map.toUnfoldable manifest.dependencies
+      normalizedDevDeps <- normalizeDeps $ Map.toUnfoldable manifest.devDependencies
 
       let
         readDeps = map checkDepPair >>> partitionEithers >>> \{ fail, success } ->

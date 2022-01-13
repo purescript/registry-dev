@@ -49,6 +49,7 @@ newtype RawPackageName = RawPackageName String
 derive instance Newtype RawPackageName _
 derive newtype instance Eq RawPackageName
 derive newtype instance Ord RawPackageName
+derive newtype instance Show RawPackageName
 derive newtype instance Json.EncodeJson RawPackageName
 derive newtype instance Json.DecodeJson RawPackageName
 
@@ -58,6 +59,7 @@ newtype RawVersion = RawVersion String
 derive instance Newtype RawVersion _
 derive newtype instance Eq RawVersion
 derive newtype instance Ord RawVersion
+derive newtype instance Show RawVersion
 derive newtype instance Json.EncodeJson RawVersion
 derive newtype instance Json.DecodeJson RawVersion
 
