@@ -6,8 +6,6 @@ module Registry.Prelude
   , partitionEithers
   , stripPureScriptPrefix
   , newlines
-  , objectFromMap
-  , objectToMap
   , fromJust'
   ) where
 
@@ -26,7 +24,6 @@ import Data.FoldableWithIndex (forWithIndex_, foldlWithIndex) as Extra
 import Data.Identity (Identity) as Extra
 import Data.List (List) as Extra
 import Data.Map (Map) as Extra
-import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing, isJust, maybe) as Maybe
 import Data.Newtype (un, class Newtype) as Extra
 import Data.Nullable (toMaybe, toNullable, Nullable) as Extra
@@ -44,7 +41,6 @@ import Effect.Class (liftEffect, class MonadEffect) as Extra
 import Effect.Class.Console (error, log, info, logShow) as Extra
 import Effect.Ref (Ref) as Extra
 import Foreign.Object (Object) as Extra
-import Foreign.Object as Object
 import Node.Buffer (Buffer) as Extra
 import Node.Encoding (Encoding(..)) as Extra
 import Node.Path (FilePath) as Extra
@@ -55,21 +51,6 @@ partitionEithers :: forall e a. Array (Either.Either e a) -> { fail :: Array e, 
 partitionEithers = Array.foldMap case _ of
   Either.Left err -> { fail: [ err ], success: [] }
   Either.Right res -> { fail: [], success: [ res ] }
-
--- | Convert a Map into an Object, converting its keys to strings along the way.
-objectFromMap :: forall k a. Ord k => (k -> String) -> Extra.Map k a -> Extra.Object a
-objectFromMap toString = Object.fromFoldable <<< map (Extra.lmap toString) <<< (Map.toUnfoldable :: _ -> Array _)
-
--- | Convert an Object into a Map. Keys that cannot be parsed from a string will
--- | be removed from the map.
-objectToMap :: forall k a. Ord k => (String -> Maybe.Maybe k) -> Extra.Object a -> Extra.Map k a
-objectToMap fromString = do
-  let
-    parse (Extra.Tuple str a) = case fromString str of
-      Maybe.Nothing -> Maybe.Nothing
-      Maybe.Just key -> Maybe.Just (Extra.Tuple key a)
-
-  Map.fromFoldable <<< Array.catMaybes <<< map parse <<< (Object.toUnfoldable :: _ -> Array _)
 
 -- | Strip the "purescript-" prefix from a package name, if present.
 -- |
