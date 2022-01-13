@@ -17,7 +17,6 @@ import Data.String as String
 import Data.String.NonEmpty as NES
 import Foreign.Dhall as Dhall
 import Foreign.GitHub as GitHub
-import Foreign.Jsonic as Jsonic
 import Foreign.Licensee as Licensee
 import Foreign.Object as Object
 import Foreign.SPDX as SPDX
@@ -25,6 +24,7 @@ import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
+import Registry.Json as RegistryJson
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo, Manifest(..))
@@ -76,12 +76,11 @@ constructManifestFields package version address = do
     -- and otherwise fall back to the Spago file.
     bowerManifest <- Except.runExceptT do
       result <- Except.except files.bowerJson
-      case Jsonic.parseJson result >>= Json.decodeJson of
-        Left err -> do
-          let printed = Json.printJsonDecodeError err
-          log $ "Could not decode returned bower.json. " <> printed
+      case RegistryJson.parseJson result of
+        Left error -> do
+          log $ "Could not decode returned bower.json: " <> error
           log result
-          throwError $ ResourceError { resource: FileResource BowerJson, error: DecodeError printed }
+          throwError $ ResourceError { resource: FileResource BowerJson, error: DecodeError error }
         Right bowerfile ->
           pure $ Bowerfile.toManifestFields bowerfile
 

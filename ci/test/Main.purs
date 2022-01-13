@@ -11,11 +11,11 @@ import Data.String.NonEmpty as NES
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
 import Foreign.GitHub (IssueNumber(..))
-import Foreign.Jsonic as Jsonic
 import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
 import Node.FS.Aff as FS
 import Registry.API as API
+import Registry.Json as RegistryJson
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..), Manifest(..))
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
@@ -221,8 +221,8 @@ semVer = do
 goodBowerfiles :: Spec.Spec Unit
 goodBowerfiles = do
   let
-    parse :: String -> Either Json.JsonDecodeError Bowerfile
-    parse = Jsonic.parseJson >=> Json.decodeJson
+    parse :: String -> Either String Bowerfile
+    parse = RegistryJson.parseJson
 
     parseBowerfile' str = Spec.it str do
       parse str `Assert.shouldSatisfy` isRight
@@ -265,8 +265,8 @@ goodBowerfiles = do
 badBowerfiles :: Spec.Spec Unit
 badBowerfiles = do
   let
-    parse :: String -> Either Json.JsonDecodeError Bowerfile
-    parse = Jsonic.parseJson >=> Json.decodeJson
+    parse :: String -> Either String Bowerfile
+    parse = RegistryJson.parseJson
 
     failParseBowerfile' str = Spec.it str do
       parse str `Assert.shouldNotSatisfy` isRight
@@ -309,5 +309,5 @@ bowerFileEncoding = do
         , devDependencies
         , description
         }
-    (Json.decodeJson $ Json.encodeJson bowerFile) `Assert.shouldContain` bowerFile
+    RegistryJson.roundtrip bowerFile `Assert.shouldContain` bowerFile
 

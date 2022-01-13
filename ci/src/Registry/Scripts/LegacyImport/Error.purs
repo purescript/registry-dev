@@ -8,6 +8,7 @@ import Data.Argonaut.Encode.Generic as Json.Encode.Generic
 import Data.Argonaut.Types.Generic as Json.Generic
 import Data.Generic.Rep (class Generic)
 import Data.Interpolate (i)
+import Registry.Json (class RegistryJson)
 import Registry.PackageName (PackageName)
 import Safe.Coerce (coerce)
 
@@ -52,6 +53,7 @@ derive newtype instance Ord RawPackageName
 derive newtype instance Show RawPackageName
 derive newtype instance Json.EncodeJson RawPackageName
 derive newtype instance Json.DecodeJson RawPackageName
+derive newtype instance RegistryJson RawPackageName
 
 -- | An unprocessed version, taken from a GitHub tag
 newtype RawVersion = RawVersion String
@@ -62,6 +64,7 @@ derive newtype instance Ord RawVersion
 derive newtype instance Show RawVersion
 derive newtype instance Json.EncodeJson RawVersion
 derive newtype instance Json.DecodeJson RawVersion
+derive newtype instance RegistryJson RawVersion
 
 -- | An error representing why a package version cannot be imported from the
 -- | Bower registry.

@@ -21,6 +21,7 @@ module Registry.Json
   , (.:)
   , getOptional
   , (.:?)
+  , roundtrip
   , encode
   , decode
   -- Required for record instances, but not intended for use in user code
@@ -101,6 +102,9 @@ getOptional object key = maybe (pure Nothing) decode' (Object.lookup key object)
   decode' json = if Core.isNull json then pure Nothing else map Just (decode json)
 
 infix 7 getOptional as .:?
+
+roundtrip :: forall a. RegistryJson a => a -> Either String a
+roundtrip = encode >>> decode
 
 -- | A class for encoding and decoding JSON
 class RegistryJson a where
