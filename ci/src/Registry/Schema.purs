@@ -1,13 +1,13 @@
 module Registry.Schema where
 
-import Registry.Prelude (class Eq, class Newtype, class Show, Maybe, Object, bind, discard, fromMaybe, genericShow, isJust, mempty, pure, show, ($), (<$>), (<<<), (<>), (<|>), (||))
+import Registry.Prelude
 
 import Data.Generic.Rep as Generic
 import Foreign.Object as Object
 import Foreign.SPDX (License)
 import Foreign.SemVer (SemVer, Range)
 import Foreign.SemVer as SemVer
-import Registry.Json (class RegistryJson, (.:), (.:?), (:=))
+import Registry.Json ((.:), (.:?), (:=))
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
