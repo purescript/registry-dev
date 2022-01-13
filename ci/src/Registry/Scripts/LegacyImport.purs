@@ -3,7 +3,6 @@ module Registry.Scripts.LegacyImport where
 import Registry.Prelude
 
 import Control.Monad.Except as Except
-import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
@@ -18,16 +17,18 @@ import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
 import Registry.API as API
 import Registry.Index (RegistryIndex)
+import Registry.Json as Json
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, runRegistryM)
 import Registry.Schema (Repo(..), Manifest(..), Operation(..), Metadata)
-import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..))
+import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.Stats as Stats
+import Registry.Types (RawPackageName(..), RawVersion(..))
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as StringParser
 
@@ -184,7 +185,7 @@ downloadLegacyRegistry = do
     Except.mapExceptT liftError $ Manifest.toManifest name repo tag.semVer manifestFields
 
   log "Writing exclusions file..."
-  writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
+  Json.writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
   Stats.logStats $ Stats.errorStats manifestRegistry
 
   let
@@ -205,7 +206,7 @@ downloadLegacyRegistry = do
 
   unless (Array.null unsatisfied) do
     log "Writing unsatisfied dependencies file..."
-    writeJsonFile "./unsatisfied-dependencies.json" unsatisfied
+    Json.writeJsonFile "./unsatisfied-dependencies.json" unsatisfied
 
     log (show (Array.length unsatisfied) <> " manifest entries with unsatisfied dependencies")
 
@@ -229,12 +230,12 @@ cleanPackageName (RawPackageName name) = do
     _ -> throwError $ MalformedPackageName name
 
 -- | Read the list of packages in a registry file
-readRegistryFile :: FilePath -> Aff (Map RawPackageName PackageURL)
+readRegistryFile :: FilePath -> Aff (Map RawPackageName GitHub.PackageURL)
 readRegistryFile source = do
-  registryFile <- readJsonFile ("../" <> source)
+  registryFile <- Json.readJsonFile ("../" <> source)
   case registryFile of
     Left err -> do
-      let decodeError = "Decoding " <> source <> "failed with error:\n\n" <> Json.printJsonDecodeError err
+      let decodeError = "Decoding " <> source <> "failed with error:\n\n" <> err
       throwError $ Aff.error decodeError
     Right packages -> do
       let toPackagesArray = Object.toArrayWithKey \k -> Tuple (RawPackageName $ stripPureScriptPrefix k)

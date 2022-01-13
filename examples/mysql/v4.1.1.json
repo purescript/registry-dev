@@ -1,14 +1,20 @@
 {
+  "name": "mysql",
   "version": "4.1.1",
+  "license": "MIT",
+  "repository": {
+    "githubOwner": "oreshinya",
+    "githubRepo": "purescript-mysql"
+  },
   "targets": {
     "lib": {
       "sources": [
         "src/**/*.purs"
       ],
       "dependencies": {
-        "purescript-simple-json": ">=7.0.0 <8.0.0-0",
         "purescript-aff": ">=5.0.2 <6.0.0-0",
-        "purescript-js-date": ">=6.0.0 <7.0.0-0"
+        "purescript-js-date": ">=6.0.0 <7.0.0-0",
+        "purescript-simple-json": ">=7.0.0 <8.0.0-0"
       }
     },
     "test": {
@@ -17,18 +23,12 @@
         "test/**/*.purs"
       ],
       "dependencies": {
-        "purescript-simple-json": ">=7.0.0 <8.0.0-0",
         "purescript-aff": ">=5.0.2 <6.0.0-0",
         "purescript-js-date": ">=6.0.0 <7.0.0-0",
-        "purescript-uuid": ">=6.0.0 <7.0.0-0",
-        "purescript-test-unit": ">=15.0.0 <16.0.0-0"
+        "purescript-simple-json": ">=7.0.0 <8.0.0-0",
+        "purescript-test-unit": ">=15.0.0 <16.0.0-0",
+        "purescript-uuid": ">=6.0.0 <7.0.0-0"
       }
     }
-  },
-  "repository": {
-    "githubOwner": "oreshinya",
-    "githubRepo": "purescript-mysql"
-  },
-  "name": "mysql",
-  "license": "MIT"
+  }
 }

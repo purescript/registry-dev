@@ -7,28 +7,30 @@ import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Except as Except
 import Control.Parallel (parallel, sequential)
-import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Interpolate (i)
 import Data.Lens as Lens
+import Data.Map as Map
 import Data.String as String
 import Data.String.NonEmpty as NES
 import Foreign.Dhall as Dhall
 import Foreign.GitHub as GitHub
-import Foreign.Jsonic as Jsonic
 import Foreign.Licensee as Licensee
 import Foreign.Object as Object
+import Foreign.SPDX as SPDX
 import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
-import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
+import Registry.Json as Json
+import Registry.Json as RegistryJson
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Repo, Manifest(..))
+import Registry.Schema (Manifest(..), Repo, Target(..))
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
-import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
+import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), RemoteResource(..), RequestError(..), fileResourcePath)
+import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)
@@ -75,12 +77,11 @@ constructManifestFields package version address = do
     -- and otherwise fall back to the Spago file.
     bowerManifest <- Except.runExceptT do
       result <- Except.except files.bowerJson
-      case Jsonic.parseJson result >>= Json.decodeJson of
-        Left err -> do
-          let printed = Json.printJsonDecodeError err
-          log $ "Could not decode returned bower.json. " <> printed
+      case RegistryJson.parseJson result of
+        Left error -> do
+          log $ "Could not decode returned bower.json: " <> error
           log result
-          throwError $ ResourceError { resource: FileResource BowerJson, error: DecodeError printed }
+          throwError $ ResourceError { resource: FileResource BowerJson, error: DecodeError error }
         Right bowerfile ->
           pure $ Bowerfile.toManifestFields bowerfile
 
@@ -152,7 +153,7 @@ constructManifestFields package version address = do
 
       Except.mapExceptT (map (lmap mkError))
         $ Except.ExceptT
-        $ map (_ >>= (Json.decodeJson >>> lmap Json.printJsonDecodeError)) runDhallJson
+        $ map (_ >>= Json.decode) runDhallJson
 
     pure spagoJson
 
@@ -232,7 +233,7 @@ toManifest package repository version manifest = do
       let
         -- We trim out packages that don't begin with `purescript-`, as these
         -- are JavaScript dependencies being specified in the Bowerfile.
-        filterNames = Array.catMaybes <<< map \(Tuple packageName versionRange) ->
+        filterNames = Array.catMaybes <<< map \(Tuple (RawPackageName packageName) (RawVersion versionRange)) ->
           case String.take 11 packageName of
             "purescript-" -> Just $ Tuple (String.drop 11 packageName) versionRange
             _ -> Nothing
@@ -252,8 +253,8 @@ toManifest package repository version manifest = do
             Nothing -> Left { dependency: packageName, failedBounds: versionStr }
             Just range -> Right $ Tuple (PackageName.print packageName) range
 
-      normalizedDeps <- normalizeDeps $ Object.toUnfoldable manifest.dependencies
-      normalizedDevDeps <- normalizeDeps $ Object.toUnfoldable manifest.devDependencies
+      normalizedDeps <- normalizeDeps $ Map.toUnfoldable manifest.dependencies
+      normalizedDevDeps <- normalizeDeps $ Map.toUnfoldable manifest.devDependencies
 
       let
         readDeps = map checkDepPair >>> partitionEithers >>> \{ fail, success } ->
@@ -271,12 +272,12 @@ toManifest package repository version manifest = do
         Left e, Right _ -> Left e
         Right _, Left e -> Left e
         Right deps, Right devDeps -> Right $ Object.fromFoldable $ Array.catMaybes
-          [ Just $ Tuple "lib"
+          [ Just $ Tuple "lib" $ Target
               { sources: [ "src/**/*.purs" ]
               , dependencies: Object.fromFoldable deps
               }
           , if (Array.null devDeps) then Nothing
-            else Just $ Tuple "test"
+            else Just $ Tuple "test" $ Target
               { sources: [ "src/**/*.purs", "test/**/*.purs" ]
               , dependencies: Object.fromFoldable (deps <> devDeps)
               }

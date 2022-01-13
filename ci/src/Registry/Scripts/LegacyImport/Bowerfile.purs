@@ -5,12 +5,12 @@ module Registry.Scripts.LegacyImport.Bowerfile
 
 import Registry.Prelude
 
-import Data.Argonaut (Json, (.:?))
-import Data.Argonaut as Json
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
-import Data.String.NonEmpty (NonEmptyString)
+import Data.Map as Map
 import Data.String.NonEmpty as NES
+import Registry.Json ((.:?))
+import Registry.Json as Json
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 
 toManifestFields :: Bowerfile -> ManifestFields
@@ -20,27 +20,18 @@ newtype Bowerfile = Bowerfile ManifestFields
 
 derive newtype instance Eq Bowerfile
 derive newtype instance Show Bowerfile
-derive newtype instance Json.EncodeJson Bowerfile
 
-instance Json.DecodeJson Bowerfile where
-  decodeJson json = do
-    obj <- Json.decodeJson json
+instance RegistryJson Bowerfile where
+  encode (Bowerfile fields) = Json.encode fields
+  decode json = do
+    obj <- Json.decode json
     description <- obj .:? "description"
-    license <- decodeStringOrStringArray obj "license"
-    dependencies <- fromMaybe mempty <$> obj .:? "dependencies"
-    devDependencies <- fromMaybe mempty <$> obj .:? "devDependencies"
-    pure $ Bowerfile { description, license, dependencies, devDependencies }
-
-decodeStringOrStringArray
-  :: Object Json
-  -> String
-  -> Either Json.JsonDecodeError (Maybe (NonEmptyArray NonEmptyString))
-decodeStringOrStringArray obj fieldName = do
-  let typeError = const $ Json.AtKey fieldName $ Json.TypeMismatch "String or Array"
-  lmap typeError do
-    value <- obj .:? fieldName
-    case value of
+    dependencies <- fromMaybe Map.empty <$> obj .:? "dependencies"
+    devDependencies <- fromMaybe Map.empty <$> obj .:? "devDependencies"
+    licenseField <- obj .:? "license"
+    license <- case licenseField of
       Nothing -> pure Nothing
-      Just v -> do
-        decoded <- (Json.decodeJson v <#> Array.singleton) <|> Json.decodeJson v
-        pure $ NEA.fromArray $ Array.catMaybes $ map NES.fromString decoded
+      Just value -> do
+        array <- (Json.decode value <#> Array.singleton) <|> Json.decode value
+        pure $ NEA.fromArray $ Array.mapMaybe NES.fromString array
+    pure $ Bowerfile { description, license, dependencies, devDependencies }

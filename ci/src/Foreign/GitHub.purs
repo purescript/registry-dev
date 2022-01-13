@@ -4,13 +4,13 @@ import Registry.Prelude
 
 import Control.Promise (Promise)
 import Control.Promise as Promise
-import Data.Argonaut ((.:))
-import Data.Argonaut as Json
 import Data.List as List
 import Data.Newtype (unwrap)
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
 import Effect.Uncurried (EffectFn2, EffectFn3, EffectFn4, runEffectFn2, runEffectFn3, runEffectFn4)
+import Registry.Json ((.:))
+import Registry.Json as Json
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as Parser
 import Text.Parsing.StringParser.CodePoints as Parse
@@ -25,11 +25,12 @@ newtype Event = Event
   , body :: String
   }
 
-derive instance newtypeEvent :: Newtype Event _
+derive instance Newtype Event _
 
-instance eventDecodeJson :: Json.DecodeJson Event where
-  decodeJson json = do
-    obj <- Json.decodeJson json
+instance RegistryJson Event where
+  encode (Event fields) = Json.encode fields
+  decode json = do
+    obj <- Json.decode json
     issue <- obj .: "issue"
     issueNumber <- issue .: "number"
     -- We accept issue creation and issue comment events, but both contain an
@@ -45,6 +46,13 @@ registryAddress :: Address
 registryAddress = { owner: "purescript", repo: "registry" }
 
 type Tag = { name :: String, sha :: String }
+
+newtype PackageURL = PackageURL String
+
+derive instance Newtype PackageURL _
+derive newtype instance Eq PackageURL
+derive newtype instance Ord PackageURL
+derive newtype instance RegistryJson PackageURL
 
 parseRepo :: PackageURL -> Either Parser.ParseError Address
 parseRepo = unwrap >>> Parser.runParser do
@@ -65,9 +73,10 @@ getReleases octokit address = Promise.toAffE $ runEffectFn2 getReleasesImpl octo
 
 newtype IssueNumber = IssueNumber Int
 
-instance newtypeIssueNumber :: Newtype IssueNumber Int
-derive newtype instance eqIssueNumber :: Eq IssueNumber
-derive newtype instance showIssueNumber :: Show IssueNumber
+instance Newtype IssueNumber Int
+derive newtype instance Eq IssueNumber
+derive newtype instance Show IssueNumber
+derive newtype instance RegistryJson IssueNumber
 
 foreign import createCommentImpl :: EffectFn4 Octokit Address Int String (Promise Unit)
 

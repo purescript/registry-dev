@@ -20,7 +20,7 @@ import Foreign.SemVer (Range, SemVer)
 import Registry.Index (RegistryIndex)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..))
+import Registry.Schema (Manifest(..), Target(..))
 
 type PackageWithVersion = { package :: PackageName, version :: SemVer }
 
@@ -175,5 +175,5 @@ unsafeGetLibDependencies :: Manifest -> Object Range
 unsafeGetLibDependencies (Manifest manifest) =
   ( fromJust'
       (\_ -> unsafeCrashWith "Manifest has no 'lib' target in 'toPackageGraph'")
-      (Object.lookup "lib" manifest.targets)
+      (un Target <$> Object.lookup "lib" manifest.targets)
   ).dependencies

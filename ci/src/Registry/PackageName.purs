@@ -6,11 +6,11 @@ module Registry.PackageName
 
 import Registry.Prelude
 
-import Data.Argonaut (class DecodeJson, class EncodeJson, JsonDecodeError(..), decodeJson, encodeJson)
 import Data.List as List
 import Data.List.NonEmpty as NEL
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
+import Registry.Json as Json
 import Text.Parsing.StringParser as Parser
 import Text.Parsing.StringParser.CodePoints as Parse
 import Text.Parsing.StringParser.Combinators ((<?>))
@@ -21,14 +21,11 @@ newtype PackageName = PackageName String
 derive newtype instance eqPackageName :: Eq PackageName
 derive newtype instance ordPackageName :: Ord PackageName
 
-instance decodeJsonPackageName :: DecodeJson PackageName where
-  decodeJson json = do
-    package <- decodeJson json
-    parse package # lmap \parseError ->
-      TypeMismatch $ "Expected PackageName: " <> Parser.printParserError parseError
-
-instance encodeJsonPackageName :: EncodeJson PackageName where
-  encodeJson = encodeJson <<< print
+instance RegistryJson PackageName where
+  encode = Json.encode <<< print
+  decode json = do
+    package <- Json.decode json
+    parse package # lmap (append "Expected PackageName: " <<< Parser.printParserError)
 
 instance Show PackageName where
   show = print
