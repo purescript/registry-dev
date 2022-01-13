@@ -1,13 +1,14 @@
 module Test.Support.Manifest where
 
 import Registry.Prelude
+
 import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
 import Partial.Unsafe as Partial.Unsafe
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..))
+import Registry.Schema (Manifest(..), Target(..))
 import Registry.Schema as Schema
 
 ab ::
@@ -20,7 +21,7 @@ ab = { name, v1a, v1b, v2 }
   where
   name = unsafeFromJust $ hush $ PackageName.parse "ab"
   version1 = unsafeFromJust $ SemVer.parseSemVer "1.0.0"
-  targets = Object.singleton "lib"
+  targets = Object.singleton "lib" $ Target
     { dependencies: Object.empty
     , sources: [ "src/**/*.purs" ]
     }
@@ -46,12 +47,12 @@ abc = { name, v1, v2 }
   where
   name = unsafeFromJust $ hush $ PackageName.parse "abc"
   version1 = unsafeFromJust $ SemVer.parseSemVer "1.0.0"
-  targets1 = Object.singleton "lib"
+  targets1 = Object.singleton "lib" $ Target
     { dependencies: Object.singleton "ab" (unsafeFromJust (SemVer.parseRange "^1.0.0"))
     , sources: [ "src/**/*.purs" ]
     }
   version2 = unsafeFromJust $ SemVer.parseSemVer "2.0.0"
-  targets2 = Object.singleton "lib"
+  targets2 = Object.singleton "lib" $ Target
     { dependencies: Object.singleton "ab" (unsafeFromJust (SemVer.parseRange "^2.0.0"))
     , sources: [ "src/**/*.purs" ]
     }
@@ -70,12 +71,12 @@ abcd = { name, v1, v2 }
   where
   name = unsafeFromJust $ hush $ PackageName.parse "abcd"
   version1 = unsafeFromJust $ SemVer.parseSemVer "1.0.0"
-  targets1 = Object.singleton "lib"
+  targets1 = Object.singleton "lib" $ Target
     { dependencies: Object.singleton "abc" (unsafeFromJust (SemVer.parseRange "^1.0.0"))
     , sources: [ "src/**/*.purs" ]
     }
   version2 = unsafeFromJust $ SemVer.parseSemVer "2.0.0"
-  targets2 = Object.singleton "lib"
+  targets2 = Object.singleton "lib" $ Target
     { dependencies: Object.singleton "abc" (unsafeFromJust (SemVer.parseRange "^2.0.0"))
     , sources: [ "src/**/*.purs" ]
     }

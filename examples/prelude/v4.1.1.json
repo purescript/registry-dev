@@ -1,5 +1,11 @@
 {
+  "name": "prelude",
   "version": "4.1.1",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "githubOwner": "purescript",
+    "githubRepo": "purescript-prelude"
+  },
   "targets": {
     "lib": {
       "sources": [
@@ -7,11 +13,5 @@
       ],
       "dependencies": {}
     }
-  },
-  "repository": {
-    "githubOwner": "purescript",
-    "githubRepo": "purescript-prelude"
-  },
-  "name": "prelude",
-  "license": "BSD-3-Clause"
+  }
 }

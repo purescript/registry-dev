@@ -1,6 +1,6 @@
 module Registry.Schema where
 
-import Registry.Prelude
+import Registry.Prelude (class Eq, class Newtype, class Show, Maybe, Object, bind, discard, fromMaybe, genericShow, isJust, mempty, pure, show, ($), (<$>), (<<<), (<>), (<|>), (||))
 
 import Data.Generic.Rep as Generic
 import Foreign.Object as Object
@@ -27,19 +27,31 @@ derive instance Newtype Manifest _
 
 instance RegistryJson Manifest where
   encode (Manifest fields) = Json.encodeObject do
-    "description" := fields.description
-    "license" := fields.license
     "name" := fields.name
-    "repository" := fields.repository
-    "targets" := fields.targets
     "version" := fields.version
+    "license" := fields.license
+    "repository" := fields.repository
+    "description" := fields.description
+    "targets" := fields.targets
 
   decode json = Manifest <$> Json.decode json
 
-type Target =
+newtype Target = Target
   { dependencies :: Object Range
   , sources :: Array String
   }
+
+derive instance Newtype Target _
+derive newtype instance Eq Target
+derive newtype instance Show Target
+
+-- We write a manual instance here to control the ordering of the resulting
+-- object, which we don't want to be alphabetical
+instance RegistryJson Target where
+  encode (Target fields) = Json.encodeObject do
+    "sources" := fields.sources
+    "dependencies" := fields.dependencies
+  decode json = Target <$> Json.decode json
 
 type RepoData d =
   { subdir :: Maybe String
@@ -71,8 +83,8 @@ instance RegistryJson Repo where
       "url" := url
       "subdir" := subdir
     GitHub { repo, owner, subdir } -> do
-      "githubRepo" := repo
       "githubOwner" := owner
+      "githubRepo" := repo
       "subdir" := subdir
 
   decode json = do

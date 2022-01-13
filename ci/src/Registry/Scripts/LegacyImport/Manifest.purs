@@ -27,7 +27,7 @@ import Registry.Json as Json
 import Registry.Json as RegistryJson
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Repo, Manifest(..))
+import Registry.Schema (Manifest(..), Repo, Target(..))
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
@@ -271,12 +271,12 @@ toManifest package repository version manifest = do
         Left e, Right _ -> Left e
         Right _, Left e -> Left e
         Right deps, Right devDeps -> Right $ Object.fromFoldable $ Array.catMaybes
-          [ Just $ Tuple "lib"
+          [ Just $ Tuple "lib" $ Target
               { sources: [ "src/**/*.purs" ]
               , dependencies: Object.fromFoldable deps
               }
           , if (Array.null devDeps) then Nothing
-            else Just $ Tuple "test"
+            else Just $ Tuple "test" $ Target
               { sources: [ "src/**/*.purs", "test/**/*.purs" ]
               , dependencies: Object.fromFoldable (deps <> devDeps)
               }

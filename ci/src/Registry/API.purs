@@ -30,7 +30,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), addVersionToMetadata, mkNewMetadata, isVersionInMetadata)
+import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), Target(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata)
 import Registry.Scripts.LegacyImport.Error (ImportError(..), RawPackageName(..), RawVersion(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Sunde as Process
@@ -246,7 +246,7 @@ runChecks metadata (Manifest manifest) = do
   logShow manifest
 
   log "Checking that the Manifest includes the `lib` target"
-  libTarget <- case Object.lookup "lib" manifest.targets of
+  Target libTarget <- case Object.lookup "lib" manifest.targets of
     Nothing -> throwWithComment "Didn't find `lib` target in the Manifest!"
     Just a -> pure a
 
