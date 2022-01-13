@@ -1,4 +1,4 @@
-module Foreign.Jsonic (parseJson) where
+module Foreign.Jsonic (parseJson, parseJsonic) where
 
 import Data.Argonaut (Json)
 import Data.Argonaut as Json
