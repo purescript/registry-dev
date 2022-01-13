@@ -55,6 +55,7 @@ import Node.FS.Aff as FS
 import Prim.Row as Row
 import Prim.RowList as RL
 import Record as Record
+import Prim.Coerce (class Coercible)
 import Safe.Coerce (coerce)
 import Type.Proxy (Proxy(..))
 
@@ -171,26 +172,15 @@ instance RegistryJson a => RegistryJson (NonEmptyArray a) where
   encode = encode <<< NEA.toArray
   decode = decode >=> NEA.fromArray >>> note "Expected NonEmptyArray"
 
-instance RegistryJson a => RegistryJson (Map String a) where
-  encode = encode <<< Object.fromFoldable <<< toTupleArray
-    where
-    toTupleArray :: Map String a -> Array (Tuple String a)
-    toTupleArray = Map.toUnfoldable
-
-  decode = map (Map.fromFoldable <<< toTupleArray) <=< decode
-    where
-    toTupleArray :: Object a -> Array (Tuple String a)
-    toTupleArray = Object.toAscUnfoldable
-
-else instance (Ord k, Newtype k String, RegistryJson v) => RegistryJson (Map k v) where
+instance (Ord k, Coercible k String, RegistryJson v) => RegistryJson (Map k v) where
   encode = encode <<< Object.fromFoldable <<< toTupleArray
     where
     toTupleArray :: Map k v -> Array (Tuple String v)
     toTupleArray = (coerce :: Array _ -> Array _) <<< Map.toUnfoldable
 
-  decode = map (Map.fromFoldable <<< map coerce <<< toTupleArray) <=< decode
+  decode = map (Map.fromFoldable <<< toTupleArray) <=< decode
     where
-    toTupleArray :: Object v -> Array (Tuple String v)
+    toTupleArray :: Object v -> Array (Tuple k v)
     toTupleArray = (coerce :: Array _ -> Array _) <<< Object.toAscUnfoldable
 
 instance (EncodeRecord row list, DecodeRecord row list, RL.RowToList row list) => RegistryJson (Record row) where
