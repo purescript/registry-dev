@@ -45,7 +45,6 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Int as Int
 import Data.Map as Map
-import Data.Newtype (unwrap, wrap)
 import Data.String.NonEmpty (NonEmptyString)
 import Data.String.NonEmpty as NES
 import Data.Symbol (class IsSymbol)
@@ -56,6 +55,7 @@ import Node.FS.Aff as FS
 import Prim.Row as Row
 import Prim.RowList as RL
 import Record as Record
+import Safe.Coerce (coerce)
 import Type.Proxy (Proxy(..))
 
 -- | Print a type as a formatted JSON string
@@ -136,6 +136,7 @@ instance RegistryJson a => RegistryJson (Array a) where
   decode = Core.caseJsonArray (Left "Expected Array") (traverse decode)
 
 instance RegistryJson a => RegistryJson (Object a) where
+  -- We intentionally do not sort objects here so as to preserve insertion order
   encode = Core.fromObject <<< map encode
   decode = Core.caseJsonObject (Left "Expected Object") (traverse decode)
 
@@ -171,15 +172,29 @@ instance RegistryJson a => RegistryJson (NonEmptyArray a) where
   decode = decode >=> NEA.fromArray >>> note "Expected NonEmptyArray"
 
 instance RegistryJson a => RegistryJson (Map String a) where
-  encode = encode <<< Object.fromFoldable <<< (Map.toUnfoldable :: _ -> Array _)
-  decode = map (Map.fromFoldable <<< (Object.toUnfoldable :: _ -> Array _)) <=< decode
+  encode = encode <<< Object.fromFoldable <<< toTupleArray
+    where
+    toTupleArray :: Map String a -> Array (Tuple String a)
+    toTupleArray = Map.toUnfoldable
+
+  decode = map (Map.fromFoldable <<< toTupleArray) <=< decode
+    where
+    toTupleArray :: Object a -> Array (Tuple String a)
+    toTupleArray = Object.toAscUnfoldable
 
 else instance (Ord k, Newtype k String, RegistryJson v) => RegistryJson (Map k v) where
-  encode = encode <<< Object.fromFoldable <<< map (lmap unwrap) <<< (Map.toUnfoldableUnordered :: _ -> Array _)
-  decode = map (Map.fromFoldable <<< map (lmap wrap) <<< (Object.toUnfoldable :: _ -> Array _)) <=< decode
+  encode = encode <<< Object.fromFoldable <<< toTupleArray
+    where
+    toTupleArray :: Map k v -> Array (Tuple String v)
+    toTupleArray = (coerce :: Array _ -> Array _) <<< Map.toUnfoldable
+
+  decode = map (Map.fromFoldable <<< map coerce <<< toTupleArray) <=< decode
+    where
+    toTupleArray :: Object v -> Array (Tuple String v)
+    toTupleArray = (coerce :: Array _ -> Array _) <<< Object.toAscUnfoldable
 
 instance (EncodeRecord row list, DecodeRecord row list, RL.RowToList row list) => RegistryJson (Record row) where
-  encode record = Core.fromObject $ Object.fromFoldable $ sortObject $ encodeRecord record (Proxy :: Proxy list)
+  encode record = encode $ Object.fromFoldable $ sortObject $ encodeRecord record (Proxy :: Proxy list)
     where
     sortObject :: Object Core.Json -> Array (Tuple String Core.Json)
     sortObject = Object.toAscUnfoldable
