@@ -11,9 +11,9 @@ let Prelude = ./Prelude.dhall
 let Repo = ./Repo.dhall
 
 let Address =
-  < Registry : { name : Text, version : Text }
-  | Repo : { repo : Repo, ref : Text }
-  | Local : Prelude.Location.Type
-  >
+    < Registry : { name : Text, version : Text }
+    | Repo : { repo : Repo, ref : Text }
+    | Local : Prelude.Location.Type
+    >
 
 in Address
