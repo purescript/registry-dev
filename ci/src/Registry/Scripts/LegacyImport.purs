@@ -24,10 +24,11 @@ import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, runRegistryM)
 import Registry.Schema (Repo(..), Manifest(..), Operation(..), Metadata)
-import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..))
+import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.Stats as Stats
+import Registry.Types (RawPackageName(..), RawVersion(..))
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as StringParser
 

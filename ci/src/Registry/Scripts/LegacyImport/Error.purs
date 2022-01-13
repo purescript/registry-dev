@@ -6,6 +6,7 @@ import Data.Interpolate (i)
 import Registry.Json (class RegistryJson, (.:))
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
+import Registry.Types (RawPackageName(..), RawVersion(..))
 
 -- | A map of error types to package names to package versions, where failed
 -- | versions contain rich information about why they failed.
@@ -23,24 +24,6 @@ derive newtype instance Ord ImportErrorKey
 
 instance Show ImportErrorKey where
   show (ImportErrorKey key) = i "(ImportErrorKey " key ")"
-
--- | An unprocessed package name, which may possibly be malformed.
-newtype RawPackageName = RawPackageName String
-
-derive instance Newtype RawPackageName _
-derive newtype instance Eq RawPackageName
-derive newtype instance Ord RawPackageName
-derive newtype instance Show RawPackageName
-derive newtype instance RegistryJson RawPackageName
-
--- | An unprocessed version, taken from a GitHub tag
-newtype RawVersion = RawVersion String
-
-derive instance Newtype RawVersion _
-derive newtype instance Eq RawVersion
-derive newtype instance Ord RawVersion
-derive newtype instance Show RawVersion
-derive newtype instance RegistryJson RawVersion
 
 -- | An error representing why a package version cannot be imported from the
 -- | Bower registry.

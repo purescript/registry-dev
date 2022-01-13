@@ -29,7 +29,8 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Manifest(..), Repo, Target(..))
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
-import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), RawPackageName(..), RawVersion(..), RemoteResource(..), RequestError(..), fileResourcePath)
+import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), RemoteResource(..), RequestError(..), fileResourcePath)
+import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)

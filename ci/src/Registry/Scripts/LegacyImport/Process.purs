@@ -23,8 +23,9 @@ import Node.FS.Stats (Stats(..))
 import Registry.Json (class RegistryJson)
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
-import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RawPackageName, RawVersion, RequestError(..))
+import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Error as LegacyImport.Error
+import Registry.Types (RawPackageName, RawVersion)
 
 type ProcessedPackages k a =
   { failures :: PackageFailures

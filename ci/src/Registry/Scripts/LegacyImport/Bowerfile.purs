@@ -11,6 +11,7 @@ import Data.Map as Map
 import Data.String.NonEmpty as NES
 import Registry.Json (class RegistryJson, (.:?))
 import Registry.Json as Json
+import Registry.Types (RawPackageName(..))
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 
 toManifestFields :: Bowerfile -> ManifestFields
