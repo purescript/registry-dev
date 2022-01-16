@@ -228,6 +228,39 @@ but it's allowed only for a set period of time because of the `leftpad` problem 
 
 Exceptions to this rule are legal concerns (e.g. DMCA takedown requests) for which Trustees might have to remove packages at any time.
 
+### Overriding a Package
+
+Building on the example above, what if we want to override the version of `effect`
+in the set with a local package?
+
+We'd then change our package manifest to look like this:
+
+```dhall
+let Registry = https://raw.githubusercontent.com/purescript/registry/master/v1/Registry.dhall
+
+let upstream = https://raw.githubusercontent.com/purescript/registry/master/v1/sets/20200418.dhall
+
+let overrides = { effect = From.Local ( ../my-effect/spago.dhall as Location ) }
+
+in  Registry.Package::{
+    , name = "my-package"
+    , packages = 
+        Registry.Index.PackageSet
+          { compiler = upstream.compiler
+          , packages = toMap (upstream.packages // overrides)
+          }
+    , targets =
+        toMap
+          { src = Registry.Target::{
+            , sources = [ "src/**/*.purs" ]
+            , dependencies = toMap { effect = "^2.0.0" }
+            }
+          }
+    }
+```
+
+In general any [`Address`](./v1/Address.dhall) works as an override.
+
 ## Package metadata
 
 Every package will have its own file in the `packages` folder of this repo.
