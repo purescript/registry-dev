@@ -2,37 +2,17 @@ module Registry.Scripts.LegacyImport.Error where
 
 import Registry.Prelude
 
-import Data.Argonaut as Json
-import Data.Argonaut.Decode.Generic as Json.Decode.Generic
-import Data.Argonaut.Encode.Generic as Json.Encode.Generic
-import Data.Argonaut.Types.Generic as Json.Generic
-import Data.Generic.Rep (class Generic)
 import Data.Interpolate (i)
+import Registry.Json ((.:))
+import Registry.Json as Json
 import Registry.PackageName (PackageName)
-import Safe.Coerce (coerce)
 
 -- | A map of error types to package names to package versions, where failed
 -- | versions contain rich information about why they failed.
 newtype PackageFailures = PackageFailures (Map ImportErrorKey (Map RawPackageName (Either ImportError (Map RawVersion ImportError))))
 
 derive instance Newtype PackageFailures _
-
-instance Json.EncodeJson PackageFailures where
-  encodeJson failures =
-    Json.encodeJson
-      $ objectFromMap coerce
-      $ map (objectFromMap coerce)
-      $ map (map (map (objectFromMap coerce)))
-      $ un PackageFailures failures
-
-instance Json.DecodeJson PackageFailures where
-  decodeJson json = do
-    failuresObject :: Object (Object (Either ImportError (Object ImportError))) <- Json.decodeJson json
-    pure
-      $ PackageFailures
-      $ objectToMap (Just <<< ImportErrorKey)
-      $ map (objectToMap (Just <<< RawPackageName))
-      $ map (map (map (objectToMap (Just <<< RawVersion)))) failuresObject
+derive newtype instance RegistryJson PackageFailures
 
 -- | An import error printed as a key usable in a map
 newtype ImportErrorKey = ImportErrorKey String
@@ -40,26 +20,9 @@ newtype ImportErrorKey = ImportErrorKey String
 derive instance Newtype ImportErrorKey _
 derive newtype instance Eq ImportErrorKey
 derive newtype instance Ord ImportErrorKey
+
 instance Show ImportErrorKey where
   show (ImportErrorKey key) = i "(ImportErrorKey " key ")"
-
--- | An unprocessed package name, which may possibly be malformed.
-newtype RawPackageName = RawPackageName String
-
-derive instance Newtype RawPackageName _
-derive newtype instance Eq RawPackageName
-derive newtype instance Ord RawPackageName
-derive newtype instance Json.EncodeJson RawPackageName
-derive newtype instance Json.DecodeJson RawPackageName
-
--- | An unprocessed version, taken from a GitHub tag
-newtype RawVersion = RawVersion String
-
-derive instance Newtype RawVersion _
-derive newtype instance Eq RawVersion
-derive newtype instance Ord RawVersion
-derive newtype instance Json.EncodeJson RawVersion
-derive newtype instance Json.DecodeJson RawVersion
 
 -- | An error representing why a package version cannot be imported from the
 -- | Bower registry.
@@ -73,13 +36,53 @@ data ImportError
   | ManifestImportError (NonEmptyArray ManifestError)
 
 derive instance Eq ImportError
-derive instance Generic ImportError _
 
-instance Json.EncodeJson ImportError where
-  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
+instance RegistryJson ImportError where
+  encode = case _ of
+    InvalidGitHubRepo repo ->
+      Json.encode { tag: "InvalidGitHubRepo", value: repo }
+    ResourceError error ->
+      Json.encode { tag: "ResourceError", value: error }
+    MalformedPackageName name ->
+      Json.encode { tag: "MalformedPackageName", value: name }
+    NoDependencyFiles ->
+      Json.encode "NoDependencyFiles"
+    NonRegistryDependencies array ->
+      Json.encode { tag: "NonRegistryDependencies", value: array }
+    NoManifests ->
+      Json.encode "NoManifests"
+    ManifestImportError array ->
+      Json.encode { tag: "ManifestImportError", value: array }
 
-instance Json.DecodeJson ImportError where
-  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+  decode json = do
+    let invalidGitHubRepo = tagged InvalidGitHubRepo "InvalidGitHubRepo"
+    let resourceError = tagged ResourceError "ResourceError"
+    let malformedPackageName = tagged MalformedPackageName "MalformedPackageName"
+    let noDependencyFiles = nullary NoDependencyFiles "NoDependencyFiles"
+    let nonRegistryDependencies = tagged NonRegistryDependencies "NonRegistryDependencies"
+    let noManifests = nullary NoManifests "NoManifests"
+    let manifestImportError = tagged ManifestImportError "ManifestImportError"
+    invalidGitHubRepo
+      <|> resourceError
+      <|> malformedPackageName
+      <|> noDependencyFiles
+      <|> nonRegistryDependencies
+      <|> noManifests
+      <|> manifestImportError
+    where
+    nullary :: ImportError -> String -> Either String ImportError
+    nullary ctor key = Json.decode json >>= case _ of
+      str | str == key -> Right ctor
+      _ -> Left ("Expected " <> key)
+
+    tagged :: forall a. RegistryJson a => (a -> ImportError) -> String -> Either String ImportError
+    tagged ctor key = do
+      obj <- Json.decode json
+      tag <- obj .: "tag"
+      if tag == key then
+        map ctor $ obj .: "value"
+      else
+        Left $ "Expected " <> tag
 
 manifestErrorKey :: ImportErrorKey
 manifestErrorKey = ImportErrorKey "manifestError"
@@ -101,13 +104,24 @@ type ResourceError = { resource :: RemoteResource, error :: RequestError }
 data RequestError = BadRequest | BadStatus Int | DecodeError String
 
 derive instance Eq RequestError
-derive instance Generic RequestError _
 
-instance Json.EncodeJson RequestError where
-  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
+instance RegistryJson RequestError where
+  encode = case _ of
+    BadRequest ->
+      Json.encode { tag: "BadRequest" }
+    BadStatus error ->
+      Json.encode { tag: "BadStatus ", value: error }
+    DecodeError error ->
+      Json.encode { tag: "DecodeError", value: error }
 
-instance Json.DecodeJson RequestError where
-  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+  decode json = do
+    obj <- Json.decode json
+    tag <- obj .: "tag"
+    case tag of
+      "BadRequest" -> Right BadRequest
+      "BadStatus" -> BadStatus <$> obj .: "value"
+      "DecodeError" -> DecodeError <$> obj .: "value"
+      other -> Left $ "Expected RequestError: " <> other
 
 -- | An error representing why a manifest could not be produced for this package
 data ManifestError
@@ -119,13 +133,49 @@ data ManifestError
   | BadDependencyVersions (NonEmptyArray { dependency :: PackageName, failedBounds :: String })
 
 derive instance Eq ManifestError
-derive instance Generic ManifestError _
 
-instance Json.EncodeJson ManifestError where
-  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
+instance RegistryJson ManifestError where
+  encode = case _ of
+    MissingName ->
+      Json.encode "MissingName"
+    MissingLicense ->
+      Json.encode "MissingLicense"
+    BadLicense array ->
+      Json.encode { tag: "BadLicense", value: array }
+    BadVersion version ->
+      Json.encode { tag: "BadVersion", value: version }
+    InvalidDependencyNames array ->
+      Json.encode { tag: "InvalidDependencyNames", value: array }
+    BadDependencyVersions array ->
+      Json.encode { tag: "BadDependencyVersions", value: array }
 
-instance Json.DecodeJson ManifestError where
-  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+  decode json = do
+    let missingName = nullary MissingName "MissingName"
+    let missingLicense = nullary MissingLicense "MissingLicense"
+    let badLicense = tagged BadLicense "BadLicense"
+    let badVersion = tagged BadVersion "BadVersion"
+    let invalidDependencyNames = tagged InvalidDependencyNames "InvalidDependencyNames"
+    let badDependencyVersions = tagged BadDependencyVersions "BadDependencyVersions"
+    missingName
+      <|> missingLicense
+      <|> badLicense
+      <|> badVersion
+      <|> invalidDependencyNames
+      <|> badDependencyVersions
+    where
+    nullary :: ManifestError -> String -> Either String ManifestError
+    nullary ctor key = Json.decode json >>= case _ of
+      str | str == key -> Right ctor
+      _ -> Left ("Expected " <> key)
+
+    tagged :: forall a. RegistryJson a => (a -> ManifestError) -> String -> Either String ManifestError
+    tagged ctor key = do
+      obj <- Json.decode json
+      tag <- obj .: "tag"
+      if tag == key then
+        map ctor $ obj .: "value"
+      else
+        Left $ "Expected " <> tag
 
 newtype ManifestErrorKey = ManifestErrorKey String
 
@@ -144,35 +194,33 @@ printManifestErrorKey = ManifestErrorKey <<< case _ of
   InvalidDependencyNames _ -> "invalidDependencyNames"
   BadDependencyVersions _ -> "badDependencyVersions"
 
-encodingOptions :: Json.Generic.Encoding
-encodingOptions = Json.Generic.defaultEncoding { unwrapSingleArguments = true }
-
 -- | A resource required for a package that has to be requested from a non-local
 -- | location.
 data RemoteResource = APIResource APIResource | FileResource FileResource
 
 derive instance Eq RemoteResource
-derive instance Generic RemoteResource _
 
-instance Json.EncodeJson RemoteResource where
-  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
-
-instance Json.DecodeJson RemoteResource where
-  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+instance RegistryJson RemoteResource where
+  encode = case _ of
+    APIResource resource -> Json.encode resource
+    FileResource resource -> Json.encode resource
+  decode json = do
+    let parseAPIResource = APIResource <$> Json.decode json
+    let parseFileResource = FileResource <$> Json.decode json
+    parseAPIResource <|> parseFileResource
 
 -- | A resource that has to be fetched via an API
 data APIResource = GitHubReleases
 
 derive instance Eq APIResource
-derive instance Generic APIResource _
 
-instance Json.EncodeJson APIResource where
-  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
+instance RegistryJson APIResource where
+  encode GitHubReleases = Json.encode "GitHubReleases"
+  decode = Json.decode >=> case _ of
+    "GitHubReleases" -> Right GitHubReleases
+    other -> Left $ "Expected APIResource: " <> other
 
-instance Json.DecodeJson APIResource where
-  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
-
--- | A resource that has to be fetched via donwloading the relevant file
+-- | A resource that has to be fetched via downloading the relevant file
 data FileResource
   = BowerJson
   | SpagoDhall
@@ -181,13 +229,16 @@ data FileResource
   | LicenseFile
 
 derive instance Eq FileResource
-derive instance Generic FileResource _
 
-instance Json.EncodeJson FileResource where
-  encodeJson = Json.Encode.Generic.genericEncodeJsonWith encodingOptions
-
-instance Json.DecodeJson FileResource where
-  decodeJson = Json.Decode.Generic.genericDecodeJsonWith encodingOptions
+instance RegistryJson FileResource where
+  encode = Json.encode <<< fileResourcePath
+  decode = Json.decode >=> case _ of
+    "bower.json" -> Right BowerJson
+    "spago.dhall" -> Right SpagoDhall
+    "packages.dhall" -> Right PackagesDhall
+    "package.json" -> Right PackageJson
+    "LICENSE" -> Right LicenseFile
+    other -> Left $ "Expected FileResource: " <> other
 
 fileResourcePath :: FileResource -> FilePath
 fileResourcePath = case _ of

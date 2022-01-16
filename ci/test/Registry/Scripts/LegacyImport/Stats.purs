@@ -12,10 +12,11 @@ import Foreign.SemVer (SemVer, parseSemVer)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest(..))
-import Registry.Scripts.LegacyImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), RawPackageName(..), RawVersion(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
+import Registry.Scripts.LegacyImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
 import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
 import Registry.Scripts.LegacyImport.Stats (ErrorCounts(..))
 import Registry.Scripts.LegacyImport.Stats as Stats
+import Registry.Types (RawPackageName(..), RawVersion(..))
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 

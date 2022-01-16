@@ -24,8 +24,9 @@ import Foreign.GitHub as GitHub
 import Foreign.SemVer (SemVer)
 import Registry.PackageName (PackageName)
 import Registry.Schema (Manifest)
-import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey(..), ManifestError, ManifestErrorKey(..), PackageFailures(..), RawPackageName, RawVersion, manifestErrorKey, printManifestErrorKey)
+import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey(..), ManifestError, ManifestErrorKey(..), PackageFailures(..), manifestErrorKey, printManifestErrorKey)
 import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
+import Registry.Types (RawPackageName, RawVersion)
 import Safe.Coerce (coerce)
 
 newtype ErrorCounts = ErrorCounts

@@ -3,11 +3,12 @@ module Foreign.Licensee where
 import Registry.Prelude
 
 import Control.Parallel as Parallel
-import Data.Argonaut as Json
 import Data.String as String
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
+import Registry.Json ((.:))
+import Registry.Json as Json
 import Sunde as Process
 
 -- | Attempt to detect the license associated with a set of provided files
@@ -31,21 +32,20 @@ detect directory = do
     -- but we consider this valid Licensee output.
     NodeProcess.Normally n | n == 0 || n == 1 -> do
       let
-        parse :: String -> Either Json.JsonDecodeError (Array String)
+        parse :: String -> Either String (Array String)
         parse str = Json.parseJson (String.trim str) >>= \json -> do
-          obj <- Json.decodeJson json
-          licenses <- obj `Json.getField` "licenses"
-          spdxIds <- traverse (_ `Json.getField` "spdx_id") licenses
+          obj <- Json.decode json
+          licenses <- obj .: "licenses"
+          spdxIds <- traverse (_ .: "spdx_id") licenses
           pure spdxIds
 
       case parse result.stdout of
-        Left err -> do
-          let printed = Json.printJsonDecodeError err
+        Left error -> do
           log "Licensee failed to decode output: "
-          log printed
+          log error
           log "arising from the result: "
           log result.stdout
-          pure $ Left printed
+          pure $ Left error
         Right out ->
           pure $ Right out
     _ ->

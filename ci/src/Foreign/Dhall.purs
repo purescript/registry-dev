@@ -2,9 +2,8 @@ module Foreign.Dhall where
 
 import Registry.Prelude
 
-import Data.Argonaut as Json
-import Foreign.Jsonic as Jsonic
 import Node.ChildProcess as NodeProcess
+import Registry.Json as Json
 import Sunde as Process
 
 -- | Attempt to convert a JSON file representing a PureScript manifest into
@@ -28,5 +27,5 @@ dhallToJson { dhall, cwd } = do
   let args = []
   result <- Process.spawn { cmd, stdin, args } (NodeProcess.defaultSpawnOptions { cwd = cwd })
   pure $ case result.exit of
-    NodeProcess.Normally 0 -> lmap Json.printJsonDecodeError $ Jsonic.parseJson result.stdout
+    NodeProcess.Normally 0 -> Json.parseJson result.stdout
     _ -> Left result.stderr
