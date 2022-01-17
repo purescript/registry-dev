@@ -1,7 +1,5 @@
 let Address = ../Address.dhall
 
-let PackageSet = ../PackageSet.dhall
-
 let compiler = "v0.14.0"
 
 let packages =
@@ -413,5 +411,9 @@ let packages =
   , zeta = Address.Registry { name = "zeta", version = "v6.0.0" }
   , zeta-extra = Address.Registry { name = "zeta-extra", version = "v0.0.1" }
   }
+
+let isPackageSetInRegistry = ../isPackageSetInRegistry.dhall
+
+let test = assert : isPackageSetInRegistry (toMap packages) === True
 
 in { packages, compiler }
