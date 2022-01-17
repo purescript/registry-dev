@@ -1095,7 +1095,7 @@
   "purescript-rx-observable": "https://github.com/jasonzoladz/purescript-rxjs.git",
   "purescript-rx-state": "https://github.com/jasonzoladz/purescript-rx-state.git",
   "purescript-rxjs": "https://github.com/jasonzoladz/purescript-rxjs.git",
-  "purescript-rxps": "https://github.com/LukaJCB/purescript-rxps.git",
+  "purescript-rxps": "https://github.com/waynevanson/purescript-rxps.git",
   "purescript-safe-coerce": "https://github.com/purescript/purescript-safe-coerce.git",
   "purescript-safe-printf": "https://github.com/kcsongor/purescript-safe-printf.git",
   "purescript-safelist": "https://github.com/garyb/purescript-safelist.git",
