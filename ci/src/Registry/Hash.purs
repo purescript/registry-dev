@@ -1,4 +1,9 @@
-module Registry.Hash where
+module Registry.Hash
+  ( Sha256
+  , sha256File
+  , parseSha256
+  , unsafeSha256
+  ) where
 
 import Registry.Prelude
 
@@ -16,10 +21,10 @@ import Text.Parsing.StringParser.CodeUnits as SCU
 -- | A base64-encoded subresource integrity hash using the SHA256 algorithm.
 newtype Sha256 = Sha256 String
 
-derive instance Newtype Sha256 _
+derive instance Eq Sha256
 
-derive newtype instance Eq Sha256
-derive newtype instance Show Sha256
+instance Show Sha256 where
+  show (Sha256 hash) = hash
 
 instance RegistryJson Sha256 where
   encode (Sha256 hash) = Json.encode hash
@@ -48,3 +53,10 @@ parseSha256 = SP.runParser do
   suffix <- SCU.char '='
   let fromCharList = CU.fromCharArray <<< Array.fromFoldable
   pure $ Sha256 $ prefix <> fromCharList hash <> CU.singleton suffix
+
+unsafeSha256 :: String -> Sha256
+unsafeSha256 input = case parseSha256 input of
+  Left error ->
+    unsafeCrashWith $ SP.printParserError error
+  Right hash ->
+    hash

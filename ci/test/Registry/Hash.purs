@@ -6,6 +6,7 @@ import Control.Monad.Except as Except
 import Node.ChildProcess as NodeProcess
 import Node.Path as Node.Path
 import Registry.Hash as Hash
+import Registry.Json as Json
 import Sunde as Process
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
@@ -32,10 +33,17 @@ testHash = do
       nix <- Except.runExceptT $ sha256Nix hooksTarball
       Right hash `Assert.shouldEqual` nix
 
+  Spec.describe "Encodes and decodes from JSON" do
+    Spec.it "Round-trips text file" do
+      Json.roundtrip hooksSpagoHash `Assert.shouldContain` hooksSpagoHash
+
+    Spec.it "Round-trips tarball file" do
+      Json.roundtrip hooksTarballHash `Assert.shouldContain` hooksTarballHash
+
 -- Test hash produced by `openssl`:
 -- openssl dgst -sha256 -binary < test/fixtures/halogen-hooks/spago.dhall | openssl base64 -A
 hooksSpagoHash :: Hash.Sha256
-hooksSpagoHash = Hash.Sha256 "sha256-fN9RUAzN21ZY4Y0UwqUSxwUPVz1g7/pcqoDvbJZoT04="
+hooksSpagoHash = Hash.unsafeSha256 "sha256-fN9RUAzN21ZY4Y0UwqUSxwUPVz1g7/pcqoDvbJZoT04="
 
 hooksSpago :: FilePath
 hooksSpago = Node.Path.concat [ "test", "fixtures", "halogen-hooks", "spago.dhall" ]
@@ -43,7 +51,7 @@ hooksSpago = Node.Path.concat [ "test", "fixtures", "halogen-hooks", "spago.dhal
 -- Test hash produced by `openssl`:
 -- openssl dgst -sha256 -binary < test/fixtures/halogen-hooks-0.5.0.tar.gz | openssl base64 -A
 hooksTarballHash :: Hash.Sha256
-hooksTarballHash = Hash.Sha256 "sha256-3nz2p8KZYRMbHFTuSk4kCVO47k0rZqn3qbtes/ebp9M="
+hooksTarballHash = Hash.unsafeSha256 "sha256-3nz2p8KZYRMbHFTuSk4kCVO47k0rZqn3qbtes/ebp9M="
 
 hooksTarball :: FilePath
 hooksTarball = Node.Path.concat [ "test", "fixtures", "halogen-hooks-0.5.0.tar.gz" ]
