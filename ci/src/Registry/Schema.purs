@@ -163,6 +163,7 @@ type Metadata =
 type VersionMetadata =
   { ref :: String
   , hash :: Sha256
+  , bytes :: Number
   }
 
 mkNewMetadata :: Repo -> Metadata

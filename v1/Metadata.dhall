@@ -11,7 +11,16 @@ let Repo = ./Repo.dhall
 
 let SemVer = Text
 
-let VersionMetadata = { ref : Text, hash : Text }
+-- Information about a single published version
+let VersionMetadata =
+  {
+  -- The git ref this version points to
+  , ref : Text
+  -- The hash of the source tarball fetched from the repo
+  , hash : Text
+  -- The size in bytes of the tarball
+  , bytes : Natural
+  }
 
 in
   {
