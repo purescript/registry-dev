@@ -5,6 +5,8 @@ convenience of use.
 
 -}
 
+let Address = ./Address.dhall
+
 let Prelude = ./Prelude.dhall
 
 let Repo = ./Repo.dhall
@@ -20,7 +22,8 @@ let Operation = ./Operation.dhall
 let Dependencies = Prelude.Map.Type Text Text
 
 let Registry =
-      { Repo
+      { Address
+      , Repo
       , Prelude
       , Dependencies
       , Target
