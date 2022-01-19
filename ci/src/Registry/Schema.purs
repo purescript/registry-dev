@@ -7,6 +7,7 @@ import Foreign.Object as Object
 import Foreign.SPDX (License)
 import Foreign.SemVer (SemVer, Range)
 import Foreign.SemVer as SemVer
+import Registry.Hash (Sha256)
 import Registry.Json ((.:), (.:?), (:=))
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
@@ -161,7 +162,7 @@ type Metadata =
 
 type VersionMetadata =
   { ref :: String
-  , hash :: String
+  , hash :: Sha256
   , bytes :: Number
   }
 
@@ -173,8 +174,9 @@ mkNewMetadata location =
   }
 
 addVersionToMetadata :: SemVer -> VersionMetadata -> Metadata -> Metadata
-addVersionToMetadata version versionMeta metadata =
-  metadata { releases = Object.insert (SemVer.version version) versionMeta metadata.releases }
+addVersionToMetadata version versionMeta metadata = do
+  let releases = Object.insert (SemVer.version version) versionMeta metadata.releases
+  metadata { releases = releases }
 
 isVersionInMetadata :: SemVer -> Metadata -> Boolean
 isVersionInMetadata version metadata = versionPublished || versionUnpublished
