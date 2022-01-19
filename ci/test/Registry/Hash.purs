@@ -15,30 +15,30 @@ import Text.Parsing.StringParser as SP
 testHash :: Spec.Spec Unit
 testHash = do
   Spec.describe "Creates a valid sha256 SRI hash" do
-    Spec.it "Hashes a text file the same as openssl" do
+    Spec.it "Hashes a spago.dhall file the same as openssl" do
       hash <- Hash.sha256File hooksSpago
       hash `Assert.shouldEqual` hooksSpagoHash
 
-    Spec.it "Hashes a tarball the same as openssl" do
-      hash <- Hash.sha256File hooksTarball
-      hash `Assert.shouldEqual` hooksTarballHash
+    Spec.it "Hashes a LICENSE file the same as openssl" do
+      hash <- Hash.sha256File hooksLicense
+      hash `Assert.shouldEqual` hooksLicenseHash
 
-    Spec.it "Text file matches the nix hash" do
+    Spec.it "spago.dhall hash matches the nix hash" do
       hash <- Hash.sha256File hooksSpago
       nix <- Except.runExceptT $ sha256Nix hooksSpago
       Right hash `Assert.shouldEqual` nix
 
-    Spec.it "Tarball file matches the nix hash" do
-      hash <- Hash.sha256File hooksTarball
-      nix <- Except.runExceptT $ sha256Nix hooksTarball
+    Spec.it "LICENSE hash matches the nix hash" do
+      hash <- Hash.sha256File hooksLicense
+      nix <- Except.runExceptT $ sha256Nix hooksLicense
       Right hash `Assert.shouldEqual` nix
 
   Spec.describe "Encodes and decodes from JSON" do
-    Spec.it "Round-trips text file" do
+    Spec.it "Round-trips spago.dhall file" do
       Json.roundtrip hooksSpagoHash `Assert.shouldContain` hooksSpagoHash
 
-    Spec.it "Round-trips tarball file" do
-      Json.roundtrip hooksTarballHash `Assert.shouldContain` hooksTarballHash
+    Spec.it "Round-trips LICENSE file" do
+      Json.roundtrip hooksLicenseHash `Assert.shouldContain` hooksLicenseHash
 
 -- Test hash produced by `openssl`:
 -- openssl dgst -sha256 -binary < test/fixtures/halogen-hooks/spago.dhall | openssl base64 -A
@@ -50,11 +50,11 @@ hooksSpago = Node.Path.concat [ "test", "fixtures", "halogen-hooks", "spago.dhal
 
 -- Test hash produced by `openssl`:
 -- openssl dgst -sha256 -binary < test/fixtures/halogen-hooks-0.5.0.tar.gz | openssl base64 -A
-hooksTarballHash :: Hash.Sha256
-hooksTarballHash = Hash.unsafeSha256 "sha256-3nz2p8KZYRMbHFTuSk4kCVO47k0rZqn3qbtes/ebp9M="
+hooksLicenseHash :: Hash.Sha256
+hooksLicenseHash = Hash.unsafeSha256 "sha256-wOzNcCq20TAL/LMT1lYIiaoEIFGDBw+yp14bj7qK9v4="
 
-hooksTarball :: FilePath
-hooksTarball = Node.Path.concat [ "test", "fixtures", "halogen-hooks-0.5.0.tar.gz" ]
+hooksLicense :: FilePath
+hooksLicense = Node.Path.concat [ "test", "fixtures", "halogen-hooks", "LICENSE" ]
 
 sha256Nix :: FilePath -> ExceptT String Aff Hash.Sha256
 sha256Nix path = ExceptT do
