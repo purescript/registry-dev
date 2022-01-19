@@ -228,35 +228,21 @@ but it's allowed only for a set period of time because of the `leftpad` problem 
 
 Exceptions to this rule are legal concerns (e.g. DMCA takedown requests) for which Trustees might have to remove packages at any time.
 
-### Overriding a Package
+### Overriding or adding a Package to a PackageSet
 
-Building on the example above, what if we want to override the version of `effect`
-in the set with a local package?
+You can override or add a Package in a PackageSet. This can be useful for creating a custom
+PackageSet with packages outside of the official `PackageSet`.
 
-We'd then change our package manifest to look like this:
+To override a `Package` in a `PackageSet`, you can override its entry with a new `Address`:
 
-```dhall
+``` dhall
 let Registry = https://raw.githubusercontent.com/purescript/registry/master/v1/Registry.dhall
 
 let upstream = https://raw.githubusercontent.com/purescript/registry/master/v1/sets/20200418.dhall
 
-let overrides = { effect = From.Local ( ../my-effect/spago.dhall as Location ) }
+let overrides = { effect = Registry.Address.Local (../my-effect as Location) }
 
-in  Registry.Package::{
-    , name = "my-package"
-    , packages = 
-        Registry.Index.PackageSet
-          { compiler = upstream.compiler
-          , packages = toMap (upstream.packages // overrides)
-          }
-    , targets =
-        toMap
-          { src = Registry.Target::{
-            , sources = [ "src/**/*.purs" ]
-            , dependencies = toMap { effect = "^2.0.0" }
-            }
-          }
-    }
+in { compiler = upstream.compiler, packages = upstream.packages // overrides }
 ```
 
 In general any [`Address`](./v1/Address.dhall) works as an override.
