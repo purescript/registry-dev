@@ -19,11 +19,10 @@ import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
 import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
-import Node.Buffer as Buffer
 import Node.ChildProcess as NodeProcess
-import Node.Crypto.Hash as Hash
 import Node.FS.Aff as FS
 import Node.Process as Env
+import Registry.Hash as Hash
 import Registry.Index as Index
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
@@ -209,8 +208,8 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Hashing the tarball..."
-  hash <- liftAff $ sha256sum tarballPath
-  log $ "Hash: " <> hash
+  hash <- liftAff $ Hash.sha256File tarballPath
+  log $ "Hash: " <> show hash
   log "Uploading package to the storage backend..."
   let uploadPackageInfo = { name: packageName, version: newVersion }
   uploadPackage uploadPackageInfo tarballPath
@@ -275,15 +274,6 @@ runChecks metadata (Manifest manifest) = do
   let pkgsNotInRegistry = Array.catMaybes $ map pkgNotInRegistry $ Object.keys libTarget.dependencies
   unless (Array.null pkgsNotInRegistry) do
     throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
-
-sha256sum :: String -> Aff String
-sha256sum filepath = do
-  fileBuffer <- FS.readFile filepath
-  liftEffect do
-    newHash <- Hash.createHash "sha256"
-    fileHash <- Hash.update fileBuffer newHash
-    digest <- Hash.digest fileHash
-    Buffer.toString Hex digest
 
 wget :: String -> String -> RegistryM Unit
 wget url path = do
