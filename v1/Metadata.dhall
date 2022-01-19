@@ -11,7 +11,7 @@ let Repo = ./Repo.dhall
 
 let SemVer = Text
 
-let VersionMetadata = { ref : Text, hash : Text }
+let VersionMetadata = { ref : Text, hash : Text, bytes : Natural }
 
 in
   {
