@@ -162,10 +162,15 @@ type Metadata =
 type VersionMetadata =
   { ref :: String
   , hash :: String
+  , bytes :: Number
   }
 
 mkNewMetadata :: Repo -> Metadata
-mkNewMetadata location = { location, releases: mempty, unpublished: mempty }
+mkNewMetadata location =
+  { location
+  , releases: Object.empty
+  , unpublished: Object.empty
+  }
 
 addVersionToMetadata :: SemVer -> VersionMetadata -> Metadata -> Metadata
 addVersionToMetadata version versionMeta metadata =

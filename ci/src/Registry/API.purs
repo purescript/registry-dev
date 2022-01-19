@@ -23,6 +23,7 @@ import Node.Buffer as Buffer
 import Node.ChildProcess as NodeProcess
 import Node.Crypto.Hash as Hash
 import Node.FS.Aff as FS
+import Node.FS.Stats as FS.Stats
 import Node.Process as Env
 import Registry.Index as Index
 import Registry.Json as Json
@@ -208,6 +209,10 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   liftAff $ FS.rename absoluteFolderPath (tmpDir <> "/" <> newDirname)
   let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
+  log "Checking the tarball size..."
+  FS.Stats.Stats { size: bytes } <- liftAff $ FS.stat tarballPath
+  when (bytes > maxPackageBytes) do
+    throwWithComment $ "Package tarball exceeds maximum size of " <> show maxPackageBytes <> " bytes."
   log "Hashing the tarball..."
   hash <- liftAff $ sha256sum tarballPath
   log $ "Hash: " <> hash
@@ -216,7 +221,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   uploadPackage uploadPackageInfo tarballPath
   log $ "Adding the new version " <> SemVer.version newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show ref <> " was " <> show hash
-  let newMetadata = addVersionToMetadata newVersion { hash, ref } metadata
+  let newMetadata = addVersionToMetadata newVersion { hash, ref, bytes } metadata
   let metadataFilePath = metadataFile packageName
   liftAff $ Json.writeJsonFile metadataFilePath newMetadata
   updatePackagesMetadata manifestRecord.name newMetadata
@@ -362,3 +367,6 @@ runGit args = ExceptT do
       info result.stderr
       pure $ Right unit
     _ -> pure $ Left result.stderr
+
+maxPackageBytes :: Number
+maxPackageBytes = 200_000.0
