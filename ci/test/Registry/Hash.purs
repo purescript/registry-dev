@@ -49,7 +49,7 @@ hooksSpago :: FilePath
 hooksSpago = Node.Path.concat [ "test", "fixtures", "halogen-hooks", "spago.dhall" ]
 
 -- Test hash produced by `openssl`:
--- openssl dgst -sha256 -binary < test/fixtures/halogen-hooks-0.5.0.tar.gz | openssl base64 -A
+-- openssl dgst -sha256 -binary < test/fixtures/LICENSE | openssl base64 -A
 hooksLicenseHash :: Hash.Sha256
 hooksLicenseHash = Hash.unsafeSha256 "sha256-wOzNcCq20TAL/LMT1lYIiaoEIFGDBw+yp14bj7qK9v4="
 
@@ -58,6 +58,7 @@ hooksLicense = Node.Path.concat [ "test", "fixtures", "halogen-hooks", "LICENSE"
 
 sha256Nix :: FilePath -> ExceptT String Aff Hash.Sha256
 sha256Nix path = ExceptT do
+  -- In Nix 2.4 this will become `nix hash file`
   let args = [ "hash-file", "--sri", path ]
   result <- Process.spawn { cmd: "nix", args, stdin: Nothing } NodeProcess.defaultSpawnOptions
   case result.exit of
