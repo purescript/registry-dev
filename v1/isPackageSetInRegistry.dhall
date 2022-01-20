@@ -9,7 +9,7 @@ let Repo = ./Repo.dhall
 let Pkg = Prelude.Map.Entry Text Address
 let Pkgs = Prelude.Map.Type Text Address
 let isRegistryPkg = \(pkg : Pkg) -> merge
-      { Registry = \(x : { version : Text }) -> True
+      { Registry = \(x : Text) -> True
       , Repo = \(x : { repo : Repo, ref : Text }) -> False
       , Local = \(x : Prelude.Location.Type) -> False
       } pkg.mapValue

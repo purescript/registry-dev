@@ -10,8 +10,10 @@ let Prelude = ./Prelude.dhall
 
 let Repo = ./Repo.dhall
 
+let SemVer = Text
+
 let Address =
-    < Registry : { version : Text }
+    < Registry : SemVer
     | Repo : { repo : Repo, ref : Text }
     | Local : Prelude.Location.Type
     >
