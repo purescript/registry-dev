@@ -6,26 +6,41 @@ module Test.Registry.Version
 import Registry.Prelude
 
 import Data.Either as Either
+import Foreign.SemVer as SemVer
+import Registry.Version (ParseMode(..))
 import Registry.Version as Version
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 
 testVersion :: Spec.Spec Unit
 testVersion = do
-  Spec.describe "Invalid versions fail to parse" do
-    for_ invalidVersions \{ version, label } ->
+  Spec.describe "Invalid strict versions fail to parse" do
+    for_ invalidStrictVersions \{ version, label } ->
       Spec.it label do
-        let parsed = Version.parseVersion version
+        let parsed = Version.parseVersion Strict version
         parsed `Assert.shouldSatisfy` Either.isLeft
 
-  Spec.describe "Valid versions parse correctly and equal the parsed string" do
-    for_ validVersions \version ->
+  Spec.describe "Valid strict versions parse correctly and equal the parsed string" do
+    for_ validStrictVersions \version ->
       Spec.it version do
-        let parsed = Version.parseVersion version
+        let parsed = Version.parseVersion Strict version
         map Version.printVersion parsed `Assert.shouldContain` version
+        map Version.rawVersion parsed `Assert.shouldContain` version
 
-validVersions :: Array String
-validVersions =
+  Spec.describe "Invalid lenient versions fail to parse" do
+    for_ invalidLenientVersions \{ version, label } ->
+      Spec.it label do
+        let parsed = Version.parseVersion Lenient version
+        parsed `Assert.shouldSatisfy` Either.isLeft
+
+  Spec.describe "Valid lenient versions parse correctly" do
+    for_ validLenientVersions \{ raw, parsed } ->
+      Spec.it raw do
+        let parsedVersion = Version.parseVersion Lenient raw
+        map Version.printVersion parsedVersion `Assert.shouldContain` parsed
+
+validStrictVersions :: Array String
+validStrictVersions =
   [ "0.0.0"
   , "0.0.1"
   , "0.1.0"
@@ -34,17 +49,29 @@ validVersions =
   , "1000.1111.1234"
   ]
 
-invalidVersions :: Array { version :: String, label :: String }
-invalidVersions =
+invalidStrictVersions :: Array { version :: String, label :: String }
+invalidStrictVersions = invalidLenientVersions <>
+  [ { version: "v1.0.0", label: "Contains a prefix 'v'" }
+  , { version: "0.000012.1", label: "Contains leading zeros" }
+  , { version: " 1.0.1", label: "Contains leading spaces" }
+  , { version: "1.0.1 ", label: "Contains trailing spaces" }
+  ]
+
+validLenientVersions :: Array { raw :: String, parsed :: String }
+validLenientVersions =
+  [ { raw: "  1.0.0", parsed: "1.0.0" }
+  , { raw: "01.02.03", parsed: "1.2.3" }
+  , { raw: "1.0.0   ", parsed: "1.0.0" }
+  , { raw: "v1.0.0", parsed: "1.0.0" }
+  ]
+
+invalidLenientVersions :: Array { version :: String, label :: String }
+invalidLenientVersions =
   [ { version: ".12.0", label: "Malformed" }
   , { version: "12.0", label: "Too few places" }
   , { version: "0.12.12.1", label: "Too many places" }
-  , { version: "v1.0.0", label: "Contains a prefix 'v'" }
-  , { version: "0.000012.1", label: "Contains leading zeros" }
   , { version: "1.0.1-rc.1", label: "Contains prerelease identiiers" }
   , { version: "1.0.0+nightly", label: "Contains build metadata" }
-  , { version: " 1.0.1", label: "Contains leading spaces" }
-  , { version: "1.0.1 ", label: "Contains trailing spaces" }
   , { version: "1.a.2", label: "Contains non-digit characters" }
   , { version: "1.-1.2", label: "Contains non-digit characters" }
   , { version: "2147483648.0.0", label: "Contains non-32-bit integers" }
@@ -52,27 +79,42 @@ invalidVersions =
 
 testRange :: Spec.Spec Unit
 testRange = do
-  Spec.describe "Invalid ranges fail to parse" do
-    for_ invalidRanges \{ range, label } ->
+  Spec.describe "Invalid strict ranges fail to parse" do
+    for_ invalidStrictRanges \{ range, label } ->
       Spec.it label do
-        let parsed = Version.parseRange range
+        let parsed = Version.parseRange Strict range
         parsed `Assert.shouldSatisfy` Either.isLeft
 
-  Spec.describe "Valid ranges parse correctly and equal the parsed string" do
-    for_ validRanges \range ->
+  Spec.describe "Valid strict ranges parse correctly and equal the parsed string" do
+    for_ validStrictRanges \range ->
       Spec.it range do
-        let parsed = Version.parseRange range
+        let parsed = Version.parseRange Strict range
         map Version.printRange parsed `Assert.shouldContain` range
+        map Version.rawRange parsed `Assert.shouldContain` range
 
-validRanges :: Array String
-validRanges =
+  Spec.describe "Invalid lenient ranges pass node-semver conversion but fail registry parsing" do
+    for_ invalidLenientRanges \{ range, semVer, label } ->
+      Spec.it label do
+        let nodeRange = SemVer.parseRange range
+        let parsed = Version.parseRange Lenient range
+        nodeRange `Assert.shouldContain` semVer
+        parsed `Assert.shouldSatisfy` Either.isLeft
+
+  Spec.describe "Valid lenient ranges parse correctly" do
+    for_ validLenientRanges \{ raw, parsed } ->
+      Spec.it raw do
+        let parsedRange = Version.parseRange Lenient raw
+        map Version.printRange parsedRange `Assert.shouldContain` parsed
+
+validStrictRanges :: Array String
+validStrictRanges =
   [ ">=0.0.1 <0.0.2"
   , ">=0.1.0 <1.0.0"
   , ">=1.0.0 <1.1.5"
   ]
 
-invalidRanges :: Array { range :: String, label :: String }
-invalidRanges =
+invalidStrictRanges :: Array { range :: String, label :: String }
+invalidStrictRanges =
   [ { range: ">0.0.1 <0.0.2", label: "Uses a comparator other than >= on the lhs" }
   , { range: ">=0.0.1 <=0.0.2", label: "Uses a comparator other than < on the rhs" }
   , { range: ">=0.1.0 <0.1.0", label: "Left-hand version is not less than right-hand version" }
@@ -85,4 +127,39 @@ invalidRanges =
   , { range: ">=0.0.2", label: "Contains only the lhs version" }
   , { range: "<0.0.2", label: "Contains only the rhs version" }
   , { range: "0.0.2", label: "Contains no comparators" }
+  ]
+
+validLenientRanges :: Array { raw :: String, parsed :: String }
+validLenientRanges =
+  [ { raw: "1", parsed: ">=1.0.0 <2.0.0" }
+  , { raw: "2.3", parsed: ">=2.3.0 <2.4.0" }
+  , { raw: "1 - 2", parsed: ">=1.0.0 <3.0.0" }
+  , { raw: "1.0 - 2.0", parsed: ">=1.0.0 <2.1.0" }
+  , { raw: "1.x.x", parsed: ">=1.0.0 <2.0.0" }
+  , { raw: "1.2.x", parsed: ">=1.2.0 <1.3.0" }
+  , { raw: "1.*.*", parsed: ">=1.0.0 <2.0.0" }
+  , { raw: ">=\t1.0.0 <2.0.0", parsed: ">=1.0.0 <2.0.0" }
+  , { raw: "~1", parsed: ">=1.0.0 <2.0.0" }
+  , { raw: "~> 1", parsed: ">=1.0.0 <2.0.0" }
+  , { raw: "~1.0", parsed: ">=1.0.0 <1.1.0" }
+  , { raw: "~>3.2.1", parsed: ">=3.2.1 <3.3.0" }
+  , { raw: "^ 1", parsed: ">=1.0.0 <2.0.0" }
+  , { raw: "^0.1", parsed: ">=0.1.0 <0.2.0" }
+  , { raw: "^1.0", parsed: ">=1.0.0 <2.0.0" }
+  , { raw: "^1.2", parsed: ">=1.2.0 <2.0.0" }
+  , { raw: "^0.0.1", parsed: ">=0.0.1 <0.0.2" }
+  , { raw: ">=01.02.03 <01.02.10", parsed: ">=1.2.3 <1.2.10" }
+  , { raw: "1.2.3 - 3.4", parsed: ">=1.2.3 <3.5.0" }
+  , { raw: "1.2 - 3.4", parsed: ">=1.2.0 <3.5.0" }
+  ]
+
+invalidLenientRanges :: Array { range :: String, semVer :: String, label :: String }
+invalidLenientRanges =
+  [ { range: "1.0.0 - 2.0.0", semVer: ">=1.0.0 <=2.0.0", label: "Results in use of <=" }
+  , { range: "1.0.0", semVer: "1.0.0", label: "Does not result in a range" }
+  , { range: ">=*", semVer: "*", label: "Results in *" }
+  , { range: ">=1.0.0", semVer: ">=1.0.0", label: "Does not result in a range" }
+  , { range: "^0", semVer: "<1.0.0-0", label: "Does not result in a range" }
+  , { range: "^0.0.1-beta", semVer: ">=0.0.1-beta <0.0.2-0", label: "Includes prerelease identifiers" }
+  , { range: ">01.02.03 <01.02.10", semVer: ">1.2.3 <1.2.10", label: "Does not result in a range" }
   ]

@@ -21,13 +21,13 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, runRegistryM)
-import Registry.Schema (Repo(..), Manifest(..), Operation(..), Metadata)
+import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..))
 import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.Stats as Stats
 import Registry.Types (RawPackageName(..), RawVersion(..))
-import Registry.Version (Version)
+import Registry.Version (ParseMode(..), Version)
 import Registry.Version as Version
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as StringParser
@@ -91,7 +91,7 @@ main = Aff.launchAff_ do
         { addToPackageSet: false -- heh, we don't have package sets until we do this import!
         , fromBower: true
         , newPackageLocation: manifest.repository
-        , newRef: Version.raw manifest.version
+        , newRef: Version.rawVersion manifest.version
         , packageName: manifest.name
         }
     log "\n\n----------------------------------------------------------------------"
@@ -154,7 +154,7 @@ downloadLegacyRegistry = do
       Right pname ->
         pure pname
 
-    packageVersion <- case Version.parseVersion $ un RawVersion tag of
+    packageVersion <- case Version.parseVersion Lenient $ un RawVersion tag of
       Left _ ->
         throwError $ ManifestImportError $ NEA.singleton $ BadVersion $ un RawVersion tag
       Right version ->

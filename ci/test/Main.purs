@@ -16,7 +16,7 @@ import Registry.Json as Json
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..), Manifest(..))
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
-import Registry.Version (raw) as Version
+import Registry.Version (rawVersion) as Version
 import Safe.Coerce (coerce)
 import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
@@ -92,7 +92,7 @@ manifestEncoding :: Spec.Spec Unit
 manifestEncoding = do
   let
     roundTrip (Manifest manifest) =
-      Spec.it (PackageName.print manifest.name <> " " <> Version.raw manifest.version) do
+      Spec.it (PackageName.print manifest.name <> " " <> Version.rawVersion manifest.version) do
         Json.roundtrip manifest `Assert.shouldContain` manifest
 
   roundTrip Fixtures.ab.v1a

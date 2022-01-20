@@ -1,3 +1,4 @@
 const semver = require("semver");
 
-exports.parseRangeImpl = semver.validRange;
+exports.parseRangeImpl = (rangeString) =>
+  semver.validRange(rangeString, { loose: true, includePrerelease: false });

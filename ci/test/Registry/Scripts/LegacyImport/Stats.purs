@@ -16,7 +16,7 @@ import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
 import Registry.Scripts.LegacyImport.Stats (ErrorCounts(..))
 import Registry.Scripts.LegacyImport.Stats as Stats
 import Registry.Types (RawPackageName(..), RawVersion(..))
-import Registry.Version (Version)
+import Registry.Version (ParseMode(..), Version)
 import Registry.Version as Version
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
@@ -84,14 +84,17 @@ exampleFailures = PackageFailures $ Map.fromFoldable
 exampleStats :: Stats.Stats
 exampleStats = Stats.errorStats mockStats
   where
+  unsafeFromRight :: forall e a. Either e a -> a
+  unsafeFromRight = fromRight' (\_ -> unsafeCrashWith "Unexpected Left")
+
   mockLicense :: License
-  mockLicense = unsafePartial $ fromJust $ hush $ License.parse "MIT"
+  mockLicense = unsafeFromRight $ License.parse "MIT"
 
   mockPackageName :: PackageName
-  mockPackageName = unsafePartial $ fromJust $ hush $ PackageName.parse "foobarbaz"
+  mockPackageName = unsafeFromRight $ PackageName.parse "foobarbaz"
 
   mockVersion :: Version
-  mockVersion = unsafePartial $ fromRight' (\_ -> unsafeCrashWith "not a valid version") $ Version.parseVersion "0.0.0"
+  mockVersion = unsafeFromRight $ Version.parseVersion Strict "0.0.0"
 
   mockStats =
     { failures: examplePackageResults.failures

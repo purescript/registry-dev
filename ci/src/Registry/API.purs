@@ -32,7 +32,7 @@ import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), Target(
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
-import Registry.Version (Version)
+import Registry.Version (ParseMode(..), Version)
 import Registry.Version as Version
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
@@ -166,7 +166,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
       Git _ -> throwWithComment "Legacy packages can only come from GitHub. Aborting."
       GitHub { owner, repo } -> pure { owner, repo }
 
-    version <- case Version.parseVersion ref of
+    version <- case Version.parseVersion Lenient ref of
       Left _ -> throwWithComment $ "Not a valid registry version: " <> ref
       Right result -> pure result
 

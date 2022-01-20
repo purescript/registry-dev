@@ -34,7 +34,7 @@ import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)
 import Registry.Scripts.LegacyImport.SpagoJson as SpagoJson
 import Registry.Types (RawPackageName(..), RawVersion(..))
-import Registry.Version (Version)
+import Registry.Version (ParseMode(..), Version)
 import Registry.Version as Version
 
 -- | Attempt to construct the basic fields necessary for a manifest file by reading
@@ -250,8 +250,7 @@ toManifest package repository version manifest = do
             Just err -> mkError $ InvalidDependencyNames err
 
         checkDepPair (Tuple packageName versionStr) =
-          -- TODO: FIXME: Use lenient range parsing
-          case Version.parseRange versionStr of
+          case Version.parseRange Lenient versionStr of
             Left _ -> Left { dependency: packageName, failedBounds: versionStr }
             Right range -> Right $ Tuple (PackageName.print packageName) range
 
