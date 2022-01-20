@@ -23,6 +23,7 @@ import Test.Foreign.Licensee (licensee)
 import Test.Registry.Hash as Registry.Hash
 import Test.Registry.Index as Registry.Index
 import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
+import Test.Registry.Version as Version
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -68,6 +69,10 @@ main = launchAff_ do
       Registry.Hash.testHash
     Spec.describe "Json" do
       Foreign.JsonRepair.testJsonRepair
+    Spec.describe "Version" do
+      Version.testVersion
+    Spec.describe "Range" do
+      Version.testRange
 
 -- | Check all the example Manifests roundtrip (read+write) through PureScript
 manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit
