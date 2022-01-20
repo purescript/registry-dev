@@ -20,6 +20,7 @@ import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
 import Safe.Coerce (coerce)
 import Test.Foreign.Jsonic (jsonic)
 import Test.Foreign.Licensee (licensee)
+import Test.Registry.Hash as Hash
 import Test.Registry.Index as Registry.Index
 import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
 import Test.Spec as Spec
@@ -64,6 +65,8 @@ main = launchAff_ do
     Spec.describe "Error Stats" errorStats
     Spec.describe "Registry Index" do
       Registry.Index.spec registryEnv
+    Spec.describe "Hash" do
+      Hash.testHash
 
 -- | Check all the example Manifests roundtrip (read+write) through PureScript
 manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit
