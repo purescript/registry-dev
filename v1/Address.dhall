@@ -12,10 +12,9 @@ let Repo = ./Repo.dhall
 
 let SemVer = Text
 
-let Address =
-    < Registry : SemVer
-    | Repo : { repo : Repo, ref : Text }
-    | Local : Prelude.Location.Type
-    >
+let Address = \(externalPkg : Type) ->
+        < Registry : SemVer
+        | ExternalPkg : externalPkg
+        >
 
 in Address
