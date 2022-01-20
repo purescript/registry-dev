@@ -228,6 +228,25 @@ but it's allowed only for a set period of time because of the `leftpad` problem 
 
 Exceptions to this rule are legal concerns (e.g. DMCA takedown requests) for which Trustees might have to remove packages at any time.
 
+### Overriding or adding a Package to a PackageSet
+
+You can override or add a Package in a PackageSet. This can be useful for creating a custom
+PackageSet with packages outside of the official `PackageSet`.
+
+To override a `Package` in a `PackageSet`, you can override its entry with a new `Address`:
+
+``` dhall
+let Registry = https://raw.githubusercontent.com/purescript/registry/master/v1/Registry.dhall
+
+let upstream = https://raw.githubusercontent.com/purescript/registry/master/v1/sets/20200418.dhall
+
+let overrides = { effect = Registry.Address.Local (../my-effect as Location) }
+
+in { compiler = upstream.compiler, packages = upstream.packages // overrides }
+```
+
+In general any [`Address`](./v1/Address.dhall) works as an override.
+
 ## Package metadata
 
 Every package will have its own file in the `packages` folder of this repo.
