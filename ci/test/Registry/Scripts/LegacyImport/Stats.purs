@@ -8,7 +8,6 @@ import Data.Map as Map
 import Foreign.Object as Object
 import Foreign.SPDX (License)
 import Foreign.SPDX as License
-import Foreign.SemVer (SemVer, parseSemVer)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Repo(..), Manifest(..))
@@ -17,6 +16,8 @@ import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
 import Registry.Scripts.LegacyImport.Stats (ErrorCounts(..))
 import Registry.Scripts.LegacyImport.Stats as Stats
 import Registry.Types (RawPackageName(..), RawVersion(..))
+import Registry.Version (Version)
+import Registry.Version as Version
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 
@@ -89,8 +90,8 @@ exampleStats = Stats.errorStats mockStats
   mockPackageName :: PackageName
   mockPackageName = unsafePartial $ fromJust $ hush $ PackageName.parse "foobarbaz"
 
-  mockSemVer :: SemVer
-  mockSemVer = unsafePartial $ fromJust $ parseSemVer "0.0.0"
+  mockVersion :: Version
+  mockVersion = unsafePartial $ fromRight' (\_ -> unsafeCrashWith "not a valid version") $ Version.parseVersion "0.0.0"
 
   mockStats =
     { failures: examplePackageResults.failures
@@ -105,12 +106,12 @@ exampleStats = Stats.errorStats mockStats
                           , repository: Git { subdir: Nothing, url: "https://github.com/purescript/foobar" }
                           , targets: Object.empty
                           , description: Just "Some description"
-                          , version: mockSemVer
+                          , version: mockVersion
                           }
                       )
                   $ over (traversed <<< _1)
                       ( \raw ->
-                          { semVer: mockSemVer
+                          { version: mockVersion
                           , original: raw
                           }
                       )

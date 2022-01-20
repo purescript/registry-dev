@@ -17,7 +17,6 @@ import Effect.Aff.AVar as AVar
 import Effect.Now (nowDateTime) as Time
 import Foreign.GitHub (PackageURL)
 import Foreign.GitHub as GitHub
-import Foreign.SemVer (SemVer)
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Registry.Json as Json
@@ -25,6 +24,7 @@ import Registry.PackageName (PackageName)
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Error as LegacyImport.Error
 import Registry.Types (RawPackageName, RawVersion)
+import Registry.Version (Version)
 
 type ProcessedPackages k a =
   { failures :: PackageFailures
@@ -66,17 +66,17 @@ forPackageVersion
        , name :: PackageName
        , original :: RawPackageName
        }
-       { semVer :: SemVer, original :: RawVersion }
+       { version :: Version, original :: RawVersion }
        a
   -> ( { address :: GitHub.Address
        , name :: PackageName
        , original :: RawPackageName
        }
-       -> { semVer :: SemVer, original :: RawVersion }
+       -> { version :: Version, original :: RawVersion }
        -> a
        -> ExceptT ImportError Aff b
      )
-  -> Aff (ProcessedPackageVersions { address :: GitHub.Address, name :: PackageName, original :: RawPackageName } { semVer :: SemVer, original :: RawVersion } b)
+  -> Aff (ProcessedPackageVersions { address :: GitHub.Address, name :: PackageName, original :: RawPackageName } { version :: Version, original :: RawVersion } b)
 forPackageVersion input f = do
   var <- AVar.new { failures: input.failures, packages: Map.empty }
   parBounded input.packages \k1@{ original: name } inner ->
@@ -106,7 +106,7 @@ forPackageVersionKeys
                 , name :: PackageName
                 , original :: RawPackageName
                 }
-                { semVer :: SemVer, original :: RawVersion }
+                { version :: Version, original :: RawVersion }
             )
      )
   -> Aff
@@ -115,7 +115,7 @@ forPackageVersionKeys
            , name :: PackageName
            , original :: RawPackageName
            }
-           { semVer :: SemVer, original :: RawVersion }
+           { version :: Version, original :: RawVersion }
            Unit
        )
 forPackageVersionKeys input f = do

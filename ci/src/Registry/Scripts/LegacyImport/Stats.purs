@@ -21,12 +21,12 @@ import Data.Map as Map
 import Data.Monoid.Additive (Additive(..))
 import Data.Set as Set
 import Foreign.GitHub as GitHub
-import Foreign.SemVer (SemVer)
 import Registry.PackageName (PackageName)
 import Registry.Schema (Manifest)
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey(..), ManifestError, ManifestErrorKey(..), PackageFailures(..), manifestErrorKey, printManifestErrorKey)
 import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
 import Registry.Types (RawPackageName, RawVersion)
+import Registry.Version (Version)
 import Safe.Coerce (coerce)
 
 newtype ErrorCounts = ErrorCounts
@@ -119,7 +119,7 @@ errorStats
        , name :: PackageName
        , original :: RawPackageName
        }
-       { semVer :: SemVer, original :: RawVersion }
+       { version :: Version, original :: RawVersion }
        Manifest
   -> Stats
 errorStats { packages: succeededPackages, failures: packageFailures@(PackageFailures failures) } =

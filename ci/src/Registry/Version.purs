@@ -3,6 +3,7 @@ module Registry.Version
   , major
   , minor
   , patch
+  , raw
   , printVersion
   , parseVersion
   , Range
@@ -28,7 +29,7 @@ import Text.Parsing.StringParser.Combinators as StringParser.Combinators
 
 -- | A Registry-compliant version of the form 'X.Y.Z', where each place is a
 -- | non-negative integer.
-newtype Version = Version { major :: Int, minor :: Int, patch :: Int }
+newtype Version = Version { major :: Int, minor :: Int, patch :: Int, raw :: String }
 
 derive instance Eq Version
 
@@ -53,6 +54,9 @@ minor (Version version) = version.minor
 patch :: Version -> Int
 patch (Version version) = version.patch
 
+raw :: Version -> String
+raw (Version version) = version.raw
+
 printVersion :: Version -> String
 printVersion version = do
   let printInt = Int.toStringAs Int.decimal
@@ -65,17 +69,14 @@ printVersion version = do
     ]
 
 parseVersion :: String -> Either ParseError Version
-parseVersion = StringParser.runParser versionParser
-
-versionParser :: Parser Version
-versionParser = do
+parseVersion input = flip StringParser.runParser input do
   major' <- nonNegativeInt
   _ <- StringParser.CodeUnits.char '.'
   minor' <- nonNegativeInt
   _ <- StringParser.CodeUnits.char '.'
   patch' <- nonNegativeInt
   StringParser.CodeUnits.eof
-  pure $ Version { major: major', minor: minor', patch: patch' }
+  pure $ Version { major: major', minor: minor', patch: patch', raw: input }
   where
   nonNegativeInt :: Parser Int
   nonNegativeInt = do
