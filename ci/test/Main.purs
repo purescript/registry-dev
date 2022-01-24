@@ -18,9 +18,9 @@ import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..), Manifest(..))
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
 import Safe.Coerce (coerce)
-import Test.Foreign.Jsonic (jsonic)
+import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
-import Test.Registry.Hash as Hash
+import Test.Registry.Hash as Registry.Hash
 import Test.Registry.Index as Registry.Index
 import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
 import Test.Spec as Spec
@@ -57,7 +57,6 @@ main = launchAff_ do
       Spec.describe "Does not parse" do
         Spec.describe "Bad bower files" badBowerfiles
       Spec.describe "Encoding" bowerFileEncoding
-    Spec.describe "Jsonic" jsonic
     Spec.describe "Licensee" licensee
     Spec.describe "Manifest" do
       Spec.describe "Encoding" manifestEncoding
@@ -66,7 +65,9 @@ main = launchAff_ do
     Spec.describe "Registry Index" do
       Registry.Index.spec registryEnv
     Spec.describe "Hash" do
-      Hash.testHash
+      Registry.Hash.testHash
+    Spec.describe "Json" do
+      Foreign.JsonRepair.testJsonRepair
 
 -- | Check all the example Manifests roundtrip (read+write) through PureScript
 manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit

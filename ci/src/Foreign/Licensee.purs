@@ -3,7 +3,7 @@ module Foreign.Licensee where
 import Registry.Prelude
 
 import Control.Parallel as Parallel
-import Data.String as String
+import Foreign.JsonRepair as JsonRepair
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
@@ -33,7 +33,7 @@ detect directory = do
     NodeProcess.Normally n | n == 0 || n == 1 -> do
       let
         parse :: String -> Either String (Array String)
-        parse str = Json.parseJson (String.trim str) >>= \json -> do
+        parse str = Json.parseJson (JsonRepair.tryRepair str) >>= \json -> do
           obj <- Json.decode json
           licenses <- obj .: "licenses"
           spdxIds <- traverse (_ .: "spdx_id") licenses

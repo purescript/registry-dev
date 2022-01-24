@@ -151,7 +151,7 @@ type Serialize e a =
 
 jsonSerializer :: forall a. RegistryJson a => Serialize String a
 jsonSerializer =
-  { encode: Json.printJson
+  { encode: Json.stringifyJson
   , decode: Json.parseJson
   }
 
