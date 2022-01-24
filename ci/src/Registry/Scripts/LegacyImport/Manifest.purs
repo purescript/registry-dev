@@ -16,6 +16,7 @@ import Data.String as String
 import Data.String.NonEmpty as NES
 import Foreign.Dhall as Dhall
 import Foreign.GitHub as GitHub
+import Foreign.JsonRepair as JsonRepair
 import Foreign.Licensee as Licensee
 import Foreign.Object as Object
 import Foreign.SPDX as SPDX
@@ -30,11 +31,11 @@ import Registry.PackageName as PackageName
 import Registry.Schema (Manifest(..), Repo, Target(..))
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), RemoteResource(..), RequestError(..), fileResourcePath)
-import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)
 import Registry.Scripts.LegacyImport.SpagoJson as SpagoJson
+import Registry.Types (RawPackageName(..), RawVersion(..))
 
 -- | Attempt to construct the basic fields necessary for a manifest file by reading
 -- | the package version's bower.json, spago.dhall, package.json, and LICENSE
@@ -77,7 +78,7 @@ constructManifestFields package version address = do
     -- and otherwise fall back to the Spago file.
     bowerManifest <- Except.runExceptT do
       result <- Except.except files.bowerJson
-      case RegistryJson.parseJson result of
+      case RegistryJson.parseJson $ JsonRepair.tryRepair result of
         Left error -> do
           log $ "Could not decode returned bower.json: " <> error
           log result

@@ -110,7 +110,7 @@ instance RegistryJson RequestError where
     BadRequest ->
       Json.encode { tag: "BadRequest" }
     BadStatus error ->
-      Json.encode { tag: "BadStatus ", value: error }
+      Json.encode { tag: "BadStatus", value: error }
     DecodeError error ->
       Json.encode { tag: "DecodeError", value: error }
 
