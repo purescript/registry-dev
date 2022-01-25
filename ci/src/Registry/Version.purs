@@ -18,6 +18,8 @@ module Registry.Version
 import Registry.Prelude
 
 import Data.Array as Array
+import Data.Either (fromRight)
+import Data.Foldable (class Foldable)
 import Data.Function (on)
 import Data.Int as Int
 import Data.List as List
@@ -156,9 +158,9 @@ parseRange mode input = do
     strictParser :: Parser Range
     strictParser = do
       _ <- StringParser.CodeUnits.string ">="
-      lhs <- toVersion =<< map toString charsUntilSpace
+      lhs <- toVersion mode =<< map toString charsUntilSpace
       _ <- StringParser.CodeUnits.char '<'
-      rhs <- toVersion =<< map toString chars
+      rhs <- toVersion mode =<< map toString chars
       StringParser.CodeUnits.eof
       when (lhs >= rhs) do
         StringParser.fail $ Array.fold
@@ -171,34 +173,128 @@ parseRange mode input = do
       pure $ Range { lhs, rhs, mode, raw: input }
 
   case mode of
-    Lenient -> case SemVer.parseRange input of
-      Nothing ->
-        Left { pos: 0, error: "Unable to parse SemVer range in lenient mode." }
-      Just parsed -> do
-        let trimPrereleaseGuards = String.replaceAll (String.Pattern "-0") (String.Replacement "")
-        StringParser.runParser strictParser $ trimPrereleaseGuards parsed
+    Lenient -> do
+      let converted = convertRange input
+      StringParser.runParser strictParser converted
     Strict ->
       StringParser.runParser strictParser input
-  where
-  toVersion string =
-    case parseVersion mode string of
-      Left { error } ->
-        StringParser.fail error
-      Right parsed ->
-        pure parsed
-
-  toString =
-    CodeUnits.fromCharArray <<< Array.fromFoldable
-
-  chars =
-    StringParser.Combinators.many
-      StringParser.CodeUnits.anyChar
-
-  charsUntilSpace =
-    StringParser.Combinators.manyTill
-      StringParser.CodeUnits.anyChar
-      (StringParser.CodeUnits.char ' ')
 
 data ParseMode = Lenient | Strict
 
 derive instance Eq ParseMode
+
+-- In lenient mode we attempt to clean up ranges that are valid but use a syntax
+-- other than one supported by the registry.
+--
+-- When only an upper bound is specified we can set the lower bound to 0.0.0
+-- "<1.0.0" -> ">=0.0.0 <1.0.0", "<=0.1.1" -> ">=0.0.0 <0.1.0"
+--
+-- When ranges unexpectedly end with `<=` we can increment the patch version:
+-- ">=1.0.0 <=2.0.0" -> ">=1.0.0 <2.0.1"
+--
+-- When ranges unexpectedly begin with `>` we can increment the patch version:
+-- ">1.1.0 <2.0.0" -> ">=1.1.1 <2.0.0"
+convertRange :: String -> String
+convertRange input = fromRight input do
+  -- We do not accept build metadata; the Node SemVer package will strip it out
+  -- but accept the resulting version, which we don't want to do. Instead we
+  -- fail early if a package has build metadata
+  if String.contains (String.Pattern "+") input then
+    Left "Contains build metadata"
+  else
+    pure unit
+
+  -- The `parseRange` function converts most ranges into simple ranges that are
+  -- likely to be accepted by the registry.
+  semVer <- note "Could not parse with parseRange" $ SemVer.parseRange input
+
+  pure do
+    semVer
+      # fixPrereleaseGuards
+      # fixGtLhs
+      # fixLtRhs
+      # fixUpperOnly
+      # fixExactVersions
+  where
+  bumpPatch (Version version) = Version (version { patch = version.patch + 1 })
+
+  -- Remove -0 suffixes from versions because the registry doesn't use prerelease
+  -- identifiers.
+  fixPrereleaseGuards =
+    String.replaceAll (String.Pattern "-0") (String.Replacement "")
+
+  -- Fix ranges that begin with '>' instead of '>='
+  fixGtLhs str = fromRight str do
+    let
+      parser = do
+        _ <- StringParser.CodeUnits.char '>'
+        lhs <- toVersion Lenient =<< map toString charsUntilSpace
+        pure lhs
+
+    StringParser.unParser parser { str, pos: 0 } <#> \{ result: version, suffix } ->
+      ">=" <> printVersion (bumpPatch version) <> " " <> String.drop suffix.pos suffix.str
+
+  -- Fix ranges that end with '<=' instead of '<'
+  fixLtRhs str = fromRight str do
+    let
+      parser = do
+        _ <- StringParser.CodeUnits.string ">="
+        lhs <- toVersion Lenient =<< map toString charsUntilSpace
+        _ <- StringParser.CodeUnits.string "<="
+        rhs <- toVersion Lenient =<< map toString chars
+        StringParser.CodeUnits.eof
+        pure { lhs, rhs }
+
+    StringParser.runParser parser str <#> \{ lhs, rhs } ->
+      Array.fold
+        [ ">="
+        , printVersion lhs
+        , " <"
+        , printVersion (bumpPatch rhs)
+        ]
+
+  -- Fix ranges that only consist of an upper bound ('<1.0.0')
+  fixUpperOnly str = fromRight str do
+    let
+      parser = do
+        _ <- StringParser.CodeUnits.char '<'
+        hasEq <- StringParser.Combinators.optionMaybe $ StringParser.CodeUnits.char '='
+        lhs <- toVersion Lenient =<< map toString chars
+        StringParser.CodeUnits.eof
+        pure { lhs, hasEq: isJust hasEq }
+
+    StringParser.runParser parser str <#> \{ lhs, hasEq } ->
+      ">=0.0.0 <" <> printVersion (if hasEq then bumpPatch lhs else lhs)
+
+  -- Replace exact ranges ('1.0.0') with ranges ('>=1.0.0 <1.0.1')
+  fixExactVersions str = fromRight str do
+    Version version <- parseVersion Lenient str
+    pure $ Array.fold
+      [ ">="
+      , printVersion (Version version)
+      , " <"
+      , printVersion (Version (version { patch = version.patch + 1 }))
+      ]
+
+toVersion :: ParseMode -> String -> Parser Version
+toVersion mode string =
+  case parseVersion mode string of
+    Left { error } ->
+      StringParser.fail error
+    Right parsed ->
+      pure parsed
+
+toString :: forall f. Foldable f => f Char -> String
+toString =
+  CodeUnits.fromCharArray <<< Array.fromFoldable
+
+chars :: Parser (List Char)
+chars =
+  StringParser.Combinators.many
+    StringParser.CodeUnits.anyChar
+
+charsUntilSpace :: Parser (List Char)
+charsUntilSpace =
+  StringParser.Combinators.manyTill
+    StringParser.CodeUnits.anyChar
+    (StringParser.CodeUnits.char ' ')

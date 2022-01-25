@@ -249,15 +249,16 @@ toManifest package repository version manifest = do
             Nothing -> pure success
             Just err -> mkError $ InvalidDependencyNames err
 
-        checkDepPair (Tuple packageName versionStr) =
-          case Version.parseRange Lenient versionStr of
-            Left _ -> Left { dependency: packageName, failedBounds: versionStr }
-            Right range -> Right $ Tuple (PackageName.print packageName) range
-
       normalizedDeps <- normalizeDeps $ Map.toUnfoldable manifest.dependencies
       normalizedDevDeps <- normalizeDeps $ Map.toUnfoldable manifest.devDependencies
 
       let
+        checkDepPair (Tuple packageName versionStr) = case Version.parseRange Lenient versionStr of
+          Left _ -> do
+            Left { dependency: packageName, failedBounds: versionStr }
+          Right range ->
+            Right $ Tuple (PackageName.print packageName) range
+
         readDeps = map checkDepPair >>> partitionEithers >>> \{ fail, success } ->
           case NEA.fromArray fail of
             Nothing ->

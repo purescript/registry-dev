@@ -186,22 +186,20 @@ withCache { encode, decode } path maybeDuration action = do
       _ -> false
 
     onCacheMiss = do
-      log $ "No cache hit for " <> show path
-
       let
-        writeEncoded :: Either ImportError String -> Aff Unit
-        writeEncoded = Json.writeJsonFile objectPath
+        writeEncoded :: String -> Aff Unit
+        writeEncoded = FS.writeTextFile UTF8 objectPath
 
       liftAff (Except.runExceptT action) >>= case _ of
         Right result -> do
-          liftAff $ writeEncoded $ Right $ encode result
+          liftAff $ writeEncoded $ encode result
           pure result
         -- We want to cache some files that we process, even if they fail, so that
         -- we don't attempt to process them again.
         Left importError | cacheFailure importError -> do
-          liftAff $ writeEncoded $ Left importError
+          liftAff $ writeEncoded $ Json.stringifyJson importError
           throwError importError
-        Left importError ->
+        Left importError -> do
           throwError importError
 
     isCacheHit = liftAff do
@@ -220,18 +218,17 @@ withCache { encode, decode } path maybeDuration action = do
 
   isCacheHit >>= case _ of
     true -> do
-      result :: Either _ (Either ImportError String) <- liftAff $ Json.readJsonFile objectPath
-      case result of
-        Left error -> do
-          log $ "Cache read failed: " <> error
+      contents <- liftAff $ FS.readTextFile UTF8 objectPath
+      case decode contents of
+        Left _ -> do
+          case Json.parseJson contents of
+            Left _ ->
+              log $ "Could not decode " <> objectPath
+            Right importError -> do
+              throwError importError
           onCacheMiss
-        Right (Left importError) ->
-          throwError importError
-        Right (Right res) -> case decode res of
-          Left _ ->
-            onCacheMiss
-          Right a -> do
-            pure a
+        Right a ->
+          pure a
 
     false -> do
       onCacheMiss

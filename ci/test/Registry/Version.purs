@@ -151,15 +151,20 @@ validLenientRanges =
   , { raw: ">=01.02.03 <01.02.10", parsed: ">=1.2.3 <1.2.10" }
   , { raw: "1.2.3 - 3.4", parsed: ">=1.2.3 <3.5.0" }
   , { raw: "1.2 - 3.4", parsed: ">=1.2.0 <3.5.0" }
+  , { raw: "1.0.0 - 2.0.0", parsed: ">=1.0.0 <2.0.1" }
+  , { raw: "1.0.0", parsed: ">=1.0.0 <1.0.1" }
+  , { raw: ">1.0.0 <2.0.0", parsed: ">=1.0.1 <2.0.0" }
+  , { raw: "<1.0.0", parsed: ">=0.0.0 <1.0.0" }
+  , { raw: "<=1.0.0", parsed: ">=0.0.0 <1.0.1" }
+  , { raw: "^0", parsed: ">=0.0.0 <1.0.0" }
+  , { raw: ">01.02.03 <01.02.10", parsed: ">=1.2.4 <1.2.10" }
   ]
 
 invalidLenientRanges :: Array { range :: String, semVer :: String, label :: String }
 invalidLenientRanges =
-  [ { range: "1.0.0 - 2.0.0", semVer: ">=1.0.0 <=2.0.0", label: "Results in use of <=" }
-  , { range: "1.0.0", semVer: "1.0.0", label: "Does not result in a range" }
-  , { range: ">=*", semVer: "*", label: "Results in *" }
-  , { range: ">=1.0.0", semVer: ">=1.0.0", label: "Does not result in a range" }
-  , { range: "^0", semVer: "<1.0.0-0", label: "Does not result in a range" }
-  , { range: "^0.0.1-beta", semVer: ">=0.0.1-beta <0.0.2-0", label: "Includes prerelease identifiers" }
-  , { range: ">01.02.03 <01.02.10", semVer: ">1.2.3 <1.2.10", label: "Does not result in a range" }
+  [ { range: ">=*", semVer: "*", label: "Results in *" }
+  , { range: ">1.0.0", semVer: ">1.0.0", label: "Unbounded upper range" }
+  , { range: ">=1.0.0", semVer: ">=1.0.0", label: "Unbounded upper range" }
+  , { range: "^0.0.1-beta", semVer: ">=0.0.1-beta <0.0.2-0", label: "Uses prerelease information" }
+  , { range: "0.0.1+build", semVer: "0.0.1", label: "Uses build metadata information" }
   ]
