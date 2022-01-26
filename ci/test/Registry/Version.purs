@@ -158,13 +158,15 @@ validLenientRanges =
   , { raw: "<=1.0.0", parsed: ">=0.0.0 <1.0.1" }
   , { raw: "^0", parsed: ">=0.0.0 <1.0.0" }
   , { raw: ">01.02.03 <01.02.10", parsed: ">=1.2.4 <1.2.10" }
+  , { raw: "^0.0.1-beta", parsed: ">=0.0.1 <0.0.2" }
+  , { raw: ">=1.0.0-rc.1 <1.0.0-rc.5", parsed: ">=1.0.0 <1.0.1" }
+  , { raw: "0.0.1+build", parsed: ">=0.0.1 <0.0.2" }
   ]
 
 invalidLenientRanges :: Array { range :: String, semVer :: String, label :: String }
 invalidLenientRanges =
-  [ { range: ">=*", semVer: "*", label: "Results in *" }
+  [ { range: "*", semVer: "*", label: "Results in *" }
+  , { range: ">=*", semVer: "*", label: "Results in *" }
   , { range: ">1.0.0", semVer: ">1.0.0", label: "Unbounded upper range" }
   , { range: ">=1.0.0", semVer: ">=1.0.0", label: "Unbounded upper range" }
-  , { range: "^0.0.1-beta", semVer: ">=0.0.1-beta <0.0.2-0", label: "Uses prerelease information" }
-  , { range: "0.0.1+build", semVer: "0.0.1", label: "Uses build metadata information" }
   ]

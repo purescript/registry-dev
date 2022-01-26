@@ -155,14 +155,20 @@ printRange range =
 parseRange :: ParseMode -> String -> Either ParseError Range
 parseRange mode input = do
   let
-    strictParser :: Parser Range
-    strictParser = do
+    parser :: Parser Range
+    parser = do
       _ <- StringParser.CodeUnits.string ">="
       lhs <- toVersion mode =<< map toString charsUntilSpace
       _ <- StringParser.CodeUnits.char '<'
       rhs <- toVersion mode =<< map toString chars
       StringParser.CodeUnits.eof
-      when (lhs >= rhs) do
+      -- Trimming prerelease identifiers in lenient mode can produce ranges
+      -- where the lhs was less than the rhs, but no longer is. For example:
+      -- '>=1.0.0-rc.1 <1.0.0-rc.5' -> '>=1.0.0 <1.0.0'.
+      -- We fix these ranges in lenient mode by bumping the rhs patch by one.
+      if (mode == Lenient && lhs == rhs) then
+        pure $ Range { lhs, rhs: bumpPatch rhs, mode, raw: input }
+      else if (lhs >= rhs) then
         StringParser.fail $ Array.fold
           [ "Left-hand version ("
           , printVersion lhs
@@ -170,14 +176,16 @@ parseRange mode input = do
           , printVersion rhs
           , ")"
           ]
-      pure $ Range { lhs, rhs, mode, raw: input }
+      else do
+        pure $ Range { lhs, rhs, mode, raw: input }
 
-  case mode of
-    Lenient -> do
-      let converted = convertRange input
-      StringParser.runParser strictParser converted
-    Strict ->
-      StringParser.runParser strictParser input
+  let
+    parserInput :: String
+    parserInput = case mode of
+      Lenient -> convertRange input
+      Strict -> input
+
+  StringParser.runParser parser parserInput
 
 data ParseMode = Lenient | Strict
 
@@ -194,33 +202,25 @@ derive instance Eq ParseMode
 --
 -- When ranges unexpectedly begin with `>` we can increment the patch version:
 -- ">1.1.0 <2.0.0" -> ">=1.1.1 <2.0.0"
+--
+-- When ranges are exact, we can create a range:
+-- "1.0.0" -> ">=1.0.0 <1.0.1"
+--
+-- When ranges contain prerelease identifiers or build metadata we can strip it
+-- ">=1.0.0-rc.1 <2.0.0-0" -> ">=1.0.0 <2.0.0"
 convertRange :: String -> String
 convertRange input = fromRight input do
-  -- We do not accept build metadata; the Node SemVer package will strip it out
-  -- but accept the resulting version, which we don't want to do. Instead we
-  -- fail early if a package has build metadata
-  when (String.contains (String.Pattern "+") input) do
-    throwError "Contains build metadata"
-
   -- The `parseRange` function converts most ranges into simple ranges that are
   -- likely to be accepted by the registry.
   semVer <- note "Could not parse with parseRange" $ SemVer.parseRange input
 
   pure do
     semVer
-      # fixPrereleaseGuards
       # fixGtLhs
       # fixLtRhs
       # fixUpperOnly
       # fixExactVersions
   where
-  bumpPatch (Version version) = Version (version { patch = version.patch + 1 })
-
-  -- Remove -0 suffixes from versions because the registry doesn't use prerelease
-  -- identifiers.
-  fixPrereleaseGuards =
-    String.replaceAll (String.Pattern "-0") (String.Replacement "")
-
   -- Fix ranges that begin with '>' instead of '>='
   fixGtLhs str = fromRight str do
     let
@@ -275,12 +275,18 @@ convertRange input = fromRight input do
       ]
 
 toVersion :: ParseMode -> String -> Parser Version
-toVersion mode string =
-  case parseVersion mode string of
-    Left { error } ->
-      StringParser.fail error
-    Right parsed ->
-      pure parsed
+toVersion mode string = do
+  let
+    parsed = case mode of
+      Lenient -> do
+        let truncate pattern input = fromMaybe input $ Array.head $ String.split pattern input
+        let noPrerelease = truncate (String.Pattern "-")
+        let noBuild = truncate (String.Pattern "+")
+        parseVersion Lenient (noPrerelease (noBuild string))
+      Strict ->
+        parseVersion Strict string
+
+  either (_.error >>> StringParser.fail) pure parsed
 
 toString :: forall f. Foldable f => f Char -> String
 toString =
@@ -296,3 +302,6 @@ charsUntilSpace =
   StringParser.Combinators.manyTill
     StringParser.CodeUnits.anyChar
     (StringParser.CodeUnits.char ' ')
+
+bumpPatch :: Version -> Version
+bumpPatch (Version version) = Version (version { patch = version.patch + 1 })
