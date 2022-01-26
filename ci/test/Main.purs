@@ -21,6 +21,7 @@ import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
 import Safe.Coerce (coerce)
 import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
+import Test.Registry.API as Registry.API
 import Test.Registry.Hash as Registry.Hash
 import Test.Registry.Index as Registry.Index
 import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
@@ -52,6 +53,8 @@ main = launchAff_ do
         Spec.describe "Bad SPDX licenses" badSPDXLicense
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
         Spec.describe "SemVer" semVer
+      Spec.describe "Pick files" do
+        Registry.API.testPickFiles
     Spec.describe "Bowerfile" do
       Spec.describe "Parses" do
         Spec.describe "Good bower files" goodBowerfiles

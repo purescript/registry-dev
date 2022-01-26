@@ -4,5 +4,5 @@ exports.ensureDirectoryImpl = (path) => () => fs.ensureDir(path);
 
 exports.removeImpl = (path) => () => fs.remove(path);
 
-exports.moveImpl = (source) => (destination) => () =>
-  fs.move(source, destination);
+exports.copyImpl = (source) => (destination) => () =>
+  fs.copy(source, destination);

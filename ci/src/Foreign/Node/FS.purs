@@ -1,7 +1,7 @@
 module Foreign.Node.FS
   ( ensureDirectory
   , remove
-  , move
+  , copy
   ) where
 
 import Prelude
@@ -26,9 +26,13 @@ foreign import removeImpl :: String -> Effect (Promise Unit)
 remove :: FilePath -> Aff Unit
 remove = removeImpl >>> Promise.toAffE
 
-foreign import moveImpl :: String -> String -> Effect (Promise Unit)
+foreign import copyImpl :: String -> String -> Effect (Promise Unit)
 
--- | Moves a file or directory. When `from` is a directory then `to` must be a
--- | directory. When `from` is a file then `to` must be a file.
-move :: { from :: FilePath, to :: FilePath } -> Aff Unit
-move { from, to } = Promise.toAffE $ moveImpl from to
+-- | Copies a file or directory.
+-- |
+-- | When `from` is a file then `to` must be a file.
+-- |
+-- | When `from` is a directory then `to` must be a directory; only directory
+-- | contents are copied, not the directory itself.
+copy :: { from :: FilePath, to :: FilePath } -> Aff Unit
+copy { from, to } = Promise.toAffE $ copyImpl from to

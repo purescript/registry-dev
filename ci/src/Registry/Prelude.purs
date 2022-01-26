@@ -14,6 +14,7 @@ module Registry.Prelude
 import Prelude
 
 import Control.Alt ((<|>)) as Extra
+import Control.Monad (whenM) as Extra
 import Control.Monad.Error.Class (throwError) as Extra
 import Control.Monad.Except (ExceptT(..)) as Extra
 import Control.Monad.Trans.Class (lift) as Extra

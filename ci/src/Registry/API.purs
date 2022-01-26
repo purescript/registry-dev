@@ -3,9 +3,9 @@ module Registry.API where
 import Registry.Prelude
 
 import Control.Monad.Except as Except
-import Control.Parallel (parTraverse_)
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
+import Data.Foldable (traverse_)
 import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Data.Set as Set
@@ -211,8 +211,9 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   let packageDirname = PackageName.print packageName <> "-" <> SemVer.version manifestRecord.version
   let packagePath = tmpDir <> "/" <> packageDirname
   let tarballPath = packagePath <> ".tar.gz"
-  liftAff $ FS.mkdir packagePath
-  pickFiles { inputDirectory: absoluteFolderPath, outputDirectory: packagePath } manifest
+  liftAff do
+    FS.mkdir packagePath
+    pickFiles { inputDirectory: absoluteFolderPath, outputDirectory: packagePath } manifest
   liftEffect $ Tar.create { cwd: tmpDir, folderName: packageDirname, archiveName: tarballPath }
 
   log "Checking the tarball size..."
@@ -380,28 +381,25 @@ maxPackageBytes = 200_000.0
 pickFiles
   :: { inputDirectory :: FilePath, outputDirectory :: FilePath }
   -> Manifest
-  -> RegistryM Unit
-pickFiles { inputDirectory, outputDirectory } (Manifest { targets }) = liftAff do
+  -> Aff Unit
+pickFiles { inputDirectory, outputDirectory } (Manifest { targets }) = do
   let
-    move path = do
-      let from = Path.concat [ inputDirectory, path ]
-      let to = Path.concat [ outputDirectory, path ]
-      FS.Extra.move { from, to }
+    copy path = whenM (FS.exists path) do
+      for_ (String.stripPrefix (String.Pattern inputDirectory) path) \path' ->
+        FS.Extra.copy { from: path, to: Path.concat [ outputDirectory, path' ] }
 
-  -- Copy directories indicated by the 'targets' key
-  parTraverse_ move (Object.keys targets)
-
-  -- Copy specific files that should always be included in the tarball
-  globMatches <- Glob.Basic.expandGlobs inputDirectory globFiles
-  parTraverse_ move (exactFiles <> Set.toUnfoldable globMatches)
+  let sources = Array.nub $ Array.concatMap (un Target >>> _.sources) (Object.values targets)
+  globMatches <- Glob.Basic.expandGlobs inputDirectory (globFiles <> sources)
+  traverse_ copy (exactFiles <> Set.toUnfoldable globMatches)
   where
   -- These files are always included at these exact paths
   -- See: https://github.com/purescript/registry/issues/292
   exactFiles :: Array FilePath
-  exactFiles =
+  exactFiles = map (\path -> Path.concat [ inputDirectory, path ])
     [ "purs.json"
     , "spago.dhall"
     , "packages.dhall"
+    , "package.json"
     ]
 
   -- These files are always included, case-insensitive, with any extension
