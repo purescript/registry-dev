@@ -11,6 +11,7 @@ module Registry.Json
   ( module Exports
   , class RegistryJson
   , printJson
+  , stringifyJson
   , parseJson
   , writeJsonFile
   , readJsonFile
@@ -41,9 +42,10 @@ import Control.Monad.State (State, runState)
 import Control.Monad.State as State
 import Data.Argonaut.Core (Json, stringify) as Exports
 import Data.Argonaut.Core as Core
+import Data.Argonaut.Parser as Parser
 import Data.Array as Array
-import Data.Array.NonEmpty as NEA
 import Data.Array.NonEmpty (NonEmptyArray)
+import Data.Array.NonEmpty as NEA
 import Data.Either (Either(..), either, note)
 import Data.Int as Int
 import Data.Map (Map)
@@ -56,7 +58,6 @@ import Data.Symbol as Symbol
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple, snd)
 import Effect.Aff (Aff)
-import Foreign.Jsonic as Jsonic
 import Foreign.Object (Object)
 import Foreign.Object as Object
 import Node.Encoding (Encoding(..))
@@ -73,10 +74,13 @@ import Type.Proxy (Proxy(..))
 printJson :: forall a. RegistryJson a => a -> String
 printJson = Core.stringifyWithIndent 2 <<< encode
 
--- | Parse a type from a string of JSON data. This function defers to the
--- | lenient parsing provided by `jsonic` rather than the builtin JSON.parse.
+-- | Print a type as a JSON string without formatting
+stringifyJson :: forall a. RegistryJson a => a -> String
+stringifyJson = Core.stringify <<< encode
+
+-- | Parse a type from a string of JSON data.
 parseJson :: forall a. RegistryJson a => String -> Either String a
-parseJson = decode <=< Jsonic.parseJsonic
+parseJson = decode <=< Parser.jsonParser
 
 -- | Encode data as JSON and write it to the provided filepath
 writeJsonFile :: forall a. RegistryJson a => FilePath -> a -> Aff Unit

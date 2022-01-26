@@ -1,16 +1,17 @@
-module Test.Foreign.Jsonic (jsonic) where
+module Test.Foreign.JsonRepair (testJsonRepair) where
 
 import Registry.Prelude
 
 import Data.Either as Either
+import Foreign.JsonRepair as JsonRepair
 import Registry.Json as Json
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 
 type Spec = Spec.SpecT Aff Unit Identity Unit
 
-jsonic :: Spec
-jsonic = do
+testJsonRepair :: Spec
+testJsonRepair = do
   Spec.describe "Parses" do
     Spec.describe "Good json" goodJson
     Spec.describe "Bad json" badJson
@@ -18,7 +19,7 @@ jsonic = do
     Spec.describe "Horrendous json" horrendousJson
 
 parseString :: String -> Either String String
-parseString = map Json.stringify <<< Json.parseJson
+parseString = map Json.stringify <<< Json.parseJson <<< JsonRepair.tryRepair
 
 parseTest :: String -> Json -> Spec
 parseTest str json = Spec.it str do
@@ -33,8 +34,7 @@ goodJson = do
 
 badJson :: Spec
 badJson = do
-  parseTest "name: test" $ Json.encode { name: "test" }
-  parseTest "{trailing: comma,}" $ Json.encode { trailing: "comma" }
+  parseTest """{ "trailing": "comma", }""" $ Json.encode { trailing: "comma" }
   parseTest """[ "trailing comma", ]""" $ Json.encode [ "trailing comma" ]
 
 horrendousJson :: Spec
@@ -43,4 +43,5 @@ horrendousJson = do
     failParse str = Spec.it str do
       parseString str `Assert.shouldSatisfy` Either.isLeft
 
+  failParse "name: test"
   failParse """{ "horrendously invalid json" }"""
