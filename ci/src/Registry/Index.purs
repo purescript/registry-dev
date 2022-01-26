@@ -13,7 +13,7 @@ import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
 import Data.String.Pattern (Pattern(..))
-import Foreign.Node.FS as Foreign.Node
+import Foreign.Node.FS as FS.Extra
 import Foreign.SemVer (SemVer)
 import Node.FS.Aff as FS
 import Node.FS.Stats as Stats
@@ -134,8 +134,5 @@ insertManifest directory manifest@(Manifest { name, version }) = do
         $ Array.sortBy (comparing (un Manifest >>> _.version))
         $ Array.fromFoldable modifiedManifests
 
-  dirExists <- FS.exists manifestDirectory
-  unless dirExists do
-    liftEffect $ Foreign.Node.mkdirSync manifestDirectory
-
+  FS.Extra.ensureDirectory manifestDirectory
   FS.writeTextFile ASCII manifestPath contents

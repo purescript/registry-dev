@@ -3,10 +3,12 @@ module Registry.API where
 import Registry.Prelude
 
 import Control.Monad.Except as Except
+import Control.Parallel (parTraverse_)
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
 import Data.Generic.Rep as Generic
 import Data.Map as Map
+import Data.Set as Set
 import Data.String as String
 import Effect.Aff as Aff
 import Effect.Exception (throw)
@@ -14,6 +16,7 @@ import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
 import Foreign.GitHub (IssueNumber)
 import Foreign.GitHub as GitHub
+import Foreign.Node.FS as FS.Extra
 import Foreign.Object as Object
 import Foreign.SemVer (SemVer)
 import Foreign.SemVer as SemVer
@@ -22,6 +25,8 @@ import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
 import Node.FS.Stats as FS.Stats
+import Node.Glob.Basic as Glob.Basic
+import Node.Path as Path
 import Node.Process as Env
 import Registry.Hash as Hash
 import Registry.Index as Index
@@ -156,6 +161,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
           pure dir
 
   let absoluteFolderPath = tmpDir <> "/" <> folderName
+
   let manifestPath = absoluteFolderPath <> "/purs.json"
   log $ "Package extracted in " <> absoluteFolderPath
 
@@ -202,25 +208,29 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
-  -- We need the version number to upload the package
-  let newVersion = manifestRecord.version
-  let newDirname = PackageName.print packageName <> "-" <> SemVer.version newVersion
-  liftAff $ FS.rename absoluteFolderPath (tmpDir <> "/" <> newDirname)
-  let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
-  liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
+  let packageDirname = PackageName.print packageName <> "-" <> SemVer.version manifestRecord.version
+  let packagePath = tmpDir <> "/" <> packageDirname
+  let tarballPath = packagePath <> ".tar.gz"
+  liftAff $ FS.mkdir packagePath
+  pickFiles { inputDirectory: absoluteFolderPath, outputDirectory: packagePath } manifest
+  liftEffect $ Tar.create { cwd: tmpDir, folderName: packageDirname, archiveName: tarballPath }
+
   log "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.stat tarballPath
   when (bytes > maxPackageBytes) do
     throwWithComment $ "Package tarball exceeds maximum size of " <> show maxPackageBytes <> " bytes."
+
   log "Hashing the tarball..."
   hash <- liftAff $ Hash.sha256File tarballPath
   log $ "Hash: " <> show hash
+
   log "Uploading package to the storage backend..."
-  let uploadPackageInfo = { name: packageName, version: newVersion }
+  let uploadPackageInfo = { name: packageName, version: manifestRecord.version }
   uploadPackage uploadPackageInfo tarballPath
-  log $ "Adding the new version " <> SemVer.version newVersion <> " to the package metadata file (hashes, etc)"
+
+  log $ "Adding the new version " <> SemVer.version manifestRecord.version <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show ref <> " was " <> show hash
-  let newMetadata = addVersionToMetadata newVersion { hash, ref, bytes } metadata
+  let newMetadata = addVersionToMetadata manifestRecord.version { hash, ref, bytes } metadata
   let metadataFilePath = metadataFile packageName
   liftAff $ Json.writeJsonFile metadataFilePath newMetadata
   updatePackagesMetadata manifestRecord.name newMetadata
@@ -360,3 +370,51 @@ runGit args = ExceptT do
 
 maxPackageBytes :: Number
 maxPackageBytes = 200_000.0
+
+-- Copy top-level files that are always included in the package tarball,
+-- if present, into the destination directory.
+--
+-- We don't verify the existence of these files, as the only truly required
+-- one (purs.json) is required to produce a `Manifest` in the first place and
+-- so must exist.
+pickFiles
+  :: { inputDirectory :: FilePath, outputDirectory :: FilePath }
+  -> Manifest
+  -> RegistryM Unit
+pickFiles { inputDirectory, outputDirectory } (Manifest { targets }) = liftAff do
+  let
+    move path = do
+      let from = Path.concat [ inputDirectory, path ]
+      let to = Path.concat [ outputDirectory, path ]
+      FS.Extra.move { from, to }
+
+  -- Copy directories indicated by the 'targets' key
+  parTraverse_ move (Object.keys targets)
+
+  -- Copy specific files that should always be included in the tarball
+  globMatches <- Glob.Basic.expandGlobs inputDirectory globFiles
+  parTraverse_ move (exactFiles <> Set.toUnfoldable globMatches)
+  where
+  -- These files are always included at these exact paths
+  -- See: https://github.com/purescript/registry/issues/292
+  exactFiles :: Array FilePath
+  exactFiles =
+    [ "purs.json"
+    , "spago.dhall"
+    , "packages.dhall"
+    ]
+
+  -- These files are always included, case-insensitive, with any extension
+  -- like a .gitignore file.
+  globFiles :: Array String
+  globFiles =
+    [ "README*"
+    , "Readme*"
+    , "readme*"
+    , "LICENSE*"
+    , "License*"
+    , "license*"
+    , "LICENCE*"
+    , "Licence*"
+    , "licence*"
+    ]
