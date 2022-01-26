@@ -12,6 +12,7 @@ import Foreign.GitHub (IssueNumber(..))
 import Foreign.SPDX as SPDX
 import Foreign.SemVer as SemVer
 import Node.FS.Aff as FS
+import Node.Path as Path
 import Registry.API as API
 import Registry.Json as Json
 import Registry.PackageName as PackageName
@@ -180,7 +181,7 @@ decodeEventsToOps = do
         , fromBower: false
         }
 
-    res <- API.readOperation "test/fixtures/issue_comment.json"
+    res <- API.readOperation $ Path.concat [ "test-fixtures", "issue_comment.json" ]
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
   Spec.it "decodes an Addition operation" do
@@ -194,7 +195,7 @@ decodeEventsToOps = do
         , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
         }
 
-    res <- API.readOperation "test/fixtures/issue_created.json"
+    res <- API.readOperation $ Path.concat [ "test-fixtures", "issue_created.json" ]
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
 semVer :: Spec.Spec Unit

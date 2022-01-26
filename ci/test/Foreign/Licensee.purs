@@ -10,7 +10,7 @@ import Test.Support.ManifestFiles as ManifestFiles
 
 licensee :: Spec.Spec Unit
 licensee = do
-  let fixtures = Node.Path.concat [ "test", "fixtures", "halogen-hooks" ]
+  let fixtures = Node.Path.concat [ "test-fixtures", "halogen-hooks" ]
   Spec.describe "Licensee runs" do
     Spec.it "Detects from directory" do
       detected <- Licensee.detect fixtures
