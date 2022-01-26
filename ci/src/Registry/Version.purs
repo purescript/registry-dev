@@ -199,10 +199,8 @@ convertRange input = fromRight input do
   -- We do not accept build metadata; the Node SemVer package will strip it out
   -- but accept the resulting version, which we don't want to do. Instead we
   -- fail early if a package has build metadata
-  if String.contains (String.Pattern "+") input then
-    Left "Contains build metadata"
-  else
-    pure unit
+  when (String.contains (String.Pattern "+") input) do
+    throwError "Contains build metadata"
 
   -- The `parseRange` function converts most ranges into simple ranges that are
   -- likely to be accepted by the registry.
@@ -268,12 +266,12 @@ convertRange input = fromRight input do
 
   -- Replace exact ranges ('1.0.0') with ranges ('>=1.0.0 <1.0.1')
   fixExactVersions str = fromRight str do
-    Version version <- parseVersion Lenient str
+    version <- parseVersion Lenient str
     pure $ Array.fold
       [ ">="
-      , printVersion (Version version)
+      , printVersion version
       , " <"
-      , printVersion (Version (version { patch = version.patch + 1 }))
+      , printVersion (bumpPatch version)
       ]
 
 toVersion :: ParseMode -> String -> Parser Version
