@@ -186,6 +186,8 @@ withCache { encode, decode } path maybeDuration action = do
       _ -> false
 
     onCacheMiss = do
+      log $ "No cache hit for " <> show path
+
       let
         writeEncoded :: String -> Aff Unit
         writeEncoded = FS.writeTextFile UTF8 objectPath
