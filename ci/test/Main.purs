@@ -181,7 +181,7 @@ decodeEventsToOps = do
       operation = Update
         { packageName: unsafeFromRight $ PackageName.parse "something"
         , updateRef: "v1.2.3"
-        , fromBower: false
+        , legacy: false
         }
 
     res <- API.readOperation "test/fixtures/issue_comment.json"
@@ -193,7 +193,7 @@ decodeEventsToOps = do
       operation = Addition
         { packageName: unsafeFromRight $ PackageName.parse "prelude"
         , newRef: "v5.0.0"
-        , fromBower: true
+        , legacy: true
         , addToPackageSet: true
         , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
         }
