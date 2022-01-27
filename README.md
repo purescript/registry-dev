@@ -285,25 +285,6 @@ but it's allowed only for a set period of time because of the `leftpad` problem 
 
 Exceptions to this rule are legal concerns (e.g. DMCA takedown requests) for which Trustees might have to remove packages at any time.
 
-### Overriding or adding a Package to a PackageSet
-
-You can override or add a Package in a PackageSet. This can be useful for creating a custom
-PackageSet with packages outside of the official `PackageSet`.
-
-To override a `Package` in a `PackageSet`, you can override its entry with a new `Address`:
-
-``` dhall
-let Registry = https://raw.githubusercontent.com/purescript/registry/master/v1/Registry.dhall
-
-let upstream = https://raw.githubusercontent.com/purescript/registry/master/v1/sets/20200418.dhall
-
-let overrides = { effect = Registry.Address.Local (../my-effect as Location) }
-
-in { compiler = upstream.compiler, packages = upstream.packages // overrides }
-```
-
-In general any [`Address`](./v1/Address.dhall) works as an override.
-
 ## Package metadata
 
 Every package will have its own file in the `packages` folder of this repo.
@@ -321,6 +302,49 @@ As noted in the beginning, Package Sets are a first class citizen of this design
 
 This repo will be the single source of truth for the package-sets - you can find an example [here](./v1/sets/20200911.dhall) - from
 which we'll generate various metadata files to be used by the package manager. __Further details are yet to be defined__.
+
+### Making your own Package Set
+
+While the upstream package sets will only contain packages from the Registry,
+it is common to have the need to create a custom package set that might contain
+with packages that are not present in the Registry.
+
+In this case the format in which the extra-Registry packages will depend on what
+the client accepts.
+
+One of such clients will be Spago, where we'll define an extra-Registry package as:
+```dhall
+let Registry = https://raw.githubusercontent.com/purescript/registry/master/v1/Registry.dhall
+
+let SpagoPkg =
+      < Repo : { repo : Registry.Repo, ref : Text }
+      | Local : Registry.Prelude.Location.Type
+      >
+```
+
+..that is, an extra-Registry package in Spago could either point to a local path, or a remote repository.
+
+Here's an example of a package set that is exactly like the upstream, except for the `effect`
+package, that instead points to some repo from GitHub:
+
+```dhall
+-- We parametrize the upstream package set and the Address type by the package type that our client accepts:
+let upstream = https://raw.githubusercontent.com/purescript/registry/master/v1/sets/20200418.dhall SpagoPkg
+let Address = Registry.Address SpagoPkg
+
+let overrides =
+    { effect = Address.External (SpagoPkg.Repo
+        { ref = "v0.0.1"
+        , repo = Registry.Repo.GitHub
+            { subdir = None Text
+            , githubOwner = "someauthor"
+            , githubRepo = "somerepo"
+            }
+        })
+    }
+
+in { compiler = upstream.compiler, packages = upstream.packages // overrides }
+```
 
 ## Registry Trustees
 
