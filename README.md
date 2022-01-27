@@ -154,6 +154,63 @@ Note: the [`Repo` schema](./v1/Repo.dhall) includes support for packages that ar
 not published from the root of the repository, by supplying the (optional) `subdir` field.
 This means that a repository could potentially host several packages (commonly called a "monorepo").
 
+### Registry Versions & Version Ranges
+
+The PureScript registry allows packages to specify a version for themselves and version ranges for their dependencies.
+
+We use a restricted version of the SemVer spec which only allows versions with major, minor, and patch places (no build metadata or prerelease identifiers) and version ranges with the `>=` and `<` operators.
+
+This decision keeps versions and version ranges easy to read, understand, and maintain over time.
+
+#### Package Versions
+Package versions always take the form `X.Y.Z`, representing major, minor, and patch places. All three places must be natural numbers. For example, in a manifest file:
+
+```json
+{
+  "name": "my-package",
+  "version": "1.0.1"
+}
+```
+
+If a package uses all three places (ie. it begins with a non-zero number, such as `1.0.0`), then:
+
+* `MAJOR` means values have been changed or removed, and represents a breaking change to the package.
+* `MINOR` means values have been added, but existing values are unchanged.
+* `PATCH` means the API is unchanged and there is no risk of breaking code.
+
+If a package only uses two places (ie. it begins with a zero, such as `0.1.0`), then:
+
+* `MAJOR` is unused because it is zero
+* `MINOR` means values have been changed or removed and represents a breaking change to the package
+* `PATCH` means values may have been added, but existing values are unchanged
+
+If a package uses only one place (ie. it begins with two zeros, such as `0.0.1`), then all changes are potentially breaking changes.
+
+#### Version Ranges
+Version ranges are always of the form `>=X.Y.Z <X.Y.Z`, where both versions must be valid and the first version must be less than the second version.
+
+When comparing versions, the major place takes precedence, then the minor place, and then the patch place. For example:
+
+* `1.0.0` is greater than `0.12.0`
+* `0.1.0` is greater than `0.0.12`
+* `0.0.1` is greater than `0.0.0`
+
+All dependencies must take this form. For example, in a manifest file:
+
+```json
+{
+  "name": "my-package",
+  "version": "1.0.1",
+  "targets": {
+    "lib": {
+      "my-dependency": ">=1.0.0 <2.0.0",
+      "my-dependency-2": ">=2.1.5 <2.1.6",
+      "my-dependency-3": ">=0.1.0 <12.19.124"
+    },
+  }
+}
+```
+
 ## The Registry API
 
 The Registry should support various automated (i.e. no/little human intervention required) operations:
