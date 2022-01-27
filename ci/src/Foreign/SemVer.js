@@ -16,4 +16,7 @@ exports.parseRangeImpl = (rangeString) =>
   //
   // > validRange(" = v 2.1.5-foo")
   // "2.1.5-foo"
+  //
+  // We set these options because we should only be using this function to clean up ranges,
+  // not to validate them.
   semver.validRange(rangeString, { loose: true, includePrerelease: false });
