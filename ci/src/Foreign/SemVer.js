@@ -7,9 +7,13 @@ exports.parseRangeImpl = (rangeString) =>
   // range is not valid, and the converted range if it is.
   //
   // For example:
-  // > validRange("^1.0.0") -> (">=1.0.0 <2.0.0")
+  //
+  // > validRange("^1.0.0")
+  // ">=1.0.0 <2.0.0"
   //
   // In loose mode `validRange` will also fix common errors like including a 'v' prefix
   // or extra spaces:
-  // > validRange(" = v 2.1.5-foo") -> "2.1.5-foo"
+  //
+  // > validRange(" = v 2.1.5-foo")
+  // "2.1.5-foo"
   semver.validRange(rangeString, { loose: true, includePrerelease: false });
