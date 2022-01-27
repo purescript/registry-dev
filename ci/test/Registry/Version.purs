@@ -6,7 +6,6 @@ module Test.Registry.Version
 import Registry.Prelude
 
 import Data.Either as Either
-import Foreign.SemVer as SemVer
 import Registry.Version (ParseMode(..))
 import Registry.Version as Version
 import Test.Spec as Spec
@@ -93,11 +92,9 @@ testRange = do
         map Version.rawRange parsed `Assert.shouldContain` range
 
   Spec.describe "Invalid lenient ranges pass node-semver conversion but fail registry parsing" do
-    for_ invalidLenientRanges \{ range, semVer, label } ->
+    for_ invalidLenientRanges \{ range, label } ->
       Spec.it label do
-        let nodeRange = SemVer.parseRange range
         let parsed = Version.parseRange Lenient range
-        nodeRange `Assert.shouldContain` semVer
         parsed `Assert.shouldSatisfy` Either.isLeft
 
   Spec.describe "Valid lenient ranges parse correctly" do
@@ -163,10 +160,10 @@ validLenientRanges =
   , { raw: "0.0.1+build", parsed: ">=0.0.1 <0.0.2" }
   ]
 
-invalidLenientRanges :: Array { range :: String, semVer :: String, label :: String }
+invalidLenientRanges :: Array { range :: String, label :: String }
 invalidLenientRanges =
-  [ { range: "*", semVer: "*", label: "Results in *" }
-  , { range: ">=*", semVer: "*", label: "Results in *" }
-  , { range: ">1.0.0", semVer: ">1.0.0", label: "Unbounded upper range" }
-  , { range: ">=1.0.0", semVer: ">=1.0.0", label: "Unbounded upper range" }
+  [ { range: "*", label: "Results in *" }
+  , { range: ">=*", label: "Results in *" }
+  , { range: ">1.0.0", label: "Unbounded upper range" }
+  , { range: ">=1.0.0", label: "Unbounded upper range" }
   ]

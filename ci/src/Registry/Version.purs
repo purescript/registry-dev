@@ -155,37 +155,33 @@ printRange range =
 parseRange :: ParseMode -> String -> Either ParseError Range
 parseRange mode input = do
   let
-    parser :: Parser Range
-    parser = do
-      _ <- StringParser.CodeUnits.string ">="
-      lhs <- toVersion mode =<< map toString charsUntilSpace
-      _ <- StringParser.CodeUnits.char '<'
-      rhs <- toVersion mode =<< map toString chars
-      StringParser.CodeUnits.eof
-      -- Trimming prerelease identifiers in lenient mode can produce ranges
-      -- where the lhs was less than the rhs, but no longer is. For example:
-      -- '>=1.0.0-rc.1 <1.0.0-rc.5' -> '>=1.0.0 <1.0.0'.
-      -- We fix these ranges in lenient mode by bumping the rhs patch by one.
-      if (mode == Lenient && lhs == rhs) then
-        pure $ Range { lhs, rhs: bumpPatch rhs, mode, raw: input }
-      else if (lhs >= rhs) then
-        StringParser.fail $ Array.fold
-          [ "Left-hand version ("
-          , printVersion lhs
-          , ") must be less than right-hand version ("
-          , printVersion rhs
-          , ")"
-          ]
-      else do
-        pure $ Range { lhs, rhs, mode, raw: input }
-
-  let
     parserInput :: String
     parserInput = case mode of
       Lenient -> convertRange input
       Strict -> input
 
-  StringParser.runParser parser parserInput
+  parserInput # StringParser.runParser do
+    _ <- StringParser.CodeUnits.string ">="
+    lhs <- toVersion mode =<< map toString charsUntilSpace
+    _ <- StringParser.CodeUnits.char '<'
+    rhs <- toVersion mode =<< map toString chars
+    StringParser.CodeUnits.eof
+    -- Trimming prerelease identifiers in lenient mode can produce ranges
+    -- where the lhs was less than the rhs, but no longer is. For example:
+    -- '>=1.0.0-rc.1 <1.0.0-rc.5' -> '>=1.0.0 <1.0.0'.
+    -- We fix these ranges in lenient mode by bumping the rhs patch by one.
+    if (mode == Lenient && lhs == rhs) then
+      pure $ Range { lhs, rhs: bumpPatch rhs, mode, raw: input }
+    else if (lhs >= rhs) then
+      StringParser.fail $ Array.fold
+        [ "Left-hand version ("
+        , printVersion lhs
+        , ") must be less than right-hand version ("
+        , printVersion rhs
+        , ")"
+        ]
+    else
+      pure $ Range { lhs, rhs, mode, raw: input }
 
 data ParseMode = Lenient | Strict
 
