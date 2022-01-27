@@ -136,7 +136,7 @@ instance RegistryJson Operation where
 
 type AdditionData =
   { addToPackageSet :: Boolean
-  , fromBower :: Boolean
+  , legacy :: Boolean
   , newPackageLocation :: Repo
   , newRef :: String
   , packageName :: PackageName
@@ -144,7 +144,7 @@ type AdditionData =
 
 type UpdateData =
   { packageName :: PackageName
-  , fromBower :: Boolean
+  , legacy :: Boolean
   , updateRef :: String
   }
 

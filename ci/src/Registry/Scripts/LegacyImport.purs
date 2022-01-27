@@ -34,7 +34,7 @@ import Text.Parsing.StringParser as StringParser
 
 -- | This main loop uploads legacy packages to the new Registry
 -- | In order to do this, we:
--- | - get an index of the legacy packages with their bowerfiles
+-- | - get an index of the legacy packages
 -- | - create a graph (a tree really) where a package is a node and dependencies are edges
 -- | - topologically sort this graph so that packages with no dependencies are at the root
 -- | - go through this list: if the package is in the registry index then skip, otherwise upload
@@ -89,7 +89,7 @@ main = Aff.launchAff_ do
     let
       addition = Addition
         { addToPackageSet: false -- heh, we don't have package sets until we do this import!
-        , fromBower: true
+        , legacy: true
         , newPackageLocation: manifest.repository
         , newRef: Version.rawVersion manifest.version
         , packageName: manifest.name
