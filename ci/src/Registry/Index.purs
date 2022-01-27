@@ -14,7 +14,6 @@ import Data.Set as Set
 import Data.String as String
 import Data.String.Pattern (Pattern(..))
 import Foreign.Node.FS as Foreign.Node
-import Foreign.SemVer (SemVer)
 import Node.FS.Aff as FS
 import Node.FS.Stats as Stats
 import Node.Glob.Basic as Glob
@@ -23,8 +22,9 @@ import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Manifest(..))
+import Registry.Version (Version)
 
-type RegistryIndex = Map PackageName (Map SemVer Manifest)
+type RegistryIndex = Map PackageName (Map Version Manifest)
 
 -- | NOTE: Right now, this assumes that manifest files will parse
 readRegistryIndex :: FilePath -> Aff RegistryIndex
@@ -61,10 +61,10 @@ readRegistryIndex directory = do
     parsedPackages :: Array (Tuple PackageName (NonEmptyArray Manifest))
     parsedPackages = map normalizePackage parsed
 
-    goManifest :: Manifest -> Tuple SemVer Manifest
+    goManifest :: Manifest -> Tuple Version Manifest
     goManifest manifest@(Manifest { version }) = Tuple version manifest
 
-    goPackage :: NonEmptyArray Manifest -> Map SemVer Manifest
+    goPackage :: NonEmptyArray Manifest -> Map Version Manifest
     goPackage = map goManifest >>> Map.fromFoldable
 
   pure

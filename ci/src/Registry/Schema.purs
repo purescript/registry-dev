@@ -5,18 +5,18 @@ import Registry.Prelude
 import Data.Generic.Rep as Generic
 import Foreign.Object as Object
 import Foreign.SPDX (License)
-import Foreign.SemVer (SemVer, Range)
-import Foreign.SemVer as SemVer
 import Registry.Hash (Sha256)
 import Registry.Json ((.:), (.:?), (:=))
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Version (Range, Version)
+import Registry.Version as Version
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 newtype Manifest = Manifest
   { name :: PackageName
-  , version :: SemVer
+  , version :: Version
   , license :: License
   , repository :: Repo
   , targets :: Object Target
@@ -150,7 +150,7 @@ type UpdateData =
 
 type UnpublishData =
   { packageName :: PackageName
-  , unpublishVersion :: SemVer
+  , unpublishVersion :: Version
   , unpublishReason :: String
   }
 
@@ -173,14 +173,14 @@ mkNewMetadata location =
   , unpublished: Object.empty
   }
 
-addVersionToMetadata :: SemVer -> VersionMetadata -> Metadata -> Metadata
+addVersionToMetadata :: Version -> VersionMetadata -> Metadata -> Metadata
 addVersionToMetadata version versionMeta metadata = do
-  let releases = Object.insert (SemVer.version version) versionMeta metadata.releases
+  let releases = Object.insert (Version.printVersion version) versionMeta metadata.releases
   metadata { releases = releases }
 
-isVersionInMetadata :: SemVer -> Metadata -> Boolean
+isVersionInMetadata :: Version -> Metadata -> Boolean
 isVersionInMetadata version metadata = versionPublished || versionUnpublished
   where
-  versionStr = SemVer.version version
+  versionStr = Version.printVersion version
   versionPublished = isJust $ Object.lookup versionStr metadata.releases
   versionUnpublished = isJust $ Object.lookup versionStr metadata.unpublished

@@ -17,7 +17,6 @@ import Effect.Aff.AVar as AVar
 import Effect.Now (nowDateTime) as Time
 import Foreign.GitHub (PackageURL)
 import Foreign.GitHub as GitHub
-import Foreign.SemVer (SemVer)
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Registry.Json as Json
@@ -25,6 +24,7 @@ import Registry.PackageName (PackageName)
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Error as LegacyImport.Error
 import Registry.Types (RawPackageName, RawVersion)
+import Registry.Version (Version)
 
 type ProcessedPackages k a =
   { failures :: PackageFailures
@@ -66,17 +66,17 @@ forPackageVersion
        , name :: PackageName
        , original :: RawPackageName
        }
-       { semVer :: SemVer, original :: RawVersion }
+       { version :: Version, original :: RawVersion }
        a
   -> ( { address :: GitHub.Address
        , name :: PackageName
        , original :: RawPackageName
        }
-       -> { semVer :: SemVer, original :: RawVersion }
+       -> { version :: Version, original :: RawVersion }
        -> a
        -> ExceptT ImportError Aff b
      )
-  -> Aff (ProcessedPackageVersions { address :: GitHub.Address, name :: PackageName, original :: RawPackageName } { semVer :: SemVer, original :: RawVersion } b)
+  -> Aff (ProcessedPackageVersions { address :: GitHub.Address, name :: PackageName, original :: RawPackageName } { version :: Version, original :: RawVersion } b)
 forPackageVersion input f = do
   var <- AVar.new { failures: input.failures, packages: Map.empty }
   parBounded input.packages \k1@{ original: name } inner ->
@@ -106,7 +106,7 @@ forPackageVersionKeys
                 , name :: PackageName
                 , original :: RawPackageName
                 }
-                { semVer :: SemVer, original :: RawVersion }
+                { version :: Version, original :: RawVersion }
             )
      )
   -> Aff
@@ -115,7 +115,7 @@ forPackageVersionKeys
            , name :: PackageName
            , original :: RawPackageName
            }
-           { semVer :: SemVer, original :: RawVersion }
+           { version :: Version, original :: RawVersion }
            Unit
        )
 forPackageVersionKeys input f = do
@@ -189,19 +189,19 @@ withCache { encode, decode } path maybeDuration action = do
       log $ "No cache hit for " <> show path
 
       let
-        writeEncoded :: Either ImportError String -> Aff Unit
-        writeEncoded = Json.writeJsonFile objectPath
+        writeEncoded :: String -> Aff Unit
+        writeEncoded = FS.writeTextFile UTF8 objectPath
 
       liftAff (Except.runExceptT action) >>= case _ of
         Right result -> do
-          liftAff $ writeEncoded $ Right $ encode result
+          liftAff $ writeEncoded $ encode result
           pure result
         -- We want to cache some files that we process, even if they fail, so that
         -- we don't attempt to process them again.
         Left importError | cacheFailure importError -> do
-          liftAff $ writeEncoded $ Left importError
+          liftAff $ writeEncoded $ Json.stringifyJson importError
           throwError importError
-        Left importError ->
+        Left importError -> do
           throwError importError
 
     isCacheHit = liftAff do
@@ -210,9 +210,9 @@ withCache { encode, decode } path maybeDuration action = do
         _, Nothing -> pure false
         false, _ -> pure false
         true, Just duration -> do
-          lastModified <- FS.stat objectPath <#> unsafePartial fromJust <<< JSDate.toDateTime <<< _.mtime <<< (\(Stats s) -> s)
+          lastModified <- FS.stat objectPath <#> unsafeFromJust <<< JSDate.toDateTime <<< _.mtime <<< (\(Stats s) -> s)
           now <- liftEffect $ Time.nowDateTime
-          let expiryTime = unsafePartial fromJust $ Time.adjust duration lastModified
+          let expiryTime = unsafeFromJust $ Time.adjust duration lastModified
           pure (now > expiryTime)
       pure (exists && not expired)
 
@@ -220,18 +220,17 @@ withCache { encode, decode } path maybeDuration action = do
 
   isCacheHit >>= case _ of
     true -> do
-      result :: Either _ (Either ImportError String) <- liftAff $ Json.readJsonFile objectPath
-      case result of
-        Left error -> do
-          log $ "Cache read failed: " <> error
+      contents <- liftAff $ FS.readTextFile UTF8 objectPath
+      case decode contents of
+        Left _ -> do
+          case Json.parseJson contents of
+            Left _ ->
+              log $ "Could not decode " <> objectPath
+            Right importError -> do
+              throwError importError
           onCacheMiss
-        Right (Left importError) ->
-          throwError importError
-        Right (Right res) -> case decode res of
-          Left _ ->
-            onCacheMiss
-          Right a -> do
-            pure a
+        Right a ->
+          pure a
 
     false -> do
       onCacheMiss

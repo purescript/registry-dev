@@ -10,19 +10,20 @@ import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.SPDX as SPDX
-import Foreign.SemVer as SemVer
 import Node.FS.Aff as FS
 import Registry.API as API
 import Registry.Json as Json
 import Registry.PackageName as PackageName
 import Registry.Schema (Operation(..), Repo(..), Manifest(..))
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
+import Registry.Version (rawVersion) as Version
 import Safe.Coerce (coerce)
 import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
 import Test.Registry.Hash as Registry.Hash
 import Test.Registry.Index as Registry.Index
 import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
+import Test.Registry.Version (testRange, testVersion) as Version
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -50,7 +51,6 @@ main = launchAff_ do
         Spec.describe "Good SPDX licenses" goodSPDXLicense
         Spec.describe "Bad SPDX licenses" badSPDXLicense
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
-        Spec.describe "SemVer" semVer
     Spec.describe "Bowerfile" do
       Spec.describe "Parses" do
         Spec.describe "Good bower files" goodBowerfiles
@@ -68,6 +68,10 @@ main = launchAff_ do
       Registry.Hash.testHash
     Spec.describe "Json" do
       Foreign.JsonRepair.testJsonRepair
+    Spec.describe "Version" do
+      Version.testVersion
+    Spec.describe "Range" do
+      Version.testRange
 
 -- | Check all the example Manifests roundtrip (read+write) through PureScript
 manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit
@@ -88,7 +92,7 @@ manifestEncoding :: Spec.Spec Unit
 manifestEncoding = do
   let
     roundTrip (Manifest manifest) =
-      Spec.it (PackageName.print manifest.name <> " " <> SemVer.raw manifest.version) do
+      Spec.it (PackageName.print manifest.name <> " " <> Version.rawVersion manifest.version) do
         Json.roundtrip manifest `Assert.shouldContain` manifest
 
   roundTrip Fixtures.ab.v1a
@@ -175,7 +179,7 @@ decodeEventsToOps = do
     let
       issueNumber = IssueNumber 43
       operation = Update
-        { packageName: fromRight' (\_ -> unsafeCrashWith "Expected Right") (PackageName.parse "something")
+        { packageName: unsafeFromRight $ PackageName.parse "something"
         , updateRef: "v1.2.3"
         , fromBower: false
         }
@@ -187,7 +191,7 @@ decodeEventsToOps = do
     let
       issueNumber = IssueNumber 149
       operation = Addition
-        { packageName: fromRight' (\_ -> unsafeCrashWith "Expected Right") (PackageName.parse "prelude")
+        { packageName: unsafeFromRight $ PackageName.parse "prelude"
         , newRef: "v5.0.0"
         , fromBower: true
         , addToPackageSet: true
@@ -196,24 +200,6 @@ decodeEventsToOps = do
 
     res <- API.readOperation "test/fixtures/issue_created.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
-
-semVer :: Spec.Spec Unit
-semVer = do
-  let
-    parseSemVer str = Spec.it ("Parse SemVer " <> str) do
-      (SemVer.version <$> SemVer.parseSemVer str) `Assert.shouldSatisfy` isJust
-
-  parseSemVer "v1.2.3"
-  parseSemVer "1.2.3-rc2"
-  parseSemVer "0.1.2+r2"
-
-  let
-    parseRange range expected = Spec.it ("Parse Range " <> show range <> " into " <> show expected) do
-      (SemVer.printRange <$> SemVer.parseRange range) `Assert.shouldSatisfy` case _ of
-        Just parsed -> parsed == expected
-        Nothing -> false
-
-  parseRange "^1.3.4" ">=1.3.4 <2.0.0-0"
 
 goodBowerfiles :: Spec.Spec Unit
 goodBowerfiles = do

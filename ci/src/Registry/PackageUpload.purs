@@ -4,16 +4,16 @@ import Registry.Prelude
 
 import Data.Array as Array
 import Effect.Aff as Aff
-import Foreign.SemVer (SemVer)
-import Foreign.SemVer as SemVer
 import Foreign.S3 as S3
 import Node.FS.Aff as FS
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Version (Version)
+import Registry.Version as Version
 
 type PackageInfo =
   { name :: PackageName
-  , version :: SemVer
+  , version :: Version
   }
 
 upload :: PackageInfo -> FilePath -> Aff Unit
@@ -31,7 +31,7 @@ upload { name, version } path = do
     filename = Array.fold
       [ packageName
       , "/"
-      , SemVer.version version
+      , Version.printVersion version
       , ".tar.gz"
       ]
 

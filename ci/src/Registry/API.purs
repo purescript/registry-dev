@@ -15,8 +15,6 @@ import Foreign.Dhall as Dhall
 import Foreign.GitHub (IssueNumber)
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
-import Foreign.SemVer (SemVer)
-import Foreign.SemVer as SemVer
 import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
@@ -34,6 +32,8 @@ import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), Target(
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
+import Registry.Version (ParseMode(..), Version)
+import Registry.Version as Version
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
 
@@ -166,9 +166,9 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
       Git _ -> throwWithComment "Legacy packages can only come from GitHub. Aborting."
       GitHub { owner, repo } -> pure { owner, repo }
 
-    semVer <- case SemVer.parseSemVer ref of
-      Nothing -> throwWithComment $ "Not a valid SemVer version: " <> ref
-      Just result -> pure result
+    version <- case Version.parseVersion Lenient ref of
+      Left _ -> throwWithComment $ "Not a valid registry version: " <> ref
+      Right result -> pure result
 
     let
       liftError = map (lmap ManifestImportError)
@@ -179,7 +179,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
       gatherManifest :: ExceptT ImportError Aff Manifest
       gatherManifest = do
         manifestFields <- Manifest.constructManifestFields (RawPackageName $ show packageName) (RawVersion ref) address
-        Except.mapExceptT liftError $ Manifest.toManifest packageName metadata.location semVer manifestFields
+        Except.mapExceptT liftError $ Manifest.toManifest packageName metadata.location version manifestFields
 
     runManifest gatherManifest >>= case _ of
       Left err ->
@@ -204,7 +204,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   log "Packaging the tarball to upload..."
   -- We need the version number to upload the package
   let newVersion = manifestRecord.version
-  let newDirname = PackageName.print packageName <> "-" <> SemVer.version newVersion
+  let newDirname = PackageName.print packageName <> "-" <> Version.printVersion newVersion
   liftAff $ FS.rename absoluteFolderPath (tmpDir <> "/" <> newDirname)
   let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
@@ -218,7 +218,7 @@ addOrUpdate { ref, fromBower, packageName } metadata = do
   log "Uploading package to the storage backend..."
   let uploadPackageInfo = { name: packageName, version: newVersion }
   uploadPackage uploadPackageInfo tarballPath
-  log $ "Adding the new version " <> SemVer.version newVersion <> " to the package metadata file (hashes, etc)"
+  log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show ref <> " was " <> show hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref, bytes } metadata
   let metadataFilePath = metadataFile packageName
@@ -260,14 +260,10 @@ runChecks metadata (Manifest manifest) = do
     throwWithComment "The `lib` target only allows the following `sources`: `src/**/*.purs`"
 
   log "Check that version is unique"
-  let prettyVersion = SemVer.version manifest.version
+  let prettyVersion = Version.printVersion manifest.version
   case Object.lookup prettyVersion metadata.releases of
     Nothing -> pure unit
     Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> show prettyVersion <> "\nIts metadata is: " <> show info
-
-  log "Check that the version does not contain any build metadata"
-  when (SemVer.build manifest.version /= []) do
-    throwWithComment "Package version should not contain any build-metadata."
 
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
@@ -324,7 +320,7 @@ mkMetadataRef = do
     pure $ packageName /\ metadata
   liftEffect $ Ref.new $ Map.fromFoldable packagesArray
 
-isPackageVersionInMetadata :: PackageName -> SemVer -> MetadataMap -> Boolean
+isPackageVersionInMetadata :: PackageName -> Version -> MetadataMap -> Boolean
 isPackageVersionInMetadata packageName version metadataMap =
   case Map.lookup packageName metadataMap of
     Nothing -> false
