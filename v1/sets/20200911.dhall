@@ -1,6 +1,6 @@
-\(externalPkg : Type) ->
+\(externalPackage : Type) ->
 
-let Address = (../Address.dhall) externalPkg
+let Address = (../Address.dhall) externalPackage
 
 let compiler = "v0.14.0"
 
@@ -413,7 +413,7 @@ let packages =
   , zeta = Address.Registry "v6.0.0"
   }
 
-let isPackageSetInRegistry = (../isPackageSetInRegistry.dhall) externalPkg
+let isPackageSetInRegistry = (../isPackageSetInRegistry.dhall) externalPackage
 
 let test = assert : isPackageSetInRegistry (toMap packages) === True
 

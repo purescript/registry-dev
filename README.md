@@ -276,7 +276,7 @@ let upstream = https://raw.githubusercontent.com/purescript/registry/master/v1/s
 let Address = Registry.Address SpagoPkg
 
 let overrides =
-    { effect = Address.ExternalPkg (SpagoPkg.Repo
+    { effect = Address.External (SpagoPkg.Repo
         { ref = "v0.0.1"
         , repo = Registry.Repo.GitHub
             { subdir = None Text

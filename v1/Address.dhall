@@ -12,9 +12,9 @@ let Repo = ./Repo.dhall
 
 let SemVer = Text
 
-let Address = \(externalPkg : Type) ->
+let Address = \(externalPackage : Type) ->
         < Registry : SemVer
-        | ExternalPkg : externalPkg
+        | External : externalPackage
         >
 
 in Address

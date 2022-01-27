@@ -1,7 +1,7 @@
 let Prelude = ./Prelude.dhall
 
-in \(externalPkg : Type) ->
-      let Address = (./Address.dhall) externalPkg
+in \(externalPackage : Type) ->
+      let Address = (./Address.dhall) externalPackage
 
       let Repo = ./Repo.dhall
 
@@ -11,7 +11,7 @@ in \(externalPkg : Type) ->
       let Pkgs = Prelude.Map.Type Text Address
       let isRegistryPkg = \(pkg : Pkg) -> merge
             { Registry = \(x : Text) -> True
-            , ExternalPkg = \(x : externalPkg) -> False
+            , External = \(x : externalPackage) -> False
             } pkg.mapValue
 
       -- here we map all the packages in the set with the function defined above,
