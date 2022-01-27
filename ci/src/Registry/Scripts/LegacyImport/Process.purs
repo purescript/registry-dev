@@ -210,9 +210,9 @@ withCache { encode, decode } path maybeDuration action = do
         _, Nothing -> pure false
         false, _ -> pure false
         true, Just duration -> do
-          lastModified <- FS.stat objectPath <#> unsafePartial fromJust <<< JSDate.toDateTime <<< _.mtime <<< (\(Stats s) -> s)
+          lastModified <- FS.stat objectPath <#> unsafeFromJust <<< JSDate.toDateTime <<< _.mtime <<< (\(Stats s) -> s)
           now <- liftEffect $ Time.nowDateTime
-          let expiryTime = unsafePartial fromJust $ Time.adjust duration lastModified
+          let expiryTime = unsafeFromJust $ Time.adjust duration lastModified
           pure (now > expiryTime)
       pure (exists && not expired)
 

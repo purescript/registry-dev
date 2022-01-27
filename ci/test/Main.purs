@@ -179,7 +179,7 @@ decodeEventsToOps = do
     let
       issueNumber = IssueNumber 43
       operation = Update
-        { packageName: fromRight' (\_ -> unsafeCrashWith "Expected Right") (PackageName.parse "something")
+        { packageName: unsafeFromRight $ PackageName.parse "something"
         , updateRef: "v1.2.3"
         , fromBower: false
         }
@@ -191,7 +191,7 @@ decodeEventsToOps = do
     let
       issueNumber = IssueNumber 149
       operation = Addition
-        { packageName: fromRight' (\_ -> unsafeCrashWith "Expected Right") (PackageName.parse "prelude")
+        { packageName: unsafeFromRight $ PackageName.parse "prelude"
         , newRef: "v5.0.0"
         , fromBower: true
         , addToPackageSet: true

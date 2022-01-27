@@ -9,6 +9,8 @@ module Registry.Prelude
   , stripPureScriptPrefix
   , newlines
   , fromJust'
+  , unsafeFromJust
+  , unsafeFromRight
   ) where
 
 import Prelude
@@ -46,7 +48,7 @@ import Foreign.Object (Object) as Extra
 import Node.Buffer (Buffer) as Extra
 import Node.Encoding (Encoding(..)) as Extra
 import Node.Path (FilePath) as Extra
-import Partial.Unsafe (unsafePartial, unsafeCrashWith) as Extra
+import Partial.Unsafe (unsafeCrashWith) as Extra
 import Registry.Json (Json, class RegistryJson) as Registry.Json
 import Registry.Types (RawPackageName(..), RawVersion(..)) as Registry.Types
 
@@ -81,3 +83,9 @@ newlines n = Array.fold $ Array.replicate n "\n"
 fromJust' :: forall a. (Unit -> a) -> Maybe.Maybe a -> a
 fromJust' _ (Maybe.Just a) = a
 fromJust' failed _ = failed unit
+
+unsafeFromJust :: forall a. Maybe.Maybe a -> a
+unsafeFromJust = fromJust' (\_ -> Extra.unsafeCrashWith "Unexpected Nothing")
+
+unsafeFromRight :: forall e a. Either.Either e a -> a
+unsafeFromRight = Either.fromRight' (\_ -> Extra.unsafeCrashWith "Unexpected Left")
