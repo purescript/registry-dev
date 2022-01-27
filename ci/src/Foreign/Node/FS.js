@@ -1,5 +1,5 @@
-const fs = require("fs");
+const fs = require("fs-extra");
 
-exports.mkdirSyncImpl = (path) => fs.mkdirSync(path, { recursive: true });
+exports.ensureDirectoryImpl = (path) => () => fs.ensureDir(path);
 
-exports.rmdirSyncImpl = (path) => fs.rmdirSync(path, { recursive: true });
+exports.removeImpl = (path) => () => fs.remove(path);

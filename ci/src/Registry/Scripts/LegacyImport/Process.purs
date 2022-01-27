@@ -17,6 +17,7 @@ import Effect.Aff.AVar as AVar
 import Effect.Now (nowDateTime) as Time
 import Foreign.GitHub (PackageURL)
 import Foreign.GitHub as GitHub
+import Foreign.Node.FS as FS.Extra
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
 import Registry.Json as Json
@@ -216,7 +217,7 @@ withCache { encode, decode } path maybeDuration action = do
           pure (now > expiryTime)
       pure (exists && not expired)
 
-  lift $ unlessM (FS.exists cacheFolder) (FS.mkdir cacheFolder)
+  liftAff $ FS.Extra.ensureDirectory cacheFolder
 
   isCacheHit >>= case _ of
     true -> do
