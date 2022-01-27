@@ -84,9 +84,6 @@ exampleFailures = PackageFailures $ Map.fromFoldable
 exampleStats :: Stats.Stats
 exampleStats = Stats.errorStats mockStats
   where
-  unsafeFromRight :: forall e a. Either e a -> a
-  unsafeFromRight = fromRight' (\_ -> unsafeCrashWith "Unexpected Left")
-
   mockLicense :: License
   mockLicense = unsafeFromRight $ License.parse "MIT"
 

@@ -89,6 +89,3 @@ abcd = { name, v1, v2 }
   description = Just "some description"
   v1 = Manifest { name, version: version1, license, repository, targets: targets1, description }
   v2 = Manifest { name, version: version2, license, repository, targets: targets2, description }
-
-unsafeFromRight :: forall e a. Either e a -> a
-unsafeFromRight = fromRight' (\_ -> unsafeCrashWith "Unexpected Left")
