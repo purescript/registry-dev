@@ -13,8 +13,6 @@ import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
-import Foreign.SemVer (SemVer)
-import Foreign.SemVer as SemVer
 import Registry.API as API
 import Registry.Index (RegistryIndex)
 import Registry.Json as Json
@@ -23,12 +21,14 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, runRegistryM)
-import Registry.Schema (Repo(..), Manifest(..), Operation(..), Metadata)
+import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..))
 import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.Stats as Stats
 import Registry.Types (RawPackageName(..), RawVersion(..))
+import Registry.Version (ParseMode(..), Version)
+import Registry.Version as Version
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as StringParser
 
@@ -91,7 +91,7 @@ main = Aff.launchAff_ do
         { addToPackageSet: false -- heh, we don't have package sets until we do this import!
         , fromBower: true
         , newPackageLocation: manifest.repository
-        , newRef: SemVer.raw manifest.version
+        , newRef: Version.rawVersion manifest.version
         , packageName: manifest.name
         }
     log "\n\n----------------------------------------------------------------------"
@@ -154,15 +154,15 @@ downloadLegacyRegistry = do
       Right pname ->
         pure pname
 
-    packageSemVer <- case SemVer.parseSemVer $ un RawVersion tag of
-      Nothing ->
+    packageVersion <- case Version.parseVersion Lenient $ un RawVersion tag of
+      Left _ ->
         throwError $ ManifestImportError $ NEA.singleton $ BadVersion $ un RawVersion tag
-      Just semVer ->
-        pure semVer
+      Right version ->
+        pure version
 
     let
       outerKey = { name: packageName, original: name, address }
-      innerKey = { semVer: packageSemVer, original: tag }
+      innerKey = { version: packageVersion, original: tag }
 
     pure $ Tuple outerKey innerKey
 
@@ -174,7 +174,7 @@ downloadLegacyRegistry = do
          , name :: PackageName
          , original :: RawPackageName
          }
-         { semVer :: SemVer, original :: RawVersion }
+         { version :: Version, original :: RawVersion }
          Manifest <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
     manifestFields <- Manifest.constructManifestFields originalName tag.original address
 
@@ -182,7 +182,7 @@ downloadLegacyRegistry = do
       repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
       liftError = map (lmap ManifestImportError)
 
-    Except.mapExceptT liftError $ Manifest.toManifest name repo tag.semVer manifestFields
+    Except.mapExceptT liftError $ Manifest.toManifest name repo tag.version manifestFields
 
   log "Writing exclusions file..."
   Json.writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
@@ -192,10 +192,10 @@ downloadLegacyRegistry = do
     registryIndex :: RegistryIndex
     registryIndex = do
       let
-        packageManifests :: Array (Tuple PackageName (Map SemVer Manifest))
+        packageManifests :: Array (Tuple PackageName (Map Version Manifest))
         packageManifests =
           map (lmap _.name)
-            $ map (map (Map.fromFoldable <<< map (lmap _.semVer) <<< (Map.toUnfoldable :: _ -> Array _)))
+            $ map (map (Map.fromFoldable <<< map (lmap _.version) <<< (Map.toUnfoldable :: _ -> Array _)))
             $ Map.toUnfoldable manifestRegistry.packages
 
       Map.fromFoldable packageManifests

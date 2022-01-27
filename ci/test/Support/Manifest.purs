@@ -4,12 +4,12 @@ import Registry.Prelude
 
 import Foreign.Object as Object
 import Foreign.SPDX as SPDX
-import Foreign.SemVer as SemVer
-import Partial.Unsafe as Partial.Unsafe
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Manifest(..), Target(..))
 import Registry.Schema as Schema
+import Registry.Version (ParseMode(..))
+import Registry.Version as Version
 
 ab ::
   { name :: PackageName
@@ -19,14 +19,14 @@ ab ::
   }
 ab = { name, v1a, v1b, v2 }
   where
-  name = unsafeFromJust $ hush $ PackageName.parse "ab"
-  version1 = unsafeFromJust $ SemVer.parseSemVer "1.0.0"
+  name = unsafeFromRight $ PackageName.parse "ab"
+  version1 = unsafeFromRight $ Version.parseVersion Strict "1.0.0"
   targets = Object.singleton "lib" $ Target
     { dependencies: Object.empty
     , sources: [ "src/**/*.purs" ]
     }
-  version2 = unsafeFromJust $ SemVer.parseSemVer "2.0.0"
-  license = unsafeFromJust $ hush $ SPDX.parse "MIT"
+  version2 = unsafeFromRight $ Version.parseVersion Strict "2.0.0"
+  license = unsafeFromRight $ SPDX.parse "MIT"
   repositoryWrong = Schema.GitHub
     { owner: "ab-wrong-user"
     , repo: "ab"
@@ -45,18 +45,18 @@ ab = { name, v1a, v1b, v2 }
 abc :: { name :: PackageName, v1 :: Manifest, v2 :: Manifest }
 abc = { name, v1, v2 }
   where
-  name = unsafeFromJust $ hush $ PackageName.parse "abc"
-  version1 = unsafeFromJust $ SemVer.parseSemVer "1.0.0"
+  name = unsafeFromRight $ PackageName.parse "abc"
+  version1 = unsafeFromRight $ Version.parseVersion Strict "1.0.0"
   targets1 = Object.singleton "lib" $ Target
-    { dependencies: Object.singleton "ab" (unsafeFromJust (SemVer.parseRange "^1.0.0"))
+    { dependencies: Object.singleton "ab" (unsafeFromRight (Version.parseRange Strict ">=1.0.0 <2.0.0"))
     , sources: [ "src/**/*.purs" ]
     }
-  version2 = unsafeFromJust $ SemVer.parseSemVer "2.0.0"
+  version2 = unsafeFromRight $ Version.parseVersion Strict "2.0.0"
   targets2 = Object.singleton "lib" $ Target
-    { dependencies: Object.singleton "ab" (unsafeFromJust (SemVer.parseRange "^2.0.0"))
+    { dependencies: Object.singleton "ab" (unsafeFromRight (Version.parseRange Strict ">=2.0.0 <3.0.0"))
     , sources: [ "src/**/*.purs" ]
     }
-  license = unsafeFromJust $ hush $ SPDX.parse "MIT"
+  license = unsafeFromRight $ SPDX.parse "MIT"
   repository = Schema.GitHub
     { owner: "abc-user"
     , repo: "abc"
@@ -69,18 +69,18 @@ abc = { name, v1, v2 }
 abcd :: { name :: PackageName, v1 :: Manifest, v2 :: Manifest }
 abcd = { name, v1, v2 }
   where
-  name = unsafeFromJust $ hush $ PackageName.parse "abcd"
-  version1 = unsafeFromJust $ SemVer.parseSemVer "1.0.0"
+  name = unsafeFromRight $ PackageName.parse "abcd"
+  version1 = unsafeFromRight $ Version.parseVersion Strict "1.0.0"
   targets1 = Object.singleton "lib" $ Target
-    { dependencies: Object.singleton "abc" (unsafeFromJust (SemVer.parseRange "^1.0.0"))
+    { dependencies: Object.singleton "abc" (unsafeFromRight (Version.parseRange Strict ">=1.0.0 <2.0.0"))
     , sources: [ "src/**/*.purs" ]
     }
-  version2 = unsafeFromJust $ SemVer.parseSemVer "2.0.0"
+  version2 = unsafeFromRight $ Version.parseVersion Strict "2.0.0"
   targets2 = Object.singleton "lib" $ Target
-    { dependencies: Object.singleton "abc" (unsafeFromJust (SemVer.parseRange "^2.0.0"))
+    { dependencies: Object.singleton "abc" (unsafeFromRight (Version.parseRange Strict ">=2.0.0 <3.0.0"))
     , sources: [ "src/**/*.purs" ]
     }
-  license = unsafeFromJust $ hush $ SPDX.parse "MIT"
+  license = unsafeFromRight $ SPDX.parse "MIT"
   repository = Schema.GitHub
     { owner: "abcd-user"
     , repo: "abcd"
@@ -90,5 +90,5 @@ abcd = { name, v1, v2 }
   v1 = Manifest { name, version: version1, license, repository, targets: targets1, description }
   v2 = Manifest { name, version: version2, license, repository, targets: targets2, description }
 
-unsafeFromJust :: forall a. Maybe a -> a
-unsafeFromJust = Partial.Unsafe.unsafePartial fromJust
+unsafeFromRight :: forall e a. Either e a -> a
+unsafeFromRight = fromRight' (\_ -> unsafeCrashWith "Unexpected Left")

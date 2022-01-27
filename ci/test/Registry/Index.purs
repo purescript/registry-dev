@@ -9,7 +9,6 @@ import Data.Map as Map
 import Data.Set as Set
 import Effect.Ref as Ref
 import Foreign.Object as Object
-import Foreign.SemVer (Range)
 import Foreign.Tmp as Tmp
 import Node.FS.Stats as Stats
 import Node.Glob.Basic as Glob
@@ -20,6 +19,7 @@ import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Manifest(..), Target(..))
+import Registry.Version (Range)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Support.Manifest as Support.Manifest

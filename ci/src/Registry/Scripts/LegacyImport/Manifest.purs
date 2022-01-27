@@ -20,8 +20,6 @@ import Foreign.JsonRepair as JsonRepair
 import Foreign.Licensee as Licensee
 import Foreign.Object as Object
 import Foreign.SPDX as SPDX
-import Foreign.SemVer (SemVer)
-import Foreign.SemVer as SemVer
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Registry.Json as Json
@@ -36,6 +34,8 @@ import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.SpagoJson (SpagoJson)
 import Registry.Scripts.LegacyImport.SpagoJson as SpagoJson
 import Registry.Types (RawPackageName(..), RawVersion(..))
+import Registry.Version (ParseMode(..), Version)
+import Registry.Version as Version
 
 -- | Attempt to construct the basic fields necessary for a manifest file by reading
 -- | the package version's bower.json, spago.dhall, package.json, and LICENSE
@@ -194,7 +194,7 @@ constructManifestFields package version address = do
 toManifest
   :: PackageName
   -> Repo
-  -> SemVer
+  -> Version
   -> ManifestFields
   -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
 toManifest package repository version manifest = do
@@ -249,15 +249,16 @@ toManifest package repository version manifest = do
             Nothing -> pure success
             Just err -> mkError $ InvalidDependencyNames err
 
-        checkDepPair (Tuple packageName versionStr) =
-          case SemVer.parseRange versionStr of
-            Nothing -> Left { dependency: packageName, failedBounds: versionStr }
-            Just range -> Right $ Tuple (PackageName.print packageName) range
-
       normalizedDeps <- normalizeDeps $ Map.toUnfoldable manifest.dependencies
       normalizedDevDeps <- normalizeDeps $ Map.toUnfoldable manifest.devDependencies
 
       let
+        checkDepPair (Tuple packageName versionStr) = case Version.parseRange Lenient versionStr of
+          Left _ -> do
+            Left { dependency: packageName, failedBounds: versionStr }
+          Right range ->
+            Right $ Tuple (PackageName.print packageName) range
+
         readDeps = map checkDepPair >>> partitionEithers >>> \{ fail, success } ->
           case NEA.fromArray fail of
             Nothing ->

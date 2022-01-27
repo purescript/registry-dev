@@ -16,29 +16,29 @@ import Data.Map as Map
 import Data.Monoid (guard)
 import Data.Set as Set
 import Foreign.Object as Object
-import Foreign.SemVer (Range, SemVer)
 import Registry.Index (RegistryIndex)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Manifest(..), Target(..))
+import Registry.Version (Range, Version)
 
-type PackageWithVersion = { package :: PackageName, version :: SemVer }
+type PackageWithVersion = { package :: PackageName, version :: Version }
 
 type PackageWithDependencies = { package :: PackageWithVersion, dependencies :: Array PackageName }
 
 type ConstraintArgs =
-  { satisfied :: Map PackageName (Array SemVer)
+  { satisfied :: Map PackageName (Array Version)
   , constraints :: Array PackageWithDependencies
   }
 
 type ConstraintResult =
-  { satisfied :: Map PackageName (Array SemVer)
+  { satisfied :: Map PackageName (Array Version)
   , unsatisfied :: Array PackageWithDependencies
   }
 
 type CheckResult =
   { index :: RegistryIndex
-  , unsatisfied :: Array { package :: PackageName, version :: SemVer, dependencies :: Array PackageName }
+  , unsatisfied :: Array { package :: PackageName, version :: Version, dependencies :: Array PackageName }
   }
 
 -- Produces a maximally self-contained RegistryIndex, recording any unsatisfied dependencies.
@@ -115,7 +115,7 @@ checkRegistryIndex original = do
     else
       { satisfied, unsatisfied: constraints }
 
-  isSolved :: Map PackageName (Array SemVer) -> PackageName -> Boolean
+  isSolved :: Map PackageName (Array Version) -> PackageName -> Boolean
   isSolved solved package = Map.member package solved
 
 topologicalSort :: RegistryIndex -> Array Manifest
@@ -126,7 +126,7 @@ topologicalSort index = do
     $ List.mapMaybe (flip Graph.lookup graph)
     $ Graph.topologicalSort graph
 
-type PackageGraph = Graph (Tuple PackageName SemVer) Manifest
+type PackageGraph = Graph (Tuple PackageName Version) Manifest
 
 -- We will construct an edge to each version of each dependency PackageName.
 -- Note: This function only looks at the `lib` target of a `Manifest`.
@@ -137,19 +137,19 @@ toPackageGraph index =
     $ map (map resolveDependencies)
     $ foldMap flatten
     $ map (map Map.toUnfoldable)
-    $ (Map.toUnfoldable index :: Array (Tuple PackageName (Map SemVer Manifest)))
+    $ (Map.toUnfoldable index :: Array (Tuple PackageName (Map Version Manifest)))
   where
-  allVersions :: Map PackageName (Array SemVer)
+  allVersions :: Map PackageName (Array Version)
   allVersions = map (Map.keys >>> Set.toUnfoldable) index
 
   flatten
-    :: Tuple PackageName (Array (Tuple SemVer Manifest))
-    -> Array (Tuple (Tuple PackageName SemVer) Manifest)
+    :: Tuple PackageName (Array (Tuple Version Manifest))
+    -> Array (Tuple (Tuple PackageName Version) Manifest)
   flatten (Tuple packageName versions) = do
     Tuple version manifest <- versions
     pure $ Tuple (Tuple packageName version) manifest
 
-  resolveDependencies :: Manifest -> Tuple Manifest (List (Tuple PackageName SemVer))
+  resolveDependencies :: Manifest -> Tuple Manifest (List (Tuple PackageName Version))
   resolveDependencies manifest = do
     let
       deps =
@@ -161,7 +161,7 @@ toPackageGraph index =
 
     Tuple manifest deps
 
-  resolveDependency :: Tuple PackageName Range -> Array (Tuple PackageName SemVer)
+  resolveDependency :: Tuple PackageName Range -> Array (Tuple PackageName Version)
   resolveDependency (Tuple dependency _) = do
     depVersions <- maybe [] Array.singleton (Map.lookup dependency allVersions)
     version <- depVersions
