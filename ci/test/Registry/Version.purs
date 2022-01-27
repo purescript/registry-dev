@@ -91,7 +91,7 @@ testRange = do
         map Version.printRange parsed `Assert.shouldContain` range
         map Version.rawRange parsed `Assert.shouldContain` range
 
-  Spec.describe "Invalid lenient ranges pass node-semver conversion but fail registry parsing" do
+  Spec.describe "Invalid lenient ranges fail to parse" do
     for_ invalidLenientRanges \{ range, label } ->
       Spec.it label do
         let parsed = Version.parseRange Lenient range
