@@ -24,6 +24,7 @@ import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
 import Node.FS.Stats as FS.Stats
 import Node.Glob.Basic as Glob.Basic
+import Node.Path as Path
 import Node.Process as Env
 import Registry.Hash as Hash
 import Registry.Index as Index
@@ -368,32 +369,39 @@ maxPackageBytes = 200_000.0
 -- https://docs.npmjs.com/cli/v8/configuring-npm/package-json#files
 removeIgnoredTarballFiles :: FilePath -> Aff Unit
 removeIgnoredTarballFiles path = do
-  globMatches <- Glob.Basic.expandGlobs path globFiles
-  traverse_ FS.Extra.remove (exactFiles <> Set.toUnfoldable globMatches)
-  where
-  exactFiles :: Array FilePath
-  exactFiles =
-    [ ".psci"
-    , ".psci_modules"
-    , ".spago"
-    , "node_modules"
-    , "bower_components"
-    -- These files and directories are ignored by the NPM CLI and we are
-    -- following their lead in ignoring them as well.
-    , ".git"
-    , "CVS"
-    , ".svn"
-    , ".hg"
-    , ".DS_Store"
-    , "package-lock.json"
-    -- These are lockfiles used by alternate JS package managers and we also
-    -- ignore them.
-    , "yarn.lock"
-    , "pnpm-lock.yaml"
+  globMatches <- Glob.Basic.expandGlobs path ignoredGlobs
+  let fixupPaths = map (\fp -> Path.concat [ path, fp ])
+  traverse_ FS.Extra.remove $ Array.fold
+    [ fixupPaths ignoredDirectories
+    , fixupPaths ignoredFiles
+    , Set.toUnfoldable globMatches
     ]
 
-  globFiles :: Array String
-  globFiles =
-    [ ".*.swp"
-    , "._*"
-    ]
+ignoredDirectories :: Array FilePath
+ignoredDirectories =
+  [ ".psci"
+  , ".psci_modules"
+  , ".spago"
+  , "node_modules"
+  , "bower_components"
+  -- These files and directories are ignored by the NPM CLI and we are
+  -- following their lead in ignoring them as well.
+  , ".git"
+  , "CVS"
+  , ".svn"
+  , ".hg"
+  ]
+
+ignoredFiles :: Array FilePath
+ignoredFiles =
+  [ ".DS_Store"
+  , "package-lock.json"
+  , "yarn.lock"
+  , "pnpm-lock.yaml"
+  ]
+
+ignoredGlobs :: Array String
+ignoredGlobs =
+  [ "*.*.swp"
+  , "._*"
+  ]
