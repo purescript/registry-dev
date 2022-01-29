@@ -3,6 +3,7 @@ module Registry.Schema where
 import Registry.Prelude
 
 import Data.Generic.Rep as Generic
+import Data.RFC3339String (RFC3339String)
 import Foreign.Object as Object
 import Foreign.SPDX (License)
 import Registry.Hash (Sha256)
@@ -163,6 +164,7 @@ type Metadata =
 type VersionMetadata =
   { ref :: String
   , hash :: Sha256
+  , published :: RFC3339String
   , bytes :: Number
   }
 

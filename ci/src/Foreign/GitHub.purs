@@ -6,6 +6,7 @@ import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.List as List
 import Data.Newtype (unwrap)
+import Data.RFC3339String (RFC3339String(..))
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
 import Effect.Uncurried (EffectFn2, EffectFn3, EffectFn4, runEffectFn2, runEffectFn3, runEffectFn4)
@@ -70,6 +71,20 @@ foreign import getReleasesImpl :: EffectFn2 Octokit Address (Promise (Array Tag)
 
 getReleases :: Octokit -> Address -> Aff (Array Tag)
 getReleases octokit address = Promise.toAffE $ runEffectFn2 getReleasesImpl octokit address
+
+foreign import getRefCommitImpl :: EffectFn3 Octokit Address String (Promise String)
+
+getRefCommit :: Octokit -> Address -> String -> Aff String
+getRefCommit octokit address ref = do
+  commitSha <- Promise.toAffE $ runEffectFn3 getRefCommitImpl octokit address ref
+  pure commitSha
+
+foreign import getCommitDateImpl :: EffectFn3 Octokit Address String (Promise String)
+
+getCommitDate :: Octokit -> Address -> String -> Aff RFC3339String
+getCommitDate octokit address sha = do
+  date <- Promise.toAffE $ runEffectFn3 getCommitDateImpl octokit address sha
+  pure $ RFC3339String date
 
 newtype IssueNumber = IssueNumber Int
 
