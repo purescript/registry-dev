@@ -40,6 +40,7 @@
   , "ordered-collections"
   , "parallel"
   , "partial"
+  , "precise-datetime"
   , "prelude"
   , "profunctor-lenses"
   , "psci-support"
