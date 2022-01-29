@@ -133,14 +133,14 @@ downloadLegacyRegistry = do
       repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
       mkError = ResourceError <<< { resource: APIResource GitHubReleases, error: _ }
 
-    tags <- Process.withCache Process.jsonSerializer repoCache (Just $ Hours 24.0) do
-      log $ "Fetching tags for package " <> un RawPackageName name
-      result <- lift $ try $ GitHub.getTags octokit address
+    releases <- Process.withCache Process.jsonSerializer repoCache (Just $ Hours 24.0) do
+      log $ "Fetching releases for package " <> un RawPackageName name
+      result <- lift $ try $ GitHub.getReleases octokit address
       case result of
         Left err -> logShow err *> throwError (mkError $ DecodeError $ Aff.message err)
         Right v -> pure v
 
-    versions <- case NEA.fromArray tags of
+    versions <- case NEA.fromArray releases of
       Nothing -> throwError $ mkError $ DecodeError "No releases returned from the GitHub API."
       Just arr -> pure $ Map.fromFoldable $ map (\tag -> Tuple (RawVersion tag.name) unit) arr
 
