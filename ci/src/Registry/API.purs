@@ -133,7 +133,7 @@ addOrUpdate { ref, legacy, packageName } metadata = do
   -- let's get a temp folder to do our stuffs
   tmpDir <- liftEffect $ Tmp.mkTmpDir
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
-  folderName <- case metadata.location of
+  { folderName, published } <- case metadata.location of
     Git _ -> do
       -- TODO: Support non-GitHub packages. Remember subdir when implementing this. (See #15)
       throwWithComment "Packages are only allowed to come from GitHub for now. See #15"
@@ -141,6 +141,9 @@ addOrUpdate { ref, legacy, packageName } metadata = do
       -- TODO: Support subdir. In the meantime, we verify subdir is not present. (See #16)
       when (isJust subdir) $ throwWithComment "`subdir` is not supported for now. See #16"
 
+      octokit <- liftEffect GitHub.mkOctokit
+      commit <- liftAff $ GitHub.getRefCommit octokit { owner, repo } ref
+      commitDate <- liftAff $ GitHub.getCommitDate octokit { owner, repo } commit
       let tarballName = ref <> ".tar.gz"
       let absoluteTarballPath = tmpDir <> "/" <> tarballName
       let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
@@ -153,7 +156,7 @@ addOrUpdate { ref, legacy, packageName } metadata = do
         Just dir -> do
           log "Extracting the tarball..."
           liftEffect $ Tar.extract { cwd: tmpDir, filename: absoluteTarballPath }
-          pure dir
+          pure { folderName: dir, published: commitDate }
 
   let absoluteFolderPath = tmpDir <> "/" <> folderName
   let manifestPath = absoluteFolderPath <> "/purs.json"
@@ -219,7 +222,7 @@ addOrUpdate { ref, legacy, packageName } metadata = do
   uploadPackage uploadPackageInfo tarballPath
   log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show ref <> " was " <> show hash
-  let newMetadata = addVersionToMetadata newVersion { hash, ref, bytes } metadata
+  let newMetadata = addVersionToMetadata newVersion { hash, ref, published, bytes } metadata
   let metadataFilePath = metadataFile packageName
   liftAff $ Json.writeJsonFile metadataFilePath newMetadata
   updatePackagesMetadata manifestRecord.name newMetadata

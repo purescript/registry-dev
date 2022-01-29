@@ -16,14 +16,23 @@ exports.getReleasesImpl = function (octokit, { owner, repo }) {
       owner,
       repo,
     })
-    .then((data) => {
-      return data.map((element) => {
-        return {
-          name: element.name,
-          sha: element.commit.sha,
-        };
-      });
-    });
+    .then((data) =>
+      data.map((element) => {
+        return { name: element.name, sha: element.commit.sha };
+      })
+    );
+};
+
+exports.getRefCommitImpl = function (octokit, { owner, repo }, ref) {
+  return octokit.rest.git
+    .getRef({ owner, repo, ref })
+    .then((data) => data.object.sha);
+};
+
+exports.getCommitDateImpl = function (octokit, { owner, repo }, sha) {
+  return octokit.rest.git
+    .getCommit({ owner, repo, commit_sha: sha })
+    .then(({ data }) => data.committer.date);
 };
 
 exports.closeIssueImpl = function (octokit, { owner, repo }, issue_number) {
@@ -31,9 +40,10 @@ exports.closeIssueImpl = function (octokit, { owner, repo }, issue_number) {
     owner,
     repo,
     issue_number,
-    state: "closed"
+    state: "closed",
   });
-}
+};
+
 exports.createCommentImpl = function (octokit, { owner, repo }, issue_number, body) {
   return octokit.issues.createComment({ owner, repo, issue_number, body });
 };

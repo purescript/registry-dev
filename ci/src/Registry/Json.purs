@@ -51,6 +51,8 @@ import Data.Int as Int
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), maybe)
+import Data.Newtype (un)
+import Data.RFC3339String (RFC3339String(..))
 import Data.String.NonEmpty (NonEmptyString)
 import Data.String.NonEmpty as NES
 import Data.Symbol (class IsSymbol)
@@ -185,6 +187,10 @@ instance RegistryJson NonEmptyString where
 instance RegistryJson a => RegistryJson (NonEmptyArray a) where
   encode = encode <<< NEA.toArray
   decode = decode >=> NEA.fromArray >>> note "Expected NonEmptyArray"
+
+instance RegistryJson RFC3339String where
+  encode = encode <<< un RFC3339String
+  decode = decode >=> map RFC3339String
 
 instance (Ord k, Coercible k String, RegistryJson v) => RegistryJson (Map k v) where
   encode = encode <<< Object.fromFoldable <<< toTupleArray
