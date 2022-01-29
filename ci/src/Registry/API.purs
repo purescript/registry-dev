@@ -5,8 +5,10 @@ import Registry.Prelude
 import Control.Monad.Except as Except
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
+import Data.Foldable (traverse_)
 import Data.Generic.Rep as Generic
 import Data.Map as Map
+import Data.Set as Set
 import Data.String as String
 import Effect.Aff as Aff
 import Effect.Exception (throw)
@@ -14,12 +16,15 @@ import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
 import Foreign.GitHub (IssueNumber)
 import Foreign.GitHub as GitHub
+import Foreign.Node.FS as FS.Extra
 import Foreign.Object as Object
 import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
 import Node.FS.Stats as FS.Stats
+import Node.Glob.Basic as Glob.Basic
+import Node.Path as Path
 import Node.Process as Env
 import Registry.Hash as Hash
 import Registry.Index as Index
@@ -207,8 +212,11 @@ addOrUpdate { ref, legacy, packageName } metadata = do
   -- We need the version number to upload the package
   let newVersion = manifestRecord.version
   let newDirname = PackageName.print packageName <> "-" <> Version.printVersion newVersion
-  liftAff $ FS.rename absoluteFolderPath (tmpDir <> "/" <> newDirname)
-  let tarballPath = tmpDir <> "/" <> newDirname <> ".tar.gz"
+  let tarballDirname = tmpDir <> "/" <> newDirname
+  liftAff do
+    FS.rename absoluteFolderPath tarballDirname
+    removeIgnoredTarballFiles tarballDirname
+  let tarballPath = tarballDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.stat tarballPath
@@ -358,3 +366,45 @@ runGit args = ExceptT do
 
 maxPackageBytes :: Number
 maxPackageBytes = 200_000.0
+
+-- We always ignore some files and directories when packaging a tarball, such as
+-- version control directories. See also:
+-- https://docs.npmjs.com/cli/v8/configuring-npm/package-json#files
+removeIgnoredTarballFiles :: FilePath -> Aff Unit
+removeIgnoredTarballFiles path = do
+  globMatches <- Glob.Basic.expandGlobs path ignoredGlobs
+  let fixupPaths = map (\fp -> Path.concat [ path, fp ])
+  traverse_ FS.Extra.remove $ Array.fold
+    [ fixupPaths ignoredDirectories
+    , fixupPaths ignoredFiles
+    , Set.toUnfoldable globMatches
+    ]
+
+ignoredDirectories :: Array FilePath
+ignoredDirectories =
+  [ ".psci"
+  , ".psci_modules"
+  , ".spago"
+  , "node_modules"
+  , "bower_components"
+  -- These files and directories are ignored by the NPM CLI and we are
+  -- following their lead in ignoring them as well.
+  , ".git"
+  , "CVS"
+  , ".svn"
+  , ".hg"
+  ]
+
+ignoredFiles :: Array FilePath
+ignoredFiles =
+  [ ".DS_Store"
+  , "package-lock.json"
+  , "yarn.lock"
+  , "pnpm-lock.yaml"
+  ]
+
+ignoredGlobs :: Array String
+ignoredGlobs =
+  [ "*.*.swp"
+  , "._*"
+  ]

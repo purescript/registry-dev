@@ -1,19 +1,26 @@
 module Foreign.Node.FS
-  ( mkdirSync
-  , rmdirSync
+  ( ensureDirectory
+  , remove
   ) where
 
 import Prelude
 
+import Control.Promise (Promise)
+import Control.Promise as Promise
 import Effect (Effect)
-import Effect.Uncurried (EffectFn1, runEffectFn1)
+import Effect.Aff (Aff)
+import Node.Path (FilePath)
 
-foreign import mkdirSyncImpl :: EffectFn1 String Unit
+foreign import ensureDirectoryImpl :: String -> Effect (Promise Unit)
 
-mkdirSync :: String -> Effect Unit
-mkdirSync = runEffectFn1 mkdirSyncImpl
+-- | Ensures that the directory exists. If the directory structure does not
+-- | exist, it is created.
+ensureDirectory :: FilePath -> Aff Unit
+ensureDirectory = ensureDirectoryImpl >>> Promise.toAffE
 
-foreign import rmdirSyncImpl :: EffectFn1 String Unit
+foreign import removeImpl :: String -> Effect (Promise Unit)
 
-rmdirSync :: String -> Effect Unit
-rmdirSync = runEffectFn1 mkdirSyncImpl
+-- | Removes a file or directory. The directory can have contents. If the
+-- | path does not exist, silently does nothing.
+remove :: FilePath -> Aff Unit
+remove = removeImpl >>> Promise.toAffE

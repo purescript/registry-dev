@@ -4,13 +4,18 @@ import Registry.Prelude
 
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.Foldable (traverse_)
 import Data.Map as Map
+import Data.String as String
 import Data.String.NonEmpty as NES
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
 import Foreign.GitHub (IssueNumber(..))
+import Foreign.Node.FS as FS.Extra
 import Foreign.SPDX as SPDX
+import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
+import Node.Path as Path
 import Registry.API as API
 import Registry.Json as Json
 import Registry.PackageName as PackageName
@@ -51,6 +56,8 @@ main = launchAff_ do
         Spec.describe "Good SPDX licenses" goodSPDXLicense
         Spec.describe "Bad SPDX licenses" badSPDXLicense
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
+      Spec.describe "Tarball" do
+        removeTarballFiles
     Spec.describe "Bowerfile" do
       Spec.describe "Parses" do
         Spec.describe "Good bower files" goodBowerfiles
@@ -102,6 +109,47 @@ manifestEncoding = do
   roundTrip Fixtures.abc.v2
   roundTrip Fixtures.abcd.v1
   roundTrip Fixtures.abcd.v2
+
+removeTarballFiles :: Spec.Spec Unit
+removeTarballFiles = Spec.it "Removes files not allowed in package tarballs" do
+  tmp <- liftEffect Tmp.mkTmpDir
+
+  let
+    extraIgnoredFiles = [ "Unsaved.purs.swp", "._unused" ]
+    acceptedDirectories = [ "src", "test" ]
+    acceptedFiles = [ "purs.json", "spago.dhall" ]
+
+    writeDirectory directory = do
+      let path = Path.concat [ tmp, directory ]
+      FS.Extra.ensureDirectory path
+
+    writeFile path =
+      FS.writeTextFile UTF8 (Path.concat [ tmp, path ]) "<test>"
+
+  -- First we fill the directory with various files and directories that
+  -- must be removed prior to packaging
+  traverse_ writeDirectory API.ignoredDirectories
+  traverse_ writeFile $ Array.fold [ API.ignoredFiles, extraIgnoredFiles ]
+
+  -- And with some directories and files that *shouldn't* be removed
+  traverse_ writeDirectory acceptedDirectories
+  traverse_ writeFile acceptedFiles
+
+  -- Then, we attempt to remove files that are not meant to be packaged
+  API.removeIgnoredTarballFiles tmp
+  paths <- FS.readdir tmp
+
+  -- Then, we check that no paths in the resulting directory can be found
+  -- in the set of files that are supposed to be ignored
+  for_ paths \path -> do
+    let strippedPath = fromMaybe path $ String.stripPrefix (String.Pattern (tmp <> Path.sep)) path
+    let ignored = API.ignoredDirectories <> API.ignoredFiles <> extraIgnoredFiles
+    strippedPath `Assert.shouldNotSatisfy` (_ `Array.elem` ignored)
+
+  -- Finally, we check that all files that are supposed to be in the
+  -- resulting directory actually are.
+  for_ (acceptedDirectories <> acceptedFiles) \accepted ->
+    accepted `Assert.shouldSatisfy` (_ `Array.elem` paths)
 
 goodPackageName :: Spec.Spec Unit
 goodPackageName = do
