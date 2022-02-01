@@ -214,8 +214,8 @@ addOrUpdate { ref, legacy, packageName } metadata = do
   let newDirname = PackageName.print packageName <> "-" <> Version.printVersion newVersion
   let tarballDirname = tmpDir <> "/" <> newDirname
   liftAff do
-    FS.rename absoluteFolderPath tarballDirname
-    removeIgnoredTarballFiles tarballDirname
+    FS.Extra.ensureDirectory tarballDirname
+    pickTarballFiles { from: absoluteFolderPath, to: tarballDirname, manifest }
   let tarballPath = tarballDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Checking the tarball size..."
