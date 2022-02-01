@@ -33,7 +33,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), Target(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata)
+import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), Target(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, sourceFromFilePath, sourceToFilePath)
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
@@ -266,7 +266,7 @@ runChecks metadata (Manifest manifest) = do
     Just a -> pure a
 
   log "Checking that `lib` target only includes `src`"
-  when (libTarget.sources /= [ "src" ]) do
+  when (libTarget.sources /= [ sourceFromFilePath "src" ]) do
     throwWithComment "The `lib` target only allows the following `sources`: `src`"
 
   log "Check that version is unique"
@@ -366,6 +366,29 @@ runGit args = ExceptT do
 
 maxPackageBytes :: Number
 maxPackageBytes = 200_000.0
+
+pickTarballFiles :: { from :: FilePath, to :: FilePath, manifest :: Manifest } -> Aff Unit
+pickTarballFiles { from, to, manifest } = do
+  acceptedMatches <- Glob.Basic.expandGlobs from acceptedFiles
+  let copyPath = FS.Extra.copy <<< { from: _, to }
+  for_ acceptedMatches copyPath
+  for_ (un Manifest manifest).targets \(Target { sources }) -> do
+    for_ (map sourceToFilePath sources) (removeIgnoredTarballFiles *> copyPath)
+
+acceptedFiles :: Array String
+acceptedFiles =
+  [ "purs.json"
+  , "spago.dhall"
+  , "README*"
+  , "Readme*"
+  , "readme*"
+  , "LICENSE*"
+  , "License*"
+  , "license*"
+  , "LICENCE*"
+  , "Licence*"
+  , "licence*"
+  ]
 
 -- We always ignore some files and directories when packaging a tarball, such as
 -- version control directories. See also:

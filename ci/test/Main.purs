@@ -12,6 +12,8 @@ import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Node.FS as FS.Extra
+import Foreign.Object as Object
+import Foreign.SPDX as License
 import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
@@ -19,9 +21,11 @@ import Node.Path as Path
 import Registry.API as API
 import Registry.Json as Json
 import Registry.PackageName as PackageName
-import Registry.Schema (Operation(..), Repo(..), Manifest(..))
+import Registry.Schema (Manifest(..), Operation(..), Repo(..), Target(..))
+import Registry.Schema as Schema
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
-import Registry.Version (rawVersion) as Version
+import Registry.Version (ParseMode(..))
+import Registry.Version (parseVersion, rawVersion) as Version
 import Safe.Coerce (coerce)
 import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
@@ -57,6 +61,7 @@ main = launchAff_ do
         Spec.describe "Bad SPDX licenses" badSPDXLicense
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
       Spec.describe "Tarball" do
+        filePathToSource
         removeTarballFiles
     Spec.describe "Bowerfile" do
       Spec.describe "Parses" do
@@ -109,6 +114,88 @@ manifestEncoding = do
   roundTrip Fixtures.abc.v2
   roundTrip Fixtures.abcd.v1
   roundTrip Fixtures.abcd.v2
+
+filePathToSource :: Spec.Spec Unit
+filePathToSource = do
+  let assertSource input output = Schema.sourceToFilePath (Schema.sourceFromFilePath input) `Assert.shouldEqual` output
+  Spec.it "Trims unwanted file paths" do
+    "../../a" `assertSource` "a"
+    "../a" `assertSource` "a"
+    "./a" `assertSource` "a"
+    "/a" `assertSource` "a"
+    "a/../b" `assertSource` "b"
+    "a/./b" `assertSource` "a/b"
+    "a/./b/." `assertSource` "a/b"
+
+  Spec.it "Accepts simple directory paths" do
+    "a/./b" `assertSource` "a/b"
+    "a/./b/" `assertSource` "a/b"
+
+pickTarballFiles :: Spec.Spec Unit
+pickTarballFiles = Spec.it "Picks correct files when packaging a tarball" do
+  tmpFrom <- liftEffect Tmp.mkTmpDir
+  tmpTo <- liftEffect Tmp.mkTmpDir
+
+  let
+    -- This manifest only admits files from the 'src/my-package' directory
+    manifest :: Manifest
+    manifest = Manifest
+      { name: unsafeFromRight $ PackageName.parse "my-package"
+      , version: unsafeFromRight $ Version.parseVersion Strict "1.0.0"
+      , repository: GitHub { owner: "me", repo: "my-package", subdir: Nothing }
+      , description: Nothing
+      , license: unsafeFromRight $ License.parse "BSD-3-Clause"
+      , targets: Object.fromFoldable
+          [ Tuple "lib" $ Target
+              { dependencies: Object.empty
+              , sources: map Schema.sourceFromFilePath [ "src/my-package", "test" ]
+              }
+          ]
+      }
+
+    topLevel = map (\dir -> Path.concat [ tmpFrom, dir ])
+    inSrc = map (\dir -> Path.concat [ tmpFrom, "src/my-package", dir ])
+    inTest = map (\dir -> Path.concat [ tmpFrom, "test", dir ])
+
+    goodDirectories =
+      topLevel [ "src/my-package", "test" ]
+
+    badDirectories = Array.fold
+      [ topLevel API.ignoredDirectories
+      , inSrc API.ignoredDirectories
+      , inTest API.ignoredDirectories
+      ]
+
+    goodFiles = Array.fold
+      [ topLevel [ "purs.json", "spago.dhall", "README.md", "LICENSE" ]
+      , inSrc [ "Main.purs", "Main.js", "README.md" ]
+      , inTest [ "Main.purs" ]
+      ]
+
+    badFiles = Array.fold
+      [ topLevel API.ignoredFiles
+      , inSrc API.ignoredFiles
+      , inTest API.ignoredFiles
+      ]
+
+  traverse_ FS.Extra.ensureDirectory (goodDirectories <> badDirectories)
+  traverse_ (\path -> FS.writeTextFile UTF8 path "<test>") (goodFiles <> badFiles)
+
+  API.pickTarballFiles { from: tmpFrom, to: tmpTo, manifest }
+
+  paths <- FS.readdir tmpTo
+
+  -- We check that no paths in the resulting directory can be found
+  -- in the set of files that are supposed to be ignored
+  for_ paths \path -> do
+    let strippedPath = fromMaybe path $ String.stripPrefix (String.Pattern (tmpTo <> Path.sep)) path
+    let ignored = badDirectories <> badFiles
+    strippedPath `Assert.shouldNotSatisfy` (_ `Array.elem` ignored)
+
+  -- We check that all files that are supposed to be in the
+  -- resulting directory actually are.
+  for_ (goodDirectories <> goodFiles) \accepted ->
+    accepted `Assert.shouldSatisfy` (_ `Array.elem` paths)
 
 removeTarballFiles :: Spec.Spec Unit
 removeTarballFiles = Spec.it "Removes files not allowed in package tarballs" do

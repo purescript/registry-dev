@@ -1,11 +1,32 @@
-module Registry.Schema where
+module Registry.Schema
+  ( Manifest(..)
+  , Metadata(..)
+  , VersionMetadata(..)
+  , Repo(..)
+  , Target(..)
+  , GitData(..)
+  , GitHubData(..)
+  , RepoData(..)
+  , Source -- do not export constructors
+  , sourceFromFilePath
+  , sourceToFilePath
+  , Operation(..)
+  , AdditionData(..)
+  , UpdateData(..)
+  , UnpublishData(..)
+  , mkNewMetadata
+  , addVersionToMetadata
+  , isVersionInMetadata
+  ) where
 
 import Registry.Prelude
 
 import Data.Generic.Rep as Generic
 import Data.RFC3339String (RFC3339String)
+import Data.String as String
 import Foreign.Object as Object
 import Foreign.SPDX (License)
+import Node.Path as Path
 import Registry.Hash (Sha256)
 import Registry.Json ((.:), (.:?), (:=))
 import Registry.Json as Json
@@ -40,7 +61,7 @@ instance RegistryJson Manifest where
 
 newtype Target = Target
   { dependencies :: Object Range
-  , sources :: Array FilePath
+  , sources :: Array Source
   }
 
 derive instance Newtype Target _
@@ -54,6 +75,37 @@ instance RegistryJson Target where
     "sources" := fields.sources
     "dependencies" := fields.dependencies
   decode json = Target <$> Json.decode json
+
+-- | A target source directory, which must be of the form "dir" or "path/to/dir"
+newtype Source = Source FilePath
+
+derive instance Eq Source
+
+instance Show Source where
+  show = sourceToFilePath
+
+sourceFromFilePath :: FilePath -> Source
+sourceFromFilePath source = do
+  let
+    strip input = case String.stripPrefix (String.Pattern "../") input of
+      Nothing -> do
+        let trimSepWith k str = fromMaybe str $ k (String.Pattern Path.sep) str
+        trimSepWith String.stripPrefix $ trimSepWith String.stripSuffix input
+      Just suffix -> strip suffix
+
+  Source $ strip $ Path.normalize source
+
+sourceToFilePath :: Source -> FilePath
+sourceToFilePath (Source fp) = fp
+
+instance RegistryJson Source where
+  encode (Source fp) = Json.encode fp
+  decode json = do
+    path <- Json.decode json
+    let (Source parsed) = sourceFromFilePath path
+    case parsed == path of
+      true -> pure $ Source parsed
+      _ -> Left $ "Path ('" <> path <> "') is a simple directory path."
 
 type RepoData d =
   { subdir :: Maybe String

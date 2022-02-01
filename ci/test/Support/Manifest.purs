@@ -6,7 +6,7 @@ import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..), Target(..))
+import Registry.Schema (Manifest(..), Target(..), sourceFromFilePath)
 import Registry.Schema as Schema
 import Registry.Version (ParseMode(..))
 import Registry.Version as Version
@@ -23,7 +23,7 @@ ab = { name, v1a, v1b, v2 }
   version1 = unsafeFromRight $ Version.parseVersion Strict "1.0.0"
   targets = Object.singleton "lib" $ Target
     { dependencies: Object.empty
-    , sources: [ "src" ]
+    , sources: [ sourceFromFilePath "src" ]
     }
   version2 = unsafeFromRight $ Version.parseVersion Strict "2.0.0"
   license = unsafeFromRight $ SPDX.parse "MIT"
@@ -49,12 +49,12 @@ abc = { name, v1, v2 }
   version1 = unsafeFromRight $ Version.parseVersion Strict "1.0.0"
   targets1 = Object.singleton "lib" $ Target
     { dependencies: Object.singleton "ab" (unsafeFromRight (Version.parseRange Strict ">=1.0.0 <2.0.0"))
-    , sources: [ "src" ]
+    , sources: [ sourceFromFilePath "src" ]
     }
   version2 = unsafeFromRight $ Version.parseVersion Strict "2.0.0"
   targets2 = Object.singleton "lib" $ Target
     { dependencies: Object.singleton "ab" (unsafeFromRight (Version.parseRange Strict ">=2.0.0 <3.0.0"))
-    , sources: [ "src" ]
+    , sources: [ sourceFromFilePath "src" ]
     }
   license = unsafeFromRight $ SPDX.parse "MIT"
   repository = Schema.GitHub
@@ -73,12 +73,12 @@ abcd = { name, v1, v2 }
   version1 = unsafeFromRight $ Version.parseVersion Strict "1.0.0"
   targets1 = Object.singleton "lib" $ Target
     { dependencies: Object.singleton "abc" (unsafeFromRight (Version.parseRange Strict ">=1.0.0 <2.0.0"))
-    , sources: [ "src" ]
+    , sources: [ sourceFromFilePath "src" ]
     }
   version2 = unsafeFromRight $ Version.parseVersion Strict "2.0.0"
   targets2 = Object.singleton "lib" $ Target
     { dependencies: Object.singleton "abc" (unsafeFromRight (Version.parseRange Strict ">=2.0.0 <3.0.0"))
-    , sources: [ "src" ]
+    , sources: [ sourceFromFilePath "src" ]
     }
   license = unsafeFromRight $ SPDX.parse "MIT"
   repository = Schema.GitHub
