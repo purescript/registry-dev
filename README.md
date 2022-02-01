@@ -130,8 +130,8 @@ It's useful to embed the definition for `Target` too, since it's the main compon
 
 A "compilation target".
 
-Every target can have its own dependencies, sources, etc. By convention a package needs to have at 
-least one target called `lib`.
+Every target can have its own dependencies, sources, etc.
+By convention a package needs to have at least one target called `lib`.
 
 Other common ones are `app`, `test`, `dev`, `bench`, etc.
 
