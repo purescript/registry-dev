@@ -28,7 +28,8 @@ remove = removeImpl >>> Promise.toAffE
 
 foreign import copyImpl :: String -> String -> Effect (Promise Unit)
 
--- | Copies a file or directory.
+-- | Copies a file or directory. If a file or directory already exists at the
+-- | destination, that file or directory will be overwritten.
 -- |
 -- | When `from` is a file then `to` must be a file.
 -- |
