@@ -6,6 +6,7 @@ import Control.Monad.Except as Except
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
+import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Dotenv as Dotenv
@@ -198,11 +199,24 @@ downloadLegacyRegistry = do
             $ map (map (Map.fromFoldable <<< map (lmap _.version) <<< (Map.toUnfoldable :: _ -> Array _)))
             $ Map.toUnfoldable manifestRegistry.packages
 
-      Map.fromFoldable packageManifests
+        -- Many packages are removed altogether during processing. In this step,
+        -- we ensure the registry index has every package with a valid package
+        -- name included. `Map.fromFoldable` prefers latter keys in the case of
+        -- collision, so any package in `packageManifests` will overwrite the
+        -- default empty map for the package when the registry index is
+        -- constructed.
+        emptyPackages :: Array (Tuple PackageName (Map Version Manifest))
+        emptyPackages =
+          map (\package -> Tuple package Map.empty)
+            $ Array.mapMaybe (hush <<< PackageName.parse)
+            $ (coerce :: Array RawPackageName -> Array String)
+            $ Set.toUnfoldable
+            $ Map.keys allPackages
+
+      Map.fromFoldable (emptyPackages <> packageManifests)
 
   log "Constructing self-contained registry index..."
-  let
-    { index: checkedIndex, unsatisfied } = Graph.checkRegistryIndex registryIndex
+  let { index: checkedIndex, unsatisfied } = Graph.checkRegistryIndex registryIndex
 
   unless (Array.null unsatisfied) do
     log "Writing unsatisfied dependencies file..."
