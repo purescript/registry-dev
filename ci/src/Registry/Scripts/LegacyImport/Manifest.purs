@@ -275,12 +275,12 @@ toManifest package repository version manifest = do
         Right _, Left e -> Left e
         Right deps, Right devDeps -> Right $ Object.fromFoldable $ Array.catMaybes
           [ Just $ Tuple "lib" $ Target
-              { sources: [ "src/**/*.purs" ]
+              { sources: [ "src" ]
               , dependencies: Object.fromFoldable deps
               }
           , if (Array.null devDeps) then Nothing
             else Just $ Tuple "test" $ Target
-              { sources: [ "src/**/*.purs", "test/**/*.purs" ]
+              { sources: [ "src", "test" ]
               , dependencies: Object.fromFoldable (deps <> devDeps)
               }
           ]

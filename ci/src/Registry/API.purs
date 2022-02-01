@@ -266,8 +266,8 @@ runChecks metadata (Manifest manifest) = do
     Just a -> pure a
 
   log "Checking that `lib` target only includes `src`"
-  when (libTarget.sources /= [ "src/**/*.purs" ]) do
-    throwWithComment "The `lib` target only allows the following `sources`: `src/**/*.purs`"
+  when (libTarget.sources /= [ "src" ]) do
+    throwWithComment "The `lib` target only allows the following `sources`: `src`"
 
   log "Check that version is unique"
   let prettyVersion = Version.printVersion manifest.version

@@ -9,7 +9,7 @@
   "targets": {
     "lib": {
       "sources": [
-        "src/**/*.purs"
+        "src"
       ],
       "dependencies": {
         "purescript-aff": ">=5.0.2 <6.0.0",
@@ -19,8 +19,8 @@
     },
     "test": {
       "sources": [
-        "src/**/*.purs",
-        "test/**/*.purs"
+        "src",
+        "test"
       ],
       "dependencies": {
         "purescript-aff": ">=5.0.2 <6.0.0",

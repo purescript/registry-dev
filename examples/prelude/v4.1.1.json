@@ -9,7 +9,7 @@
   "targets": {
     "lib": {
       "sources": [
-        "src/**/*.purs"
+        "src"
       ],
       "dependencies": {}
     }

@@ -9,7 +9,7 @@
   "targets": {
     "lib": {
       "sources": [
-        "src/**/*.purs"
+        "src"
       ],
       "dependencies": {
         "purescript-datetime": ">=4.0.0 <5.0.0",
@@ -23,8 +23,8 @@
     },
     "test": {
       "sources": [
-        "src/**/*.purs",
-        "test/**/*.purs"
+        "src",
+        "test"
       ],
       "dependencies": {
         "purescript-assert": ">=4.0.0 <5.0.0",

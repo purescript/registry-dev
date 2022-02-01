@@ -15,7 +15,8 @@ let Target =
       -- A mapping between package names (as published on the Registry or
       -- included in the Package Set) and SemVer ranges for them.
       { dependencies : Map Text Text
-      -- Local source globs to include in the compilation for the target
+      -- Local sources to include in the compilation for the target. Sources
+      -- must be directories, ie. "src" or "test/package"
       , sources : List Text
       }
 

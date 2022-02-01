@@ -40,7 +40,7 @@ instance RegistryJson Manifest where
 
 newtype Target = Target
   { dependencies :: Object Range
-  , sources :: Array String
+  , sources :: Array FilePath
   }
 
 derive instance Newtype Target _
