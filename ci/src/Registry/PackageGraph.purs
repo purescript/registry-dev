@@ -44,7 +44,7 @@ checkRegistryIndex :: RegistryIndex -> CheckResult
 checkRegistryIndex original = do
   let
     -- From a RegistryIndex, construct a list of constraints that we would like to satisfy,
-    -- via the `dependencies` of the `lib` target of each `Manifest`.
+    -- via the `dependencies` of each `Manifest`.
     -- Invariant: RegistryIndex is a Map of Maps, so the entries in the constraint list will be unique.
     -- We will maintain this throughout processing.
     -- Note: We sort these constraints by the amount of dependencies so that our first solver pass
