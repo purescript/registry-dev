@@ -14,6 +14,7 @@ module Registry.Json
   , stringifyJson
   , parseJson
   , writeJsonFile
+  , stringifyJsonFile
   , readJsonFile
   , encodeObject
   , insert
@@ -84,9 +85,13 @@ stringifyJson = Core.stringify <<< encode
 parseJson :: forall a. RegistryJson a => String -> Either String a
 parseJson = decode <=< Parser.jsonParser
 
--- | Encode data as JSON and write it to the provided filepath
+-- | Encode data as formatted JSON and write it to the provided filepath
 writeJsonFile :: forall a. RegistryJson a => FilePath -> a -> Aff Unit
 writeJsonFile path = FS.writeTextFile UTF8 path <<< printJson
+
+-- | Encode data as an unformatted JSON string and write it to the provided filepath
+stringifyJsonFile :: forall a. RegistryJson a => FilePath -> a -> Aff Unit
+stringifyJsonFile path = FS.writeTextFile UTF8 path <<< stringifyJson
 
 -- | Decode data from a JSON file at the provided filepath
 readJsonFile :: forall a. RegistryJson a => FilePath -> Aff (Either String a)
