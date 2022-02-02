@@ -199,21 +199,7 @@ downloadLegacyRegistry = do
             $ map (map (Map.fromFoldable <<< map (lmap _.version) <<< (Map.toUnfoldable :: _ -> Array _)))
             $ Map.toUnfoldable manifestRegistry.packages
 
-        -- Many packages are removed altogether during processing. In this step,
-        -- we ensure the registry index has every package with a valid package
-        -- name included. `Map.fromFoldable` prefers latter keys in the case of
-        -- collision, so any package in `packageManifests` will overwrite the
-        -- default empty map for the package when the registry index is
-        -- constructed.
-        emptyPackages :: Array (Tuple PackageName (Map Version Manifest))
-        emptyPackages =
-          map (\package -> Tuple package Map.empty)
-            $ Array.mapMaybe (hush <<< PackageName.parse)
-            $ (coerce :: Array RawPackageName -> Array String)
-            $ Set.toUnfoldable
-            $ Map.keys allPackages
-
-      Map.fromFoldable (emptyPackages <> packageManifests)
+      Map.fromFoldable packageManifests
 
   log "Constructing self-contained registry index..."
   let { index: checkedIndex, unsatisfied } = Graph.checkRegistryIndex registryIndex
@@ -221,10 +207,23 @@ downloadLegacyRegistry = do
   unless (Array.null unsatisfied) do
     log "Writing unsatisfied dependencies file..."
     Json.writeJsonFile "./unsatisfied-dependencies.json" unsatisfied
-
     log (show (Array.length unsatisfied) <> " manifest entries with unsatisfied dependencies")
 
-  pure checkedIndex
+  let
+    -- Many packages are removed altogether during processing. In this step,
+    -- we ensure the registry index has every package with a valid package
+    -- name included. `Map.unionWith const` prefers earlier keys in the case of
+    -- collision, which we can use to overwrite these empty packages.
+    allPackageNames :: Map PackageName (Map Version Manifest)
+    allPackageNames =
+      Map.fromFoldable
+        $ map (\package -> Tuple package Map.empty)
+        $ Array.mapMaybe (hush <<< PackageName.parse)
+        $ (coerce :: Array RawPackageName -> Array String)
+        $ Set.toUnfoldable
+        $ Map.keys allPackages
+
+  pure $ Map.unionWith const checkedIndex allPackageNames
 
 -- Packages can be specified either in 'package-name' format or
 -- in owner/package-name format. This function ensures we don't pick
