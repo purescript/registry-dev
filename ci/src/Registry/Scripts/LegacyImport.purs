@@ -13,7 +13,6 @@ import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
-import Registry.API (metadataFile)
 import Registry.API as API
 import Registry.Index (RegistryIndex)
 import Registry.Json as Json
@@ -89,7 +88,7 @@ main = Aff.launchAff_ do
     log "Adding metadata for reserved package names"
     forWithIndex_ reservedNames \package repo -> do
       let metadata = { location: repo, releases: Object.empty, unpublished: Object.empty }
-      liftAff $ Json.stringifyJsonFile (metadataFile package) metadata
+      liftAff $ Json.stringifyJsonFile (API.metadataFile package) metadata
       updatePackagesMetadata package metadata
 
     log "Filtering out packages we already uploaded"
