@@ -19,7 +19,6 @@ toManifestFields (SpagoJson { license, dependencies, packages }) =
   , dependencies: do
       let foldFn deps name = maybe deps (\{ version } -> Map.insert name version deps) (Map.lookup name packages)
       Array.foldl foldFn Map.empty dependencies
-  , devDependencies: Map.empty
   , description: Nothing
   }
 

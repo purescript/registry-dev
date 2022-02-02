@@ -15,11 +15,9 @@ import Data.List as List
 import Data.Map as Map
 import Data.Monoid (guard)
 import Data.Set as Set
-import Foreign.Object as Object
 import Registry.Index (RegistryIndex)
 import Registry.PackageName (PackageName)
-import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..), Target(..))
+import Registry.Schema (Manifest(..))
 import Registry.Version (Range, Version)
 
 type PackageWithVersion = { package :: PackageName, version :: Version }
@@ -54,14 +52,11 @@ checkRegistryIndex original = do
     constraints :: Array PackageWithDependencies
     constraints = Array.sortWith (_.dependencies >>> Array.length) do
       Tuple package versions' <- Map.toUnfoldable original
-      Tuple version manifest <- Map.toUnfoldable versions'
+      Tuple version (Manifest manifest) <- Map.toUnfoldable versions'
+
       let
         dependencies :: Array PackageName
-        dependencies = do
-          -- All valid manifests have a `lib` target, so this unsafe path is
-          -- unreachable.
-          Tuple p' _ <- Object.toUnfoldable $ unsafeGetLibDependencies manifest
-          maybe [] Array.singleton $ hush $ PackageName.parse p'
+        dependencies = Set.toUnfoldable $ Map.keys manifest.dependencies
 
       [ { package: { package, version }, dependencies } ]
 
@@ -150,15 +145,8 @@ toPackageGraph index =
     pure $ Tuple (Tuple packageName version) manifest
 
   resolveDependencies :: Manifest -> Tuple Manifest (List (Tuple PackageName Version))
-  resolveDependencies manifest = do
-    let
-      deps =
-        (List.fromFoldable :: Array _ -> _)
-          $ bindFlipped resolveDependency
-          $ map (lmap unsafeParsePackageName)
-          $ Object.toUnfoldable
-          $ unsafeGetLibDependencies manifest
-
+  resolveDependencies manifest@(Manifest { dependencies }) = do
+    let deps = List.fromFoldable $ bindFlipped resolveDependency $ Map.toUnfoldable dependencies
     Tuple manifest deps
 
   resolveDependency :: Tuple PackageName Range -> Array (Tuple PackageName Version)
@@ -166,14 +154,3 @@ toPackageGraph index =
     depVersions <- maybe [] Array.singleton (Map.lookup dependency allVersions)
     version <- depVersions
     pure $ Tuple dependency version
-
-  unsafeParsePackageName :: String -> PackageName
-  unsafeParsePackageName = fromRight' (\_ -> unsafeCrashWith "PackageName must parse") <<< PackageName.parse
-
--- | For internal use only
-unsafeGetLibDependencies :: Manifest -> Object Range
-unsafeGetLibDependencies (Manifest manifest) =
-  ( fromJust'
-      (\_ -> unsafeCrashWith "Manifest has no 'lib' target in 'toPackageGraph'")
-      (un Target <$> Object.lookup "lib" manifest.targets)
-  ).dependencies

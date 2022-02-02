@@ -33,7 +33,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), Target(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, sourceFromFilePath, sourceToFilePath)
+import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, sourceFromFilePath, sourceToFilePath)
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
@@ -260,14 +260,10 @@ runChecks metadata (Manifest manifest) = do
   log "Running checks for the following manifest:"
   logShow manifest
 
-  log "Checking that the Manifest includes the `lib` target"
-  Target libTarget <- case Object.lookup "lib" manifest.targets of
-    Nothing -> throwWithComment "Didn't find `lib` target in the Manifest!"
-    Just a -> pure a
-
-  log "Checking that `lib` target only includes `src`"
-  when (libTarget.sources /= [ sourceFromFilePath "src" ]) do
-    throwWithComment "The `lib` target only allows the following `sources`: `src`"
+  -- TODO: Why do we only allow `src` as a manifest source?
+  log "Checking that the manifest sources only contains `src`"
+  when (manifest.sources /= [ sourceFromFilePath "src" ]) do
+    throwWithComment "The manifest only allows the following `sources`: `src`"
 
   log "Check that version is unique"
   let prettyVersion = Version.printVersion manifest.version
@@ -277,12 +273,11 @@ runChecks metadata (Manifest manifest) = do
 
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
-  let lookupPackage = flip Map.lookup packages <=< (hush <<< PackageName.parse)
   let
-    pkgNotInRegistry name = case lookupPackage name of
+    pkgNotInRegistry name = case Map.lookup name packages of
       Nothing -> Just name
       Just _p -> Nothing
-  let pkgsNotInRegistry = Array.catMaybes $ map pkgNotInRegistry $ Object.keys libTarget.dependencies
+  let pkgsNotInRegistry = Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifest.dependencies
   unless (Array.null pkgsNotInRegistry) do
     throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
 
@@ -372,8 +367,10 @@ pickTarballFiles { from, to, manifest } = do
   acceptedMatches <- Glob.Basic.expandGlobs from acceptedFiles
   let copyPath = FS.Extra.copy <<< { from: _, to }
   for_ acceptedMatches copyPath
-  for_ (un Manifest manifest).targets \(Target { sources }) -> do
-    for_ (map sourceToFilePath sources) (removeIgnoredTarballFiles *> copyPath)
+  for_ (un Manifest manifest).sources \source -> do
+    let path = sourceToFilePath source
+    removeIgnoredTarballFiles path
+    copyPath path
 
 acceptedFiles :: Array String
 acceptedFiles =

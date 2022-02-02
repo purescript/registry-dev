@@ -12,7 +12,6 @@ import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Node.FS as FS.Extra
-import Foreign.Object as Object
 import Foreign.SPDX as License
 import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
@@ -21,7 +20,7 @@ import Node.Path as Path
 import Registry.API as API
 import Registry.Json as Json
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..), Operation(..), Repo(..), Target(..))
+import Registry.Schema (Manifest(..), Operation(..), Repo(..))
 import Registry.Schema as Schema
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
 import Registry.Version (ParseMode(..))
@@ -103,9 +102,10 @@ manifestExamplesRoundtrip paths = for_ paths \manifestPath -> Spec.it ("Roundrip
 manifestEncoding :: Spec.Spec Unit
 manifestEncoding = do
   let
-    roundTrip (Manifest manifest) =
+    roundTrip (Manifest manifest) = do
+      let fields = manifest { dependencies = mapKeys PackageName.print manifest.dependencies }
       Spec.it (PackageName.print manifest.name <> " " <> Version.rawVersion manifest.version) do
-        Json.roundtrip manifest `Assert.shouldContain` manifest
+        Json.roundtrip fields `Assert.shouldContain` fields
 
   roundTrip Fixtures.ab.v1a
   roundTrip Fixtures.ab.v1b
@@ -145,12 +145,8 @@ pickTarballFiles = Spec.it "Picks correct files when packaging a tarball" do
       , repository: GitHub { owner: "me", repo: "my-package", subdir: Nothing }
       , description: Nothing
       , license: unsafeFromRight $ License.parse "BSD-3-Clause"
-      , targets: Object.fromFoldable
-          [ Tuple "lib" $ Target
-              { dependencies: Object.empty
-              , sources: map Schema.sourceFromFilePath [ "src/my-package", "test" ]
-              }
-          ]
+      , sources: map Schema.sourceFromFilePath [ "src/my-package", "test" ]
+      , dependencies: Map.empty
       }
 
     topLevel = map (\dir -> Path.concat [ tmpFrom, dir ])
@@ -398,13 +394,8 @@ badBowerfiles = do
       Json.encode
         { version: "", license: "", dependencies: ([] :: Array Int) }
 
-    wrongDevDependenciesFormat =
-      Json.encode
-        { version: "", license: "", devDependencies: ([] :: Array Int) }
-
   failParseBowerfile wrongLicenseFormat
   failParseBowerfile wrongDependenciesFormat
-  failParseBowerfile wrongDevDependenciesFormat
 
 bowerFileEncoding :: Spec.Spec Unit
 bowerFileEncoding = do
@@ -415,16 +406,10 @@ bowerFileEncoding = do
           [ Tuple "dependency-first" "v1.0.0"
           , Tuple "dependency-second" "v2.0.0"
           ]
-      devDependencies =
-        Map.fromFoldable $ map coerce
-          [ Tuple "devdependency-first" "v0.0.1"
-          , Tuple "devdependency-second" "v0.0.2"
-          ]
       description = Nothing
       bowerFile = Bowerfile
         { license: NEA.fromArray $ Array.catMaybes [ NES.fromString "MIT" ]
         , dependencies
-        , devDependencies
         , description
         }
     Json.roundtrip bowerFile `Assert.shouldContain` bowerFile

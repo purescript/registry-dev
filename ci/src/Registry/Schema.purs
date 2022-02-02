@@ -3,7 +3,6 @@ module Registry.Schema
   , Metadata(..)
   , VersionMetadata(..)
   , Repo(..)
-  , Target(..)
   , GitData(..)
   , GitHubData(..)
   , RepoData(..)
@@ -34,15 +33,17 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Version (Range, Version)
 import Registry.Version as Version
+import Text.Parsing.StringParser as StringParser
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 newtype Manifest = Manifest
   { name :: PackageName
   , version :: Version
   , license :: License
-  , repository :: Repo
-  , targets :: Object Target
   , description :: Maybe String
+  , repository :: Repo
+  , sources :: Array Source
+  , dependencies :: Map PackageName Range
   }
 
 derive instance Eq Manifest
@@ -53,28 +54,16 @@ instance RegistryJson Manifest where
     "name" := fields.name
     "version" := fields.version
     "license" := fields.license
-    "repository" := fields.repository
     "description" := fields.description
-    "targets" := fields.targets
-
-  decode json = Manifest <$> Json.decode json
-
-newtype Target = Target
-  { dependencies :: Object Range
-  , sources :: Array Source
-  }
-
-derive instance Newtype Target _
-derive newtype instance Eq Target
-derive newtype instance Show Target
-
--- We write a manual instance here to control the ordering of the resulting
--- object, which we don't want to be alphabetical
-instance RegistryJson Target where
-  encode (Target fields) = Json.encodeObject do
+    "repository" := fields.repository
     "sources" := fields.sources
-    "dependencies" := fields.dependencies
-  decode json = Target <$> Json.decode json
+    "dependencies" := mapKeys PackageName.print fields.dependencies
+
+  decode json = do
+    manifestFields <- Json.decode json
+    let parse = lmap StringParser.printParserError <<< PackageName.parse
+    parsed <- traverseKeys parse manifestFields.dependencies
+    pure $ Manifest $ manifestFields { dependencies = parsed }
 
 -- | A target source directory, which must be of the form "dir" or "path/to/dir"
 newtype Source = Source FilePath
