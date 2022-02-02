@@ -50,7 +50,13 @@ main = Aff.launchAff_ do
 
   log "Temporary: we filter packages to only deal with the ones in core and other orgs we control"
   let
+    emptyPackages :: Array PackageName
+    emptyPackages = Set.toUnfoldable $ Map.keys $ Map.filter Map.isEmpty registry
+
+    sortedPackages :: Array Manifest
     sortedPackages = Graph.topologicalSort registry
+
+    isCorePackage :: Manifest -> Maybe _
     isCorePackage (Manifest manifest) = case manifest.repository of
       -- core
       GitHub { owner: "purescript" } -> Just manifest
@@ -74,6 +80,8 @@ main = Aff.launchAff_ do
       GitHub { repo: "purescript-aff-promise" } -> Just manifest
       GitHub { repo: "purescript-naturals" } -> Just manifest
       _ -> Nothing
+
+    corePackages :: Array _
     corePackages = Array.mapMaybe isCorePackage sortedPackages
 
   log "Creating a Metadata Ref"
