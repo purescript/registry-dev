@@ -103,8 +103,6 @@ This object holds all the info that the Registry needs to know about it.
 
 let Map = (./Prelude.dhall).Map.Type
 
-let Target = ./Target.dhall
-
 let Manifest =
       -- The name of the package
       { name : Text
@@ -116,40 +114,13 @@ let Manifest =
       , version : Text
       -- The git repo the package is published at
       , repository : ./Repo.dhall
-      -- Compilation targets for the Package
-      , targets : Map Text Target
+      -- The directories containing source files for this package
+      , sources : List Text
+      -- The packages this package depends on
+      , dependencies : Map Text Text
       }
 
 in Manifest
-```
-
-It's useful to embed the definition for `Target` too, since it's the main component of a `Manifest`:
-
-```dhall
-{-
-
-A "compilation target".
-
-Every target can have its own dependencies, sources, etc.
-By convention a package needs to have at least one target called `lib`.
-
-Other common ones are `app`, `test`, `dev`, `bench`, etc.
-
--}
-
-let Map = (./Prelude.dhall).Map.Type
-
-let Target =
-      -- A mapping between package names (as published on the Registry or
-      -- included in the Package Set) and SemVer ranges for them.
-      { dependencies : Map Text Text
-      -- Local source directories to include in the compilation for the target;
-      -- directories can be turned into globs for the PureScript compiler by 
-      -- appending "/**/*.purs" to them.
-      , sources : List Text
-      }
-
-in  Target
 ```
 
 Note: the [`Repo` schema](./v1/Repo.dhall) includes support for packages that are
@@ -202,13 +173,13 @@ All dependencies must take this form. For example, in a manifest file:
 ```json
 {
   "name": "my-package",
+  "license": "MIT",
   "version": "1.0.1",
-  "targets": {
-    "lib": {
-      "my-dependency": ">=1.0.0 <2.0.0",
-      "my-dependency-2": ">=2.1.5 <2.1.6",
-      "my-dependency-3": ">=0.1.0 <12.19.124"
-    },
+  "sources": [ "src" ],
+  "dependencies": {
+    "aff": ">=1.0.0 <2.0.0",
+    "prelude": ">=2.1.5 <2.1.6",
+    "zmq": ">=0.1.0 <12.19.124"
   }
 }
 ```

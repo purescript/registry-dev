@@ -6,12 +6,8 @@
     "githubOwner": "purescript",
     "githubRepo": "purescript-prelude"
   },
-  "targets": {
-    "lib": {
-      "sources": [
-        "src"
-      ],
-      "dependencies": {}
-    }
-  }
+  "sources": [
+    "src"
+  ],
+  "dependencies": {}
 }

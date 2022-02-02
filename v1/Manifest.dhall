@@ -8,8 +8,6 @@ This object holds all the info that the Registry needs to know about it.
 
 let Map = (./Prelude.dhall).Map.Type
 
-let Target = ./Target.dhall
-
 let Manifest =
       -- The name of the package
       { name : Text
@@ -21,8 +19,10 @@ let Manifest =
       , version : Text
       -- The git repo the package is published at
       , repository : ./Repo.dhall
-      -- Compilation targets for the Package
-      , targets : Map Text Target
+      -- The directories containing source files for this package
+      , sources : List Text
+      -- The packages this package depends on
+      , dependencies : Map Text Text
       }
 
 in Manifest
