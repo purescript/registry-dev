@@ -232,7 +232,7 @@ addOrUpdate { ref, legacy, packageName } metadata = do
   log $ "Hash for ref " <> show ref <> " was " <> show hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref, published, bytes } metadata
   let metadataFilePath = metadataFile packageName
-  liftAff $ Json.stringifyJsonFile metadataFilePath newMetadata
+  liftAff $ Json.writeJsonFile metadataFilePath newMetadata
   updatePackagesMetadata manifestRecord.name newMetadata
   commitToTrunk packageName metadataFilePath >>= case _ of
     Left _err ->
