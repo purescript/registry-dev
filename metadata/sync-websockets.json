@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"pkamenarsky","githubRepo":"purescript-sync-websockets"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "pkamenarsky",
+    "githubRepo": "purescript-sync-websockets"
+  },
+  "releases": {},
+  "unpublished": {}
+}

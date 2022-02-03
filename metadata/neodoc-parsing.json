@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"felixSchl","githubRepo":"purescript-neodoc-parsing"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "felixSchl",
+    "githubRepo": "purescript-neodoc-parsing"
+  },
+  "releases": {},
+  "unpublished": {}
+}

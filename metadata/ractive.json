@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"brakmic","githubRepo":"purescript-ractive"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "brakmic",
+    "githubRepo": "purescript-ractive"
+  },
+  "releases": {},
+  "unpublished": {}
+}

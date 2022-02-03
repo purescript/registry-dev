@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"parsonsmatt","githubRepo":"purescript-pux-undo"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "parsonsmatt",
+    "githubRepo": "purescript-pux-undo"
+  },
+  "releases": {},
+  "unpublished": {}
+}

@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"juspay","githubRepo":"purescript-flow"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "juspay",
+    "githubRepo": "purescript-flow"
+  },
+  "releases": {},
+  "unpublished": {}
+}

@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"dbushenko","githubRepo":"purescript-toastr"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "dbushenko",
+    "githubRepo": "purescript-toastr"
+  },
+  "releases": {},
+  "unpublished": {}
+}

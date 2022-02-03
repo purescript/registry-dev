@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"PureFunctor","githubRepo":"purescript-ssrs"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "PureFunctor",
+    "githubRepo": "purescript-ssrs"
+  },
+  "releases": {},
+  "unpublished": {}
+}

@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"michael-swan","githubRepo":"purescript-chosen-halogen"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "michael-swan",
+    "githubRepo": "purescript-chosen-halogen"
+  },
+  "releases": {},
+  "unpublished": {}
+}

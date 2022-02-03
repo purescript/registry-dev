@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"purescript-polyform","githubRepo":"batteries-json"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "purescript-polyform",
+    "githubRepo": "batteries-json"
+  },
+  "releases": {},
+  "unpublished": {}
+}

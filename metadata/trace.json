@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"pkamenarsky","githubRepo":"purescript-trace"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "pkamenarsky",
+    "githubRepo": "purescript-trace"
+  },
+  "releases": {},
+  "unpublished": {}
+}

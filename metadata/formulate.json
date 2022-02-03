@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"garyb","githubRepo":"purescript-formulate"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "garyb",
+    "githubRepo": "purescript-formulate"
+  },
+  "releases": {},
+  "unpublished": {}
+}

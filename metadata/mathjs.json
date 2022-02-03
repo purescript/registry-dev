@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"robkuz","githubRepo":"purescript-mathjs"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "robkuz",
+    "githubRepo": "purescript-mathjs"
+  },
+  "releases": {},
+  "unpublished": {}
+}

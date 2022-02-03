@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"athanclark","githubRepo":"purescript-social-icons"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "athanclark",
+    "githubRepo": "purescript-social-icons"
+  },
+  "releases": {},
+  "unpublished": {}
+}

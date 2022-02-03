@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"juspay","githubRepo":"purescript-presto-backend"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "juspay",
+    "githubRepo": "purescript-presto-backend"
+  },
+  "releases": {},
+  "unpublished": {}
+}

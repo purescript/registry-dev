@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"fehrenbach","githubRepo":"purescript-pouchdb-ffi"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "fehrenbach",
+    "githubRepo": "purescript-pouchdb-ffi"
+  },
+  "releases": {},
+  "unpublished": {}
+}

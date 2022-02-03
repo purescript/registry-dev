@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"awkure","githubRepo":"purescript-combinators"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "awkure",
+    "githubRepo": "purescript-combinators"
+  },
+  "releases": {},
+  "unpublished": {}
+}

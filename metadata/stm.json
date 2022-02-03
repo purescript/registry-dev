@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"rightfold","githubRepo":"purescript-stm"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "rightfold",
+    "githubRepo": "purescript-stm"
+  },
+  "releases": {},
+  "unpublished": {}
+}

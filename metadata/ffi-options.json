@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"ursi","githubRepo":"purescript-ffi-options"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "ursi",
+    "githubRepo": "purescript-ffi-options"
+  },
+  "releases": {},
+  "unpublished": {}
+}

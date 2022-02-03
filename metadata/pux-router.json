@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"alvart","githubRepo":"purescript-pux-router"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "alvart",
+    "githubRepo": "purescript-pux-router"
+  },
+  "releases": {},
+  "unpublished": {}
+}

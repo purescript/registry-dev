@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"PipocaQuemada","githubRepo":"purescript-radix64"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "PipocaQuemada",
+    "githubRepo": "purescript-radix64"
+  },
+  "releases": {},
+  "unpublished": {}
+}

@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"VFabricio","githubRepo":"purescript-bcrypt"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "VFabricio",
+    "githubRepo": "purescript-bcrypt"
+  },
+  "releases": {},
+  "unpublished": {}
+}

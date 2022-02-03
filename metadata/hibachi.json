@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"justinwoo","githubRepo":"purescript-kushikatsu"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "justinwoo",
+    "githubRepo": "purescript-kushikatsu"
+  },
+  "releases": {},
+  "unpublished": {}
+}

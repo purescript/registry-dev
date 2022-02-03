@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"utkarshkukreti","githubRepo":"purescript-hertz"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "utkarshkukreti",
+    "githubRepo": "purescript-hertz"
+  },
+  "releases": {},
+  "unpublished": {}
+}

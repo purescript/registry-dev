@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"ascjones","githubRepo":"purescript-typeahead"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "ascjones",
+    "githubRepo": "purescript-typeahead"
+  },
+  "releases": {},
+  "unpublished": {}
+}

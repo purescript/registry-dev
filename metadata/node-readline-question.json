@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"i-am-tom","githubRepo":"purescript-node-readline-question"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "i-am-tom",
+    "githubRepo": "purescript-node-readline-question"
+  },
+  "releases": {},
+  "unpublished": {}
+}

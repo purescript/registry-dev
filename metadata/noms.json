@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"yjpark","githubRepo":"purescript-noms"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "yjpark",
+    "githubRepo": "purescript-noms"
+  },
+  "releases": {},
+  "unpublished": {}
+}

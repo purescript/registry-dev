@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"slamdata","githubRepo":"purescript-dom-keyboard"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "slamdata",
+    "githubRepo": "purescript-dom-keyboard"
+  },
+  "releases": {},
+  "unpublished": {}
+}

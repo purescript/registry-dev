@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"FrigoEU","githubRepo":"purescript-endpoints-express"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "FrigoEU",
+    "githubRepo": "purescript-endpoints-express"
+  },
+  "releases": {},
+  "unpublished": {}
+}

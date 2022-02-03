@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"purescript","githubRepo":"purescript-reactive-jquery"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "purescript",
+    "githubRepo": "purescript-reactive-jquery"
+  },
+  "releases": {},
+  "unpublished": {}
+}

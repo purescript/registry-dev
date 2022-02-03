@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"dgendill","githubRepo":"purescript-parsing-extras"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "dgendill",
+    "githubRepo": "purescript-parsing-extras"
+  },
+  "releases": {},
+  "unpublished": {}
+}

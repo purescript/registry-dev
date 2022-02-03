@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"CapillarySoftware","githubRepo":"purescript-events"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "CapillarySoftware",
+    "githubRepo": "purescript-events"
+  },
+  "releases": {},
+  "unpublished": {}
+}

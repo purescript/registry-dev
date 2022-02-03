@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"birdgg","githubRepo":"purescript-org"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "birdgg",
+    "githubRepo": "purescript-org"
+  },
+  "releases": {},
+  "unpublished": {}
+}

@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"soupi","githubRepo":"purescript-slides-remember"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "soupi",
+    "githubRepo": "purescript-slides-remember"
+  },
+  "releases": {},
+  "unpublished": {}
+}

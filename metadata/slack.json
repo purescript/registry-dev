@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"saksdirect","githubRepo":"purescript-slack"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "saksdirect",
+    "githubRepo": "purescript-slack"
+  },
+  "releases": {},
+  "unpublished": {}
+}

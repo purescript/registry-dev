@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"maxhillaert","githubRepo":"purescript-monaco"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "maxhillaert",
+    "githubRepo": "purescript-monaco"
+  },
+  "releases": {},
+  "unpublished": {}
+}

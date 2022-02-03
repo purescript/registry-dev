@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"nsaunders","githubRepo":"purescript-globals-safe"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "nsaunders",
+    "githubRepo": "purescript-globals-safe"
+  },
+  "releases": {},
+  "unpublished": {}
+}

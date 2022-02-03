@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"jliuhtonen","githubRepo":"purescript-node-datagrams"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "jliuhtonen",
+    "githubRepo": "purescript-node-datagrams"
+  },
+  "releases": {},
+  "unpublished": {}
+}

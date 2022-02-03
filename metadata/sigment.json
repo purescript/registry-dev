@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"ptol","githubRepo":"purescript-sigment"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "ptol",
+    "githubRepo": "purescript-sigment"
+  },
+  "releases": {},
+  "unpublished": {}
+}

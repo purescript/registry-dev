@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"mgmeier","githubRepo":"purescript-stsequence"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "mgmeier",
+    "githubRepo": "purescript-stsequence"
+  },
+  "releases": {},
+  "unpublished": {}
+}

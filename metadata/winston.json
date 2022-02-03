@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"dysinger","githubRepo":"purescript-winston"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "dysinger",
+    "githubRepo": "purescript-winston"
+  },
+  "releases": {},
+  "unpublished": {}
+}

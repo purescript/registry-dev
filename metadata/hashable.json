@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"paf31","githubRepo":"purescript-hashable"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "paf31",
+    "githubRepo": "purescript-hashable"
+  },
+  "releases": {},
+  "unpublished": {}
+}

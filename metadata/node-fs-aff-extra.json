@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"dgendill","githubRepo":"purescript-node-fs-aff-extra"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "dgendill",
+    "githubRepo": "purescript-node-fs-aff-extra"
+  },
+  "releases": {},
+  "unpublished": {}
+}

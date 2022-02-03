@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"cdepillabout","githubRepo":"purescript-language-purescript-parser-lexer"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "cdepillabout",
+    "githubRepo": "purescript-language-purescript-parser-lexer"
+  },
+  "releases": {},
+  "unpublished": {}
+}

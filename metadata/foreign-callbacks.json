@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"fluffynukeit","githubRepo":"purescript-foreign-callbacks"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "fluffynukeit",
+    "githubRepo": "purescript-foreign-callbacks"
+  },
+  "releases": {},
+  "unpublished": {}
+}

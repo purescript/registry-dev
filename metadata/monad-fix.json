@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"zrho","githubRepo":"purescript-monad-fix"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "zrho",
+    "githubRepo": "purescript-monad-fix"
+  },
+  "releases": {},
+  "unpublished": {}
+}

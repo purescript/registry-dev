@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"obmarg","githubRepo":"purescript-node-github"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "obmarg",
+    "githubRepo": "purescript-node-github"
+  },
+  "releases": {},
+  "unpublished": {}
+}

@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"agrafix","githubRepo":"purescript-apparch"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "agrafix",
+    "githubRepo": "purescript-apparch"
+  },
+  "releases": {},
+  "unpublished": {}
+}

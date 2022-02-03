@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"slamdata","githubRepo":"purescript-keys"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "slamdata",
+    "githubRepo": "purescript-keys"
+  },
+  "releases": {},
+  "unpublished": {}
+}

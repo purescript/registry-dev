@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"athanclark","githubRepo":"purescript-sequelize"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "athanclark",
+    "githubRepo": "purescript-sequelize"
+  },
+  "releases": {},
+  "unpublished": {}
+}

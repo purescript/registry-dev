@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"michaelficarra","githubRepo":"purescript-spidermonkey-ast"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "michaelficarra",
+    "githubRepo": "purescript-spidermonkey-ast"
+  },
+  "releases": {},
+  "unpublished": {}
+}

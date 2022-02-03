@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"robkuz","githubRepo":"purescript-csv"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "robkuz",
+    "githubRepo": "purescript-csv"
+  },
+  "releases": {},
+  "unpublished": {}
+}

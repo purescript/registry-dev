@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"joneshf","githubRepo":"purescript-algebra"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "joneshf",
+    "githubRepo": "purescript-algebra"
+  },
+  "releases": {},
+  "unpublished": {}
+}

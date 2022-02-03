@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"puffnfresh","githubRepo":"purescript-streams"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "puffnfresh",
+    "githubRepo": "purescript-streams"
+  },
+  "releases": {},
+  "unpublished": {}
+}

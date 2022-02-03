@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"aktowns","githubRepo":"purescript-simple-dom-generated"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "aktowns",
+    "githubRepo": "purescript-simple-dom-generated"
+  },
+  "releases": {},
+  "unpublished": {}
+}

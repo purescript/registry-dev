@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"ddfisher","githubRepo":"purescript-function-checked"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "ddfisher",
+    "githubRepo": "purescript-function-checked"
+  },
+  "releases": {},
+  "unpublished": {}
+}

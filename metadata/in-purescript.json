@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"purescript","githubRepo":"purescript-in-purescript"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "purescript",
+    "githubRepo": "purescript-in-purescript"
+  },
+  "releases": {},
+  "unpublished": {}
+}

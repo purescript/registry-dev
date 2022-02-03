@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"puffnfresh","githubRepo":"purescript-webrtc"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "puffnfresh",
+    "githubRepo": "purescript-webrtc"
+  },
+  "releases": {},
+  "unpublished": {}
+}

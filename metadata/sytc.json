@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"mikesol","githubRepo":"purescript-sytc"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "mikesol",
+    "githubRepo": "purescript-sytc"
+  },
+  "releases": {},
+  "unpublished": {}
+}

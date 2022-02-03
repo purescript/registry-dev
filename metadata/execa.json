@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"ethul","githubRepo":"purescript-execa"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "ethul",
+    "githubRepo": "purescript-execa"
+  },
+  "releases": {},
+  "unpublished": {}
+}

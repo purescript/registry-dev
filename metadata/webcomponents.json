@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"Risto-Stevcev","githubRepo":"purescript-webcomponents"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "Risto-Stevcev",
+    "githubRepo": "purescript-webcomponents"
+  },
+  "releases": {},
+  "unpublished": {}
+}

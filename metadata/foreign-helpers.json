@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"adarqui","githubRepo":"purescript-foreign-helpers"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "adarqui",
+    "githubRepo": "purescript-foreign-helpers"
+  },
+  "releases": {},
+  "unpublished": {}
+}

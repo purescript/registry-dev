@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"alvart","githubRepo":"purescript-proact"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "alvart",
+    "githubRepo": "purescript-proact"
+  },
+  "releases": {},
+  "unpublished": {}
+}

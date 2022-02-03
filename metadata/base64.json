@@ -1,1 +1,8 @@
-{"location":{"githubOwner":"Thimoteus","githubRepo":"purescript-base64"},"releases":{},"unpublished":{}}
+{
+  "location": {
+    "githubOwner": "Thimoteus",
+    "githubRepo": "purescript-base64"
+  },
+  "releases": {},
+  "unpublished": {}
+}
