@@ -106,7 +106,7 @@ constructManifestFields package version address = do
     let
       spagoLicenses = maybe [] NEA.toArray $ _.license =<< hush spagoManifest
       bowerLicenses = maybe [] NEA.toArray $ _.license =<< hush bowerManifest
-      licenseeLicenses = Array.catMaybes $ map NES.fromString licenseeOutput
+      licenseeLicenses = Array.mapMaybe NES.fromString licenseeOutput
       license = NEA.fromArray $ Array.nub $ Array.concat [ licenseeLicenses, spagoLicenses, bowerLicenses ]
       description = join (_.description <$> hush bowerManifest)
 
