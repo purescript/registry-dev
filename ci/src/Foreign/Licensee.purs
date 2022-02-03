@@ -3,7 +3,7 @@ module Foreign.Licensee where
 import Registry.Prelude
 
 import Control.Parallel as Parallel
-import Foreign.JsonRepair as JsonRepair
+import Data.Array as Array
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
@@ -33,7 +33,7 @@ detect directory = do
     NodeProcess.Normally n | n == 0 || n == 1 -> do
       let
         parse :: String -> Either String (Array String)
-        parse str = Json.parseJson (JsonRepair.tryRepair str) >>= \json -> do
+        parse str = Json.parseJson str >>= \json -> do
           obj <- Json.decode json
           licenses <- obj .: "licenses"
           spdxIds <- traverse (_ .: "spdx_id") licenses
@@ -46,7 +46,11 @@ detect directory = do
           log "arising from the result: "
           log result.stdout
           pure $ Left error
-        Right out ->
-          pure $ Right out
-    _ ->
+        Right out -> do
+          -- A NOASSERTION result means that a LICENSE file could not be parsed.
+          -- For the purposes of the registry we disregard this result, since
+          -- we retrieve the license via the package manifest(s) as well.
+          pure $ Right $ Array.filter (_ /= "NOASSERTION") out
+    _ -> do
+      log $ "Licensee process exited unexpectedly: " <> result.stderr
       pure $ Left result.stderr
