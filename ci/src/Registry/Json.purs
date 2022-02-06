@@ -84,7 +84,7 @@ stringifyJson = Core.stringify <<< encode
 parseJson :: forall a. RegistryJson a => String -> Either String a
 parseJson = decode <=< Parser.jsonParser
 
--- | Encode data as JSON and write it to the provided filepath
+-- | Encode data as formatted JSON and write it to the provided filepath
 writeJsonFile :: forall a. RegistryJson a => FilePath -> a -> Aff Unit
 writeJsonFile path = FS.writeTextFile UTF8 path <<< printJson
 

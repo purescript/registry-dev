@@ -2,6 +2,7 @@ module Registry.Scripts.LegacyImport where
 
 import Registry.Prelude
 
+import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
@@ -10,7 +11,6 @@ import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
-import Effect.Ref as Ref
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
 import Registry.API as API
@@ -20,7 +20,7 @@ import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
-import Registry.RegistryM (Env, runRegistryM)
+import Registry.RegistryM (Env, readPackagesMetadata, runRegistryM, updatePackagesMetadata)
 import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..))
 import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
@@ -45,11 +45,14 @@ main = Aff.launchAff_ do
   API.checkIndexExists
 
   log "Starting import from legacy registries..."
-  registry <- downloadLegacyRegistry
+  { registry, reservedNames } <- downloadLegacyRegistry
 
   log "Temporary: we filter packages to only deal with the ones in core and other orgs we control"
   let
+    sortedPackages :: Array Manifest
     sortedPackages = Graph.topologicalSort registry
+
+    isCorePackage :: Manifest -> Maybe _
     isCorePackage (Manifest manifest) = case manifest.repository of
       -- core
       GitHub { owner: "purescript" } -> Just manifest
@@ -73,32 +76,42 @@ main = Aff.launchAff_ do
       GitHub { repo: "purescript-aff-promise" } -> Just manifest
       GitHub { repo: "purescript-naturals" } -> Just manifest
       _ -> Nothing
+
+    corePackages :: Array _
     corePackages = Array.mapMaybe isCorePackage sortedPackages
 
   log "Creating a Metadata Ref"
   packagesMetadataRef <- API.mkMetadataRef
 
-  log "Filtering out packages we already uploaded"
-  packagesMetadata <- liftEffect $ Ref.read packagesMetadataRef
-  let
-    wasPackageUploaded { name, version } = API.isPackageVersionInMetadata name version packagesMetadata
-    packagesToUpload = Array.filter (not wasPackageUploaded) corePackages
-
   log "Starting upload..."
-  void $ for packagesToUpload \manifest -> do
+  runRegistryM (mkEnv packagesMetadataRef) do
+    log "Adding metadata for reserved package names"
+    forWithIndex_ reservedNames \package repo -> do
+      let metadata = { location: repo, releases: Object.empty, unpublished: Object.empty }
+      liftAff $ Json.writeJsonFile (API.metadataFile package) metadata
+      updatePackagesMetadata package metadata
+
+    log "Filtering out packages we already uploaded"
+    packagesMetadata <- readPackagesMetadata
+
     let
-      addition = Addition
-        { addToPackageSet: false -- heh, we don't have package sets until we do this import!
-        , legacy: true
-        , newPackageLocation: manifest.repository
-        , newRef: Version.rawVersion manifest.version
-        , packageName: manifest.name
-        }
-    log "\n\n----------------------------------------------------------------------"
-    log $ "UPLOADING PACKAGE: " <> show manifest.name <> " " <> show manifest.version
-    logShow addition
-    log "----------------------------------------------------------------------"
-    runRegistryM (mkEnv packagesMetadataRef) (API.runOperation addition)
+      wasPackageUploaded { name, version } = API.isPackageVersionInMetadata name version packagesMetadata
+      packagesToUpload = Array.filter (not wasPackageUploaded) corePackages
+
+    for_ packagesToUpload \manifest -> do
+      let
+        addition = Addition
+          { addToPackageSet: false -- heh, we don't have package sets until we do this import!
+          , legacy: true
+          , newPackageLocation: manifest.repository
+          , newRef: Version.rawVersion manifest.version
+          , packageName: manifest.name
+          }
+      log "\n\n----------------------------------------------------------------------"
+      log $ "UPLOADING PACKAGE: " <> show manifest.name <> " " <> show manifest.version
+      logShow addition
+      log "----------------------------------------------------------------------"
+      API.runOperation addition
 
   log "Done!"
 
@@ -113,7 +126,7 @@ mkEnv packagesMetadata =
   , packagesMetadata
   }
 
-downloadLegacyRegistry :: Aff RegistryIndex
+downloadLegacyRegistry :: Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Repo }
 downloadLegacyRegistry = do
   octokit <- liftEffect GitHub.mkOctokit
   bowerPackages <- readRegistryFile "bower-packages.json"
@@ -201,16 +214,29 @@ downloadLegacyRegistry = do
       Map.fromFoldable packageManifests
 
   log "Constructing self-contained registry index..."
-  let
-    { index: checkedIndex, unsatisfied } = Graph.checkRegistryIndex registryIndex
+  let { index: checkedIndex, unsatisfied } = Graph.checkRegistryIndex registryIndex
 
   unless (Array.null unsatisfied) do
     log "Writing unsatisfied dependencies file..."
     Json.writeJsonFile "./unsatisfied-dependencies.json" unsatisfied
-
     log (show (Array.length unsatisfied) <> " manifest entries with unsatisfied dependencies")
 
-  pure checkedIndex
+  let
+    reservedNames :: Map PackageName Repo
+    reservedNames =
+      Map.fromFoldable
+        $ Array.mapMaybe
+            ( \(Tuple (RawPackageName name) address) -> do
+                parsedName <- hush $ PackageName.parse name
+                -- We don't need to preserve any packages that made it through
+                -- processing into the resulting registry index.
+                guard $ isNothing $ Map.lookup parsedName registryIndex
+                { owner, repo } <- hush $ GitHub.parseRepo address
+                pure $ Tuple parsedName (GitHub { owner, repo, subdir: Nothing })
+            )
+        $ Map.toUnfoldable allPackages
+
+  pure { registry: checkedIndex, reservedNames }
 
 -- Packages can be specified either in 'package-name' format or
 -- in owner/package-name format. This function ensures we don't pick

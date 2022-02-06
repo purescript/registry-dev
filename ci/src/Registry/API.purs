@@ -194,7 +194,7 @@ addOrUpdate { ref, legacy, packageName } metadata = do
 
     runManifest gatherManifest >>= case _ of
       Left err ->
-        throwWithComment $ "Unable to produce a manifest fir legacy package: " <> err
+        throwWithComment $ "Unable to produce a manifest for legacy package: " <> err
       Right manifest ->
         liftAff $ Json.writeJsonFile manifestPath manifest
 
@@ -290,7 +290,7 @@ wget url path = do
     NodeProcess.Normally 0 -> pure unit
     _ -> throwWithComment $ "Error while fetching tarball: " <> result.stderr
 
-mkEnv :: GitHub.Octokit -> Ref (Map PackageName Metadata) -> IssueNumber -> Env
+mkEnv :: GitHub.Octokit -> MetadataRef -> IssueNumber -> Env
 mkEnv octokit packagesMetadata issue =
   { comment: GitHub.createComment octokit issue
   , closeIssue: GitHub.closeIssue octokit issue
@@ -304,11 +304,11 @@ type MetadataRef = Ref MetadataMap
 
 mkMetadataRef :: Aff MetadataRef
 mkMetadataRef = do
+  FS.Extra.ensureDirectory metadataDir
   packageList <- try (FS.readdir metadataDir) >>= case _ of
-    Right list -> pure $ Array.catMaybes $ map (String.stripSuffix $ String.Pattern ".json") list
+    Right list -> pure $ Array.mapMaybe (String.stripSuffix $ String.Pattern ".json") list
     Left err -> do
       error $ show err
-      FS.mkdir metadataDir
       pure []
   packagesArray <- for packageList \rawPackageName -> do
     packageName <- case PackageName.parse rawPackageName of
