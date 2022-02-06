@@ -13,6 +13,8 @@ import Effect.Aff as Aff
 import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
+import Foreign.FastGlob (Include(..))
+import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (IssueNumber)
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
@@ -22,7 +24,6 @@ import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
 import Node.FS.Stats as FS.Stats
-import Node.Glob.Basic as Glob.Basic
 import Node.Path as Path
 import Node.Process as Env
 import Registry.Hash as Hash
@@ -167,7 +168,7 @@ addOrUpdate { ref, legacy, packageName } metadata = do
   log $ "Package extracted in " <> absoluteFolderPath
 
   log "Verifying that the package contains a `src` directory"
-  whenM (liftAff $ Set.isEmpty <$> Glob.Basic.expandGlobs absoluteFolderPath [ "src/**/*.purs" ]) do
+  whenM (liftAff $ map Array.null $ FastGlob.match' [ "src/**/*.purs" ] { cwd: Just absoluteFolderPath }) do
     throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it
@@ -362,22 +363,10 @@ maxPackageBytes = 200_000.0
 
 pickTarballFiles :: { from :: FilePath, to :: FilePath } -> Aff Unit
 pickTarballFiles { from, to } = do
-  acceptedMatches <- Glob.Basic.expandGlobs from acceptedFiles
-  let targetFile path = fromMaybe path $ String.stripPrefix (String.Pattern (Path.concat [ from, Path.sep ])) path
-  for_ acceptedMatches \match ->
-    FS.Extra.copy { from: match, to: Path.concat [ to, targetFile match ] }
+  let options = { cwd: Just from, include: FilesOnly, caseSensitive: false }
+  acceptedMatches <- FastGlob.match' acceptedGlobs options
+  for_ ([ "src" ] <> acceptedMatches) \match ->
+    FS.Extra.copy { from: Path.concat [ from, match ], to: Path.concat [ to, match ] }
 
-acceptedFiles :: Array String
-acceptedFiles =
-  [ "purs.json"
-  , "README*"
-  , "Readme*"
-  , "readme*"
-  , "LICENSE*"
-  , "License*"
-  , "license*"
-  , "LICENCE*"
-  , "Licence*"
-  , "licence*"
-  , "src/**"
-  ]
+acceptedGlobs :: Array String
+acceptedGlobs = [ "purs.json", "README*", "LICENSE*" ]
