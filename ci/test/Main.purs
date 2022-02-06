@@ -6,10 +6,10 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Foldable (traverse_)
 import Data.Map as Map
-import Data.String as String
 import Data.String.NonEmpty as NES
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
+import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Node.FS as FS.Extra
 import Foreign.SPDX as SPDX
@@ -116,41 +116,20 @@ pickTarballFiles = Spec.it "Picks correct files when packaging a tarball" do
   tmpTo <- liftEffect Tmp.mkTmpDir
 
   let
-    topLevel = map (\path -> Path.concat [ tmpFrom, path ])
-    inSrc = map (\path -> Path.concat [ tmpFrom, "src", path ])
-    inTest = map (\path -> Path.concat [ tmpFrom, "test", path ])
+    inTmp path = Path.concat [ tmpFrom, path ]
+    goodDirectories = [ "src" ]
+    badDirectories = [ ".git", ".psci", Path.concat [ "test", "src" ] ]
+    goodFiles = [ "purs.json", "README.md", "LICENSE", "src/Main.purs", "src/Main.js", "src/README.md" ]
+    badFiles = [ "spago.dhall", "package.json", "bower.json", ".purs-repl", "test/Main.purs" ]
 
-    goodDirectories =
-      topLevel [ "src" ]
-
-    badDirectories = Array.fold
-      [ topLevel [ ".git", ".psci" ]
-      , inTest [ "src" ]
-      ]
-
-    goodFiles = Array.fold
-      [ topLevel [ "purs.json", "README.md", "LICENSE" ]
-      , inSrc [ "Main.purs", "Main.js", "README.md" ]
-      ]
-
-    badFiles = Array.fold
-      [ topLevel [ ".tidyrc.json", "spago.dhall", "package.json", "bower.json", ".purs-repl" ]
-      , inTest [ "Main.purs", "Main.js", "README.md" ]
-      ]
-
-  traverse_ FS.Extra.ensureDirectory (goodDirectories <> badDirectories)
-  traverse_ (\path -> FS.writeTextFile UTF8 path "<test>") (goodFiles <> badFiles)
+  traverse_ (FS.Extra.ensureDirectory <<< inTmp) (goodDirectories <> badDirectories)
+  traverse_ (\path -> FS.writeTextFile UTF8 (inTmp path) "<test>") (goodFiles <> badFiles)
 
   API.pickTarballFiles { from: tmpFrom, to: tmpTo }
 
-  let
-    stripPath prefix path = fromMaybe path $ String.stripPrefix (String.Pattern (prefix <> Path.sep)) path
-    stripTmpTo = stripPath tmpTo
-    stripTmpFrom = stripPath tmpFrom
-
-  paths <- map (map stripTmpTo) $ FS.readdir tmpTo
-  let ignoredPaths = map stripTmpFrom (badDirectories <> badFiles)
-  let acceptedPaths = map stripTmpFrom (goodDirectories <> goodFiles)
+  paths <- FastGlob.match' [ "**/*" ] { cwd: Just tmpTo }
+  let ignoredPaths = badDirectories <> badFiles
+  let acceptedPaths = goodDirectories <> goodFiles
 
   for_ paths \path -> do
     ignoredPaths `Assert.shouldNotContain` path
