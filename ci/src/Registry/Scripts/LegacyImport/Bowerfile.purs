@@ -19,17 +19,11 @@ toManifestFields (Bowerfile fields) = do
   let
     -- We trim out packages that don't begin with `purescript-`, as these
     -- are JavaScript dependencies being specified in the Bowerfile.
-    processNames =
-      Map.toUnfoldable
-        >>> Array.mapMaybe
-          ( \(Tuple (RawPackageName packageName) version) ->
-              case String.take 11 packageName of
-                "purescript-" -> Just $ Tuple (RawPackageName (String.drop 11 packageName)) version
-                _ -> Nothing
-          )
-        >>> Map.fromFoldable
+    processNames = Array.mapMaybe \(Tuple (RawPackageName name) version) -> do
+      stripped <- String.stripPrefix (String.Pattern "purescript-") name
+      pure $ Tuple (RawPackageName stripped) version
 
-  fields { dependencies = processNames fields.dependencies }
+  fields { dependencies = Map.fromFoldable $ processNames $ Map.toUnfoldable fields.dependencies }
 
 newtype Bowerfile = Bowerfile ManifestFields
 
