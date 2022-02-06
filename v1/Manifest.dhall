@@ -19,8 +19,6 @@ let Manifest =
       , version : Text
       -- The git repo the package is published at
       , repository : ./Repo.dhall
-      -- The directories containing source files for this package
-      , sources : List Text
       -- The packages this package depends on
       , dependencies : Map Text Text
       }

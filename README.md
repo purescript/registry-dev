@@ -114,8 +114,6 @@ let Manifest =
       , version : Text
       -- The git repo the package is published at
       , repository : ./Repo.dhall
-      -- The directories containing source files for this package
-      , sources : List Text
       -- The packages this package depends on
       , dependencies : Map Text Text
       }
@@ -175,7 +173,6 @@ All dependencies must take this form. For example, in a manifest file:
   "name": "my-package",
   "license": "MIT",
   "version": "1.0.1",
-  "sources": [ "src" ],
   "dependencies": {
     "aff": ">=1.0.0 <2.0.0",
     "prelude": ">=2.1.5 <2.1.6",
