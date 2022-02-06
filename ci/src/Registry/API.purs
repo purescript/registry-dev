@@ -105,6 +105,10 @@ readOperation eventPath = do
 runOperation :: Operation -> RegistryM Unit
 runOperation operation = case operation of
   -- TODO handle addToPackageSet
+  -- TODO verify that if the user submitted an addition that changes the location of the package,
+  --      we verify the relevant commit was signed by a package owner. we can do this by always
+  --      looking up the location of the prior version of the package in the registry and, if the
+  --      addition changes that location, verifying the owner's signature.
   Addition { packageName, legacy, newRef, newPackageLocation } -> do
     -- check that we don't have a metadata file for that package
     ifM (liftAff $ FS.exists $ metadataFile packageName)
