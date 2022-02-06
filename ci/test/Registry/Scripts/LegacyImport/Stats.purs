@@ -103,7 +103,6 @@ exampleStats = Stats.errorStats mockStats
                           { license: mockLicense
                           , name: mockPackageName
                           , repository: Git { subdir: Nothing, url: "https://github.com/purescript/foobar" }
-                          , sources: []
                           , dependencies: Map.empty
                           , description: Just "Some description"
                           , version: mockVersion

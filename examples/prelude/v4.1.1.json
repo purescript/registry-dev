@@ -6,8 +6,5 @@
     "githubOwner": "purescript",
     "githubRepo": "purescript-prelude"
   },
-  "sources": [
-    "src"
-  ],
   "dependencies": {}
 }

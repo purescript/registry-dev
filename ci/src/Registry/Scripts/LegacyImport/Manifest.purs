@@ -25,7 +25,7 @@ import Registry.Json as Json
 import Registry.Json as RegistryJson
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..), Repo, sourceFromFilePath)
+import Registry.Schema (Manifest(..), Repo)
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), RemoteResource(..), RequestError(..), fileResourcePath)
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
@@ -228,7 +228,7 @@ toManifest package repository version manifest = do
             [], _ -> Right $ SPDX.joinWith SPDX.And success
             _, _ -> mkError $ BadLicense fail
 
-    eitherSourceDependencies = do
+    eitherDependencies = do
       let
         parsePairs = map \(Tuple (RawPackageName packageName) versionRange) -> case PackageName.parse packageName of
           Left _ -> Left packageName
@@ -256,10 +256,7 @@ toManifest package repository version manifest = do
             Just err ->
               mkError $ BadDependencyVersions err
 
-      readDeps normalizedDeps <#> \deps ->
-        { sources: [ sourceFromFilePath "src" ]
-        , dependencies: Map.fromFoldable deps
-        }
+      readDeps normalizedDeps <#> Map.fromFoldable
 
     errs = do
       let
@@ -268,7 +265,7 @@ toManifest package repository version manifest = do
 
       map NEA.concat $ NEA.fromArray $ Array.catMaybes
         [ toMaybeErrors eitherLicense
-        , toMaybeErrors eitherSourceDependencies
+        , toMaybeErrors eitherDependencies
         ]
 
   case errs of
@@ -278,8 +275,8 @@ toManifest package repository version manifest = do
       -- Technically this shouldn't be needed, since we've already checked these
       -- for errors, but this is just so the types all work out.
       license <- Except.except eitherLicense
-      { sources, dependencies } <- Except.except eitherSourceDependencies
-      pure $ Manifest { name: package, license, repository, description, sources, dependencies, version }
+      dependencies <- Except.except eitherDependencies
+      pure $ Manifest { name: package, license, repository, description, dependencies, version }
 
     Just err ->
       throwError err

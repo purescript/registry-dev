@@ -6,9 +6,6 @@
     "githubOwner": "slamdata",
     "githubRepo": "purescript-aff"
   },
-  "sources": [
-    "src"
-  ],
   "dependencies": {
     "datetime": ">=4.0.0 <5.0.0",
     "effect": ">=2.0.0 <3.0.0",
