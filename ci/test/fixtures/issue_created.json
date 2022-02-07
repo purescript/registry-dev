@@ -5,7 +5,7 @@
     "assignee": null,
     "assignees": [],
     "author_association": "CONTRIBUTOR",
-    "body": "{\"addToPackageSet\": true,\"newPackageLocation\": {\"githubOwner\": \"purescript\",\"githubRepo\": \"purescript-prelude\"},\"newRef\": \"v5.0.0\",\"packageName\": \"prelude\"}",
+    "body": "{\"newPackageLocation\": {\"githubOwner\": \"purescript\",\"githubRepo\": \"purescript-prelude\"},\"newRef\": \"v5.0.0\",\"packageName\": \"prelude\"}",
     "closed_at": null,
     "comments": 0,
     "comments_url": "https://api.github.com/repos/purescript/registry/issues/149/comments",

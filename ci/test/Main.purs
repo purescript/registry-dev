@@ -240,7 +240,6 @@ decodeEventsToOps = do
       operation = Addition
         { packageName: unsafeFromRight $ PackageName.parse "prelude"
         , newRef: "v5.0.0"
-        , addToPackageSet: true
         , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
         }
 
