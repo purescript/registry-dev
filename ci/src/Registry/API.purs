@@ -369,4 +369,12 @@ pickTarballFiles { from, to } = do
     FS.Extra.copy { from: Path.concat [ from, match ], to: Path.concat [ to, match ] }
 
 acceptedGlobs :: Array String
-acceptedGlobs = [ "purs.json", "README*", "LICENSE*" ]
+acceptedGlobs = 
+  [ "purs.json"
+  , "README*"
+  , "LICENSE*"  
+  , "bower.json"
+  , "spago.dhall"
+  , "packages.dhall"
+  , "packages.json"
+  ]
