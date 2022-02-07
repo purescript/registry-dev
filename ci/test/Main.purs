@@ -120,7 +120,7 @@ pickTarballFiles = Spec.it "Picks correct files when packaging a tarball" do
     goodDirectories = [ "src" ]
     badDirectories = [ ".git", ".psci", Path.concat [ "test", "src" ] ]
     goodFiles = [ "purs.json", "README.md", "LICENSE", "src/Main.purs", "src/Main.js", "src/README.md" ]
-    badFiles = [ "spago.dhall", "package.json", "bower.json", ".purs-repl", "test/Main.purs" ]
+    badFiles = [ "package-lock.json", ".purs-repl", "test/Main.purs" ]
 
   traverse_ (FS.Extra.ensureDirectory <<< inTmp) (goodDirectories <> badDirectories)
   traverse_ (\path -> FS.writeTextFile UTF8 (inTmp path) "<test>") (goodFiles <> badFiles)
