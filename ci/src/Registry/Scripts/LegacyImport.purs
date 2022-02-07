@@ -102,7 +102,6 @@ main = Aff.launchAff_ do
       let
         addition = Addition
           { addToPackageSet: false -- heh, we don't have package sets until we do this import!
-          , legacy: true
           , newPackageLocation: manifest.repository
           , newRef: Version.rawVersion manifest.version
           , packageName: manifest.name
