@@ -29,7 +29,12 @@ upload { name, version } path = do
   -- check that the file for that version is there
   let
     packageName = PackageName.print name
-    filename = Path.concat [ packageName, Version.printVersion version <> ".tar.gz" ]
+    filename = Array.fold
+      [ packageName
+      , "/"
+      , Version.printVersion version
+      , ".tar.gz"
+      ]
 
   publishedPackages <- map _.key <$> S3.listObjects s3 { prefix: packageName <> "/" }
 
