@@ -124,16 +124,13 @@ instance RegistryJson Operation where
     parseAddition <|> parseUpdate <|> parseUnpublish
 
 type AdditionData =
-  { addToPackageSet :: Boolean
-  , legacy :: Boolean
-  , newPackageLocation :: Repo
+  { newPackageLocation :: Repo
   , newRef :: String
   , packageName :: PackageName
   }
 
 type UpdateData =
   { packageName :: PackageName
-  , legacy :: Boolean
   , updateRef :: String
   }
 
