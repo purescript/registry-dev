@@ -117,7 +117,7 @@ removeTarballFiles = Spec.it "Removes files not allowed in package tarballs" do
   let
     extraIgnoredFiles = [ "Unsaved.purs.swp", "._unused" ]
     acceptedDirectories = [ "src", "test" ]
-    acceptedFiles = [ "purs.json", "spago.dhall" ]
+    acceptedFiles = [ ".purs.json", "spago.dhall" ]
 
     writeDirectory directory = do
       let path = Path.concat [ tmp, directory ]
