@@ -6,6 +6,7 @@ import Data.Array as Array
 import Effect.Aff as Aff
 import Foreign.S3 as S3
 import Node.FS.Aff as FS
+import Node.Path as Path
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Version (Version)
@@ -28,12 +29,7 @@ upload { name, version } path = do
   -- check that the file for that version is there
   let
     packageName = PackageName.print name
-    filename = Array.fold
-      [ packageName
-      , "/"
-      , Version.printVersion version
-      , ".tar.gz"
-      ]
+    filename = Path.concat [ packageName, Version.printVersion version <> ".tar.gz" ]
 
   publishedPackages <- map _.key <$> S3.listObjects s3 { prefix: packageName <> "/" }
 

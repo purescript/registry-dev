@@ -3,14 +3,14 @@ module Test.Foreign.Licensee where
 import Registry.Prelude
 
 import Foreign.Licensee as Licensee
-import Node.Path as Node.Path
+import Node.Path as Path
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Support.ManifestFiles as ManifestFiles
 
 licensee :: Spec.Spec Unit
 licensee = do
-  let fixtures = Node.Path.concat [ "test", "fixtures", "halogen-hooks" ]
+  let fixtures = Path.concat [ "test", "fixtures", "halogen-hooks" ]
   Spec.describe "Licensee runs" do
     Spec.it "Detects from directory" do
       detected <- Licensee.detect fixtures

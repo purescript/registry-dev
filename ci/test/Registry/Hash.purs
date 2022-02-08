@@ -4,7 +4,7 @@ import Registry.Prelude
 
 import Control.Monad.Except as Except
 import Node.ChildProcess as NodeProcess
-import Node.Path as Node.Path
+import Node.Path as Path
 import Registry.Hash as Hash
 import Registry.Json as Json
 import Sunde as Process
@@ -46,7 +46,7 @@ hooksSpagoHash :: Hash.Sha256
 hooksSpagoHash = Hash.unsafeSha256 "sha256-fN9RUAzN21ZY4Y0UwqUSxwUPVz1g7/pcqoDvbJZoT04="
 
 hooksSpago :: FilePath
-hooksSpago = Node.Path.concat [ "test", "fixtures", "halogen-hooks", "spago.dhall" ]
+hooksSpago = Path.concat [ "test", "fixtures", "halogen-hooks", "spago.dhall" ]
 
 -- Test hash produced by `openssl`:
 -- openssl dgst -sha256 -binary < test/fixtures/LICENSE | openssl base64 -A
@@ -54,7 +54,7 @@ hooksLicenseHash :: Hash.Sha256
 hooksLicenseHash = Hash.unsafeSha256 "sha256-wOzNcCq20TAL/LMT1lYIiaoEIFGDBw+yp14bj7qK9v4="
 
 hooksLicense :: FilePath
-hooksLicense = Node.Path.concat [ "test", "fixtures", "halogen-hooks", "LICENSE" ]
+hooksLicense = Path.concat [ "test", "fixtures", "halogen-hooks", "LICENSE" ]
 
 sha256Nix :: FilePath -> ExceptT String Aff Hash.Sha256
 sha256Nix path = ExceptT do

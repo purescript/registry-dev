@@ -17,7 +17,7 @@ import Foreign.Node.FS as FS.Extra
 import Node.FS.Aff as FS
 import Node.FS.Stats as Stats
 import Node.Glob.Basic as Glob
-import Node.Path as FilePath
+import Node.Path as Path
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -97,7 +97,7 @@ getIndexPath packageName = getIndexDir packageName <> PackageName.print packageN
 -- |  the file doesn't exist, the file is empty, or if we can't decode the Manifests
 readPackage :: FilePath -> PackageName -> Aff (Maybe (NonEmptyArray Manifest))
 readPackage directory packageName = do
-  let path = FilePath.concat [ directory, getIndexPath packageName ]
+  let path = Path.concat [ directory, getIndexPath packageName ]
 
   contentsResult <- try do
     contents <- FS.readTextFile ASCII path
@@ -111,8 +111,8 @@ readPackage directory packageName = do
 insertManifest :: FilePath -> Manifest -> Aff Unit
 insertManifest directory manifest@(Manifest { name, version }) = do
   let
-    manifestPath = FilePath.concat [ directory, getIndexPath name ]
-    manifestDirectory = FilePath.dirname manifestPath
+    manifestPath = Path.concat [ directory, getIndexPath name ]
+    manifestDirectory = Path.dirname manifestPath
 
   existingManifest <- readPackage directory name
 
