@@ -6,7 +6,6 @@ import Data.Array as Array
 import Effect.Aff as Aff
 import Foreign.S3 as S3
 import Node.FS.Aff as FS
-import Node.Path as Path
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Version (Version)
