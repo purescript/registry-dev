@@ -163,8 +163,8 @@ addOrUpdate { ref, packageName } metadata = do
           liftEffect $ Tar.extract { cwd: tmpDir, filename: absoluteTarballPath }
           pure { folderName: dir, published: commitDate }
 
-  let absoluteFolderPath = tmpDir <> "/" <> folderName
-  let manifestPath = absoluteFolderPath <> "/purs.json"
+  let absoluteFolderPath = Path.concat [ tmpDir, folderName ]
+  let manifestPath = Path.concat [ absoluteFolderPath, ".purs.json" ]
   log $ "Package extracted in " <> absoluteFolderPath
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it
