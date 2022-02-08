@@ -20,6 +20,7 @@ import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Node.FS.Aff as FS
 import Node.FS.Stats (Stats(..))
+import Node.Path as Path
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey, PackageFailures(..), RequestError(..))
@@ -172,7 +173,7 @@ withCache
 withCache { encode, decode } path maybeDuration action = do
   let
     cacheFolder = ".cache"
-    objectPath = cacheFolder <> "/" <> path
+    objectPath = Path.concat [ cacheFolder, path ]
 
     -- We also cache some failures if they relate to fetching a resource and
     -- the failure is not temporary (for example, a `404 Not Found` error).

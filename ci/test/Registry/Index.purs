@@ -12,7 +12,7 @@ import Foreign.Object as Object
 import Foreign.Tmp as Tmp
 import Node.FS.Stats as Stats
 import Node.Glob.Basic as Glob
-import Node.Path as Node.Path
+import Node.Path as Path
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
 import Registry.PackageGraph as PackageGraph
@@ -60,7 +60,7 @@ testRegistryIndex = Spec.before runBefore do
 
       let
         actualPaths = Map.keys $ Map.filter (not Stats.isDirectory) packagePaths
-        expectedPaths = Set.fromFoldable $ map (Node.Path.concat <<< Array.cons tmp)
+        expectedPaths = Set.fromFoldable $ map (Path.concat <<< Array.cons tmp)
           [ [ "2", "ab" ]
           , [ "3", "a", "abc" ]
           , [ "ab", "cd", "abcd" ]

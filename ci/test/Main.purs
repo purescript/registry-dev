@@ -46,7 +46,7 @@ main = launchAff_ do
   manifestExamplePaths <- join <$> for packages \package -> do
     let packageDir = examplesDir <> package
     manifests <- FS.readdir packageDir
-    pure $ map (\manifestFile -> packageDir <> "/" <> manifestFile) manifests
+    pure $ map (\manifestFile -> Path.concat [ packageDir, manifestFile ]) manifests
 
   runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
     Spec.describe "API" do
