@@ -6,6 +6,7 @@ module Test.Support.Dhall (spec) where
 import Registry.Prelude
 
 import Data.Set as Set
+import Debug (spy)
 import Foreign.Dhall as Dhall
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
@@ -22,6 +23,7 @@ spec = do
     -- We include this check so that if we ever change the directory containing
     -- the test files this test doesn't trivially succeed.
     matches `Assert.shouldNotSatisfy` Set.isEmpty
+    let _ = spy "matches" (Set.toUnfoldable matches :: Array FilePath)
     for_ matches \match -> do
       checkDhall match >>= case _ of
         Left err -> Assert.fail err
@@ -40,10 +42,11 @@ spec = do
 -- as input.
 checkDhall :: FilePath -> Aff (Either String String)
 checkDhall file = do
+  path <- liftEffect $ Path.resolve [] file
   let cmd = "dhall"
   let stdin = Nothing
-  let args = [ "--file", file ]
-  result <- Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
+  let args = [ "--file", path ]
+  result <- Process.spawn (spy "spawn: " { cmd, stdin, args }) NodeProcess.defaultSpawnOptions
   pure $ case result.exit of
     NodeProcess.Normally 0 -> Right result.stdout
     _ -> Left result.stderr
