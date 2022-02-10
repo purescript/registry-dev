@@ -5,7 +5,6 @@ module Test.Support.Dhall (spec) where
 
 import Registry.Prelude
 
-import Data.Either as Either
 import Data.Set as Set
 import Foreign.Dhall as Dhall
 import Node.ChildProcess as NodeProcess
@@ -24,17 +23,18 @@ spec = do
     -- the test files this test doesn't trivially succeed.
     matches `Assert.shouldNotSatisfy` Set.isEmpty
     for_ matches \match -> do
-      result <- checkDhall match
-      result `Assert.shouldSatisfy` Either.isRight
+      checkDhall match >>= case _ of
+        Left err -> Assert.fail err
+        Right _ -> mempty
   Spec.it "Manifest files conform to Manifest type" do
     matches <- Glob.expandGlobs (Path.concat [ "..", "examples" ]) [ "**/*.json" ]
     -- We include this check so that if we ever change the directory containing
     -- the test files this test doesn't trivially succeed.
     matches `Assert.shouldNotSatisfy` Set.isEmpty
     for_ matches \match -> do
-      contents <- FS.readTextFile UTF8 match
-      result <- Dhall.jsonToDhallManifest contents
-      result `Assert.shouldSatisfy` Either.isRight
+      FS.readTextFile UTF8 match >>= Dhall.jsonToDhallManifest >>= case _ of
+        Left err -> Assert.fail err
+        Right _ -> mempty
 
 -- A helper function to use the `dhall` CLI tool to typecheck a file provided
 -- as input.
