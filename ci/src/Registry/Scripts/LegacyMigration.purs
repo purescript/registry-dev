@@ -9,16 +9,20 @@ import Control.Monad.Except as Except
 import Data.Array as Array
 import Data.Map as Map
 import Data.Time.Duration (Hours(..))
-import Effect.AVar as AVar
 import Effect.Aff as Aff
+import Effect.Aff.AVar as AVar
+import Foreign.GitHub (Tag)
 import Foreign.GitHub as GitHub
 import Registry.API as API
 import Registry.Index as Index
 import Registry.Json as Json
-import Registry.PackageName (PackageName)
+import Registry.PackageName (PackageName(..))
+import Registry.PackageName as PackageName
+import Registry.Scripts.LegacyImport.Error as ImportError
 import Registry.Scripts.LegacyImport.Process (parBounded)
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Version (Version)
+import Text.Parsing.StringParser as Parser
 
 main :: Effect Unit
 main = Aff.launchAff_ do
@@ -30,10 +34,15 @@ main = Aff.launchAff_ do
   let
     packageSetsAddress = { owner: "purescript", repo: "package-sets" }
     repoCache = Array.fold [ "releases__", packageSetsAddress.owner, "__", packageSetsAddress.repo ]
+    packageSetsCache name = Array.fold [ "package-sets__", name ]
 
-  releases <- Process.withCache Process.jsonSerializer repoCache Nothing do
+  eitherReleases <- Except.runExceptT $ Process.withCache Process.jsonSerializer repoCache Nothing do
     log $ "Fetching releases for registry"
-    lift $ try $ GitHub.getReleases octokit packageSetsAddress
+    liftAff $ GitHub.getReleases octokit packageSetsAddress
+
+  (releases :: Array Tag) <- case eitherReleases of
+    Left err -> ?a err
+    Right releases -> pure releases
 
   let
     packagesJson { name } =
@@ -41,25 +50,31 @@ main = Aff.launchAff_ do
 
   packageSets <- do
     var <- AVar.new []
-    Process.parBounded releases \_ release -> do
-      Process.withCache Process.jsonSerializer Nothing do
-        json <- map (lmap Aff.message) (Http.get ResponseFormat.json (packagesJson release))
-        packagesJson <- Except.except (traverseKeys PackageName.parse =<< Json.decode json)
-        var # Process.modifyAVar (flip Array.snoc packagesJson)
+    Process.parBounded releases \_ release -> Except.runExceptT $ Except.withExceptT (ImportError.printImportErrorKey) do
+      Process.withCache Process.jsonSerializer (packageSetsCache release.name) Nothing do
+        let
+          decodeError =
+            ImportError.ResourceError
+              <<< { resource: ImportError.APIResource ImportError.GitHubReleases, error: _ }
+              <<< ImportError.DecodeError
+          httpError =
+            decodeError <<< Http.printError
+        { body  } <- Except.ExceptT $ map (lmap httpError) (Http.get ResponseFormat.json (packagesJson release))
+        packagesJson <- Except.except $ lmap ImportError.MalformedPackageName $ traverseKeys (lmap Parser.printParserError <<< PackageName.parse) =<< Json.decode body
+        liftAff (var # Process.modifyAVar (flip Array.snoc packagesJson))
+        pure packagesJson
     AVar.read var
 
   let
-    -- TODO: We probably need to check the dependencies for a manifest
-    -- We have a list of dependencies, but how do we guarantee that these
-    -- dependencies match the dependencies listed in the manifest
-    -- for this package@version?
-    -- They may not match - do we care?
+    -- try to go from RawPackageName -> PackageName, return Nothing if it doesn't parse
     packageInRegistry (Tuple packageName { version }) =
       isJust (Map.lookup packageName index >>= Map.lookup version)
 
     validSets = packageSets # Array.mapMaybe \packageSet -> do
-      guard (Array.all packageInRegistry (Map.toUnfoldable packagesJson))
+      guard (Array.all packageInRegistry (Map.toUnfoldable packageSet))
       pure packageSet
+
+  -- Compiler version under "metadata"
 
   pure unit
 
@@ -70,6 +85,7 @@ main = Aff.launchAff_ do
 
 
 
+-- TODO: Use RawPackageName
 type PackagesJson = Map PackageName PackageSetEntry
 
 type PackageSetEntry =

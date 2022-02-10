@@ -11,6 +11,8 @@ module Registry.Prelude
   , fromJust'
   , unsafeFromJust
   , unsafeFromRight
+  , traverseKeys
+  , mapKeys
   ) where
 
 import Prelude
@@ -22,12 +24,14 @@ import Control.Monad.Trans.Class (lift) as Extra
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray) as Extra
 import Data.Bifunctor (bimap, lmap, rmap) as Extra
+import Data.Bitraversable (ltraverse)
 import Data.Either (Either(..), either, fromLeft, fromRight', isRight, hush, note) as Either
 import Data.Foldable (and, any, all, fold) as Extra
 import Data.FoldableWithIndex (forWithIndex_, foldlWithIndex) as Extra
 import Data.Identity (Identity) as Extra
 import Data.List (List) as Extra
 import Data.Map (Map) as Extra
+import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing, isJust, maybe) as Maybe
 import Data.Newtype (un, class Newtype) as Extra
 import Data.Nullable (toMaybe, toNullable, Nullable) as Extra
@@ -89,3 +93,9 @@ unsafeFromJust = fromJust' (\_ -> Extra.unsafeCrashWith "Unexpected Nothing")
 
 unsafeFromRight :: forall e a. Either.Either e a -> a
 unsafeFromRight = Either.fromRight' (\_ -> Extra.unsafeCrashWith "Unexpected Left")
+
+mapKeys :: forall a b v. Ord a => Ord b => (a -> b) -> Extra.Map a v -> Extra.Map b v
+mapKeys k = Map.fromFoldable <<< map (Extra.lmap k) <<< (Map.toUnfoldable :: _ -> Array _)
+
+traverseKeys :: forall a b v. Ord a => Ord b => (a -> Either.Either String b) -> Extra.Map a v -> Either.Either String (Extra.Map b v)
+traverseKeys k = map Map.fromFoldable <<< Extra.traverse (ltraverse k) <<< (Map.toUnfoldable :: _ -> Array _)
