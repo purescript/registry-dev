@@ -27,11 +27,9 @@ spec = do
     matches `Assert.shouldNotSatisfy` Set.isEmpty
     let _ = spy "matches" (Set.toUnfoldable matches :: Array FilePath)
     for_ matches \match -> do
-      case match of
-        "../v1/Address.dhall" -> mempty
-        _ -> checkDhall match >>= case _ of
-          Left err -> Assert.fail err
-          Right _ -> mempty
+      checkDhall match >>= case _ of
+        Left err -> Assert.fail err
+        Right _ -> mempty
   Spec.it "Manifest files conform to Manifest type" do
     matches <- Glob.expandGlobs (Path.concat [ "..", "examples" ]) [ "**/*.json" ]
     -- We include this check so that if we ever change the directory containing

@@ -6,8 +6,6 @@ It could be one of the following:
 - a GitHub/Git repo
 -}
 
-let Prelude = ./Prelude.dhall
-
 let Repo = ./Repo.dhall
 
 let SemVer = Text
