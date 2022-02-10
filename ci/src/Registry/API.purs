@@ -231,7 +231,7 @@ addOrUpdate { ref, packageName } metadata = do
   uploadPackage uploadPackageInfo tarballPath
   log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show ref <> " was " <> show hash
-  let newMetadata = addVersionToMetadata newVersion { hash, ref, published, bytes } metadata
+  let newMetadata = addVersionToMetadata newVersion { hash, ref, published: Just published, bytes } metadata
   let metadataFilePath = metadataFile packageName
   liftAff $ Json.writeJsonFile metadataFilePath newMetadata
   updatePackagesMetadata manifestRecord.name newMetadata

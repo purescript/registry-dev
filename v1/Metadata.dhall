@@ -13,13 +13,14 @@ let SemVer = Text
 
 -- Information about a single published version
 let VersionMetadata =
-  {
   -- The git ref this version points to
-  , ref : Text
+  { ref : Text
   -- The hash of the source tarball fetched from the repo
   , hash : Text
   -- The size in bytes of the tarball
   , bytes : Natural
+  -- The publish date of the version, as an RFC3339 string
+  , published : Optional Text
   }
 
 in

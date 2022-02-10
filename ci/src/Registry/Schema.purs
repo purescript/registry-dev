@@ -161,7 +161,7 @@ type Metadata =
 type VersionMetadata =
   { ref :: String
   , hash :: Sha256
-  , published :: RFC3339String
+  , published :: Maybe RFC3339String
   , bytes :: Number
   }
 
