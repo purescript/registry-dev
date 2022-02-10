@@ -33,6 +33,8 @@ import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (defaultConfig, runSpec')
+import Test.Support.Dhall as Dhall
+import Test.Support.Format as Format
 import Test.Support.Manifest as Fixtures
 
 main :: Effect Unit
@@ -66,6 +68,7 @@ main = launchAff_ do
       Spec.describe "Encoding" bowerFileEncoding
     Spec.describe "Licensee" licensee
     Spec.describe "Manifest" do
+      Spec.describe "Dhall conformance" Dhall.spec
       Spec.describe "Encoding" manifestEncoding
       Spec.describe "Encoding examples" (manifestExamplesRoundtrip manifestExamplePaths)
     Spec.describe "Error Stats" errorStats
@@ -79,6 +82,8 @@ main = launchAff_ do
       Version.testVersion
     Spec.describe "Range" do
       Version.testRange
+    Spec.describe "Formatting" do
+      Format.spec
 
 -- | Check all the example Manifests roundtrip (read+write) through PureScript
 manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit
