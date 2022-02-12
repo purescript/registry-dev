@@ -87,7 +87,7 @@ main = Aff.launchAff_ do
   runRegistryM (mkEnv packagesMetadataRef) do
     log "Adding metadata for reserved package names"
     forWithIndex_ reservedNames \package repo -> do
-      let metadata = { location: repo, releases: Object.empty, unpublished: Object.empty }
+      let metadata = { location: repo, owners: Nothing, releases: Object.empty, unpublished: Object.empty }
       liftAff $ Json.writeJsonFile (API.metadataFile package) metadata
       updatePackagesMetadata package metadata
 

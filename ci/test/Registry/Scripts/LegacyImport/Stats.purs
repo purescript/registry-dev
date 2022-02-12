@@ -102,6 +102,7 @@ exampleStats = Stats.errorStats mockStats
                   $ set (traversed <<< _2)
                       ( Manifest
                           { license: mockLicense
+                          , owners: Nothing
                           , name: mockPackageName
                           , repository: Git { subdir: Nothing, url: "https://github.com/purescript/foobar" }
                           , targets: Object.empty
