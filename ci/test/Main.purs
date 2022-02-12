@@ -27,6 +27,7 @@ import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
 import Test.Registry.Hash as Registry.Hash
 import Test.Registry.Index as Registry.Index
+import Test.Registry.SSH as SSH
 import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
 import Test.Registry.Version (testRange, testVersion) as Version
 import Test.Spec as Spec
@@ -56,6 +57,7 @@ main = launchAff_ do
         Spec.describe "Good SPDX licenses" goodSPDXLicense
         Spec.describe "Bad SPDX licenses" badSPDXLicense
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
+        Spec.describe "Authenticated operations" SSH.spec
       Spec.describe "Tarball" do
         removeIgnoredTarballFiles
     Spec.describe "Bowerfile" do
