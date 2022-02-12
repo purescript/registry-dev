@@ -36,8 +36,8 @@ verifyPayload owners (AuthenticatedData { email, signature, rawPayload }) = do
   sshKeygenVerify tmp = do
     let cmd = "ssh-keygen"
     let stdin = Just rawPayload
-    let args = [ "-Y", "verify", "-f allowed_signers", "-I", email, "-n", "file", "-s", "payload_signature.sig" ]
+    let args = [ "-Y", "verify", "-f", allowedSigners, "-I", email, "-n", "file", "-s", payloadSignature ]
     result <- Process.spawn { cmd, stdin, args } (NodeProcess.defaultSpawnOptions { cwd = Just tmp })
-    pure $ case result.exit of
+    pure $ bimap String.trim String.trim case result.exit of
       NodeProcess.Normally 0 -> Right result.stdout
       _ -> Left result.stderr
