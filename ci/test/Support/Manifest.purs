@@ -35,9 +35,9 @@ ab = { name, v1a, v1b, v2 }
     , subdir: Nothing
     }
   description = Just "some description"
-  v1a = Manifest { name, version: version1, license, location: locationWrong, dependencies, description, files: Nothing }
-  v1b = Manifest { name, version: version1, license, location, dependencies, description, files: Nothing }
-  v2 = Manifest { name, version: version2, license, location, dependencies, description, files: Nothing }
+  v1a = Manifest { name, owners: Nothing, version: version1, license, location: locationWrong, dependencies, description, files: Nothing }
+  v1b = Manifest { name, owners: Nothing, version: version1, license, location, dependencies, description, files: Nothing }
+  v2 = Manifest { name, owners: Nothing, version: version2, license, location, dependencies, description, files: Nothing }
 
 abc :: { name :: PackageName, v1 :: Manifest, v2 :: Manifest }
 abc = { name, v1, v2 }
@@ -54,8 +54,8 @@ abc = { name, v1, v2 }
     , subdir: Nothing
     }
   description = Just "some description"
-  v1 = Manifest { name, version: version1, license, location, dependencies: dependencies1, description, files: Nothing }
-  v2 = Manifest { name, version: version2, license, location, dependencies: dependencies2, description, files: Nothing }
+  v1 = Manifest { name, owners: Nothing, version: version1, license, location, dependencies: dependencies1, description, files: Nothing }
+  v2 = Manifest { name, owners: Nothing, version: version2, license, location, dependencies: dependencies2, description, files: Nothing }
 
 abcd :: { name :: PackageName, v1 :: Manifest, v2 :: Manifest }
 abcd = { name, v1, v2 }
@@ -72,5 +72,5 @@ abcd = { name, v1, v2 }
     , subdir: Nothing
     }
   description = Just "some description"
-  v1 = Manifest { name, version: version1, license, location, dependencies: dependencies1, description, files: Nothing }
-  v2 = Manifest { name, version: version2, license, location, dependencies: dependencies2, description, files: Nothing }
+  v1 = Manifest { name, owners: Nothing, version: version1, license, location, dependencies: dependencies1, description, files: Nothing }
+  v2 = Manifest { name, owners: Nothing, version: version2, license, location, dependencies: dependencies2, description, files: Nothing }

@@ -18,6 +18,7 @@ import Text.Parsing.StringParser as StringParser
 -- | PureScript encoding of ../v1/Manifest.dhall
 newtype Manifest = Manifest
   { name :: PackageName
+  , owners :: Maybe (NonEmptyArray Owner)
   , version :: Version
   , license :: License
   , location :: Location
@@ -35,6 +36,7 @@ instance RegistryJson Manifest where
     "version" := fields.version
     "license" := fields.license
     "location" := fields.location
+    "owners" := fields.owners
     "description" := fields.description
     "dependencies" := mapKeys PackageName.print fields.dependencies
 
@@ -43,6 +45,22 @@ instance RegistryJson Manifest where
     let parse = lmap StringParser.printParserError <<< PackageName.parse
     parsed <- traverseKeys parse manifestFields.dependencies
     pure $ Manifest $ manifestFields { dependencies = parsed }
+
+-- | A package owner, described using their SSH key and associated email address. It
+-- | is not necessary to provide a valid email address, but the email address
+-- | provided must match the one used to sign payloads.
+-- |
+-- | https://man.openbsd.org/ssh-keygen#ALLOWED_SIGNERS
+newtype Owner = Owner
+  { email :: String
+  , keytype :: String
+  , public :: String
+  }
+
+derive instance Newtype Owner _
+derive newtype instance Eq Owner
+derive newtype instance Show Owner
+derive newtype instance RegistryJson Owner
 
 type LocationData d =
   { subdir :: Maybe String
@@ -144,11 +162,28 @@ instance Show AuthenticatedOperation where
     showWithPackage inner =
       inner { packageName = "PackageName (" <> PackageName.print inner.packageName <> ")" }
 
-type AuthenticatedData =
+newtype AuthenticatedData = AuthenticatedData
   { payload :: AuthenticatedOperation
+  -- We include the unparsed payload for use in verification so as to preserve
+  -- any quirks of formatting that could change the input.
+  , rawPayload :: String
   , signature :: Array String
   , email :: String
   }
+
+derive instance Newtype AuthenticatedData _
+derive newtype instance Eq AuthenticatedData
+derive newtype instance Show AuthenticatedData
+
+instance RegistryJson AuthenticatedData where
+  encode (AuthenticatedData fields) = Json.encode fields
+  decode json = do
+    obj <- Json.decode json
+    rawPayload <- obj .: "payload"
+    payload <- Json.parseJson rawPayload
+    signature <- obj .: "signature"
+    email <- obj .: "email"
+    pure $ AuthenticatedData { rawPayload, payload, signature, email }
 
 type AdditionData =
   { newPackageLocation :: Location
@@ -169,6 +204,7 @@ type UnpublishData =
 
 type Metadata =
   { location :: Location
+  , owners :: Maybe (NonEmptyArray Owner)
   , releases :: Object VersionMetadata
   , unpublished :: Object String
   }
@@ -176,13 +212,14 @@ type Metadata =
 type VersionMetadata =
   { ref :: String
   , hash :: Sha256
-  , published :: RFC3339String
   , bytes :: Number
+  , published :: RFC3339String
   }
 
 mkNewMetadata :: Location -> Metadata
 mkNewMetadata location =
   { location
+  , owners: Nothing
   , releases: Object.empty
   , unpublished: Object.empty
   }
@@ -191,6 +228,13 @@ addVersionToMetadata :: Version -> VersionMetadata -> Metadata -> Metadata
 addVersionToMetadata version versionMeta metadata = do
   let releases = Object.insert (Version.printVersion version) versionMeta metadata.releases
   metadata { releases = releases }
+
+unpublishVersionInMetadata :: Version -> String -> Metadata -> Metadata
+unpublishVersionInMetadata version unpublishReason metadata = do
+  let versionKey = Version.printVersion version
+  let releases = Object.delete versionKey metadata.releases
+  let unpublished = Object.insert versionKey unpublishReason metadata.unpublished
+  metadata { releases = releases, unpublished = unpublished }
 
 isVersionInMetadata :: Version -> Metadata -> Boolean
 isVersionInMetadata version metadata = versionPublished || versionUnpublished

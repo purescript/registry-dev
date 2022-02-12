@@ -8,9 +8,13 @@ This object holds all the info that the Registry needs to know about it.
 
 let Map = (./Prelude.dhall).Map.Type
 
+let Owner = ./Owner.dhall
+
 let Manifest =
       -- The name of the package
       { name : Text
+      -- Owners authorized to perform authenticated operations for this package
+      , owners : Optional (List Owner)
       -- A short description of the package
       , description : Optional Text
       -- The SPDX code for the license under which the code is released

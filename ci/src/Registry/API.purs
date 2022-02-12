@@ -18,6 +18,7 @@ import Foreign.GitHub (IssueNumber)
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Foreign.Object as Object
+import Foreign.SSH as SSH
 import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
@@ -32,7 +33,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.Schema (Manifest(..), Metadata, Operation(..), Location(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata)
+import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Manifest(..), Metadata, Operation(..), Location(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
@@ -121,7 +122,40 @@ runOperation operation = case operation of
         addOrUpdate { packageName, ref: updateRef } metadata
       (throwWithComment "Metadata file should exist. Did you mean to create an Addition?")
 
-  Authenticated _ -> throwWithComment "Authenticated operations not implemented! Ask us for help!" -- TODO
+  Authenticated auth@(AuthenticatedData { payload }) -> case payload of
+    Unpublish { packageName, unpublishReason, unpublishVersion } -> do
+      let metadataFilePath = metadataFile packageName
+      liftAff (FS.exists metadataFilePath) >>= case _ of
+        false -> throwWithComment "No metadata file found. Did you mean to create an Addition?"
+        _ -> pure unit
+
+      metadata <- readPackagesMetadata >>= \packages -> case Map.lookup packageName packages of
+        Nothing -> throwWithComment "Couldn't read metadata file for your package."
+        Just m -> pure m
+
+      case metadata.owners of
+        Nothing ->
+          throwWithComment $ String.joinWith " "
+            [ "Cannot verify package ownership because no owners are listed in the package metadata."
+            , "Please publish a package version with your SSH public key in the owners field."
+            , "You can then retry unpublishing this version by authenticating with your private key."
+            ]
+        Just owners ->
+          liftAff (SSH.verifyPayload owners auth) >>= case _ of
+            Left err ->
+              throwWithComment $ String.joinWith "\n"
+                [ "Failed to verify package ownership:"
+                , "  " <> err
+                ]
+            Right _ -> do
+              let updatedMetadata = unpublishVersionInMetadata unpublishVersion unpublishReason metadata
+              liftAff $ Json.writeJsonFile metadataFilePath updatedMetadata
+              updatePackagesMetadata packageName updatedMetadata
+              commitToTrunk packageName metadataFilePath >>= case _ of
+                Left _err ->
+                  comment "Unpublish succeeded, but metadata could not be updated.\n\ncc @purescript/packaging"
+                Right _ -> do
+                  comment "Package version unpublished!"
 
 metadataDir :: FilePath
 metadataDir = "../metadata"
@@ -133,11 +167,11 @@ indexDir :: FilePath
 indexDir = "../registry-index"
 
 addOrUpdate :: { ref :: String, packageName :: PackageName } -> Metadata -> RegistryM Unit
-addOrUpdate { ref, packageName } metadata = do
+addOrUpdate { ref, packageName } inputMetadata = do
   -- let's get a temp folder to do our stuffs
   tmpDir <- liftEffect $ Tmp.mkTmpDir
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
-  { folderName, published } <- case metadata.location of
+  { folderName, published } <- case inputMetadata.location of
     Git _ -> do
       -- TODO: Support non-GitHub packages. Remember subdir when implementing this. (See #15)
       throwWithComment "Packages are only allowed to come from GitHub for now. See #15"
@@ -174,7 +208,7 @@ addOrUpdate { ref, packageName } metadata = do
   -- If this is a legacy import, then we need to construct a `Manifest` for it
   isLegacyImport <- liftAff $ map not $ FS.exists manifestPath
   when isLegacyImport do
-    address <- case metadata.location of
+    address <- case inputMetadata.location of
       Git _ -> throwWithComment "Legacy packages can only come from GitHub. Aborting."
       GitHub { owner, repo } -> pure { owner, repo }
 
@@ -191,7 +225,7 @@ addOrUpdate { ref, packageName } metadata = do
       gatherManifest :: ExceptT ImportError Aff Manifest
       gatherManifest = do
         manifestFields <- Manifest.constructManifestFields (RawPackageName $ show packageName) (RawVersion ref) address
-        Except.mapExceptT liftError $ Manifest.toManifest packageName metadata.location version manifestFields
+        Except.mapExceptT liftError $ Manifest.toManifest packageName inputMetadata.location version manifestFields
 
     runManifest gatherManifest >>= case _ of
       Left err ->
@@ -209,6 +243,12 @@ addOrUpdate { ref, packageName } metadata = do
         Right _ -> case Json.parseJson manifestStr of
           Left err -> throwWithComment $ "Could not convert Manifest to JSON: " <> err
           Right res -> pure res
+
+  let
+    -- As soon as we have the manifest we need to update any fields that can
+    -- change from version to version.
+    metadata =
+      inputMetadata { owners = manifestRecord.owners }
 
   runChecks metadata manifest
 
