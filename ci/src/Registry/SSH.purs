@@ -1,4 +1,4 @@
-module Foreign.SSH where
+module Registry.SSH where
 
 import Registry.Prelude
 
