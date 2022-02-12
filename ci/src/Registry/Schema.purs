@@ -96,7 +96,7 @@ instance RegistryJson Location where
 data Operation
   = Addition AdditionData
   | Update UpdateData
-  | Unpublish UnpublishData
+  | Authenticated AuthenticatedData
 
 derive instance eqOperation :: Eq Operation
 
@@ -106,7 +106,7 @@ instance showOperation :: Show Operation where
   show = case _ of
     Addition inner -> "Addition (" <> show (showWithPackage inner) <> ")"
     Update inner -> "Update (" <> show (showWithPackage inner) <> ")"
-    Unpublish inner -> "Unpublish (" <> show (showWithPackage inner) <> ")"
+    Authenticated inner -> "Authenticated (" <> show inner <> ")"
     where
     showWithPackage :: forall r. { packageName :: PackageName | r } -> { packageName :: String | r }
     showWithPackage inner =
@@ -116,13 +116,39 @@ instance RegistryJson Operation where
   encode = case _ of
     Addition fields -> Json.encode fields
     Update fields -> Json.encode fields
-    Unpublish fields -> Json.encode fields
+    Authenticated fields -> Json.encode fields
 
   decode json = do
     let parseAddition = Addition <$> Json.decode json
     let parseUpdate = Update <$> Json.decode json
+    let parseAuthenticated = Authenticated <$> Json.decode json
+    parseAddition <|> parseUpdate <|> parseAuthenticated
+
+data AuthenticatedOperation = Unpublish UnpublishData
+
+derive instance Eq AuthenticatedOperation
+
+instance RegistryJson AuthenticatedOperation where
+  encode = case _ of
+    Unpublish fields -> Json.encode fields
+
+  decode json = do
     let parseUnpublish = Unpublish <$> Json.decode json
-    parseAddition <|> parseUpdate <|> parseUnpublish
+    parseUnpublish
+
+instance Show AuthenticatedOperation where
+  show = case _ of
+    Unpublish inner -> "Unpublish (" <> show (showWithPackage inner) <> ")"
+    where
+    showWithPackage :: forall r. { packageName :: PackageName | r } -> { packageName :: String | r }
+    showWithPackage inner =
+      inner { packageName = "PackageName (" <> PackageName.print inner.packageName <> ")" }
+
+type AuthenticatedData =
+  { payload :: AuthenticatedOperation
+  , signature :: Array String
+  , email :: String
+  }
 
 type AdditionData =
   { newPackageLocation :: Location
