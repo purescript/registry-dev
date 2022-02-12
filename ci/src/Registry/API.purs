@@ -122,7 +122,7 @@ runOperation operation = case operation of
         addOrUpdate { packageName, ref: updateRef } metadata
       (throwWithComment "Metadata file should exist. Did you mean to create an Addition?")
 
-  Unpublish _ -> throwWithComment "Unpublish not implemented! Ask us for help!" -- TODO
+  Authenticated _ -> throwWithComment "Authenticated operations not implemented! Ask us for help!" -- TODO
 
 metadataDir :: FilePath
 metadataDir = "../metadata"

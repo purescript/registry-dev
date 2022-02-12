@@ -12,7 +12,7 @@ let AuthenticatedOperation =
   < Unpublish : { packageName : Text, unpublishVersion : Text, unpublishReason : Text } >
 
 in
-  < Addition : { packageName : Text, newPackageLocation : Repo, newRef : Text, addToPackageSet: Bool }
+  < Addition : { packageName : Text, newPackageLocation : Repo, newRef : Text }
   | Update : { packageName : Text, updateRef : Text }
   | Authenticated : { payload : AuthenticatedOperation, signature : List Text, email : Text }
   >
