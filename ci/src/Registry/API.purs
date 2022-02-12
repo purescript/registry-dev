@@ -18,7 +18,7 @@ import Foreign.GitHub (IssueNumber)
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Foreign.Object as Object
-import Foreign.SSH as SSH
+import Registry.SSH as SSH
 import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess

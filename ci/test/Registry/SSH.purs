@@ -5,7 +5,7 @@ import Registry.Prelude
 import Data.Array.NonEmpty as NEA
 import Data.Newtype (over)
 import Data.String as String
-import Foreign.SSH as SSH
+import Registry.SSH as SSH
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Owner(..))
