@@ -46,7 +46,7 @@ main = launchAff_ do
   manifestExamplePaths <- join <$> for packages \package -> do
     let packageDir = examplesDir <> package
     manifests <- FS.readdir packageDir
-    pure $ map (\manifestFile -> packageDir <> "/" <> manifestFile) manifests
+    pure $ map (\manifestFile -> Path.concat [ packageDir, manifestFile ]) manifests
 
   runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
     Spec.describe "API" do
@@ -117,7 +117,7 @@ removeTarballFiles = Spec.it "Removes files not allowed in package tarballs" do
   let
     extraIgnoredFiles = [ "Unsaved.purs.swp", "._unused" ]
     acceptedDirectories = [ "src", "test" ]
-    acceptedFiles = [ "purs.json", "spago.dhall" ]
+    acceptedFiles = [ ".purs.json", "spago.dhall" ]
 
     writeDirectory directory = do
       let path = Path.concat [ tmp, directory ]
@@ -229,7 +229,6 @@ decodeEventsToOps = do
       operation = Update
         { packageName: unsafeFromRight $ PackageName.parse "something"
         , updateRef: "v1.2.3"
-        , legacy: false
         }
 
     res <- API.readOperation "test/fixtures/issue_comment.json"
@@ -241,8 +240,6 @@ decodeEventsToOps = do
       operation = Addition
         { packageName: unsafeFromRight $ PackageName.parse "prelude"
         , newRef: "v5.0.0"
-        , legacy: true
-        , addToPackageSet: true
         , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
         }
 

@@ -105,21 +105,21 @@ readOperation eventPath = do
 runOperation :: Operation -> RegistryM Unit
 runOperation operation = case operation of
   -- TODO handle addToPackageSet
-  Addition { packageName, legacy, newRef, newPackageLocation } -> do
+  Addition { packageName, newRef, newPackageLocation } -> do
     -- check that we don't have a metadata file for that package
     ifM (liftAff $ FS.exists $ metadataFile packageName)
       -- if the metadata file already exists then we steer this to be an Update instead
-      (runOperation $ Update { packageName, legacy, updateRef: newRef })
+      (runOperation $ Update { packageName, updateRef: newRef })
       do
-        addOrUpdate { packageName, legacy, ref: newRef } $ mkNewMetadata newPackageLocation
+        addOrUpdate { packageName, ref: newRef } $ mkNewMetadata newPackageLocation
 
-  Update { packageName, legacy, updateRef } -> do
+  Update { packageName, updateRef } -> do
     ifM (liftAff $ FS.exists $ metadataFile packageName)
       do
         metadata <- readPackagesMetadata >>= \packages -> case Map.lookup packageName packages of
           Nothing -> throwWithComment "Couldn't read metadata file for your package"
           Just m -> pure m
-        addOrUpdate { packageName, legacy, ref: updateRef } metadata
+        addOrUpdate { packageName, ref: updateRef } metadata
       (throwWithComment "Metadata file should exist. Did you mean to create an Addition?")
 
   Unpublish _ -> throwWithComment "Unpublish not implemented! Ask us for help!" -- TODO
@@ -128,13 +128,13 @@ metadataDir :: FilePath
 metadataDir = "../metadata"
 
 metadataFile :: PackageName -> FilePath
-metadataFile packageName = metadataDir <> "/" <> PackageName.print packageName <> ".json"
+metadataFile packageName = Path.concat [ metadataDir, PackageName.print packageName <> ".json" ]
 
 indexDir :: FilePath
 indexDir = "../registry-index"
 
-addOrUpdate :: { legacy :: Boolean, ref :: String, packageName :: PackageName } -> Metadata -> RegistryM Unit
-addOrUpdate { ref, legacy, packageName } metadata = do
+addOrUpdate :: { ref :: String, packageName :: PackageName } -> Metadata -> RegistryM Unit
+addOrUpdate { ref, packageName } metadata = do
   -- let's get a temp folder to do our stuffs
   tmpDir <- liftEffect $ Tmp.mkTmpDir
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
@@ -150,7 +150,7 @@ addOrUpdate { ref, legacy, packageName } metadata = do
       commit <- liftAff $ GitHub.getRefCommit octokit { owner, repo } ref
       commitDate <- liftAff $ GitHub.getCommitDate octokit { owner, repo } commit
       let tarballName = ref <> ".tar.gz"
-      let absoluteTarballPath = tmpDir <> "/" <> tarballName
+      let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
       let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
       log $ "Fetching tarball from GitHub: " <> archiveUrl
       wget archiveUrl absoluteTarballPath
@@ -163,12 +163,13 @@ addOrUpdate { ref, legacy, packageName } metadata = do
           liftEffect $ Tar.extract { cwd: tmpDir, filename: absoluteTarballPath }
           pure { folderName: dir, published: commitDate }
 
-  let absoluteFolderPath = tmpDir <> "/" <> folderName
-  let manifestPath = absoluteFolderPath <> "/purs.json"
+  let absoluteFolderPath = Path.concat [ tmpDir, folderName ]
+  let manifestPath = Path.concat [ absoluteFolderPath, ".purs.json" ]
+
   log $ "Package extracted in " <> absoluteFolderPath
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it
-  when legacy do
+  unlessM (liftAff $ FS.exists manifestPath) do
     address <- case metadata.location of
       Git _ -> throwWithComment "Legacy packages can only come from GitHub. Aborting."
       GitHub { owner, repo } -> pure { owner, repo }
@@ -212,7 +213,7 @@ addOrUpdate { ref, legacy, packageName } metadata = do
   -- We need the version number to upload the package
   let newVersion = manifestRecord.version
   let newDirname = PackageName.print packageName <> "-" <> Version.printVersion newVersion
-  let tarballDirname = tmpDir <> "/" <> newDirname
+  let tarballDirname = Path.concat [ tmpDir, newDirname ]
   liftAff do
     FS.rename absoluteFolderPath tarballDirname
     removeIgnoredTarballFiles tarballDirname

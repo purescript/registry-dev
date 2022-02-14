@@ -1,6 +1,6 @@
 {-
 
-The schema for `purs.json` files.
+The schema for `.purs.json` files.
 
 This object holds all the info that the Registry needs to know about it.
 

@@ -413,8 +413,4 @@ let packages =
   , zeta = Address.Registry "v6.0.0"
   }
 
-let isPackageSetInRegistry = (../isPackageSetInRegistry.dhall) externalPackage
-
-let test = assert : isPackageSetInRegistry (toMap packages) === True
-
 in { packages, compiler }
