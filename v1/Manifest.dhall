@@ -19,6 +19,9 @@ let Manifest =
       , version : Text
       -- The git repo the package is published at
       , repository : ./Repo.dhall
+      -- A list of globs indicating files in addition to the src directory
+      -- that should be included in the package tarball
+      , files : Optional (List Text)
       -- The packages this package depends on
       , dependencies : Map Text Text
       }
