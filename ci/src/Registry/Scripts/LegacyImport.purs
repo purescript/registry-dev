@@ -15,6 +15,7 @@ import Foreign.GitHub as GitHub
 import Foreign.Object as Object
 import Registry.API as API
 import Registry.Index (RegistryIndex)
+import Registry.Index as Index
 import Registry.Json as Json
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
@@ -46,6 +47,7 @@ main = Aff.launchAff_ do
 
   log "Starting import from legacy registries..."
   { registry, reservedNames } <- downloadLegacyRegistry
+  Index.writeRegistryIndex API.indexDir registry
 
   log "Temporary: we filter packages to only deal with the ones in core and other orgs we control"
   let

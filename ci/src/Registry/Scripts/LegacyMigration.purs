@@ -4,7 +4,6 @@ import Registry.Prelude
 
 import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
-import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Data.Array as Array
 import Data.Map as Map
@@ -19,26 +18,16 @@ import Registry.API as API
 import Registry.Index as Index
 import Registry.Json as Json
 import Registry.PackageName as PackageName
-import Registry.Scripts.LegacyImport.Error (ImportError, RequestError)
 import Registry.Scripts.LegacyImport.Error as Error
 import Registry.Scripts.LegacyImport.Error as ImportError
 import Registry.Scripts.LegacyImport.Process as Process
-import Registry.Version (Version)
 import Registry.Version as Version
-
--- question: where do we write the migrated package sets?
-
--- TODO: remove this?
-releasesError :: RequestError -> ImportError
-releasesError =
-  ImportError.ResourceError
-    <<< { resource: ImportError.APIResource ImportError.GitHubReleases, error: _ }
 
 main :: Effect Unit
 main = Aff.launchAff_ do
   API.checkIndexExists
 
-  index <- Index.readRegistryIndex "./registry-index"
+  index <- Index.readRegistryIndex API.indexDir
   octokit <- liftEffect GitHub.mkOctokit
 
   let
@@ -63,7 +52,11 @@ main = Aff.launchAff_ do
     Process.parBounded releases \_ release -> Except.runExceptT $ Except.withExceptT (ImportError.printImportErrorKey) do
       Process.withCache Process.jsonSerializer (packageSetsCache release.name) Nothing do
         let
-          httpError = releasesError <<< ImportError.DecodeError <<< Http.printError
+          httpError =
+            ImportError.ResourceError
+              <<< { resource: ImportError.APIResource ImportError.GitHubReleases, error: _ }
+              <<< ImportError.DecodeError
+              <<< Http.printError
         { body  } <- Except.ExceptT $ map (lmap httpError) (Http.get ResponseFormat.json (packagesJson release))
         packagesJson' :: PackagesJson <- Except.except $ lmap ImportError.MalformedPackageName $ Json.decode body
         liftAff (var # Process.modifyAVar (flip Array.snoc (Tuple release packagesJson')))
@@ -71,31 +64,50 @@ main = Aff.launchAff_ do
     AVar.read var
 
   let
-    packageInRegistry (Tuple packageName { version }) = isJust do
-      parsedPackageName <- hush (PackageName.parse packageName)
-      manifests <- Map.lookup parsedPackageName index
-      Map.lookup version manifests
+    packageInRegistry (Tuple packageName { version: RawVersion version }) = do
+      let errorMessage msg = "  - " <> msg
+      parsedPackageName <- lmap (\_ -> errorMessage "Failed to parse package name for " <> packageName) (PackageName.parse packageName)
+      --traceM $ "Looking up manifests for " <> PackageName.print parsedPackageName
+      manifests <- note (errorMessage "Failed to find package " <> packageName <> " in registry index") (Map.lookup parsedPackageName index)
+      --traceM $ "Found manifests for " <> PackageName.print parsedPackageName
+      parsedVersion <- lmap (\_ -> errorMessage "Failed to parse version " <> version <> " for package " <> packageName) (Version.parseVersion Version.Lenient version)
+      note (errorMessage "Failed to find " <> packageName <> "@" <> Version.printVersion parsedVersion <> " in registry index") (Map.lookup parsedVersion manifests)
 
-    validSets :: Array (Tuple Tag (Map String PackageSetEntry))
-    validSets = packageSets # Array.mapMaybe \(Tuple release packageSet) -> do
-      guard (Array.all packageInRegistry (Map.toUnfoldable packageSet))
-      pure $ Tuple release packageSet
+    processedSets :: Array (Either String (Tuple Tag (Map String PackageSetEntry)))
+    processedSets = packageSets # map \(Tuple release packageSet) -> do
+      let
+        { fail } = partitionEithers (map packageInRegistry (Map.toUnfoldable packageSet))
+      if Map.member "metadata" packageSet && Array.null fail then
+        Right $ Tuple release packageSet
+      else do
+        let metadataError = if Map.member "metadata" packageSet then "" else "  - Package set doesn't contain metadata"
+        Left $ fold
+          [ "Migration for package set "
+          , release.name
+          , " failed with errors:\n"
+          , String.joinWith "\n" fail
+          , if not (Array.null fail) then "\n" else ""
+          , metadataError
+          , "\n\n"
+          ]
 
-  log $ "Got " <> show (Array.length packageSets) <> " package sets"
-  log $ "Writing " <> show (Array.length validSets) <> " package sets"
+  log $ "Got " <> show (Array.length packageSets) <> " legacy package sets"
+  for_ processedSets case _ of
+    Left err -> log err
+    Right (Tuple { name } packageSet) -> do
+      for_ (packageSetDhall packageSet) \dhall -> do
+        FS.writeTextFile UTF8 (Path.concat [ "..", "v1", "sets", name <> ".dhall" ]) dhall
+        Json.writeJsonFile (Path.concat [ "..", "v1", "sets", name <> ".json" ]) packageSet
 
-  for_ validSets \(Tuple { name } packageSet) -> do
-    FS.writeTextFile UTF8 (Path.concat [ "v1", "sets", name <> ".dhall" ]) (packageSetDhall packageSet)
-    Json.writeJsonFile (Path.concat [ "v1", "sets", name <> ".json" ]) packageSet
-
-packageSetDhall :: Map String PackageSetEntry -> String
-packageSetDhall packageSet =
-  String.joinWith "\n"
+packageSetDhall :: Map String PackageSetEntry -> Maybe String
+packageSetDhall packageSet = do
+  { version: RawVersion version } <- Map.lookup "metadata" packageSet
+  pure $ String.joinWith "\n"
     [ "\\(externalPackage : Type) ->"
     , ""
     , "let Address = (../Address.dhall) externalPackage"
     , ""
-    , "let compiler = " <> compilerVersion
+    , "let compiler = " <> version
     , ""
     , "let packages ="
     , String.joinWith "\n" packagesMap
@@ -104,11 +116,7 @@ packageSetDhall packageSet =
     , "in { packages, compiler }"
     ]
   where
-  compilerVersion = fromJust' (\_ -> unsafeCrashWith "Failed to find metadata package") do
-    { version } <- Map.lookup "metadata" packageSet
-    pure $ printVersion version
-
-  printVersion version = "\"v" <> Version.printVersion version <> "\""
+  printVersion (RawVersion version) = "\"v" <> Version.printVersion (unsafeFromRight (Version.parseVersion Version.Lenient version)) <> "\""
 
   packagesMap = Array.mapWithIndex printPackageVersion (Map.toUnfoldable packageSet)
 
@@ -125,5 +133,5 @@ type PackagesJson = Map String PackageSetEntry
 type PackageSetEntry =
   { dependencies :: Array RawPackageName
   , repo :: Http.URL
-  , version :: Version
+  , version :: RawVersion
   }

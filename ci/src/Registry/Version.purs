@@ -43,7 +43,8 @@ newtype Version = Version
   , raw :: String
   }
 
-derive instance Eq Version
+instance Eq Version where
+  eq = eq `on` (\(Version v) -> [ v.major, v.minor, v.patch ])
 
 instance Ord Version where
   compare = compare `on` (\(Version v) -> [ v.major, v.minor, v.patch ])

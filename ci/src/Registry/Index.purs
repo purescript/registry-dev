@@ -2,6 +2,7 @@ module Registry.Index
   ( RegistryIndex
   , readRegistryIndex
   , insertManifest
+  , writeRegistryIndex
   ) where
 
 import Registry.Prelude
@@ -9,6 +10,7 @@ import Registry.Prelude
 import Control.Alternative (guard)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.Foldable (traverse_)
 import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
@@ -35,11 +37,18 @@ readRegistryIndex directory = do
     -- Exclude certain files that will always be in the root of the registry index.
     -- These files do not correspond to a package manifest file.
     exclude :: Array String
-    exclude = [ "config.json" ]
+    exclude = [ "config.json", "README.md" ]
+
+    -- Exclude files in directories that will always be in the root of the registry index.
+    -- These files do not correspond to a package manifest file.
+    excludeDir :: Array String
+    excludeDir = [ ".git" ]
 
     goPath packagePath = do
-      fileName <- Array.last $ String.split (Pattern "/") packagePath
-      guard (not (Array.elem fileName exclude))
+      let path = String.split (Pattern "/") packagePath
+      dirName <- Array.index path 2
+      fileName <- Array.last path
+      guard (not (Array.elem dirName excludeDir) && not (Array.elem fileName exclude))
       hush $ PackageName.parse fileName
 
     packages =
@@ -107,6 +116,10 @@ readPackage directory packageName = do
     Left _ -> Nothing
     Right Nothing -> Nothing
     Right (Just arr) -> NEA.fromArray arr
+
+writeRegistryIndex :: FilePath -> RegistryIndex -> Aff Unit
+writeRegistryIndex directory index =
+  for_ index (traverse_ (insertManifest directory))
 
 insertManifest :: FilePath -> Manifest -> Aff Unit
 insertManifest directory manifest@(Manifest { name, version }) = do
