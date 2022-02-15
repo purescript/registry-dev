@@ -5,12 +5,19 @@ import Registry.Prelude
 import Control.Monad.Except as Except
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
+import Data.DateTime as DateTime
+import Data.Foldable (traverse_)
 import Data.Generic.Rep as Generic
+import Data.Int as Int
 import Data.Map as Map
+import Data.PreciseDateTime as PDT
+import Data.RFC3339String as RFC3339String
 import Data.Set as Set
 import Data.String as String
+import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
 import Effect.Exception (throw)
+import Effect.Now as Now
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
 import Foreign.FastGlob as FastGlob
@@ -18,7 +25,6 @@ import Foreign.GitHub (IssueNumber)
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Foreign.Object as Object
-import Registry.SSH as SSH
 import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
@@ -33,6 +39,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
+import Registry.SSH as SSH
 import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Manifest(..), Metadata, Operation(..), Location(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
@@ -133,6 +140,27 @@ runOperation operation = case operation of
         Nothing -> throwWithComment "Couldn't read metadata file for your package.\ncc @purescript/packaging"
         Just m -> pure m
 
+      let
+        inPublished = Map.lookup unpublishVersion metadata.published
+        inUnpublished = Map.lookup unpublishVersion metadata.unpublished
+
+      publishedMetadata <- case inPublished, inUnpublished of
+        Nothing, Nothing ->
+          throwWithComment $ "Cannot unpublish " <> Version.printVersion unpublishVersion <> " because it is not a published version."
+        Just published, Nothing ->
+          -- We only pass through the case where the user is unpublishing a
+          -- package that has been published and not yet unpublished.
+          pure published
+        Nothing, Just _ ->
+          throwWithComment $ "Cannot unpublish " <> Version.printVersion unpublishVersion <> " because it has already been unpublished."
+        Just _, Just _ ->
+          throwWithComment $ String.joinWith "\n"
+            [ "Cannot unpublish " <> Version.printVersion unpublishVersion <> "."
+            , ""
+            , "This version is listed both as published and unpublished. This is an internal error."
+            , "cc @purescript/packaging"
+            ]
+
       case metadata.owners of
         Nothing ->
           throwWithComment $ String.joinWith " "
@@ -148,8 +176,36 @@ runOperation operation = case operation of
                 , "  " <> err
                 ]
             Right _ -> do
-              let updatedMetadata = unpublishVersionInMetadata unpublishVersion unpublishReason metadata
-              liftAff $ Json.writeJsonFile metadataFilePath updatedMetadata
+              now <- liftEffect $ Now.nowDateTime
+
+              publishedDate <- case PDT.fromRFC3339String publishedMetadata.timestamp of
+                Nothing ->
+                  throwWithComment "Published time is an invalid RFC3339String\ncc @purescript/packaging"
+                Just precise ->
+                  pure $ PDT.toDateTimeLossy precise
+
+              let hourLimit = 48
+              let diff = DateTime.diff now publishedDate
+              when (diff > Hours (Int.toNumber hourLimit)) do
+                throwWithComment $ "Packages can only be unpublished within " <> show hourLimit <> " hours."
+
+              let
+                unpublishedMetadata =
+                  { ref: publishedMetadata.ref
+                  , reason: unpublishReason
+                  , timestamp:
+                      { published: publishedMetadata.timestamp
+                      , unpublished: RFC3339String.fromDateTime now
+                      }
+                  }
+
+                updatedMetadata = unpublishVersionInMetadata unpublishVersion unpublishedMetadata metadata
+
+              liftAff $ Json.writeJsonFile metadataFilePath $ updatedMetadata
+                { unpublished = mapKeys Version.printVersion updatedMetadata.unpublished
+                , published = mapKeys Version.printVersion updatedMetadata.published
+                }
+
               updatePackagesMetadata packageName updatedMetadata
               commitToTrunk packageName metadataFilePath >>= case _ of
                 Left _err ->
@@ -171,7 +227,7 @@ addOrUpdate { ref, packageName } inputMetadata = do
   -- let's get a temp folder to do our stuffs
   tmpDir <- liftEffect $ Tmp.mkTmpDir
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
-  { folderName, published } <- case inputMetadata.location of
+  { folderName, timestamp } <- case inputMetadata.location of
     Git _ -> do
       -- TODO: Support non-GitHub packages. Remember subdir when implementing this. (See #15)
       throwWithComment "Packages are only allowed to come from GitHub for now. See #15"
@@ -194,7 +250,7 @@ addOrUpdate { ref, packageName } inputMetadata = do
         Just dir -> do
           log "Extracting the tarball..."
           liftEffect $ Tar.extract { cwd: tmpDir, filename: absoluteTarballPath }
-          pure { folderName: dir, published: commitDate }
+          pure { folderName: dir, timestamp: commitDate }
 
   let absoluteFolderPath = Path.concat [ tmpDir, folderName ]
   let manifestPath = Path.concat [ absoluteFolderPath, ".purs.json" ]
@@ -283,9 +339,12 @@ addOrUpdate { ref, packageName } inputMetadata = do
   uploadPackage uploadPackageInfo tarballPath
   log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show ref <> " was " <> show hash
-  let newMetadata = addVersionToMetadata newVersion { hash, ref, published, bytes } metadata
+  let newMetadata = addVersionToMetadata newVersion { hash, ref, timestamp, bytes } metadata
   let metadataFilePath = metadataFile packageName
-  liftAff $ Json.writeJsonFile metadataFilePath newMetadata
+  liftAff $ Json.writeJsonFile metadataFilePath $ newMetadata
+    { unpublished = mapKeys Version.printVersion newMetadata.unpublished
+    , published = mapKeys Version.printVersion newMetadata.published
+    }
   updatePackagesMetadata manifestRecord.name newMetadata
   commitToTrunk packageName metadataFilePath >>= case _ of
     Left _err ->
@@ -314,10 +373,9 @@ runChecks metadata (Manifest manifest) = do
   logShow manifest
 
   log "Check that version is unique"
-  let prettyVersion = Version.printVersion manifest.version
-  case Object.lookup prettyVersion metadata.releases of
+  case Map.lookup manifest.version metadata.published of
     Nothing -> pure unit
-    Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> show prettyVersion <> "\nIts metadata is: " <> show info
+    Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> Version.printVersion manifest.version <> "\nIts metadata is: " <> show info
 
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
@@ -367,9 +425,18 @@ mkMetadataRef = do
         Aff.throwError $ Aff.error $ StringParser.printParserError err
     let metadataPath = metadataFile packageName
     metadataStr <- FS.readTextFile UTF8 metadataPath
-    metadata <- case Json.parseJson metadataStr of
+    metadataRaw <- case Json.parseJson metadataStr of
       Left err -> Aff.throwError $ Aff.error $ "Error while parsing json from " <> metadataPath <> " : " <> err
       Right r -> pure r
+    let
+      fixupMetadata = do
+        let parseKey = lmap StringParser.printParserError <<< Version.parseVersion Version.Strict
+        published <- traverseKeys parseKey metadataRaw.published
+        unpublished <- traverseKeys parseKey metadataRaw.unpublished
+        pure $ metadataRaw { published = published, unpublished = unpublished }
+    metadata <- case fixupMetadata of
+      Left err -> Aff.throwError $ Aff.error $ "Error converting versions from " <> metadataPath <> " : " <> err
+      Right val -> pure val
     pure $ packageName /\ metadata
   liftEffect $ Ref.new $ Map.fromFoldable packagesArray
 

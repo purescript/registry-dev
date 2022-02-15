@@ -3,8 +3,8 @@ module Registry.Schema where
 import Registry.Prelude
 
 import Data.Generic.Rep as Generic
+import Data.Map as Map
 import Data.RFC3339String (RFC3339String)
-import Foreign.Object as Object
 import Foreign.SPDX (License)
 import Registry.Hash (Sha256)
 import Registry.Json ((.:), (.:?), (:=))
@@ -12,8 +12,11 @@ import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Version (Range, Version)
+<<<<<<< HEAD
 import Registry.Version as Version
 import Text.Parsing.StringParser as StringParser
+=======
+>>>>>>> 51acdef (Address remaining feedback)
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 newtype Manifest = Manifest
@@ -205,40 +208,44 @@ type UnpublishData =
 type Metadata =
   { location :: Location
   , owners :: Maybe (NonEmptyArray Owner)
-  , releases :: Object VersionMetadata
-  , unpublished :: Object String
+  , published :: Map Version PublishedMetadata
+  , unpublished :: Map Version UnpublishedMetadata
   }
 
-type VersionMetadata =
+type PublishedMetadata =
   { ref :: String
   , hash :: Sha256
   , bytes :: Number
-  , published :: RFC3339String
+  , timestamp :: RFC3339String
+  }
+
+type UnpublishedMetadata =
+  { ref :: String
+  , reason :: String
+  , timestamp :: { published :: RFC3339String, unpublished :: RFC3339String }
   }
 
 mkNewMetadata :: Location -> Metadata
 mkNewMetadata location =
   { location
   , owners: Nothing
-  , releases: Object.empty
-  , unpublished: Object.empty
+  , published: Map.empty
+  , unpublished: Map.empty
   }
 
-addVersionToMetadata :: Version -> VersionMetadata -> Metadata -> Metadata
+addVersionToMetadata :: Version -> PublishedMetadata -> Metadata -> Metadata
 addVersionToMetadata version versionMeta metadata = do
-  let releases = Object.insert (Version.printVersion version) versionMeta metadata.releases
-  metadata { releases = releases }
+  let published = Map.insert version versionMeta metadata.published
+  metadata { published = published }
 
-unpublishVersionInMetadata :: Version -> String -> Metadata -> Metadata
-unpublishVersionInMetadata version unpublishReason metadata = do
-  let versionKey = Version.printVersion version
-  let releases = Object.delete versionKey metadata.releases
-  let unpublished = Object.insert versionKey unpublishReason metadata.unpublished
-  metadata { releases = releases, unpublished = unpublished }
+unpublishVersionInMetadata :: Version -> UnpublishedMetadata -> Metadata -> Metadata
+unpublishVersionInMetadata version versionMeta metadata = do
+  let published = Map.delete version metadata.published
+  let unpublished = Map.insert version versionMeta metadata.unpublished
+  metadata { published = published, unpublished = unpublished }
 
 isVersionInMetadata :: Version -> Metadata -> Boolean
 isVersionInMetadata version metadata = versionPublished || versionUnpublished
   where
-  versionStr = Version.printVersion version
-  versionPublished = isJust $ Object.lookup versionStr metadata.releases
-  versionUnpublished = isJust $ Object.lookup versionStr metadata.unpublished
+  versionPublished = isJust $ Map.lookup version metadata.published
+  versionUnpublished = isJust $ Map.lookup version metadata.unpublished
