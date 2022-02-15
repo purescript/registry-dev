@@ -219,7 +219,11 @@ addOrUpdate { ref, packageName } metadata = do
   let tarballDirname = tmpDir <> "/" <> newDirname
   liftAff do
     FS.Extra.ensureDirectory tarballDirname
-    pickTarballFiles { from: absoluteFolderPath, to: tarballDirname }
+    pickTarballFiles
+      { from: absoluteFolderPath
+      , to: tarballDirname
+      , files: fromMaybe [] manifestRecord.files
+      }
   let tarballPath = tarballDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Checking the tarball size..."
@@ -361,12 +365,51 @@ runGit args = ExceptT do
 maxPackageBytes :: Number
 maxPackageBytes = 200_000.0
 
-pickTarballFiles :: { from :: FilePath, to :: FilePath } -> Aff Unit
-pickTarballFiles { from, to } = do
+-- | Copy all files from the package source that should be preserved in the
+-- | package tarball, preserving any files the user has indicated should remain
+-- | via the `files` key in their manifest.
+pickTarballFiles :: { from :: FilePath, to :: FilePath, files :: Array String } -> Aff Unit
+pickTarballFiles { from, to, files } = do
   let options = { cwd: Just from, include: FilesOnly, caseSensitive: false }
-  acceptedMatches <- FastGlob.match' acceptedGlobs options
-  for_ ([ "src" ] <> acceptedMatches) \match ->
+  safeGlobs <- filterUnsafeGlobs from files
+  matches <- FastGlob.match' (acceptedGlobs <> safeGlobs) options
+  for_ (Array.cons "src" matches) \match ->
     FS.Extra.copy { from: Path.concat [ from, match ], to: Path.concat [ to, match ] }
+  removeIgnoredTarballFiles to
+
+-- | We always ignore some files and directories when packaging a tarball, such
+-- | as common version control directories.
+-- |
+-- | See also:
+-- | https://docs.npmjs.com/cli/v8/configuring-npm/package-json#files
+--
+-- Picking only the `src` directory and particular accepted files will in
+-- general avoid this issue, but the user can provide arbitrary globs via
+-- the `files` key.
+removeIgnoredTarballFiles :: FilePath -> Aff Unit
+removeIgnoredTarballFiles path = do
+  globMatches <- FastGlob.match' ignoredGlobs { cwd: Just path, caseSensitive: false }
+  for_ (ignoredDirectories <> ignoredFiles <> globMatches) \match ->
+    FS.Extra.remove (Path.concat [ path, match ])
+
+-- | Filter out glob patterns that are susceptible to directory traversal attacks
+filterUnsafeGlobs :: FilePath -> Array String -> Aff (Array String)
+filterUnsafeGlobs path globs = case Array.uncons globs of
+  Nothing -> mempty
+  Just { head, tail } -> do
+    isSafe <- isSafeGlob head path
+    tail' <- filterUnsafeGlobs path tail
+    pure $ if isSafe then Array.cons head tail' else tail'
+  where
+  -- The glob is only safe if resolving the path results in the base directory
+  -- as the first component of the path. In other words, if the resolved path
+  -- begins with `..` then it can access files outside the working directory,
+  -- which we cannot allow.
+  isSafeGlob :: String -> FilePath -> Aff Boolean
+  isSafeGlob pattern baseDirectory = do
+    resolved <- liftEffect $ Path.resolve [ baseDirectory ] pattern
+    let isSafe = String.stripPrefix (String.Pattern baseDirectory) resolved == Just baseDirectory
+    pure isSafe
 
 acceptedGlobs :: Array String
 acceptedGlobs =
@@ -377,4 +420,33 @@ acceptedGlobs =
   , "spago.dhall"
   , "packages.dhall"
   , "packages.json"
+  ]
+
+ignoredDirectories :: Array FilePath
+ignoredDirectories =
+  [ ".psci"
+  , ".psci_modules"
+  , ".spago"
+  , "node_modules"
+  , "bower_components"
+  -- These files and directories are ignored by the NPM CLI and we are
+  -- following their lead in ignoring them as well.
+  , ".git"
+  , "CVS"
+  , ".svn"
+  , ".hg"
+  ]
+
+ignoredFiles :: Array FilePath
+ignoredFiles =
+  [ "package-lock.json"
+  , "yarn.lock"
+  , "pnpm-lock.yaml"
+  ]
+
+ignoredGlobs :: Array String
+ignoredGlobs =
+  [ "**/*.*.swp"
+  , "**/._*"
+  , "**/.DS_Store"
   ]

@@ -63,7 +63,7 @@ testRegistryIndex = Spec.before runBefore do
           , [ "ab", "cd", "abcd" ]
           ]
 
-      packagePaths `Assert.shouldEqual` expectedPaths
+      Array.sort packagePaths `Assert.shouldEqual` expectedPaths
   where
   runBefore = do
     { tmp, indexRef } <- Reader.ask

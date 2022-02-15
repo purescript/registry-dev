@@ -16,6 +16,7 @@ import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
+import Node.Process as Process
 import Registry.API as API
 import Registry.Json as Json
 import Registry.PackageName as PackageName
@@ -56,7 +57,9 @@ main = launchAff_ do
         Spec.describe "Good SPDX licenses" goodSPDXLicense
         Spec.describe "Bad SPDX licenses" badSPDXLicense
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
-      Spec.describe "Tarball" pickTarballFiles
+      Spec.describe "Tarball" do
+        filterUnsafeGlobs
+        pickTarballFiles
     Spec.describe "Bowerfile" do
       Spec.describe "Parses" do
         Spec.describe "Good bower files" goodBowerfiles
@@ -111,29 +114,96 @@ manifestEncoding = do
   roundTrip Fixtures.abcd.v2
 
 pickTarballFiles :: Spec.Spec Unit
-pickTarballFiles = Spec.it "Picks correct files when packaging a tarball" do
-  tmpFrom <- liftEffect Tmp.mkTmpDir
-  tmpTo <- liftEffect Tmp.mkTmpDir
+pickTarballFiles = Spec.before runBefore do
+  Spec.it "Picks correct files when packaging a tarball" \{ tmpFrom, tmpTo, writeDirectories, writeFiles } -> do
+    let
+      goodDirectories = [ "src" ]
+      badDirectories = [ ".git", ".psci", Path.concat [ "test", "src" ] ]
+      goodFiles =
+        [ "purs.json"
+        , "README.md"
+        , "LICENSE"
+        , Path.concat [ "src", "Main.purs" ]
+        , Path.concat [ "src", "Main.js" ]
+        ]
+      badFiles = [ "package-lock.json", ".purs-repl", Path.concat [ "test", "Main.purs" ] ]
 
-  let
-    inTmp path = Path.concat [ tmpFrom, path ]
-    goodDirectories = [ "src" ]
-    badDirectories = [ ".git", ".psci", Path.concat [ "test", "src" ] ]
-    goodFiles = [ "purs.json", "README.md", "LICENSE", "src/Main.purs", "src/Main.js", "src/README.md" ]
-    badFiles = [ "package-lock.json", ".purs-repl", "test/Main.purs" ]
+    writeDirectories (goodDirectories <> badDirectories)
+    writeFiles (goodFiles <> badFiles)
 
-  traverse_ (FS.Extra.ensureDirectory <<< inTmp) (goodDirectories <> badDirectories)
-  traverse_ (\path -> FS.writeTextFile UTF8 (inTmp path) "<test>") (goodFiles <> badFiles)
+    API.pickTarballFiles { from: tmpFrom, to: tmpTo, files: [] }
 
-  API.pickTarballFiles { from: tmpFrom, to: tmpTo }
+    paths <- FastGlob.match' [ "**/*" ] { cwd: Just tmpTo }
 
-  paths <- FastGlob.match' [ "**/*" ] { cwd: Just tmpTo }
-  let ignoredPaths = badDirectories <> badFiles
-  let acceptedPaths = goodDirectories <> goodFiles
+    let
+      ignoredPaths = badDirectories <> badFiles
+      acceptedPaths = goodDirectories <> goodFiles
 
-  for_ paths \path -> do
-    ignoredPaths `Assert.shouldNotContain` path
-    acceptedPaths `Assert.shouldContain` path
+    for_ paths \path -> do
+      ignoredPaths `Assert.shouldNotContain` path
+      acceptedPaths `Assert.shouldContain` path
+
+  Spec.it "Accepts files provided via the files key" \{ tmpFrom, tmpTo, writeDirectories, writeFiles } -> do
+    let
+      goodDirectories = [ "src" ]
+      additionalDirectories = [ "test", Path.concat [ "examples", "another", "dir" ] ]
+      badDirectories = [ ".git" ]
+      goodFiles = [ "README.md" ]
+      badFiles = [ "package-lock.json" ]
+      additionalFiles =
+        [ Path.concat [ "test", "Main.js" ]
+        , Path.concat [ "examples", "another", "dir", "test.tsx" ]
+        ]
+
+    writeDirectories (goodDirectories <> badDirectories <> additionalDirectories)
+    writeFiles (goodFiles <> badFiles <> additionalFiles)
+
+    let files = [ "test/**/*.js", "examples/**/*" ] <> badDirectories <> badFiles
+    API.pickTarballFiles { from: tmpFrom, to: tmpTo, files }
+
+    paths <- FastGlob.match' [ "**/*" ] { cwd: Just tmpTo }
+
+    let
+      alwaysBad = badDirectories <> badFiles
+      acceptedBad = [ Path.concat [ "test", "Main.js" ], Path.concat [ "examples", "another", "dir", "test.tsx" ] ]
+      alwaysGood = goodDirectories <> goodFiles
+
+    for_ alwaysBad \bad -> do
+      -- Even if files are accepted via the files key, if they are banned files
+      -- they should be missing
+      paths `Assert.shouldNotContain` bad
+
+    -- Even though by default these files would not be included, the presence
+    -- of the files key should include them
+    for_ acceptedBad \accepted ->
+      paths `Assert.shouldContain` accepted
+
+    for_ alwaysGood \good ->
+      paths `Assert.shouldContain` good
+  where
+  runBefore = do
+    tmpFrom <- liftEffect Tmp.mkTmpDir
+    tmpTo <- liftEffect Tmp.mkTmpDir
+
+    let
+      inTmp :: FilePath -> FilePath
+      inTmp path = Path.concat [ tmpFrom, path ]
+
+      writeDirectories :: Array FilePath -> _
+      writeDirectories = traverse_ (FS.Extra.ensureDirectory <<< inTmp)
+
+      writeFiles :: Array FilePath -> _
+      writeFiles = traverse_ (\path -> FS.writeTextFile UTF8 (inTmp path) "<test>")
+
+    pure { tmpFrom, tmpTo, writeDirectories, writeFiles }
+
+filterUnsafeGlobs :: Spec.Spec Unit
+filterUnsafeGlobs =
+  Spec.it "Filters out unsafe globs" do
+    cwd <- liftEffect Process.cwd
+    let globs = [ "./../../*.purs", "../abc/**/*", "/root/.ssh/**", "./*" ]
+    filtered <- API.filterUnsafeGlobs cwd globs
+    filtered `Assert.shouldEqual` [ "./*" ]
 
 goodPackageName :: Spec.Spec Unit
 goodPackageName = do
