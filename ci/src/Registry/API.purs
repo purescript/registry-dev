@@ -128,7 +128,7 @@ metadataDir :: FilePath
 metadataDir = "../metadata"
 
 metadataFile :: PackageName -> FilePath
-metadataFile packageName = metadataDir <> "/" <> PackageName.print packageName <> ".json"
+metadataFile packageName = Path.concat [ metadataDir, PackageName.print packageName <> ".json" ]
 
 indexDir :: FilePath
 indexDir = "../registry-index"
@@ -150,7 +150,7 @@ addOrUpdate { ref, packageName } metadata = do
       commit <- liftAff $ GitHub.getRefCommit octokit { owner, repo } ref
       commitDate <- liftAff $ GitHub.getCommitDate octokit { owner, repo } commit
       let tarballName = ref <> ".tar.gz"
-      let absoluteTarballPath = tmpDir <> "/" <> tarballName
+      let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
       let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
       log $ "Fetching tarball from GitHub: " <> archiveUrl
       wget archiveUrl absoluteTarballPath
@@ -163,8 +163,9 @@ addOrUpdate { ref, packageName } metadata = do
           liftEffect $ Tar.extract { cwd: tmpDir, filename: absoluteTarballPath }
           pure { folderName: dir, published: commitDate }
 
-  let absoluteFolderPath = tmpDir <> "/" <> folderName
-  let manifestPath = absoluteFolderPath <> "/purs.json"
+  let absoluteFolderPath = Path.concat [ tmpDir, folderName ]
+  let manifestPath = Path.concat [ absoluteFolderPath, ".purs.json" ]
+
   log $ "Package extracted in " <> absoluteFolderPath
 
   log "Verifying that the package contains a `src` directory"
@@ -217,7 +218,7 @@ addOrUpdate { ref, packageName } metadata = do
   -- We need the version number to upload the package
   let newVersion = manifestRecord.version
   let newDirname = PackageName.print packageName <> "-" <> Version.printVersion newVersion
-  let tarballDirname = tmpDir <> "/" <> newDirname
+  let tarballDirname = Path.concat [ tmpDir, newDirname ]
   liftAff do
     FS.Extra.ensureDirectory tarballDirname
     if isLegacyImport then do

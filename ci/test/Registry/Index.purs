@@ -11,7 +11,7 @@ import Effect.Ref as Ref
 import Foreign.FastGlob (Include(..))
 import Foreign.FastGlob as FastGlob
 import Foreign.Tmp as Tmp
-import Node.Path as Node.Path
+import Node.Path as Path
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
 import Registry.PackageGraph as PackageGraph
@@ -57,7 +57,7 @@ testRegistryIndex = Spec.before runBefore do
       packagePaths <- liftAff $ FastGlob.match' [ "**/*" ] { cwd: Just tmp, include: FilesOnly }
 
       let
-        expectedPaths = map Node.Path.concat
+        expectedPaths = map Path.concat
           [ [ "2", "ab" ]
           , [ "3", "a", "abc" ]
           , [ "ab", "cd", "abcd" ]

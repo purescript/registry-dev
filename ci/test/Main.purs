@@ -47,7 +47,7 @@ main = launchAff_ do
   manifestExamplePaths <- join <$> for packages \package -> do
     let packageDir = examplesDir <> package
     manifests <- FS.readdir packageDir
-    pure $ map (\manifestFile -> packageDir <> "/" <> manifestFile) manifests
+    pure $ map (\manifestFile -> Path.concat [ packageDir, manifestFile ]) manifests
 
   runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
     Spec.describe "API" do
@@ -118,15 +118,9 @@ pickTarballFiles = Spec.before runBefore do
   Spec.it "Picks correct files when packaging a tarball" \{ tmpFrom, tmpTo, writeDirectories, writeFiles } -> do
     let
       goodDirectories = [ "src" ]
-      badDirectories = [ ".git", ".psci", Path.concat [ "test", "src" ] ]
-      goodFiles =
-        [ "purs.json"
-        , "README.md"
-        , "LICENSE"
-        , Path.concat [ "src", "Main.purs" ]
-        , Path.concat [ "src", "Main.js" ]
-        ]
-      badFiles = [ "package-lock.json", ".purs-repl", Path.concat [ "test", "Main.purs" ] ]
+      badDirectories = API.ignoredDirectories <> [ Path.concat [ "test", "src" ] ]
+      goodFiles = [ "purs.json", "README.md", "LICENSE", Path.concat [ "src", "Main.purs" ], Path.concat [ "src", "Main.js" ] ]
+      badFiles = API.ignoredFiles <> [ Path.concat [ "test", "Main.purs" ] ]
 
     writeDirectories (goodDirectories <> badDirectories)
     writeFiles (goodFiles <> badFiles)
@@ -143,7 +137,7 @@ pickTarballFiles = Spec.before runBefore do
       ignoredPaths `Assert.shouldNotContain` path
       acceptedPaths `Assert.shouldContain` path
 
-  Spec.it "Accepts files provided via the files key" \{ tmpFrom, tmpTo, writeDirectories, writeFiles } -> do
+  Spec.it "Accepts extra files provided via the files key" \{ tmpFrom, tmpTo, writeDirectories, writeFiles } -> do
     let
       goodDirectories = [ "src" ]
       additionalDirectories = [ "test", Path.concat [ "examples", "another", "dir" ] ]

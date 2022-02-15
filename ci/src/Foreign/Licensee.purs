@@ -7,6 +7,7 @@ import Data.Array as Array
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
+import Node.Path as Path
 import Registry.Json ((.:))
 import Registry.Json as Json
 import Sunde as Process
@@ -16,7 +17,7 @@ detectFiles :: Array { name :: FilePath, contents :: String } -> Aff (Either Str
 detectFiles files = do
   tmp <- liftEffect Tmp.mkTmpDir
   files # Parallel.parTraverse_ \{ name, contents } ->
-    FS.writeTextFile UTF8 (tmp <> "/" <> name) contents
+    FS.writeTextFile UTF8 (Path.concat [ tmp, name ]) contents
   detect tmp
 
 -- | Attempt to detect the license for the package in the given directory using
