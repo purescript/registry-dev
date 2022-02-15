@@ -65,7 +65,7 @@ type GitHubData = LocationData
   , repo :: String
   )
 
-type GitData = LocationData (url :: String)
+type GitData = LocationData (gitUrl :: String)
 
 data Location
   = Git GitData
@@ -81,8 +81,8 @@ instance Show Location where
 -- | We encode it this way so that json-to-dhall can read it
 instance RegistryJson Location where
   encode = Json.encodeObject <<< case _ of
-    Git { subdir, url } -> do
-      "url" := url
+    Git { subdir, gitUrl } -> do
+      "gitUrl" := gitUrl
       "subdir" := subdir
     GitHub { repo, owner, subdir } -> do
       "githubOwner" := owner
@@ -99,8 +99,8 @@ instance RegistryJson Location where
         pure $ GitHub { owner, repo, subdir }
     let
       parseGit = do
-        url <- obj .: "url"
-        pure $ Git { url, subdir }
+        gitUrl <- obj .: "gitUrl"
+        pure $ Git { gitUrl, subdir }
     parseGitHub <|> parseGit
 
 -- | PureScript encoding of ../v1/Operation.dhall

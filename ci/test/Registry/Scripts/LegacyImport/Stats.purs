@@ -103,7 +103,7 @@ exampleStats = Stats.errorStats mockStats
                       ( Manifest
                           { license: mockLicense
                           , name: mockPackageName
-                          , location: Git { subdir: Nothing, url: "https://github.com/purescript/foobar" }
+                          , location: Git { subdir: Nothing, gitUrl: "https://github.com/purescript/foobar.git" }
                           , targets: Object.empty
                           , description: Just "Some description"
                           , version: mockVersion
