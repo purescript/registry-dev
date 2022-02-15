@@ -9,7 +9,7 @@ let Address = ./Address.dhall
 
 let Prelude = ./Prelude.dhall
 
-let Repo = ./Repo.dhall
+let Location = ./Location.dhall
 
 let Target = ./Target.dhall
 
