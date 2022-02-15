@@ -117,7 +117,7 @@ runOperation operation = case operation of
     ifM (liftAff $ FS.exists $ metadataFile packageName)
       do
         metadata <- readPackagesMetadata >>= \packages -> case Map.lookup packageName packages of
-          Nothing -> throwWithComment "Couldn't read metadata file for your package"
+          Nothing -> throwWithComment "Couldn't read metadata file for your package.\ncc @purescript/packaging"
           Just m -> pure m
         addOrUpdate { packageName, ref: updateRef } metadata
       (throwWithComment "Metadata file should exist. Did you mean to create an Addition?")
@@ -130,7 +130,7 @@ runOperation operation = case operation of
         _ -> pure unit
 
       metadata <- readPackagesMetadata >>= \packages -> case Map.lookup packageName packages of
-        Nothing -> throwWithComment "Couldn't read metadata file for your package."
+        Nothing -> throwWithComment "Couldn't read metadata file for your package.\ncc @purescript/packaging"
         Just m -> pure m
 
       case metadata.owners of
