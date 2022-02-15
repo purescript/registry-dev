@@ -10,7 +10,7 @@ import Foreign.SPDX (License)
 import Foreign.SPDX as License
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Repo(..), Manifest(..))
+import Registry.Schema (Location(..), Manifest(..))
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ManifestError(..), PackageFailures(..), manifestErrorKey, printImportErrorKey, printManifestErrorKey)
 import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
 import Registry.Scripts.LegacyImport.Stats (ErrorCounts(..))
@@ -103,7 +103,7 @@ exampleStats = Stats.errorStats mockStats
                       ( Manifest
                           { license: mockLicense
                           , name: mockPackageName
-                          , repository: Git { subdir: Nothing, url: "https://github.com/purescript/foobar" }
+                          , location: Git { subdir: Nothing, url: "https://github.com/purescript/foobar" }
                           , targets: Object.empty
                           , description: Just "Some description"
                           , version: mockVersion
