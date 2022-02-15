@@ -317,7 +317,7 @@ One of such clients will be Spago, where we'll define an extra-Registry package 
 let Registry = https://raw.githubusercontent.com/purescript/registry/master/v1/Registry.dhall
 
 let SpagoPkg =
-      < Repo : { repo : Registry.Repo, ref : Text }
+      < Repo : { repo : Registry.Location, ref : Text }
       | Local : Registry.Prelude.Location.Type
       >
 ```

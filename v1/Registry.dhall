@@ -23,7 +23,7 @@ let Dependencies = Prelude.Map.Type Text Text
 
 let Registry =
       { Address
-      , Repo
+      , Location
       , Prelude
       , Dependencies
       , Target
