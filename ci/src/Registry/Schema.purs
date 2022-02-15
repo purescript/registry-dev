@@ -22,6 +22,7 @@ newtype Manifest = Manifest
   , license :: License
   , description :: Maybe String
   , repository :: Repo
+  , files :: Maybe (Array String)
   , dependencies :: Map PackageName Range
   }
 

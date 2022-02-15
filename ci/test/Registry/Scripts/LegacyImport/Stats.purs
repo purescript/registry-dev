@@ -106,6 +106,7 @@ exampleStats = Stats.errorStats mockStats
                           , dependencies: Map.empty
                           , description: Just "Some description"
                           , version: mockVersion
+                          , files: Nothing
                           }
                       )
                   $ over (traversed <<< _1)
