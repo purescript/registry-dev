@@ -172,7 +172,8 @@ addOrUpdate { ref, packageName } metadata = do
     throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it
-  unlessM (liftAff $ FS.exists manifestPath) do
+  isLegacyImport <- liftAff $ map not $ FS.exists manifestPath
+  when isLegacyImport do
     address <- case metadata.location of
       Git _ -> throwWithComment "Legacy packages can only come from GitHub. Aborting."
       GitHub { owner, repo } -> pure { owner, repo }
@@ -219,11 +220,17 @@ addOrUpdate { ref, packageName } metadata = do
   let tarballDirname = tmpDir <> "/" <> newDirname
   liftAff do
     FS.Extra.ensureDirectory tarballDirname
-    pickTarballFiles
-      { from: absoluteFolderPath
-      , to: tarballDirname
-      , files: fromMaybe [] manifestRecord.files
-      }
+    if isLegacyImport then do
+      -- When processing a legacy import, we preserve all files except for those
+      -- we explicitly ignore.
+      FS.Extra.copy { from: absoluteFolderPath, to: tarballDirname }
+      removeIgnoredTarballFiles tarballDirname
+    else do
+      pickTarballFiles
+        { from: absoluteFolderPath
+        , to: tarballDirname
+        , files: fromMaybe [] manifestRecord.files
+        }
   let tarballPath = tarballDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Checking the tarball size..."
@@ -373,8 +380,12 @@ pickTarballFiles { from, to, files } = do
   let options = { cwd: Just from, include: FilesOnly, caseSensitive: false }
   safeGlobs <- filterUnsafeGlobs from files
   matches <- FastGlob.match' (acceptedGlobs <> safeGlobs) options
+  -- First we copy over all files that we explicitly preserve, plus files the
+  -- user asked us to preserve.
   for_ (Array.cons "src" matches) \match ->
     FS.Extra.copy { from: Path.concat [ from, match ], to: Path.concat [ to, match ] }
+  -- Then, we remove any files we explicitly disallow, even if the user's globs
+  -- indicated they should be preserved.
   removeIgnoredTarballFiles to
 
 -- | We always ignore some files and directories when packaging a tarball, such
@@ -408,8 +419,9 @@ filterUnsafeGlobs path globs = case Array.uncons globs of
   isSafeGlob :: String -> FilePath -> Aff Boolean
   isSafeGlob pattern baseDirectory = do
     resolved <- liftEffect $ Path.resolve [ baseDirectory ] pattern
-    let isSafe = String.stripPrefix (String.Pattern baseDirectory) resolved == Just baseDirectory
-    pure isSafe
+    -- If the first component of the string is the base directory, then this
+    -- glob is safe: it only can access files within the package.
+    pure $ isJust $ String.stripPrefix (String.Pattern baseDirectory) resolved
 
 acceptedGlobs :: Array String
 acceptedGlobs =

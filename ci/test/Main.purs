@@ -201,9 +201,9 @@ filterUnsafeGlobs :: Spec.Spec Unit
 filterUnsafeGlobs =
   Spec.it "Filters out unsafe globs" do
     cwd <- liftEffect Process.cwd
-    let globs = [ "./../../*.purs", "../abc/**/*", "/root/.ssh/**", "./*" ]
+    let globs = [ "./../../*.purs", "../abc/**/*", "/root/.ssh/**", "./*", "abc/*" ]
     filtered <- API.filterUnsafeGlobs cwd globs
-    filtered `Assert.shouldEqual` [ "./*" ]
+    filtered `Assert.shouldEqual` [ "./*", "abc/*" ]
 
 goodPackageName :: Spec.Spec Unit
 goodPackageName = do
