@@ -15,6 +15,6 @@ let GitHubData = CommonData //\\
   }
 
 let GitData = CommonData //\\
-  { url : Text }
+  { gitUrl : Text }
 
 in < GitHub : GitHubData | Git : GitData >
