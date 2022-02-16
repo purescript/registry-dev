@@ -2,7 +2,7 @@
   "name": "mysql",
   "version": "4.1.1",
   "license": "MIT",
-  "repository": {
+  "location": {
     "githubOwner": "oreshinya",
     "githubRepo": "purescript-mysql"
   },
