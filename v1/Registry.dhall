@@ -9,7 +9,7 @@ let Address = ./Address.dhall
 
 let Prelude = ./Prelude.dhall
 
-let Repo = ./Repo.dhall
+let Location = ./Location.dhall
 
 let Target = ./Target.dhall
 
@@ -23,7 +23,7 @@ let Dependencies = Prelude.Map.Type Text Text
 
 let Registry =
       { Address
-      , Repo
+      , Location
       , Prelude
       , Dependencies
       , Target

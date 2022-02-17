@@ -40,7 +40,7 @@ import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
-import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Manifest(..), Metadata, Operation(..), Repo(..), Target(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
+import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Manifest(..), Metadata, Operation(..), Location(..), Target(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))

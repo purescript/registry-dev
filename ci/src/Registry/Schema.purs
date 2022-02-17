@@ -19,7 +19,7 @@ newtype Manifest = Manifest
   , owners :: Maybe (NonEmptyArray Owner)
   , version :: Version
   , license :: License
-  , repository :: Repo
+  , location :: Location
   , targets :: Object Target
   , description :: Maybe String
   }
@@ -33,7 +33,7 @@ instance RegistryJson Manifest where
     "version" := fields.version
     "license" := fields.license
     "owners" := fields.owners
-    "repository" := fields.repository
+    "location" := fields.location
     "description" := fields.description
     "targets" := fields.targets
 
@@ -72,34 +72,34 @@ instance RegistryJson Target where
     "dependencies" := fields.dependencies
   decode json = Target <$> Json.decode json
 
-type RepoData d =
+type LocationData d =
   { subdir :: Maybe String
   | d
   }
 
-type GitHubData = RepoData
+type GitHubData = LocationData
   ( owner :: String
   , repo :: String
   )
 
-type GitData = RepoData (url :: String)
+type GitData = LocationData (gitUrl :: String)
 
-data Repo
+data Location
   = Git GitData
   | GitHub GitHubData
 
-derive instance eqRepo :: Eq Repo
+derive instance Eq Location
 
-derive instance genericRepo :: Generic.Generic Repo _
+derive instance Generic.Generic Location _
 
-instance showRepo :: Show Repo where
+instance Show Location where
   show = genericShow
 
 -- | We encode it this way so that json-to-dhall can read it
-instance RegistryJson Repo where
+instance RegistryJson Location where
   encode = Json.encodeObject <<< case _ of
-    Git { subdir, url } -> do
-      "url" := url
+    Git { subdir, gitUrl } -> do
+      "gitUrl" := gitUrl
       "subdir" := subdir
     GitHub { repo, owner, subdir } -> do
       "githubOwner" := owner
@@ -116,8 +116,8 @@ instance RegistryJson Repo where
         pure $ GitHub { owner, repo, subdir }
     let
       parseGit = do
-        url <- obj .: "url"
-        pure $ Git { url, subdir }
+        gitUrl <- obj .: "gitUrl"
+        pure $ Git { gitUrl, subdir }
     parseGitHub <|> parseGit
 
 -- | PureScript encoding of ../v1/Operation.dhall
@@ -196,7 +196,7 @@ instance RegistryJson AuthenticatedData where
     pure $ AuthenticatedData { rawPayload, payload, signature, email }
 
 type AdditionData =
-  { newPackageLocation :: Repo
+  { newPackageLocation :: Location
   , newRef :: String
   , packageName :: PackageName
   }
@@ -213,7 +213,7 @@ type UnpublishData =
   }
 
 type Metadata =
-  { location :: Repo
+  { location :: Location
   , owners :: Maybe (NonEmptyArray Owner)
   , published :: Map Version PublishedMetadata
   , unpublished :: Map Version UnpublishedMetadata
@@ -232,7 +232,7 @@ type UnpublishedMetadata =
   , timestamp :: { published :: RFC3339String, unpublished :: RFC3339String }
   }
 
-mkNewMetadata :: Repo -> Metadata
+mkNewMetadata :: Location -> Metadata
 mkNewMetadata location =
   { location
   , owners: Nothing

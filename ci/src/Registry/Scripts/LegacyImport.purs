@@ -21,7 +21,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, readPackagesMetadata, runRegistryM, updatePackagesMetadata)
-import Registry.Schema (Manifest(..), Metadata, Operation(..), Repo(..))
+import Registry.Schema (Manifest(..), Metadata, Operation(..), Location(..))
 import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Scripts.LegacyImport.Process as Process
@@ -53,7 +53,7 @@ main = Aff.launchAff_ do
     sortedPackages = Graph.topologicalSort registry
 
     isCorePackage :: Manifest -> Maybe _
-    isCorePackage (Manifest manifest) = case manifest.repository of
+    isCorePackage (Manifest manifest) = case manifest.location of
       -- core
       GitHub { owner: "purescript" } -> Just manifest
       GitHub { owner: "purescript-deprecated" } -> Just manifest
@@ -104,7 +104,7 @@ main = Aff.launchAff_ do
     for_ packagesToUpload \manifest -> do
       let
         addition = Addition
-          { newPackageLocation: manifest.repository
+          { newPackageLocation: manifest.location
           , newRef: Version.rawVersion manifest.version
           , packageName: manifest.name
           }
@@ -127,7 +127,7 @@ mkEnv packagesMetadata =
   , packagesMetadata
   }
 
-downloadLegacyRegistry :: Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Repo }
+downloadLegacyRegistry :: Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
 downloadLegacyRegistry = do
   octokit <- liftEffect GitHub.mkOctokit
   bowerPackages <- readRegistryFile "bower-packages.json"
@@ -223,7 +223,7 @@ downloadLegacyRegistry = do
     log (show (Array.length unsatisfied) <> " manifest entries with unsatisfied dependencies")
 
   let
-    reservedNames :: Map PackageName Repo
+    reservedNames :: Map PackageName Location
     reservedNames =
       Map.fromFoldable
         $ Array.mapMaybe
