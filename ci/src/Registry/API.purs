@@ -13,7 +13,6 @@ import Effect.Aff as Aff
 import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
-import Foreign.FastGlob (Include(..))
 import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (IssueNumber)
 import Foreign.GitHub as GitHub
@@ -219,19 +218,17 @@ addOrUpdate { ref, packageName } metadata = do
   let newVersion = manifestRecord.version
   let newDirname = PackageName.print packageName <> "-" <> Version.printVersion newVersion
   let tarballDirname = Path.concat [ tmpDir, newDirname ]
-  liftAff do
-    FS.Extra.ensureDirectory tarballDirname
-    if isLegacyImport then do
-      -- When processing a legacy import, we preserve all files except for those
-      -- we explicitly ignore.
+  liftAff $ FS.Extra.ensureDirectory tarballDirname
+  case manifestRecord.files of
+    Nothing -> liftAff do
+      -- When the files key is not specified, we preserve all files except for
+      -- those we explicitly ignore.
       FS.Extra.copy { from: absoluteFolderPath, to: tarballDirname }
       removeIgnoredTarballFiles tarballDirname
-    else do
-      pickTarballFiles
-        { from: absoluteFolderPath
-        , to: tarballDirname
-        , files: fromMaybe [] manifestRecord.files
-        }
+    Just _ ->
+      -- TODO: Pick only files the user indicated we should include, and then
+      -- remove files we explicitly ignore.
+      throwWithComment "The 'files' key is not yet supported.\ncc @purescript/packaging"
   let tarballPath = tarballDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Checking the tarball size..."
@@ -373,22 +370,6 @@ runGit args = ExceptT do
 maxPackageBytes :: Number
 maxPackageBytes = 200_000.0
 
--- | Copy all files from the package source that should be preserved in the
--- | package tarball, preserving any files the user has indicated should remain
--- | via the `files` key in their manifest.
-pickTarballFiles :: { from :: FilePath, to :: FilePath, files :: Array String } -> Aff Unit
-pickTarballFiles { from, to, files } = do
-  let options = { cwd: Just from, include: FilesOnly, caseSensitive: false }
-  safeGlobs <- filterUnsafeGlobs from files
-  matches <- FastGlob.match' (acceptedGlobs <> safeGlobs) options
-  -- First we copy over all files that we explicitly preserve, plus files the
-  -- user asked us to preserve.
-  for_ (Array.cons "src" matches) \match ->
-    FS.Extra.copy { from: Path.concat [ from, match ], to: Path.concat [ to, match ] }
-  -- Then, we remove any files we explicitly disallow, even if the user's globs
-  -- indicated they should be preserved.
-  removeIgnoredTarballFiles to
-
 -- | We always ignore some files and directories when packaging a tarball, such
 -- | as common version control directories.
 -- |
@@ -403,26 +384,6 @@ removeIgnoredTarballFiles path = do
   globMatches <- FastGlob.match' ignoredGlobs { cwd: Just path, caseSensitive: false }
   for_ (ignoredDirectories <> ignoredFiles <> globMatches) \match ->
     FS.Extra.remove (Path.concat [ path, match ])
-
--- | Filter out glob patterns that are susceptible to directory traversal attacks
-filterUnsafeGlobs :: FilePath -> Array String -> Aff (Array String)
-filterUnsafeGlobs path globs = case Array.uncons globs of
-  Nothing -> mempty
-  Just { head, tail } -> do
-    isSafe <- isSafeGlob head path
-    tail' <- filterUnsafeGlobs path tail
-    pure $ if isSafe then Array.cons head tail' else tail'
-  where
-  -- The glob is only safe if resolving the path results in the base directory
-  -- as the first component of the path. In other words, if the resolved path
-  -- begins with `..` then it can access files outside the working directory,
-  -- which we cannot allow.
-  isSafeGlob :: String -> FilePath -> Aff Boolean
-  isSafeGlob pattern baseDirectory = do
-    resolved <- liftEffect $ Path.resolve [ baseDirectory ] pattern
-    -- If the first component of the string is the base directory, then this
-    -- glob is safe: it only can access files within the package.
-    pure $ isJust $ String.stripPrefix (String.Pattern baseDirectory) resolved
 
 acceptedGlobs :: Array String
 acceptedGlobs =
