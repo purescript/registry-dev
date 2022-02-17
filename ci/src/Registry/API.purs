@@ -424,12 +424,12 @@ mkMetadataRef = do
       Left err -> Aff.throwError $ Aff.error $ "Error while parsing json from " <> metadataPath <> " : " <> err
       Right r -> pure r
     let
-      fixupMetadata = do
+      metadataParsedKeys = do
         let parseKey = lmap StringParser.printParserError <<< Version.parseVersion Version.Strict
         published <- traverseKeys parseKey metadataRaw.published
         unpublished <- traverseKeys parseKey metadataRaw.unpublished
         pure $ metadataRaw { published = published, unpublished = unpublished }
-    metadata <- case fixupMetadata of
+    metadata <- case metadataParsedKeys of
       Left err -> Aff.throwError $ Aff.error $ "Error converting versions from " <> metadataPath <> " : " <> err
       Right val -> pure val
     pure $ packageName /\ metadata
