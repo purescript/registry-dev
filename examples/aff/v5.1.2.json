@@ -2,7 +2,7 @@
   "name": "aff",
   "version": "5.1.2",
   "license": "Apache-2.0",
-  "repository": {
+  "location": {
     "githubOwner": "slamdata",
     "githubRepo": "purescript-aff"
   },

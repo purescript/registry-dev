@@ -23,8 +23,8 @@ let Manifest =
       , license : Text
       -- The version of this package
       , version : Text
-      -- The git repo the package is published at
-      , repository : ./Repo.dhall
+      -- The location where package sources can be found
+      , location : ./Location.dhall
       -- Compilation targets for the Package
       , targets : Map Text Target
       }

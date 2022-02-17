@@ -19,7 +19,7 @@ import Node.Path as Path
 import Registry.API as API
 import Registry.Json as Json
 import Registry.PackageName as PackageName
-import Registry.Schema (Operation(..), Repo(..), Manifest(..))
+import Registry.Schema (Operation(..), Location(..), Manifest(..))
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
 import Registry.Version (rawVersion) as Version
 import Safe.Coerce (coerce)
