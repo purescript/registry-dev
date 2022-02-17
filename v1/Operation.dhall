@@ -10,7 +10,7 @@ let Location = ./Location.dhall
 -- the manifest.
 let AuthenticatedOperation =
   < Unpublish : { packageName : Text, unpublishVersion : Text, unpublishReason : Text }
-  | Transfer : { packageName : Text, newLocation : Repo }
+  | Transfer : { packageName : Text, newLocation : Location }
   >
 
 in
