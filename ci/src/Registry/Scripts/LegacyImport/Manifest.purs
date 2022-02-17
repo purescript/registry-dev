@@ -25,7 +25,7 @@ import Registry.Json as Json
 import Registry.Json as RegistryJson
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..), Repo)
+import Registry.Schema (Manifest(..), Location)
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), RemoteResource(..), RequestError(..), fileResourcePath)
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
@@ -156,7 +156,7 @@ constructManifestFields package version address = do
 
     pure spagoJson
 
-  -- Request a file from the remote repository associated with the package
+  -- Request a file from the remote location associated with the package
   -- version. Files will be cached using the provided serializer and
   -- will be read from the cache up to the cache expiry time given in `Hours`.
   fileRequest :: FileResource -> Process.Serialize String String -> ExceptT ImportError Aff String
@@ -191,11 +191,11 @@ constructManifestFields package version address = do
 -- errors that occur rather than just throw the first one.
 toManifest
   :: PackageName
-  -> Repo
+  -> Location
   -> Version
   -> ManifestFields
   -> ExceptT (NonEmptyArray ManifestError) Aff Manifest
-toManifest package repository version manifest = do
+toManifest package location version manifest = do
   let
     mkError :: forall a. ManifestError -> Either (NonEmptyArray ManifestError) a
     mkError = Left <<< NEA.singleton
@@ -276,7 +276,7 @@ toManifest package repository version manifest = do
       -- for errors, but this is just so the types all work out.
       license <- Except.except eitherLicense
       dependencies <- Except.except eitherDependencies
-      pure $ Manifest { name: package, license, repository, description, dependencies, version, files: Nothing }
+      pure $ Manifest { name: package, license, location, description, dependencies, version, files: Nothing }
 
     Just err ->
       throwError err

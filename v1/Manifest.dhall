@@ -17,8 +17,8 @@ let Manifest =
       , license : Text
       -- The version of this package
       , version : Text
-      -- The git repo the package is published at
-      , repository : ./Repo.dhall
+      -- The location where package sources can be found
+      , location : ./Location.dhall
       -- A list of globs indicating files in addition to the src directory
       -- that should be included in the package tarball
       , files : Optional (List Text)

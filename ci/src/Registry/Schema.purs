@@ -20,8 +20,8 @@ newtype Manifest = Manifest
   { name :: PackageName
   , version :: Version
   , license :: License
+  , location :: Location
   , description :: Maybe String
-  , repository :: Repo
   , files :: Maybe (Array String)
   , dependencies :: Map PackageName Range
   }
@@ -34,8 +34,8 @@ instance RegistryJson Manifest where
     "name" := fields.name
     "version" := fields.version
     "license" := fields.license
+    "location" := fields.location
     "description" := fields.description
-    "repository" := fields.repository
     "dependencies" := mapKeys PackageName.print fields.dependencies
 
   decode json = do
@@ -44,34 +44,34 @@ instance RegistryJson Manifest where
     parsed <- traverseKeys parse manifestFields.dependencies
     pure $ Manifest $ manifestFields { dependencies = parsed }
 
-type RepoData d =
+type LocationData d =
   { subdir :: Maybe String
   | d
   }
 
-type GitHubData = RepoData
+type GitHubData = LocationData
   ( owner :: String
   , repo :: String
   )
 
-type GitData = RepoData (url :: String)
+type GitData = LocationData (gitUrl :: String)
 
-data Repo
+data Location
   = Git GitData
   | GitHub GitHubData
 
-derive instance eqRepo :: Eq Repo
+derive instance Eq Location
 
-derive instance genericRepo :: Generic.Generic Repo _
+derive instance Generic.Generic Location _
 
-instance showRepo :: Show Repo where
+instance Show Location where
   show = genericShow
 
 -- | We encode it this way so that json-to-dhall can read it
-instance RegistryJson Repo where
+instance RegistryJson Location where
   encode = Json.encodeObject <<< case _ of
-    Git { subdir, url } -> do
-      "url" := url
+    Git { subdir, gitUrl } -> do
+      "gitUrl" := gitUrl
       "subdir" := subdir
     GitHub { repo, owner, subdir } -> do
       "githubOwner" := owner
@@ -88,8 +88,8 @@ instance RegistryJson Repo where
         pure $ GitHub { owner, repo, subdir }
     let
       parseGit = do
-        url <- obj .: "url"
-        pure $ Git { url, subdir }
+        gitUrl <- obj .: "gitUrl"
+        pure $ Git { gitUrl, subdir }
     parseGitHub <|> parseGit
 
 -- | PureScript encoding of ../v1/Operation.dhall
@@ -125,7 +125,7 @@ instance RegistryJson Operation where
     parseAddition <|> parseUpdate <|> parseUnpublish
 
 type AdditionData =
-  { newPackageLocation :: Repo
+  { newPackageLocation :: Location
   , newRef :: String
   , packageName :: PackageName
   }
@@ -142,7 +142,7 @@ type UnpublishData =
   }
 
 type Metadata =
-  { location :: Repo
+  { location :: Location
   , releases :: Object VersionMetadata
   , unpublished :: Object String
   }
@@ -154,7 +154,7 @@ type VersionMetadata =
   , bytes :: Number
   }
 
-mkNewMetadata :: Repo -> Metadata
+mkNewMetadata :: Location -> Metadata
 mkNewMetadata location =
   { location
   , releases: Object.empty

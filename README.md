@@ -112,8 +112,8 @@ let Manifest =
       , license : Text
       -- The version of this package
       , version : Text
-      -- The git repo the package is published at
-      , repository : ./Repo.dhall
+      -- The location where package sources can be found
+      , location : ./Location.dhall
       -- The packages this package depends on
       , dependencies : Map Text Text
       }
@@ -121,7 +121,7 @@ let Manifest =
 in Manifest
 ```
 
-Note: the [`Repo` schema](./v1/Repo.dhall) includes support for packages that are
+Note: the [`Location` schema](./v1/Location.dhall) includes support for packages that are
 not published from the root of the repository, by supplying the (optional) `subdir` field.
 This means that a repository could potentially host several packages (commonly called a "monorepo").
 
@@ -287,7 +287,7 @@ One of such clients will be Spago, where we'll define an extra-Registry package 
 let Registry = https://raw.githubusercontent.com/purescript/registry/master/v1/Registry.dhall
 
 let SpagoPkg =
-      < Repo : { repo : Registry.Repo, ref : Text }
+      < Repo : { repo : Registry.Location, ref : Text }
       | Local : Registry.Prelude.Location.Type
       >
 ```

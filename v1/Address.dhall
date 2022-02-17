@@ -6,8 +6,6 @@ It could be one of the following:
 - a GitHub/Git repo
 -}
 
-let Repo = ./Repo.dhall
-
 let SemVer = Text
 
 let Address = \(externalPackage : Type) ->

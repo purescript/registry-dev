@@ -20,7 +20,7 @@ import Node.Process as Process
 import Registry.API as API
 import Registry.Json as Json
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..), Operation(..), Repo(..))
+import Registry.Schema (Manifest(..), Operation(..), Location(..))
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
 import Registry.Version (rawVersion) as Version
 import Safe.Coerce (coerce)
