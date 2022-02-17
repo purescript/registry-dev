@@ -216,13 +216,14 @@ type PublishedMetadata =
   { ref :: String
   , hash :: Sha256
   , bytes :: Number
-  , timestamp :: RFC3339String
+  , publishedTime :: RFC3339String
   }
 
 type UnpublishedMetadata =
   { ref :: String
   , reason :: String
-  , timestamp :: { published :: RFC3339String, unpublished :: RFC3339String }
+  , publishedTime :: RFC3339String
+  , unpublishedTime :: RFC3339String
   }
 
 mkNewMetadata :: Location -> Metadata

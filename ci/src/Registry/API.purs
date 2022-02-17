@@ -178,7 +178,7 @@ runOperation operation = case operation of
             Right _ -> do
               now <- liftEffect $ Now.nowDateTime
 
-              publishedDate <- case PDT.fromRFC3339String publishedMetadata.timestamp of
+              publishedDate <- case PDT.fromRFC3339String publishedMetadata.publishedTime of
                 Nothing ->
                   throwWithComment "Published time is an invalid RFC3339String\ncc @purescript/packaging"
                 Just precise ->
@@ -193,10 +193,8 @@ runOperation operation = case operation of
                 unpublishedMetadata =
                   { ref: publishedMetadata.ref
                   , reason: unpublishReason
-                  , timestamp:
-                      { published: publishedMetadata.timestamp
-                      , unpublished: RFC3339String.fromDateTime now
-                      }
+                  , publishedTime: publishedMetadata.publishedTime
+                  , unpublishedTime: RFC3339String.fromDateTime now
                   }
 
                 updatedMetadata = unpublishVersionInMetadata unpublishVersion unpublishedMetadata metadata
@@ -227,7 +225,7 @@ addOrUpdate { ref, packageName } inputMetadata = do
   -- let's get a temp folder to do our stuffs
   tmpDir <- liftEffect $ Tmp.mkTmpDir
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
-  { folderName, timestamp } <- case inputMetadata.location of
+  { folderName, publishedTime } <- case inputMetadata.location of
     Git _ -> do
       -- TODO: Support non-GitHub packages. Remember subdir when implementing this. (See #15)
       throwWithComment "Packages are only allowed to come from GitHub for now. See #15"
@@ -250,7 +248,7 @@ addOrUpdate { ref, packageName } inputMetadata = do
         Just dir -> do
           log "Extracting the tarball..."
           liftEffect $ Tar.extract { cwd: tmpDir, filename: absoluteTarballPath }
-          pure { folderName: dir, timestamp: commitDate }
+          pure { folderName: dir, publishedTime: commitDate }
 
   let absoluteFolderPath = Path.concat [ tmpDir, folderName ]
   let manifestPath = Path.concat [ absoluteFolderPath, ".purs.json" ]
@@ -339,7 +337,7 @@ addOrUpdate { ref, packageName } inputMetadata = do
   uploadPackage uploadPackageInfo tarballPath
   log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show ref <> " was " <> show hash
-  let newMetadata = addVersionToMetadata newVersion { hash, ref, timestamp, bytes } metadata
+  let newMetadata = addVersionToMetadata newVersion { hash, ref, publishedTime, bytes } metadata
   let metadataFilePath = metadataFile packageName
   liftAff $ Json.writeJsonFile metadataFilePath $ newMetadata
     { unpublished = mapKeys Version.printVersion newMetadata.unpublished
