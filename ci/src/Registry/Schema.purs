@@ -219,7 +219,7 @@ type UnpublishData =
 
 type TransferData =
   { packageName :: PackageName
-  , newLocation :: Repo
+  , newLocation :: Location
   }
 
 type Metadata =
