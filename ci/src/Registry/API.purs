@@ -375,26 +375,11 @@ maxPackageBytes = 200_000.0
 -- |
 -- | See also:
 -- | https://docs.npmjs.com/cli/v8/configuring-npm/package-json#files
---
--- Picking only the `src` directory and particular accepted files will in
--- general avoid this issue, but the user can provide arbitrary globs via
--- the `files` key.
 removeIgnoredTarballFiles :: FilePath -> Aff Unit
 removeIgnoredTarballFiles path = do
   globMatches <- FastGlob.match' ignoredGlobs { cwd: Just path, caseSensitive: false }
   for_ (ignoredDirectories <> ignoredFiles <> globMatches) \match ->
     FS.Extra.remove (Path.concat [ path, match ])
-
-acceptedGlobs :: Array String
-acceptedGlobs =
-  [ "purs.json"
-  , "README*"
-  , "LICENSE*"
-  , "bower.json"
-  , "spago.dhall"
-  , "packages.dhall"
-  , "packages.json"
-  ]
 
 ignoredDirectories :: Array FilePath
 ignoredDirectories =
