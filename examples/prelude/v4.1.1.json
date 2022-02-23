@@ -6,12 +6,5 @@
     "githubOwner": "purescript",
     "githubRepo": "purescript-prelude"
   },
-  "targets": {
-    "lib": {
-      "sources": [
-        "src/**/*.purs"
-      ],
-      "dependencies": {}
-    }
-  }
+  "dependencies": {}
 }

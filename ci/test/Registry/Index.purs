@@ -8,18 +8,16 @@ import Data.Foldable (sequence_)
 import Data.Map as Map
 import Data.Set as Set
 import Effect.Ref as Ref
-import Foreign.Object as Object
+import Foreign.FastGlob (Include(..))
+import Foreign.FastGlob as FastGlob
 import Foreign.Tmp as Tmp
-import Node.FS.Stats as Stats
-import Node.Glob.Basic as Glob
 import Node.Path as Path
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
 import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..), Target(..))
-import Registry.Version (Range)
+import Registry.Schema (Manifest(..))
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Support.Manifest as Support.Manifest
@@ -56,17 +54,16 @@ testRegistryIndex = Spec.before runBefore do
       ]
 
     Spec.it "Final on-disk registry index matches the expected directory structure" \{ tmp } -> do
-      packagePaths <- lift $ Glob.expandGlobsWithStats tmp [ "**/*" ]
+      packagePaths <- liftAff $ FastGlob.match' [ "**/*" ] { cwd: Just tmp, include: FilesOnly }
 
       let
-        actualPaths = Map.keys $ Map.filter (not Stats.isDirectory) packagePaths
-        expectedPaths = Set.fromFoldable $ map (Path.concat <<< Array.cons tmp)
+        expectedPaths = map Path.concat
           [ [ "2", "ab" ]
           , [ "3", "a", "abc" ]
           , [ "ab", "cd", "abcd" ]
           ]
 
-      actualPaths `Assert.shouldEqual` expectedPaths
+      Array.sort packagePaths `Assert.shouldEqual` expectedPaths
   where
   runBefore = do
     { tmp, indexRef } <- Reader.ask
@@ -105,7 +102,7 @@ isSorted :: Array Manifest -> Boolean
 isSorted = fst <<< Array.foldl foldFn (Tuple true Set.empty)
   where
   getDeps :: Manifest -> Array PackageName
-  getDeps = map unsafeParsePackageName <<< Object.keys <<< unsafeGetLibDependencies
+  getDeps = Set.toUnfoldable <<< Map.keys <<< _.dependencies <<< un Manifest
 
   foldFn :: Tuple Boolean (Set PackageName) -> Manifest -> Tuple Boolean (Set PackageName)
   foldFn (Tuple valid visited) manifest@(Manifest { name }) = do
@@ -114,13 +111,3 @@ isSorted = fst <<< Array.foldl foldFn (Tuple true Set.empty)
       Tuple (valid && true) newSet
     else
       Tuple false newSet
-
-  unsafeGetLibDependencies :: Manifest -> Object Range
-  unsafeGetLibDependencies (Manifest manifest) =
-    ( fromJust'
-        (\_ -> unsafeCrashWith "Manifest has no 'lib' target in 'isSorted'")
-        (un Target <$> Object.lookup "lib" manifest.targets)
-    ).dependencies
-
-  unsafeParsePackageName :: String -> PackageName
-  unsafeParsePackageName = fromRight' (\_ -> unsafeCrashWith "PackageName must parse") <<< PackageName.parse

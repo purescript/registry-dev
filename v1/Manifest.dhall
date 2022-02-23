@@ -8,8 +8,6 @@ This object holds all the info that the Registry needs to know about it.
 
 let Map = (./Prelude.dhall).Map.Type
 
-let Target = ./Target.dhall
-
 let Manifest =
       -- The name of the package
       { name : Text
@@ -21,8 +19,11 @@ let Manifest =
       , version : Text
       -- The location where package sources can be found
       , location : ./Location.dhall
-      -- Compilation targets for the Package
-      , targets : Map Text Target
+      -- A list of globs indicating files in addition to the src directory
+      -- that should be included in the package tarball
+      , files : Optional (List Text)
+      -- The packages this package depends on
+      , dependencies : Map Text Text
       }
 
 in Manifest

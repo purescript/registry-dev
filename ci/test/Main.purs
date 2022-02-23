@@ -6,10 +6,10 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Foldable (traverse_)
 import Data.Map as Map
-import Data.String as String
 import Data.String.NonEmpty as NES
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
+import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Node.FS as FS.Extra
 import Foreign.SPDX as SPDX
@@ -19,7 +19,7 @@ import Node.Path as Path
 import Registry.API as API
 import Registry.Json as Json
 import Registry.PackageName as PackageName
-import Registry.Schema (Operation(..), Location(..), Manifest(..))
+import Registry.Schema (Manifest(..), Operation(..), Location(..))
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
 import Registry.Version (rawVersion) as Version
 import Safe.Coerce (coerce)
@@ -57,7 +57,7 @@ main = launchAff_ do
         Spec.describe "Bad SPDX licenses" badSPDXLicense
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
       Spec.describe "Tarball" do
-        removeTarballFiles
+        removeIgnoredTarballFiles
     Spec.describe "Bowerfile" do
       Spec.describe "Parses" do
         Spec.describe "Good bower files" goodBowerfiles
@@ -98,9 +98,10 @@ manifestExamplesRoundtrip paths = for_ paths \manifestPath -> Spec.it ("Roundrip
 manifestEncoding :: Spec.Spec Unit
 manifestEncoding = do
   let
-    roundTrip (Manifest manifest) =
+    roundTrip (Manifest manifest) = do
+      let fields = manifest { dependencies = mapKeys PackageName.print manifest.dependencies }
       Spec.it (PackageName.print manifest.name <> " " <> Version.rawVersion manifest.version) do
-        Json.roundtrip manifest `Assert.shouldContain` manifest
+        Json.roundtrip fields `Assert.shouldContain` fields
 
   roundTrip Fixtures.ab.v1a
   roundTrip Fixtures.ab.v1b
@@ -110,46 +111,42 @@ manifestEncoding = do
   roundTrip Fixtures.abcd.v1
   roundTrip Fixtures.abcd.v2
 
-removeTarballFiles :: Spec.Spec Unit
-removeTarballFiles = Spec.it "Removes files not allowed in package tarballs" do
-  tmp <- liftEffect Tmp.mkTmpDir
+removeIgnoredTarballFiles :: Spec.Spec Unit
+removeIgnoredTarballFiles = Spec.before runBefore do
+  Spec.it "Picks correct files when packaging a tarball" \{ tmp, writeDirectories, writeFiles } -> do
+    let
+      goodDirectories = [ "src" ]
+      goodFiles = [ "purs.json", "README.md", "LICENSE", Path.concat [ "src", "Main.purs" ], Path.concat [ "src", "Main.js" ] ]
 
-  let
-    extraIgnoredFiles = [ "Unsaved.purs.swp", "._unused" ]
-    acceptedDirectories = [ "src", "test" ]
-    acceptedFiles = [ ".purs.json", "spago.dhall" ]
+    writeDirectories (goodDirectories <> API.ignoredDirectories)
+    writeFiles (goodFiles <> API.ignoredFiles)
 
-    writeDirectory directory = do
-      let path = Path.concat [ tmp, directory ]
-      FS.Extra.ensureDirectory path
+    API.removeIgnoredTarballFiles tmp
 
-    writeFile path =
-      FS.writeTextFile UTF8 (Path.concat [ tmp, path ]) "<test>"
+    paths <- FastGlob.match' [ "**/*" ] { cwd: Just tmp }
 
-  -- First we fill the directory with various files and directories that
-  -- must be removed prior to packaging
-  traverse_ writeDirectory API.ignoredDirectories
-  traverse_ writeFile $ Array.fold [ API.ignoredFiles, extraIgnoredFiles ]
+    let
+      ignoredPaths = API.ignoredDirectories <> API.ignoredFiles
+      acceptedPaths = goodDirectories <> goodFiles
 
-  -- And with some directories and files that *shouldn't* be removed
-  traverse_ writeDirectory acceptedDirectories
-  traverse_ writeFile acceptedFiles
+    for_ paths \path -> do
+      ignoredPaths `Assert.shouldNotContain` path
+      acceptedPaths `Assert.shouldContain` path
+  where
+  runBefore = do
+    tmp <- liftEffect Tmp.mkTmpDir
 
-  -- Then, we attempt to remove files that are not meant to be packaged
-  API.removeIgnoredTarballFiles tmp
-  paths <- FS.readdir tmp
+    let
+      inTmp :: FilePath -> FilePath
+      inTmp path = Path.concat [ tmp, path ]
 
-  -- Then, we check that no paths in the resulting directory can be found
-  -- in the set of files that are supposed to be ignored
-  for_ paths \path -> do
-    let strippedPath = fromMaybe path $ String.stripPrefix (String.Pattern (tmp <> Path.sep)) path
-    let ignored = API.ignoredDirectories <> API.ignoredFiles <> extraIgnoredFiles
-    strippedPath `Assert.shouldNotSatisfy` (_ `Array.elem` ignored)
+      writeDirectories :: Array FilePath -> _
+      writeDirectories = traverse_ (FS.Extra.ensureDirectory <<< inTmp)
 
-  -- Finally, we check that all files that are supposed to be in the
-  -- resulting directory actually are.
-  for_ (acceptedDirectories <> acceptedFiles) \accepted ->
-    accepted `Assert.shouldSatisfy` (_ `Array.elem` paths)
+      writeFiles :: Array FilePath -> _
+      writeFiles = traverse_ (\path -> FS.writeTextFile UTF8 (inTmp path) "<test>")
+
+    pure { tmp, writeDirectories, writeFiles }
 
 goodPackageName :: Spec.Spec Unit
 goodPackageName = do
@@ -308,13 +305,8 @@ badBowerfiles = do
       Json.encode
         { version: "", license: "", dependencies: ([] :: Array Int) }
 
-    wrongDevDependenciesFormat =
-      Json.encode
-        { version: "", license: "", devDependencies: ([] :: Array Int) }
-
   failParseBowerfile wrongLicenseFormat
   failParseBowerfile wrongDependenciesFormat
-  failParseBowerfile wrongDevDependenciesFormat
 
 bowerFileEncoding :: Spec.Spec Unit
 bowerFileEncoding = do
@@ -325,16 +317,10 @@ bowerFileEncoding = do
           [ Tuple "dependency-first" "v1.0.0"
           , Tuple "dependency-second" "v2.0.0"
           ]
-      devDependencies =
-        Map.fromFoldable $ map coerce
-          [ Tuple "devdependency-first" "v0.0.1"
-          , Tuple "devdependency-second" "v0.0.2"
-          ]
       description = Nothing
       bowerFile = Bowerfile
         { license: NEA.fromArray $ Array.catMaybes [ NES.fromString "MIT" ]
         , dependencies
-        , devDependencies
         , description
         }
     Json.roundtrip bowerFile `Assert.shouldContain` bowerFile

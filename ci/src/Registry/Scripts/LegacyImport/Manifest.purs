@@ -18,7 +18,6 @@ import Foreign.Dhall as Dhall
 import Foreign.GitHub as GitHub
 import Foreign.JsonRepair as JsonRepair
 import Foreign.Licensee as Licensee
-import Foreign.Object as Object
 import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
@@ -26,7 +25,7 @@ import Registry.Json as Json
 import Registry.Json as RegistryJson
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..), Location, Target(..))
+import Registry.Schema (Manifest(..), Location)
 import Registry.Scripts.LegacyImport.Bowerfile as Bowerfile
 import Registry.Scripts.LegacyImport.Error (FileResource(..), ImportError(..), ManifestError(..), RemoteResource(..), RequestError(..), fileResourcePath)
 import Registry.Scripts.LegacyImport.ManifestFields (ManifestFields)
@@ -36,6 +35,7 @@ import Registry.Scripts.LegacyImport.SpagoJson as SpagoJson
 import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Version (ParseMode(..), Version)
 import Registry.Version as Version
+import Safe.Coerce (coerce)
 
 -- | Attempt to construct the basic fields necessary for a manifest file by reading
 -- | the package version's bower.json, spago.dhall, package.json, and LICENSE
@@ -89,16 +89,14 @@ constructManifestFields package version address = do
     spagoJson <- liftAff $ Except.runExceptT requestSpagoJson
     let spagoManifest = map SpagoJson.toManifestFields spagoJson
 
-    { dependencies, devDependencies } <- case bowerManifest, spagoManifest of
+    dependencies <- case bowerManifest, spagoManifest of
       Left _, Left _ -> do
         -- TODO: We may want to report a `NonEmptyArray ImportError` so as to
         -- report on multiple errors, such as the multiple missing files in this
         -- situation.
         throwError NoDependencyFiles
-      Left _, Right { dependencies, devDependencies } ->
-        pure { dependencies, devDependencies }
-      Right { dependencies, devDependencies }, _ ->
-        pure { dependencies, devDependencies }
+      Left _, Right { dependencies } -> pure dependencies
+      Right { dependencies }, _ -> pure dependencies
 
     -- We can detect the license for the project using a combination of `licensee`
     -- and reading the license directly out of the Spago and Bower files (the
@@ -115,7 +113,7 @@ constructManifestFields package version address = do
     when (license == Nothing) do
       log $ "No license available for " <> un RawPackageName package <> " " <> un RawVersion version
 
-    pure { license, dependencies, devDependencies, description }
+    pure { license, dependencies, description }
   where
   detectLicense { licenseFile, packageJson } = do
     licenseeResult <- liftAff $ Licensee.detectFiles $ Array.catMaybes $ map hush
@@ -230,34 +228,26 @@ toManifest package location version manifest = do
             [], _ -> Right $ SPDX.joinWith SPDX.And success
             _, _ -> mkError $ BadLicense fail
 
-    eitherTargets = do
+    eitherDependencies = do
       let
-        -- We trim out packages that don't begin with `purescript-`, as these
-        -- are JavaScript dependencies being specified in the Bowerfile.
-        filterNames = Array.catMaybes <<< map \(Tuple (RawPackageName packageName) (RawVersion versionRange)) ->
-          case String.take 11 packageName of
-            "purescript-" -> Just $ Tuple (String.drop 11 packageName) versionRange
-            _ -> Nothing
-
-        parsePairs = map \(Tuple packageName versionRange) -> case PackageName.parse packageName of
+        parsePairs = map \(Tuple (RawPackageName packageName) versionRange) -> case PackageName.parse packageName of
           Left _ -> Left packageName
-          Right name -> Right (Tuple name versionRange)
+          Right name -> Right (Tuple name (coerce versionRange))
 
         normalizeDeps deps = do
-          let { fail, success } = partitionEithers $ parsePairs $ filterNames deps
+          let { fail, success } = partitionEithers $ parsePairs deps
           case NEA.fromArray fail of
             Nothing -> pure success
             Just err -> mkError $ InvalidDependencyNames err
 
       normalizedDeps <- normalizeDeps $ Map.toUnfoldable manifest.dependencies
-      normalizedDevDeps <- normalizeDeps $ Map.toUnfoldable manifest.devDependencies
 
       let
         checkDepPair (Tuple packageName versionStr) = case Version.parseRange Lenient versionStr of
           Left _ -> do
             Left { dependency: packageName, failedBounds: versionStr }
           Right range ->
-            Right $ Tuple (PackageName.print packageName) range
+            Right $ Tuple packageName range
 
         readDeps = map checkDepPair >>> partitionEithers >>> \{ fail, success } ->
           case NEA.fromArray fail of
@@ -266,24 +256,7 @@ toManifest package location version manifest = do
             Just err ->
               mkError $ BadDependencyVersions err
 
-        eitherDeps = readDeps normalizedDeps
-        eitherDevDeps = readDeps normalizedDevDeps
-
-      case eitherDeps, eitherDevDeps of
-        Left e1, Left e2 -> Left (e1 <> e2)
-        Left e, Right _ -> Left e
-        Right _, Left e -> Left e
-        Right deps, Right devDeps -> Right $ Object.fromFoldable $ Array.catMaybes
-          [ Just $ Tuple "lib" $ Target
-              { sources: [ "src/**/*.purs" ]
-              , dependencies: Object.fromFoldable deps
-              }
-          , if (Array.null devDeps) then Nothing
-            else Just $ Tuple "test" $ Target
-              { sources: [ "src/**/*.purs", "test/**/*.purs" ]
-              , dependencies: Object.fromFoldable (deps <> devDeps)
-              }
-          ]
+      readDeps normalizedDeps <#> Map.fromFoldable
 
     errs = do
       let
@@ -292,7 +265,7 @@ toManifest package location version manifest = do
 
       map NEA.concat $ NEA.fromArray $ Array.catMaybes
         [ toMaybeErrors eitherLicense
-        , toMaybeErrors eitherTargets
+        , toMaybeErrors eitherDependencies
         ]
 
   case errs of
@@ -302,8 +275,8 @@ toManifest package location version manifest = do
       -- Technically this shouldn't be needed, since we've already checked these
       -- for errors, but this is just so the types all work out.
       license <- Except.except eitherLicense
-      targets <- Except.except eitherTargets
-      pure $ Manifest { name: package, license, location, description, targets, version }
+      dependencies <- Except.except eitherDependencies
+      pure $ Manifest { name: package, license, location, description, dependencies, version, files: Nothing }
 
     Just err ->
       throwError err

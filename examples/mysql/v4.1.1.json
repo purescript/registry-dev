@@ -6,29 +6,9 @@
     "githubOwner": "oreshinya",
     "githubRepo": "purescript-mysql"
   },
-  "targets": {
-    "lib": {
-      "sources": [
-        "src/**/*.purs"
-      ],
-      "dependencies": {
-        "purescript-aff": ">=5.0.2 <6.0.0",
-        "purescript-js-date": ">=6.0.0 <7.0.0",
-        "purescript-simple-json": ">=7.0.0 <8.0.0"
-      }
-    },
-    "test": {
-      "sources": [
-        "src/**/*.purs",
-        "test/**/*.purs"
-      ],
-      "dependencies": {
-        "purescript-aff": ">=5.0.2 <6.0.0",
-        "purescript-js-date": ">=6.0.0 <7.0.0",
-        "purescript-simple-json": ">=7.0.0 <8.0.0",
-        "purescript-test-unit": ">=15.0.0 <16.0.0",
-        "purescript-uuid": ">=6.0.0 <7.0.0"
-      }
-    }
+  "dependencies": {
+    "aff": ">=5.0.2 <6.0.0",
+    "js-date": ">=6.0.0 <7.0.0",
+    "simple-json": ">=7.0.0 <8.0.0"
   }
 }

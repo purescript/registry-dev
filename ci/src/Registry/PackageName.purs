@@ -18,8 +18,8 @@ import Text.Parsing.StringParser.Combinators as ParseC
 
 newtype PackageName = PackageName String
 
-derive newtype instance eqPackageName :: Eq PackageName
-derive newtype instance ordPackageName :: Ord PackageName
+derive newtype instance Eq PackageName
+derive newtype instance Ord PackageName
 
 instance RegistryJson PackageName where
   encode = Json.encode <<< print

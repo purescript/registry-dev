@@ -9,5 +9,4 @@ type ManifestFields =
   { license :: Maybe (NonEmptyArray NonEmptyString)
   , description :: Maybe String
   , dependencies :: Map RawPackageName RawVersion
-  , devDependencies :: Map RawPackageName RawVersion
   }

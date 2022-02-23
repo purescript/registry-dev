@@ -6,17 +6,15 @@ module Registry.Index
 
 import Registry.Prelude
 
-import Control.Alternative (guard)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
-import Data.Set as Set
 import Data.String as String
 import Data.String.Pattern (Pattern(..))
+import Foreign.FastGlob (Include(..))
+import Foreign.FastGlob as FastGlob
 import Foreign.Node.FS as FS.Extra
 import Node.FS.Aff as FS
-import Node.FS.Stats as Stats
-import Node.Glob.Basic as Glob
 import Node.Path as Path
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
@@ -29,26 +27,12 @@ type RegistryIndex = Map PackageName (Map Version Manifest)
 -- | NOTE: Right now, this assumes that manifest files will parse
 readRegistryIndex :: FilePath -> Aff RegistryIndex
 readRegistryIndex directory = do
-  packagePaths <- Glob.expandGlobsWithStats directory [ "**/*" ]
+  packagePaths <- FastGlob.match' [ "**/*" ] { cwd: Just directory, include: FilesOnly, ignore: [ "config.json" ] }
 
-  let
-    -- Exclude certain files that will always be in the root of the registry index.
-    -- These files do not correspond to a package manifest file.
-    exclude :: Array String
-    exclude = [ "config.json" ]
+  let packages = Array.mapMaybe (hush <<< PackageName.parse <<< Path.basename) packagePaths
 
-    goPath packagePath = do
-      fileName <- Array.last $ String.split (Pattern "/") packagePath
-      guard (not (Array.elem fileName exclude))
-      hush $ PackageName.parse fileName
-
-    packages =
-      Array.mapMaybe goPath
-        $ Set.toUnfoldable
-        $ Map.keys
-        $ Map.filter (not Stats.isDirectory) packagePaths
-
-  parsed <- for packages \package -> Tuple package <$> readPackage directory package
+  parsed <- for packages \package ->
+    Tuple package <$> readPackage directory package
 
   let
     normalizePackage

@@ -11,8 +11,6 @@ let Prelude = ./Prelude.dhall
 
 let Location = ./Location.dhall
 
-let Target = ./Target.dhall
-
 let Manifest = ./Manifest.dhall
 
 let Metadata = ./Metadata.dhall
@@ -26,7 +24,6 @@ let Registry =
       , Location
       , Prelude
       , Dependencies
-      , Target
       , Manifest
       , Operation
       , Metadata

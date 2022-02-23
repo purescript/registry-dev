@@ -5,7 +5,6 @@ import Registry.Prelude
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Lens (_1, _2, over, set, traversed)
 import Data.Map as Map
-import Foreign.Object as Object
 import Foreign.SPDX (License)
 import Foreign.SPDX as License
 import Registry.PackageName (PackageName)
@@ -104,9 +103,10 @@ exampleStats = Stats.errorStats mockStats
                           { license: mockLicense
                           , name: mockPackageName
                           , location: Git { subdir: Nothing, gitUrl: "https://github.com/purescript/foobar.git" }
-                          , targets: Object.empty
+                          , dependencies: Map.empty
                           , description: Just "Some description"
                           , version: mockVersion
+                          , files: Nothing
                           }
                       )
                   $ over (traversed <<< _1)

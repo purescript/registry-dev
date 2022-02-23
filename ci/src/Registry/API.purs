@@ -5,7 +5,6 @@ import Registry.Prelude
 import Control.Monad.Except as Except
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
-import Data.Foldable (traverse_)
 import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Data.Set as Set
@@ -14,6 +13,7 @@ import Effect.Aff as Aff
 import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
+import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (IssueNumber)
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
@@ -23,7 +23,6 @@ import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
 import Node.FS.Stats as FS.Stats
-import Node.Glob.Basic as Glob.Basic
 import Node.Path as Path
 import Node.Process as Env
 import Registry.Hash as Hash
@@ -33,7 +32,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.Schema (Manifest(..), Metadata, Operation(..), Location(..), Target(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata)
+import Registry.Schema (Manifest(..), Metadata, Operation(..), Location(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata)
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
@@ -168,8 +167,13 @@ addOrUpdate { ref, packageName } metadata = do
 
   log $ "Package extracted in " <> absoluteFolderPath
 
+  log "Verifying that the package contains a `src` directory"
+  whenM (liftAff $ map Array.null $ FastGlob.match' [ "src/**/*.purs" ] { cwd: Just absoluteFolderPath }) do
+    throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
+
   -- If this is a legacy import, then we need to construct a `Manifest` for it
-  unlessM (liftAff $ FS.exists manifestPath) do
+  isLegacyImport <- liftAff $ map not $ FS.exists manifestPath
+  when isLegacyImport do
     address <- case metadata.location of
       Git _ -> throwWithComment "Legacy packages can only come from GitHub. Aborting."
       GitHub { owner, repo } -> pure { owner, repo }
@@ -214,9 +218,17 @@ addOrUpdate { ref, packageName } metadata = do
   let newVersion = manifestRecord.version
   let newDirname = PackageName.print packageName <> "-" <> Version.printVersion newVersion
   let tarballDirname = Path.concat [ tmpDir, newDirname ]
-  liftAff do
-    FS.rename absoluteFolderPath tarballDirname
-    removeIgnoredTarballFiles tarballDirname
+  liftAff $ FS.Extra.ensureDirectory tarballDirname
+  case manifestRecord.files of
+    Nothing -> liftAff do
+      -- When the files key is not specified, we preserve all files except for
+      -- those we explicitly ignore.
+      FS.Extra.copy { from: absoluteFolderPath, to: tarballDirname }
+      removeIgnoredTarballFiles tarballDirname
+    Just _ ->
+      -- TODO: Pick only files the user indicated we should include, and then
+      -- remove files we explicitly ignore.
+      throwWithComment "The 'files' key is not yet supported.\ncc @purescript/packaging"
   let tarballPath = tarballDirname <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Checking the tarball size..."
@@ -261,15 +273,6 @@ runChecks metadata (Manifest manifest) = do
   log "Running checks for the following manifest:"
   logShow manifest
 
-  log "Checking that the Manifest includes the `lib` target"
-  Target libTarget <- case Object.lookup "lib" manifest.targets of
-    Nothing -> throwWithComment "Didn't find `lib` target in the Manifest!"
-    Just a -> pure a
-
-  log "Checking that `lib` target only includes `src`"
-  when (libTarget.sources /= [ "src/**/*.purs" ]) do
-    throwWithComment "The `lib` target only allows the following `sources`: `src/**/*.purs`"
-
   log "Check that version is unique"
   let prettyVersion = Version.printVersion manifest.version
   case Object.lookup prettyVersion metadata.releases of
@@ -278,12 +281,11 @@ runChecks metadata (Manifest manifest) = do
 
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
-  let lookupPackage = flip Map.lookup packages <=< (hush <<< PackageName.parse)
   let
-    pkgNotInRegistry name = case lookupPackage name of
+    pkgNotInRegistry name = case Map.lookup name packages of
       Nothing -> Just name
       Just _p -> Nothing
-  let pkgsNotInRegistry = Array.catMaybes $ map pkgNotInRegistry $ Object.keys libTarget.dependencies
+  let pkgsNotInRegistry = Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifest.dependencies
   unless (Array.null pkgsNotInRegistry) do
     throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
 
@@ -368,18 +370,16 @@ runGit args = ExceptT do
 maxPackageBytes :: Number
 maxPackageBytes = 200_000.0
 
--- We always ignore some files and directories when packaging a tarball, such as
--- version control directories. See also:
--- https://docs.npmjs.com/cli/v8/configuring-npm/package-json#files
+-- | We always ignore some files and directories when packaging a tarball, such
+-- | as common version control directories.
+-- |
+-- | See also:
+-- | https://docs.npmjs.com/cli/v8/configuring-npm/package-json#files
 removeIgnoredTarballFiles :: FilePath -> Aff Unit
 removeIgnoredTarballFiles path = do
-  globMatches <- Glob.Basic.expandGlobs path ignoredGlobs
-  let fixupPaths = map (\fp -> Path.concat [ path, fp ])
-  traverse_ FS.Extra.remove $ Array.fold
-    [ fixupPaths ignoredDirectories
-    , fixupPaths ignoredFiles
-    , Set.toUnfoldable globMatches
-    ]
+  globMatches <- FastGlob.match' ignoredGlobs { cwd: Just path, caseSensitive: false }
+  for_ (ignoredDirectories <> ignoredFiles <> globMatches) \match ->
+    FS.Extra.remove (Path.concat [ path, match ])
 
 ignoredDirectories :: Array FilePath
 ignoredDirectories =
@@ -398,14 +398,14 @@ ignoredDirectories =
 
 ignoredFiles :: Array FilePath
 ignoredFiles =
-  [ ".DS_Store"
-  , "package-lock.json"
+  [ "package-lock.json"
   , "yarn.lock"
   , "pnpm-lock.yaml"
   ]
 
 ignoredGlobs :: Array String
 ignoredGlobs =
-  [ "*.*.swp"
-  , "._*"
+  [ "**/*.*.swp"
+  , "**/._*"
+  , "**/.DS_Store"
   ]
