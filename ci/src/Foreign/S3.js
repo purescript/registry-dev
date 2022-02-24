@@ -45,3 +45,17 @@ exports.putObjectImpl = function (s3, params) {
     });
   };
 };
+
+exports.deleteObjectImpl = function (s3, params) {
+  return function () {
+    return new Promise(function (resolve, reject) {
+      s3.deleteObject(params, function (err, data) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(data);
+        }
+      });
+    });
+  };
+};

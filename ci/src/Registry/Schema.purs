@@ -12,11 +12,7 @@ import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Version (Range, Version)
-<<<<<<< HEAD
-import Registry.Version as Version
 import Text.Parsing.StringParser as StringParser
-=======
->>>>>>> 51acdef (Address remaining feedback)
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 newtype Manifest = Manifest

@@ -6,7 +6,6 @@ import Control.Monad.Except as Except
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
 import Data.DateTime as DateTime
-import Data.Foldable (traverse_)
 import Data.Generic.Rep as Generic
 import Data.Int as Int
 import Data.Map as Map
@@ -24,7 +23,6 @@ import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (IssueNumber)
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
-import Foreign.Object as Object
 import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
@@ -38,7 +36,7 @@ import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
-import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
+import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
 import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Manifest(..), Metadata, Operation(..), Location(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
@@ -188,6 +186,8 @@ runOperation operation = case operation of
               let diff = DateTime.diff now publishedDate
               when (diff > Hours (Int.toNumber hourLimit)) do
                 throwWithComment $ "Packages can only be unpublished within " <> show hourLimit <> " hours."
+
+              deletePackage { name: packageName, version: unpublishVersion }
 
               let
                 unpublishedMetadata =
@@ -401,6 +401,7 @@ mkEnv octokit packagesMetadata issue =
   , closeIssue: GitHub.closeIssue octokit issue
   , commitToTrunk: pushToMaster
   , uploadPackage: Upload.upload
+  , deletePackage: Upload.delete
   , packagesMetadata
   }
 

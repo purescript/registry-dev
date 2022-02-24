@@ -17,6 +17,7 @@ type Env =
   , closeIssue :: Aff Unit
   , commitToTrunk :: PackageName -> FilePath -> Aff (Either String Unit)
   , uploadPackage :: Upload.PackageInfo -> FilePath -> Aff Unit
+  , deletePackage :: Upload.PackageInfo -> Aff Unit
   , packagesMetadata :: Ref (Map PackageName Metadata)
   }
 
@@ -62,6 +63,12 @@ uploadPackage :: Upload.PackageInfo -> FilePath -> RegistryM Unit
 uploadPackage info path = do
   f <- asks _.uploadPackage
   liftAff $ f info path
+
+-- | Delete a package from the backend storage provider
+deletePackage :: Upload.PackageInfo -> RegistryM Unit
+deletePackage info = do
+  f <- asks _.deletePackage
+  liftAff $ f info
 
 -- TODO: right now we write this to file separately, but maybe it'd be better
 -- to do everything here so we don't risk to forget this?

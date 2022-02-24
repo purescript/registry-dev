@@ -124,6 +124,7 @@ mkEnv packagesMetadata =
       log "Skipping committing to trunk.."
       pure (Right unit)
   , uploadPackage: Upload.upload
+  , deletePackage: Upload.delete
   , packagesMetadata
   }
 
