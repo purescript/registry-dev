@@ -71,7 +71,7 @@ will live on various [storage backends](#Storage-Backends).
 A `Manifest` stores all the metadata (e.g. package name, version, dependencies, etc)
 for **a specific  version** of **a specific package**.
 
-Packages are expected to version in their sources a `.purs.json` file, that conforms
+Packages are expected to version in their sources a `purs.json` file, that conforms
 to the [`Manifest` schema](./v1/Manifest.dhall) to ensure __forwards-compatibility__
 with future schemas.
 This means that new clients will be able to read old schemas, but not vice-versa.
@@ -95,7 +95,7 @@ Here we embed a copy of the `Manifest` schema for ease of consultation:
 ```dhall
 {-
 
-The schema for `.purs.json` files.
+The schema for `purs.json` files.
 
 This object holds all the info that the Registry needs to know about it.
 
@@ -369,7 +369,7 @@ I.e. the answer to the question:
 
 > How do I know which dependencies package X at version Y has?
 
-Without an index of all the package manifests you'd have to fetch the right tarball and look at its `.purs.json`.
+Without an index of all the package manifests you'd have to fetch the right tarball and look at its `purs.json`.
 
 That might be a lot of work to do at scale, and there are usecases - e.g. for package-sets - where
 we need to lookup lots of manifests to build the dependency graph.

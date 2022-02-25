@@ -251,7 +251,7 @@ addOrUpdate { ref, packageName } inputMetadata = do
           pure { folderName: dir, publishedTime: commitDate }
 
   let absoluteFolderPath = Path.concat [ tmpDir, folderName ]
-  let manifestPath = Path.concat [ absoluteFolderPath, ".purs.json" ]
+  let manifestPath = Path.concat [ absoluteFolderPath, "purs.json" ]
 
   log $ "Package extracted in " <> absoluteFolderPath
 
