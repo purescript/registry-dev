@@ -87,8 +87,11 @@ main = Aff.launchAff_ do
   runRegistryM (mkEnv packagesMetadataRef) do
     log "Adding metadata for reserved package names"
     forWithIndex_ reservedNames \package repo -> do
-      let metadata = { location: repo, releases: Object.empty, unpublished: Object.empty }
-      liftAff $ Json.writeJsonFile (API.metadataFile package) metadata
+      let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
+      liftAff $ Json.writeJsonFile (API.metadataFile package) $ metadata
+        { unpublished = mapKeys Version.printVersion metadata.unpublished
+        , published = mapKeys Version.printVersion metadata.published
+        }
       updatePackagesMetadata package metadata
 
     log "Filtering out packages we already uploaded"
@@ -121,6 +124,7 @@ mkEnv packagesMetadata =
       log "Skipping committing to trunk.."
       pure (Right unit)
   , uploadPackage: Upload.upload
+  , deletePackage: Upload.delete
   , packagesMetadata
   }
 

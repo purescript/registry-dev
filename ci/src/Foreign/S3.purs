@@ -2,6 +2,7 @@ module Foreign.S3
   ( connect
   , listObjects
   , putObject
+  , deleteObject
   , S3
   , Space
   , ACL(..)
@@ -77,3 +78,37 @@ putObject space params = do
   let jsParams = { "Bucket": space.bucket, "Key": params.key, "Body": params.body, "ACL": jsACL }
   res <- Promise.toAffE (runFn2 putObjectImpl space.conn jsParams)
   pure { eTag: res."ETag" }
+
+-- https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html#deleteObject-property
+type JSDeleteParams =
+  { "Bucket" :: String
+  , "Key" :: String
+  }
+
+type JSDeleteResponse =
+  { "DeleteMarker" :: Boolean
+  , "VersionId" :: String
+  , "RequestCharged" :: String
+  }
+
+foreign import deleteObjectImpl :: Fn2 S3 JSDeleteParams (Effect (Promise JSDeleteResponse))
+
+type DeleteParams =
+  { key :: String
+  }
+
+type DeleteResponse =
+  { deleteMarker :: Boolean
+  , versionId :: String
+  , requestCharged :: String
+  }
+
+deleteObject :: Space -> DeleteParams -> Aff DeleteResponse
+deleteObject space params = do
+  let jsParams = { "Bucket": space.bucket, "Key": params.key }
+  result <- Promise.toAffE (runFn2 deleteObjectImpl space.conn jsParams)
+  pure
+    { deleteMarker: result."DeleteMarker"
+    , versionId: result."VersionId"
+    , requestCharged: result."RequestCharged"
+    }

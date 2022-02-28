@@ -276,7 +276,7 @@ toManifest package location version manifest = do
       -- for errors, but this is just so the types all work out.
       license <- Except.except eitherLicense
       dependencies <- Except.except eitherDependencies
-      pure $ Manifest { name: package, license, location, description, dependencies, version, files: Nothing }
+      pure $ Manifest { name: package, license, location, description, dependencies, version, owners: Nothing, files: Nothing }
 
     Just err ->
       throwError err
