@@ -9,7 +9,9 @@ let Location = ./Location.dhall
 -- An operation that must be signed with the key listed in the owners field of
 -- the manifest.
 let AuthenticatedOperation =
-  < Unpublish : { packageName : Text, unpublishVersion : Text, unpublishReason : Text } >
+  < Unpublish : { packageName : Text, unpublishVersion : Text, unpublishReason : Text }
+  | Transfer : { packageName : Text, newPackageLocation : Location }
+  >
 
 in
   < Addition : { packageName : Text, newPackageLocation : Location, newRef : Text }
