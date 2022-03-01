@@ -764,7 +764,7 @@
   "purescript-merkle-tree": "https://github.com/alpacaaa/purescript-merkle-tree.git",
   "purescript-mersenne": "https://github.com/matthewleon/purescript-mersenne.git",
   "purescript-mesos": "https://github.com/mcoffin/purescript-mesos.git",
-  "purescript-metadata": "https://github.com/spacchetti/purescript-metadata.git",
+  "purescript-metadata": "https://github.com/purescript/purescript-metadata.git",
   "purescript-metajelo": "https://github.com/labordynamicsinstitute/purescript-metajelo.git",
   "purescript-metajelo-ui-css-classes": "https://github.com/labordynamicsinstitute/metajelo-ui-css-classes.git",
   "purescript-metajelo-web": "https://github.com/labordynamicsinstitute/metajelo-web.git",
