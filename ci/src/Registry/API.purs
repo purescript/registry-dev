@@ -109,7 +109,7 @@ readOperation eventPath = do
 
 runOperation :: Operation -> RegistryM Unit
 runOperation operation = case operation of
-  -- TODO handle addToPackageSet
+  -- TODO handle addToPackageSet, addToPursuit
   Addition { packageName, newRef, newPackageLocation } -> do
     -- check that we don't have a metadata file for that package
     ifM (liftAff $ FS.exists $ metadataFile packageName)
@@ -119,24 +119,12 @@ runOperation operation = case operation of
         addOrUpdate { packageName, ref: newRef } $ mkNewMetadata newPackageLocation
 
   Update { packageName, updateRef } -> do
-    ifM (liftAff $ FS.exists $ metadataFile packageName)
-      do
-        metadata <- readPackagesMetadata >>= \packages -> case Map.lookup packageName packages of
-          Nothing -> throwWithComment "Couldn't read metadata file for your package.\ncc @purescript/packaging"
-          Just m -> pure m
-        addOrUpdate { packageName, ref: updateRef } metadata
-      (throwWithComment "Metadata file should exist. Did you mean to create an Addition?")
+    metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Did you mean to create an Addition?" }
+    addOrUpdate { packageName, ref: updateRef } metadata
 
   Authenticated auth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
-      let metadataFilePath = metadataFile packageName
-      liftAff (FS.exists metadataFilePath) >>= case _ of
-        false -> throwWithComment "No metadata file found. Did you mean to create an Addition?"
-        _ -> pure unit
-
-      metadata <- readPackagesMetadata >>= \packages -> case Map.lookup packageName packages of
-        Nothing -> throwWithComment "Couldn't read metadata file for your package.\ncc @purescript/packaging"
-        Just m -> pure m
+      metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Only published packages can be unpublished." }
 
       let
         inPublished = Map.lookup unpublishVersion metadata.published
@@ -199,17 +187,40 @@ runOperation operation = case operation of
 
                 updatedMetadata = unpublishVersionInMetadata unpublishVersion unpublishedMetadata metadata
 
-              liftAff $ Json.writeJsonFile metadataFilePath $ updatedMetadata
-                { unpublished = mapKeys Version.printVersion updatedMetadata.unpublished
-                , published = mapKeys Version.printVersion updatedMetadata.published
+              writeMetadata packageName updatedMetadata
+                { commitFailed: \_ -> "Unpublish succeeded, but committing metadata failed.\ncc @purescript/packaging"
+                , commitSucceeded: "Successfully unpublished!"
                 }
 
-              updatePackagesMetadata packageName updatedMetadata
-              commitToTrunk packageName metadataFilePath >>= case _ of
-                Left _err ->
-                  comment "Unpublish succeeded, but metadata could not be updated.\n\ncc @purescript/packaging"
-                Right _ -> do
-                  comment "Package version unpublished!"
+    Transfer { packageName, newPackageLocation } -> do
+      metadata <- readMetadata packageName
+        { noMetadata: String.joinWith " "
+            [ "No metadata found for your package."
+            , "You can only transfer packages that have already been published."
+            , "Did you mean to create an Addition?"
+            ]
+        }
+
+      case metadata.owners of
+        Nothing ->
+          throwWithComment $ String.joinWith " "
+            [ "Cannot verify package ownership because no owners are listed in the package metadata."
+            , "Please publish a package version with your SSH public key in the owners field."
+            , "You can then retry transferring this package by authenticating with your private key."
+            ]
+        Just owners ->
+          liftAff (SSH.verifyPayload owners auth) >>= case _ of
+            Left err ->
+              throwWithComment $ String.joinWith "\n"
+                [ "Failed to verify package ownership:"
+                , "  " <> err
+                ]
+            Right _ -> do
+              let updatedMetadata = metadata { location = newPackageLocation }
+              writeMetadata packageName updatedMetadata
+                { commitFailed: \_ -> "Transferred package location, but failed to commit metadata.\ncc @purescript/packaging"
+                , commitSucceeded: "Successfully transferred your package!"
+                }
 
 metadataDir :: FilePath
 metadataDir = "../metadata"
@@ -287,6 +298,7 @@ addOrUpdate { ref, packageName } inputMetadata = do
       Right manifest ->
         liftAff $ Json.writeJsonFile manifestPath manifest
 
+  -- TODO: Verify the manifest against metadata.
   -- Try to read the manifest, typechecking it
   manifest@(Manifest manifestRecord) <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of
     Left _err -> throwWithComment $ "Manifest not found at " <> manifestPath
@@ -338,17 +350,10 @@ addOrUpdate { ref, packageName } inputMetadata = do
   log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show ref <> " was " <> show hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref, publishedTime, bytes } metadata
-  let metadataFilePath = metadataFile packageName
-  liftAff $ Json.writeJsonFile metadataFilePath $ newMetadata
-    { unpublished = mapKeys Version.printVersion newMetadata.unpublished
-    , published = mapKeys Version.printVersion newMetadata.published
+  writeMetadata packageName newMetadata
+    { commitFailed: \_ -> "Package uploaded, but committing metadata failed.\ncc: @purescript/packaging"
+    , commitSucceeded: "Successfully uploaded package to the registry! 🎉 🚀"
     }
-  updatePackagesMetadata manifestRecord.name newMetadata
-  commitToTrunk packageName metadataFilePath >>= case _ of
-    Left _err ->
-      comment "Package uploaded, but metadata not synced with the registry repository.\n\ncc @purescript/packaging"
-    Right _ -> do
-      comment "Package successfully uploaded to the registry! 🎉 🚀"
   closeIssue
 
   -- Optional steps below:
@@ -515,3 +520,26 @@ ignoredGlobs =
   , "**/._*"
   , "**/.DS_Store"
   ]
+
+readMetadata :: PackageName -> { noMetadata :: String } -> RegistryM Metadata
+readMetadata packageName { noMetadata } = do
+  let metadataFilePath = metadataFile packageName
+  liftAff (FS.exists metadataFilePath) >>= case _ of
+    false -> throwWithComment noMetadata
+    _ -> pure unit
+
+  readPackagesMetadata >>= \packages -> case Map.lookup packageName packages of
+    Nothing -> throwWithComment "Couldn't read metadata file for your package.\ncc @purescript/packaging"
+    Just m -> pure m
+
+writeMetadata :: PackageName -> Metadata -> { commitFailed :: String -> String, commitSucceeded :: String } -> RegistryM Unit
+writeMetadata packageName metadata { commitFailed, commitSucceeded } = do
+  let metadataFilePath = metadataFile packageName
+  liftAff $ Json.writeJsonFile metadataFilePath $ metadata
+    { unpublished = mapKeys Version.printVersion metadata.unpublished
+    , published = mapKeys Version.printVersion metadata.published
+    }
+  updatePackagesMetadata packageName metadata
+  commitToTrunk packageName metadataFilePath >>= case _ of
+    Left err -> comment (commitFailed err)
+    Right _ -> comment commitSucceeded

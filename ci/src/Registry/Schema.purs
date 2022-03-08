@@ -141,21 +141,26 @@ instance RegistryJson Operation where
     let parseAuthenticated = Authenticated <$> Json.decode json
     parseAddition <|> parseUpdate <|> parseAuthenticated
 
-data AuthenticatedOperation = Unpublish UnpublishData
+data AuthenticatedOperation
+  = Unpublish UnpublishData
+  | Transfer TransferData
 
 derive instance Eq AuthenticatedOperation
 
 instance RegistryJson AuthenticatedOperation where
   encode = case _ of
     Unpublish fields -> Json.encode fields
+    Transfer fields -> Json.encode fields
 
   decode json = do
     let parseUnpublish = Unpublish <$> Json.decode json
-    parseUnpublish
+    let parseTransfer = Transfer <$> Json.decode json
+    parseUnpublish <|> parseTransfer
 
 instance Show AuthenticatedOperation where
   show = case _ of
     Unpublish inner -> "Unpublish (" <> show (showWithPackage inner) <> ")"
+    Transfer inner -> "Transfer (" <> show (showWithPackage inner) <> ")"
     where
     showWithPackage :: forall r. { packageName :: PackageName | r } -> { packageName :: String | r }
     showWithPackage inner =
@@ -199,6 +204,11 @@ type UnpublishData =
   { packageName :: PackageName
   , unpublishVersion :: Version
   , unpublishReason :: String
+  }
+
+type TransferData =
+  { packageName :: PackageName
+  , newPackageLocation :: Location
   }
 
 type Metadata =
