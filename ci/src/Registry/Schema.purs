@@ -12,6 +12,7 @@ import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Version (Range, Version)
+import Text.Parsing.StringParser as Parser
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 newtype Manifest = Manifest
@@ -57,6 +58,32 @@ derive instance Newtype Owner _
 derive newtype instance Eq Owner
 derive newtype instance Show Owner
 derive newtype instance RegistryJson Owner
+
+-- TODO: ToEncodable class
+
+-- | A compiler version and exact dependency versions that should be used to
+-- | compile a newly-uploaded package as an API verification check.
+-- |
+-- | The build plan verification is NOT used for legacy packages.
+newtype BuildPlan = BuildPlan
+  { compiler :: Version
+  , resolutions :: Map PackageName Version
+  }
+
+derive instance Newtype BuildPlan _
+derive newtype instance Eq BuildPlan
+derive newtype instance Show BuildPlan
+
+instance RegistryJson BuildPlan where
+  encode (BuildPlan plan) =
+    Json.encode
+      { compiler: plan.compiler
+      , resolutions: mapKeys PackageName.print plan.resolutions
+      }
+  decode json = do
+    plan <- Json.decode json
+    resolutions <- traverseKeys (lmap Parser.printParserError <<< PackageName.parse) plan.resolutions
+    pure $ BuildPlan $ plan { resolutions = resolutions }
 
 type LocationData d =
   { subdir :: Maybe String
@@ -190,11 +217,13 @@ type AdditionData =
   { newPackageLocation :: Location
   , newRef :: String
   , packageName :: PackageName
+  , buildPlan :: BuildPlan
   }
 
 type UpdateData =
   { packageName :: PackageName
   , updateRef :: String
+  , buildPlan :: BuildPlan
   }
 
 type UnpublishData =
