@@ -88,10 +88,7 @@ main = Aff.launchAff_ do
     log "Adding metadata for reserved package names"
     forWithIndex_ reservedNames \package repo -> do
       let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
-      liftAff $ Json.writeJsonFile (API.metadataFile package) $ metadata
-        { unpublished = mapKeys Version.printVersion metadata.unpublished
-        , published = mapKeys Version.printVersion metadata.published
-        }
+      liftAff $ Json.writeJsonFile (API.metadataFile package) metadata
       updatePackagesMetadata package metadata
 
     log "Filtering out packages we already uploaded"

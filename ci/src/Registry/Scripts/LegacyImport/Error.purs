@@ -3,7 +3,7 @@ module Registry.Scripts.LegacyImport.Error where
 import Registry.Prelude
 
 import Data.Interpolate (i)
-import Registry.Json ((.:))
+import Registry.Json (class StringEncodable, (.:))
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 
@@ -20,6 +20,7 @@ newtype ImportErrorKey = ImportErrorKey String
 derive instance Newtype ImportErrorKey _
 derive newtype instance Eq ImportErrorKey
 derive newtype instance Ord ImportErrorKey
+derive newtype instance StringEncodable ImportErrorKey
 
 instance Show ImportErrorKey where
   show (ImportErrorKey key) = i "(ImportErrorKey " key ")"

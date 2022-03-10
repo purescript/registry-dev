@@ -10,6 +10,7 @@ import Data.List as List
 import Data.List.NonEmpty as NEL
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
+import Registry.Json (class StringEncodable)
 import Registry.Json as Json
 import Text.Parsing.StringParser as Parser
 import Text.Parsing.StringParser.CodePoints as Parse
@@ -21,14 +22,16 @@ newtype PackageName = PackageName String
 derive newtype instance Eq PackageName
 derive newtype instance Ord PackageName
 
-instance RegistryJson PackageName where
-  encode = Json.encode <<< print
-  decode json = do
-    package <- Json.decode json
-    parse package # lmap (append "Expected PackageName: " <<< Parser.printParserError)
-
 instance Show PackageName where
   show = print
+
+instance StringEncodable PackageName where
+  toEncodableString = print
+  fromEncodableString = lmap (append "Expected PackageName: " <<< Parser.printParserError) <<< parse
+
+instance RegistryJson PackageName where
+  encode = Json.encode <<< Json.toEncodableString
+  decode = Json.fromEncodableString <=< Json.decode
 
 print :: PackageName -> String
 print (PackageName package) = package
