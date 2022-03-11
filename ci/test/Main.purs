@@ -101,9 +101,8 @@ manifestEncoding :: Spec.Spec Unit
 manifestEncoding = do
   let
     roundTrip (Manifest manifest) = do
-      let fields = manifest { dependencies = mapKeys PackageName.print manifest.dependencies }
       Spec.it (PackageName.print manifest.name <> " " <> Version.rawVersion manifest.version) do
-        Json.roundtrip fields `Assert.shouldContain` fields
+        Json.roundtrip manifest `Assert.shouldContain` manifest
 
   roundTrip Fixtures.ab.v1a
   roundTrip Fixtures.ab.v1b

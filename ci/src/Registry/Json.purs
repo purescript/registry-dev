@@ -9,7 +9,6 @@
 -- | like `RFC3339String` and `BigInt`, without newtypes.
 module Registry.Json
   ( module Exports
-  , class RegistryJson
   , printJson
   , stringifyJson
   , parseJson
@@ -23,6 +22,10 @@ module Registry.Json
   , getOptional
   , (.:?)
   , roundtrip
+  , class StringEncodable
+  , toEncodableString
+  , fromEncodableString
+  , class RegistryJson
   , encode
   , decode
   -- Required for record instances, but not intended for use in user code
@@ -46,6 +49,8 @@ import Data.Argonaut.Parser as Parser
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
+import Data.Bifunctor (lmap)
+import Data.Bitraversable (ltraverse)
 import Data.Either (Either(..), either, note)
 import Data.Int as Int
 import Data.Map (Map)
@@ -65,11 +70,9 @@ import Foreign.Object as Object
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS
 import Node.Path (FilePath)
-import Prim.Coerce (class Coercible)
 import Prim.Row as Row
 import Prim.RowList as RL
 import Record as Record
-import Safe.Coerce (coerce)
 import Type.Proxy (Proxy(..))
 
 -- | Print a type as a formatted JSON string
@@ -122,6 +125,16 @@ infix 7 getOptional as .:?
 
 roundtrip :: forall a. RegistryJson a => a -> Either String a
 roundtrip = encode >>> decode
+
+-- | A class for values that can be encoded as JSON strings. This class is used
+-- | for values that may be used as map keys, which are encoded as objects.
+class StringEncodable a where
+  toEncodableString :: a -> String
+  fromEncodableString :: String -> Either String a
+
+instance StringEncodable String where
+  toEncodableString = identity
+  fromEncodableString = Right
 
 -- | A class for encoding and decoding JSON
 class RegistryJson a where
@@ -192,16 +205,16 @@ instance RegistryJson RFC3339String where
   encode = encode <<< un RFC3339String
   decode = decode >=> map RFC3339String
 
-instance (Ord k, Coercible k String, RegistryJson v) => RegistryJson (Map k v) where
+instance (Ord k, StringEncodable k, RegistryJson v) => RegistryJson (Map k v) where
   encode = encode <<< Object.fromFoldable <<< toTupleArray
     where
     toTupleArray :: Map k v -> Array (Tuple String v)
-    toTupleArray = (coerce :: Array _ -> Array _) <<< Map.toUnfoldable
+    toTupleArray = map (lmap toEncodableString) <<< Map.toUnfoldable
 
-  decode = map (Map.fromFoldable <<< toTupleArray) <=< decode
+  decode = toMap <=< decode
     where
-    toTupleArray :: Object v -> Array (Tuple k v)
-    toTupleArray = (coerce :: Array _ -> Array _) <<< Object.toAscUnfoldable
+    toMap :: Object v -> Either String (Map k v)
+    toMap = map (Map.fromFoldable :: Array _ -> _) <<< traverse (ltraverse fromEncodableString) <<< Object.toAscUnfoldable
 
 instance (EncodeRecord row list, DecodeRecord row list, RL.RowToList row list) => RegistryJson (Record row) where
   encode record = encode $ Object.fromFoldable $ sortObject $ encodeRecord record (Proxy :: Proxy list)

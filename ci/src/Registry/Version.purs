@@ -27,6 +27,7 @@ import Data.List.NonEmpty as NEL
 import Data.String as String
 import Data.String.CodeUnits as CodeUnits
 import Foreign.SemVer as SemVer
+import Registry.Json (class StringEncodable)
 import Registry.Json as Json
 import Text.Parsing.StringParser (ParseError, Parser)
 import Text.Parsing.StringParser as StringParser
@@ -48,14 +49,16 @@ derive instance Eq Version
 instance Ord Version where
   compare = compare `on` (\(Version v) -> [ v.major, v.minor, v.patch ])
 
-instance RegistryJson Version where
-  encode = Json.encode <<< printVersion
-  decode json = do
-    string <- Json.decode json
-    lmap StringParser.printParserError $ parseVersion Strict string
-
 instance Show Version where
   show = printVersion
+
+instance StringEncodable Version where
+  toEncodableString = printVersion
+  fromEncodableString = lmap StringParser.printParserError <<< parseVersion Strict
+
+instance RegistryJson Version where
+  encode = Json.encode <<< Json.toEncodableString
+  decode = Json.fromEncodableString <=< Json.decode
 
 major :: Version -> Int
 major (Version version) = version.major

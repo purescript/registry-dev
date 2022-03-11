@@ -535,10 +535,7 @@ readMetadata packageName { noMetadata } = do
 writeMetadata :: PackageName -> Metadata -> { commitFailed :: String -> String, commitSucceeded :: String } -> RegistryM Unit
 writeMetadata packageName metadata { commitFailed, commitSucceeded } = do
   let metadataFilePath = metadataFile packageName
-  liftAff $ Json.writeJsonFile metadataFilePath $ metadata
-    { unpublished = mapKeys Version.printVersion metadata.unpublished
-    , published = mapKeys Version.printVersion metadata.published
-    }
+  liftAff $ Json.writeJsonFile metadataFilePath metadata
   updatePackagesMetadata packageName metadata
   commitToTrunk packageName metadataFilePath >>= case _ of
     Left err -> comment (commitFailed err)

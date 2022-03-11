@@ -12,7 +12,6 @@ import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Version (Range, Version)
-import Text.Parsing.StringParser as StringParser
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 newtype Manifest = Manifest
@@ -37,13 +36,11 @@ instance RegistryJson Manifest where
     "location" := fields.location
     "owners" := fields.owners
     "description" := fields.description
-    "dependencies" := mapKeys PackageName.print fields.dependencies
+    "dependencies" := fields.dependencies
 
   decode json = do
     manifestFields <- Json.decode json
-    let parse = lmap StringParser.printParserError <<< PackageName.parse
-    parsed <- traverseKeys parse manifestFields.dependencies
-    pure $ Manifest $ manifestFields { dependencies = parsed }
+    pure $ Manifest manifestFields
 
 -- | A package owner, described using their SSH key and associated email address. It
 -- | is not necessary to provide a valid email address, but the email address
