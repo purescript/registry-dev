@@ -428,18 +428,8 @@ mkMetadataRef = do
         log $ "Encountered error while parsing package name! It was: " <> rawPackageName
         Aff.throwError $ Aff.error $ StringParser.printParserError err
     let metadataPath = metadataFile packageName
-    metadataStr <- FS.readTextFile UTF8 metadataPath
-    metadataRaw <- case Json.parseJson metadataStr of
-      Left err -> Aff.throwError $ Aff.error $ "Error while parsing json from " <> metadataPath <> " : " <> err
-      Right r -> pure r
-    let
-      metadataParsedKeys = do
-        let parseKey = lmap StringParser.printParserError <<< Version.parseVersion Version.Strict
-        published <- traverseKeys parseKey metadataRaw.published
-        unpublished <- traverseKeys parseKey metadataRaw.unpublished
-        pure $ metadataRaw { published = published, unpublished = unpublished }
-    metadata <- case metadataParsedKeys of
-      Left err -> Aff.throwError $ Aff.error $ "Error converting versions from " <> metadataPath <> " : " <> err
+    metadata <- Json.readJsonFile metadataPath >>= case _ of
+      Left err -> Aff.throwError $ Aff.error $ "Error parsing metadata file located at " <> metadataPath <> ": " <> err
       Right val -> pure val
     pure $ packageName /\ metadata
   liftEffect $ Ref.new $ Map.fromFoldable packagesArray
