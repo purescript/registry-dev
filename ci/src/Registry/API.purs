@@ -2,6 +2,7 @@ module Registry.API where
 
 import Registry.Prelude
 
+import Affjax as Http
 import Control.Monad.Except as Except
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
@@ -247,7 +248,7 @@ addOrUpdate { ref, packageName } inputMetadata = do
       when (isJust subdir) $ throwWithComment "`subdir` is not supported for now. See #16"
 
       commitDate <- liftAff do
-        cloneGitHubPackage { owner, repo } tmpDir
+        cloneGitRepo (i "https://github.com/" owner "/" repo ".git") tmpDir
         gitCheckoutRef ref
         gitGetRefTime ref
 
@@ -442,10 +443,10 @@ checkIndexExists = do
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> log "Successfully cloned the 'registry-index' repo"
 
--- | Clone a package from GitHub to the provided directory.
-cloneGitHubPackage :: GitHub.Address -> FilePath -> Aff Unit
-cloneGitHubPackage { owner, repo } targetDir =
-  Except.runExceptT (runGit [ "clone", i "https://github.com/" owner "/" repo ".git", targetDir ]) >>= case _ of
+-- | Clone a package from a Git location to the provided directory.
+cloneGitRepo :: Http.URL -> FilePath -> Aff Unit
+cloneGitRepo url targetDir =
+  Except.runExceptT (runGit [ "clone", url, targetDir ]) >>= case _ of
     Left err -> Aff.throwError $ Aff.error err
     Right _ -> log "Successfully cloned package."
 
