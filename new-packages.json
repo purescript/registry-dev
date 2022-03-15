@@ -179,5 +179,6 @@
   "purescript-convertable-options": "https://github.com/natefaubion/purescript-convertable-options.git",
   "purescript-amazons": "https://github.com/Forensor/purescript-amazons.git",
   "purescript-envparse": "https://github.com/srghma/purescript-envparse.git",
-  "purescript-halogen-router": "https://github.com/katsujukou/purescript-halogen-router.git"
+  "purescript-halogen-router": "https://github.com/katsujukou/purescript-halogen-router.git",
+  "purescript-unlift": "https://github.com/tweag/purescript-unlift.git"
 }
