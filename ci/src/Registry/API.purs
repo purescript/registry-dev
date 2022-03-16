@@ -13,6 +13,7 @@ import Data.Interpolate (i)
 import Data.JSDate as JSDate
 import Data.Map as Map
 import Data.PreciseDateTime as PDT
+import Data.RFC3339String (RFC3339String)
 import Data.RFC3339String as RFC3339String
 import Data.Set as Set
 import Data.String as String
@@ -41,7 +42,7 @@ import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
-import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Manifest(..), Metadata, Operation(..), Location(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
+import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Location(..), Manifest(..), Metadata, Operation(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
@@ -236,26 +237,12 @@ indexDir = "../registry-index"
 
 addOrUpdate :: { ref :: String, packageName :: PackageName } -> Metadata -> RegistryM Unit
 addOrUpdate { ref, packageName } inputMetadata = do
-  -- let's get a temp folder to do our stuffs
   tmpDir <- liftEffect $ Tmp.mkTmpDir
+
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
-  { folderName, publishedTime } <- case inputMetadata.location of
-    Git _ -> do
-      -- TODO: Support non-GitHub packages. Remember subdir when implementing this. (See #15)
-      throwWithComment "Packages are only allowed to come from GitHub for now. See #15"
-    GitHub { owner, repo, subdir } -> do
-      -- TODO: Support subdir. In the meantime, we verify subdir is not present. (See #16)
-      when (isJust subdir) $ throwWithComment "`subdir` is not supported for now. See #16"
+  { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir, ref, location: inputMetadata.location }
 
-      commitDate <- liftAff do
-        cloneGitRepo (i "https://github.com/" owner "/" repo ".git") tmpDir
-        gitCheckoutRef ref
-        gitGetRefTime ref
-
-      -- Cloning will result in the `repo` name as the directory name
-      pure { folderName: repo, publishedTime: commitDate }
-
-  let absoluteFolderPath = Path.concat [ tmpDir, folderName ]
+  let absoluteFolderPath = Path.concat [ tmpDir, packageDirectory ]
   let manifestPath = Path.concat [ absoluteFolderPath, "purs.json" ]
 
   log $ "Package available in " <> absoluteFolderPath
@@ -343,7 +330,7 @@ addOrUpdate { ref, packageName } inputMetadata = do
   uploadPackage uploadPackageInfo tarballPath
   log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show ref <> " was " <> show hash
-  let newMetadata = addVersionToMetadata newVersion { hash, ref, publishedTime: PDT.toRFC3339String publishedTime, bytes } metadata
+  let newMetadata = addVersionToMetadata newVersion { hash, ref, publishedTime, bytes } metadata
   writeMetadata packageName newMetadata
     { commitFailed: \_ -> "Package uploaded, but committing metadata failed.\ncc: @purescript/packaging"
     , commitSucceeded: "Successfully uploaded package to the registry! 🎉 🚀"
@@ -443,6 +430,52 @@ checkIndexExists = do
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> log "Successfully cloned the 'registry-index' repo"
 
+data PursPublishMethod = LegacyPursPublish | PursPublish
+
+-- | A temporary flag that records whether we are using legacy purs publish
+-- | (which requires all packages to be a Git repository) or new purs publish
+-- | (which accepts any directory with package sources).
+pursPublishMethod :: PursPublishMethod
+pursPublishMethod = LegacyPursPublish
+
+fetchPackageSource
+  :: { tmpDir :: FilePath, ref :: String, location :: Location }
+  -> RegistryM { packageDirectory :: FilePath, publishedTime :: RFC3339String }
+fetchPackageSource { tmpDir, ref, location } = case location of
+  Git _ -> do
+    -- TODO: Support non-GitHub packages. Remember subdir when doing so. (See #15)
+    throwWithComment "Packages are only allowed to come from GitHub for now. See #15"
+
+  GitHub { owner, repo, subdir } -> do
+    -- TODO: Support subdir. In the meantime, we verify subdir is not present. (See #16)
+    when (isJust subdir) $ throwWithComment "`subdir` is not supported for now. See #16"
+
+    case pursPublishMethod of
+      LegacyPursPublish -> liftAff do
+        cloneGitRepo (i "https://github.com/" owner "/" repo ".git") tmpDir
+        gitCheckoutRef ref
+        publishedTime <- gitGetRefTime ref
+        -- Cloning will result in the `repo` name as the directory name
+        pure { packageDirectory: repo, publishedTime }
+
+      PursPublish -> do
+        octokit <- liftEffect GitHub.mkOctokit
+        commit <- liftAff $ GitHub.getRefCommit octokit { owner, repo } ref
+        commitDate <- liftAff $ GitHub.getCommitDate octokit { owner, repo } commit
+        let tarballName = ref <> ".tar.gz"
+        let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
+        let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
+        log $ "Fetching tarball from GitHub: " <> archiveUrl
+        wget archiveUrl absoluteTarballPath
+        log $ "Tarball downloaded in " <> absoluteTarballPath
+        liftEffect (Tar.getToplevelDir absoluteTarballPath) >>= case _ of
+          Nothing ->
+            throwWithComment "Could not find a toplevel dir in the tarball!"
+          Just dir -> do
+            log "Extracting the tarball..."
+            liftEffect $ Tar.extract { cwd: tmpDir, filename: absoluteTarballPath }
+            pure { packageDirectory: dir, publishedTime: commitDate }
+
 -- | Clone a package from a Git location to the provided directory.
 cloneGitRepo :: Http.URL -> FilePath -> Aff Unit
 cloneGitRepo url targetDir =
@@ -458,13 +491,13 @@ gitCheckoutRef ref =
     Right _ -> log $ "Checked out commit " <> ref
 
 -- | Read the published time of the checked-out commit.
-gitGetRefTime :: String -> Aff PDT.PreciseDateTime
+gitGetRefTime :: String -> Aff RFC3339String
 gitGetRefTime ref = do
   result <- Except.runExceptT do
     timestamp <- runGit [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ]
     jsDate <- liftEffect $ JSDate.parse timestamp
     dateTime <- Except.except $ note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
-    pure $ PDT.fromDateTime dateTime
+    pure $ PDT.toRFC3339String $ PDT.fromDateTime dateTime
   case result of
     Left err -> Aff.throwError $ Aff.error $ "Failed to get ref time: " <> err
     Right res -> pure res
