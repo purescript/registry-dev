@@ -128,7 +128,7 @@ newtype Range = Range
   }
 
 instance Eq Range where
-  eq (Range a) (Range b) = a.lhs == b.lhs && a.rhs == b.rhs
+  eq = eq `on` (\(Range { lhs, rhs }) -> [ lhs, rhs ])
 
 instance RegistryJson Range where
   encode = Json.encode <<< printRange
