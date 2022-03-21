@@ -12,7 +12,6 @@ import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Version (Range, Version)
-import Text.Parsing.StringParser as Parser
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 newtype Manifest = Manifest
@@ -73,15 +72,8 @@ derive newtype instance Eq BuildPlan
 derive newtype instance Show BuildPlan
 
 instance RegistryJson BuildPlan where
-  encode (BuildPlan plan) =
-    Json.encode
-      { compiler: plan.compiler
-      , resolutions: mapKeys PackageName.print plan.resolutions
-      }
-  decode json = do
-    plan <- Json.decode json
-    resolutions <- traverseKeys (lmap Parser.printParserError <<< PackageName.parse) plan.resolutions
-    pure $ BuildPlan $ plan { resolutions = resolutions }
+  encode (BuildPlan plan) = Json.encode plan
+  decode = map BuildPlan <<< Json.decode
 
 type LocationData d =
   { subdir :: Maybe String
