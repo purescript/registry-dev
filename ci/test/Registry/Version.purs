@@ -43,14 +43,14 @@ testVersion = do
     let unsafeRange = unsafeFromRight <<< Version.parseRange Version.Strict
 
     Spec.it "Lower bound satisifies" do
-      (unsafeRange ">=1.0.1 <2.0.1") `Assert.shouldSatisfy` Version.includes (unsafeVersion "1.0.1")
+      unsafeVersion "1.0.1" `Assert.shouldSatisfy` Version.rangeIncludes (unsafeRange ">=1.0.1 <2.0.1")
 
     Spec.it "Upper bound satisifies" do
-      (unsafeRange ">=1.0.1 <2.0.1") `Assert.shouldSatisfy` Version.includes (unsafeVersion "2.0.0")
+      unsafeVersion "2.0.0" `Assert.shouldSatisfy` Version.rangeIncludes (unsafeRange ">=1.0.1 <2.0.1")
 
     Spec.it "Out of bounds fails" do
-      (unsafeRange ">=1.0.1 <2.0.1") `Assert.shouldNotSatisfy` Version.includes (unsafeVersion "0.1.1")
-      (unsafeRange ">=1.0.1 <2.0.1") `Assert.shouldNotSatisfy` Version.includes (unsafeVersion "3.0.0")
+      unsafeVersion "0.1.1" `Assert.shouldNotSatisfy` Version.rangeIncludes (unsafeRange ">=1.0.1 <2.0.1")
+      unsafeVersion "3.0.0" `Assert.shouldNotSatisfy` Version.rangeIncludes (unsafeRange ">=1.0.1 <2.0.1")
 
 validStrictVersions :: Array String
 validStrictVersions =

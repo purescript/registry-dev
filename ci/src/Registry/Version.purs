@@ -7,6 +7,7 @@ module Registry.Version
   , printVersion
   , parseVersion
   , Range
+  , rangeIncludes
   , greaterThanOrEq
   , lessThan
   , printRange
@@ -142,6 +143,10 @@ greaterThanOrEq (Range range) = range.lhs
 
 lessThan :: Range -> Version
 lessThan (Range range) = range.rhs
+
+-- | Check whether a range includes the provided version
+rangeIncludes :: Range -> Version -> Boolean
+rangeIncludes (Range { lhs, rhs }) version = version >= lhs && version < rhs
 
 rawRange :: Range -> String
 rawRange (Range range) = range.raw
