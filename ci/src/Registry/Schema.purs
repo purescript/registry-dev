@@ -59,8 +59,6 @@ derive newtype instance Eq Owner
 derive newtype instance Show Owner
 derive newtype instance RegistryJson Owner
 
--- TODO: ToEncodable class
-
 -- | A compiler version and exact dependency versions that should be used to
 -- | compile a newly-uploaded package as an API verification check.
 -- |
