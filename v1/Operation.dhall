@@ -4,6 +4,8 @@ A type describing all the possible operations for the Registry API.
 
 -}
 
+let Map = (./Prelude.dhall).Map.Type
+
 let Location = ./Location.dhall
 
 -- A map of package names to package versions describing the dependencies
