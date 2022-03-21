@@ -12,7 +12,7 @@ let Location = ./Location.dhall
 -- The compiler version must be a non-pre-release version with no build
 -- metadata, such as '0.14.0'. Compiler versions are accepted from 0.13.0
 -- onward; earlier compilers are not supported.
-let BuildPlan = { compiler : SemVer, resolutions : Map Text SemVer }
+let BuildPlan = { compiler : Text, resolutions : Map Text Text }
 
 -- An operation that must be signed with the key listed in the owners field of
 -- the manifest.
