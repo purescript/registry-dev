@@ -58,6 +58,23 @@ derive newtype instance Eq Owner
 derive newtype instance Show Owner
 derive newtype instance RegistryJson Owner
 
+-- | A compiler version and exact dependency versions that should be used to
+-- | compile a newly-uploaded package as an API verification check.
+-- |
+-- | The build plan verification is NOT used for legacy packages.
+newtype BuildPlan = BuildPlan
+  { compiler :: Version
+  , resolutions :: Map PackageName Version
+  }
+
+derive instance Newtype BuildPlan _
+derive newtype instance Eq BuildPlan
+derive newtype instance Show BuildPlan
+
+instance RegistryJson BuildPlan where
+  encode (BuildPlan plan) = Json.encode plan
+  decode = map BuildPlan <<< Json.decode
+
 type LocationData d =
   { subdir :: Maybe String
   | d
@@ -190,11 +207,13 @@ type AdditionData =
   { newPackageLocation :: Location
   , newRef :: String
   , packageName :: PackageName
+  , buildPlan :: BuildPlan
   }
 
 type UpdateData =
   { packageName :: PackageName
   , updateRef :: String
+  , buildPlan :: BuildPlan
   }
 
 type UnpublishData =

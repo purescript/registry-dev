@@ -38,7 +38,7 @@ import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
-import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Manifest(..), Metadata, Operation(..), Location(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
+import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Location(..), Manifest(..), Metadata, Operation(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
@@ -110,17 +110,19 @@ readOperation eventPath = do
 runOperation :: Operation -> RegistryM Unit
 runOperation operation = case operation of
   -- TODO handle addToPackageSet, addToPursuit
-  Addition { packageName, newRef, newPackageLocation } -> do
+  Addition { packageName, newRef, buildPlan, newPackageLocation } -> do
     -- check that we don't have a metadata file for that package
-    ifM (liftAff $ FS.exists $ metadataFile packageName)
-      -- if the metadata file already exists then we steer this to be an Update instead
-      (runOperation $ Update { packageName, updateRef: newRef })
-      do
-        addOrUpdate { packageName, ref: newRef } $ mkNewMetadata newPackageLocation
+    metadataExists <- liftAff $ FS.exists $ metadataFile packageName
+    let updateData = { packageName, buildPlan, updateRef: newRef }
+    -- if the metadata file already exists then we steer this to be an Update instead
+    if metadataExists then
+      runOperation $ Update updateData
+    else
+      addOrUpdate updateData $ mkNewMetadata newPackageLocation
 
-  Update { packageName, updateRef } -> do
+  Update { packageName, buildPlan, updateRef } -> do
     metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Did you mean to create an Addition?" }
-    addOrUpdate { packageName, ref: updateRef } metadata
+    addOrUpdate { packageName, buildPlan, updateRef } metadata
 
   Authenticated auth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
@@ -231,8 +233,8 @@ metadataFile packageName = Path.concat [ metadataDir, PackageName.print packageN
 indexDir :: FilePath
 indexDir = "../registry-index"
 
-addOrUpdate :: { ref :: String, packageName :: PackageName } -> Metadata -> RegistryM Unit
-addOrUpdate { ref, packageName } inputMetadata = do
+addOrUpdate :: UpdateData -> Metadata -> RegistryM Unit
+addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
   -- let's get a temp folder to do our stuffs
   tmpDir <- liftEffect $ Tmp.mkTmpDir
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
@@ -245,9 +247,9 @@ addOrUpdate { ref, packageName } inputMetadata = do
       when (isJust subdir) $ throwWithComment "`subdir` is not supported for now. See #16"
 
       octokit <- liftEffect GitHub.mkOctokit
-      commit <- liftAff $ GitHub.getRefCommit octokit { owner, repo } ref
+      commit <- liftAff $ GitHub.getRefCommit octokit { owner, repo } updateRef
       commitDate <- liftAff $ GitHub.getCommitDate octokit { owner, repo } commit
-      let tarballName = ref <> ".tar.gz"
+      let tarballName = updateRef <> ".tar.gz"
       let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
       let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
       log $ "Fetching tarball from GitHub: " <> archiveUrl
@@ -270,15 +272,16 @@ addOrUpdate { ref, packageName } inputMetadata = do
   whenM (liftAff $ map Array.null $ FastGlob.match' [ "src/**/*.purs" ] { cwd: Just absoluteFolderPath }) do
     throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
 
-  -- If this is a legacy import, then we need to construct a `Manifest` for it
+  -- If this is a legacy import, then we need to construct a `Manifest` for it.
+  -- We also won't run the compiler verification.
   isLegacyImport <- liftAff $ map not $ FS.exists manifestPath
   when isLegacyImport do
     address <- case inputMetadata.location of
       Git _ -> throwWithComment "Legacy packages can only come from GitHub. Aborting."
       GitHub { owner, repo } -> pure { owner, repo }
 
-    version <- case Version.parseVersion Lenient ref of
-      Left _ -> throwWithComment $ "Not a valid registry version: " <> ref
+    version <- case Version.parseVersion Lenient updateRef of
+      Left _ -> throwWithComment $ "Not a valid registry version: " <> updateRef
       Right result -> pure result
 
     let
@@ -289,7 +292,7 @@ addOrUpdate { ref, packageName } inputMetadata = do
 
       gatherManifest :: ExceptT ImportError Aff Manifest
       gatherManifest = do
-        manifestFields <- Manifest.constructManifestFields (RawPackageName $ show packageName) (RawVersion ref) address
+        manifestFields <- Manifest.constructManifestFields (RawPackageName $ show packageName) (RawVersion updateRef) address
         Except.mapExceptT liftError $ Manifest.toManifest packageName inputMetadata.location version manifestFields
 
     runManifest gatherManifest >>= case _ of
@@ -348,8 +351,8 @@ addOrUpdate { ref, packageName } inputMetadata = do
   let uploadPackageInfo = { name: packageName, version: newVersion }
   uploadPackage uploadPackageInfo tarballPath
   log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
-  log $ "Hash for ref " <> show ref <> " was " <> show hash
-  let newMetadata = addVersionToMetadata newVersion { hash, ref, publishedTime, bytes } metadata
+  log $ "Hash for ref " <> show updateRef <> " was " <> show hash
+  let newMetadata = addVersionToMetadata newVersion { hash, ref: updateRef, publishedTime, bytes } metadata
   writeMetadata packageName newMetadata
     { commitFailed: \_ -> "Package uploaded, but committing metadata failed.\ncc: @purescript/packaging"
     , commitSucceeded: "Successfully uploaded package to the registry! 🎉 🚀"
