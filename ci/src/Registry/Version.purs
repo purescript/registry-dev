@@ -45,7 +45,8 @@ newtype Version = Version
   , raw :: String
   }
 
-derive instance Eq Version
+instance Eq Version where
+  eq = eq `on` (\(Version v) -> [ v.major, v.minor, v.patch ])
 
 instance Ord Version where
   compare = compare `on` (\(Version v) -> [ v.major, v.minor, v.patch ])
@@ -127,7 +128,8 @@ newtype Range = Range
   , raw :: String
   }
 
-derive instance Eq Range
+instance Eq Range where
+  eq = eq `on` (\(Range { lhs, rhs }) -> [ lhs, rhs ])
 
 instance RegistryJson Range where
   encode = Json.encode <<< printRange
