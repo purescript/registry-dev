@@ -38,6 +38,20 @@ testVersion = do
         let parsedVersion = Version.parseVersion Lenient raw
         map Version.printVersion parsedVersion `Assert.shouldContain` parsed
 
+  Spec.describe "Range inclusion works" do
+    let unsafeVersion = unsafeFromRight <<< Version.parseVersion Version.Strict
+    let unsafeRange = unsafeFromRight <<< Version.parseRange Version.Strict
+
+    Spec.it "Lower bound satisifies" do
+      unsafeVersion "1.0.1" `Assert.shouldSatisfy` Version.rangeIncludes (unsafeRange ">=1.0.1 <2.0.1")
+
+    Spec.it "Upper bound satisifies" do
+      unsafeVersion "2.0.0" `Assert.shouldSatisfy` Version.rangeIncludes (unsafeRange ">=1.0.1 <2.0.1")
+
+    Spec.it "Out of bounds fails" do
+      unsafeVersion "0.1.1" `Assert.shouldNotSatisfy` Version.rangeIncludes (unsafeRange ">=1.0.1 <2.0.1")
+      unsafeVersion "3.0.0" `Assert.shouldNotSatisfy` Version.rangeIncludes (unsafeRange ">=1.0.1 <2.0.1")
+
 validStrictVersions :: Array String
 validStrictVersions =
   [ "0.0.0"
