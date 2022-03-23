@@ -7,6 +7,7 @@ module Registry.Version
   , printVersion
   , parseVersion
   , Range
+  , rangeIncludes
   , greaterThanOrEq
   , lessThan
   , printRange
@@ -44,7 +45,8 @@ newtype Version = Version
   , raw :: String
   }
 
-derive instance Eq Version
+instance Eq Version where
+  eq = eq `on` (\(Version v) -> [ v.major, v.minor, v.patch ])
 
 instance Ord Version where
   compare = compare `on` (\(Version v) -> [ v.major, v.minor, v.patch ])
@@ -126,7 +128,8 @@ newtype Range = Range
   , raw :: String
   }
 
-derive instance Eq Range
+instance Eq Range where
+  eq = eq `on` (\(Range { lhs, rhs }) -> [ lhs, rhs ])
 
 instance RegistryJson Range where
   encode = Json.encode <<< printRange
@@ -142,6 +145,10 @@ greaterThanOrEq (Range range) = range.lhs
 
 lessThan :: Range -> Version
 lessThan (Range range) = range.rhs
+
+-- | Check whether a range includes the provided version
+rangeIncludes :: Range -> Version -> Boolean
+rangeIncludes (Range { lhs, rhs }) version = version >= lhs && version < rhs
 
 rawRange :: Range -> String
 rawRange (Range range) = range.raw

@@ -18,10 +18,12 @@ import Node.FS.Aff as FS
 import Node.Path as Path
 import Registry.API as API
 import Registry.Json as Json
+import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..), Operation(..), Location(..))
+import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
 import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
-import Registry.Version (rawVersion) as Version
+import Registry.Version (Version)
+import Registry.Version as Version
 import Safe.Coerce (coerce)
 import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
@@ -29,7 +31,7 @@ import Test.Registry.Hash as Registry.Hash
 import Test.Registry.Index as Registry.Index
 import Test.Registry.SSH as SSH
 import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
-import Test.Registry.Version (testRange, testVersion) as Version
+import Test.Registry.Version as TestVersion
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -78,9 +80,9 @@ main = launchAff_ do
     Spec.describe "Json" do
       Foreign.JsonRepair.testJsonRepair
     Spec.describe "Version" do
-      Version.testVersion
+      TestVersion.testVersion
     Spec.describe "Range" do
-      Version.testRange
+      TestVersion.testRange
 
 -- | Check all the example Manifests roundtrip (read+write) through PureScript
 manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit
@@ -219,14 +221,24 @@ badSPDXLicense = do
   parseLicense "BSD-3" (Just "BSD-3-Clause")
   parseLicense "MIT AND BSD-3" Nothing
 
+mkUnsafePackage :: String -> PackageName
+mkUnsafePackage = unsafeFromRight <<< PackageName.parse
+
+mkUnsafeVersion :: String -> Version
+mkUnsafeVersion = unsafeFromRight <<< Version.parseVersion Version.Strict
+
 decodeEventsToOps :: Spec.Spec Unit
 decodeEventsToOps = do
   Spec.it "decodes an Update operation" do
     let
       issueNumber = IssueNumber 43
       operation = Update
-        { packageName: unsafeFromRight $ PackageName.parse "something"
+        { packageName: mkUnsafePackage "something"
         , updateRef: "v1.2.3"
+        , buildPlan: BuildPlan
+            { compiler: mkUnsafeVersion "0.15.0"
+            , resolutions: Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
+            }
         }
 
     res <- API.readOperation "test/fixtures/issue_comment.json"
@@ -236,9 +248,13 @@ decodeEventsToOps = do
     let
       issueNumber = IssueNumber 149
       operation = Addition
-        { packageName: unsafeFromRight $ PackageName.parse "prelude"
+        { packageName: mkUnsafePackage "prelude"
         , newRef: "v5.0.0"
         , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
+        , buildPlan: BuildPlan
+            { compiler: mkUnsafeVersion "0.15.0"
+            , resolutions: Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
+            }
         }
 
     res <- API.readOperation "test/fixtures/issue_created.json"

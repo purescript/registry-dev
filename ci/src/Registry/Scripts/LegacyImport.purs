@@ -21,7 +21,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, readPackagesMetadata, runRegistryM, updatePackagesMetadata)
-import Registry.Schema (Manifest(..), Metadata, Operation(..), Location(..))
+import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..))
 import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Scripts.LegacyImport.Process as Process
@@ -103,6 +103,12 @@ main = Aff.launchAff_ do
         addition = Addition
           { newPackageLocation: manifest.location
           , newRef: Version.rawVersion manifest.version
+          -- The build plan check is not used for legacy packages, so we provide
+          -- a dummy value.
+          , buildPlan: BuildPlan
+              { compiler: unsafeFromRight $ Version.parseVersion Version.Strict "0.15.0"
+              , resolutions: Map.empty
+              }
           , packageName: manifest.name
           }
       log "\n\n----------------------------------------------------------------------"
