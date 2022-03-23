@@ -2,14 +2,18 @@ module Registry.API where
 
 import Registry.Prelude
 
+import Affjax as Http
 import Control.Monad.Except as Except
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
 import Data.DateTime as DateTime
 import Data.Generic.Rep as Generic
 import Data.Int as Int
+import Data.Interpolate (i)
+import Data.JSDate as JSDate
 import Data.Map as Map
 import Data.PreciseDateTime as PDT
+import Data.RFC3339String (RFC3339String)
 import Data.RFC3339String as RFC3339String
 import Data.Set as Set
 import Data.String as String
@@ -235,38 +239,15 @@ indexDir = "../registry-index"
 
 addOrUpdate :: UpdateData -> Metadata -> RegistryM Unit
 addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
-  -- let's get a temp folder to do our stuffs
   tmpDir <- liftEffect $ Tmp.mkTmpDir
+
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
-  { folderName, publishedTime } <- case inputMetadata.location of
-    Git _ -> do
-      -- TODO: Support non-GitHub packages. Remember subdir when implementing this. (See #15)
-      throwWithComment "Packages are only allowed to come from GitHub for now. See #15"
-    GitHub { owner, repo, subdir } -> do
-      -- TODO: Support subdir. In the meantime, we verify subdir is not present. (See #16)
-      when (isJust subdir) $ throwWithComment "`subdir` is not supported for now. See #16"
+  { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir, ref: updateRef, location: inputMetadata.location }
 
-      octokit <- liftEffect GitHub.mkOctokit
-      commit <- liftAff $ GitHub.getRefCommit octokit { owner, repo } updateRef
-      commitDate <- liftAff $ GitHub.getCommitDate octokit { owner, repo } commit
-      let tarballName = updateRef <> ".tar.gz"
-      let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
-      let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
-      log $ "Fetching tarball from GitHub: " <> archiveUrl
-      wget archiveUrl absoluteTarballPath
-      log $ "Tarball downloaded in " <> absoluteTarballPath
-      liftEffect (Tar.getToplevelDir absoluteTarballPath) >>= case _ of
-        Nothing ->
-          throwWithComment "Could not find a toplevel dir in the tarball!"
-        Just dir -> do
-          log "Extracting the tarball..."
-          liftEffect $ Tar.extract { cwd: tmpDir, filename: absoluteTarballPath }
-          pure { folderName: dir, publishedTime: commitDate }
-
-  let absoluteFolderPath = Path.concat [ tmpDir, folderName ]
+  let absoluteFolderPath = Path.concat [ tmpDir, packageDirectory ]
   let manifestPath = Path.concat [ absoluteFolderPath, "purs.json" ]
 
-  log $ "Package extracted in " <> absoluteFolderPath
+  log $ "Package available in " <> absoluteFolderPath
 
   log "Verifying that the package contains a `src` directory"
   whenM (liftAff $ map Array.null $ FastGlob.match' [ "src/**/*.purs" ] { cwd: Just absoluteFolderPath }) do
@@ -445,30 +426,102 @@ isPackageVersionInMetadata packageName version metadataMap =
 
 checkIndexExists :: Aff Unit
 checkIndexExists = do
-  log $ "Checking if the registry-index is present.."
-
+  log "Checking if the registry-index is present..."
   whenM (not <$> FS.exists indexDir) do
     error "Didn't find the 'registry-index' repo, cloning..."
-    (Except.runExceptT $ runGit [ "clone", "https://github.com/purescript/registry-index.git", indexDir ]) >>= case _ of
+    Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", indexDir ]) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> log "Successfully cloned the 'registry-index' repo"
 
+data PursPublishMethod = LegacyPursPublish | PursPublish
+
+-- | A temporary flag that records whether we are using legacy purs publish
+-- | (which requires all packages to be a Git repository) or new purs publish
+-- | (which accepts any directory with package sources).
+pursPublishMethod :: PursPublishMethod
+pursPublishMethod = LegacyPursPublish
+
+fetchPackageSource
+  :: { tmpDir :: FilePath, ref :: String, location :: Location }
+  -> RegistryM { packageDirectory :: FilePath, publishedTime :: RFC3339String }
+fetchPackageSource { tmpDir, ref, location } = case location of
+  Git _ -> do
+    -- TODO: Support non-GitHub packages. Remember subdir when doing so. (See #15)
+    throwWithComment "Packages are only allowed to come from GitHub for now. See #15"
+
+  GitHub { owner, repo, subdir } -> do
+    -- TODO: Support subdir. In the meantime, we verify subdir is not present. (See #16)
+    when (isJust subdir) $ throwWithComment "`subdir` is not supported for now. See #16"
+
+    case pursPublishMethod of
+      LegacyPursPublish -> liftAff do
+        cloneGitRepo (i "https://github.com/" owner "/" repo ".git") tmpDir
+        gitCheckoutRef ref
+        publishedTime <- gitGetRefTime ref
+        -- Cloning will result in the `repo` name as the directory name
+        pure { packageDirectory: repo, publishedTime }
+
+      PursPublish -> do
+        octokit <- liftEffect GitHub.mkOctokit
+        commit <- liftAff $ GitHub.getRefCommit octokit { owner, repo } ref
+        commitDate <- liftAff $ GitHub.getCommitDate octokit { owner, repo } commit
+        let tarballName = ref <> ".tar.gz"
+        let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
+        let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
+        log $ "Fetching tarball from GitHub: " <> archiveUrl
+        wget archiveUrl absoluteTarballPath
+        log $ "Tarball downloaded in " <> absoluteTarballPath
+        liftEffect (Tar.getToplevelDir absoluteTarballPath) >>= case _ of
+          Nothing ->
+            throwWithComment "Could not find a toplevel dir in the tarball!"
+          Just dir -> do
+            log "Extracting the tarball..."
+            liftEffect $ Tar.extract { cwd: tmpDir, filename: absoluteTarballPath }
+            pure { packageDirectory: dir, publishedTime: commitDate }
+
+-- | Clone a package from a Git location to the provided directory.
+cloneGitRepo :: Http.URL -> FilePath -> Aff Unit
+cloneGitRepo url targetDir =
+  Except.runExceptT (runGit [ "clone", url, targetDir ]) >>= case _ of
+    Left err -> Aff.throwError $ Aff.error err
+    Right _ -> log "Successfully cloned package."
+
+-- | Clone a package from GitHub to the provided directory.
+gitCheckoutRef :: String -> Aff Unit
+gitCheckoutRef ref =
+  Except.runExceptT (runGit [ "checkout", ref ]) >>= case _ of
+    Left err -> Aff.throwError $ Aff.error $ "Failed to checkout ref: " <> err
+    Right _ -> log $ "Checked out commit " <> ref
+
+-- | Read the published time of the checked-out commit.
+gitGetRefTime :: String -> Aff RFC3339String
+gitGetRefTime ref = do
+  result <- Except.runExceptT do
+    timestamp <- runGit [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ]
+    jsDate <- liftEffect $ JSDate.parse timestamp
+    dateTime <- Except.except $ note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
+    pure $ PDT.toRFC3339String $ PDT.fromDateTime dateTime
+  case result of
+    Left err -> Aff.throwError $ Aff.error $ "Failed to get ref time: " <> err
+    Right res -> pure res
+
 pushToMaster :: PackageName -> FilePath -> Aff (Either String Unit)
 pushToMaster packageName path = Except.runExceptT do
-  runGit [ "config", "user.name", "PacchettiBotti" ]
-  runGit [ "config", "user.email", "<pacchettibotti@ferrai.io>" ]
-  runGit [ "add", path ]
-  runGit [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ]
-  runGit [ "push", "origin", "master" ]
+  _ <- runGit [ "config", "user.name", "PacchettiBotti" ]
+  _ <- runGit [ "config", "user.email", "<pacchettibotti@ferrai.io>" ]
+  _ <- runGit [ "add", path ]
+  _ <- runGit [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ]
+  _ <- runGit [ "push", "origin", "master" ]
+  pure unit
 
-runGit :: Array String -> ExceptT String Aff Unit
+runGit :: Array String -> ExceptT String Aff String
 runGit args = ExceptT do
   result <- Process.spawn { cmd: "git", args, stdin: Nothing } NodeProcess.defaultSpawnOptions
   case result.exit of
     NodeProcess.Normally 0 -> do
       info result.stdout
       info result.stderr
-      pure $ Right unit
+      pure $ Right result.stdout
     _ -> pure $ Left result.stderr
 
 maxPackageBytes :: Number
