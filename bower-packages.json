@@ -311,7 +311,7 @@
   "purescript-color-palettes": "https://github.com/slamdata/purescript-color-palettes.git",
   "purescript-colorpalettepicker-halogen": "https://github.com/slamdata/purescript-colorpalettepicker-halogen.git",
   "purescript-colorpicker-halogen": "https://github.com/slamdata/purescript-colorpicker-halogen.git",
-  "purescript-colors": "https://github.com/sharkdp/purescript-colors.git",
+  "purescript-colors": "https://github.com/purescript-contrib/purescript-colors.git",
   "purescript-combinators": "https://github.com/awkure/purescript-combinators.git",
   "purescript-compact": "https://github.com/rightfold/purescript-compact.git",
   "purescript-complex": "https://github.com/matthieubulte/purescript-complex.git",
