@@ -66,16 +66,21 @@ instance (Fixture a) => Fixture (Array a) where
 instance (Fixture a) => Fixture (NonEmptyArray a) where
   fixture = NEA.singleton fixture
 
-updateName :: String -> Manifest -> Manifest
-updateName name (Manifest manifest) =
+setName :: String -> Manifest -> Manifest
+setName name (Manifest manifest) =
   Manifest (manifest { name = unsafeFromRight (PackageName.parse name) })
 
-updateVersion :: String -> Manifest -> Manifest
-updateVersion version (Manifest manifest) =
+setVersion :: String -> Manifest -> Manifest
+setVersion version (Manifest manifest) =
   Manifest (manifest { version = unsafeFromRight (Version.parseVersion Version.Strict version)})
 
-updateDependencies :: Array (Tuple String String) -> Manifest -> Manifest
-updateDependencies dependencies (Manifest manifest) =
+setDescription :: String -> Manifest -> Manifest
+setDescription description (Manifest manifest) =
+  Manifest (manifest { description = Just description })
+
+-- | Usage: setDependencies [ Tuple "package-name-one" "2.0.0", Tuple "package-name-two" "3.0.0" ]
+setDependencies :: Array (Tuple String String) -> Manifest -> Manifest
+setDependencies dependencies (Manifest manifest) =
   Manifest (manifest { dependencies = dependencies' })
   where
   dependencies' = Map.fromFoldable (map go dependencies)
@@ -91,13 +96,10 @@ updateDependencies dependencies (Manifest manifest) =
     bumpPatch =
       unsafeFromRight (Version.parseVersion Version.Strict (String.joinWith "." (map show [ Version.major version, Version.minor version, Version.patch version + 1 ])))
 
-
-myPackage :: Manifest
-myPackage =
-  fixture
-    # updateName "colin"
-    # updateVersion "2.0.0"
-
+-- | Creates a perfect binary tree of Manifests
+-- | with all transitive dependencies contained in the resulting array.
+-- | The entry at index 0 is the root.
+-- | Int argument represents the desired depth of the binary tree & should be nonzero.
 manifestTree :: Int -> Array Manifest
 manifestTree depth =
   Array.mapWithIndex go init
@@ -114,7 +116,7 @@ manifestTree depth =
   name :: Int -> String
   name ix = String.joinWith "-" [ fixture, show ix ]
 
-  updateName' = updateName <<< name
+  setName' = setName <<< name
 
   go ix manifest = do
     let
@@ -124,8 +126,8 @@ manifestTree depth =
         ]
 
       updateDeps =
-        if right ix < count then updateDependencies deps else identity
+        if right ix < count then setDependencies deps else identity
 
     manifest
-      # updateName' ix
+      # setName' ix
       # updateDeps
