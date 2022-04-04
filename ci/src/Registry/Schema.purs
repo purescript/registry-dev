@@ -36,6 +36,7 @@ instance RegistryJson Manifest where
     "location" := fields.location
     "owners" := fields.owners
     "description" := fields.description
+    "files" := fields.files
     "dependencies" := fields.dependencies
 
   decode json = do
