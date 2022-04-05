@@ -607,7 +607,7 @@
   "purescript-http-methods": "https://github.com/purescript-contrib/purescript-http-methods.git",
   "purescript-http-request": "https://github.com/chrisdotcode/purescript-requests.git",
   "purescript-http-types": "https://github.com/chrisdotcode/purescript-http-types.git",
-  "purescript-httpure": "https://github.com/cprussin/purescript-httpure.git",
+  "purescript-httpure": "https://github.com/citizennet/purescript-httpure.git",
   "purescript-httpure-contrib-biscotti": "https://github.com/drewolson/purescript-httpure-contrib-biscotti.git",
   "purescript-httpure-middleware": "https://github.com/joneshf/purescript-httpure-middleware.git",
   "purescript-hubot": "https://github.com/mcoffin/purescript-hubot.git",

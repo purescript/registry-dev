@@ -180,5 +180,7 @@
   "purescript-amazons": "https://github.com/Forensor/purescript-amazons.git",
   "purescript-envparse": "https://github.com/srghma/purescript-envparse.git",
   "purescript-halogen-router": "https://github.com/katsujukou/purescript-halogen-router.git",
-  "purescript-unlift": "https://github.com/tweag/purescript-unlift.git"
+  "purescript-unlift": "https://github.com/tweag/purescript-unlift.git",
+  "purescript-affjax-node": "https://github.com/purescript-contrib/purescript-affjax-node.git",
+  "purescript-affjax-web": "https://github.com/purescript-contrib/purescript-affjax-web.git"
 }
