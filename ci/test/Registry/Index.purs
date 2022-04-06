@@ -18,9 +18,9 @@ import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Manifest(..))
+import Test.Fixture.Manifest as Fixture
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
-import Test.Support.Manifest as Support.Manifest
 
 type TestIndexEnv =
   { tmp :: FilePath
@@ -43,14 +43,22 @@ testRegistryIndex = Spec.before runBefore do
       initialIndex <- lift $ Index.readRegistryIndex tmp
       Map.size initialIndex `Assert.shouldEqual` 0
 
+    let
+      mkManifest :: String -> String -> Maybe String -> Manifest
+      mkManifest name version description =
+        Fixture.fixture
+          # Fixture.setName name
+          # Fixture.setVersion version
+          # maybe identity Fixture.setDescription description
+
     sequence_
-      [ insertAndCheck Support.Manifest.ab.name Support.Manifest.ab.v1a
-      , insertAndCheck Support.Manifest.ab.name Support.Manifest.ab.v1b
-      , insertAndCheck Support.Manifest.ab.name Support.Manifest.ab.v2
-      , insertAndCheck Support.Manifest.abc.name Support.Manifest.abc.v1
-      , insertAndCheck Support.Manifest.abc.name Support.Manifest.abc.v2
-      , insertAndCheck Support.Manifest.abcd.name Support.Manifest.abcd.v1
-      , insertAndCheck Support.Manifest.abcd.name Support.Manifest.abcd.v2
+      [ insertAndCheck $ mkManifest "ab" "1.0.0" Nothing
+      , insertAndCheck $ mkManifest "ab" "1.0.0" (Just "Description")
+      , insertAndCheck $ mkManifest "ab" "2.0.0" Nothing
+      , insertAndCheck $ mkManifest "abc" "1.0.0" Nothing
+      , insertAndCheck $ mkManifest "abc" "2.0.0" Nothing
+      , insertAndCheck $ mkManifest "abcd" "1.0.0" Nothing
+      , insertAndCheck $ mkManifest "abcd" "2.0.0" Nothing
       ]
 
     Spec.it "Final on-disk registry index matches the expected directory structure" \{ tmp } -> do
@@ -72,7 +80,7 @@ testRegistryIndex = Spec.before runBefore do
     index <- liftEffect $ Ref.read indexRef
     pure { tmp, index, writeMemory }
 
-  insertAndCheck packageName manifest@(Manifest { version }) = do
+  insertAndCheck manifest@(Manifest { name: packageName, version }) = do
     let specName = "Inserts " <> PackageName.print packageName <> " version " <> show version
 
     Spec.it specName \{ tmp, index, writeMemory } -> do
@@ -82,7 +90,7 @@ testRegistryIndex = Spec.before runBefore do
 
       let
         -- Then we insert the package into the in-memory index, preferring later
-        -- entries in the case of version collisions (as the regsitry index
+        -- entries in the case of version collisions (as the registry index
         -- itself does).
         memoryIndex = Map.insertWith (flip Map.union) packageName (Map.singleton version manifest) index
 

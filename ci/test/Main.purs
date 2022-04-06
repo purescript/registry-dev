@@ -25,6 +25,7 @@ import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 import Safe.Coerce (coerce)
+import Test.Fixture.Manifest as Fixture
 import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
 import Test.Registry.Hash as Registry.Hash
@@ -36,7 +37,6 @@ import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (defaultConfig, runSpec')
-import Test.Support.Manifest as Fixtures
 
 main :: Effect Unit
 main = launchAff_ do
@@ -106,13 +106,8 @@ manifestEncoding = do
       Spec.it (PackageName.print manifest.name <> " " <> Version.rawVersion manifest.version) do
         Json.roundtrip manifest `Assert.shouldContain` manifest
 
-  roundTrip Fixtures.ab.v1a
-  roundTrip Fixtures.ab.v1b
-  roundTrip Fixtures.ab.v2
-  roundTrip Fixtures.abc.v1
-  roundTrip Fixtures.abc.v2
-  roundTrip Fixtures.abcd.v1
-  roundTrip Fixtures.abcd.v2
+  roundTrip Fixture.fixture
+  roundTrip (Fixture.setDependencies [ Tuple "package-a" "1.0.0" ] Fixture.fixture)
 
 removeIgnoredTarballFiles :: Spec.Spec Unit
 removeIgnoredTarballFiles = Spec.before runBefore do
@@ -341,4 +336,3 @@ bowerFileEncoding = do
         , description
         }
     Json.roundtrip bowerFile `Assert.shouldContain` bowerFile
-
