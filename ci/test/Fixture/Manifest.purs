@@ -34,9 +34,10 @@ instance Fixture License where
 
 instance Fixture Owner where
   fixture = Owner
-    { email: fixture
-    , keytype: fixture
-    , public: fixture
+    { email: "user@example.com"
+    , keytype: "ssh-ed25519"
+    , public: "AAAAC3NzaC1lZDI1NTE5AAAAIF6B6R9yp8yFM3wYcOhGO0EyZAefKWkvsTET+KeaegY/"
+    }
     }
 
 instance Fixture Location where
