@@ -38,7 +38,6 @@ instance Fixture Owner where
     , keytype: "ssh-ed25519"
     , public: "AAAAC3NzaC1lZDI1NTE5AAAAIF6B6R9yp8yFM3wYcOhGO0EyZAefKWkvsTET+KeaegY/"
     }
-    }
 
 instance Fixture Location where
   fixture = GitHub { owner: fixture, repo: fixture, subdir: Nothing }
