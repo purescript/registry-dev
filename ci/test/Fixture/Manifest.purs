@@ -72,7 +72,7 @@ setName name (Manifest manifest) =
 
 setVersion :: String -> Manifest -> Manifest
 setVersion version (Manifest manifest) =
-  Manifest (manifest { version = unsafeFromRight (Version.parseVersion Version.Strict version)})
+  Manifest (manifest { version = unsafeFromRight (Version.parseVersion Version.Strict version) })
 
 setDescription :: String -> Manifest -> Manifest
 setDescription description (Manifest manifest) =
@@ -90,7 +90,7 @@ setDependencies dependencies (Manifest manifest) =
 
   mkRangeIncluding :: Version -> Range
   mkRangeIncluding version =
-    unsafeFromRight (Version.parseRange Version.Strict (String.joinWith "" [">=", Version.printVersion version, " <", Version.printVersion bumpPatch ]))
+    unsafeFromRight (Version.parseRange Version.Strict (String.joinWith "" [ ">=", Version.printVersion version, " <", Version.printVersion bumpPatch ]))
     where
     bumpPatch :: Version
     bumpPatch =
