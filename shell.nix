@@ -18,14 +18,31 @@ let
   pursPkgs = import (pkgs.fetchFromGitHub {
     owner = "justinwoo";
     repo = "easy-purescript-nix";
-    rev = "678070816270726e2f428da873fe3f2736201f42";
-    sha256 = "13l9c1sgakpmh9f23201s8d1lnv0zz0q1wsr1lc92wdpkxs9nii4";
+    rev = "86f76316f056628b3693df99ffb1120921e84902";
+    sha256 = "0qpy4j8a0782vgck6lflkw6icxfiymlck6yd4mf62ick23pf4swk";
   }) { inherit pkgs; };
 
+  # Convert a PureScript package from easy-purescript-nix (ie. pursPkgs.purs-0_14_0)
+  # into a shell script of the same name that can be executed at the command line,
+  # such as:
+  #
+  #   $ purs-0_14_0 --version
+  #   0.14.0
+  mkPurs = pursPkg:
+    let
+      stringVersion = builtins.replaceStrings ["."] ["_"] (pkgs.lib.removePrefix "v" (pkgs.lib.getVersion pursPkg));
+    in
+      pkgs.writeShellScriptBin "purs-${stringVersion}" ''
+        exec ${pursPkg}/bin/purs "$@"
+      '';
+
+
+# TODO: Upstream 0.14.9 to easy-purescritp-nix
 in pkgs.stdenv.mkDerivation {
   name = "registry";
   buildInputs = [
-    pursPkgs.purs
+    # Development build inputs
+    pursPkgs.purs-0_14_7
     pursPkgs.spago
     pursPkgs.psa
     pursPkgs.purs-tidy
@@ -41,5 +58,26 @@ in pkgs.stdenv.mkDerivation {
 
     pkgs.jq
     pkgs.licensee
+
+    # Multiple compilers available for building packages
+
+    # 0.13.x series
+    (mkPurs pursPkgs.purs-0_13_0)
+    (mkPurs pursPkgs.purs-0_13_2)
+    (mkPurs pursPkgs.purs-0_13_3)
+    (mkPurs pursPkgs.purs-0_13_4)
+    (mkPurs pursPkgs.purs-0_13_5)
+    (mkPurs pursPkgs.purs-0_13_6)
+    (mkPurs pursPkgs.purs-0_13_8)
+
+    # 0.14.x series
+    (mkPurs pursPkgs.purs-0_14_0)
+    (mkPurs pursPkgs.purs-0_14_1)
+    (mkPurs pursPkgs.purs-0_14_2)
+    (mkPurs pursPkgs.purs-0_14_3)
+    (mkPurs pursPkgs.purs-0_14_4)
+    (mkPurs pursPkgs.purs-0_14_5)
+    (mkPurs pursPkgs.purs-0_14_6)
+    (mkPurs pursPkgs.purs-0_14_7)
   ];
 }
