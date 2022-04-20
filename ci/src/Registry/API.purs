@@ -19,7 +19,6 @@ import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
-import Effect.Aff as Exn
 import Effect.Exception (throw)
 import Effect.Now as Now
 import Effect.Ref as Ref
@@ -610,7 +609,7 @@ callCompiler { version, args, cwd } = do
 
   result <- Aff.try $ Process.spawn { cmd: compiler, stdin: Nothing, args } (NodeProcess.defaultSpawnOptions { cwd = cwd })
   pure $ case result of
-    Left exception -> case Exn.message exception of
+    Left exception -> case Aff.message exception of
       errorMessage
         | errorMessage == String.joinWith " " [ "spawn", compiler, "ENOENT" ] -> Left MissingCompiler
         | otherwise -> Left $ UnknownError errorMessage
