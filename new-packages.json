@@ -1,6 +1,7 @@
 {
   "purescript-quickcheck-state-machine": "https://github.com/the-dr-lazy/purescript-quickcheck-state-machine.git",
   "purescript-effectful": "https://github.com/the-dr-lazy/purescript-effectful.git",
+  "purescript-barbies": "https://github.com/the-dr-lazy/purescript-barbies.git",
   "purescript-halogen-hooks": "https://github.com/thomashoneyman/purescript-halogen-hooks.git",
   "purescript-rmrk-parser": "https://github.com/rmrk-team/purescript-rmrk-parser",
   "purescript-halogen-hooks-extra": "https://github.com/jordanmartinez/purescript-halogen-hooks-extra.git",
