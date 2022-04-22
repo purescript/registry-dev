@@ -130,11 +130,11 @@ data Operation
   | Update UpdateData
   | Authenticated AuthenticatedData
 
-derive instance eqOperation :: Eq Operation
+derive instance Eq Operation
 
-derive instance genericOperation :: Generic.Generic Operation _
+derive instance Generic.Generic Operation _
 
-instance showOperation :: Show Operation where
+instance Show Operation where
   show = case _ of
     Addition inner -> "Addition (" <> show (showWithPackage inner) <> ")"
     Update inner -> "Update (" <> show (showWithPackage inner) <> ")"
