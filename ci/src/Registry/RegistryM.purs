@@ -23,17 +23,17 @@ type Env =
 
 newtype RegistryM a = RegistryM (ReaderT Env Aff a)
 
-derive instance newtypeRegistryM :: Newtype (RegistryM a) _
+derive instance Newtype (RegistryM a) _
 
-derive newtype instance functorRegistryM :: Functor RegistryM
-derive newtype instance applyRegistryM :: Apply RegistryM
-derive newtype instance applicativeRegistryM :: Applicative RegistryM
-derive newtype instance bindRegistryM :: Bind RegistryM
-derive newtype instance monadRegistryM :: Monad RegistryM
-derive newtype instance monadEffectRegistryM :: MonadEffect RegistryM
-derive newtype instance monadAffRegistryM :: MonadAff RegistryM
-derive newtype instance monadErrorRegistryM :: MonadThrow Error RegistryM
-derive newtype instance monadAskRegistryM :: MonadAsk Env RegistryM
+derive newtype instance Functor RegistryM
+derive newtype instance Apply RegistryM
+derive newtype instance Applicative RegistryM
+derive newtype instance Bind RegistryM
+derive newtype instance Monad RegistryM
+derive newtype instance MonadEffect RegistryM
+derive newtype instance MonadAff RegistryM
+derive newtype instance MonadThrow Error RegistryM
+derive newtype instance MonadAsk Env RegistryM
 
 runRegistryM :: forall a. Env -> RegistryM a -> Aff a
 runRegistryM env (RegistryM m) = runReaderT m env
