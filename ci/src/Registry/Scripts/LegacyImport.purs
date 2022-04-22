@@ -112,8 +112,7 @@ main = Aff.launchAff_ do
           , packageName: manifest.name
           }
       log "\n\n----------------------------------------------------------------------"
-      log $ "UPLOADING PACKAGE: " <> show manifest.name <> " " <> show manifest.version
-      logShow addition
+      log $ "UPLOADING PACKAGE: " <> show manifest.name <> "@" <> show manifest.version <> " to " <> show manifest.location
       log "----------------------------------------------------------------------"
       API.runOperation addition
 
