@@ -112,7 +112,6 @@ readOperation eventPath = do
 
 -- TODO: test all the points where the pipeline could throw, to show that we are implementing
 -- all the necessary checks
-
 runOperation :: Operation -> RegistryM Unit
 runOperation operation = case operation of
   -- TODO handle addToPackageSet, addToPursuit
@@ -490,7 +489,7 @@ checkIndexExists = do
   log "Checking if the registry-index is present..."
   whenM (not <$> FS.exists indexDir) do
     error "Didn't find the 'registry-index' repo, cloning..."
-    Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", indexDir ]) >>= case _ of
+    Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", indexDir ] Nothing) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> log "Successfully cloned the 'registry-index' repo"
 
@@ -516,10 +515,11 @@ fetchPackageSource { tmpDir, ref, location } = case location of
 
     case pursPublishMethod of
       LegacyPursPublish -> liftAff do
-        cloneGitRepo (i "https://github.com/" owner "/" repo ".git") tmpDir
-        gitCheckoutRef ref
-        publishedTime <- gitGetRefTime ref
+        log $ "Cloning repo at tag: " <> show { owner, repo, ref }
+        cloneGitTag (i "https://github.com/" owner "/" repo) ref tmpDir
+        log $ "Getting published time..."
         -- Cloning will result in the `repo` name as the directory name
+        publishedTime <- gitGetRefTime ref (Path.concat [ tmpDir, repo ])
         pure { packageDirectory: repo, publishedTime }
 
       PursPublish -> do
@@ -541,24 +541,17 @@ fetchPackageSource { tmpDir, ref, location } = case location of
             pure { packageDirectory: dir, publishedTime: commitDate }
 
 -- | Clone a package from a Git location to the provided directory.
-cloneGitRepo :: Http.URL -> FilePath -> Aff Unit
-cloneGitRepo url targetDir =
-  Except.runExceptT (runGit [ "clone", url, targetDir ]) >>= case _ of
+cloneGitTag :: Http.URL -> String -> FilePath -> Aff Unit
+cloneGitTag url ref targetDir =
+  Except.runExceptT (runGit [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false" ] (Just targetDir)) >>= case _ of
     Left err -> Aff.throwError $ Aff.error err
     Right _ -> log "Successfully cloned package."
 
--- | Clone a package from GitHub to the provided directory.
-gitCheckoutRef :: String -> Aff Unit
-gitCheckoutRef ref =
-  Except.runExceptT (runGit [ "checkout", ref ]) >>= case _ of
-    Left err -> Aff.throwError $ Aff.error $ "Failed to checkout ref: " <> err
-    Right _ -> log $ "Checked out commit " <> ref
-
 -- | Read the published time of the checked-out commit.
-gitGetRefTime :: String -> Aff RFC3339String
-gitGetRefTime ref = do
+gitGetRefTime :: String -> FilePath -> Aff RFC3339String
+gitGetRefTime ref repoDir = do
   result <- Except.runExceptT do
-    timestamp <- runGit [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ]
+    timestamp <- runGit [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir)
     jsDate <- liftEffect $ JSDate.parse timestamp
     dateTime <- Except.except $ note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
     pure $ PDT.toRFC3339String $ PDT.fromDateTime dateTime
@@ -568,22 +561,22 @@ gitGetRefTime ref = do
 
 pushToMaster :: PackageName -> FilePath -> Aff (Either String Unit)
 pushToMaster packageName path = Except.runExceptT do
-  _ <- runGit [ "config", "user.name", "PacchettiBotti" ]
-  _ <- runGit [ "config", "user.email", "<pacchettibotti@ferrai.io>" ]
-  _ <- runGit [ "add", path ]
-  _ <- runGit [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ]
-  _ <- runGit [ "push", "origin", "master" ]
+  _ <- runGit [ "config", "user.name", "PacchettiBotti" ] Nothing
+  _ <- runGit [ "config", "user.email", "<pacchettibotti@ferrai.io>" ] Nothing
+  _ <- runGit [ "add", path ] Nothing
+  _ <- runGit [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] Nothing
+  _ <- runGit [ "push", "origin", "master" ] Nothing
   pure unit
 
-runGit :: Array String -> ExceptT String Aff String
-runGit args = ExceptT do
-  result <- Process.spawn { cmd: "git", args, stdin: Nothing } NodeProcess.defaultSpawnOptions
+runGit :: Array String -> Maybe FilePath -> ExceptT String Aff String
+runGit args cwd = ExceptT do
+  result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
   case result.exit of
     NodeProcess.Normally 0 -> do
       info result.stdout
       info result.stderr
-      pure $ Right result.stdout
-    _ -> pure $ Left result.stderr
+      pure $ Right $ String.trim result.stdout
+    _ -> pure $ Left $ String.trim result.stderr
 
 maxPackageBytes :: Number
 maxPackageBytes = 200_000.0
