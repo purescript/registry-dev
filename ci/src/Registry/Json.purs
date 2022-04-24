@@ -141,7 +141,7 @@ class RegistryJson a where
   encode :: a -> Core.Json
   decode :: Core.Json -> Either String a
 
-instance decodeJsonJson :: RegistryJson Core.Json where
+instance RegistryJson Core.Json where
   encode = identity
   decode = Right
 

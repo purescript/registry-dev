@@ -16,7 +16,7 @@ import Safe.Coerce (coerce)
 -- | An SPDX license identifier such as 'MIT' or 'Apache-2.0'.
 newtype License = License String
 
-derive newtype instance eqLicense :: Eq License
+derive newtype instance Eq License
 
 instance RegistryJson License where
   encode = Json.encode <<< print
