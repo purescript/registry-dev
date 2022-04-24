@@ -13,11 +13,13 @@ module Registry.Prelude
   , unsafeFromRight
   , mapKeys
   , traverseKeys
+  , guardA
   ) where
 
 import Prelude
 
 import Control.Alt ((<|>)) as Extra
+import Control.Alternative (class Alternative, empty)
 import Control.Monad.Error.Class (throwError) as Extra
 import Control.Monad.Except (ExceptT(..)) as Extra
 import Control.Monad.Trans.Class (lift) as Extra
@@ -99,3 +101,6 @@ mapKeys k = Map.fromFoldable <<< map (Extra.lmap k) <<< (Map.toUnfoldable :: _ -
 
 traverseKeys :: forall a b v. Ord a => Ord b => (a -> Either.Either String b) -> Extra.Map a v -> Either.Either String (Extra.Map b v)
 traverseKeys k = map Map.fromFoldable <<< Extra.traverse (ltraverse k) <<< (Map.toUnfoldable :: _ -> Array _)
+
+guardA :: forall f. Alternative f => Boolean -> f Unit
+guardA = if _ then pure unit else empty

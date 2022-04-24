@@ -18,6 +18,8 @@ import Data.RFC3339String as RFC3339String
 import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration (Hours(..))
+import Data.Tuple (uncurry)
+import Data.Tuple.Nested (type (/\))
 import Effect.Aff as Aff
 import Effect.Exception (throw)
 import Effect.Now as Now
@@ -42,11 +44,11 @@ import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
-import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Location(..), Manifest(..), Metadata, Operation(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
+import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
-import Registry.Version (ParseMode(..), Version)
+import Registry.Version (ParseMode(..), Range, Version)
 import Registry.Version as Version
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
@@ -300,7 +302,7 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
     metadata =
       inputMetadata { owners = manifestRecord.owners }
 
-  runChecks metadata manifest
+  runChecks buildPlan metadata manifest
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
@@ -351,8 +353,8 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
 -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
 -- TODO: upload docs to pursuit (see #154)
 
-runChecks :: Metadata -> Manifest -> RegistryM Unit
-runChecks metadata (Manifest manifest) = do
+runChecks :: BuildPlan -> Metadata -> Manifest -> RegistryM Unit
+runChecks (BuildPlan buildPlan) metadata (Manifest manifest) = do
   -- TODO: collect all errors and return them at once. Note: some of the checks
   -- are going to fail while parsing from JSON, so we should move them here if we
   -- want to handle everything together
@@ -373,6 +375,65 @@ runChecks metadata (Manifest manifest) = do
   let pkgsNotInRegistry = Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifest.dependencies
   unless (Array.null pkgsNotInRegistry) do
     throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
+
+  log "Check the submitted build plan matches the manifest"
+  let
+    dependencyUnresolved :: PackageName -> Range -> Maybe (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
+    dependencyUnresolved dependencyName dependencyRange =
+      case Map.lookup dependencyName buildPlan.resolutions of
+        -- If the package is missing from the build plan then the plan is incorrect.
+        Nothing -> Just $ Left $ dependencyName /\ dependencyRange
+        -- If the package exists, but the version is not in the manifest range
+        -- then the build plan is incorrect. Otherwise, this part of the build
+        -- plan is correct.
+        Just version
+          | not (Version.rangeIncludes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
+          | otherwise -> Nothing
+
+    unresolvedDependencies =
+      Array.mapMaybe (uncurry dependencyUnresolved) (Map.toUnfoldable manifest.dependencies)
+
+  unless (Array.null unresolvedDependencies) do
+    let
+      { fail: missingPackages, success: incorrectVersions } = partitionEithers unresolvedDependencies
+
+      printPackageRange (name /\ range) = Array.fold
+        [ "`"
+        , PackageName.print name
+        , "` in range `"
+        , Version.printRange range
+        , "`"
+        ]
+
+      missingPackagesError = do
+        guardA (not Array.null missingPackages)
+        pure
+          $ String.joinWith "\n  - "
+          $ Array.cons "The build plan is missing dependencies that are listed in the manifest:"
+          $ map printPackageRange missingPackages
+
+      printPackageVersion (name /\ range /\ version) = Array.fold
+        [ "`"
+        , PackageName.print name
+        , "@"
+        , Version.printVersion version
+        , "` does not satisfy range `"
+        , Version.printRange range
+        , "`"
+        ]
+
+      incorrectVersionsError = do
+        guardA (not Array.null incorrectVersions)
+        pure
+          $ String.joinWith "\n  - "
+          $ Array.cons "The build plan provides dependencies at versions outside the range listed in the manifest:"
+          $ map printPackageVersion incorrectVersions
+
+    throwWithComment $ String.joinWith "\n\n" $ Array.catMaybes
+      [ Just "All dependencies from the manifest must be in the build plan at valid versions."
+      , missingPackagesError
+      , incorrectVersionsError
+      ]
 
 wget :: String -> String -> RegistryM Unit
 wget url path = do
@@ -586,3 +647,34 @@ writeMetadata packageName metadata { commitFailed, commitSucceeded } = do
   commitToTrunk packageName metadataFilePath >>= case _ of
     Left err -> comment (commitFailed err)
     Right _ -> comment commitSucceeded
+
+-- | Call a specific version of the PureScript compiler
+callCompiler_ :: { version :: String, args :: Array String, cwd :: Maybe FilePath } -> Aff Unit
+callCompiler_ = void <<< callCompiler
+
+data CompilerFailure = UnknownError String | MissingCompiler
+
+derive instance Eq CompilerFailure
+
+-- | Call a specific version of the PureScript compiler
+callCompiler :: { version :: String, args :: Array String, cwd :: Maybe FilePath } -> Aff (Either CompilerFailure String)
+callCompiler { version, args, cwd } = do
+  let
+    -- Converts a string version 'v0.13.0' or '0.13.0' to the standard format for
+    -- executables 'purs-0_13_0'
+    compiler =
+      append "purs-"
+        $ String.replaceAll (String.Pattern ".") (String.Replacement "_")
+        $ fromMaybe version
+        $ String.stripPrefix (String.Pattern "v") version
+
+  result <- Aff.try $ Process.spawn { cmd: compiler, stdin: Nothing, args } (NodeProcess.defaultSpawnOptions { cwd = cwd })
+  pure $ case result of
+    Left exception -> case Aff.message exception of
+      errorMessage
+        | errorMessage == String.joinWith " " [ "spawn", compiler, "ENOENT" ] -> Left MissingCompiler
+        | otherwise -> Left $ UnknownError errorMessage
+    Right { exit: NodeProcess.Normally 0, stdout } ->
+      Right $ String.trim stdout
+    Right { stderr } ->
+      Left $ UnknownError $ String.trim stderr
