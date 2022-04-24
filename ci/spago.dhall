@@ -43,7 +43,6 @@
   , "precise-datetime"
   , "prelude"
   , "profunctor-lenses"
-  , "psci-support"
   , "record"
   , "refs"
   , "safe-coerce"

@@ -16,6 +16,7 @@ import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
+import Registry.API (CompilerFailure(..), callCompiler)
 import Registry.API as API
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
@@ -62,6 +63,8 @@ main = launchAff_ do
         Spec.describe "Authenticated operations" SSH.spec
       Spec.describe "Tarball" do
         removeIgnoredTarballFiles
+      Spec.describe "Compilers" do
+        compilerVersions
     Spec.describe "Bowerfile" do
       Spec.describe "Parses" do
         Spec.describe "Good bower files" goodBowerfiles
@@ -336,3 +339,26 @@ bowerFileEncoding = do
         , description
         }
     Json.roundtrip bowerFile `Assert.shouldContain` bowerFile
+
+compilerVersions :: Spec.Spec Unit
+compilerVersions = do
+  traverse_ testVersion [ "0.13.0", "0.14.0", "0.14.7" ]
+  traverse_ testMissingVersion [ "0.13.1", "0.14.8" ]
+  where
+  testVersion version =
+    Spec.it ("Calls compiler version " <> version) do
+      callCompiler { args: [ "--version" ], cwd: Nothing, version } >>= case _ of
+        Left err -> case err of
+          MissingCompiler ->
+            Assert.fail "MissingCompiler"
+          UnknownError err' ->
+            Assert.fail ("UnknownError: " <> err')
+        Right stdout ->
+          version `Assert.shouldEqual` stdout
+
+  testMissingVersion version =
+    Spec.it ("Handles failure when compiler is missing " <> version) do
+      result <- callCompiler { args: [ "--version" ], cwd: Nothing, version }
+      case result of
+        Left MissingCompiler -> pure unit
+        _ -> Assert.fail "Should have failed with MissingCompiler"

@@ -238,7 +238,7 @@ indexDir :: FilePath
 indexDir = "../registry-index"
 
 addOrUpdate :: UpdateData -> Metadata -> RegistryM Unit
-addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
+addOrUpdate { updateRef, buildPlan: _buildPlan, packageName } inputMetadata = do
   tmpDir <- liftEffect $ Tmp.mkTmpDir
 
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
@@ -586,3 +586,34 @@ writeMetadata packageName metadata { commitFailed, commitSucceeded } = do
   commitToTrunk packageName metadataFilePath >>= case _ of
     Left err -> comment (commitFailed err)
     Right _ -> comment commitSucceeded
+
+-- | Call a specific version of the PureScript compiler
+callCompiler_ :: { version :: String, args :: Array String, cwd :: Maybe FilePath } -> Aff Unit
+callCompiler_ = void <<< callCompiler
+
+data CompilerFailure = UnknownError String | MissingCompiler
+
+derive instance Eq CompilerFailure
+
+-- | Call a specific version of the PureScript compiler
+callCompiler :: { version :: String, args :: Array String, cwd :: Maybe FilePath } -> Aff (Either CompilerFailure String)
+callCompiler { version, args, cwd } = do
+  let
+    -- Converts a string version 'v0.13.0' or '0.13.0' to the standard format for
+    -- executables 'purs-0_13_0'
+    compiler =
+      append "purs-"
+        $ String.replaceAll (String.Pattern ".") (String.Replacement "_")
+        $ fromMaybe version
+        $ String.stripPrefix (String.Pattern "v") version
+
+  result <- Aff.try $ Process.spawn { cmd: compiler, stdin: Nothing, args } (NodeProcess.defaultSpawnOptions { cwd = cwd })
+  pure $ case result of
+    Left exception -> case Aff.message exception of
+      errorMessage
+        | errorMessage == String.joinWith " " [ "spawn", compiler, "ENOENT" ] -> Left MissingCompiler
+        | otherwise -> Left $ UnknownError errorMessage
+    Right { exit: NodeProcess.Normally 0, stdout } ->
+      Right $ String.trim stdout
+    Right { stderr } ->
+      Left $ UnknownError $ String.trim stderr
