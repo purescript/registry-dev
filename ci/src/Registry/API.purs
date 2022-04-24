@@ -86,10 +86,10 @@ data OperationDecoding
   | MalformedJson IssueNumber String
   | DecodedOperation IssueNumber Operation
 
-derive instance eqOperationDecoding :: Eq OperationDecoding
-derive instance genericOperationDecoding :: Generic.Generic OperationDecoding _
+derive instance Eq OperationDecoding
+derive instance Generic.Generic OperationDecoding _
 
-instance showOperationDecoding :: Show OperationDecoding where
+instance Show OperationDecoding where
   show = genericShow
 
 readOperation :: FilePath -> Aff OperationDecoding
