@@ -240,7 +240,7 @@ indexDir :: FilePath
 indexDir = "../registry-index"
 
 addOrUpdate :: UpdateData -> Metadata -> RegistryM Unit
-addOrUpdate { updateRef, buildPlan: _buildPlan, packageName } inputMetadata = do
+addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
   tmpDir <- liftEffect $ Tmp.mkTmpDir
 
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
