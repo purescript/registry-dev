@@ -486,7 +486,7 @@ publishToPursuit _manifest _buildPlan = do
   --   Produce the correct resolutions format:
   --   https://github.com/purescript/purescript/pull/3565
   -- `buildPlanToResolutions`
-  -- Store the result in a tmp directory
+  -- Store the result in the same tmp directory
 
   log "Generating package documentation with 'purs publish'"
   -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
@@ -519,23 +519,20 @@ publishToPursuit _manifest _buildPlan = do
 
 -- TODO: Add tests for this cc: @colinwahl
 --
--- This assumes that dependencies have all already been
--- The resolutions file is expected to be written to the root of the installation
--- directory, as it specifies all dependency package paths as being in the same
--- directory as itself.
---
 -- Resolutions format: https://github.com/purescript/purescript/pull/3565
 --
 -- Note: This interfaces with Pursuit, and therefore we must add purescript-
 -- prefixes to all package names for compatibility with the Bower naming format.
 buildPlanToResolutions
-  :: BuildPlan
+  :: { buildPlan :: BuildPlan, installationDir :: FilePath }
   -> Map RawPackageName { version :: Version, path :: FilePath }
-buildPlanToResolutions (BuildPlan { resolutions }) =
+buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, installationDir } =
   Map.fromFoldable do
     Tuple name version <- (Map.toUnfoldable resolutions :: Array _)
-    let bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
-    pure $ Tuple bowerPackageName { path: PackageName.print name, version }
+    let
+      bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
+      packagePath = Path.concat [ installationDir, PackageName.print name ]
+    pure $ Tuple bowerPackageName { path: packagePath, version }
 
 wget :: String -> String -> RegistryM Unit
 wget url path = do
