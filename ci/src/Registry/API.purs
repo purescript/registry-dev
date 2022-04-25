@@ -367,16 +367,20 @@ runChecks (BuildPlan buildPlan) metadata (Manifest manifest) = do
 
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
+
   let
     pkgNotInRegistry name = case Map.lookup name packages of
       Nothing -> Just name
       Just _p -> Nothing
-  let pkgsNotInRegistry = Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifest.dependencies
+    pkgsNotInRegistry =
+      Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifest.dependencies
+
   unless (Array.null pkgsNotInRegistry) do
     throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
 
   log "Check the submitted build plan matches the manifest"
   let
+    -- TODO: Implement a test for this cc: @colinwahl
     dependencyUnresolved :: PackageName -> Range -> Maybe (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
     dependencyUnresolved dependencyName dependencyRange =
       case Map.lookup dependencyName buildPlan.resolutions of
@@ -433,6 +437,79 @@ runChecks (BuildPlan buildPlan) metadata (Manifest manifest) = do
       , missingPackagesError
       , incorrectVersionsError
       ]
+
+-- TODO: People are likely to mistakenly use the purescript- prefix in their
+-- manifest files even though it isn't necessary anymore. How can we help them
+-- not do this, but still accept packages with the prefix if folks really do
+-- want to have it on there?
+--
+-- Possibly: we throw an error, but give an option to continue by commenting on
+-- the issue? Or submitting the same thing a second time?
+--
+-- This needs a proposal and to be added to the spec.
+
+-- TODO: Assume that this function is only called for non-legacy packages. Legacy
+-- packages should not be automatically published to Pursuit. (Right?)
+
+-- Given these two assumptions (this function is called on non-legacy packages
+-- and on packages where the purescript prefix issue has already been addressed)
+-- this function should call `purs docs` and then push the result to Pursuit
+-- using a GitHub token for the `registry` user.
+publishToPursuit :: Manifest -> BuildPlan -> RegistryM Unit
+publishToPursuit _manifest _buildPlan = do
+  log "Fetching package dependencies"
+  -- TODO: Fetch each dependency at its resolved version, unpack the tarball, and place it within
+  --       a specified directory, such as `.package-dependencies` or `.registry`.
+  --
+  --       For example: `.registry/prelude/...`
+  --
+  -- To install all packages...
+  --
+  -- tmp <- mkTmp
+  -- mkdir tmp/dependencies
+  -- for_ buildPlan.plan.dependencies \package version ->
+  --   contents <- GET packages.purescript.org/package/version
+  --   writeFile package tmp/dependencies/package.tar.gz
+  --   tar tmp/dependencies/package.tar.gz (expands to directory)
+  --   rm tmp/depencencies/package.tar.gz
+  tmpDir <- liftEffect $ Tmp.mkTmpDir
+  liftAff $ FS.mkdir (tmpDir <> Path.sep <> "dependencies")
+
+  log "Generating a resolutions file"
+  -- TODO: Generate a valid resolutions.json file
+  --   Produce the correct resolutions format:
+  --   https://github.com/purescript/purescript/pull/3565
+  -- `buildPlanToResolutions`
+  -- Store the result in a tmp directory
+
+  log "Generating package documentation with 'purs publish'"
+  -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
+  -- package name in the manifest file:
+  -- https://github.com/purescript/purescript/blob/a846892d178d3c9c76c162ca39b9deb6fad4ec8e/src/Language/PureScript/Publish/Registry/Compat.hs#L19
+  --
+  -- TODO: Attempt to retrieve from easy-purescript-nix the provided compiler version. If it doesn't
+  --       work, tell them you need to be using a compiler version >= 0.13.0 and up to the latest
+  --       major version.
+  --
+  --       After writing the build plan to the correct resolutions format in tmp...
+  --       $ purs publish --manifest purs.json --resolutions /tmp/1234/resolutions.json
+  --
+  --       Need to disambiguate between an invalid PureScript version producing an error or compilation
+  --       producing an error. Either way, report that compilation failed and the package could not
+  --       be registered, and print the error.
+  --
+  -- TODO: gzip the result of purs publish so it can be sent to Pursuit
+
+  log "Pushing to Pursuit"
+  -- TODO: Make a POST request to Pursuit with a valid auth token (we'll need to get a `registry`
+  -- Pulp account, no spacchettibotti here), plus the gzipped json from purs publish.
+  --
+  --   See: https://github.com/purescript-contrib/pulp/blob/da8480dbe446f3eae82268d9ce842a6f03b3260f/src/Pulp/Publish.purs#L312-L313
+  --
+  -- Note: We need to use something like `aff-retry` or a manual solution to ensure we retry in the
+  -- case there is a network failure. Wait a few seconds and try again, basically.
+
+  pure unit
 
 wget :: String -> String -> RegistryM Unit
 wget url path = do
