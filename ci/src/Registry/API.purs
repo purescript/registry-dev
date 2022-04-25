@@ -438,13 +438,19 @@ runChecks (BuildPlan buildPlan) metadata (Manifest manifest) = do
       , incorrectVersionsError
       ]
 
+-- TODO: What the hell do we do about the purescript- prefixes, given that the
+-- registry and Spago no longer use them, but Pursuit does? Any interface with
+-- Pursuit will need to re-add the purescript- prefix, until we're ready to
+-- switch Pursuit over to the new naming scheme as well. How do we avoid disaster?
+
 -- TODO: People are likely to mistakenly use the purescript- prefix in their
 -- manifest files even though it isn't necessary anymore. How can we help them
 -- not do this, but still accept packages with the prefix if folks really do
 -- want to have it on there?
 --
 -- Possibly: we throw an error, but give an option to continue by commenting on
--- the issue? Or submitting the same thing a second time?
+-- the issue? Or submitting the same thing a second time? What to do about e.g.
+-- purescript-cst-parser? Maybe it needs manual approval from the registry team?
 --
 -- This needs a proposal and to be added to the spec.
 
@@ -510,6 +516,26 @@ publishToPursuit _manifest _buildPlan = do
   -- case there is a network failure. Wait a few seconds and try again, basically.
 
   pure unit
+
+-- TODO: Add tests for this cc: @colinwahl
+--
+-- This assumes that dependencies have all already been
+-- The resolutions file is expected to be written to the root of the installation
+-- directory, as it specifies all dependency package paths as being in the same
+-- directory as itself.
+--
+-- Resolutions format: https://github.com/purescript/purescript/pull/3565
+--
+-- Note: This interfaces with Pursuit, and therefore we must add purescript-
+-- prefixes to all package names for compatibility with the Bower naming format.
+buildPlanToResolutions
+  :: BuildPlan
+  -> Map RawPackageName { version :: Version, path :: FilePath }
+buildPlanToResolutions (BuildPlan { resolutions }) =
+  Map.fromFoldable do
+    Tuple name version <- (Map.toUnfoldable resolutions :: Array _)
+    let bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
+    pure $ Tuple bowerPackageName { path: PackageName.print name, version }
 
 wget :: String -> String -> RegistryM Unit
 wget url path = do
