@@ -184,5 +184,6 @@
   "purescript-unlift": "https://github.com/tweag/purescript-unlift.git",
   "purescript-affjax-node": "https://github.com/purescript-contrib/purescript-affjax-node.git",
   "purescript-affjax-web": "https://github.com/purescript-contrib/purescript-affjax-web.git",
-  "purescript-foreign-readwrite": "https://github.com/artemisSystem/purescript-foreign-readwrite.git"
+  "purescript-foreign-readwrite": "https://github.com/artemisSystem/purescript-foreign-readwrite.git",
+  "purescript-web-page-visibility": "https://git.sr.ht/~toastal/purescript-web-page-visibility"
 }
