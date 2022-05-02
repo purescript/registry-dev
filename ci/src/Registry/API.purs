@@ -517,8 +517,6 @@ publishToPursuit _manifest _buildPlan = do
 
   pure unit
 
--- TODO: Add tests for this cc: @colinwahl
---
 -- Resolutions format: https://github.com/purescript/purescript/pull/3565
 --
 -- Note: This interfaces with Pursuit, and therefore we must add purescript-

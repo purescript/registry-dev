@@ -65,6 +65,8 @@ main = launchAff_ do
         removeIgnoredTarballFiles
       Spec.describe "Compilers" do
         compilerVersions
+      Spec.describe "Resolutions" do
+        checkBuildPlanToResolutions
     Spec.describe "Bowerfile" do
       Spec.describe "Parses" do
         Spec.describe "Good bower files" goodBowerfiles
@@ -339,6 +341,32 @@ bowerFileEncoding = do
         , description
         }
     Json.roundtrip bowerFile `Assert.shouldContain` bowerFile
+
+checkBuildPlanToResolutions :: Spec.Spec Unit
+checkBuildPlanToResolutions = do
+  Spec.it "buildPlanToResolutions produces expected resolutions file format" do
+    Assert.shouldEqual generatedResolutions expectedResolutions
+  where
+  installationDir = "testDir"
+
+  resolutions = Map.fromFoldable
+    [ Tuple (mkUnsafePackage "prelude") (mkUnsafeVersion "1.0.0")
+    , Tuple (mkUnsafePackage "bifunctors") (mkUnsafeVersion "2.0.0")
+    , Tuple (mkUnsafePackage "ordered-collections") (mkUnsafeVersion "3.0.0")
+    ]
+
+  generatedResolutions =
+    API.buildPlanToResolutions
+      { buildPlan: BuildPlan { compiler: mkUnsafeVersion "0.14.2", resolutions }
+      , installationDir
+      }
+
+  expectedResolutions = Map.fromFoldable do
+    packageName /\ version <- (Map.toUnfoldable resolutions :: Array _)
+    let
+      bowerName = RawPackageName ("purescript-" <> PackageName.print packageName)
+      path = Path.concat [ installationDir, PackageName.print packageName ]
+    pure $ Tuple bowerName { path, version }
 
 compilerVersions :: Spec.Spec Unit
 compilerVersions = do
