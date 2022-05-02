@@ -353,17 +353,17 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
 -- TODO: upload docs to pursuit (see #154)
 
 runChecks :: BuildPlan -> Metadata -> Manifest -> RegistryM Unit
-runChecks (BuildPlan buildPlan) metadata (Manifest manifest) = do
+runChecks buildPlan metadata manifest@(Manifest manifestFields) = do
   -- TODO: collect all errors and return them at once. Note: some of the checks
   -- are going to fail while parsing from JSON, so we should move them here if we
   -- want to handle everything together
   log "Running checks for the following manifest:"
-  logShow manifest
+  logShow manifestFields
 
   log "Check that version is unique"
-  case Map.lookup manifest.version metadata.published of
+  case Map.lookup manifestFields.version metadata.published of
     Nothing -> pure unit
-    Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> Version.printVersion manifest.version <> "\nIts metadata is: " <> show info
+    Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> Version.printVersion manifestFields.version <> "\nIts metadata is: " <> show info
 
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
@@ -373,28 +373,15 @@ runChecks (BuildPlan buildPlan) metadata (Manifest manifest) = do
       Nothing -> Just name
       Just _p -> Nothing
     pkgsNotInRegistry =
-      Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifest.dependencies
+      Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifestFields.dependencies
 
   unless (Array.null pkgsNotInRegistry) do
     throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
 
   log "Check the submitted build plan matches the manifest"
-  let
-    -- TODO: Implement a test for this cc: @colinwahl
-    dependencyUnresolved :: PackageName -> Range -> Maybe (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
-    dependencyUnresolved dependencyName dependencyRange =
-      case Map.lookup dependencyName buildPlan.resolutions of
-        -- If the package is missing from the build plan then the plan is incorrect.
-        Nothing -> Just $ Left $ dependencyName /\ dependencyRange
-        -- If the package exists, but the version is not in the manifest range
-        -- then the build plan is incorrect. Otherwise, this part of the build
-        -- plan is correct.
-        Just version
-          | not (Version.rangeIncludes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
-          | otherwise -> Nothing
 
-    unresolvedDependencies =
-      Array.mapMaybe (uncurry dependencyUnresolved) (Map.toUnfoldable manifest.dependencies)
+  let
+    unresolvedDependencies = getUnresolvedDependencies manifest buildPlan
 
   unless (Array.null unresolvedDependencies) do
     let
@@ -437,6 +424,22 @@ runChecks (BuildPlan buildPlan) metadata (Manifest manifest) = do
       , missingPackagesError
       , incorrectVersionsError
       ]
+
+getUnresolvedDependencies :: Manifest -> BuildPlan -> Array (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
+getUnresolvedDependencies (Manifest { dependencies }) (BuildPlan { resolutions }) =
+  Array.mapMaybe (uncurry dependencyUnresolved) (Map.toUnfoldable dependencies)
+  where
+  dependencyUnresolved :: PackageName -> Range -> Maybe (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
+  dependencyUnresolved dependencyName dependencyRange =
+    case Map.lookup dependencyName resolutions of
+      -- If the package is missing from the build plan then the plan is incorrect.
+      Nothing -> Just $ Left $ dependencyName /\ dependencyRange
+      -- If the package exists, but the version is not in the manifest range
+      -- then the build plan is incorrect. Otherwise, this part of the build
+      -- plan is correct.
+      Just version
+        | not (Version.rangeIncludes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
+        | otherwise -> Nothing
 
 -- TODO: What the hell do we do about the purescript- prefixes, given that the
 -- registry and Spago no longer use them, but Pursuit does? Any interface with
