@@ -1,7 +1,4 @@
 {
-  "purescript-quickcheck-state-machine": "https://github.com/the-dr-lazy/purescript-quickcheck-state-machine.git",
-  "purescript-effectful": "https://github.com/the-dr-lazy/purescript-effectful.git",
-  "purescript-barbies": "https://github.com/the-dr-lazy/purescript-barbies.git",
   "purescript-halogen-hooks": "https://github.com/thomashoneyman/purescript-halogen-hooks.git",
   "purescript-rmrk-parser": "https://github.com/rmrk-team/purescript-rmrk-parser",
   "purescript-halogen-hooks-extra": "https://github.com/jordanmartinez/purescript-halogen-hooks-extra.git",
@@ -171,6 +168,9 @@
   "purescript-maps-eager": "https://github.com/JoelLefkowitz/purescript-maps-eager.git",
   "purescript-repr": "https://github.com/JoelLefkowitz/purescript-repr.git",
   "purescript-roman": "https://github.com/JoelLefkowitz/purescript-roman.git",
+  "purescript-quickcheck-state-machine": "https://github.com/the-dr-lazy/purescript-quickcheck-state-machine.git",
+  "purescript-effectful": "https://github.com/the-dr-lazy/purescript-effectful.git",
+  "purescript-barbies": "https://github.com/the-dr-lazy/purescript-barbies.git",
   "purescript-glapple": "https://github.com/yukikurage/purescript-glapple.git",
   "purescript-mdast-util-from-markdown": "https://github.com/sigma-andex/purescript-mdast-util-from-markdown.git",
   "purescript-web-speech": "https://github.com/dirkz/purescript-web-speech.git",
