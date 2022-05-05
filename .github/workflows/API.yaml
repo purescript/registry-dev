@@ -55,4 +55,7 @@ jobs:
             access-tokens = github.com=${{ env.GITHUB_TOKEN }}
 
       - name: "Run API"
-        run: nix develop --command "cd ci && registry-install && registry-api"
+        run: |
+          cd ci
+          nix develop --command 'registry-install'
+          nix develop --command 'registry-api'
