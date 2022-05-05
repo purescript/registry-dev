@@ -30,8 +30,8 @@ jobs:
         with:
           key: ${{ runner.os }}-spago-${{ hashFiles('./ci/**/*.dhall') }}
           path: |
-            .spago
-            output
+            ./ci/.spago
+            ./ci/output
 
       - name: Install Nix
         uses: cachix/install-nix-action@v16
