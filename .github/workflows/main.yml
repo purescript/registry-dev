@@ -45,7 +45,7 @@ jobs:
         uses: cachix/install-nix-action@v16
         with:
           extra_nix_config: |
-            access-tokens = github.com=${{ GITHUB_TOKEN }}
+            access-tokens = github.com=${{ env.GITHUB_TOKEN }}
 
       # Pro-tempore checks, should go away once new registry is in place
       - run: nix develop --command 'registry-verify-unique'
