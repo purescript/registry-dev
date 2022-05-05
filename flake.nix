@@ -113,14 +113,14 @@
 
               for FILE in $(find v1 -iname "*.dhall")
               do
-                echo "Typechecking $\{FILE}";
-                dhall <<< "./$\{FILE}" > /dev/null
+                echo "Typechecking ''${FILE}";
+                dhall <<< "./''${FILE}" > /dev/null
               done
 
               for FILE in $(find examples -iname "*.json")
               do
-                echo "Conforming $\{FILE} to the Manifest type"
-                cat "$\{FILE}" | json-to-dhall --records-loose --unions-strict "./v1/Manifest.dhall" > /dev/null
+                echo "Conforming ''${FILE} to the Manifest type"
+                cat "''${FILE}" | json-to-dhall --records-loose --unions-strict "./v1/Manifest.dhall" > /dev/null
               done
             '';
           };
