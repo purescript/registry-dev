@@ -59,17 +59,26 @@
         #
         # To add a new compiler to the list, just update easy-purescript-nix:
         #   $ nix flake update
-        pursCompilers = let
-          compilers = pkgs.lib.filterAttrs
-            (name: _: (pkgs.lib.getName name == "purescript"))
+        compilers = let
+          # Only include the compiler at normal MAJOR.MINOR.PATCH versions.
+          pursOnly = pkgs.lib.filterAttrs
+            (name: _: (builtins.match "^purs-[0-9]_[0-9]+_[0-9]$" name != null))
             pkgs.pursPackages;
 
-        in pkgs.lib.mapAttrsToList (name: value:
-          pkgs.writeShellScriptBin "${name}" ''
-            exec ${value}/bin/purs "$@"
-          '') compilers;
+        in pkgs.symlinkJoin {
+          name = "purs-compilers";
+          paths = pkgs.lib.mapAttrsToList (name: drv:
+            pkgs.writeShellScriptBin name ''
+              exec ${drv}/bin/purs "$@"
+            '') pursOnly;
+        };
 
-        # Various scripts we would like to be able to run via a Nix shell
+        # Various scripts we would like to be able to run via a Nix shell. Once
+        # in a shell via `nix develop`, these can be run, e.g.
+        #
+        #   $ registry-check-format
+        #   All files formatted.
+        #
         scripts = pkgs.symlinkJoin {
           name = "scripts";
           paths = pkgs.lib.mapAttrsToList pkgs.writeShellScriptBin {
@@ -130,7 +139,11 @@
         devShells = {
           default = pkgs.mkShell {
             name = "registry";
-            buildInputs = pursCompilers ++ (with pkgs; [
+            buildInputs = with pkgs; [
+              # Helpful utilities
+              scripts
+              compilers
+
               # Project tooling
               nixFlakes
               nixfmt
@@ -150,10 +163,7 @@
               pursPackages.psa
               pursPackages.purs-tidy
               pursPackages.purescript-language-server
-
-              # Helpful utilities
-              scripts
-            ]);
+            ];
           };
         };
       });
