@@ -127,12 +127,6 @@
         };
 
       in {
-        apps = {
-          registry-api = pkgs.writeShellScriptBin "registry-api" ''
-            spago run -m Registry.API
-          '';
-        };
-
         devShells = {
           default = pkgs.mkShell {
             name = "registry";
