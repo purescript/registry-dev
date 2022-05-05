@@ -24,14 +24,6 @@ jobs:
           token: ${{ secrets.PACCHETTIBOTTI_TOKEN }}
           ref: master
 
-      - name: Cache Nix store
-        uses: actions/cache@v3
-        env:
-          cache-name: nix-store-cache
-        with:
-          path: /nix/store
-          key: nix-store
-
       - name: Cache NPM dependencies
         uses: actions/cache@v2
         with:
