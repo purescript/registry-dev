@@ -55,7 +55,10 @@ jobs:
         run: nix develop --command 'registry-verify-dhall'
 
       - name: "Run tests"
-        run: cd ci && nix develop --command 'registry-test'
+        run: |
+          cd ci
+          nix develop --command 'registry-install'
+          nix develop --command 'registry-test'
 
       - name: "Verify CI code formats"
         run: cd ci && nix develop --command 'registry-check-format'
