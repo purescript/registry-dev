@@ -139,7 +139,7 @@
         devShells = {
           default = pkgs.mkShell {
             name = "registry";
-            buildInputs = with pkgs; [
+            packages = with pkgs; [
               # Helpful utilities
               scripts
               compilers
