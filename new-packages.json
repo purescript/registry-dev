@@ -189,5 +189,6 @@
   "purescript-web-page-visibility": "https://git.sr.ht/~toastal/purescript-web-page-visibility",
   "purescript-web-pointerevents": "https://github.com/gbagan/purescript-web-pointerevents.git",
   "purescript-qualified-do": "https://github.com/artemisSystem/purescript-qualified-do.git",
-  "purescript-int64": "https://github.com/purescript-contrib/purescript-int64.git"
+  "purescript-int64": "https://github.com/purescript-contrib/purescript-int64.git",
+  "purescript-generate-values": "https://github.com/jordanmartinez/purescript-generate-values.git"
 }
