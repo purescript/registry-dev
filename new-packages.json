@@ -188,5 +188,6 @@
   "purescript-argparse-basic": "https://github.com/natefaubion/purescript-argparse-basic.git",
   "purescript-web-page-visibility": "https://git.sr.ht/~toastal/purescript-web-page-visibility",
   "purescript-web-pointerevents": "https://github.com/gbagan/purescript-web-pointerevents.git",
-  "purescript-qualified-do": "https://github.com/artemisSystem/purescript-qualified-do.git"
+  "purescript-qualified-do": "https://github.com/artemisSystem/purescript-qualified-do.git",
+  "purescript-generate-values": "https://github.com/jordanmartinez/purescript-generate-values.git"
 }
