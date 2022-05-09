@@ -398,7 +398,7 @@ checkBuildPlanToResolutions = do
   Spec.it "buildPlanToResolutions produces expected resolutions file format" do
     Assert.shouldEqual generatedResolutions expectedResolutions
   where
-  installationDir = "testDir"
+  dependenciesDir = "testDir"
 
   resolutions = Map.fromFoldable
     [ Tuple (mkUnsafePackage "prelude") (mkUnsafeVersion "1.0.0")
@@ -409,14 +409,14 @@ checkBuildPlanToResolutions = do
   generatedResolutions =
     API.buildPlanToResolutions
       { buildPlan: BuildPlan { compiler: mkUnsafeVersion "0.14.2", resolutions }
-      , installationDir
+      , dependenciesDir
       }
 
   expectedResolutions = Map.fromFoldable do
     packageName /\ version <- (Map.toUnfoldable resolutions :: Array _)
     let
       bowerName = RawPackageName ("purescript-" <> PackageName.print packageName)
-      path = Path.concat [ installationDir, PackageName.print packageName ]
+      path = Path.concat [ dependenciesDir, PackageName.print packageName ]
     pure $ Tuple bowerName { path, version }
 
 compilerVersions :: Spec.Spec Unit

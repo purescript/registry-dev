@@ -465,31 +465,26 @@ getUnresolvedDependencies (Manifest { dependencies }) (BuildPlan { resolutions }
 -- this function should call `purs docs` and then push the result to Pursuit
 -- using a GitHub token for the `registry` user.
 publishToPursuit :: Manifest -> BuildPlan -> RegistryM Unit
-publishToPursuit _manifest _buildPlan = do
+publishToPursuit _manifest buildPlan@(BuildPlan { resolutions }) = do
   log "Fetching package dependencies"
-  -- TODO: Fetch each dependency at its resolved version, unpack the tarball, and place it within
-  --       a specified directory, such as `.package-dependencies` or `.registry`.
-  --
-  --       For example: `.registry/prelude/...`
-  --
-  -- To install all packages...
-  --
-  -- tmp <- mkTmp
-  -- mkdir tmp/dependencies
-  -- for_ buildPlan.plan.dependencies \package version ->
-  --   contents <- GET packages.purescript.org/package/version
-  --   writeFile package tmp/dependencies/package.tar.gz
-  --   tar tmp/dependencies/package.tar.gz (expands to directory)
-  --   rm tmp/depencencies/package.tar.gz
+  -- Fetch each dependency at its resolved version, unpack the tarball, and place it within
+  -- a specified directory, such as `.package-dependencies` or `.registry`.
   tmpDir <- liftEffect $ Tmp.mkTmpDir
-  liftAff $ FS.mkdir (tmpDir <> Path.sep <> "dependencies")
+
+  let dependenciesDir = tmpDir <> Path.sep <> "dependencies"
+
+  liftAff $ FS.mkdir dependenciesDir
+
+  for_ (Map.toUnfoldable resolutions :: Array _) \(Tuple packageName version) -> do
+    let filename = PackageName.print packageName <> ".tar.gz"
+    wget ("packages.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version) (dependenciesDir <> Path.sep <> filename)
+    -- TODO: If this extracts package.tar.gz into a directory called package, then we are good.
+    -- If it extracts into the current directory, need to move files somehow.
+    liftEffect $ Tar.extract { cwd: dependenciesDir, filename }
+    liftAff $ FS.unlink filename
 
   log "Generating a resolutions file"
-  -- TODO: Generate a valid resolutions.json file
-  --   Produce the correct resolutions format:
-  --   https://github.com/purescript/purescript/pull/3565
-  -- `buildPlanToResolutions`
-  -- Store the result in the same tmp directory
+  liftAff $ Json.writeJsonFile (tmpDir <> Path.sep <> "resolutions.json") (buildPlanToResolutions { buildPlan, dependenciesDir })
 
   log "Generating package documentation with 'purs publish'"
   -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
@@ -525,17 +520,17 @@ publishToPursuit _manifest _buildPlan = do
 -- Note: This interfaces with Pursuit, and therefore we must add purescript-
 -- prefixes to all package names for compatibility with the Bower naming format.
 buildPlanToResolutions
-  :: { buildPlan :: BuildPlan, installationDir :: FilePath }
+  :: { buildPlan :: BuildPlan, dependenciesDir :: FilePath }
   -> Map RawPackageName { version :: Version, path :: FilePath }
-buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, installationDir } =
+buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir } =
   Map.fromFoldable do
     Tuple name version <- (Map.toUnfoldable resolutions :: Array _)
     let
       bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
-      packagePath = Path.concat [ installationDir, PackageName.print name ]
+      packagePath = Path.concat [ dependenciesDir, PackageName.print name ]
     pure $ Tuple bowerPackageName { path: packagePath, version }
 
-wget :: String -> String -> RegistryM Unit
+wget :: String -> FilePath -> RegistryM Unit
 wget url path = do
   let cmd = "wget"
   let stdin = Nothing
