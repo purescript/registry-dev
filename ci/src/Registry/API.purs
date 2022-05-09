@@ -464,8 +464,8 @@ getUnresolvedDependencies (Manifest { dependencies }) (BuildPlan { resolutions }
 -- and on packages where the purescript prefix issue has already been addressed)
 -- this function should call `purs docs` and then push the result to Pursuit
 -- using a GitHub token for the `registry` user.
-publishToPursuit :: Manifest -> BuildPlan -> RegistryM Unit
-publishToPursuit _manifest buildPlan@(BuildPlan { resolutions }) = do
+publishToPursuit :: FilePath -> Manifest -> BuildPlan -> RegistryM Unit
+publishToPursuit packageSourceDir _manifest buildPlan@(BuildPlan { compiler, resolutions }) = do
   log "Fetching package dependencies"
   -- Fetch each dependency at its resolved version, unpack the tarball, and place it within
   -- a specified directory, such as `.package-dependencies` or `.registry`.
@@ -484,18 +484,15 @@ publishToPursuit _manifest buildPlan@(BuildPlan { resolutions }) = do
     liftAff $ FS.unlink filename
 
   log "Generating a resolutions file"
-  liftAff $ Json.writeJsonFile (tmpDir <> Path.sep <> "resolutions.json") (buildPlanToResolutions { buildPlan, dependenciesDir })
+  let resolutionsFilePath = tmpDir <> Path.sep <> "resolutions.json"
+  liftAff $ Json.writeJsonFile resolutionsFilePath (buildPlanToResolutions { buildPlan, dependenciesDir })
 
   log "Generating package documentation with 'purs publish'"
   -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
   -- package name in the manifest file:
   -- https://github.com/purescript/purescript/blob/a846892d178d3c9c76c162ca39b9deb6fad4ec8e/src/Language/PureScript/Publish/Registry/Compat.hs#L19
   --
-  -- TODO: Attempt to retrieve from easy-purescript-nix the provided compiler version. If it doesn't
-  --       work, tell them you need to be using a compiler version >= 0.13.0 and up to the latest
-  --       major version.
-  --
-  --       After writing the build plan to the correct resolutions format in tmp...
+  -- TODO: Publish the package via:
   --       $ purs publish --manifest purs.json --resolutions /tmp/1234/resolutions.json
   --
   --       Need to disambiguate between an invalid PureScript version producing an error or compilation
@@ -503,6 +500,16 @@ publishToPursuit _manifest buildPlan@(BuildPlan { resolutions }) = do
   --       be registered, and print the error.
   --
   -- TODO: gzip the result of purs publish so it can be sent to Pursuit
+  compilerOutput <- liftAff $ callCompiler
+    { args: [ "publish", "--manifest", "purs.json", "--resolutions", resolutionsFilePath ]
+    , version: Version.printVersion compiler
+    , cwd: Just packageSourceDir
+    }
+
+  case compilerOutput of
+    Left (UnknownError err) -> throwWithComment $ String.joinWith "\n" [ "Publishing failed for your package due to a compiler error:", "```", err, "```" ]
+    Left MissingCompiler -> throwWithComment $ Array.fold [ "Publishing failed because the build plan compiler version ", Version.printVersion compiler, " is not supported. Please try again with a different compiler." ]
+    Right output -> ?a
 
   log "Pushing to Pursuit"
   -- TODO: Make a POST request to Pursuit with a valid auth token (we'll need to get a `registry`
