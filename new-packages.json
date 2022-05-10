@@ -192,6 +192,5 @@
   "purescript-int64": "https://github.com/purescript-contrib/purescript-int64.git",
   "purescript-generate-values": "https://github.com/jordanmartinez/purescript-generate-values.git",
   "purescript-language-cst-parser": "https://github.com/natefaubion/purescript-language-cst-parser.git",
-  "purescript-json": "https://github.com/rowtype-yoga/purescript-json.git",
-  "purescript-fetch": "https://github.com/rowtype-yoga/purescript-fetch.git"
+  "purescript-json": "https://github.com/rowtype-yoga/purescript-json.git"
 }
