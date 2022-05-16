@@ -416,7 +416,7 @@ checkBuildPlanToResolutions = do
     packageName /\ version <- (Map.toUnfoldable resolutions :: Array _)
     let
       bowerName = RawPackageName ("purescript-" <> PackageName.print packageName)
-      path = Path.concat [ dependenciesDir, PackageName.print packageName ]
+      path = Path.concat [ dependenciesDir, PackageName.print packageName <> "-" <> Version.printVersion version ]
     pure $ Tuple bowerName { path, version }
 
 compilerVersions :: Spec.Spec Unit
