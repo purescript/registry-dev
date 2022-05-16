@@ -2,16 +2,24 @@ module Registry.API where
 
 import Registry.Prelude
 
+import Affjax as AX
 import Affjax as Http
+import Affjax.RequestBody as AXRB
+import Affjax.RequestHeader as AXRH
+import Affjax.ResponseFormat as AXRF
+import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Except as Except
+import Data.Argonaut.Parser as Argonaut.Core
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
 import Data.DateTime as DateTime
 import Data.Generic.Rep as Generic
+import Data.HTTP.Method as Method
 import Data.Int as Int
 import Data.Interpolate (i)
 import Data.JSDate as JSDate
 import Data.Map as Map
+import Data.MediaType.Common as MediaType
 import Data.PreciseDateTime as PDT
 import Data.RFC3339String (RFC3339String)
 import Data.RFC3339String as RFC3339String
@@ -36,6 +44,7 @@ import Node.FS.Aff as FS
 import Node.FS.Stats as FS.Stats
 import Node.Path as Path
 import Node.Process as Env
+import Node.Process as Node.Process
 import Registry.Hash as Hash
 import Registry.Index as Index
 import Registry.Json as Json
@@ -308,19 +317,19 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
   -- We need the version number to upload the package
   let newVersion = manifestRecord.version
   let newDirname = PackageName.print packageName <> "-" <> Version.printVersion newVersion
-  let tarballDirname = Path.concat [ tmpDir, newDirname ]
-  liftAff $ FS.Extra.ensureDirectory tarballDirname
+  let packageSourceDir = Path.concat [ tmpDir, newDirname ]
+  liftAff $ FS.Extra.ensureDirectory packageSourceDir
   case manifestRecord.files of
     Nothing -> liftAff do
       -- When the files key is not specified, we preserve all files except for
       -- those we explicitly ignore.
-      FS.Extra.copy { from: absoluteFolderPath, to: tarballDirname }
-      removeIgnoredTarballFiles tarballDirname
+      FS.Extra.copy { from: absoluteFolderPath, to: packageSourceDir }
+      removeIgnoredTarballFiles packageSourceDir
     Just _ ->
       -- TODO: Pick only files the user indicated we should include, and then
       -- remove files we explicitly ignore.
       throwWithComment "The 'files' key is not yet supported.\ncc @purescript/packaging"
-  let tarballPath = tarballDirname <> ".tar.gz"
+  let tarballPath = packageSourceDir <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.stat tarballPath
@@ -339,18 +348,24 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
     { commitFailed: \_ -> "Package uploaded, but committing metadata failed.\ncc: @purescript/packaging"
     , commitSucceeded: "Successfully uploaded package to the registry! 🎉 🚀"
     }
+
   closeIssue
 
   -- Optional steps below:
   -- TODO don't fail the pipeline if one of them fails
 
   -- Add to the registry index
+  -- TODO: commit the registry-index
   liftAff $ Index.insertManifest indexDir manifest
 
--- TODO: commit the registry-index
+  unless isLegacyImport do
+    -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
+    pure unit
 
--- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
--- TODO: upload docs to pursuit (see #154)
+  unless isLegacyImport do
+    log "Uploading to Pursuit"
+    publishToPursuit { packageSourceDir, buildPlan }
+    comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
 runChecks :: BuildPlan -> Metadata -> Manifest -> RegistryM Unit
 runChecks buildPlan metadata manifest@(Manifest manifestFields) = do
@@ -441,100 +456,103 @@ getUnresolvedDependencies (Manifest { dependencies }) (BuildPlan { resolutions }
         | not (Version.rangeIncludes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
         | otherwise -> Nothing
 
--- TODO: What the hell do we do about the purescript- prefixes, given that the
--- registry and Spago no longer use them, but Pursuit does? Any interface with
--- Pursuit will need to re-add the purescript- prefix, until we're ready to
--- switch Pursuit over to the new naming scheme as well. How do we avoid disaster?
-
--- TODO: People are likely to mistakenly use the purescript- prefix in their
--- manifest files even though it isn't necessary anymore. How can we help them
--- not do this, but still accept packages with the prefix if folks really do
--- want to have it on there?
---
--- Possibly: we throw an error, but give an option to continue by commenting on
--- the issue? Or submitting the same thing a second time? What to do about e.g.
--- purescript-cst-parser? Maybe it needs manual approval from the registry team?
---
--- This needs a proposal and to be added to the spec.
-
--- TODO: Assume that this function is only called for non-legacy packages. Legacy
--- packages should not be automatically published to Pursuit. (Right?)
-
--- Given these two assumptions (this function is called on non-legacy packages
--- and on packages where the purescript prefix issue has already been addressed)
--- this function should call `purs docs` and then push the result to Pursuit
--- using a GitHub token for the `registry` user.
---
 type PublishToPursuit =
   { packageSourceDir :: FilePath
   , buildPlan :: BuildPlan
-  , isLegacyImport :: Boolean
   }
 
+-- | Publishes a package to Pursuit.
+-- |
+-- | ASSUMPTIONS: This function should not be run on legacy packages or on
+-- | packages where the `purescript-` prefix is still present.
 publishToPursuit :: PublishToPursuit -> RegistryM Unit
-publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler, resolutions }), isLegacyImport } = do
+publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler, resolutions }) } = do
   log "Fetching package dependencies"
-  -- Fetch each dependency at its resolved version, unpack the tarball, and place it within
-  -- a specified directory, such as `.package-dependencies` or `.registry`.
   tmpDir <- liftEffect $ Tmp.mkTmpDir
-
   let dependenciesDir = tmpDir <> Path.sep <> "dependencies"
-
   liftAff $ FS.mkdir dependenciesDir
 
+  -- We fetch every dependency at its resolved version, unpack the tarball, and
+  -- store the resulting source code in a specified directory for dependencies.
   for_ (Map.toUnfoldable resolutions :: Array _) \(Tuple packageName version) -> do
     let
+      -- This filename uses the format the directory name will have once
+      -- unpacked, ie. package-name-major.minor.patch
       filename = PackageName.print packageName <> "-" <> Version.printVersion version <> ".tar.gz"
       filepath = dependenciesDir <> Path.sep <> filename
     wget ("packages.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath
-    -- TODO: If this extracts package.tar.gz into a directory called package, then we are good.
-    -- If it extracts into the current directory, need to move files somehow.
     liftEffect $ Tar.extract { cwd: dependenciesDir, filename: filepath }
     liftAff $ FS.unlink filepath
 
-  packageDir <- liftAff $ FS.readdir dependenciesDir
-  logShow packageDir
-
   log "Generating a resolutions file"
-
   let
-    resolutions = buildPlanToResolutions { buildPlan, dependenciesDir }
+    resolvedPaths = buildPlanToResolutions { buildPlan, dependenciesDir }
     resolutionsFilePath = tmpDir <> Path.sep <> "resolutions.json"
 
-  liftAff $ Json.writeJsonFile resolutionsFilePath resolutions
+  liftAff $ Json.writeJsonFile resolutionsFilePath resolvedPaths
 
-  log "Generating package documentation with 'purs publish'"
   -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
   -- package name in the manifest file:
   -- https://github.com/purescript/purescript/blob/a846892d178d3c9c76c162ca39b9deb6fad4ec8e/src/Language/PureScript/Publish/Registry/Compat.hs#L19
   --
-  -- TODO: Publish the package via:
-  --       $ purs publish --manifest purs.json --resolutions /tmp/1234/resolutions.json
-  --
-  --       Need to disambiguate between an invalid PureScript version producing an error or compilation
-  --       producing an error. Either way, report that compilation failed and the package could not
-  --       be registered, and print the error.
-  --
-  -- TODO: gzip the result of purs publish so it can be sent to Pursuit
+  -- The resulting documentation will all use purescript- prefixes in keeping
+  -- with the format used by Pursuit in PureScript versions at least up to 0.16
   compilerOutput <- liftAff $ callCompiler
     { args: [ "publish", "--manifest", "purs.json", "--resolutions", resolutionsFilePath ]
     , version: Version.printVersion compiler
     , cwd: Just packageSourceDir
     }
 
-  _ <- case compilerOutput of
+  publishJson <- case compilerOutput of
     Left (UnknownError err) -> throwWithComment $ String.joinWith "\n" [ "Publishing failed for your package due to a compiler error:", "```", err, "```" ]
     Left MissingCompiler -> throwWithComment $ Array.fold [ "Publishing failed because the build plan compiler version ", Version.printVersion compiler, " is not supported. Please try again with a different compiler." ]
-    Right output -> log output -- TODO
+    Right publishResult -> do
+      -- The output contains plenty of diagnostic lines, ie. "Compiling ..."
+      -- but we only want the final JSON payload.
+      let lines = String.split (String.Pattern "\n") publishResult
+      case Array.last lines of
+        Nothing -> throwWithComment $ Array.fold [ "Publishing failed because of an unexpected compiler error. cc @purescript/packaging" ]
+        Just jsonString -> case Argonaut.Core.jsonParser jsonString of
+          Left err ->
+            throwWithComment $ String.joinWith "\n" [ "Failed to parse output of publishing. cc @purescript/packaging", "```" <> err <> "```" ]
+          Right json ->
+            pure json
+
+  authToken <- liftEffect (Node.Process.lookupEnv "GITHUB_TOKEN") >>= case _ of
+    Nothing -> do
+      logShow =<< liftEffect Node.Process.getEnv
+      throwWithComment "Publishing failed because there is no available auth token. cc: @purescript/packaging"
+    Just token ->
+      pure token
 
   log "Pushing to Pursuit"
-  -- TODO: Make a POST request to Pursuit with a valid auth token (we'll need to get a `registry`
-  -- Pulp account, no spacchettibotti here), plus the gzipped json from purs publish.
-  --
-  --   See: https://github.com/purescript-contrib/pulp/blob/da8480dbe446f3eae82268d9ce842a6f03b3260f/src/Pulp/Publish.purs#L312-L313
-  --
-  -- Note: We need to use something like `aff-retry` or a manual solution to ensure we retry in the
-  -- case there is a network failure. Wait a few seconds and try again, basically.
+  result <- liftAff $ AX.request
+    { content: Just $ AXRB.json publishJson
+    , headers:
+        [ AXRH.Accept MediaType.applicationJSON
+        , AXRH.RequestHeader "Authorization" ("token " <> authToken)
+        ]
+    , method: Left Method.POST
+    , username: Nothing
+    , withCredentials: false
+    , password: Nothing
+    , responseFormat: AXRF.string
+    , timeout: Nothing
+    , url: "https://pursuit.purescript.org/packages"
+    }
+
+  case result of
+    Right { status } | status == StatusCode 201 ->
+      pure unit
+    Right { body, status: StatusCode status } ->
+      throwWithComment $ String.joinWith "\n"
+        [ "Expected a 201 response from Pursuit, but received " <> show status <> " instead (cc: @purescript/packaging)."
+        , "Body:"
+        , "```" <> body <> "```"
+        ]
+    Left err -> do
+      let printedErr = AX.printError err
+      throwWithComment $ String.joinWith "\n" [ "Received a failed response from Pursuit (cc: @purescript/packaging): ", "```" <> printedErr <> "```" ]
 
   pure unit
 
@@ -542,9 +560,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
 --
 -- Note: This interfaces with Pursuit, and therefore we must add purescript-
 -- prefixes to all package names for compatibility with the Bower naming format.
-buildPlanToResolutions
-  :: { buildPlan :: BuildPlan, dependenciesDir :: FilePath }
-  -> Map RawPackageName { version :: Version, path :: FilePath }
+buildPlanToResolutions :: { buildPlan :: BuildPlan, dependenciesDir :: FilePath } -> Map RawPackageName { version :: Version, path :: FilePath }
 buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir } =
   Map.fromFoldable do
     Tuple name version <- (Map.toUnfoldable resolutions :: Array _)
