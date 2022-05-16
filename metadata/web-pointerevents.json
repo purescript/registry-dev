@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "gbagan",
+    "githubRepo": "purescript-web-pointerevents"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 3477,
+      "hash": "sha256-r4oZL7+RPiS2AnXQOnEhXlM7g5Bl+Htyzog7R32SGPY=",
+      "publishedTime": "2022-05-04T19:53:52.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

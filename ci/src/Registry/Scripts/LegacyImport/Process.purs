@@ -253,7 +253,7 @@ parBounded t f = do
   -- The number of threads here can be tweaked for performance, but push it too
   -- high and you'll run into issues with STDOUT when using CLI tools, which are
   -- used pervasively in processing.
-  for_ (Array.range 1 3) \_ -> do
+  for_ (Array.range 1 1) \_ -> do
     liftEffect $ Effect.AVar.put unit block mempty
   parForWithIndex_ t \k v -> do
     AVar.take block

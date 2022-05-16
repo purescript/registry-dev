@@ -55,12 +55,13 @@ main = Aff.launchAff_ do
     isCorePackage :: Manifest -> Maybe _
     isCorePackage (Manifest manifest) = case manifest.location of
       -- core
-      GitHub { owner: "purescript" } -> Just manifest
+      GitHub { owner: "purescript", repo } | repo /= "purescript-metadata" -> Just manifest
       GitHub { owner: "purescript-deprecated" } -> Just manifest
       -- contrib
       GitHub { owner: "purescript-contrib" } -> Just manifest
       GitHub { owner: "purescript-web" } -> Just manifest
       GitHub { owner: "purescript-node" } -> Just manifest
+      -- extras required by the above organizations
       GitHub { repo: "purescript-void" } -> Just manifest
       GitHub { repo: "purescript-index" } -> Just manifest
       GitHub { repo: "purescript-optic" } -> Just manifest
@@ -75,6 +76,16 @@ main = Aff.launchAff_ do
       GitHub { repo: "purescript-nonempty-array" } -> Just manifest
       GitHub { repo: "purescript-aff-promise" } -> Just manifest
       GitHub { repo: "purescript-naturals" } -> Just manifest
+      GitHub { repo: "purescript-simple-dom" } -> Just manifest
+      GitHub { repo: "purescript-functor-compose" } -> Just manifest
+      GitHub { repo: "purescript-halogen" } -> Just manifest
+      GitHub { repo: "purescript-stalling-coroutines" } -> Just manifest
+      GitHub { repo: "purescript-aff-free" } -> Just manifest
+      GitHub { repo: "purescript-dom-indexed" } -> Just manifest
+      GitHub { repo: "purescript-freeap" } -> Just manifest
+      GitHub { repo: "purescript-halogen-vdom" } -> Just manifest
+      GitHub { repo: "purescript-web-pointerevents" } -> Just manifest
+      GitHub { repo: "purescript-halogen-subscriptions" } -> Just manifest
       _ -> Nothing
 
     corePackages :: Array _

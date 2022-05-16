@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "purescript-deprecated",
+    "githubRepo": "purescript-monad-eff"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1606,
+      "hash": "sha256-RZDjNedpn2y/opghXW1jFPxahgnXiBsdwIrwlbmb2o4=",
+      "publishedTime": "2015-02-26T01:27:50.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}
