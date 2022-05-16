@@ -16,7 +16,7 @@
   "purescript-cirru-parser": "https://github.com/Cirru/parser.purs.git",
   "purescript-cirru-edn": "https://github.com/Cirru/cirru-edn.purs.git",
   "purescript-web-url": "https://github.com/mjepronk/purescript-web-url.git",
-  "purescript-bf-gun" : "https://github.com/gorillatron/purescript-bf-gun.git",
+  "purescript-bf-gun": "https://github.com/gorillatron/purescript-bf-gun.git",
   "purescript-grain": "https://github.com/purescript-grain/purescript-grain.git",
   "purescript-grain-portal": "https://github.com/purescript-grain/purescript-grain-portal.git",
   "purescript-grain-router": "https://github.com/purescript-grain/purescript-grain-router.git",
@@ -184,5 +184,16 @@
   "purescript-unlift": "https://github.com/tweag/purescript-unlift.git",
   "purescript-affjax-node": "https://github.com/purescript-contrib/purescript-affjax-node.git",
   "purescript-affjax-web": "https://github.com/purescript-contrib/purescript-affjax-web.git",
-  "purescript-foreign-readwrite": "https://github.com/artemisSystem/purescript-foreign-readwrite.git"
+  "purescript-foreign-readwrite": "https://github.com/artemisSystem/purescript-foreign-readwrite.git",
+  "purescript-argparse-basic": "https://github.com/natefaubion/purescript-argparse-basic.git",
+  "purescript-web-page-visibility": "https://git.sr.ht/~toastal/purescript-web-page-visibility",
+  "purescript-web-pointerevents": "https://github.com/purescript-web/purescript-web-pointerevents.git",
+  "purescript-qualified-do": "https://github.com/artemisSystem/purescript-qualified-do.git",
+  "purescript-int64": "https://github.com/purescript-contrib/purescript-int64.git",
+  "purescript-generate-values": "https://github.com/jordanmartinez/purescript-generate-values.git",
+  "purescript-language-cst-parser": "https://github.com/natefaubion/purescript-language-cst-parser.git",
+  "purescript-yoga-json": "https://github.com/rowtype-yoga/purescript-yoga-json.git",
+  "purescript-yoga-fetch": "https://github.com/rowtype-yoga/purescript-yoga-fetch.git",
+  "purescript-linalg": "https://github.com/gbagan/purescript-linalg.git",
+  "purescript-uncurried-transformers": "https://github.com/PureFunctor/purescript-uncurried-transformers.git"
 }
