@@ -44,11 +44,6 @@ exports.closeIssueImpl = function (octokit, { owner, repo }, issue_number) {
   });
 };
 
-exports.createCommentImpl = function (
-  octokit,
-  { owner, repo },
-  issue_number,
-  body
-) {
+exports.createCommentImpl = function (octokit, { owner, repo }, issue_number, body) {
   return octokit.issues.createComment({ owner, repo, issue_number, body });
 };
