@@ -194,5 +194,6 @@
   "purescript-language-cst-parser": "https://github.com/natefaubion/purescript-language-cst-parser.git",
   "purescript-yoga-json": "https://github.com/rowtype-yoga/purescript-yoga-json.git",
   "purescript-yoga-fetch": "https://github.com/rowtype-yoga/purescript-yoga-fetch.git",
-  "purescript-linalg": "https://github.com/gbagan/purescript-linalg.git"
+  "purescript-linalg": "https://github.com/gbagan/purescript-linalg.git",
+  "purescript-uncurried-transformers": "https://github.com/PureFunctor/purescript-uncurried-transformers.git"
 }
