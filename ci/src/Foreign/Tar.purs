@@ -16,6 +16,14 @@ getToplevelDir filename = do
 
 foreign import extractImpl :: Fn2 String String (Effect Unit)
 
+-- TODO: Add test to verify how this works - absolute path for
+-- | Extracts the given filename into cwd
+-- | Note: Must be an absolute path to filename
+-- |       Result will be a directory within cwd with the contents of the tarball.
+-- | ```purecript
+-- |   extract { cwd: "/tmp/dir", filename: "~/Downloads/package.tar.gz" }
+-- | ```
+-- | Creates a directory "/tmp/dir/package" with contents of "~/Downloads/package.tar.gz"
 extract :: ExtractArgs -> Effect Unit
 extract { cwd, filename } = runFn2 extractImpl cwd filename
 

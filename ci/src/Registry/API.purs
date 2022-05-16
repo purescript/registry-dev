@@ -464,8 +464,15 @@ getUnresolvedDependencies (Manifest { dependencies }) (BuildPlan { resolutions }
 -- and on packages where the purescript prefix issue has already been addressed)
 -- this function should call `purs docs` and then push the result to Pursuit
 -- using a GitHub token for the `registry` user.
-publishToPursuit :: FilePath -> Manifest -> BuildPlan -> RegistryM Unit
-publishToPursuit packageSourceDir _manifest buildPlan@(BuildPlan { compiler, resolutions }) = do
+--
+type PublishToPursuit =
+  { packageSourceDir :: FilePath
+  , buildPlan :: BuildPlan
+  , isLegacyImport :: Boolean
+  }
+
+publishToPursuit :: PublishToPursuit -> RegistryM Unit
+publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler, resolutions }), isLegacyImport } = do
   log "Fetching package dependencies"
   -- Fetch each dependency at its resolved version, unpack the tarball, and place it within
   -- a specified directory, such as `.package-dependencies` or `.registry`.
@@ -476,16 +483,25 @@ publishToPursuit packageSourceDir _manifest buildPlan@(BuildPlan { compiler, res
   liftAff $ FS.mkdir dependenciesDir
 
   for_ (Map.toUnfoldable resolutions :: Array _) \(Tuple packageName version) -> do
-    let filename = PackageName.print packageName <> ".tar.gz"
-    wget ("packages.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version) (dependenciesDir <> Path.sep <> filename)
+    let
+      filename = PackageName.print packageName <> "-" <> Version.printVersion version <> ".tar.gz"
+      filepath = dependenciesDir <> Path.sep <> filename
+    wget ("packages.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath
     -- TODO: If this extracts package.tar.gz into a directory called package, then we are good.
     -- If it extracts into the current directory, need to move files somehow.
-    liftEffect $ Tar.extract { cwd: dependenciesDir, filename }
-    liftAff $ FS.unlink filename
+    liftEffect $ Tar.extract { cwd: dependenciesDir, filename: filepath }
+    liftAff $ FS.unlink filepath
+
+  packageDir <- liftAff $ FS.readdir dependenciesDir
+  logShow packageDir
 
   log "Generating a resolutions file"
-  let resolutionsFilePath = tmpDir <> Path.sep <> "resolutions.json"
-  liftAff $ Json.writeJsonFile resolutionsFilePath (buildPlanToResolutions { buildPlan, dependenciesDir })
+
+  let
+    resolutions = buildPlanToResolutions { buildPlan, dependenciesDir }
+    resolutionsFilePath = tmpDir <> Path.sep <> "resolutions.json"
+
+  liftAff $ Json.writeJsonFile resolutionsFilePath resolutions
 
   log "Generating package documentation with 'purs publish'"
   -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
@@ -506,10 +522,10 @@ publishToPursuit packageSourceDir _manifest buildPlan@(BuildPlan { compiler, res
     , cwd: Just packageSourceDir
     }
 
-  case compilerOutput of
+  _ <- case compilerOutput of
     Left (UnknownError err) -> throwWithComment $ String.joinWith "\n" [ "Publishing failed for your package due to a compiler error:", "```", err, "```" ]
     Left MissingCompiler -> throwWithComment $ Array.fold [ "Publishing failed because the build plan compiler version ", Version.printVersion compiler, " is not supported. Please try again with a different compiler." ]
-    Right output -> ?a
+    Right output -> log output -- TODO
 
   log "Pushing to Pursuit"
   -- TODO: Make a POST request to Pursuit with a valid auth token (we'll need to get a `registry`
@@ -534,7 +550,7 @@ buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir }
     Tuple name version <- (Map.toUnfoldable resolutions :: Array _)
     let
       bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
-      packagePath = Path.concat [ dependenciesDir, PackageName.print name ]
+      packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.printVersion version ]
     pure $ Tuple bowerPackageName { path: packagePath, version }
 
 wget :: String -> FilePath -> RegistryM Unit
