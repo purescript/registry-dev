@@ -480,7 +480,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
       -- unpacked, ie. package-name-major.minor.patch
       filename = PackageName.print packageName <> "-" <> Version.printVersion version <> ".tar.gz"
       filepath = dependenciesDir <> Path.sep <> filename
-    wget ("packages.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath
+    wget ("packages.registry.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath
     liftEffect $ Tar.extract { cwd: dependenciesDir, filename: filepath }
     liftAff $ FS.unlink filepath
 
