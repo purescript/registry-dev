@@ -518,7 +518,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
           Right json ->
             pure json
 
-  authToken <- liftEffect (Node.Process.lookupEnv "GITHUB_TOKEN") >>= case _ of
+  authToken <- liftEffect (Node.Process.lookupEnv "PACCHETTIBOTTI_PURSUIT_TOKEN") >>= case _ of
     Nothing -> do
       logShow =<< liftEffect Node.Process.getEnv
       throwWithComment "Publishing failed because there is no available auth token. cc: @purescript/packaging"
