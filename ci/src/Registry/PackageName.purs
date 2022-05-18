@@ -51,7 +51,9 @@ parse inputStr = flip Parser.runParser inputStr do
   -- represents the legacy naming scheme and is almost certainly an error.
   -- However, packages can be explicitly blessed so they can use the prefix.
   let
-    allowedPrefixNames = []
+    allowedPrefixNames =
+      [ "purescript-compiler-backend-utilities"
+      ]
     isBlessedPackage = inputStr `Array.elem` allowedPrefixNames
     hasPureScriptPrefix = isJust $ String.stripPrefix (String.Pattern "purescript-") inputStr
 

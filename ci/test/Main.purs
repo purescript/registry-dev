@@ -160,6 +160,8 @@ goodPackageName = do
 
   parseName "a" "a"
   parseName "some-dash" "some-dash"
+  -- A blessed prefixed package
+  parseName "purescript-compiler-backend-utilities" "purescript-compiler-backend-utilities"
 
 badPackageName :: Spec.Spec Unit
 badPackageName = do
