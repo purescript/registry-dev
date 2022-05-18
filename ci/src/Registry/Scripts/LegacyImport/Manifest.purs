@@ -2,7 +2,6 @@ module Registry.Scripts.LegacyImport.Manifest (toManifest, constructManifestFiel
 
 import Registry.Prelude
 
-import Affjax as AX
 import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
@@ -183,7 +182,7 @@ constructManifestFields package version address = do
 
     go n = Process.withCache serialize cacheKey Nothing do
       liftAff (Http.request request) >>= case _ of
-        Left AX.TimeoutError -> do
+        Left Http.TimeoutError -> do
           if n == limit then do
             log $ i "[FAILED]: Unable to retrieve " filePath " because the request timed out."
             throwError $ mkError BadRequest
