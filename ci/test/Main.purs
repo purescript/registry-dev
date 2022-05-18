@@ -65,6 +65,9 @@ main = launchAff_ do
         removeIgnoredTarballFiles
       Spec.describe "Compilers" do
         compilerVersions
+      Spec.describe "Resolutions" do
+        checkBuildPlanToResolutions
+        checkDependencyResolution
     Spec.describe "Bowerfile" do
       Spec.describe "Parses" do
         Spec.describe "Good bower files" goodBowerfiles
@@ -339,6 +342,82 @@ bowerFileEncoding = do
         , description
         }
     Json.roundtrip bowerFile `Assert.shouldContain` bowerFile
+
+checkDependencyResolution :: Spec.Spec Unit
+checkDependencyResolution = do
+  Spec.it "Handles build plan with all dependencies resolved" do
+    Assert.shouldEqual (API.getUnresolvedDependencies manifest exactBuildPlan) []
+  Spec.it "Handles build plan with all dependencies resolved + extra" do
+    Assert.shouldEqual (API.getUnresolvedDependencies manifest extraBuildPlan) []
+  Spec.it "Handles build plan with resolution missing package" do
+    Assert.shouldEqual (API.getUnresolvedDependencies manifest buildPlanMissingPackage) [ Left (packageTwoName /\ packageTwoRange) ]
+  Spec.it "Handles build plan with resolution having package at wrong version" do
+    Assert.shouldEqual (API.getUnresolvedDependencies manifest buildPlanWrongVersion) [ Right (packageTwoName /\ packageTwoRange /\ mkUnsafeVersion "7.0.0") ]
+  where
+  manifest@(Manifest { dependencies }) =
+    Fixture.setDependencies [ Tuple "package-one" "2.0.0", Tuple "package-two" "3.0.0" ] Fixture.fixture
+
+  packageTwoName = mkUnsafePackage "package-two"
+  packageTwoRange = unsafeFromJust $ Map.lookup packageTwoName dependencies
+
+  exactBuildPlan = BuildPlan
+    { compiler: mkUnsafeVersion "0.14.2"
+    , resolutions: Map.fromFoldable
+        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+        , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
+        ]
+    }
+
+  extraBuildPlan = BuildPlan
+    { compiler: mkUnsafeVersion "0.14.2"
+    , resolutions: Map.fromFoldable
+        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+        , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
+        , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
+        ]
+    }
+
+  buildPlanMissingPackage = BuildPlan
+    { compiler: mkUnsafeVersion "0.14.2"
+    , resolutions: Map.fromFoldable
+        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+        , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
+        ]
+    }
+
+  buildPlanWrongVersion = BuildPlan
+    { compiler: mkUnsafeVersion "0.14.2"
+    , resolutions: Map.fromFoldable
+        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+        , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "7.0.0")
+        ]
+    }
+
+checkBuildPlanToResolutions :: Spec.Spec Unit
+checkBuildPlanToResolutions = do
+  Spec.it "buildPlanToResolutions produces expected resolutions file format" do
+    Assert.shouldEqual generatedResolutions expectedResolutions
+  where
+  dependenciesDir = "testDir"
+
+  resolutions = Map.fromFoldable
+    [ Tuple (mkUnsafePackage "prelude") (mkUnsafeVersion "1.0.0")
+    , Tuple (mkUnsafePackage "bifunctors") (mkUnsafeVersion "2.0.0")
+    , Tuple (mkUnsafePackage "ordered-collections") (mkUnsafeVersion "3.0.0")
+    ]
+
+  generatedResolutions =
+    API.buildPlanToResolutions
+      { buildPlan: BuildPlan { compiler: mkUnsafeVersion "0.14.2", resolutions }
+      , dependenciesDir
+      }
+
+  expectedResolutions = Map.fromFoldable do
+    packageName /\ version <- (Map.toUnfoldable resolutions :: Array _)
+    let
+      bowerName = RawPackageName ("purescript-" <> PackageName.print packageName)
+      path = Path.concat [ dependenciesDir, PackageName.print packageName <> "-" <> Version.printVersion version ]
+    pure $ Tuple bowerName { path, version }
 
 compilerVersions :: Spec.Spec Unit
 compilerVersions = do

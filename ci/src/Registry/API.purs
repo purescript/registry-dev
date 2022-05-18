@@ -3,15 +3,22 @@ module Registry.API where
 import Registry.Prelude
 
 import Affjax as Http
+import Affjax.RequestBody as RequestBody
+import Affjax.RequestHeader as RequestHeader
+import Affjax.ResponseFormat as ResponseFormat
+import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Except as Except
+import Data.Argonaut.Parser as Argonaut.Core
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
 import Data.DateTime as DateTime
 import Data.Generic.Rep as Generic
+import Data.HTTP.Method as Method
 import Data.Int as Int
 import Data.Interpolate (i)
 import Data.JSDate as JSDate
 import Data.Map as Map
+import Data.MediaType.Common as MediaType
 import Data.PreciseDateTime as PDT
 import Data.RFC3339String (RFC3339String)
 import Data.RFC3339String as RFC3339String
@@ -36,6 +43,7 @@ import Node.FS.Aff as FS
 import Node.FS.Stats as FS.Stats
 import Node.Path as Path
 import Node.Process as Env
+import Node.Process as Node.Process
 import Registry.Hash as Hash
 import Registry.Index as Index
 import Registry.Json as Json
@@ -308,19 +316,19 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
   -- We need the version number to upload the package
   let newVersion = manifestRecord.version
   let newDirname = PackageName.print packageName <> "-" <> Version.printVersion newVersion
-  let tarballDirname = Path.concat [ tmpDir, newDirname ]
-  liftAff $ FS.Extra.ensureDirectory tarballDirname
+  let packageSourceDir = Path.concat [ tmpDir, newDirname ]
+  liftAff $ FS.Extra.ensureDirectory packageSourceDir
   case manifestRecord.files of
     Nothing -> liftAff do
       -- When the files key is not specified, we preserve all files except for
       -- those we explicitly ignore.
-      FS.Extra.copy { from: absoluteFolderPath, to: tarballDirname }
-      removeIgnoredTarballFiles tarballDirname
+      FS.Extra.copy { from: absoluteFolderPath, to: packageSourceDir }
+      removeIgnoredTarballFiles packageSourceDir
     Just _ ->
       -- TODO: Pick only files the user indicated we should include, and then
       -- remove files we explicitly ignore.
       throwWithComment "The 'files' key is not yet supported.\ncc @purescript/packaging"
-  let tarballPath = tarballDirname <> ".tar.gz"
+  let tarballPath = packageSourceDir <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.stat tarballPath
@@ -340,62 +348,60 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
     { commitFailed: \_ -> "Package uploaded, but committing metadata failed.\ncc: @purescript/packaging"
     , commitSucceeded: "Successfully uploaded package to the registry! 🎉 🚀"
     }
+
   closeIssue
 
   -- Optional steps below:
   -- TODO don't fail the pipeline if one of them fails
 
   -- Add to the registry index
+  -- TODO: commit the registry-index
   liftAff $ Index.insertManifest indexDir manifest
 
--- TODO: commit the registry-index
+  unless isLegacyImport do
+    -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
+    pure unit
 
--- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
--- TODO: upload docs to pursuit (see #154)
+  unless isLegacyImport do
+    log "Uploading to Pursuit"
+    publishToPursuit { packageSourceDir, buildPlan }
+    comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
 runChecks :: { isLegacyImport :: Boolean, buildPlan :: BuildPlan, metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
-runChecks { isLegacyImport, buildPlan: BuildPlan buildPlan, metadata, manifest: Manifest manifest } = do
+runChecks { isLegacyImport, buildPlan, metadata, manifest } = do
+  let Manifest manifestFields = manifest
+
   -- TODO: collect all errors and return them at once. Note: some of the checks
   -- are going to fail while parsing from JSON, so we should move them here if we
   -- want to handle everything together
   log "Running checks for the following manifest:"
-  logShow manifest
+  logShow manifestFields
 
   log "Ensuring the package is not the purescript-metadata package, which cannot be published."
-  when (PackageName.print manifest.name == "metadata") do
+  when (PackageName.print manifestFields.name == "metadata") do
     throwWithComment "The `metadata` package cannot be uploaded to the registry as it is a protected package."
 
   log "Check that version is unique"
-  case Map.lookup manifest.version metadata.published of
+  case Map.lookup manifestFields.version metadata.published of
     Nothing -> pure unit
-    Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> Version.printVersion manifest.version <> "\nIts metadata is: " <> show info
+    Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> Version.printVersion manifestFields.version <> "\nIts metadata is: " <> show info
 
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
+
   let
     pkgNotInRegistry name = case Map.lookup name packages of
       Nothing -> Just name
       Just _p -> Nothing
-  let pkgsNotInRegistry = Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifest.dependencies
+    pkgsNotInRegistry =
+      Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifestFields.dependencies
+
   unless (Array.null pkgsNotInRegistry) do
     throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
 
   log "Check the submitted build plan matches the manifest"
-  let
-    dependencyUnresolved :: PackageName -> Range -> Maybe (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
-    dependencyUnresolved dependencyName dependencyRange =
-      case Map.lookup dependencyName buildPlan.resolutions of
-        -- If the package is missing from the build plan then the plan is incorrect.
-        Nothing -> Just $ Left $ dependencyName /\ dependencyRange
-        -- If the package exists, but the version is not in the manifest range
-        -- then the build plan is incorrect. Otherwise, this part of the build
-        -- plan is correct.
-        Just version
-          | not (Version.rangeIncludes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
-          | otherwise -> Nothing
 
-    unresolvedDependencies =
-      Array.mapMaybe (uncurry dependencyUnresolved) (Map.toUnfoldable manifest.dependencies)
+  let unresolvedDependencies = getUnresolvedDependencies manifest buildPlan
 
   unless (isLegacyImport || Array.null unresolvedDependencies) do
     let
@@ -439,7 +445,136 @@ runChecks { isLegacyImport, buildPlan: BuildPlan buildPlan, metadata, manifest: 
       , incorrectVersionsError
       ]
 
-wget :: String -> String -> RegistryM Unit
+getUnresolvedDependencies :: Manifest -> BuildPlan -> Array (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
+getUnresolvedDependencies (Manifest { dependencies }) (BuildPlan { resolutions }) =
+  Array.mapMaybe (uncurry dependencyUnresolved) (Map.toUnfoldable dependencies)
+  where
+  dependencyUnresolved :: PackageName -> Range -> Maybe (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
+  dependencyUnresolved dependencyName dependencyRange =
+    case Map.lookup dependencyName resolutions of
+      -- If the package is missing from the build plan then the plan is incorrect.
+      Nothing -> Just $ Left $ dependencyName /\ dependencyRange
+      -- If the package exists, but the version is not in the manifest range
+      -- then the build plan is incorrect. Otherwise, this part of the build
+      -- plan is correct.
+      Just version
+        | not (Version.rangeIncludes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
+        | otherwise -> Nothing
+
+type PublishToPursuit =
+  { packageSourceDir :: FilePath
+  , buildPlan :: BuildPlan
+  }
+
+-- | Publishes a package to Pursuit.
+-- |
+-- | ASSUMPTIONS: This function should not be run on legacy packages or on
+-- | packages where the `purescript-` prefix is still present.
+publishToPursuit :: PublishToPursuit -> RegistryM Unit
+publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler, resolutions }) } = do
+  log "Fetching package dependencies"
+  tmpDir <- liftEffect $ Tmp.mkTmpDir
+  let dependenciesDir = tmpDir <> Path.sep <> "dependencies"
+  liftAff $ FS.mkdir dependenciesDir
+
+  -- We fetch every dependency at its resolved version, unpack the tarball, and
+  -- store the resulting source code in a specified directory for dependencies.
+  for_ (Map.toUnfoldable resolutions :: Array _) \(Tuple packageName version) -> do
+    let
+      -- This filename uses the format the directory name will have once
+      -- unpacked, ie. package-name-major.minor.patch
+      filename = PackageName.print packageName <> "-" <> Version.printVersion version <> ".tar.gz"
+      filepath = dependenciesDir <> Path.sep <> filename
+    wget ("packages.registry.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath
+    liftEffect $ Tar.extract { cwd: dependenciesDir, filename: filepath }
+    liftAff $ FS.unlink filepath
+
+  log "Generating a resolutions file"
+  let
+    resolvedPaths = buildPlanToResolutions { buildPlan, dependenciesDir }
+    resolutionsFilePath = tmpDir <> Path.sep <> "resolutions.json"
+
+  liftAff $ Json.writeJsonFile resolutionsFilePath resolvedPaths
+
+  -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
+  -- package name in the manifest file:
+  -- https://github.com/purescript/purescript/blob/a846892d178d3c9c76c162ca39b9deb6fad4ec8e/src/Language/PureScript/Publish/Registry/Compat.hs#L19
+  --
+  -- The resulting documentation will all use purescript- prefixes in keeping
+  -- with the format used by Pursuit in PureScript versions at least up to 0.16
+  compilerOutput <- liftAff $ callCompiler
+    { args: [ "publish", "--manifest", "purs.json", "--resolutions", resolutionsFilePath ]
+    , version: Version.printVersion compiler
+    , cwd: Just packageSourceDir
+    }
+
+  publishJson <- case compilerOutput of
+    Left (UnknownError err) -> throwWithComment $ String.joinWith "\n" [ "Publishing failed for your package due to a compiler error:", "```", err, "```" ]
+    Left MissingCompiler -> throwWithComment $ Array.fold [ "Publishing failed because the build plan compiler version ", Version.printVersion compiler, " is not supported. Please try again with a different compiler." ]
+    Right publishResult -> do
+      -- The output contains plenty of diagnostic lines, ie. "Compiling ..."
+      -- but we only want the final JSON payload.
+      let lines = String.split (String.Pattern "\n") publishResult
+      case Array.last lines of
+        Nothing -> throwWithComment $ Array.fold [ "Publishing failed because of an unexpected compiler error. cc @purescript/packaging" ]
+        Just jsonString -> case Argonaut.Core.jsonParser jsonString of
+          Left err ->
+            throwWithComment $ String.joinWith "\n" [ "Failed to parse output of publishing. cc @purescript/packaging", "```" <> err <> "```" ]
+          Right json ->
+            pure json
+
+  authToken <- liftEffect (Node.Process.lookupEnv "PACCHETTIBOTTI_PURSUIT_TOKEN") >>= case _ of
+    Nothing -> do
+      logShow =<< liftEffect Node.Process.getEnv
+      throwWithComment "Publishing failed because there is no available auth token. cc: @purescript/packaging"
+    Just token ->
+      pure token
+
+  log "Pushing to Pursuit"
+  result <- liftAff $ Http.request
+    { content: Just $ RequestBody.json publishJson
+    , headers:
+        [ RequestHeader.Accept MediaType.applicationJSON
+        , RequestHeader.RequestHeader "Authorization" ("token " <> authToken)
+        ]
+    , method: Left Method.POST
+    , username: Nothing
+    , withCredentials: false
+    , password: Nothing
+    , responseFormat: ResponseFormat.string
+    , timeout: Nothing
+    , url: "https://pursuit.purescript.org/packages"
+    }
+
+  case result of
+    Right { status } | status == StatusCode 201 ->
+      pure unit
+    Right { body, status: StatusCode status } ->
+      throwWithComment $ String.joinWith "\n"
+        [ "Expected a 201 response from Pursuit, but received " <> show status <> " instead (cc: @purescript/packaging)."
+        , "Body:"
+        , "```" <> body <> "```"
+        ]
+    Left err -> do
+      let printedErr = Http.printError err
+      throwWithComment $ String.joinWith "\n" [ "Received a failed response from Pursuit (cc: @purescript/packaging): ", "```" <> printedErr <> "```" ]
+
+  pure unit
+
+-- Resolutions format: https://github.com/purescript/purescript/pull/3565
+--
+-- Note: This interfaces with Pursuit, and therefore we must add purescript-
+-- prefixes to all package names for compatibility with the Bower naming format.
+buildPlanToResolutions :: { buildPlan :: BuildPlan, dependenciesDir :: FilePath } -> Map RawPackageName { version :: Version, path :: FilePath }
+buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir } =
+  Map.fromFoldable do
+    Tuple name version <- (Map.toUnfoldable resolutions :: Array _)
+    let
+      bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
+      packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.printVersion version ]
+    pure $ Tuple bowerPackageName { path: packagePath, version }
+
+wget :: String -> FilePath -> RegistryM Unit
 wget url path = do
   let cmd = "wget"
   let stdin = Nothing
