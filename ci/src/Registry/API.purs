@@ -309,7 +309,7 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
     metadata =
       inputMetadata { owners = manifestRecord.owners }
 
-  runChecks buildPlan metadata manifest
+  runChecks { isLegacyImport, buildPlan, metadata, manifest }
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
@@ -333,7 +333,8 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
   log "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.stat tarballPath
   when (bytes > maxPackageBytes) do
-    throwWithComment $ "Package tarball exceeds maximum size of " <> show maxPackageBytes <> " bytes."
+    let message = "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
+    if isLegacyImport then log $ "WARNING: " <> message else throwWithComment message
   log "Hashing the tarball..."
   hash <- liftAff $ Hash.sha256File tarballPath
   log $ "Hash: " <> show hash
@@ -366,13 +367,19 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
     publishToPursuit { packageSourceDir, buildPlan }
     comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
-runChecks :: BuildPlan -> Metadata -> Manifest -> RegistryM Unit
-runChecks buildPlan metadata manifest@(Manifest manifestFields) = do
+runChecks :: { isLegacyImport :: Boolean, buildPlan :: BuildPlan, metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
+runChecks { isLegacyImport, buildPlan: BuildPlan buildPlan, metadata, manifest } = do
+  let Manifest manifestFields = manifest
+  
   -- TODO: collect all errors and return them at once. Note: some of the checks
   -- are going to fail while parsing from JSON, so we should move them here if we
   -- want to handle everything together
   log "Running checks for the following manifest:"
   logShow manifestFields
+
+  log "Ensuring the package is not the purescript-metadata package, which cannot be published."
+  when (PackageName.print manifestFields.name == "metadata") do
+    throwWithComment "The `metadata` package cannot be uploaded to the registry as it is a protected package."
 
   log "Check that version is unique"
   case Map.lookup manifestFields.version metadata.published of
@@ -394,10 +401,9 @@ runChecks buildPlan metadata manifest@(Manifest manifestFields) = do
 
   log "Check the submitted build plan matches the manifest"
 
-  let
-    unresolvedDependencies = getUnresolvedDependencies manifest buildPlan
+  let unresolvedDependencies = getUnresolvedDependencies manifest buildPlan
 
-  unless (Array.null unresolvedDependencies) do
+  unless (isLegacyImport || Array.null unresolvedDependencies) do
     let
       { fail: missingPackages, success: incorrectVersions } = partitionEithers unresolvedDependencies
 
