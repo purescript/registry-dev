@@ -368,9 +368,9 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
     comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
 runChecks :: { isLegacyImport :: Boolean, buildPlan :: BuildPlan, metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
-runChecks { isLegacyImport, buildPlan: BuildPlan buildPlan, metadata, manifest } = do
+runChecks { isLegacyImport, buildPlan, metadata, manifest } = do
   let Manifest manifestFields = manifest
-  
+
   -- TODO: collect all errors and return them at once. Note: some of the checks
   -- are going to fail while parsing from JSON, so we should move them here if we
   -- want to handle everything together
