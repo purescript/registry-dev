@@ -135,6 +135,12 @@
       "hash": "sha256-xXrfXGXqlAMxTtnESTFtPzYWQ0XvVHQdMcIewNYPc+k=",
       "publishedTime": "2022-04-27T19:36:17.0Z",
       "ref": "v6.0.0"
+    },
+    "6.1.0": {
+      "bytes": 6880,
+      "hash": "sha256-jl1LrBeXvbhL3cPx5CZOY57HTNJ94LBrZbs6bCiAI3Y=",
+      "publishedTime": "2022-05-17T02:20:58.0Z",
+      "ref": "v6.1.0"
     }
   },
   "unpublished": {}

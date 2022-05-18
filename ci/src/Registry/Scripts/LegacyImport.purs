@@ -15,6 +15,7 @@ import Foreign.GitHub as GitHub
 import Foreign.Object as Object
 import Registry.API as API
 import Registry.Index (RegistryIndex)
+import Registry.Json (printJson)
 import Registry.Json as Json
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
@@ -55,7 +56,7 @@ main = Aff.launchAff_ do
     isCorePackage :: Manifest -> Maybe _
     isCorePackage (Manifest manifest) = case manifest.location of
       -- core
-      GitHub { owner: "purescript", repo } | repo /= "purescript-metadata" -> Just manifest
+      GitHub { owner: "purescript" } -> Just manifest
       GitHub { owner: "purescript-deprecated" } -> Just manifest
       -- contrib
       GitHub { owner: "purescript-contrib" } -> Just manifest
@@ -148,7 +149,7 @@ downloadLegacyRegistry = do
   newPackages <- readRegistryFile "new-packages.json"
 
   let
-    allPackages = Map.union bowerPackages newPackages
+    allPackages = Map.delete (RawPackageName "metadata") $ Map.union bowerPackages newPackages
     initialPackages = { failures: PackageFailures Map.empty, packages: allPackages }
 
   log "Fetching package releases..."
@@ -196,14 +197,7 @@ downloadLegacyRegistry = do
 
   log "Converting to manifests..."
   let forPackageRegistry = Process.forPackageVersion packageRegistry
-  manifestRegistry
-    :: Process.ProcessedPackageVersions
-         { address :: GitHub.Address
-         , name :: PackageName
-         , original :: RawPackageName
-         }
-         { version :: Version, original :: RawVersion }
-         Manifest <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
+  manifestRegistry <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
     manifestFields <- Manifest.constructManifestFields originalName tag.original address
 
     let
@@ -251,6 +245,7 @@ downloadLegacyRegistry = do
             )
         $ Map.toUnfoldable allPackages
 
+  log $ "Reserved names:\n" <> (printJson $ Array.fromFoldable $ Map.keys reservedNames)
   pure { registry: checkedIndex, reservedNames }
 
 -- Packages can be specified either in 'package-name' format or

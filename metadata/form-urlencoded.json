@@ -10,6 +10,12 @@
       "publishedTime": "2016-02-07T15:35:54.0Z",
       "ref": "v0.2.0"
     },
+    "0.2.1": {
+      "bytes": 2581,
+      "hash": "sha256-OJO5jvqmLkNyEeUwG7FLQaCA/b3wnPbmF5dkLSeDTBA=",
+      "publishedTime": "2016-02-10T06:11:02.0Z",
+      "ref": "v0.2.1"
+    },
     "0.3.0": {
       "bytes": 2576,
       "hash": "sha256-ZX+7nYVmGebD47x3Mjb3uLsJXdPqdUyRpYU4WaJDYtM=",

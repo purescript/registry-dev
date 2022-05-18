@@ -361,6 +361,10 @@ runChecks { isLegacyImport, buildPlan: BuildPlan buildPlan, metadata, manifest: 
   log "Running checks for the following manifest:"
   logShow manifest
 
+  log "Ensuring the package is not the purescript-metadata package, which cannot be published."
+  when (PackageName.print manifest.name == "metadata") do
+    throwWithComment "The `metadata` package cannot be uploaded to the registry as it is a protected package."
+
   log "Check that version is unique"
   case Map.lookup manifest.version metadata.published of
     Nothing -> pure unit

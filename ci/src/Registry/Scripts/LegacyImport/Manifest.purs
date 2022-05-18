@@ -2,6 +2,7 @@ module Registry.Scripts.LegacyImport.Manifest (toManifest, constructManifestFiel
 
 import Registry.Prelude
 
+import Affjax as AX
 import Affjax as Http
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
@@ -9,17 +10,20 @@ import Control.Monad.Except as Except
 import Control.Parallel (parallel, sequential)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.Int as Int
 import Data.Interpolate (i)
 import Data.Lens as Lens
 import Data.Map as Map
 import Data.String as String
 import Data.String.NonEmpty as NES
+import Effect.Aff as Aff
 import Foreign.Dhall as Dhall
 import Foreign.GitHub as GitHub
 import Foreign.JsonRepair as JsonRepair
 import Foreign.Licensee as Licensee
 import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
+import Math as Math
 import Node.FS.Aff as FS
 import Registry.Json as Json
 import Registry.Json as RegistryJson
@@ -160,18 +164,36 @@ constructManifestFields package version address = do
   -- version. Files will be cached using the provided serializer and
   -- will be read from the cache up to the cache expiry time given in `Hours`.
   fileRequest :: FileResource -> Process.Serialize String String -> ExceptT ImportError Aff String
-  fileRequest resource serialize = do
-    let
-      name = un RawPackageName package
-      tag = un RawVersion version
-      filePath = fileResourcePath resource
-      url = i "https://raw.githubusercontent.com/" address.owner "/" address.repo "/" tag "/" filePath
-      fileCacheName = String.replace (String.Pattern ".") (String.Replacement "-") filePath
-      cacheKey = i fileCacheName "__" name "__" tag
-      mkError = ResourceError <<< { resource: FileResource resource, error: _ }
+  fileRequest resource serialize = go 1
+    where
+    limit = 5
+    name = un RawPackageName package
+    tag = un RawVersion version
+    filePath = fileResourcePath resource
+    url = i "https://raw.githubusercontent.com/" address.owner "/" address.repo "/" tag "/" filePath
+    fileCacheName = String.replace (String.Pattern ".") (String.Replacement "-") filePath
+    cacheKey = i fileCacheName "__" name "__" tag
+    mkError = ResourceError <<< { resource: FileResource resource, error: _ }
 
-    Process.withCache serialize cacheKey Nothing do
-      liftAff (Http.get ResponseFormat.string url) >>= case _ of
+    request = Http.defaultRequest
+      { url = url
+      , responseFormat = ResponseFormat.string
+      , timeout = Just (Aff.Milliseconds 5000.0)
+      }
+
+    go n = Process.withCache serialize cacheKey Nothing do
+      liftAff (Http.request request) >>= case _ of
+        Left AX.TimeoutError -> do
+          if n == limit then do
+            log $ i "[FAILED]: Unable to retrieve " filePath " because the request timed out."
+            throwError $ mkError BadRequest
+          else do
+            let
+              backoff = Math.pow 2.0 (Int.toNumber n + 1.0)
+              delay = backoff * 500.0
+            log $ i "(Req " n "/" limit "): Request timed out retrieving " filePath " (retrying in " (delay / 1000.0) " seconds...)"
+            liftAff $ Aff.delay (Aff.Milliseconds delay)
+            go (n + 1)
         Left error -> do
           let printed = Http.printError error
           log $ i "Unable to retrieve " filePath " because the request failed: " printed
@@ -180,6 +202,17 @@ constructManifestFields package version address = do
           | status == 404 -> do
               log $ i "Unable to retrieve " filePath " because none exists (404 error)."
               throwError $ mkError $ BadStatus status
+          | status == 429 -> do
+              let
+                backoff = Math.pow 2.0 (Int.toNumber n + 1.0)
+                delay = backoff * 500.0
+              if n == limit then do
+                log $ i "[FAILED]: Unable to retrieve " filePath " because too many requests have been made (429 error)"
+                throwError $ mkError $ BadStatus status
+              else do
+                log $ i "(Req " n "/" limit "): Too many requests made, failed to retrieve " filePath " (429 error, retrying in " (delay / 1000.0) " seconds...)"
+                liftAff $ Aff.delay (Aff.Milliseconds delay)
+                go (n + 1)
           | status /= 200 -> do
               log $ i "Unable to retrieve " filePath " because of a bad status code: " body
               throwError $ mkError $ BadStatus status

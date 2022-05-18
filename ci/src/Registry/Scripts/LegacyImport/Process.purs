@@ -4,16 +4,13 @@ import Registry.Prelude
 
 import Control.Apply (lift2)
 import Control.Monad.Except as Except
-import Control.Parallel as Parallel
+import Control.Monad.State as State
 import Data.Array as Array
 import Data.DateTime (adjust) as Time
 import Data.JSDate as JSDate
 import Data.Map as Map
 import Data.Newtype as Newtype
 import Data.Time.Duration (Hours)
-import Data.TraversableWithIndex (class TraversableWithIndex)
-import Effect.AVar as Effect.AVar
-import Effect.Aff.AVar as AVar
 import Effect.Now (nowDateTime) as Time
 import Foreign.GitHub (PackageURL)
 import Foreign.GitHub as GitHub
@@ -44,19 +41,19 @@ forPackage
        -> ExceptT ImportError Aff (Tuple { address :: GitHub.Address, name :: RawPackageName } (Map RawVersion Unit))
      )
   -> Aff (ProcessedPackages { address :: GitHub.Address, name :: RawPackageName } (Map RawVersion Unit))
-forPackage input f = do
-  var <- AVar.new { failures: input.failures, packages: Map.empty }
-  parBounded input.packages \name value ->
-    Except.runExceptT (f name value) >>= case _ of
+forPackage input f =
+  map snd $ State.runStateT iterate { failures: input.failures, packages: Map.empty }
+  where
+  iterate = forWithIndex_ input.packages \name value ->
+    lift (Except.runExceptT (f name value)) >>= case _ of
       Left err -> do
         let
           errorType = LegacyImport.Error.printImportErrorKey err
           failure = Map.singleton name (Left err)
-        var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
+        State.modify \state -> state { failures = insertFailure errorType failure state.failures }
       Right (Tuple newKey result) -> do
         let insertPackage = Map.insert newKey result
-        var # modifyAVar \state -> state { packages = insertPackage state.packages }
-  AVar.read var
+        State.modify \state -> state { packages = insertPackage state.packages }
 
 -- | Execute the provided transform on every package in the input packages map,
 -- | at every version of that package, collecting failures into `PackageFailures`
@@ -80,21 +77,21 @@ forPackageVersion
      )
   -> Aff (ProcessedPackageVersions { address :: GitHub.Address, name :: PackageName, original :: RawPackageName } { version :: Version, original :: RawVersion } b)
 forPackageVersion input f = do
-  var <- AVar.new { failures: input.failures, packages: Map.empty }
-  parBounded input.packages \k1@{ original: name } inner ->
-    parBounded inner \k2@{ original: tag } value -> do
-      Except.runExceptT (f k1 k2 value) >>= case _ of
+  map snd $ State.runStateT iterate { failures: input.failures, packages: Map.empty }
+  where
+  iterate = forWithIndex_ input.packages \k1@{ original: name } inner ->
+    forWithIndex_ inner \k2@{ original: tag } value -> do
+      lift (Except.runExceptT (f k1 k2 value)) >>= case _ of
         Left err -> do
           let
             errorType = LegacyImport.Error.printImportErrorKey err
             failure = Map.singleton name $ Right $ Map.singleton tag err
-          var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
+          State.modify \state -> state { failures = insertFailure errorType failure state.failures }
         Right result -> do
           let
             newPackage = Map.singleton k2 result
             insertPackage = Map.insertWith Map.union k1 newPackage
-          var # modifyAVar \state -> state { packages = insertPackage state.packages }
-  AVar.read var
+          State.modify \state -> state { packages = insertPackage state.packages }
 
 forPackageVersionKeys
   :: ProcessedPackageVersions { address :: GitHub.Address, name :: RawPackageName } RawVersion Unit
@@ -121,21 +118,21 @@ forPackageVersionKeys
            Unit
        )
 forPackageVersionKeys input f = do
-  var <- AVar.new { failures: input.failures, packages: Map.empty }
-  parBounded input.packages \k1@{ name } inner ->
-    parBounded inner \tag value -> do
-      Except.runExceptT (f k1 tag) >>= case _ of
+  map snd $ State.runStateT iterate { failures: input.failures, packages: Map.empty }
+  where
+  iterate = forWithIndex_ input.packages \k1@{ name } inner ->
+    forWithIndex_ inner \tag value ->
+      lift (Except.runExceptT (f k1 tag)) >>= case _ of
         Left err -> do
           let
             errorType = LegacyImport.Error.printImportErrorKey err
             failure = Map.singleton name $ Right $ Map.singleton tag err
-          var # modifyAVar \state -> state { failures = insertFailure errorType failure state.failures }
+          State.modify \state -> state { failures = insertFailure errorType failure state.failures }
         Right (Tuple k3 k4) -> do
           let
             newPackage = Map.singleton k4 value
             insertPackage = Map.insertWith Map.union k3 newPackage
-          var # modifyAVar \state -> state { packages = insertPackage state.packages }
-  AVar.read var
+          State.modify \state -> state { packages = insertPackage state.packages }
 
 insertFailure
   :: ImportErrorKey
@@ -236,39 +233,3 @@ withCache { encode, decode } path maybeDuration action = do
 
     false -> do
       onCacheMiss
-
--- | Run a computation over an indexed structure in parallel, using a bounded
--- | queue to avoid issues with conflicts over resources like STDOUT.
---
--- Inspired by the work originally done in:
--- https://github.com/natefaubion/purescript-dodo-printer/blob/540dba0442abe686c0b211868d6f423e5df81b69/test/Snapshot.purs#L54-L61
-parBounded
-  :: forall k t a b
-   . TraversableWithIndex k t
-  => (t a)
-  -> (k -> a -> Aff b)
-  -> Aff Unit
-parBounded t f = do
-  block <- AVar.empty
-  -- The number of threads here can be tweaked for performance, but push it too
-  -- high and you'll run into issues with STDOUT when using CLI tools, which are
-  -- used pervasively in processing.
-  for_ (Array.range 1 1) \_ -> do
-    liftEffect $ Effect.AVar.put unit block mempty
-  parForWithIndex_ t \k v -> do
-    AVar.take block
-    _ <- f k v
-    _ <- liftEffect $ Effect.AVar.put unit block mempty
-    pure unit
-  where
-  parForWithIndex_ t' f' =
-    void
-      $ Parallel.sequential
-      -- NOTE: This *must* use `TraversableWithIndex` instead of
-      -- `FoldableWithIndex` (ie. `forWithIndex_`) for stack safety.
-      $ forWithIndex t' (\i -> Parallel.parallel <<< f' i)
-
-modifyAVar :: forall state. (state -> state) -> AVar.AVar state -> Aff Unit
-modifyAVar k var = do
-  state <- AVar.take var
-  AVar.put (k state) var

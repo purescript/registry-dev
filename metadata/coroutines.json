@@ -22,6 +22,12 @@
       "publishedTime": "2015-08-07T00:22:52.0Z",
       "ref": "v0.2.4"
     },
+    "0.3.0": {
+      "bytes": 4234,
+      "hash": "sha256-XKJF/jHLUCzJYrXSs0R8QDaCCdOfuI4T4E2wed1Gp2A=",
+      "publishedTime": "2015-08-07T18:51:51.0Z",
+      "ref": "v0.3.0"
+    },
     "0.3.1": {
       "bytes": 4381,
       "hash": "sha256-T/KPTumyIj46NUCrwnt/ivz0kM8zodEbvOigQJ2+Evo=",
@@ -51,6 +57,12 @@
       "hash": "sha256-wZpzDPp1ygPtL49nhyTJ8eRvpOwgaTaBwa2SlRDM63A=",
       "publishedTime": "2016-06-18T19:00:01.0Z",
       "ref": "v1.1.0"
+    },
+    "1.2.0": {
+      "bytes": 5221,
+      "hash": "sha256-Di0BDrsohNTR1D6qe+F1qOG4yiTbHwWutNrZ0v9JtjE=",
+      "publishedTime": "2016-06-18T19:32:22.0Z",
+      "ref": "v1.2.0"
     },
     "1.3.0": {
       "bytes": 5290,
