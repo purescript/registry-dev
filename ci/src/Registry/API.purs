@@ -2,11 +2,10 @@ module Registry.API where
 
 import Registry.Prelude
 
-import Affjax as AX
 import Affjax as Http
-import Affjax.RequestBody as AXRB
-import Affjax.RequestHeader as AXRH
-import Affjax.ResponseFormat as AXRF
+import Affjax.RequestBody as RequestBody
+import Affjax.RequestHeader as RequestHeader
+import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Except as Except
 import Data.Argonaut.Parser as Argonaut.Core
@@ -526,17 +525,17 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
       pure token
 
   log "Pushing to Pursuit"
-  result <- liftAff $ AX.request
-    { content: Just $ AXRB.json publishJson
+  result <- liftAff $ Http.request
+    { content: Just $ RequestBody.json publishJson
     , headers:
-        [ AXRH.Accept MediaType.applicationJSON
-        , AXRH.RequestHeader "Authorization" ("token " <> authToken)
+        [ RequestHeader.Accept MediaType.applicationJSON
+        , RequestHeader.RequestHeader "Authorization" ("token " <> authToken)
         ]
     , method: Left Method.POST
     , username: Nothing
     , withCredentials: false
     , password: Nothing
-    , responseFormat: AXRF.string
+    , responseFormat: ResponseFormat.string
     , timeout: Nothing
     , url: "https://pursuit.purescript.org/packages"
     }
@@ -551,7 +550,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
         , "```" <> body <> "```"
         ]
     Left err -> do
-      let printedErr = AX.printError err
+      let printedErr = Http.printError err
       throwWithComment $ String.joinWith "\n" [ "Received a failed response from Pursuit (cc: @purescript/packaging): ", "```" <> printedErr <> "```" ]
 
   pure unit
