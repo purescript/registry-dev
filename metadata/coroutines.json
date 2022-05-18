@@ -1,0 +1,135 @@
+{
+  "location": {
+    "githubOwner": "purescript-contrib",
+    "githubRepo": "purescript-coroutines"
+  },
+  "published": {
+    "0.2.2": {
+      "bytes": 4886,
+      "hash": "sha256-zu7cD8jTAZhDmxUtpOIZDF55VJ06PHs+q2u4FxeL9k0=",
+      "publishedTime": "2015-08-02T00:11:11.0Z",
+      "ref": "v0.2.2"
+    },
+    "0.2.3": {
+      "bytes": 5035,
+      "hash": "sha256-mre+TNi386sLJCprS2SaGUKlma/1draklyhVpKm797w=",
+      "publishedTime": "2015-08-06T15:48:30.0Z",
+      "ref": "v0.2.3"
+    },
+    "0.2.4": {
+      "bytes": 5166,
+      "hash": "sha256-aQjxD2b+6pxsHdkmOLMlzpShgIxCa6sHQrmeuXxQty0=",
+      "publishedTime": "2015-08-07T00:22:52.0Z",
+      "ref": "v0.2.4"
+    },
+    "0.3.0": {
+      "bytes": 4234,
+      "hash": "sha256-XKJF/jHLUCzJYrXSs0R8QDaCCdOfuI4T4E2wed1Gp2A=",
+      "publishedTime": "2015-08-07T18:51:51.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.3.1": {
+      "bytes": 4381,
+      "hash": "sha256-T/KPTumyIj46NUCrwnt/ivz0kM8zodEbvOigQJ2+Evo=",
+      "publishedTime": "2015-08-07T19:07:51.0Z",
+      "ref": "v0.3.1"
+    },
+    "0.4.0": {
+      "bytes": 4436,
+      "hash": "sha256-BCnQlbAxydBIT9Mroo1FXcA6ycDRK6XEm279pqODxHM=",
+      "publishedTime": "2015-08-26T00:27:40.0Z",
+      "ref": "v0.4.0"
+    },
+    "0.5.0": {
+      "bytes": 4355,
+      "hash": "sha256-jJPmg8PwGUS+sAIszVw8zPCQqDwSXeMeglGvL/EX9wc=",
+      "publishedTime": "2015-09-22T02:06:05.0Z",
+      "ref": "v0.5.0"
+    },
+    "1.0.0": {
+      "bytes": 4674,
+      "hash": "sha256-Bmr+ohB0Jg5LUKbPSlzpFn4HFfl6/O4fXXSQGS+lYhM=",
+      "publishedTime": "2016-06-05T18:42:43.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.1.0": {
+      "bytes": 5011,
+      "hash": "sha256-wZpzDPp1ygPtL49nhyTJ8eRvpOwgaTaBwa2SlRDM63A=",
+      "publishedTime": "2016-06-18T19:00:01.0Z",
+      "ref": "v1.1.0"
+    },
+    "1.2.0": {
+      "bytes": 5221,
+      "hash": "sha256-Di0BDrsohNTR1D6qe+F1qOG4yiTbHwWutNrZ0v9JtjE=",
+      "publishedTime": "2016-06-18T19:32:22.0Z",
+      "ref": "v1.2.0"
+    },
+    "1.3.0": {
+      "bytes": 5290,
+      "hash": "sha256-uE0eP3GBMfIULk3QZp4m7uOPXPFFQTrkrtHx0Zka7hY=",
+      "publishedTime": "2016-06-18T19:53:35.0Z",
+      "ref": "v1.3.0"
+    },
+    "2.0.0": {
+      "bytes": 5478,
+      "hash": "sha256-/kEjT/wcgMg+llhKPgdq5fv2eBki7DoIEkUp6BP8W08=",
+      "publishedTime": "2016-07-17T22:16:42.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.0.1": {
+      "bytes": 5478,
+      "hash": "sha256-6drow3h8m2zOBU77yYGusFwXgFwMyRqqcXvPMiR9boI=",
+      "publishedTime": "2016-07-17T22:24:01.0Z",
+      "ref": "v2.0.1"
+    },
+    "3.0.0": {
+      "bytes": 5207,
+      "hash": "sha256-uiAWfbdU7OO3eY4yXBlBNhAZQN232sTF6qhe6dHuXvM=",
+      "publishedTime": "2016-10-22T00:46:20.0Z",
+      "ref": "v3.0.0"
+    },
+    "3.0.1": {
+      "bytes": 5210,
+      "hash": "sha256-r0P4OOJ7Qb2QoU9tRaTdG54jb6iapc9+yCIxGQTjI9Y=",
+      "publishedTime": "2016-11-14T17:51:02.0Z",
+      "ref": "v3.0.1"
+    },
+    "3.1.0": {
+      "bytes": 5390,
+      "hash": "sha256-juIDIctQXwfxPxXVDTTSXGRfptnRjt61afr42SQ4vfs=",
+      "publishedTime": "2016-11-18T17:25:45.0Z",
+      "ref": "v3.1.0"
+    },
+    "4.0.0": {
+      "bytes": 5388,
+      "hash": "sha256-rDKQ18/EG9j0hsFMdRQnGIYVmlYw2ZksKYjbtr1Ke/c=",
+      "publishedTime": "2017-04-03T16:01:09.0Z",
+      "ref": "v4.0.0"
+    },
+    "5.0.0": {
+      "bytes": 5523,
+      "hash": "sha256-aYmvp3/DaHhhb94RTL/RJCmvawbabCpHnHHjEfMAPzk=",
+      "publishedTime": "2018-05-27T17:47:46.0Z",
+      "ref": "v5.0.0"
+    },
+    "5.0.1": {
+      "bytes": 8007,
+      "hash": "sha256-1DsIT10cXMVWodfzr02a9pXHUYVLDAyRBqbBaemPcZc=",
+      "publishedTime": "2019-08-27T13:19:22.0Z",
+      "ref": "v5.0.1"
+    },
+    "6.0.0": {
+      "bytes": 13526,
+      "hash": "sha256-cz/myubIqF0HbF1tmHQ28i2ie2OU0uRl05P/EXrx9sE=",
+      "publishedTime": "2021-02-26T20:17:10.0Z",
+      "ref": "v6.0.0"
+    },
+    "7.0.0": {
+      "bytes": 13778,
+      "hash": "sha256-zaKzUWJdiASm5wCP0NTQ4TTZMeUQITNEnoD/zgaf9GM=",
+      "publishedTime": "2022-04-27T23:57:57.0Z",
+      "ref": "v7.0.0"
+    }
+  },
+  "unpublished": {}
+}

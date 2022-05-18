@@ -99,6 +99,10 @@
               spago run -m Registry.API
             '';
 
+            registry-importer = ''
+              spago run -m Registry.Scripts.LegacyImport
+            '';
+
             # This script checks that there are no duplicate entries in the two json files listing packages
             registry-verify-unique = ''
               set -euxo pipefail

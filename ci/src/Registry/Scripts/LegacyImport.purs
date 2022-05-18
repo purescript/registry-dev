@@ -15,6 +15,7 @@ import Foreign.GitHub as GitHub
 import Foreign.Object as Object
 import Registry.API as API
 import Registry.Index (RegistryIndex)
+import Registry.Json (printJson)
 import Registry.Json as Json
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
@@ -61,6 +62,7 @@ main = Aff.launchAff_ do
       GitHub { owner: "purescript-contrib" } -> Just manifest
       GitHub { owner: "purescript-web" } -> Just manifest
       GitHub { owner: "purescript-node" } -> Just manifest
+      -- extras required by the above organizations
       GitHub { repo: "purescript-void" } -> Just manifest
       GitHub { repo: "purescript-index" } -> Just manifest
       GitHub { repo: "purescript-optic" } -> Just manifest
@@ -75,6 +77,16 @@ main = Aff.launchAff_ do
       GitHub { repo: "purescript-nonempty-array" } -> Just manifest
       GitHub { repo: "purescript-aff-promise" } -> Just manifest
       GitHub { repo: "purescript-naturals" } -> Just manifest
+      GitHub { repo: "purescript-simple-dom" } -> Just manifest
+      GitHub { repo: "purescript-functor-compose" } -> Just manifest
+      GitHub { repo: "purescript-halogen" } -> Just manifest
+      GitHub { repo: "purescript-stalling-coroutines" } -> Just manifest
+      GitHub { repo: "purescript-aff-free" } -> Just manifest
+      GitHub { repo: "purescript-dom-indexed" } -> Just manifest
+      GitHub { repo: "purescript-freeap" } -> Just manifest
+      GitHub { repo: "purescript-halogen-vdom" } -> Just manifest
+      GitHub { repo: "purescript-web-pointerevents" } -> Just manifest
+      GitHub { repo: "purescript-halogen-subscriptions" } -> Just manifest
       _ -> Nothing
 
     corePackages :: Array _
@@ -137,7 +149,7 @@ downloadLegacyRegistry = do
   newPackages <- readRegistryFile "new-packages.json"
 
   let
-    allPackages = Map.union bowerPackages newPackages
+    allPackages = Map.delete (RawPackageName "metadata") $ Map.union bowerPackages newPackages
     initialPackages = { failures: PackageFailures Map.empty, packages: allPackages }
 
   log "Fetching package releases..."
@@ -185,14 +197,7 @@ downloadLegacyRegistry = do
 
   log "Converting to manifests..."
   let forPackageRegistry = Process.forPackageVersion packageRegistry
-  manifestRegistry
-    :: Process.ProcessedPackageVersions
-         { address :: GitHub.Address
-         , name :: PackageName
-         , original :: RawPackageName
-         }
-         { version :: Version, original :: RawVersion }
-         Manifest <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
+  manifestRegistry <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
     manifestFields <- Manifest.constructManifestFields originalName tag.original address
 
     let
@@ -240,6 +245,7 @@ downloadLegacyRegistry = do
             )
         $ Map.toUnfoldable allPackages
 
+  log $ "Reserved names:\n" <> (printJson $ Array.fromFoldable $ Map.keys reservedNames)
   pure { registry: checkedIndex, reservedNames }
 
 -- Packages can be specified either in 'package-name' format or
