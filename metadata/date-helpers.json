@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "adarqui",
+    "githubRepo": "purescript-date-helpers"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 103851,
+      "hash": "sha256-J1zLYijnhzlLopVu3kOKht59jladlPSob3O6xmVy1/0=",
+      "publishedTime": "2016-06-30T05:15:44.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

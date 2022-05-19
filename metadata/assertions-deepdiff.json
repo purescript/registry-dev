@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "cyrbon",
+    "githubRepo": "purescript-assertions-deepdiff"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3197,
+      "hash": "sha256-VVusDxETvwP8AhdE+i2YQaPwKrMKi22gsFr4OJBP7dE=",
+      "publishedTime": "2017-06-08T20:07:08.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

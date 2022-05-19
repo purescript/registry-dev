@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "gabysbrain",
+    "githubRepo": "purescript-dataframe"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 6597,
+      "hash": "sha256-n8SCErJPaJ5PiwQAS6pmKgT26AqSPA2N7YriHB8kCz4=",
+      "publishedTime": "2017-05-21T14:43:58.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 6635,
+      "hash": "sha256-+Ou1zkFfHzi6yfO1E7tbZcIFZegbPwPJr/+Y33qnCv4=",
+      "publishedTime": "2017-05-21T14:59:46.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 6652,
+      "hash": "sha256-QmtiJPs9t2I113eaU5co3VTxo3XvdrHPJttPeAeJBXI=",
+      "publishedTime": "2017-05-21T15:04:28.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.1.3": {
+      "bytes": 6655,
+      "hash": "sha256-0pCf7womWaZTUBR2eQzD9kjQTiFJEcbrYoNhlpawJZ4=",
+      "publishedTime": "2017-05-21T15:08:43.0Z",
+      "ref": "v0.1.3"
+    },
+    "0.1.4": {
+      "bytes": 6646,
+      "hash": "sha256-tbNz8gehvfnGjdmiTSXVA++VDuTnPnjUDzurcDRAbwg=",
+      "publishedTime": "2017-05-21T15:11:43.0Z",
+      "ref": "v0.1.4"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "LiamGoodacre",
+    "githubRepo": "purescript-generics-rep-optics"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5547,
+      "hash": "sha256-X0Nzb7iyH99ypBSm1cRGg+bjzhy0F/NWTaVly/rSGuY=",
+      "publishedTime": "2017-08-17T17:27:49.0Z",
+      "ref": "v0.1.0"
+    },
+    "1.0.0": {
+      "bytes": 4193,
+      "hash": "sha256-rKQdSNrEjDpV2H4plixWOfzzhAgqfnb/ZWRJgK1ZqBc=",
+      "publishedTime": "2018-09-02T10:41:18.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 4187,
+      "hash": "sha256-1NuCtKY7yuijWru7VnBoQoCpqEuhIy2kKsn7iO+EHps=",
+      "publishedTime": "2018-09-02T10:50:01.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 4304,
+      "hash": "sha256-Ij2PhoDoQykh0rDPehoN0OOboAgsccfFAMQxVFtUhp8=",
+      "publishedTime": "2018-09-02T10:59:14.0Z",
+      "ref": "v1.0.2"
+    },
+    "1.1.0": {
+      "bytes": 4477,
+      "hash": "sha256-MS7pClTYk31fJSQiynVOxBU2cpHtk7T24gdX+LxYOwA=",
+      "publishedTime": "2018-09-02T14:30:37.0Z",
+      "ref": "v1.1.0"
+    }
+  },
+  "unpublished": {}
+}

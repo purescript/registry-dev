@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "Unisay",
+    "githubRepo": "purescript-aff-retry"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 6507,
+      "hash": "sha256-Ezq1a8tWK/p7HUfrOrp+zEhMTGPgkxvVZreA0sRezpY=",
+      "publishedTime": "2018-04-29T11:30:04.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 6680,
+      "hash": "sha256-qZxOrTSY9KrQ1pGtXoDBppRDemWPppx8/rZaK2NDfmQ=",
+      "publishedTime": "2018-05-01T12:33:19.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.1.0": {
+      "bytes": 6604,
+      "hash": "sha256-KzXBezAmQFEniuSxImWwOM8NIwMXtqNlV+mWT2MQHjQ=",
+      "publishedTime": "2018-06-26T16:58:45.0Z",
+      "ref": "v1.1.0"
+    },
+    "1.2.0": {
+      "bytes": 6589,
+      "hash": "sha256-IgstM+9Gd3KBpSAMmplZ1wxtJhtvy8DITyEvkL8fXEw=",
+      "publishedTime": "2018-07-20T11:01:17.0Z",
+      "ref": "v1.2.0"
+    },
+    "1.2.1": {
+      "bytes": 7028,
+      "hash": "sha256-OVASw69FOSbUVEhH+5Zdnk2TcLqPew+yMp4SwaBXaho=",
+      "publishedTime": "2018-07-23T12:12:50.0Z",
+      "ref": "v1.2.1"
+    }
+  },
+  "unpublished": {}
+}

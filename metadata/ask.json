@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "Mateiadrielrafael",
+    "githubRepo": "purescript-ask"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2764,
+      "hash": "sha256-rNK1qhuN9+7D7g6jfkitEL+2gb3XAJLYOOg1veCa6mI=",
+      "publishedTime": "2021-08-09T18:40:08.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

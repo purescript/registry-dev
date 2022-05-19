@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "berdario",
+    "githubRepo": "purescript-dynamodb"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5629,
+      "hash": "sha256-zMZr7Jl7QJigIYGACYGEWua5DEk6R6HHdbd275S7Q/U=",
+      "publishedTime": "2017-05-11T00:44:06.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 5674,
+      "hash": "sha256-OMrRkhj9TBTuPns+5eI/zDEONWGiHMy1pZXrbM1ZKf0=",
+      "publishedTime": "2017-05-15T04:02:59.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 5680,
+      "hash": "sha256-UbK/tsEdmoOpS6Ys6m1HtmVhUaZE92iDJ6kY+XjLG38=",
+      "publishedTime": "2017-05-15T04:14:11.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.2.2": {
+      "bytes": 5679,
+      "hash": "sha256-ELwL4yoJWYjprrQJwCj0la8jT1nKwEK+ToHGPG7s61A=",
+      "publishedTime": "2017-05-23T00:29:47.0Z",
+      "ref": "v0.2.2"
+    }
+  },
+  "unpublished": {}
+}

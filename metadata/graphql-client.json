@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "OxfordAbstracts",
+    "githubRepo": "purescript-graphql-client"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 15204,
+      "hash": "sha256-a1ChJh7j3ibT9dA0aECURJ7447DBFzUjmUkpUDpUoSY=",
+      "publishedTime": "2021-01-18T18:25:57.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 15205,
+      "hash": "sha256-myytLMLUPCaywuxm0nJbZAF4hS9yWLHF7RIupaJvhX0=",
+      "publishedTime": "2021-01-18T18:27:48.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 15210,
+      "hash": "sha256-oX65xz6dcXYDvZFoITS7SKALjmHVQMLECYPfVhXMlNc=",
+      "publishedTime": "2021-01-18T19:01:34.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

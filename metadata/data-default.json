@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "nkly",
+    "githubRepo": "purescript-data-default"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 775,
+      "hash": "sha256-b8e4qFTXY4RhJz/N+bOfxVQrgs0DL9VbXEIrx+sCWLE=",
+      "publishedTime": "2015-07-14T08:40:52.0Z",
+      "ref": "0.1.0"
+    }
+  },
+  "unpublished": {}
+}

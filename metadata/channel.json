@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "ConnorDillon",
+    "githubRepo": "purescript-channel"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 6860,
+      "hash": "sha256-WIBra2nvZeXCDBwn3KpoelJ8SVAmfij00kqACwAzEH8=",
+      "publishedTime": "2021-04-16T15:20:00.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 7608,
+      "hash": "sha256-H/fEU4OAKI2z2xVtR4qxpPR9wkIqv2F3XCTIbh3yWTo=",
+      "publishedTime": "2021-04-17T09:22:31.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 8169,
+      "hash": "sha256-gfWicKZBTfQLgSGJblzGX8z8hEBNc5CnuakewK2QKv0=",
+      "publishedTime": "2021-04-17T12:20:21.0Z",
+      "ref": "v0.2.0"
+    },
+    "1.0.0": {
+      "bytes": 8275,
+      "hash": "sha256-/oD2cAizwFJ/Mhn2n65emTlmzRnL8/J5R1eBmg2W3c8=",
+      "publishedTime": "2021-04-27T16:17:54.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

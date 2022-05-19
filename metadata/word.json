@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "proclivis",
+    "githubRepo": "purescript-word"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 6292,
+      "hash": "sha256-h3BtXvl5ZNTc5lWNiTY7hF0gx85kDdF5NSMFmv8VvhY=",
+      "publishedTime": "2017-07-10T00:30:24.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 6294,
+      "hash": "sha256-7G3149B1FVI93hWfhnckeXQBU92b+PuGGCxq6AgvjT4=",
+      "publishedTime": "2017-07-10T02:14:55.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 6316,
+      "hash": "sha256-837fCfH6keVipkOxCc9xJj2Jo/rEXeth3zKhZdbu7BA=",
+      "publishedTime": "2017-07-10T03:02:30.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 6313,
+      "hash": "sha256-I/ydcrx20iHZcyEzNoIGXVESfsUfvNHIqJ16CB6Wjnc=",
+      "publishedTime": "2017-07-10T03:07:49.0Z",
+      "ref": "v0.4.0"
+    },
+    "0.4.1": {
+      "bytes": 6312,
+      "hash": "sha256-St/8sALOZ84Pwu+dUhYgQeDkmoofChhdhCTBlZcy1kE=",
+      "publishedTime": "2017-07-14T13:08:32.0Z",
+      "ref": "v0.4.1"
+    }
+  },
+  "unpublished": {}
+}

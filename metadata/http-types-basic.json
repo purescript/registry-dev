@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "meeshkan",
+    "githubRepo": "purescript-http-types"
+  },
+  "published": {
+    "0.0.0": {
+      "bytes": 4429,
+      "hash": "sha256-YdZyl77bJ4JZy/rfJnsvzjrtXaQVvBP200mxI8q7yRg=",
+      "publishedTime": "2020-06-18T13:12:26.0Z",
+      "ref": "v0.0.0"
+    },
+    "0.0.1": {
+      "bytes": 4501,
+      "hash": "sha256-xR0UomvYqeMkfJWb50FcsQz+zJNT6KuzYx0TSnKF9Ok=",
+      "publishedTime": "2020-06-21T07:17:48.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 4533,
+      "hash": "sha256-u1wAaAgxWGjoet6jbEUe44lAh9/woUUCEOGSMFboUvg=",
+      "publishedTime": "2020-06-25T05:01:15.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 4564,
+      "hash": "sha256-e5Bs8KRGG6DLgpK2vmJCGIv76Rpm1ebiAo9pZFjKFNE=",
+      "publishedTime": "2020-06-26T08:39:50.0Z",
+      "ref": "v0.0.3"
+    },
+    "0.0.4": {
+      "bytes": 4820,
+      "hash": "sha256-Am9+LfZjFj7fWDeDZXTTbR3nXtWyu9sEnv/ZEO+wjHw=",
+      "publishedTime": "2020-07-04T19:16:35.0Z",
+      "ref": "v0.0.4"
+    },
+    "0.0.5": {
+      "bytes": 4845,
+      "hash": "sha256-LSxjrFhgT8QNT0vGIDJpcSe4qhRus82FNbBqG8vzchs=",
+      "publishedTime": "2020-07-05T11:03:11.0Z",
+      "ref": "v0.0.5"
+    }
+  },
+  "unpublished": {}
+}

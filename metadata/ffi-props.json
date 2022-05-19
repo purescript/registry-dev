@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "justinwoo",
+    "githubRepo": "purescript-ffi-props"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2616,
+      "hash": "sha256-UmvDN2Uj58/6xfvt9/+xnthASojibNtc6re9yPFMkdM=",
+      "publishedTime": "2018-03-10T14:09:08.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "LiamGoodacre",
+    "githubRepo": "purescript-aff-throttler"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 2975,
+      "hash": "sha256-Fz2glGpMmHCAVx1JS1OHwOSaKawxvyBrkQK4tlBRo38=",
+      "publishedTime": "2018-12-10T10:09:33.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 3002,
+      "hash": "sha256-oIhIECbRiTu/c5+h77lm7iVfAlguuy1BZtVI5fXKjME=",
+      "publishedTime": "2018-12-17T15:30:43.0Z",
+      "ref": "v0.0.2"
+    }
+  },
+  "unpublished": {}
+}

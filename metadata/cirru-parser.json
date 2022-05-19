@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "Cirru",
+    "githubRepo": "parser.purs"
+  },
+  "published": {
+    "0.0.2": {
+      "bytes": 4083,
+      "hash": "sha256-7rFPm6DJ5ytPvBAmBuZkoRTkyNHQi4QjzNMOfIzzPgU=",
+      "publishedTime": "2021-03-15T10:59:33.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 4336,
+      "hash": "sha256-CV4osEr1oHLuVHIM1ncAqzJMEJNCxOHnQa71NIwnuCA=",
+      "publishedTime": "2021-03-20T10:19:56.0Z",
+      "ref": "v0.0.3"
+    },
+    "0.0.4": {
+      "bytes": 4654,
+      "hash": "sha256-3FQz//V2hVDMqGSQf7eDb8WYhKyOIYPAm7ckIVJxaSQ=",
+      "publishedTime": "2021-03-21T10:25:10.0Z",
+      "ref": "v0.0.4"
+    },
+    "0.0.5": {
+      "bytes": 4689,
+      "hash": "sha256-xI/zkoIPtJPxwKDogEba36J/eknKB9ewlj6Evm1STxk=",
+      "publishedTime": "2021-04-06T18:21:03.0Z",
+      "ref": "v0.0.5"
+    }
+  },
+  "unpublished": {}
+}

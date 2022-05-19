@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "Ebmtranceboy",
+    "githubRepo": "purescript-geometry-plane"
+  },
+  "published": {
+    "1.0.2": {
+      "bytes": 5386,
+      "hash": "sha256-KJu/ExddMhmd0Xr69ZCq2Kk3ViUzmcIRWTa3SXLTFWE=",
+      "publishedTime": "2021-11-21T11:13:19.0Z",
+      "ref": "v1.0.2"
+    },
+    "1.0.3": {
+      "bytes": 5294,
+      "hash": "sha256-7RHoPQaIYXuxMgRDZS6MBmpS469WkK9Xt1bfBlIz7qs=",
+      "publishedTime": "2022-05-06T14:37:58.0Z",
+      "ref": "v1.0.3"
+    }
+  },
+  "unpublished": {}
+}

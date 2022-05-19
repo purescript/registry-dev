@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "Bucketchain",
+    "githubRepo": "purescript-bucketchain-header-utils"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3628,
+      "hash": "sha256-S08LP2pAAJoGtLtw1Sf/2/TdNUeyNW8SGi1yeGKV9pM=",
+      "publishedTime": "2018-12-21T20:51:50.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 3819,
+      "hash": "sha256-0GMLhhx5dHymOrmtK3X7HYGIDN2BCzW7BaH+v/Gy3Bc=",
+      "publishedTime": "2019-10-10T13:56:33.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 3855,
+      "hash": "sha256-1trImarGwfXgjAl6LG2tlDjqjKDrWK+D8VdzyjDbVyg=",
+      "publishedTime": "2019-12-13T09:24:58.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 4109,
+      "hash": "sha256-7IUu1hf05SZtczkHcUdG0U747eeKZhUFT7bxo9DxxiY=",
+      "publishedTime": "2021-03-02T07:28:02.0Z",
+      "ref": "v0.4.0"
+    }
+  },
+  "unpublished": {}
+}

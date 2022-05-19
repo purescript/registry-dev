@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "yehzhang",
+    "githubRepo": "purescript-github-corners"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3249,
+      "hash": "sha256-lfOdGNEIXPVlHXl6D1CsvcZkVPQYooJSmiDvCvGw89c=",
+      "publishedTime": "2018-07-08T02:50:54.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 3323,
+      "hash": "sha256-FY+mmr7CUOqkrGhWeqrzAcZ4HdWl385WfzHLVo3V3e4=",
+      "publishedTime": "2018-07-08T02:58:31.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 3393,
+      "hash": "sha256-2Q80MwZhZ/ybdfO0vbJEtgYSkDXCPi+Qh/i/9bUsHao=",
+      "publishedTime": "2018-07-15T08:45:56.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 3389,
+      "hash": "sha256-+sK8Cxf3ayUXzfXp6JsdMO2jegHtIPEk+Hl1s4J443Q=",
+      "publishedTime": "2018-07-15T10:49:30.0Z",
+      "ref": "v0.2.1"
+    }
+  },
+  "unpublished": {}
+}

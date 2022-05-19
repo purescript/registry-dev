@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "Risto-Stevcev",
+    "githubRepo": "purescript-exitcodes"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 3676,
+      "hash": "sha256-r52PVt4hJKDDVVdP8e6lHXyryDTHQ8g/nftagHs5CLg=",
+      "publishedTime": "2016-10-09T00:19:22.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 3672,
+      "hash": "sha256-sCuRXPeokox2Fvdz0zYvFNBrl8nvvOusVzu/ZjeTO+Q=",
+      "publishedTime": "2016-10-22T18:59:12.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 3745,
+      "hash": "sha256-RcutRrxBfXcGwc2dnVR/hvkfazSaXflx4Lua6EyIpLs=",
+      "publishedTime": "2017-05-31T07:26:53.0Z",
+      "ref": "v3.0.0"
+    },
+    "4.0.0": {
+      "bytes": 3989,
+      "hash": "sha256-l2jHX0K14IU/E2G2322g6/NDXjdBG8l2AGlH+Qe/xF0=",
+      "publishedTime": "2019-02-21T01:08:58.0Z",
+      "ref": "v4.0.0"
+    }
+  },
+  "unpublished": {}
+}

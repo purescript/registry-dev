@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "Ebmtranceboy",
+    "githubRepo": "purescript-canvas-geometry"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 80021,
+      "hash": "sha256-mv1L70y4Rxj8NkCPIfmqGT8R9BqVjGJ/ktBiiRtLKCo=",
+      "publishedTime": "2019-08-12T22:31:48.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 80035,
+      "hash": "sha256-xBOw/IaCQd+jDC2j30nuBJBD48mUWaQlfKA1tGGDyVQ=",
+      "publishedTime": "2019-08-13T19:15:41.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 80035,
+      "hash": "sha256-nNi3MfFry3ycbJJeEoW/imAryl20wAWsDd5zNkuJ9Qw=",
+      "publishedTime": "2019-08-13T19:26:47.0Z",
+      "ref": "v1.0.2"
+    },
+    "2.0.0": {
+      "bytes": 57478,
+      "hash": "sha256-ZkfdxlNp/NgrrhCS6vb8jWKPDhwmZ1gbLOWDrw9aeXw=",
+      "publishedTime": "2019-08-18T04:31:52.0Z",
+      "ref": "v2.0.0"
+    }
+  },
+  "unpublished": {}
+}

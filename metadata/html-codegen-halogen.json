@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "ongyiren1994",
+    "githubRepo": "purescript-html-codegen-halogen"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 4677,
+      "hash": "sha256-QSYjAy5A1ogfsHY5wBF5M2rVURjVETWWr+JNoBeVhOg=",
+      "publishedTime": "2021-10-17T18:15:26.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,57 @@
+{
+  "location": {
+    "githubOwner": "AlexaDeWit",
+    "githubRepo": "purescript-base64-codec"
+  },
+  "published": {
+    "0.9.1": {
+      "bytes": 3122,
+      "hash": "sha256-dUz100N7Almgxg1rXUpL36G1zsyfBhZh6PcRiNgY5rY=",
+      "publishedTime": "2018-07-01T14:07:43.0Z",
+      "ref": "v0.9.1"
+    },
+    "0.9.2": {
+      "bytes": 3095,
+      "hash": "sha256-vHeTJa+jXzsLmEdUd1dflRAK6L73w6uihlaxC41uLz8=",
+      "publishedTime": "2018-07-01T14:12:07.0Z",
+      "ref": "v0.9.2"
+    },
+    "0.10.0": {
+      "bytes": 3100,
+      "hash": "sha256-Kts1MaMM3Zh26WE1GCBuemZLl90Ak970wELdRbZcJgg=",
+      "publishedTime": "2018-07-21T14:51:22.0Z",
+      "ref": "v0.10.0"
+    },
+    "0.10.1": {
+      "bytes": 3101,
+      "hash": "sha256-rwjV+MH9nBhPZ+xImpFD7taZ1HIRODEWw20sA9e4j8k=",
+      "publishedTime": "2018-07-21T17:49:16.0Z",
+      "ref": "v0.10.1"
+    },
+    "0.10.2": {
+      "bytes": 3107,
+      "hash": "sha256-EpYucImyBtwoGJ89bX8nqjARFLYl82oL5Ba1Tjkxd3Q=",
+      "publishedTime": "2018-09-09T18:25:45.0Z",
+      "ref": "v0.10.2"
+    },
+    "0.10.3": {
+      "bytes": 3102,
+      "hash": "sha256-EI5cuDts7uU2WdN5twedfgdjw9kbtAntK0R3Lup9Ysw=",
+      "publishedTime": "2018-09-16T11:27:09.0Z",
+      "ref": "v0.10.3"
+    },
+    "0.11.0": {
+      "bytes": 3092,
+      "hash": "sha256-DeHz89zQgEoR/l7sqyIgYGu7uNCcccgdQ7R2UHQngEw=",
+      "publishedTime": "2018-12-12T11:12:43.0Z",
+      "ref": "v0.11.0"
+    },
+    "1.0.0": {
+      "bytes": 3455,
+      "hash": "sha256-DI3hUPpl1x+8nCYMbtPVgnmrOXYLt1MK89H9gG9jE7U=",
+      "publishedTime": "2018-12-23T09:52:55.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

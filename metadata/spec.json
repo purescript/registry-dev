@@ -1,0 +1,213 @@
+{
+  "location": {
+    "githubOwner": "purescript-spec",
+    "githubRepo": "purescript-spec"
+  },
+  "published": {
+    "0.4.0": {
+      "bytes": 43792,
+      "hash": "sha256-vbFED6ZHndgVZea4gviRVxoz7fbNsALCw34WYq7Rl7o=",
+      "publishedTime": "2015-05-14T16:05:51.0Z",
+      "ref": "v0.4.0"
+    },
+    "0.5.0": {
+      "bytes": 44008,
+      "hash": "sha256-RpUzsl7qryzI7AKyf7XpS1sji/wweReKPNNYKUYYp/A=",
+      "publishedTime": "2015-05-15T13:36:03.0Z",
+      "ref": "v0.5.0"
+    },
+    "0.5.1": {
+      "bytes": 47858,
+      "hash": "sha256-Wb1jYhXii6E8jdaBS59U3lw5xpUCtiy+5MqgxzNf/Hk=",
+      "publishedTime": "2015-05-18T07:48:42.0Z",
+      "ref": "v0.5.1"
+    },
+    "0.5.2": {
+      "bytes": 62155,
+      "hash": "sha256-CSM9ZPNvZgmIzyJXPNrC5hUrq3ZS/3CJXOQDeKV4wSk=",
+      "publishedTime": "2015-05-19T17:39:47.0Z",
+      "ref": "v0.5.2"
+    },
+    "0.6.0": {
+      "bytes": 56494,
+      "hash": "sha256-Nh+gIBAbrP9eZriKmwwFPi4LvQRfH/fgbqPodsBdPIw=",
+      "publishedTime": "2015-07-22T18:54:03.0Z",
+      "ref": "v0.6.0"
+    },
+    "0.6.1": {
+      "bytes": 56535,
+      "hash": "sha256-WXhQY3C1g37Mp538bqylmg4cHIFbB1fI2wHAUVQN4d4=",
+      "publishedTime": "2015-07-23T15:11:50.0Z",
+      "ref": "v0.6.1"
+    },
+    "0.6.2": {
+      "bytes": 112400,
+      "hash": "sha256-MBNfBGkEQEewsn0VAhFKzO82+2aumc0Wx4kXzc8KWbI=",
+      "publishedTime": "2015-07-23T22:13:44.0Z",
+      "ref": "v0.6.2"
+    },
+    "0.7.0": {
+      "bytes": 93099,
+      "hash": "sha256-TNxkt43qWLJcWKeBbxVuGRZgXHBlBqwSbvqNNC23Bms=",
+      "publishedTime": "2015-07-27T17:58:28.0Z",
+      "ref": "v0.7.0"
+    },
+    "0.7.1": {
+      "bytes": 93192,
+      "hash": "sha256-DuHJEEMf/GeZhSO3eyops1L/1DCUhammYjrYzJDRl8U=",
+      "publishedTime": "2015-08-03T20:14:52.0Z",
+      "ref": "v0.7.1"
+    },
+    "0.7.2": {
+      "bytes": 93192,
+      "hash": "sha256-TGf/WqN5L7L7k9eUiI13Tn2lQmzbjxX33JJDeV122fk=",
+      "publishedTime": "2015-10-13T17:53:30.0Z",
+      "ref": "v0.7.2"
+    },
+    "0.7.3": {
+      "bytes": 93271,
+      "hash": "sha256-vN8VyqAjLKuehdoktTBanZxxev48QxRESYRHhWSdXvc=",
+      "publishedTime": "2015-10-15T06:25:05.0Z",
+      "ref": "v0.7.3"
+    },
+    "0.8.0": {
+      "bytes": 93630,
+      "hash": "sha256-kHjeHegyLgEZzH0aEFAghNlTjqZYj520BPUyXpE+KRw=",
+      "publishedTime": "2016-06-18T05:55:58.0Z",
+      "ref": "v0.8.0"
+    },
+    "0.9.0": {
+      "bytes": 96001,
+      "hash": "sha256-fQna5GQqfiNhhdgdd1f+WOKld62VwVQSo7UE/ISQ9dA=",
+      "publishedTime": "2016-10-23T11:55:06.0Z",
+      "ref": "v0.9.0"
+    },
+    "0.9.1": {
+      "bytes": 96024,
+      "hash": "sha256-3PS3wHTGLY64ZoWdo9RZLpgeD7+C4ejxOlGMfI/f0gI=",
+      "publishedTime": "2016-10-23T12:00:54.0Z",
+      "ref": "v0.9.1"
+    },
+    "0.10.0": {
+      "bytes": 96377,
+      "hash": "sha256-ZBUf5u3sBrEhZOAqzDdQ41tWwasIfYJ/9tJMqbkrbOs=",
+      "publishedTime": "2016-10-23T16:37:49.0Z",
+      "ref": "v0.10.0"
+    },
+    "0.11.0": {
+      "bytes": 134175,
+      "hash": "sha256-8EQWTEgY+uetuj0aTnwkq4/lnp1xjPZ/+3qXxdxFd48=",
+      "publishedTime": "2017-01-12T06:37:04.0Z",
+      "ref": "v0.11.0"
+    },
+    "0.12.0": {
+      "bytes": 112141,
+      "hash": "sha256-yPEOhoOZuyXyRlYsHPi35+TSvKWeJJKUCbORparZzj8=",
+      "publishedTime": "2017-02-01T20:14:19.0Z",
+      "ref": "v0.12.0"
+    },
+    "0.12.1": {
+      "bytes": 112182,
+      "hash": "sha256-ovlykDSHUlexIJXAfydSg22wC7wsZ2GMGod6SauFxcM=",
+      "publishedTime": "2017-02-02T07:16:40.0Z",
+      "ref": "v0.12.1"
+    },
+    "0.12.2": {
+      "bytes": 132252,
+      "hash": "sha256-fbNoSPH1EzOwAArmMZNQ3abT5vwlzQ3xjMAL32E2ik8=",
+      "publishedTime": "2017-02-09T06:25:11.0Z",
+      "ref": "v0.12.2"
+    },
+    "0.12.3": {
+      "bytes": 132265,
+      "hash": "sha256-BLxctDkQONDJ+6nw+OV8zsTbqOJlxxC/jCMl45ZdR54=",
+      "publishedTime": "2017-02-10T17:13:47.0Z",
+      "ref": "v0.12.3"
+    },
+    "0.12.4": {
+      "bytes": 132281,
+      "hash": "sha256-KjdapoF/Q2AWuQpNGvzq9Ekmlfr96zkxRLuZShKDMhk=",
+      "publishedTime": "2017-02-15T17:04:20.0Z",
+      "ref": "v0.12.4"
+    },
+    "0.13.0": {
+      "bytes": 132429,
+      "hash": "sha256-XRh4hSYSeI8adLHlTP+H8RfAbC5tjcqpfDYXWJxO4Xg=",
+      "publishedTime": "2017-04-10T03:43:41.0Z",
+      "ref": "v0.13.0"
+    },
+    "0.14.0": {
+      "bytes": 132445,
+      "hash": "sha256-/2IecU0m5P9nt6lT9SiwOfCeg9l2rUHzJbfU60C3qNU=",
+      "publishedTime": "2017-04-25T05:55:19.0Z",
+      "ref": "v0.14.0"
+    },
+    "1.0.0": {
+      "bytes": 132482,
+      "hash": "sha256-KR7sUXxtDlGJDy0SHYYJDj1UciUVFkdCR980xldxxi8=",
+      "publishedTime": "2017-05-04T06:16:38.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 132427,
+      "hash": "sha256-49OcmOldISFlQhIWLVyErjjjO3HKzoPOA6PWB6VnJJM=",
+      "publishedTime": "2017-10-03T14:40:25.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 132091,
+      "hash": "sha256-d5uHUlsAtiwB3OeuFFfiuZ/4Vf7PEegZtYw0466ekh4=",
+      "publishedTime": "2018-05-31T08:25:43.0Z",
+      "ref": "v3.0.0"
+    },
+    "3.1.0": {
+      "bytes": 132365,
+      "hash": "sha256-L4fV2b7DHTiqkiqh2JipFnWlvRK6tW2jC63y7OOo/BA=",
+      "publishedTime": "2018-11-28T17:18:32.0Z",
+      "ref": "v3.1.0"
+    },
+    "3.1.1": {
+      "bytes": 132420,
+      "hash": "sha256-M46iNRZVXHkCaDx06xd5EwcW7qxIcW1xCOj/uw1Zo7Q=",
+      "publishedTime": "2019-06-10T21:27:30.0Z",
+      "ref": "v3.1.1"
+    },
+    "4.0.0": {
+      "bytes": 139507,
+      "hash": "sha256-LgJDELDy8KrZd2axWXW7NNRN6aBIHSdtSXO/w4VfgWY=",
+      "publishedTime": "2019-06-22T12:15:50.0Z",
+      "ref": "v4.0.0"
+    },
+    "4.0.1": {
+      "bytes": 140209,
+      "hash": "sha256-PbhLT//sOssr75lyDgemF/FLJLPXfbdTtclTmi7xO0g=",
+      "publishedTime": "2019-09-11T12:17:58.0Z",
+      "ref": "v4.0.1"
+    },
+    "5.0.0": {
+      "bytes": 140128,
+      "hash": "sha256-P2okPpzS7pHeS0UFjfsVKjkLiXcrxKb/brRKy+DNFHQ=",
+      "publishedTime": "2021-03-02T05:43:45.0Z",
+      "ref": "v5.0.0"
+    },
+    "5.0.1": {
+      "bytes": 140129,
+      "hash": "sha256-nH3U/z/AQ9TMJAAVXwk2vuwSuP6MFBVGkq1opKGIgu4=",
+      "publishedTime": "2021-05-11T21:56:00.0Z",
+      "ref": "v5.0.1"
+    },
+    "6.0.0": {
+      "bytes": 141376,
+      "hash": "sha256-8e6oivxHoJcVG5yRxTk99rex+wZlpwLagcICDhJlJs0=",
+      "publishedTime": "2022-04-01T07:21:44.0Z",
+      "ref": "v6.0.0"
+    },
+    "7.0.0": {
+      "bytes": 140761,
+      "hash": "sha256-2kqrUcBoEz8G7RUTlVW5aWW4x5AezJrFczB0qTJb3yY=",
+      "publishedTime": "2022-04-29T22:32:26.0Z",
+      "ref": "v7.0.0"
+    }
+  },
+  "unpublished": {}
+}

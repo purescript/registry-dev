@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "taylor1791",
+    "githubRepo": "purescript-aspen"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 6046,
+      "hash": "sha256-zzM6QSpzFUgs9EU18+oXqYbVYnnUwEMbXyJ7xROgGwg=",
+      "publishedTime": "2017-05-16T05:51:02.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

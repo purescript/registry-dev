@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "athanclark",
+    "githubRepo": "purescript-monad-control"
+  },
+  "published": {
+    "3.0.0": {
+      "bytes": 3463,
+      "hash": "sha256-WsoksfR1jzf+n8ZFEpZCdzqw5TueHEdkcGiiZteRtmo=",
+      "publishedTime": "2017-07-21T17:01:24.0Z",
+      "ref": "v3.0.0"
+    },
+    "3.0.1": {
+      "bytes": 3566,
+      "hash": "sha256-m0CGsPGTKqV4t2e4zQJZnGg+D37UcYX0DLA+2RPLDl0=",
+      "publishedTime": "2017-07-30T02:13:32.0Z",
+      "ref": "v3.0.1"
+    },
+    "3.0.2": {
+      "bytes": 8614,
+      "hash": "sha256-9hsEJmhTgHJ6mlzJ+nKxy2gGvfJmYRwuMLLhan98kKk=",
+      "publishedTime": "2017-08-04T16:40:06.0Z",
+      "ref": "v3.0.2"
+    },
+    "4.0.0": {
+      "bytes": 9960,
+      "hash": "sha256-JeOWbTq3B2BVb1TcdGo82OeBls65en3Vy1B7IRgrNTE=",
+      "publishedTime": "2017-09-14T21:14:30.0Z",
+      "ref": "v4.0.0"
+    },
+    "4.1.0": {
+      "bytes": 11252,
+      "hash": "sha256-y0AtXVyGNU/ktwyRkbRfTFMeEM1JMuqRa3TOrzKs3mQ=",
+      "publishedTime": "2017-09-23T23:47:24.0Z",
+      "ref": "v4.1.0"
+    },
+    "5.0.0": {
+      "bytes": 5050,
+      "hash": "sha256-IlwqqL7NuZ+bTrsdow+2XVu/Y40PsR5IzMwbJyIN2Mo=",
+      "publishedTime": "2018-10-19T06:13:33.0Z",
+      "ref": "v5.0.0"
+    }
+  },
+  "unpublished": {}
+}

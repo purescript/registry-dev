@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "kindaro",
+    "githubRepo": "purescript-html-parser"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 5134,
+      "hash": "sha256-BwTTVndD+6wO84U1ZEp2i828cJiUz7JzU3987dTC8us=",
+      "publishedTime": "2016-12-29T17:55:18.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 5894,
+      "hash": "sha256-S9UZfFE8fTl7BSqfDbr91Ns/kWAFqYdTIrv8kT4w5dc=",
+      "publishedTime": "2016-12-29T18:04:47.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 5886,
+      "hash": "sha256-Paxu77zrWQfs/BunpXquvrm0yE5F5eBp04lvUwjFTtQ=",
+      "publishedTime": "2017-01-20T15:15:27.0Z",
+      "ref": "v1.0.2"
+    }
+  },
+  "unpublished": {}
+}

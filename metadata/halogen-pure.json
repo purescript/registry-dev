@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "aij",
+    "githubRepo": "purescript-halogen-pure"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 3215,
+      "hash": "sha256-wT7l5wHdvFL8dSyP7cqtGsUzL4XBvrXxavFnl04O7EI=",
+      "publishedTime": "2019-07-08T18:37:25.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 2123,
+      "hash": "sha256-1SCVEsPJUK0r0lwIDQViOqN3I/IBcOuaA4Frdw+Y7ck=",
+      "publishedTime": "2019-07-08T21:16:18.0Z",
+      "ref": "v0.0.2"
+    }
+  },
+  "unpublished": {}
+}

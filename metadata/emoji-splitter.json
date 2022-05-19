@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "opyapeus",
+    "githubRepo": "purescript-emoji-splitter"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 7767,
+      "hash": "sha256-7GnOT7z4LGB9DpU/jLqgO59ateuotw2C0VQ914FJRqU=",
+      "publishedTime": "2018-08-30T23:38:40.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 8112,
+      "hash": "sha256-uxwweDFRYY36cCyk+/p+SnRvW0dWOnhxq3Mfo008Xag=",
+      "publishedTime": "2019-01-29T11:50:23.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 5713,
+      "hash": "sha256-LbF7rieAalcPZZEPmvhVl80Y9HySOH3Fx27N014GGnw=",
+      "publishedTime": "2019-08-03T15:43:29.0Z",
+      "ref": "v0.2.1"
+    }
+  },
+  "unpublished": {}
+}

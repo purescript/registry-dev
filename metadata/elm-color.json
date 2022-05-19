@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "brainrape",
+    "githubRepo": "purescript-elm-color"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5184,
+      "hash": "sha256-RKe2RyE07UaAnct6UM+6GAzpqUeD+qXCfsg3PF1F4Gk=",
+      "publishedTime": "2015-03-15T06:17:47.0Z",
+      "ref": "0.1.0"
+    }
+  },
+  "unpublished": {}
+}

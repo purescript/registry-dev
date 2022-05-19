@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "Unisay",
+    "githubRepo": "purescript-ethereum-client"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 9899,
+      "hash": "sha256-WDBRO8ro97JTFVDQ6hyD7XuZsL4zg8EHpdLyzDYMteE=",
+      "publishedTime": "2017-09-30T17:32:54.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

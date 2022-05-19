@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "slamdata",
+    "githubRepo": "purescript-colorpalettepicker-halogen"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 13178,
+      "hash": "sha256-ofoCTcgl3uy2wtPmBHuTyqa8YGADeNlArK0ISQUSr40=",
+      "publishedTime": "2017-12-26T14:59:41.0Z",
+      "ref": "0.1.0"
+    }
+  },
+  "unpublished": {}
+}

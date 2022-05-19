@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "lazamar",
+    "githubRepo": "purescript-dominator-core"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 15688,
+      "hash": "sha256-gpetD6yyKsq4dps1RTPbWS4p//EFGakAcpeWdrloc/g=",
+      "publishedTime": "2018-05-08T23:01:13.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 15684,
+      "hash": "sha256-lqKMhyhc7HKbDLvhnguJQJT5crr/lOo1TFqcHW+prpk=",
+      "publishedTime": "2018-05-08T23:02:35.0Z",
+      "ref": "v0.1.1"
+    }
+  },
+  "unpublished": {}
+}

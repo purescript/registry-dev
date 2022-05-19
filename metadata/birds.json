@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "awkure",
+    "githubRepo": "purescript-birds"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 4684,
+      "hash": "sha256-Q8RDjL8V3tfBPIK6lOa0v9O6+Dgy2lbzHYKGdFmMyrk=",
+      "publishedTime": "2017-10-15T11:10:50.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 4319,
+      "hash": "sha256-8QJL/0tNVPqYYR+ZyLUL7T5v+/+n6IQnO10hki9ci2U=",
+      "publishedTime": "2017-10-16T04:15:31.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 4825,
+      "hash": "sha256-OgeFjIoW4igw/cKykokCICbx1jk2e2r4gMrBioRvkRc=",
+      "publishedTime": "2018-01-04T06:46:56.0Z",
+      "ref": "v1.0.2"
+    },
+    "1.0.3": {
+      "bytes": 4566,
+      "hash": "sha256-BO8xbLmO4Pv8HSpMQ6dy09t9WPqr5mF2GGRXY4vT7j0=",
+      "publishedTime": "2018-01-05T06:12:55.0Z",
+      "ref": "v1.0.3"
+    },
+    "1.0.4": {
+      "bytes": 4545,
+      "hash": "sha256-CCptTfgkffU74MRaLswsxfgp/x0lmsdecfEaQmY8TZ4=",
+      "publishedTime": "2018-01-09T01:31:56.0Z",
+      "ref": "v1.0.4"
+    }
+  },
+  "unpublished": {}
+}

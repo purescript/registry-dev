@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "nonbili",
+    "githubRepo": "purescript-css-validate"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4772,
+      "hash": "sha256-UNeKqbJCJ63Z3s9fe+ARwpr1t4yuxZJh/1516NmvSx0=",
+      "publishedTime": "2018-12-21T03:18:26.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 4858,
+      "hash": "sha256-XSl1ChTdC+XF+5WJzNwKbZQpefR7y3OzLB2cBgbteHE=",
+      "publishedTime": "2018-12-21T03:47:11.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 4903,
+      "hash": "sha256-mIuIobENt6q8ssi5p/1HxuRiU4C4IcPz6utsDb3Bo+Q=",
+      "publishedTime": "2019-06-01T06:08:22.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 5425,
+      "hash": "sha256-FezGqTCZsyEAXOGxNNYwgj9j6hAbCVjCXvKFM0GkaFI=",
+      "publishedTime": "2019-06-12T02:10:06.0Z",
+      "ref": "v0.4.0"
+    },
+    "0.5.0": {
+      "bytes": 5889,
+      "hash": "sha256-YqiYHtqm71DesMOdgEXOuyq+9mFPpE7nFkap8l5h48U=",
+      "publishedTime": "2019-08-12T13:59:17.0Z",
+      "ref": "v0.5.0"
+    },
+    "0.6.0": {
+      "bytes": 6079,
+      "hash": "sha256-7E+VBE2jousnY8SFqoYtJfsFZspSIC+Z4AW42S44lQE=",
+      "publishedTime": "2020-03-06T08:48:28.0Z",
+      "ref": "v0.6.0"
+    }
+  },
+  "unpublished": {}
+}

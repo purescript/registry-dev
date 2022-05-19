@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "PureFunctor",
+    "githubRepo": "purescript-dissect"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 12264,
+      "hash": "sha256-P0j8Ob+KM6lnvJb19JB6B6jRi5NQ9FGLKctrSLoMbNI=",
+      "publishedTime": "2021-10-27T08:13:50.0Z",
+      "ref": "v0.1.0"
+    },
+    "1.0.0": {
+      "bytes": 9081,
+      "hash": "sha256-GMB1cqB9yk2YWKH/s292++/fDX5JEO1u5rJttrsPPk4=",
+      "publishedTime": "2022-05-05T13:58:56.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

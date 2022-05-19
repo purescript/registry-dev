@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "mikemckibben",
+    "githubRepo": "purescript-console-foreign"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5687,
+      "hash": "sha256-Xm16bawVwJj892LH/NQC701C16KPiFfUJYTvoYuNX/E=",
+      "publishedTime": "2017-03-03T17:57:44.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

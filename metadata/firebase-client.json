@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "TinkerTravel",
+    "githubRepo": "purescript-firebase-client"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 2577,
+      "hash": "sha256-A8/K/lNXA5/IT66AAJEyqqSIrGm4jy6rYw5vIZpe/pQ=",
+      "publishedTime": "2017-02-16T09:07:46.0Z",
+      "ref": "v0.0.1"
+    },
+    "1.0.0": {
+      "bytes": 2653,
+      "hash": "sha256-XVkSaLfaYjqLrDCwXj1AyMtLx38fTkWI4JTyXrA5dZE=",
+      "publishedTime": "2017-02-27T14:52:04.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.1.0": {
+      "bytes": 3757,
+      "hash": "sha256-7ZnXHb+/YtDUey9evOzpdMmFnXlKPQGMqWC3vDk1Cjk=",
+      "publishedTime": "2017-04-03T16:57:09.0Z",
+      "ref": "v1.1.0"
+    }
+  },
+  "unpublished": {}
+}

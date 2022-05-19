@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "rightfold",
+    "githubRepo": "purescript-case-insensitive"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 1610,
+      "hash": "sha256-0PjYkhRaDvJmXj541nrikgwrMbdWW1g6gkWMXr6aOGQ=",
+      "publishedTime": "2016-08-29T17:54:26.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

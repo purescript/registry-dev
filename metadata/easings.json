@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "i-am-tom",
+    "githubRepo": "purescript-easings"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 3958,
+      "hash": "sha256-4+fo47d7mvX6bTcvLcU2jW6SAqbE1JoXWZdtJksI/KU=",
+      "publishedTime": "2016-06-26T17:20:43.0Z",
+      "ref": "1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 5169,
+      "hash": "sha256-GEKFSKPIm/idXYzY4zhObXT8/hbp1Q1iMsPw0MjPtjY=",
+      "publishedTime": "2017-08-02T21:03:53.0Z",
+      "ref": "v1.0.1"
+    },
+    "2.0.0": {
+      "bytes": 5158,
+      "hash": "sha256-Id0gTtkdnbJu6abmYfYPLAVboBaJLAKMrk1x7AttUrI=",
+      "publishedTime": "2017-08-02T21:07:52.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.1.0": {
+      "bytes": 5161,
+      "hash": "sha256-/4eGSy2eEBl6UGMegtElHq53tqi4HjUM6ozMqrIPf2E=",
+      "publishedTime": "2017-08-02T21:53:42.0Z",
+      "ref": "v2.1.0"
+    }
+  },
+  "unpublished": {}
+}

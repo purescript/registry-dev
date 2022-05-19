@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "anilanar",
+    "githubRepo": "purescript-hyper-sslify"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5764,
+      "hash": "sha256-iRxVPuaRK0uhNLlMsH0J5wfIsWyAGEuRrGxqhCxQkPQ=",
+      "publishedTime": "2017-04-22T22:59:11.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 5762,
+      "hash": "sha256-fPUAL7doFCRT8+b65Q6o9cCEvTNT7jwrMqCAZsuLQ8I=",
+      "publishedTime": "2017-04-22T23:08:13.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 5761,
+      "hash": "sha256-CX3J6EgATsJfSBErZZmuTVuM3w6Bv9wQmcx3L0nqZY8=",
+      "publishedTime": "2017-04-22T23:12:56.0Z",
+      "ref": "v0.1.2"
+    }
+  },
+  "unpublished": {}
+}

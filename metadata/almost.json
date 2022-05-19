@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "TylorS",
+    "githubRepo": "Almost"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 7228,
+      "hash": "sha256-9GwhZRj6W8sKlBYMSRO45iwNZ61Mh2p8OwNNvnvN3h0=",
+      "publishedTime": "2016-05-26T19:54:39.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 7560,
+      "hash": "sha256-fGdPne8KZ/pQYZbD5fo9pxNnC8l602xjmfLgPoV05go=",
+      "publishedTime": "2016-05-27T19:28:20.0Z",
+      "ref": "v0.0.2"
+    }
+  },
+  "unpublished": {}
+}

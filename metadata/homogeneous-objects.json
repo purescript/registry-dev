@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "Risto-Stevcev",
+    "githubRepo": "purescript-homogeneous-objects"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 4002,
+      "hash": "sha256-WulymzxYB0CJHAnzvsYw5dSvUkIxtTo8smsuQ14ou6s=",
+      "publishedTime": "2016-07-19T10:52:35.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 7359,
+      "hash": "sha256-hxn062tl2bqHCBgLyr4LwwmBRGHORVV9lI51vK20s8o=",
+      "publishedTime": "2016-07-24T23:35:59.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 6962,
+      "hash": "sha256-ezS9GuotiAfWN+Mn3ZAHIknzOk6e7vSAFiRTTbK8vKI=",
+      "publishedTime": "2017-03-15T23:26:21.0Z",
+      "ref": "v3.0.0"
+    },
+    "4.0.0": {
+      "bytes": 6986,
+      "hash": "sha256-6mdq7Ao4kB4EZEttBXAzM+cwAk4CduakLg/1tZ0sSsA=",
+      "publishedTime": "2017-05-28T15:19:14.0Z",
+      "ref": "v4.0.0"
+    }
+  },
+  "unpublished": {}
+}

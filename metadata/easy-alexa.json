@@ -1,0 +1,69 @@
+{
+  "location": {
+    "githubOwner": "twitchard",
+    "githubRepo": "purescript-easy-alexa"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 4611,
+      "hash": "sha256-q0GTpw+p+4rNAdecz5PYJKM4qGwvVZVSfJeSqzoSVHE=",
+      "publishedTime": "2018-06-13T05:13:37.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 4842,
+      "hash": "sha256-ZFUD/AUsnc15KXAuq6Sz8imjfD8funuR30XzYhnLxnM=",
+      "publishedTime": "2018-06-16T19:41:59.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 4865,
+      "hash": "sha256-mDrhbENQ3x2dkbT9eY8092Q/Zq3dnBINuCPEJ283cbc=",
+      "publishedTime": "2018-06-18T11:58:18.0Z",
+      "ref": "v0.0.3"
+    },
+    "0.0.4": {
+      "bytes": 4921,
+      "hash": "sha256-euA2UjLrMkD4alCywFPgbu3kjCewlFibehw2QQ/O0qk=",
+      "publishedTime": "2018-07-10T23:22:25.0Z",
+      "ref": "v0.0.4"
+    },
+    "0.0.5": {
+      "bytes": 5279,
+      "hash": "sha256-TysbWjnlysJowzUDKnipCo3i6TNwHKCKHvXzDltUs+o=",
+      "publishedTime": "2018-07-11T00:44:26.0Z",
+      "ref": "v0.0.5"
+    },
+    "0.0.6": {
+      "bytes": 5891,
+      "hash": "sha256-k90ceNirhlVlEi2lk3uoe1hTGGiVT1e5WQ9/uyaud/I=",
+      "publishedTime": "2018-07-11T05:04:39.0Z",
+      "ref": "v0.0.6"
+    },
+    "0.0.7": {
+      "bytes": 6160,
+      "hash": "sha256-v+2D3A6zRq5ZmWCDyWQMPd+Hgi22rpQPQWXUNb/eiZk=",
+      "publishedTime": "2018-07-11T11:50:52.0Z",
+      "ref": "v0.0.7"
+    },
+    "0.0.8": {
+      "bytes": 6160,
+      "hash": "sha256-2jEUMYkUPfnh0WAu2IgnihKz0Xt+WnLoCNNPldNS77k=",
+      "publishedTime": "2018-07-11T11:57:31.0Z",
+      "ref": "v0.0.8"
+    },
+    "0.0.9": {
+      "bytes": 6182,
+      "hash": "sha256-yvww92Eu39glh7zx8VJojNupikawx9xrOYWas0+c6jU=",
+      "publishedTime": "2018-07-11T12:07:33.0Z",
+      "ref": "v0.0.9"
+    },
+    "0.0.10": {
+      "bytes": 6331,
+      "hash": "sha256-66J6vpm6A83ggg2jMNCGgdkZ5AsZDzYI3mK4AgdvpOM=",
+      "publishedTime": "2018-07-11T12:38:09.0Z",
+      "ref": "v0.0.10"
+    }
+  },
+  "unpublished": {}
+}

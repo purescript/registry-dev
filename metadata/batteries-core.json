@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "purescript-polyform",
+    "githubRepo": "batteries-core"
+  },
+  "published": {
+    "0.0.2": {
+      "bytes": 5462,
+      "hash": "sha256-uuoZixofrbHcism0kXO6F7aytogf29f7dENEogq20bw=",
+      "publishedTime": "2018-07-17T20:46:09.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 6215,
+      "hash": "sha256-VWMtNJSD1q0yvnL5wVePzOHoNeg+VIlQjzXEQxDSsrw=",
+      "publishedTime": "2018-07-18T22:48:46.0Z",
+      "ref": "v0.0.3"
+    },
+    "0.0.5": {
+      "bytes": 6257,
+      "hash": "sha256-O5djJMK7tkeaGzytxrGgDtJNz2w+gMO0Bu6/T1ksJs0=",
+      "publishedTime": "2018-10-11T14:09:34.0Z",
+      "ref": "v0.0.5"
+    },
+    "0.0.6": {
+      "bytes": 12937,
+      "hash": "sha256-q9YgNSj26h7UZSdvUit+dulGjp69CGSlnHe/VPXlJNY=",
+      "publishedTime": "2020-03-07T23:01:42.0Z",
+      "ref": "v0.0.6"
+    },
+    "0.2.0": {
+      "bytes": 12734,
+      "hash": "sha256-hS5U0c0j78dLavEPAlbxM0EzUfy3ya8KSowe2gzrSTQ=",
+      "publishedTime": "2021-06-08T12:48:21.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

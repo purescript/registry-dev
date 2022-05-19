@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "ursi",
+    "githubRepo": "purescript-substitute"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5288,
+      "hash": "sha256-/2Ol2dBbS+2IzxWnjLfBCnDsiT+39tbhf0x4/bJhsro=",
+      "publishedTime": "2020-12-18T19:36:11.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 5377,
+      "hash": "sha256-RmaONVgb9Re0AnJ5+Hq8bUonQxf1AOQTEbXOJpgmbLM=",
+      "publishedTime": "2020-12-21T01:45:15.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 6413,
+      "hash": "sha256-PIOkTjAgQxlpuOaHX591/D1fibwnt63ha2HGfek4FVo=",
+      "publishedTime": "2021-04-07T00:27:55.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 6918,
+      "hash": "sha256-bYXxvZPxnd3xmj3zFaS/k9zG0P81pH4ie/BtjDfNS1I=",
+      "publishedTime": "2021-04-19T19:12:44.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.2.2": {
+      "bytes": 7170,
+      "hash": "sha256-h7bJ4znp74ytC9bojRKe+vjRs1Q/YAuYer+L4lCFoPA=",
+      "publishedTime": "2021-05-15T01:47:54.0Z",
+      "ref": "v0.2.2"
+    },
+    "0.2.3": {
+      "bytes": 7171,
+      "hash": "sha256-ZhifKrvv+ai5YD60mAwp6EDX0K8dyuR0G3PLQwZRmdI=",
+      "publishedTime": "2021-05-15T23:19:41.0Z",
+      "ref": "v0.2.3"
+    }
+  },
+  "unpublished": {}
+}

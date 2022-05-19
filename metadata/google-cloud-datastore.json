@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "jamesthompson",
+    "githubRepo": "purescript-google-cloud-datastore"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 7896,
+      "hash": "sha256-bPVbHulgQaS7AVQkp3y2vHcFskF6rBGDD22XwTpLwBE=",
+      "publishedTime": "2016-11-12T17:57:13.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

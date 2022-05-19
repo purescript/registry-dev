@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "bouzuya",
+    "githubRepo": "purescript-bouzuya-http-method"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2818,
+      "hash": "sha256-Cdo6kPnaJisvqbJXi8pwQvrwWcevW1Zdhlptev4bgts=",
+      "publishedTime": "2018-05-12T04:25:33.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 3672,
+      "hash": "sha256-sqJPBPTxm7LxOQYq9goX8E7LDxl0qcJEHYdJfMxOMkU=",
+      "publishedTime": "2018-05-12T06:30:09.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 3901,
+      "hash": "sha256-kmbhNmnnPrkviYh8E2JYIYU9NSOWgdLwDSDRIyy9PKs=",
+      "publishedTime": "2018-05-12T07:04:03.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.3.0": {
+      "bytes": 3418,
+      "hash": "sha256-nSby/R2xmbRHozV31IbsnRlrgPGPKXDXo1G/cA11H3A=",
+      "publishedTime": "2018-08-12T04:34:44.0Z",
+      "ref": "v0.3.0"
+    },
+    "1.0.0": {
+      "bytes": 4636,
+      "hash": "sha256-XqySiVlllIGALC8qanvdp9X96yZtOE16me803V2Iciw=",
+      "publishedTime": "2019-07-11T23:30:10.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,63 @@
+{
+  "location": {
+    "githubOwner": "artemisSystem",
+    "githubRepo": "purescript-polymorphic-vectors"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 4419,
+      "hash": "sha256-FWTQYHReyCbF/iYPLyc9xKUyk4KYC6i6MXJziyRvMis=",
+      "publishedTime": "2019-12-01T18:41:23.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 4402,
+      "hash": "sha256-VMZ37iN1R8M4EfQt80Y6RnFpzpfM2OoOkMQzEyStHtw=",
+      "publishedTime": "2019-12-01T18:47:41.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.1.0": {
+      "bytes": 5045,
+      "hash": "sha256-nDPhZext9eCSPqzzq97yE19VMH7OMszKC7BsK1wK8MQ=",
+      "publishedTime": "2019-12-30T22:44:50.0Z",
+      "ref": "v1.1.0"
+    },
+    "1.1.1": {
+      "bytes": 6463,
+      "hash": "sha256-5sCnglKlGPUiU/KRmk30fT85ogrKQUqaGTxUO1C+aPo=",
+      "publishedTime": "2020-01-01T21:26:14.0Z",
+      "ref": "v1.1.1"
+    },
+    "1.1.2": {
+      "bytes": 6522,
+      "hash": "sha256-FHPWzhL4bD446GECkOWnlOBSxaFBrC2iF2lShqHPX7U=",
+      "publishedTime": "2020-08-31T19:21:11.0Z",
+      "ref": "v1.1.2"
+    },
+    "2.0.0": {
+      "bytes": 6460,
+      "hash": "sha256-0g5AwNSBxlXt7LQ4lmHoOTG4poo5z5CeDYBN7PxXKqA=",
+      "publishedTime": "2020-10-12T20:10:35.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.0.1": {
+      "bytes": 6518,
+      "hash": "sha256-7hg4iYvlEKNwKMJx9CKbdjJZt7eilq/fOTmaEBhmF0I=",
+      "publishedTime": "2020-11-20T23:12:45.0Z",
+      "ref": "v2.0.1"
+    },
+    "3.0.0": {
+      "bytes": 7636,
+      "hash": "sha256-7/JnovSvZTcHgy5nMxuwMkGJ7cET5dkSN9tg9E5XZ2c=",
+      "publishedTime": "2021-03-03T16:51:24.0Z",
+      "ref": "v3.0.0"
+    },
+    "4.0.0": {
+      "bytes": 6660,
+      "hash": "sha256-45geT1oMZP2E6dUCqR1sXPZY2HsyqziajmWhkwurqOg=",
+      "publishedTime": "2022-04-30T09:59:05.0Z",
+      "ref": "v4.0.0"
+    }
+  },
+  "unpublished": {}
+}

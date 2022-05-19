@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "chekoopa",
+    "githubRepo": "purescript-downloadjs"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 3971,
+      "hash": "sha256-Bouan8BS2n2cJvkUbgGG5thp+HtNKB2zybasCfNqyZM=",
+      "publishedTime": "2020-10-14T05:13:49.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

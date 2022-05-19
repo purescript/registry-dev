@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "newlandsvalley",
+    "githubRepo": "purescript-audiograph"
+  },
+  "published": {
+    "0.2.0": {
+      "bytes": 932244,
+      "hash": "sha256-DU399/hcy97bNN1lAogUu1aGgmr5V/1kgeTmvJg2qiE=",
+      "publishedTime": "2018-06-20T09:41:05.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 932335,
+      "hash": "sha256-D9DpKqCjL+S/NUtqSY/UgyE2qrSc6lB7BmcWFQUPzEM=",
+      "publishedTime": "2018-06-20T10:25:18.0Z",
+      "ref": "v0.2.1"
+    }
+  },
+  "unpublished": {}
+}

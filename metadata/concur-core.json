@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "purescript-concur",
+    "githubRepo": "purescript-concur-core"
+  },
+  "published": {
+    "0.4.0": {
+      "bytes": 132612,
+      "hash": "sha256-gHUDlZEeH2A0adTg/msFYm1incYFwkwfnA3ilSz37gM=",
+      "publishedTime": "2019-11-23T04:33:01.0Z",
+      "ref": "v0.4.0"
+    },
+    "0.4.1": {
+      "bytes": 132992,
+      "hash": "sha256-2DEId1ZdFSkHihKTyW3yLg4Jmq0eGUXqEGQgU6SJXfo=",
+      "publishedTime": "2019-11-23T11:35:10.0Z",
+      "ref": "v0.4.1"
+    },
+    "0.4.2": {
+      "bytes": 132808,
+      "hash": "sha256-J7MUin0Ka4HH4CakLHunXPbXpKjIA+SdmmA/zhIi1aY=",
+      "publishedTime": "2020-04-28T22:53:18.0Z",
+      "ref": "v0.4.2"
+    }
+  },
+  "unpublished": {}
+}

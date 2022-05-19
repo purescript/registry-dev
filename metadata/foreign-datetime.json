@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "berdario",
+    "githubRepo": "purescript-foreign-datetime"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2258,
+      "hash": "sha256-7ERVbKqAIIz6TRQM2o5Z6lVY1ZMHqiLEF2ERb19v8VQ=",
+      "publishedTime": "2017-04-12T01:17:56.0Z",
+      "ref": "v0.1.0"
+    },
+    "1.0.0": {
+      "bytes": 2552,
+      "hash": "sha256-0QicJv+eJFe1zwnsCFCo155TQpyz3eWFaRxQdgAe+Eo=",
+      "publishedTime": "2017-04-12T17:08:08.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 2694,
+      "hash": "sha256-tq+4royPFV71PW51E3/GFslM5gQ/U+o72BItXuwp8eU=",
+      "publishedTime": "2017-06-11T00:39:28.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.0.1": {
+      "bytes": 2598,
+      "hash": "sha256-zNhJLlxKMGsJqkeu4qK1LW3Q/JGuSmhQA0V9P/EYQ+Q=",
+      "publishedTime": "2019-06-16T13:28:41.0Z",
+      "ref": "v2.0.1"
+    },
+    "3.0.0": {
+      "bytes": 4080,
+      "hash": "sha256-woOyiePGT+61/VNh4bpwfd0KCP64YxlNCxO5EuDDNog=",
+      "publishedTime": "2019-06-16T14:41:14.0Z",
+      "ref": "v3.0.0"
+    }
+  },
+  "unpublished": {}
+}

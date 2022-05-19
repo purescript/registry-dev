@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "sigma-andex",
+    "githubRepo": "purescript-heterogeneous-extrablatt"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4804,
+      "hash": "sha256-WkO7QVMjEvGmvxJR+jVdD2q1VkAJnCKDwLEUytNrLlg=",
+      "publishedTime": "2021-03-27T10:03:46.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.1": {
+      "bytes": 4839,
+      "hash": "sha256-8+cz63I3nibD/8bxNuf/fQ/je3bRqN9wvIgN7dNeNbQ=",
+      "publishedTime": "2022-05-15T10:51:57.0Z",
+      "ref": "v0.2.1"
+    }
+  },
+  "unpublished": {}
+}

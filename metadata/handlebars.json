@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "paf31",
+    "githubRepo": "purescript-handlebars"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2660,
+      "hash": "sha256-+A6hVB37A5KFf8G43+ViZkT/4hCRAByZa0u+/OQdSFU=",
+      "publishedTime": "2015-02-21T17:38:47.0Z",
+      "ref": "v0.1.0"
+    },
+    "1.0.0": {
+      "bytes": 2097,
+      "hash": "sha256-/lf5RY2RuRINcVnfxVFz69ALyy97qLQPzSpqun1eMP0=",
+      "publishedTime": "2016-06-02T03:05:34.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 2472,
+      "hash": "sha256-IZih00H+nAh2Rw88CSrXoy64Dl0i05zhnic7BcFJu3U=",
+      "publishedTime": "2016-10-24T01:46:17.0Z",
+      "ref": "v2.0.0"
+    }
+  },
+  "unpublished": {}
+}

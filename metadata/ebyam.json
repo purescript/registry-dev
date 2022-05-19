@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "adarqui",
+    "githubRepo": "purescript-ebyam"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 21552,
+      "hash": "sha256-ojOiaqYq62JhUgeKtGbxF2DBlNx2YnKXRO5AxnGXTUU=",
+      "publishedTime": "2016-06-17T17:45:41.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 21370,
+      "hash": "sha256-3egxt2MLKhePJxDlwy9UBjhEb7P98dNzPBr5zfWlPGU=",
+      "publishedTime": "2016-06-17T17:55:22.0Z",
+      "ref": "v0.1.1"
+    },
+    "1.0.0": {
+      "bytes": 20705,
+      "hash": "sha256-yeQw7B6OV7VWR1bf/3GToCrn3hZkrZYRFx83LVoD+O4=",
+      "publishedTime": "2016-06-17T18:05:48.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.2.0": {
+      "bytes": 20761,
+      "hash": "sha256-Lh2lR3WDis2+Wb67qHYkiwgpJSQEgePNTxjPTf7k1LM=",
+      "publishedTime": "2017-03-26T13:06:47.0Z",
+      "ref": "v1.2.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "colehaus",
+    "githubRepo": "purescript-gdp"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3048,
+      "hash": "sha256-vLp/ut8NIOpd0WCDw9RekzoILGe0L4RH1A2S+CZXwuQ=",
+      "publishedTime": "2019-11-04T00:40:04.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

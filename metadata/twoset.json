@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "colehaus",
+    "githubRepo": "purescript-twoset"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2404,
+      "hash": "sha256-+rWa/8E8byG+F0YgC2zKFLdpZmoCBRDvqkQxH9UrFoU=",
+      "publishedTime": "2019-06-13T19:34:52.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

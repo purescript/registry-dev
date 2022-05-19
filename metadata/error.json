@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "bklaric",
+    "githubRepo": "purescript-error"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 12830,
+      "hash": "sha256-V1YN5pw8RuoLhp8vu79YUH1NOAuy2h8lbKWSgbPJ/dw=",
+      "publishedTime": "2018-04-21T19:17:13.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 12996,
+      "hash": "sha256-q0/YYM+uBpqKUfNrJKDpz1VXN1PSk71wvG4RnypTSaA=",
+      "publishedTime": "2018-07-19T17:52:09.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 1785,
+      "hash": "sha256-ZSY3DXcJkE8fPcIYGMIsL881xMM3Ha7h9WVppVkse0E=",
+      "publishedTime": "2019-03-24T14:07:28.0Z",
+      "ref": "v1.0.2"
+    }
+  },
+  "unpublished": {}
+}

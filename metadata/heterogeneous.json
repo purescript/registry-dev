@@ -1,0 +1,57 @@
+{
+  "location": {
+    "githubOwner": "natefaubion",
+    "githubRepo": "purescript-heterogeneous"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 6078,
+      "hash": "sha256-FS5mpZSMMiZFzG9dzfWmGLtAl+Kuv2M5YwopQrmOTjI=",
+      "publishedTime": "2018-08-14T04:23:35.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 7457,
+      "hash": "sha256-2VF36og1Ai/ufy7fxNyznmJjFfJ2YFML4B94YhkZgl8=",
+      "publishedTime": "2018-09-13T03:13:12.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 8299,
+      "hash": "sha256-64lthY8PRHrrz+CeAwEotsZ6O/9tGd4u9X4xSE9gHSo=",
+      "publishedTime": "2018-10-21T22:41:15.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 8305,
+      "hash": "sha256-/CbSBbKgXJML1PmKlQPR+V3twX6GEdplLkBhk+h4GGw=",
+      "publishedTime": "2019-03-15T13:50:48.0Z",
+      "ref": "v0.4.0"
+    },
+    "0.4.1": {
+      "bytes": 8314,
+      "hash": "sha256-Kbo9s9tWuvhrlrYALK8kU6/TMFzGaL7G7w/UnjjiNnk=",
+      "publishedTime": "2019-05-30T16:55:44.0Z",
+      "ref": "v0.4.1"
+    },
+    "0.5.0": {
+      "bytes": 8280,
+      "hash": "sha256-W/caSHaYEB70z7MOPQi0t9c4YU6qj38NHDXgmB3P+OY=",
+      "publishedTime": "2021-03-04T17:08:49.0Z",
+      "ref": "v0.5.0"
+    },
+    "0.5.1": {
+      "bytes": 8270,
+      "hash": "sha256-cJyaJo5IqWC+0wICyTIjB8eNQqSj5E0wPqsckkoPeiw=",
+      "publishedTime": "2021-06-16T19:37:20.0Z",
+      "ref": "v0.5.1"
+    },
+    "0.6.0": {
+      "bytes": 8522,
+      "hash": "sha256-EGVDbCqOg0DdFtOsctCKR36ekWt7kXPBH9s89PZy7QE=",
+      "publishedTime": "2022-05-02T16:18:07.0Z",
+      "ref": "v0.6.0"
+    }
+  },
+  "unpublished": {}
+}

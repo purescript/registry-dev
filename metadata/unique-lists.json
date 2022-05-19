@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "colehaus",
+    "githubRepo": "purescript-unique-lists"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 1682,
+      "hash": "sha256-45Xk9NiYBBGK3JCdhb2KpH49y+fU7TcWVkSjAetJXdM=",
+      "publishedTime": "2018-04-09T02:40:33.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "Fresheyeball",
+    "githubRepo": "purescript-MIME"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 9322,
+      "hash": "sha256-zQndpri6D3QN0y7re5Gj+T6vO6KrSkS5tVF9RI5u3qE=",
+      "publishedTime": "2015-01-23T01:36:01.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 9332,
+      "hash": "sha256-A8cw5gKkDpEAZ8UVTrcjlXWbrxVK9dCx5Yccp0WjSAY=",
+      "publishedTime": "2015-01-23T01:37:47.0Z",
+      "ref": "v0.0.2"
+    }
+  },
+  "unpublished": {}
+}

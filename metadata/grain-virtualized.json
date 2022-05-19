@@ -1,0 +1,81 @@
+{
+  "location": {
+    "githubOwner": "purescript-grain",
+    "githubRepo": "purescript-grain-virtualized"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 101984,
+      "hash": "sha256-FQEqcU04WmZffqleFxPHqsMBV5nEZ83SLrJcuuGw7MA=",
+      "publishedTime": "2020-06-15T13:05:07.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 101976,
+      "hash": "sha256-dnIjOqD9mz613K2KbSdb98xlRSXsd8GppIC6kT4/QjU=",
+      "publishedTime": "2020-06-18T21:08:02.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 101856,
+      "hash": "sha256-aVXbUcQ9B0xALXdK1XD2mEmHse133xS/TtxKisDtI8w=",
+      "publishedTime": "2020-06-19T14:16:09.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 101854,
+      "hash": "sha256-ABJYx9nERXpPZDAQC6VhRg/9WYIGJBsD2KfzrtLcBFY=",
+      "publishedTime": "2020-06-23T14:31:30.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 78049,
+      "hash": "sha256-JYBu8Z+WNlBQ4+zMlYyS22q1/CPv0sqq5BTVRfdqu6U=",
+      "publishedTime": "2020-07-08T12:48:52.0Z",
+      "ref": "v0.4.0"
+    },
+    "0.4.1": {
+      "bytes": 77857,
+      "hash": "sha256-w/ia1LzMPPTfA97rYVty8KiTVpDKojVVrmqsHHqGXGM=",
+      "publishedTime": "2020-07-11T06:21:40.0Z",
+      "ref": "v0.4.1"
+    },
+    "0.5.0": {
+      "bytes": 77889,
+      "hash": "sha256-t19IjxK1IB2K5+8738sHj4Dml1tHIICgHmcdqvPqgR4=",
+      "publishedTime": "2020-07-11T15:59:16.0Z",
+      "ref": "v0.5.0"
+    },
+    "0.7.0": {
+      "bytes": 77867,
+      "hash": "sha256-TCA3+hUA/DNcGvkLlpCxcWwAE51JkWnkwpX8g6or67Y=",
+      "publishedTime": "2020-07-13T03:51:43.0Z",
+      "ref": "v0.7.0"
+    },
+    "0.8.0": {
+      "bytes": 77960,
+      "hash": "sha256-05+Z5+SorVs9RocSwKnbkh8jKzyXtnRP3jN35+NCrJw=",
+      "publishedTime": "2020-09-15T13:04:05.0Z",
+      "ref": "v0.8.0"
+    },
+    "0.9.0": {
+      "bytes": 78118,
+      "hash": "sha256-PeptqAe24ZQ3zX2nwjJvHK0TYQYLTHnVOIBOOgzPvNw=",
+      "publishedTime": "2020-10-09T13:02:15.0Z",
+      "ref": "v0.9.0"
+    },
+    "1.0.0": {
+      "bytes": 78577,
+      "hash": "sha256-+Bj6mTtxwI4V7KYcH7mDqiItkbmwYxH9VF5qXESLIgw=",
+      "publishedTime": "2020-10-25T12:23:25.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 74335,
+      "hash": "sha256-KdoWhN3BGJRvubwSdmkPPI3VGhZcEtlJrbSfi+cZODI=",
+      "publishedTime": "2021-03-22T08:47:10.0Z",
+      "ref": "v2.0.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "sectore",
+    "githubRepo": "purescript-bulma"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 62860,
+      "hash": "sha256-qQ7hK/8qHfbAqjHJPLEzoypDFOh+QjB0HFcvKHC1CpI=",
+      "publishedTime": "2017-12-29T18:17:39.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 63482,
+      "hash": "sha256-8mVtFdnsE9UBtiIv9g/xb4Jj49rg1ArY+z2VOxP7TIU=",
+      "publishedTime": "2017-12-29T19:07:45.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.1.0": {
+      "bytes": 63837,
+      "hash": "sha256-iMLBIrfwqvqIAwtHajrIhnf6UmKlQkMOf/l22cLCz8Q=",
+      "publishedTime": "2018-06-17T16:22:26.0Z",
+      "ref": "v1.1.0"
+    },
+    "2.0.0": {
+      "bytes": 64050,
+      "hash": "sha256-YjUnWRR65Zqf4TWXDdgT2vPtFcM5HjiANI6l7jr7OKU=",
+      "publishedTime": "2018-06-17T16:25:27.0Z",
+      "ref": "v2.0.0"
+    }
+  },
+  "unpublished": {}
+}

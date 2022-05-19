@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "krisajenkins",
+    "githubRepo": "purescript-formatting"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 4412,
+      "hash": "sha256-nSWAPVifqTVSg8c866UCZBe4SPSPbxB+dHceTgIxCeo=",
+      "publishedTime": "2017-05-23T22:08:11.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 4527,
+      "hash": "sha256-+g3gmNEoPWSAHWGuGxxtwy9/I6mPIS47/zH3vvjzKSQ=",
+      "publishedTime": "2017-05-23T22:24:17.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 4596,
+      "hash": "sha256-95ojmbIg8kc8llwTDNMLowSf/3t6/DmjxC1G26yYpxc=",
+      "publishedTime": "2017-05-23T22:30:18.0Z",
+      "ref": "v1.0.2"
+    },
+    "1.0.3": {
+      "bytes": 4806,
+      "hash": "sha256-bJRkkR/CXdJMFCHOi4ek6mLWS8C2FlTaHRYbVquMjL0=",
+      "publishedTime": "2017-05-24T06:19:24.0Z",
+      "ref": "v1.0.3"
+    },
+    "1.0.4": {
+      "bytes": 4783,
+      "hash": "sha256-mO7MOI8uX6izRAhGrAK0Iake9uZhuDN376tWQMHLTa4=",
+      "publishedTime": "2017-05-24T07:02:52.0Z",
+      "ref": "v1.0.4"
+    },
+    "1.0.5": {
+      "bytes": 4783,
+      "hash": "sha256-KvUXyyNORCo/Yzto/INd5cF4HSvhlOZiTAgA5TU7EYo=",
+      "publishedTime": "2017-05-24T08:03:12.0Z",
+      "ref": "v1.0.5"
+    }
+  },
+  "unpublished": {}
+}

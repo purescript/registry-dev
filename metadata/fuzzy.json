@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "citizennet",
+    "githubRepo": "purescript-fuzzy"
+  },
+  "published": {
+    "0.1.1": {
+      "bytes": 10995,
+      "hash": "sha256-oAwTiE2S6DvJSk2Y7am4/rPRn48TLiI6IYUTaNcbIBE=",
+      "publishedTime": "2018-02-13T02:40:22.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 10998,
+      "hash": "sha256-lpJ8hHtv/DAAMASTl9JheNLdLgZnXD6gxAWtI/6KHN0=",
+      "publishedTime": "2018-02-13T04:31:23.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.2.0": {
+      "bytes": 11989,
+      "hash": "sha256-2v2/j3UbylFfVWTU4atsYXQdo7PQ51BcNT9+cWkg3/c=",
+      "publishedTime": "2018-06-12T22:33:53.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 11999,
+      "hash": "sha256-zmWEw2587Xke0OnOl/fA+FWsnz8UiQCxzwHLo+rU1Qo=",
+      "publishedTime": "2018-06-14T01:50:28.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.3.0": {
+      "bytes": 14005,
+      "hash": "sha256-hALiHLnoGr/BrG+j7WJbt1FYe9ALD5nYLCptLUNKYbM=",
+      "publishedTime": "2020-05-01T20:08:51.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 15206,
+      "hash": "sha256-yLVCHSWhEQdLWgWBaXgY8QAfHikXJ6PdXQb/Lfn3na4=",
+      "publishedTime": "2021-03-18T22:04:39.0Z",
+      "ref": "v0.4.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "justinwoo",
+    "githubRepo": "purescript-sunde"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2622,
+      "hash": "sha256-l0+No+vDhDBJdNBDHfglBmcSsjNHB88BCVI19rt0agA=",
+      "publishedTime": "2018-03-22T21:21:45.0Z",
+      "ref": "v0.1.0"
+    },
+    "1.0.0": {
+      "bytes": 2422,
+      "hash": "sha256-vKlqlNm91KCv8jx2BnvvZSa6yFeGhmttxrVWnfNuYFA=",
+      "publishedTime": "2018-06-03T07:44:58.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 2627,
+      "hash": "sha256-9EgRXh1Kvc0O4d04LZPSTgBTFYE7QS7zkeCamKqDRtI=",
+      "publishedTime": "2019-06-17T13:16:05.0Z",
+      "ref": "v2.0.0"
+    }
+  },
+  "unpublished": {}
+}

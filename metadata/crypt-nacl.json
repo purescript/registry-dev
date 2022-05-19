@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "throughnothing",
+    "githubRepo": "purescript-crypt-nacl"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5648,
+      "hash": "sha256-4t29i6h6gbGD5h6Clh/vHGbnWCcmtWlEosZU16iRZ44=",
+      "publishedTime": "2016-11-06T08:15:12.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 5957,
+      "hash": "sha256-sUKoFld39/9A2BBLiHrs8R+LleI00W7Tz0Xvg2ku1dM=",
+      "publishedTime": "2016-11-07T17:30:00.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 5904,
+      "hash": "sha256-0ysOLsr6CXQOdDwP566Fnqb/w6QC0t9y1wzmzgX9H0s=",
+      "publishedTime": "2017-04-24T00:02:04.0Z",
+      "ref": "v0.3.0"
+    }
+  },
+  "unpublished": {}
+}

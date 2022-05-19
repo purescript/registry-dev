@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "katsujukou",
+    "githubRepo": "purescript-halogen-router"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 8184,
+      "hash": "sha256-t2KCgocLdqM+zYDtQadeATwpdutLoMzkzmAdGBkmSmo=",
+      "publishedTime": "2022-02-26T15:02:14.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

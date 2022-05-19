@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "jacereda",
+    "githubRepo": "purescript-des"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 6818,
+      "hash": "sha256-DyluHDQ6wVg1rZY91RptLTOTDdxfwN1l+4klT1sfe1A=",
+      "publishedTime": "2017-05-14T18:54:12.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

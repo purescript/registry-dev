@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "mckayb",
+    "githubRepo": "purescript-airconsole-controls"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4220,
+      "hash": "sha256-ye16e/ID8nsyzSS8wmRyxzdPV58fjACb3Mz2k6F5sk0=",
+      "publishedTime": "2017-07-03T16:15:14.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 4224,
+      "hash": "sha256-eB5mIsQP9aPQekAAs+ZY5T8MXEPD3LS5T9ohGhXu5RE=",
+      "publishedTime": "2017-07-04T03:06:51.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 4220,
+      "hash": "sha256-6yHYIOdPQeURl4pNEZLgg548yJFohgJEkD8hAfwl2rE=",
+      "publishedTime": "2017-07-21T20:02:16.0Z",
+      "ref": "v0.1.2"
+    }
+  },
+  "unpublished": {}
+}

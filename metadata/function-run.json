@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "fixplz",
+    "githubRepo": "purescript-function-run"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 642,
+      "hash": "sha256-NjdOIZRaM4ZbJI4NCe8dnEJN1Mr9VtlzKFH1S0ItYSw=",
+      "publishedTime": "2015-01-30T22:25:23.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

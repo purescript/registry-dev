@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "matthew-hilty",
+    "githubRepo": "purescript-higher-order"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 12648,
+      "hash": "sha256-ICmeAHvOAc14dnhsvthS5Jq7pE5Hv6Fd8wKqUsP139s=",
+      "publishedTime": "2019-07-15T21:44:48.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 12336,
+      "hash": "sha256-yo7jfmmSBn9MSWlHHq44f+Qt/Zu3s3M2zvx5NiAmdJE=",
+      "publishedTime": "2019-07-16T21:33:35.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 12355,
+      "hash": "sha256-X/ClcFXub18GmC1kyQuV2PRSsoU9VFeLOP4dHgS6pQQ=",
+      "publishedTime": "2019-08-01T15:56:02.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

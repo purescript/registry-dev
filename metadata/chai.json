@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "CapillarySoftware",
+    "githubRepo": "purescript-chai"
+  },
+  "published": {
+    "0.0.3": {
+      "bytes": 2892,
+      "hash": "sha256-kA0a08Qs6bhH/DLpaN0xiRQitQwAOtG4Sd1jBm7j3KQ=",
+      "publishedTime": "2014-12-05T20:11:26.0Z",
+      "ref": "0.0.3"
+    }
+  },
+  "unpublished": {}
+}

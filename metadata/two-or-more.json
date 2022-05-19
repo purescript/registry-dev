@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "i-am-the-slime",
+    "githubRepo": "purescript-two-or-more"
+  },
+  "published": {
+    "0.3.0": {
+      "bytes": 3670,
+      "hash": "sha256-Pob4WswcfgNSZAoBZ/a9j3QIie0fN/DFFOoyA2vng7Q=",
+      "publishedTime": "2021-05-28T12:16:40.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 3636,
+      "hash": "sha256-+TFXZMOTEfRGtDyXuXgkE95C8bs65c5CQUfUpa9ruKw=",
+      "publishedTime": "2021-06-10T20:47:42.0Z",
+      "ref": "v0.4.0"
+    },
+    "1.0.0": {
+      "bytes": 3597,
+      "hash": "sha256-TxT4l4Of0B3dJj6B/aGHpUo/yzqPkzSD9YrYcsqLd/4=",
+      "publishedTime": "2021-06-12T13:39:41.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

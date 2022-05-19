@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "eheitherd",
+    "githubRepo": "purescript-aff-parallel"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2606,
+      "hash": "sha256-Gh2OtL9CzDLsTiP37R39ufMO221JZLDEJ1mZShsbD2E=",
+      "publishedTime": "2019-03-30T06:20:16.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 2596,
+      "hash": "sha256-w2yUGEnRF6QpOySNTPPdnGlIoWXuzV8e3XLrZ18pTXg=",
+      "publishedTime": "2019-03-30T08:15:03.0Z",
+      "ref": "v0.1.1"
+    }
+  },
+  "unpublished": {}
+}

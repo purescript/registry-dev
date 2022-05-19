@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "pelotom",
+    "githubRepo": "purescript-easy-ffi"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2238,
+      "hash": "sha256-Iuss+s9oSvLi1NrS2N643M8en0zypC2ZBwxrz/uxBuc=",
+      "publishedTime": "2014-07-06T09:28:08.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 2239,
+      "hash": "sha256-qDKGZN0OvOdQxLIayS1LIZuv4s0SnFEAlPtyldidWJY=",
+      "publishedTime": "2014-07-06T09:28:08.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 2852,
+      "hash": "sha256-59SP+ivvoTzv43YcNnCjIdSIN04MIHMKm2iFAs4rdk8=",
+      "publishedTime": "2015-06-11T01:31:01.0Z",
+      "ref": "v1.0.2"
+    },
+    "2.0.0": {
+      "bytes": 2967,
+      "hash": "sha256-I/ZpAenVH/C6cwJyQAOtw1proitHlC2XiUomG1GZ1SU=",
+      "publishedTime": "2016-06-08T00:43:09.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.1.0": {
+      "bytes": 2970,
+      "hash": "sha256-0FHu1GR7UJU3Eo/bthY3KPhVuRhSBP/B4DKC3Delq8o=",
+      "publishedTime": "2016-12-04T22:24:55.0Z",
+      "ref": "v2.1.0"
+    },
+    "2.1.2": {
+      "bytes": 3006,
+      "hash": "sha256-QjkG2XKC6sxtyU4Jy0JT6DCsmSrB8RCLoxHYSd5Bc7I=",
+      "publishedTime": "2017-10-15T02:20:45.0Z",
+      "ref": "v2.1.2"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "Thimoteus",
+    "githubRepo": "purescript-fancy-operators"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2318,
+      "hash": "sha256-LcoyqzRYwJxrXPYY8UET9uZvlEFDJh1SApHB9TiE7ZA=",
+      "publishedTime": "2016-02-01T19:47:59.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

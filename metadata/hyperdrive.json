@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "purescript-hyper",
+    "githubRepo": "purescript-hyperdrive"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 113321,
+      "hash": "sha256-65lNwFjAmIMrc4RhzjulihDCVkmvf72J0bBOKM9savw=",
+      "publishedTime": "2017-06-17T18:21:02.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

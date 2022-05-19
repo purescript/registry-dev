@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "mushishi78",
+    "githubRepo": "purescript-dexie"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 18511,
+      "hash": "sha256-Pa8vfLktXC4ph01UcYHOWHkxoffpwUtcrDA0BN7a7fs=",
+      "publishedTime": "2021-06-23T08:36:32.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 22120,
+      "hash": "sha256-6kRTE8Wclj4SUO6uCROMabjxpQsc8sSExtjlcFQLS8E=",
+      "publishedTime": "2021-06-26T15:18:03.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 22125,
+      "hash": "sha256-J2Z/7epMthLZg+UI1+U8PkP+6NCe4rZ2UtPitj6KGSU=",
+      "publishedTime": "2021-06-26T15:22:57.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.2.0": {
+      "bytes": 22332,
+      "hash": "sha256-nvzyzvFNjMOMLr3xLfESEG/chpPMib630LWJQXtY5Zc=",
+      "publishedTime": "2021-08-07T23:48:31.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 22327,
+      "hash": "sha256-o3A1RW4HztZ3Jr3IXesVHhl8fWOavPFMq+hKFlZ5SbU=",
+      "publishedTime": "2021-08-07T23:51:34.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.3.0": {
+      "bytes": 22305,
+      "hash": "sha256-kUmL4jdOhTX3HJ74VBL2p9SlC/fmHWW6h6ZByWsJMIM=",
+      "publishedTime": "2021-08-08T00:13:15.0Z",
+      "ref": "v0.3.0"
+    }
+  },
+  "unpublished": {}
+}

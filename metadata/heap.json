@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "tshinohara",
+    "githubRepo": "purescript-heap"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1884,
+      "hash": "sha256-kui8QuNeabL+ozY5dnPgmnpVs0n+ImcG4TyqH6tJwOM=",
+      "publishedTime": "2017-10-10T12:44:07.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

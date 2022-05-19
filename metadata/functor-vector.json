@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "philzook58",
+    "githubRepo": "purescript-functor-vector"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 11015,
+      "hash": "sha256-CUqANz9KuKGbE7mnKuh8/ND6srUOqgwFpCW/Q5xmK5k=",
+      "publishedTime": "2018-02-25T02:21:06.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

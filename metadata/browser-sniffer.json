@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "CapillarySoftware",
+    "githubRepo": "purescript-browser-sniffer"
+  },
+  "published": {
+    "0.0.0": {
+      "bytes": 3739,
+      "hash": "sha256-CCA5GVG3bML0AaQvjVxdgEocHp2hkNljd3U5p7bZfoI=",
+      "publishedTime": "2014-11-12T22:13:02.0Z",
+      "ref": "v0.0.0"
+    }
+  },
+  "unpublished": {}
+}

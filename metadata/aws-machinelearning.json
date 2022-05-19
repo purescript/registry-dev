@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "purescript-aws-sdk",
+    "githubRepo": "purescript-aws-machinelearning"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 26651,
+      "hash": "sha256-O29SAjZqNbOzS0wsobWufgJMMfN2U667XSf6K+6Uko4=",
+      "publishedTime": "2018-03-10T21:05:27.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.1.1": {
+      "bytes": 26690,
+      "hash": "sha256-X68kXyeTvsFd8XMVnSbJsnIS+H0sKRgMV9AfrrteKnU=",
+      "publishedTime": "2018-03-12T18:07:40.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 44515,
+      "hash": "sha256-IKHueoFfFK2YfGPsbCsP/dF0BeuLGZ5WcqkcphFds1I=",
+      "publishedTime": "2018-03-13T13:37:08.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.2.1": {
+      "bytes": 44529,
+      "hash": "sha256-VGPmGe6abPLS/2LxRf9IPfpwd6hu/J+BfU2rbo70EnI=",
+      "publishedTime": "2018-03-28T16:45:17.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.3.1": {
+      "bytes": 43696,
+      "hash": "sha256-aQ9AuchxPbGugxCBgeX4ubdWyWB7jcV8/SmTZfVwm6k=",
+      "publishedTime": "2018-04-26T13:28:19.0Z",
+      "ref": "v0.3.1"
+    }
+  },
+  "unpublished": {}
+}

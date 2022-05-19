@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "jutaro",
+    "githubRepo": "purescript-foreign-clone"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 9695,
+      "hash": "sha256-QcXRVk/W0V5TyfivHXylzAAYIXE+T6TlHy+F0Y6+i9w=",
+      "publishedTime": "2017-05-03T10:32:02.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

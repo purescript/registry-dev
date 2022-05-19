@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "abhin4v",
+    "githubRepo": "purescript-amqp"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 14694,
+      "hash": "sha256-PE58Xe6oeESlLAO7+MxFSV+G4emCivSPq8fFYpAgnD8=",
+      "publishedTime": "2018-02-08T07:23:24.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

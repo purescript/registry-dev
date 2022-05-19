@@ -1,0 +1,69 @@
+{
+  "location": {
+    "githubOwner": "lumihq",
+    "githubRepo": "purescript-fixed-precision"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 7316,
+      "hash": "sha256-zTon3VaiG7cawuFvHyFdrZQjXQ6OlWZV6IhdEN64zRw=",
+      "publishedTime": "2018-02-16T21:47:46.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 7485,
+      "hash": "sha256-Sr2Uob7a/VmxCKoTz5vmhTz4EeUjY0PPh1P7kL7NyaI=",
+      "publishedTime": "2018-02-17T01:19:39.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 7665,
+      "hash": "sha256-z6bki5/PZrtZ1P4Iy7MGf3yMrQyTJF1wsr0dZZRY8gQ=",
+      "publishedTime": "2018-06-13T21:10:26.0Z",
+      "ref": "v3.0.0"
+    },
+    "3.0.1": {
+      "bytes": 7839,
+      "hash": "sha256-0L2SAtku9cpRQAR3Hi9xrI4rFJl80gIzCwc7A6oC9iE=",
+      "publishedTime": "2019-01-30T18:42:35.0Z",
+      "ref": "v3.0.1"
+    },
+    "4.0.0": {
+      "bytes": 9926,
+      "hash": "sha256-+s3jGLw4oaKyt7a0IRMUCq1tkUC7TBFrX0g4xruw73g=",
+      "publishedTime": "2019-03-11T18:05:26.0Z",
+      "ref": "v4.0.0"
+    },
+    "4.0.1": {
+      "bytes": 10245,
+      "hash": "sha256-lPdxv8CjpBF7qjDAr+siHZZTDvTiNe57oaYXKHXaOSY=",
+      "publishedTime": "2019-05-20T16:47:06.0Z",
+      "ref": "v4.0.1"
+    },
+    "4.1.0": {
+      "bytes": 9528,
+      "hash": "sha256-E5ONAVCtF02wZQx3BzZDneJ7o8clqRJefgJr9uoXO98=",
+      "publishedTime": "2020-01-13T15:15:43.0Z",
+      "ref": "v4.1.0"
+    },
+    "4.2.0": {
+      "bytes": 9569,
+      "hash": "sha256-mIOO92UNy0Whgn7feg7+xndo8OI5pM7aRY0g0kpPEXA=",
+      "publishedTime": "2020-01-13T16:34:23.0Z",
+      "ref": "v4.2.0"
+    },
+    "4.3.0": {
+      "bytes": 9954,
+      "hash": "sha256-MV9ODL7JSyLfXtv2sPDpbS1G9fLTc4zNE3/ZFk1H9NY=",
+      "publishedTime": "2020-03-04T20:22:58.0Z",
+      "ref": "v4.3.0"
+    },
+    "4.3.1": {
+      "bytes": 10204,
+      "hash": "sha256-hlTcEyKUWHpIGoPMMtuK08xyQnCHIdECj21Jal0EFo0=",
+      "publishedTime": "2020-03-05T11:46:52.0Z",
+      "ref": "v4.3.1"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "JoelLefkowitz",
+    "githubRepo": "purescript-repr"
+  },
+  "published": {
+    "0.2.0": {
+      "bytes": 14341,
+      "hash": "sha256-CZHyyqaV4+VuNsXe5vpjluGKoayoKZMBDrRKB6WPhXY=",
+      "publishedTime": "2021-06-01T20:22:16.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 13473,
+      "hash": "sha256-TrW1En1BK5N5JbVrt6JH79Rg/b+843nEvxTbSulhkQo=",
+      "publishedTime": "2021-12-05T19:09:29.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.3.1": {
+      "bytes": 13480,
+      "hash": "sha256-zwheaoVEQG36q16XTlX83DQVQm86+vty+F9S6Gf58ok=",
+      "publishedTime": "2021-12-05T21:22:54.0Z",
+      "ref": "v0.3.1"
+    }
+  },
+  "unpublished": {}
+}

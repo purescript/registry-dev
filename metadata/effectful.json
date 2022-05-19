@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "the-dr-lazy",
+    "githubRepo": "purescript-effectful"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 16277,
+      "hash": "sha256-2hhdukyFyqGTUw+M/ec274o0hefcG/lbfn/G8tTaiMU=",
+      "publishedTime": "2022-02-03T14:37:51.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

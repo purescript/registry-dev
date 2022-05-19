@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "philopon",
+    "githubRepo": "purescript-dom-delegator"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 7856,
+      "hash": "sha256-ns6+g5TsrZWW5oX1tFSqQZapHGQwoJG4UM/HHsAttbY=",
+      "publishedTime": "2015-02-22T08:29:56.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

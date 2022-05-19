@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "throughnothing",
+    "githubRepo": "purescript-base58"
+  },
+  "published": {
+    "0.0.3": {
+      "bytes": 1274,
+      "hash": "sha256-RDrZIAzCwJCNclNtNwMWJ5ZKhG5E4th2mtUcVBRE5MQ=",
+      "publishedTime": "2017-08-22T03:49:47.0Z",
+      "ref": "v0.0.3"
+    }
+  },
+  "unpublished": {}
+}

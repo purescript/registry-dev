@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "chrisdotcode",
+    "githubRepo": "purescript-default"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 1872,
+      "hash": "sha256-wZzWzVY5LVC5JkLr7HZPfNNqrsQnOegz1H+tNWqEgZM=",
+      "publishedTime": "2017-02-21T08:03:34.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.1.0": {
+      "bytes": 2511,
+      "hash": "sha256-xVoWnWdVoBQqyHyqQu8d54qaMJyhyswR9ToOLx2+6eQ=",
+      "publishedTime": "2017-02-21T18:09:49.0Z",
+      "ref": "v2.1.0"
+    }
+  },
+  "unpublished": {}
+}

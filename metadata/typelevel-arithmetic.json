@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "sigma-andex",
+    "githubRepo": "purescript-typelevel-arithmetic"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4405,
+      "hash": "sha256-fClUE+Uy26OkCT2+pF9qGs5fk9fd5B1GX+MYwUNEajc=",
+      "publishedTime": "2021-08-25T09:36:56.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

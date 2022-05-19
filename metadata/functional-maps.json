@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "Thimoteus",
+    "githubRepo": "purescript-functional-maps"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 4779,
+      "hash": "sha256-V65/WG1mWjnu8Oz5dntYUXQyBFvasohcs77L/vd4I5c=",
+      "publishedTime": "2017-09-19T02:51:05.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

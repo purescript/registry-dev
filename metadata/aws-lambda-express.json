@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "lpil",
+    "githubRepo": "purescript-aws-lambda-express"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 8522,
+      "hash": "sha256-v4Q0qCg6oLxRcHpsyrXqu+H39VfoXQsJ6e7qStxU/ic=",
+      "publishedTime": "2017-11-04T14:29:32.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 8522,
+      "hash": "sha256-FFpZSvRzCsALpycDmDAh70uz96mewfFdWg5EjB2fF18=",
+      "publishedTime": "2017-11-04T15:12:30.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 8521,
+      "hash": "sha256-VMNyBTvPqwwE48x0FIJEpRTwWkzyybkHH9uTkucLWes=",
+      "publishedTime": "2017-12-03T18:17:53.0Z",
+      "ref": "v1.0.2"
+    },
+    "2.0.0": {
+      "bytes": 8533,
+      "hash": "sha256-fm0swhb+E74QxFlZNee2CBybmMTx+PcSnkLO/qqc56s=",
+      "publishedTime": "2018-10-19T14:01:59.0Z",
+      "ref": "v2.0.0"
+    }
+  },
+  "unpublished": {}
+}

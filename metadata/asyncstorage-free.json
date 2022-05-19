@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "ethul",
+    "githubRepo": "purescript-asyncstorage-free"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2829,
+      "hash": "sha256-x2D29gsNwhyzpWW+wuc9/8iunIk7O6shflW7g9ITUu8=",
+      "publishedTime": "2018-04-15T14:21:33.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 2858,
+      "hash": "sha256-2ex3v0I/ZxnMMbgzbI7HZZXA5PiQ0X5gCh/HGa0xWzE=",
+      "publishedTime": "2018-04-15T19:11:20.0Z",
+      "ref": "v0.1.1"
+    }
+  },
+  "unpublished": {}
+}

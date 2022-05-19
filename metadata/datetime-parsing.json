@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "flounders",
+    "githubRepo": "purescript-datetime-parsing"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5923,
+      "hash": "sha256-8GQJ6TZ1IC9qMT43bG7a9lp7r1dnPpIedKu/KnvGwWA=",
+      "publishedTime": "2021-08-02T11:18:32.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 5878,
+      "hash": "sha256-BHYx8OSsipc6kQ/t5Wh1/17+SFHRLzoowU6nYT1Ce10=",
+      "publishedTime": "2022-05-08T13:56:38.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

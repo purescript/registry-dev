@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "oreshinya",
+    "githubRepo": "purescript-conveyor-health"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 1960,
+      "hash": "sha256-zWGYMCzcT4P7A+yv2VOs2aZPksiHRA0382QMgmov9qk=",
+      "publishedTime": "2018-10-09T15:02:40.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

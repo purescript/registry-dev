@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "srijs",
+    "githubRepo": "purescript-indexed"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 1963,
+      "hash": "sha256-/oFt/+ODw+hgm7TOEVa+a75vobZy/WM2aYnXbPuMhuU=",
+      "publishedTime": "2015-11-16T01:18:42.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 2294,
+      "hash": "sha256-zAAT/xK7iPUHDZ+NhWWWCPQp03NU+7vSfNSEW6s6AMM=",
+      "publishedTime": "2015-11-16T01:25:21.0Z",
+      "ref": "v0.0.2"
+    }
+  },
+  "unpublished": {}
+}

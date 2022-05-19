@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "Risto-Stevcev",
+    "githubRepo": "purescript-es6-symbols"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2723,
+      "hash": "sha256-x+ud8B6v15zln9j0e2Ov/EEPzwvtNCgz8+za5e+Ptpc=",
+      "publishedTime": "2017-09-26T06:46:54.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 2732,
+      "hash": "sha256-G9nf3tj8WXvjfRRS4bullhfJGyYjFuu69WQ9T+q/q1Y=",
+      "publishedTime": "2017-09-26T06:51:37.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 2733,
+      "hash": "sha256-R50RQyukQBqwcD131dSbtZ8TJpuSw55l/0GMI3NAS3A=",
+      "publishedTime": "2017-09-26T06:52:24.0Z",
+      "ref": "v1.0.2"
+    }
+  },
+  "unpublished": {}
+}

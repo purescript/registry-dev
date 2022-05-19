@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "hendrikniemann",
+    "githubRepo": "purescript-graphql"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 14777,
+      "hash": "sha256-a2QlpuIcj9IEmRuDy35d6B13VxJlqfpiFtMWvXGUA2w=",
+      "publishedTime": "2018-12-01T14:07:15.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 16929,
+      "hash": "sha256-34iT0W4RxA0Ferhf9VunTAonxk4DDJL+xAH5udXPYFE=",
+      "publishedTime": "2018-12-01T14:18:54.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 16918,
+      "hash": "sha256-yD+0vXepqpZTBXfTdYpk20DO6V+GK9A4eQ77aEqI8E0=",
+      "publishedTime": "2019-11-22T01:22:53.0Z",
+      "ref": "v1.0.2"
+    }
+  },
+  "unpublished": {}
+}

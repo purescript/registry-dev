@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "joneshf",
+    "githubRepo": "purescript-halogen-driver"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 6388,
+      "hash": "sha256-lt7SfrNzt5jGAnnNOj7CvT+kIHHpwxroN0NP6ecC1Ik=",
+      "publishedTime": "2019-03-11T17:27:54.0Z",
+      "ref": "1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 6673,
+      "hash": "sha256-OuQy/KT/E3qtfpn9S7H1uwHHvRNFHXjiiKm3b79duEY=",
+      "publishedTime": "2019-04-03T16:30:54.0Z",
+      "ref": "2.0.0"
+    }
+  },
+  "unpublished": {}
+}

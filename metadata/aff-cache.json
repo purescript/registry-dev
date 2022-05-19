@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "jvliwanag",
+    "githubRepo": "purescript-aff-cache"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4032,
+      "hash": "sha256-TTnkrgr5RhULnqEZAfdDgdLTKK3phVIwwYJyJCr050c=",
+      "publishedTime": "2020-09-18T07:22:37.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "justinwoo",
+    "githubRepo": "purescript-bibimbap"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3549,
+      "hash": "sha256-OsxY3L5B5D8MqcxaHfAzr/1MqBD39JvzLAq3ZV6TZKM=",
+      "publishedTime": "2018-09-30T07:52:50.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

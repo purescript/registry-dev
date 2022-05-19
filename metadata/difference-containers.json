@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "klntsky",
+    "githubRepo": "purescript-difference-containers"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 195371,
+      "hash": "sha256-qtAK21+UwgmTj2qs3HBEHxRzjbeleAzB0NZnXrPj3Uk=",
+      "publishedTime": "2018-12-29T21:08:26.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 196886,
+      "hash": "sha256-QHqZR4sYwgLLcOEWBVzTZ9lIDFxDc+HIT8vbyZ5TJOA=",
+      "publishedTime": "2019-01-21T12:01:42.0Z",
+      "ref": "v0.0.2"
+    },
+    "1.0.0": {
+      "bytes": 197003,
+      "hash": "sha256-nHUxYobYB/wUIFmYJxpmXEbbmzf028hH3eACeZM47HM=",
+      "publishedTime": "2019-04-17T11:33:45.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 196825,
+      "hash": "sha256-jq168eOnWVD0IR2rEZQiO1hajxLJIR69wDmRgl+TOsw=",
+      "publishedTime": "2019-09-18T06:37:24.0Z",
+      "ref": "v1.0.1"
+    }
+  },
+  "unpublished": {}
+}

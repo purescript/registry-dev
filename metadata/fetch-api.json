@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "iarthstar",
+    "githubRepo": "purescript-fetch-api"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 4149,
+      "hash": "sha256-zJS7TDzxBfjQC2rMlJpJC4sMKXooEUmqLWSK5ibmBOg=",
+      "publishedTime": "2019-11-08T11:35:14.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

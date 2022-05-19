@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "cyrbon",
+    "githubRepo": "purescript-benchmark"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 7033,
+      "hash": "sha256-e8C3CR0IdYIGi32pZxBHbf+poiLu6ysmo9845pw47Fg=",
+      "publishedTime": "2017-05-18T20:10:45.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

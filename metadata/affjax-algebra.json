@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "slamdata",
+    "githubRepo": "purescript-affjax-algebra"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 8710,
+      "hash": "sha256-WhkuY9NFrr5sQKOG70PipT9IoAZn2CiEborqGSsbWxc=",
+      "publishedTime": "2016-04-21T21:24:59.0Z",
+      "ref": "v0.1.0"
+    },
+    "1.0.0": {
+      "bytes": 8698,
+      "hash": "sha256-GOsbnjcP7Wqzg+UshyK59HuPGU15y4mWwZb4x/3tMog=",
+      "publishedTime": "2016-07-22T21:33:52.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 8694,
+      "hash": "sha256-vjUC68Sozkcx1NXsLpC1b/IfoQ+x/+MDbzHmFh7hW9U=",
+      "publishedTime": "2016-07-31T17:49:42.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 8629,
+      "hash": "sha256-NvoJsr5sPFKsDptS260MkW5t5cCmxTQvLmtmF+AH9/M=",
+      "publishedTime": "2016-11-08T21:29:02.0Z",
+      "ref": "v3.0.0"
+    },
+    "4.0.0": {
+      "bytes": 8621,
+      "hash": "sha256-Za3AKcfO5bUy06r6n9j4JWxd1ELY+47SJPoGlkfcajE=",
+      "publishedTime": "2017-04-11T20:23:18.0Z",
+      "ref": "v4.0.0"
+    },
+    "5.0.0": {
+      "bytes": 8627,
+      "hash": "sha256-Kcfhi8nEPZ76gcQb7rS4XvHmiJR/+n0vm4z/j0EaEr8=",
+      "publishedTime": "2018-01-24T12:03:03.0Z",
+      "ref": "v5.0.0"
+    }
+  },
+  "unpublished": {}
+}

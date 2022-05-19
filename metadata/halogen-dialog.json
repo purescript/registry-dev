@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "brunjlar",
+    "githubRepo": "purescript-halogen-dialog"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 6833,
+      "hash": "sha256-khObdhSovPMrrpZc5Vs31/r74RCSy5F+THFMrKil+Jw=",
+      "publishedTime": "2015-06-26T23:49:32.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 28118,
+      "hash": "sha256-w9HTMG6Yh14XPdgb2CSEZwsa9qAGomNfszasBbYyebI=",
+      "publishedTime": "2015-06-27T22:32:45.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.1.0": {
+      "bytes": 74271,
+      "hash": "sha256-6vp5xYla8OMV7rs5j8aNeap6te1gOaFyV3lFeUmDQ20=",
+      "publishedTime": "2015-06-28T00:30:10.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

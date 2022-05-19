@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "icyrockcom",
+    "githubRepo": "purescript-cheerio"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4543,
+      "hash": "sha256-BELGlr4JUJwzU20C/it/PNso3wijy3H5+LBafq7nvDE=",
+      "publishedTime": "2018-01-18T04:54:31.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 5035,
+      "hash": "sha256-f6th3tJ9idyRyqic1Y2txjBODEJksv+48Vrx1TpNeoI=",
+      "publishedTime": "2018-08-05T18:22:19.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 5050,
+      "hash": "sha256-OghGw0rfXDULqO2dZtWAMZYjJ/ohtMrC4+gYrM21wUA=",
+      "publishedTime": "2019-11-02T04:15:45.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.2.2": {
+      "bytes": 5173,
+      "hash": "sha256-T18uiyahhPsuRjBBEJm1tEgj7y+Eueyb1n3YfWMwdgc=",
+      "publishedTime": "2020-04-19T17:44:55.0Z",
+      "ref": "v0.2.2"
+    },
+    "0.2.3": {
+      "bytes": 5176,
+      "hash": "sha256-4ESPfukgJ3/ttzTjg3nWmS4tBy1lEIA7SAe6WZd/g3M=",
+      "publishedTime": "2020-07-16T00:52:59.0Z",
+      "ref": "v0.2.3"
+    },
+    "0.2.4": {
+      "bytes": 5204,
+      "hash": "sha256-4xehEq8mf9f2zeF52sSHeSd19k50XwVugWD7XVUEDb0=",
+      "publishedTime": "2021-08-17T02:44:38.0Z",
+      "ref": "v0.2.4"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "adkelley",
+    "githubRepo": "purescript-webaudio"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1023431,
+      "hash": "sha256-RCrKfoSAmq63R/lwuLIlo4ikqnzpKdhAFJB9VRt7EH4=",
+      "publishedTime": "2018-05-20T00:24:14.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 1024214,
+      "hash": "sha256-6UXzpN0RNaThp24Qe17WZsFuseO/y8uSHvp7V66rdws=",
+      "publishedTime": "2018-06-06T23:31:04.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 1024265,
+      "hash": "sha256-7CZSL8c2am017ty41LbOqRLxzCDnoH02lqa0Jhw4iB4=",
+      "publishedTime": "2018-06-06T23:52:32.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.2.0": {
+      "bytes": 1027468,
+      "hash": "sha256-F3ya55aPcv+gCaiyzeD5cdEdE+trAK0f0ff0kwFycjU=",
+      "publishedTime": "2019-09-10T00:22:05.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 1027463,
+      "hash": "sha256-4NndGiEvPyflCpNRp7GQR6FWoFMM3ad0C/XbSozc5ZY=",
+      "publishedTime": "2019-09-10T17:21:29.0Z",
+      "ref": "v0.2.1"
+    }
+  },
+  "unpublished": {}
+}

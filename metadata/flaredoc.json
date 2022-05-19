@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "sharkdp",
+    "githubRepo": "purescript-flaredoc"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 7096,
+      "hash": "sha256-Y8RRMeLkRH2GVIfaBnU6Wa7F07tk/u9xGmBQmp8C0uQ=",
+      "publishedTime": "2016-07-28T18:01:36.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 7089,
+      "hash": "sha256-cYKueyr8w8uIR4FlY4qzreDDLDYjthc+i/0gV/FfQ/4=",
+      "publishedTime": "2016-11-11T08:38:32.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 7082,
+      "hash": "sha256-DwIx63YYmE/d2FEqskabsAOJ5lEPxqSlX9zzoLyORmk=",
+      "publishedTime": "2017-04-22T07:29:46.0Z",
+      "ref": "v3.0.0"
+    },
+    "4.0.0": {
+      "bytes": 7936,
+      "hash": "sha256-ED7EhUIJgh20+2IVPnp61kdc41mM3j1Q1YzuTxe7D+U=",
+      "publishedTime": "2017-09-03T08:54:03.0Z",
+      "ref": "v4.0.0"
+    }
+  },
+  "unpublished": {}
+}

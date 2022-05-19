@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "doolse",
+    "githubRepo": "purescript-records"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 899,
+      "hash": "sha256-jgKA6G9pFVxBjPOLsrm+NZdSQ8MjOt2tT4T2BfnejBQ=",
+      "publishedTime": "2017-03-07T05:39:22.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 940,
+      "hash": "sha256-VjuJSS8V8Kw3aqOOPhjJ17E0E4Cbcn11W98+ns1512s=",
+      "publishedTime": "2017-03-10T05:23:19.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 979,
+      "hash": "sha256-rP1Goq3WQjGDKlWKIK4HjMyzDXGNkoW5yCgksszDJHw=",
+      "publishedTime": "2017-03-16T10:35:40.0Z",
+      "ref": "v0.0.3"
+    },
+    "1.0.0": {
+      "bytes": 1937,
+      "hash": "sha256-uRJOkgjbLL2Ac2q33NX5XlKUEACB1cFScpeyzxdctzY=",
+      "publishedTime": "2017-04-02T10:41:19.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

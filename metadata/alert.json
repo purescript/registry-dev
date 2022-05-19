@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "cdepillabout",
+    "githubRepo": "purescript-alert"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 1480,
+      "hash": "sha256-QUH2By+oSxA5A1tcLy0p0ZGrnzyOGC61DyhwKbrKlwA=",
+      "publishedTime": "2016-01-13T05:06:33.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 1541,
+      "hash": "sha256-mL7syicJmMeBN7/J1b6rG1NY0fSryNvyVYLMn3d9YZU=",
+      "publishedTime": "2016-01-13T05:42:05.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 1529,
+      "hash": "sha256-a8R4lVNbzQzUFCHvRcBeTNWtBlDvVe2RSM2qboNNU+8=",
+      "publishedTime": "2016-02-03T15:26:41.0Z",
+      "ref": "v0.0.3"
+    }
+  },
+  "unpublished": {}
+}

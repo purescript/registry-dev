@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "themoritz",
+    "githubRepo": "purescript-handsontable"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 12068,
+      "hash": "sha256-xflj9qlsKBUYGdS3L5ThGi3Q8uCg0c/Jw96lMFEmBXM=",
+      "publishedTime": "2015-09-28T14:37:25.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 12067,
+      "hash": "sha256-cWgZjOpsILY7t9fajTohVCarx5gYSfYGVrdgfsl4FNo=",
+      "publishedTime": "2015-11-09T09:02:05.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 12391,
+      "hash": "sha256-vaQ2I8pExmVLnMvPSJNgUwoJ0d6grpBHFTJsXKVet1Y=",
+      "publishedTime": "2016-06-14T15:03:39.0Z",
+      "ref": "v0.2.0"
+    },
+    "1.0.0": {
+      "bytes": 10686,
+      "hash": "sha256-gYtPna0EPouDNy8Prj3z1uf0wMMKW5LUj/gkp9EQCjY=",
+      "publishedTime": "2017-01-16T17:43:13.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 10869,
+      "hash": "sha256-atKoBtfEIEvXs5ZgZMiObgNby/FVifw7gJI+3+vMfBY=",
+      "publishedTime": "2017-01-17T14:36:30.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 10893,
+      "hash": "sha256-Fns6H7GNmNfOdAI0Wn4uPRvoBQa4kft0l2M4fnocZvc=",
+      "publishedTime": "2017-05-02T06:36:12.0Z",
+      "ref": "v3.0.0"
+    }
+  },
+  "unpublished": {}
+}

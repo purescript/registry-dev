@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "timdeputter",
+    "githubRepo": "purescript-apexcharts"
+  },
+  "published": {
+    "0.4.1": {
+      "bytes": 30913,
+      "hash": "sha256-r442EuNABcaFEcGqeV9uOqfS0aktue8EW/rp+VEKN0k=",
+      "publishedTime": "2020-05-19T08:27:16.0Z",
+      "ref": "v0.4.1"
+    }
+  },
+  "unpublished": {}
+}

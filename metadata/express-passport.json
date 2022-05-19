@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "aykl",
+    "githubRepo": "purescript-express-passport"
+  },
+  "published": {
+    "0.0.2": {
+      "bytes": 4458,
+      "hash": "sha256-2EmgbjQVnSB5C9uJGAKaKtrYgsCvWzlPOjUPjZBXI58=",
+      "publishedTime": "2017-03-19T20:49:55.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.4": {
+      "bytes": 5330,
+      "hash": "sha256-2VZ8pNaJq2CbtiBouxTa6N45Z1GbJXRbu3hMnbRMXq8=",
+      "publishedTime": "2017-03-19T21:31:58.0Z",
+      "ref": "v0.0.4"
+    },
+    "0.0.5": {
+      "bytes": 5800,
+      "hash": "sha256-moBOdrInZYpqJ4fMr4KVTLewn5WBP4JBRyfiplIIS3o=",
+      "publishedTime": "2017-05-27T15:17:15.0Z",
+      "ref": "v0.0.5"
+    }
+  },
+  "unpublished": {}
+}

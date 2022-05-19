@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "colehaus",
+    "githubRepo": "purescript-multiset-hashed"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 3772,
+      "hash": "sha256-DBfiTwERZ1EDDw0LGVsFywouksTXIiUG7+j8wVdoKAg=",
+      "publishedTime": "2019-05-24T21:17:17.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

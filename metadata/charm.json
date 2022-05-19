@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "dariooddenino",
+    "githubRepo": "purescript-charm"
+  },
+  "published": {
+    "0.3.0": {
+      "bytes": 4522,
+      "hash": "sha256-azAQk4jdLwy9mLSOCGlzf5NtcpIIP/znsIodeN+Oy6s=",
+      "publishedTime": "2017-01-22T08:56:51.0Z",
+      "ref": "0.3.0"
+    },
+    "0.3.1": {
+      "bytes": 4521,
+      "hash": "sha256-Is4EuGliBPndDItuMmOY0JGgTF9ds9ncXQkrOdzX1nM=",
+      "publishedTime": "2017-01-22T16:38:30.0Z",
+      "ref": "0.3.1"
+    },
+    "0.3.2": {
+      "bytes": 4672,
+      "hash": "sha256-5J/y/qoIIy4kZcwGh9j63yJCvuuBNV6boeGp4S2Neb4=",
+      "publishedTime": "2017-01-22T16:48:15.0Z",
+      "ref": "0.3.2"
+    },
+    "0.3.3": {
+      "bytes": 4697,
+      "hash": "sha256-vpg+deQucDuu24VjGTJoNoaGBU0yG9J7CqNB8/VAc6Y=",
+      "publishedTime": "2017-01-22T16:49:37.0Z",
+      "ref": "0.3.3"
+    },
+    "0.4.0": {
+      "bytes": 4838,
+      "hash": "sha256-3puafXOwgBqIYgUuqahIuhS8tH/E+HRXPIgjbKLP5vY=",
+      "publishedTime": "2017-08-24T09:35:37.0Z",
+      "ref": "0.4.0"
+    },
+    "0.4.1": {
+      "bytes": 4853,
+      "hash": "sha256-VYV58hqN9rRQxdH8SQ3FRmJsRredan4e3F2+cgaaw1c=",
+      "publishedTime": "2017-08-24T09:52:23.0Z",
+      "ref": "0.4.1"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "jvliwanag",
+    "githubRepo": "purescript-literals"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4732,
+      "hash": "sha256-YkHYZfXMZ9catGqZFwJ6os0U5WpG7bcqtzkPthZxjOA=",
+      "publishedTime": "2020-07-16T21:51:32.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 4699,
+      "hash": "sha256-cNs9ksPtS2ZBdp00lasaLa6BG8hpwxWwxsK59fDHFe4=",
+      "publishedTime": "2020-07-17T17:02:54.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 4658,
+      "hash": "sha256-jvAtCsWTQWorINXX39kxJU/LI+zlpxUTJPVSKY10Yww=",
+      "publishedTime": "2021-03-10T05:32:38.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "rnons",
+    "githubRepo": "purescript-halogen-storybook"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 191559,
+      "hash": "sha256-41LVVk5GWoPI0qBuhrxAh8mL+bLpLn8hGfHFIK+MspE=",
+      "publishedTime": "2018-01-18T13:59:16.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 191572,
+      "hash": "sha256-0R//8OIa5teHy/DgD2uUHjcD163bfYdwTdcoYbehR3o=",
+      "publishedTime": "2018-03-24T00:57:58.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

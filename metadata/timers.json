@@ -1,0 +1,57 @@
+{
+  "location": {
+    "githubOwner": "CapillarySoftware",
+    "githubRepo": "purescript-timers"
+  },
+  "published": {
+    "0.0.3": {
+      "bytes": 32663,
+      "hash": "sha256-FK+t0UqUm4We3tKJDN3fQNugm4oXveQqoG4Y6I2eI8Y=",
+      "publishedTime": "2014-08-10T06:47:26.0Z",
+      "ref": "v0.0.3"
+    },
+    "0.0.4": {
+      "bytes": 2523,
+      "hash": "sha256-9pIG3nR7rpBtc4jpkZmduPOprgh0LOdd/yEJTMgbuPw=",
+      "publishedTime": "2014-08-10T08:17:03.0Z",
+      "ref": "v0.0.4"
+    },
+    "0.0.5": {
+      "bytes": 2507,
+      "hash": "sha256-qyu2xB5YHVAziiMWZGLmBytwdWEh/7lPiZKdP4rdG1k=",
+      "publishedTime": "2014-09-04T02:09:39.0Z",
+      "ref": "0.0.5"
+    },
+    "0.0.6": {
+      "bytes": 2451,
+      "hash": "sha256-BFeiFyJ30ye+cbMy2gokiCAk/w3HQ/0pEDnprCauxpg=",
+      "publishedTime": "2014-11-13T20:24:06.0Z",
+      "ref": "v0.0.6"
+    },
+    "0.0.7": {
+      "bytes": 2501,
+      "hash": "sha256-sGteH293KubSFQ8sYgohchgSH1wDSbYmDua5f67fIUM=",
+      "publishedTime": "2014-11-13T21:02:01.0Z",
+      "ref": "v0.0.7"
+    },
+    "0.0.8": {
+      "bytes": 2589,
+      "hash": "sha256-b+GuKzpZSW0/6GrZKfs7/pS0Y3iQDMVGXWclX1gzp/g=",
+      "publishedTime": "2014-12-06T00:01:39.0Z",
+      "ref": "0.0.8"
+    },
+    "0.0.9": {
+      "bytes": 2507,
+      "hash": "sha256-F5H5Aif+axGRZdv+16cPKzvku4P3gWZ6jxsxcvJ7XLg=",
+      "publishedTime": "2015-05-14T18:12:57.0Z",
+      "ref": "v0.0.9"
+    },
+    "1.0.0": {
+      "bytes": 2192,
+      "hash": "sha256-sj5LQTS26SMOkQbH7bq9UdjssfHpcUA2ZXk8MTfvBDM=",
+      "publishedTime": "2015-08-21T02:04:21.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

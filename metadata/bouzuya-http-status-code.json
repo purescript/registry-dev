@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "bouzuya",
+    "githubRepo": "purescript-bouzuya-http-status-code"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5390,
+      "hash": "sha256-0gUopzZBFQS9MmfDX90DBCKJUcWQJkGas+hUELwIxnc=",
+      "publishedTime": "2018-05-13T11:43:07.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 4832,
+      "hash": "sha256-RoIhA7TnMgENdGZmaA5HN2BKLvWxa7igC9bYBOl+M3I=",
+      "publishedTime": "2018-08-12T05:51:40.0Z",
+      "ref": "v0.2.0"
+    },
+    "1.0.0": {
+      "bytes": 6053,
+      "hash": "sha256-blu3GuFMVF6L89LUpvEasMekxvd7hqRVmnozZD65sE4=",
+      "publishedTime": "2019-04-14T12:51:00.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

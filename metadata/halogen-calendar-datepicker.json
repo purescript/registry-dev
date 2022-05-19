@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "twitchard",
+    "githubRepo": "purescript-halogen-calendar-datepicker"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 22806,
+      "hash": "sha256-hoqk469iyjpc5k5q/HthfB+xp3phCwkGDs2TuEGpZd0=",
+      "publishedTime": "2017-11-23T01:23:40.0Z",
+      "ref": "0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 22773,
+      "hash": "sha256-oSKzMeuNpIrLU0I49CLD4w+Vqw692tgWaR/P9jyHJag=",
+      "publishedTime": "2017-11-23T02:34:22.0Z",
+      "ref": "0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 22813,
+      "hash": "sha256-P4kFmWKDJaxhJvzobM13LBLiIktvWVET0OWSlWQCKKw=",
+      "publishedTime": "2017-11-23T02:51:08.0Z",
+      "ref": "0.0.3"
+    },
+    "0.0.4": {
+      "bytes": 22888,
+      "hash": "sha256-/Kni/t5VAsrlsAtm8KBRC1pR4OjagiOXjX3mBMYAMfw=",
+      "publishedTime": "2018-02-22T02:01:52.0Z",
+      "ref": "v0.0.4"
+    },
+    "0.0.5": {
+      "bytes": 22898,
+      "hash": "sha256-XBQzZ8xUqG7NbNb1QApyow3nw4f5Gyy8vNn3dz+2s04=",
+      "publishedTime": "2018-02-22T02:39:51.0Z",
+      "ref": "v0.0.5"
+    }
+  },
+  "unpublished": {}
+}

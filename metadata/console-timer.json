@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "matthewleon",
+    "githubRepo": "purescript-console-timer"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 2335,
+      "hash": "sha256-VHmF2oMR5qJPG54aTqfb7Blyr00Gedi1H9RJ9NkPJyc=",
+      "publishedTime": "2017-03-16T15:14:02.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 2496,
+      "hash": "sha256-hmUCEFTQx4Om6GWFwHUsYlaQwsUk+xpEj/bMbG2u3Ik=",
+      "publishedTime": "2017-03-16T17:12:23.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 2590,
+      "hash": "sha256-badYJDYOHS8GElfL33toWMLrT8uEqqdak4E139VR62o=",
+      "publishedTime": "2017-03-17T19:06:30.0Z",
+      "ref": "v0.0.3"
+    }
+  },
+  "unpublished": {}
+}

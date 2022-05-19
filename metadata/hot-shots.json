@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "mcoffin",
+    "githubRepo": "purescript-hot-shots"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 2844,
+      "hash": "sha256-OCNpa4ZwJjx+1L1oCxkdrapvd4RIivBd1dtc5o2Hd+U=",
+      "publishedTime": "2017-02-15T06:34:17.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 3183,
+      "hash": "sha256-q+aOY1Rxqn+FI2rZc4yt7/SKVt1vs1L7iRVR2GhnQfk=",
+      "publishedTime": "2017-02-15T23:12:29.0Z",
+      "ref": "v0.0.2"
+    }
+  },
+  "unpublished": {}
+}

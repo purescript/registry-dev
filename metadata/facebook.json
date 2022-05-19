@@ -1,0 +1,51 @@
+{
+  "location": {
+    "githubOwner": "Unisay",
+    "githubRepo": "purescript-facebook"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 6200,
+      "hash": "sha256-tHCpUVd07esZ1oN3CPO25Tise0T6pevREHNFysYpsXk=",
+      "publishedTime": "2017-08-19T14:37:33.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.1.0": {
+      "bytes": 6678,
+      "hash": "sha256-x7iGjWtln10QX0zljobOMv99iQMxUgMsREONXXb/NpY=",
+      "publishedTime": "2017-08-20T16:43:18.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 6675,
+      "hash": "sha256-OjNsQFktvO/HpI13N0MqrRLZxYrWbzcc750vOTCxcHg=",
+      "publishedTime": "2017-08-20T12:08:00.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 7172,
+      "hash": "sha256-Tr9vf9Ly+8+0iiPxtxQaplrgH8+/Uj3BXYGH3xrVgc4=",
+      "publishedTime": "2017-08-20T17:24:32.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.2.2": {
+      "bytes": 7245,
+      "hash": "sha256-Pb+ec8/RZ7j0zuHoRt7S8lFUrpoZS1sIqJURZCAAw40=",
+      "publishedTime": "2017-08-20T18:24:20.0Z",
+      "ref": "v0.2.2"
+    },
+    "0.2.3": {
+      "bytes": 8974,
+      "hash": "sha256-doReJr2gUwMWwZ01TjbZVv8GT5vE4F7UfxlsZr3YQy8=",
+      "publishedTime": "2017-08-27T18:05:45.0Z",
+      "ref": "v0.2.3"
+    },
+    "0.3.0": {
+      "bytes": 9071,
+      "hash": "sha256-lKksmZ/ZL8RTycTFbJSlQKIwcLS7CCuwojlaxZZDuZw=",
+      "publishedTime": "2019-01-07T09:54:26.0Z",
+      "ref": "v0.3.0"
+    }
+  },
+  "unpublished": {}
+}

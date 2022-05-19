@@ -1,0 +1,51 @@
+{
+  "location": {
+    "githubOwner": "i-am-tom",
+    "githubRepo": "purescript-data-algebrae"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2296,
+      "hash": "sha256-uyVQC6TmwdEu5K4q1wSGIYVOXVbxuk8IoatesDvHbzA=",
+      "publishedTime": "2018-03-24T10:47:01.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 3476,
+      "hash": "sha256-hzHJaRtpDQ/DVGNE1IB5NpXsoI9PUdLn4EbmkOOs9hg=",
+      "publishedTime": "2018-03-24T18:19:07.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.1.0": {
+      "bytes": 4770,
+      "hash": "sha256-HJLnuD7jfcbdSBU4VdLHagw/8Axu4KfRJcmOvfdmdss=",
+      "publishedTime": "2018-03-25T00:13:59.0Z",
+      "ref": "v2.1.0"
+    },
+    "2.2.0": {
+      "bytes": 4980,
+      "hash": "sha256-aw3odWTiJJSQEO5TZX+MfrytzeQGMo+0sIa7lgbxA9U=",
+      "publishedTime": "2018-03-25T01:37:21.0Z",
+      "ref": "v2.2.0"
+    },
+    "2.2.1": {
+      "bytes": 4962,
+      "hash": "sha256-73jgXg1n1yYGf9PbJXb1IOztCz30Y88m9m606aVEwgg=",
+      "publishedTime": "2018-03-25T09:24:50.0Z",
+      "ref": "v2.2.1"
+    },
+    "3.0.0": {
+      "bytes": 5095,
+      "hash": "sha256-Tohz63V31jT0XgpCsz8leaK9TMsCd0E2fenxDPl94eE=",
+      "publishedTime": "2018-03-25T15:14:47.0Z",
+      "ref": "v3.0.0"
+    },
+    "3.1.0": {
+      "bytes": 5375,
+      "hash": "sha256-DgoZHhb0YyHYyK8BF73A5/VGFbuaitBmTtl87ZWE4DY=",
+      "publishedTime": "2018-03-27T16:46:23.0Z",
+      "ref": "v3.1.0"
+    }
+  },
+  "unpublished": {}
+}

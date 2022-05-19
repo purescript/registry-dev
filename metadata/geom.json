@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "bodil",
+    "githubRepo": "purescript-geom"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 3581,
+      "hash": "sha256-+lulmtQ6SAS6/peYfUiSPegYvF/u3jPYZg6GdlHWxoA=",
+      "publishedTime": "2014-10-30T16:27:32.0Z",
+      "ref": "1.0.0"
+    },
+    "1.1.0": {
+      "bytes": 3636,
+      "hash": "sha256-WMn1DfPcsgRmOYz4tGejiTjWtXs13O1215wKsmW4Lho=",
+      "publishedTime": "2014-10-31T17:13:34.0Z",
+      "ref": "1.1.0"
+    },
+    "2.0.0": {
+      "bytes": 3473,
+      "hash": "sha256-/MWi3Z+ukS059zCWmrr7ttXKLV9iD46SJ+sYol536RA=",
+      "publishedTime": "2014-11-29T13:29:47.0Z",
+      "ref": "2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 3982,
+      "hash": "sha256-vMNsJ1D7UbwJ+77Vgh09MCqecHywt2Blz1SKup8REe0=",
+      "publishedTime": "2014-11-29T23:39:54.0Z",
+      "ref": "3.0.0"
+    }
+  },
+  "unpublished": {}
+}

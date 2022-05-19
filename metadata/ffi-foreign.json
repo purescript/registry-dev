@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "markfarrell",
+    "githubRepo": "purescript-ffi-foreign"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 1717,
+      "hash": "sha256-GIc7RmCrhPPFWsi0q32L/g/tRZJDwEvw1PPqo2aCo0Q=",
+      "publishedTime": "2020-06-12T23:00:26.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 3109,
+      "hash": "sha256-MXpIFIegMzo+IRF7sARR+k8enOM0ATrcnEn41A+Xesg=",
+      "publishedTime": "2020-09-14T06:30:46.0Z",
+      "ref": "v0.0.2"
+    }
+  },
+  "unpublished": {}
+}

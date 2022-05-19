@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "purescript-aws-sdk",
+    "githubRepo": "purescript-aws-rekognition"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 33603,
+      "hash": "sha256-NEIfCpReBOwfPaw7VUkCXJoxNOSytfdCUs4sapDq5uA=",
+      "publishedTime": "2018-03-10T21:30:36.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.1.1": {
+      "bytes": 33752,
+      "hash": "sha256-SwlE2XbPM3IQF9Ko/lfneeQRp7iq4WRAtfds8M2DRB4=",
+      "publishedTime": "2018-03-12T18:17:31.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 57505,
+      "hash": "sha256-TpO40wHtgDu5d838zqXOU6B9F/mBY9moXN7wcQ11GFQ=",
+      "publishedTime": "2018-03-13T13:38:48.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.2.1": {
+      "bytes": 57571,
+      "hash": "sha256-vB5IOyHlsWMCSqmGK80nIJs+J+cvB8qPneOlUdbrBCQ=",
+      "publishedTime": "2018-03-28T16:47:18.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.3.1": {
+      "bytes": 56958,
+      "hash": "sha256-s4HAHGnD2LCJ5uE2IHZ1zOaIMs1Y2f5T6wCvbqfPJrc=",
+      "publishedTime": "2018-04-26T13:30:43.0Z",
+      "ref": "v0.3.1"
+    }
+  },
+  "unpublished": {}
+}

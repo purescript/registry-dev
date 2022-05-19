@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "purescript-aws-sdk",
+    "githubRepo": "purescript-aws-gamelift"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 60440,
+      "hash": "sha256-YTY7mEqmtPjkMYC7hmC9439Ihpv0JKJ0wYgJveU837I=",
+      "publishedTime": "2018-03-10T20:40:25.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 60440,
+      "hash": "sha256-8pvhM3Uhlsizpi00GZvi+62fP6Hsp8x3FBMEOVaP66k=",
+      "publishedTime": "2018-03-11T12:14:14.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.1.1": {
+      "bytes": 60598,
+      "hash": "sha256-K0frlSMxZEMx4GLwljPM5xixb3Vi3DjpSgBR2QAJvxM=",
+      "publishedTime": "2018-03-12T17:57:37.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 107352,
+      "hash": "sha256-aE8x58s2WW3HPpdHxacd5tLMZYq3YP5qjmvlSjbVgcI=",
+      "publishedTime": "2018-03-13T13:35:21.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.2.1": {
+      "bytes": 107271,
+      "hash": "sha256-bleAUGhM5eyBlGY29gb5PesEU9aa7SGqVgsZLQUlfBg=",
+      "publishedTime": "2018-03-28T16:43:13.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.3.1": {
+      "bytes": 106424,
+      "hash": "sha256-IEFixQdEro7caGjAJY84BxzoyICxqzN3sjUXUx2FzZk=",
+      "publishedTime": "2018-04-26T13:25:55.0Z",
+      "ref": "v0.3.1"
+    }
+  },
+  "unpublished": {}
+}

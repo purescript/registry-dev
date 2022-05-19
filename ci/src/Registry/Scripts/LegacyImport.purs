@@ -15,7 +15,6 @@ import Foreign.GitHub as GitHub
 import Foreign.Object as Object
 import Registry.API as API
 import Registry.Index (RegistryIndex)
-import Registry.Json (printJson)
 import Registry.Json as Json
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
@@ -48,49 +47,105 @@ main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
   { registry, reservedNames } <- downloadLegacyRegistry
 
-  log "Temporary: we filter packages to only deal with the ones in core and other orgs we control"
   let
     sortedPackages :: Array Manifest
     sortedPackages = Graph.topologicalSort registry
 
-    isCorePackage :: Manifest -> Maybe _
-    isCorePackage (Manifest manifest) = case manifest.location of
-      -- core
-      GitHub { owner: "purescript" } -> Just manifest
-      GitHub { owner: "purescript-deprecated" } -> Just manifest
-      -- contrib
-      GitHub { owner: "purescript-contrib" } -> Just manifest
-      GitHub { owner: "purescript-web" } -> Just manifest
-      GitHub { owner: "purescript-node" } -> Just manifest
-      -- extras required by the above organizations
-      GitHub { repo: "purescript-void" } -> Just manifest
-      GitHub { repo: "purescript-index" } -> Just manifest
-      GitHub { repo: "purescript-optic" } -> Just manifest
-      GitHub { repo: "purescript-unordered-collections" } -> Just manifest
-      GitHub { repo: "purescript-text-encoding" } -> Just manifest
-      GitHub { repo: "purescript-typelevel" } -> Just manifest
-      GitHub { repo: "purescript-sized-vectors" } -> Just manifest
-      GitHub { repo: "purescript-nonempty-array" } -> Just manifest
-      GitHub { repo: "purescript-colors" } -> Just manifest
-      GitHub { repo: "purescript-eff-functions" } -> Just manifest
-      GitHub { repo: "purescript-node-events" } -> Just manifest
-      GitHub { repo: "purescript-nonempty-array" } -> Just manifest
-      GitHub { repo: "purescript-aff-promise" } -> Just manifest
-      GitHub { repo: "purescript-naturals" } -> Just manifest
-      GitHub { repo: "purescript-simple-dom" } -> Just manifest
-      GitHub { repo: "purescript-functor-compose" } -> Just manifest
-      GitHub { repo: "purescript-halogen" } -> Just manifest
-      GitHub { repo: "purescript-stalling-coroutines" } -> Just manifest
-      GitHub { repo: "purescript-aff-free" } -> Just manifest
-      GitHub { repo: "purescript-dom-indexed" } -> Just manifest
-      GitHub { repo: "purescript-freeap" } -> Just manifest
-      GitHub { repo: "purescript-halogen-vdom" } -> Just manifest
-      GitHub { repo: "purescript-web-pointerevents" } -> Just manifest
-      GitHub { repo: "purescript-halogen-subscriptions" } -> Just manifest
-      _ -> Nothing
+    -- These packages have no usable versions, but do have valid manifests, and
+    -- so they make it to the processed packages but cannot be uploaded. They
+    -- fail either because all versions have no src directory, or are too large,
+    -- or it's a special package.
+    extraReserved :: Map PackageName Location
+    extraReserved = Map.fromFoldable
+      [ Tuple (mkName "bitstrings") (GitHub { owner: "ethul", repo: "purescript-bitstrings", subdir: Nothing })
+      , Tuple (mkName "metadata") (GitHub { owner: "purescript", repo: "purescript-metadata", subdir: Nothing })
+      , Tuple (mkName "google-apps") (GitHub { owner: "BBVA", repo: "purescript-google-apps", subdir: Nothing })
+      , Tuple (mkName "grain") (GitHub { owner: "purescript-grain", repo: "purescript-grain", subdir: Nothing })
+      , Tuple (mkName "graphics-vis") (GitHub { owner: "paf31", repo: "purescript-graphics-vis", subdir: Nothing })
+      , Tuple (mkName "graphqlclient") (GitHub { owner: "purescript-graphqlclient", repo: "purescript-graphqlclient", subdir: Nothing })
+      , Tuple (mkName "halogen-day-picker") (GitHub { owner: "rnons", repo: "purescript-halogen-day-picker", subdir: Nothing })
+      , Tuple (mkName "halogen-echarts") (GitHub { owner: "slamdata", repo: "purescript-halogen-echarts", subdir: Nothing })
+      , Tuple (mkName "hyper") (GitHub { owner: "purescript-hyper", repo: "hyper", subdir: Nothing })
+      , Tuple (mkName "ifrit") (GitHub { owner: "KtorZPersonal", repo: "purescript-ifrit", subdir: Nothing })
+      , Tuple (mkName "impur") (GitHub { owner: "RuneBlaze", repo: "purescript-impur", subdir: Nothing })
 
-    corePackages :: Array _
-    corePackages = Array.mapMaybe isCorePackage sortedPackages
+      -- This one is missing because it depends on `grain`, and can be re-enabled when that is
+      -- fixed and working.
+      , Tuple (mkName "grain-portal") (GitHub { owner: "purescript-grain", repo: "purescript-grain-portal", subdir: Nothing })
+      ]
+      where
+      mkName = unsafeFromRight <<< PackageName.parse
+
+    -- These package versions contain valid manifests, and other versions of the
+    -- package are valid, but these are not. We manually exclude them from being
+    -- uploaded.
+    excludeVersion :: Manifest -> Maybe _
+    excludeVersion (Manifest manifest) = case PackageName.print manifest.name, Version.printVersion manifest.version of
+      -- [UNFIXABLE] This is a special package that should never be uploaded.
+      "metadata", _ -> Nothing
+      -- [UNFIXABLE] These have no src directory. We can improve our process
+      -- by checking the src directory as part of the legacy import process
+      -- instead of failing in the API pipeline, or we can just leave this
+      -- manual exclusion in place.
+      "bitstrings", "0.0.0" -> Nothing
+      "concur-core", "0.3.9" -> Nothing
+      "concur-react", "0.3.9" -> Nothing
+
+      -- These packages are over the size limit -- sometimes as much as 7mb
+      -- over! We should fix these packages by introducing usage of the 'files'
+      -- key, and applying it retroactively to legacy packages so that they
+      -- only get commonly-recognized files and directories.
+      --
+      -- This should be OK: legacy packages could only have sources in src.
+      --
+      -- Once reintroduced we'll have to re-run the importer tool, as lots of
+      -- packages will have different contents once they've been imported this
+      -- way.
+
+      "concur-core", "0.2.0" -> Nothing -- closure-compiler dir for all concur
+      "concur-core", "0.3.0" -> Nothing
+      "concur-core", "0.3.1" -> Nothing
+      "concur-core", "0.3.2" -> Nothing
+      "concur-core", "0.3.3" -> Nothing
+      "concur-core", "0.3.4" -> Nothing
+      "concur-core", "0.3.5" -> Nothing
+      "concur-core", "0.3.6" -> Nothing
+      "concur-core", "0.3.7" -> Nothing
+      "concur-core", "0.3.8" -> Nothing
+      "concur-react", "0.2.0" -> Nothing
+      "concur-react", "0.3.0" -> Nothing
+      "concur-react", "0.3.1" -> Nothing
+      "concur-react", "0.3.2" -> Nothing
+      "concur-react", "0.3.3" -> Nothing
+      "concur-react", "0.3.4" -> Nothing
+      "concur-react", "0.3.5" -> Nothing
+      "concur-react", "0.3.6" -> Nothing
+      "concur-react", "0.3.7" -> Nothing
+      "concur-react", "0.3.8" -> Nothing
+      "concur-react", "0.4.0" -> Nothing
+      "concur-react", "0.4.1" -> Nothing
+      "concur-react", "0.4.2" -> Nothing
+
+      "flame", _ | manifest.version >= unsafeFromRight (Version.parseVersion Version.Lenient "1.0.0") -> Nothing -- 0xamples
+      "freedom", _ | manifest.version > unsafeFromRight (Version.parseVersion Version.Lenient "0.6.2") -> Nothing -- 0xamples
+      "google-apps", _ -> Nothing -- generator dir
+      "grain", _ -> Nothing -- examples dir
+      "grain-portal", _ -> Nothing -- this is excluded because it depends on grain, the package is OK
+      "graphics-vis", _ -> Nothing -- images dir
+      "graphql-client", _ | manifest.version > unsafeFromRight (Version.parseVersion Version.Lenient "0.2.0") -> Nothing -- gen-schema-bundle, codegen/schema, e2e, etc.
+      "graphqlclient", _ -> Nothing -- generator, generator-test, examples, examples-test, bin, dist, ...
+      "halogen-day-picker", _ -> Nothing -- examples, docs
+      "halogen-echarts", _ -> Nothing -- example, especially example/dist/echarts-all.js
+      "halogen-storybook", _ | manifest.version > unsafeFromRight (Version.parseVersion Version.Lenient "0.2.0") -> Nothing -- docs, examples, esp. an errant yarn.lock file
+      "html", _ | manifest.version > unsafeFromRight (Version.parseVersion Version.Lenient "0.8.0") -> Nothing -- docs, examples, wrapper
+      "hyper", _ -> Nothing -- docs, examples
+      "ifrit", _ -> Nothing -- dist, examples
+      "impur", _ -> Nothing
+
+      _, _ -> Just manifest
+
+    packages :: Array _
+    packages = Array.mapMaybe excludeVersion sortedPackages
 
   log "Creating a Metadata Ref"
   packagesMetadataRef <- API.mkMetadataRef
@@ -98,7 +153,7 @@ main = Aff.launchAff_ do
   log "Starting upload..."
   runRegistryM (mkEnv packagesMetadataRef) do
     log "Adding metadata for reserved package names"
-    forWithIndex_ reservedNames \package repo -> do
+    forWithIndex_ (Map.union extraReserved reservedNames) \package repo -> do
       let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
       liftAff $ Json.writeJsonFile (API.metadataFile package) metadata
       updatePackagesMetadata package metadata
@@ -108,7 +163,7 @@ main = Aff.launchAff_ do
 
     let
       wasPackageUploaded { name, version } = API.isPackageVersionInMetadata name version packagesMetadata
-      packagesToUpload = Array.filter (not wasPackageUploaded) corePackages
+      packagesToUpload = Array.filter (not wasPackageUploaded) packages
 
     for_ packagesToUpload \manifest -> do
       let
@@ -166,7 +221,13 @@ downloadLegacyRegistry = do
       log $ "Fetching releases for package " <> un RawPackageName name
       result <- lift $ try $ GitHub.getReleases octokit address
       case result of
-        Left err -> logShow err *> throwError (mkError $ DecodeError $ Aff.message err)
+        Left err -> do
+          let message = Aff.message err
+          log message
+          if String.contains (String.Pattern "HttpError: Not Found") message then
+            throwError $ mkError $ BadStatus 404
+          else
+            throwError $ mkError $ DecodeError message
         Right v -> pure v
 
     versions <- case NEA.fromArray releases of
@@ -245,7 +306,6 @@ downloadLegacyRegistry = do
             )
         $ Map.toUnfoldable allPackages
 
-  log $ "Reserved names:\n" <> (printJson $ Array.fromFoldable $ Map.keys reservedNames)
   pure { registry: checkedIndex, reservedNames }
 
 -- Packages can be specified either in 'package-name' format or

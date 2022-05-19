@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "paf31",
+    "githubRepo": "purescript-foreign-lens"
+  },
+  "published": {
+    "1.0.1": {
+      "bytes": 1719,
+      "hash": "sha256-uzJmjWDLk8ggnoaNZ0iADNFtmXs/H904njfVNX/ThhY=",
+      "publishedTime": "2016-08-18T04:04:37.0Z",
+      "ref": "v1.0.1"
+    },
+    "2.0.0": {
+      "bytes": 1827,
+      "hash": "sha256-mwhTpDkFg0n2W1xB/gCsv3qS4eW6CAf8v34dafgGgqM=",
+      "publishedTime": "2016-10-23T04:56:07.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 2258,
+      "hash": "sha256-rPjiCb6n/byoU5f8UOGQltanzrqXuDuz2cfu9cmOkCU=",
+      "publishedTime": "2017-04-04T03:03:13.0Z",
+      "ref": "v3.0.0"
+    }
+  },
+  "unpublished": {}
+}

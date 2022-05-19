@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "TinkerTravel",
+    "githubRepo": "purescript-modules"
+  },
+  "published": {
+    "2.1.0": {
+      "bytes": 1846,
+      "hash": "sha256-sIZ3q1mFhAHQ/cRZAUPV302bhjhfRd/JDMDfS77AW/I=",
+      "publishedTime": "2017-03-29T19:41:02.0Z",
+      "ref": "v2.1.0"
+    },
+    "2.2.0": {
+      "bytes": 1910,
+      "hash": "sha256-Sz5ohRMjVbZumgwpCWkvJ8HClemT7qmdgUEZ+eb+Mzk=",
+      "publishedTime": "2017-04-01T16:11:57.0Z",
+      "ref": "v2.2.0"
+    },
+    "3.0.0": {
+      "bytes": 1904,
+      "hash": "sha256-mCk5sfcx4qfPp3VjhG4kAWvlgbt//QpWhTqelsIWQU0=",
+      "publishedTime": "2017-04-18T21:06:53.0Z",
+      "ref": "v3.0.0"
+    }
+  },
+  "unpublished": {}
+}

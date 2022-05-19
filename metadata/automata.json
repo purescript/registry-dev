@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "joneshf",
+    "githubRepo": "purescript-automata"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4849,
+      "hash": "sha256-Fj4iNCAoA3c8z/ZztaKuY319q34V3LV5yxyWzRCmWys=",
+      "publishedTime": "2015-01-21T22:29:22.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 6955,
+      "hash": "sha256-oh5RFfEDxsb+XTHDrPCZ56rBbFWBIoOaQmzzP4u2Zkk=",
+      "publishedTime": "2019-02-23T17:25:33.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "themoritz",
+    "githubRepo": "purescript-flatpickr"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4932,
+      "hash": "sha256-sjDTRUpFi4bSPLCXhx0XZPuy5wTHsL5SXxRaVof20Ic=",
+      "publishedTime": "2017-02-11T20:26:59.0Z",
+      "ref": "v0.1.0"
+    },
+    "1.0.0": {
+      "bytes": 4960,
+      "hash": "sha256-qQppa+2ZvALbMSxQcj/j8I+tF8LnBx2Fj6DSwZ4opn0=",
+      "publishedTime": "2017-04-25T11:46:46.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

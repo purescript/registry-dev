@@ -1,0 +1,57 @@
+{
+  "location": {
+    "githubOwner": "joneshf",
+    "githubRepo": "purescript-httpure-middleware"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 5547,
+      "hash": "sha256-O5VARsGHC7FzTYb12eeNXR23tIiFJ9scsdPymef31OM=",
+      "publishedTime": "2019-04-23T17:38:17.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.1.0": {
+      "bytes": 7271,
+      "hash": "sha256-C28u+DhvEyzCOtYtcLCOOxibKl7KFKFX1Unt08jDhPA=",
+      "publishedTime": "2019-04-25T12:54:29.0Z",
+      "ref": "v1.1.0"
+    },
+    "1.2.0": {
+      "bytes": 8384,
+      "hash": "sha256-ToS91scmxydgMkJcN4bGkQ+jzkCrgrxO6D6jA/sgnRc=",
+      "publishedTime": "2019-12-08T18:28:30.0Z",
+      "ref": "v1.2.0"
+    },
+    "1.2.1": {
+      "bytes": 8464,
+      "hash": "sha256-z4rD1XHtr9119Ny5qDV2bwpUzjVdl7/sk1pRE2O/14A=",
+      "publishedTime": "2019-12-08T20:11:13.0Z",
+      "ref": "v1.2.1"
+    },
+    "2.0.0": {
+      "bytes": 8582,
+      "hash": "sha256-aD8F+T4p7T7sw0paziX1fdsgtLUWQ6TnR2doY1Z3Z3E=",
+      "publishedTime": "2019-12-08T20:35:12.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.1.0": {
+      "bytes": 8677,
+      "hash": "sha256-+d/P+VLIctG/+h/lXX5n9j4mSBjwELzlgqizUixeaCQ=",
+      "publishedTime": "2019-12-08T20:45:03.0Z",
+      "ref": "v2.1.0"
+    },
+    "3.0.0": {
+      "bytes": 8702,
+      "hash": "sha256-1TDYge5+xWRZFw2gIe2y2T5wXcIrH1RH+Xp1FAw+tJY=",
+      "publishedTime": "2019-12-08T23:01:17.0Z",
+      "ref": "v3.0.0"
+    },
+    "4.0.1": {
+      "bytes": 8792,
+      "hash": "sha256-N+Nsi6eS+SVypBBWuZ64uUWxiGWbLCzPD75c36B10d0=",
+      "publishedTime": "2021-03-25T15:26:18.0Z",
+      "ref": "v4.0.1"
+    }
+  },
+  "unpublished": {}
+}

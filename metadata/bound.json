@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "benjamin-hodgson",
+    "githubRepo": "purescript-bound"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2956,
+      "hash": "sha256-4yGVtt1d4OdIOkTyrr6UHA2UTQYD1/p/v1+6YXDZt9k=",
+      "publishedTime": "2016-10-13T18:19:51.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 3391,
+      "hash": "sha256-TxVjiTE0OTQ6h9m7dolnzeQ9SvdGchnud5b2v7IvX+g=",
+      "publishedTime": "2016-10-13T20:01:48.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 3580,
+      "hash": "sha256-6IRFqBSPyXXDAWWvjMtYWJSroEY5Q8MxCKqsFCZxYGQ=",
+      "publishedTime": "2016-10-13T20:26:37.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 3700,
+      "hash": "sha256-kZD0epxR9MFZZp1SJQ0zmtXGlC/VgPPHsT46TU8weDg=",
+      "publishedTime": "2016-10-17T18:09:31.0Z",
+      "ref": "v0.4.0"
+    },
+    "0.5.0": {
+      "bytes": 3696,
+      "hash": "sha256-eJ6W6q9IaStdm2jqRDkLIKInuCjr0OZ9XDGyQDJN0g4=",
+      "publishedTime": "2017-06-26T14:15:09.0Z",
+      "ref": "v0.5.0"
+    }
+  },
+  "unpublished": {}
+}

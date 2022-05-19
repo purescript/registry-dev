@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "kRITZCREEK",
+    "githubRepo": "purescript-emmet"
+  },
+  "published": {
+    "1.0.2": {
+      "bytes": 7239,
+      "hash": "sha256-rDeBJZx1Ery6zCJfrEkQL+2bXidHhVhcJNgl9Z4Chzw=",
+      "publishedTime": "2017-06-05T05:55:06.0Z",
+      "ref": "v1.0.2"
+    },
+    "1.0.3": {
+      "bytes": 7334,
+      "hash": "sha256-9Kf8jlu+Gt1rj1JAgtfwg+1+2HHpkf+pM8CoBXNsSls=",
+      "publishedTime": "2019-02-22T09:55:08.0Z",
+      "ref": "v1.0.3"
+    },
+    "1.0.4": {
+      "bytes": 7315,
+      "hash": "sha256-6AdvF49tMWm2VvVq5yoz2aMIUD2vZN2q3EzI+aI/37U=",
+      "publishedTime": "2019-02-22T10:02:59.0Z",
+      "ref": "v1.0.4"
+    }
+  },
+  "unpublished": {}
+}

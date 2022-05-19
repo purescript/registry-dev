@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "purescript-aws-sdk",
+    "githubRepo": "purescript-aws-medialive"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 39754,
+      "hash": "sha256-NJNAEUFvCapd81Se0FbKPMYjsz1KkvQPuLAN4ZVHo6c=",
+      "publishedTime": "2018-03-10T21:11:08.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.1.1": {
+      "bytes": 42959,
+      "hash": "sha256-m9J23PJE4vIIyrF9UdcGIEXLjVjFiq1XUI0UjsOIF+s=",
+      "publishedTime": "2018-03-12T18:09:51.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 70665,
+      "hash": "sha256-Ls2g+g+juWGXgYd0NeuDl4885sIByYo7tR2/pjDXqms=",
+      "publishedTime": "2018-03-13T13:37:29.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.2.1": {
+      "bytes": 70172,
+      "hash": "sha256-tUQjAPvU2CHuY6vryU84dj48GVy0ajjcpJaMlUhq/q8=",
+      "publishedTime": "2018-03-28T16:45:42.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.3.1": {
+      "bytes": 69097,
+      "hash": "sha256-nqeVBAHoxr7i9G4LAmaoM0IM1rLaAOsTZ+ceRNso8mk=",
+      "publishedTime": "2018-04-26T13:28:47.0Z",
+      "ref": "v0.3.1"
+    }
+  },
+  "unpublished": {}
+}

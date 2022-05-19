@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "robertmassaioli",
+    "githubRepo": "purescript-infinite-list"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5144,
+      "hash": "sha256-TmhQqOriYcV9F9bWDcoKOdT2N56Zpsr173rV46ySiqs=",
+      "publishedTime": "2017-01-01T04:11:42.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 7239,
+      "hash": "sha256-QwpcbXS3Nb1mL9fW8KQyR5mIOH6NdCeahFdIQeHyCMU=",
+      "publishedTime": "2017-01-02T02:44:56.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 7227,
+      "hash": "sha256-EbE9llObeMOfQ8GaDUDqL7vuvMS71a6xvbARzFTuiBQ=",
+      "publishedTime": "2017-01-02T03:00:52.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.2.2": {
+      "bytes": 7152,
+      "hash": "sha256-MTob8H2l8kwf3Y42PzgjeGMqvfHdl/QpM/a7jl3apJk=",
+      "publishedTime": "2017-01-02T03:57:33.0Z",
+      "ref": "v0.2.2"
+    }
+  },
+  "unpublished": {}
+}

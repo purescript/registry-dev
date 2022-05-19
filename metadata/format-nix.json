@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "justinwoo",
+    "githubRepo": "format-nix"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 50568,
+      "hash": "sha256-2mA5z4dsbvpfCp4RlrpeGwX85I7KmVhxV9NymVQTkuI=",
+      "publishedTime": "2019-06-04T12:39:04.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 50549,
+      "hash": "sha256-DlKRN521n/2GXh5MWG1kVak0ZLWMIOcvY0uzXd/FGos=",
+      "publishedTime": "2019-06-04T12:46:13.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 50977,
+      "hash": "sha256-A+O1X+e6JbrApCWmhbuAPpPw85bSxVkQ6Q8UBkDcRJQ=",
+      "publishedTime": "2019-06-15T11:28:14.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 54117,
+      "hash": "sha256-I14TgSol6a+Qdi685VAzDjhcUyeqsm8o/oPDggQDG1k=",
+      "publishedTime": "2019-06-25T16:19:27.0Z",
+      "ref": "v0.3.0"
+    }
+  },
+  "unpublished": {}
+}

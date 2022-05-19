@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "grmble",
+    "githubRepo": "purescript-bonsai"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 17976,
+      "hash": "sha256-RG20o3gBa8EXNd+3Rxq+yvrv7mmIGCwz3+H8q986BX4=",
+      "publishedTime": "2017-09-10T18:40:06.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 20958,
+      "hash": "sha256-eWw1FSFsv80/HqUH5hvhtIgAOU555HGhbtMsQQ+jI10=",
+      "publishedTime": "2017-09-19T19:41:50.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 27861,
+      "hash": "sha256-mmbd4xSjmR4Rfj89/QjVNSxAkTAMYLzBPlJmMWwo/kc=",
+      "publishedTime": "2017-09-24T12:44:50.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 29715,
+      "hash": "sha256-i3HOvqQC84c+qNBruq0txQ3tLcvapQNqjB+bXKgE2qY=",
+      "publishedTime": "2017-12-12T20:38:20.0Z",
+      "ref": "v0.4.0"
+    },
+    "0.5.0": {
+      "bytes": 32000,
+      "hash": "sha256-BxHjUsb0qgo2Hv+Fg3xRS+0mSHf4CmLp1GJyt0YnNX4=",
+      "publishedTime": "2018-01-14T08:58:05.0Z",
+      "ref": "v0.5.0"
+    },
+    "0.6.0": {
+      "bytes": 32793,
+      "hash": "sha256-KXksJ/KKdkSo8rnftauTfxqSvXtInwAQrGvM85rUfdM=",
+      "publishedTime": "2018-01-21T17:49:56.0Z",
+      "ref": "v0.6.0"
+    }
+  },
+  "unpublished": {}
+}

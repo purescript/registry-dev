@@ -333,8 +333,7 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
   log "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.stat tarballPath
   when (bytes > maxPackageBytes) do
-    let message = "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
-    if isLegacyImport then log $ "WARNING: " <> message else throwWithComment message
+    throwWithComment $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
   log "Hashing the tarball..."
   hash <- liftAff $ Hash.sha256File tarballPath
   log $ "Hash: " <> show hash
