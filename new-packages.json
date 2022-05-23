@@ -198,5 +198,6 @@
   "purescript-uncurried-transformers": "https://github.com/PureFunctor/purescript-uncurried-transformers.git",
   "purescript-web-workers": "https://github.com/gbagan/purescript-web-workers.git",
   "purescript-yoga-postgres": "https://github.com/rowtype-yoga/purescript-yoga-postgres.git",
-  "purescript-httpurple": "https://github.com/sigma-andex/purescript-httpurple.git"
+  "purescript-httpurple": "https://github.com/sigma-andex/purescript-httpurple.git",
+  "purescript-node-streams-aff": "https://github.com/jamesdbrock/purescript-node-streams-aff.git"
 }
