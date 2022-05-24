@@ -1,4 +1,6 @@
-module Test.Main where
+module Test.Main
+  ( main
+  ) where
 
 import Registry.Prelude
 
@@ -9,6 +11,7 @@ import Data.Map as Map
 import Data.String.NonEmpty as NES
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
+import Foreign.FastGlob (GlobErrorReason(..))
 import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Node.FS as FS.Extra
@@ -16,6 +19,7 @@ import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
+import Node.Process as Process
 import Registry.API (CompilerFailure(..), callCompiler)
 import Registry.API as API
 import Registry.Json as Json
@@ -89,6 +93,8 @@ main = launchAff_ do
       TestVersion.testVersion
     Spec.describe "Range" do
       TestVersion.testRange
+    Spec.describe "Glob" do
+      safeGlob
 
 -- | Check all the example Manifests roundtrip (read+write) through PureScript
 manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit
@@ -115,6 +121,28 @@ manifestEncoding = do
   roundTrip Fixture.fixture
   roundTrip (Fixture.setDependencies [ Tuple "package-a" "1.0.0" ] Fixture.fixture)
 
+safeGlob :: Spec.Spec Unit
+safeGlob = do
+  Spec.it "Prevents null bytes" do
+    cwd <- liftEffect Process.cwd
+    let noNullByte = verifyError cwd NullByte
+    noNullByte "\x0000"
+
+  Spec.it "Prevents directory traversals" do
+    cwd <- liftEffect Process.cwd
+    let noTraversal = verifyError cwd DirectoryTraversal
+    noTraversal "../../etc/passwd"
+    noTraversal "**/*/../../../etc/passwd"
+
+  where
+  verifyError :: FilePath -> GlobErrorReason -> String -> Aff Unit
+  verifyError cwd reason glob = do
+    parsed <- FastGlob.parseGlob cwd glob
+    case parsed of
+      Left err | err.reason == reason -> pure unit
+      Left err -> Assert.fail $ "Expected failure with reason " <> show reason <> " but got " <> FastGlob.printGlobError err
+      Right _ -> Assert.fail $ "Expected failure with reason " <> show reason <> " but pattern '" <> glob <> "' succeeded."
+
 removeIgnoredTarballFiles :: Spec.Spec Unit
 removeIgnoredTarballFiles = Spec.before runBefore do
   Spec.it "Picks correct files when packaging a tarball" \{ tmp, writeDirectories, writeFiles } -> do
@@ -127,7 +155,7 @@ removeIgnoredTarballFiles = Spec.before runBefore do
 
     API.removeIgnoredTarballFiles tmp
 
-    paths <- FastGlob.match' [ "**/*" ] { cwd: Just tmp }
+    paths <- FastGlob.unsafeMatch' [ "**/*" ] { cwd: Just tmp }
 
     let
       ignoredPaths = API.ignoredDirectories <> API.ignoredFiles

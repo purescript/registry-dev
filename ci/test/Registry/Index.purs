@@ -62,7 +62,7 @@ testRegistryIndex = Spec.before runBefore do
       ]
 
     Spec.it "Final on-disk registry index matches the expected directory structure" \{ tmp } -> do
-      packagePaths <- liftAff $ FastGlob.match' [ "**/*" ] { cwd: Just tmp, include: FilesOnly }
+      packagePaths <- liftAff $ FastGlob.unsafeMatch' [ "**/*" ] { cwd: Just tmp, include: FilesOnly }
 
       let
         expectedPaths = map Path.concat

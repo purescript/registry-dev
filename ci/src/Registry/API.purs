@@ -259,7 +259,7 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
   log $ "Package available in " <> absoluteFolderPath
 
   log "Verifying that the package contains a `src` directory"
-  whenM (liftAff $ map Array.null $ FastGlob.match' [ "src/**/*.purs" ] { cwd: Just absoluteFolderPath }) do
+  whenM (liftAff $ map Array.null $ FastGlob.unsafeMatch' [ "src/**/*.purs" ] { cwd: Just absoluteFolderPath }) do
     throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
@@ -727,7 +727,7 @@ maxPackageBytes = 200_000.0
 -- | https://docs.npmjs.com/cli/v8/configuring-npm/package-json#files
 removeIgnoredTarballFiles :: FilePath -> Aff Unit
 removeIgnoredTarballFiles path = do
-  globMatches <- FastGlob.match' ignoredGlobs { cwd: Just path, caseSensitive: false }
+  globMatches <- FastGlob.unsafeMatch' ignoredGlobs { cwd: Just path, caseSensitive: false }
   for_ (ignoredDirectories <> ignoredFiles <> globMatches) \match ->
     FS.Extra.remove (Path.concat [ path, match ])
 

@@ -27,7 +27,7 @@ type RegistryIndex = Map PackageName (Map Version Manifest)
 -- | NOTE: Right now, this assumes that manifest files will parse
 readRegistryIndex :: FilePath -> Aff RegistryIndex
 readRegistryIndex directory = do
-  packagePaths <- FastGlob.match' [ "**/*" ] { cwd: Just directory, include: FilesOnly, ignore: [ "config.json" ] }
+  packagePaths <- FastGlob.unsafeMatch' [ "**/*" ] { cwd: Just directory, include: FilesOnly, ignore: [ "config.json" ] }
 
   let packages = Array.mapMaybe (hush <<< PackageName.parse <<< Path.basename) packagePaths
 
