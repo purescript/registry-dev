@@ -6,6 +6,7 @@ module Foreign.FastGlob
   , Include(..)
   , defaultGlobOptions
   , match
+  , match'
   , parseGlob
   , parseGlobs
   , printGlob
@@ -23,9 +24,10 @@ import ConvertableOptions (class Defaults)
 import ConvertableOptions as ConvertableOptions
 import Data.Array as Array
 import Data.Compactable (separate)
+import Data.Filterable (filterMap)
 import Data.String as String
-import Effect.Aff as Aff
-import Node.FS.Aff as FS
+import Node.Path as Path
+import Node.Process as Process
 
 -- | A glob pattern that has been sanitized so it does not allow null byte or
 -- | directory traversal attacks.
@@ -40,8 +42,6 @@ type GlobError = { pattern :: String, reason :: GlobErrorReason }
 data GlobErrorReason
   = NullByte
   | DirectoryTraversal
-  | BaseDirectoryDoesNotExist
-  | GlobPathDoesNotExist
 
 derive instance Eq GlobErrorReason
 
@@ -49,8 +49,6 @@ instance Show GlobErrorReason where
   show = case _ of
     NullByte -> "NullByte"
     DirectoryTraversal -> "DirectoryTraversal"
-    BaseDirectoryDoesNotExist -> "BaseDirectoryDoesNotExist"
-    GlobPathDoesNotExist -> "GlobPathDoesNotExist"
 
 printGlobError :: GlobError -> String
 printGlobError { reason, pattern } =
@@ -61,8 +59,6 @@ printGlobError { reason, pattern } =
     , case reason of
         NullByte -> "glob patterns cannot contain null bytes."
         DirectoryTraversal -> "glob patterns cannot match beyond the base directory."
-        BaseDirectoryDoesNotExist -> "the provided base directory does not exist."
-        GlobPathDoesNotExist -> "the provided glob pattern resolves to a path that does not exist."
     ]
 
 parseGlobs :: FilePath -> Array String -> Aff { failed :: Array GlobError, succeeded :: Array Glob }
@@ -80,13 +76,16 @@ parseGlob baseDirectory glob = runExceptT do
   -- The `resolve` function normalizes and joins paths, so `..` and `.` are
   -- removed and result is an absolute path. We can then verify that the
   -- resulting path does not start above the given base directory.
-  absoluteRoot <- liftAff (Aff.attempt (FS.realpath baseDirectory)) >>= case _ of
-    Left _ -> throwError { reason: BaseDirectoryDoesNotExist, pattern: glob }
-    Right path -> pure path
-
-  absoluteGlob <- liftAff (Aff.attempt (FS.realpath glob)) >>= case _ of
-    Left _ -> throwError { reason: GlobPathDoesNotExist, pattern: glob }
-    Right path -> pure path
+  --
+  -- We can't use `realpath` and follow symlinks because `realpath` expands '**'
+  -- patterns to be a single directory. A pattern like "test/**/*.purs" will
+  -- throw an exception if there are only files at "test/Main.purs" for example,
+  -- though this is a valid glob pattern that will match those files.
+  --
+  -- Using `resolve` we don't follow symlinks, but we're still safe: we disallow
+  -- following symlinks when globbing with `match` or `match'`.
+  absoluteRoot <- liftEffect $ Path.resolve [] baseDirectory
+  absoluteGlob <- liftEffect $ Path.resolve [ absoluteRoot ] glob
 
   case String.indexOf (String.Pattern absoluteRoot) absoluteGlob of
     Just 0 -> pure $ Glob glob
@@ -108,6 +107,7 @@ type GlobOptions =
   , caseSensitive :: Boolean
   , dotfiles :: Boolean
   , unique :: Boolean
+  , followSymbolicLinks :: Boolean
   )
 
 defaultGlobOptions :: { | GlobOptions }
@@ -119,10 +119,11 @@ defaultGlobOptions =
   , caseSensitive: true
   , dotfiles: true
   , unique: true
+  , followSymbolicLinks: false
   }
 
 type JSGlobOptions =
-  { cwd :: Nullable FilePath
+  { cwd :: FilePath
   , ignore :: Array String
   , absolute :: Boolean
   , onlyDirectories :: Boolean
@@ -130,31 +131,55 @@ type JSGlobOptions =
   , caseSensitive :: Boolean
   , dotfiles :: Boolean
   , unique :: Boolean
+  , followSymbolicLinks :: Boolean
+  , stats :: Boolean
   }
 
-globOptionsToJSGlobOptions :: { | GlobOptions } -> JSGlobOptions
-globOptionsToJSGlobOptions options =
-  { cwd: toNullable options.cwd
-  , ignore: options.ignore
-  , absolute: options.absolute
-  , onlyDirectories: options.include == DirectoriesOnly
-  , onlyFiles: options.include == FilesOnly
-  , caseSensitive: options.caseSensitive
-  , dotfiles: options.dotfiles
-  , unique: options.unique
-  }
+globOptionsToJSGlobOptions :: { | GlobOptions } -> Aff JSGlobOptions
+globOptionsToJSGlobOptions options = do
+  cwd <- case options.cwd of
+    Nothing -> liftEffect Process.cwd
+    Just cwd -> pure cwd
 
-foreign import matchImpl :: Array String -> JSGlobOptions -> Effect (Promise (Array FilePath))
+  pure
+    { cwd
+    , ignore: options.ignore
+    , absolute: options.absolute
+    , onlyDirectories: options.include == DirectoriesOnly
+    , onlyFiles: options.include == FilesOnly
+    , caseSensitive: options.caseSensitive
+    , dotfiles: options.dotfiles
+    , unique: options.unique
+    , followSymbolicLinks: options.followSymbolicLinks
+    , stats: true
+    }
 
 -- | Match the provided list of glob patterns.
 match :: Array Glob -> Aff (Array FilePath)
 match = unsafeMatch <<< map (\(Glob pattern) -> pattern)
+
+-- | Match the provided list of glob patterns using the given glob options.
+match'
+  :: forall provided
+   . Defaults { | GlobOptions } { | provided } { | GlobOptions }
+  => Array Glob
+  -> { | provided }
+  -> Aff (Array FilePath)
+match' globs opts = unsafeMatch' globs' opts'
+  where
+  globs' = map (\(Glob pattern) -> pattern) globs
+  -- We do not include symlinks in safe mode.
+  opts' = (ConvertableOptions.defaults defaultGlobOptions opts) { followSymbolicLinks = false }
 
 -- | Match the provided list of glob patterns. This is unsafe because it is
 -- | vulnerable to null byte and directory traversal attacks. Use `safeMatch`
 -- | instead if possible.
 unsafeMatch :: Array String -> Aff (Array FilePath)
 unsafeMatch entries = unsafeMatch' entries {}
+
+type JSEntry = { path :: FilePath, isSymbolicLink :: Boolean }
+
+foreign import unsafeMatchImpl :: Array String -> JSGlobOptions -> Effect (Promise (Array JSEntry))
 
 -- | Match the provided list of glob patterns using the given glob options. This
 -- | is unsafe because it is vulnerable to null byte and directory traversal
@@ -165,7 +190,10 @@ unsafeMatch'
   => Array String
   -> { | provided }
   -> Aff (Array FilePath)
-unsafeMatch' entries provided = Promise.toAffE $ matchImpl entries $ globOptionsToJSGlobOptions options
+unsafeMatch' entries provided = do
+  jsOptions <- globOptionsToJSGlobOptions options
+  matches <- Promise.toAffE $ unsafeMatchImpl entries jsOptions
+  pure $ filterMap (\{ path, isSymbolicLink } -> if not options.followSymbolicLinks && isSymbolicLink then Nothing else Just path) matches
   where
   options :: { | GlobOptions }
   options = ConvertableOptions.defaults defaultGlobOptions provided

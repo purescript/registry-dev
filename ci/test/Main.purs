@@ -11,16 +11,17 @@ import Data.Map as Map
 import Data.String.NonEmpty as NES
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
-import Foreign.FastGlob (GlobErrorReason(..))
+import Foreign.FastGlob (GlobErrorReason(..), Include(..))
 import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Node.FS as FS.Extra
 import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
+import Node.FS (SymlinkType(..))
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
-import Registry.API (CompilerFailure(..), callCompiler)
+import Registry.API (CompilerFailure(..), callCompiler, copyPackageSourceFiles)
 import Registry.API as API
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
@@ -38,6 +39,7 @@ import Test.Registry.Index as Registry.Index
 import Test.Registry.SSH as SSH
 import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
 import Test.Registry.Version as TestVersion
+import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -66,6 +68,7 @@ main = launchAff_ do
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
         Spec.describe "Authenticated operations" SSH.spec
       Spec.describe "Tarball" do
+        copySourceFiles
         removeIgnoredTarballFiles
       Spec.describe "Compilers" do
         compilerVersions
@@ -129,12 +132,39 @@ safeGlob = do
 
   Spec.describe "Prevents directory traversals" do
     let noTraversal = verifyError DirectoryTraversal
-    -- symlinks
-    noTraversal "./shell.nix"
-    -- ..
     noTraversal "./**/*/../../../flake.nix"
-    -- root
     noTraversal "/"
+
+  Spec.it "Handles symlinks properly" do
+    tmp <- liftEffect Tmp.mkTmpDir
+    FS.Extra.ensureDirectory (Path.concat [ tmp, "src", "nested" ])
+    let sourcePath = Path.concat [ tmp, "src", "nested", "dest.txt" ]
+    let extraPath = Path.concat [ tmp, "src", "extra.txt" ]
+    FS.writeTextFile UTF8 sourcePath "<test>"
+    FS.writeTextFile UTF8 extraPath "<test>"
+    FS.symlink sourcePath (Path.concat [ tmp, "dest.txt" ]) FileLink
+
+    let
+      notSymlinks = [ "src/extra.txt", "src/nested/dest.txt" ]
+      symlinks = [ "dest.txt" ]
+      globs = [ "**/*" ]
+
+    parsed <- FastGlob.parseGlobs tmp globs -- symlink
+    case parsed of
+      { failed } | not Array.null failed -> Assert.fail $ "Unexpected error: " <> Array.foldMap FastGlob.printGlobError failed
+      { succeeded } -> do
+        -- symlinks should not be included in safe mode, even if followSymbolicLinks
+        -- is enabled.
+        matchesSafe <- FastGlob.match' succeeded { cwd: Just tmp, followSymbolicLinks: true, include: FilesOnly }
+        matchesSafe `Assert.shouldEqual` notSymlinks
+
+        -- they can be followed in unsafe mode
+        matchesUnsafe <- FastGlob.unsafeMatch' globs { cwd: Just tmp, followSymbolicLinks: true, include: FilesOnly }
+        matchesUnsafe `Assert.shouldEqual` (symlinks <> notSymlinks)
+
+        -- but they should be omitted if `followSymbolicLinks` is turned off
+        matchesUnsafeNoLinks <- FastGlob.unsafeMatch' globs { cwd: Just tmp, followSymbolicLinks: false, include: FilesOnly }
+        matchesUnsafeNoLinks `Assert.shouldEqual` notSymlinks
 
   where
   verifyError reason glob = Spec.it glob do
@@ -163,9 +193,11 @@ removeIgnoredTarballFiles = Spec.before runBefore do
       ignoredPaths = API.ignoredDirectories <> API.ignoredFiles
       acceptedPaths = goodDirectories <> goodFiles
 
-    for_ paths \path -> do
-      ignoredPaths `Assert.shouldNotContain` path
-      acceptedPaths `Assert.shouldContain` path
+    for_ ignoredPaths \path ->
+      paths `Assert.shouldNotContain` path
+
+    for_ acceptedPaths \path -> do
+      paths `Assert.shouldContain` path
   where
   runBefore = do
     tmp <- liftEffect Tmp.mkTmpDir
@@ -181,6 +213,65 @@ removeIgnoredTarballFiles = Spec.before runBefore do
       writeFiles = traverse_ (\path -> FS.writeTextFile UTF8 (inTmp path) "<test>")
 
     pure { tmp, writeDirectories, writeFiles }
+
+copySourceFiles :: Spec.Spec Unit
+copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
+  let
+    goodDirectories = [ "src" ]
+    goodFiles = [ "purs.json", "README.md", "LICENSE", Path.concat [ "src", "Main.purs" ], Path.concat [ "src", "Main.js" ] ]
+
+  Spec.it "Only copies always-included files by default" \{ source, destination, writeDirectories, writeFiles } -> do
+    writeDirectories (goodDirectories <> API.ignoredDirectories <> [ "test" ])
+    writeFiles (goodFiles <> API.ignoredFiles <> [ Path.concat [ "test", "Main.purs" ] ])
+
+    copyPackageSourceFiles Nothing { source, destination }
+
+    paths <- liftAff $ FastGlob.unsafeMatch' [ "**/*" ] { cwd: Just destination }
+
+    let
+      acceptedPaths = goodDirectories <> goodFiles
+      ignoredPaths = API.ignoredDirectories <> API.ignoredFiles
+
+    for_ acceptedPaths \path -> do
+      paths `Assert.shouldContain` path
+
+    for_ ignoredPaths \path -> do
+      paths `Assert.shouldNotContain` path
+
+  Spec.it "Copies user-specified files" \{ source, destination, writeDirectories, writeFiles } -> do
+    let
+      userFiles = Just [ "test/**/*.purs" ]
+      testDir = [ "test" ]
+      testFiles = [ Path.concat [ "test", "Main.purs" ], Path.concat [ "test", "Test.purs" ] ]
+
+    writeDirectories (goodDirectories <> testDir)
+    writeFiles (goodFiles <> testFiles)
+
+    copyPackageSourceFiles userFiles { source, destination }
+
+    paths <- liftAff $ FastGlob.unsafeMatch' [ "**/*" ] { cwd: Just destination }
+
+    let acceptedPaths = goodDirectories <> goodFiles <> testDir <> testFiles
+
+    for_ acceptedPaths \path -> do
+      paths `Assert.shouldContain` path
+
+  where
+  runBefore = do
+    tmp <- liftEffect Tmp.mkTmpDir
+    destTmp <- liftEffect Tmp.mkTmpDir
+
+    let
+      inTmp :: FilePath -> FilePath
+      inTmp path = Path.concat [ tmp, path ]
+
+      writeDirectories :: Array FilePath -> _
+      writeDirectories = liftAff <<< traverse_ (FS.Extra.ensureDirectory <<< inTmp)
+
+      writeFiles :: Array FilePath -> _
+      writeFiles = liftAff <<< traverse_ (\path -> FS.writeTextFile UTF8 (inTmp path) "<test>")
+
+    pure { source: tmp, destination: destTmp, writeDirectories, writeFiles }
 
 goodPackageName :: Spec.Spec Unit
 goodPackageName = do
