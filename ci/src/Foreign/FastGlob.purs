@@ -24,7 +24,8 @@ import ConvertableOptions as ConvertableOptions
 import Data.Array as Array
 import Data.Compactable (separate)
 import Data.String as String
-import Node.Path as Path
+import Effect.Aff as Aff
+import Node.FS.Aff as FS
 
 -- | A glob pattern that has been sanitized so it does not allow null byte or
 -- | directory traversal attacks.
@@ -36,7 +37,11 @@ derive instance Eq Glob
 
 type GlobError = { pattern :: String, reason :: GlobErrorReason }
 
-data GlobErrorReason = NullByte | DirectoryTraversal
+data GlobErrorReason
+  = NullByte
+  | DirectoryTraversal
+  | BaseDirectoryDoesNotExist
+  | GlobPathDoesNotExist
 
 derive instance Eq GlobErrorReason
 
@@ -44,6 +49,8 @@ instance Show GlobErrorReason where
   show = case _ of
     NullByte -> "NullByte"
     DirectoryTraversal -> "DirectoryTraversal"
+    BaseDirectoryDoesNotExist -> "BaseDirectoryDoesNotExist"
+    GlobPathDoesNotExist -> "GlobPathDoesNotExist"
 
 printGlobError :: GlobError -> String
 printGlobError { reason, pattern } =
@@ -54,6 +61,8 @@ printGlobError { reason, pattern } =
     , case reason of
         NullByte -> "glob patterns cannot contain null bytes."
         DirectoryTraversal -> "glob patterns cannot match beyond the base directory."
+        BaseDirectoryDoesNotExist -> "the provided base directory does not exist."
+        GlobPathDoesNotExist -> "the provided glob pattern resolves to a path that does not exist."
     ]
 
 parseGlobs :: FilePath -> Array String -> Aff { failed :: Array GlobError, succeeded :: Array Glob }
@@ -71,8 +80,13 @@ parseGlob baseDirectory glob = runExceptT do
   -- The `resolve` function normalizes and joins paths, so `..` and `.` are
   -- removed and result is an absolute path. We can then verify that the
   -- resulting path does not start above the given base directory.
-  absoluteRoot <- liftEffect $ Path.resolve [] baseDirectory
-  absoluteGlob <- liftEffect $ Path.resolve [ absoluteRoot ] glob
+  absoluteRoot <- liftAff (Aff.attempt (FS.realpath baseDirectory)) >>= case _ of
+    Left _ -> throwError { reason: BaseDirectoryDoesNotExist, pattern: glob }
+    Right path -> pure path
+
+  absoluteGlob <- liftAff (Aff.attempt (FS.realpath glob)) >>= case _ of
+    Left _ -> throwError { reason: GlobPathDoesNotExist, pattern: glob }
+    Right path -> pure path
 
   case String.indexOf (String.Pattern absoluteRoot) absoluteGlob of
     Just 0 -> pure $ Glob glob

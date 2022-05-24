@@ -123,20 +123,22 @@ manifestEncoding = do
 
 safeGlob :: Spec.Spec Unit
 safeGlob = do
-  Spec.it "Prevents null bytes" do
-    cwd <- liftEffect Process.cwd
-    let noNullByte = verifyError cwd NullByte
+  Spec.describe "Prevents null bytes" do
+    let noNullByte = verifyError NullByte
     noNullByte "\x0000"
 
-  Spec.it "Prevents directory traversals" do
-    cwd <- liftEffect Process.cwd
-    let noTraversal = verifyError cwd DirectoryTraversal
-    noTraversal "../../etc/passwd"
-    noTraversal "**/*/../../../etc/passwd"
+  Spec.describe "Prevents directory traversals" do
+    let noTraversal = verifyError DirectoryTraversal
+    -- symlinks
+    noTraversal "./shell.nix"
+    -- ..
+    noTraversal "./**/*/../../../flake.nix"
+    -- root
+    noTraversal "/"
 
   where
-  verifyError :: FilePath -> GlobErrorReason -> String -> Aff Unit
-  verifyError cwd reason glob = do
+  verifyError reason glob = Spec.it glob do
+    cwd <- liftEffect Process.cwd
     parsed <- FastGlob.parseGlob cwd glob
     case parsed of
       Left err | err.reason == reason -> pure unit
