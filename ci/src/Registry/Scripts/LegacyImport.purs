@@ -48,49 +48,36 @@ main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
   { registry, reservedNames } <- downloadLegacyRegistry
 
-  log "Temporary: we filter packages to only deal with the ones in core and other orgs we control"
   let
     sortedPackages :: Array Manifest
     sortedPackages = Graph.topologicalSort registry
 
-    isCorePackage :: Manifest -> Maybe _
-    isCorePackage (Manifest manifest) = case manifest.location of
-      -- core
-      GitHub { owner: "purescript" } -> Just manifest
-      GitHub { owner: "purescript-deprecated" } -> Just manifest
-      -- contrib
-      GitHub { owner: "purescript-contrib" } -> Just manifest
-      GitHub { owner: "purescript-web" } -> Just manifest
-      GitHub { owner: "purescript-node" } -> Just manifest
-      -- extras required by the above organizations
-      GitHub { repo: "purescript-void" } -> Just manifest
-      GitHub { repo: "purescript-index" } -> Just manifest
-      GitHub { repo: "purescript-optic" } -> Just manifest
-      GitHub { repo: "purescript-unordered-collections" } -> Just manifest
-      GitHub { repo: "purescript-text-encoding" } -> Just manifest
-      GitHub { repo: "purescript-typelevel" } -> Just manifest
-      GitHub { repo: "purescript-sized-vectors" } -> Just manifest
-      GitHub { repo: "purescript-nonempty-array" } -> Just manifest
-      GitHub { repo: "purescript-colors" } -> Just manifest
-      GitHub { repo: "purescript-eff-functions" } -> Just manifest
-      GitHub { repo: "purescript-node-events" } -> Just manifest
-      GitHub { repo: "purescript-nonempty-array" } -> Just manifest
-      GitHub { repo: "purescript-aff-promise" } -> Just manifest
-      GitHub { repo: "purescript-naturals" } -> Just manifest
-      GitHub { repo: "purescript-simple-dom" } -> Just manifest
-      GitHub { repo: "purescript-functor-compose" } -> Just manifest
-      GitHub { repo: "purescript-halogen" } -> Just manifest
-      GitHub { repo: "purescript-stalling-coroutines" } -> Just manifest
-      GitHub { repo: "purescript-aff-free" } -> Just manifest
-      GitHub { repo: "purescript-dom-indexed" } -> Just manifest
-      GitHub { repo: "purescript-freeap" } -> Just manifest
-      GitHub { repo: "purescript-halogen-vdom" } -> Just manifest
-      GitHub { repo: "purescript-web-pointerevents" } -> Just manifest
-      GitHub { repo: "purescript-halogen-subscriptions" } -> Just manifest
-      _ -> Nothing
+    -- These packages have no usable versions, but do have valid manifests, and
+    -- so they make it to the processed packages but cannot be uploaded. They
+    -- fail either because all versions have no src directory, or are too large,
+    -- or it's a special package.
+    extraReserved :: Map PackageName Location
+    extraReserved = Map.fromFoldable
+      -- [UNFIXABLE] This is a special package that should never be uploaded.
+      [ mkReserved "purescript" "purescript-metadata"
+      -- [UNFIXABLE] This package has no version with a src directory
+      , mkReserved "ethul" "purescript-bitstrings"
+      ]
+      where
+      mkReserved owner repo =
+        Tuple (unsafeFromRight $ PackageName.parse $ stripPureScriptPrefix repo) (GitHub { owner, repo, subdir: Nothing })
 
-    corePackages :: Array _
-    corePackages = Array.mapMaybe isCorePackage sortedPackages
+    -- These package versions contain valid manifests, and other versions of the
+    -- package are valid, but these are not. We manually exclude them from being
+    -- uploaded.
+    excludeVersion :: Manifest -> Maybe _
+    excludeVersion (Manifest manifestFields) = case PackageName.print manifestFields.name, Version.printVersion manifestFields.version of
+      -- [UNFIXABLE] These have no src directory.
+      "concur-core", "0.3.9" -> Nothing
+      "concur-react", "0.3.9" -> Nothing
+      _, _ -> Just manifestFields
+
+    availablePackages = Array.mapMaybe excludeVersion sortedPackages
 
   log "Creating a Metadata Ref"
   packagesMetadataRef <- API.mkMetadataRef
@@ -98,7 +85,7 @@ main = Aff.launchAff_ do
   log "Starting upload..."
   runRegistryM (mkEnv packagesMetadataRef) do
     log "Adding metadata for reserved package names"
-    forWithIndex_ reservedNames \package repo -> do
+    forWithIndex_ (Map.union extraReserved reservedNames) \package repo -> do
       let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
       liftAff $ Json.writeJsonFile (API.metadataFile package) metadata
       updatePackagesMetadata package metadata
@@ -107,8 +94,9 @@ main = Aff.launchAff_ do
     packagesMetadata <- readPackagesMetadata
 
     let
+      reserved { name } = isJust $ Map.lookup name extraReserved
       wasPackageUploaded { name, version } = API.isPackageVersionInMetadata name version packagesMetadata
-      packagesToUpload = Array.filter (not wasPackageUploaded) corePackages
+      packagesToUpload = Array.filter (not wasPackageUploaded && not reserved) availablePackages
 
     for_ packagesToUpload \manifest -> do
       let
