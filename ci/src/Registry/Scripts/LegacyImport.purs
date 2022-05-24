@@ -56,15 +56,15 @@ main = Aff.launchAff_ do
     -- so they make it to the processed packages but cannot be uploaded. They
     -- fail either because all versions have no src directory, or are too large,
     -- or it's a special package.
-    extraReserved :: Map PackageName Location
-    extraReserved = Map.fromFoldable
+    disabledPackages :: Map PackageName Location
+    disabledPackages = Map.fromFoldable
       -- [UNFIXABLE] This is a special package that should never be uploaded.
-      [ mkReserved "purescript" "purescript-metadata"
+      [ mkDisabled "purescript" "purescript-metadata"
       -- [UNFIXABLE] This package has no version with a src directory
-      , mkReserved "ethul" "purescript-bitstrings"
+      , mkDisabled "ethul" "purescript-bitstrings"
       ]
       where
-      mkReserved owner repo =
+      mkDisabled owner repo =
         Tuple (unsafeFromRight $ PackageName.parse $ stripPureScriptPrefix repo) (GitHub { owner, repo, subdir: Nothing })
 
     -- These package versions contain valid manifests, and other versions of the
@@ -85,7 +85,7 @@ main = Aff.launchAff_ do
   log "Starting upload..."
   runRegistryM (mkEnv packagesMetadataRef) do
     log "Adding metadata for reserved package names"
-    forWithIndex_ (Map.union extraReserved reservedNames) \package repo -> do
+    forWithIndex_ (Map.union disabledPackages reservedNames) \package repo -> do
       let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
       liftAff $ Json.writeJsonFile (API.metadataFile package) metadata
       updatePackagesMetadata package metadata
@@ -94,9 +94,9 @@ main = Aff.launchAff_ do
     packagesMetadata <- readPackagesMetadata
 
     let
-      reserved { name } = isJust $ Map.lookup name extraReserved
+      disabled { name } = isJust $ Map.lookup name disabledPackages
       wasPackageUploaded { name, version } = API.isPackageVersionInMetadata name version packagesMetadata
-      packagesToUpload = Array.filter (not wasPackageUploaded && not reserved) availablePackages
+      packagesToUpload = Array.filter (not wasPackageUploaded && not disabled) availablePackages
 
     for_ packagesToUpload \manifest -> do
       let
@@ -137,7 +137,7 @@ downloadLegacyRegistry = do
   newPackages <- readRegistryFile "new-packages.json"
 
   let
-    allPackages = Map.delete (RawPackageName "metadata") $ Map.union bowerPackages newPackages
+    allPackages = Map.union bowerPackages newPackages
     initialPackages = { failures: PackageFailures Map.empty, packages: allPackages }
 
   log "Fetching package releases..."
