@@ -11,13 +11,12 @@ import Data.Map as Map
 import Data.String.NonEmpty as NES
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
-import Foreign.FastGlob (GlobErrorReason(..), Include(..))
+import Foreign.FastGlob (SafePathErrorReason(..))
 import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Node.FS as FS.Extra
 import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
-import Node.FS (SymlinkType(..))
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
@@ -126,54 +125,30 @@ manifestEncoding = do
 
 safeGlob :: Spec.Spec Unit
 safeGlob = do
-  Spec.describe "Prevents null bytes" do
-    let noNullByte = verifyError NullByte
-    noNullByte "\x0000"
-
   Spec.describe "Prevents directory traversals" do
-    let noTraversal = verifyError DirectoryTraversal
-    noTraversal "./**/*/../../../flake.nix"
-    noTraversal "/"
+    Spec.it "Directory traversal" do
+      cwd <- liftEffect Process.cwd
+      { failed } <- FastGlob.match cwd [ "../flake.nix" ]
+      case Array.head failed of
+        Just { reason } | reason == DirectoryTraversal -> pure unit
+        _ -> Assert.fail $ "Expected failure with " <> show DirectoryTraversal
 
-  Spec.it "Handles symlinks properly" do
-    tmp <- liftEffect Tmp.mkTmpDir
-    FS.Extra.ensureDirectory (Path.concat [ tmp, "src", "nested" ])
-    let sourcePath = Path.concat [ tmp, "src", "nested", "dest.txt" ]
-    let extraPath = Path.concat [ tmp, "src", "extra.txt" ]
-    FS.writeTextFile UTF8 sourcePath "<test>"
-    FS.writeTextFile UTF8 extraPath "<test>"
-    FS.symlink sourcePath (Path.concat [ tmp, "dest.txt" ]) FileLink
+    Spec.it "Symlink traversal" do
+      cwd <- liftEffect Process.cwd
+      { failed } <- FastGlob.match cwd [ "./shell.nix" ]
+      case Array.head failed of
+        Just { reason } | reason == DirectoryTraversal -> pure unit
+        _ -> Assert.fail $ "Expected failure with " <> show DirectoryTraversal
 
-    let
-      notSymlinks = [ "src/extra.txt", "src/nested/dest.txt" ]
-      symlinks = [ "dest.txt" ]
-      globs = [ "**/*" ]
-
-    parsed <- FastGlob.parseGlobs tmp globs -- symlink
-    case parsed of
-      { failed } | not Array.null failed -> Assert.fail $ "Unexpected error: " <> Array.foldMap FastGlob.printGlobError failed
-      { succeeded } -> do
-        -- symlinks should not be included in safe mode, even if followSymbolicLinks
-        -- is enabled.
-        matchesSafe <- FastGlob.match' succeeded { cwd: Just tmp, followSymbolicLinks: true, include: FilesOnly }
-        matchesSafe `Assert.shouldEqual` notSymlinks
-
-        -- they can be followed in unsafe mode
-        matchesUnsafe <- FastGlob.unsafeMatch' globs { cwd: Just tmp, followSymbolicLinks: true, include: FilesOnly }
-        matchesUnsafe `Assert.shouldEqual` (symlinks <> notSymlinks)
-
-        -- but they should be omitted if `followSymbolicLinks` is turned off
-        matchesUnsafeNoLinks <- FastGlob.unsafeMatch' globs { cwd: Just tmp, followSymbolicLinks: false, include: FilesOnly }
-        matchesUnsafeNoLinks `Assert.shouldEqual` notSymlinks
-
-  where
-  verifyError reason glob = Spec.it glob do
-    cwd <- liftEffect Process.cwd
-    parsed <- FastGlob.parseGlob cwd glob
-    case parsed of
-      Left err | err.reason == reason -> pure unit
-      Left err -> Assert.fail $ "Expected failure with reason " <> show reason <> " but got " <> FastGlob.printGlobError err
-      Right _ -> Assert.fail $ "Expected failure with reason " <> show reason <> " but pattern '" <> glob <> "' succeeded."
+    -- A glob that is technically a directory traversal but which doesn't
+    -- actually match any files won't throw an error since there are no results.
+    -- If we want to throw an error, then we have to pre-sanitize without
+    -- using `realpath` and use `Path.resolve` instead.
+    Spec.it "Traversal to a non-existing file" do
+      cwd <- liftEffect Process.cwd
+      result <- FastGlob.match cwd [ "/var/www/root/shell.nix" ]
+      unless (result == mempty) do
+        Assert.fail $ "Expected no results, but received " <> show result
 
 removeIgnoredTarballFiles :: Spec.Spec Unit
 removeIgnoredTarballFiles = Spec.before runBefore do
@@ -187,17 +162,17 @@ removeIgnoredTarballFiles = Spec.before runBefore do
 
     API.removeIgnoredTarballFiles tmp
 
-    paths <- FastGlob.unsafeMatch' [ "**/*" ] { cwd: Just tmp }
+    paths <- FastGlob.match tmp [ "**/*" ]
 
     let
       ignoredPaths = API.ignoredDirectories <> API.ignoredFiles
       acceptedPaths = goodDirectories <> goodFiles
 
     for_ ignoredPaths \path ->
-      paths `Assert.shouldNotContain` path
+      paths.succeeded `Assert.shouldNotContain` path
 
     for_ acceptedPaths \path -> do
-      paths `Assert.shouldContain` path
+      paths.succeeded `Assert.shouldContain` path
   where
   runBefore = do
     tmp <- liftEffect Tmp.mkTmpDir
@@ -226,17 +201,17 @@ copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
 
     copyPackageSourceFiles Nothing { source, destination }
 
-    paths <- liftAff $ FastGlob.unsafeMatch' [ "**/*" ] { cwd: Just destination }
+    paths <- liftAff $ FastGlob.match destination [ "**/*" ]
 
     let
       acceptedPaths = goodDirectories <> goodFiles
       ignoredPaths = API.ignoredDirectories <> API.ignoredFiles
 
     for_ acceptedPaths \path -> do
-      paths `Assert.shouldContain` path
+      paths.succeeded `Assert.shouldContain` path
 
     for_ ignoredPaths \path -> do
-      paths `Assert.shouldNotContain` path
+      paths.succeeded `Assert.shouldNotContain` path
 
   Spec.it "Copies user-specified files" \{ source, destination, writeDirectories, writeFiles } -> do
     let
@@ -249,12 +224,12 @@ copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
 
     copyPackageSourceFiles userFiles { source, destination }
 
-    paths <- liftAff $ FastGlob.unsafeMatch' [ "**/*" ] { cwd: Just destination }
+    paths <- liftAff $ FastGlob.match destination [ "**/*" ]
 
     let acceptedPaths = goodDirectories <> goodFiles <> testDir <> testFiles
 
     for_ acceptedPaths \path -> do
-      paths `Assert.shouldContain` path
+      paths.succeeded `Assert.shouldContain` path
 
   where
   runBefore = do

@@ -260,7 +260,7 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
   log $ "Package available in " <> absoluteFolderPath
 
   log "Verifying that the package contains a `src` directory"
-  whenM (liftAff $ map Array.null $ FastGlob.unsafeMatch' [ "src/**/*.purs" ] { cwd: Just absoluteFolderPath }) do
+  whenM (liftAff $ map (Array.null <<< _.succeeded) $ FastGlob.match absoluteFolderPath [ "src/**/*.purs" ]) do
     throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
@@ -724,21 +724,19 @@ copyPackageSourceFiles files { source, destination } = do
   userFiles <- case files of
     Nothing -> pure []
     Just globs -> do
-      -- We sanitize the globs to ensure there are no null byte or directory
-      -- traversal attacks lurking.
-      { succeeded, failed } <- liftAff $ FastGlob.parseGlobs source globs
+      { succeeded, failed } <- liftAff $ FastGlob.match source globs
 
       unless (Array.null failed) do
-        let errors = String.joinWith "  \n" (map FastGlob.printGlobError failed)
-        throwWithComment $ "Globs provided by the 'files' key are not valid:\n\n" <> errors
+        let errors = String.joinWith "  \n" (map FastGlob.printSafePathError failed)
+        throwWithComment $ "Paths indicated by the globs in the 'files' key are not valid:\n\n" <> errors
 
-      liftAff $ FastGlob.match' succeeded { cwd: Just source }
+      pure succeeded
 
-  includedFiles <- liftAff $ FastGlob.unsafeMatch' includedGlobs { cwd: Just source }
-  includedInsensitiveFiles <- liftAff $ FastGlob.unsafeMatch' includedInsensitiveGlobs { cwd: Just source, caseSensitive: false }
+  includedFiles <- liftAff $ FastGlob.match source includedGlobs
+  includedInsensitiveFiles <- liftAff $ FastGlob.match' source includedInsensitiveGlobs { caseSensitive: false }
 
   let
-    copyFiles = userFiles <> includedFiles <> includedInsensitiveFiles
+    copyFiles = userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded
     makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ] }
 
   liftAff $ traverse_ (makePaths >>> FS.Extra.copy) copyFiles
@@ -772,8 +770,8 @@ includedInsensitiveGlobs =
 -- | https://docs.npmjs.com/cli/v8/configuring-npm/package-json#files
 removeIgnoredTarballFiles :: FilePath -> Aff Unit
 removeIgnoredTarballFiles path = do
-  globMatches <- FastGlob.unsafeMatch' ignoredGlobs { cwd: Just path, caseSensitive: false }
-  for_ (ignoredDirectories <> ignoredFiles <> globMatches) \match ->
+  globMatches <- FastGlob.match' path ignoredGlobs { caseSensitive: false }
+  for_ (ignoredDirectories <> ignoredFiles <> globMatches.succeeded) \match ->
     FS.Extra.remove (Path.concat [ path, match ])
 
 ignoredDirectories :: Array FilePath
