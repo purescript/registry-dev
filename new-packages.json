@@ -200,5 +200,6 @@
   "purescript-yoga-postgres": "https://github.com/rowtype-yoga/purescript-yoga-postgres.git",
   "purescript-httpurple": "https://github.com/sigma-andex/purescript-httpurple.git",
   "purescript-node-streams-aff": "https://github.com/jamesdbrock/purescript-node-streams-aff.git",
-  "purescript-lp": "https://github.com/gbagan/purescript-lp.git"
+  "purescript-lp": "https://github.com/gbagan/purescript-lp.git",
+  "purescript-jelly": "https://github.com/yukikurage/purescript-jelly.git"
 }
