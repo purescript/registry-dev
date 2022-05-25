@@ -1,4 +1,13 @@
-module Foreign.FastGlob where
+module Foreign.FastGlob
+  ( GlobOptions
+  , Include(..)
+  , SafePathError
+  , SafePathErrorReason(..)
+  , SanitizedPaths
+  , match
+  , match'
+  , printSafePathError
+  ) where
 
 import Registry.Prelude
 

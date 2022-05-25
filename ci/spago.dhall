@@ -12,7 +12,6 @@
   , "convertable-options"
   , "crypto"
   , "datetime"
-  , "debug"
   , "dotenv"
   , "effect"
   , "either"
