@@ -82,7 +82,6 @@ parse inputStr = flip Parser.runParser inputStr do
   -- Make sure that we consume all the string in input
   Parse.eof <?> charErr
 
-  -- Put together the string, stripping the "purescript-" prefix if there
   let
     chars = List.concat $ map NEL.toList $ List.Cons firstChunk nextChunks
     name = fromCharArray $ List.toUnfoldable $ chars
