@@ -1,5 +1,5 @@
 module Foreign.FastGlob
-  ( GlobOptions
+  ( GlobOptions(..)
   , Include(..)
   , SafePathError
   , SafePathErrorReason(..)
@@ -26,9 +26,7 @@ import Node.Path as Path
 type SafePathError = { path :: FilePath, reason :: SafePathErrorReason }
 
 data SafePathErrorReason
-  = NullByte
-  | Root
-  | DirectoryTraversal
+  = DirectoryTraversal
   | BaseDirectoryMissing
   | PathMissing
 
@@ -36,8 +34,6 @@ derive instance Eq SafePathErrorReason
 
 instance Show SafePathErrorReason where
   show = case _ of
-    NullByte -> "NullByte"
-    Root -> "Root"
     DirectoryTraversal -> "DirectoryTraversal"
     BaseDirectoryMissing -> "BaseDirectoryMissing"
     PathMissing -> "PathMissing"
@@ -49,8 +45,6 @@ printSafePathError { reason, path } =
     , path
     , "' failed: "
     , case reason of
-        NullByte -> "file paths cannot contain null bytes."
-        Root -> "file paths cannot be the root."
         DirectoryTraversal -> "file paths cannot be outside the base directory."
         BaseDirectoryMissing -> "no"
         PathMissing -> "PathMissing"
