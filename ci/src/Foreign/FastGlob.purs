@@ -46,8 +46,8 @@ printSafePathError { reason, path } =
     , "' failed: "
     , case reason of
         DirectoryTraversal -> "file paths cannot be outside the base directory."
-        BaseDirectoryMissing -> "no"
-        PathMissing -> "PathMissing"
+        BaseDirectoryMissing -> "the base directory does not exist."
+        PathMissing -> "the provided path does not exist."
     ]
 
 type SanitizedPaths = { succeeded :: Array FilePath, failed :: Array SafePathError }
