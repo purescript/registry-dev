@@ -6,6 +6,7 @@ module Registry.PackageName
 
 import Registry.Prelude
 
+import Data.Array as Array
 import Data.List as List
 import Data.List.NonEmpty as NEL
 import Data.String as String
@@ -37,13 +38,27 @@ print :: PackageName -> String
 print (PackageName package) = package
 
 parse :: String -> Either Parser.ParseError PackageName
-parse = Parser.runParser do
+parse inputStr = flip Parser.runParser inputStr do
   let
     -- Error messages which also define our rules for package names
     endErr = "Package name should end with a lower case char or digit"
     charErr = "Package name can contain lower case chars, digits and non-consecutive dashes"
     startErr = "Package name should start with a lower case char or a digit"
+    prefixErr = "Package names should not begin with 'purescript-'"
     manyDashesErr = "Package names cannot contain consecutive dashes"
+
+  -- Packages are not allowed to begin with purescript- in general, as that
+  -- represents the legacy naming scheme and is almost certainly an error.
+  -- However, packages can be explicitly blessed so they can use the prefix.
+  let
+    allowedPrefixNames =
+      [ "purescript-compiler-backend-utilities"
+      ]
+    isBlessedPackage = inputStr `Array.elem` allowedPrefixNames
+    hasPureScriptPrefix = isJust $ String.stripPrefix (String.Pattern "purescript-") inputStr
+
+  when (hasPureScriptPrefix && not isBlessedPackage) do
+    Parser.fail prefixErr
 
   let
     char = ParseC.choice [ Parse.lowerCaseChar, Parse.anyDigit ] <?> charErr
@@ -52,6 +67,7 @@ parse = Parser.runParser do
 
   -- A "chunk" is an alphanumeric word between dashes
   firstChunk <- chunk <?> startErr
+
   nextChunks <- do
     chunks <- ParseC.many do
       void dash
@@ -66,10 +82,9 @@ parse = Parser.runParser do
   -- Make sure that we consume all the string in input
   Parse.eof <?> charErr
 
-  -- Put together the string, stripping the "purescript-" prefix if there
   let
     chars = List.concat $ map NEL.toList $ List.Cons firstChunk nextChunks
-    name = stripPureScriptPrefix $ fromCharArray $ List.toUnfoldable $ chars
+    name = fromCharArray $ List.toUnfoldable $ chars
 
   -- and check that it's not longer than 50 chars
   if String.length name > 50 then

@@ -251,6 +251,8 @@ goodPackageName = do
 
   parseName "a" "a"
   parseName "some-dash" "some-dash"
+  -- A blessed prefixed package
+  parseName "purescript-compiler-backend-utilities" "purescript-compiler-backend-utilities"
 
 badPackageName :: Spec.Spec Unit
 badPackageName = do
@@ -259,8 +261,10 @@ badPackageName = do
       (PackageName.print <$> PackageName.parse str) `Assert.shouldSatisfy` case _ of
         Right _ -> false
         Left { error } -> error == err
+
   let startErr = "Package name should start with a lower case char or a digit"
   let midErr = "Package name can contain lower case chars, digits and non-consecutive dashes"
+  let prefixErr = "Package names should not begin with 'purescript-'"
   let endErr = "Package name should end with a lower case char or digit"
   let manyDashes = "Package names cannot contain consecutive dashes"
 
@@ -271,6 +275,7 @@ badPackageName = do
   failParse "a-" endErr
   failParse "" startErr
   failParse "🍝" startErr
+  failParse "purescript-aff" prefixErr
 
 goodSPDXLicense :: Spec.Spec Unit
 goodSPDXLicense = do
