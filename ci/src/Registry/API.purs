@@ -328,8 +328,11 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.stat tarballPath
-  when (bytes > maxPackageBytes) do
-    throwWithComment $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
+  when (not isLegacyImport && bytes > warnPackageBytes) do
+    if bytes > maxPackageBytes then
+      throwWithComment $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes.\ncc: @purescript/packaging"
+    else
+      log $ "WARNING: Package tarball is " <> show bytes <> ".\ncc: @purescript/packaging"
   log "Hashing the tarball..."
   hash <- liftAff $ Hash.sha256File tarballPath
   log $ "Hash: " <> show hash
@@ -713,8 +716,13 @@ runGit args cwd = ExceptT do
       pure $ Right $ String.trim result.stdout
     _ -> pure $ Left $ String.trim result.stderr
 
+-- | The absolute maximum bytes allowed in a package
 maxPackageBytes :: Number
-maxPackageBytes = 200_000.0
+maxPackageBytes = 2_000_000.0
+
+-- | The number of bytes over which we flag a package for review
+warnPackageBytes :: Number
+warnPackageBytes = 200_000.0
 
 -- | Copy files from the package source directory to the destination directory
 -- | for the tarball. This will copy all always-included files as well as files
