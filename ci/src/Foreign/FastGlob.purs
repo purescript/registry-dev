@@ -1,7 +1,7 @@
 module Foreign.FastGlob
-  ( Include(..)
-  , GlobOptions(..)
-  , defaultGlobOptions
+  ( GlobOptions(..)
+  , Include(..)
+  , SanitizedPaths
   , match
   , match'
   ) where
@@ -12,6 +12,13 @@ import Control.Promise (Promise)
 import Control.Promise as Promise
 import ConvertableOptions (class Defaults)
 import ConvertableOptions as ConvertableOptions
+import Data.Compactable (separate)
+import Data.String as String
+import Effect.Aff as Aff
+import Node.FS.Aff as FS
+import Node.Path as Path
+
+type SanitizedPaths = { succeeded :: Array FilePath, failed :: Array FilePath }
 
 data Include = FilesAndDirectories | FilesOnly | DirectoriesOnly
 
@@ -19,9 +26,7 @@ derive instance Eq Include
 
 -- https://github.com/mrmlnc/fast-glob#options-3
 type GlobOptions =
-  ( cwd :: Maybe FilePath
-  , ignore :: Array FilePath
-  , absolute :: Boolean
+  ( ignore :: Array FilePath
   , include :: Include
   , caseSensitive :: Boolean
   , dotfiles :: Boolean
@@ -30,9 +35,7 @@ type GlobOptions =
 
 defaultGlobOptions :: { | GlobOptions }
 defaultGlobOptions =
-  { cwd: Nothing
-  , ignore: []
-  , absolute: false
+  { ignore: []
   , include: FilesAndDirectories
   , caseSensitive: true
   , dotfiles: true
@@ -40,9 +43,8 @@ defaultGlobOptions =
   }
 
 type JSGlobOptions =
-  { cwd :: Nullable FilePath
+  { cwd :: String
   , ignore :: Array String
-  , absolute :: Boolean
   , onlyDirectories :: Boolean
   , onlyFiles :: Boolean
   , caseSensitive :: Boolean
@@ -50,11 +52,10 @@ type JSGlobOptions =
   , unique :: Boolean
   }
 
-globOptionsToJSGlobOptions :: { | GlobOptions } -> JSGlobOptions
-globOptionsToJSGlobOptions options =
-  { cwd: toNullable options.cwd
+globOptionsToJSGlobOptions :: FilePath -> { | GlobOptions } -> JSGlobOptions
+globOptionsToJSGlobOptions cwd options = do
+  { cwd
   , ignore: options.ignore
-  , absolute: options.absolute
   , onlyDirectories: options.include == DirectoriesOnly
   , onlyFiles: options.include == FilesOnly
   , caseSensitive: options.caseSensitive
@@ -64,16 +65,43 @@ globOptionsToJSGlobOptions options =
 
 foreign import matchImpl :: Array String -> JSGlobOptions -> Effect (Promise (Array FilePath))
 
-match :: Array String -> Aff (Array FilePath)
-match entries = match' entries {}
+-- | Match the provided list of glob patterns.
+match :: FilePath -> Array String -> Aff SanitizedPaths
+match baseDir entries = match' baseDir entries {}
 
+-- | Match the provided list of glob patterns using the given glob options.
 match'
   :: forall provided
    . Defaults { | GlobOptions } { | provided } { | GlobOptions }
-  => Array String
+  => FilePath
+  -> Array String
   -> { | provided }
-  -> Aff (Array FilePath)
-match' entries provided = Promise.toAffE $ matchImpl entries $ globOptionsToJSGlobOptions options
+  -> Aff SanitizedPaths
+match' baseDirectory entries opts = do
+  let jsOptions = globOptionsToJSGlobOptions baseDirectory options
+  matches <- Promise.toAffE $ matchImpl entries jsOptions
+  sanitizePaths matches
   where
   options :: { | GlobOptions }
-  options = ConvertableOptions.defaults defaultGlobOptions provided
+  options = ConvertableOptions.defaults defaultGlobOptions opts
+
+  sanitizePaths :: Array FilePath -> Aff SanitizedPaths
+  sanitizePaths paths = do
+    sanitized <- traverse sanitizePath paths
+    let { right, left } = separate sanitized
+    pure { succeeded: right, failed: left }
+
+  sanitizePath :: FilePath -> Aff (Either String FilePath)
+  sanitizePath path = do
+    absoluteRoot <- Aff.attempt (FS.realpath baseDirectory) >>= case _ of
+      Left _ -> unsafeCrashWith $ "sanitizePath provided with a base directory that does not exist: " <> baseDirectory
+      Right canonical -> pure canonical
+
+    absolutePath <- Aff.attempt (FS.realpath $ Path.concat [ absoluteRoot, path ]) >>= case _ of
+      Left _ -> unsafeCrashWith $ "sanitizePath provided with a path that does not exist: " <> path
+      Right canonical -> pure canonical
+
+    -- Protect against directory traversals
+    pure $ case String.indexOf (String.Pattern absoluteRoot) absolutePath of
+      Just 0 -> Right path
+      _ -> Left path

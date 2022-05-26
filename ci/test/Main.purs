@@ -1,4 +1,6 @@
-module Test.Main where
+module Test.Main
+  ( main
+  ) where
 
 import Registry.Prelude
 
@@ -16,7 +18,8 @@ import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
-import Registry.API (CompilerFailure(..), callCompiler)
+import Node.Process as Process
+import Registry.API (CompilerFailure(..), callCompiler, copyPackageSourceFiles)
 import Registry.API as API
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
@@ -34,6 +37,7 @@ import Test.Registry.Index as Registry.Index
 import Test.Registry.SSH as SSH
 import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
 import Test.Registry.Version as TestVersion
+import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -62,6 +66,7 @@ main = launchAff_ do
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
         Spec.describe "Authenticated operations" SSH.spec
       Spec.describe "Tarball" do
+        copySourceFiles
         removeIgnoredTarballFiles
       Spec.describe "Compilers" do
         compilerVersions
@@ -89,6 +94,8 @@ main = launchAff_ do
       TestVersion.testVersion
     Spec.describe "Range" do
       TestVersion.testRange
+    Spec.describe "Glob" do
+      safeGlob
 
 -- | Check all the example Manifests roundtrip (read+write) through PureScript
 manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit
@@ -115,6 +122,29 @@ manifestEncoding = do
   roundTrip Fixture.fixture
   roundTrip (Fixture.setDependencies [ Tuple "package-a" "1.0.0" ] Fixture.fixture)
 
+safeGlob :: Spec.Spec Unit
+safeGlob = do
+  Spec.describe "Prevents directory traversals" do
+    Spec.it "Directory traversal" do
+      cwd <- liftEffect Process.cwd
+      { succeeded, failed } <- FastGlob.match cwd [ "../flake.nix" ]
+      succeeded `Assert.shouldSatisfy` Array.null
+      failed `Assert.shouldEqual` [ "../flake.nix" ]
+
+    Spec.it "Symlink traversal" do
+      cwd <- liftEffect Process.cwd
+      { succeeded, failed } <- FastGlob.match cwd [ "./shell.nix" ]
+      succeeded `Assert.shouldSatisfy` Array.null
+      failed `Assert.shouldEqual` [ "./shell.nix" ]
+
+    -- A glob that is technically a directory traversal but which doesn't
+    -- actually match any files won't throw an error since there are no results.
+    Spec.it "Traversal to a non-existing file" do
+      cwd <- liftEffect Process.cwd
+      result <- FastGlob.match cwd [ "/var/www/root/shell.nix" ]
+      unless (result == mempty) do
+        Assert.fail $ "Expected no results, but received " <> show result
+
 removeIgnoredTarballFiles :: Spec.Spec Unit
 removeIgnoredTarballFiles = Spec.before runBefore do
   Spec.it "Picks correct files when packaging a tarball" \{ tmp, writeDirectories, writeFiles } -> do
@@ -127,15 +157,17 @@ removeIgnoredTarballFiles = Spec.before runBefore do
 
     API.removeIgnoredTarballFiles tmp
 
-    paths <- FastGlob.match' [ "**/*" ] { cwd: Just tmp }
+    paths <- FastGlob.match tmp [ "**/*" ]
 
     let
       ignoredPaths = API.ignoredDirectories <> API.ignoredFiles
       acceptedPaths = goodDirectories <> goodFiles
 
-    for_ paths \path -> do
-      ignoredPaths `Assert.shouldNotContain` path
-      acceptedPaths `Assert.shouldContain` path
+    for_ ignoredPaths \path ->
+      paths.succeeded `Assert.shouldNotContain` path
+
+    for_ acceptedPaths \path -> do
+      paths.succeeded `Assert.shouldContain` path
   where
   runBefore = do
     tmp <- liftEffect Tmp.mkTmpDir
@@ -151,6 +183,65 @@ removeIgnoredTarballFiles = Spec.before runBefore do
       writeFiles = traverse_ (\path -> FS.writeTextFile UTF8 (inTmp path) "<test>")
 
     pure { tmp, writeDirectories, writeFiles }
+
+copySourceFiles :: Spec.Spec Unit
+copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
+  let
+    goodDirectories = [ "src" ]
+    goodFiles = [ "purs.json", "README.md", "LICENSE", Path.concat [ "src", "Main.purs" ], Path.concat [ "src", "Main.js" ] ]
+
+  Spec.it "Only copies always-included files by default" \{ source, destination, writeDirectories, writeFiles } -> do
+    writeDirectories (goodDirectories <> API.ignoredDirectories <> [ "test" ])
+    writeFiles (goodFiles <> API.ignoredFiles <> [ Path.concat [ "test", "Main.purs" ] ])
+
+    copyPackageSourceFiles Nothing { source, destination }
+
+    paths <- liftAff $ FastGlob.match destination [ "**/*" ]
+
+    let
+      acceptedPaths = goodDirectories <> goodFiles
+      ignoredPaths = API.ignoredDirectories <> API.ignoredFiles
+
+    for_ acceptedPaths \path -> do
+      paths.succeeded `Assert.shouldContain` path
+
+    for_ ignoredPaths \path -> do
+      paths.succeeded `Assert.shouldNotContain` path
+
+  Spec.it "Copies user-specified files" \{ source, destination, writeDirectories, writeFiles } -> do
+    let
+      userFiles = Just [ "test/**/*.purs" ]
+      testDir = [ "test" ]
+      testFiles = [ Path.concat [ "test", "Main.purs" ], Path.concat [ "test", "Test.purs" ] ]
+
+    writeDirectories (goodDirectories <> testDir)
+    writeFiles (goodFiles <> testFiles)
+
+    copyPackageSourceFiles userFiles { source, destination }
+
+    paths <- liftAff $ FastGlob.match destination [ "**/*" ]
+
+    let acceptedPaths = goodDirectories <> goodFiles <> testDir <> testFiles
+
+    for_ acceptedPaths \path -> do
+      paths.succeeded `Assert.shouldContain` path
+
+  where
+  runBefore = do
+    tmp <- liftEffect Tmp.mkTmpDir
+    destTmp <- liftEffect Tmp.mkTmpDir
+
+    let
+      inTmp :: FilePath -> FilePath
+      inTmp path = Path.concat [ tmp, path ]
+
+      writeDirectories :: Array FilePath -> _
+      writeDirectories = liftAff <<< traverse_ (FS.Extra.ensureDirectory <<< inTmp)
+
+      writeFiles :: Array FilePath -> _
+      writeFiles = liftAff <<< traverse_ (\path -> FS.writeTextFile UTF8 (inTmp path) "<test>")
+
+    pure { source: tmp, destination: destTmp, writeDirectories, writeFiles }
 
 goodPackageName :: Spec.Spec Unit
 goodPackageName = do

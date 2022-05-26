@@ -12,6 +12,7 @@ import Data.Argonaut.Parser as Argonaut.Core
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
 import Data.DateTime as DateTime
+import Data.Foldable (traverse_)
 import Data.Generic.Rep as Generic
 import Data.HTTP.Method as Method
 import Data.Int as Int
@@ -259,7 +260,7 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
   log $ "Package available in " <> absoluteFolderPath
 
   log "Verifying that the package contains a `src` directory"
-  whenM (liftAff $ map Array.null $ FastGlob.match' [ "src/**/*.purs" ] { cwd: Just absoluteFolderPath }) do
+  whenM (liftAff $ map (Array.null <<< _.succeeded) $ FastGlob.match absoluteFolderPath [ "src/**/*.purs" ]) do
     throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
@@ -318,23 +319,17 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
   let newDirname = PackageName.print packageName <> "-" <> Version.printVersion newVersion
   let packageSourceDir = Path.concat [ tmpDir, newDirname ]
   liftAff $ FS.Extra.ensureDirectory packageSourceDir
-  case manifestRecord.files of
-    Nothing -> liftAff do
-      -- When the files key is not specified, we preserve all files except for
-      -- those we explicitly ignore.
-      FS.Extra.copy { from: absoluteFolderPath, to: packageSourceDir }
-      removeIgnoredTarballFiles packageSourceDir
-    Just _ ->
-      -- TODO: Pick only files the user indicated we should include, and then
-      -- remove files we explicitly ignore.
-      throwWithComment "The 'files' key is not yet supported.\ncc @purescript/packaging"
+  -- We copy over all files that are always included (ie. src dir, purs.json file),
+  -- and any files the user asked for via the 'files' key, and remove all files
+  -- that should never be included (even if the user asked for them).
+  copyPackageSourceFiles manifestRecord.files { source: absoluteFolderPath, destination: packageSourceDir }
+  liftAff $ removeIgnoredTarballFiles packageSourceDir
   let tarballPath = packageSourceDir <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.stat tarballPath
   when (bytes > maxPackageBytes) do
-    let message = "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
-    if isLegacyImport then log $ "WARNING: " <> message else throwWithComment message
+    throwWithComment $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
   log "Hashing the tarball..."
   hash <- liftAff $ Hash.sha256File tarballPath
   log $ "Hash: " <> show hash
@@ -721,15 +716,64 @@ runGit args cwd = ExceptT do
 maxPackageBytes :: Number
 maxPackageBytes = 200_000.0
 
+-- | Copy files from the package source directory to the destination directory
+-- | for the tarball. This will copy all always-included files as well as files
+-- | provided by the user via the `files` key.
+copyPackageSourceFiles :: Maybe (Array String) -> { source :: FilePath, destination :: FilePath } -> RegistryM Unit
+copyPackageSourceFiles files { source, destination } = do
+  userFiles <- case files of
+    Nothing -> pure []
+    Just globs -> do
+      { succeeded, failed } <- liftAff $ FastGlob.match source globs
+
+      unless (Array.null failed) do
+        throwWithComment $ String.joinWith " "
+          [ "Some paths matched by globs in the 'files' key are outside your package directory."
+          , "Please ensure globs only match within your package directory, including symlinks."
+          ]
+
+      pure succeeded
+
+  includedFiles <- liftAff $ FastGlob.match source includedGlobs
+  includedInsensitiveFiles <- liftAff $ FastGlob.match' source includedInsensitiveGlobs { caseSensitive: false }
+
+  let
+    copyFiles = userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded
+    makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ] }
+
+  liftAff $ traverse_ (makePaths >>> FS.Extra.copy) copyFiles
+
+-- | We always include some files and directories when packaging a tarball, in
+-- | addition to files users opt-in to with the 'files' key.
+includedGlobs :: Array String
+includedGlobs =
+  [ "src/"
+  , "purs.json"
+  , "spago.dhall"
+  , "packages.dhall"
+  , "bower.json"
+  , "package.json"
+  ]
+
+-- | These files are always included and should be globbed in case-insensitive
+-- | mode.
+includedInsensitiveGlobs :: Array String
+includedInsensitiveGlobs =
+  [ "README*"
+  , "LICENSE*"
+  , "LICENCE*"
+  ]
+
 -- | We always ignore some files and directories when packaging a tarball, such
--- | as common version control directories.
+-- | as common version control directories, even if a user has explicitly opted
+-- | in to those files with the 'files' key.
 -- |
 -- | See also:
 -- | https://docs.npmjs.com/cli/v8/configuring-npm/package-json#files
 removeIgnoredTarballFiles :: FilePath -> Aff Unit
 removeIgnoredTarballFiles path = do
-  globMatches <- FastGlob.match' ignoredGlobs { cwd: Just path, caseSensitive: false }
-  for_ (ignoredDirectories <> ignoredFiles <> globMatches) \match ->
+  globMatches <- FastGlob.match' path ignoredGlobs { caseSensitive: false }
+  for_ (ignoredDirectories <> ignoredFiles <> globMatches.succeeded) \match ->
     FS.Extra.remove (Path.concat [ path, match ])
 
 ignoredDirectories :: Array FilePath
