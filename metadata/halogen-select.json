@@ -1,0 +1,75 @@
+{
+  "location": {
+    "githubOwner": "citizennet",
+    "githubRepo": "purescript-halogen-select"
+  },
+  "published": {
+    "0.2.0": {
+      "bytes": 11397,
+      "hash": "sha256-nNxZKhD7Ob+O52zVH762tRQEJH/Jzd3jhpsIGd0S2/A=",
+      "publishedTime": "2018-03-27T00:04:53.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 11840,
+      "hash": "sha256-vZA4U8kXxqnXXG0TBQhGefaep22R1boDplXpAToD27c=",
+      "publishedTime": "2018-05-07T19:15:12.0Z",
+      "ref": "v0.3.0"
+    },
+    "1.0.0": {
+      "bytes": 11840,
+      "hash": "sha256-y4IeGUluSwLrrk1+I4WE8bJx+n+ffkLGOhM+xN0D16c=",
+      "publishedTime": "2018-05-14T19:00:08.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 11876,
+      "hash": "sha256-AvqR7jPL+O351Y5EJpUmjJd/QQ/0Q6YgSqZIxXPm/dI=",
+      "publishedTime": "2018-05-30T04:25:49.0Z",
+      "ref": "v1.0.1"
+    },
+    "2.0.0": {
+      "bytes": 11476,
+      "hash": "sha256-Nm4nravSlpdusOdQtcKSBzXghlzgPvhQa65XUMl5Kb8=",
+      "publishedTime": "2018-06-08T00:19:56.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 10336,
+      "hash": "sha256-a3x3FRCA8lPmiVp++z9R/7qTR2M8++D5eenQjBnW/7U=",
+      "publishedTime": "2018-11-09T01:13:14.0Z",
+      "ref": "v3.0.0"
+    },
+    "3.0.1": {
+      "bytes": 10336,
+      "hash": "sha256-VCGB/cOEYZEhk+DiwPj9t54ORvAMnvv+q1kbVTfnzOI=",
+      "publishedTime": "2018-11-09T01:32:32.0Z",
+      "ref": "v3.0.1"
+    },
+    "3.0.2": {
+      "bytes": 10488,
+      "hash": "sha256-x+p7ruWIkcFqdf2EEjosjv6M//LtWJqsE7TYGmiD4F4=",
+      "publishedTime": "2018-12-11T01:24:31.0Z",
+      "ref": "v3.0.2"
+    },
+    "4.0.0": {
+      "bytes": 10486,
+      "hash": "sha256-IRB9eWvNhKBOskjUWt0iMNfNn7y6nlaT9hJT8ORj0XA=",
+      "publishedTime": "2019-01-03T21:03:22.0Z",
+      "ref": "v4.0.0"
+    },
+    "5.0.0": {
+      "bytes": 9205,
+      "hash": "sha256-wHm8SDRqc80jfFq1ku+bOA+1izV/p0Zn746HaLMJpCw=",
+      "publishedTime": "2020-01-31T21:16:59.0Z",
+      "ref": "v5.0.0"
+    },
+    "6.0.0": {
+      "bytes": 9152,
+      "hash": "sha256-fgAXRpzB5XkwUAKwf5EdNsg/YTpGr1nm2WosFTX5NAQ=",
+      "publishedTime": "2021-04-01T01:40:06.0Z",
+      "ref": "v6.0.0"
+    }
+  },
+  "unpublished": {}
+}

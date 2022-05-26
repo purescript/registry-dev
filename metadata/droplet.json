@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "easafe",
+    "githubRepo": "purescript-droplet"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 30600,
+      "hash": "sha256-LByAPetVIu5kFcMMrcdmXFiXHnPgJDgERpCoNmzVfwQ=",
+      "publishedTime": "2021-09-19T15:33:22.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 30625,
+      "hash": "sha256-AV7aIy9vpti8gm3Fbf8YR4fPvOpZ5Q3XYz95ZBSGG2o=",
+      "publishedTime": "2021-09-30T11:45:55.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 38804,
+      "hash": "sha256-QQD2ods7MkLWNFYwC5Mozvb8YZGdz7EvRyY1J7sr3I8=",
+      "publishedTime": "2022-01-15T00:48:32.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 38809,
+      "hash": "sha256-TyWIlt0g7u0ifXKtTEUYbypmmaZJdtLVIS+XVc4JGyY=",
+      "publishedTime": "2022-05-13T02:51:23.0Z",
+      "ref": "v0.4.0"
+    }
+  },
+  "unpublished": {}
+}

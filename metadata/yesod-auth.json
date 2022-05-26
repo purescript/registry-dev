@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "zudov",
+    "githubRepo": "purescript-yesod-auth"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3807,
+      "hash": "sha256-adMn9nzt6T5cs1Gwd3r04R3HAzZ/E5MplNTLz/bt5X4=",
+      "publishedTime": "2016-02-10T05:57:36.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

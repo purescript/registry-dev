@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "slamdata",
+    "githubRepo": "purescript-color-palettes"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 7967,
+      "hash": "sha256-pLr74HG+d3GFYx8VxaVlyL5ymCbjZQIcgkJHvLcGeoQ=",
+      "publishedTime": "2017-12-29T14:20:40.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

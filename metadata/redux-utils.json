@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "osener",
+    "githubRepo": "purescript-redux-utils"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2937,
+      "hash": "sha256-fZBidqp38IWkTp/moqV/Cvd/UKwy89SOfgZiQV8i684=",
+      "publishedTime": "2016-03-23T17:31:16.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 2846,
+      "hash": "sha256-PVn2cUfQ7dGb10cHgjxnXH19RCQ/nR+/ocQVsBu05IU=",
+      "publishedTime": "2016-03-24T22:54:43.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 2905,
+      "hash": "sha256-HEfI1Ofb0RUTdTQP3SxTO+yvbv2EqVlgGi36bHRnnrE=",
+      "publishedTime": "2016-03-27T12:49:38.0Z",
+      "ref": "v0.3.0"
+    }
+  },
+  "unpublished": {}
+}

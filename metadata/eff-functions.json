@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "hdgarrood",
+    "githubRepo": "purescript-eff-functions"
+  },
+  "published": {
+    "0.1.2": {
+      "bytes": 3152,
+      "hash": "sha256-lgANfQndpD2jqYuCg9GCqfE30NrnaAPBIG3aCY1XikU=",
+      "publishedTime": "2016-05-02T23:42:52.0Z",
+      "ref": "v0.1.2"
+    },
+    "1.0.0": {
+      "bytes": 3154,
+      "hash": "sha256-b6oiOtabUJO5oDt60Ivf8h+hzGnmUadgd7xq3U+ExYk=",
+      "publishedTime": "2016-06-11T23:13:39.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 3155,
+      "hash": "sha256-8iInrP/1DZ6cdATw1wrTr29xn1kTscN8vNCav/GQgDw=",
+      "publishedTime": "2016-10-26T06:29:58.0Z",
+      "ref": "v2.0.0"
+    }
+  },
+  "unpublished": {}
+}

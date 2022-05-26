@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "berdario",
+    "githubRepo": "purescript-optimizely-api"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 12368,
+      "hash": "sha256-YyAbIUUXHWM2kA4dDvFf3h9fTxA3WhdfvkrZ3LSHMg8=",
+      "publishedTime": "2017-04-21T10:40:57.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 12982,
+      "hash": "sha256-sITQoegn8MiNfiKZW84kMOGMyJtZchO0ukXnORqvbNk=",
+      "publishedTime": "2017-05-01T01:48:46.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 13043,
+      "hash": "sha256-GG3sXft8pBwwKPYaDrHtCxrgh0Vtpu5pdSQHL/sNDEQ=",
+      "publishedTime": "2017-05-04T21:52:26.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.3.1": {
+      "bytes": 13043,
+      "hash": "sha256-uN9RKT9cde/l6i9hie4eh+BI77wtuzTxLcvG0E2rec8=",
+      "publishedTime": "2017-05-19T10:47:44.0Z",
+      "ref": "v0.3.1"
+    }
+  },
+  "unpublished": {}
+}

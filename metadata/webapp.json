@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "bodil",
+    "githubRepo": "purescript-webapp"
+  },
+  "published": {
+    "0.0.0": {
+      "bytes": 2300,
+      "hash": "sha256-xvOl8ik9BwUlMzH4OjMRHBfyJ1fYlVh2ZhK9CfpEEks=",
+      "publishedTime": "2016-11-29T23:51:15.0Z",
+      "ref": "v0.0.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "ChrisPenner",
+    "githubRepo": "purescript-line-reader"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3279,
+      "hash": "sha256-WI6OZr032RALiOsDxfcu39TIc6cGGcgVlhV0JTLfh+M=",
+      "publishedTime": "2017-10-23T03:30:29.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 3280,
+      "hash": "sha256-PWXXV6ndUPmf7PUA3gigCjAGKE7DCVgBjYzge4/sMAI=",
+      "publishedTime": "2017-10-23T03:32:25.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 3299,
+      "hash": "sha256-KceC/4rDroZSwJJrcMkccT3uztTEu7GAjfFd7XMZG1U=",
+      "publishedTime": "2017-10-23T03:36:32.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.2.0": {
+      "bytes": 3532,
+      "hash": "sha256-kTd+BBYwTpmeLMBx9DkXu591TQnpViy6fSXUtp+KOug=",
+      "publishedTime": "2017-10-26T03:33:10.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

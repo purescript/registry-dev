@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "je-l",
+    "githubRepo": "hetu"
+  },
+  "published": {
+    "0.2.0": {
+      "bytes": 4640,
+      "hash": "sha256-+4PnoDo5cIms36Py4WKByfAhqYzIdx72CzWHGd9T6W8=",
+      "publishedTime": "2021-04-17T19:40:05.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "timdeputter",
+    "githubRepo": "purescript-gun"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3713,
+      "hash": "sha256-jHI8lDf6siV51i5JjmKzGvR6TUdhIbkmIreASxNIBeY=",
+      "publishedTime": "2018-09-13T18:23:44.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 3722,
+      "hash": "sha256-BdSXOST11lNLomQ5XtmTMlKWiy8IxCM31VJM21Gycq8=",
+      "publishedTime": "2018-09-13T18:43:32.0Z",
+      "ref": "v0.1.1"
+    }
+  },
+  "unpublished": {}
+}

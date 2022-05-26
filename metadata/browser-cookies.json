@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "vilu",
+    "githubRepo": "purescript-browser-cookies"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 3742,
+      "hash": "sha256-3jxWW+QRCUpmUK8vCFLL7GjaE+qvik3kEVvaBqHEsFk=",
+      "publishedTime": "2018-09-23T05:59:46.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "athanclark",
+    "githubRepo": "purescript-sparrow-queue"
+  },
+  "published": {
+    "0.0.5": {
+      "bytes": 3038,
+      "hash": "sha256-6k1ZCHvxNMWG9WI3ZdumAQwtIvmznmL92R0nqo96XyM=",
+      "publishedTime": "2018-11-28T08:04:19.0Z",
+      "ref": "v0.0.5"
+    }
+  },
+  "unpublished": {}
+}

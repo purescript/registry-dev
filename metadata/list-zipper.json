@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "DavidHarrison",
+    "githubRepo": "purescript-list-zipper"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3605,
+      "hash": "sha256-nIdhRO/M+/FlYkiywX5/1zLert/cTPC2RCIs83WrYLw=",
+      "publishedTime": "2016-04-03T06:51:10.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

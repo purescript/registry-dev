@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "maxdeviant",
+    "githubRepo": "peregrine"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 9023,
+      "hash": "sha256-qgumfT+cY0Rwf7aspGVCMb4trpHGD4V0MJbIL63WaoM=",
+      "publishedTime": "2021-08-01T17:15:12.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

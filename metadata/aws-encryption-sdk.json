@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "HivemindTechnologies",
+    "githubRepo": "purescript-aws-encryption-sdk"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 6843,
+      "hash": "sha256-3KZuJAWSSV54+GSSFNRyM8JPx8rK+egvxdglkFb18gg=",
+      "publishedTime": "2021-02-02T15:48:40.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 6186,
+      "hash": "sha256-/m9E4CrIA3P5HRcLnZ8Q1Ytmmd/FMCugxDuqxBP9Ecc=",
+      "publishedTime": "2021-03-09T11:19:34.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

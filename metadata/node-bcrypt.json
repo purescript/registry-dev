@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "lpil",
+    "githubRepo": "purescript-node-bcrypt"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 1693,
+      "hash": "sha256-lasFOlNaFuS+O3IzqhOjzCmKxxdpRS4Tt1qXRfapDyk=",
+      "publishedTime": "2017-10-27T21:04:04.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

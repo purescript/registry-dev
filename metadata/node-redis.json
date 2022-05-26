@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "SimonRichardson",
+    "githubRepo": "purescript-node-redis"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5152,
+      "hash": "sha256-lr3XVRkKMr527MMickfVeUZZqqbT7kOeobwJYt60/GM=",
+      "publishedTime": "2015-07-14T12:02:14.0Z",
+      "ref": "0.1.0"
+    }
+  },
+  "unpublished": {}
+}

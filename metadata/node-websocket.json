@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "juspay",
+    "githubRepo": "purescript-node-websocket"
+  },
+  "published": {
+    "0.0.2": {
+      "bytes": 16345,
+      "hash": "sha256-dFyGlFQ9ZDnGR0GYmM8eYfMEObKEoDfBU9AMcoSWvLY=",
+      "publishedTime": "2018-03-21T01:51:06.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 18060,
+      "hash": "sha256-dK9MPqL3peqa+AxZwOvUaiKteqHInTJ1MnSkVk1PRFc=",
+      "publishedTime": "2018-04-06T18:38:49.0Z",
+      "ref": "v0.0.3"
+    }
+  },
+  "unpublished": {}
+}

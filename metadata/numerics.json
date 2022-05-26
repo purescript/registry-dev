@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "Proclivis",
+    "githubRepo": "purescript-numerics"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2666,
+      "hash": "sha256-LeX5DpvG7QuNZLHH5B35RjdolCxF8CaE0vEtGyHbiIM=",
+      "publishedTime": "2017-07-10T01:28:29.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 2659,
+      "hash": "sha256-QrDVRBXUXGu+PgDMBX4uMc8GKHscRwRyI6wgrbuxLj0=",
+      "publishedTime": "2017-07-14T13:04:30.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 2857,
+      "hash": "sha256-meptlx8R+2DnKo4CaXRlUujAxmMSS9YNtCkgjlYCnc8=",
+      "publishedTime": "2019-05-15T13:53:14.0Z",
+      "ref": "v0.1.2"
+    }
+  },
+  "unpublished": {}
+}

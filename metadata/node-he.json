@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "justinwoo",
+    "githubRepo": "purescript-node-he"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1833,
+      "hash": "sha256-770CAfQ6beUsknbuDLfd1ynWC2/ko++c8qxFVNLjYLI=",
+      "publishedTime": "2017-04-16T11:04:39.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 1845,
+      "hash": "sha256-yAHHrqHqaAMpLTOgGNTY8jUegZXQ8NuKq+YKDESctwA=",
+      "publishedTime": "2018-05-27T21:33:55.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 1857,
+      "hash": "sha256-LwchuakC5PC0X27ybgSevjMG0lZHcozKdtfMTdjKFV8=",
+      "publishedTime": "2021-11-16T08:33:36.0Z",
+      "ref": "v0.3.0"
+    }
+  },
+  "unpublished": {}
+}

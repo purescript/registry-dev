@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "eikooc",
+    "githubRepo": "nano-id"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 14946,
+      "hash": "sha256-ulbHPmeFrMq8NQM8DW9x4GEDT3YbZMFrV6loaDiWrAc=",
+      "publishedTime": "2021-12-17T16:48:56.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

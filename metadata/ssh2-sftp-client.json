@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "adamczykm",
+    "githubRepo": "purescript-ssh2-sftp-client"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4906,
+      "hash": "sha256-mnw5NiJjQgFF7MFZkhQdMThbgsHEntPCeoNzKVS5eO0=",
+      "publishedTime": "2018-10-26T00:17:16.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

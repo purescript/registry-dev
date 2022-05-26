@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "sigilion",
+    "githubRepo": "purescript-run-profunctor-lenses"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3645,
+      "hash": "sha256-JRbKAv31x4MCETshocu+JYzSUt03IkWrhN0E8hi/0pc=",
+      "publishedTime": "2019-09-23T22:31:27.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

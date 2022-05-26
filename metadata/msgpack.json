@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "athanclark",
+    "githubRepo": "purescript-msgpack"
+  },
+  "published": {
+    "0.0.0": {
+      "bytes": 1925,
+      "hash": "sha256-IJhdObyCXnwmXgTPzIFywpaK+TyBBUnhq7ZGwZ75tII=",
+      "publishedTime": "2017-08-25T19:38:37.0Z",
+      "ref": "v0.0.0"
+    }
+  },
+  "unpublished": {}
+}

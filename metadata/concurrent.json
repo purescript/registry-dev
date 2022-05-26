@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "joneshf",
+    "githubRepo": "purescript-concurrent"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2332,
+      "hash": "sha256-z45oU2VAn27rq5iSoJ7P2Q9iJ69feXge5P+NRiktZH8=",
+      "publishedTime": "2015-02-18T04:38:50.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

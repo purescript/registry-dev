@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "TinkerTravel",
+    "githubRepo": "purescript-twilio"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 2070,
+      "hash": "sha256-W5Gx0kldxTe3CCWJALphZnDUpCzQ8nyqr89aqqlIUx4=",
+      "publishedTime": "2017-02-20T12:43:40.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

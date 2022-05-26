@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "shmish111",
+    "githubRepo": "purescript-numerics"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2682,
+      "hash": "sha256-aguxPrdW7hWstS6MqrPSTmtXQZk/e1TKtv7ek2km1Q8=",
+      "publishedTime": "2017-07-10T01:28:29.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 2674,
+      "hash": "sha256-rFLq+RbGE0eCCNC5p1GnAvMnV9DoJeEYmHcgHK75qDM=",
+      "publishedTime": "2017-07-14T13:04:30.0Z",
+      "ref": "v0.1.1"
+    }
+  },
+  "unpublished": {}
+}

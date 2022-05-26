@@ -1,0 +1,51 @@
+{
+  "location": {
+    "githubOwner": "i-am-the-slime",
+    "githubRepo": "purescript-react-testing-library"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 8967,
+      "hash": "sha256-qMma9IawhUDmTZITAxUnidq2OL7rMTsSwbL5Zro+pM0=",
+      "publishedTime": "2020-12-19T21:24:21.0Z",
+      "ref": "v0.1.0"
+    },
+    "1.0.0": {
+      "bytes": 8987,
+      "hash": "sha256-jwo0i6V2fNBuQvl/gzN5qnpY4/eppmbzG9DkZIGCXv8=",
+      "publishedTime": "2020-12-19T21:45:40.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 9002,
+      "hash": "sha256-UISbaHgvat4zY91cz1V7C8WrCnDFTVyXzF3xX8mdXgU=",
+      "publishedTime": "2020-12-23T09:17:42.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 8956,
+      "hash": "sha256-PR3qRynAzbhGaapIROV+YktHKuCoQPNxMW8iLKiPB4M=",
+      "publishedTime": "2021-03-19T14:46:14.0Z",
+      "ref": "v3.0.0"
+    },
+    "3.1.0": {
+      "bytes": 9791,
+      "hash": "sha256-vXFgTa3YW4u7MC219Fqw76AZSpkeqAaloFdhotlrNuY=",
+      "publishedTime": "2021-06-19T07:33:58.0Z",
+      "ref": "v3.1.0"
+    },
+    "3.1.4": {
+      "bytes": 9770,
+      "hash": "sha256-VTW2XU/7t5eQvCrlTftX1nhO2VwVHzQT/G+m+X3B+TU=",
+      "publishedTime": "2021-06-19T07:43:50.0Z",
+      "ref": "v3.1.4"
+    },
+    "4.0.1": {
+      "bytes": 9712,
+      "hash": "sha256-ydGADkGPARMeJJd2i9dNMGGp4YdlTLIharsPIGLvguY=",
+      "publishedTime": "2022-05-23T07:27:29.0Z",
+      "ref": "v4.0.1"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "tdammers",
+    "githubRepo": "purescript-halogen-leaflet"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 1986,
+      "hash": "sha256-FVCle8nkSs/MuaidsxQE8gibdGj8deDjR1Kjhlp4A7E=",
+      "publishedTime": "2017-04-22T14:47:33.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.1.0": {
+      "bytes": 2287,
+      "hash": "sha256-Mp/HXw2ENqpCI6fwFVTKUB3BlznwMtnpsTIh41zacDU=",
+      "publishedTime": "2017-04-25T11:18:30.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

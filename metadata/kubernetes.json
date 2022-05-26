@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "hoodunit",
+    "githubRepo": "purescript-kubernetes"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 147327,
+      "hash": "sha256-Y3YYcir7+uIt8mQIn0SoRTrUfgf2T3i7ls/OLliclIA=",
+      "publishedTime": "2018-01-16T17:26:15.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 147352,
+      "hash": "sha256-JhurWzz+IbBMD2aReYs6gOCzH418ol0len1RsDmGxSM=",
+      "publishedTime": "2018-01-16T17:54:05.0Z",
+      "ref": "v0.1.1"
+    }
+  },
+  "unpublished": {}
+}

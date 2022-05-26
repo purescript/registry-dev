@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "justinwoo",
+    "githubRepo": "purescript-ochadzuke"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2623,
+      "hash": "sha256-C0sV2oBTaqFtGQR92LCGX6eZb5f2qr/A145/2bijCRo=",
+      "publishedTime": "2018-10-03T21:14:12.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "bodil",
+    "githubRepo": "purescript-signal-socket"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 3344,
+      "hash": "sha256-4Y8MtAwL9r5FVWAgIcg7Qt/xLi8gY3ZFzNilDjf2Hkc=",
+      "publishedTime": "2016-04-18T00:26:00.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.1.0": {
+      "bytes": 3891,
+      "hash": "sha256-o1pM0Q/GKsFXYFWoUP9gZYCnY4aWfc6cLYWHl4Sqxkk=",
+      "publishedTime": "2016-04-18T15:49:44.0Z",
+      "ref": "v1.1.0"
+    },
+    "2.0.0": {
+      "bytes": 3867,
+      "hash": "sha256-m90CcLUB7LwUrMuGooj62chdofk7slky+JQE1W3eot0=",
+      "publishedTime": "2016-07-28T23:55:38.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 3850,
+      "hash": "sha256-j8fVKbR6WQ8TQCnlZlY0pvET7CBLDKBEXzDojnfmG30=",
+      "publishedTime": "2016-10-21T20:53:46.0Z",
+      "ref": "v3.0.0"
+    }
+  },
+  "unpublished": {}
+}

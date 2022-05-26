@@ -1,0 +1,51 @@
+{
+  "location": {
+    "githubOwner": "Cirru",
+    "githubRepo": "cirru-edn.purs"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 3897,
+      "hash": "sha256-UoQWlslIJD2bg+VbAsAnRISNX02MXmTdSj8KRhqrL3U=",
+      "publishedTime": "2021-03-19T06:54:20.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.3": {
+      "bytes": 4259,
+      "hash": "sha256-UpY1PTFdE7Qaw+o3tvYRPveeHSM8Ctp8OANYWALomc8=",
+      "publishedTime": "2021-03-21T07:47:04.0Z",
+      "ref": "v0.0.3"
+    },
+    "0.0.4": {
+      "bytes": 4641,
+      "hash": "sha256-FHdAIthY0HvkVuMxQ2WbuK68953Kh8fTWR3rDALrVAc=",
+      "publishedTime": "2021-03-21T12:12:47.0Z",
+      "ref": "v0.0.4"
+    },
+    "0.0.5": {
+      "bytes": 4644,
+      "hash": "sha256-uSgfHir9XbRKZdj3v5MwKskEMhq18YTMUINofo/1EsU=",
+      "publishedTime": "2021-03-22T03:27:29.0Z",
+      "ref": "v0.0.5"
+    },
+    "0.0.6": {
+      "bytes": 5019,
+      "hash": "sha256-z6uQahExn12KqTLtCko+5+h0uxOdgBYMDYJuP4qEV4E=",
+      "publishedTime": "2021-04-06T11:58:08.0Z",
+      "ref": "v0.0.6"
+    },
+    "0.0.7": {
+      "bytes": 5015,
+      "hash": "sha256-Za3KNd3/EfVkLnufKDng38ys+2bu4kwOaZFLpRL5xQQ=",
+      "publishedTime": "2021-04-06T18:30:27.0Z",
+      "ref": "v0.0.7"
+    },
+    "0.0.8": {
+      "bytes": 4940,
+      "hash": "sha256-Vg88pK4OYYynYjmy3Of3/Nn3yeKwjBR0Pq1wcSWOECI=",
+      "publishedTime": "2021-04-07T05:14:25.0Z",
+      "ref": "v0.0.8"
+    }
+  },
+  "unpublished": {}
+}

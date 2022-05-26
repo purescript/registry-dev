@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "ethul",
+    "githubRepo": "purescript-undefinable"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1996,
+      "hash": "sha256-yU8WrQu9gQvdAq2g/a0/8zuofm+dHLENB++u/I+R6R0=",
+      "publishedTime": "2016-05-01T16:38:45.0Z",
+      "ref": "0.1.0"
+    },
+    "1.0.0": {
+      "bytes": 1974,
+      "hash": "sha256-m2zv79KbtKWlui3Y5rqcAxwqVd8gPgv/osfxCND4tug=",
+      "publishedTime": "2016-06-04T03:02:25.0Z",
+      "ref": "1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 1847,
+      "hash": "sha256-NZifDzF0YStkmhAUxqbsPhF/qhI5kKRxYbSBg8v8n70=",
+      "publishedTime": "2016-11-06T14:57:04.0Z",
+      "ref": "2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 2026,
+      "hash": "sha256-fEiVwa/DIad23UrcWcQBNcOIhJ+noNNqAf0OeL8BCis=",
+      "publishedTime": "2017-05-24T12:42:19.0Z",
+      "ref": "v3.0.0"
+    },
+    "4.0.0": {
+      "bytes": 1990,
+      "hash": "sha256-jizQga0/mZQX/XH0mGFu0GZ8bWYc+5mXYqJuBbPmBIQ=",
+      "publishedTime": "2019-01-26T12:53:32.0Z",
+      "ref": "v4.0.0"
+    }
+  },
+  "unpublished": {}
+}

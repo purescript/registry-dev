@@ -1,0 +1,63 @@
+{
+  "location": {
+    "githubOwner": "thimoteus",
+    "githubRepo": "purescript-simple-repl"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 1749,
+      "hash": "sha256-nESTAinQmlpD7ctvQGVpLt8PK+NfuVFDVDX8tYx4ReI=",
+      "publishedTime": "2016-05-06T04:20:18.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 1758,
+      "hash": "sha256-8GcqYIhWNfagX8e4XrUbGLXIzjQpq1eT7LX7c5Tkl9g=",
+      "publishedTime": "2016-05-13T18:23:37.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.1.0": {
+      "bytes": 1764,
+      "hash": "sha256-NJxRrNMOOXNkZfyJiflpaD4pD80xMY2cPoMTNqXNeg0=",
+      "publishedTime": "2016-06-13T20:30:34.0Z",
+      "ref": "v2.1.0"
+    },
+    "3.0.0": {
+      "bytes": 1747,
+      "hash": "sha256-aFaOYcapcKD5IIxsc4epXgXsbh8kF5Sz9LpviUfPMcQ=",
+      "publishedTime": "2017-09-10T05:21:26.0Z",
+      "ref": "v3.0.0"
+    },
+    "4.0.0": {
+      "bytes": 1805,
+      "hash": "sha256-F/Y5GAMoibmFPmsFjJq6ExexF12aArH2TaB0BANnqnE=",
+      "publishedTime": "2018-04-27T04:39:01.0Z",
+      "ref": "v4.0.0"
+    },
+    "4.0.1": {
+      "bytes": 1790,
+      "hash": "sha256-whFlVCjINZFst9pHw91l77keFx8BcbPksuFJZRTPTa0=",
+      "publishedTime": "2018-04-27T05:03:42.0Z",
+      "ref": "v4.0.1"
+    },
+    "5.0.0": {
+      "bytes": 1890,
+      "hash": "sha256-2gv3PUjDTsHFKYRmPebSsy9jd4+AiyuHT1ZLlTC40TE=",
+      "publishedTime": "2018-05-02T19:10:00.0Z",
+      "ref": "v5.0.0"
+    },
+    "6.0.0": {
+      "bytes": 1794,
+      "hash": "sha256-xTFKkqh9maBV7emuklmQotTilvHSYzL/tiF8itfCf2U=",
+      "publishedTime": "2018-07-09T01:35:08.0Z",
+      "ref": "v6.0.0"
+    },
+    "6.0.1": {
+      "bytes": 1786,
+      "hash": "sha256-CeN/eXj1MqM85z72JbcyEnSsWzS7a1Wwk3Z1ebfOgrw=",
+      "publishedTime": "2018-07-09T23:30:42.0Z",
+      "ref": "v6.0.1"
+    }
+  },
+  "unpublished": {}
+}

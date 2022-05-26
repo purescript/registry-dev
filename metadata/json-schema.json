@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "felixmulder",
+    "githubRepo": "purescript-json-schema"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 4012,
+      "hash": "sha256-L1RBtVDAOkR0c/Al8paK/ObnERBTcoyypEjZtdca+sc=",
+      "publishedTime": "2018-11-28T11:23:01.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

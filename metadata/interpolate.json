@@ -1,0 +1,51 @@
+{
+  "location": {
+    "githubOwner": "jordanmartinez",
+    "githubRepo": "purescript-interpolate"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2227,
+      "hash": "sha256-4NU28MXbJ2OlN8L/4vXgPZZ1JR3vaGdLjSIU2PpW2q0=",
+      "publishedTime": "2020-01-12T16:31:25.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 2795,
+      "hash": "sha256-tRAEXqO3Z2+Rg4V8srJzr6nDb9VdPkjfkJV3lncwBBI=",
+      "publishedTime": "2020-01-14T16:03:40.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.0.1": {
+      "bytes": 2875,
+      "hash": "sha256-fpm6/TmOSgtCBzDex1AU5VHByv0gFzpq0jbTJCTkkk4=",
+      "publishedTime": "2020-01-15T01:04:33.0Z",
+      "ref": "v2.0.1"
+    },
+    "3.0.0": {
+      "bytes": 3103,
+      "hash": "sha256-+d0DNpzyZT7Avr1wEMbuvWFq+aPXNUOE+L5lSGSV6p4=",
+      "publishedTime": "2021-09-17T22:16:39.0Z",
+      "ref": "v3.0.0"
+    },
+    "3.0.1": {
+      "bytes": 3104,
+      "hash": "sha256-EsnnXMucAoUUAZk1ZdiHLwrDGisqNrGM9gymSrVlGHg=",
+      "publishedTime": "2021-09-17T22:19:29.0Z",
+      "ref": "v3.0.1"
+    },
+    "4.0.0": {
+      "bytes": 3104,
+      "hash": "sha256-gcvvkoqmV97Gfy1Soql3IaiSkK0BgkH+69SEeMqNalA=",
+      "publishedTime": "2022-04-29T19:47:26.0Z",
+      "ref": "v4.0.0"
+    },
+    "5.0.0": {
+      "bytes": 3101,
+      "hash": "sha256-VPCazL8w5Pn+r/ZkAuq91W4nFHyuQjZ40jzfp14MXL0=",
+      "publishedTime": "2022-04-30T12:25:09.0Z",
+      "ref": "v5.0.0"
+    }
+  },
+  "unpublished": {}
+}
