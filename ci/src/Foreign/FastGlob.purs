@@ -1,76 +1,24 @@
 module Foreign.FastGlob
   ( GlobOptions(..)
   , Include(..)
-  , SafePathError
-  , SafePathErrorReason(..)
   , SanitizedPaths
   , match
   , match'
-  , printSafePathError
   ) where
 
 import Registry.Prelude
 
-import Control.Monad.Except (runExceptT)
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import ConvertableOptions (class Defaults)
 import ConvertableOptions as ConvertableOptions
-import Data.Array as Array
 import Data.Compactable (separate)
 import Data.String as String
 import Effect.Aff as Aff
 import Node.FS.Aff as FS
 import Node.Path as Path
 
-type SafePathError = { path :: FilePath, reason :: SafePathErrorReason }
-
-data SafePathErrorReason
-  = DirectoryTraversal
-  | BaseDirectoryMissing
-  | PathMissing
-
-derive instance Eq SafePathErrorReason
-
-instance Show SafePathErrorReason where
-  show = case _ of
-    DirectoryTraversal -> "DirectoryTraversal"
-    BaseDirectoryMissing -> "BaseDirectoryMissing"
-    PathMissing -> "PathMissing"
-
-printSafePathError :: SafePathError -> String
-printSafePathError { reason, path } =
-  Array.fold
-    [ "Sanitizing '"
-    , path
-    , "' failed: "
-    , case reason of
-        DirectoryTraversal -> "file paths cannot be outside the base directory."
-        BaseDirectoryMissing -> "the base directory does not exist."
-        PathMissing -> "the provided path does not exist."
-    ]
-
-type SanitizedPaths = { succeeded :: Array FilePath, failed :: Array SafePathError }
-
-sanitizePaths :: FilePath -> Array FilePath -> Aff SanitizedPaths
-sanitizePaths baseDirectory paths = do
-  sanitized <- traverse (sanitizePath <<< { baseDirectory, path: _ }) paths
-  let { right, left } = separate sanitized
-  pure { succeeded: right, failed: left }
-
-sanitizePath :: { baseDirectory :: FilePath, path :: FilePath } -> Aff (Either SafePathError FilePath)
-sanitizePath { baseDirectory, path } = runExceptT do
-  absoluteRoot <- liftAff (Aff.attempt $ FS.realpath baseDirectory) >>= case _ of
-    Left _ -> throwError { reason: BaseDirectoryMissing, path: baseDirectory }
-    Right canonical -> pure canonical
-
-  absolutePath <- liftAff (Aff.attempt $ FS.realpath $ Path.concat [ absoluteRoot, path ]) >>= case _ of
-    Left _ -> throwError { reason: PathMissing, path }
-    Right canonical -> pure canonical
-
-  case String.indexOf (String.Pattern absoluteRoot) absolutePath of
-    Just 0 -> pure path
-    _ -> throwError { reason: DirectoryTraversal, path }
+type SanitizedPaths = { succeeded :: Array FilePath, failed :: Array FilePath }
 
 data Include = FilesAndDirectories | FilesOnly | DirectoriesOnly
 
@@ -132,6 +80,28 @@ match'
 match' baseDirectory entries opts = do
   let jsOptions = globOptionsToJSGlobOptions baseDirectory options
   matches <- Promise.toAffE $ matchImpl entries jsOptions
-  sanitizePaths baseDirectory matches
+  sanitizePaths matches
   where
+  options :: { | GlobOptions }
   options = ConvertableOptions.defaults defaultGlobOptions opts
+
+  sanitizePaths :: Array FilePath -> Aff SanitizedPaths
+  sanitizePaths paths = do
+    sanitized <- traverse sanitizePath paths
+    let { right, left } = separate sanitized
+    pure { succeeded: right, failed: left }
+
+  sanitizePath :: FilePath -> Aff (Either String FilePath)
+  sanitizePath path = do
+    absoluteRoot <- Aff.attempt (FS.realpath baseDirectory) >>= case _ of
+      Left _ -> unsafeCrashWith $ "sanitizePath provided with a base directory that does not exist: " <> baseDirectory
+      Right canonical -> pure canonical
+
+    absolutePath <- Aff.attempt (FS.realpath $ Path.concat [ absoluteRoot, path ]) >>= case _ of
+      Left _ -> unsafeCrashWith $ "sanitizePath provided with a path that does not exist: " <> path
+      Right canonical -> pure canonical
+
+    -- Protect against directory traversals
+    pure $ case String.indexOf (String.Pattern absoluteRoot) absolutePath of
+      Just 0 -> Right path
+      _ -> Left path

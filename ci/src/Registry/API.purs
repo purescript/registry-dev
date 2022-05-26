@@ -727,8 +727,10 @@ copyPackageSourceFiles files { source, destination } = do
       { succeeded, failed } <- liftAff $ FastGlob.match source globs
 
       unless (Array.null failed) do
-        let errors = String.joinWith "  \n" (map FastGlob.printSafePathError failed)
-        throwWithComment $ "Paths indicated by the globs in the 'files' key are not valid:\n\n" <> errors
+        throwWithComment $ String.joinWith " "
+          [ "Some paths matched by globs in the 'files' key are outside your package directory."
+          , "Please ensure globs only match within your package directory, including symlinks."
+          ]
 
       pure succeeded
 

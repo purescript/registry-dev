@@ -11,7 +11,6 @@ import Data.Map as Map
 import Data.String.NonEmpty as NES
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
-import Foreign.FastGlob (SafePathErrorReason(..))
 import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Node.FS as FS.Extra
@@ -128,22 +127,18 @@ safeGlob = do
   Spec.describe "Prevents directory traversals" do
     Spec.it "Directory traversal" do
       cwd <- liftEffect Process.cwd
-      { failed } <- FastGlob.match cwd [ "../flake.nix" ]
-      case Array.head failed of
-        Just { reason } | reason == DirectoryTraversal -> pure unit
-        _ -> Assert.fail $ "Expected failure with " <> show DirectoryTraversal
+      { succeeded, failed } <- FastGlob.match cwd [ "../flake.nix" ]
+      succeeded `Assert.shouldSatisfy` Array.null
+      failed `Assert.shouldEqual` [ "../flake.nix" ]
 
     Spec.it "Symlink traversal" do
       cwd <- liftEffect Process.cwd
-      { failed } <- FastGlob.match cwd [ "./shell.nix" ]
-      case Array.head failed of
-        Just { reason } | reason == DirectoryTraversal -> pure unit
-        _ -> Assert.fail $ "Expected failure with " <> show DirectoryTraversal
+      { succeeded, failed } <- FastGlob.match cwd [ "./shell.nix" ]
+      succeeded `Assert.shouldSatisfy` Array.null
+      failed `Assert.shouldEqual` [ "./shell.nix" ]
 
     -- A glob that is technically a directory traversal but which doesn't
     -- actually match any files won't throw an error since there are no results.
-    -- If we want to throw an error, then we have to pre-sanitize without
-    -- using `realpath` and use `Path.resolve` instead.
     Spec.it "Traversal to a non-existing file" do
       cwd <- liftEffect Process.cwd
       result <- FastGlob.match cwd [ "/var/www/root/shell.nix" ]
