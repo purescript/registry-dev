@@ -15,6 +15,12 @@
       "hash": "sha256-NMeigMkE4pzhTJfCg6dByQy0MDxTjzPvKnWJ6kYWrSE=",
       "publishedTime": "2022-05-25T04:52:05.0Z",
       "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 6405,
+      "hash": "sha256-skcarEf4mcDj2DgEGRqEiOLM1itFbeAgvy3J2NWlwP4=",
+      "publishedTime": "2022-05-25T15:42:08.0Z",
+      "ref": "v0.2.0"
     }
   },
   "unpublished": {}

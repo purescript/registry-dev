@@ -63,6 +63,12 @@
       "hash": "sha256-QaOElDsS+5HodwzFStJtWTM/fQHkDUr6Lm21PV/pw6I=",
       "publishedTime": "2020-03-05T11:46:52.0Z",
       "ref": "v4.3.1"
+    },
+    "5.0.0": {
+      "bytes": 9281,
+      "hash": "sha256-qlOARgoYiK8qWeNTiOySDtOlVQoQsxWrTPLUeZ2PcVI=",
+      "publishedTime": "2022-05-25T04:01:35.0Z",
+      "ref": "v5.0.0"
     }
   },
   "unpublished": {}

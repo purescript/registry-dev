@@ -3,6 +3,19 @@
     "githubOwner": "jamesdbrock",
     "githubRepo": "purescript-node-streams-aff"
   },
-  "published": {},
+  "published": {
+    "1.0.0": {
+      "bytes": 5880,
+      "hash": "sha256-qWCPZRqT7KZMHiRaw664D37ffaVr5aMjCXYH4PecZbg=",
+      "publishedTime": "2022-05-25T16:09:57.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.1.0": {
+      "bytes": 5865,
+      "hash": "sha256-KXMF/IITNDajawtipxLH7DDgy7yXgNUBrUyLaC/LOp0=",
+      "publishedTime": "2022-05-26T09:32:06.0Z",
+      "ref": "v1.1.0"
+    }
+  },
   "unpublished": {}
 }

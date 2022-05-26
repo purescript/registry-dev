@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "rightfold",
+    "githubRepo": "purescript-purescript-compiler-backend-utilities"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 2211,
+      "hash": "sha256-eQ4WH1oBofhYTFSEJmb4+869YJ27FHSyt3TwzbkDRSk=",
+      "publishedTime": "2017-06-20T15:31:42.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}
