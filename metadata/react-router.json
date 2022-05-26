@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "arthurxavierx",
+    "githubRepo": "purescript-react-router"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1822,
+      "hash": "sha256-0iKzGwbeGkFt/BlvxHtlBOUF3RUjv4gztu8SrdBjR3Y=",
+      "publishedTime": "2016-09-29T01:46:22.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 1821,
+      "hash": "sha256-7aVBJkcH3v+3mDnU2+gpjdOsQ0SHfS5+oxzqxknpJEQ=",
+      "publishedTime": "2016-09-29T13:37:59.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 2033,
+      "hash": "sha256-375lgBSgoD4q59Vcfp5ptFe1695qH529RZ6+pIPjbdw=",
+      "publishedTime": "2016-09-29T14:26:35.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 2038,
+      "hash": "sha256-K+sYiAiWGEA5zdjiRZ4oBkjJpzPonb0EoCevTnx0ghA=",
+      "publishedTime": "2016-09-29T14:36:22.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.2.2": {
+      "bytes": 2058,
+      "hash": "sha256-AdiFBCfuBjgnBHGVyrUoDeNrI0mp4PTMsyOdHMYPNmE=",
+      "publishedTime": "2016-09-30T10:46:19.0Z",
+      "ref": "v0.2.2"
+    },
+    "1.0.0": {
+      "bytes": 2183,
+      "hash": "sha256-OeVETTJ47bpCffdeM5vAAP7mteP42PYaq511Kk9gN9Q=",
+      "publishedTime": "2016-10-01T13:43:33.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

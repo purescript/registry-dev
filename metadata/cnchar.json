@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "ongyiren1994",
+    "githubRepo": "purescript-cnchar"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 4548,
+      "hash": "sha256-aDYcE8+hux2mqAZwCt9MJEWRYaWB9Ad1YMA5cXCRJBM=",
+      "publishedTime": "2021-10-08T02:54:37.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

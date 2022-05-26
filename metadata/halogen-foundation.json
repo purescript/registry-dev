@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "slamdata",
+    "githubRepo": "purescript-halogen-foundation"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 10939,
+      "hash": "sha256-VWXfouLbroOS/+Xi97i2vgXu1NMPbARJEX24KYXaXYA=",
+      "publishedTime": "2015-04-24T04:03:14.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

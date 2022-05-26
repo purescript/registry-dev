@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "artemisSystem",
+    "githubRepo": "purescript-qualified-do"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2379,
+      "hash": "sha256-XxEQ3MxMmxU70WuYgfg+/JpfymlGULldn84CIr31SR0=",
+      "publishedTime": "2022-05-04T20:17:57.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 3371,
+      "hash": "sha256-ngzKC8Y5CAKpXFuresull/t5wU9/dlSwYQb5yAZkj+0=",
+      "publishedTime": "2022-05-09T14:22:48.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.1.0": {
+      "bytes": 3518,
+      "hash": "sha256-JuzYMu34OKGLnUUamf6Sx+DSFgbzGggsGcIyLMIbAWQ=",
+      "publishedTime": "2022-05-09T14:46:14.0Z",
+      "ref": "v2.1.0"
+    },
+    "2.2.0": {
+      "bytes": 3619,
+      "hash": "sha256-C1DFI6mWOhW0nGGGcZkegu3nMbFfLLvYS3DSfXyGJMk=",
+      "publishedTime": "2022-05-09T15:00:24.0Z",
+      "ref": "v2.2.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "PureFunctor",
+    "githubRepo": "purescript-pretty-logs"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4929,
+      "hash": "sha256-agGLT8OMqpdcTiTEqvZLqpsUMswxl1RBbIENNsnZrqo=",
+      "publishedTime": "2021-03-31T13:56:11.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

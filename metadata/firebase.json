@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "mostalive",
+    "githubRepo": "purescript-firebase"
+  },
+  "published": {
+    "3.0.0": {
+      "bytes": 12330,
+      "hash": "sha256-EbFLfZ0aMc0tiKZr+ELOQzETMQ7m23NPHxgs9iUAYUw=",
+      "publishedTime": "2017-09-11T11:30:33.0Z",
+      "ref": "v3.0.0"
+    },
+    "4.0.0": {
+      "bytes": 12777,
+      "hash": "sha256-dCoJqp4F2DAcAhmy1zbZk914KvvcsL6S8IdHiJ3gu/w=",
+      "publishedTime": "2017-09-12T14:25:17.0Z",
+      "ref": "v4.0.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "natefaubion",
+    "githubRepo": "purescript-convertable-options"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 4216,
+      "hash": "sha256-+/8t8IivHrM24hGDhpyQeyZybcxHg3NX5z8jmang0yE=",
+      "publishedTime": "2021-03-27T00:29:26.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

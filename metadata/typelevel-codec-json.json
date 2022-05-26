@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "JordanMartinez",
+    "githubRepo": "purescript-typelevel-codec-json"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 7599,
+      "hash": "sha256-BeX2hAgjXsvXwE9vW0EsBKZDuZeFGp2c5laqgRakyCY=",
+      "publishedTime": "2021-05-31T16:23:27.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "athanclark",
+    "githubRepo": "purescript-quickcheck-combinators"
+  },
+  "published": {
+    "0.0.0": {
+      "bytes": 2132,
+      "hash": "sha256-4hQKUElDMKOOyNmxrcn67T3Pp28qUh69tLhishZk+pY=",
+      "publishedTime": "2018-12-11T20:45:56.0Z",
+      "ref": "v0.0.0"
+    },
+    "0.1.0": {
+      "bytes": 2606,
+      "hash": "sha256-kiqmjNxumL7jvysb9bVGfEeH/ivW2Ff+QaNh7FHUgFY=",
+      "publishedTime": "2018-12-13T20:04:52.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 2615,
+      "hash": "sha256-f/GCIoZZTEpwSyZjDL7qHfk1Jr7A4NB+hFzgW2jKeEc=",
+      "publishedTime": "2019-01-01T21:33:55.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 2623,
+      "hash": "sha256-ULd5KdA9eUF6Oy8XhEvn03StgqnJ1cXd+lwS7VKbCag=",
+      "publishedTime": "2019-09-15T00:36:42.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.1.3": {
+      "bytes": 3987,
+      "hash": "sha256-8D9uFuVHTClm+LU7tFYmFlPSxoeZLSM9oTkDNt23srU=",
+      "publishedTime": "2020-04-29T21:36:33.0Z",
+      "ref": "v0.1.3"
+    }
+  },
+  "unpublished": {}
+}

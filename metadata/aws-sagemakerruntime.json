@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "purescript-aws-sdk",
+    "githubRepo": "purescript-aws-sagemakerruntime"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 3630,
+      "hash": "sha256-KkPyG1Q6WU2ZWKS/DvXqlbHyX+0jJauyQGkoO+RrN48=",
+      "publishedTime": "2018-03-10T21:39:16.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.1.1": {
+      "bytes": 3648,
+      "hash": "sha256-zITdBPh+PRO/6ILQkLBnwLxnnheTMPHDyhKXNZYHbeU=",
+      "publishedTime": "2018-03-12T18:20:47.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 3619,
+      "hash": "sha256-Wu4zIjC3jOZzHnYl0yaOG13n34bUC5vbh7sKI4/Le+w=",
+      "publishedTime": "2018-03-13T13:39:24.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.2.1": {
+      "bytes": 3821,
+      "hash": "sha256-XH+jh67ycXqSZKGk2xvS5MFhV/LthBU9qKRb7LiyKUM=",
+      "publishedTime": "2018-03-28T16:47:50.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.3.1": {
+      "bytes": 3782,
+      "hash": "sha256-EW83b2Z8WrYO2rMt90g1vp7OlolL1UoJ1OEDfIzPEGQ=",
+      "publishedTime": "2018-04-26T13:31:30.0Z",
+      "ref": "v0.3.1"
+    }
+  },
+  "unpublished": {}
+}

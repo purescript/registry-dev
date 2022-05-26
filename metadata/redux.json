@@ -1,0 +1,57 @@
+{
+  "location": {
+    "githubOwner": "brakmic",
+    "githubRepo": "purescript-redux"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4658,
+      "hash": "sha256-v7ABovcqTSt7RzOeiII+/Rpm2yGlKsZVGCokJvchohc=",
+      "publishedTime": "2016-02-07T19:32:47.0Z",
+      "ref": "0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 4669,
+      "hash": "sha256-es5GfLdtgRJiEwLYZecTagunjmLJYoeYsN6XHTJMpLY=",
+      "publishedTime": "2016-03-01T08:50:20.0Z",
+      "ref": "0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 4442,
+      "hash": "sha256-eNRuJKHC0yFWpSdKhX0zG52yctfsoBZEFWxdFhpEeOU=",
+      "publishedTime": "2016-08-15T14:17:50.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.1.3": {
+      "bytes": 4446,
+      "hash": "sha256-3ZQxxH2GfTRBVN5iAsdSARFDFdLCVCJZoxKi6TqB1CM=",
+      "publishedTime": "2016-08-15T14:21:50.0Z",
+      "ref": "v0.1.3"
+    },
+    "0.1.4": {
+      "bytes": 4450,
+      "hash": "sha256-I0XtrtJIPKRXPC7QaahR1vah1PaKKrwEDlplIrtEPQw=",
+      "publishedTime": "2016-08-15T14:22:50.0Z",
+      "ref": "v0.1.4"
+    },
+    "0.1.5": {
+      "bytes": 4450,
+      "hash": "sha256-3x4zfz/pNWCRbGq7PeE6Rmm6qbMZnC9IRDsUSOJ7Jkk=",
+      "publishedTime": "2016-08-15T14:31:23.0Z",
+      "ref": "v0.1.5"
+    },
+    "0.1.6": {
+      "bytes": 4508,
+      "hash": "sha256-3B1t//ot9TsnYXnGohCBJbaffItAr9YAur31BbGBCBk=",
+      "publishedTime": "2017-01-02T15:56:36.0Z",
+      "ref": "v0.1.6"
+    },
+    "0.1.7": {
+      "bytes": 4514,
+      "hash": "sha256-pbt+qTTFrIwHZnNn5rNLhJ1cehFBtmpZgQD5/O+CTO8=",
+      "publishedTime": "2017-01-02T16:09:25.0Z",
+      "ref": "v0.1.7"
+    }
+  },
+  "unpublished": {}
+}

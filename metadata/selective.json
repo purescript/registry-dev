@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "anttih",
+    "githubRepo": "purescript-selective"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2003,
+      "hash": "sha256-PTWZHcR8+H9lf4wohLxQzNRNnMBA3ZeTnOTtiEWmOeA=",
+      "publishedTime": "2018-07-01T19:02:24.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 2024,
+      "hash": "sha256-MRKo01c/oRuOZQhjGk0zotgZthX2JqxlYgLJK4ySwcI=",
+      "publishedTime": "2018-07-02T19:57:47.0Z",
+      "ref": "v0.1.1"
+    }
+  },
+  "unpublished": {}
+}

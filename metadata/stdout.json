@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "oreshinya",
+    "githubRepo": "purescript-stdout"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1864,
+      "hash": "sha256-TwGj1A0fEctZiLuk4aGKL1jcs6rf9qOPsfOUdosmMgE=",
+      "publishedTime": "2017-06-19T05:48:58.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 1863,
+      "hash": "sha256-uX07iU2WwZGK5Fz2Smp3KfyiBZcweBdP9Z5zEpyPlKM=",
+      "publishedTime": "2017-06-19T05:57:04.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 1835,
+      "hash": "sha256-Ble8mpq3nXmZ2tmLzc7WFJBdUNmOCOGB1P48uRITMY8=",
+      "publishedTime": "2017-10-27T13:00:35.0Z",
+      "ref": "v0.2.0"
+    },
+    "1.0.0": {
+      "bytes": 1793,
+      "hash": "sha256-d6260tBMu7kPebBK5yMtKLLXMUwZSyWgDl77TxdGEP4=",
+      "publishedTime": "2018-05-31T00:09:18.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

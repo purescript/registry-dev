@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "mschristiansen",
+    "githubRepo": "purescript-halogen-bootstrap4"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 11535,
+      "hash": "sha256-cT4yPOOwHnQTUNNyHnI1Fd1PiKhCnYOOhET4z619So8=",
+      "publishedTime": "2018-09-05T10:16:14.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.2": {
+      "bytes": 11534,
+      "hash": "sha256-MCguOAZh0eHI8Ri3Gg4HfEmjskogx7xcYiiJj0ElZZo=",
+      "publishedTime": "2018-09-05T10:16:14.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.1.3": {
+      "bytes": 11581,
+      "hash": "sha256-w6p+8sE3NCuS31/1HqhWLszvp/wTUaebNgVOogWeqb4=",
+      "publishedTime": "2019-01-29T04:29:03.0Z",
+      "ref": "v0.1.3"
+    },
+    "0.1.4": {
+      "bytes": 11642,
+      "hash": "sha256-y3YB1QHMaymqBqgGj/mCcP+2R+P6uMHM+1EUSygqE0o=",
+      "publishedTime": "2019-05-31T10:27:16.0Z",
+      "ref": "v0.1.4"
+    },
+    "0.2.0": {
+      "bytes": 12015,
+      "hash": "sha256-O5HwJMoNNUxetrxlVtGY9CgZh6PSq4J2riHUMBazPPI=",
+      "publishedTime": "2021-03-10T17:59:44.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

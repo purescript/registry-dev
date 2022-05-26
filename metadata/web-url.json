@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "mjepronk",
+    "githubRepo": "purescript-web-url"
+  },
+  "published": {
+    "1.0.1": {
+      "bytes": 4553,
+      "hash": "sha256-x2TqrEeNbwPPiyVW6DSnNeJYd03GnWPOg6aY9wx2GbM=",
+      "publishedTime": "2020-06-08T20:19:56.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 4553,
+      "hash": "sha256-Q3whjZm/uIFPltfpQ6Cg3Ds+O2T9DBzE0Nt57BhRwZA=",
+      "publishedTime": "2020-06-14T16:09:12.0Z",
+      "ref": "v1.0.2"
+    }
+  },
+  "unpublished": {}
+}

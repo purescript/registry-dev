@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "adarqui",
+    "githubRepo": "purescript-bbcode-parser"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 8833,
+      "hash": "sha256-iCZFxSstUgUK6SsLCXFoTVjqavrL/GWu0qfLgmaSKGM=",
+      "publishedTime": "2016-06-18T06:11:02.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

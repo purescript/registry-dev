@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "garyb",
+    "githubRepo": "purescript-safelist"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2404,
+      "hash": "sha256-NMXQYSl6+qO59evEePrZEegdAXkibajddmFTtVQxM14=",
+      "publishedTime": "2017-07-25T12:48:15.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.1.0": {
+      "bytes": 2451,
+      "hash": "sha256-Bb2+V6RFn5+P51JmitRNeBFYwAzb3idcQskc029iklY=",
+      "publishedTime": "2017-09-07T10:40:52.0Z",
+      "ref": "v1.1.0"
+    },
+    "2.0.0": {
+      "bytes": 2447,
+      "hash": "sha256-PG/ugnCZDbkOdepSIVz/iywKFYL3czXIWeIIrjZefPo=",
+      "publishedTime": "2018-06-28T13:21:26.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 2451,
+      "hash": "sha256-pvwnC+VR8IfVtdPzFc/uMsH5xsP4TFusugvBQjqRudk=",
+      "publishedTime": "2021-04-24T01:27:58.0Z",
+      "ref": "v3.0.0"
+    }
+  },
+  "unpublished": {}
+}

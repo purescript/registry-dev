@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "dirkz",
+    "githubRepo": "purescript-gl-matrix"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 16617,
+      "hash": "sha256-wwqf2HqGk7vsstuqConsBJZSSAjghqMvwvDSO5/cooc=",
+      "publishedTime": "2020-08-31T09:13:02.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 16614,
+      "hash": "sha256-B7mmQfrd6dq0yU9GktNm6V3V91ZHFxqYtUfOKNMQIR8=",
+      "publishedTime": "2020-08-31T09:18:05.0Z",
+      "ref": "v1.0.1"
+    },
+    "2.0.0": {
+      "bytes": 16539,
+      "hash": "sha256-ZGAEXtp6n35tQMaSuzWHpOdDkAt5niislS8bDcvEv5E=",
+      "publishedTime": "2020-08-31T09:36:27.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.0.1": {
+      "bytes": 16576,
+      "hash": "sha256-o4SmuKMZqCE5VJgSHomyEIgaR0PlsnGjNhHlKEfS7D0=",
+      "publishedTime": "2020-08-31T11:09:53.0Z",
+      "ref": "v2.0.1"
+    },
+    "2.1.0": {
+      "bytes": 16807,
+      "hash": "sha256-K9FPp2VxuFfVd4ZPZqYLpgTZ2w4C4RCY+xq/4xwa52U=",
+      "publishedTime": "2021-11-20T09:20:08.0Z",
+      "ref": "v2.1.0"
+    }
+  },
+  "unpublished": {}
+}

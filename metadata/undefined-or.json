@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "d86leader",
+    "githubRepo": "purescript-undefined-or"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 3351,
+      "hash": "sha256-09SEQ/cGCYcczgwLq5j3h8XhYWoIVj5Myvewv4M/zd4=",
+      "publishedTime": "2020-04-10T12:51:33.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 3351,
+      "hash": "sha256-ILZ1NjEmcYDC9l7mh944jv1GIHR+MEK6ezGncZElDWE=",
+      "publishedTime": "2020-04-14T06:25:21.0Z",
+      "ref": "v1.0.1"
+    }
+  },
+  "unpublished": {}
+}

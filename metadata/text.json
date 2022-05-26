@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "dmkolobov",
+    "githubRepo": "purescript-text"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 2598,
+      "hash": "sha256-JL2D+CvqZuUy6tluzgkzFrMUt9ByjnuQfE/43kQlyw4=",
+      "publishedTime": "2019-03-17T21:40:36.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

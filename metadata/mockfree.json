@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "slamdata",
+    "githubRepo": "purescript-mockfree"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3929,
+      "hash": "sha256-LoUc+eOFGGafJ2GUVtR8x0HxJ77Wsh87Uihox1zTbo8=",
+      "publishedTime": "2016-05-21T03:27:11.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

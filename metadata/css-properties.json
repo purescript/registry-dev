@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "nonbili",
+    "githubRepo": "purescript-css-properties"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2236,
+      "hash": "sha256-vHAktW16W7hoNtWuKtkPNlMizyjIOQfGcHuZKWbDbbs=",
+      "publishedTime": "2019-07-16T10:15:44.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 2579,
+      "hash": "sha256-vz6niYCZOHcrbRq8eLItmn4GxyBuzKHpSUCgnQJghkQ=",
+      "publishedTime": "2019-08-14T14:06:42.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 2627,
+      "hash": "sha256-fOdliHqRcmy+kk/XAcBHgJXDTWie+bZI01n+7/kJdk0=",
+      "publishedTime": "2019-08-22T02:09:40.0Z",
+      "ref": "v0.3.0"
+    }
+  },
+  "unpublished": {}
+}

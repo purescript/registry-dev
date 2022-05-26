@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "hdgarrood",
+    "githubRepo": "purescript-debugged"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 14342,
+      "hash": "sha256-b7QcykGO+jcGTYrMlgzDqIAKrrT7oQ7bTOfRDDsdSXw=",
+      "publishedTime": "2019-05-30T13:58:28.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "ethul",
+    "githubRepo": "purescript-refractor-coproduct"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1512,
+      "hash": "sha256-B7MN7SLy3LZPKggngokWl3tdyvqPZK1Ty/bx44HVqEw=",
+      "publishedTime": "2015-10-17T23:07:37.0Z",
+      "ref": "0.1.0"
+    }
+  },
+  "unpublished": {}
+}

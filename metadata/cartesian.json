@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "Ebmtranceboy",
+    "githubRepo": "purescript-cartesian"
+  },
+  "published": {
+    "1.0.1": {
+      "bytes": 2211,
+      "hash": "sha256-+wj7A+NsPEyImeY96DM3fs3RuE/cJ2mLW4vTJSf534k=",
+      "publishedTime": "2019-07-25T07:09:28.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 2215,
+      "hash": "sha256-MZmPSX1tBztHdwH2xZ4oV2+meG4wlm6rWKYDNz5gx/E=",
+      "publishedTime": "2019-08-03T19:45:44.0Z",
+      "ref": "v1.0.2"
+    },
+    "1.0.4": {
+      "bytes": 2626,
+      "hash": "sha256-uGQdQGC8Jt0s1f5V87K1UC1Tf7Ehm+PaTIhRLPVtbM0=",
+      "publishedTime": "2019-08-04T11:49:34.0Z",
+      "ref": "v1.0.4"
+    },
+    "1.0.5": {
+      "bytes": 2626,
+      "hash": "sha256-G5oh1TpE9QFropHXocKPA3jtnyRoay3joqHcwQSXabE=",
+      "publishedTime": "2022-05-02T09:53:29.0Z",
+      "ref": "v1.0.5"
+    },
+    "1.0.6": {
+      "bytes": 3707,
+      "hash": "sha256-80yBvbiQWFHtxFGQ5740LEFV98MhbUFuWn5LO/OFjwk=",
+      "publishedTime": "2022-05-04T09:18:19.0Z",
+      "ref": "v1.0.6"
+    }
+  },
+  "unpublished": {}
+}

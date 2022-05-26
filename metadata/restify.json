@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "freqlabs",
+    "githubRepo": "purescript-restify"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 5461,
+      "hash": "sha256-+j6Bhj2mmtifEjgM+XQJ4h1boYiekZpkUW/X/o/5s24=",
+      "publishedTime": "2018-01-15T15:47:10.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "TinkerTravel",
+    "githubRepo": "purescript-node-sentry"
+  },
+  "published": {
+    "1.2.0": {
+      "bytes": 2929,
+      "hash": "sha256-82uiPn8cv6Zi3EWgZkZxRz7LZMvRpqOvLpSFtW4n8L0=",
+      "publishedTime": "2017-03-29T20:06:32.0Z",
+      "ref": "v1.2.0"
+    }
+  },
+  "unpublished": {}
+}
