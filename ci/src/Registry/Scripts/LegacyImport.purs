@@ -60,8 +60,13 @@ main = Aff.launchAff_ do
     disabledPackages = Map.fromFoldable
       -- [UNFIXABLE] This is a special package that should never be uploaded.
       [ mkDisabled "purescript" "purescript-metadata"
-      -- [UNFIXABLE] This package has no version with a src directory
+      -- [UNFIXABLE] These packages have no version with a src directory
       , mkDisabled "ethul" "purescript-bitstrings"
+      , mkDisabled "paulyoung" "purescript-purveyor"
+      , mkDisabled "paulyoung" "purescript-styled-components"
+      , mkDisabled "paulyoung" "purescript-styled-system"
+      -- All versions of these packages are over the size limit.
+      , mkDisabled "BBVA" "purescript-google-apps"
       ]
       where
       mkDisabled owner repo =
@@ -75,6 +80,25 @@ main = Aff.launchAff_ do
       -- [UNFIXABLE] These have no src directory.
       "concur-core", "0.3.9" -> Nothing
       "concur-react", "0.3.9" -> Nothing
+      "pux-devtool", "5.0.0" -> Nothing
+
+      -- These packages are over the maximum size limit of 200,000 bytes. We can
+      -- either raise the limit or allowlist them.
+      "aws-sdk", "0.0.37" -> Nothing -- 1,180,083 bytes
+      "aws-sdk", "0.0.39" -> Nothing -- 1,180,098 bytes
+      "aws-sdk", "0.0.42" -> Nothing -- 1,179,949 bytes
+      "aws-sdk", "0.0.50" -> Nothing -- 1,840,089 bytes
+      "aws-sdk", "0.0.52" -> Nothing -- 1,963,900 bytes
+      "google-apps", "0.0.1" -> Nothing -- 439,458 bytes
+      "google-apps", "0.0.2" -> Nothing -- 439,337 bytes
+      "google-apps", "0.0.3" -> Nothing -- 439,572 bytes
+      "kubernetes", "0.1.2" -> Nothing -- 247,477 bytes
+      "kubernetes", "0.2.0" -> Nothing -- 214,416 bytes
+      "kubernetes", "0.3.0" -> Nothing -- 251,174 bytes
+      "kubernetes", "0.4.0" -> Nothing -- 234,787 bytes
+      "kubernetes", "0.5.0" -> Nothing -- 238,487 bytes
+      "kubernetes", "0.6.0" -> Nothing -- 236,480 bytes
+
       _, _ -> Just manifestFields
 
     availablePackages = Array.mapMaybe excludeVersion sortedPackages
@@ -96,9 +120,11 @@ main = Aff.launchAff_ do
     let
       disabled { name } = isJust $ Map.lookup name disabledPackages
       wasPackageUploaded { name, version } = API.isPackageVersionInMetadata name version packagesMetadata
-      packagesToUpload = Array.filter (not wasPackageUploaded && not disabled) availablePackages
+      packagesToUpload = Array.filter (\package -> not (wasPackageUploaded package || disabled package)) availablePackages
 
-    for_ packagesToUpload \manifest -> do
+    -- We need to use `for` here instead of `for_`, because the `Foldable` class
+    -- isn't stack-safe.
+    void $ for packagesToUpload \manifest -> do
       let
         addition = Addition
           { newPackageLocation: manifest.location
