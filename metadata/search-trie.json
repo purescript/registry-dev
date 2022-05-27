@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "klntsky",
+    "githubRepo": "purescript-search-trie"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 4677,
+      "hash": "sha256-CgWNNDero8is982V6/A3mRzirqt2V2d6vqjf7vR/S3U=",
+      "publishedTime": "2019-07-09T20:18:58.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

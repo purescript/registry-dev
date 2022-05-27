@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "spencerjanssen",
+    "githubRepo": "purescript-pux-document-title"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 1556,
+      "hash": "sha256-oxzUU301ZGpvzoMR8aeyz7AWo9CG/6LEVslTwPtykFc=",
+      "publishedTime": "2016-10-09T19:58:00.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

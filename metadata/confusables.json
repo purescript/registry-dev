@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "michaelficarra",
+    "githubRepo": "purescript-confusables"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 1953,
+      "hash": "sha256-QJtS/SF6FlBvZaRjiR+U2Rz9147komw7+lEGEXmUNEU=",
+      "publishedTime": "2017-07-10T16:22:40.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 1946,
+      "hash": "sha256-sD41rrYgVjKPyCGmNByVxGR+cW3yp0rsbQhMoiEt+ls=",
+      "publishedTime": "2017-07-10T16:34:17.0Z",
+      "ref": "v1.0.1"
+    }
+  },
+  "unpublished": {}
+}

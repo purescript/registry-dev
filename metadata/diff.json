@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "athanclark",
+    "githubRepo": "purescript-diff"
+  },
+  "published": {
+    "0.0.0": {
+      "bytes": 2690,
+      "hash": "sha256-e8LaCvCpgcA9h+G3YQ0ZOEK7bpVM7PvpUhYuy628Gkc=",
+      "publishedTime": "2018-08-29T18:57:11.0Z",
+      "ref": "v0.0.0"
+    },
+    "0.0.1": {
+      "bytes": 2755,
+      "hash": "sha256-HjiqUsHstGfyT4X8jgOnTWzCqPf43MjtsNO1IFI04Ho=",
+      "publishedTime": "2018-08-30T01:02:46.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 2866,
+      "hash": "sha256-lNzMKJIyuemJsri8C2EDkQqKjcJBOC3CRq8ZdSRxI00=",
+      "publishedTime": "2018-08-30T01:18:24.0Z",
+      "ref": "v0.0.2"
+    }
+  },
+  "unpublished": {}
+}

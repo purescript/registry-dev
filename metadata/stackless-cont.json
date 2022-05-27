@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "clinuxrulz",
+    "githubRepo": "purescript-stackless-cont"
+  },
+  "published": {
+    "0.0.3": {
+      "bytes": 2090,
+      "hash": "sha256-V+c1QkcbQn/VXr90zW+oscjYHySTez44TWLJPakTXZY=",
+      "publishedTime": "2016-05-15T09:50:51.0Z",
+      "ref": "v0.0.3"
+    }
+  },
+  "unpublished": {}
+}

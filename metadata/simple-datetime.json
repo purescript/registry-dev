@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "felixmulder",
+    "githubRepo": "purescript-simple-datetime"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2370,
+      "hash": "sha256-ugteod+PPvV4VNz/vjcGCAOmJRphP622pw5FcptfGuM=",
+      "publishedTime": "2018-07-27T20:18:05.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 2399,
+      "hash": "sha256-bkOusBfmVsEz5jErfJo2XFSAKmQBcMhZoxacliQ+GHo=",
+      "publishedTime": "2018-07-27T20:37:22.0Z",
+      "ref": "v0.1.1"
+    }
+  },
+  "unpublished": {}
+}

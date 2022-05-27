@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "inventvenkat",
+    "githubRepo": "LuhnCheck"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 1120,
+      "hash": "sha256-tFIJzL3wKj6rTpeiIEspDWMTUjbaXX+XO1s/iEV7a8E=",
+      "publishedTime": "2018-08-28T14:40:42.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 1129,
+      "hash": "sha256-Uo09KtL8ssUvnMMeHWjs7u3oR8YcGsS7rwOSBZeKHP4=",
+      "publishedTime": "2018-08-28T14:59:52.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 1216,
+      "hash": "sha256-blQZkR2Jh5wTNhYci0hbUNrjuqTdvLfoL+dD+E7dFk0=",
+      "publishedTime": "2018-08-29T06:52:32.0Z",
+      "ref": "v0.0.3"
+    },
+    "0.0.4": {
+      "bytes": 1213,
+      "hash": "sha256-+C8IpTSHii14zH6K0A1JJyIU676d+SOpcoI9ZC/d1kw=",
+      "publishedTime": "2018-08-29T06:54:22.0Z",
+      "ref": "v0.0.4"
+    },
+    "0.0.5": {
+      "bytes": 1240,
+      "hash": "sha256-J0y9N/JjZ88Itdy1NLu9lWnNmegxPSjNZrAEm/sd5zk=",
+      "publishedTime": "2018-08-29T07:09:02.0Z",
+      "ref": "v0.0.5"
+    },
+    "0.0.6": {
+      "bytes": 1254,
+      "hash": "sha256-DqYwcdyMCiiQstmQ5XVrB7C7jHZVzsDJZ7oLKL6zFfA=",
+      "publishedTime": "2018-09-06T05:04:26.0Z",
+      "ref": "v0.0.6"
+    }
+  },
+  "unpublished": {}
+}

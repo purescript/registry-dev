@@ -1,0 +1,69 @@
+{
+  "location": {
+    "githubOwner": "justinwoo",
+    "githubRepo": "purescript-lenient-html-parser"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2703,
+      "hash": "sha256-abIA7BV8yZvzuJ3LSwPV7egFIqn3mOM4uyDle4nUJW8=",
+      "publishedTime": "2017-01-27T22:11:31.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 2689,
+      "hash": "sha256-teJBEB2PiDnUASwaPaqyyXf9PCm+yRCCLoQL4URW9TM=",
+      "publishedTime": "2017-04-10T19:21:20.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 2942,
+      "hash": "sha256-vm50pb8KK1zZzJ1v/vIxs+Eu1V0jk80SWVLdGWcuzqo=",
+      "publishedTime": "2017-04-17T10:16:12.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.3.1": {
+      "bytes": 2887,
+      "hash": "sha256-VyL7J5aWTXymM3+dPVRaQ3CYRdkqJAMJ1Ztj2kKVY4g=",
+      "publishedTime": "2017-04-25T20:18:27.0Z",
+      "ref": "v0.3.1"
+    },
+    "0.3.2": {
+      "bytes": 2924,
+      "hash": "sha256-Vv1w2si6HJjQPdB0karQdfgSVWEi/3lxuhssEflB4VI=",
+      "publishedTime": "2017-07-16T19:24:50.0Z",
+      "ref": "v0.3.2"
+    },
+    "1.0.0": {
+      "bytes": 2851,
+      "hash": "sha256-xgsor7KQXRIPpwHRsWnSMXqfpxvCwkrUbamjcG7tcfQ=",
+      "publishedTime": "2017-08-26T08:22:38.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 2921,
+      "hash": "sha256-rOEf7/13uD3zgRJkPkdMapfE/2v/iONTK347d7tbytE=",
+      "publishedTime": "2018-04-20T21:02:37.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 2915,
+      "hash": "sha256-Ha6fclbysOZrClh4NgP5G41Vh42tM+dCkWHQRutDfO0=",
+      "publishedTime": "2018-05-31T19:30:14.0Z",
+      "ref": "v3.0.0"
+    },
+    "3.0.1": {
+      "bytes": 3073,
+      "hash": "sha256-Y5G/XkJ5prZQC4ixxzN8Wxk2LIdGtq9H56BgcIlQWH0=",
+      "publishedTime": "2018-06-12T18:24:21.0Z",
+      "ref": "v3.0.1"
+    },
+    "4.0.0": {
+      "bytes": 3060,
+      "hash": "sha256-KpZz3mWJHwK9qho/EyQ/R+HYtx79m1DlUY61JYw8xCk=",
+      "publishedTime": "2018-07-27T15:50:04.0Z",
+      "ref": "v4.0.0"
+    }
+  },
+  "unpublished": {}
+}

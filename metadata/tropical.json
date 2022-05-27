@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "paf31",
+    "githubRepo": "purescript-tropical"
+  },
+  "published": {
+    "1.0.1": {
+      "bytes": 907,
+      "hash": "sha256-b0NQ7ZmMQwOy97X10CDTKXBOw9dOCrnkpasURdXWsIE=",
+      "publishedTime": "2016-08-18T04:18:52.0Z",
+      "ref": "v1.0.1"
+    },
+    "2.0.0": {
+      "bytes": 935,
+      "hash": "sha256-atIlrwF4z4LW8Vs9CQ26xlAXvul4QojaUlfGULtdSKg=",
+      "publishedTime": "2016-10-23T03:32:37.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 1094,
+      "hash": "sha256-4nYK9X044Nwsjw6QYqWfAz4jIG7wAJ2SgzJDYVa3zOE=",
+      "publishedTime": "2017-04-11T04:44:33.0Z",
+      "ref": "v3.0.0"
+    },
+    "4.0.0": {
+      "bytes": 1101,
+      "hash": "sha256-UE09AkmE0ojAipnyhpcLz/rk4GKju2MUtFdAj1b3zhM=",
+      "publishedTime": "2018-06-23T01:45:29.0Z",
+      "ref": "v4.0.0"
+    }
+  },
+  "unpublished": {}
+}

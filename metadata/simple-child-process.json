@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "corajr",
+    "githubRepo": "purescript-simple-child-process"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2441,
+      "hash": "sha256-mM9VDYv+xJUVZDlGQOOykmjMoUYbC1tpLkVbWXMY1wE=",
+      "publishedTime": "2017-09-03T20:51:16.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

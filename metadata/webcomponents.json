@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "Risto-Stevcev",
+    "githubRepo": "purescript-webcomponents"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4122,
+      "hash": "sha256-IvxcI8bRQq7+kcKIRFSt0CWJUwndDNRlEOeuwUcZJls=",
+      "publishedTime": "2017-10-25T01:32:00.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

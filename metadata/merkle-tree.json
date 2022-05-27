@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "alpacaaa",
+    "githubRepo": "purescript-merkle-tree"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 3231,
+      "hash": "sha256-eIYT1Z7ZUzp3vvVR+CvcFlTCUFF69aQTdt275iBoLT4=",
+      "publishedTime": "2017-10-01T08:24:59.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 3147,
+      "hash": "sha256-ULGgGP9ESJQA16djJlkvBtbgIDsj/8qIBs39q/NwRMw=",
+      "publishedTime": "2017-10-01T08:53:36.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 3150,
+      "hash": "sha256-LQ9bgdUdOR6jD2sE1Y2p2XAuEamz6aF83jDwG61JNJg=",
+      "publishedTime": "2017-10-10T22:30:35.0Z",
+      "ref": "v0.0.3"
+    },
+    "0.0.4": {
+      "bytes": 3827,
+      "hash": "sha256-gjJRoCH0Rfev6mJrA5K3e22HxR+t90nNMP8uJsItAGw=",
+      "publishedTime": "2017-11-26T12:06:26.0Z",
+      "ref": "v0.0.4"
+    }
+  },
+  "unpublished": {}
+}

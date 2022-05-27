@@ -1,0 +1,51 @@
+{
+  "location": {
+    "githubOwner": "CapillarySoftware",
+    "githubRepo": "purescript-oo-ffi"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 3182,
+      "hash": "sha256-zQn2aJfJ6LhGd54k1uw7139yTG1oBBkxvpg9FDuWdzY=",
+      "publishedTime": "2014-11-12T18:39:41.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 3181,
+      "hash": "sha256-GiVl8NWKPTcudm5QdwIhPCI4roop3QFzXtVt+maMDVc=",
+      "publishedTime": "2014-11-14T00:50:06.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 3340,
+      "hash": "sha256-i2tuXvw0gkkqUPiu6shXL0tzUoQ84fMbh+Xt7DeAsNw=",
+      "publishedTime": "2014-12-16T19:48:14.0Z",
+      "ref": "0.0.3"
+    },
+    "0.0.4": {
+      "bytes": 3542,
+      "hash": "sha256-hmp1JYJXPBjtJ46ciZ1v6LXW3YyPDLCM/J1uvAY7Sk8=",
+      "publishedTime": "2014-12-15T09:22:21.0Z",
+      "ref": "v0.0.4"
+    },
+    "0.0.5": {
+      "bytes": 4442,
+      "hash": "sha256-mMfAxzALe+04Lt0A5jbZjNpZYMdjdE05QFpGISpQNAI=",
+      "publishedTime": "2014-12-17T20:54:58.0Z",
+      "ref": "0.0.5"
+    },
+    "0.0.6": {
+      "bytes": 4443,
+      "hash": "sha256-Hm8w2duRSSq6DZXRFuYKzUYedUkWaqTn7PAnVcGihA8=",
+      "publishedTime": "2015-02-21T19:21:01.0Z",
+      "ref": "v0.0.6"
+    },
+    "1.0.0": {
+      "bytes": 4505,
+      "hash": "sha256-0gzKustJNfrFTA8YzZlqq0brkf+Eb4V28vUkkL1ZnN8=",
+      "publishedTime": "2015-08-18T01:40:39.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

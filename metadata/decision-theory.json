@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "colehaus",
+    "githubRepo": "purescript-decision-theory"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 959,
+      "hash": "sha256-Dj4eXy3FG868/N703T1C0k79uj77Sgu8xoOHFDMNYtk=",
+      "publishedTime": "2019-01-17T18:44:29.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 971,
+      "hash": "sha256-yk+oZeDT9RWWgMDifOGNLCS/cYtGCFCm3cGB2qHPbzo=",
+      "publishedTime": "2019-01-17T20:02:30.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.1.0": {
+      "bytes": 1567,
+      "hash": "sha256-5gHx5a+L6RjO4hN9NQaUBJuz0KzUZ4DeJXzjvhTKN38=",
+      "publishedTime": "2019-01-30T04:05:04.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 3262,
+      "hash": "sha256-yk1GLpmBoevMAP3iKspJohl8N2EmU4FPIVARWmlBxnE=",
+      "publishedTime": "2019-05-24T21:30:55.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 3682,
+      "hash": "sha256-+eNn3u1qXD7ahgctGEIOl2B2FvLzoDfk3nF4TrB2Pz8=",
+      "publishedTime": "2019-05-28T22:01:28.0Z",
+      "ref": "v0.1.2"
+    }
+  },
+  "unpublished": {}
+}

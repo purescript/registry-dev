@@ -5,14 +5,14 @@
   },
   "published": {
     "1.0.0": {
-      "bytes": 2658,
-      "hash": "sha256-MInprbnVCKibTPR6Urt02Gm0A/0k4DTPENYNSCcIoQU=",
+      "bytes": 2249,
+      "hash": "sha256-J+DNxvpszuwz/vhtpc7mcj0nPMrA77wm8DG7BonrbsE=",
       "publishedTime": "2016-06-01T02:40:25.0Z",
       "ref": "v1.0.0"
     },
     "2.0.0": {
-      "bytes": 2795,
-      "hash": "sha256-2kRPh3kZ8532LOynDmzpwTRoy8KvVXel//lS+o8Zbxw=",
+      "bytes": 2390,
+      "hash": "sha256-HpnFHLUYffU+SzN1I++dgooO5YuhQ2z96DzITNx0tLk=",
       "publishedTime": "2016-10-09T23:06:04.0Z",
       "ref": "v2.0.0"
     }

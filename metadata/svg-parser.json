@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "rnons",
+    "githubRepo": "purescript-svg-parser"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2988,
+      "hash": "sha256-XujhyG4Ol374PoQGFE6uw0cBej9RnxXva16MNoQKlVw=",
+      "publishedTime": "2018-10-12T10:03:23.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 2941,
+      "hash": "sha256-4DMPqpIfuK0vtkHJiN7vIJ67jA+g5O4unKFTVRNClDo=",
+      "publishedTime": "2021-07-25T11:22:04.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 3029,
+      "hash": "sha256-1Dl3yMLNO8mJ6ktf/bFNBwRaWRMJie6dGZp+JUDMmmc=",
+      "publishedTime": "2022-05-16T23:44:56.0Z",
+      "ref": "v3.0.0"
+    }
+  },
+  "unpublished": {}
+}

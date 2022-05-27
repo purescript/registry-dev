@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "doolse",
+    "githubRepo": "purescript-dispatcher-react"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 5082,
+      "hash": "sha256-8Pw8HlHk7sAgjl4sYEBqMwYI6NSXqhciIb9M0Y6CTy4=",
+      "publishedTime": "2017-01-23T14:06:15.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 5170,
+      "hash": "sha256-gY6LTTwLl/BeqTSKoVHYNFQElu833OOwwhQhHj/bR74=",
+      "publishedTime": "2017-04-12T23:16:38.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.1.0": {
+      "bytes": 5581,
+      "hash": "sha256-UwCpgxHMQQflUFvEI55K3Vz+JeQ4Ls1rkyJ3+z0gNfE=",
+      "publishedTime": "2017-06-22T02:19:42.0Z",
+      "ref": "v2.1.0"
+    },
+    "3.0.0": {
+      "bytes": 5337,
+      "hash": "sha256-Rogy5G37sPEmhimCL5Vs3UqAdCSEApAdlf9BVktZa+8=",
+      "publishedTime": "2017-09-11T06:13:57.0Z",
+      "ref": "v3.0.0"
+    },
+    "3.1.0": {
+      "bytes": 5352,
+      "hash": "sha256-6YSqHjWlovFDNm3NSTtGNpnu78r95v9uZEhi7G2YoYM=",
+      "publishedTime": "2017-11-04T01:38:26.0Z",
+      "ref": "v3.1.0"
+    },
+    "4.0.0": {
+      "bytes": 3271,
+      "hash": "sha256-rObxFZ0hVPtMF6RJyAhK6dEMZTQBlIKiRe77ERHIEvc=",
+      "publishedTime": "2018-06-13T04:23:46.0Z",
+      "ref": "v4.0.0"
+    }
+  },
+  "unpublished": {}
+}

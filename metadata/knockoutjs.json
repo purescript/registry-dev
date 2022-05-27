@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "brunjlar",
+    "githubRepo": "purescript-knockoutjs"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 2438,
+      "hash": "sha256-DvACa64obU/G3qgIBiF1vspW9r0kT8ZTsSI8nqIecr4=",
+      "publishedTime": "2015-05-27T23:40:49.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 2442,
+      "hash": "sha256-HNf9Q2JiwdnVyc9J3yBl68vs610IZK2ULsApDwymySU=",
+      "publishedTime": "2015-05-28T00:00:49.0Z",
+      "ref": "v0.0.2"
+    }
+  },
+  "unpublished": {}
+}

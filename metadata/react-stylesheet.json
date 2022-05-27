@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "danieljharvey",
+    "githubRepo": "purescript-react-stylesheet"
+  },
+  "published": {
+    "0.0.2": {
+      "bytes": 4757,
+      "hash": "sha256-D8qyMN+seV7O34zTsfFeeJmcF+aUrv2okIdqi+tZ7Zg=",
+      "publishedTime": "2019-07-29T13:36:30.0Z",
+      "ref": "v0.0.2"
+    }
+  },
+  "unpublished": {}
+}

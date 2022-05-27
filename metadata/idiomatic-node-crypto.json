@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "bklaric",
+    "githubRepo": "purescript-idiomatic-node-crypto"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 12711,
+      "hash": "sha256-nFhuxblDAuTLh3XfMXmUMVyVBTy6U+6FUoXr+5XtEb4=",
+      "publishedTime": "2018-04-23T18:39:51.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 12995,
+      "hash": "sha256-xbezfOBCXvywqb8csizC4AIEsRhCHGHG7NDf7fyYiHw=",
+      "publishedTime": "2018-07-20T17:10:40.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 1802,
+      "hash": "sha256-RlsUYZXQUXMDKCtZUBXxxfvOOuQv2lDNVYPJfgkpCjM=",
+      "publishedTime": "2019-03-24T14:38:51.0Z",
+      "ref": "v0.2.1"
+    }
+  },
+  "unpublished": {}
+}

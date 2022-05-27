@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "Unisay",
+    "githubRepo": "purescript-binary-integers"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 3782,
+      "hash": "sha256-8EnhHxjeKtz+qoWZ6dobE1+9c8dp47fOjOid477oCyg=",
+      "publishedTime": "2017-10-30T17:56:32.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 3737,
+      "hash": "sha256-CZAAlOlyhIwbfcuxSdiL2jTQ8YxZgWEL2EjiIfgpMTk=",
+      "publishedTime": "2017-10-31T16:30:24.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 3736,
+      "hash": "sha256-loDEgGeT7D90Cs0sfQWzwgZAwhtJ2gRXfectFWfuDWc=",
+      "publishedTime": "2017-10-31T16:48:28.0Z",
+      "ref": "v0.0.3"
+    }
+  },
+  "unpublished": {}
+}

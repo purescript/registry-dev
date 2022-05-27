@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "ajnsit",
+    "githubRepo": "purescript-formless-independent"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 19043,
+      "hash": "sha256-kwWXerorH8fx1C74wHmqQosNY6ELCdrFLNRqdove2z8=",
+      "publishedTime": "2019-07-08T05:13:05.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

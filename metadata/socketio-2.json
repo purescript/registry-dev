@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "athanclark",
+    "githubRepo": "purescript-socketio"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 1853,
+      "hash": "sha256-/7LkUpcolcLELSdxoyIfBCaAGBzicvlIliswlZh4rXw=",
+      "publishedTime": "2017-03-21T05:06:13.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.1.0": {
+      "bytes": 1844,
+      "hash": "sha256-tmS03rJAHOuF60PNUFUUL15IHP2Dg9frvXSiE7+rOjY=",
+      "publishedTime": "2017-03-21T05:22:26.0Z",
+      "ref": "v1.1.0"
+    }
+  },
+  "unpublished": {}
+}

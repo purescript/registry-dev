@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "bodil",
+    "githubRepo": "purescript-vdom"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 4362,
+      "hash": "sha256-e9VUMGtMbekCNnYFn+dQXZ4mLwPDqS3y8l6gMiLU6CE=",
+      "publishedTime": "2016-08-22T02:37:39.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 4099,
+      "hash": "sha256-bFPhAQKDSjH7qQPdGHihfY/2M/wgU+TvtMtNsecmQa8=",
+      "publishedTime": "2016-10-21T20:56:01.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.0.1": {
+      "bytes": 4188,
+      "hash": "sha256-oho6ZviJi0AagQdTSLAk9vb66iqKOjJ9VLEe7i7kPaE=",
+      "publishedTime": "2016-12-30T15:51:36.0Z",
+      "ref": "v2.0.1"
+    },
+    "2.0.2": {
+      "bytes": 4195,
+      "hash": "sha256-Iz3w0mUgVVMX5uw8AO3TB1XCb7UHMA3ENaWQNp9heWY=",
+      "publishedTime": "2017-01-05T18:41:16.0Z",
+      "ref": "v2.0.2"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "f-f",
+    "githubRepo": "purescript-react-basic-native"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 15903,
+      "hash": "sha256-TlkC9Z86BrVaBDQmp9ghzUjfMVk9+P+bTRkTesuxlZU=",
+      "publishedTime": "2019-05-23T19:30:58.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 59190,
+      "hash": "sha256-PQs5Psq6K3RpWcGhkCCq5pi3kLfOyfnkvSlHESFMYzo=",
+      "publishedTime": "2019-05-23T22:01:19.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 83139,
+      "hash": "sha256-hlI58YIkXQUs2AJaQ/4hSorJO4SDlLNREs+ZUFk4qQk=",
+      "publishedTime": "2019-05-24T00:12:32.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.1.3": {
+      "bytes": 83219,
+      "hash": "sha256-+C+QRaS09TtUNZStZ+2Hfkdk3iTySDVJ7tqEzrERh5Y=",
+      "publishedTime": "2019-05-24T00:23:54.0Z",
+      "ref": "v0.1.3"
+    }
+  },
+  "unpublished": {}
+}

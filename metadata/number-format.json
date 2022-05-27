@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "Jonplussed",
+    "githubRepo": "purescript-number-format"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1413,
+      "hash": "sha256-y9V6850YnJLIuetRK5O58rGtaC4x6Y0FmDgdynsYf1U=",
+      "publishedTime": "2015-02-23T08:30:43.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 1676,
+      "hash": "sha256-KcgHHDUQu+7WZbg+nTlpufL7Ocq0XzQ8UzlakJL5L0Y=",
+      "publishedTime": "2015-02-27T12:57:42.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 1689,
+      "hash": "sha256-y2p2sIbvmesWqTHwPXL0/cqxwmV7J3zyQX6bdyTYnWs=",
+      "publishedTime": "2015-04-07T16:02:24.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.3.0": {
+      "bytes": 1662,
+      "hash": "sha256-Hb5hLThg2hCIiHU+Hjt+uJ6XISnbvOc6LMuS+DqMtsY=",
+      "publishedTime": "2015-07-22T19:19:13.0Z",
+      "ref": "v0.3.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "dysinger",
+    "githubRepo": "purescript-winston"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1995,
+      "hash": "sha256-SLlvidpCzUBHlGErt9wFugqUzCHGdADAmne0MY7EvGM=",
+      "publishedTime": "2014-12-13T03:40:30.0Z",
+      "ref": "0.1.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -5,8 +5,8 @@
   },
   "published": {
     "1.0.0": {
-      "bytes": 27552,
-      "hash": "sha256-ICs4nUO+FUEhYFoVPuH+w5x+iAm4wnwrbdjyttlYriI=",
+      "bytes": 21418,
+      "hash": "sha256-ak7L5GmXvPCQSyfdovEmaCfIzc1Q+K4UE248yat9wB4=",
       "publishedTime": "2022-05-07T05:02:51.0Z",
       "ref": "v1.0.0"
     }

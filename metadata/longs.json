@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "zapph",
+    "githubRepo": "purescript-longs"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 7966,
+      "hash": "sha256-240Ob3JuInpxWh7iCnuDTv2N74UJaPMHtVz7YMdpr+A=",
+      "publishedTime": "2019-02-26T04:58:11.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 8018,
+      "hash": "sha256-AUceUkw0rIFDce4FeBPTZZ8DVKsBILEQQJFr7fQjch0=",
+      "publishedTime": "2019-02-26T05:11:23.0Z",
+      "ref": "v0.1.1"
+    }
+  },
+  "unpublished": {}
+}

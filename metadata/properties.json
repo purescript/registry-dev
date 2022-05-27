@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "Risto-Stevcev",
+    "githubRepo": "purescript-properties"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2814,
+      "hash": "sha256-5nEbhfMxm/jQeQ4sfOki1BuwV7vDx7tNAiqlqVIoXvk=",
+      "publishedTime": "2017-08-20T17:26:47.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 2941,
+      "hash": "sha256-rpz7vUU0DkMipK05Iq0T/3uYluHGWRpscZ74jpNLJnE=",
+      "publishedTime": "2017-08-20T17:31:29.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

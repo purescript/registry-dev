@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "ethul",
+    "githubRepo": "purescript-freearr"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1443,
+      "hash": "sha256-hL2VFiy361CGdQvE67iKa8Fy+U3sHC/sypTQfaqYo3A=",
+      "publishedTime": "2016-12-05T01:14:48.0Z",
+      "ref": "0.1.0"
+    }
+  },
+  "unpublished": {}
+}

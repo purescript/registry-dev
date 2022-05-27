@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "tlewowski",
+    "githubRepo": "purescript-prng"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 2369,
+      "hash": "sha256-+0kInCbixZ7pENHXLN0VvZy87K498C3iY6Wkr8PHlkI=",
+      "publishedTime": "2016-12-01T23:23:37.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.1.0": {
+      "bytes": 3558,
+      "hash": "sha256-xEopYb5O7/Z2Hnkuy2NzlVxhbm1zOjw2rv2r3cdl2ZA=",
+      "publishedTime": "2016-12-03T16:51:11.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

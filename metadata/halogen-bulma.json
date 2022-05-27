@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "ersocon",
+    "githubRepo": "purescript-halogen-bulma"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2239,
+      "hash": "sha256-F2Y8+rYG0ec70n+H5xcB8kU7Q8Miq2KE4KYYZNMyijo=",
+      "publishedTime": "2018-09-20T20:11:59.0Z",
+      "ref": "1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 2412,
+      "hash": "sha256-GVSXKpJgYPQhtT063eYZOD3SatlZZZ/d+Jikfyp71Yc=",
+      "publishedTime": "2018-11-24T13:33:02.0Z",
+      "ref": "1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 2440,
+      "hash": "sha256-WnCptEySga1hhU+BBObLo6oW6EYrO86w/42vJt21lzE=",
+      "publishedTime": "2018-11-29T18:16:46.0Z",
+      "ref": "v1.0.2"
+    },
+    "1.0.3": {
+      "bytes": 2461,
+      "hash": "sha256-pSFU/ZtYJUboi1JWvSzmk85Sq7aKa9H9p+pzlJA8J7Y=",
+      "publishedTime": "2019-02-09T07:59:54.0Z",
+      "ref": "v1.0.3"
+    }
+  },
+  "unpublished": {}
+}

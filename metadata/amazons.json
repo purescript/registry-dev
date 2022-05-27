@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "Forensor",
+    "githubRepo": "purescript-amazons"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 7561,
+      "hash": "sha256-4M50kg3jQRrivISg5AwbV+zlJIp4+zA7G4KGekpVMA0=",
+      "publishedTime": "2022-01-12T21:47:00.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 7843,
+      "hash": "sha256-ZikrTEv6iJ24BBUmg3pPlOPf1NkCfDYP4xsHpAx/agQ=",
+      "publishedTime": "2022-01-14T20:06:51.0Z",
+      "ref": "v1.0.1"
+    }
+  },
+  "unpublished": {}
+}

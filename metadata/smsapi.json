@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "adamczykm",
+    "githubRepo": "purescript-smsapi"
+  },
+  "published": {
+    "0.1.1": {
+      "bytes": 2353,
+      "hash": "sha256-BlehCIkK6T+AZdQM9L0uXti+htsvOMDExTm3kornsEM=",
+      "publishedTime": "2018-10-09T13:11:06.0Z",
+      "ref": "v0.1.1"
+    }
+  },
+  "unpublished": {}
+}

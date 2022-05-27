@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "rnons",
+    "githubRepo": "purescript-html-parser-halogen"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3537,
+      "hash": "sha256-2CIjnzPMC9zq6oQfEvNNop/qIev8N6WBiA0+xN7Xj30=",
+      "publishedTime": "2018-04-11T02:39:42.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 3680,
+      "hash": "sha256-4WqQEO237aw6yAzSI10CBxhcd0R7A/gTbCX9gb3KtzE=",
+      "publishedTime": "2018-04-11T04:50:04.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 3664,
+      "hash": "sha256-RK4oKXLhI8jaNmmRvV/KNqJkrmC6XmQss9EphCD5juM=",
+      "publishedTime": "2018-06-12T02:59:53.0Z",
+      "ref": "v0.3.0"
+    },
+    "1.0.0": {
+      "bytes": 4129,
+      "hash": "sha256-uwSTpOKMeN7do9SYq4Xl/UWb8fQNal/Y0w3onPF0QhU=",
+      "publishedTime": "2021-07-25T10:44:00.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.1.0": {
+      "bytes": 4530,
+      "hash": "sha256-2QopOHuhs88Ib32b2Ku5hRaWD06x+0EJNKgK0SNCaqM=",
+      "publishedTime": "2021-10-10T01:44:27.0Z",
+      "ref": "v1.1.0"
+    }
+  },
+  "unpublished": {}
+}

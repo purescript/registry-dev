@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "justinwoo",
+    "githubRepo": "purescript-simple-json-utils"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1907,
+      "hash": "sha256-Ei65sAtSMyvugMh3KuIPsoOTlnYYY02k4k1d1dddJr8=",
+      "publishedTime": "2019-04-24T07:41:06.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

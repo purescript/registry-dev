@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "freqlabs",
+    "githubRepo": "purescript-random-words"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 1472,
+      "hash": "sha256-QKaH3stSXWKxm5A+a7MlHQgJNdjFLbVwL25Q3wbC0Fw=",
+      "publishedTime": "2018-01-27T06:51:03.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

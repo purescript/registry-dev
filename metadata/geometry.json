@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "Fresheyeball",
+    "githubRepo": "purescript-geometry"
+  },
+  "published": {
+    "0.0.0": {
+      "bytes": 3059,
+      "hash": "sha256-WSLSfXFOPCPW6ZDy2BGRRNJpgQEYvZB6BqSTgTgx/dA=",
+      "publishedTime": "2014-10-29T04:29:09.0Z",
+      "ref": "v0.0.0"
+    },
+    "0.0.1": {
+      "bytes": 3027,
+      "hash": "sha256-fTxn+bm8P+axXdZ7MHbG1wRnopzq0ancuvoo7Y3oLmc=",
+      "publishedTime": "2014-10-30T01:56:26.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 6166,
+      "hash": "sha256-jsWIORmvWnj7KfoTRQWZlsicVebfVAKydsTDFdSPPrM=",
+      "publishedTime": "2014-11-03T15:50:31.0Z",
+      "ref": "v0.0.2"
+    }
+  },
+  "unpublished": {}
+}

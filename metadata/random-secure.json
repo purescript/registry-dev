@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "TinkerTravel",
+    "githubRepo": "purescript-random-secure"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 1720,
+      "hash": "sha256-Lscyag6DYEItUdurg6cEjrl2SMBGwi0q3P58tkiUXNs=",
+      "publishedTime": "2017-02-09T10:01:11.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 1705,
+      "hash": "sha256-wiakAnQ0yxUHw0gprTJb1LRWhRZIwO/W6PPljY8p/J0=",
+      "publishedTime": "2017-02-10T10:46:05.0Z",
+      "ref": "v2.0.0"
+    }
+  },
+  "unpublished": {}
+}

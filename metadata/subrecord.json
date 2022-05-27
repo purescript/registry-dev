@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "rubenpieters",
+    "githubRepo": "purescript-subrecord"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4351,
+      "hash": "sha256-Df1TtPgNuNJ3+uz23T/PKFO6wSFtkuxZLtFquvK/Djg=",
+      "publishedTime": "2018-03-02T19:38:16.0Z",
+      "ref": "0.1.0"
+    }
+  },
+  "unpublished": {}
+}
