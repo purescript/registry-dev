@@ -60,8 +60,11 @@ main = Aff.launchAff_ do
     disabledPackages = Map.fromFoldable
       -- [UNFIXABLE] This is a special package that should never be uploaded.
       [ mkDisabled "purescript" "purescript-metadata"
-      -- [UNFIXABLE] This package has no version with a src directory
+      -- [UNFIXABLE] These packages have no version with a src directory
       , mkDisabled "ethul" "purescript-bitstrings"
+      , mkDisabled "paulyoung" "purescript-purveyor"
+      , mkDisabled "paulyoung" "purescript-styled-components"
+      , mkDisabled "paulyoung" "purescript-styled-system"
       ]
       where
       mkDisabled owner repo =
@@ -75,6 +78,7 @@ main = Aff.launchAff_ do
       -- [UNFIXABLE] These have no src directory.
       "concur-core", "0.3.9" -> Nothing
       "concur-react", "0.3.9" -> Nothing
+      "pux-devtool", "5.0.0" -> Nothing
       _, _ -> Just manifestFields
 
     availablePackages = Array.mapMaybe excludeVersion sortedPackages
@@ -96,9 +100,11 @@ main = Aff.launchAff_ do
     let
       disabled { name } = isJust $ Map.lookup name disabledPackages
       wasPackageUploaded { name, version } = API.isPackageVersionInMetadata name version packagesMetadata
-      packagesToUpload = Array.filter (not wasPackageUploaded && not disabled) availablePackages
+      packagesToUpload = Array.filter (\package -> not (wasPackageUploaded package || disabled package)) availablePackages
 
-    for_ packagesToUpload \manifest -> do
+    -- We need to use `for` here instead of `for_`, because the `Foldable` class
+    -- isn't stack-safe.
+    void $ for packagesToUpload \manifest -> do
       let
         addition = Addition
           { newPackageLocation: manifest.location
