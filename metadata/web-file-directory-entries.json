@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "xc-jp",
+    "githubRepo": "purescript-web-file-directory-entries"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5085,
+      "hash": "sha256-/xNkrHZ2qWTbjGNvUfywFcN96AVbaZALibnsAGtI9Lw=",
+      "publishedTime": "2021-02-15T09:25:53.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "bodil",
+    "githubRepo": "purescript-pux-smolder-dom"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 1840,
+      "hash": "sha256-NlYNwfH0gDyXoCm9aEctzweEcCH91PuybO81fYYDmWE=",
+      "publishedTime": "2017-09-18T14:03:41.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

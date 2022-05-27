@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "corajr",
+    "githubRepo": "purescript-neo4j"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 6035,
+      "hash": "sha256-RJ0606JuVdzcCef/FFHi/e+qKEEe4jsOxOruU+z/L3Y=",
+      "publishedTime": "2016-07-29T15:31:01.0Z",
+      "ref": "0.1.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "justinwoo",
+    "githubRepo": "purescript-redux-devtools"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3265,
+      "hash": "sha256-H5Aj5jkVyGxeMwxZPhQFYMq+S0rgdW5bEC3w1xKyQ94=",
+      "publishedTime": "2018-09-08T04:50:52.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

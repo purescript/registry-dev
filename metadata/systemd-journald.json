@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "paluh",
+    "githubRepo": "purescript-systemd-journald"
+  },
+  "published": {
+    "0.1.1": {
+      "bytes": 3797,
+      "hash": "sha256-P7bxbFzT3vz1rvJBGfUJkf4y5omqkBBgIG6H5/e9fec=",
+      "publishedTime": "2017-11-28T17:18:33.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.3": {
+      "bytes": 3778,
+      "hash": "sha256-8wTHc1ZEB+51y1n5YI4C1o0fZ/SemYm5VLswTzxwsDs=",
+      "publishedTime": "2017-11-28T21:00:49.0Z",
+      "ref": "v0.1.3"
+    },
+    "0.2.0": {
+      "bytes": 3736,
+      "hash": "sha256-xZmhky3IjXqgtNTTiVMR8VklFiweutaO+HBzQwxQk4c=",
+      "publishedTime": "2018-07-15T19:03:53.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 3725,
+      "hash": "sha256-POGs6U4fpYpZgOa25G1ijWfbPyFA15pW3kCY8uc10qs=",
+      "publishedTime": "2019-08-29T14:59:18.0Z",
+      "ref": "v0.2.1"
+    }
+  },
+  "unpublished": {}
+}

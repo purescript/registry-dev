@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "Risto-Stevcev",
+    "githubRepo": "purescript-filterables"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2060,
+      "hash": "sha256-g8e7+TnJpt3P3G4NcFq9f7k3mUFtPiNrr6tf0pSgtck=",
+      "publishedTime": "2017-08-28T07:08:42.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

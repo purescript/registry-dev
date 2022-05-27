@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "bramblex",
+    "githubRepo": "purescript-stringcolors"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2450,
+      "hash": "sha256-RSRAZhV1vDLeC7JjhLFiYKY6VClAN6n0NyTx2y4sStY=",
+      "publishedTime": "2016-05-06T02:35:33.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 2941,
+      "hash": "sha256-QFtT9AYUJNe7KLporQB0IY4OJIZaCJETK/CxsYfmg1Q=",
+      "publishedTime": "2016-05-06T04:11:29.0Z",
+      "ref": "v0.1.1"
+    }
+  },
+  "unpublished": {}
+}

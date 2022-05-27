@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "sigilion",
+    "githubRepo": "purescript-run-halogen"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3877,
+      "hash": "sha256-MEyHz1ljOlVNqx5Sv9ZHHI1rcr58j+M5XgcS/EoZxAU=",
+      "publishedTime": "2020-08-06T17:58:13.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

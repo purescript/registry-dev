@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "cprussin",
+    "githubRepo": "purescript-node-stream-buffers"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2596,
+      "hash": "sha256-cJtJq+saguawAVlEnj4wYNWsaJdeZ9Hw+Z2TFV8H/lM=",
+      "publishedTime": "2017-07-10T07:14:48.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 2609,
+      "hash": "sha256-86NiQhfcXaaVb2oCyRBFtl8At5mw0Yug0rB+NWbQyLA=",
+      "publishedTime": "2017-07-10T18:32:27.0Z",
+      "ref": "v0.1.1"
+    }
+  },
+  "unpublished": {}
+}

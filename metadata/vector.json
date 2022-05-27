@@ -1,0 +1,69 @@
+{
+  "location": {
+    "githubOwner": "mgmeier",
+    "githubRepo": "purescript-vector"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 3052,
+      "hash": "sha256-gLwr+jtIiRmgZFjhKE9FSuzWDQFxg5BuosFE/Bfp57s=",
+      "publishedTime": "2016-07-07T15:12:14.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 3051,
+      "hash": "sha256-q7nRFFimerPSaSNmML6HYF5/ngxuwVaGPaFIYV16rN4=",
+      "publishedTime": "2016-07-07T15:40:26.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.3": {
+      "bytes": 3056,
+      "hash": "sha256-DnC1dgZXrFcdo53QK7S/yB/fr1C7lxFgocZgMlhPfx8=",
+      "publishedTime": "2016-09-30T10:51:38.0Z",
+      "ref": "v1.0.3"
+    },
+    "1.0.4": {
+      "bytes": 3046,
+      "hash": "sha256-cyiqmm+aH0ULVHayxYNPaSAchH+vrRhD9uLvEbLaPUU=",
+      "publishedTime": "2016-09-30T10:58:04.0Z",
+      "ref": "v1.0.4"
+    },
+    "1.0.5": {
+      "bytes": 3047,
+      "hash": "sha256-9nqCUhm9WTzJmuxt9cmuufh0BnC9DugkBlQ4WZKIzzY=",
+      "publishedTime": "2016-09-30T11:04:59.0Z",
+      "ref": "v1.0.5"
+    },
+    "1.0.6": {
+      "bytes": 3051,
+      "hash": "sha256-mEm0bmVSa8H+fB9xxXefG1LXK/sYL08uR2Kb8GqxbNU=",
+      "publishedTime": "2016-09-30T11:09:05.0Z",
+      "ref": "v1.0.6"
+    },
+    "1.0.7": {
+      "bytes": 3051,
+      "hash": "sha256-FAinx2dYW3tMZZ/VXq0l3asnWwMYyY0dlRljhYQWJNg=",
+      "publishedTime": "2016-09-30T11:18:05.0Z",
+      "ref": "v1.0.7"
+    },
+    "1.1.0": {
+      "bytes": 3045,
+      "hash": "sha256-2nZGaV00cjGVRm3XR1LlVblL5b+oCiQomN9gyX59eO0=",
+      "publishedTime": "2016-10-19T10:12:12.0Z",
+      "ref": "v1.1.0"
+    },
+    "1.2.0": {
+      "bytes": 3044,
+      "hash": "sha256-VHfUsikxxLxUrllyzcDP1CPpfoZxJ/ttmgxfyPQwUok=",
+      "publishedTime": "2017-01-16T14:58:30.0Z",
+      "ref": "v1.2.0"
+    },
+    "2.0.0": {
+      "bytes": 3033,
+      "hash": "sha256-nsjG/5A85UTgaS8EmKTE8dfQ+abyRjQ9LUAuVerJq9M=",
+      "publishedTime": "2017-04-28T13:58:48.0Z",
+      "ref": "v2.0.0"
+    }
+  },
+  "unpublished": {}
+}

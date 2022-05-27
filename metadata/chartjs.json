@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "benkolera",
+    "githubRepo": "purescript-chartjs"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2212,
+      "hash": "sha256-uuXea9/02P/P+wdxyXrkw5JtZAbo58m3jb4FMpZlOhI=",
+      "publishedTime": "2015-01-18T05:17:38.0Z",
+      "ref": "0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 4176,
+      "hash": "sha256-2eRhQHzjlrC9cXZaO26CDbbix6JYW5CJ8GY9T94lT78=",
+      "publishedTime": "2015-01-18T07:51:23.0Z",
+      "ref": "0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 4222,
+      "hash": "sha256-N9pCfaXKsBPjtIPftf2nufMXtsm931kqk+nFZz96PWU=",
+      "publishedTime": "2015-01-18T08:09:43.0Z",
+      "ref": "0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 4601,
+      "hash": "sha256-Dgk1DJeQ6RhWoEDTb5gAxQyw2kPXViBxOBaCqt3RR3w=",
+      "publishedTime": "2015-01-18T11:33:54.0Z",
+      "ref": "0.4.0"
+    }
+  },
+  "unpublished": {}
+}

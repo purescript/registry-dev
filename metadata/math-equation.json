@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "athanclark",
+    "githubRepo": "purescript-math-equation"
+  },
+  "published": {
+    "0.0.0": {
+      "bytes": 7319,
+      "hash": "sha256-GR1Fi/McTE0/i/paXdsEneMZAeUHZA/DbZI04khDwjE=",
+      "publishedTime": "2019-03-04T01:04:07.0Z",
+      "ref": "v0.0.0"
+    },
+    "0.0.1": {
+      "bytes": 7296,
+      "hash": "sha256-u/kEPyGKZxncPPjZlqVvcQ462ncVooJ4dNOmnvFd3JM=",
+      "publishedTime": "2020-03-14T03:46:11.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

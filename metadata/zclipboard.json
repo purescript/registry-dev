@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "slamdata",
+    "githubRepo": "purescript-zclipboard"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5492,
+      "hash": "sha256-GS65INpHuJl9MFw3YdVU43Lot6KvaFx05nGVTRIBB0Y=",
+      "publishedTime": "2015-04-16T19:19:49.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.3.0": {
+      "bytes": 5635,
+      "hash": "sha256-Qk+lH4budGtrLRVIwnTI2aZ9xT2bQ8T+D4xEpGzthY4=",
+      "publishedTime": "2015-10-01T22:47:25.0Z",
+      "ref": "v0.3.0"
+    },
+    "1.0.0": {
+      "bytes": 5585,
+      "hash": "sha256-wdJEKoQPC3m0STwfEREAwOWBGqzyrVMQkbDJTTRfHBQ=",
+      "publishedTime": "2016-07-19T20:33:18.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 5613,
+      "hash": "sha256-ir3YE0bg1eyqgyCaU71ap80wAcCrCog2vZs/hh7DSrg=",
+      "publishedTime": "2016-07-19T20:37:30.0Z",
+      "ref": "v1.0.1"
+    },
+    "2.0.0": {
+      "bytes": 5621,
+      "hash": "sha256-ri/FaCNHHPyNEdAcXp528EBw1xNb9Z/04fb8Rzr+IBc=",
+      "publishedTime": "2016-07-31T14:01:33.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 5626,
+      "hash": "sha256-REl/r+a2iCNkiHr0lHSe8LCp0jYpilds4dlhlzfrQoI=",
+      "publishedTime": "2016-11-03T15:27:44.0Z",
+      "ref": "v3.0.0"
+    }
+  },
+  "unpublished": {}
+}

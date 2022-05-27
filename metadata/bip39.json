@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "athanclark",
+    "githubRepo": "purescript-bip39"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 1859,
+      "hash": "sha256-HstuXvhQ+ltj0Tpdy88bbh3oKqYqQUTcr5xayxJTFGE=",
+      "publishedTime": "2017-08-25T16:33:08.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 1902,
+      "hash": "sha256-0FRtVMMkeZpYt2tvnYn1Y1Gu6oiSTn+TnYP7ugUj7/0=",
+      "publishedTime": "2017-08-25T16:34:39.0Z",
+      "ref": "v0.0.2"
+    },
+    "1.0.0": {
+      "bytes": 1891,
+      "hash": "sha256-25sT7yFJmEXTFdJBV1F4BJlvM8UTTvsUeODJ5y0ayCE=",
+      "publishedTime": "2018-10-26T02:06:33.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 3235,
+      "hash": "sha256-6VMbK1ACDNB3AZRjtqbpoq849M1Ey4GcNA6FXkleZyE=",
+      "publishedTime": "2020-04-29T23:47:29.0Z",
+      "ref": "v1.0.1"
+    }
+  },
+  "unpublished": {}
+}

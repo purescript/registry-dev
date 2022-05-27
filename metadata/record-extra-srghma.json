@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "srghma",
+    "githubRepo": "purescript-record-extra-srghma"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 5290,
+      "hash": "sha256-ckyVSxoHb/V51GFaBZT8/ffWZQdRV6Y4zogOS33un1M=",
+      "publishedTime": "2021-04-28T08:09:35.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

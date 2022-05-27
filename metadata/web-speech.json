@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "dirkz",
+    "githubRepo": "purescript-web-speech"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 9981,
+      "hash": "sha256-Rob7KBJLeLBZKtqa3o0muM3AZdZ+vsVu4Fg1ask5phw=",
+      "publishedTime": "2021-12-14T09:48:12.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 9998,
+      "hash": "sha256-J3Ug532rTha4OCwcE6KHWMXgGlkJ7DRiz6otjrS5fVU=",
+      "publishedTime": "2021-12-14T13:29:13.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 10984,
+      "hash": "sha256-B+yBI1c/Jy5TmYZqwSojDfL3u+BxEkPxDT4Zyu6Gvoc=",
+      "publishedTime": "2021-12-27T08:47:06.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

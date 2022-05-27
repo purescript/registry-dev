@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "tdammers",
+    "githubRepo": "purescript-leaflet-tdammers"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 3257,
+      "hash": "sha256-AK0lHitzdxAxYWHdByfVo/lkOy79ooe/yW256sPeAc0=",
+      "publishedTime": "2017-04-10T09:45:13.0Z",
+      "ref": "0.0.1"
+    },
+    "0.0.3": {
+      "bytes": 3294,
+      "hash": "sha256-n5fZB3GxkiQlyS/wWYCEkk78APTRvIp4rTfNWRVQ2kA=",
+      "publishedTime": "2017-04-21T13:41:06.0Z",
+      "ref": "v0.0.3"
+    },
+    "0.0.4": {
+      "bytes": 3291,
+      "hash": "sha256-SGjTgBwOvh+KaSPFNVjXaW41dQEzRomyDM4tbvm4/rk=",
+      "publishedTime": "2017-04-22T13:05:26.0Z",
+      "ref": "v0.0.4"
+    },
+    "0.1.0": {
+      "bytes": 4139,
+      "hash": "sha256-uEkVJRS4JbWlyFWCQNA7xSyFI/nWs/ftCNCdiI10gHo=",
+      "publishedTime": "2017-04-24T15:49:22.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 5831,
+      "hash": "sha256-0BIgCedR0jd6/mwaFHegeGGHj241ZlJ0bqcVdyRPS94=",
+      "publishedTime": "2017-04-25T10:45:07.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 7599,
+      "hash": "sha256-jp/TzUmZmXogtpzTnYEYlfnPBVvK/Jgg2e4tJXH5LsA=",
+      "publishedTime": "2017-05-03T10:37:48.0Z",
+      "ref": "v0.3.0"
+    }
+  },
+  "unpublished": {}
+}

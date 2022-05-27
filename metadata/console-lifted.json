@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "matthewleon",
+    "githubRepo": "purescript-console-lifted"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 1595,
+      "hash": "sha256-LJPKZ+RZW5yOCdcs7BJrX7jmDRNIh2REnbRCAxSBdYs=",
+      "publishedTime": "2018-04-11T23:23:05.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "felixschl",
+    "githubRepo": "purescript-redux-saga"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3457,
+      "hash": "sha256-BVNcPIErPR53lHuoDF1VskyYVzxvriPqyh9Pg6f8oxw=",
+      "publishedTime": "2017-09-26T04:17:48.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "philzook58",
+    "githubRepo": "purescript-propel"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 4727,
+      "hash": "sha256-V2YJKVmFaOO/1dl1ewOHEnfuf/+sUrBkIq0R+3ZdZLo=",
+      "publishedTime": "2018-03-07T23:46:40.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "justinwoo",
+    "githubRepo": "purescript-calpis"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3612,
+      "hash": "sha256-ZjtMkRgP43m6pVSwVXGa0yLWt3VbBv2fbm+IQlyH/s0=",
+      "publishedTime": "2019-12-12T02:35:22.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 3608,
+      "hash": "sha256-WXl2l9r3rE+5l4otlSduyO71IYckbNNixirmU5Se4js=",
+      "publishedTime": "2019-12-21T02:32:58.0Z",
+      "ref": "v0.2.0"
+    }
+  },
+  "unpublished": {}
+}

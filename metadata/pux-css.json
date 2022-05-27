@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "alexmingoia",
+    "githubRepo": "pux-css"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 1296,
+      "hash": "sha256-BDkxNZvKHAPRDX5d8Pqtdy+pmPeLUN3qiwA3kYFUegM=",
+      "publishedTime": "2016-04-21T20:40:24.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

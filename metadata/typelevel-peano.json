@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "csicar",
+    "githubRepo": "purescript-typelevel-peano"
+  },
+  "published": {
+    "1.0.1": {
+      "bytes": 11438,
+      "hash": "sha256-uAc2TpLzITg1j347sMO2NNT/DQ9QQL19ZlI+Zj9FQr8=",
+      "publishedTime": "2021-03-02T22:27:31.0Z",
+      "ref": "v1.0.1"
+    }
+  },
+  "unpublished": {}
+}

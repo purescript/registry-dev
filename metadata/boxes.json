@@ -1,0 +1,51 @@
+{
+  "location": {
+    "githubOwner": "cdepillabout",
+    "githubRepo": "purescript-boxes"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 6496,
+      "hash": "sha256-debEfLii5hrBioXfU1uYtxVy0cyNPUk87F6ju4S9G4Y=",
+      "publishedTime": "2019-05-21T16:08:30.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 6477,
+      "hash": "sha256-GpvQKWnh9t0AgisMQebVeBRsB2vVmJxDqolisDSsLzg=",
+      "publishedTime": "2019-05-21T16:21:25.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 6480,
+      "hash": "sha256-d2W2gi70SDuq+CiH8G6pAUCjBUoeFvTicLWmrD4spGY=",
+      "publishedTime": "2019-09-03T20:55:25.0Z",
+      "ref": "v1.0.2"
+    },
+    "2.0.0": {
+      "bytes": 6474,
+      "hash": "sha256-tHFbAJvcbSCfZbxfqL80j348Y65bIBf5qRYd1aFNPCc=",
+      "publishedTime": "2019-09-03T21:01:34.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.0.1": {
+      "bytes": 6483,
+      "hash": "sha256-ud1FuZ2nH9tMt61dfQ3xzdPNbSXod0AFP6pk6z7vm+s=",
+      "publishedTime": "2019-09-04T16:26:28.0Z",
+      "ref": "v2.0.1"
+    },
+    "2.0.2": {
+      "bytes": 7470,
+      "hash": "sha256-eTLkkOR9pZ/hQygUT2u+vEG3iOpUdgJ4gKGyJxKuZs8=",
+      "publishedTime": "2022-02-02T13:12:12.0Z",
+      "ref": "v2.0.2"
+    },
+    "2.1.0": {
+      "bytes": 7655,
+      "hash": "sha256-f9bQgG09+bQ8+2HyWDVwsGysK2zehcoEs5dbcYLxCu4=",
+      "publishedTime": "2022-02-02T14:40:06.0Z",
+      "ref": "v2.1.0"
+    }
+  },
+  "unpublished": {}
+}

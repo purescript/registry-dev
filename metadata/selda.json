@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "Kamirus",
+    "githubRepo": "purescript-selda"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 13929,
+      "hash": "sha256-7z9GwITLTLGYT7Okr7SLAe0bVJrQvsj/FIqUVo6F8WY=",
+      "publishedTime": "2019-10-18T10:54:30.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

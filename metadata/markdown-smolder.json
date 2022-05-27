@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "alexmingoia",
+    "githubRepo": "purescript-markdown-smolder"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2669,
+      "hash": "sha256-9Ep/g6RKi4hSXRnsKT/OLnGduS4mn4z0NeY0EjDd8Nk=",
+      "publishedTime": "2016-12-29T01:58:40.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.1.0": {
+      "bytes": 3040,
+      "hash": "sha256-0lYvw0hTyJDAcAk6uVpa84FFlcg4tdnJip8hXaYPzjk=",
+      "publishedTime": "2016-12-29T03:50:02.0Z",
+      "ref": "v1.1.0"
+    },
+    "1.2.0": {
+      "bytes": 3232,
+      "hash": "sha256-1bR4IJyWAfP1tXKWEUFlNA4D8W+50MmsqNSVIVH2Tjw=",
+      "publishedTime": "2016-12-30T06:32:17.0Z",
+      "ref": "v1.2.0"
+    },
+    "1.3.0": {
+      "bytes": 3283,
+      "hash": "sha256-ezvorh5AfJrmi3G8BYdagRRRxBCpo04GeCMzo4mx3cg=",
+      "publishedTime": "2016-12-30T20:46:13.0Z",
+      "ref": "v1.3.0"
+    }
+  },
+  "unpublished": {}
+}

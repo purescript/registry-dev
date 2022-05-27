@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "purescript-codegen",
+    "githubRepo": "purescript-ps-cst"
+  },
+  "published": {
+    "1.2.0": {
+      "bytes": 21770,
+      "hash": "sha256-HlG50k1Mjv2uDFYRt8XO6zhIpH4xBeoqICOU5X8lyuw=",
+      "publishedTime": "2021-04-28T07:58:10.0Z",
+      "ref": "v1.2.0"
+    }
+  },
+  "unpublished": {}
+}

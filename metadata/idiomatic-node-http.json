@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "bklaric",
+    "githubRepo": "purescript-idiomatic-node-http"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 14459,
+      "hash": "sha256-j4RhCP1nSdy4FhNeLaPfB8vQuSaxnt64sUFW4y3K1dA=",
+      "publishedTime": "2018-04-22T13:29:44.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 14643,
+      "hash": "sha256-98rqqi29Trtn7m0Ra4ywwB6NZemWbtjMrqSoPnDTgg0=",
+      "publishedTime": "2018-05-13T16:22:14.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 14648,
+      "hash": "sha256-EHh3/azm8kFHtimFlAKbXpWHcXEK+IBYVZqxF/Gcj7I=",
+      "publishedTime": "2018-05-13T17:04:39.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.3.0": {
+      "bytes": 14662,
+      "hash": "sha256-z5OqOEntbV4ILrPz0/rL7skwkRnn3z0RU+k7ye2xThg=",
+      "publishedTime": "2018-06-11T21:45:28.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 14949,
+      "hash": "sha256-qfaWGwJ+rSse/RzOYjEh2apbDjca8cciQvz/oTtFMI0=",
+      "publishedTime": "2018-07-19T19:07:15.0Z",
+      "ref": "v0.4.0"
+    },
+    "0.4.1": {
+      "bytes": 3743,
+      "hash": "sha256-J2/eMlxkL/hWDvGeAqKqRvNMX3sajgv9jivyVY4UC0E=",
+      "publishedTime": "2019-03-24T14:37:46.0Z",
+      "ref": "v0.4.1"
+    }
+  },
+  "unpublished": {}
+}
