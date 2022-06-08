@@ -202,5 +202,6 @@
   "purescript-node-streams-aff": "https://github.com/jamesdbrock/purescript-node-streams-aff.git",
   "purescript-lp": "https://github.com/gbagan/purescript-lp.git",
   "purescript-jelly": "https://github.com/yukikurage/purescript-jelly.git",
-  "purescript-fahrtwind": "https://github.com/rowtype-yoga/purescript-fahrtwind.git"
+  "purescript-fahrtwind": "https://github.com/rowtype-yoga/purescript-fahrtwind.git",
+  "purescript-web-intersection-observer": "https://github.com/purescript-web/purescript-web-intersection-observer.git"
 }
