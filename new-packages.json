@@ -204,5 +204,6 @@
   "purescript-jelly": "https://github.com/yukikurage/purescript-jelly.git",
   "purescript-fahrtwind": "https://github.com/rowtype-yoga/purescript-fahrtwind.git",
   "purescript-web-intersection-observer": "https://github.com/purescript-web/purescript-web-intersection-observer.git",
-  "purescript-node-buffer-blob": "https://github.com/purescript-node/purescript-node-buffer-blob.git"
+  "purescript-node-buffer-blob": "https://github.com/purescript-node/purescript-node-buffer-blob.git",
+  "purescript-node-fetch": "https://github.com/sigma-andex/purescript-node-fetch.git"
 }
