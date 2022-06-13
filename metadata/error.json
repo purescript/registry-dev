@@ -21,6 +21,12 @@
       "hash": "sha256-IFvNZdNt3Wv4WTUgN+GWXBxyjPUS2cFpSaJdn9tsLZo=",
       "publishedTime": "2019-03-24T14:07:28.0Z",
       "ref": "v1.0.2"
+    },
+    "2.0.0": {
+      "bytes": 13751,
+      "hash": "sha256-4Ar/F0lTEgF1TYRrFkm1R8CTotwFWap9z+9jjDs2y/I=",
+      "publishedTime": "2022-06-11T13:58:09.0Z",
+      "ref": "v2.0.0"
     }
   },
   "unpublished": {}

@@ -21,6 +21,12 @@
       "hash": "sha256-wp/EK+F9gE/1IK23bn6hUiZexzJzv37oGqyJ9lOnN4U=",
       "publishedTime": "2019-03-24T14:32:11.0Z",
       "ref": "v1.0.2"
+    },
+    "2.0.0": {
+      "bytes": 13551,
+      "hash": "sha256-DWKEdF2e1FXYRo9ND12nJJJSNKzBC01ESQx85yQ9Ha8=",
+      "publishedTime": "2022-06-11T13:43:05.0Z",
+      "ref": "v2.0.0"
     }
   },
   "unpublished": {}
