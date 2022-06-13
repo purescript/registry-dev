@@ -167,11 +167,35 @@ The package sets version number can be used to determine if it is safe for your 
 2. The minor version is incremented when new packages are added to the package set, or when there was a minor version update in the package set.
 3. The patch version is incremented when a patch version was updated in the package set.
 
-#### Package Set Release Schedule
+#### Package Sets Release Schedule
 
-Package sets are automatically released once per day if any packages in the set changed. If no packages were changed, there will not be a release that day. 
+PureScript package sets are released once per day if there have been any changes (one or more packages has been added, removed, or updated). Most package set releases are automated, but there are various scenarios in which the PureScript packaging team (@purescript/packaging) must manually intervene to resolve conflicts. It is possible for there to be multiple package sets released on the same day due to manual releases.
 
-It is possible for multiple package sets to be released in the same day. This happens when there is manual intervention in the package sets.
+#### Automatic Package Sets Process
+
+The registry attempts to produce a new package set automatically every day, so long as packages have been uploaded that could be added or updated. No packages are ever dropped from a package set automatically; the only time packages are dropped from the package sets are during manual releases.
+
+Every day, the registry CI executes the following steps:
+
+First, we read the contents of the latest package set release and gather all package versions that have been uploaded to the registry since that release. These package versions are the "batch" of packages that we are considering for automatic inclusion to the next package set.
+
+Second, we filter out any packages where, based on their metadata and manifest files alone, we know they can't be added to the package set. This happens for one of three reasons: they have a dependency that isn't in the package sets, or they had multiple releases since the last package set, in which case we only take the highest version, or c) they already have a higher version number released  in the previous package set. In any of these cases, we remove the package from consideration.
+
+Third, we attempt to add the rest of the batch of package versions to the package set. Processing the batch follows these steps:
+
+1. We install the previous package set and compile it.
+2. We attempt to upgrade all package versions from the batch at once in the package set. Once the new versions are installed, we compile the package set. If it succeeds, then we're done.
+3. If we couldn't compile the whole batch, then we order the batch first by their dependencies and then by their upload time. Packages with no dependencies on other packages in the batch go first, and ties are broken by upload time: older uploads go first. Then, we attempt to add packages to the package set one-by-one.
+4. If a package fails to compile with the rest of the package set, then it is filtered from the batch.
+5. Once there are no more packages to consider in the batch, the new package set is ready.
+
+Fourth, we release the new package set (if we could produce one). Automatic package sets follow the below versioning policy:
+
+1. If the highest SemVer upgrade in the set was a major version, then the package set increments a major version.
+2. If the highest SemVer upgrade in the set was a minor version, or any new packages were added to the package set, then the package set increments a minor version.
+3. If the highest SemVer upgrade in the set was a patch version, then the package set increments a patch version.
+
+For example, if the previous release was `2.1.1+2022-06-01-purs-0.15.2` (`2.1.1` for short), and the next day no packages changed versions but a new package was registered, the new version would be `2.2.0+2022-06-02-purs-0.15.2` (`2.2.0` for short).
 
 #### Manual Intervention in the Package Sets
 
