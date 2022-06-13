@@ -1,0 +1,69 @@
+{
+  "location": {
+    "githubOwner": "purescript-contrib",
+    "githubRepo": "purescript-fixed-points"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1460,
+      "hash": "sha256-kUuHtilFNdRsCQewNZ1UnRjC+tlYkQfhIqpIKINJ6w8=",
+      "publishedTime": "2016-01-07T21:12:39.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 1658,
+      "hash": "sha256-cKTCEzuEqM5u48MUG8YEByGuU+lC2FQwKtKt1bfZvNU=",
+      "publishedTime": "2016-04-21T18:56:23.0Z",
+      "ref": "v0.2.0"
+    },
+    "1.0.0": {
+      "bytes": 2104,
+      "hash": "sha256-MAOphjTKq2G5e8sYlpRiHVqd/nxRl3V65PrVhlfLgek=",
+      "publishedTime": "2016-07-18T20:48:10.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 2127,
+      "hash": "sha256-KwTTPV6K/oY7DzAm4Vf8mf5rqwPZi5jeFXemQNxwhnw=",
+      "publishedTime": "2016-11-03T16:50:12.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 2015,
+      "hash": "sha256-1/+jUDT2POVYr4oGsLlWYBqbcgPMq/HLNw51c28y6Z4=",
+      "publishedTime": "2017-03-06T21:19:28.0Z",
+      "ref": "v3.0.0"
+    },
+    "4.0.0": {
+      "bytes": 2051,
+      "hash": "sha256-hz7aSlN8nq0QVNRTulwtmyPeLZn8/+B0xVWlec16N68=",
+      "publishedTime": "2017-04-07T12:57:04.0Z",
+      "ref": "v4.0.0"
+    },
+    "5.0.0": {
+      "bytes": 2051,
+      "hash": "sha256-vrRl1UiS3Ss211MYY/AhLiQUU7MgA7Q6nJ6lMuJX918=",
+      "publishedTime": "2018-05-24T14:10:49.0Z",
+      "ref": "v5.0.0"
+    },
+    "5.1.0": {
+      "bytes": 2147,
+      "hash": "sha256-rC0I5zTxULjSeV7a0lrZ8gcWnyhg37lGwnMl0kDLRtk=",
+      "publishedTime": "2018-06-19T13:48:28.0Z",
+      "ref": "v5.1.0"
+    },
+    "6.0.0": {
+      "bytes": 2919,
+      "hash": "sha256-1cl17kXL1x98TbrA9zvPLyVpHphglF+yFYhDafJQbTo=",
+      "publishedTime": "2021-02-26T22:03:59.0Z",
+      "ref": "v6.0.0"
+    },
+    "7.0.0": {
+      "bytes": 2771,
+      "hash": "sha256-AOOMtv636Mf3Zt/1l8YLuqRt8c78LEjISRt3BQVbnOk=",
+      "publishedTime": "2022-04-27T21:01:53.0Z",
+      "ref": "v7.0.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "freqlabs",
+    "githubRepo": "purescript-restify-router"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 2479,
+      "hash": "sha256-MON8C9LU9Z0t6GXq6N9k7unjZOPWlQs5+NuVNPGYfmM=",
+      "publishedTime": "2018-01-15T16:03:56.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 2482,
+      "hash": "sha256-OoaXclya1wtTo+OvRFhHtJNn5RyxITS2RVkv8rB9ZOA=",
+      "publishedTime": "2018-01-15T16:27:09.0Z",
+      "ref": "v0.0.2"
+    }
+  },
+  "unpublished": {}
+}

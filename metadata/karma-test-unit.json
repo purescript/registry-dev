@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "coot",
+    "githubRepo": "purescript-karma-test-unit"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2778,
+      "hash": "sha256-WoZfWuHc5YZQ8V+6EeeRFAEebLDNEZjDV841LG+Ztl0=",
+      "publishedTime": "2017-04-05T17:54:02.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 2779,
+      "hash": "sha256-qQnA71Kxv7FcAE6aUQSVHJlpL75Yu1o3wtG92bAkflQ=",
+      "publishedTime": "2017-04-09T18:27:44.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 2779,
+      "hash": "sha256-R+oVIcavHj17TRddWKi+IUYuSg3KGVflFMrAClwZ7so=",
+      "publishedTime": "2017-04-12T22:44:18.0Z",
+      "ref": "v1.0.2"
+    },
+    "1.1.0": {
+      "bytes": 2787,
+      "hash": "sha256-jNm6+LGo/bAYQKa9zbMHNJP1CnTidFjfxde41E3j7oQ=",
+      "publishedTime": "2017-08-20T08:32:32.0Z",
+      "ref": "v1.1.0"
+    },
+    "2.0.0": {
+      "bytes": 2790,
+      "hash": "sha256-I/dxcnAxVKYe0gzt0tEWc98wlmHuNULpKcwxxthQc9M=",
+      "publishedTime": "2017-09-19T19:10:12.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 2844,
+      "hash": "sha256-Gm+Vm9IaF9BN07Qq7RYv66cni+gddl4Hla1yFK7hgNw=",
+      "publishedTime": "2018-06-30T07:04:22.0Z",
+      "ref": "v3.0.0"
+    }
+  },
+  "unpublished": {}
+}

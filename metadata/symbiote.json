@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "athanclark",
+    "githubRepo": "purescript-symbiote"
+  },
+  "published": {
+    "0.0.0": {
+      "bytes": 21130,
+      "hash": "sha256-cErZlCflnr+3nUr7fxvY3kID+EPirT60qc2RgIdk6JM=",
+      "publishedTime": "2019-10-13T19:01:35.0Z",
+      "ref": "v0.0.0"
+    }
+  },
+  "unpublished": {}
+}

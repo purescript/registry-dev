@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "kofno",
+    "githubRepo": "purescript-gm"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 6282,
+      "hash": "sha256-uYnCUqpM0iiHM1UxKm24te6iFY8m9KMHEOwZvCwWYOs=",
+      "publishedTime": "2015-11-21T04:13:08.0Z",
+      "ref": "1.0.0"
+    }
+  },
+  "unpublished": {}
+}

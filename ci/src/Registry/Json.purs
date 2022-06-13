@@ -89,7 +89,7 @@ parseJson = decode <=< Parser.jsonParser
 
 -- | Encode data as formatted JSON and write it to the provided filepath
 writeJsonFile :: forall a. RegistryJson a => FilePath -> a -> Aff Unit
-writeJsonFile path = FS.writeTextFile UTF8 path <<< printJson
+writeJsonFile path = FS.writeTextFile UTF8 path <<< (_ <> "\n") <<< printJson
 
 -- | Decode data from a JSON file at the provided filepath
 readJsonFile :: forall a. RegistryJson a => FilePath -> Aff (Either String a)
@@ -141,7 +141,7 @@ class RegistryJson a where
   encode :: a -> Core.Json
   decode :: Core.Json -> Either String a
 
-instance decodeJsonJson :: RegistryJson Core.Json where
+instance RegistryJson Core.Json where
   encode = identity
   decode = Right
 

@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "rightfold",
+    "githubRepo": "purescript-inefficiency"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 1689,
+      "hash": "sha256-QEOv3x1Ecl+2OwG60IV3DMT3OkMM6EkmEuEZaXFJYCY=",
+      "publishedTime": "2017-02-18T14:59:47.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

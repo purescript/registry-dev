@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "i-am-the-slime",
+    "githubRepo": "purescript-framer-motion"
+  },
+  "published": {
+    "0.0.5": {
+      "bytes": 12624,
+      "hash": "sha256-nzaSlJgOuf/Q2YcOQvYcUbd3VCt7MEb2VbXHGnGMN8k=",
+      "publishedTime": "2021-05-30T10:42:25.0Z",
+      "ref": "v0.0.5"
+    },
+    "0.0.6": {
+      "bytes": 14214,
+      "hash": "sha256-HGSJkP5lyp3SFtu933Twgn+Cdov9tGAMdy8ghcFdzDc=",
+      "publishedTime": "2021-05-30T17:28:45.0Z",
+      "ref": "v0.0.6"
+    },
+    "0.1.0": {
+      "bytes": 14188,
+      "hash": "sha256-JLnzRj0R9qc0WqXgrCCc09ZYNAbyZpPGQ7NGuTiLcrQ=",
+      "publishedTime": "2021-05-30T17:53:27.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

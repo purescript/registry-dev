@@ -3,21 +3,31 @@ module Registry.API where
 import Registry.Prelude
 
 import Affjax as Http
+import Affjax.RequestBody as RequestBody
+import Affjax.RequestHeader as RequestHeader
+import Affjax.ResponseFormat as ResponseFormat
+import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Except as Except
+import Data.Argonaut.Parser as Argonaut.Core
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
 import Data.DateTime as DateTime
+import Data.Foldable (traverse_)
 import Data.Generic.Rep as Generic
+import Data.HTTP.Method as Method
 import Data.Int as Int
 import Data.Interpolate (i)
 import Data.JSDate as JSDate
 import Data.Map as Map
+import Data.MediaType.Common as MediaType
 import Data.PreciseDateTime as PDT
 import Data.RFC3339String (RFC3339String)
 import Data.RFC3339String as RFC3339String
 import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration (Hours(..))
+import Data.Tuple (uncurry)
+import Data.Tuple.Nested (type (/\))
 import Effect.Aff as Aff
 import Effect.Exception (throw)
 import Effect.Now as Now
@@ -34,6 +44,7 @@ import Node.FS.Aff as FS
 import Node.FS.Stats as FS.Stats
 import Node.Path as Path
 import Node.Process as Env
+import Node.Process as Node.Process
 import Registry.Hash as Hash
 import Registry.Index as Index
 import Registry.Json as Json
@@ -42,11 +53,11 @@ import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
-import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Location(..), Manifest(..), Metadata, Operation(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
+import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
-import Registry.Version (ParseMode(..), Version)
+import Registry.Version (ParseMode(..), Range, Version)
 import Registry.Version as Version
 import Sunde as Process
 import Text.Parsing.StringParser as StringParser
@@ -84,10 +95,10 @@ data OperationDecoding
   | MalformedJson IssueNumber String
   | DecodedOperation IssueNumber Operation
 
-derive instance eqOperationDecoding :: Eq OperationDecoding
-derive instance genericOperationDecoding :: Generic.Generic OperationDecoding _
+derive instance Eq OperationDecoding
+derive instance Generic.Generic OperationDecoding _
 
-instance showOperationDecoding :: Show OperationDecoding where
+instance Show OperationDecoding where
   show = genericShow
 
 readOperation :: FilePath -> Aff OperationDecoding
@@ -110,7 +121,6 @@ readOperation eventPath = do
 
 -- TODO: test all the points where the pipeline could throw, to show that we are implementing
 -- all the necessary checks
-
 runOperation :: Operation -> RegistryM Unit
 runOperation operation = case operation of
   -- TODO handle addToPackageSet, addToPursuit
@@ -250,7 +260,7 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
   log $ "Package available in " <> absoluteFolderPath
 
   log "Verifying that the package contains a `src` directory"
-  whenM (liftAff $ map Array.null $ FastGlob.match' [ "src/**/*.purs" ] { cwd: Just absoluteFolderPath }) do
+  whenM (liftAff $ map (Array.null <<< _.succeeded) $ FastGlob.match absoluteFolderPath [ "src/**/*.purs" ]) do
     throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
@@ -300,31 +310,29 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
     metadata =
       inputMetadata { owners = manifestRecord.owners }
 
-  runChecks metadata manifest
+  runChecks { isLegacyImport, buildPlan, metadata, manifest }
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
   -- We need the version number to upload the package
   let newVersion = manifestRecord.version
   let newDirname = PackageName.print packageName <> "-" <> Version.printVersion newVersion
-  let tarballDirname = Path.concat [ tmpDir, newDirname ]
-  liftAff $ FS.Extra.ensureDirectory tarballDirname
-  case manifestRecord.files of
-    Nothing -> liftAff do
-      -- When the files key is not specified, we preserve all files except for
-      -- those we explicitly ignore.
-      FS.Extra.copy { from: absoluteFolderPath, to: tarballDirname }
-      removeIgnoredTarballFiles tarballDirname
-    Just _ ->
-      -- TODO: Pick only files the user indicated we should include, and then
-      -- remove files we explicitly ignore.
-      throwWithComment "The 'files' key is not yet supported.\ncc @purescript/packaging"
-  let tarballPath = tarballDirname <> ".tar.gz"
+  let packageSourceDir = Path.concat [ tmpDir, newDirname ]
+  liftAff $ FS.Extra.ensureDirectory packageSourceDir
+  -- We copy over all files that are always included (ie. src dir, purs.json file),
+  -- and any files the user asked for via the 'files' key, and remove all files
+  -- that should never be included (even if the user asked for them).
+  copyPackageSourceFiles manifestRecord.files { source: absoluteFolderPath, destination: packageSourceDir }
+  liftAff $ removeIgnoredTarballFiles packageSourceDir
+  let tarballPath = packageSourceDir <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
   log "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.stat tarballPath
-  when (bytes > maxPackageBytes) do
-    throwWithComment $ "Package tarball exceeds maximum size of " <> show maxPackageBytes <> " bytes."
+  when (not isLegacyImport && bytes > warnPackageBytes) do
+    if bytes > maxPackageBytes then
+      throwWithComment $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes.\ncc: @purescript/packaging"
+    else
+      log $ "WARNING: Package tarball is " <> show bytes <> ".\ncc: @purescript/packaging"
   log "Hashing the tarball..."
   hash <- liftAff $ Hash.sha256File tarballPath
   log $ "Hash: " <> show hash
@@ -338,43 +346,233 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
     { commitFailed: \_ -> "Package uploaded, but committing metadata failed.\ncc: @purescript/packaging"
     , commitSucceeded: "Successfully uploaded package to the registry! 🎉 🚀"
     }
+
   closeIssue
 
   -- Optional steps below:
   -- TODO don't fail the pipeline if one of them fails
 
   -- Add to the registry index
+  -- TODO: commit the registry-index
   liftAff $ Index.insertManifest indexDir manifest
 
--- TODO: commit the registry-index
+  unless isLegacyImport do
+    -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
+    pure unit
 
--- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
--- TODO: upload docs to pursuit (see #154)
+  unless isLegacyImport do
+    log "Uploading to Pursuit"
+    publishToPursuit { packageSourceDir, buildPlan }
+    comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
-runChecks :: Metadata -> Manifest -> RegistryM Unit
-runChecks metadata (Manifest manifest) = do
+runChecks :: { isLegacyImport :: Boolean, buildPlan :: BuildPlan, metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
+runChecks { isLegacyImport, buildPlan, metadata, manifest } = do
+  let Manifest manifestFields = manifest
+
   -- TODO: collect all errors and return them at once. Note: some of the checks
   -- are going to fail while parsing from JSON, so we should move them here if we
   -- want to handle everything together
   log "Running checks for the following manifest:"
-  logShow manifest
+  logShow manifestFields
+
+  log "Ensuring the package is not the purescript-metadata package, which cannot be published."
+  when (PackageName.print manifestFields.name == "metadata") do
+    throwWithComment "The `metadata` package cannot be uploaded to the registry as it is a protected package."
 
   log "Check that version is unique"
-  case Map.lookup manifest.version metadata.published of
+  case Map.lookup manifestFields.version metadata.published of
     Nothing -> pure unit
-    Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> Version.printVersion manifest.version <> "\nIts metadata is: " <> show info
+    Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> Version.printVersion manifestFields.version <> "\nIts metadata is: " <> show info
 
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
+
   let
     pkgNotInRegistry name = case Map.lookup name packages of
       Nothing -> Just name
       Just _p -> Nothing
-  let pkgsNotInRegistry = Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifest.dependencies
+    pkgsNotInRegistry =
+      Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifestFields.dependencies
+
   unless (Array.null pkgsNotInRegistry) do
     throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
 
-wget :: String -> String -> RegistryM Unit
+  log "Check the submitted build plan matches the manifest"
+
+  let unresolvedDependencies = getUnresolvedDependencies manifest buildPlan
+
+  unless (isLegacyImport || Array.null unresolvedDependencies) do
+    let
+      { fail: missingPackages, success: incorrectVersions } = partitionEithers unresolvedDependencies
+
+      printPackageRange (name /\ range) = Array.fold
+        [ "`"
+        , PackageName.print name
+        , "` in range `"
+        , Version.printRange range
+        , "`"
+        ]
+
+      missingPackagesError = do
+        guardA (not Array.null missingPackages)
+        pure
+          $ String.joinWith "\n  - "
+          $ Array.cons "The build plan is missing dependencies that are listed in the manifest:"
+          $ map printPackageRange missingPackages
+
+      printPackageVersion (name /\ range /\ version) = Array.fold
+        [ "`"
+        , PackageName.print name
+        , "@"
+        , Version.printVersion version
+        , "` does not satisfy range `"
+        , Version.printRange range
+        , "`"
+        ]
+
+      incorrectVersionsError = do
+        guardA (not Array.null incorrectVersions)
+        pure
+          $ String.joinWith "\n  - "
+          $ Array.cons "The build plan provides dependencies at versions outside the range listed in the manifest:"
+          $ map printPackageVersion incorrectVersions
+
+    throwWithComment $ String.joinWith "\n\n" $ Array.catMaybes
+      [ Just "All dependencies from the manifest must be in the build plan at valid versions."
+      , missingPackagesError
+      , incorrectVersionsError
+      ]
+
+getUnresolvedDependencies :: Manifest -> BuildPlan -> Array (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
+getUnresolvedDependencies (Manifest { dependencies }) (BuildPlan { resolutions }) =
+  Array.mapMaybe (uncurry dependencyUnresolved) (Map.toUnfoldable dependencies)
+  where
+  dependencyUnresolved :: PackageName -> Range -> Maybe (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
+  dependencyUnresolved dependencyName dependencyRange =
+    case Map.lookup dependencyName resolutions of
+      -- If the package is missing from the build plan then the plan is incorrect.
+      Nothing -> Just $ Left $ dependencyName /\ dependencyRange
+      -- If the package exists, but the version is not in the manifest range
+      -- then the build plan is incorrect. Otherwise, this part of the build
+      -- plan is correct.
+      Just version
+        | not (Version.rangeIncludes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
+        | otherwise -> Nothing
+
+type PublishToPursuit =
+  { packageSourceDir :: FilePath
+  , buildPlan :: BuildPlan
+  }
+
+-- | Publishes a package to Pursuit.
+-- |
+-- | ASSUMPTIONS: This function should not be run on legacy packages or on
+-- | packages where the `purescript-` prefix is still present.
+publishToPursuit :: PublishToPursuit -> RegistryM Unit
+publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler, resolutions }) } = do
+  log "Fetching package dependencies"
+  tmpDir <- liftEffect $ Tmp.mkTmpDir
+  let dependenciesDir = tmpDir <> Path.sep <> "dependencies"
+  liftAff $ FS.mkdir dependenciesDir
+
+  -- We fetch every dependency at its resolved version, unpack the tarball, and
+  -- store the resulting source code in a specified directory for dependencies.
+  for_ (Map.toUnfoldable resolutions :: Array _) \(Tuple packageName version) -> do
+    let
+      -- This filename uses the format the directory name will have once
+      -- unpacked, ie. package-name-major.minor.patch
+      filename = PackageName.print packageName <> "-" <> Version.printVersion version <> ".tar.gz"
+      filepath = dependenciesDir <> Path.sep <> filename
+    wget ("packages.registry.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath
+    liftEffect $ Tar.extract { cwd: dependenciesDir, filename: filepath }
+    liftAff $ FS.unlink filepath
+
+  log "Generating a resolutions file"
+  let
+    resolvedPaths = buildPlanToResolutions { buildPlan, dependenciesDir }
+    resolutionsFilePath = tmpDir <> Path.sep <> "resolutions.json"
+
+  liftAff $ Json.writeJsonFile resolutionsFilePath resolvedPaths
+
+  -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
+  -- package name in the manifest file:
+  -- https://github.com/purescript/purescript/blob/a846892d178d3c9c76c162ca39b9deb6fad4ec8e/src/Language/PureScript/Publish/Registry/Compat.hs#L19
+  --
+  -- The resulting documentation will all use purescript- prefixes in keeping
+  -- with the format used by Pursuit in PureScript versions at least up to 0.16
+  compilerOutput <- liftAff $ callCompiler
+    { args: [ "publish", "--manifest", "purs.json", "--resolutions", resolutionsFilePath ]
+    , version: Version.printVersion compiler
+    , cwd: Just packageSourceDir
+    }
+
+  publishJson <- case compilerOutput of
+    Left (UnknownError err) -> throwWithComment $ String.joinWith "\n" [ "Publishing failed for your package due to a compiler error:", "```", err, "```" ]
+    Left MissingCompiler -> throwWithComment $ Array.fold [ "Publishing failed because the build plan compiler version ", Version.printVersion compiler, " is not supported. Please try again with a different compiler." ]
+    Right publishResult -> do
+      -- The output contains plenty of diagnostic lines, ie. "Compiling ..."
+      -- but we only want the final JSON payload.
+      let lines = String.split (String.Pattern "\n") publishResult
+      case Array.last lines of
+        Nothing -> throwWithComment $ Array.fold [ "Publishing failed because of an unexpected compiler error. cc @purescript/packaging" ]
+        Just jsonString -> case Argonaut.Core.jsonParser jsonString of
+          Left err ->
+            throwWithComment $ String.joinWith "\n" [ "Failed to parse output of publishing. cc @purescript/packaging", "```" <> err <> "```" ]
+          Right json ->
+            pure json
+
+  authToken <- liftEffect (Node.Process.lookupEnv "PACCHETTIBOTTI_PURSUIT_TOKEN") >>= case _ of
+    Nothing -> do
+      logShow =<< liftEffect Node.Process.getEnv
+      throwWithComment "Publishing failed because there is no available auth token. cc: @purescript/packaging"
+    Just token ->
+      pure token
+
+  log "Pushing to Pursuit"
+  result <- liftAff $ Http.request
+    { content: Just $ RequestBody.json publishJson
+    , headers:
+        [ RequestHeader.Accept MediaType.applicationJSON
+        , RequestHeader.RequestHeader "Authorization" ("token " <> authToken)
+        ]
+    , method: Left Method.POST
+    , username: Nothing
+    , withCredentials: false
+    , password: Nothing
+    , responseFormat: ResponseFormat.string
+    , timeout: Nothing
+    , url: "https://pursuit.purescript.org/packages"
+    }
+
+  case result of
+    Right { status } | status == StatusCode 201 ->
+      pure unit
+    Right { body, status: StatusCode status } ->
+      throwWithComment $ String.joinWith "\n"
+        [ "Expected a 201 response from Pursuit, but received " <> show status <> " instead (cc: @purescript/packaging)."
+        , "Body:"
+        , "```" <> body <> "```"
+        ]
+    Left err -> do
+      let printedErr = Http.printError err
+      throwWithComment $ String.joinWith "\n" [ "Received a failed response from Pursuit (cc: @purescript/packaging): ", "```" <> printedErr <> "```" ]
+
+  pure unit
+
+-- Resolutions format: https://github.com/purescript/purescript/pull/3565
+--
+-- Note: This interfaces with Pursuit, and therefore we must add purescript-
+-- prefixes to all package names for compatibility with the Bower naming format.
+buildPlanToResolutions :: { buildPlan :: BuildPlan, dependenciesDir :: FilePath } -> Map RawPackageName { version :: Version, path :: FilePath }
+buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir } =
+  Map.fromFoldable do
+    Tuple name version <- (Map.toUnfoldable resolutions :: Array _)
+    let
+      bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
+      packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.printVersion version ]
+    pure $ Tuple bowerPackageName { path: packagePath, version }
+
+wget :: String -> FilePath -> RegistryM Unit
 wget url path = do
   let cmd = "wget"
   let stdin = Nothing
@@ -429,7 +627,7 @@ checkIndexExists = do
   log "Checking if the registry-index is present..."
   whenM (not <$> FS.exists indexDir) do
     error "Didn't find the 'registry-index' repo, cloning..."
-    Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", indexDir ]) >>= case _ of
+    Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", indexDir ] Nothing) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> log "Successfully cloned the 'registry-index' repo"
 
@@ -455,10 +653,11 @@ fetchPackageSource { tmpDir, ref, location } = case location of
 
     case pursPublishMethod of
       LegacyPursPublish -> liftAff do
-        cloneGitRepo (i "https://github.com/" owner "/" repo ".git") tmpDir
-        gitCheckoutRef ref
-        publishedTime <- gitGetRefTime ref
+        log $ "Cloning repo at tag: " <> show { owner, repo, ref }
+        cloneGitTag (i "https://github.com/" owner "/" repo) ref tmpDir
+        log $ "Getting published time..."
         -- Cloning will result in the `repo` name as the directory name
+        publishedTime <- gitGetRefTime ref (Path.concat [ tmpDir, repo ])
         pure { packageDirectory: repo, publishedTime }
 
       PursPublish -> do
@@ -480,24 +679,17 @@ fetchPackageSource { tmpDir, ref, location } = case location of
             pure { packageDirectory: dir, publishedTime: commitDate }
 
 -- | Clone a package from a Git location to the provided directory.
-cloneGitRepo :: Http.URL -> FilePath -> Aff Unit
-cloneGitRepo url targetDir =
-  Except.runExceptT (runGit [ "clone", url, targetDir ]) >>= case _ of
+cloneGitTag :: Http.URL -> String -> FilePath -> Aff Unit
+cloneGitTag url ref targetDir =
+  Except.runExceptT (runGit [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false" ] (Just targetDir)) >>= case _ of
     Left err -> Aff.throwError $ Aff.error err
     Right _ -> log "Successfully cloned package."
 
--- | Clone a package from GitHub to the provided directory.
-gitCheckoutRef :: String -> Aff Unit
-gitCheckoutRef ref =
-  Except.runExceptT (runGit [ "checkout", ref ]) >>= case _ of
-    Left err -> Aff.throwError $ Aff.error $ "Failed to checkout ref: " <> err
-    Right _ -> log $ "Checked out commit " <> ref
-
 -- | Read the published time of the checked-out commit.
-gitGetRefTime :: String -> Aff RFC3339String
-gitGetRefTime ref = do
+gitGetRefTime :: String -> FilePath -> Aff RFC3339String
+gitGetRefTime ref repoDir = do
   result <- Except.runExceptT do
-    timestamp <- runGit [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ]
+    timestamp <- runGit [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir)
     jsDate <- liftEffect $ JSDate.parse timestamp
     dateTime <- Except.except $ note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
     pure $ PDT.toRFC3339String $ PDT.fromDateTime dateTime
@@ -507,35 +699,89 @@ gitGetRefTime ref = do
 
 pushToMaster :: PackageName -> FilePath -> Aff (Either String Unit)
 pushToMaster packageName path = Except.runExceptT do
-  _ <- runGit [ "config", "user.name", "PacchettiBotti" ]
-  _ <- runGit [ "config", "user.email", "<pacchettibotti@ferrai.io>" ]
-  _ <- runGit [ "add", path ]
-  _ <- runGit [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ]
-  _ <- runGit [ "push", "origin", "master" ]
+  _ <- runGit [ "config", "user.name", "PacchettiBotti" ] Nothing
+  _ <- runGit [ "config", "user.email", "<pacchettibotti@ferrai.io>" ] Nothing
+  _ <- runGit [ "add", path ] Nothing
+  _ <- runGit [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] Nothing
+  _ <- runGit [ "push", "origin", "master" ] Nothing
   pure unit
 
-runGit :: Array String -> ExceptT String Aff String
-runGit args = ExceptT do
-  result <- Process.spawn { cmd: "git", args, stdin: Nothing } NodeProcess.defaultSpawnOptions
+runGit :: Array String -> Maybe FilePath -> ExceptT String Aff String
+runGit args cwd = ExceptT do
+  result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
   case result.exit of
     NodeProcess.Normally 0 -> do
       info result.stdout
       info result.stderr
-      pure $ Right result.stdout
-    _ -> pure $ Left result.stderr
+      pure $ Right $ String.trim result.stdout
+    _ -> pure $ Left $ String.trim result.stderr
 
+-- | The absolute maximum bytes allowed in a package
 maxPackageBytes :: Number
-maxPackageBytes = 200_000.0
+maxPackageBytes = 2_000_000.0
+
+-- | The number of bytes over which we flag a package for review
+warnPackageBytes :: Number
+warnPackageBytes = 200_000.0
+
+-- | Copy files from the package source directory to the destination directory
+-- | for the tarball. This will copy all always-included files as well as files
+-- | provided by the user via the `files` key.
+copyPackageSourceFiles :: Maybe (Array String) -> { source :: FilePath, destination :: FilePath } -> RegistryM Unit
+copyPackageSourceFiles files { source, destination } = do
+  userFiles <- case files of
+    Nothing -> pure []
+    Just globs -> do
+      { succeeded, failed } <- liftAff $ FastGlob.match source globs
+
+      unless (Array.null failed) do
+        throwWithComment $ String.joinWith " "
+          [ "Some paths matched by globs in the 'files' key are outside your package directory."
+          , "Please ensure globs only match within your package directory, including symlinks."
+          ]
+
+      pure succeeded
+
+  includedFiles <- liftAff $ FastGlob.match source includedGlobs
+  includedInsensitiveFiles <- liftAff $ FastGlob.match' source includedInsensitiveGlobs { caseSensitive: false }
+
+  let
+    copyFiles = userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded
+    makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ] }
+
+  liftAff $ traverse_ (makePaths >>> FS.Extra.copy) copyFiles
+
+-- | We always include some files and directories when packaging a tarball, in
+-- | addition to files users opt-in to with the 'files' key.
+includedGlobs :: Array String
+includedGlobs =
+  [ "src/"
+  , "purs.json"
+  , "spago.dhall"
+  , "packages.dhall"
+  , "bower.json"
+  , "package.json"
+  ]
+
+-- | These files are always included and should be globbed in case-insensitive
+-- | mode.
+includedInsensitiveGlobs :: Array String
+includedInsensitiveGlobs =
+  [ "README*"
+  , "LICENSE*"
+  , "LICENCE*"
+  ]
 
 -- | We always ignore some files and directories when packaging a tarball, such
--- | as common version control directories.
+-- | as common version control directories, even if a user has explicitly opted
+-- | in to those files with the 'files' key.
 -- |
 -- | See also:
 -- | https://docs.npmjs.com/cli/v8/configuring-npm/package-json#files
 removeIgnoredTarballFiles :: FilePath -> Aff Unit
 removeIgnoredTarballFiles path = do
-  globMatches <- FastGlob.match' ignoredGlobs { cwd: Just path, caseSensitive: false }
-  for_ (ignoredDirectories <> ignoredFiles <> globMatches) \match ->
+  globMatches <- FastGlob.match' path ignoredGlobs { caseSensitive: false }
+  for_ (ignoredDirectories <> ignoredFiles <> globMatches.succeeded) \match ->
     FS.Extra.remove (Path.concat [ path, match ])
 
 ignoredDirectories :: Array FilePath
@@ -586,3 +832,34 @@ writeMetadata packageName metadata { commitFailed, commitSucceeded } = do
   commitToTrunk packageName metadataFilePath >>= case _ of
     Left err -> comment (commitFailed err)
     Right _ -> comment commitSucceeded
+
+-- | Call a specific version of the PureScript compiler
+callCompiler_ :: { version :: String, args :: Array String, cwd :: Maybe FilePath } -> Aff Unit
+callCompiler_ = void <<< callCompiler
+
+data CompilerFailure = UnknownError String | MissingCompiler
+
+derive instance Eq CompilerFailure
+
+-- | Call a specific version of the PureScript compiler
+callCompiler :: { version :: String, args :: Array String, cwd :: Maybe FilePath } -> Aff (Either CompilerFailure String)
+callCompiler { version, args, cwd } = do
+  let
+    -- Converts a string version 'v0.13.0' or '0.13.0' to the standard format for
+    -- executables 'purs-0_13_0'
+    compiler =
+      append "purs-"
+        $ String.replaceAll (String.Pattern ".") (String.Replacement "_")
+        $ fromMaybe version
+        $ String.stripPrefix (String.Pattern "v") version
+
+  result <- Aff.try $ Process.spawn { cmd: compiler, stdin: Nothing, args } (NodeProcess.defaultSpawnOptions { cwd = cwd })
+  pure $ case result of
+    Left exception -> case Aff.message exception of
+      errorMessage
+        | errorMessage == String.joinWith " " [ "spawn", compiler, "ENOENT" ] -> Left MissingCompiler
+        | otherwise -> Left $ UnknownError errorMessage
+    Right { exit: NodeProcess.Normally 0, stdout } ->
+      Right $ String.trim stdout
+    Right { stderr } ->
+      Left $ UnknownError $ String.trim stderr

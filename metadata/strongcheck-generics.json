@@ -1,0 +1,57 @@
+{
+  "location": {
+    "githubOwner": "zudov",
+    "githubRepo": "purescript-strongcheck-generics"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 3178,
+      "hash": "sha256-fXCetQ592zVi1ejJp65VY1jrH9rVrVbOkJzJjvRenjE=",
+      "publishedTime": "2015-08-24T23:31:43.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 3267,
+      "hash": "sha256-hiFxfz3QRwcqwGQUj+ExbEy+fpY4yRRZgJb7UY8O6ic=",
+      "publishedTime": "2015-11-02T19:10:27.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 3448,
+      "hash": "sha256-Yeub68h/n8rVyeRrthONanrAMBPwnM2ULtM11HFwi2M=",
+      "publishedTime": "2015-11-14T22:30:07.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.3.0": {
+      "bytes": 3474,
+      "hash": "sha256-PM7aMi0+Cn3tbj/cS9/Du/Rmlnb34xcjoZ1Qn306axc=",
+      "publishedTime": "2015-11-19T11:20:26.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 3554,
+      "hash": "sha256-cXKeOKA6Gxn69qTlt6XMpJ9RO741NE7ZXwNoFFzObZo=",
+      "publishedTime": "2016-06-12T01:28:23.0Z",
+      "ref": "v0.4.0"
+    },
+    "0.5.0": {
+      "bytes": 3949,
+      "hash": "sha256-crpVv/PFEYDCxel2vd6L9/CovNlIoiviJZYxTNebYnc=",
+      "publishedTime": "2017-02-05T22:11:00.0Z",
+      "ref": "v0.5.0"
+    },
+    "0.5.1": {
+      "bytes": 3941,
+      "hash": "sha256-fls6uKcBGQopQlEQTPeBfOBsWj4JJCEfLHNM52g7WXU=",
+      "publishedTime": "2017-02-06T19:00:07.0Z",
+      "ref": "v0.5.1"
+    },
+    "1.0.0": {
+      "bytes": 4049,
+      "hash": "sha256-L7HxD2gN7xdfq75DFeV2icEV0rmnD+6g5T8+LH9daTw=",
+      "publishedTime": "2017-04-29T21:28:19.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

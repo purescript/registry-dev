@@ -1,0 +1,51 @@
+{
+  "location": {
+    "githubOwner": "SimonRichardson",
+    "githubRepo": "purescript-node-mongodb"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 3846,
+      "hash": "sha256-qIlI2dkTCIqos2M0YvIaAzs1pNzQK0l+qA+JAou2T1o=",
+      "publishedTime": "2015-05-01T17:02:28.0Z",
+      "ref": "0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 3949,
+      "hash": "sha256-xn0E9CdHSXBtNxKmmwF/lFz/209ad/e+BFC4D1qapGg=",
+      "publishedTime": "2015-05-01T21:19:06.0Z",
+      "ref": "0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 6086,
+      "hash": "sha256-NlM+oMq2jSJoFaTjtC0AeDj99Fbs0QwKnKZ8wcAte6s=",
+      "publishedTime": "2015-05-06T08:31:59.0Z",
+      "ref": "0.0.3"
+    },
+    "0.0.6": {
+      "bytes": 5905,
+      "hash": "sha256-gYQQKYTU4jpEKpGR7vd8pbxdbdH257z4TUuogUt5LcQ=",
+      "publishedTime": "2015-12-16T09:53:32.0Z",
+      "ref": "0.0.6"
+    },
+    "0.0.7": {
+      "bytes": 6076,
+      "hash": "sha256-31z1+5c0IZpQa3h3qNsDFTjG2yGmBGmF8o/Xq9b/YPw=",
+      "publishedTime": "2017-01-10T14:44:46.0Z",
+      "ref": "0.0.7"
+    },
+    "0.0.8": {
+      "bytes": 6125,
+      "hash": "sha256-9MpU32ckuZLGLjM4waNwsowXxha1ZVpOf8tlqIrSujU=",
+      "publishedTime": "2017-05-10T05:54:56.0Z",
+      "ref": "0.0.8"
+    },
+    "0.11.0": {
+      "bytes": 6126,
+      "hash": "sha256-rz5ggJOXE9zVNZswwOMf+oW+PLoX6LaAF+p/EAEJpZg=",
+      "publishedTime": "2017-05-10T05:54:56.0Z",
+      "ref": "0.11.0"
+    }
+  },
+  "unpublished": {}
+}

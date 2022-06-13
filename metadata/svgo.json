@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "nonbili",
+    "githubRepo": "purescript-svgo"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1988,
+      "hash": "sha256-c+uUtDM4Lfmus2MhQuuBezjWgPzy3RU6mL2LlKxgr9M=",
+      "publishedTime": "2019-04-09T09:14:20.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

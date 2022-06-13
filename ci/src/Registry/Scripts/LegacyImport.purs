@@ -15,6 +15,7 @@ import Foreign.GitHub as GitHub
 import Foreign.Object as Object
 import Registry.API as API
 import Registry.Index (RegistryIndex)
+import Registry.Json (printJson)
 import Registry.Json as Json
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
@@ -47,38 +48,40 @@ main = Aff.launchAff_ do
   log "Starting import from legacy registries..."
   { registry, reservedNames } <- downloadLegacyRegistry
 
-  log "Temporary: we filter packages to only deal with the ones in core and other orgs we control"
   let
     sortedPackages :: Array Manifest
     sortedPackages = Graph.topologicalSort registry
 
-    isCorePackage :: Manifest -> Maybe _
-    isCorePackage (Manifest manifest) = case manifest.location of
-      -- core
-      GitHub { owner: "purescript" } -> Just manifest
-      GitHub { owner: "purescript-deprecated" } -> Just manifest
-      -- contrib
-      GitHub { owner: "purescript-contrib" } -> Just manifest
-      GitHub { owner: "purescript-web" } -> Just manifest
-      GitHub { owner: "purescript-node" } -> Just manifest
-      GitHub { repo: "purescript-void" } -> Just manifest
-      GitHub { repo: "purescript-index" } -> Just manifest
-      GitHub { repo: "purescript-optic" } -> Just manifest
-      GitHub { repo: "purescript-unordered-collections" } -> Just manifest
-      GitHub { repo: "purescript-text-encoding" } -> Just manifest
-      GitHub { repo: "purescript-typelevel" } -> Just manifest
-      GitHub { repo: "purescript-sized-vectors" } -> Just manifest
-      GitHub { repo: "purescript-nonempty-array" } -> Just manifest
-      GitHub { repo: "purescript-colors" } -> Just manifest
-      GitHub { repo: "purescript-eff-functions" } -> Just manifest
-      GitHub { repo: "purescript-node-events" } -> Just manifest
-      GitHub { repo: "purescript-nonempty-array" } -> Just manifest
-      GitHub { repo: "purescript-aff-promise" } -> Just manifest
-      GitHub { repo: "purescript-naturals" } -> Just manifest
-      _ -> Nothing
+    -- These packages have no usable versions, but do have valid manifests, and
+    -- so they make it to the processed packages but cannot be uploaded. They
+    -- fail either because all versions have no src directory, or are too large,
+    -- or it's a special package.
+    disabledPackages :: Map PackageName Location
+    disabledPackages = Map.fromFoldable
+      -- [UNFIXABLE] This is a special package that should never be uploaded.
+      [ mkDisabled "purescript" "purescript-metadata"
+      -- [UNFIXABLE] These packages have no version with a src directory
+      , mkDisabled "ethul" "purescript-bitstrings"
+      , mkDisabled "paulyoung" "purescript-purveyor"
+      , mkDisabled "paulyoung" "purescript-styled-components"
+      , mkDisabled "paulyoung" "purescript-styled-system"
+      ]
+      where
+      mkDisabled owner repo =
+        Tuple (unsafeFromRight $ PackageName.parse $ stripPureScriptPrefix repo) (GitHub { owner, repo, subdir: Nothing })
 
-    corePackages :: Array _
-    corePackages = Array.mapMaybe isCorePackage sortedPackages
+    -- These package versions contain valid manifests, and other versions of the
+    -- package are valid, but these are not. We manually exclude them from being
+    -- uploaded.
+    excludeVersion :: Manifest -> Maybe _
+    excludeVersion (Manifest manifestFields) = case PackageName.print manifestFields.name, Version.printVersion manifestFields.version of
+      -- [UNFIXABLE] These have no src directory.
+      "concur-core", "0.3.9" -> Nothing
+      "concur-react", "0.3.9" -> Nothing
+      "pux-devtool", "5.0.0" -> Nothing
+      _, _ -> Just manifestFields
+
+    availablePackages = Array.mapMaybe excludeVersion sortedPackages
 
   log "Creating a Metadata Ref"
   packagesMetadataRef <- API.mkMetadataRef
@@ -86,7 +89,7 @@ main = Aff.launchAff_ do
   log "Starting upload..."
   runRegistryM (mkEnv packagesMetadataRef) do
     log "Adding metadata for reserved package names"
-    forWithIndex_ reservedNames \package repo -> do
+    forWithIndex_ (Map.union disabledPackages reservedNames) \package repo -> do
       let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
       liftAff $ Json.writeJsonFile (API.metadataFile package) metadata
       updatePackagesMetadata package metadata
@@ -95,10 +98,13 @@ main = Aff.launchAff_ do
     packagesMetadata <- readPackagesMetadata
 
     let
+      disabled { name } = isJust $ Map.lookup name disabledPackages
       wasPackageUploaded { name, version } = API.isPackageVersionInMetadata name version packagesMetadata
-      packagesToUpload = Array.filter (not wasPackageUploaded) corePackages
+      packagesToUpload = Array.filter (\package -> not (wasPackageUploaded package || disabled package)) availablePackages
 
-    for_ packagesToUpload \manifest -> do
+    -- We need to use `for` here instead of `for_`, because the `Foldable` class
+    -- isn't stack-safe.
+    void $ for packagesToUpload \manifest -> do
       let
         addition = Addition
           { newPackageLocation: manifest.location
@@ -112,8 +118,7 @@ main = Aff.launchAff_ do
           , packageName: manifest.name
           }
       log "\n\n----------------------------------------------------------------------"
-      log $ "UPLOADING PACKAGE: " <> show manifest.name <> " " <> show manifest.version
-      logShow addition
+      log $ "UPLOADING PACKAGE: " <> show manifest.name <> "@" <> show manifest.version <> " to " <> show manifest.location
       log "----------------------------------------------------------------------"
       API.runOperation addition
 
@@ -186,14 +191,7 @@ downloadLegacyRegistry = do
 
   log "Converting to manifests..."
   let forPackageRegistry = Process.forPackageVersion packageRegistry
-  manifestRegistry
-    :: Process.ProcessedPackageVersions
-         { address :: GitHub.Address
-         , name :: PackageName
-         , original :: RawPackageName
-         }
-         { version :: Version, original :: RawVersion }
-         Manifest <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
+  manifestRegistry <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
     manifestFields <- Manifest.constructManifestFields originalName tag.original address
 
     let
@@ -241,6 +239,7 @@ downloadLegacyRegistry = do
             )
         $ Map.toUnfoldable allPackages
 
+  log $ "Reserved names:\n" <> (printJson $ Array.fromFoldable $ Map.keys reservedNames)
   pure { registry: checkedIndex, reservedNames }
 
 -- Packages can be specified either in 'package-name' format or

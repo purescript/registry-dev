@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "EpicOrange",
+    "githubRepo": "purescript-react-keybind"
+  },
+  "published": {
+    "0.8.1": {
+      "bytes": 5286,
+      "hash": "sha256-+O5C7mEVjL9aBp80wXmYiWsrl29BjPG/int5mW57Y9I=",
+      "publishedTime": "2021-01-11T10:51:41.0Z",
+      "ref": "v0.8.1"
+    },
+    "0.9.4": {
+      "bytes": 6038,
+      "hash": "sha256-05uMMmtYuq91wzyeBK/lNlNVG1IQidR9NAcVkNcgoUg=",
+      "publishedTime": "2021-04-28T05:26:26.0Z",
+      "ref": "v0.9.4"
+    }
+  },
+  "unpublished": {}
+}

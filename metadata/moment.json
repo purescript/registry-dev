@@ -3,6 +3,13 @@
     "githubOwner": "CapillarySoftware",
     "githubRepo": "purescript-moment"
   },
-  "releases": {},
+  "published": {
+    "0.0.2": {
+      "bytes": 5340,
+      "hash": "sha256-yHaLwAy6QuVgqr/b0sfqmaM9Jyki5aBNktFWZpDUhNo=",
+      "publishedTime": "2014-10-19T01:11:02.0Z",
+      "ref": "v0.0.2"
+    }
+  },
   "unpublished": {}
 }

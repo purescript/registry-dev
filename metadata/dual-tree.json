@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "AidanDelaney",
+    "githubRepo": "purescript-dual-tree"
+  },
+  "published": {
+    "0.0.2": {
+      "bytes": 6531,
+      "hash": "sha256-LJgmxslB6Vp3uJMlE3slOKiszRW6Fqx6nU3nfc1+TjU=",
+      "publishedTime": "2017-10-07T19:41:03.0Z",
+      "ref": "v0.0.2"
+    }
+  },
+  "unpublished": {}
+}

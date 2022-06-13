@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "erlscripten",
+    "githubRepo": "erlps-core"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 33413,
+      "hash": "sha256-F6HG0tlFZL6VRWLJPkINXXuSeTLo4UiBTuIQ2JrY0tU=",
+      "publishedTime": "2020-12-01T14:42:07.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.0.2": {
+      "bytes": 34148,
+      "hash": "sha256-vVyIIdCfSdeCxe11DmC/fKCJQ8/jEW/0qc7mzG1r45c=",
+      "publishedTime": "2020-12-01T15:28:48.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 34164,
+      "hash": "sha256-/TlBCnbCzT+edx/DN2Yu6O6s/lcih5wM+pZgXrJtMsQ=",
+      "publishedTime": "2020-12-01T16:43:37.0Z",
+      "ref": "v0.0.3"
+    },
+    "0.0.4": {
+      "bytes": 34405,
+      "hash": "sha256-L3q5epljjhWLrWcsJlYgkuL0iWvujIirqp53GkQz7I4=",
+      "publishedTime": "2020-12-01T18:58:11.0Z",
+      "ref": "v0.0.4"
+    }
+  },
+  "unpublished": {}
+}

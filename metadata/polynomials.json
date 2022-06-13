@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "hdgarrood",
+    "githubRepo": "purescript-polynomials"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 3677,
+      "hash": "sha256-MDGg/AQsXbRDGfFzZgqFQhwkqpY7rPYdpkCvdVnCmQU=",
+      "publishedTime": "2017-05-01T11:40:41.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 3728,
+      "hash": "sha256-BlWia1bZeGsL4ij0HjC1wWr8l8fRQae6PwhO9mTYIj8=",
+      "publishedTime": "2018-04-12T12:02:15.0Z",
+      "ref": "v1.0.1"
+    }
+  },
+  "unpublished": {}
+}

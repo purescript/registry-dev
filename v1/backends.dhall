@@ -20,7 +20,7 @@ let Package = { name : Text, version : Text }
 let Backend = Package -> Text
 
 let backends = toMap
-  { main = \(package : Package) -> "https://packages.purescript.org/${package.name}/${package.version}.tar.gz"
+  { main = \(package : Package) -> "https://packages.registry.purescript.org/${package.name}/${package.version}.tar.gz"
   }
 
 in backends : Map Text Backend

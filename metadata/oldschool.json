@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "maxdeviant",
+    "githubRepo": "purescript-oldschool"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2768,
+      "hash": "sha256-ndt6Kgxjo4tHJlwq38BamuIkeEeO1/bCSkFYq1UxK3A=",
+      "publishedTime": "2021-11-15T00:52:37.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

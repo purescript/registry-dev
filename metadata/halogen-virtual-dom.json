@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "purescript-halogen",
+    "githubRepo": "purescript-halogen-virtual-dom"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 8650,
+      "hash": "sha256-2KQLi3zCrNVUuMHSSaX7Tm2Y2Ez6FVHq5sdwTnDklek=",
+      "publishedTime": "2017-03-01T12:02:19.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 8664,
+      "hash": "sha256-J5bk5AjGajTaodG3EVWPNQMYIlCMcBiyVn7r49OVLt4=",
+      "publishedTime": "2017-06-13T12:49:47.0Z",
+      "ref": "v2.0.0"
+    }
+  },
+  "unpublished": {}
+}

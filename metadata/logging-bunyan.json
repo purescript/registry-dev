@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "kika",
+    "githubRepo": "purescript-logging-bunyan"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2899,
+      "hash": "sha256-qyftqzCnF7EcdsHT4PKKyY/R1kVYJy1LyASMQtC2wzw=",
+      "publishedTime": "2016-07-25T11:01:03.0Z",
+      "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 2935,
+      "hash": "sha256-jRXq1ftFAw2IBTDXU9iKsO03/uxO+4jBC+yO5uVClFY=",
+      "publishedTime": "2016-11-03T20:32:30.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 2950,
+      "hash": "sha256-Lk+OIElAYju1MdoO9PeyQdmDPKYDikrdfJtoWFMxWsY=",
+      "publishedTime": "2017-06-12T09:15:24.0Z",
+      "ref": "v3.0.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -3,6 +3,13 @@
     "githubOwner": "Fresheyeball",
     "githubRepo": "purescript-DOMParser"
   },
-  "releases": {},
+  "published": {
+    "0.0.1": {
+      "bytes": 2269,
+      "hash": "sha256-UgT5cklzjXoB8vHcsGMmJAENuFVkXr5iyda9Sh4UdFU=",
+      "publishedTime": "2015-01-23T16:26:35.0Z",
+      "ref": "v0.0.1"
+    }
+  },
   "unpublished": {}
 }

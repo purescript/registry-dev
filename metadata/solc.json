@@ -3,6 +3,19 @@
     "githubOwner": "f-o-a-m",
     "githubRepo": "purescript-solc"
   },
-  "releases": {},
+  "published": {
+    "1.0.0": {
+      "bytes": 11369,
+      "hash": "sha256-BjHMHu1/tJMirOt8lVKIvsdaK47+IIV1m1MNhpeOm8o=",
+      "publishedTime": "2019-10-01T15:06:52.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.1.0": {
+      "bytes": 11655,
+      "hash": "sha256-/iLE+StpQqNwN2Fm4XY7rlsZmlA3BqDhzSdNnrzOAq4=",
+      "publishedTime": "2020-10-03T16:25:19.0Z",
+      "ref": "v1.1.0"
+    }
+  },
   "unpublished": {}
 }

@@ -1,0 +1,51 @@
+{
+  "location": {
+    "githubOwner": "juspay",
+    "githubRepo": "purescript-presto"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 21003,
+      "hash": "sha256-cThKfCD/cHwuHp+pp8ounD/0yUudAdDf+F7c0+v9DbI=",
+      "publishedTime": "2017-11-16T10:46:34.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 20999,
+      "hash": "sha256-fioXEYaGREMQvhPx9GJQxC9JuICFI/fad9mU5bMV7BA=",
+      "publishedTime": "2017-11-16T11:52:08.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.2": {
+      "bytes": 21724,
+      "hash": "sha256-RAkDzf82j3iy8ml3thGIUOU0bKZpclB/SV68k1JhAtE=",
+      "publishedTime": "2017-11-17T14:51:38.0Z",
+      "ref": "v0.2.2"
+    },
+    "0.2.3": {
+      "bytes": 22018,
+      "hash": "sha256-v3t7n36z9fTyeR0P11elv+2S+QLi5xvPa0OComQRTP8=",
+      "publishedTime": "2017-12-13T08:29:03.0Z",
+      "ref": "v0.2.3"
+    },
+    "0.3.0": {
+      "bytes": 22101,
+      "hash": "sha256-HTpqbuMvMvTKnDEMg7DSBT1xQOLJbNX3ce0BZXWehNw=",
+      "publishedTime": "2018-04-25T12:59:36.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 21818,
+      "hash": "sha256-bp1fpI8NgtlcWfdgXQkYsubT9Bp94OEcCVbMyd1gbqI=",
+      "publishedTime": "2018-09-28T11:01:58.0Z",
+      "ref": "v0.4.0"
+    },
+    "0.4.1": {
+      "bytes": 21942,
+      "hash": "sha256-UXZmBiMMfGe8Gey4IcDwKinVSSy/Jg+lVKMfKtQJddw=",
+      "publishedTime": "2019-07-03T17:50:10.0Z",
+      "ref": "0.4.1"
+    }
+  },
+  "unpublished": {}
+}

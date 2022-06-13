@@ -3,6 +3,13 @@
     "githubOwner": "PureFunctor",
     "githubRepo": "purescript-ssrs"
   },
-  "releases": {},
+  "published": {
+    "1.0.0": {
+      "bytes": 9141,
+      "hash": "sha256-cICyo4NDWXoO7lRsTkjhKcD/iOxOMLyd6C0HLCLvvzU=",
+      "publishedTime": "2022-05-06T04:13:12.0Z",
+      "ref": "v1.0.0"
+    }
+  },
   "unpublished": {}
 }

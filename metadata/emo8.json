@@ -1,0 +1,63 @@
+{
+  "location": {
+    "githubOwner": "opyapeus",
+    "githubRepo": "purescript-emo8"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 48917,
+      "hash": "sha256-TaxBNbGCJDgczIN5rsD3HddYB3sq61QD51u+5xiT8AE=",
+      "publishedTime": "2018-08-23T00:42:00.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 53609,
+      "hash": "sha256-g4aZqzxN4kE/RQp/pkmqh04s3IXzInI4hoiRdJBvO6o=",
+      "publishedTime": "2018-08-28T04:44:29.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 95903,
+      "hash": "sha256-0P0on/bJIGqfHHFG5AwED1l2Ku3cQ5G8kMumWa7DMxQ=",
+      "publishedTime": "2018-08-31T08:56:27.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 97036,
+      "hash": "sha256-yW19w89dZWixZbnHy/vqXtupoE0jMSPQYwtP0zSmxaI=",
+      "publishedTime": "2018-09-09T09:25:31.0Z",
+      "ref": "v0.4.0"
+    },
+    "0.5.0": {
+      "bytes": 37804,
+      "hash": "sha256-+w95j7fh+jzAs3MTbgc31xuwztksh+R/gNs3bANn3KA=",
+      "publishedTime": "2018-11-12T11:26:49.0Z",
+      "ref": "v0.5.0"
+    },
+    "0.5.1": {
+      "bytes": 36898,
+      "hash": "sha256-QOBjPdr9WkAs/c0REee9jp9gIzDBRHvbZNig7XieqKY=",
+      "publishedTime": "2018-11-14T05:08:15.0Z",
+      "ref": "v0.5.1"
+    },
+    "0.6.0": {
+      "bytes": 42473,
+      "hash": "sha256-vGpNbYlKRjDYKmspOs5ldur6aoVP3bhm+pOeRUqNEFE=",
+      "publishedTime": "2019-02-06T07:39:54.0Z",
+      "ref": "v0.6.0"
+    },
+    "0.7.0": {
+      "bytes": 68098,
+      "hash": "sha256-y94Cl60un9HawAe1CgfjIFq8cXiVSkhEt2AUtV2NC2Q=",
+      "publishedTime": "2020-05-14T15:06:59.0Z",
+      "ref": "v0.7.0"
+    },
+    "0.7.1": {
+      "bytes": 69418,
+      "hash": "sha256-VaQX05hkaJqPTJzMTDFoBlJ8OpiOMvhfdeRxiEwitDY=",
+      "publishedTime": "2020-05-30T01:31:16.0Z",
+      "ref": "v0.7.1"
+    }
+  },
+  "unpublished": {}
+}

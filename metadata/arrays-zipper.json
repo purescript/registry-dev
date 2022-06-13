@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "JordanMartinez",
+    "githubRepo": "purescript-arrays-zipper"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 5061,
+      "hash": "sha256-wRAVMicR+kzwkTbudJ/aWF91pzDrBt7ZlFU8ZIO1xeo=",
+      "publishedTime": "2020-07-17T04:08:06.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 5285,
+      "hash": "sha256-c5iLOx+aUITv194CNk0ZPxdDqG8lXDVhv+RrLY3sLh4=",
+      "publishedTime": "2020-09-06T13:39:32.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.1.0": {
+      "bytes": 5606,
+      "hash": "sha256-t62S0RRZoUdlfaWZWq2qG3cw2soMkDe4wZjUWtnaW6M=",
+      "publishedTime": "2020-09-08T13:24:30.0Z",
+      "ref": "v1.1.0"
+    },
+    "1.1.1": {
+      "bytes": 5929,
+      "hash": "sha256-kL7sEloIUSIvuQu12JVcRZWFXINYv7tvvLxOhweKlMA=",
+      "publishedTime": "2020-09-08T13:48:59.0Z",
+      "ref": "v1.1.1"
+    },
+    "2.0.0": {
+      "bytes": 5891,
+      "hash": "sha256-LHSkr6n9ssqGVQyE2hVdNEhlVLbvU6qxooZQtjSv590=",
+      "publishedTime": "2022-04-30T12:40:36.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.0.1": {
+      "bytes": 4917,
+      "hash": "sha256-/LEKfQKx9MjU3++dHBaPFj3U4soq3RZIiYJBf8OwkCM=",
+      "publishedTime": "2022-04-30T12:43:58.0Z",
+      "ref": "v2.0.1"
+    }
+  },
+  "unpublished": {}
+}

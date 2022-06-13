@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "acple",
+    "githubRepo": "purescript-nested-functor"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2098,
+      "hash": "sha256-tjfVxw+wMLvlVMDowMWiBYal4hNh57uzh9TYEPqvDas=",
+      "publishedTime": "2020-01-22T14:57:37.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 2423,
+      "hash": "sha256-/7x5LCwPa9XZadREcNK3wV0DOJyriiN+Va94HjoqwdY=",
+      "publishedTime": "2020-01-27T07:32:44.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 2424,
+      "hash": "sha256-zxmQzRQsiaZYEXwcbFHo3hisheesZcj2GNnh+m+XNTA=",
+      "publishedTime": "2020-09-30T02:51:24.0Z",
+      "ref": "v0.2.1"
+    }
+  },
+  "unpublished": {}
+}

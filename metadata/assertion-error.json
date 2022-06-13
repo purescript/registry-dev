@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "philopon",
+    "githubRepo": "purescript-assertion-error"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2787,
+      "hash": "sha256-NRu9sm2beYwzIzQSJ7KF8w2w1kHmu/o56eBm6VCYYOo=",
+      "publishedTime": "2014-12-25T07:06:56.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 2790,
+      "hash": "sha256-mSIUJikXoStzgeOXR/2Pe8/0EfWpoQwwkrq8uSPIGvY=",
+      "publishedTime": "2014-12-25T07:12:38.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 2791,
+      "hash": "sha256-3nnyqr+CFy+StAW3rXwb1khfBN0rF+Y55BvUwGxyuT8=",
+      "publishedTime": "2014-12-27T16:21:04.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.1.3": {
+      "bytes": 2894,
+      "hash": "sha256-QTNJJXv449XcwEFiPxX8COuxFdF7cuiN5zor+A4efLg=",
+      "publishedTime": "2015-01-10T04:00:57.0Z",
+      "ref": "v0.1.3"
+    },
+    "0.1.4": {
+      "bytes": 2517,
+      "hash": "sha256-UuLEoC7ZPbAdhbtZW9vENHlQbg+GA8hGAQXY6Ws+l2A=",
+      "publishedTime": "2015-01-10T20:28:33.0Z",
+      "ref": "v0.1.4"
+    },
+    "0.1.5": {
+      "bytes": 2539,
+      "hash": "sha256-P2Divn6bl01y7pqnbgE1ryEAK6ZmOot3UILd9LlWAOY=",
+      "publishedTime": "2015-03-06T08:41:45.0Z",
+      "ref": "v0.1.5"
+    }
+  },
+  "unpublished": {}
+}

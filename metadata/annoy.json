@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "Kamirus",
+    "githubRepo": "purescript-annoy"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 4971,
+      "hash": "sha256-02mMg1U6H9VjL81nTIevZ4wAb1EcoL61cZDF49XucA0=",
+      "publishedTime": "2018-07-07T14:25:35.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.1.0": {
+      "bytes": 5101,
+      "hash": "sha256-8vhEMnGG8RXSiNeuuwW/b5RKT3VOkCMjLNJhqrdRLu4=",
+      "publishedTime": "2018-07-07T15:06:37.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.1.1": {
+      "bytes": 5145,
+      "hash": "sha256-3a0KYj+h2+nN6StEBrvDWf5i5VjHPhmOukCM36OEH/E=",
+      "publishedTime": "2018-07-07T15:09:58.0Z",
+      "ref": "v0.1.1"
+    }
+  },
+  "unpublished": {}
+}

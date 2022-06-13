@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "paluh",
+    "githubRepo": "purescript-pux-clappr"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 2854,
+      "hash": "sha256-mR+aEWFDnRNFSdF4W+lY6ORRV+/XcsY8kpCCq/oTNFo=",
+      "publishedTime": "2018-02-27T16:55:50.0Z",
+      "ref": "v0.1.0"
+    },
+    "0.2.0": {
+      "bytes": 2846,
+      "hash": "sha256-C+DKHsqTUk/WTdT7eIo1RxJ8C6fF4IAvVST3Y4itRBc=",
+      "publishedTime": "2018-02-27T18:28:49.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.2.1": {
+      "bytes": 2882,
+      "hash": "sha256-T10VZjwL4E2P1XhTS60CauQuMN9nf/631n4tf36DagE=",
+      "publishedTime": "2018-03-05T22:20:22.0Z",
+      "ref": "v0.2.1"
+    }
+  },
+  "unpublished": {}
+}

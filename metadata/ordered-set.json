@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "flip111",
+    "githubRepo": "purescript-ordered-set"
+  },
+  "published": {
+    "0.2.0": {
+      "bytes": 5374,
+      "hash": "sha256-YnfRgedoDIiKgoLMvoGFE1/VFhg6Be3s2NpvtsRLGS8=",
+      "publishedTime": "2020-04-06T16:04:40.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.4.0": {
+      "bytes": 5384,
+      "hash": "sha256-nZu0kWUi5iVNG2SXTMC9NMOfSayFdjRVC/YAs5d+IPc=",
+      "publishedTime": "2020-04-07T13:47:46.0Z",
+      "ref": "v0.4.0"
+    }
+  },
+  "unpublished": {}
+}

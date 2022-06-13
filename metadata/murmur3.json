@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "paulyoung",
+    "githubRepo": "purescript-murmur3"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 5791,
+      "hash": "sha256-z0tVMvgnQ36EUfOa9jLpAvz28AkDjoyT7BMrKm3rwiw=",
+      "publishedTime": "2018-05-26T08:14:15.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 6291,
+      "hash": "sha256-93fb7i9RP1vi8FvpAbo4i8C2fQdH5bhigVbJ3QadDsE=",
+      "publishedTime": "2018-05-28T04:20:47.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 6330,
+      "hash": "sha256-Bx1sykwGvrTHbeHysBaZnA89MWS278gHJR5uptcz0Y0=",
+      "publishedTime": "2018-06-06T06:45:23.0Z",
+      "ref": "v1.0.2"
+    }
+  },
+  "unpublished": {}
+}

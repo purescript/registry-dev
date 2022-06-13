@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "reactormonk",
+    "githubRepo": "purescript-json-pointer"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1160,
+      "hash": "sha256-8EI6PDJF3yx47o28GpRSXr8G+U+Zg6taBzAXv8NjZpk=",
+      "publishedTime": "2019-05-06T10:56:52.0Z",
+      "ref": "v0.1.0"
+    },
+    "1.0.0": {
+      "bytes": 3060,
+      "hash": "sha256-XlCC2zF8SctBIvnLug9hTE2uUMt+6tJuX2Bz7w5bDuM=",
+      "publishedTime": "2020-02-18T21:09:54.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.1.0": {
+      "bytes": 3064,
+      "hash": "sha256-q3ZlL1rVMjaJ8yJjygL3ghTDyQM8Aov+OlmD7GB1V9Q=",
+      "publishedTime": "2020-02-18T21:23:04.0Z",
+      "ref": "v1.1.0"
+    }
+  },
+  "unpublished": {}
+}

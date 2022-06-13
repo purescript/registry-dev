@@ -1,4 +1,6 @@
-module Test.Main where
+module Test.Main
+  ( main
+  ) where
 
 import Registry.Prelude
 
@@ -16,6 +18,8 @@ import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
+import Node.Process as Process
+import Registry.API (CompilerFailure(..), callCompiler, copyPackageSourceFiles)
 import Registry.API as API
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
@@ -33,6 +37,7 @@ import Test.Registry.Index as Registry.Index
 import Test.Registry.SSH as SSH
 import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
 import Test.Registry.Version as TestVersion
+import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -61,7 +66,13 @@ main = launchAff_ do
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
         Spec.describe "Authenticated operations" SSH.spec
       Spec.describe "Tarball" do
+        copySourceFiles
         removeIgnoredTarballFiles
+      Spec.describe "Compilers" do
+        compilerVersions
+      Spec.describe "Resolutions" do
+        checkBuildPlanToResolutions
+        checkDependencyResolution
     Spec.describe "Bowerfile" do
       Spec.describe "Parses" do
         Spec.describe "Good bower files" goodBowerfiles
@@ -83,6 +94,8 @@ main = launchAff_ do
       TestVersion.testVersion
     Spec.describe "Range" do
       TestVersion.testRange
+    Spec.describe "Glob" do
+      safeGlob
 
 -- | Check all the example Manifests roundtrip (read+write) through PureScript
 manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit
@@ -109,6 +122,29 @@ manifestEncoding = do
   roundTrip Fixture.fixture
   roundTrip (Fixture.setDependencies [ Tuple "package-a" "1.0.0" ] Fixture.fixture)
 
+safeGlob :: Spec.Spec Unit
+safeGlob = do
+  Spec.describe "Prevents directory traversals" do
+    Spec.it "Directory traversal" do
+      cwd <- liftEffect Process.cwd
+      { succeeded, failed } <- FastGlob.match cwd [ "../flake.nix" ]
+      succeeded `Assert.shouldSatisfy` Array.null
+      failed `Assert.shouldEqual` [ "../flake.nix" ]
+
+    Spec.it "Symlink traversal" do
+      cwd <- liftEffect Process.cwd
+      { succeeded, failed } <- FastGlob.match cwd [ "./shell.nix" ]
+      succeeded `Assert.shouldSatisfy` Array.null
+      failed `Assert.shouldEqual` [ "./shell.nix" ]
+
+    -- A glob that is technically a directory traversal but which doesn't
+    -- actually match any files won't throw an error since there are no results.
+    Spec.it "Traversal to a non-existing file" do
+      cwd <- liftEffect Process.cwd
+      result <- FastGlob.match cwd [ "/var/www/root/shell.nix" ]
+      unless (result == mempty) do
+        Assert.fail $ "Expected no results, but received " <> show result
+
 removeIgnoredTarballFiles :: Spec.Spec Unit
 removeIgnoredTarballFiles = Spec.before runBefore do
   Spec.it "Picks correct files when packaging a tarball" \{ tmp, writeDirectories, writeFiles } -> do
@@ -121,15 +157,17 @@ removeIgnoredTarballFiles = Spec.before runBefore do
 
     API.removeIgnoredTarballFiles tmp
 
-    paths <- FastGlob.match' [ "**/*" ] { cwd: Just tmp }
+    paths <- FastGlob.match tmp [ "**/*" ]
 
     let
       ignoredPaths = API.ignoredDirectories <> API.ignoredFiles
       acceptedPaths = goodDirectories <> goodFiles
 
-    for_ paths \path -> do
-      ignoredPaths `Assert.shouldNotContain` path
-      acceptedPaths `Assert.shouldContain` path
+    for_ ignoredPaths \path ->
+      paths.succeeded `Assert.shouldNotContain` path
+
+    for_ acceptedPaths \path -> do
+      paths.succeeded `Assert.shouldContain` path
   where
   runBefore = do
     tmp <- liftEffect Tmp.mkTmpDir
@@ -146,6 +184,65 @@ removeIgnoredTarballFiles = Spec.before runBefore do
 
     pure { tmp, writeDirectories, writeFiles }
 
+copySourceFiles :: Spec.Spec Unit
+copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
+  let
+    goodDirectories = [ "src" ]
+    goodFiles = [ "purs.json", "README.md", "LICENSE", Path.concat [ "src", "Main.purs" ], Path.concat [ "src", "Main.js" ] ]
+
+  Spec.it "Only copies always-included files by default" \{ source, destination, writeDirectories, writeFiles } -> do
+    writeDirectories (goodDirectories <> API.ignoredDirectories <> [ "test" ])
+    writeFiles (goodFiles <> API.ignoredFiles <> [ Path.concat [ "test", "Main.purs" ] ])
+
+    copyPackageSourceFiles Nothing { source, destination }
+
+    paths <- liftAff $ FastGlob.match destination [ "**/*" ]
+
+    let
+      acceptedPaths = goodDirectories <> goodFiles
+      ignoredPaths = API.ignoredDirectories <> API.ignoredFiles
+
+    for_ acceptedPaths \path -> do
+      paths.succeeded `Assert.shouldContain` path
+
+    for_ ignoredPaths \path -> do
+      paths.succeeded `Assert.shouldNotContain` path
+
+  Spec.it "Copies user-specified files" \{ source, destination, writeDirectories, writeFiles } -> do
+    let
+      userFiles = Just [ "test/**/*.purs" ]
+      testDir = [ "test" ]
+      testFiles = [ Path.concat [ "test", "Main.purs" ], Path.concat [ "test", "Test.purs" ] ]
+
+    writeDirectories (goodDirectories <> testDir)
+    writeFiles (goodFiles <> testFiles)
+
+    copyPackageSourceFiles userFiles { source, destination }
+
+    paths <- liftAff $ FastGlob.match destination [ "**/*" ]
+
+    let acceptedPaths = goodDirectories <> goodFiles <> testDir <> testFiles
+
+    for_ acceptedPaths \path -> do
+      paths.succeeded `Assert.shouldContain` path
+
+  where
+  runBefore = do
+    tmp <- liftEffect Tmp.mkTmpDir
+    destTmp <- liftEffect Tmp.mkTmpDir
+
+    let
+      inTmp :: FilePath -> FilePath
+      inTmp path = Path.concat [ tmp, path ]
+
+      writeDirectories :: Array FilePath -> _
+      writeDirectories = liftAff <<< traverse_ (FS.Extra.ensureDirectory <<< inTmp)
+
+      writeFiles :: Array FilePath -> _
+      writeFiles = liftAff <<< traverse_ (\path -> FS.writeTextFile UTF8 (inTmp path) "<test>")
+
+    pure { source: tmp, destination: destTmp, writeDirectories, writeFiles }
+
 goodPackageName :: Spec.Spec Unit
 goodPackageName = do
   let
@@ -154,6 +251,8 @@ goodPackageName = do
 
   parseName "a" "a"
   parseName "some-dash" "some-dash"
+  -- A blessed prefixed package
+  parseName "purescript-compiler-backend-utilities" "purescript-compiler-backend-utilities"
 
 badPackageName :: Spec.Spec Unit
 badPackageName = do
@@ -162,8 +261,10 @@ badPackageName = do
       (PackageName.print <$> PackageName.parse str) `Assert.shouldSatisfy` case _ of
         Right _ -> false
         Left { error } -> error == err
+
   let startErr = "Package name should start with a lower case char or a digit"
   let midErr = "Package name can contain lower case chars, digits and non-consecutive dashes"
+  let prefixErr = "Package names should not begin with 'purescript-'"
   let endErr = "Package name should end with a lower case char or digit"
   let manyDashes = "Package names cannot contain consecutive dashes"
 
@@ -174,6 +275,7 @@ badPackageName = do
   failParse "a-" endErr
   failParse "" startErr
   failParse "🍝" startErr
+  failParse "purescript-aff" prefixErr
 
 goodSPDXLicense :: Spec.Spec Unit
 goodSPDXLicense = do
@@ -336,3 +438,102 @@ bowerFileEncoding = do
         , description
         }
     Json.roundtrip bowerFile `Assert.shouldContain` bowerFile
+
+checkDependencyResolution :: Spec.Spec Unit
+checkDependencyResolution = do
+  Spec.it "Handles build plan with all dependencies resolved" do
+    Assert.shouldEqual (API.getUnresolvedDependencies manifest exactBuildPlan) []
+  Spec.it "Handles build plan with all dependencies resolved + extra" do
+    Assert.shouldEqual (API.getUnresolvedDependencies manifest extraBuildPlan) []
+  Spec.it "Handles build plan with resolution missing package" do
+    Assert.shouldEqual (API.getUnresolvedDependencies manifest buildPlanMissingPackage) [ Left (packageTwoName /\ packageTwoRange) ]
+  Spec.it "Handles build plan with resolution having package at wrong version" do
+    Assert.shouldEqual (API.getUnresolvedDependencies manifest buildPlanWrongVersion) [ Right (packageTwoName /\ packageTwoRange /\ mkUnsafeVersion "7.0.0") ]
+  where
+  manifest@(Manifest { dependencies }) =
+    Fixture.setDependencies [ Tuple "package-one" "2.0.0", Tuple "package-two" "3.0.0" ] Fixture.fixture
+
+  packageTwoName = mkUnsafePackage "package-two"
+  packageTwoRange = unsafeFromJust $ Map.lookup packageTwoName dependencies
+
+  exactBuildPlan = BuildPlan
+    { compiler: mkUnsafeVersion "0.14.2"
+    , resolutions: Map.fromFoldable
+        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+        , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
+        ]
+    }
+
+  extraBuildPlan = BuildPlan
+    { compiler: mkUnsafeVersion "0.14.2"
+    , resolutions: Map.fromFoldable
+        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+        , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
+        , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
+        ]
+    }
+
+  buildPlanMissingPackage = BuildPlan
+    { compiler: mkUnsafeVersion "0.14.2"
+    , resolutions: Map.fromFoldable
+        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+        , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
+        ]
+    }
+
+  buildPlanWrongVersion = BuildPlan
+    { compiler: mkUnsafeVersion "0.14.2"
+    , resolutions: Map.fromFoldable
+        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+        , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "7.0.0")
+        ]
+    }
+
+checkBuildPlanToResolutions :: Spec.Spec Unit
+checkBuildPlanToResolutions = do
+  Spec.it "buildPlanToResolutions produces expected resolutions file format" do
+    Assert.shouldEqual generatedResolutions expectedResolutions
+  where
+  dependenciesDir = "testDir"
+
+  resolutions = Map.fromFoldable
+    [ Tuple (mkUnsafePackage "prelude") (mkUnsafeVersion "1.0.0")
+    , Tuple (mkUnsafePackage "bifunctors") (mkUnsafeVersion "2.0.0")
+    , Tuple (mkUnsafePackage "ordered-collections") (mkUnsafeVersion "3.0.0")
+    ]
+
+  generatedResolutions =
+    API.buildPlanToResolutions
+      { buildPlan: BuildPlan { compiler: mkUnsafeVersion "0.14.2", resolutions }
+      , dependenciesDir
+      }
+
+  expectedResolutions = Map.fromFoldable do
+    packageName /\ version <- (Map.toUnfoldable resolutions :: Array _)
+    let
+      bowerName = RawPackageName ("purescript-" <> PackageName.print packageName)
+      path = Path.concat [ dependenciesDir, PackageName.print packageName <> "-" <> Version.printVersion version ]
+    pure $ Tuple bowerName { path, version }
+
+compilerVersions :: Spec.Spec Unit
+compilerVersions = do
+  traverse_ testVersion [ "0.13.0", "0.14.0", "0.14.7" ]
+  traverse_ testMissingVersion [ "0.13.1", "0.14.8" ]
+  where
+  testVersion version =
+    Spec.it ("Calls compiler version " <> version) do
+      callCompiler { args: [ "--version" ], cwd: Nothing, version } >>= case _ of
+        Left err -> case err of
+          MissingCompiler ->
+            Assert.fail "MissingCompiler"
+          UnknownError err' ->
+            Assert.fail ("UnknownError: " <> err')
+        Right stdout ->
+          version `Assert.shouldEqual` stdout
+
+  testMissingVersion version =
+    Spec.it ("Handles failure when compiler is missing " <> version) do
+      result <- callCompiler { args: [ "--version" ], cwd: Nothing, version }
+      case result of
+        Left MissingCompiler -> pure unit
+        _ -> Assert.fail "Should have failed with MissingCompiler"

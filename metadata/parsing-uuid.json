@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "markfarrell",
+    "githubRepo": "purescript-parsing-uuid"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 1080,
+      "hash": "sha256-thsi6iV7XBq0tKTdHRkXFg7KieacTu9GDVQ7Sy+l7jQ=",
+      "publishedTime": "2020-06-05T07:47:09.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}

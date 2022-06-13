@@ -1,0 +1,39 @@
+{
+  "location": {
+    "githubOwner": "purescript-aws-sdk",
+    "githubRepo": "purescript-aws-resourcegroupstaggingapi"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 7177,
+      "hash": "sha256-uIOgRr6uzVk1H2r4IDzb7qcyP0f8ADVXHg6OZQMYKas=",
+      "publishedTime": "2018-03-10T21:32:40.0Z",
+      "ref": "v0.0.1"
+    },
+    "0.1.1": {
+      "bytes": 7196,
+      "hash": "sha256-aLuuXu2B0IsjyQYALFjhV0qy9l8DdBuXNrsev2oamEI=",
+      "publishedTime": "2018-03-12T18:18:23.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.1.2": {
+      "bytes": 7173,
+      "hash": "sha256-r4BSHNG9R9Nde9ZRSw5ADGL1J/AwK7Id/kO+Ong5L4Y=",
+      "publishedTime": "2018-03-13T13:38:57.0Z",
+      "ref": "v0.1.2"
+    },
+    "0.2.1": {
+      "bytes": 7328,
+      "hash": "sha256-/3uILCBBWlsiGLlM3xnyJ+nxes7FiZpcIZ13R2qPJ48=",
+      "publishedTime": "2018-03-28T16:47:27.0Z",
+      "ref": "v0.2.1"
+    },
+    "0.3.1": {
+      "bytes": 7275,
+      "hash": "sha256-uVvNVwwiLOGW7edxeXku6BYxPB1gvUOETA51SyfNxyc=",
+      "publishedTime": "2018-04-26T13:30:54.0Z",
+      "ref": "v0.3.1"
+    }
+  },
+  "unpublished": {}
+}

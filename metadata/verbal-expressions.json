@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "VerbalExpressions",
+    "githubRepo": "purescript-verbal-expressions"
+  },
+  "published": {
+    "0.2.1": {
+      "bytes": 3908,
+      "hash": "sha256-9nvctim9DgrQvggGNG/a1PlHva18ZzioVXPSJqPukw8=",
+      "publishedTime": "2016-05-04T21:19:44.0Z",
+      "ref": "v0.2.1"
+    },
+    "1.0.0": {
+      "bytes": 4724,
+      "hash": "sha256-gy4gMqbjXg3mA9CaIGlvlNSZHehOUnNXTjwbQz4dYcA=",
+      "publishedTime": "2016-06-12T13:31:10.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 4725,
+      "hash": "sha256-O8WH+pGcD8Ff/qZ2CjkFJe6LkwpejIU+qD8Wmnp16O8=",
+      "publishedTime": "2016-07-01T19:32:52.0Z",
+      "ref": "v1.0.1"
+    },
+    "2.0.0": {
+      "bytes": 4738,
+      "hash": "sha256-PDdI3EfqyEHpAnAohR6H0QHcKHezLmZHABmfI93IEJ0=",
+      "publishedTime": "2016-11-04T22:10:26.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 4748,
+      "hash": "sha256-4ix6rRBqEaDkRChYGaJrok76Ydb2+y9U99Vg8ueDQtE=",
+      "publishedTime": "2017-04-22T07:40:29.0Z",
+      "ref": "v3.0.0"
+    },
+    "4.0.0": {
+      "bytes": 4758,
+      "hash": "sha256-jkNQ6Ih47gIdKeWkXkJOk0dKoklnZX22IT1V/9tsJbs=",
+      "publishedTime": "2018-11-09T18:48:02.0Z",
+      "ref": "v4.0.0"
+    }
+  },
+  "unpublished": {}
+}

@@ -1,0 +1,33 @@
+{
+  "location": {
+    "githubOwner": "joneshf",
+    "githubRepo": "purescript-refractor"
+  },
+  "published": {
+    "0.1.1": {
+      "bytes": 1156,
+      "hash": "sha256-ZTB9nIgcHhxHXROEOngk+ABFrWJz5CuJrt6i1h5gW7Y=",
+      "publishedTime": "2014-11-29T23:19:33.0Z",
+      "ref": "v0.1.1"
+    },
+    "0.2.0": {
+      "bytes": 1198,
+      "hash": "sha256-bSmuo5QSV4GAtCbQgMLpPfl4Wb4HhtVeu27/v4RWYmo=",
+      "publishedTime": "2015-01-12T21:07:53.0Z",
+      "ref": "v0.2.0"
+    },
+    "0.3.0": {
+      "bytes": 1238,
+      "hash": "sha256-ZlkNuT0CXlKg/IUoOvMnqn3sT3DNXjIVzrOSnVjoOyc=",
+      "publishedTime": "2015-02-21T17:18:49.0Z",
+      "ref": "v0.3.0"
+    },
+    "0.4.0": {
+      "bytes": 1237,
+      "hash": "sha256-5J0/gVBOpwM9w4fjDPzBzO3+r2nPNzgjird48inuiNU=",
+      "publishedTime": "2015-05-07T02:47:19.0Z",
+      "ref": "v0.4.0"
+    }
+  },
+  "unpublished": {}
+}

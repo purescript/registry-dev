@@ -1,0 +1,27 @@
+{
+  "location": {
+    "githubOwner": "safareli",
+    "githubRepo": "purescript-stacksafe-function"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 2361,
+      "hash": "sha256-azuQrLPaMoxUtcc2JL5X2HEH61uHfuDhs79wu/nMthk=",
+      "publishedTime": "2018-02-14T11:33:12.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 2354,
+      "hash": "sha256-jACT1WEU+QjI44tjrurcnGrgmd87/9FsCE8mWJcYaCM=",
+      "publishedTime": "2018-02-14T11:39:13.0Z",
+      "ref": "v1.0.1"
+    },
+    "2.0.0": {
+      "bytes": 2483,
+      "hash": "sha256-H1ybLylPTOJ1mvxOZtDwewnpTlJbWfdcj7BU1dhvq1I=",
+      "publishedTime": "2019-01-08T05:34:03.0Z",
+      "ref": "v2.0.0"
+    }
+  },
+  "unpublished": {}
+}

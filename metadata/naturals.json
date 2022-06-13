@@ -1,0 +1,57 @@
+{
+  "location": {
+    "githubOwner": "LiamGoodacre",
+    "githubRepo": "purescript-naturals"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 1689,
+      "hash": "sha256-4GcKfQtUu9d/5dWc6pGtaW/9SczrZ3xr5Y/i6SyptDg=",
+      "publishedTime": "2016-11-08T23:07:33.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 1770,
+      "hash": "sha256-UQp0ebgeiUkfV3CdnWyYVBCgzxxfFNhGtM5/hApH3og=",
+      "publishedTime": "2016-11-08T23:11:13.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 1795,
+      "hash": "sha256-+CvuxPOq0Sxnv/heX2u+Jwi4AdgFlICD0OHSrXUgFZg=",
+      "publishedTime": "2016-11-14T20:01:28.0Z",
+      "ref": "v1.0.2"
+    },
+    "1.1.0": {
+      "bytes": 1794,
+      "hash": "sha256-9EtqHQ9VPBdHcBEgIJcFmo2LOuOC4ev8p4jCwUwFzfk=",
+      "publishedTime": "2017-02-18T23:22:05.0Z",
+      "ref": "v1.1.0"
+    },
+    "2.0.0": {
+      "bytes": 2005,
+      "hash": "sha256-yBJ6pB1o/nOAZyd8Nnxu+fHe3MDl5bmTWQ2p/I3Ppbg=",
+      "publishedTime": "2017-04-10T22:27:04.0Z",
+      "ref": "v2.0.0"
+    },
+    "2.1.0": {
+      "bytes": 2003,
+      "hash": "sha256-3fH9qpuM3HQugHBdemglGz3imIcDGLy3nlf2efRG150=",
+      "publishedTime": "2017-07-22T14:51:50.0Z",
+      "ref": "v2.1.0"
+    },
+    "2.2.0": {
+      "bytes": 2142,
+      "hash": "sha256-u2bhI6f9Ex1puxYe4oqLRLvk90ecvpZ6bK63Y1QOkcA=",
+      "publishedTime": "2018-02-04T22:22:33.0Z",
+      "ref": "v2.2.0"
+    },
+    "3.0.0": {
+      "bytes": 2156,
+      "hash": "sha256-d8ng5vQu2jH+eqQdRsDTxa2fzInHfgI2iA4EIW8O8Tk=",
+      "publishedTime": "2018-07-15T19:57:09.0Z",
+      "ref": "v3.0.0"
+    }
+  },
+  "unpublished": {}
+}

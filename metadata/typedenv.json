@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "nsaunders",
+    "githubRepo": "purescript-typedenv"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 5788,
+      "hash": "sha256-u6EN05f98lMaDd7SUoEDmoVmIegGuFb9UYrkMZLw2ks=",
+      "publishedTime": "2019-09-07T16:16:47.0Z",
+      "ref": "v0.0.1"
+    },
+    "1.0.0": {
+      "bytes": 4569,
+      "hash": "sha256-uyiI6U7JMauXXPaehaY9wW/LkbcD3LEjrXBpVyIKMME=",
+      "publishedTime": "2021-03-27T23:08:54.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}

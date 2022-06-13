@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "Risto-Stevcev",
+    "githubRepo": "purescript-cast"
+  },
+  "published": {
+    "0.1.0": {
+      "bytes": 1354,
+      "hash": "sha256-KMmlfovnR1FFKnUr7EMDhQ6Hcnlbm+5ocFJx8t2fhv8=",
+      "publishedTime": "2017-08-19T15:59:22.0Z",
+      "ref": "v0.1.0"
+    }
+  },
+  "unpublished": {}
+}

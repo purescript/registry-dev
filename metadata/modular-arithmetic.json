@@ -1,0 +1,45 @@
+{
+  "location": {
+    "githubOwner": "hdgarrood",
+    "githubRepo": "purescript-modular-arithmetic"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 3095,
+      "hash": "sha256-ufTT8hqRoynlRCiOv90q8r8UZh+F51qgD9/Mn4gM8Jk=",
+      "publishedTime": "2017-01-29T01:34:35.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 3092,
+      "hash": "sha256-IPAP4jAZI5HAKV9BqkTkZIxaVPD14l1nfsbxpq7s3ek=",
+      "publishedTime": "2017-01-29T14:21:25.0Z",
+      "ref": "v1.0.1"
+    },
+    "2.0.0": {
+      "bytes": 3065,
+      "hash": "sha256-Yyb+fhSVmMqW0trc2prLpBusCHHaOCP9PsEm5ykIk7E=",
+      "publishedTime": "2017-05-01T10:35:50.0Z",
+      "ref": "v2.0.0"
+    },
+    "3.0.0": {
+      "bytes": 3424,
+      "hash": "sha256-ny76qzTEuyekyvEtOTFaQ9vBbOVm2lKl1AuI7FH4W4Q=",
+      "publishedTime": "2018-04-11T17:02:04.0Z",
+      "ref": "v3.0.0"
+    },
+    "3.1.0": {
+      "bytes": 4434,
+      "hash": "sha256-rQVosr0KKKQYUcUitr+BUQQi16tfJHSk885xSVT4zds=",
+      "publishedTime": "2018-04-12T09:23:30.0Z",
+      "ref": "v3.1.0"
+    },
+    "4.0.0": {
+      "bytes": 4542,
+      "hash": "sha256-dGMo1vCTf0P0q8kjFOBh1YDfTiiCd/UiBUJX9ak8FX0=",
+      "publishedTime": "2018-11-28T00:37:27.0Z",
+      "ref": "v4.0.0"
+    }
+  },
+  "unpublished": {}
+}

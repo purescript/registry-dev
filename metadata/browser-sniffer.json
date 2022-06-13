@@ -3,6 +3,13 @@
     "githubOwner": "CapillarySoftware",
     "githubRepo": "purescript-browser-sniffer"
   },
-  "releases": {},
+  "published": {
+    "0.0.0": {
+      "bytes": 2842,
+      "hash": "sha256-glK9XkfDQQ3tx1TWxpsMi50GGEirRAKITnIB9lMjSo0=",
+      "publishedTime": "2014-11-12T22:13:02.0Z",
+      "ref": "v0.0.0"
+    }
+  },
   "unpublished": {}
 }
