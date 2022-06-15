@@ -51,6 +51,12 @@
       "hash": "sha256-/80O8nuw1P0GctFispqlf9tlgN4gkHcPAhp0dIEYE/k=",
       "publishedTime": "2020-10-18T21:44:57.0Z",
       "ref": "v0.5.3"
+    },
+    "1.0.0": {
+      "bytes": 17604,
+      "hash": "sha256-ghtQhpFCw7Tf6W8zU71PKIzgr3K3n1E7WPOespOVoVk=",
+      "publishedTime": "2022-06-11T22:08:48.0Z",
+      "ref": "v1.0.0"
     }
   },
   "unpublished": {}
