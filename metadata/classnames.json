@@ -21,6 +21,12 @@
       "hash": "sha256-xN4ZjlrJArFj4A/+UuY1wQaGX0k3wljDI/VaprlO0S0=",
       "publishedTime": "2021-06-16T21:15:17.0Z",
       "ref": "v1.0.0"
+    },
+    "2.0.0": {
+      "bytes": 3882,
+      "hash": "sha256-bSKaP1DE0qpA0wpyGw273LBwXbpO5MjeKH/F/bzW8is=",
+      "publishedTime": "2022-06-05T21:57:53.0Z",
+      "ref": "v2.0.0"
     }
   },
   "unpublished": {}

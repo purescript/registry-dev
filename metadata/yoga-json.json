@@ -9,6 +9,18 @@
       "hash": "sha256-yVdiim43w7XOVbbZa1QiWdEx7N0kjR/0Hj/A92ylZCs=",
       "publishedTime": "2022-05-10T17:05:00.0Z",
       "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 7017,
+      "hash": "sha256-7vv6Ke+AKnOFWvkj8FCfGOvr3DEaggrr7RzLPHmD4wQ=",
+      "publishedTime": "2022-06-10T14:36:49.0Z",
+      "ref": "v1.0.1"
+    },
+    "2.0.0": {
+      "bytes": 8812,
+      "hash": "sha256-t2yN9o3d02al7ffBdb1mUExGAmyA6RYJtoHai0jB+80=",
+      "publishedTime": "2022-06-11T19:13:29.0Z",
+      "ref": "v2.0.0"
     }
   },
   "unpublished": {}

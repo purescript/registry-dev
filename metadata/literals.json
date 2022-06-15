@@ -21,6 +21,24 @@
       "hash": "sha256-vvk39GryONKY38xS/5OR30Xt8cCl1T3Scyav548UzyE=",
       "publishedTime": "2021-03-10T05:32:38.0Z",
       "ref": "v0.2.0"
+    },
+    "1.0.0": {
+      "bytes": 4297,
+      "hash": "sha256-Vu4bmf/CtAB/CnZYYWPPHWLxwXCbyXYGmg6JRGGL0Pg=",
+      "publishedTime": "2022-05-31T06:59:59.0Z",
+      "ref": "v1.0.0"
+    },
+    "1.0.1": {
+      "bytes": 4305,
+      "hash": "sha256-yYd834ZNuq7gfBpyImrQzIFlT/0u/0A/CZFQyVPRPrg=",
+      "publishedTime": "2022-05-31T07:01:28.0Z",
+      "ref": "v1.0.1"
+    },
+    "1.0.2": {
+      "bytes": 4306,
+      "hash": "sha256-Jxv232AdUkRaGS9wxTC3r3CGS9g5CkfYQYdVfwvEyUo=",
+      "publishedTime": "2022-05-31T15:14:34.0Z",
+      "ref": "v1.0.2"
     }
   },
   "unpublished": {}

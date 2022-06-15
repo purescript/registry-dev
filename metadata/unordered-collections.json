@@ -147,6 +147,12 @@
       "hash": "sha256-BuvUOIY7ZxfVk4ZbTKVqmSqZnvjeTCpjOtmKgimVSXc=",
       "publishedTime": "2021-08-27T07:03:09.0Z",
       "ref": "v2.1.4"
+    },
+    "3.0.0": {
+      "bytes": 19174,
+      "hash": "sha256-G9wNIq+qs2nwDz2Z4WMkh8l3vkCi0ulTfCHJSmyU0xI=",
+      "publishedTime": "2022-05-28T13:10:35.0Z",
+      "ref": "v3.0.0"
     }
   },
   "unpublished": {}

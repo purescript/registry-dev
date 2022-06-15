@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "purescript-node",
+    "githubRepo": "purescript-node-buffer-blob"
+  },
+  "published": {
+    "1.0.0": {
+      "bytes": 3117,
+      "hash": "sha256-wuuGtB186LmeUkhkFQL7r0hduftToCTvAjkXKcgPsVc=",
+      "publishedTime": "2022-06-09T14:11:56.0Z",
+      "ref": "v1.0.0"
+    }
+  },
+  "unpublished": {}
+}
