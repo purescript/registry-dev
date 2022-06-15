@@ -45,6 +45,12 @@
       "hash": "sha256-bncz+AmUPxF5PjO//5Xttq92zNU1sQ+1x/Tj4r8Lkks=",
       "publishedTime": "2021-04-28T08:45:47.0Z",
       "ref": "v4.1.0"
+    },
+    "5.0.0": {
+      "bytes": 54732,
+      "hash": "sha256-TDPqxS4VEoXTrCCChe666z0uivcf1wuGQ17Pntn0Qmo=",
+      "publishedTime": "2022-06-08T20:43:02.0Z",
+      "ref": "v5.0.0"
     }
   },
   "unpublished": {}
