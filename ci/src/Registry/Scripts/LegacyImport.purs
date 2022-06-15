@@ -15,6 +15,7 @@ import Foreign.GitHub as GitHub
 import Foreign.Object as Object
 import Registry.API as API
 import Registry.Index (RegistryIndex)
+import Registry.Index as Index
 import Registry.Json (printJson)
 import Registry.Json as Json
 import Registry.PackageGraph as Graph
@@ -102,6 +103,7 @@ main = Aff.launchAff_ do
       wasPackageUploaded { name, version } = API.isPackageVersionInMetadata name version packagesMetadata
       packagesToUpload = Array.filter (\package -> not (wasPackageUploaded package || disabled package)) availablePackages
 
+    log "Uploading packages to the registry backend..."
     -- We need to use `for` here instead of `for_`, because the `Foldable` class
     -- isn't stack-safe.
     void $ for packagesToUpload \manifest -> do
@@ -121,6 +123,14 @@ main = Aff.launchAff_ do
       log $ "UPLOADING PACKAGE: " <> show manifest.name <> "@" <> show manifest.version <> " to " <> show manifest.location
       log "----------------------------------------------------------------------"
       API.runOperation addition
+
+    log "Writing the registry-index on disk..."
+    -- While insertions are usually done as part of the API operation, we don't
+    -- yet commit and push to the registry-index repository. For that reason, we
+    -- write to disk here and can manually commit the result upstream if desired.
+    let packagesToIndex = Array.filter (not disabled) availablePackages
+    void $ for packagesToIndex \manifest ->
+      liftAff $ Index.insertManifest API.indexDir $ Manifest manifest
 
   log "Done!"
 
@@ -239,7 +249,7 @@ downloadLegacyRegistry = do
             )
         $ Map.toUnfoldable allPackages
 
-  log $ "Reserved names:\n" <> (printJson $ Array.fromFoldable $ Map.keys reservedNames)
+  log $ "Reserved names (" <> show (Map.size reservedNames) <> "):\n" <> (printJson $ Array.fromFoldable $ Map.keys reservedNames)
   pure { registry: checkedIndex, reservedNames }
 
 -- Packages can be specified either in 'package-name' format or
