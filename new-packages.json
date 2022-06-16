@@ -207,5 +207,6 @@
   "purescript-node-buffer-blob": "https://github.com/purescript-node/purescript-node-buffer-blob.git",
   "purescript-node-fetch": "https://github.com/sigma-andex/purescript-node-fetch.git",
   "purescript-httpurple-yoga-json": "https://github.com/sigma-andex/purescript-httpurple-yoga-json.git",
-  "purescript-httpurple-argonaut": "https://github.com/sigma-andex/purescript-httpurple-argonaut.git"
+  "purescript-httpurple-argonaut": "https://github.com/sigma-andex/purescript-httpurple-argonaut.git",
+  "purescript-lazy-joe": "https://github.com/sigma-andex/purescript-lazy-joe.git"
 }
