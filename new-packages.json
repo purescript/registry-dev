@@ -209,5 +209,11 @@
   "purescript-httpurple-yoga-json": "https://github.com/sigma-andex/purescript-httpurple-yoga-json.git",
   "purescript-httpurple-argonaut": "https://github.com/sigma-andex/purescript-httpurple-argonaut.git",
   "purescript-lazy-joe": "https://github.com/sigma-andex/purescript-lazy-joe.git",
-  "purescript-array-builder": "https://github.com/paluh/purescript-array-builder.git"
+  "purescript-array-builder": "https://github.com/paluh/purescript-array-builder.git",
+  "purescript-monoid-extras": "https://github.com/mikesol/purescript-monoid-extras.git",
+  "purescript-hyrule": "https://github.com/mikesol/purescript-hyrule.git",
+  "purescript-bolson": "https://github.com/mikesol/purescript-bolson.git",
+  "purescript-deku": "https://github.com/mikesol/purescript-deku.git",
+  "purescript-ocarina": "https://github.com/mikesol/purescript-ocarina.git",
+  "purescript-rito": "https://github.com/mikesol/purescript-rito.git"
 }
