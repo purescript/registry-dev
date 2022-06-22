@@ -48,7 +48,7 @@
   "purescript-gl-matrix": "https://github.com/dirkz/purescript-gl-matrix.git",
   "purescript-teller": "https://github.com/ammanvedi/teller.git",
   "purescript-parsing-repetition": "https://github.com/markfarrell/purescript-parsing-repetition.git",
-  "purescript-untagged-union": "https://github.com/jvliwanag/purescript-untagged-union.git",
+  "purescript-untagged-union": "https://github.com/rowtype-yoga/purescript-untagged-union.git",
   "purescript-parsing-validation": "https://github.com/markfarrell/purescript-parsing-validation.git",
   "purescript-geometry-plane": "https://github.com/Ebmtranceboy/purescript-geometry-plane.git",
   "purescript-github-actions-toolkit": "https://github.com/purescript-contrib/purescript-github-actions-toolkit.git",
@@ -207,5 +207,13 @@
   "purescript-node-buffer-blob": "https://github.com/purescript-node/purescript-node-buffer-blob.git",
   "purescript-node-fetch": "https://github.com/sigma-andex/purescript-node-fetch.git",
   "purescript-httpurple-yoga-json": "https://github.com/sigma-andex/purescript-httpurple-yoga-json.git",
-  "purescript-httpurple-argonaut": "https://github.com/sigma-andex/purescript-httpurple-argonaut.git"
+  "purescript-httpurple-argonaut": "https://github.com/sigma-andex/purescript-httpurple-argonaut.git",
+  "purescript-lazy-joe": "https://github.com/sigma-andex/purescript-lazy-joe.git",
+  "purescript-array-builder": "https://github.com/paluh/purescript-array-builder.git",
+  "purescript-monoid-extras": "https://github.com/mikesol/purescript-monoid-extras.git",
+  "purescript-hyrule": "https://github.com/mikesol/purescript-hyrule.git",
+  "purescript-bolson": "https://github.com/mikesol/purescript-bolson.git",
+  "purescript-deku": "https://github.com/mikesol/purescript-deku.git",
+  "purescript-ocarina": "https://github.com/mikesol/purescript-ocarina.git",
+  "purescript-rito": "https://github.com/mikesol/purescript-rito.git"
 }
