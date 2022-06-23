@@ -127,7 +127,7 @@ Package sets are stored in the `registry` repository under the `package-sets` di
 1. `version`, which is a string containing the SemVer package set version for this set.
 2. `compiler`, which is a string containing the SemVer compiler version used to verify the package set.
 3. `date`, which is a date string in YYYY-MM-DD format that describes which day this package set was produced.
-4. `packages`, which is an object in which keys are package names and values are are an object `{ version, hash }`. The version in this object is a SemVer string representing the package version and the hash is an SRI-encoded string that hashes the package contents at that version.
+4. `packages`, which is an object in which keys are package names and values are package versions (a SemVer version).
 
 For example, in JSON:
 
