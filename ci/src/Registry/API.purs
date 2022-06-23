@@ -379,10 +379,27 @@ runChecks { isLegacyImport, buildPlan, metadata, manifest } = do
   when (PackageName.print manifestFields.name == "metadata") do
     throwWithComment "The `metadata` package cannot be uploaded to the registry as it is a protected package."
 
-  log "Check that version is unique"
+  log "Check that version has not already been published"
   case Map.lookup manifestFields.version metadata.published of
     Nothing -> pure unit
-    Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> Version.printVersion manifestFields.version <> "\nIts metadata is: " <> show info
+    Just info -> throwWithComment $ String.joinWith "\n"
+      [ "You tried to upload a version that already exists: " <> Version.printVersion manifestFields.version
+      , "Its metadata is:"
+      , "```"
+      , show info
+      , "```"
+      ]
+
+  log "Check that version has not been unpublished"
+  case Map.lookup manifestFields.version metadata.unpublished of
+    Nothing -> pure unit
+    Just info -> throwWithComment $ String.joinWith "\n"
+      [ "You tried to upload a version that has been unpublished: " <> Version.printVersion manifestFields.version
+      , "Details:"
+      , "```"
+      , show info
+      , "```"
+      ]
 
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
