@@ -133,18 +133,12 @@ For example, in JSON:
 
 ```json
 {
-  "version": "v2.3.1",
+  "version": "2.3.1",
   "date": "2022-04-19",
-  "compiler": "v0.14.9",
+  "compiler": "0.14.9",
   "packages": {
-    "aff": {
-      "version": "v5.0.0",
-      "hash": "sha256-fP5dDqsc3/rjZ+WTKFrfIGzuwFnmSQLQg3o+NC17jpY="
-    },
-    "affjax": {
-      "version": "v5.0.0",
-      "hash": "sha256-fP5dDqsc3/rjZ+WTKFrfIGzuwFnmSQLQg3o+NC17jpY="
-    }
+    "aff": "5.0.0",
+    "affjax": "5.0.0"
   }
 }
 ```
