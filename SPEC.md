@@ -151,7 +151,7 @@ Package sets use the following naming convention:
 
 The first major/minor/patch version refers to the package set version. The date refers to the date the package set was produced. The `purs-` major/minor/patch version refers to the compiler version used to produce the set. Here's an example package set version:
 
-`2.3.1+2022-04-19-purs-0.14.9`
+`2.3.1+2022-04-19-purs-0_14_9`
 
 This information is also contained in the package set file itself.
 
@@ -189,7 +189,7 @@ Fourth, we release the new package set (if we could produce one). Automatic pack
 2. If the highest SemVer upgrade in the set was a minor version, or any new packages were added to the package set, then the package set increments a minor version.
 3. If the highest SemVer upgrade in the set was a patch version, then the package set increments a patch version.
 
-For example, if the previous release was `2.1.1+2022-06-01-purs-0.15.2` (`2.1.1` for short), and the next day no packages changed versions but a new package was registered, the new version would be `2.2.0+2022-06-02-purs-0.15.2` (`2.2.0` for short).
+For example, if the previous release was `2.1.1+2022-06-01-purs-0_15_2` (`2.1.1` for short), and the next day no packages changed versions but a new package was registered, the new version would be `2.2.0+2022-06-02-purs-0_15_2` (`2.2.0` for short).
 
 #### Manual Intervention in the Package Sets
 
