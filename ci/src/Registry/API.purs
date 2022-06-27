@@ -57,6 +57,7 @@ import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Build
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
+import Registry.Utils (wget)
 import Registry.Version (ParseMode(..), Range, Version)
 import Registry.Version as Version
 import Sunde as Process
@@ -588,16 +589,6 @@ buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir }
       bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
       packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.printVersion version ]
     pure $ Tuple bowerPackageName { path: packagePath, version }
-
-wget :: String -> FilePath -> RegistryM Unit
-wget url path = do
-  let cmd = "wget"
-  let stdin = Nothing
-  let args = [ "-O", path, url ]
-  result <- liftAff $ Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
-  case result.exit of
-    NodeProcess.Normally 0 -> pure unit
-    _ -> throwWithComment $ "Error while fetching tarball: " <> result.stderr
 
 mkEnv :: GitHub.Octokit -> MetadataRef -> IssueNumber -> Env
 mkEnv octokit packagesMetadata issue =
