@@ -99,6 +99,12 @@
       "hash": "sha256-V/XVtH1LtiVcinZn512hrhmpBvfdVIMNc0cGLcaYPF4=",
       "publishedTime": "2022-04-30T03:32:29.0Z",
       "ref": "v0.7.0"
+    },
+    "0.7.1": {
+      "bytes": 15357,
+      "hash": "sha256-WksWHw8+92M29rDNCLhFT1GAW71H+J07kA55gxwfUHA=",
+      "publishedTime": "2022-06-14T18:49:52.0Z",
+      "ref": "v0.7.1"
     }
   },
   "unpublished": {}
