@@ -81,6 +81,12 @@
       "hash": "sha256-LO3c3NTjgRrYOz+UhTXGySpFtWJCcnzXCWcjrTif6gE=",
       "publishedTime": "2019-05-11T11:45:17.0Z",
       "ref": "v0.4.0"
+    },
+    "0.5.1": {
+      "bytes": 3791,
+      "hash": "sha256-ijtwQIpJsdv7j4GFI/8IDHIOReE9u7JbMXzPIYNKtuw=",
+      "publishedTime": "2022-06-19T20:29:02.0Z",
+      "ref": "v0.5.1"
     }
   },
   "unpublished": {}

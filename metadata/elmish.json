@@ -189,6 +189,18 @@
       "hash": "sha256-yYdsTp3hUgHKqw2thVLec7NfszIfyoDVgtU6jViCETs=",
       "publishedTime": "2022-04-30T02:54:39.0Z",
       "ref": "v0.8.0"
+    },
+    "0.8.1": {
+      "bytes": 20919,
+      "hash": "sha256-kNvoq9ySs4VLM16PiNByhop4JGFSsHzfgV3AuhdZsBw=",
+      "publishedTime": "2022-06-14T18:42:31.0Z",
+      "ref": "v0.8.1"
+    },
+    "0.8.2": {
+      "bytes": 20937,
+      "hash": "sha256-lBWWG6N83Ah0w5CLiGcW0oEb/XT6SuT2uxjQ+HcTY5k=",
+      "publishedTime": "2022-06-19T16:25:58.0Z",
+      "ref": "v0.8.2"
     }
   },
   "unpublished": {}

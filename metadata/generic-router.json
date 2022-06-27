@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "njaremko",
+    "githubRepo": "purescript-generic-router"
+  },
+  "published": {
+    "0.0.1": {
+      "bytes": 3741,
+      "hash": "sha256-CO8hggU1b35d0CdHdTRlIPE7OLOVsFBb7iUsslTm2T0=",
+      "publishedTime": "2022-06-23T17:43:20.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}
