@@ -21,9 +21,8 @@ import Registry.Json as Json
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.PackageUpload as Upload
-import Registry.RegistryM (Env, readPackagesMetadata, runRegistryM, updatePackagesMetadata)
-import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..))
+import Registry.RegistryM (readPackagesMetadata, runRegistryM, updatePackagesMetadata)
+import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
 import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Scripts.LegacyImport.Process as Process
