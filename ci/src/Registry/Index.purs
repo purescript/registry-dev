@@ -112,8 +112,9 @@ insertManifest directory manifest@(Manifest { name, version }) = do
 
     contents :: String
     contents =
-      String.joinWith "\n"
-        $ map (Json.encode >>> Json.stringify)
+      (_ <> "\n")
+        $ String.joinWith "\n"
+        $ map Json.stringifyJson
         $ Array.sortBy (comparing (un Manifest >>> _.version))
         $ Array.fromFoldable modifiedManifests
 
