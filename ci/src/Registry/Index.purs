@@ -88,7 +88,7 @@ readPackage directory packageName = do
 
   contentsResult <- try do
     contents <- FS.readTextFile ASCII path
-    pure $ hush $ traverse Json.parseJson $ String.split (Pattern "\n") $ String.trim contents
+    pure $ hush $ traverse Json.parseJson $ String.split (Pattern "\n") $ contents
 
   pure case contentsResult of
     Left _ -> Nothing
