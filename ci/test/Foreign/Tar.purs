@@ -23,7 +23,7 @@ tar = do
 
     Spec.it "Tarballs are identical if contents are identical" do
       tarball1 <- createTarball
-      Aff.delay (Aff.Milliseconds 3000.0)
+      Aff.delay (Aff.Milliseconds 100.0)
       tarball2 <- createTarball
       tarball1 `Assert.shouldEqual` tarball2
   where
