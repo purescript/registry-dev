@@ -1,0 +1,21 @@
+{
+  "location": {
+    "githubOwner": "mikesol",
+    "githubRepo": "purescript-monoid-extras"
+  },
+  "published": {
+    "0.0.0": {
+      "bytes": 13123,
+      "hash": "sha256-CipsUT+VxADZdgdClOE503u6BMiBWUTr6R28UEOqKR8=",
+      "publishedTime": "2022-05-05T19:20:10.0Z",
+      "ref": "v0.0.0"
+    },
+    "0.0.1": {
+      "bytes": 13345,
+      "hash": "sha256-Vkth0l8+OxvwCMDpgLbDNbWwPhFNXnxKodDXH1Js/6g=",
+      "publishedTime": "2022-05-07T04:30:05.0Z",
+      "ref": "v0.0.1"
+    }
+  },
+  "unpublished": {}
+}
