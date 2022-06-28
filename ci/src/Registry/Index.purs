@@ -1,7 +1,10 @@
 module Registry.Index
   ( RegistryIndex
-  , readRegistryIndex
+  , getIndexDir
+  , getIndexPath
   , insertManifest
+  , readPackage
+  , readRegistryIndex
   ) where
 
 import Registry.Prelude
@@ -85,7 +88,7 @@ readPackage directory packageName = do
 
   contentsResult <- try do
     contents <- FS.readTextFile ASCII path
-    pure $ hush $ traverse Json.parseJson $ String.split (Pattern "\n") contents
+    pure $ hush $ traverse Json.parseJson $ String.split (Pattern "\n") $ String.trim contents
 
   pure case contentsResult of
     Left _ -> Nothing
@@ -94,10 +97,6 @@ readPackage directory packageName = do
 
 insertManifest :: FilePath -> Manifest -> Aff Unit
 insertManifest directory manifest@(Manifest { name, version }) = do
-  let
-    manifestPath = Path.concat [ directory, getIndexPath name ]
-    manifestDirectory = Path.dirname manifestPath
-
   existingManifest <- readPackage directory name
 
   let
@@ -118,5 +117,8 @@ insertManifest directory manifest@(Manifest { name, version }) = do
         $ Array.sortBy (comparing (un Manifest >>> _.version))
         $ Array.fromFoldable modifiedManifests
 
+  let manifestDirectory = Path.concat [ directory, getIndexDir name ]
   FS.Extra.ensureDirectory manifestDirectory
-  FS.writeTextFile ASCII manifestPath contents
+
+  let manifestFile = Path.concat [ directory, getIndexPath name ]
+  FS.writeTextFile ASCII manifestFile contents
