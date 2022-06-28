@@ -32,6 +32,7 @@ import Safe.Coerce (coerce)
 import Test.Fixture.Manifest as Fixture
 import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
+import Test.Foreign.Tar as Foreign.Tar
 import Test.Registry.Hash as Registry.Hash
 import Test.Registry.Index as Registry.Index
 import Test.Registry.SSH as SSH
@@ -90,6 +91,8 @@ main = launchAff_ do
       Registry.Hash.testHash
     Spec.describe "Json" do
       Foreign.JsonRepair.testJsonRepair
+    Spec.describe "Tar" do
+      Foreign.Tar.tar
     Spec.describe "Version" do
       TestVersion.testVersion
     Spec.describe "Range" do
