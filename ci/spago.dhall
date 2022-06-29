@@ -39,6 +39,7 @@
   , "node-process"
   , "now"
   , "nullable"
+  , "numbers"
   , "ordered-collections"
   , "parallel"
   , "partial"

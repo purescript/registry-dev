@@ -601,8 +601,12 @@ wget url path = do
 
 mkEnv :: GitHub.Octokit -> MetadataRef -> IssueNumber -> Env
 mkEnv octokit packagesMetadata issue =
-  { comment: GitHub.createComment octokit issue
-  , closeIssue: GitHub.closeIssue octokit issue
+  { comment: \comment -> Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
+      Left _ -> throwError $ Aff.error "Unable to create comment!"
+      Right _ -> pure unit
+  , closeIssue: Except.runExceptT (GitHub.closeIssue octokit issue) >>= case _ of
+      Left _ -> throwError $ Aff.error "Unable to close issue!"
+      Right _ -> pure unit
   , commitToTrunk: pushToMaster
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
@@ -679,8 +683,13 @@ fetchPackageSource { tmpDir, ref, location } = case location of
 
       PursPublish -> do
         octokit <- liftEffect GitHub.mkOctokit
-        commit <- liftAff $ GitHub.getRefCommit octokit { owner, repo } ref
-        commitDate <- liftAff $ GitHub.getCommitDate octokit { owner, repo } commit
+        commitDate <- do
+          result <- liftAff $ Except.runExceptT do
+            commit <- GitHub.getRefCommit octokit { owner, repo } ref
+            GitHub.getCommitDate octokit { owner, repo } commit
+          case result of
+            Left githubError -> throwWithComment $ "Unable to get published time for commit:\n" <> show githubError
+            Right a -> pure a
         let tarballName = ref <> ".tar.gz"
         let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
         let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName

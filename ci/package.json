@@ -12,6 +12,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@octokit/plugin-retry": "^3.0.9",
+    "@octokit/plugin-throttling": "^3.7.0",
     "@octokit/rest": "^18.12.0",
     "aws-sdk": "^2.1050.0",
     "decimal.js": "^10.3.1",
