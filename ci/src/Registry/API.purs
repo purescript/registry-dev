@@ -70,7 +70,7 @@ main = launchAff_ $ do
       >>= maybe (throw "GITHUB_EVENT_PATH not defined in the environment") pure
   octokit <- liftEffect GitHub.mkOctokit
   packagesMetadata <- mkMetadataRef
-  checkIndexExists
+  checkIndexExists indexDir
 
   readOperation eventPath >>= case _ of
     -- If the issue body is not just a JSON string, then we don't consider it
@@ -634,12 +634,12 @@ isPackageVersionInMetadata packageName version metadataMap =
     Nothing -> false
     Just metadata -> isVersionInMetadata version metadata
 
-checkIndexExists :: Aff Unit
-checkIndexExists = do
+checkIndexExists :: FilePath -> Aff Unit
+checkIndexExists dir = do
   log "Checking if the registry-index is present..."
-  whenM (not <$> FS.exists indexDir) do
+  whenM (not <$> FS.exists dir) do
     error "Didn't find the 'registry-index' repo, cloning..."
-    Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", indexDir ] Nothing) >>= case _ of
+    Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", dir ] Nothing) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> log "Successfully cloned the 'registry-index' repo"
 

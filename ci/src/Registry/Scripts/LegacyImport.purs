@@ -45,7 +45,7 @@ main :: Effect Unit
 main = Aff.launchAff_ do
   _ <- Dotenv.loadFile
 
-  API.checkIndexExists
+  API.checkIndexExists API.indexDir
 
   log "Starting import from legacy registries..."
   { registry, reservedNames } <- downloadLegacyRegistry
