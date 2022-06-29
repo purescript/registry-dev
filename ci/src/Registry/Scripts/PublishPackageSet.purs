@@ -20,7 +20,7 @@ import Registry.Index as Index
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.RegistryM (runRegistryM)
-import Registry.Schema (LegacyPackageSet(..), LegacyPackageSetEntry(..), Manifest(..))
+import Registry.Schema (LegacyPackageSet(..), LegacyPackageSetEntry(..))
 import Registry.Utils (mkLocalEnv, wget)
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -35,7 +35,7 @@ main = Aff.launchAff_ do
   liftEffect $ Node.Process.chdir tmpDir
 
   API.checkIndexExists "registry-index"
-  registryIndex <- Index.readRegistryIndex "registry-index"
+  _ <- Index.readRegistryIndex "registry-index"
 
   metadata <- liftEffect $ Ref.read packagesMetadataRef
 
@@ -84,11 +84,6 @@ main = Aff.launchAff_ do
           | Right v <- Version.parseVersion Version.Lenient v'
           , v < version -> pure version
         _ -> []
-      manifests <- Array.fromFoldable (Map.lookup packageName registryIndex)
-      Manifest manifest <- Array.fromFoldable (Map.lookup checkedVersion manifests)
-      let dependencies = Array.fromFoldable (Map.keys manifest.dependencies)
-      -- Reject any package@version with dependencies not in the package set
-      guardA (Array.all (\dependency -> isJust (Map.lookup dependency packageSet)) dependencies)
       pure (Tuple packageName checkedVersion)
 
   liftEffect $ Console.log "Found the following uploads eligible for inclusion in package set:"
