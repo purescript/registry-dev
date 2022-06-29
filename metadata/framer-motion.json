@@ -4,6 +4,18 @@
     "githubRepo": "purescript-framer-motion"
   },
   "published": {
+    "0.0.2": {
+      "bytes": 12627,
+      "hash": "sha256-+YXU4hF7wyZCPFEeAkxtFHCpvi/4SQkH12N8/VxFzSk=",
+      "publishedTime": "2021-05-30T10:38:26.0Z",
+      "ref": "v0.0.2"
+    },
+    "0.0.3": {
+      "bytes": 12626,
+      "hash": "sha256-sMGLltfYdYPS8meOy29FBdQnYUkLbj7yAXRUqi7CxPU=",
+      "publishedTime": "2021-05-30T10:39:06.0Z",
+      "ref": "v0.0.3"
+    },
     "0.0.5": {
       "bytes": 12624,
       "hash": "sha256-nzaSlJgOuf/Q2YcOQvYcUbd3VCt7MEb2VbXHGnGMN8k=",

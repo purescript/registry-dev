@@ -2,6 +2,7 @@ module Registry.Scripts.LegacyImport where
 
 import Registry.Prelude
 
+import Affjax.StatusCode (StatusCode(..))
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Data.Array as Array
@@ -168,9 +169,14 @@ downloadLegacyRegistry = do
 
     releases <- Process.withCache Process.jsonSerializer repoCache (Just $ Hours 24.0) do
       log $ "Fetching releases for package " <> un RawPackageName name
-      result <- lift $ try $ GitHub.getReleases octokit address
+      result <- liftAff $ Except.runExceptT $ GitHub.getReleases octokit address
       case result of
-        Left err -> logShow err *> throwError (mkError $ DecodeError $ Aff.message err)
+        Left err@{ status: StatusCode status } | status >= 400 -> do
+          logShow err
+          throwError (mkError $ BadStatus status)
+        Left err -> do
+          logShow err
+          throwError (mkError $ DecodeError err.message)
         Right v -> pure v
 
     versions <- case NEA.fromArray releases of

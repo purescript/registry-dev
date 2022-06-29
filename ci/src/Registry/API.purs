@@ -379,10 +379,27 @@ runChecks { isLegacyImport, buildPlan, metadata, manifest } = do
   when (PackageName.print manifestFields.name == "metadata") do
     throwWithComment "The `metadata` package cannot be uploaded to the registry as it is a protected package."
 
-  log "Check that version is unique"
+  log "Check that version has not already been published"
   case Map.lookup manifestFields.version metadata.published of
     Nothing -> pure unit
-    Just info -> throwWithComment $ "You tried to upload a version that already exists: " <> Version.printVersion manifestFields.version <> "\nIts metadata is: " <> show info
+    Just info -> throwWithComment $ String.joinWith "\n"
+      [ "You tried to upload a version that already exists: " <> Version.printVersion manifestFields.version
+      , "Its metadata is:"
+      , "```"
+      , show info
+      , "```"
+      ]
+
+  log "Check that version has not been unpublished"
+  case Map.lookup manifestFields.version metadata.unpublished of
+    Nothing -> pure unit
+    Just info -> throwWithComment $ String.joinWith "\n"
+      [ "You tried to upload a version that has been unpublished: " <> Version.printVersion manifestFields.version
+      , "Details:"
+      , "```"
+      , show info
+      , "```"
+      ]
 
   log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
@@ -584,8 +601,12 @@ wget url path = do
 
 mkEnv :: GitHub.Octokit -> MetadataRef -> IssueNumber -> Env
 mkEnv octokit packagesMetadata issue =
-  { comment: GitHub.createComment octokit issue
-  , closeIssue: GitHub.closeIssue octokit issue
+  { comment: \comment -> Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
+      Left _ -> throwError $ Aff.error "Unable to create comment!"
+      Right _ -> pure unit
+  , closeIssue: Except.runExceptT (GitHub.closeIssue octokit issue) >>= case _ of
+      Left _ -> throwError $ Aff.error "Unable to close issue!"
+      Right _ -> pure unit
   , commitToTrunk: pushToMaster
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
@@ -662,8 +683,13 @@ fetchPackageSource { tmpDir, ref, location } = case location of
 
       PursPublish -> do
         octokit <- liftEffect GitHub.mkOctokit
-        commit <- liftAff $ GitHub.getRefCommit octokit { owner, repo } ref
-        commitDate <- liftAff $ GitHub.getCommitDate octokit { owner, repo } commit
+        commitDate <- do
+          result <- liftAff $ Except.runExceptT do
+            commit <- GitHub.getRefCommit octokit { owner, repo } ref
+            GitHub.getCommitDate octokit { owner, repo } commit
+          case result of
+            Left githubError -> throwWithComment $ "Unable to get published time for commit:\n" <> show githubError
+            Right a -> pure a
         let tarballName = ref <> ".tar.gz"
         let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
         let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName

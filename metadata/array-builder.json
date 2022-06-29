@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "paluh",
+    "githubRepo": "purescript-array-builder"
+  },
+  "published": {
+    "0.1.2": {
+      "bytes": 4123,
+      "hash": "sha256-dy9GJM5Gd2/7ErqsKSxfjPXLN7gzT8rsWhfMwwgAxuo=",
+      "publishedTime": "2022-06-20T16:13:30.0Z",
+      "ref": "v0.1.2"
+    }
+  },
+  "unpublished": {}
+}

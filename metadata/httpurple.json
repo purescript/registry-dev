@@ -153,6 +153,12 @@
       "hash": "sha256-H52ctg2R1V0ACnr390K1GZd/SXQgJehr8PH/Ob6P/Lk=",
       "publishedTime": "2022-06-13T14:37:15.0Z",
       "ref": "v1.3.0"
+    },
+    "2.0.0": {
+      "bytes": 17373,
+      "hash": "sha256-nGmYOXvfw62Gu8rpEtFeaPIe7cw2dX5/gRNmPJr2bNY=",
+      "publishedTime": "2022-06-16T19:07:28.0Z",
+      "ref": "v2.0.0"
     }
   },
   "unpublished": {}
