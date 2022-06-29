@@ -16,10 +16,11 @@ import Effect.Ref as Ref
 import Foreign.Tmp as Tmp
 import Node.Process as Node.Process
 import Registry.API as API
+import Registry.Index as Index
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.RegistryM (runRegistryM)
-import Registry.Schema (LegacyPackageSet(..), LegacyPackageSetEntry(..))
+import Registry.Schema (LegacyPackageSet(..), LegacyPackageSetEntry(..), Manifest(..))
 import Registry.Utils (mkLocalEnv, wget)
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -33,7 +34,8 @@ main = Aff.launchAff_ do
   tmpDir <- liftEffect $ Tmp.mkTmpDir
   liftEffect $ Node.Process.chdir tmpDir
 
-  API.checkIndexExists
+  API.checkIndexExists "registry-index"
+  registryIndex <- Index.readRegistryIndex "registry-index"
 
   metadata <- liftEffect $ Ref.read packagesMetadataRef
 
@@ -49,7 +51,7 @@ main = Aff.launchAff_ do
           Tuple version { publishedTime } <- Map.toUnfoldable packageMetadata.published
           published <- maybe [] (pure <<< PDT.toDateTimeLossy) (PDT.fromRFC3339String publishedTime)
           let diff = DateTime.diff now published
-          guardA (diff <= Hours (Int.toNumber 1000)) -- TODO - 24 or 25 hours lookback
+          guardA (diff <= Hours (Int.toNumber 24))
           pure version
 
       versions <- Array.fromFoldable (NonEmptyArray.fromArray versions')
@@ -75,12 +77,19 @@ main = Aff.launchAff_ do
       -- We only care about the latest version
       let versions = NonEmptyArray.reverse (NonEmptyArray.sort versions')
       let version = NonEmptyArray.head versions
-      case Map.lookup packageName packageSet of
-        Nothing -> pure (Tuple packageName version)
+      -- Ensure package is not in package set, or latest version is newer than that in package set
+      checkedVersion <- case Map.lookup packageName packageSet of
+        Nothing -> pure version
         Just (LegacyPackageSetEntry { version: RawVersion v' })
           | Right v <- Version.parseVersion Version.Lenient v'
-          , v < version -> pure (Tuple packageName version)
+          , v < version -> pure version
         _ -> []
+      manifests <- Array.fromFoldable (Map.lookup packageName registryIndex)
+      Manifest manifest <- Array.fromFoldable (Map.lookup checkedVersion manifests)
+      let dependencies = Array.fromFoldable (Map.keys manifest.dependencies)
+      -- Reject any package@version with dependencies not in the package set
+      guardA (Array.all (\dependency -> isJust (Map.lookup dependency packageSet)) dependencies)
+      pure (Tuple packageName checkedVersion)
 
   liftEffect $ Console.log "Found the following uploads eligible for inclusion in package set:"
   liftEffect $ Console.log (show uploads)
