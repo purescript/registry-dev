@@ -2,6 +2,7 @@ module Registry.Schema where
 
 import Registry.Prelude
 
+import Data.Date (Date)
 import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Data.RFC3339String (RFC3339String)
@@ -61,7 +62,9 @@ derive newtype instance RegistryJson Owner
 
 newtype PackageSet = PackageSet
   { compiler :: Version
+  , date :: RFC3339String
   , packages :: Map PackageName Version
+  , version :: Version
   }
 
 derive instance Newtype PackageSet _
