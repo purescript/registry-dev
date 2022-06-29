@@ -70,7 +70,7 @@ main = Aff.launchAff_ do
 
   liftEffect $ Console.log "Computing candidates for inclusion in package set..."
 
-  let 
+  let
     uploads :: Array (Tuple PackageName Version)
     uploads = do
       Tuple packageName versions' <- newUploads

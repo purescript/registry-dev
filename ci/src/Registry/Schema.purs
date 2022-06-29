@@ -82,7 +82,7 @@ instance RegistryJson LegacyPackageSet where
   encode (LegacyPackageSet plan) = Json.encode plan
   decode = map LegacyPackageSet <<< Json.decode
 
-newtype LegacyPackageSetEntry = LegacyPackageSetEntry 
+newtype LegacyPackageSetEntry = LegacyPackageSetEntry
   { dependencies :: Array PackageName
   , repo :: String
   , version :: RawVersion
