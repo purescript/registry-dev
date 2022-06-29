@@ -3,15 +3,12 @@ const { retry } = require("@octokit/plugin-retry");
 const { throttling } = require("@octokit/plugin-throttling");
 const Octokit = GitHubOctokit.plugin(retry, throttling);
 
-exports.mkOctokit = function () {
-  if ("GITHUB_TOKEN" in process.env) {
-  } else {
-    console.log("Please set GITHUB_TOKEN envvar");
-    process.exit(1);
-  }
-
+exports.mkOctokit = function (authToken) {
   const octokit = new Octokit({
-    auth: process.env.GITHUB_TOKEN,
+    auth: authToken,
+    request: {
+      per_page: 100, // this is the maximum
+    },
     throttle: {
       onRateLimit: (retryAfter, options) => {
         octokit.log.warn(
@@ -24,17 +21,33 @@ exports.mkOctokit = function () {
           return true;
         }
       },
-      onAbuseLimit: (retryAfter, options) => {
-        // does not retry, only logs a warning
-        octokit.log.warn(
+      onAbuseLimit: (_, options) => {
+        octokit.log.error(
           `Abuse detected for request ${options.method} ${options.url}`
         );
       },
     },
   });
-
   return octokit;
 };
+
+// exports.request = function (octokit, route, headers, onError, onSuccess) {
+//   return octokit
+//     .request(route, {
+//       headers: headers,
+//     })
+//     .then((data) => onSuccess(data))
+//     .catch((err) => onError(err));
+// };
+
+// exports.paginate = function (octokit, route, headers, onError, onSuccess) {
+//   return octokit
+//     .paginate(route, {
+//       headers: headers,
+//     })
+//     .then((data) => onSuccess(data))
+//     .catch((err) => onError(err));
+// };
 
 /* Ideally, we would implement this using conditional requests and read releases
    from cache if we get a 304 response. This would reduce the number of requests

@@ -2,31 +2,150 @@ module Foreign.GitHub where
 
 import Registry.Prelude
 
+import Affjax.StatusCode (StatusCode(..))
 import Affjax.StatusCode as Http
+import Control.Monad.Except as Except
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.Bitraversable (ltraverse)
+import Data.DateTime as DateTime
 import Data.DateTime.Instant (Instant)
 import Data.DateTime.Instant as Instant
+import Data.Formatter.DateTime (Formatter, FormatterCommand(..))
+import Data.Formatter.DateTime as Formatter.DateTime
+import Data.Interpolate (i)
 import Data.List as List
+import Data.Map as Map
 import Data.Newtype (unwrap)
 import Data.Number as Number
 import Data.RFC3339String (RFC3339String(..))
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
-import Data.Time.Duration (Milliseconds(..))
+import Data.Time.Duration as Duration
 import Effect.Exception as Exception
+import Effect.Now as Now
+import Effect.Ref as Ref
 import Effect.Uncurried (EffectFn4, EffectFn5, EffectFn6, runEffectFn4, runEffectFn5, runEffectFn6)
+import Foreign.Object as Object
 import Registry.Json ((.:))
 import Registry.Json as Json
 import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as Parser
 import Text.Parsing.StringParser.CodePoints as Parse
 import Text.Parsing.StringParser.Combinators as ParseC
+import Unsafe.Coerce (unsafeCoerce)
 
 foreign import data Octokit :: Type
 
-foreign import mkOctokit :: Effect Octokit
+foreign import mkOctokit :: String -> Effect Octokit
+
+newtype Route = Route String
+
+derive newtype instance Eq Route
+derive newtype instance Ord Route
+
+data GitHubError
+  = APIError GitHubAPIError
+  | DecodeError String
+
+derive instance Eq GitHubError
+derive instance Ord GitHubError
+
+-- | List repository tags
+-- https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/listTags.md
+listTags :: Octokit -> Ref GitHubCache -> { owner :: String, repo :: String } -> ExceptT GitHubError Aff (Array Tag)
+listTags octokit cacheRef args = do
+  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty
+  Except.except $ lmap DecodeError $ decodeTags result
+  where
+  route :: Route
+  route = Route $ i "GET /repos/" args.owner "/" args.repo "/tags"
+
+  decodeTags :: Json -> Either String (Array Tag)
+  decodeTags = Json.decode >=> traverse decodeTag
+
+  decodeTag :: Json -> Either String Tag
+  decodeTag json = do
+    obj <- Json.decode json
+    name <- obj .: "name"
+    commitObj <- obj .: "commit"
+    sha <- commitObj .: "sha"
+    pure { name, sha }
+
+-- | Make a request to the GitHub API. WARNING: This function does not make use
+-- | of the cache. If making a GET request, provide this as an argument to`requestCached` instead.
+request :: Octokit -> Route -> Object String -> ExceptT GitHubAPIError Aff Json
+request = unsafeCoerce unit
+
+-- | Make a request to a GitHub API 'list' endpoint, paginating through all
+-- | results. WARNING: This function does not make use of the cache. Provide it
+-- | as an argument to `requestCached` instead.
+paginate :: Octokit -> Route -> Object String -> ExceptT GitHubAPIError Aff Json
+paginate = unsafeCoerce unit
+
+-- GitHub uses the RFC1123 time format: "Thu, 05 Jul 2022"
+-- http://www.csgnetwork.com/timerfc1123calc.html
+--
+-- It expects the time to be in UTC.
+formatRFC1123 :: Formatter
+formatRFC1123 = List.fromFoldable
+  [ DayOfWeekNameShort
+  , Placeholder ", "
+  , DayOfMonthTwoDigits
+  , Placeholder " "
+  , MonthShort
+  , Placeholder " "
+  , YearFull
+  , Placeholder " "
+  ]
+
+getGitHubTime :: Effect String
+getGitHubTime = do
+  offset <- Now.getTimezoneOffset
+  now <- Now.nowDateTime
+  let adjusted = fromMaybe now $ DateTime.adjust offset now
+  pure $ Formatter.DateTime.format formatRFC1123 adjusted
+
+type GitHubCache = Map Route { modified :: String, payload :: Either GitHubAPIError Json }
+
+requestCached
+  :: (Octokit -> Route -> Object String -> ExceptT GitHubAPIError Aff Json)
+  -> Octokit
+  -> Ref GitHubCache
+  -> Route
+  -> Object String
+  -> ExceptT GitHubAPIError Aff Json
+requestCached runRequest octokit cacheRef route headers = do
+  cache <- liftEffect $ Ref.read cacheRef
+  ExceptT $ case Map.lookup route cache of
+    Nothing -> do
+      result <- Except.runExceptT $ runRequest octokit route headers
+      modified <- liftEffect getGitHubTime
+      liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
+      pure result
+
+    Just cached -> case cached.payload of
+      Left err
+        -- We don't retry 404 errors because they indicate a missing resource.
+        | err.status == StatusCode 404 -> pure cached.payload
+        -- Otherwise, if we have an error in cache, we retry the request; we
+        -- don't have anything usable we could return.
+        | otherwise -> do
+            liftEffect $ Ref.modify_ (Map.delete route) cacheRef
+            Except.runExceptT $ requestCached runRequest octokit cacheRef route headers
+
+      -- If we do have a usable cache value, then we will defer to GitHub's
+      -- judgment on whether to use it or not.
+      Right payload -> do
+        result <- Except.runExceptT $ runRequest octokit route (Object.insert "If-Modified-Since" cached.modified headers)
+        case result of
+          -- 304 Not Modified means that we can rely on our local cache; nothing has
+          -- changed for this resource.
+          Left err | err.status == StatusCode 304 -> pure $ Right payload
+          _ -> do
+            modified <- liftEffect getGitHubTime
+            liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
+            pure result
 
 newtype Event = Event
   { issueNumber :: IssueNumber
@@ -100,7 +219,7 @@ decodeGitHubAPIError obj = do
     --
     -- However, GitHub returns seconds since epoch time, so we need to multiply
     -- it by 1000 to get a valid reset time.
-    , ratelimitReset: unsafeFromJust $ Instant.instant $ Milliseconds $ ratelimitReset * 1000.0
+    , ratelimitReset: unsafeFromJust $ Instant.instant $ Duration.Milliseconds $ ratelimitReset * 1000.0
     , message
     }
 
