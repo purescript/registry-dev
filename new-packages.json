@@ -217,5 +217,6 @@
   "purescript-ocarina": "https://github.com/mikesol/purescript-ocarina.git",
   "purescript-deno": "https://github.com/njaremko/purescript-deno.git",
   "purescript-generic-router": "https://github.com/njaremko/purescript-generic-router.git",
-  "purescript-rito": "https://github.com/mikesol/purescript-rito.git"
+  "purescript-rito": "https://github.com/mikesol/purescript-rito.git",
+  "purescript-freer-free": "https://github.com/mikesol/purescript-freer-free.git"
 }
