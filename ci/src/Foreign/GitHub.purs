@@ -14,6 +14,7 @@ module Foreign.GitHub
   , closeIssue
   , createComment
   , getCommitDate
+  , getContent
   , getRefCommit
   , listTags
   , mkOctokit
@@ -41,7 +42,9 @@ import Data.Map as Map
 import Data.Newtype (unwrap)
 import Data.RFC3339String (RFC3339String(..))
 import Data.String as String
+import Data.String.Base64 as Base64
 import Data.String.CodeUnits (fromCharArray)
+import Effect.Exception as Aff
 import Effect.Exception as Exception
 import Effect.Now as Now
 import Effect.Ref as Ref
@@ -72,7 +75,6 @@ mkOctokit = runEffectFn1 mkOctokitImpl
 listTags :: Octokit -> Ref GitHubCache -> Address -> ExceptT GitHubError Aff (Array Tag)
 listTags octokit cacheRef address = do
   result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {}
-  liftAff $ writeGitHubCache =<< liftEffect (Ref.read cacheRef)
   Except.except $ lmap DecodeError $ decodeTags result
   where
   route :: Route
@@ -89,12 +91,35 @@ listTags octokit cacheRef address = do
     sha <- commitObj .: "sha"
     pure { name, sha }
 
+-- | Fetch a specific file  from the provided repository at the given ref and
+-- | filepath. Filepaths should lead to a single file from the root of the repo.
+-- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/getContent.md
+getContent :: Octokit -> Ref GitHubCache -> Address -> String -> FilePath -> ExceptT GitHubError Aff String
+getContent octokit cacheRef address ref path = do
+  result <- Except.withExceptT APIError $ requestCached request octokit cacheRef route Object.empty {}
+  Except.except $ lmap DecodeError $ decodeFile result
+  where
+  route :: Route
+  route = Route $ i "GET /repos/" address.owner "/" address.repo "/contents/" path "?ref=" ref
+
+  decodeFile :: Json -> Either String String
+  decodeFile json = do
+    obj <- Json.decode json
+    _data <- obj .: "data"
+    _type <- _data .: "type"
+    encoding <- _data .: "encoding"
+    if encoding == "base64" && _type == "file" then do
+      contentsb64 <- _data .: "content"
+      contents <- lmap Aff.message $ traverse Base64.decode $ String.split (String.Pattern "\n") contentsb64
+      pure $ fold contents
+    else
+      Left $ "Expected file with encoding base64, but got: " <> show { encoding, type: _type }
+
 -- | Fetch the commit SHA for a given ref on a GitHub repository
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getRef.md
 getRefCommit :: Octokit -> Ref GitHubCache -> Address -> String -> ExceptT GitHubError Aff String
 getRefCommit octokit cacheRef address ref = do
   result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {}
-  liftAff $ writeGitHubCache =<< liftEffect (Ref.read cacheRef)
   Except.except $ lmap DecodeError $ decodeRefSha result
   where
   route :: Route
@@ -108,7 +133,6 @@ getRefCommit octokit cacheRef address ref = do
 getCommitDate :: Octokit -> Ref GitHubCache -> Address -> String -> ExceptT GitHubError Aff RFC3339String
 getCommitDate octokit cacheRef address commitSha = do
   result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {}
-  liftAff $ writeGitHubCache =<< liftEffect (Ref.read cacheRef)
   Except.except $ lmap DecodeError $ decodeCommit result
   where
   route :: Route
@@ -236,12 +260,12 @@ requestCached runRequest octokit cacheRef route@(Route routeStr) headers args = 
     Just cached -> case cached.payload of
       Left err
         -- We don't retry 404 errors because they indicate a missing resource.
-        | err.statusCode == 404 ->
-            pure cached.payload
+        | err.statusCode == 404 -> do
+            pure $ Left err
         -- Otherwise, if we have an error in cache, we retry the request; we
         -- don't have anything usable we could return.
         | otherwise -> do
-            log "CACHED ERROR: Deleting non-404 error entry and retrying..."
+            log $ "CACHED ERROR: Deleting non-404 error entry and retrying " <> routeStr
             logShow err
             liftEffect $ Ref.modify_ (Map.delete route) cacheRef
             Except.runExceptT $ requestCached runRequest octokit cacheRef route headers args
@@ -249,6 +273,7 @@ requestCached runRequest octokit cacheRef route@(Route routeStr) headers args = 
       -- If we do have a usable cache value, then we will defer to GitHub's
       -- judgment on whether to use it or not.
       Right payload -> do
+        {-
         result <- Except.runExceptT $ runRequest octokit route (Object.insert "If-Modified-Since" cached.modified headers) args
         case result of
           -- 304 Not Modified means that we can rely on our local cache; nothing has
@@ -259,6 +284,8 @@ requestCached runRequest octokit cacheRef route@(Route routeStr) headers args = 
             modified <- liftEffect getGitHubTime
             liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
             pure result
+        -}
+        pure $ Right payload
 
 newtype IssueNumber = IssueNumber Int
 

@@ -11,6 +11,7 @@ import Data.String as String
 import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Exception (throw)
+import Effect.Ref as Ref
 import Foreign.GitHub (GitHubCache, GitHubToken(..), Octokit)
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
@@ -138,7 +139,7 @@ main = Aff.launchAff_ do
       log "\n\n----------------------------------------------------------------------"
       log $ "UPLOADING PACKAGE: " <> show manifest.name <> "@" <> show manifest.version <> " to " <> show manifest.location
       log "----------------------------------------------------------------------"
-      API.runOperation addition
+      API.runOperation octokit addition
 
     log "Writing the registry-index on disk..."
     -- While insertions are usually done as part of the API operation, we don't
@@ -165,7 +166,7 @@ mkEnv githubToken githubCache packagesMetadata =
   }
 
 downloadLegacyRegistry :: Octokit -> Ref GitHubCache -> Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
-downloadLegacyRegistry octokit githubCache = do
+downloadLegacyRegistry octokit cacheRef = do
   bowerPackages <- readRegistryFile "bower-packages.json"
   newPackages <- readRegistryFile "new-packages.json"
 
@@ -183,7 +184,7 @@ downloadLegacyRegistry octokit githubCache = do
 
     releases <- do
       log $ "Fetching releases for package " <> un RawPackageName name
-      result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit githubCache address
+      result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cacheRef address
       case result of
         Left err -> do
           case err of
@@ -202,6 +203,8 @@ downloadLegacyRegistry octokit githubCache = do
 
     let versions = Map.fromFoldable $ map (\tag -> Tuple (RawVersion tag.name) unit) releases
     pure $ Tuple { name, address } versions
+
+  liftAff $ GitHub.writeGitHubCache =<< liftEffect (Ref.read cacheRef)
 
   log "Parsing names and versions..."
   packageRegistry <- Process.forPackageVersionKeys releaseIndex \{ name, address } tag -> do
@@ -229,7 +232,7 @@ downloadLegacyRegistry octokit githubCache = do
   log "Converting to manifests..."
   let forPackageRegistry = Process.forPackageVersion packageRegistry
   manifestRegistry <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
-    manifestFields <- Manifest.constructManifestFields originalName tag.original address
+    manifestFields <- Manifest.constructManifestFields octokit cacheRef originalName tag.original address
 
     let
       repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }

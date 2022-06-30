@@ -46,12 +46,11 @@ import Control.Monad.State as State
 import Data.Argonaut.Core (Json, stringify) as Exports
 import Data.Argonaut.Core as Core
 import Data.Argonaut.Parser as Parser
-import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
 import Data.Bifunctor (lmap)
 import Data.Bitraversable (ltraverse)
-import Data.Either (Either(..), either, note)
+import Data.Either (Either(..), note)
 import Data.Int as Int
 import Data.Map (Map)
 import Data.Map as Map
@@ -182,19 +181,17 @@ instance RegistryJson a => RegistryJson (Maybe a) where
     | otherwise = map Just $ decode json
 
 instance (RegistryJson e, RegistryJson a) => RegistryJson (Either e a) where
-  encode = either encode encode
-  decode json =
-    case decode json of
-      Right right -> Right (Right right)
-      Left rightError -> case decode json of
-        Right left -> Right (Left left)
-        Left leftError -> Left $ Array.fold
-          [ "Expected Either: failed Left ("
-          , leftError
-          , ") failed Right ("
-          , rightError
-          , ")"
-          ]
+  encode = encode <<< case _ of
+    Left e -> { tag: "Left", value: encode e }
+    Right v -> { tag: "Right", value: encode v }
+  decode json = do
+    obj <- decode json
+    tag <- obj .: "tag"
+    value <- obj .: "value"
+    case tag of
+      Just "Right" -> Right <$> decode value
+      Just "Left" -> Left <$> decode value
+      _ -> Left $ "Expected { tag: <Right|Left>, value: <value> }, got: " <> show { tag, value: Core.stringify value }
 
 instance RegistryJson NonEmptyString where
   encode = encode <<< NES.toString

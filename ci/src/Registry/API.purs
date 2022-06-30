@@ -8,7 +8,7 @@ import Affjax.RequestHeader as RequestHeader
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Except as Except
-import Control.Monad.Reader (ask)
+import Control.Monad.Reader (ask, asks)
 import Data.Argonaut.Parser as Argonaut.Core
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
@@ -35,7 +35,7 @@ import Effect.Now as Now
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
 import Foreign.FastGlob as FastGlob
-import Foreign.GitHub (GitHubCache, GitHubToken(..), IssueNumber)
+import Foreign.GitHub (GitHubCache, GitHubToken(..), IssueNumber, Octokit)
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Foreign.Tar as Tar
@@ -95,7 +95,7 @@ main = launchAff_ $ do
         ]
 
     DecodedOperation issue op ->
-      runRegistryM (mkEnv octokit githubCache githubToken packagesMetadata issue) (runOperation op)
+      runRegistryM (mkEnv octokit githubCache githubToken packagesMetadata issue) (runOperation octokit op)
 
 data OperationDecoding
   = NotJson
@@ -128,8 +128,8 @@ readOperation eventPath = do
 
 -- TODO: test all the points where the pipeline could throw, to show that we are implementing
 -- all the necessary checks
-runOperation :: Operation -> RegistryM Unit
-runOperation operation = case operation of
+runOperation :: Octokit -> Operation -> RegistryM Unit
+runOperation octokit operation = case operation of
   -- TODO handle addToPackageSet, addToPursuit
   Addition { packageName, newRef, buildPlan, newPackageLocation } -> do
     -- check that we don't have a metadata file for that package
@@ -137,13 +137,13 @@ runOperation operation = case operation of
     let updateData = { packageName, buildPlan, updateRef: newRef }
     -- if the metadata file already exists then we steer this to be an Update instead
     if metadataExists then
-      runOperation $ Update updateData
+      runOperation octokit $ Update updateData
     else
-      addOrUpdate updateData $ mkNewMetadata newPackageLocation
+      addOrUpdate octokit updateData $ mkNewMetadata newPackageLocation
 
   Update { packageName, buildPlan, updateRef } -> do
     metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Did you mean to create an Addition?" }
-    addOrUpdate { packageName, buildPlan, updateRef } metadata
+    addOrUpdate octokit { packageName, buildPlan, updateRef } metadata
 
   Authenticated auth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
@@ -257,8 +257,9 @@ indexDir = "../registry-index"
 cacheDir :: FilePath
 cacheDir = ".cache"
 
-addOrUpdate :: UpdateData -> Metadata -> RegistryM Unit
-addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
+addOrUpdate :: Octokit -> UpdateData -> Metadata -> RegistryM Unit
+addOrUpdate octokit { updateRef, buildPlan, packageName } inputMetadata = do
+  cacheRef <- asks _.githubCache
   tmpDir <- liftEffect $ Tmp.mkTmpDir
 
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
@@ -293,7 +294,7 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
 
       gatherManifest :: ExceptT ImportError Aff Manifest
       gatherManifest = do
-        manifestFields <- Manifest.constructManifestFields (RawPackageName $ show packageName) (RawVersion updateRef) address
+        manifestFields <- Manifest.constructManifestFields octokit cacheRef (RawPackageName $ show packageName) (RawVersion updateRef) address
         Except.mapExceptT liftError $ Manifest.toManifest packageName inputMetadata.location version manifestFields
 
     runManifest gatherManifest >>= case _ of
