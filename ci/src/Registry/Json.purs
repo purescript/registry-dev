@@ -64,7 +64,8 @@ import Data.Symbol (class IsSymbol)
 import Data.Symbol as Symbol
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple, snd)
-import Effect.Aff (Aff)
+import Effect.Aff (Aff, try)
+import Effect.Aff as Aff
 import Foreign.Object (Object)
 import Foreign.Object as Object
 import Node.Encoding (Encoding(..))
@@ -93,7 +94,9 @@ writeJsonFile path = FS.writeTextFile UTF8 path <<< (_ <> "\n") <<< printJson
 
 -- | Decode data from a JSON file at the provided filepath
 readJsonFile :: forall a. RegistryJson a => FilePath -> Aff (Either String a)
-readJsonFile path = map parseJson $ FS.readTextFile UTF8 path
+readJsonFile path = do
+  result <- try $ FS.readTextFile UTF8 path
+  pure (lmap Aff.message result >>= parseJson)
 
 -- | Encode a JSON object by running a series of calls to `putField`
 encodeObject :: State (Object Core.Json) Unit -> Core.Json

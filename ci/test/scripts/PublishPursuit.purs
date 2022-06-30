@@ -5,10 +5,14 @@ import Registry.Prelude
 
 import Data.Map as Map
 import Dotenv as Dotenv
+import Effect.Exception (throw)
+import Foreign.GitHub (GitHubToken(..))
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
+import Node.Process as Process
 import Registry.API (cloneGitTag, mkMetadataRef, publishToPursuit)
+import Registry.API as GitHub
 import Registry.PackageName as PackageName
 import Registry.RegistryM (Env, runRegistryM)
 import Registry.Schema (BuildPlan(..))
@@ -17,7 +21,13 @@ import Registry.Version as Version
 main :: Effect Unit
 main = launchAff_ $ do
   _ <- Dotenv.loadFile
+
+  githubToken <- liftEffect do
+    Process.lookupEnv "GITHUB_TOKEN"
+      >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
+
   packagesMetadata <- mkMetadataRef
+  githubCache <- GitHub.mkGitHubCacheRef
 
   let
     env :: Env
@@ -28,6 +38,8 @@ main = launchAff_ $ do
       , uploadPackage: mempty
       , deletePackage: mempty
       , packagesMetadata
+      , githubCache
+      , githubToken
       }
 
   runRegistryM env do

@@ -3,7 +3,7 @@ const { retry } = require("@octokit/plugin-retry");
 const { throttling } = require("@octokit/plugin-throttling");
 const Octokit = GitHubOctokit.plugin(retry, throttling);
 
-exports.mkOctokit = function (authToken) {
+exports.mkOctokitImpl = function (authToken) {
   const octokit = new Octokit({
     auth: authToken,
     request: {

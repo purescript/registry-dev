@@ -8,6 +8,7 @@ import Affjax.RequestHeader as RequestHeader
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Except as Except
+import Control.Monad.Reader (ask)
 import Data.Argonaut.Parser as Argonaut.Core
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
@@ -34,7 +35,7 @@ import Effect.Now as Now
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
 import Foreign.FastGlob as FastGlob
-import Foreign.GitHub (IssueNumber)
+import Foreign.GitHub (GitHubCache, GitHubToken(..), IssueNumber)
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Foreign.Tar as Tar
@@ -67,7 +68,13 @@ main = launchAff_ $ do
   eventPath <- liftEffect do
     Env.lookupEnv "GITHUB_EVENT_PATH"
       >>= maybe (throw "GITHUB_EVENT_PATH not defined in the environment") pure
-  octokit <- liftEffect GitHub.mkOctokit
+
+  githubToken <- liftEffect do
+    Env.lookupEnv "GITHUB_TOKEN"
+      >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
+
+  octokit <- liftEffect $ GitHub.mkOctokit githubToken
+  githubCache <- mkGitHubCacheRef
   packagesMetadata <- mkMetadataRef
   checkIndexExists
 
@@ -78,7 +85,7 @@ main = launchAff_ $ do
     NotJson ->
       pure unit
 
-    MalformedJson issue err -> runRegistryM (mkEnv octokit packagesMetadata issue) do
+    MalformedJson issue err -> runRegistryM (mkEnv octokit githubCache githubToken packagesMetadata issue) do
       comment $ Array.fold
         [ "The JSON input for this package update is malformed:"
         , newlines 2
@@ -88,7 +95,7 @@ main = launchAff_ $ do
         ]
 
     DecodedOperation issue op ->
-      runRegistryM (mkEnv octokit packagesMetadata issue) (runOperation op)
+      runRegistryM (mkEnv octokit githubCache githubToken packagesMetadata issue) (runOperation op)
 
 data OperationDecoding
   = NotJson
@@ -246,6 +253,9 @@ metadataFile packageName = Path.concat [ metadataDir, PackageName.print packageN
 
 indexDir :: FilePath
 indexDir = "../registry-index"
+
+cacheDir :: FilePath
+cacheDir = ".cache"
 
 addOrUpdate :: UpdateData -> Metadata -> RegistryM Unit
 addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
@@ -599,8 +609,8 @@ wget url path = do
     NodeProcess.Normally 0 -> pure unit
     _ -> throwWithComment $ "Error while fetching tarball: " <> result.stderr
 
-mkEnv :: GitHub.Octokit -> MetadataRef -> IssueNumber -> Env
-mkEnv octokit packagesMetadata issue =
+mkEnv :: GitHub.Octokit -> Ref GitHubCache -> GitHubToken -> MetadataRef -> IssueNumber -> Env
+mkEnv octokit githubCache githubToken packagesMetadata issue =
   { comment: \comment -> Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
       Left _ -> throwError $ Aff.error "Unable to create comment!"
       Right _ -> pure unit
@@ -611,6 +621,8 @@ mkEnv octokit packagesMetadata issue =
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
   , packagesMetadata
+  , githubCache
+  , githubToken
   }
 
 type MetadataMap = Map PackageName Metadata
@@ -636,6 +648,28 @@ mkMetadataRef = do
       Right val -> pure val
     pure $ packageName /\ metadata
   liftEffect $ Ref.new $ Map.fromFoldable packagesArray
+
+-- | Read the GitHub cache from a file and save the result in a ref.
+mkGitHubCacheRef :: Aff (Ref GitHubCache)
+mkGitHubCacheRef = do
+  FS.Extra.ensureDirectory cacheDir
+  result <- GitHub.readGitHubCache
+  cache <- case result of
+    Left err -> do
+      exists <- FS.exists (Path.concat [ cacheDir, GitHub.cacheName ])
+      if exists then
+        Aff.throwError $ Aff.error $ "Failed to decode cache from file: " <> err
+      else
+        pure Map.empty
+    Right cache ->
+      pure cache
+  liftEffect $ Ref.new cache
+
+-- | Snapshot the GitHub cache to a file
+saveGitHubCache :: GitHubCache -> Aff Unit
+saveGitHubCache cache = do
+  FS.Extra.ensureDirectory cacheDir
+  GitHub.writeGitHubCache cache
 
 isPackageVersionInMetadata :: PackageName -> Version -> MetadataMap -> Boolean
 isPackageVersionInMetadata packageName version metadataMap =
@@ -682,13 +716,14 @@ fetchPackageSource { tmpDir, ref, location } = case location of
         pure { packageDirectory: repo, publishedTime }
 
       PursPublish -> do
-        octokit <- liftEffect GitHub.mkOctokit
+        { githubToken, githubCache } <- ask
+        octokit <- liftEffect $ GitHub.mkOctokit githubToken
         commitDate <- do
           result <- liftAff $ Except.runExceptT do
-            commit <- GitHub.getRefCommit octokit { owner, repo } ref
-            GitHub.getCommitDate octokit { owner, repo } commit
+            commit <- GitHub.getRefCommit octokit githubCache { owner, repo } ref
+            GitHub.getCommitDate octokit githubCache { owner, repo } commit
           case result of
-            Left githubError -> throwWithComment $ "Unable to get published time for commit:\n" <> show githubError
+            Left githubError -> throwWithComment $ "Unable to get published time for commit:\n" <> GitHub.printGitHubError githubError
             Right a -> pure a
         let tarballName = ref <> ".tar.gz"
         let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]

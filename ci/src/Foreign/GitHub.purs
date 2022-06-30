@@ -10,6 +10,7 @@ module Foreign.GitHub
   , PackageURL(..)
   , Route
   , Tag
+  , cacheName
   , closeIssue
   , createComment
   , getCommitDate
@@ -44,8 +45,9 @@ import Data.String.CodeUnits (fromCharArray)
 import Effect.Exception as Exception
 import Effect.Now as Now
 import Effect.Ref as Ref
-import Effect.Uncurried (EffectFn6, runEffectFn6)
+import Effect.Uncurried (EffectFn1, EffectFn6, runEffectFn1, runEffectFn6)
 import Foreign.Object as Object
+import Node.Path as Path
 import Registry.Json ((.:))
 import Registry.Json as Json
 import Text.Parsing.StringParser as Parser
@@ -60,13 +62,17 @@ derive instance Newtype GitHubToken _
 derive newtype instance Eq GitHubToken
 derive newtype instance Ord GitHubToken
 
-foreign import mkOctokit :: GitHubToken -> Effect Octokit
+foreign import mkOctokitImpl :: EffectFn1 GitHubToken Octokit
+
+mkOctokit :: GitHubToken -> Effect Octokit
+mkOctokit = runEffectFn1 mkOctokitImpl
 
 -- | List repository tags
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/listTags.md
 listTags :: Octokit -> Ref GitHubCache -> Address -> ExceptT GitHubError Aff (Array Tag)
 listTags octokit cacheRef address = do
   result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {}
+  liftAff $ writeGitHubCache =<< liftEffect (Ref.read cacheRef)
   Except.except $ lmap DecodeError $ decodeTags result
   where
   route :: Route
@@ -88,6 +94,7 @@ listTags octokit cacheRef address = do
 getRefCommit :: Octokit -> Ref GitHubCache -> Address -> String -> ExceptT GitHubError Aff String
 getRefCommit octokit cacheRef address ref = do
   result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {}
+  liftAff $ writeGitHubCache =<< liftEffect (Ref.read cacheRef)
   Except.except $ lmap DecodeError $ decodeRefSha result
   where
   route :: Route
@@ -101,6 +108,7 @@ getRefCommit octokit cacheRef address ref = do
 getCommitDate :: Octokit -> Ref GitHubCache -> Address -> String -> ExceptT GitHubError Aff RFC3339String
 getCommitDate octokit cacheRef address commitSha = do
   result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {}
+  liftAff $ writeGitHubCache =<< liftEffect (Ref.read cacheRef)
   Except.except $ lmap DecodeError $ decodeCommit result
   where
   route :: Route
@@ -163,13 +171,14 @@ paginate octokit route headers args = ExceptT do
 -- | `requestCached` function to minimize the occurence of rate-limiting.
 type GitHubCache = Map Route { modified :: String, payload :: Either GitHubAPIError Json }
 
--- | Write a GitHub cache to the provided file path.
-writeGitHubCache :: FilePath -> GitHubCache -> Aff Unit
-writeGitHubCache path cache = Json.writeJsonFile path cache
+cacheName :: String
+cacheName = "github-cache.json"
 
--- | Attempt to read a GitHub cache from the provided file path.
-readGitHubCache :: FilePath -> Aff (Either String GitHubCache)
-readGitHubCache path = Json.readJsonFile path
+writeGitHubCache :: GitHubCache -> Aff Unit
+writeGitHubCache cache = Json.writeJsonFile (Path.concat [ ".cache", cacheName ]) cache
+
+readGitHubCache :: Aff (Either String GitHubCache)
+readGitHubCache = Json.readJsonFile (Path.concat [ ".cache", cacheName ])
 
 -- GitHub uses the RFC1123 time format: "Thu, 05 Jul 2022"
 -- http://www.csgnetwork.com/timerfc1123calc.html
@@ -185,6 +194,13 @@ formatRFC1123 = List.fromFoldable
   , Placeholder " "
   , YearFull
   , Placeholder " "
+  , Hours24
+  , Placeholder ":"
+  , MinutesTwoDigits
+  , Placeholder ":"
+  , SecondsTwoDigits
+  , Placeholder " "
+  , Placeholder "UTC"
   ]
 
 getGitHubTime :: Effect String
@@ -207,10 +223,11 @@ requestCached
   -> Object String
   -> Record args
   -> ExceptT GitHubAPIError Aff Json
-requestCached runRequest octokit cacheRef route headers args = do
+requestCached runRequest octokit cacheRef route@(Route routeStr) headers args = do
   cache <- liftEffect $ Ref.read cacheRef
   ExceptT $ case Map.lookup route cache of
     Nothing -> do
+      log $ "NOT CACHED: No entry for " <> routeStr
       result <- Except.runExceptT $ runRequest octokit route headers args
       modified <- liftEffect getGitHubTime
       liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
@@ -219,10 +236,13 @@ requestCached runRequest octokit cacheRef route headers args = do
     Just cached -> case cached.payload of
       Left err
         -- We don't retry 404 errors because they indicate a missing resource.
-        | err.statusCode == 404 -> pure cached.payload
+        | err.statusCode == 404 ->
+            pure cached.payload
         -- Otherwise, if we have an error in cache, we retry the request; we
         -- don't have anything usable we could return.
         | otherwise -> do
+            log "CACHED ERROR: Deleting non-404 error entry and retrying..."
+            logShow err
             liftEffect $ Ref.modify_ (Map.delete route) cacheRef
             Except.runExceptT $ requestCached runRequest octokit cacheRef route headers args
 
@@ -233,7 +253,8 @@ requestCached runRequest octokit cacheRef route headers args = do
         case result of
           -- 304 Not Modified means that we can rely on our local cache; nothing has
           -- changed for this resource.
-          Left err | err.statusCode == 304 -> pure $ Right payload
+          Left err | err.statusCode == 304 -> do
+            pure $ Right payload
           _ -> do
             modified <- liftEffect getGitHubTime
             liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
@@ -325,5 +346,7 @@ convertGitHubAPIError = ltraverse \error -> case decodeGitHubAPIError error of
   decodeGitHubAPIError :: Object Json -> Either String GitHubAPIError
   decodeGitHubAPIError obj = do
     statusCode <- obj .: "status"
-    message <- (_ .: "message") =<< (_ .: "data") =<< obj .: "response"
+    message <- case statusCode of
+      304 -> pure ""
+      _ -> (_ .: "message") =<< (_ .: "data") =<< obj .: "response"
     pure { statusCode, message }

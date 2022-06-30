@@ -5,6 +5,7 @@ import Registry.Prelude
 import Data.Map as Map
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
+import Foreign.GitHub (GitHubToken(..))
 import Registry.RegistryM (Env, RegistryM)
 import Registry.RegistryM as RegistryM
 import Test.Spec as Spec
@@ -21,6 +22,8 @@ defaultTestEnv =
   , deletePackage: mempty
   , uploadPackage: mempty
   , packagesMetadata: unsafePerformEffect (Ref.new Map.empty)
+  , githubCache: unsafePerformEffect (Ref.new Map.empty)
+  , githubToken: GitHubToken ""
   }
 
 toSpec :: RegistrySpec Unit -> Spec.Spec Unit

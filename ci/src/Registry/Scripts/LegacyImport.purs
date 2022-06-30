@@ -2,18 +2,19 @@ module Registry.Scripts.LegacyImport where
 
 import Registry.Prelude
 
-import Affjax.StatusCode (StatusCode(..))
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
 import Data.String as String
-import Data.Time.Duration (Hours(..))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
+import Effect.Exception (throw)
+import Foreign.GitHub (GitHubCache, GitHubToken(..), Octokit)
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
+import Node.Process as Node.Process
 import Registry.API as API
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
@@ -45,10 +46,18 @@ main :: Effect Unit
 main = Aff.launchAff_ do
   _ <- Dotenv.loadFile
 
+  githubToken <- liftEffect do
+    Node.Process.lookupEnv "GITHUB_TOKEN"
+      >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
+
+  log "Creating an Octokit instance and reading the GitHub cache..."
+  octokit <- liftEffect $ GitHub.mkOctokit githubToken
+  githubCache <- API.mkGitHubCacheRef
+
   API.checkIndexExists
 
   log "Starting import from legacy registries..."
-  { registry, reservedNames } <- downloadLegacyRegistry
+  { registry, reservedNames } <- downloadLegacyRegistry octokit githubCache
 
   let
     sortedPackages :: Array Manifest
@@ -77,10 +86,15 @@ main = Aff.launchAff_ do
     -- uploaded.
     excludeVersion :: Manifest -> Maybe _
     excludeVersion (Manifest manifestFields) = case PackageName.print manifestFields.name, Version.printVersion manifestFields.version of
-      -- [UNFIXABLE] These have no src directory.
+      -- [UNFIXABLE]
+      -- These have no src directory.
       "concur-core", "0.3.9" -> Nothing
       "concur-react", "0.3.9" -> Nothing
       "pux-devtool", "5.0.0" -> Nothing
+
+      -- These have a malformed bower.json file
+      "endpoints-express", "0.0.1" -> Nothing
+
       _, _ -> Just manifestFields
 
     availablePackages = Array.mapMaybe excludeVersion sortedPackages
@@ -89,7 +103,7 @@ main = Aff.launchAff_ do
   packagesMetadataRef <- API.mkMetadataRef
 
   log "Starting upload..."
-  runRegistryM (mkEnv packagesMetadataRef) do
+  runRegistryM (mkEnv githubToken githubCache packagesMetadataRef) do
     log "Adding metadata for reserved package names"
     forWithIndex_ (Map.union disabledPackages reservedNames) \package repo -> do
       let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
@@ -135,8 +149,8 @@ main = Aff.launchAff_ do
 
   log "Done!"
 
-mkEnv :: Ref (Map PackageName Metadata) -> Env
-mkEnv packagesMetadata =
+mkEnv :: GitHubToken -> Ref GitHubCache -> Ref (Map PackageName Metadata) -> Env
+mkEnv githubToken githubCache packagesMetadata =
   { comment: \err -> error err
   , closeIssue: log "Skipping GitHub issue closing, we're running locally.."
   , commitToTrunk: \_ _ -> do
@@ -145,11 +159,12 @@ mkEnv packagesMetadata =
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
   , packagesMetadata
+  , githubCache
+  , githubToken
   }
 
-downloadLegacyRegistry :: Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
-downloadLegacyRegistry = do
-  octokit <- liftEffect GitHub.mkOctokit
+downloadLegacyRegistry :: Octokit -> Ref GitHubCache -> Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
+downloadLegacyRegistry octokit githubCache = do
   bowerPackages <- readRegistryFile "bower-packages.json"
   newPackages <- readRegistryFile "new-packages.json"
 
@@ -163,26 +178,28 @@ downloadLegacyRegistry = do
       Left err -> throwError $ InvalidGitHubRepo $ StringParser.printParserError err
       Right address -> pure address
 
-    let
-      repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
-      mkError = ResourceError <<< { resource: APIResource GitHubReleases, error: _ }
+    let mkError = ResourceError <<< { resource: APIResource GitHubReleases, error: _ }
 
-    releases <- Process.withCache Process.jsonSerializer repoCache (Just $ Hours 24.0) do
+    releases <- do
       log $ "Fetching releases for package " <> un RawPackageName name
-      result <- liftAff $ Except.runExceptT $ GitHub.getReleases octokit address
+      result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit githubCache address
       case result of
-        Left err@{ status: StatusCode status } | status >= 400 -> do
-          logShow err
-          throwError (mkError $ BadStatus status)
         Left err -> do
-          logShow err
-          throwError (mkError $ DecodeError err.message)
-        Right v -> pure v
+          case err of
+            GitHub.APIError apiError
+              | apiError.statusCode >= 400 -> throwError (mkError $ BadStatus apiError.statusCode)
+              -- Success statuses should have returned a success result.
+              | otherwise -> do
+                  log "WARNING:\nReceived GitHubError with a status code <= 400"
+                  log $ GitHub.printGitHubError err
+                  throwError (mkError BadRequest)
+            GitHub.DecodeError str ->
+              throwError (mkError $ DecodeError str)
 
-    versions <- case NEA.fromArray releases of
-      Nothing -> throwError $ mkError $ DecodeError "No releases returned from the GitHub API."
-      Just arr -> pure $ Map.fromFoldable $ map (\tag -> Tuple (RawVersion tag.name) unit) arr
+        Right value ->
+          pure value
 
+    let versions = Map.fromFoldable $ map (\tag -> Tuple (RawVersion tag.name) unit) releases
     pure $ Tuple { name, address } versions
 
   log "Parsing names and versions..."
