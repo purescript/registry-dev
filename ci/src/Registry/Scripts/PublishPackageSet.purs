@@ -19,7 +19,7 @@ import Registry.API as API
 import Registry.Index as Index
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
-import Registry.RegistryM (runRegistryM)
+import Registry.RegistryM (runRegistryM, throwWithComment)
 import Registry.Schema (LegacyPackageSet(..), LegacyPackageSetEntry(..))
 import Registry.Utils (mkLocalEnv, wget)
 import Registry.Version (Version)
@@ -42,6 +42,7 @@ main = Aff.launchAff_ do
   now <- liftEffect $ Now.nowDateTime
 
   let
+    -- TODO: Use latest package's `publishedTime` to find new uploads.
     newUploads :: Array (Tuple PackageName (NonEmptyArray Version))
     newUploads = do
       Tuple packageName packageMetadata <- Map.toUnfoldable metadata

@@ -62,7 +62,7 @@ derive newtype instance RegistryJson Owner
 
 newtype PackageSet = PackageSet
   { compiler :: Version
-  , date :: RFC3339String
+  , publishedTime :: RFC3339String
   , packages :: Map PackageName Version
   , version :: Version
   }
