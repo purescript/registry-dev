@@ -84,7 +84,6 @@ constructManifestFields package version address = do
       case RegistryJson.parseJson $ JsonRepair.tryRepair result of
         Left error -> do
           log $ "Could not decode returned bower.json: " <> error
-          log result
           throwError $ ResourceError { resource: FileResource BowerJson, error: DecodeError error }
         Right bowerfile ->
           pure $ Bowerfile.toManifestFields bowerfile

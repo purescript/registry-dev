@@ -20,13 +20,10 @@ import Data.Map (SemigroupMap(..))
 import Data.Map as Map
 import Data.Monoid.Additive (Additive(..))
 import Data.Set as Set
-import Foreign.GitHub as GitHub
-import Registry.PackageName (PackageName)
 import Registry.Schema (Manifest)
 import Registry.Scripts.LegacyImport.Error (ImportError(..), ImportErrorKey(..), ManifestError, ManifestErrorKey(..), PackageFailures(..), manifestErrorKey, printManifestErrorKey)
-import Registry.Scripts.LegacyImport.Process (ProcessedPackageVersions)
+import Registry.Scripts.LegacyImport.Process (NameAddressOriginal, ProcessedPackageVersions, VersionOriginal)
 import Registry.Types (RawPackageName, RawVersion)
-import Registry.Version (Version)
 import Safe.Coerce (coerce)
 
 newtype ErrorCounts = ErrorCounts
@@ -113,15 +110,7 @@ countManifestErrors (PackageFailures failures) = case Map.lookup manifestErrorKe
       , countOfVersionsAffected: Foldable.sum versionFailures
       }
 
-errorStats
-  :: ProcessedPackageVersions
-       { address :: GitHub.Address
-       , name :: PackageName
-       , original :: RawPackageName
-       }
-       { version :: Version, original :: RawVersion }
-       Manifest
-  -> Stats
+errorStats :: ProcessedPackageVersions NameAddressOriginal VersionOriginal Manifest -> Stats
 errorStats { packages: succeededPackages, failures: packageFailures@(PackageFailures failures) } =
   { totalPackages
   , totalVersions

@@ -32,15 +32,14 @@ type ProcessedPackages k a =
 
 type ProcessedPackageVersions k1 k2 a = ProcessedPackages k1 (Map k2 a)
 
+type NameAddress = { address :: GitHub.Address, name :: RawPackageName }
+
 -- | Execute the provided transform on every package in the input packages map
 -- | collecting failures into `PackageFailures` and saving transformed packages.
 forPackage
   :: ProcessedPackages RawPackageName PackageURL
-  -> ( RawPackageName
-       -> PackageURL
-       -> ExceptT ImportError Aff (Tuple { address :: GitHub.Address, name :: RawPackageName } (Map RawVersion Unit))
-     )
-  -> Aff (ProcessedPackages { address :: GitHub.Address, name :: RawPackageName } (Map RawVersion Unit))
+  -> (RawPackageName -> PackageURL -> ExceptT ImportError Aff (Tuple NameAddress (Map RawVersion Unit)))
+  -> Aff (ProcessedPackages NameAddress (Map RawVersion Unit))
 forPackage input f =
   map snd $ State.runStateT iterate { failures: input.failures, packages: Map.empty }
   where
@@ -55,27 +54,17 @@ forPackage input f =
         let insertPackage = Map.insert newKey result
         State.modify \state -> state { packages = insertPackage state.packages }
 
+type NameAddressOriginal = { address :: GitHub.Address, name :: PackageName, original :: RawPackageName }
+type VersionOriginal = { version :: Version, original :: RawVersion }
+
 -- | Execute the provided transform on every package in the input packages map,
 -- | at every version of that package, collecting failures into `PackageFailures`
 -- | and preserving transformed packages.
 forPackageVersion
   :: forall a b
-   . ProcessedPackageVersions
-       { address :: GitHub.Address
-       , name :: PackageName
-       , original :: RawPackageName
-       }
-       { version :: Version, original :: RawVersion }
-       a
-  -> ( { address :: GitHub.Address
-       , name :: PackageName
-       , original :: RawPackageName
-       }
-       -> { version :: Version, original :: RawVersion }
-       -> a
-       -> ExceptT ImportError Aff b
-     )
-  -> Aff (ProcessedPackageVersions { address :: GitHub.Address, name :: PackageName, original :: RawPackageName } { version :: Version, original :: RawVersion } b)
+   . ProcessedPackageVersions NameAddressOriginal VersionOriginal a
+  -> (NameAddressOriginal -> VersionOriginal -> a -> ExceptT ImportError Aff b)
+  -> Aff (ProcessedPackageVersions NameAddressOriginal VersionOriginal b)
 forPackageVersion input f = do
   map snd $ State.runStateT iterate { failures: input.failures, packages: Map.empty }
   where
@@ -94,29 +83,9 @@ forPackageVersion input f = do
           State.modify \state -> state { packages = insertPackage state.packages }
 
 forPackageVersionKeys
-  :: ProcessedPackageVersions { address :: GitHub.Address, name :: RawPackageName } RawVersion Unit
-  -> ( { address :: GitHub.Address
-       , name :: RawPackageName
-       }
-       -> RawVersion
-       -> ExceptT ImportError Aff
-            ( Tuple
-                { address :: GitHub.Address
-                , name :: PackageName
-                , original :: RawPackageName
-                }
-                { version :: Version, original :: RawVersion }
-            )
-     )
-  -> Aff
-       ( ProcessedPackageVersions
-           { address :: GitHub.Address
-           , name :: PackageName
-           , original :: RawPackageName
-           }
-           { version :: Version, original :: RawVersion }
-           Unit
-       )
+  :: ProcessedPackageVersions NameAddress RawVersion Unit
+  -> (NameAddress -> RawVersion -> ExceptT ImportError Aff (Tuple NameAddressOriginal VersionOriginal))
+  -> Aff (ProcessedPackageVersions NameAddressOriginal VersionOriginal Unit)
 forPackageVersionKeys input f = do
   map snd $ State.runStateT iterate { failures: input.failures, packages: Map.empty }
   where

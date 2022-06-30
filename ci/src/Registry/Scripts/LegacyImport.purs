@@ -28,6 +28,7 @@ import Registry.RegistryM (Env, readPackagesMetadata, runRegistryM, updatePackag
 import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..))
 import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
+import Registry.Scripts.LegacyImport.Process (NameAddressOriginal, VersionOriginal)
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.Stats as Stats
 import Registry.Types (RawPackageName(..), RawVersion(..))
@@ -217,7 +218,10 @@ downloadLegacyRegistry octokit githubCache = do
         pure version
 
     let
+      outerKey :: NameAddressOriginal
       outerKey = { name: packageName, original: name, address }
+
+      innerKey :: VersionOriginal
       innerKey = { version: packageVersion, original: tag }
 
     pure $ Tuple outerKey innerKey
