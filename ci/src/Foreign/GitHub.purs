@@ -1,65 +1,76 @@
-module Foreign.GitHub where
+module Foreign.GitHub
+  ( Address
+  , Event(..)
+  , GitHubAPIError
+  , GitHubCache
+  , GitHubError(..)
+  , GitHubToken(..)
+  , IssueNumber(..)
+  , Octokit
+  , PackageURL(..)
+  , Route
+  , Tag
+  , closeIssue
+  , createComment
+  , getCommitDate
+  , getRefCommit
+  , listTags
+  , mkOctokit
+  , parseRepo
+  , printGitHubError
+  , readGitHubCache
+  , registryAddress
+  , writeGitHubCache
+  ) where
 
 import Registry.Prelude
 
-import Affjax.StatusCode (StatusCode(..))
-import Affjax.StatusCode as Http
 import Control.Monad.Except as Except
 import Control.Promise (Promise)
 import Control.Promise as Promise
+import Data.Array as Array
 import Data.Bitraversable (ltraverse)
 import Data.DateTime as DateTime
-import Data.DateTime.Instant (Instant)
-import Data.DateTime.Instant as Instant
 import Data.Formatter.DateTime (Formatter, FormatterCommand(..))
 import Data.Formatter.DateTime as Formatter.DateTime
+import Data.Int as Int
 import Data.Interpolate (i)
 import Data.List as List
 import Data.Map as Map
 import Data.Newtype (unwrap)
-import Data.Number as Number
 import Data.RFC3339String (RFC3339String(..))
 import Data.String as String
 import Data.String.CodeUnits (fromCharArray)
-import Data.Time.Duration as Duration
 import Effect.Exception as Exception
 import Effect.Now as Now
 import Effect.Ref as Ref
-import Effect.Uncurried (EffectFn4, EffectFn5, EffectFn6, runEffectFn4, runEffectFn5, runEffectFn6)
+import Effect.Uncurried (EffectFn6, runEffectFn6)
 import Foreign.Object as Object
 import Registry.Json ((.:))
 import Registry.Json as Json
-import Safe.Coerce (coerce)
 import Text.Parsing.StringParser as Parser
 import Text.Parsing.StringParser.CodePoints as Parse
 import Text.Parsing.StringParser.Combinators as ParseC
-import Unsafe.Coerce (unsafeCoerce)
 
 foreign import data Octokit :: Type
 
-foreign import mkOctokit :: String -> Effect Octokit
+newtype GitHubToken = GitHubToken String
 
-newtype Route = Route String
+derive instance Newtype GitHubToken _
+derive newtype instance Eq GitHubToken
+derive newtype instance Ord GitHubToken
 
-derive newtype instance Eq Route
-derive newtype instance Ord Route
-
-data GitHubError
-  = APIError GitHubAPIError
-  | DecodeError String
-
-derive instance Eq GitHubError
-derive instance Ord GitHubError
+foreign import mkOctokit :: GitHubToken -> Effect Octokit
 
 -- | List repository tags
--- https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/listTags.md
-listTags :: Octokit -> Ref GitHubCache -> { owner :: String, repo :: String } -> ExceptT GitHubError Aff (Array Tag)
-listTags octokit cacheRef args = do
-  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty
+-- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/listTags.md
+listTags :: Octokit -> Ref GitHubCache -> Address -> ExceptT GitHubError Aff (Array Tag)
+listTags octokit cacheRef address = do
+  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {}
   Except.except $ lmap DecodeError $ decodeTags result
   where
   route :: Route
-  route = Route $ i "GET /repos/" args.owner "/" args.repo "/tags"
+  route = Route $ i "GET /repos/" address.owner "/" address.repo "/tags"
 
   decodeTags :: Json -> Either String (Array Tag)
   decodeTags = Json.decode >=> traverse decodeTag
@@ -72,16 +83,93 @@ listTags octokit cacheRef args = do
     sha <- commitObj .: "sha"
     pure { name, sha }
 
--- | Make a request to the GitHub API. WARNING: This function does not make use
--- | of the cache. If making a GET request, provide this as an argument to`requestCached` instead.
-request :: Octokit -> Route -> Object String -> ExceptT GitHubAPIError Aff Json
-request = unsafeCoerce unit
+-- | Fetch the commit SHA for a given ref on a GitHub repository
+-- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getRef.md
+getRefCommit :: Octokit -> Ref GitHubCache -> Address -> String -> ExceptT GitHubError Aff String
+getRefCommit octokit cacheRef address ref = do
+  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {}
+  Except.except $ lmap DecodeError $ decodeRefSha result
+  where
+  route :: Route
+  route = Route $ i "GET /repos/" address.owner "/" address.repo "/git/ref/" ref
 
--- | Make a request to a GitHub API 'list' endpoint, paginating through all
--- | results. WARNING: This function does not make use of the cache. Provide it
--- | as an argument to `requestCached` instead.
-paginate :: Octokit -> Route -> Object String -> ExceptT GitHubAPIError Aff Json
-paginate = unsafeCoerce unit
+  decodeRefSha :: Json -> Either String String
+  decodeRefSha = Json.decode >=> (_ .: "object") >=> (_ .: "sha")
+
+-- | Fetch the date associated with a given commit, in the RFC3339String format.
+-- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getCommit.md
+getCommitDate :: Octokit -> Ref GitHubCache -> Address -> String -> ExceptT GitHubError Aff RFC3339String
+getCommitDate octokit cacheRef address commitSha = do
+  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {}
+  Except.except $ lmap DecodeError $ decodeCommit result
+  where
+  route :: Route
+  route = Route $ i "GET /repos/" address.owner "/" address.repo "/git/commits/" commitSha
+
+  decodeCommit :: Json -> Either String RFC3339String
+  decodeCommit json = do
+    obj <- Json.decode json
+    committer <- obj .: "committer"
+    date <- committer .: "date"
+    pure $ RFC3339String date
+
+-- | Create a comment on an issue in the registry repo.
+-- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/issues/createComment.md
+createComment :: Octokit -> IssueNumber -> String -> ExceptT GitHubError Aff Unit
+createComment octokit issue body = do
+  _ <- Except.withExceptT APIError $ request octokit route Object.empty { body }
+  pure unit
+  where
+  route :: Route
+  route = Route $ i "POST /repos/" registryAddress.owner "/" registryAddress.repo "/issues/" (unwrap issue) "/comments"
+
+-- | Close an issue in the registry repo.
+-- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/issues/update.md
+closeIssue :: Octokit -> IssueNumber -> ExceptT GitHubError Aff Unit
+closeIssue octokit issue = do
+  _ <- Except.withExceptT APIError $ request octokit route Object.empty { status: "closed" }
+  pure unit
+  where
+  route :: Route
+  route = Route $ i "PATCH /repos/" registryAddress.owner "/" registryAddress.repo "/issues/" (unwrap issue)
+
+-- | A route for the GitHub API, ie. "GET /repos/purescript/registry/tags".
+-- | Meant for internal use.
+newtype Route = Route String
+
+derive newtype instance Eq Route
+derive newtype instance Ord Route
+derive newtype instance Json.StringEncodable Route
+
+foreign import requestImpl :: forall args r. EffectFn6 Octokit Route (Object String) (Record args) (Object Json -> r) (Json -> r) (Promise r)
+
+-- | Make a request to the GitHub API. WARNING: This function does not make use
+-- | of the cache. Prefer `requestCache` when possible.
+request :: forall args. Octokit -> Route -> Object String -> Record args -> ExceptT GitHubAPIError Aff Json
+request octokit route headers args = ExceptT do
+  result <- Promise.toAffE $ runEffectFn6 requestImpl octokit route headers args Left Right
+  convertGitHubAPIError result
+
+foreign import paginateImpl :: forall args r. EffectFn6 Octokit Route (Object String) (Record args) (Object Json -> r) (Json -> r) (Promise r)
+
+-- | Make a request to the GitHub API, paginating through allresults. WARNING:
+-- | This function should only be used on the GitHub 'list' endpoints.
+paginate :: forall args. Octokit -> Route -> Object String -> Record args -> ExceptT GitHubAPIError Aff Json
+paginate octokit route headers args = ExceptT do
+  result <- Promise.toAffE $ runEffectFn6 paginateImpl octokit route headers args Left Right
+  convertGitHubAPIError result
+
+-- | A cache of requests and responses to the GitHub API, used by the
+-- | `requestCached` function to minimize the occurence of rate-limiting.
+type GitHubCache = Map Route { modified :: String, payload :: Either GitHubAPIError Json }
+
+-- | Write a GitHub cache to the provided file path.
+writeGitHubCache :: FilePath -> GitHubCache -> Aff Unit
+writeGitHubCache path cache = Json.writeJsonFile path cache
+
+-- | Attempt to read a GitHub cache from the provided file path.
+readGitHubCache :: FilePath -> Aff (Either String GitHubCache)
+readGitHubCache path = Json.readJsonFile path
 
 -- GitHub uses the RFC1123 time format: "Thu, 05 Jul 2022"
 -- http://www.csgnetwork.com/timerfc1123calc.html
@@ -106,20 +194,24 @@ getGitHubTime = do
   let adjusted = fromMaybe now $ DateTime.adjust offset now
   pure $ Formatter.DateTime.format formatRFC1123 adjusted
 
-type GitHubCache = Map Route { modified :: String, payload :: Either GitHubAPIError Json }
-
+-- | A helper function for implementing GET requests to the GitHub API that
+-- | relies on the GitHub API to report whether there is any new data, and falls
+-- | back to the cache if there is not. Should only be used on GET requests; for
+-- | POST requests, use `request`.
 requestCached
-  :: (Octokit -> Route -> Object String -> ExceptT GitHubAPIError Aff Json)
+  :: forall args
+   . (Octokit -> Route -> Object String -> Record args -> ExceptT GitHubAPIError Aff Json)
   -> Octokit
   -> Ref GitHubCache
   -> Route
   -> Object String
+  -> Record args
   -> ExceptT GitHubAPIError Aff Json
-requestCached runRequest octokit cacheRef route headers = do
+requestCached runRequest octokit cacheRef route headers args = do
   cache <- liftEffect $ Ref.read cacheRef
   ExceptT $ case Map.lookup route cache of
     Nothing -> do
-      result <- Except.runExceptT $ runRequest octokit route headers
+      result <- Except.runExceptT $ runRequest octokit route headers args
       modified <- liftEffect getGitHubTime
       liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
       pure result
@@ -127,25 +219,39 @@ requestCached runRequest octokit cacheRef route headers = do
     Just cached -> case cached.payload of
       Left err
         -- We don't retry 404 errors because they indicate a missing resource.
-        | err.status == StatusCode 404 -> pure cached.payload
+        | err.statusCode == 404 -> pure cached.payload
         -- Otherwise, if we have an error in cache, we retry the request; we
         -- don't have anything usable we could return.
         | otherwise -> do
             liftEffect $ Ref.modify_ (Map.delete route) cacheRef
-            Except.runExceptT $ requestCached runRequest octokit cacheRef route headers
+            Except.runExceptT $ requestCached runRequest octokit cacheRef route headers args
 
       -- If we do have a usable cache value, then we will defer to GitHub's
       -- judgment on whether to use it or not.
       Right payload -> do
-        result <- Except.runExceptT $ runRequest octokit route (Object.insert "If-Modified-Since" cached.modified headers)
+        result <- Except.runExceptT $ runRequest octokit route (Object.insert "If-Modified-Since" cached.modified headers) args
         case result of
           -- 304 Not Modified means that we can rely on our local cache; nothing has
           -- changed for this resource.
-          Left err | err.status == StatusCode 304 -> pure $ Right payload
+          Left err | err.statusCode == 304 -> pure $ Right payload
           _ -> do
             modified <- liftEffect getGitHubTime
             liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
             pure result
+
+newtype IssueNumber = IssueNumber Int
+
+instance Newtype IssueNumber Int
+derive newtype instance Eq IssueNumber
+derive newtype instance Show IssueNumber
+derive newtype instance RegistryJson IssueNumber
+
+newtype PackageURL = PackageURL String
+
+derive instance Newtype PackageURL _
+derive newtype instance Eq PackageURL
+derive newtype instance Ord PackageURL
+derive newtype instance RegistryJson PackageURL
 
 newtype Event = Event
   { issueNumber :: IssueNumber
@@ -174,13 +280,6 @@ registryAddress = { owner: "purescript", repo: "registry" }
 
 type Tag = { name :: String, sha :: String }
 
-newtype PackageURL = PackageURL String
-
-derive instance Newtype PackageURL _
-derive newtype instance Eq PackageURL
-derive newtype instance Ord PackageURL
-derive newtype instance RegistryJson PackageURL
-
 parseRepo :: PackageURL -> Either Parser.ParseError Address
 parseRepo = unwrap >>> Parser.runParser do
   void $ Parse.string "https://github.com/"
@@ -193,79 +292,38 @@ parseRepo = unwrap >>> Parser.runParser do
   let repo = fromMaybe repoWithSuffix $ String.stripSuffix (String.Pattern ".git") repoWithSuffix
   pure { owner, repo }
 
+data GitHubError
+  = APIError GitHubAPIError
+  | DecodeError String
+
+derive instance Eq GitHubError
+derive instance Ord GitHubError
+
+printGitHubError :: GitHubError -> String
+printGitHubError = case _ of
+  APIError fields -> Array.fold
+    [ "GitHub API error ("
+    , Int.toStringAs Int.decimal fields.statusCode
+    , "): "
+    , fields.message
+    ]
+  DecodeError err -> Array.fold
+    [ "Decoding error: "
+    , err
+    ]
+
 type GitHubAPIError =
-  { status :: Http.StatusCode
-  , ratelimitRemaining :: Number
-  , ratelimitReset :: Instant
+  { statusCode :: Int
   , message :: String
   }
-
-decodeGitHubAPIError :: Object Json -> Either String GitHubAPIError
-decodeGitHubAPIError obj = do
-  status <- map Http.StatusCode $ obj .: "status"
-  response <- obj .: "response"
-  responseData <- response .: "data"
-  responseHeaders <- response .: "headers"
-  ratelimitResetStr <- responseHeaders .: "x-ratelimit-reset"
-  ratelimitReset <- note "Invalid number received for x-ratelimit-reset" $ Number.fromString ratelimitResetStr
-  ratelimitRemainingStr <- responseHeaders .: "x-ratelimit-remaining"
-  ratelimitRemaining <- note "Invalid number received for x-ratelimit-remaining" $ Number.fromString ratelimitRemainingStr
-  message <- responseData .: "message"
-  pure
-    { status
-    , ratelimitRemaining
-    -- Instants measure milliseconds since epoch time:
-    -- https://github.com/purescript/purescript-datetime/blob/a6a0cf1b0324964ad1854bc3377ed8766ba90e6f/src/Data/DateTime/Instant.purs#L20-L21
-    --
-    -- However, GitHub returns seconds since epoch time, so we need to multiply
-    -- it by 1000 to get a valid reset time.
-    , ratelimitReset: unsafeFromJust $ Instant.instant $ Duration.Milliseconds $ ratelimitReset * 1000.0
-    , message
-    }
 
 convertGitHubAPIError :: forall r. Either (Object Json) r -> Aff (Either GitHubAPIError r)
 convertGitHubAPIError = ltraverse \error -> case decodeGitHubAPIError error of
   Left err -> throwError $ Exception.error $ "Unexpected error decoding GitHubAPIError: " <> err
   Right value -> pure value
-
-foreign import getReleasesImpl :: forall r. EffectFn4 Octokit Address (Object Json -> r) (Array Tag -> r) (Promise r)
-
-getReleases :: Octokit -> Address -> ExceptT GitHubAPIError Aff (Array Tag)
-getReleases octokit address = ExceptT do
-  result <- Promise.toAffE $ runEffectFn4 getReleasesImpl octokit address Left Right
-  convertGitHubAPIError result
-
-foreign import getRefCommitImpl :: forall r. EffectFn5 Octokit Address String (Object Json -> r) (String -> r) (Promise r)
-
-getRefCommit :: Octokit -> Address -> String -> ExceptT GitHubAPIError Aff String
-getRefCommit octokit address ref = ExceptT do
-  commitSha <- Promise.toAffE $ runEffectFn5 getRefCommitImpl octokit address ref Left Right
-  convertGitHubAPIError commitSha
-
-foreign import getCommitDateImpl :: forall r. EffectFn5 Octokit Address String (Object Json -> r) (String -> r) (Promise r)
-
-getCommitDate :: Octokit -> Address -> String -> ExceptT GitHubAPIError Aff RFC3339String
-getCommitDate octokit address sha = ExceptT do
-  date <- Promise.toAffE $ runEffectFn5 getCommitDateImpl octokit address sha Left Right
-  convertGitHubAPIError $ map RFC3339String date
-
-newtype IssueNumber = IssueNumber Int
-
-instance Newtype IssueNumber Int
-derive newtype instance Eq IssueNumber
-derive newtype instance Show IssueNumber
-derive newtype instance RegistryJson IssueNumber
-
-foreign import createCommentImpl :: forall r. EffectFn6 Octokit Address Int String (Object Json -> r) (Unit -> r) (Promise r)
-
-createComment :: Octokit -> IssueNumber -> String -> ExceptT GitHubAPIError Aff Unit
-createComment octokit issue body = ExceptT do
-  result <- Promise.toAffE $ runEffectFn6 createCommentImpl octokit registryAddress (coerce issue) body Left Right
-  convertGitHubAPIError result
-
-foreign import closeIssueImpl :: forall r. EffectFn5 Octokit Address Int (Object Json -> r) (Unit -> r) (Promise r)
-
-closeIssue :: Octokit -> IssueNumber -> ExceptT GitHubAPIError Aff Unit
-closeIssue octokit issue = ExceptT do
-  result <- Promise.toAffE $ runEffectFn5 closeIssueImpl octokit registryAddress (coerce issue) Left Right
-  convertGitHubAPIError result
+  where
+  decodeGitHubAPIError :: Object Json -> Either String GitHubAPIError
+  decodeGitHubAPIError obj = do
+    statusCode <- obj .: "status"
+    message <- (_ .: "message") =<< (_ .: "data") =<< obj .: "response"
+    pure { statusCode, message }
