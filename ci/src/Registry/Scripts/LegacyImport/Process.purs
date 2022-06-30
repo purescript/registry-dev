@@ -27,9 +27,10 @@ type NameAddress = { address :: GitHub.Address, name :: RawPackageName }
 -- | Execute the provided transform on every package in the input packages map
 -- | collecting failures into `PackageFailures` and saving transformed packages.
 forPackage
-  :: ProcessedPackages RawPackageName PackageURL
-  -> (RawPackageName -> PackageURL -> ExceptT ImportError Aff (Tuple NameAddress (Map RawVersion Unit)))
-  -> Aff (ProcessedPackages NameAddress (Map RawVersion Unit))
+  :: forall a
+   . ProcessedPackages RawPackageName PackageURL
+  -> (RawPackageName -> PackageURL -> ExceptT ImportError Aff (Tuple NameAddress (Map RawVersion a)))
+  -> Aff (ProcessedPackages NameAddress (Map RawVersion a))
 forPackage input f =
   map snd $ State.runStateT iterate { failures: input.failures, packages: Map.empty }
   where
@@ -73,9 +74,10 @@ forPackageVersion input f = do
           State.modify \state -> state { packages = insertPackage state.packages }
 
 forPackageVersionKeys
-  :: ProcessedPackageVersions NameAddress RawVersion Unit
+  :: forall a
+   . ProcessedPackageVersions NameAddress RawVersion a
   -> (NameAddress -> RawVersion -> ExceptT ImportError Aff (Tuple NameAddressOriginal VersionOriginal))
-  -> Aff (ProcessedPackageVersions NameAddressOriginal VersionOriginal Unit)
+  -> Aff (ProcessedPackageVersions NameAddressOriginal VersionOriginal a)
 forPackageVersionKeys input f = do
   map snd $ State.runStateT iterate { failures: input.failures, packages: Map.empty }
   where

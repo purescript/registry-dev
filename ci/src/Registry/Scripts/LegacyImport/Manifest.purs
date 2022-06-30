@@ -1,4 +1,7 @@
-module Registry.Scripts.LegacyImport.Manifest (toManifest, constructManifestFields) where
+module Registry.Scripts.LegacyImport.Manifest
+  ( toManifest
+  , constructManifestFields
+  ) where
 
 import Registry.Prelude
 
@@ -39,12 +42,10 @@ import Safe.Coerce (coerce)
 constructManifestFields
   :: Octokit
   -> Ref GitHubCache
-  -> RawPackageName
   -> RawVersion
   -> GitHub.Address
   -> ExceptT ImportError Aff ManifestFields
-constructManifestFields octokit cacheRef (RawPackageName package) (RawVersion version) address = do
-  log $ "Constructing manifest for package " <> package <> "@" <> version
+constructManifestFields octokit cacheRef (RawVersion version) address = do
   let
     getFile :: forall m. MonadAff m => FileResource -> m (Either ImportError String)
     getFile resource = liftAff $ Except.runExceptT do

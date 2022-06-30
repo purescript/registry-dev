@@ -294,7 +294,7 @@ addOrUpdate octokit { updateRef, buildPlan, packageName } inputMetadata = do
 
       gatherManifest :: ExceptT ImportError Aff Manifest
       gatherManifest = do
-        manifestFields <- Manifest.constructManifestFields octokit cacheRef (RawPackageName $ show packageName) (RawVersion updateRef) address
+        manifestFields <- Manifest.constructManifestFields octokit cacheRef (RawVersion updateRef) address
         Except.mapExceptT liftError $ Manifest.toManifest packageName inputMetadata.location version manifestFields
 
     runManifest gatherManifest >>= case _ of
@@ -680,12 +680,18 @@ isPackageVersionInMetadata packageName version metadataMap =
 
 checkIndexExists :: Aff Unit
 checkIndexExists = do
-  log "Checking if the registry-index is present..."
-  whenM (not <$> FS.exists indexDir) do
-    error "Didn't find the 'registry-index' repo, cloning..."
-    Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", indexDir ] Nothing) >>= case _ of
-      Left err -> Aff.throwError $ Aff.error err
-      Right _ -> log "Successfully cloned the 'registry-index' repo"
+  log "Fetching the most recent registry-index..."
+  FS.exists indexDir >>= case _ of
+    true -> do
+      log "Found the 'registry-index' repo locally, pulling..."
+      Except.runExceptT (runGit [ "pull" ] (Just indexDir)) >>= case _ of
+        Left err -> Aff.throwError $ Aff.error err
+        Right _ -> pure unit
+    _ -> do
+      log "Didn't find the 'registry-index' repo, cloning..."
+      Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", indexDir ] Nothing) >>= case _ of
+        Left err -> Aff.throwError $ Aff.error err
+        Right _ -> log "Successfully cloned the 'registry-index' repo"
 
 data PursPublishMethod = LegacyPursPublish | PursPublish
 

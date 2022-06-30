@@ -56,10 +56,17 @@ main = Aff.launchAff_ do
   octokit <- liftEffect $ GitHub.mkOctokit githubToken
   githubCache <- API.mkGitHubCacheRef
 
+  -- We rely on the existing registry index for two reasons. First, we write new
+  -- entries to this location so they can be committed upsteram. Second, we use
+  -- the registry index as a cache of manifests for packages that have already
+  -- been uploaded. It is possible to do a dry-run without using the registry
+  -- index as a cache by providing an empty map as `indexCache`. The files used
+  -- to produce the manifests are still read from the GitHub cache.
   API.checkIndexExists
+  indexCache <- Index.readRegistryIndex API.indexDir
 
   log "Starting import from legacy registries..."
-  { registry, reservedNames } <- downloadLegacyRegistry octokit githubCache
+  { registry, reservedNames } <- downloadLegacyRegistry octokit githubCache indexCache
 
   let
     sortedPackages :: Array Manifest
@@ -165,8 +172,8 @@ mkEnv githubToken githubCache packagesMetadata =
   , githubToken
   }
 
-downloadLegacyRegistry :: Octokit -> Ref GitHubCache -> Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
-downloadLegacyRegistry octokit cacheRef = do
+downloadLegacyRegistry :: Octokit -> Ref GitHubCache -> RegistryIndex -> Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
+downloadLegacyRegistry octokit cacheRef registryIndexCache = do
   bowerPackages <- readRegistryFile "bower-packages.json"
   newPackages <- readRegistryFile "new-packages.json"
 
@@ -231,14 +238,16 @@ downloadLegacyRegistry octokit cacheRef = do
 
   log "Converting to manifests..."
   let forPackageRegistry = Process.forPackageVersion packageRegistry
-  manifestRegistry <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
-    manifestFields <- Manifest.constructManifestFields octokit cacheRef originalName tag.original address
-
-    let
-      repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
-      liftError = map (lmap ManifestImportError)
-
-    Except.mapExceptT liftError $ Manifest.toManifest name repo tag.version manifestFields
+  manifestRegistry <- forPackageRegistry \{ name, original: originalName, address } { version, original: originalVersion } _ -> do
+    case Map.lookup name registryIndexCache >>= Map.lookup version of
+      Just manifest -> pure manifest
+      Nothing -> do
+        log $ "NOT CACHED: Constructing manifest fields for " <> un RawPackageName originalName <> "@" <> un RawVersion originalVersion
+        manifestFields <- Manifest.constructManifestFields octokit cacheRef originalVersion address
+        let
+          repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
+          liftError = map (lmap ManifestImportError)
+        Except.mapExceptT liftError $ Manifest.toManifest name repo version manifestFields
 
   log "Writing exclusions file..."
   Json.writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
