@@ -19,7 +19,7 @@ import Registry.API as API
 import Registry.Index as Index
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
-import Registry.RegistryM (runRegistryM, throwWithComment)
+import Registry.RegistryM (runRegistryM)
 import Registry.Schema (LegacyPackageSet(..), LegacyPackageSetEntry(..))
 import Registry.Utils (mkLocalEnv, wget)
 import Registry.Version (Version)
@@ -43,8 +43,8 @@ main = Aff.launchAff_ do
 
   let
     -- TODO: Use latest package's `publishedTime` to find new uploads.
-    newUploads :: Array (Tuple PackageName (NonEmptyArray Version))
-    newUploads = do
+    recentUploads :: Array (Tuple PackageName (NonEmptyArray Version))
+    recentUploads = do
       Tuple packageName packageMetadata <- Map.toUnfoldable metadata
       let
         versions' :: Array Version
@@ -52,6 +52,7 @@ main = Aff.launchAff_ do
           Tuple version { publishedTime } <- Map.toUnfoldable packageMetadata.published
           published <- maybe [] (pure <<< PDT.toDateTimeLossy) (PDT.fromRFC3339String publishedTime)
           let diff = DateTime.diff now published
+          -- NOTE: Change this line for configurable lookback.
           guardA (diff <= Hours (Int.toNumber 24))
           pure version
 
@@ -74,10 +75,9 @@ main = Aff.launchAff_ do
   let
     uploads :: Array (Tuple PackageName Version)
     uploads = do
-      Tuple packageName versions' <- newUploads
+      Tuple packageName versions' <- recentUploads
       -- We only care about the latest version
-      let versions = NonEmptyArray.reverse (NonEmptyArray.sort versions')
-      let version = NonEmptyArray.head versions
+      let version = NonEmptyArray.last (NonEmptyArray.sort versions')
       -- Ensure package is not in package set, or latest version is newer than that in package set
       checkedVersion <- case Map.lookup packageName packageSet of
         Nothing -> pure version
