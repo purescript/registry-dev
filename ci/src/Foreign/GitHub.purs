@@ -74,7 +74,7 @@ mkOctokit = runEffectFn1 mkOctokitImpl
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/listTags.md
 listTags :: Octokit -> Ref GitHubCache -> Address -> ExceptT GitHubError Aff (Array Tag)
 listTags octokit cacheRef address = do
-  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {}
+  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {} true
   Except.except $ lmap DecodeError $ decodeTags result
   where
   route :: Route
@@ -96,7 +96,7 @@ listTags octokit cacheRef address = do
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/getContent.md
 getContent :: Octokit -> Ref GitHubCache -> Address -> String -> FilePath -> ExceptT GitHubError Aff String
 getContent octokit cacheRef address ref path = do
-  result <- Except.withExceptT APIError $ requestCached request octokit cacheRef route Object.empty {}
+  result <- Except.withExceptT APIError $ requestCached request octokit cacheRef route Object.empty {} false
   Except.except $ lmap DecodeError $ decodeFile result
   where
   route :: Route
@@ -119,7 +119,7 @@ getContent octokit cacheRef address ref path = do
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getRef.md
 getRefCommit :: Octokit -> Ref GitHubCache -> Address -> String -> ExceptT GitHubError Aff String
 getRefCommit octokit cacheRef address ref = do
-  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {}
+  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {} false
   Except.except $ lmap DecodeError $ decodeRefSha result
   where
   route :: Route
@@ -132,7 +132,7 @@ getRefCommit octokit cacheRef address ref = do
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getCommit.md
 getCommitDate :: Octokit -> Ref GitHubCache -> Address -> String -> ExceptT GitHubError Aff RFC3339String
 getCommitDate octokit cacheRef address commitSha = do
-  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {}
+  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {} false
   Except.except $ lmap DecodeError $ decodeCommit result
   where
   route :: Route
@@ -246,8 +246,9 @@ requestCached
   -> Route
   -> Object String
   -> Record args
+  -> Boolean
   -> ExceptT GitHubAPIError Aff Json
-requestCached runRequest octokit cacheRef route@(Route routeStr) headers args = do
+requestCached runRequest octokit cacheRef route@(Route routeStr) headers args checkGitHub = do
   cache <- liftEffect $ Ref.read cacheRef
   ExceptT $ case Map.lookup route cache of
     Nothing -> do
@@ -268,24 +269,24 @@ requestCached runRequest octokit cacheRef route@(Route routeStr) headers args = 
             log $ "CACHED ERROR: Deleting non-404 error entry and retrying " <> routeStr
             logShow err
             liftEffect $ Ref.modify_ (Map.delete route) cacheRef
-            Except.runExceptT $ requestCached runRequest octokit cacheRef route headers args
+            Except.runExceptT $ requestCached runRequest octokit cacheRef route headers args checkGitHub
 
       -- If we do have a usable cache value, then we will defer to GitHub's
       -- judgment on whether to use it or not.
-      Right payload -> do
-        {-
-        result <- Except.runExceptT $ runRequest octokit route (Object.insert "If-Modified-Since" cached.modified headers) args
-        case result of
-          -- 304 Not Modified means that we can rely on our local cache; nothing has
-          -- changed for this resource.
-          Left err | err.statusCode == 304 -> do
+      Right payload
+        | checkGitHub -> do
+            result <- Except.runExceptT $ runRequest octokit route (Object.insert "If-Modified-Since" cached.modified headers) args
+            case result of
+              -- 304 Not Modified means that we can rely on our local cache; nothing has
+              -- changed for this resource.
+              Left err | err.statusCode == 304 -> do
+                pure $ Right payload
+              _ -> do
+                modified <- liftEffect getGitHubTime
+                liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
+                pure result
+        | otherwise ->
             pure $ Right payload
-          _ -> do
-            modified <- liftEffect getGitHubTime
-            liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
-            pure result
-        -}
-        pure $ Right payload
 
 newtype IssueNumber = IssueNumber Int
 
