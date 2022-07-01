@@ -11,13 +11,13 @@ import Data.String as String
 import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Exception (throw)
-import Effect.Ref as Ref
-import Foreign.GitHub (GitHubCache, GitHubToken(..), Octokit)
+import Foreign.GitHub (GitHubToken(..), Octokit)
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
-import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.API as API
+import Registry.Cache (Cache)
+import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
 import Registry.Json (printJson)
@@ -48,15 +48,16 @@ import Text.Parsing.StringParser as StringParser
 main :: Effect Unit
 main = Aff.launchAff_ do
   _ <- Dotenv.loadFile
-  _ <- API.mkMetadataRef
 
   githubToken <- liftEffect do
     Node.Process.lookupEnv "GITHUB_TOKEN"
       >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
-  log "Creating an Octokit instance and reading the GitHub cache..."
+  log "Creating an Octokit instance..."
   octokit <- liftEffect $ GitHub.mkOctokit githubToken
-  githubCache <- API.mkGitHubCacheRef
+
+  log "Reading the cache..."
+  cache <- Cache.useCache
 
   -- We rely on the existing registry index for two reasons. First, we write new
   -- entries to this location so they can be committed upsteram. Second, we use
@@ -64,11 +65,12 @@ main = Aff.launchAff_ do
   -- been uploaded. It is possible to do a dry-run without using the registry
   -- index as a cache by providing an empty map as `indexCache`. The files used
   -- to produce the manifests are still read from the GitHub cache.
+  log "Fetching the registry index..."
   API.checkIndexExists
   indexCache <- Index.readRegistryIndex API.indexDir
 
   log "Starting import from legacy registries..."
-  { registry, reservedNames } <- downloadLegacyRegistry octokit githubCache indexCache
+  { registry, reservedNames } <- downloadLegacyRegistry octokit cache indexCache
 
   let
     sortedPackages :: Array Manifest
@@ -114,7 +116,7 @@ main = Aff.launchAff_ do
   packagesMetadataRef <- API.mkMetadataRef
 
   log "Starting upload..."
-  runRegistryM (mkEnv githubToken githubCache packagesMetadataRef) do
+  runRegistryM (mkEnv githubToken cache packagesMetadataRef) do
     log "Adding metadata for reserved package names"
     forWithIndex_ (Map.union disabledPackages reservedNames) \package repo -> do
       let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
@@ -160,8 +162,8 @@ main = Aff.launchAff_ do
 
   log "Done!"
 
-mkEnv :: GitHubToken -> Ref GitHubCache -> Ref (Map PackageName Metadata) -> Env
-mkEnv githubToken githubCache packagesMetadata =
+mkEnv :: GitHubToken -> Cache -> Ref (Map PackageName Metadata) -> Env
+mkEnv githubToken cache packagesMetadata =
   { comment: \err -> error err
   , closeIssue: log "Skipping GitHub issue closing, we're running locally.."
   , commitToTrunk: \_ _ -> do
@@ -170,12 +172,12 @@ mkEnv githubToken githubCache packagesMetadata =
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
   , packagesMetadata
-  , githubCache
+  , cache
   , githubToken
   }
 
-downloadLegacyRegistry :: Octokit -> Ref GitHubCache -> RegistryIndex -> Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
-downloadLegacyRegistry octokit cacheRef registryIndexCache = do
+downloadLegacyRegistry :: Octokit -> Cache -> RegistryIndex -> Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
+downloadLegacyRegistry octokit cache registryIndexCache = do
   bowerPackages <- readRegistryFile "bower-packages.json"
   newPackages <- readRegistryFile "new-packages.json"
 
@@ -197,26 +199,23 @@ downloadLegacyRegistry octokit cacheRef registryIndexCache = do
     let mkError = ResourceError <<< { resource: APIResource GitHubReleases, error: _ }
 
     releases <- do
-      result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cacheRef address
+      result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache address
       case result of
-        Left err -> do
-          case err of
-            GitHub.APIError apiError
-              | apiError.statusCode >= 400 -> throwError (mkError $ BadStatus apiError.statusCode)
-              -- Success statuses should have returned a success result.
-              | otherwise -> do
-                  log "WARNING:\nReceived GitHubError with a status code <= 400"
-                  log $ GitHub.printGitHubError err
-                  throwError (mkError BadRequest)
-            GitHub.DecodeError str ->
-              throwError (mkError $ DecodeError str)
+        Left err -> case err of
+          GitHub.APIError apiError
+            | apiError.statusCode >= 400 -> throwError (mkError $ BadStatus apiError.statusCode)
+            -- Success statuses should have returned a success result.
+            | otherwise -> do
+                log "WARNING:\nReceived GitHubError with a status code <= 400"
+                log $ GitHub.printGitHubError err
+                throwError (mkError BadRequest)
+          GitHub.DecodeError str ->
+            throwError (mkError $ DecodeError str)
 
         Right value -> pure value
 
     let versions = Map.fromFoldable $ map (\tag -> Tuple (RawVersion tag.name) unit) releases
     pure $ Tuple { name, address } versions
-
-  liftAff $ GitHub.writeGitHubCache =<< liftEffect (Ref.read cacheRef)
 
   log "Parsing names and versions..."
   packageRegistry <- Process.forPackageVersionKeys releaseIndex \{ name, address } tag -> do
@@ -245,24 +244,24 @@ downloadLegacyRegistry octokit cacheRef registryIndexCache = do
   let forPackageRegistry = Process.forPackageVersion packageRegistry
   manifestRegistry <- forPackageRegistry \{ name, address } { version, original: originalVersion } _ -> do
     let
-      cachePath = Path.concat [ API.cacheDir, "package-manifest__" <> PackageName.print name <> "@" <> un RawVersion originalVersion <> ".json" ]
-
+      key = "manifest__" <> PackageName.print name <> "@" <> Version.printVersion version
       constructManifest = do
-        manifestFields <- Manifest.constructManifestFields octokit cacheRef originalVersion address
+        manifestFields <- Manifest.constructManifestFields octokit cache originalVersion address
         let repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
         let liftError = map (lmap ManifestImportError)
         Except.mapExceptT liftError $ Manifest.toManifest name repo version manifestFields
 
+    -- We attempt to pull the manifest from the registry index to avoid having
+    -- to build a local cache ourselves.
     case Map.lookup name registryIndexCache >>= Map.lookup version of
       Just manifest -> pure manifest
-      Nothing -> liftAff (Json.readJsonFile cachePath) >>= case _ of
+      Nothing -> liftEffect (Cache.readJsonEntry key cache) >>= case _ of
         Left _ -> Except.ExceptT do
           manifest <- Except.runExceptT constructManifest
-          liftAff $ Json.writeJsonFile cachePath manifest
-          log $ "Cached " <> PackageName.print name <> "@" <> un RawVersion originalVersion
+          liftEffect $ Cache.writeJsonEntry key manifest cache
           pure manifest
         Right contents ->
-          Except.except contents
+          Except.except contents.value
 
   log "Writing exclusions file..."
   Json.writeJsonFile "./bower-exclusions.json" manifestRegistry.failures

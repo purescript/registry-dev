@@ -2,7 +2,6 @@ module Foreign.GitHub
   ( Address
   , Event(..)
   , GitHubAPIError
-  , GitHubCache
   , GitHubError(..)
   , GitHubToken(..)
   , IssueNumber(..)
@@ -11,7 +10,6 @@ module Foreign.GitHub
   , RateLimit
   , Route
   , Tag
-  , cacheName
   , closeIssue
   , createComment
   , getCommitDate
@@ -23,9 +21,7 @@ module Foreign.GitHub
   , parseRepo
   , printGitHubError
   , printRateLimit
-  , readGitHubCache
   , registryAddress
-  , writeGitHubCache
   ) where
 
 import Registry.Prelude
@@ -43,7 +39,6 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Int as Int
 import Data.Interpolate (i)
 import Data.List as List
-import Data.Map as Map
 import Data.Newtype (over, unwrap)
 import Data.RFC3339String (RFC3339String(..))
 import Data.String as String
@@ -53,12 +48,13 @@ import Data.Time.Duration as Duration
 import Effect.Exception as Aff
 import Effect.Exception as Exception
 import Effect.Now as Now
-import Effect.Ref as Ref
 import Effect.Uncurried (EffectFn1, EffectFn6, runEffectFn1, runEffectFn6)
 import Foreign.Object as Object
-import Node.Path as Path
+import Registry.Cache (Cache)
+import Registry.Cache as Cache
 import Registry.Json ((.:))
 import Registry.Json as Json
+import Registry.Utils as Utils
 import Text.Parsing.StringParser as Parser
 import Text.Parsing.StringParser.CodePoints as Parse
 import Text.Parsing.StringParser.Combinators as ParseC
@@ -78,9 +74,9 @@ mkOctokit = runEffectFn1 mkOctokitImpl
 
 -- | List repository tags
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/listTags.md
-listTags :: Octokit -> Ref GitHubCache -> Address -> ExceptT GitHubError Aff (Array Tag)
-listTags octokit cacheRef address = do
-  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {} true
+listTags :: Octokit -> Cache -> Address -> ExceptT GitHubError Aff (Array Tag)
+listTags octokit cache address = do
+  result <- Except.withExceptT APIError $ requestCached paginate octokit cache route Object.empty {} true
   Except.except $ lmap DecodeError $ decodeTags result
   where
   route :: Route
@@ -100,9 +96,9 @@ listTags octokit cacheRef address = do
 -- | Fetch a specific file  from the provided repository at the given ref and
 -- | filepath. Filepaths should lead to a single file from the root of the repo.
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/getContent.md
-getContent :: Octokit -> Ref GitHubCache -> Address -> String -> FilePath -> ExceptT GitHubError Aff String
-getContent octokit cacheRef address ref path = do
-  result <- Except.withExceptT APIError $ requestCached request octokit cacheRef route Object.empty {} false
+getContent :: Octokit -> Cache -> Address -> String -> FilePath -> ExceptT GitHubError Aff String
+getContent octokit cache address ref path = do
+  result <- Except.withExceptT APIError $ requestCached request octokit cache route Object.empty {} false
   Except.except $ lmap DecodeError $ decodeFile result
   where
   route :: Route
@@ -123,9 +119,9 @@ getContent octokit cacheRef address ref path = do
 
 -- | Fetch the commit SHA for a given ref on a GitHub repository
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getRef.md
-getRefCommit :: Octokit -> Ref GitHubCache -> Address -> String -> ExceptT GitHubError Aff String
-getRefCommit octokit cacheRef address ref = do
-  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {} false
+getRefCommit :: Octokit -> Cache -> Address -> String -> ExceptT GitHubError Aff String
+getRefCommit octokit cache address ref = do
+  result <- Except.withExceptT APIError $ requestCached paginate octokit cache route Object.empty {} false
   Except.except $ lmap DecodeError $ decodeRefSha result
   where
   route :: Route
@@ -136,9 +132,9 @@ getRefCommit octokit cacheRef address ref = do
 
 -- | Fetch the date associated with a given commit, in the RFC3339String format.
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getCommit.md
-getCommitDate :: Octokit -> Ref GitHubCache -> Address -> String -> ExceptT GitHubError Aff RFC3339String
-getCommitDate octokit cacheRef address commitSha = do
-  result <- Except.withExceptT APIError $ requestCached paginate octokit cacheRef route Object.empty {} false
+getCommitDate :: Octokit -> Cache -> Address -> String -> ExceptT GitHubError Aff RFC3339String
+getCommitDate octokit cache address commitSha = do
+  result <- Except.withExceptT APIError $ requestCached paginate octokit cache route Object.empty {} false
   Except.except $ lmap DecodeError $ decodeCommit result
   where
   route :: Route
@@ -241,19 +237,6 @@ paginate octokit route headers args = ExceptT do
   result <- Promise.toAffE $ runEffectFn6 paginateImpl octokit route headers args Left Right
   convertGitHubAPIError result
 
--- | A cache of requests and responses to the GitHub API, used by the
--- | `requestCached` function to minimize the occurence of rate-limiting.
-type GitHubCache = Map Route { modified :: String, payload :: Either GitHubAPIError Json }
-
-cacheName :: String
-cacheName = "github-cache.json"
-
-writeGitHubCache :: GitHubCache -> Aff Unit
-writeGitHubCache cache = Json.writeJsonFile (Path.concat [ ".cache", cacheName ]) cache
-
-readGitHubCache :: Aff (Either String GitHubCache)
-readGitHubCache = Json.readJsonFile (Path.concat [ ".cache", cacheName ])
-
 -- GitHub uses the RFC1123 time format: "Thu, 05 Jul 2022"
 -- http://www.csgnetwork.com/timerfc1123calc.html
 --
@@ -277,13 +260,8 @@ formatRFC1123 = List.fromFoldable
   , Placeholder "UTC"
   ]
 
-getGitHubTime :: Effect String
-getGitHubTime = do
-  offset <- Now.getTimezoneOffset
-  now <- Now.nowDateTime
-  let (offset' :: Duration.Minutes) = over Duration.Minutes negate offset
-  let adjusted = fromMaybe now $ DateTime.adjust offset' now
-  pure $ Formatter.DateTime.format formatRFC1123 adjusted
+toGitHubTime :: DateTime.DateTime -> String
+toGitHubTime = Formatter.DateTime.format formatRFC1123
 
 -- | A helper function for implementing GET requests to the GitHub API that
 -- | relies on the GitHub API to report whether there is any new data, and falls
@@ -293,49 +271,55 @@ requestCached
   :: forall args
    . (Octokit -> Route -> Object String -> Record args -> ExceptT GitHubAPIError Aff Json)
   -> Octokit
-  -> Ref GitHubCache
+  -> Cache
   -> Route
   -> Object String
   -> Record args
   -> Boolean
   -> ExceptT GitHubAPIError Aff Json
-requestCached runRequest octokit cacheRef route@(Route routeStr) headers args checkGitHub = do
-  cache <- liftEffect $ Ref.read cacheRef
-  ExceptT $ case Map.lookup route cache of
-    Nothing -> do
-      log $ "CACHE MISS: No entry for " <> routeStr
-      result <- Except.runExceptT $ runRequest octokit route headers args
-      modified <- liftEffect getGitHubTime
-      liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
+requestCached runRequest octokit cache (Route route) headers args checkGitHub = do
+  entry <- liftEffect (Cache.readJsonEntry route cache)
+  now <- liftEffect Utils.nowUTC
+  ExceptT $ case entry of
+    Left _ -> do
+      log $ "CACHE MISS: No entry for " <> route
+      result <- Except.runExceptT $ runRequest octokit (Route route) headers args
+      liftEffect $ Cache.writeJsonEntry route result cache
       pure result
 
-    Just cached -> case cached.payload of
+    Right cached -> case cached.value of
       Left err
         -- We don't retry 404 errors because they indicate a missing resource.
-        | err.statusCode == 404 -> do
-            pure $ Left err
+        | err.statusCode == 404 -> pure $ Left err
         -- Otherwise, if we have an error in cache, we retry the request; we
         -- don't have anything usable we could return.
         | otherwise -> do
-            log $ "CACHE ERROR: Deleting non-404 error entry and retrying " <> routeStr
+            log $ "CACHE ERROR: Deleting non-404 error entry and retrying " <> route
             logShow err
-            liftEffect $ Ref.modify_ (Map.delete route) cacheRef
-            Except.runExceptT $ requestCached runRequest octokit cacheRef route headers args checkGitHub
+            liftEffect $ cache.remove route
+            Except.runExceptT $ requestCached runRequest octokit cache (Route route) headers args checkGitHub
 
       -- If we do have a usable cache value, then we will defer to GitHub's
-      -- judgment on whether to use it or not.
+      -- judgment on whether to use it or not. We do that by making a request
+      -- with the 'If-Not-Modified' header. A 304 response means the resource
+      -- has not changed, and GitHub promises not to consume a request if so.
+      --
+      -- Unfortunately, GitHub is not currently (2022-07-01) honoring this
+      -- promise, so we (temporarily) only retry after N hours have passed. Once
+      -- they start honoring the promise again we can remove the modified time
+      -- guard below.
       Right payload
-        | checkGitHub -> do
-            result <- Except.runExceptT $ runRequest octokit route (Object.insert "If-Modified-Since" cached.modified headers) args
+        | checkGitHub, DateTime.diff now cached.modified >= Duration.Hours 2.0 -> do
+            log $ "CACHE EXPIRED: " <> route
+            let headers' = Object.insert "If-Modified-Since" (toGitHubTime cached.modified) headers
+            result <- Except.runExceptT $ runRequest octokit (Route route) headers' args
             case result of
-              -- 304 Not Modified means that we can rely on our local cache; nothing has
-              -- changed for this resource.
-              Left err | err.statusCode == 304 -> do
+              -- A 304 response means the resource has not changed and we should
+              -- return from cache.
+              Left err | err.statusCode == 304 ->
                 pure $ Right payload
               _ -> do
-                log $ "MODIFIED: Fetching new data for " <> routeStr
-                modified <- liftEffect getGitHubTime
-                liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
+                liftEffect $ Cache.writeJsonEntry route result cache
                 pure result
         | otherwise ->
             pure $ Right payload

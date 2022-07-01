@@ -11,15 +11,15 @@ import Data.Array.NonEmpty as NEA
 import Data.Lens as Lens
 import Data.Map as Map
 import Data.String.NonEmpty as NES
-import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
-import Foreign.GitHub (GitHubCache, Octokit)
+import Foreign.GitHub (Octokit)
 import Foreign.GitHub as GitHub
 import Foreign.JsonRepair as JsonRepair
 import Foreign.Licensee as Licensee
 import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
+import Registry.Cache (Cache)
 import Registry.Json as Json
 import Registry.Json as RegistryJson
 import Registry.PackageName (PackageName)
@@ -40,17 +40,17 @@ import Safe.Coerce (coerce)
 -- | files, if present.
 constructManifestFields
   :: Octokit
-  -> Ref GitHubCache
+  -> Cache
   -> RawVersion
   -> GitHub.Address
   -> ExceptT ImportError Aff ManifestFields
-constructManifestFields octokit cacheRef (RawVersion version) address = do
+constructManifestFields octokit cache (RawVersion version) address = do
   let
     getFile :: forall m. MonadAff m => FileResource -> m (Either ImportError String)
     getFile resource = liftAff $ Except.runExceptT do
       let throwResourceError = throwError <<< ResourceError <<< { resource: FileResource resource, error: _ }
       result <- liftAff $ Except.runExceptT do
-        GitHub.getContent octokit cacheRef address version (fileResourcePath resource)
+        GitHub.getContent octokit cache address version (fileResourcePath resource)
       case result of
         Left (GitHub.DecodeError err) ->
           throwResourceError (DecodeError err)
@@ -69,7 +69,6 @@ constructManifestFields octokit cacheRef (RawVersion version) address = do
   packagesDhall <- getFile PackagesDhall
   packageJson <- getFile PackageJson
   licenseFile <- getFile LicenseFile
-  liftAff $ GitHub.writeGitHubCache =<< liftEffect (Ref.read cacheRef)
 
   bowerManifest <- Except.runExceptT do
     result <- Except.except bowerJson

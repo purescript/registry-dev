@@ -22,7 +22,11 @@ defaultTestEnv =
   , deletePackage: mempty
   , uploadPackage: mempty
   , packagesMetadata: unsafePerformEffect (Ref.new Map.empty)
-  , githubCache: unsafePerformEffect (Ref.new Map.empty)
+  , cache:
+      { read: \_ -> pure (Left "")
+      , write: mempty
+      , remove: mempty
+      }
   , githubToken: GitHubToken ""
   }
 

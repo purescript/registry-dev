@@ -12,7 +12,7 @@ import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
 import Registry.API (cloneGitTag, mkMetadataRef, publishToPursuit)
-import Registry.API as GitHub
+import Registry.Cache as Cache
 import Registry.PackageName as PackageName
 import Registry.RegistryM (Env, runRegistryM)
 import Registry.Schema (BuildPlan(..))
@@ -27,7 +27,7 @@ main = launchAff_ $ do
       >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
   packagesMetadata <- mkMetadataRef
-  githubCache <- GitHub.mkGitHubCacheRef
+  cache <- Cache.useCache
 
   let
     env :: Env
@@ -38,7 +38,7 @@ main = launchAff_ $ do
       , uploadPackage: mempty
       , deletePackage: mempty
       , packagesMetadata
-      , githubCache
+      , cache
       , githubToken
       }
 
