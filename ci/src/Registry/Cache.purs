@@ -18,7 +18,7 @@ import Data.String as String
 import Effect.Exception as Aff
 import Effect.Ref as Ref
 import Foreign.Node.FS as FSE
-import JSURI (encodeFormURLComponent, encodeURIComponent)
+import JSURI (encodeURIComponent)
 import Node.FS.Aff as FSA
 import Node.FS.Sync as FS
 import Node.Path as Path
