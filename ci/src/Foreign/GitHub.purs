@@ -8,6 +8,7 @@ module Foreign.GitHub
   , IssueNumber(..)
   , Octokit
   , PackageURL(..)
+  , RateLimit
   , Route
   , Tag
   , cacheName
@@ -15,11 +16,13 @@ module Foreign.GitHub
   , createComment
   , getCommitDate
   , getContent
+  , getRateLimit
   , getRefCommit
   , listTags
   , mkOctokit
   , parseRepo
   , printGitHubError
+  , printRateLimit
   , readGitHubCache
   , registryAddress
   , writeGitHubCache
@@ -33,17 +36,20 @@ import Control.Promise as Promise
 import Data.Array as Array
 import Data.Bitraversable (ltraverse)
 import Data.DateTime as DateTime
+import Data.DateTime.Instant (Instant)
+import Data.DateTime.Instant as Instant
 import Data.Formatter.DateTime (Formatter, FormatterCommand(..))
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Int as Int
 import Data.Interpolate (i)
 import Data.List as List
 import Data.Map as Map
-import Data.Newtype (unwrap)
+import Data.Newtype (over, unwrap)
 import Data.RFC3339String (RFC3339String(..))
 import Data.String as String
 import Data.String.Base64 as Base64
 import Data.String.CodeUnits (fromCharArray)
+import Data.Time.Duration as Duration
 import Effect.Exception as Aff
 import Effect.Exception as Exception
 import Effect.Now as Now
@@ -165,6 +171,50 @@ closeIssue octokit issue = do
   route :: Route
   route = Route $ i "PATCH /repos/" registryAddress.owner "/" registryAddress.repo "/issues/" (unwrap issue)
 
+type RateLimit =
+  { limit :: Int
+  , remaining :: Int
+  , resetTime :: Maybe Instant
+  }
+
+-- | Get the current status of the rate limit imposed by GitHub on their API
+getRateLimit :: Octokit -> ExceptT GitHubError Aff RateLimit
+getRateLimit octokit = do
+  result <- Except.withExceptT APIError $ request octokit route Object.empty {}
+  Except.except $ lmap DecodeError $ decodeRateLimit result
+  where
+  route :: Route
+  route = Route "GET /rate_limit"
+
+  decodeRateLimit :: Json -> Either String RateLimit
+  decodeRateLimit json = do
+    obj <- Json.decode json
+    rateObj <- (_ .: "core") =<< (_ .: "resources") =<< obj .: "data"
+    limit <- rateObj .: "limit"
+    remaining <- rateObj .: "remaining"
+    reset <- rateObj .: "reset"
+    let resetTime = Instant.instant $ Duration.Milliseconds $ reset * 1000.0
+    pure { limit, remaining, resetTime }
+
+printRateLimit :: RateLimit -> Aff Unit
+printRateLimit { limit, remaining, resetTime } = do
+  offset <- liftEffect Now.getTimezoneOffset
+  log $ Array.fold
+    [ "----------\n"
+    , "RATE LIMIT: ("
+    , show remaining
+    , " of "
+    , show limit
+    , ")"
+    , fold do
+        reset <- resetTime
+        let (offset' :: Duration.Minutes) = over Duration.Minutes negate offset
+        dt <- DateTime.adjust offset' $ Instant.toDateTime reset
+        let formatted = Formatter.DateTime.format (List.fromFoldable [ Hours12, Placeholder ":", MinutesTwoDigits, Placeholder " ", Meridiem ]) dt
+        pure $ ", resetting at " <> formatted
+    , "\n----------"
+    ]
+
 -- | A route for the GitHub API, ie. "GET /repos/purescript/registry/tags".
 -- | Meant for internal use.
 newtype Route = Route String
@@ -231,7 +281,8 @@ getGitHubTime :: Effect String
 getGitHubTime = do
   offset <- Now.getTimezoneOffset
   now <- Now.nowDateTime
-  let adjusted = fromMaybe now $ DateTime.adjust offset now
+  let (offset' :: Duration.Minutes) = over Duration.Minutes negate offset
+  let adjusted = fromMaybe now $ DateTime.adjust offset' now
   pure $ Formatter.DateTime.format formatRFC1123 adjusted
 
 -- | A helper function for implementing GET requests to the GitHub API that
@@ -252,7 +303,7 @@ requestCached runRequest octokit cacheRef route@(Route routeStr) headers args ch
   cache <- liftEffect $ Ref.read cacheRef
   ExceptT $ case Map.lookup route cache of
     Nothing -> do
-      log $ "NOT CACHED: No entry for " <> routeStr
+      log $ "CACHE MISS: No entry for " <> routeStr
       result <- Except.runExceptT $ runRequest octokit route headers args
       modified <- liftEffect getGitHubTime
       liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
@@ -266,7 +317,7 @@ requestCached runRequest octokit cacheRef route@(Route routeStr) headers args ch
         -- Otherwise, if we have an error in cache, we retry the request; we
         -- don't have anything usable we could return.
         | otherwise -> do
-            log $ "CACHED ERROR: Deleting non-404 error entry and retrying " <> routeStr
+            log $ "CACHE ERROR: Deleting non-404 error entry and retrying " <> routeStr
             logShow err
             liftEffect $ Ref.modify_ (Map.delete route) cacheRef
             Except.runExceptT $ requestCached runRequest octokit cacheRef route headers args checkGitHub
@@ -275,16 +326,20 @@ requestCached runRequest octokit cacheRef route@(Route routeStr) headers args ch
       -- judgment on whether to use it or not.
       Right payload
         | checkGitHub -> do
-            result <- Except.runExceptT $ runRequest octokit route (Object.insert "If-Modified-Since" cached.modified headers) args
-            case result of
-              -- 304 Not Modified means that we can rely on our local cache; nothing has
-              -- changed for this resource.
-              Left err | err.statusCode == 304 -> do
-                pure $ Right payload
-              _ -> do
-                modified <- liftEffect getGitHubTime
-                liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
-                pure result
+            pure $ Right payload
+        {-
+        result <- Except.runExceptT $ runRequest octokit route (Object.insert "If-Modified-Since" cached.modified headers) args
+        case result of
+          -- 304 Not Modified means that we can rely on our local cache; nothing has
+          -- changed for this resource.
+          Left err | err.statusCode == 304 -> do
+            pure $ Right payload
+          _ -> do
+            log $ "MODIFIED: Fetching new data for " <> routeStr
+            modified <- liftEffect getGitHubTime
+            liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
+            pure result
+        -}
         | otherwise ->
             pure $ Right payload
 

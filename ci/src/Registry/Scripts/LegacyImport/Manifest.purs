@@ -11,7 +11,6 @@ import Data.Array.NonEmpty as NEA
 import Data.Lens as Lens
 import Data.Map as Map
 import Data.String.NonEmpty as NES
-import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
 import Foreign.GitHub (GitHubCache, Octokit)
@@ -71,13 +70,11 @@ constructManifestFields octokit cacheRef (RawVersion version) address = do
   packageJson <- getFile PackageJson
   licenseFile <- getFile LicenseFile
   liftAff $ GitHub.writeGitHubCache =<< liftEffect (Ref.read cacheRef)
-  liftAff $ Aff.delay (Aff.Milliseconds 300.0)
 
   bowerManifest <- Except.runExceptT do
     result <- Except.except bowerJson
     case RegistryJson.parseJson $ JsonRepair.tryRepair result of
-      Left error -> do
-        log $ "Could not decode returned bower.json: " <> error
+      Left error ->
         throwError $ ResourceError { resource: FileResource BowerJson, error: DecodeError error }
       Right bowerfile ->
         pure $ Bowerfile.toManifestFields bowerfile

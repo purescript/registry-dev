@@ -777,12 +777,9 @@ pushToMaster packageName path = Except.runExceptT do
 runGit :: Array String -> Maybe FilePath -> ExceptT String Aff String
 runGit args cwd = ExceptT do
   result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
-  case result.exit of
-    NodeProcess.Normally 0 -> do
-      info result.stdout
-      info result.stderr
-      pure $ Right $ String.trim result.stdout
-    _ -> pure $ Left $ String.trim result.stderr
+  pure $ case result.exit of
+    NodeProcess.Normally 0 -> Right $ String.trim result.stdout
+    _ -> Left $ String.trim result.stderr
 
 -- | The absolute maximum bytes allowed in a package
 maxPackageBytes :: Number

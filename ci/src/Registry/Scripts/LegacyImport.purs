@@ -15,6 +15,7 @@ import Effect.Ref as Ref
 import Foreign.GitHub (GitHubCache, GitHubToken(..), Octokit)
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
+import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.API as API
 import Registry.Index (RegistryIndex)
@@ -181,6 +182,11 @@ downloadLegacyRegistry octokit cacheRef registryIndexCache = do
     allPackages = Map.union bowerPackages newPackages
     initialPackages = { failures: PackageFailures Map.empty, packages: allPackages }
 
+  log "Checking rate limit status..."
+  Except.runExceptT (GitHub.getRateLimit octokit) >>= case _ of
+    Left err -> log $ GitHub.printGitHubError err
+    Right rateLimit -> GitHub.printRateLimit rateLimit
+
   log "Fetching package releases..."
   releaseIndex <- Process.forPackage initialPackages \name repoUrl -> do
     address <- case GitHub.parseRepo repoUrl of
@@ -190,7 +196,6 @@ downloadLegacyRegistry octokit cacheRef registryIndexCache = do
     let mkError = ResourceError <<< { resource: APIResource GitHubReleases, error: _ }
 
     releases <- do
-      log $ "Fetching releases for package " <> un RawPackageName name
       result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cacheRef address
       case result of
         Left err -> do
@@ -205,8 +210,7 @@ downloadLegacyRegistry octokit cacheRef registryIndexCache = do
             GitHub.DecodeError str ->
               throwError (mkError $ DecodeError str)
 
-        Right value ->
-          pure value
+        Right value -> pure value
 
     let versions = Map.fromFoldable $ map (\tag -> Tuple (RawVersion tag.name) unit) releases
     pure $ Tuple { name, address } versions
@@ -238,16 +242,26 @@ downloadLegacyRegistry octokit cacheRef registryIndexCache = do
 
   log "Converting to manifests..."
   let forPackageRegistry = Process.forPackageVersion packageRegistry
-  manifestRegistry <- forPackageRegistry \{ name, original: originalName, address } { version, original: originalVersion } _ -> do
+  manifestRegistry <- forPackageRegistry \{ name, address } { version, original: originalVersion } _ -> do
+    let
+      cachePath = Path.concat [ API.cacheDir, "package-manifest__" <> PackageName.print name <> "@" <> un RawVersion originalVersion <> ".json" ]
+
+      constructManifest = do
+        manifestFields <- Manifest.constructManifestFields octokit cacheRef originalVersion address
+        let repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
+        let liftError = map (lmap ManifestImportError)
+        Except.mapExceptT liftError $ Manifest.toManifest name repo version manifestFields
+
     case Map.lookup name registryIndexCache >>= Map.lookup version of
       Just manifest -> pure manifest
-      Nothing -> do
-        log $ "NOT CACHED: Constructing manifest fields for " <> un RawPackageName originalName <> "@" <> un RawVersion originalVersion
-        manifestFields <- Manifest.constructManifestFields octokit cacheRef originalVersion address
-        let
-          repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
-          liftError = map (lmap ManifestImportError)
-        Except.mapExceptT liftError $ Manifest.toManifest name repo version manifestFields
+      Nothing -> liftAff (Json.readJsonFile cachePath) >>= case _ of
+        Left _ -> Except.ExceptT do
+          manifest <- Except.runExceptT constructManifest
+          liftAff $ Json.writeJsonFile cachePath manifest
+          log $ "Cached " <> PackageName.print name <> "@" <> un RawVersion originalVersion
+          pure manifest
+        Right contents ->
+          Except.except contents
 
   log "Writing exclusions file..."
   Json.writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
