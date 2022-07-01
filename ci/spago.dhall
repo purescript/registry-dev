@@ -28,6 +28,7 @@
   , "integers"
   , "interpolate"
   , "js-date"
+  , "js-uri"
   , "lists"
   , "maybe"
   , "media-types"

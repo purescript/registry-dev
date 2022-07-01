@@ -308,15 +308,20 @@ requestCached runRequest octokit cache (Route route) headers args checkGitHub = 
       -- promise, so we (temporarily) only retry after N hours have passed. Once
       -- they start honoring the promise again we can remove the modified time
       -- guard below.
+      --
+      -- TODO: Remove DateTime.diff when GitHub honors requests again.
       Right payload
-        | checkGitHub, DateTime.diff now cached.modified >= Duration.Hours 2.0 -> do
+        | checkGitHub, DateTime.diff now cached.modified >= Duration.Hours 4.0 -> do
             log $ "CACHE EXPIRED: " <> route
             let headers' = Object.insert "If-Modified-Since" (toGitHubTime cached.modified) headers
             result <- Except.runExceptT $ runRequest octokit (Route route) headers' args
             case result of
               -- A 304 response means the resource has not changed and we should
               -- return from cache.
-              Left err | err.statusCode == 304 ->
+              Left err | err.statusCode == 304 -> do
+                -- TODO: Remove this line when GitHub starts honoring rate limit
+                -- exclusions for conditional requests again.
+                liftEffect $ Cache.writeJsonEntry route payload cache
                 pure $ Right payload
               _ -> do
                 liftEffect $ Cache.writeJsonEntry route result cache

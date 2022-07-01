@@ -11,12 +11,14 @@ import Registry.Prelude
 import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.Map as Map
+import Data.Maybe (maybe')
 import Data.RFC3339String (RFC3339String(..))
 import Data.RFC3339String as RFC3339String
-import Data.String.Base64 as Base64
+import Data.String as String
 import Effect.Exception as Aff
 import Effect.Ref as Ref
 import Foreign.Node.FS as FSE
+import JSURI (encodeFormURLComponent, encodeURIComponent)
 import Node.FS.Aff as FSA
 import Node.FS.Sync as FS
 import Node.Path as Path
@@ -46,7 +48,12 @@ derive newtype instance Eq CacheKey
 derive newtype instance Ord CacheKey
 
 toCacheKey :: String -> CacheKey
-toCacheKey key = CacheKey (Base64.encodeUrl key)
+toCacheKey key =
+  maybe' (\_ -> unsafeCrashWith ("Unable to encode " <> key <> " as CacheKey")) CacheKey
+    $ encodeURIComponent
+    $ String.replaceAll (String.Pattern "@") (String.Replacement "$")
+    $ String.replaceAll (String.Pattern "/") (String.Replacement "_")
+    $ String.replaceAll (String.Pattern " ") (String.Replacement "__") key
 
 readJsonEntry :: forall a. Json.RegistryJson a => String -> Cache -> Effect (Either String { modified :: DateTime, value :: a })
 readJsonEntry key { read } =

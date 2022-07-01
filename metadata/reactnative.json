@@ -28,6 +28,12 @@
       "publishedTime": "2017-04-17T23:22:04.0Z",
       "ref": "v3.0.0"
     },
+    "3.0.1": {
+      "bytes": 29,
+      "hash": "sha256-hWRiDxypfi1nzacIamJxWF/S7vWkTmF1N+fDbufaPq0=",
+      "publishedTime": "2017-04-25T04:17:24.0Z",
+      "ref": "v3.0.1"
+    },
     "4.0.0": {
       "bytes": 27859,
       "hash": "sha256-HnvLtVVfS8maNP6BUvjffTwm0t/UtiF8K+Pc996WMMs=",

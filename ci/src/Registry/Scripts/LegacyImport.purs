@@ -98,15 +98,15 @@ main = Aff.launchAff_ do
     -- package are valid, but these are not. We manually exclude them from being
     -- uploaded.
     excludeVersion :: Manifest -> Maybe _
-    excludeVersion (Manifest manifestFields) = case PackageName.print manifestFields.name, Version.printVersion manifestFields.version of
+    excludeVersion (Manifest manifestFields) = case PackageName.print manifestFields.name, Version.rawVersion manifestFields.version of
       -- [UNFIXABLE]
       -- These have no src directory.
-      "concur-core", "0.3.9" -> Nothing
-      "concur-react", "0.3.9" -> Nothing
-      "pux-devtool", "5.0.0" -> Nothing
+      "concur-core", "v0.3.9" -> Nothing
+      "concur-react", "v0.3.9" -> Nothing
+      "pux-devtool", "v5.0.0" -> Nothing
 
       -- These have a malformed bower.json file
-      "endpoints-express", "0.0.1" -> Nothing
+      "endpoints-express", "v0.0.1" -> Nothing
 
       _, _ -> Just manifestFields
 
@@ -244,24 +244,28 @@ downloadLegacyRegistry octokit cache registryIndexCache = do
   let forPackageRegistry = Process.forPackageVersion packageRegistry
   manifestRegistry <- forPackageRegistry \{ name, address } { version, original: originalVersion } _ -> do
     let
-      key = "manifest__" <> PackageName.print name <> "@" <> Version.printVersion version
-      constructManifest = do
-        manifestFields <- Manifest.constructManifestFields octokit cache originalVersion address
-        let repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
-        let liftError = map (lmap ManifestImportError)
-        Except.mapExceptT liftError $ Manifest.toManifest name repo version manifestFields
-
+      nameVersion = PackageName.print name <> "--" <> Version.printVersion version
+      key = "manifest__" <> nameVersion
     -- We attempt to pull the manifest from the registry index to avoid having
     -- to build a local cache ourselves.
     case Map.lookup name registryIndexCache >>= Map.lookup version of
       Just manifest -> pure manifest
+      -- NOTE: We can't cache actual Version values as JSON because we will lose
+      -- the raw version associated with them.
       Nothing -> liftEffect (Cache.readJsonEntry key cache) >>= case _ of
         Left _ -> Except.ExceptT do
-          manifest <- Except.runExceptT constructManifest
-          liftEffect $ Cache.writeJsonEntry key manifest cache
+          manifest <- Except.runExceptT do
+            manifestFields <- Manifest.constructManifestFields octokit cache originalVersion address
+            let repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
+            let liftError = map (lmap ManifestImportError)
+            Except.mapExceptT liftError $ Manifest.toManifest name repo version manifestFields
+          let withRawVersion = map (un Manifest >>> (_ { version = originalVersion })) manifest
+          liftEffect $ Cache.writeJsonEntry key withRawVersion cache
           pure manifest
-        Right contents ->
-          Except.except contents.value
+        Right contents -> do
+          fields <- Except.except contents.value
+          let version' = unsafeFromRight $ Version.parseVersion Version.Lenient fields.version
+          pure $ Manifest $ fields { version = version' }
 
   log "Writing exclusions file..."
   Json.writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
