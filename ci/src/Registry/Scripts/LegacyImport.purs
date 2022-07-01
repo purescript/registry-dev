@@ -48,6 +48,7 @@ import Text.Parsing.StringParser as StringParser
 main :: Effect Unit
 main = Aff.launchAff_ do
   _ <- Dotenv.loadFile
+  _ <- API.mkMetadataRef
 
   githubToken <- liftEffect do
     Node.Process.lookupEnv "GITHUB_TOKEN"

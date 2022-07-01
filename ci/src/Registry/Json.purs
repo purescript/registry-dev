@@ -55,7 +55,6 @@ import Data.Int as Int
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), maybe)
-import Data.Newtype (un)
 import Data.RFC3339String (RFC3339String(..))
 import Data.String.NonEmpty (NonEmptyString)
 import Data.String.NonEmpty as NES
@@ -202,8 +201,8 @@ instance RegistryJson a => RegistryJson (NonEmptyArray a) where
   decode = decode >=> NEA.fromArray >>> note "Expected NonEmptyArray"
 
 instance RegistryJson RFC3339String where
-  encode = encode <<< un RFC3339String
-  decode = decode >=> map RFC3339String
+  encode (RFC3339String str) = Core.fromString str
+  decode = Core.caseJsonString (Left "Expected RFC3339String") (Right <<< RFC3339String)
 
 instance (Ord k, StringEncodable k, RegistryJson v) => RegistryJson (Map k v) where
   encode = encode <<< Object.fromFoldable <<< toTupleArray

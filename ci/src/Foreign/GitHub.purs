@@ -326,20 +326,17 @@ requestCached runRequest octokit cacheRef route@(Route routeStr) headers args ch
       -- judgment on whether to use it or not.
       Right payload
         | checkGitHub -> do
-            pure $ Right payload
-        {-
-        result <- Except.runExceptT $ runRequest octokit route (Object.insert "If-Modified-Since" cached.modified headers) args
-        case result of
-          -- 304 Not Modified means that we can rely on our local cache; nothing has
-          -- changed for this resource.
-          Left err | err.statusCode == 304 -> do
-            pure $ Right payload
-          _ -> do
-            log $ "MODIFIED: Fetching new data for " <> routeStr
-            modified <- liftEffect getGitHubTime
-            liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
-            pure result
-        -}
+            result <- Except.runExceptT $ runRequest octokit route (Object.insert "If-Modified-Since" cached.modified headers) args
+            case result of
+              -- 304 Not Modified means that we can rely on our local cache; nothing has
+              -- changed for this resource.
+              Left err | err.statusCode == 304 -> do
+                pure $ Right payload
+              _ -> do
+                log $ "MODIFIED: Fetching new data for " <> routeStr
+                modified <- liftEffect getGitHubTime
+                liftEffect $ Ref.modify_ (Map.insert route { modified, payload: result }) cacheRef
+                pure result
         | otherwise ->
             pure $ Right payload
 
