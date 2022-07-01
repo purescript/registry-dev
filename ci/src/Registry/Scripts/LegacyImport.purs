@@ -20,14 +20,13 @@ import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
-import Registry.Json (printJson)
 import Registry.Json as Json
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, readPackagesMetadata, runRegistryM, updatePackagesMetadata)
-import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..))
+import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..), Metadata)
 import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Scripts.LegacyImport.Process (NameAddressOriginal, VersionOriginal)
@@ -66,7 +65,7 @@ main = Aff.launchAff_ do
   -- index as a cache by providing an empty map as `indexCache`. The files used
   -- to produce the manifests are still read from the GitHub cache.
   log "Fetching the registry index..."
-  API.checkIndexExists
+  API.checkIndexExists API.indexDir
   indexCache <- Index.readRegistryIndex API.indexDir
 
   log "Starting import from legacy registries..."
@@ -306,7 +305,7 @@ downloadLegacyRegistry octokit cache registryIndexCache = do
             )
         $ Map.toUnfoldable allPackages
 
-  log $ "Reserved names (" <> show (Map.size reservedNames) <> "):\n" <> (printJson $ Array.fromFoldable $ Map.keys reservedNames)
+  log $ show (Map.size reservedNames) <> " reserved names"
   pure { registry: checkedIndex, reservedNames }
 
 -- Packages can be specified either in 'package-name' format or

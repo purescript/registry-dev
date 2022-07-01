@@ -78,7 +78,7 @@ main = launchAff_ $ do
   octokit <- liftEffect $ GitHub.mkOctokit githubToken
   cache <- Cache.useCache
   packagesMetadata <- mkMetadataRef
-  checkIndexExists
+  checkIndexExists indexDir
 
   readOperation eventPath >>= case _ of
     -- If the issue body is not just a JSON string, then we don't consider it
@@ -599,16 +599,6 @@ buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir }
       packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.printVersion version ]
     pure $ Tuple bowerPackageName { path: packagePath, version }
 
-wget :: String -> FilePath -> RegistryM Unit
-wget url path = do
-  let cmd = "wget"
-  let stdin = Nothing
-  let args = [ "-O", path, url ]
-  result <- liftAff $ Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
-  case result.exit of
-    NodeProcess.Normally 0 -> pure unit
-    _ -> throwWithComment $ "Error while fetching tarball: " <> result.stderr
-
 mkEnv :: GitHub.Octokit -> Cache -> GitHubToken -> MetadataRef -> IssueNumber -> Env
 mkEnv octokit cache githubToken packagesMetadata issue =
   { comment: \comment -> Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
@@ -623,6 +613,34 @@ mkEnv octokit cache githubToken packagesMetadata issue =
   , packagesMetadata
   , cache
   , githubToken
+  }
+
+wget :: String -> FilePath -> RegistryM Unit
+wget url path = do
+  let cmd = "wget"
+  let stdin = Nothing
+  let args = [ "-O", path, url ]
+  result <- liftAff $ Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
+  case result.exit of
+    NodeProcess.Normally 0 -> pure unit
+    _ -> throwWithComment $ "Error while fetching tarball: " <> result.stderr
+
+mkLocalEnv :: Ref (Map PackageName Metadata) -> Env
+mkLocalEnv packagesMetadata =
+  { comment: \err -> error err
+  , closeIssue: log "Skipping GitHub issue closing, we're running locally.."
+  , commitToTrunk: \_ _ -> do
+      log "Skipping committing to trunk.."
+      pure (Right unit)
+  , uploadPackage: Upload.upload
+  , deletePackage: Upload.delete
+  , githubToken: GitHubToken ""
+  , cache:
+      { read: \_ -> pure (Left "")
+      , write: \_ _ -> pure unit
+      , remove: \_ -> pure unit
+      }
+  , packagesMetadata
   }
 
 type MetadataMap = Map PackageName Metadata
@@ -655,18 +673,18 @@ isPackageVersionInMetadata packageName version metadataMap =
     Nothing -> false
     Just metadata -> isVersionInMetadata version metadata
 
-checkIndexExists :: Aff Unit
-checkIndexExists = do
+checkIndexExists :: FilePath -> Aff Unit
+checkIndexExists dirPath = do
   log "Fetching the most recent registry-index..."
-  FS.exists indexDir >>= case _ of
+  FS.exists dirPath >>= case _ of
     true -> do
       log "Found the 'registry-index' repo locally, pulling..."
-      Except.runExceptT (runGit [ "pull" ] (Just indexDir)) >>= case _ of
+      Except.runExceptT (runGit [ "pull" ] (Just dirPath)) >>= case _ of
         Left err -> Aff.throwError $ Aff.error err
         Right _ -> pure unit
     _ -> do
       log "Didn't find the 'registry-index' repo, cloning..."
-      Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", indexDir ] Nothing) >>= case _ of
+      Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", dirPath ] Nothing) >>= case _ of
         Left err -> Aff.throwError $ Aff.error err
         Right _ -> log "Successfully cloned the 'registry-index' repo"
 

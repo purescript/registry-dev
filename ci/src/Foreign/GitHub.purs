@@ -54,7 +54,6 @@ import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Json ((.:))
 import Registry.Json as Json
-import Registry.Utils as Utils
 import Text.Parsing.StringParser as Parser
 import Text.Parsing.StringParser.CodePoints as Parse
 import Text.Parsing.StringParser.Combinators as ParseC
@@ -279,7 +278,7 @@ requestCached
   -> ExceptT GitHubAPIError Aff Json
 requestCached runRequest octokit cache (Route route) headers args checkGitHub = do
   entry <- liftEffect (Cache.readJsonEntry route cache)
-  now <- liftEffect Utils.nowUTC
+  now <- liftEffect Cache.nowUTC
   ExceptT $ case entry of
     Left _ -> do
       log $ "CACHE MISS: No entry for " <> route

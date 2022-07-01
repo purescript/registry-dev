@@ -59,6 +59,45 @@ derive newtype instance Eq Owner
 derive newtype instance Show Owner
 derive newtype instance RegistryJson Owner
 
+newtype PackageSet = PackageSet
+  { compiler :: Version
+  , publishedTime :: RFC3339String
+  , packages :: Map PackageName Version
+  , version :: Version
+  }
+
+derive instance Newtype PackageSet _
+derive newtype instance Eq PackageSet
+derive newtype instance Show PackageSet
+
+instance RegistryJson PackageSet where
+  encode (PackageSet plan) = Json.encode plan
+  decode = map PackageSet <<< Json.decode
+
+newtype LegacyPackageSet = LegacyPackageSet (Map PackageName LegacyPackageSetEntry)
+
+derive instance Newtype LegacyPackageSet _
+derive newtype instance Eq LegacyPackageSet
+derive newtype instance Show LegacyPackageSet
+
+instance RegistryJson LegacyPackageSet where
+  encode (LegacyPackageSet plan) = Json.encode plan
+  decode = map LegacyPackageSet <<< Json.decode
+
+newtype LegacyPackageSetEntry = LegacyPackageSetEntry
+  { dependencies :: Array PackageName
+  , repo :: String
+  , version :: RawVersion
+  }
+
+derive instance Newtype LegacyPackageSetEntry _
+derive newtype instance Eq LegacyPackageSetEntry
+derive newtype instance Show LegacyPackageSetEntry
+
+instance RegistryJson LegacyPackageSetEntry where
+  encode (LegacyPackageSetEntry plan) = Json.encode plan
+  decode = map LegacyPackageSetEntry <<< Json.decode
+
 -- | A compiler version and exact dependency versions that should be used to
 -- | compile a newly-uploaded package as an API verification check.
 -- |

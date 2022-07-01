@@ -4,18 +4,23 @@ module Registry.Cache
   , readJsonEntry
   , useCache
   , writeJsonEntry
+  , nowUTC
   ) where
 
 import Registry.Prelude
 
 import Data.Array as Array
 import Data.DateTime (DateTime)
+import Data.DateTime as DateTime
 import Data.Map as Map
 import Data.Maybe (maybe')
+import Data.Newtype as Newtype
 import Data.RFC3339String (RFC3339String(..))
 import Data.RFC3339String as RFC3339String
 import Data.String as String
+import Data.Time.Duration as Duration
 import Effect.Exception as Aff
+import Effect.Now as Now
 import Effect.Ref as Ref
 import Foreign.Node.FS as FSE
 import JSURI (encodeURIComponent)
@@ -23,7 +28,14 @@ import Node.FS.Aff as FSA
 import Node.FS.Sync as FS
 import Node.Path as Path
 import Registry.Json as Json
-import Registry.Utils as Utils
+
+-- | Get the current time, standardizing on the UTC timezone to avoid ambiguity
+-- | when running on different machines.
+nowUTC :: Effect DateTime
+nowUTC = do
+  offset <- Newtype.over Duration.Minutes negate <$> Now.getTimezoneOffset
+  now <- Now.nowDateTime
+  pure $ fromMaybe now $ DateTime.adjust (offset :: Duration.Minutes) now
 
 cacheDir :: FilePath
 cacheDir = ".cache"
@@ -95,7 +107,7 @@ useCache = do
       case Map.lookup key cache of
         Just prevValue | prevValue.value == value -> pure unit
         _ -> do
-          utcTime <- Utils.nowUTC
+          utcTime <- nowUTC
           let
             entry = { modified: utcTime, value }
             jsonEntry = entry { modified = RFC3339String.fromDateTime entry.modified }
