@@ -1213,7 +1213,6 @@
   "purescript-sql": "https://github.com/joneshf/purescript-typelevel-sql.git",
   "purescript-sql-squared": "https://github.com/slamdata/purescript-sql-squared.git",
   "purescript-sqlite": "https://github.com/Risto-Stevcev/purescript-sqlite.git",
-  "purescript-sqlsquare": "https://github.com/slamdata/purescript-sql-squared.git",
   "purescript-ssh2-sftp-client": "https://github.com/adamczykm/purescript-ssh2-sftp-client.git",
   "purescript-st": "https://github.com/purescript/purescript-st.git",
   "purescript-st-lazy-ref": "https://github.com/matthewleon/purescript-st-lazy-ref.git",
