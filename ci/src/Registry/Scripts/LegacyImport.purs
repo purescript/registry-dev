@@ -22,14 +22,14 @@ import Registry.Json as Json
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.PackageUpload as Upload
-import Registry.RegistryM (Env, readPackagesMetadata, runRegistryM, updatePackagesMetadata)
-import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..))
+import Registry.RegistryM (readPackagesMetadata, runRegistryM, updatePackagesMetadata)
+import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
 import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.Stats as Stats
 import Registry.Types (RawPackageName(..), RawVersion(..))
+import Registry.Utils (mkLocalEnv)
 import Registry.Version (ParseMode(..), Version)
 import Registry.Version as Version
 import Safe.Coerce (coerce)
@@ -45,7 +45,7 @@ main :: Effect Unit
 main = Aff.launchAff_ do
   _ <- Dotenv.loadFile
 
-  API.checkIndexExists
+  API.checkIndexExists API.indexDir
 
   log "Starting import from legacy registries..."
   { registry, reservedNames } <- downloadLegacyRegistry
@@ -89,7 +89,7 @@ main = Aff.launchAff_ do
   packagesMetadataRef <- API.mkMetadataRef
 
   log "Starting upload..."
-  runRegistryM (mkEnv packagesMetadataRef) do
+  runRegistryM (mkLocalEnv packagesMetadataRef) do
     log "Adding metadata for reserved package names"
     forWithIndex_ (Map.union disabledPackages reservedNames) \package repo -> do
       let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
@@ -134,18 +134,6 @@ main = Aff.launchAff_ do
       liftAff $ Index.insertManifest API.indexDir $ Manifest manifest
 
   log "Done!"
-
-mkEnv :: Ref (Map PackageName Metadata) -> Env
-mkEnv packagesMetadata =
-  { comment: \err -> error err
-  , closeIssue: log "Skipping GitHub issue closing, we're running locally.."
-  , commitToTrunk: \_ _ -> do
-      log "Skipping committing to trunk.."
-      pure (Right unit)
-  , uploadPackage: Upload.upload
-  , deletePackage: Upload.delete
-  , packagesMetadata
-  }
 
 downloadLegacyRegistry :: Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
 downloadLegacyRegistry = do
