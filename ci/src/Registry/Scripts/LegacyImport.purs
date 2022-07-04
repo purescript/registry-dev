@@ -24,9 +24,8 @@ import Registry.Json as Json
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.PackageUpload as Upload
-import Registry.RegistryM (Env, readPackagesMetadata, runRegistryM, updatePackagesMetadata)
-import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..), Metadata)
+import Registry.RegistryM (readPackagesMetadata, runRegistryM, updatePackagesMetadata)
+import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
 import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Scripts.LegacyImport.Process (NameAddressOriginal, VersionOriginal)
@@ -115,7 +114,7 @@ main = Aff.launchAff_ do
   packagesMetadataRef <- API.mkMetadataRef
 
   log "Starting upload..."
-  runRegistryM (mkEnv githubToken cache packagesMetadataRef) do
+  runRegistryM (API.mkLocalEnv octokit cache packagesMetadataRef) do
     log "Adding metadata for reserved package names"
     forWithIndex_ (Map.union disabledPackages reservedNames) \package repo -> do
       let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
@@ -160,20 +159,6 @@ main = Aff.launchAff_ do
       liftAff $ Index.insertManifest API.indexDir $ Manifest manifest
 
   log "Done!"
-
-mkEnv :: GitHubToken -> Cache -> Ref (Map PackageName Metadata) -> Env
-mkEnv githubToken cache packagesMetadata =
-  { comment: \err -> error err
-  , closeIssue: log "Skipping GitHub issue closing, we're running locally.."
-  , commitToTrunk: \_ _ -> do
-      log "Skipping committing to trunk.."
-      pure (Right unit)
-  , uploadPackage: Upload.upload
-  , deletePackage: Upload.delete
-  , packagesMetadata
-  , cache
-  , githubToken
-  }
 
 downloadLegacyRegistry :: Octokit -> Cache -> RegistryIndex -> Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
 downloadLegacyRegistry octokit cache registryIndexCache = do

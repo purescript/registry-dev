@@ -8,7 +8,7 @@ import Data.Map as Map
 import Effect.Aff (Error)
 import Effect.Aff as Aff
 import Effect.Ref as Ref
-import Foreign.GitHub (GitHubToken)
+import Foreign.GitHub (Octokit)
 import Registry.Cache as Registry
 import Registry.PackageName (PackageName)
 import Registry.PackageUpload as Upload
@@ -20,9 +20,9 @@ type Env =
   , commitToTrunk :: PackageName -> FilePath -> Aff (Either String Unit)
   , uploadPackage :: Upload.PackageInfo -> FilePath -> Aff Unit
   , deletePackage :: Upload.PackageInfo -> Aff Unit
+  , octokit :: Octokit
   , packagesMetadata :: Ref (Map PackageName Metadata)
   , cache :: Registry.Cache
-  , githubToken :: GitHubToken
   }
 
 newtype RegistryM a = RegistryM (ReaderT Env Aff a)

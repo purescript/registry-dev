@@ -87,7 +87,7 @@ main = launchAff_ $ do
     NotJson ->
       pure unit
 
-    MalformedJson issue err -> runRegistryM (mkEnv octokit cache githubToken packagesMetadata issue) do
+    MalformedJson issue err -> runRegistryM (mkEnv octokit cache packagesMetadata issue) do
       comment $ Array.fold
         [ "The JSON input for this package update is malformed:"
         , newlines 2
@@ -97,7 +97,7 @@ main = launchAff_ $ do
         ]
 
     DecodedOperation issue op ->
-      runRegistryM (mkEnv octokit cache githubToken packagesMetadata issue) (runOperation octokit op)
+      runRegistryM (mkEnv octokit cache packagesMetadata issue) (runOperation octokit op)
 
 data OperationDecoding
   = NotJson
@@ -599,8 +599,8 @@ buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir }
       packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.printVersion version ]
     pure $ Tuple bowerPackageName { path: packagePath, version }
 
-mkEnv :: GitHub.Octokit -> Cache -> GitHubToken -> MetadataRef -> IssueNumber -> Env
-mkEnv octokit cache githubToken packagesMetadata issue =
+mkEnv :: GitHub.Octokit -> Cache -> MetadataRef -> IssueNumber -> Env
+mkEnv octokit cache packagesMetadata issue =
   { comment: \comment -> Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
       Left _ -> throwError $ Aff.error "Unable to create comment!"
       Right _ -> pure unit
@@ -612,7 +612,7 @@ mkEnv octokit cache githubToken packagesMetadata issue =
   , deletePackage: Upload.delete
   , packagesMetadata
   , cache
-  , githubToken
+  , octokit
   }
 
 wget :: String -> FilePath -> RegistryM Unit
@@ -625,8 +625,8 @@ wget url path = do
     NodeProcess.Normally 0 -> pure unit
     _ -> throwWithComment $ "Error while fetching tarball: " <> result.stderr
 
-mkLocalEnv :: Ref (Map PackageName Metadata) -> Env
-mkLocalEnv packagesMetadata =
+mkLocalEnv :: Octokit -> Cache -> Ref (Map PackageName Metadata) -> Env
+mkLocalEnv octokit cache packagesMetadata =
   { comment: \err -> error err
   , closeIssue: log "Skipping GitHub issue closing, we're running locally.."
   , commitToTrunk: \_ _ -> do
@@ -634,12 +634,8 @@ mkLocalEnv packagesMetadata =
       pure (Right unit)
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
-  , githubToken: GitHubToken ""
-  , cache:
-      { read: \_ -> pure (Left "")
-      , write: \_ _ -> pure unit
-      , remove: \_ -> pure unit
-      }
+  , octokit
+  , cache
   , packagesMetadata
   }
 
@@ -718,8 +714,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
         pure { packageDirectory: repo, publishedTime }
 
       PursPublish -> do
-        { githubToken, cache } <- ask
-        octokit <- liftEffect $ GitHub.mkOctokit githubToken
+        { octokit, cache } <- ask
         commitDate <- do
           result <- liftAff $ Except.runExceptT do
             commit <- GitHub.getRefCommit octokit cache { owner, repo } ref

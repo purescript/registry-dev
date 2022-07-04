@@ -7,6 +7,7 @@ import Data.Map as Map
 import Dotenv as Dotenv
 import Effect.Exception (throw)
 import Foreign.GitHub (GitHubToken(..))
+import Foreign.GitHub as GitHub
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
@@ -26,6 +27,7 @@ main = launchAff_ $ do
     Process.lookupEnv "GITHUB_TOKEN"
       >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
+  octokit <- liftEffect $ GitHub.mkOctokit githubToken
   packagesMetadata <- mkMetadataRef
   cache <- Cache.useCache
 
@@ -39,7 +41,7 @@ main = launchAff_ $ do
       , deletePackage: mempty
       , packagesMetadata
       , cache
-      , githubToken
+      , octokit
       }
 
   runRegistryM env do
