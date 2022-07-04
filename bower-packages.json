@@ -1350,7 +1350,6 @@
   "purescript-unicode-prelude": "https://github.com/vyorkin/purescript-unicode-prelude.git",
   "purescript-unique": "https://github.com/mechairoi/purescript-unique.git",
   "purescript-unique-lists": "https://github.com/colehaus/purescript-unique-lists.git",
-  "purescript-unix": "https://github.com/joneshf/purescript-path.git",
   "purescript-unordered-collections": "https://github.com/fehrenbach/purescript-unordered-collections.git",
   "purescript-unorm": "https://github.com/athanclark/purescript-unorm.git",
   "purescript-unsafe-coerce": "https://github.com/purescript/purescript-unsafe-coerce.git",
