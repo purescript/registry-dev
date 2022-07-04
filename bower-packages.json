@@ -959,7 +959,6 @@
   "purescript-probability": "https://github.com/colehaus/purescript-probability.git",
   "purescript-profunctor": "https://github.com/purescript/purescript-profunctor.git",
   "purescript-profunctor-lenses": "https://github.com/purescript-contrib/purescript-profunctor-lenses.git",
-  "purescript-profunctors": "https://github.com/purescript/purescript-profunctor.git",
   "purescript-projections": "https://github.com/timdeputter/purescript-projections.git",
   "purescript-promises": "https://github.com/thimoteus/purescript-promises.git",
   "purescript-propel": "https://github.com/philzook58/purescript-propel.git",
