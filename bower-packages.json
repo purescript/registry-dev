@@ -376,7 +376,6 @@
   "purescript-default": "https://github.com/chrisdotcode/purescript-default.git",
   "purescript-density-codensity": "https://github.com/rightfold/purescript-density-codensity.git",
   "purescript-des": "https://github.com/jacereda/purescript-des.git",
-  "purescript-dgraph": "https://github.com/nullobject/purescript-digraph.git",
   "purescript-diff": "https://github.com/athanclark/purescript-diff.git",
   "purescript-difference-containers": "https://github.com/klntsky/purescript-difference-containers.git",
   "purescript-difflists": "https://github.com/Thimoteus/purescript-difflists.git",
