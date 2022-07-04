@@ -124,7 +124,7 @@ readOperation eventPath = do
 -- all the necessary checks
 runOperation :: Operation -> RegistryM Unit
 runOperation operation = case operation of
-  -- TODO handle addToPackageSet, addToPursuit
+  -- TODO handle addToPackageSet
   Addition { packageName, newRef, buildPlan, newPackageLocation } -> do
     -- check that we don't have a metadata file for that package
     metadataExists <- liftAff $ FS.exists $ metadataFile packageName
@@ -132,7 +132,12 @@ runOperation operation = case operation of
     -- if the metadata file already exists then we steer this to be an Update instead
     if metadataExists then
       runOperation $ Update updateData
-    else
+    else do
+      -- If this is an addition, we need to verify the package has not been
+      -- registered before we continue.
+      metadataMap <- readPackagesMetadata
+      verifyPackageNameIsUnique packageName metadataMap
+      verifyLocationIsUnique newPackageLocation metadataMap
       addOrUpdate updateData $ mkNewMetadata newPackageLocation
 
   Update { packageName, buildPlan, updateRef } -> do
@@ -210,6 +215,7 @@ runOperation operation = case operation of
                 }
 
     Transfer { packageName, newPackageLocation } -> do
+      verifyLocationIsUnique newPackageLocation =<< readPackagesMetadata
       metadata <- readMetadata packageName
         { noMetadata: String.joinWith " "
             [ "No metadata found for your package."
@@ -633,6 +639,24 @@ isPackageVersionInMetadata packageName version metadataMap =
   case Map.lookup packageName metadataMap of
     Nothing -> false
     Just metadata -> isVersionInMetadata version metadata
+
+verifyPackageNameIsUnique :: PackageName -> MetadataMap -> RegistryM Unit
+verifyPackageNameIsUnique name metadata =
+  unless (packageNameIsUnique name metadata) do
+    throwWithComment $ "Package name " <> PackageName.print name <> " has already been registered."
+
+packageNameIsUnique :: PackageName -> MetadataMap -> Boolean
+packageNameIsUnique name = isNothing <<< Map.lookup name
+
+verifyLocationIsUnique :: Location -> MetadataMap -> RegistryM Unit
+verifyLocationIsUnique location metadata =
+  unless (locationIsUnique location metadata) do
+    throwWithComment $ "Package location " <> show location <> " has already been registered."
+
+locationIsUnique :: Location -> MetadataMap -> Boolean
+locationIsUnique location metadata = do
+  let duplicates = Map.size $ Map.filter (eq location <<< _.location) metadata
+  duplicates == 0
 
 checkIndexExists :: FilePath -> Aff Unit
 checkIndexExists dir = do
