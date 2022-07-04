@@ -463,7 +463,6 @@
   "purescript-fixed-precision": "https://github.com/lumihq/purescript-fixed-precision.git",
   "purescript-flame": "https://github.com/easafe/purescript-flame.git",
   "purescript-flare": "https://github.com/sharkdp/purescript-flare.git",
-  "purescript-flarecheck": "https://github.com/sharkdp/purescript-sparkle.git",
   "purescript-flaredoc": "https://github.com/sharkdp/purescript-flaredoc.git",
   "purescript-flatpickr": "https://github.com/themoritz/purescript-flatpickr.git",
   "purescript-float32": "https://github.com/purescript-contrib/purescript-float32.git",
