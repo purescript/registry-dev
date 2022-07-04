@@ -107,14 +107,20 @@
             registry-verify-unique = ''
               set -euxo pipefail
 
-              total=$(cat bower-packages.json new-packages.json | jq -s "map(length) | add")
-              unique=$(cat bower-packages.json new-packages.json | jq -s "map(keys) | add | unique | length")
+              total=$(cat bower-packages.json new-packages.json | jq -s "add | length")
+              unique_keys=$(cat bower-packages.json new-packages.json | jq -s "add | keys | unique | length")
+              unique_values=$(cat bower-packages.json new-packages.json | jq -s "add | to_entries | map(.value) | unique | length")
 
-              if [ "$total" == "$unique" ]; then
-                exit 0
-              else
+              if [ "$total" == "$unique_keys" ]; then
                 echo "New packages already exist in the registry!"
                 exit 1
+              else
+                if [ "$total" != "$unique_values" ]; then
+                  echo "New package URL already exists in the registry!"
+                  exit 1
+                else
+                  exit 0
+                fi
               fi
             '';
 

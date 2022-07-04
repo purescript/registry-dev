@@ -606,7 +606,6 @@
   "purescript-hubot": "https://github.com/mcoffin/purescript-hubot.git",
   "purescript-hugenums": "https://github.com/Thimoteus/purescript-hugenums.git",
   "purescript-hyper": "https://github.com/purescript-hyper/hyper.git",
-  "purescript-hyper-routing": "https://github.com/purescript-hyper/purescript-trout.git",
   "purescript-hyper-sslify": "https://github.com/anilanar/purescript-hyper-sslify.git",
   "purescript-hyperdrive": "https://github.com/purescript-hyper/purescript-hyperdrive.git",
   "purescript-hypertrout": "https://github.com/purescript-hyper/purescript-hypertrout.git",
