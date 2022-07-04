@@ -516,7 +516,6 @@
   "purescript-functions": "https://github.com/purescript/purescript-functions.git",
   "purescript-functor-compose": "https://github.com/DavidHarrison/purescript-functor-compose.git",
   "purescript-functor-coproducts": "https://github.com/purescript-deprecated/purescript-functor-coproducts.git",
-  "purescript-functor-optics": "https://github.com/paf31/purescript-hoist.git",
   "purescript-functor-products": "https://github.com/purescript-deprecated/purescript-functor-products.git",
   "purescript-functor-vector": "https://github.com/philzook58/purescript-functor-vector.git",
   "purescript-functor1": "https://github.com/garyb/purescript-functor1.git",
