@@ -1113,7 +1113,6 @@
   "purescript-run-supply": "https://github.com/joneshf/purescript-run-supply.git",
   "purescript-rwse-free": "https://github.com/ethul/purescript-rwse-free.git",
   "purescript-rx": "https://github.com/anttih/purescript-rx.git",
-  "purescript-rx-observable": "https://github.com/jasonzoladz/purescript-rxjs.git",
   "purescript-rx-state": "https://github.com/jasonzoladz/purescript-rx-state.git",
   "purescript-rxjs": "https://github.com/jasonzoladz/purescript-rxjs.git",
   "purescript-rxps": "https://github.com/waynevanson/purescript-rxps.git",
