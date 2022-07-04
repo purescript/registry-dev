@@ -1037,8 +1037,6 @@
   "purescript-react-basic-hooks": "https://github.com/megamaddu/purescript-react-basic-hooks.git",
   "purescript-react-basic-native": "https://github.com/f-f/purescript-react-basic-native.git",
   "purescript-react-basic-textf": "https://github.com/j-keck/purescript-react-basic-textf.git",
-  "purescript-react-carpenter": "https://github.com/arthurxavierx/purescript-carpenter.git",
-  "purescript-react-cedar": "https://github.com/arthurxavierx/purescript-carpenter.git",
   "purescript-react-dnd-basic": "https://github.com/lumihq/purescript-react-dnd-basic.git",
   "purescript-react-dom": "https://github.com/purescript-contrib/purescript-react-dom.git",
   "purescript-react-event-listener": "https://github.com/athanclark/purescript-react-event-listener.git",
