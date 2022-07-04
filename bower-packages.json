@@ -294,7 +294,6 @@
   "purescript-chosen-halogen": "https://github.com/michael-swan/purescript-chosen-halogen.git",
   "purescript-chrono": "https://github.com/rightfold/purescript-chrono.git",
   "purescript-clappr": "https://github.com/paluh/purescript-clappr.git",
-  "purescript-client-ajax": "https://github.com/wfaler/purescript-jquery-ajax.git",
   "purescript-client-routing": "https://github.com/philopon/purescript-client-routing.git",
   "purescript-clipboard": "https://github.com/slamdata/purescript-clipboard.git",
   "purescript-clock": "https://github.com/jacereda/purescript-clock.git",
