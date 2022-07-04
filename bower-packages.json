@@ -830,7 +830,6 @@
   "purescript-node-datagram": "https://github.com/brandonhamilton/purescript-node-datagram.git",
   "purescript-node-datagrams": "https://github.com/jliuhtonen/purescript-node-datagrams.git",
   "purescript-node-domain": "https://github.com/joneshf/purescript-node-domain.git",
-  "purescript-node-dotenv": "https://github.com/nsaunders/purescript-dotenv.git",
   "purescript-node-electron": "https://github.com/cprussin/purescript-node-electron.git",
   "purescript-node-events": "https://github.com/joneshf/purescript-node-events.git",
   "purescript-node-fs": "https://github.com/purescript-node/purescript-node-fs.git",
