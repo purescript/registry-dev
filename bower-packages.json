@@ -609,7 +609,6 @@
   "purescript-hugenums": "https://github.com/Thimoteus/purescript-hugenums.git",
   "purescript-hyper": "https://github.com/purescript-hyper/hyper.git",
   "purescript-hyper-routing": "https://github.com/purescript-hyper/purescript-trout.git",
-  "purescript-hyper-routing-server": "https://github.com/purescript-hyper/purescript-hypertrout.git",
   "purescript-hyper-routing-xhr": "https://github.com/purescript-hyper/purescript-trout-client.git",
   "purescript-hyper-sslify": "https://github.com/anilanar/purescript-hyper-sslify.git",
   "purescript-hyperdrive": "https://github.com/purescript-hyper/purescript-hyperdrive.git",
