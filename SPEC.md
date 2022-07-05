@@ -191,19 +191,28 @@ Fourth, we release the new package set (if we could produce one). Automatic pack
 
 For example, if the previous release was `2.1.1+2022-06-01-purs-0_15_2` (`2.1.1` for short), and the next day no packages changed versions but a new package was registered, the new version would be `2.2.0+2022-06-02-purs-0_15_2` (`2.2.0` for short).
 
-#### Manual Intervention in the Package Sets
+#### Manual Intervention in the Package Sets via the Package Sets API
 
-Most changes in the package set are handled automatically. However, sometimes packages will introduce changes that cause the package set to no longer compile. In these instances, the now-incompatible package will not be automatically upgraded. Instead, the new version will be recorded and the Registry Trustees will need to manually intervene to fix the package set.
+Most changes in the package set are handled automatically. However, sometimes the package sets require manual intervention. For example, when a new package version introduces changes which are incompatible with other packages in the set, then it is not automatically added because that would entail dropping other packages from the set, and that is never done automatically. Or, sometimes several packages update together over the course of a few days, and while none of them can be added individually, they could all be upgraded together in one batch.
 
-There are two options for fixing a package set:
+In these situations, contributors to the registry can use the package sets API to manually suggest one or more updates to packages in the package set. If the suggested updates result in a valid new package set, then it is accepted, built, and released automatically by the registry. If they do not, then the update is rejected and there is no release.
 
-1. The updated package can remain in the set at its old version (this is the default).
-2. The updated package can be upgraded to its new version, and all packages that fail to compile with the new version will be dropped from the package set.
+**Package Set Updates**
 
-The Registry Trustees will use their discretion when deciding when to process a package update when it will cause other packages to be dropped from the set. They will judge how critical the package update is (does it fix a serious issue in a widely-used library?) and use that to determine if the update needs to happen right away. If not, then they will:
+Anyone can suggest a package set update to the registry. However, community members can only add or upgrade packages in the package set. To remove a package or downgrade a package version, the update must be submitted by a member of the packaging team or a Registry Trustee.
 
-1. Notify authors of packages that will be dropped from the set that their package will be dropped unless it is updated
+A package set update is an object where keys are package names and values are either a version number or `null`. A version number indicates the package should be added to the set or updated to the given version, and `null` indicates the package should be dropped from the package set.
+
+```jsonc
+{ "aff": "8.0.0"   // update `aff` to v8.0.0
+, "argonaut": null // remove `argonaut` from the package sets
+}
+```
+
+The Registry Trustees will use their discretion when deciding how to process a package update that will entail dropping packages from the set. If the package update must be processed immediately (for example, there is a security issue), then they will act immediately. But in most cases they will use the following process:
+
+1. Notify the authors of to-be-dropped packages that their package will be dropped unless it is updated
 2. Wait for a period of time (usually a week) to give package authors a chance to update their packages
-3. Perform a batch update to the package set, updating as many packages as possible in one go and dropping any packages that are no longer compatible with the set.
+3. Perform a batch update to the package set
 
 This will result in a new major version package set release.
