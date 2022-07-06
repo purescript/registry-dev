@@ -4,6 +4,12 @@
     "githubRepo": "purescript-context"
   },
   "published": {
+    "0.0.1": {
+      "bytes": 2003,
+      "hash": "sha256-4noZSVfw3cmKxKDtpgCmXHKwMSUP6/Z6uYeK5+cwAJc=",
+      "publishedTime": "2014-12-16T21:37:13.0Z",
+      "ref": "0.0.1"
+    },
     "0.0.2": {
       "bytes": 1889,
       "hash": "sha256-w5suqAgAdJjF0Gz0qhxf2/ubl5o5fU05jCIVPciR8oY=",

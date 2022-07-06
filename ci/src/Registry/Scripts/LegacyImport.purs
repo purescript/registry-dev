@@ -2,22 +2,24 @@ module Registry.Scripts.LegacyImport where
 
 import Registry.Prelude
 
-import Affjax.StatusCode (StatusCode(..))
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
 import Data.String as String
-import Data.Time.Duration (Hours(..))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
+import Effect.Exception (throw)
+import Foreign.GitHub (GitHubToken(..), Octokit)
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
+import Node.Process as Node.Process
 import Registry.API as API
+import Registry.Cache (Cache)
+import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
-import Registry.Json (printJson)
 import Registry.Json as Json
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
@@ -26,10 +28,10 @@ import Registry.RegistryM (readPackagesMetadata, runRegistryM, updatePackagesMet
 import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
 import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
+import Registry.Scripts.LegacyImport.Process (NameAddressOriginal, VersionOriginal)
 import Registry.Scripts.LegacyImport.Process as Process
 import Registry.Scripts.LegacyImport.Stats as Stats
 import Registry.Types (RawPackageName(..), RawVersion(..))
-import Registry.Utils (mkLocalEnv)
 import Registry.Version (ParseMode(..), Version)
 import Registry.Version as Version
 import Safe.Coerce (coerce)
@@ -45,10 +47,28 @@ main :: Effect Unit
 main = Aff.launchAff_ do
   _ <- Dotenv.loadFile
 
+  githubToken <- liftEffect do
+    Node.Process.lookupEnv "GITHUB_TOKEN"
+      >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
+
+  log "Creating an Octokit instance..."
+  octokit <- liftEffect $ GitHub.mkOctokit githubToken
+
+  log "Reading the cache..."
+  cache <- Cache.useCache
+
+  -- We rely on the existing registry index for two reasons. First, we write new
+  -- entries to this location so they can be committed upsteram. Second, we use
+  -- the registry index as a cache of manifests for packages that have already
+  -- been uploaded. It is possible to do a dry-run without using the registry
+  -- index as a cache by providing an empty map as `indexCache`. The files used
+  -- to produce the manifests are still read from the GitHub cache.
+  log "Fetching the registry index..."
   API.checkIndexExists API.indexDir
+  indexCache <- Index.readRegistryIndex API.indexDir
 
   log "Starting import from legacy registries..."
-  { registry, reservedNames } <- downloadLegacyRegistry
+  { registry, reservedNames } <- downloadLegacyRegistry octokit cache indexCache
 
   let
     sortedPackages :: Array Manifest
@@ -76,11 +96,16 @@ main = Aff.launchAff_ do
     -- package are valid, but these are not. We manually exclude them from being
     -- uploaded.
     excludeVersion :: Manifest -> Maybe _
-    excludeVersion (Manifest manifestFields) = case PackageName.print manifestFields.name, Version.printVersion manifestFields.version of
-      -- [UNFIXABLE] These have no src directory.
-      "concur-core", "0.3.9" -> Nothing
-      "concur-react", "0.3.9" -> Nothing
-      "pux-devtool", "5.0.0" -> Nothing
+    excludeVersion (Manifest manifestFields) = case PackageName.print manifestFields.name, Version.rawVersion manifestFields.version of
+      -- [UNFIXABLE]
+      -- These have no src directory.
+      "concur-core", "v0.3.9" -> Nothing
+      "concur-react", "v0.3.9" -> Nothing
+      "pux-devtool", "v5.0.0" -> Nothing
+
+      -- These have a malformed bower.json file
+      "endpoints-express", "v0.0.1" -> Nothing
+
       _, _ -> Just manifestFields
 
     availablePackages = Array.mapMaybe excludeVersion sortedPackages
@@ -89,7 +114,7 @@ main = Aff.launchAff_ do
   packagesMetadataRef <- API.mkMetadataRef
 
   log "Starting upload..."
-  runRegistryM (mkLocalEnv packagesMetadataRef) do
+  runRegistryM (API.mkLocalEnv octokit cache packagesMetadataRef) do
     log "Adding metadata for reserved package names"
     forWithIndex_ (Map.union disabledPackages reservedNames) \package repo -> do
       let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
@@ -123,7 +148,7 @@ main = Aff.launchAff_ do
       log "\n\n----------------------------------------------------------------------"
       log $ "UPLOADING PACKAGE: " <> show manifest.name <> "@" <> show manifest.version <> " to " <> show manifest.location
       log "----------------------------------------------------------------------"
-      API.runOperation addition
+      API.runOperation octokit addition
 
     log "Writing the registry-index on disk..."
     -- While insertions are usually done as part of the API operation, we don't
@@ -135,9 +160,8 @@ main = Aff.launchAff_ do
 
   log "Done!"
 
-downloadLegacyRegistry :: Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
-downloadLegacyRegistry = do
-  octokit <- liftEffect GitHub.mkOctokit
+downloadLegacyRegistry :: Octokit -> Cache -> RegistryIndex -> Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
+downloadLegacyRegistry octokit cache registryIndexCache = do
   bowerPackages <- readRegistryFile "bower-packages.json"
   newPackages <- readRegistryFile "new-packages.json"
 
@@ -145,32 +169,36 @@ downloadLegacyRegistry = do
     allPackages = Map.union bowerPackages newPackages
     initialPackages = { failures: PackageFailures Map.empty, packages: allPackages }
 
+  log "Checking rate limit status..."
+  Except.runExceptT (GitHub.getRateLimit octokit) >>= case _ of
+    Left err -> log $ GitHub.printGitHubError err
+    Right rateLimit -> GitHub.printRateLimit rateLimit
+
   log "Fetching package releases..."
   releaseIndex <- Process.forPackage initialPackages \name repoUrl -> do
     address <- case GitHub.parseRepo repoUrl of
       Left err -> throwError $ InvalidGitHubRepo $ StringParser.printParserError err
       Right address -> pure address
 
-    let
-      repoCache = Array.fold [ "releases__", address.owner, "__", address.repo ]
-      mkError = ResourceError <<< { resource: APIResource GitHubReleases, error: _ }
+    let mkError = ResourceError <<< { resource: APIResource GitHubReleases, error: _ }
 
-    releases <- Process.withCache Process.jsonSerializer repoCache (Just $ Hours 24.0) do
-      log $ "Fetching releases for package " <> un RawPackageName name
-      result <- liftAff $ Except.runExceptT $ GitHub.getReleases octokit address
+    releases <- do
+      result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache address
       case result of
-        Left err@{ status: StatusCode status } | status >= 400 -> do
-          logShow err
-          throwError (mkError $ BadStatus status)
-        Left err -> do
-          logShow err
-          throwError (mkError $ DecodeError err.message)
-        Right v -> pure v
+        Left err -> case err of
+          GitHub.APIError apiError
+            | apiError.statusCode >= 400 -> throwError (mkError $ BadStatus apiError.statusCode)
+            -- Success statuses should have returned a success result.
+            | otherwise -> do
+                log "WARNING:\nReceived GitHubError with a status code <= 400"
+                log $ GitHub.printGitHubError err
+                throwError (mkError BadRequest)
+          GitHub.DecodeError str ->
+            throwError (mkError $ DecodeError str)
 
-    versions <- case NEA.fromArray releases of
-      Nothing -> throwError $ mkError $ DecodeError "No releases returned from the GitHub API."
-      Just arr -> pure $ Map.fromFoldable $ map (\tag -> Tuple (RawVersion tag.name) unit) arr
+        Right value -> pure value
 
+    let versions = Map.fromFoldable $ map (\tag -> Tuple (RawVersion tag.name) unit) releases
     pure $ Tuple { name, address } versions
 
   log "Parsing names and versions..."
@@ -188,21 +216,40 @@ downloadLegacyRegistry = do
         pure version
 
     let
+      outerKey :: NameAddressOriginal
       outerKey = { name: packageName, original: name, address }
+
+      innerKey :: VersionOriginal
       innerKey = { version: packageVersion, original: tag }
 
     pure $ Tuple outerKey innerKey
 
   log "Converting to manifests..."
   let forPackageRegistry = Process.forPackageVersion packageRegistry
-  manifestRegistry <- forPackageRegistry \{ name, original: originalName, address } tag _ -> do
-    manifestFields <- Manifest.constructManifestFields originalName tag.original address
-
+  manifestRegistry <- forPackageRegistry \{ name, address } { version, original: originalVersion } _ -> do
     let
-      repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
-      liftError = map (lmap ManifestImportError)
-
-    Except.mapExceptT liftError $ Manifest.toManifest name repo tag.version manifestFields
+      nameVersion = PackageName.print name <> "--" <> Version.printVersion version
+      key = "manifest__" <> nameVersion
+    -- We attempt to pull the manifest from the registry index to avoid having
+    -- to build a local cache ourselves.
+    case Map.lookup name registryIndexCache >>= Map.lookup version of
+      Just manifest -> pure manifest
+      -- NOTE: We can't cache actual Version values as JSON because we will lose
+      -- the raw version associated with them.
+      Nothing -> liftEffect (Cache.readJsonEntry key cache) >>= case _ of
+        Left _ -> Except.ExceptT do
+          manifest <- Except.runExceptT do
+            manifestFields <- Manifest.constructManifestFields octokit cache originalVersion address
+            let repo = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
+            let liftError = map (lmap ManifestImportError)
+            Except.mapExceptT liftError $ Manifest.toManifest name repo version manifestFields
+          let withRawVersion = map (un Manifest >>> (_ { version = originalVersion })) manifest
+          liftEffect $ Cache.writeJsonEntry key withRawVersion cache
+          pure manifest
+        Right contents -> do
+          fields <- Except.except contents.value
+          let version' = unsafeFromRight $ Version.parseVersion Version.Lenient fields.version
+          pure $ Manifest $ fields { version = version' }
 
   log "Writing exclusions file..."
   Json.writeJsonFile "./bower-exclusions.json" manifestRegistry.failures
@@ -243,7 +290,7 @@ downloadLegacyRegistry = do
             )
         $ Map.toUnfoldable allPackages
 
-  log $ "Reserved names (" <> show (Map.size reservedNames) <> "):\n" <> (printJson $ Array.fromFoldable $ Map.keys reservedNames)
+  log $ show (Map.size reservedNames) <> " reserved names"
   pure { registry: checkedIndex, reservedNames }
 
 -- Packages can be specified either in 'package-name' format or

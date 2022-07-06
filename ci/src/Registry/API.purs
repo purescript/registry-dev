@@ -8,6 +8,7 @@ import Affjax.RequestHeader as RequestHeader
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Except as Except
+import Control.Monad.Reader (ask, asks)
 import Data.Argonaut.Parser as Argonaut.Core
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
@@ -34,7 +35,7 @@ import Effect.Now as Now
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
 import Foreign.FastGlob as FastGlob
-import Foreign.GitHub (IssueNumber)
+import Foreign.GitHub (GitHubToken(..), IssueNumber, Octokit)
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Foreign.Tar as Tar
@@ -45,6 +46,8 @@ import Node.FS.Stats as FS.Stats
 import Node.Path as Path
 import Node.Process as Env
 import Node.Process as Node.Process
+import Registry.Cache (Cache)
+import Registry.Cache as Cache
 import Registry.Hash as Hash
 import Registry.Index as Index
 import Registry.Json as Json
@@ -57,7 +60,6 @@ import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Build
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
-import Registry.Utils (wget)
 import Registry.Version (ParseMode(..), Range, Version)
 import Registry.Version as Version
 import Sunde as Process
@@ -68,7 +70,13 @@ main = launchAff_ $ do
   eventPath <- liftEffect do
     Env.lookupEnv "GITHUB_EVENT_PATH"
       >>= maybe (throw "GITHUB_EVENT_PATH not defined in the environment") pure
-  octokit <- liftEffect GitHub.mkOctokit
+
+  githubToken <- liftEffect do
+    Env.lookupEnv "GITHUB_TOKEN"
+      >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
+
+  octokit <- liftEffect $ GitHub.mkOctokit githubToken
+  cache <- Cache.useCache
   packagesMetadata <- mkMetadataRef
   checkIndexExists indexDir
 
@@ -79,7 +87,7 @@ main = launchAff_ $ do
     NotJson ->
       pure unit
 
-    MalformedJson issue err -> runRegistryM (mkEnv octokit packagesMetadata issue) do
+    MalformedJson issue err -> runRegistryM (mkEnv octokit cache packagesMetadata issue) do
       comment $ Array.fold
         [ "The JSON input for this package update is malformed:"
         , newlines 2
@@ -89,7 +97,7 @@ main = launchAff_ $ do
         ]
 
     DecodedOperation issue op ->
-      runRegistryM (mkEnv octokit packagesMetadata issue) (runOperation op)
+      runRegistryM (mkEnv octokit cache packagesMetadata issue) (runOperation octokit op)
 
 data OperationDecoding
   = NotJson
@@ -122,8 +130,8 @@ readOperation eventPath = do
 
 -- TODO: test all the points where the pipeline could throw, to show that we are implementing
 -- all the necessary checks
-runOperation :: Operation -> RegistryM Unit
-runOperation operation = case operation of
+runOperation :: Octokit -> Operation -> RegistryM Unit
+runOperation octokit operation = case operation of
   Addition { packageName, newRef, buildPlan, newPackageLocation } -> do
     packagesMetadata <- readPackagesMetadata
     -- If we already have a metadata file for this package, then it is already
@@ -133,7 +141,7 @@ runOperation operation = case operation of
       -- registered, then we convert their operation to an update under the
       -- assumption they are trying to publish a new version.
       Just metadata | metadata.location == newPackageLocation ->
-        runOperation $ Update { packageName, buildPlan, updateRef: newRef }
+        runOperation octokit $ Update { packageName, buildPlan, updateRef: newRef }
       -- Otherwise, if they attempted to re-register the package under a new
       -- location, then they either did not know the package already existed or
       -- they are attempting a transfer.
@@ -155,11 +163,11 @@ runOperation operation = case operation of
         , "because that location is already in use to publish another package."
         ]
       Nothing ->
-        addOrUpdate { packageName, buildPlan, updateRef: newRef } (mkNewMetadata newPackageLocation)
+        addOrUpdate octokit { packageName, buildPlan, updateRef: newRef } (mkNewMetadata newPackageLocation)
 
   Update { packageName, buildPlan, updateRef } -> do
     metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Did you mean to create an Addition?" }
-    addOrUpdate { packageName, buildPlan, updateRef } metadata
+    addOrUpdate octokit { packageName, buildPlan, updateRef } metadata
 
   Authenticated auth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
@@ -278,8 +286,9 @@ metadataFile packageName = Path.concat [ metadataDir, PackageName.print packageN
 indexDir :: FilePath
 indexDir = "../registry-index"
 
-addOrUpdate :: UpdateData -> Metadata -> RegistryM Unit
-addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
+addOrUpdate :: Octokit -> UpdateData -> Metadata -> RegistryM Unit
+addOrUpdate octokit { updateRef, buildPlan, packageName } inputMetadata = do
+  cache <- asks _.cache
   tmpDir <- liftEffect $ Tmp.mkTmpDir
 
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
@@ -314,7 +323,7 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
 
       gatherManifest :: ExceptT ImportError Aff Manifest
       gatherManifest = do
-        manifestFields <- Manifest.constructManifestFields (RawPackageName $ show packageName) (RawVersion updateRef) address
+        manifestFields <- Manifest.constructManifestFields octokit cache (RawVersion updateRef) address
         Except.mapExceptT liftError $ Manifest.toManifest packageName inputMetadata.location version manifestFields
 
     runManifest gatherManifest >>= case _ of
@@ -620,8 +629,8 @@ buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir }
       packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.printVersion version ]
     pure $ Tuple bowerPackageName { path: packagePath, version }
 
-mkEnv :: GitHub.Octokit -> MetadataRef -> IssueNumber -> Env
-mkEnv octokit packagesMetadata issue =
+mkEnv :: GitHub.Octokit -> Cache -> MetadataRef -> IssueNumber -> Env
+mkEnv octokit cache packagesMetadata issue =
   { comment: \comment -> Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
       Left _ -> throwError $ Aff.error "Unable to create comment!"
       Right _ -> pure unit
@@ -631,6 +640,32 @@ mkEnv octokit packagesMetadata issue =
   , commitToTrunk: pushToMaster
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
+  , packagesMetadata
+  , cache
+  , octokit
+  }
+
+wget :: String -> FilePath -> RegistryM Unit
+wget url path = do
+  let cmd = "wget"
+  let stdin = Nothing
+  let args = [ "-O", path, url ]
+  result <- liftAff $ Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
+  case result.exit of
+    NodeProcess.Normally 0 -> pure unit
+    _ -> throwWithComment $ "Error while fetching tarball: " <> result.stderr
+
+mkLocalEnv :: Octokit -> Cache -> Ref (Map PackageName Metadata) -> Env
+mkLocalEnv octokit cache packagesMetadata =
+  { comment: \err -> error err
+  , closeIssue: log "Skipping GitHub issue closing, we're running locally.."
+  , commitToTrunk: \_ _ -> do
+      log "Skipping committing to trunk.."
+      pure (Right unit)
+  , uploadPackage: Upload.upload
+  , deletePackage: Upload.delete
+  , octokit
+  , cache
   , packagesMetadata
   }
 
@@ -673,13 +708,19 @@ locationIsUnique location metadata = do
   duplicates == 0
 
 checkIndexExists :: FilePath -> Aff Unit
-checkIndexExists dir = do
-  log "Checking if the registry-index is present..."
-  whenM (not <$> FS.exists dir) do
-    error "Didn't find the 'registry-index' repo, cloning..."
-    Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", dir ] Nothing) >>= case _ of
-      Left err -> Aff.throwError $ Aff.error err
-      Right _ -> log "Successfully cloned the 'registry-index' repo"
+checkIndexExists dirPath = do
+  log "Fetching the most recent registry-index..."
+  FS.exists dirPath >>= case _ of
+    true -> do
+      log "Found the 'registry-index' repo locally, pulling..."
+      Except.runExceptT (runGit [ "pull" ] (Just dirPath)) >>= case _ of
+        Left err -> Aff.throwError $ Aff.error err
+        Right _ -> pure unit
+    _ -> do
+      log "Didn't find the 'registry-index' repo, cloning..."
+      Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", dirPath ] Nothing) >>= case _ of
+        Left err -> Aff.throwError $ Aff.error err
+        Right _ -> log "Successfully cloned the 'registry-index' repo"
 
 data PursPublishMethod = LegacyPursPublish | PursPublish
 
@@ -711,13 +752,13 @@ fetchPackageSource { tmpDir, ref, location } = case location of
         pure { packageDirectory: repo, publishedTime }
 
       PursPublish -> do
-        octokit <- liftEffect GitHub.mkOctokit
+        { octokit, cache } <- ask
         commitDate <- do
           result <- liftAff $ Except.runExceptT do
-            commit <- GitHub.getRefCommit octokit { owner, repo } ref
-            GitHub.getCommitDate octokit { owner, repo } commit
+            commit <- GitHub.getRefCommit octokit cache { owner, repo } ref
+            GitHub.getCommitDate octokit cache { owner, repo } commit
           case result of
-            Left githubError -> throwWithComment $ "Unable to get published time for commit:\n" <> show githubError
+            Left githubError -> throwWithComment $ "Unable to get published time for commit:\n" <> GitHub.printGitHubError githubError
             Right a -> pure a
         let tarballName = ref <> ".tar.gz"
         let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
@@ -764,12 +805,9 @@ pushToMaster packageName path = Except.runExceptT do
 runGit :: Array String -> Maybe FilePath -> ExceptT String Aff String
 runGit args cwd = ExceptT do
   result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
-  case result.exit of
-    NodeProcess.Normally 0 -> do
-      info result.stdout
-      info result.stderr
-      pure $ Right $ String.trim result.stdout
-    _ -> pure $ Left $ String.trim result.stderr
+  pure $ case result.exit of
+    NodeProcess.Normally 0 -> Right $ String.trim result.stdout
+    _ -> Left $ String.trim result.stderr
 
 -- | The absolute maximum bytes allowed in a package
 maxPackageBytes :: Number

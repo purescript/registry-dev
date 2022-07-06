@@ -5,6 +5,8 @@ import Registry.Prelude
 import Data.Map as Map
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
+import Foreign.GitHub (GitHubToken(..))
+import Foreign.GitHub as Octokit
 import Registry.RegistryM (Env, RegistryM)
 import Registry.RegistryM as RegistryM
 import Test.Spec as Spec
@@ -21,6 +23,12 @@ defaultTestEnv =
   , deletePackage: mempty
   , uploadPackage: mempty
   , packagesMetadata: unsafePerformEffect (Ref.new Map.empty)
+  , octokit: unsafePerformEffect (Octokit.mkOctokit (GitHubToken ""))
+  , cache:
+      { read: \_ -> pure (Left "")
+      , write: mempty
+      , remove: mempty
+      }
   }
 
 toSpec :: RegistrySpec Unit -> Spec.Spec Unit

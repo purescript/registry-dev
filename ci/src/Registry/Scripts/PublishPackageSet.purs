@@ -11,17 +11,21 @@ import Data.PreciseDateTime as PDT
 import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
 import Effect.Console as Console
+import Effect.Exception (throw)
 import Effect.Now as Now
 import Effect.Ref as Ref
+import Foreign.GitHub (GitHubToken(..))
+import Foreign.GitHub as GitHub
 import Foreign.Tmp as Tmp
 import Node.Process as Node.Process
+import Node.Process as Process
 import Registry.API as API
+import Registry.Cache as Cache
 import Registry.Index as Index
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.RegistryM (runRegistryM)
 import Registry.Schema (LegacyPackageSet(..), LegacyPackageSetEntry(..))
-import Registry.Utils (mkLocalEnv, wget)
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -29,7 +33,13 @@ main :: Effect Unit
 main = Aff.launchAff_ do
   liftEffect $ Console.log "Starting package set publishing..."
 
+  githubToken <- liftEffect do
+    Process.lookupEnv "GITHUB_TOKEN"
+      >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
+
+  octokit <- liftEffect $ GitHub.mkOctokit githubToken
   packagesMetadataRef <- API.mkMetadataRef
+  cache <- Cache.useCache
 
   tmpDir <- liftEffect $ Tmp.mkTmpDir
   liftEffect $ Node.Process.chdir tmpDir
@@ -61,8 +71,8 @@ main = Aff.launchAff_ do
 
   liftEffect $ Console.log "Fetching latest package set..."
 
-  runRegistryM (mkLocalEnv packagesMetadataRef) do
-    wget "https://raw.githubusercontent.com/purescript/package-sets/master/packages.json" "packages.json"
+  runRegistryM (API.mkLocalEnv octokit cache packagesMetadataRef) do
+    API.wget "https://raw.githubusercontent.com/purescript/package-sets/master/packages.json" "packages.json"
 
   packageSetResult :: Either String LegacyPackageSet <- Json.readJsonFile "packages.json"
 

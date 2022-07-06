@@ -46,17 +46,15 @@ import Control.Monad.State as State
 import Data.Argonaut.Core (Json, stringify) as Exports
 import Data.Argonaut.Core as Core
 import Data.Argonaut.Parser as Parser
-import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
 import Data.Bifunctor (lmap)
 import Data.Bitraversable (ltraverse)
-import Data.Either (Either(..), either, note)
+import Data.Either (Either(..), note)
 import Data.Int as Int
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), maybe)
-import Data.Newtype (un)
 import Data.RFC3339String (RFC3339String(..))
 import Data.String.NonEmpty (NonEmptyString)
 import Data.String.NonEmpty as NES
@@ -64,7 +62,8 @@ import Data.Symbol (class IsSymbol)
 import Data.Symbol as Symbol
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple, snd)
-import Effect.Aff (Aff)
+import Effect.Aff (Aff, try)
+import Effect.Aff as Aff
 import Foreign.Object (Object)
 import Foreign.Object as Object
 import Node.Encoding (Encoding(..))
@@ -93,7 +92,9 @@ writeJsonFile path = FS.writeTextFile UTF8 path <<< (_ <> "\n") <<< printJson
 
 -- | Decode data from a JSON file at the provided filepath
 readJsonFile :: forall a. RegistryJson a => FilePath -> Aff (Either String a)
-readJsonFile path = map parseJson $ FS.readTextFile UTF8 path
+readJsonFile path = do
+  result <- try $ FS.readTextFile UTF8 path
+  pure (lmap Aff.message result >>= parseJson)
 
 -- | Encode a JSON object by running a series of calls to `putField`
 encodeObject :: State (Object Core.Json) Unit -> Core.Json
@@ -179,19 +180,17 @@ instance RegistryJson a => RegistryJson (Maybe a) where
     | otherwise = map Just $ decode json
 
 instance (RegistryJson e, RegistryJson a) => RegistryJson (Either e a) where
-  encode = either encode encode
-  decode json =
-    case decode json of
-      Right right -> Right (Right right)
-      Left rightError -> case decode json of
-        Right left -> Right (Left left)
-        Left leftError -> Left $ Array.fold
-          [ "Expected Either: failed Left ("
-          , leftError
-          , ") failed Right ("
-          , rightError
-          , ")"
-          ]
+  encode = encode <<< case _ of
+    Left e -> { tag: "Left", value: encode e }
+    Right v -> { tag: "Right", value: encode v }
+  decode json = do
+    obj <- decode json
+    tag <- obj .: "tag"
+    value <- obj .: "value"
+    case tag of
+      Just "Right" -> Right <$> decode value
+      Just "Left" -> Left <$> decode value
+      _ -> Left $ "Expected { tag: <Right|Left>, value: <value> }, got: " <> show { tag, value: Core.stringify value }
 
 instance RegistryJson NonEmptyString where
   encode = encode <<< NES.toString
@@ -202,8 +201,8 @@ instance RegistryJson a => RegistryJson (NonEmptyArray a) where
   decode = decode >=> NEA.fromArray >>> note "Expected NonEmptyArray"
 
 instance RegistryJson RFC3339String where
-  encode = encode <<< un RFC3339String
-  decode = decode >=> map RFC3339String
+  encode (RFC3339String str) = Core.fromString str
+  decode = Core.caseJsonString (Left "Expected RFC3339String") (Right <<< RFC3339String)
 
 instance (Ord k, StringEncodable k, RegistryJson v) => RegistryJson (Map k v) where
   encode = encode <<< Object.fromFoldable <<< toTupleArray
