@@ -2,7 +2,6 @@ module Registry.Schema where
 
 import Registry.Prelude
 
-import Data.Date (Date)
 import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Data.RFC3339String (RFC3339String)
