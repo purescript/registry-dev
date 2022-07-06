@@ -38,14 +38,7 @@ exports.createImpl = function (cwd, foldername, archivename) {
         sync: true,
         gzip: true,
         portable: true,
-        noMtime: true,
         cwd: cwd,
-        filter: (path, stat) => {
-          // 'no mtime' and 'portable' aren't enough on their own:
-          // https://github.com/npm/node-tar/issues/176#issuecomment-391904257
-          stat.mtime = null;
-          stat.birthtime = null;
-        },
         file: archivename,
       },
       [foldername]
