@@ -124,21 +124,38 @@ readOperation eventPath = do
 -- all the necessary checks
 runOperation :: Operation -> RegistryM Unit
 runOperation operation = case operation of
-  -- TODO handle addToPackageSet
   Addition { packageName, newRef, buildPlan, newPackageLocation } -> do
-    -- check that we don't have a metadata file for that package
-    metadataExists <- liftAff $ FS.exists $ metadataFile packageName
-    let updateData = { packageName, buildPlan, updateRef: newRef }
-    -- if the metadata file already exists then we steer this to be an Update instead
-    if metadataExists then
-      runOperation $ Update updateData
-    else do
-      -- If this is an addition, we need to verify the package has not been
-      -- registered before we continue.
-      metadataMap <- readPackagesMetadata
-      verifyPackageNameIsUnique packageName metadataMap
-      verifyLocationIsUnique newPackageLocation metadataMap
-      addOrUpdate updateData $ mkNewMetadata newPackageLocation
+    packagesMetadata <- readPackagesMetadata
+    -- If we already have a metadata file for this package, then it is already
+    -- registered and an addition is not a valid operation.
+    case Map.lookup packageName packagesMetadata of
+      -- If the user is trying to add the package from the same location it was
+      -- registered, then we convert their operation to an update under the
+      -- assumption they are trying to publish a new version.
+      Just metadata | metadata.location == newPackageLocation ->
+        runOperation $ Update { packageName, buildPlan, updateRef: newRef }
+      -- Otherwise, if they attempted to re-register the package under a new
+      -- location, then they either did not know the package already existed or
+      -- they are attempting a transfer.
+      Just _ -> throwWithComment $ String.joinWith " "
+        [ "Cannot register"
+        , PackageName.print packageName
+        , "because it has already been registered.\nIf you are attempting to"
+        , "register your package, please choose a different package name."
+        , "If you are attempting to transfer this package to a new location,"
+        , "please submit a transfer instead."
+        ]
+      -- If this is a brand-new package, then we can allow them to register it
+      -- so long as they aren't publishing an existing location under a new name
+      Nothing | locationIsUnique newPackageLocation packagesMetadata -> throwWithComment $ String.joinWith " "
+        [ "Cannot register"
+        , PackageName.print packageName
+        , "at the location"
+        , show newPackageLocation
+        , "because that location is already in use to publish another package."
+        ]
+      Nothing ->
+        addOrUpdate { packageName, buildPlan, updateRef: newRef } (mkNewMetadata newPackageLocation)
 
   Update { packageName, buildPlan, updateRef } -> do
     metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Did you mean to create an Addition?" }
@@ -215,7 +232,6 @@ runOperation operation = case operation of
                 }
 
     Transfer { packageName, newPackageLocation } -> do
-      verifyLocationIsUnique newPackageLocation =<< readPackagesMetadata
       metadata <- readMetadata packageName
         { noMetadata: String.joinWith " "
             [ "No metadata found for your package."
@@ -223,6 +239,14 @@ runOperation operation = case operation of
             , "Did you mean to create an Addition?"
             ]
         }
+
+      packagesMetadata <- readPackagesMetadata
+      unless (locationIsUnique newPackageLocation packagesMetadata) do
+        throwWithComment $ String.joinWith " "
+          [ "Cannot transfer package to"
+          , show newPackageLocation
+          , "because another package is already registered at that location."
+          ]
 
       case metadata.owners of
         Nothing ->
@@ -640,18 +664,8 @@ isPackageVersionInMetadata packageName version metadataMap =
     Nothing -> false
     Just metadata -> isVersionInMetadata version metadata
 
-verifyPackageNameIsUnique :: PackageName -> MetadataMap -> RegistryM Unit
-verifyPackageNameIsUnique name metadata =
-  unless (packageNameIsUnique name metadata) do
-    throwWithComment $ "Package name " <> PackageName.print name <> " has already been registered."
-
 packageNameIsUnique :: PackageName -> MetadataMap -> Boolean
 packageNameIsUnique name = isNothing <<< Map.lookup name
-
-verifyLocationIsUnique :: Location -> MetadataMap -> RegistryM Unit
-verifyLocationIsUnique location metadata =
-  unless (locationIsUnique location metadata) do
-    throwWithComment $ "Package location " <> show location <> " has already been registered."
 
 locationIsUnique :: Location -> MetadataMap -> Boolean
 locationIsUnique location metadata = do
