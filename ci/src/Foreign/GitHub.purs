@@ -293,8 +293,9 @@ cachedRequest runRequest requestArgs@{ route: Route route } { cache, checkGitHub
   entry <- liftEffect (Cache.readJsonEntry route cache)
   now <- liftEffect Cache.nowUTC
   ExceptT $ case entry of
-    Left _ -> do
-      log $ "CACHE MISS: No entry for " <> route
+    Left err -> do
+      log $ "CACHE MISS: Malformed or no entry for " <> route
+      log err
       result <- Except.runExceptT $ runRequest requestArgs
       liftEffect $ Cache.writeJsonEntry route result cache
       pure result

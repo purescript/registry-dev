@@ -1,10 +1,10 @@
 module Registry.Cache
   ( Cache
   , CacheEntry
+  , nowUTC
   , readJsonEntry
   , useCache
   , writeJsonEntry
-  , nowUTC
   ) where
 
 import Registry.Prelude
@@ -103,16 +103,11 @@ useCache = do
   let
     write :: CacheKey -> String -> Effect Unit
     write key value = do
-      cache <- Ref.read cacheRef
-      case Map.lookup key cache of
-        Just prevValue | prevValue.value == value -> pure unit
-        _ -> do
-          utcTime <- nowUTC
-          let
-            entry = { modified: utcTime, value }
-            jsonEntry = entry { modified = RFC3339String.fromDateTime entry.modified }
-          FS.writeTextFile UTF8 (entryPath key) (Json.stringifyJson jsonEntry)
-          Ref.modify_ (Map.insert key entry) cacheRef
+      utcTime <- nowUTC
+      let entry = { modified: utcTime, value }
+      let jsonEntry = entry { modified = RFC3339String.fromDateTime entry.modified }
+      FS.writeTextFile UTF8 (entryPath key) (Json.stringifyJson jsonEntry)
+      Ref.modify_ (Map.insert key entry) cacheRef
 
     read :: CacheKey -> Effect (Either String CacheEntry)
     read key = do

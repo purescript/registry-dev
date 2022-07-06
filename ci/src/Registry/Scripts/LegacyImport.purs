@@ -63,13 +63,11 @@ main = Aff.launchAff_ do
   -- been uploaded. It is possible to do a dry-run without using the registry
   -- index as a cache by providing an empty map as `indexCache`. The files used
   -- to produce the manifests are still read from the GitHub cache.
-  log "Fetching the registry index..."
   API.fetchRegistryIndex API.registryIndexPath
   indexCache <- Index.readRegistryIndex API.registryIndexPath
 
-  log "Fetching the existing registry..."
   API.fetchRegistry API.registryPath
-  packagesMetadataRef <- API.mkMetadataRef API.registryMetadataPath
+  packagesMetadataRef <- API.mkMetadataRef API.registryPath
 
   log "Starting import from legacy registries..."
   { registry, reservedNames } <- downloadLegacyRegistry octokit cache indexCache

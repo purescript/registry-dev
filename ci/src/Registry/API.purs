@@ -157,7 +157,7 @@ runOperation octokit operation = case operation of
         ]
       -- If this is a brand-new package, then we can allow them to register it
       -- so long as they aren't publishing an existing location under a new name
-      Nothing | locationIsUnique newPackageLocation packagesMetadata -> throwWithComment $ String.joinWith " "
+      Nothing | not (locationIsUnique newPackageLocation packagesMetadata) -> throwWithComment $ String.joinWith " "
         [ "Cannot register"
         , PackageName.print packageName
         , "at the location"
