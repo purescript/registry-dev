@@ -75,10 +75,12 @@ main = launchAff_ $ do
     Env.lookupEnv "GITHUB_TOKEN"
       >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
+  fetchRegistry registryPath
+  fetchRegistryIndex registryIndexPath
+
   octokit <- liftEffect $ GitHub.mkOctokit githubToken
   cache <- Cache.useCache
-  packagesMetadata <- mkMetadataRef
-  checkIndexExists indexDir
+  packagesMetadata <- mkMetadataRef registryMetadataPath
 
   readOperation eventPath >>= case _ of
     -- If the issue body is not just a JSON string, then we don't consider it
@@ -166,12 +168,12 @@ runOperation octokit operation = case operation of
         addOrUpdate octokit { packageName, buildPlan, updateRef: newRef } (mkNewMetadata newPackageLocation)
 
   Update { packageName, buildPlan, updateRef } -> do
-    metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Did you mean to create an Addition?" }
+    metadata <- readMetadata registryPath packageName { noMetadata: "No metadata found for your package. Did you mean to create an Addition?" }
     addOrUpdate octokit { packageName, buildPlan, updateRef } metadata
 
   Authenticated auth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
-      metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Only published packages can be unpublished." }
+      metadata <- readMetadata registryPath packageName { noMetadata: "No metadata found for your package. Only published packages can be unpublished." }
 
       let
         inPublished = Map.lookup unpublishVersion metadata.published
@@ -234,13 +236,13 @@ runOperation octokit operation = case operation of
 
                 updatedMetadata = unpublishVersionInMetadata unpublishVersion unpublishedMetadata metadata
 
-              writeMetadata packageName updatedMetadata
+              writeMetadata registryPath packageName updatedMetadata
                 { commitFailed: \_ -> "Unpublish succeeded, but committing metadata failed.\ncc @purescript/packaging"
                 , commitSucceeded: "Successfully unpublished!"
                 }
 
     Transfer { packageName, newPackageLocation } -> do
-      metadata <- readMetadata packageName
+      metadata <- readMetadata registryPath packageName
         { noMetadata: String.joinWith " "
             [ "No metadata found for your package."
             , "You can only transfer packages that have already been published."
@@ -272,19 +274,25 @@ runOperation octokit operation = case operation of
                 ]
             Right _ -> do
               let updatedMetadata = metadata { location = newPackageLocation }
-              writeMetadata packageName updatedMetadata
+              writeMetadata registryPath packageName updatedMetadata
                 { commitFailed: \_ -> "Transferred package location, but failed to commit metadata.\ncc @purescript/packaging"
                 , commitSucceeded: "Successfully transferred your package!"
                 }
 
-metadataDir :: FilePath
-metadataDir = "../metadata"
+registryIndexPath :: FilePath
+registryIndexPath = Path.concat [ "..", "registry-index" ]
 
-metadataFile :: PackageName -> FilePath
-metadataFile packageName = Path.concat [ metadataDir, PackageName.print packageName <> ".json" ]
+registryPath :: FilePath
+registryPath = Path.concat [ "..", "registry" ]
 
-indexDir :: FilePath
-indexDir = "../registry-index"
+registryMetadataPath :: FilePath
+registryMetadataPath = Path.concat [ registryPath, "metadata" ]
+
+registryPackageSetsPath :: FilePath
+registryPackageSetsPath = Path.concat [ registryPath, "package-sets" ]
+
+metadataFile :: FilePath -> PackageName -> FilePath
+metadataFile metadataDir packageName = Path.concat [ metadataDir, PackageName.print packageName <> ".json" ]
 
 addOrUpdate :: Octokit -> UpdateData -> Metadata -> RegistryM Unit
 addOrUpdate octokit { updateRef, buildPlan, packageName } inputMetadata = do
@@ -382,7 +390,7 @@ addOrUpdate octokit { updateRef, buildPlan, packageName } inputMetadata = do
   log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show updateRef <> " was " <> show hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref: updateRef, publishedTime, bytes } metadata
-  writeMetadata packageName newMetadata
+  writeMetadata registryPath packageName newMetadata
     { commitFailed: \_ -> "Package uploaded, but committing metadata failed.\ncc: @purescript/packaging"
     , commitSucceeded: "Successfully uploaded package to the registry! 🎉 🚀"
     }
@@ -394,7 +402,7 @@ addOrUpdate octokit { updateRef, buildPlan, packageName } inputMetadata = do
 
   -- Add to the registry index
   -- TODO: commit the registry-index
-  liftAff $ Index.insertManifest indexDir manifest
+  liftAff $ Index.insertManifest registryIndexPath manifest
 
   unless isLegacyImport do
     -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
@@ -672,9 +680,9 @@ mkLocalEnv octokit cache packagesMetadata =
 type MetadataMap = Map PackageName Metadata
 type MetadataRef = Ref MetadataMap
 
-mkMetadataRef :: Aff MetadataRef
-mkMetadataRef = do
-  FS.Extra.ensureDirectory metadataDir
+mkMetadataRef :: FilePath -> Aff MetadataRef
+mkMetadataRef registryDir = do
+  let metadataDir = Path.concat [ registryDir, "metadata" ]
   packageList <- try (FS.readdir metadataDir) >>= case _ of
     Right list -> pure $ Array.mapMaybe (String.stripSuffix $ String.Pattern ".json") list
     Left err -> do
@@ -686,7 +694,7 @@ mkMetadataRef = do
       Left err -> do
         log $ "Encountered error while parsing package name! It was: " <> rawPackageName
         Aff.throwError $ Aff.error $ StringParser.printParserError err
-    let metadataPath = metadataFile packageName
+    let metadataPath = metadataFile metadataDir packageName
     metadata <- Json.readJsonFile metadataPath >>= case _ of
       Left err -> Aff.throwError $ Aff.error $ "Error parsing metadata file located at " <> metadataPath <> ": " <> err
       Right val -> pure val
@@ -707,20 +715,33 @@ locationIsUnique location metadata = do
   let duplicates = Map.size $ Map.filter (eq location <<< _.location) metadata
   duplicates == 0
 
-checkIndexExists :: FilePath -> Aff Unit
-checkIndexExists dirPath = do
-  log "Fetching the most recent registry-index..."
-  FS.exists dirPath >>= case _ of
-    true -> do
-      log "Found the 'registry-index' repo locally, pulling..."
-      Except.runExceptT (runGit [ "pull" ] (Just dirPath)) >>= case _ of
-        Left err -> Aff.throwError $ Aff.error err
-        Right _ -> pure unit
-    _ -> do
-      log "Didn't find the 'registry-index' repo, cloning..."
-      Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", dirPath ] Nothing) >>= case _ of
-        Left err -> Aff.throwError $ Aff.error err
-        Right _ -> log "Successfully cloned the 'registry-index' repo"
+-- | Fetch the latest from the given repository. Will perform a fresh clone if
+-- | a checkout of the repository does not exist at the given path, and will
+-- | pull otherwise.
+fetchRepo :: GitHub.Address -> FilePath -> Aff Unit
+fetchRepo address path = FS.exists path >>= case _ of
+  true -> do
+    log $ "Found the " <> address.repo <> " repo locally, pulling..."
+    Except.runExceptT (runGit [ "pull" ] (Just path)) >>= case _ of
+      Left err -> Aff.throwError $ Aff.error err
+      Right _ -> log $ "Pulled the latest from " <> address.repo
+  _ -> do
+    log $ "Didn't find the " <> address.repo <> " repo, cloning..."
+    let url = "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git"
+    Except.runExceptT (runGit [ "clone", url, path ] Nothing) >>= case _ of
+      Left err -> Aff.throwError $ Aff.error err
+      Right _ -> log $ "Successfully cloned the " <> address.repo <> " repo"
+
+fetchRegistryIndex :: FilePath -> Aff Unit
+fetchRegistryIndex path = do
+  log "Fetching the most recent registry index..."
+  fetchRepo { owner: "purescript", repo: "registry-index" } path
+
+fetchRegistry :: FilePath -> Aff Unit
+fetchRegistry path = do
+  log "Fetching the most recent registry ..."
+  -- TODO: When the registry is migrated, rename this to 'registry'
+  fetchRepo { owner: "purescript", repo: "registry-preview" } path
 
 data PursPublishMethod = LegacyPursPublish | PursPublish
 
@@ -906,9 +927,9 @@ ignoredGlobs =
   , "**/.DS_Store"
   ]
 
-readMetadata :: PackageName -> { noMetadata :: String } -> RegistryM Metadata
-readMetadata packageName { noMetadata } = do
-  let metadataFilePath = metadataFile packageName
+readMetadata :: FilePath -> PackageName -> { noMetadata :: String } -> RegistryM Metadata
+readMetadata registryDir packageName { noMetadata } = do
+  let metadataFilePath = metadataFile (Path.concat [ registryDir, "metadata" ]) packageName
   liftAff (FS.exists metadataFilePath) >>= case _ of
     false -> throwWithComment noMetadata
     _ -> pure unit
@@ -917,9 +938,9 @@ readMetadata packageName { noMetadata } = do
     Nothing -> throwWithComment "Couldn't read metadata file for your package.\ncc @purescript/packaging"
     Just m -> pure m
 
-writeMetadata :: PackageName -> Metadata -> { commitFailed :: String -> String, commitSucceeded :: String } -> RegistryM Unit
-writeMetadata packageName metadata { commitFailed, commitSucceeded } = do
-  let metadataFilePath = metadataFile packageName
+writeMetadata :: FilePath -> PackageName -> Metadata -> { commitFailed :: String -> String, commitSucceeded :: String } -> RegistryM Unit
+writeMetadata registryDir packageName metadata { commitFailed, commitSucceeded } = do
+  let metadataFilePath = metadataFile (Path.concat [ registryDir, "metadata" ]) packageName
   liftAff $ Json.writeJsonFile metadataFilePath metadata
   updatePackagesMetadata packageName metadata
   commitToTrunk packageName metadataFilePath >>= case _ of

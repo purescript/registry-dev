@@ -9,6 +9,7 @@ import Data.Int as Int
 import Data.Map as Map
 import Data.PreciseDateTime as PDT
 import Data.Time.Duration (Hours(..))
+import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Console as Console
 import Effect.Exception (throw)
@@ -31,6 +32,8 @@ import Registry.Version as Version
 
 main :: Effect Unit
 main = Aff.launchAff_ do
+  _ <- Dotenv.loadFile
+
   liftEffect $ Console.log "Starting package set publishing..."
 
   githubToken <- liftEffect do
@@ -38,14 +41,16 @@ main = Aff.launchAff_ do
       >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
   octokit <- liftEffect $ GitHub.mkOctokit githubToken
-  packagesMetadataRef <- API.mkMetadataRef
   cache <- Cache.useCache
 
   tmpDir <- liftEffect $ Tmp.mkTmpDir
   liftEffect $ Node.Process.chdir tmpDir
 
-  API.checkIndexExists "registry-index"
+  API.fetchRegistryIndex "registry-index"
   _ <- Index.readRegistryIndex "registry-index"
+
+  API.fetchRegistry "registry"
+  packagesMetadataRef <- API.mkMetadataRef "registry"
 
   metadata <- liftEffect $ Ref.read packagesMetadataRef
 
@@ -63,7 +68,7 @@ main = Aff.launchAff_ do
           published <- maybe [] (pure <<< PDT.toDateTimeLossy) (PDT.fromRFC3339String publishedTime)
           let diff = DateTime.diff now published
           -- NOTE: Change this line for configurable lookback.
-          guardA (diff <= Hours (Int.toNumber 24))
+          guardA (diff <= Hours (Int.toNumber 240))
           pure version
 
       versions <- Array.fromFoldable (NonEmptyArray.fromArray versions')

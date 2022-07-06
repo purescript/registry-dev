@@ -64,8 +64,12 @@ main = Aff.launchAff_ do
   -- index as a cache by providing an empty map as `indexCache`. The files used
   -- to produce the manifests are still read from the GitHub cache.
   log "Fetching the registry index..."
-  API.checkIndexExists API.indexDir
-  indexCache <- Index.readRegistryIndex API.indexDir
+  API.fetchRegistryIndex API.registryIndexPath
+  indexCache <- Index.readRegistryIndex API.registryIndexPath
+
+  log "Fetching the existing registry..."
+  API.fetchRegistry API.registryPath
+  packagesMetadataRef <- API.mkMetadataRef API.registryMetadataPath
 
   log "Starting import from legacy registries..."
   { registry, reservedNames } <- downloadLegacyRegistry octokit cache indexCache
@@ -110,15 +114,12 @@ main = Aff.launchAff_ do
 
     availablePackages = Array.mapMaybe excludeVersion sortedPackages
 
-  log "Creating a Metadata Ref"
-  packagesMetadataRef <- API.mkMetadataRef
-
   log "Starting upload..."
   runRegistryM (API.mkLocalEnv octokit cache packagesMetadataRef) do
     log "Adding metadata for reserved package names"
     forWithIndex_ (Map.union disabledPackages reservedNames) \package repo -> do
       let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
-      liftAff $ Json.writeJsonFile (API.metadataFile package) metadata
+      liftAff $ Json.writeJsonFile (API.metadataFile API.registryPath package) metadata
       updatePackagesMetadata package metadata
 
     log "Filtering out packages we already uploaded"
@@ -156,7 +157,7 @@ main = Aff.launchAff_ do
     -- write to disk here and can manually commit the result upstream if desired.
     let packagesToIndex = Array.filter (not disabled) availablePackages
     void $ for packagesToIndex \manifest ->
-      liftAff $ Index.insertManifest API.indexDir $ Manifest manifest
+      liftAff $ Index.insertManifest API.registryIndexPath $ Manifest manifest
 
   log "Done!"
 
