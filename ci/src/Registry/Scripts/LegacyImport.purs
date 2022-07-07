@@ -112,8 +112,10 @@ main = Aff.launchAff_ do
 
     availablePackages = Array.mapMaybe excludeVersion sortedPackages
 
+  let env = API.mkLocalEnv octokit cache packagesMetadataRef
+
   log "Starting upload..."
-  runRegistryM (API.mkLocalEnv octokit cache packagesMetadataRef) do
+  runRegistryM env do
     log "Adding metadata for reserved package names"
     forWithIndex_ (Map.union disabledPackages reservedNames) \package repo -> do
       let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
