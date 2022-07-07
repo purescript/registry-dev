@@ -54,7 +54,7 @@ import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
-import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitMetadataFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
+import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
 import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
@@ -236,10 +236,25 @@ runOperation octokit operation = case operation of
 
                 updatedMetadata = unpublishVersionInMetadata unpublishVersion unpublishedMetadata metadata
 
-              writeMetadata registryPath packageName updatedMetadata
-                { commitFailed: \_ -> "Unpublish succeeded, but committing metadata failed.\ncc @purescript/packaging"
-                , commitSucceeded: "Successfully unpublished!"
-                }
+              writeMetadata registryPath packageName updatedMetadata >>= case _ of
+                Left err -> throwWithComment $ String.joinWith "\n"
+                  [ "Unpublish succeeded, but committing metadata failed."
+                  , err
+                  , "cc @purescript/packaging"
+                  ]
+                Right _ -> pure unit
+
+              writeDeleteIndex registryIndexPath packageName unpublishVersion >>= case _ of
+                Left err -> throwWithComment $ String.joinWith "\n"
+                  [ "Unpublish succeeded, but committing to the registry index failed."
+                  , err
+                  , "cc: @purescript/packaging"
+                  ]
+                Right _ -> pure unit
+
+              comment "Successfully unpublished!"
+
+      closeIssue
 
     Transfer { packageName, newPackageLocation } -> do
       metadata <- readMetadata registryPath packageName
@@ -274,10 +289,16 @@ runOperation octokit operation = case operation of
                 ]
             Right _ -> do
               let updatedMetadata = metadata { location = newPackageLocation }
-              writeMetadata registryPath packageName updatedMetadata
-                { commitFailed: \_ -> "Transferred package location, but failed to commit metadata.\ncc @purescript/packaging"
-                , commitSucceeded: "Successfully transferred your package!"
-                }
+              writeMetadata registryPath packageName updatedMetadata >>= case _ of
+                Left err -> throwWithComment $ String.joinWith "\n"
+                  [ "Transferred package location, but failed to commit metadata."
+                  , err
+                  , "cc: @purescript/packaging"
+                  ]
+                Right _ ->
+                  comment "Successfully transferred your package!"
+
+      closeIssue
 
 registryIndexPath :: FilePath
 registryIndexPath = Path.concat [ "..", "registry-index" ]
@@ -390,24 +411,30 @@ addOrUpdate octokit { updateRef, buildPlan, packageName } inputMetadata = do
   log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show updateRef <> " was " <> show hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref: updateRef, publishedTime, bytes } metadata
-  writeMetadata registryPath packageName newMetadata
-    { commitFailed: \err -> String.joinWith "\n"
-        [ "Package uploaded, but committing metadata failed."
-        , err
-        , "cc: @purescript/packaging"
-        ]
-    , commitSucceeded: "Successfully uploaded package to the registry! 🎉 🚀"
-    }
+  writeMetadata registryPath packageName newMetadata >>= case _ of
+    Left err -> throwWithComment $ String.joinWith "\n"
+      [ "Package uploaded, but committing metadata failed."
+      , err
+      , "cc: @purescript/packaging"
+      ]
+    Right _ ->
+      comment "Successfully uploaded package to the registry! 🎉 🚀"
 
   closeIssue
 
-  -- Optional steps below:
-  -- TODO don't fail the pipeline if one of them fails
+  -- After a package has been uploaded we add it to the registry index, we
+  -- upload its documentation to Pursuit, and we can now process it for package
+  -- sets when the next batch goes out.
 
-  -- Add to the registry index
-  -- TODO: commit the registry-index
-  -- TODO: commit the metadata
-  liftAff $ Index.insertManifest registryIndexPath manifest
+  -- We write to the registry index if possible. If this fails, the packaging
+  -- team should manually insert the entry.
+  writeInsertIndex registryIndexPath manifest >>= case _ of
+    Left err -> comment $ String.joinWith "\n"
+      [ "Package uploaded, but committing to the registry failed."
+      , err
+      , "cc: @purescript/packaging"
+      ]
+    Right _ -> pure unit
 
   -- We don't upload legacy packages to Pursuit because we don't have a build
   -- plan for them. If we want to upload them, we have to produce a build plan.
@@ -825,28 +852,37 @@ gitGetRefTime ref repoDir = do
 
 pushToRegistryIndex :: PackageName -> FilePath -> Aff (Either String Unit)
 pushToRegistryIndex packageName registryIndexDir = Except.runExceptT do
-  _ <- runGit [ "config", "user.name", "PacchettiBotti" ] (Just registryIndexDir)
-  _ <- runGit [ "config", "user.email", "<pacchettibotti@purescript.org>" ] (Just registryIndexDir)
-  _ <- runGit [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
-  _ <- runGit [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
-  _ <- runGit [ "push", "origin", "main" ] (Just registryIndexDir)
+  runGit_ [ "config", "user.name", "PacchettiBotti" ] (Just registryIndexDir)
+  runGit_ [ "config", "user.email", "<pacchettibotti@purescript.org>" ] (Just registryIndexDir)
+  runGit_ [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
+  runGit_ [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
+  runGit_ [ "push", "origin", "main" ] (Just registryIndexDir)
   pure unit
 
 pushToRegistryMetadata :: PackageName -> FilePath -> Aff (Either String Unit)
 pushToRegistryMetadata packageName registryDir = Except.runExceptT do
-  _ <- runGit [ "config", "user.name", "PacchettiBotti" ] (Just registryDir)
-  _ <- runGit [ "config", "user.email", "<pacchettibotti@purescript.org>" ] (Just registryDir)
-  _ <- runGit [ "add", Path.concat [ "metadata", PackageName.print packageName <> ".json" ] ] (Just registryDir)
-  _ <- runGit [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] (Just registryDir)
-  _ <- runGit [ "push", "origin", "main" ] (Just registryDir)
+  runGit_ [ "config", "user.name", "PacchettiBotti" ] (Just registryDir)
+  runGit_ [ "config", "user.email", "<pacchettibotti@purescript.org>" ] (Just registryDir)
+  runGit_ [ "add", Path.concat [ "metadata", PackageName.print packageName <> ".json" ] ] (Just registryDir)
+  runGit_ [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] (Just registryDir)
+  runGit_ [ "push", "origin", "main" ] (Just registryDir)
   pure unit
+
+runGit_ :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
+runGit_ args cwd = void $ runGit args cwd
 
 runGit :: Array String -> Maybe FilePath -> ExceptT String Aff String
 runGit args cwd = ExceptT do
   result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
-  pure $ case result.exit of
-    NodeProcess.Normally 0 -> Right $ String.trim result.stdout
-    _ -> Left $ String.trim result.stderr
+  let stdout = String.trim result.stdout
+  let stderr = String.trim result.stderr
+  case result.exit of
+    NodeProcess.Normally 0 -> do
+      unless (String.null stdout) (info stdout)
+      pure $ Right stdout
+    _ -> do
+      unless (String.null stderr) (error stderr)
+      pure $ Left stderr
 
 -- | The absolute maximum bytes allowed in a package
 maxPackageBytes :: Number
@@ -956,14 +992,32 @@ readMetadata registryDir packageName { noMetadata } = do
     Nothing -> throwWithComment "Couldn't read metadata file for your package.\ncc @purescript/packaging"
     Just m -> pure m
 
-writeMetadata :: FilePath -> PackageName -> Metadata -> { commitFailed :: String -> String, commitSucceeded :: String } -> RegistryM Unit
-writeMetadata registryDir packageName metadata { commitFailed, commitSucceeded } = do
-  let metadataFilePath = metadataFile registryDir packageName
-  liftAff $ Json.writeJsonFile metadataFilePath metadata
+-- TODO TODO TODO
+--
+-- 1. Add `writeIndex` and `deleteIndex` from the daily-import PR, actually commit
+--    and push to the registry-index repository.
+-- 2. Experiment with using the auth token just to push, not to clone. Defers the
+--    requirement for the token until the time we commit and push, which is
+--    better because then the registry-importer script only has to have the token
+--    available in the case it actually pushes.
+--
+-- TODO TODO TODO
+
+writeMetadata :: FilePath -> PackageName -> Metadata -> RegistryM (Either String Unit)
+writeMetadata registryDir packageName metadata = do
+  liftAff $ Json.writeJsonFile (metadataFile registryDir packageName) metadata
   updatePackagesMetadata packageName metadata
-  commitMetadataFile packageName registryPath >>= case _ of
-    Left err -> comment (commitFailed err)
-    Right _ -> comment commitSucceeded
+  commitMetadataFile packageName registryDir
+
+writeInsertIndex :: FilePath -> Manifest -> RegistryM (Either String Unit)
+writeInsertIndex registryIndexDir manifest@(Manifest { name }) = do
+  liftAff $ Index.insertManifest registryIndexDir manifest
+  commitIndexFile name registryIndexDir
+
+writeDeleteIndex :: FilePath -> PackageName -> Version -> RegistryM (Either String Unit)
+writeDeleteIndex registryIndexDir name version = do
+  liftAff $ Index.deleteManifest registryIndexDir name version
+  commitIndexFile name registryIndexDir
 
 -- | Call a specific version of the PureScript compiler
 callCompiler_ :: { version :: String, args :: Array String, cwd :: Maybe FilePath } -> Aff Unit
