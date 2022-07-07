@@ -112,12 +112,7 @@ main = Aff.launchAff_ do
 
     availablePackages = Array.mapMaybe excludeVersion sortedPackages
 
-  let
-    env =
-      (API.mkLocalEnv octokit cache packagesMetadataRef)
-        { commitMetadataFile = API.pacchettiBottiPushToRegistryMetadata
-        , commitIndexFile = API.pacchettiBottiPushToRegistryIndex
-        }
+  let env = API.mkLocalEnv octokit cache packagesMetadataRef
 
   log "Starting upload..."
   runRegistryM env do
