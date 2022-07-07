@@ -675,8 +675,8 @@ mkEnv octokit cache packagesMetadata issue =
   , closeIssue: Except.runExceptT (GitHub.closeIssue octokit issue) >>= case _ of
       Left _ -> throwError $ Aff.error "Unable to close issue!"
       Right _ -> pure unit
-  , commitMetadataFile: pushToRegistryMetadata
-  , commitIndexFile: pushToRegistryIndex
+  , commitMetadataFile: pacchettiBottiPushToRegistryMetadata
+  , commitIndexFile: pacchettiBottiPushToRegistryIndex
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
   , packagesMetadata
@@ -760,11 +760,8 @@ fetchRepo address path = FS.exists path >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> log $ "Pulled the latest from " <> address.repo
   _ -> do
-    pacchettibotti <- liftEffect do
-      Env.lookupEnv "PACCHETTIBOTTI_TOKEN"
-        >>= maybe (throw "PACCHETTIBOTTI_TOKEN not defined in the environment") pure
     log $ "Didn't find the " <> address.repo <> " repo, cloning..."
-    Except.runExceptT (runGit [ "clone", "https://pacchettibotti:" <> pacchettibotti <> "@github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
+    Except.runExceptT (runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> log $ "Successfully cloned the " <> address.repo <> " repo"
 
@@ -850,22 +847,31 @@ gitGetRefTime ref repoDir = do
     Left err -> Aff.throwError $ Aff.error $ "Failed to get ref time: " <> err
     Right res -> pure res
 
-pushToRegistryIndex :: PackageName -> FilePath -> Aff (Either String Unit)
-pushToRegistryIndex packageName registryIndexDir = Except.runExceptT do
-  runGit_ [ "config", "user.name", "PacchettiBotti" ] (Just registryIndexDir)
-  runGit_ [ "config", "user.email", "<pacchettibotti@purescript.org>" ] (Just registryIndexDir)
+configurePacchettiBotti :: Maybe FilePath -> ExceptT String Aff GitHubToken
+configurePacchettiBotti cwd = do
+  pacchettibotti <- liftEffect do
+    Env.lookupEnv "PACCHETTIBOTTI_TOKEN"
+      >>= maybe (throw "PACCHETTIBOTTI_TOKEN not defined in the environment") pure
+  runGit_ [ "config", "user.name", "PacchettiBotti" ] cwd
+  runGit_ [ "config", "user.email", "<pacchettibotti@purescript.org>" ] cwd
+  pure (GitHubToken pacchettibotti)
+
+pacchettiBottiPushToRegistryIndex :: PackageName -> FilePath -> Aff (Either String Unit)
+pacchettiBottiPushToRegistryIndex packageName registryIndexDir = Except.runExceptT do
+  GitHubToken token <- configurePacchettiBotti (Just registryIndexDir)
   runGit_ [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
   runGit_ [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
-  runGit_ [ "push", "origin", "main" ] (Just registryIndexDir)
+  let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-index.git"
+  runGit_ [ "push", origin, "main" ] (Just registryIndexDir)
   pure unit
 
-pushToRegistryMetadata :: PackageName -> FilePath -> Aff (Either String Unit)
-pushToRegistryMetadata packageName registryDir = Except.runExceptT do
-  runGit_ [ "config", "user.name", "PacchettiBotti" ] (Just registryDir)
-  runGit_ [ "config", "user.email", "<pacchettibotti@purescript.org>" ] (Just registryDir)
+pacchettiBottiPushToRegistryMetadata :: PackageName -> FilePath -> Aff (Either String Unit)
+pacchettiBottiPushToRegistryMetadata packageName registryDir = Except.runExceptT do
+  GitHubToken token <- configurePacchettiBotti (Just registryDir)
   runGit_ [ "add", Path.concat [ "metadata", PackageName.print packageName <> ".json" ] ] (Just registryDir)
   runGit_ [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] (Just registryDir)
-  runGit_ [ "push", "origin", "main" ] (Just registryDir)
+  let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
+  runGit_ [ "push", origin, "main" ] (Just registryDir)
   pure unit
 
 runGit_ :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
@@ -991,17 +997,6 @@ readMetadata registryDir packageName { noMetadata } = do
   readPackagesMetadata >>= \packages -> case Map.lookup packageName packages of
     Nothing -> throwWithComment "Couldn't read metadata file for your package.\ncc @purescript/packaging"
     Just m -> pure m
-
--- TODO TODO TODO
---
--- 1. Add `writeIndex` and `deleteIndex` from the daily-import PR, actually commit
---    and push to the registry-index repository.
--- 2. Experiment with using the auth token just to push, not to clone. Defers the
---    requirement for the token until the time we commit and push, which is
---    better because then the registry-importer script only has to have the token
---    available in the case it actually pushes.
---
--- TODO TODO TODO
 
 writeMetadata :: FilePath -> PackageName -> Metadata -> RegistryM (Either String Unit)
 writeMetadata registryDir packageName metadata = do

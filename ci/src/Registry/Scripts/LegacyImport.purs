@@ -115,8 +115,8 @@ main = Aff.launchAff_ do
   let
     env =
       (API.mkLocalEnv octokit cache packagesMetadataRef)
-        { commitMetadataFile = API.pushToRegistryMetadata
-        , commitIndexFile = API.pushToRegistryIndex
+        { commitMetadataFile = API.pacchettiBottiPushToRegistryMetadata
+        , commitIndexFile = API.pacchettiBottiPushToRegistryIndex
         }
 
   log "Starting upload..."
