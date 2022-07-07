@@ -733,8 +733,11 @@ fetchRepo address path = FS.exists path >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> log $ "Pulled the latest from " <> address.repo
   _ -> do
+    pacchettibotti <- liftEffect do
+      Env.lookupEnv "PACCHETTIBOTTI_TOKEN"
+        >>= maybe (throw "PACCHETTIBOTTI_TOKEN not defined in the environment") pure
     log $ "Didn't find the " <> address.repo <> " repo, cloning..."
-    Except.runExceptT (runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
+    Except.runExceptT (runGit [ "clone", "https://pacchettibotti:" <> pacchettibotti <> "@github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> log $ "Successfully cloned the " <> address.repo <> " repo"
 
