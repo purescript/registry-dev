@@ -219,5 +219,6 @@
   "purescript-generic-router": "https://github.com/njaremko/purescript-generic-router.git",
   "purescript-rito": "https://github.com/mikesol/purescript-rito.git",
   "purescript-freer-free": "https://github.com/mikesol/purescript-freer-free.git",
-  "purescript-fallback": "https://github.com/sigma-andex/purescript-fallback.git"
+  "purescript-fallback": "https://github.com/sigma-andex/purescript-fallback.git",
+  "purescript-react-icons": "https://github.com/andys8/purescript-react-icons.git"
 }
