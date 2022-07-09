@@ -100,6 +100,11 @@
             '';
 
             registry-importer = ''
+              if [ -z "$1" ]; then
+                echo "No arguments supplied. Expected one of: generate, update"
+                exit 1
+              fi
+
               spago run -m Registry.Scripts.LegacyImporter --node-args $1
             '';
 
