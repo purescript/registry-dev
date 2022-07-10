@@ -80,7 +80,6 @@ main = launchAff_ do
     Spec.describe "Manifest" do
       Spec.describe "Encoding" manifestEncoding
       Spec.describe "Encoding examples" (manifestExamplesRoundtrip manifestExamplePaths)
-    -- Spec.describe "Error Stats" errorStats
     Spec.describe "Registry Index" do
       Registry.Index.spec registryEnv
     Spec.describe "Hash" do

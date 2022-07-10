@@ -63,26 +63,26 @@ parseLegacyManifest name location version legacyManifest = Validation.toEither a
       parsePackageName = lmap Parser.printParserError <<< PackageName.parse <<< stripPureScriptPrefix
       parseVersionRange = lmap Parser.printParserError <<< Version.parseRange Version.Lenient
 
-      foldFn (RawPackageName key) acc (RawVersionRange val) = do
-        let parsedName = parsePackageName key
-        let parsedRange = parseVersionRange val
+      foldFn (RawPackageName name) acc (RawVersionRange range) = do
+        let parsedName = parsePackageName name
+        let parsedRange = parseVersionRange range
+        let failWith = { name, range, error: _ }
         case parsedName, parsedRange of
-          Left nameErr, Left rangeErr -> acc { badName = Array.cons nameErr acc.badName, badRange = Array.cons rangeErr acc.badRange }
-          Left nameErr, Right _ -> acc { badName = Array.cons nameErr acc.badName }
-          Right _, Left rangeErr -> acc { badRange = Array.cons rangeErr acc.badRange }
-          Right name, Right range -> acc { parsed = Array.cons (Tuple name range) acc.parsed }
+          Left nameErr, Left rangeErr ->
+            acc { no = Array.cons (failWith (nameErr <> rangeErr)) acc.no }
+          Left nameErr, Right _ ->
+            acc { no = Array.cons (failWith nameErr) acc.no }
+          Right _, Left rangeErr ->
+            acc { no = Array.cons (failWith rangeErr) acc.no }
+          Right name, Right range ->
+            acc { yes = Array.cons (Tuple name range) acc.yes }
 
       parsedDependencies =
-        foldlWithIndex foldFn { badName: [], badRange: [], parsed: [] } legacyManifest.dependencies
+        foldlWithIndex foldFn { no: [], yes: [] } legacyManifest.dependencies
 
     case parsedDependencies of
-      { badName: [], badRange: [], parsed } -> pure $ Map.fromFoldable parsed
-      { badName, badRange } -> ado
-        unless (Array.null badName) do
-          invalid { error: InvalidDependencyNames badName, reason: "Dependencies have invalid package names." }
-        unless (Array.null badRange) do
-          invalid { error: InvalidDependencyRanges badRange, reason: "Dependencies have invalid version ranges." }
-        in Map.empty
+      { no: [], yes } -> pure $ Map.fromFoldable yes
+      { no } -> invalid { error: InvalidDependencies no, reason: "Version specifies invalid dependencies." }
 
   let description = map NonEmptyString.toString legacyManifest.description
 
@@ -96,28 +96,26 @@ type LegacyManifestValidationError = { error :: LegacyManifestError, reason :: S
 data LegacyManifestError
   = MissingLicense
   | InvalidLicense (Array String)
-  | InvalidDependencyNames (Array String)
-  | InvalidDependencyRanges (Array String)
+  | InvalidDependencies (Array { name :: String, range :: String, error :: String })
 
 instance RegistryJson LegacyManifestError where
   encode = case _ of
     MissingLicense -> Json.encode { tag: "MissingLicense" }
     InvalidLicense arr -> Json.encode { tag: "InvalidLicense", value: arr }
-    InvalidDependencyNames arr -> Json.encode { tag: "InvalidDependencyNames", value: arr }
-    InvalidDependencyRanges arr -> Json.encode { tag: "InvalidDependencyRanges", value: arr }
+    InvalidDependencies arr -> Json.encode { tag: "InvalidDependencies", value: arr }
   decode = Json.decode >=> \obj -> (obj .: "tag") >>= case _ of
     "MissingLicense" -> pure MissingLicense
     "InvalidLicense" -> map InvalidLicense $ obj .: "value"
-    "InvalidDependencyNames" -> map InvalidDependencyNames $ obj .: "value"
-    "InvalidDependencyRanges" -> map InvalidDependencyRanges $ obj .: "value"
+    "InvalidDependencies" -> map InvalidDependencies $ obj .: "value"
     tag -> Left $ "Unexpected Tag: " <> tag
 
 printLegacyManifestError :: LegacyManifestError -> String
 printLegacyManifestError = case _ of
   MissingLicense -> "MissingLicense"
   InvalidLicense licenses -> "InvalidLicense (" <> String.joinWith ", " licenses <> ")"
-  InvalidDependencyNames names -> "InvalidDependencyNames (" <> String.joinWith ", " names <> ")"
-  InvalidDependencyRanges ranges -> "InvalidDependencyRanges (" <> String.joinWith ", " ranges <> ")"
+  InvalidDependencies errors -> "InvalidDependencies (" <> String.joinWith ", " (map printDepError errors) <> ")"
+  where
+  printDepError { name, range, error } = "[{ " <> name <> ": " <> range <> "}, " <> error <> "]"
 
 type LegacyManifest =
   { license :: Maybe (NonEmptyArray NonEmptyString)

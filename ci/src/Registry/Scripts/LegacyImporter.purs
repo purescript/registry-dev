@@ -618,8 +618,7 @@ calculateImportStats legacyRegistry imported = do
       innerKey = _.error >>> case _ of
         MissingLicense -> "Missing License"
         InvalidLicense _ -> "Invalid License"
-        InvalidDependencyNames _ -> "Invalid Dependency Names"
-        InvalidDependencyRanges _ -> "Invalid Dependency Version Bounds"
+        InvalidDependencies _ -> "Invalid Dependencies"
 
   { packagesProcessed
   , versionsProcessed
