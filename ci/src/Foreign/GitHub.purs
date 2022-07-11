@@ -323,7 +323,7 @@ cachedRequest runRequest requestArgs@{ route: Route route } { cache, checkGitHub
       --
       -- TODO: Remove DateTime.diff when GitHub honors requests again.
       Right payload
-        | checkGitHub, DateTime.diff now cached.modified >= Duration.Hours 4.0 -> do
+        | checkGitHub, DateTime.diff now cached.modified >= Duration.Hours 1.0 -> do
             log $ "CACHE EXPIRED: " <> route
             result <- Except.runExceptT $ runRequest $ requestArgs
               { headers = Object.insert "If-Modified-Since" (toGitHubTime cached.modified) requestArgs.headers }
