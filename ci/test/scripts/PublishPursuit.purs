@@ -44,6 +44,8 @@ main = launchAff_ $ do
       , packagesMetadata: unsafePerformEffect (Ref.new Map.empty)
       , cache
       , octokit
+      , registry: mempty
+      , registryIndex: mempty
       }
 
   runRegistryM env do

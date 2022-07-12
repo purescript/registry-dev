@@ -30,6 +30,8 @@ defaultTestEnv =
       , write: mempty
       , remove: mempty
       }
+  , registry: mempty
+  , registryIndex: mempty
   }
 
 toSpec :: RegistrySpec Unit -> Spec.Spec Unit

@@ -24,6 +24,8 @@ type Env =
   , octokit :: Octokit
   , packagesMetadata :: Ref (Map PackageName Metadata)
   , cache :: Registry.Cache
+  , registry :: FilePath
+  , registryIndex :: FilePath
   }
 
 newtype RegistryM a = RegistryM (ReaderT Env Aff a)
