@@ -717,6 +717,7 @@ type MetadataRef = Ref MetadataMap
 mkMetadataRef :: FilePath -> Aff MetadataRef
 mkMetadataRef registryDir = do
   let metadataDir = Path.concat [ registryDir, "metadata" ]
+  FS.Extra.ensureDirectory metadataDir
   packageList <- try (FS.readdir metadataDir) >>= case _ of
     Right list -> pure $ Array.mapMaybe (String.stripSuffix $ String.Pattern ".json") list
     Left err -> do
