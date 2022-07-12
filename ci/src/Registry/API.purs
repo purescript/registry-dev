@@ -766,13 +766,13 @@ fetchRepo address path = FS.exists path >>= case _ of
   true -> do
     log $ "Found the " <> address.repo <> " repo locally, pulling..."
     result <- Except.runExceptT do
-      runGit_ [ "pull", "--rebase" ] (Just path)
       branch <- runGit [ "rev-parse", "--abbrev-ref", "HEAD" ] (Just path)
-      when (branch `Array.notElem` [ "main", "master" ]) do
+      when (branch /= "main") do
         throwError $ Array.fold
-          [ "Cannot import using a branch other than 'main' or 'master'. Got: "
+          [ "Cannot import using a branch other than 'main'. Got: "
           , branch
           ]
+      runGit_ [ "pull", "--rebase" ] (Just path)
     case result of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> log $ "Pulled the latest from " <> address.repo
