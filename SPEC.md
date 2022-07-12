@@ -173,7 +173,11 @@ Every day, the registry CI executes the following steps:
 
 First, we read the contents of the latest package set release and gather all package versions that have been uploaded to the registry since that release. These package versions are the "batch" of packages that we are considering for automatic inclusion to the next package set.
 
-Second, we filter out any packages where, based on their metadata and manifest files alone, we know they can't be added to the package set. This happens for one of three reasons: they have a dependency that isn't in the package sets, or they had multiple releases since the last package set, in which case we only take the highest version, or c) they already have a higher version number released  in the previous package set. In any of these cases, we remove the package from consideration.
+Second, we filter out any packages where, based on their metadata and manifest files alone, we know they can't be added to the package set. This happens for one of three reasons:
+
+1. They have a dependency that is neither in the package sets nor in the batch that is up for consideration
+2. They have had multiple releases since the last package set, in which case we only take the highest version
+3. They already have a higher version published in a previous package set
 
 Third, we attempt to add the rest of the batch of package versions to the package set. Processing the batch follows these steps:
 
