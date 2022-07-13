@@ -4,6 +4,7 @@ import Registry.Prelude
 
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
+import Control.Monad.Reader (ask, asks)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
@@ -11,12 +12,12 @@ import Data.String as String
 import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Exception (throw)
-import Foreign.GitHub (GitHubToken(..), Octokit)
+import Effect.Ref as Ref
+import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
 import Foreign.Object as Object
 import Node.Process as Node.Process
 import Registry.API as API
-import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
@@ -24,7 +25,7 @@ import Registry.Json as Json
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (readPackagesMetadata, runRegistryM, updatePackagesMetadata)
+import Registry.RegistryM (RegistryM, readPackagesMetadata, runRegistryM, updatePackagesMetadata)
 import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
 import Registry.Scripts.LegacyImport.Error (APIResource(..), ImportError(..), ManifestError(..), PackageFailures(..), RemoteResource(..), RequestError(..))
 import Registry.Scripts.LegacyImport.Manifest as Manifest
@@ -57,68 +58,72 @@ main = Aff.launchAff_ do
   log "Reading the cache..."
   cache <- Cache.useCache
 
-  -- We rely on the existing registry index for two reasons. First, we write new
-  -- entries to this location so they can be committed upsteram. Second, we use
-  -- the registry index as a cache of manifests for packages that have already
-  -- been uploaded. It is possible to do a dry-run without using the registry
-  -- index as a cache by providing an empty map as `indexCache`. The files used
-  -- to produce the manifests are still read from the GitHub cache.
-  log "Fetching the registry index..."
-  API.checkIndexExists API.indexDir
-  indexCache <- Index.readRegistryIndex API.indexDir
+  packagesMetadataRef <- liftEffect $ Ref.new Map.empty
 
-  log "Starting import from legacy registries..."
-  { registry, reservedNames } <- downloadLegacyRegistry octokit cache indexCache
+  let env = API.mkLocalEnv octokit cache packagesMetadataRef
+  runRegistryM env do
+    -- We rely on the existing registry index for two reasons. First, we write new
+    -- entries to this location so they can be committed upsteram. Second, we use
+    -- the registry index as a cache of manifests for packages that have already
+    -- been uploaded. It is possible to do a dry-run without using the registry
+    -- index as a cache by providing an empty map as `indexCache`. The files used
+    -- to produce the manifests are still read from the GitHub cache.
+    API.fetchRegistryIndex
+    API.fetchRegistry
+    API.fillMetadataRef
 
-  let
-    sortedPackages :: Array Manifest
-    sortedPackages = Graph.topologicalSort registry
+    registryIndexPath <- asks _.registryIndex
+    indexCache <- liftAff $ Index.readRegistryIndex registryIndexPath
 
-    -- These packages have no usable versions, but do have valid manifests, and
-    -- so they make it to the processed packages but cannot be uploaded. They
-    -- fail either because all versions have no src directory, or are too large,
-    -- or it's a special package.
-    disabledPackages :: Map PackageName Location
-    disabledPackages = Map.fromFoldable
-      -- [UNFIXABLE] This is a special package that should never be uploaded.
-      [ mkDisabled "purescript" "purescript-metadata"
-      -- [UNFIXABLE] These packages have no version with a src directory
-      , mkDisabled "ethul" "purescript-bitstrings"
-      , mkDisabled "paulyoung" "purescript-purveyor"
-      , mkDisabled "paulyoung" "purescript-styled-components"
-      , mkDisabled "paulyoung" "purescript-styled-system"
-      ]
-      where
-      mkDisabled owner repo =
-        Tuple (unsafeFromRight $ PackageName.parse $ stripPureScriptPrefix repo) (GitHub { owner, repo, subdir: Nothing })
+    log "Starting import from legacy registries..."
+    { registry, reservedNames } <- downloadLegacyRegistry indexCache
 
-    -- These package versions contain valid manifests, and other versions of the
-    -- package are valid, but these are not. We manually exclude them from being
-    -- uploaded.
-    excludeVersion :: Manifest -> Maybe _
-    excludeVersion (Manifest manifestFields) = case PackageName.print manifestFields.name, Version.rawVersion manifestFields.version of
-      -- [UNFIXABLE]
-      -- These have no src directory.
-      "concur-core", "v0.3.9" -> Nothing
-      "concur-react", "v0.3.9" -> Nothing
-      "pux-devtool", "v5.0.0" -> Nothing
+    let
+      sortedPackages :: Array Manifest
+      sortedPackages = Graph.topologicalSort registry
 
-      -- These have a malformed bower.json file
-      "endpoints-express", "v0.0.1" -> Nothing
+      -- These packages have no usable versions, but do have valid manifests, and
+      -- so they make it to the processed packages but cannot be uploaded. They
+      -- fail either because all versions have no src directory, or are too large,
+      -- or it's a special package.
+      disabledPackages :: Map PackageName Location
+      disabledPackages = Map.fromFoldable
+        -- [UNFIXABLE] This is a special package that should never be uploaded.
+        [ mkDisabled "purescript" "purescript-metadata"
+        -- [UNFIXABLE] These packages have no version with a src directory
+        , mkDisabled "ethul" "purescript-bitstrings"
+        , mkDisabled "paulyoung" "purescript-purveyor"
+        , mkDisabled "paulyoung" "purescript-styled-components"
+        , mkDisabled "paulyoung" "purescript-styled-system"
+        ]
+        where
+        mkDisabled owner repo =
+          Tuple (unsafeFromRight $ PackageName.parse $ stripPureScriptPrefix repo) (GitHub { owner, repo, subdir: Nothing })
 
-      _, _ -> Just manifestFields
+      -- These package versions contain valid manifests, and other versions of the
+      -- package are valid, but these are not. We manually exclude them from being
+      -- uploaded.
+      excludeVersion :: Manifest -> Maybe _
+      excludeVersion (Manifest manifestFields) = case PackageName.print manifestFields.name, Version.rawVersion manifestFields.version of
+        -- [UNFIXABLE]
+        -- These have no src directory.
+        "concur-core", "v0.3.9" -> Nothing
+        "concur-react", "v0.3.9" -> Nothing
+        "pux-devtool", "v5.0.0" -> Nothing
 
-    availablePackages = Array.mapMaybe excludeVersion sortedPackages
+        -- These have a malformed bower.json file
+        "endpoints-express", "v0.0.1" -> Nothing
 
-  log "Creating a Metadata Ref"
-  packagesMetadataRef <- API.mkMetadataRef
+        _, _ -> Just manifestFields
 
-  log "Starting upload..."
-  runRegistryM (API.mkLocalEnv octokit cache packagesMetadataRef) do
+      availablePackages = Array.mapMaybe excludeVersion sortedPackages
+
+    log "Starting upload..."
     log "Adding metadata for reserved package names"
     forWithIndex_ (Map.union disabledPackages reservedNames) \package repo -> do
       let metadata = { location: repo, owners: Nothing, published: Map.empty, unpublished: Map.empty }
-      liftAff $ Json.writeJsonFile (API.metadataFile package) metadata
+      registryPath <- asks _.registry
+      liftAff $ Json.writeJsonFile (API.metadataFile registryPath package) metadata
       updatePackagesMetadata package metadata
 
     log "Filtering out packages we already uploaded"
@@ -156,12 +161,12 @@ main = Aff.launchAff_ do
     -- write to disk here and can manually commit the result upstream if desired.
     let packagesToIndex = Array.filter (not disabled) availablePackages
     void $ for packagesToIndex \manifest ->
-      liftAff $ Index.insertManifest API.indexDir $ Manifest manifest
+      liftAff $ Index.insertManifest registryIndexPath $ Manifest manifest
 
   log "Done!"
 
-downloadLegacyRegistry :: Octokit -> Cache -> RegistryIndex -> Aff { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
-downloadLegacyRegistry octokit cache registryIndexCache = do
+downloadLegacyRegistry :: RegistryIndex -> RegistryM { registry :: RegistryIndex, reservedNames :: Map PackageName Location }
+downloadLegacyRegistry registryIndexCache = ask >>= \{ octokit, cache } -> liftAff do
   bowerPackages <- readRegistryFile "bower-packages.json"
   newPackages <- readRegistryFile "new-packages.json"
 

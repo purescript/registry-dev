@@ -17,12 +17,15 @@ import Registry.Schema (Metadata)
 type Env =
   { comment :: String -> Aff Unit
   , closeIssue :: Aff Unit
-  , commitToTrunk :: PackageName -> FilePath -> Aff (Either String Unit)
+  , commitMetadataFile :: PackageName -> FilePath -> Aff (Either String Unit)
+  , commitIndexFile :: PackageName -> FilePath -> Aff (Either String Unit)
   , uploadPackage :: Upload.PackageInfo -> FilePath -> Aff Unit
   , deletePackage :: Upload.PackageInfo -> Aff Unit
   , octokit :: Octokit
   , packagesMetadata :: Ref (Map PackageName Metadata)
   , cache :: Registry.Cache
+  , registry :: FilePath
+  , registryIndex :: FilePath
   }
 
 newtype RegistryM a = RegistryM (ReaderT Env Aff a)
@@ -56,10 +59,14 @@ closeIssue = asks _.closeIssue >>= liftAff
 throwWithComment :: forall a. String -> RegistryM a
 throwWithComment body = comment body *> Aff.throwError (Aff.error body)
 
--- | Commit a change to the default branch of the registry repository
-commitToTrunk :: PackageName -> FilePath -> RegistryM (Either String Unit)
-commitToTrunk packageName path = do
-  f <- asks _.commitToTrunk
+commitMetadataFile :: PackageName -> FilePath -> RegistryM (Either String Unit)
+commitMetadataFile packageName path = do
+  f <- asks _.commitMetadataFile
+  liftAff $ f packageName path
+
+commitIndexFile :: PackageName -> FilePath -> RegistryM (Either String Unit)
+commitIndexFile packageName path = do
+  f <- asks _.commitIndexFile
   liftAff $ f packageName path
 
 -- | Upload a package to the backend storage provider

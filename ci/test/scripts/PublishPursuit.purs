@@ -6,13 +6,15 @@ import Registry.Prelude
 import Data.Map as Map
 import Dotenv as Dotenv
 import Effect.Exception (throw)
+import Effect.Ref as Ref
+import Effect.Unsafe (unsafePerformEffect)
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
-import Registry.API (cloneGitTag, mkMetadataRef, publishToPursuit)
+import Registry.API (cloneGitTag, publishToPursuit)
 import Registry.Cache as Cache
 import Registry.PackageName as PackageName
 import Registry.RegistryM (Env, runRegistryM)
@@ -28,7 +30,6 @@ main = launchAff_ $ do
       >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
   octokit <- liftEffect $ GitHub.mkOctokit githubToken
-  packagesMetadata <- mkMetadataRef
   cache <- Cache.useCache
 
   let
@@ -36,12 +37,15 @@ main = launchAff_ $ do
     env =
       { comment: mempty
       , closeIssue: mempty
-      , commitToTrunk: \_ _ -> pure (Right unit)
+      , commitMetadataFile: \_ _ -> pure (Right unit)
+      , commitIndexFile: \_ _ -> pure (Right unit)
       , uploadPackage: mempty
       , deletePackage: mempty
-      , packagesMetadata
+      , packagesMetadata: unsafePerformEffect (Ref.new Map.empty)
       , cache
       , octokit
+      , registry: mempty
+      , registryIndex: mempty
       }
 
   runRegistryM env do

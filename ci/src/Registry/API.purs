@@ -54,7 +54,7 @@ import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
-import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitToTrunk, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
+import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
 import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Scripts.LegacyImport.Error (ImportError(..))
@@ -76,9 +76,6 @@ main = launchAff_ $ do
       >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
   octokit <- liftEffect $ GitHub.mkOctokit githubToken
-  cache <- Cache.useCache
-  packagesMetadata <- mkMetadataRef
-  checkIndexExists indexDir
 
   readOperation eventPath >>= case _ of
     -- If the issue body is not just a JSON string, then we don't consider it
@@ -87,17 +84,28 @@ main = launchAff_ $ do
     NotJson ->
       pure unit
 
-    MalformedJson issue err -> runRegistryM (mkEnv octokit cache packagesMetadata issue) do
-      comment $ Array.fold
-        [ "The JSON input for this package update is malformed:"
-        , newlines 2
-        , "```" <> err <> "```"
-        , newlines 2
-        , "You can try again by commenting on this issue with a corrected payload."
-        ]
+    MalformedJson issue err -> do
+      let
+        comment = Array.fold
+          [ "The JSON input for this package update is malformed:"
+          , newlines 2
+          , "```" <> err <> "```"
+          , newlines 2
+          , "You can try again by commenting on this issue with a corrected payload."
+          ]
 
-    DecodedOperation issue op ->
-      runRegistryM (mkEnv octokit cache packagesMetadata issue) (runOperation octokit op)
+      Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
+        Left githubError -> throwError $ Aff.error $ GitHub.printGitHubError githubError
+        Right _ -> pure unit
+
+    DecodedOperation issue op -> do
+      cache <- Cache.useCache
+      packagesMetadata <- liftEffect $ Ref.new Map.empty
+      runRegistryM (mkEnv octokit cache packagesMetadata issue) do
+        fetchRegistry
+        fetchRegistryIndex
+        fillMetadataRef
+        runOperation octokit op
 
 data OperationDecoding
   = NotJson
@@ -155,7 +163,7 @@ runOperation octokit operation = case operation of
         ]
       -- If this is a brand-new package, then we can allow them to register it
       -- so long as they aren't publishing an existing location under a new name
-      Nothing | locationIsUnique newPackageLocation packagesMetadata -> throwWithComment $ String.joinWith " "
+      Nothing | not (locationIsUnique newPackageLocation packagesMetadata) -> throwWithComment $ String.joinWith " "
         [ "Cannot register"
         , PackageName.print packageName
         , "at the location"
@@ -163,11 +171,11 @@ runOperation octokit operation = case operation of
         , "because that location is already in use to publish another package."
         ]
       Nothing ->
-        addOrUpdate octokit { packageName, buildPlan, updateRef: newRef } (mkNewMetadata newPackageLocation)
+        addOrUpdate { packageName, buildPlan, updateRef: newRef } (mkNewMetadata newPackageLocation)
 
   Update { packageName, buildPlan, updateRef } -> do
     metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Did you mean to create an Addition?" }
-    addOrUpdate octokit { packageName, buildPlan, updateRef } metadata
+    addOrUpdate { packageName, buildPlan, updateRef } metadata
 
   Authenticated auth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
@@ -234,10 +242,25 @@ runOperation octokit operation = case operation of
 
                 updatedMetadata = unpublishVersionInMetadata unpublishVersion unpublishedMetadata metadata
 
-              writeMetadata packageName updatedMetadata
-                { commitFailed: \_ -> "Unpublish succeeded, but committing metadata failed.\ncc @purescript/packaging"
-                , commitSucceeded: "Successfully unpublished!"
-                }
+              writeMetadata packageName updatedMetadata >>= case _ of
+                Left err -> throwWithComment $ String.joinWith "\n"
+                  [ "Unpublish succeeded, but committing metadata failed."
+                  , err
+                  , "cc @purescript/packaging"
+                  ]
+                Right _ -> pure unit
+
+              writeDeleteIndex packageName unpublishVersion >>= case _ of
+                Left err -> throwWithComment $ String.joinWith "\n"
+                  [ "Unpublish succeeded, but committing to the registry index failed."
+                  , err
+                  , "cc: @purescript/packaging"
+                  ]
+                Right _ -> pure unit
+
+              comment "Successfully unpublished!"
+
+      closeIssue
 
     Transfer { packageName, newPackageLocation } -> do
       metadata <- readMetadata packageName
@@ -272,23 +295,29 @@ runOperation octokit operation = case operation of
                 ]
             Right _ -> do
               let updatedMetadata = metadata { location = newPackageLocation }
-              writeMetadata packageName updatedMetadata
-                { commitFailed: \_ -> "Transferred package location, but failed to commit metadata.\ncc @purescript/packaging"
-                , commitSucceeded: "Successfully transferred your package!"
-                }
+              writeMetadata packageName updatedMetadata >>= case _ of
+                Left err -> throwWithComment $ String.joinWith "\n"
+                  [ "Transferred package location, but failed to commit metadata."
+                  , err
+                  , "cc: @purescript/packaging"
+                  ]
+                Right _ ->
+                  comment "Successfully transferred your package!"
 
-metadataDir :: FilePath
-metadataDir = "../metadata"
+      closeIssue
 
-metadataFile :: PackageName -> FilePath
-metadataFile packageName = Path.concat [ metadataDir, PackageName.print packageName <> ".json" ]
+registryMetadataPath :: FilePath -> FilePath
+registryMetadataPath registryPath = Path.concat [ registryPath, "metadata" ]
 
-indexDir :: FilePath
-indexDir = "../registry-index"
+registryPackageSetsPath :: FilePath -> FilePath
+registryPackageSetsPath registryPath = Path.concat [ registryPath, "package-sets" ]
 
-addOrUpdate :: Octokit -> UpdateData -> Metadata -> RegistryM Unit
-addOrUpdate octokit { updateRef, buildPlan, packageName } inputMetadata = do
-  cache <- asks _.cache
+metadataFile :: FilePath -> PackageName -> FilePath
+metadataFile registryPath packageName = Path.concat [ registryPath, "metadata", PackageName.print packageName <> ".json" ]
+
+addOrUpdate :: UpdateData -> Metadata -> RegistryM Unit
+addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
+  { octokit, cache } <- ask
   tmpDir <- liftEffect $ Tmp.mkTmpDir
 
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
@@ -382,24 +411,33 @@ addOrUpdate octokit { updateRef, buildPlan, packageName } inputMetadata = do
   log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> show updateRef <> " was " <> show hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref: updateRef, publishedTime, bytes } metadata
-  writeMetadata packageName newMetadata
-    { commitFailed: \_ -> "Package uploaded, but committing metadata failed.\ncc: @purescript/packaging"
-    , commitSucceeded: "Successfully uploaded package to the registry! 🎉 🚀"
-    }
+  writeMetadata packageName newMetadata >>= case _ of
+    Left err -> throwWithComment $ String.joinWith "\n"
+      [ "Package uploaded, but committing metadata failed."
+      , err
+      , "cc: @purescript/packaging"
+      ]
+    Right _ ->
+      comment "Successfully uploaded package to the registry! 🎉 🚀"
 
   closeIssue
 
-  -- Optional steps below:
-  -- TODO don't fail the pipeline if one of them fails
+  -- After a package has been uploaded we add it to the registry index, we
+  -- upload its documentation to Pursuit, and we can now process it for package
+  -- sets when the next batch goes out.
 
-  -- Add to the registry index
-  -- TODO: commit the registry-index
-  liftAff $ Index.insertManifest indexDir manifest
+  -- We write to the registry index if possible. If this fails, the packaging
+  -- team should manually insert the entry.
+  writeInsertIndex manifest >>= case _ of
+    Left err -> comment $ String.joinWith "\n"
+      [ "Package uploaded, but committing to the registry failed."
+      , err
+      , "cc: @purescript/packaging"
+      ]
+    Right _ -> pure unit
 
-  unless isLegacyImport do
-    -- TODO: handle addToPackageSet: we'll try to add it to the latest set and build (see #156)
-    pure unit
-
+  -- We don't upload legacy packages to Pursuit because we don't have a build
+  -- plan for them. If we want to upload them, we have to produce a build plan.
   unless isLegacyImport do
     log "Uploading to Pursuit"
     publishToPursuit { packageSourceDir, buildPlan }
@@ -578,7 +616,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
           Right json ->
             pure json
 
-  authToken <- liftEffect (Node.Process.lookupEnv "PACCHETTIBOTTI_PURSUIT_TOKEN") >>= case _ of
+  authToken <- liftEffect (Node.Process.lookupEnv "PACCHETTIBOTTI_TOKEN") >>= case _ of
     Nothing -> do
       logShow =<< liftEffect Node.Process.getEnv
       throwWithComment "Publishing failed because there is no available auth token. cc: @purescript/packaging"
@@ -637,12 +675,15 @@ mkEnv octokit cache packagesMetadata issue =
   , closeIssue: Except.runExceptT (GitHub.closeIssue octokit issue) >>= case _ of
       Left _ -> throwError $ Aff.error "Unable to close issue!"
       Right _ -> pure unit
-  , commitToTrunk: pushToMaster
+  , commitMetadataFile: pacchettiBottiPushToRegistryMetadata
+  , commitIndexFile: pacchettiBottiPushToRegistryIndex
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
   , packagesMetadata
   , cache
   , octokit
+  , registry: Path.concat [ "..", "registry" ]
+  , registryIndex: Path.concat [ "..", "registry-index" ]
   }
 
 wget :: String -> FilePath -> RegistryM Unit
@@ -659,39 +700,49 @@ mkLocalEnv :: Octokit -> Cache -> Ref (Map PackageName Metadata) -> Env
 mkLocalEnv octokit cache packagesMetadata =
   { comment: \err -> error err
   , closeIssue: log "Skipping GitHub issue closing, we're running locally.."
-  , commitToTrunk: \_ _ -> do
-      log "Skipping committing to trunk.."
+  , commitMetadataFile: \_ _ -> do
+      log "Skipping committing to registry metadata..."
+      pure (Right unit)
+  , commitIndexFile: \_ _ -> do
+      log "Skipping committing to registry index..."
       pure (Right unit)
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
   , octokit
   , cache
   , packagesMetadata
+  , registry: Path.concat [ "..", "registry" ]
+  , registryIndex: Path.concat [ "..", "registry-index" ]
   }
 
 type MetadataMap = Map PackageName Metadata
 type MetadataRef = Ref MetadataMap
 
-mkMetadataRef :: Aff MetadataRef
-mkMetadataRef = do
-  FS.Extra.ensureDirectory metadataDir
-  packageList <- try (FS.readdir metadataDir) >>= case _ of
-    Right list -> pure $ Array.mapMaybe (String.stripSuffix $ String.Pattern ".json") list
-    Left err -> do
-      error $ show err
-      pure []
-  packagesArray <- for packageList \rawPackageName -> do
-    packageName <- case PackageName.parse rawPackageName of
-      Right p -> pure p
+fillMetadataRef :: RegistryM Unit
+fillMetadataRef = do
+  registryDir <- asks _.registry
+  let metadataDir = registryMetadataPath registryDir
+  packages <- liftAff do
+    FS.Extra.ensureDirectory metadataDir
+    packageList <- try (FS.readdir metadataDir) >>= case _ of
+      Right list -> pure $ Array.mapMaybe (String.stripSuffix $ String.Pattern ".json") list
       Left err -> do
-        log $ "Encountered error while parsing package name! It was: " <> rawPackageName
-        Aff.throwError $ Aff.error $ StringParser.printParserError err
-    let metadataPath = metadataFile packageName
-    metadata <- Json.readJsonFile metadataPath >>= case _ of
-      Left err -> Aff.throwError $ Aff.error $ "Error parsing metadata file located at " <> metadataPath <> ": " <> err
-      Right val -> pure val
-    pure $ packageName /\ metadata
-  liftEffect $ Ref.new $ Map.fromFoldable packagesArray
+        error $ show err
+        pure []
+    packagesArray <- for packageList \rawPackageName -> do
+      packageName <- case PackageName.parse rawPackageName of
+        Right p -> pure p
+        Left err -> do
+          log $ "Encountered error while parsing package name! It was: " <> rawPackageName
+          Aff.throwError $ Aff.error $ StringParser.printParserError err
+      let metadataPath = metadataFile registryDir packageName
+      metadata <- Json.readJsonFile metadataPath >>= case _ of
+        Left err -> Aff.throwError $ Aff.error $ "Error parsing metadata file located at " <> metadataPath <> ": " <> err
+        Right val -> pure val
+      pure $ packageName /\ metadata
+    pure $ Map.fromFoldable packagesArray
+  metadataRef <- asks _.packagesMetadata
+  liftEffect $ Ref.write packages metadataRef
 
 isPackageVersionInMetadata :: PackageName -> Version -> MetadataMap -> Boolean
 isPackageVersionInMetadata packageName version metadataMap =
@@ -707,20 +758,42 @@ locationIsUnique location metadata = do
   let duplicates = Map.size $ Map.filter (eq location <<< _.location) metadata
   duplicates == 0
 
-checkIndexExists :: FilePath -> Aff Unit
-checkIndexExists dirPath = do
-  log "Fetching the most recent registry-index..."
-  FS.exists dirPath >>= case _ of
-    true -> do
-      log "Found the 'registry-index' repo locally, pulling..."
-      Except.runExceptT (runGit [ "pull" ] (Just dirPath)) >>= case _ of
-        Left err -> Aff.throwError $ Aff.error err
-        Right _ -> pure unit
-    _ -> do
-      log "Didn't find the 'registry-index' repo, cloning..."
-      Except.runExceptT (runGit [ "clone", "https://github.com/purescript/registry-index.git", dirPath ] Nothing) >>= case _ of
-        Left err -> Aff.throwError $ Aff.error err
-        Right _ -> log "Successfully cloned the 'registry-index' repo"
+-- | Fetch the latest from the given repository. Will perform a fresh clone if
+-- | a checkout of the repository does not exist at the given path, and will
+-- | pull otherwise.
+fetchRepo :: GitHub.Address -> FilePath -> Aff Unit
+fetchRepo address path = FS.exists path >>= case _ of
+  true -> do
+    log $ "Found the " <> address.repo <> " repo locally, pulling..."
+    result <- Except.runExceptT do
+      branch <- runGit [ "rev-parse", "--abbrev-ref", "HEAD" ] (Just path)
+      when (branch /= "main") do
+        throwError $ Array.fold
+          [ "Cannot import using a branch other than 'main'. Got: "
+          , branch
+          ]
+      runGit_ [ "pull", "--rebase" ] (Just path)
+    case result of
+      Left err -> Aff.throwError $ Aff.error err
+      Right _ -> log $ "Pulled the latest from " <> address.repo
+  _ -> do
+    log $ "Didn't find the " <> address.repo <> " repo, cloning..."
+    Except.runExceptT (runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
+      Left err -> Aff.throwError $ Aff.error err
+      Right _ -> log $ "Successfully cloned the " <> address.repo <> " repo"
+
+fetchRegistryIndex :: RegistryM Unit
+fetchRegistryIndex = do
+  registryIndexPath <- asks _.registryIndex
+  log "Fetching the most recent registry index..."
+  liftAff $ fetchRepo { owner: "purescript", repo: "registry-index" } registryIndexPath
+
+fetchRegistry :: RegistryM Unit
+fetchRegistry = do
+  registryPath <- asks _.registry
+  log "Fetching the most recent registry ..."
+  -- TODO: When the registry is migrated, rename this to 'registry'
+  liftAff $ fetchRepo { owner: "purescript", repo: "registry-preview" } registryPath
 
 data PursPublishMethod = LegacyPursPublish | PursPublish
 
@@ -793,21 +866,55 @@ gitGetRefTime ref repoDir = do
     Left err -> Aff.throwError $ Aff.error $ "Failed to get ref time: " <> err
     Right res -> pure res
 
-pushToMaster :: PackageName -> FilePath -> Aff (Either String Unit)
-pushToMaster packageName path = Except.runExceptT do
-  _ <- runGit [ "config", "user.name", "PacchettiBotti" ] Nothing
-  _ <- runGit [ "config", "user.email", "<pacchettibotti@ferrai.io>" ] Nothing
-  _ <- runGit [ "add", path ] Nothing
-  _ <- runGit [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] Nothing
-  _ <- runGit [ "push", "origin", "master" ] Nothing
-  pure unit
+configurePacchettiBotti :: Maybe FilePath -> ExceptT String Aff GitHubToken
+configurePacchettiBotti cwd = do
+  pacchettibotti <- liftEffect do
+    Env.lookupEnv "PACCHETTIBOTTI_TOKEN"
+      >>= maybe (throw "PACCHETTIBOTTI_TOKEN not defined in the environment") pure
+  runGit_ [ "config", "user.name", "PacchettiBotti" ] cwd
+  runGit_ [ "config", "user.email", "<pacchettibotti@purescript.org>" ] cwd
+  pure (GitHubToken pacchettibotti)
+
+pacchettiBottiPushToRegistryIndex :: PackageName -> FilePath -> Aff (Either String Unit)
+pacchettiBottiPushToRegistryIndex packageName registryIndexDir = Except.runExceptT do
+  GitHubToken token <- configurePacchettiBotti (Just registryIndexDir)
+  runGit_ [ "pull", "--rebase" ] (Just registryIndexDir)
+  runGit_ [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
+  runGit_ [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
+  let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-index.git"
+  runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
+
+pacchettiBottiPushToRegistryMetadata :: PackageName -> FilePath -> Aff (Either String Unit)
+pacchettiBottiPushToRegistryMetadata packageName registryDir = Except.runExceptT do
+  GitHubToken token <- configurePacchettiBotti (Just registryDir)
+  runGit_ [ "pull", "--rebase" ] (Just registryDir)
+  runGit_ [ "add", Path.concat [ "metadata", PackageName.print packageName <> ".json" ] ] (Just registryDir)
+  runGit_ [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] (Just registryDir)
+  let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
+  runGitSilent [ "push", origin, "main" ] (Just registryDir)
+
+runGit_ :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
+runGit_ args cwd = void $ runGit args cwd
 
 runGit :: Array String -> Maybe FilePath -> ExceptT String Aff String
 runGit args cwd = ExceptT do
   result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
-  pure $ case result.exit of
-    NodeProcess.Normally 0 -> Right $ String.trim result.stdout
-    _ -> Left $ String.trim result.stderr
+  let stdout = String.trim result.stdout
+  let stderr = String.trim result.stderr
+  case result.exit of
+    NodeProcess.Normally 0 -> do
+      unless (String.null stdout) (info stdout)
+      pure $ Right stdout
+    _ -> do
+      unless (String.null stderr) (error stderr)
+      pure $ Left stderr
+
+runGitSilent :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
+runGitSilent args cwd = ExceptT do
+  result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
+  case result.exit of
+    NodeProcess.Normally 0 -> pure $ Right unit
+    _ -> pure $ Left $ "Failed to run git command via runGitSilent."
 
 -- | The absolute maximum bytes allowed in a package
 maxPackageBytes :: Number
@@ -908,7 +1015,8 @@ ignoredGlobs =
 
 readMetadata :: PackageName -> { noMetadata :: String } -> RegistryM Metadata
 readMetadata packageName { noMetadata } = do
-  let metadataFilePath = metadataFile packageName
+  registryDir <- asks _.registry
+  let metadataFilePath = metadataFile registryDir packageName
   liftAff (FS.exists metadataFilePath) >>= case _ of
     false -> throwWithComment noMetadata
     _ -> pure unit
@@ -917,14 +1025,24 @@ readMetadata packageName { noMetadata } = do
     Nothing -> throwWithComment "Couldn't read metadata file for your package.\ncc @purescript/packaging"
     Just m -> pure m
 
-writeMetadata :: PackageName -> Metadata -> { commitFailed :: String -> String, commitSucceeded :: String } -> RegistryM Unit
-writeMetadata packageName metadata { commitFailed, commitSucceeded } = do
-  let metadataFilePath = metadataFile packageName
-  liftAff $ Json.writeJsonFile metadataFilePath metadata
+writeMetadata :: PackageName -> Metadata -> RegistryM (Either String Unit)
+writeMetadata packageName metadata = do
+  registryDir <- asks _.registry
+  liftAff $ Json.writeJsonFile (metadataFile registryDir packageName) metadata
   updatePackagesMetadata packageName metadata
-  commitToTrunk packageName metadataFilePath >>= case _ of
-    Left err -> comment (commitFailed err)
-    Right _ -> comment commitSucceeded
+  commitMetadataFile packageName registryDir
+
+writeInsertIndex :: Manifest -> RegistryM (Either String Unit)
+writeInsertIndex manifest@(Manifest { name }) = do
+  registryIndexDir <- asks _.registryIndex
+  liftAff $ Index.insertManifest registryIndexDir manifest
+  commitIndexFile name registryIndexDir
+
+writeDeleteIndex :: PackageName -> Version -> RegistryM (Either String Unit)
+writeDeleteIndex name version = do
+  registryIndexDir <- asks _.registryIndex
+  liftAff $ Index.deleteManifest registryIndexDir name version
+  commitIndexFile name registryIndexDir
 
 -- | Call a specific version of the PureScript compiler
 callCompiler_ :: { version :: String, args :: Array String, cwd :: Maybe FilePath } -> Aff Unit
