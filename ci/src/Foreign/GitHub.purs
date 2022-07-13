@@ -276,9 +276,6 @@ formatRFC1123 = List.fromFoldable
   , Placeholder "UTC"
   ]
 
-toGitHubTime :: DateTime.DateTime -> String
-toGitHubTime = Formatter.DateTime.format formatRFC1123
-
 -- | A helper function for implementing GET requests to the GitHub API that
 -- | relies on the GitHub API to report whether there is any new data, and falls
 -- | back to the cache if there is not. Should only be used on GET requests; for
@@ -325,15 +322,16 @@ cachedRequest runRequest requestArgs@{ route: Route route } { cache, checkGitHub
       Right payload
         | checkGitHub, DateTime.diff now cached.modified >= Duration.Hours 1.0 -> do
             log $ "CACHE EXPIRED: " <> route
+            let _gitHubTime = Formatter.DateTime.format formatRFC1123 cached.modified
             result <- Except.runExceptT $ runRequest $ requestArgs
-              { headers = Object.insert "If-Modified-Since" (toGitHubTime cached.modified) requestArgs.headers }
+            {- TODO: Re-enable when GitHub honors requests again.
+            result <- Except.runExceptT $ runRequest $ requestArgs
+              { headers = Object.insert "If-Modified-Since" gitHubTime requestArgs.headers }
+            -}
             case result of
               -- A 304 response means the resource has not changed and we should
               -- return from cache.
               Left err | err.statusCode == 304 -> do
-                -- TODO: Remove this line when GitHub starts honoring rate limit
-                -- exclusions for conditional requests again.
-                liftEffect $ Cache.writeJsonEntry route payload cache
                 pure $ Right payload
               _ -> do
                 liftEffect $ Cache.writeJsonEntry route result cache

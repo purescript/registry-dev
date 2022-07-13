@@ -158,40 +158,49 @@ main = launchAff_ do
             }
         }
 
-    case mode of
-      -- Simulate the API pipeline by importing package versions that have been
-      -- released since the last time the registry was updated. This function will
-      -- use PacchettiBotti to commit changes upstream to both the registry and
-      -- the registry index.
-      --
-      -- TODO: If we are able to construct a build plan, then we could open an
-      -- issue rather than exercise the API directly, which would give us a more
-      -- real-world look at how the registry works.
-      UpdateRegistry -> do
-        log "Executing API for new package versions..."
-        -- Note that we don't need to take any action after each upload, as the
-        -- upload process in 'update' mode already commits and pushes changes.
-        void $ for notPublished \(Manifest manifest) -> runRegistryM env do
-          log $ "REGISTERING " <> show manifest.name <> "@" <> show manifest.version <> " at " <> show manifest.location
-          API.runOperation octokit (mkOperation manifest)
+    case notPublished of
+      [] -> log "No packages to publish."
+      manifests -> do
+        let printPackage (Manifest { name, version }) = PackageName.print name <> "@" <> Version.printVersion version
+        log $ "\n----------"
+        log $ "Ready to publish: " <> String.joinWith "\n  " (map printPackage manifests)
+        log $ "----------\n"
 
-      -- Generate manifest and metadata files for all packages in the legacy
-      -- registry that don't already have them. To generate the full index from
-      -- scratch, delete the contents of the registry metadata directory.
-      --
-      -- This branch uploads any packages that are not already in the registry and
-      -- writes the resulting metadata and manifest files on disk. It does not
-      -- not commit changes: you are expected to commit those changes yourself.
-      GenerateRegistry -> do
-        log "Executing local API for new package versions..."
-        void $ for notPublished \(Manifest manifest) -> runRegistryM env do
-          log "\n\n--------------------"
-          log $ "UPLOADING PACKAGE: " <> show manifest.name <> "@" <> show manifest.version <> " at " <> show manifest.location
-          log "--------------------"
-          API.runOperation octokit (mkOperation manifest)
-        log "Writing registry index to disk..."
-        void $ for indexPackages \manifest ->
-          Index.insertManifest API.registryIndexPath manifest
+        let
+          publish env =
+            void $ for notPublished \(Manifest manifest) -> do
+              log "\n\n--------------------"
+              log $ "UPLOADING PACKAGE: " <> show manifest.name <> "@" <> show manifest.version <> " at " <> show manifest.location
+              log "--------------------"
+              API.runOperation octokit (mkOperation manifest)
+
+        case mode of
+          -- Simulate the API pipeline by importing package versions that have been
+          -- released since the last time the registry was updated. This function will
+          -- use PacchettiBotti to commit changes upstream to both the registry and
+          -- the registry index.
+          --
+          -- TODO: If we are able to construct a build plan, then we could open an
+          -- issue rather than exercise the API directly, which would give us a more
+          -- real-world look at how the registry works.
+          UpdateRegistry -> do
+            log "Executing API for new package versions..."
+            publish
+            log "Done!"
+
+          -- Generate manifest and metadata files for all packages in the legacy
+          -- registry that don't already have them. To generate the full index from
+          -- scratch, delete the contents of the registry metadata directory.
+          --
+          -- This branch uploads any packages that are not already in the registry and
+          -- writes the resulting metadata and manifest files on disk. It does not
+          -- not commit changes: you are expected to commit those changes yourself.
+          GenerateRegistry -> do
+            log "Executing local API for new package versions..."
+            publish env
+            log "Writing registry index to disk..."
+            void $ for indexPackages \manifest ->
+              liftAff $ Index.insertManifest API.registryIndexPath manifest
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
