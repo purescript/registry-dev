@@ -1,6 +1,6 @@
 module Registry.Legacy.Manifest where
 
-import Prelude
+import Registry.Prelude
 
 import Control.Monad.Except as Except
 import Data.Array as Array
@@ -23,7 +23,6 @@ import Registry.Json ((.:), (.:?))
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Prelude (class RegistryJson, Aff, Either(..), Encoding(..), Map, Maybe(..), NonEmptyArray, NonEmptyString, RawPackageName(..), RawVersion(..), RawVersionRange(..), Tuple(..), apply, bind, discard, foldlWithIndex, fromMaybe, hush, join, liftAff, liftEffect, lmap, log, map, maybe, partitionEithers, pure, show, stripPureScriptPrefix, throwError, un, unless, (#), ($), ($>), (/=), (<#>), (<$>), (<<<), (<>), (<|>), (=<<), (>>=))
 import Registry.Schema (Location, Manifest(..))
 import Registry.Version (Version)
 import Registry.Version as Version

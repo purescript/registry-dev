@@ -319,12 +319,9 @@ charsUntilSpace =
 -- |   - 1.1.1 becomes 2.0.0
 bumpHighest :: Version -> Version
 bumpHighest version@(Version v) =
-  if v.major >= 1 then
-    bumpMajor version
-  else if v.minor >= 1 then
-    bumpMinor version
-  else
-    bumpPatch version
+  if v.major >= 1 then bumpMajor version
+  else if v.minor >= 1 then bumpMinor version
+  else bumpPatch version
 
 bumpMajor :: Version -> Version
 bumpMajor (Version version) = Version (version { major = version.major + 1, minor = 0, patch = 0 })

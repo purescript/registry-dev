@@ -6,7 +6,6 @@
   , "affjax"
   , "argonaut-core"
   , "arrays"
-  , "avar"
   , "b64"
   , "bifunctors"
   , "console"

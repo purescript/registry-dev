@@ -11,17 +11,13 @@ import Registry.Prelude
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
-import Control.Parallel as Parallel
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Compactable (separate)
 import Data.Foldable as Foldable
 import Data.Map as Map
 import Data.String as String
-import Data.TraversableWithIndex (class TraversableWithIndex)
 import Dotenv as Dotenv
-import Effect.AVar as Effect.AVar
-import Effect.Aff.AVar as AVar
 import Effect.Exception as Exception
 import Effect.Ref as Ref
 import Foreign.GitHub (GitHubToken(..))
@@ -150,40 +146,40 @@ main = launchAff_ do
             }
         }
 
-      case mode of
-        -- Simulate the API pipeline by importing package versions that have been
-        -- released since the last time the registry was updated. This function will
-        -- use PacchettiBotti to commit changes upstream to both the registry and
-        -- the registry index.
-        --
-        -- TODO: If we are able to construct a build plan, then we could open an
-        -- issue rather than exercise the API directly, which would give us a more
-        -- real-world look at how the registry works.
-        UpdateRegistry -> do
-          log "Executing API for new package versions..."
-          -- Note that we don't need to take any action after each upload, as the
-          -- upload process in 'update' mode already commits and pushes changes.
-          void $ for notPublished \(Manifest manifest) -> runRegistryM env do
-            log $ "REGISTERING " <> show manifest.name <> "@" <> show manifest.version <> " at " <> show manifest.location
-            API.runOperation octokit (mkOperation manifest)
+    case mode of
+      -- Simulate the API pipeline by importing package versions that have been
+      -- released since the last time the registry was updated. This function will
+      -- use PacchettiBotti to commit changes upstream to both the registry and
+      -- the registry index.
+      --
+      -- TODO: If we are able to construct a build plan, then we could open an
+      -- issue rather than exercise the API directly, which would give us a more
+      -- real-world look at how the registry works.
+      UpdateRegistry -> do
+        log "Executing API for new package versions..."
+        -- Note that we don't need to take any action after each upload, as the
+        -- upload process in 'update' mode already commits and pushes changes.
+        void $ for notPublished \(Manifest manifest) -> runRegistryM env do
+          log $ "REGISTERING " <> show manifest.name <> "@" <> show manifest.version <> " at " <> show manifest.location
+          API.runOperation octokit (mkOperation manifest)
 
-        -- Generate manifest and metadata files for all packages in the legacy
-        -- registry that don't already have them. To generate the full index from
-        -- scratch, delete the contents of the registry metadata directory.
-        --
-        -- This branch uploads any packages that are not already in the registry and
-        -- writes the resulting metadata and manifest files on disk. It does not
-        -- not commit changes: you are expected to commit those changes yourself.
-        GenerateRegistry -> do
-          log "Executing local API for new package versions..."
-          void $ for notPublished \(Manifest manifest) -> runRegistryM env do
-            log "\n\n--------------------"
-            log $ "UPLOADING PACKAGE: " <> show manifest.name <> "@" <> show manifest.version <> " at " <> show manifest.location
-            log "--------------------"
-            API.runOperation octokit (mkOperation manifest)
-          log "Writing registry index to disk..."
-          void $ for indexPackages \manifest ->
-            Index.insertManifest API.registryIndexPath manifest
+      -- Generate manifest and metadata files for all packages in the legacy
+      -- registry that don't already have them. To generate the full index from
+      -- scratch, delete the contents of the registry metadata directory.
+      --
+      -- This branch uploads any packages that are not already in the registry and
+      -- writes the resulting metadata and manifest files on disk. It does not
+      -- not commit changes: you are expected to commit those changes yourself.
+      GenerateRegistry -> do
+        log "Executing local API for new package versions..."
+        void $ for notPublished \(Manifest manifest) -> runRegistryM env do
+          log "\n\n--------------------"
+          log $ "UPLOADING PACKAGE: " <> show manifest.name <> "@" <> show manifest.version <> " at " <> show manifest.location
+          log "--------------------"
+          API.runOperation octokit (mkOperation manifest)
+        log "Writing registry index to disk..."
+        void $ for indexPackages \manifest ->
+          Index.insertManifest API.registryIndexPath manifest
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
@@ -207,9 +203,9 @@ type ImportedIndex =
 -- | the legacy registry files. This function also collects import errors for
 -- | packages and package versions and reports packages that are present in the
 -- | legacy registry but not in the resulting registry.
-importLegacyRegistry :: LegacyRegistry -> Maybe RegistryIndex -> RegistryM ImportedIndex
-importLegacyRegistry legacyRegistry mbRegistry = do
-  manifests <- parIterateWithIndex legacyRegistry (buildLegacyPackageManifests mbRegistry)
+importLegacyRegistry :: LegacyRegistry -> RegistryIndex -> RegistryM ImportedIndex
+importLegacyRegistry legacyRegistry existingRegistry = do
+  manifests <- forWithIndex legacyRegistry (buildLegacyPackageManifests existingRegistry)
 
   let
     separatedPackages = separate manifests
@@ -286,11 +282,11 @@ importLegacyRegistry legacyRegistry mbRegistry = do
 -- | be fetched in the first place. Otherwise, it will produce errors for all
 -- | versions that don't produce valid manifests, and manifests for all that do.
 buildLegacyPackageManifests
-  :: Maybe RegistryIndex
+  :: RegistryIndex
   -> RawPackageName
   -> GitHub.PackageURL
   -> RegistryM (Either PackageValidationError (Map RawVersion (Either VersionValidationError Manifest)))
-buildLegacyPackageManifests octokit cache mbRegistry rawPackage rawUrl = do
+buildLegacyPackageManifests existingRegistry rawPackage rawUrl = do
   { cache, octokit } <- ask
   liftAff $ Except.runExceptT do
     package <- do
@@ -318,9 +314,8 @@ buildLegacyPackageManifests octokit cache mbRegistry rawPackage rawUrl = do
 
         -- If an existing registry was provided, then we can look up the existing
         -- manifest rather than produce a new one.
-        case mbRegistry of
-          Just registry | Just manifest <- Map.lookup version =<< Map.lookup package.name registry ->
-            pure manifest
+        case Map.lookup package.name registry >>= Map.lookup version of
+          Just manifest -> pure manifest
           _ -> do
             let key = "manifest__" <> show package.name <> "--" <> tag.name
             liftEffect (Cache.readJsonEntry key cache) >>= case _ of
@@ -528,24 +523,3 @@ calculateImportStats legacyRegistry { failedPackages, failedVersions, reservedPa
   { packages
   , versions
   }
-
--- | Run a computation over an indexed structure in parallel, using a bounded
--- | queue to avoid using too much memory at once.
-parIterateWithIndex
-  :: forall k t a b
-   . TraversableWithIndex k t
-  => (t a)
-  -> (k -> a -> Aff b)
-  -> Aff (t b)
-parIterateWithIndex t f = do
-  block <- AVar.empty
-  -- Keep this range low to avoid running into resource contention e.g. when
-  -- running Licensee, or disable parallelism.
-  for_ (Array.range 1 3) \_ -> liftEffect (Effect.AVar.put unit block mempty)
-  parForWithIndex t \k v -> do
-    AVar.take block
-    a <- f k v
-    _ <- liftEffect (Effect.AVar.put unit block mempty)
-    pure a
-  where
-  parForWithIndex t' f' = Parallel.sequential $ forWithIndex t' (\i -> Parallel.parallel <<< f' i)
