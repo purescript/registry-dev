@@ -6,16 +6,19 @@
 -- | you just want to iteratively pick up new releases.
 module Registry.Scripts.LegacyImporter where
 
-import Registry.Prelude
-
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Compactable (separate)
+import Data.Filterable (partition)
 import Data.Foldable as Foldable
+import Data.FunctorWithIndex (mapWithIndex)
+import Data.List as List
 import Data.Map as Map
+import Data.Ordering (invert)
+import Data.Set as Set
 import Data.String as String
 import Dotenv as Dotenv
 import Effect.Exception as Exception
@@ -31,14 +34,19 @@ import Registry.Index (RegistryIndex)
 import Registry.Index as Index
 import Registry.Json ((.:))
 import Registry.Json as Json
-import Registry.Legacy.Manifest (LegacyManifestValidationError)
+import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.Manifest as LegacyManifest
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
+<<<<<<< HEAD
 import Registry.RegistryM (readPackagesMetadata, runRegistryM)
+=======
+import Registry.Prelude (class Eq, class RegistryJson, Aff, Effect, Either(..), ExceptT(..), Map, Maybe(..), NonEmptyArray, RawPackageName(..), RawVersion(..), Tuple(..), Unit, bind, compare, discard, flip, foldlWithIndex, for, forWithIndex, hush, isNothing, launchAff_, liftAff, liftEffect, lmap, log, map, mapKeys, maybe, not, pure, show, snd, stripPureScriptPrefix, throwError, un, unit, unsafeFromRight, void, (#), ($), (+), (-), (<$>), (<<<), (<>), (=<<), (>=), (>=>), (>>=), (>>>))
+import Registry.RegistryM (runRegistryM)
+>>>>>>> b30565b (Formatted stats reporting)
 import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -101,7 +109,14 @@ main = launchAff_ do
     API.fillMetadataRef
 
     registryIndexPath <- asks _.registryIndex
-    existingRegistry <- liftAff $ Index.readRegistryIndex registryIndexPath
+    existingRegistry <- do
+      -- To ensure the metadata and registry index are always in sync, we remove
+      -- any entries from the registry index that don't have accompanying metadata
+      metadata <- liftEffect $ Ref.read metadataRef
+      registry <- liftAff $ Index.readRegistryIndex registryIndexPath
+      let hasMetadata package version = API.isPackageVersionInMetadata package version metadata
+      -- TODO: Delete missing metadata.
+      pure $ mapWithIndex (Map.filterKeys <<< hasMetadata) registry
 
     log "Reading legacy registry..."
     legacyRegistry <- liftAff readLegacyRegistryFiles
@@ -442,9 +457,11 @@ validatePackageDisabled package =
     reservedPackage = "Reserved package which cannot be uploaded."
     noSrcDirectory = "No version contains a 'src' directory."
 
+-- | Validate that a package name parses. Expects the package to already have
+-- | had its 'purescript-' prefix removed.
 validatePackageName :: RawPackageName -> Either PackageValidationError PackageName
-validatePackageName (RawPackageName prefixedName) =
-  PackageName.parse (stripPureScriptPrefix prefixedName) # lmap \parserError ->
+validatePackageName (RawPackageName name) =
+  PackageName.parse name # lmap \parserError ->
     { error: InvalidPackageName
     , reason: Parser.printParserError parserError
     }
@@ -484,13 +501,16 @@ formatVersionValidationError { error, reason } = case error of
 type LegacyRegistry = Map RawPackageName GitHub.PackageURL
 
 -- | Read the legacy registry files stored in the root of the registry-dev.
+-- | Package names have their 'purescript-' prefix trimmed.
 readLegacyRegistryFiles :: Aff (Map RawPackageName GitHub.PackageURL)
 readLegacyRegistryFiles = do
   bowerPackages <- readLegacyRegistryFile "bower-packages.json"
   registryPackages <- readLegacyRegistryFile "new-packages.json"
-  pure $ Map.union bowerPackages registryPackages
+  let allPackages = Map.union bowerPackages registryPackages
+  let stripPrefixes = mapKeys (RawPackageName <<< stripPureScriptPrefix)
+  pure $ stripPrefixes allPackages
   where
-  readLegacyRegistryFile :: String -> Aff (Map RawPackageName GitHub.PackageURL)
+  readLegacyRegistryFile :: String -> Aff (Map String GitHub.PackageURL)
   readLegacyRegistryFile sourceFile = do
     let path = Path.concat [ "..", sourceFile ]
     legacyPackages <- Json.readJsonFile path
@@ -503,23 +523,109 @@ readLegacyRegistryFiles = do
       Right packages -> pure packages
 
 type ImportStats =
-  { packages :: Int
-  , versions :: Int
+  { packagesProcessed :: Int
+  , versionsProcessed :: Int
+  , packageNamesReserved :: Int
+  , packageResults :: { success :: Int, partial :: Int, fail :: Int }
+  , versionResults :: { success :: Int, fail :: Int }
+  , packageErrors :: Map String Int
+  , versionErrors :: Map String Int
   }
 
 formatImportStats :: ImportStats -> String
-formatImportStats = show
+formatImportStats stats = String.joinWith "\n"
+  [ "\n----------\n"
+  , show stats.packagesProcessed <> " packages processed:"
+  , indent $ show stats.packageResults.success <> " fully successful"
+  , indent $ show stats.packageResults.partial <> " partially successful"
+  , indent $ show (stats.packageNamesReserved - stats.packageResults.fail) <> " reserved (no usable versions)"
+  , indent $ show stats.packageResults.fail <> " fully failed"
+  , indent "---"
+  , formatErrors stats.packageErrors
+  , ""
+  , show stats.versionsProcessed <> " versions processed:"
+  , indent $ show stats.versionResults.success <> " successful"
+  , indent $ show stats.versionResults.fail <> " failed"
+  , indent "---"
+  , formatErrors stats.versionErrors
+  , "\n----------\n"
+  ]
+  where
+  indent contents = "  " <> contents
+  formatErrors =
+    String.joinWith "\n"
+      <<< map (\(Tuple error count) -> indent (show count <> " " <> error))
+      <<< Array.sortBy (\a b -> invert (compare (snd a) (snd b)))
+      <<< Map.toUnfoldableUnordered
 
 calculateImportStats :: LegacyRegistry -> ImportedIndex -> ImportStats
-calculateImportStats legacyRegistry { failedPackages, failedVersions, reservedPackages, registryIndex } = do
+calculateImportStats legacyRegistry imported = do
   let
-    packages =
+    registryIndex =
+      mapKeys (RawPackageName <<< PackageName.print)
+        $ map (mapKeys (RawVersion <<< Version.rawVersion)) imported.registryIndex
+
+    packagesProcessed =
       Map.size legacyRegistry
 
-    versions =
-      Foldable.sum (map Map.size (Map.values registryIndex))
-        + Foldable.sum (map Map.size (Map.values failedVersions))
+    packageNamesReserved =
+      Map.size imported.reservedPackages
 
-  { packages
-  , versions
+    packageResults = do
+      let succeeded = Map.keys registryIndex
+      let failedPackages = Map.keys imported.failedPackages
+      let failedPackageVersions = Map.keys imported.failedVersions
+      let both = partition (_ `Set.member` failedPackageVersions) (Array.fromFoldable succeeded)
+      { success: Array.length both.no
+      , partial: Array.length both.yes
+      , fail: Set.size failedPackages
+      }
+
+    versionResults =
+      { success: Foldable.sum (map Map.size (Map.values registryIndex))
+      , fail: Foldable.sum (map Map.size (Map.values imported.failedVersions))
+      }
+
+    versionsProcessed =
+      versionResults.success + versionResults.fail
+
+    packageErrors =
+      Array.foldl (\m error -> Map.insertWith (+) error 1 m) Map.empty
+        $ map toKey
+        $ Array.fromFoldable
+        $ Map.values imported.failedPackages
+      where
+      toKey = _.error >>> case _ of
+        InvalidPackageName -> "Invalid Package Name"
+        InvalidPackageURL _ -> "Invalid Package URL"
+        CannotAccessRepo _ -> "Cannot Access Repo"
+        DisabledPackage -> "Disabled Package"
+
+    versionErrors =
+      Array.foldl (\m error -> Map.insertWith (+) error 1 m) Map.empty
+        $ Array.concatMap toKey
+        $ Array.fromFoldable
+        $ List.concatMap Map.values
+        $ Map.values imported.failedVersions
+      where
+      toKey = _.error >>> case _ of
+        InvalidTag _ -> [ "Invalid Tag" ]
+        DisabledVersion -> [ "Disabled Version" ]
+        CannotAccessLegacyManifest -> [ "Cannot Access Legacy Manifest" ]
+        InvalidManifest errs -> map (\err -> "Invalid Manifest (" <> innerKey err <> ")") (NonEmptyArray.toArray errs)
+        UnregisteredDependencies _ -> [ "Unregistered Dependencies" ]
+
+      innerKey = _.error >>> case _ of
+        MissingLicense -> "Missing License"
+        InvalidLicense _ -> "Invalid License"
+        InvalidDependencyNames _ -> "Invalid Dependency Names"
+        InvalidDependencyRanges _ -> "Invalid Dependency Version Bounds"
+
+  { packagesProcessed
+  , versionsProcessed
+  , packageNamesReserved
+  , packageResults
+  , versionResults
+  , packageErrors
+  , versionErrors
   }
