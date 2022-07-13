@@ -762,7 +762,7 @@ fetchRepo address path = FS.exists path >>= case _ of
   true -> do
     log $ "Found the " <> address.repo <> " repo locally, pulling..."
     result <- Except.runExceptT do
-      branch <- runGit [ "rev-parse", "--abbrev-ref", "HEAD" ] (Just path)
+      branch <- runGitSilent [ "rev-parse", "--abbrev-ref", "HEAD" ] (Just path)
       when (branch /= "main") do
         throwError $ Array.fold
           [ "Cannot import using a branch other than 'main'. Got: "
@@ -874,20 +874,20 @@ configurePacchettiBotti cwd = do
 pacchettiBottiPushToRegistryIndex :: PackageName -> FilePath -> Aff (Either String Unit)
 pacchettiBottiPushToRegistryIndex packageName registryIndexDir = Except.runExceptT do
   GitHubToken token <- configurePacchettiBotti (Just registryIndexDir)
-  runGit_ [ "pull", "--rebase" ] (Just registryIndexDir)
+  runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryIndexDir)
   runGit_ [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
   runGit_ [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
   let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-index.git"
-  runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
+  void $ runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
 
 pacchettiBottiPushToRegistryMetadata :: PackageName -> FilePath -> Aff (Either String Unit)
 pacchettiBottiPushToRegistryMetadata packageName registryDir = Except.runExceptT do
   GitHubToken token <- configurePacchettiBotti (Just registryDir)
-  runGit_ [ "pull", "--rebase" ] (Just registryDir)
+  runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
   runGit_ [ "add", Path.concat [ "metadata", PackageName.print packageName <> ".json" ] ] (Just registryDir)
   runGit_ [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] (Just registryDir)
   let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
-  runGitSilent [ "push", origin, "main" ] (Just registryDir)
+  void $ runGitSilent [ "push", origin, "main" ] (Just registryDir)
 
 runGit_ :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
 runGit_ args cwd = void $ runGit args cwd
@@ -905,11 +905,13 @@ runGit args cwd = ExceptT do
       unless (String.null stderr) (error stderr)
       pure $ Left stderr
 
-runGitSilent :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
+runGitSilent :: Array String -> Maybe FilePath -> ExceptT String Aff String
 runGitSilent args cwd = ExceptT do
   result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
   case result.exit of
-    NodeProcess.Normally 0 -> pure $ Right unit
+    NodeProcess.Normally 0 -> do
+      let stdout = String.trim result.stdout
+      pure $ Right stdout
     _ -> pure $ Left $ "Failed to run git command via runGitSilent."
 
 -- | The absolute maximum bytes allowed in a package

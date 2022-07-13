@@ -169,8 +169,8 @@ main = launchAff_ do
       manifests -> do
         let printPackage (Manifest { name, version }) = PackageName.print name <> "@" <> Version.printVersion version
         log $ "\n----------"
-        log $ "Ready to publish: " <> String.joinWith "\n  " (map printPackage manifests)
-        log $ "----------"
+        log $ "Ready to publish:\n" <> String.joinWith "\n  " (map printPackage manifests)
+        log $ "----------\n"
 
         let
           publishPackages =
@@ -190,7 +190,6 @@ main = launchAff_ do
           -- issue rather than exercise the API directly, which would give us a more
           -- real-world look at how the registry works.
           UpdateRegistry -> do
-            log "Executing API for new package versions..."
             publishPackages
             log "Done!"
 
@@ -202,7 +201,6 @@ main = launchAff_ do
           -- writes the resulting metadata and manifest files on disk. It does not
           -- not commit changes: you are expected to commit those changes yourself.
           GenerateRegistry -> do
-            log "Executing local API for new package versions..."
             publishPackages
             log "Writing registry index to disk..."
             void $ for indexPackages \manifest ->
