@@ -93,11 +93,19 @@ main = launchAff_ $ do
           , newlines 2
           , "You can try again by commenting on this issue with a corrected payload."
           ]
+<<<<<<< HEAD
 
       Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
         Left githubError -> throwError $ Aff.error $ GitHub.printGitHubError githubError
         Right _ -> pure unit
 
+=======
+
+      Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
+        Left githubError -> throwError $ Aff.error $ GitHub.printGitHubError githubError
+        Right _ -> pure unit
+
+>>>>>>> master
     DecodedOperation issue op -> do
       cache <- Cache.useCache
       packagesMetadata <- liftEffect $ Ref.new Map.empty
@@ -105,7 +113,11 @@ main = launchAff_ $ do
         fetchRegistry
         fetchRegistryIndex
         fillMetadataRef
+<<<<<<< HEAD
         runOperation op
+=======
+        runOperation octokit op
+>>>>>>> master
 
 data OperationDecoding
   = NotJson
@@ -762,7 +774,11 @@ fetchRepo address path = FS.exists path >>= case _ of
   true -> do
     log $ "Found the " <> address.repo <> " repo locally, pulling..."
     result <- Except.runExceptT do
+<<<<<<< HEAD
       branch <- runGitSilent [ "rev-parse", "--abbrev-ref", "HEAD" ] (Just path)
+=======
+      branch <- runGit [ "rev-parse", "--abbrev-ref", "HEAD" ] (Just path)
+>>>>>>> master
       when (branch /= "main") do
         throwError $ Array.fold
           [ "Cannot import using a branch other than 'main'. Got: "
@@ -771,12 +787,20 @@ fetchRepo address path = FS.exists path >>= case _ of
       runGit_ [ "pull", "--rebase" ] (Just path)
     case result of
       Left err -> Aff.throwError $ Aff.error err
+<<<<<<< HEAD
       Right _ -> pure unit
+=======
+      Right _ -> log $ "Pulled the latest from " <> address.repo
+>>>>>>> master
   _ -> do
     log $ "Didn't find the " <> address.repo <> " repo, cloning..."
     Except.runExceptT (runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
+<<<<<<< HEAD
       Right _ -> pure unit
+=======
+      Right _ -> log $ "Successfully cloned the " <> address.repo <> " repo"
+>>>>>>> master
 
 fetchRegistryIndex :: RegistryM Unit
 fetchRegistryIndex = do
@@ -874,20 +898,36 @@ configurePacchettiBotti cwd = do
 pacchettiBottiPushToRegistryIndex :: PackageName -> FilePath -> Aff (Either String Unit)
 pacchettiBottiPushToRegistryIndex packageName registryIndexDir = Except.runExceptT do
   GitHubToken token <- configurePacchettiBotti (Just registryIndexDir)
+<<<<<<< HEAD
   runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryIndexDir)
   runGit_ [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
   runGit_ [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
   let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-index.git"
   void $ runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
+=======
+  runGit_ [ "pull", "--rebase" ] (Just registryIndexDir)
+  runGit_ [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
+  runGit_ [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
+  let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-index.git"
+  runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
+>>>>>>> master
 
 pacchettiBottiPushToRegistryMetadata :: PackageName -> FilePath -> Aff (Either String Unit)
 pacchettiBottiPushToRegistryMetadata packageName registryDir = Except.runExceptT do
   GitHubToken token <- configurePacchettiBotti (Just registryDir)
+<<<<<<< HEAD
   runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
   runGit_ [ "add", Path.concat [ "metadata", PackageName.print packageName <> ".json" ] ] (Just registryDir)
   runGit_ [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] (Just registryDir)
   let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
   void $ runGitSilent [ "push", origin, "main" ] (Just registryDir)
+=======
+  runGit_ [ "pull", "--rebase" ] (Just registryDir)
+  runGit_ [ "add", Path.concat [ "metadata", PackageName.print packageName <> ".json" ] ] (Just registryDir)
+  runGit_ [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] (Just registryDir)
+  let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
+  runGitSilent [ "push", origin, "main" ] (Just registryDir)
+>>>>>>> master
 
 runGit_ :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
 runGit_ args cwd = void $ runGit args cwd
@@ -905,6 +945,7 @@ runGit args cwd = ExceptT do
       unless (String.null stderr) (error stderr)
       pure $ Left stderr
 
+<<<<<<< HEAD
 runGitSilent :: Array String -> Maybe FilePath -> ExceptT String Aff String
 runGitSilent args cwd = ExceptT do
   result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
@@ -912,6 +953,13 @@ runGitSilent args cwd = ExceptT do
     NodeProcess.Normally 0 -> do
       let stdout = String.trim result.stdout
       pure $ Right stdout
+=======
+runGitSilent :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
+runGitSilent args cwd = ExceptT do
+  result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
+  case result.exit of
+    NodeProcess.Normally 0 -> pure $ Right unit
+>>>>>>> master
     _ -> pure $ Left $ "Failed to run git command via runGitSilent."
 
 -- | The absolute maximum bytes allowed in a package
