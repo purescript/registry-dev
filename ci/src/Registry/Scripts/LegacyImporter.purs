@@ -168,16 +168,19 @@ main = launchAff_ do
       [] -> log "No packages to publish."
       manifests -> do
         let printPackage (Manifest { name, version }) = PackageName.print name <> "@" <> Version.printVersion version
-        log $ "\n----------"
-        log $ "Ready to publish:\n" <> String.joinWith "\n  " (map printPackage manifests)
-        log $ "----------\n"
+        log "\n----------"
+        log "AVAILABLE TO PUBLISH"
+        log "----------"
+        log $ "  " <> String.joinWith "\n  " (map printPackage manifests)
 
         let
           publishPackages =
             void $ for notPublished \(Manifest manifest) -> do
-              log "\n--------------------"
-              log $ "UPLOADING PACKAGE: " <> show manifest.name <> "@" <> show manifest.version <> " at " <> show manifest.location
-              log "--------------------"
+              log "\n----------"
+              log "UPLOADING"
+              log $ PackageName.print manifest.name <> "@" <> Version.printVersion manifest.version
+              log $ show manifest.location
+              log "----------"
               API.runOperation (mkOperation manifest)
 
         case mode of
@@ -543,7 +546,7 @@ type ImportStats =
 
 formatImportStats :: ImportStats -> String
 formatImportStats stats = String.joinWith "\n"
-  [ "\n----------\n"
+  [ "\n----------\nIMPORT STATS\n----------\n"
   , show stats.packagesProcessed <> " packages processed:"
   , indent $ show stats.packageResults.success <> " fully successful"
   , indent $ show stats.packageResults.partial <> " partially successful"
@@ -557,7 +560,7 @@ formatImportStats stats = String.joinWith "\n"
   , indent $ show stats.versionResults.fail <> " failed"
   , indent "---"
   , formatErrors stats.versionErrors
-  , "\n----------\n"
+  , ""
   ]
   where
   indent contents = "  " <> contents
