@@ -1,19 +1,23 @@
 module Registry.Version
-  ( Version
-  , major
-  , minor
-  , patch
-  , rawVersion
-  , printVersion
-  , parseVersion
+  ( ParseMode(..)
   , Range
-  , rangeIncludes
+  , Version
+  , bumpHighest
+  , bumpMajor
+  , bumpMinor
+  , bumpPatch
   , greaterThanOrEq
   , lessThan
-  , printRange
-  , rawRange
-  , ParseMode(..)
+  , major
+  , minor
   , parseRange
+  , parseVersion
+  , patch
+  , printRange
+  , printVersion
+  , rangeIncludes
+  , rawRange
+  , rawVersion
   ) where
 
 import Registry.Prelude
@@ -308,6 +312,22 @@ charsUntilSpace =
   StringParser.Combinators.manyTill
     StringParser.CodeUnits.anyChar
     (StringParser.CodeUnits.char ' ')
+
+-- | Increments the greatest SemVer position.
+-- |   - 0.0.1 becomes 0.0.2
+-- |   - 0.1.1 becomes 0.2.0
+-- |   - 1.1.1 becomes 2.0.0
+bumpHighest :: Version -> Version
+bumpHighest version@(Version v) =
+  if v.major >= 1 then bumpMajor version
+  else if v.minor >= 1 then bumpMinor version
+  else bumpPatch version
+
+bumpMajor :: Version -> Version
+bumpMajor (Version version) = Version (version { major = version.major + 1, minor = 0, patch = 0 })
+
+bumpMinor :: Version -> Version
+bumpMinor (Version version) = Version (version { minor = version.minor + 1, patch = 0 })
 
 bumpPatch :: Version -> Version
 bumpPatch (Version version) = Version (version { patch = version.patch + 1 })

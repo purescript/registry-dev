@@ -100,7 +100,12 @@
             '';
 
             registry-importer = ''
-              spago run -m Registry.Scripts.LegacyImport
+              if [ -z "$1" ]; then
+                echo "No arguments supplied. Expected one of: generate, update"
+                exit 1
+              fi
+
+              spago run -m Registry.Scripts.LegacyImporter --node-args $1
             '';
 
             # This script checks that there are no duplicate entries in the two json files listing packages

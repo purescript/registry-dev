@@ -23,9 +23,9 @@ import Node.Process as Process
 import Registry.API as API
 import Registry.Cache as Cache
 import Registry.Json as Json
+import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry(..))
 import Registry.PackageName (PackageName)
 import Registry.RegistryM (readPackagesMetadata, runRegistryM)
-import Registry.Schema (LegacyPackageSet(..), LegacyPackageSetEntry(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 

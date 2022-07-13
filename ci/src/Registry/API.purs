@@ -12,6 +12,7 @@ import Control.Monad.Reader (ask, asks)
 import Data.Argonaut.Parser as Argonaut.Core
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
 import Data.Foldable (traverse_)
 import Data.Generic.Rep as Generic
@@ -51,14 +52,13 @@ import Registry.Cache as Cache
 import Registry.Hash as Hash
 import Registry.Index as Index
 import Registry.Json as Json
+import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
 import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
-import Registry.Scripts.LegacyImport.Error (ImportError(..))
-import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Version (ParseMode(..), Range, Version)
 import Registry.Version as Version
@@ -105,7 +105,7 @@ main = launchAff_ $ do
         fetchRegistry
         fetchRegistryIndex
         fillMetadataRef
-        runOperation octokit op
+        runOperation op
 
 data OperationDecoding
   = NotJson
@@ -138,8 +138,8 @@ readOperation eventPath = do
 
 -- TODO: test all the points where the pipeline could throw, to show that we are implementing
 -- all the necessary checks
-runOperation :: Octokit -> Operation -> RegistryM Unit
-runOperation octokit operation = case operation of
+runOperation :: Operation -> RegistryM Unit
+runOperation operation = case operation of
   Addition { packageName, newRef, buildPlan, newPackageLocation } -> do
     packagesMetadata <- readPackagesMetadata
     -- If we already have a metadata file for this package, then it is already
@@ -149,7 +149,7 @@ runOperation octokit operation = case operation of
       -- registered, then we convert their operation to an update under the
       -- assumption they are trying to publish a new version.
       Just metadata | metadata.location == newPackageLocation ->
-        runOperation octokit $ Update { packageName, buildPlan, updateRef: newRef }
+        runOperation $ Update { packageName, buildPlan, updateRef: newRef }
       -- Otherwise, if they attempted to re-register the package under a new
       -- location, then they either did not know the package already existed or
       -- they are attempting a transfer.
@@ -344,22 +344,18 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
       Left _ -> throwWithComment $ "Not a valid registry version: " <> updateRef
       Right result -> pure result
 
-    let
-      liftError = map (lmap ManifestImportError)
+    legacyManifest <- liftAff (Legacy.Manifest.fetchLegacyManifest octokit cache address (RawVersion updateRef)) >>= case _ of
+      Left err -> throwWithComment $ "Unable to retrieve legacy manifest: " <> err
+      Right legacy -> pure legacy
 
-      runManifest =
-        Except.runExceptT <<< Except.mapExceptT (liftAff <<< map (lmap Json.printJson))
-
-      gatherManifest :: ExceptT ImportError Aff Manifest
-      gatherManifest = do
-        manifestFields <- Manifest.constructManifestFields octokit cache (RawVersion updateRef) address
-        Except.mapExceptT liftError $ Manifest.toManifest packageName inputMetadata.location version manifestFields
-
-    runManifest gatherManifest >>= case _ of
-      Left err ->
-        throwWithComment $ "Unable to produce a manifest for legacy package: " <> err
-      Right manifest ->
-        liftAff $ Json.writeJsonFile manifestPath manifest
+    case Legacy.Manifest.parseLegacyManifest packageName inputMetadata.location version legacyManifest of
+      Left errors -> do
+        let formatError { error, reason } = reason <> " " <> Legacy.Manifest.printLegacyManifestError error
+        throwWithComment $ String.joinWith "\n" $ Array.concat
+          [ [ "There were problems with the legacy manifest file:" ]
+          , map formatError $ NonEmptyArray.toArray errors
+          ]
+      Right manifest -> liftAff $ Json.writeJsonFile manifestPath manifest
 
   -- TODO: Verify the manifest against metadata.
   -- Try to read the manifest, typechecking it
@@ -766,7 +762,7 @@ fetchRepo address path = FS.exists path >>= case _ of
   true -> do
     log $ "Found the " <> address.repo <> " repo locally, pulling..."
     result <- Except.runExceptT do
-      branch <- runGit [ "rev-parse", "--abbrev-ref", "HEAD" ] (Just path)
+      branch <- runGitSilent [ "rev-parse", "--abbrev-ref", "HEAD" ] (Just path)
       when (branch /= "main") do
         throwError $ Array.fold
           [ "Cannot import using a branch other than 'main'. Got: "
@@ -775,12 +771,12 @@ fetchRepo address path = FS.exists path >>= case _ of
       runGit_ [ "pull", "--rebase" ] (Just path)
     case result of
       Left err -> Aff.throwError $ Aff.error err
-      Right _ -> log $ "Pulled the latest from " <> address.repo
+      Right _ -> pure unit
   _ -> do
     log $ "Didn't find the " <> address.repo <> " repo, cloning..."
     Except.runExceptT (runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
-      Right _ -> log $ "Successfully cloned the " <> address.repo <> " repo"
+      Right _ -> pure unit
 
 fetchRegistryIndex :: RegistryM Unit
 fetchRegistryIndex = do
@@ -878,20 +874,20 @@ configurePacchettiBotti cwd = do
 pacchettiBottiPushToRegistryIndex :: PackageName -> FilePath -> Aff (Either String Unit)
 pacchettiBottiPushToRegistryIndex packageName registryIndexDir = Except.runExceptT do
   GitHubToken token <- configurePacchettiBotti (Just registryIndexDir)
-  runGit_ [ "pull", "--rebase" ] (Just registryIndexDir)
+  runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryIndexDir)
   runGit_ [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
   runGit_ [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
   let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-index.git"
-  runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
+  void $ runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
 
 pacchettiBottiPushToRegistryMetadata :: PackageName -> FilePath -> Aff (Either String Unit)
 pacchettiBottiPushToRegistryMetadata packageName registryDir = Except.runExceptT do
   GitHubToken token <- configurePacchettiBotti (Just registryDir)
-  runGit_ [ "pull", "--rebase" ] (Just registryDir)
+  runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
   runGit_ [ "add", Path.concat [ "metadata", PackageName.print packageName <> ".json" ] ] (Just registryDir)
   runGit_ [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] (Just registryDir)
   let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
-  runGitSilent [ "push", origin, "main" ] (Just registryDir)
+  void $ runGitSilent [ "push", origin, "main" ] (Just registryDir)
 
 runGit_ :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
 runGit_ args cwd = void $ runGit args cwd
@@ -909,11 +905,13 @@ runGit args cwd = ExceptT do
       unless (String.null stderr) (error stderr)
       pure $ Left stderr
 
-runGitSilent :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
+runGitSilent :: Array String -> Maybe FilePath -> ExceptT String Aff String
 runGitSilent args cwd = ExceptT do
   result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
   case result.exit of
-    NodeProcess.Normally 0 -> pure $ Right unit
+    NodeProcess.Normally 0 -> do
+      let stdout = String.trim result.stdout
+      pure $ Right stdout
     _ -> pure $ Left $ "Failed to run git command via runGitSilent."
 
 -- | The absolute maximum bytes allowed in a package

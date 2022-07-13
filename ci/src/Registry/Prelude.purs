@@ -33,6 +33,7 @@ import Data.FoldableWithIndex (forWithIndex_, foldlWithIndex) as Extra
 import Data.Identity (Identity) as Extra
 import Data.List (List) as Extra
 import Data.Map (Map) as Extra
+import Data.String.NonEmpty (NonEmptyString) as Extra
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing, isJust, maybe) as Maybe
 import Data.Newtype (un, class Newtype) as Extra
@@ -56,7 +57,7 @@ import Node.Encoding (Encoding(..)) as Extra
 import Node.Path (FilePath) as Extra
 import Partial.Unsafe (unsafeCrashWith) as Extra
 import Registry.Json (Json, class RegistryJson) as Registry.Json
-import Registry.Types (RawPackageName(..), RawVersion(..)) as Registry.Types
+import Registry.Types (RawPackageName(..), RawVersion(..), RawVersionRange(..)) as Registry.Types
 
 -- | Partition an array of `Either` values into failure and success  values
 partitionEithers :: forall e a. Array (Either.Either e a) -> { fail :: Array e, success :: Array a }

@@ -46,7 +46,6 @@
   , "partial"
   , "precise-datetime"
   , "prelude"
-  , "profunctor-lenses"
   , "record"
   , "refs"
   , "safe-coerce"
@@ -56,6 +55,7 @@
   , "sunde"
   , "transformers"
   , "tuples"
+  , "validation"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]

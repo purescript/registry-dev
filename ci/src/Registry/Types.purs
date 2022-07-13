@@ -15,7 +15,7 @@ derive newtype instance Show RawPackageName
 derive newtype instance StringEncodable RawPackageName
 derive newtype instance RegistryJson RawPackageName
 
--- | An unprocessed version, taken from a GitHub tag
+-- | An unprocessed version
 newtype RawVersion = RawVersion String
 
 derive instance Newtype RawVersion _
@@ -24,3 +24,13 @@ derive newtype instance Ord RawVersion
 derive newtype instance Show RawVersion
 derive newtype instance StringEncodable RawVersion
 derive newtype instance RegistryJson RawVersion
+
+-- | An unprocessed version range
+newtype RawVersionRange = RawVersionRange String
+
+derive instance Newtype RawVersionRange _
+derive newtype instance Eq RawVersionRange
+derive newtype instance Ord RawVersionRange
+derive newtype instance Show RawVersionRange
+derive newtype instance StringEncodable RawVersionRange
+derive newtype instance RegistryJson RawVersionRange
