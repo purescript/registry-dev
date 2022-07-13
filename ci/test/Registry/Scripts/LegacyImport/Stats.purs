@@ -1,5 +1,6 @@
 module Test.Registry.Scripts.LegacyImport.Stats where
 
+{-
 import Registry.Prelude
 
 import Data.Array.NonEmpty as NonEmptyArray
@@ -175,3 +176,4 @@ errorStats = do
       Stats.prettyPrintStats exampleStats `Assert.shouldEqual`
         "Packages: 7 total (2 totally succeeded, 0 partially succeeded, 5 totally failed)\nVersions: 12 total (5 totally succeeded, 0 partially succeeded, 7 totally failed)\nFailures by error:\n  noDependencyFiles: 3 versions across 2 packages\n  noManifests: 3 versions across 2 packages\n  malformedPackageName: 0 versions across 2 packages\n  manifestError: 2 versions across 1 packages\n    missingLicense: 2 versions across 1 packages\n    badVersion: 1 versions across 1 packages\n    invalidDependencyNames: 1 versions across 1 packages\n    missingName: 1 versions across 1 packages"
 
+-}

@@ -12,6 +12,7 @@ import Control.Monad.Reader (ask, asks)
 import Data.Argonaut.Parser as Argonaut.Core
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
 import Data.Foldable (traverse_)
 import Data.Generic.Rep as Generic
@@ -51,14 +52,13 @@ import Registry.Cache as Cache
 import Registry.Hash as Hash
 import Registry.Index as Index
 import Registry.Json as Json
+import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
 import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
-import Registry.Scripts.LegacyImport.Error (ImportError(..))
-import Registry.Scripts.LegacyImport.Manifest as Manifest
 import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Version (ParseMode(..), Range, Version)
 import Registry.Version as Version
@@ -344,22 +344,18 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
       Left _ -> throwWithComment $ "Not a valid registry version: " <> updateRef
       Right result -> pure result
 
-    let
-      liftError = map (lmap ManifestImportError)
+    legacyManifest <- liftAff (Legacy.Manifest.fetchLegacyManifest octokit cache address (RawVersion updateRef)) >>= case _ of
+      Left err -> throwWithComment $ "Unable to retrieve legacy manifest: " <> err
+      Right legacy -> pure legacy
 
-      runManifest =
-        Except.runExceptT <<< Except.mapExceptT (liftAff <<< map (lmap Json.printJson))
-
-      gatherManifest :: ExceptT ImportError Aff Manifest
-      gatherManifest = do
-        manifestFields <- Manifest.constructManifestFields octokit cache (RawVersion updateRef) address
-        Except.mapExceptT liftError $ Manifest.toManifest packageName inputMetadata.location version manifestFields
-
-    runManifest gatherManifest >>= case _ of
-      Left err ->
-        throwWithComment $ "Unable to produce a manifest for legacy package: " <> err
-      Right manifest ->
-        liftAff $ Json.writeJsonFile manifestPath manifest
+    case Legacy.Manifest.parseLegacyManifest packageName inputMetadata.location version legacyManifest of
+      Left errors -> do
+        let formatError { error, reason } = reason <> " " <> Legacy.Manifest.printLegacyManifestError error
+        throwWithComment $ String.joinWith "\n" $ Array.concat
+          [ [ "There were problems with the legacy manifest file:" ]
+          , map formatError $ NonEmptyArray.toArray errors
+          ]
+      Right manifest -> liftAff $ Json.writeJsonFile manifestPath manifest
 
   -- TODO: Verify the manifest against metadata.
   -- Try to read the manifest, typechecking it
@@ -775,12 +771,12 @@ fetchRepo address path = FS.exists path >>= case _ of
       runGit_ [ "pull", "--rebase" ] (Just path)
     case result of
       Left err -> Aff.throwError $ Aff.error err
-      Right _ -> log $ "Pulled the latest from " <> address.repo
+      Right _ -> pure unit
   _ -> do
     log $ "Didn't find the " <> address.repo <> " repo, cloning..."
     Except.runExceptT (runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
-      Right _ -> log $ "Successfully cloned the " <> address.repo <> " repo"
+      Right _ -> pure unit
 
 fetchRegistryIndex :: RegistryM Unit
 fetchRegistryIndex = do

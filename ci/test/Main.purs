@@ -5,10 +5,8 @@ module Test.Main
 import Registry.Prelude
 
 import Data.Array as Array
-import Data.Array.NonEmpty as NEA
 import Data.Foldable (traverse_)
 import Data.Map as Map
-import Data.String.NonEmpty as NES
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
 import Foreign.FastGlob as FastGlob
@@ -22,10 +20,10 @@ import Node.Process as Process
 import Registry.API (CompilerFailure(..), callCompiler, copyPackageSourceFiles)
 import Registry.API as API
 import Registry.Json as Json
+import Registry.Legacy.Manifest (Bowerfile(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
-import Registry.Scripts.LegacyImport.Bowerfile (Bowerfile(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 import Safe.Coerce (coerce)
@@ -35,7 +33,6 @@ import Test.Foreign.Licensee (licensee)
 import Test.Registry.Hash as Registry.Hash
 import Test.Registry.Index as Registry.Index
 import Test.Registry.SSH as SSH
-import Test.Registry.Scripts.LegacyImport.Stats (errorStats)
 import Test.Registry.Version as TestVersion
 import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
@@ -83,7 +80,7 @@ main = launchAff_ do
     Spec.describe "Manifest" do
       Spec.describe "Encoding" manifestEncoding
       Spec.describe "Encoding examples" (manifestExamplesRoundtrip manifestExamplePaths)
-    Spec.describe "Error Stats" errorStats
+    -- Spec.describe "Error Stats" errorStats
     Spec.describe "Registry Index" do
       Registry.Index.spec registryEnv
     Spec.describe "Hash" do
@@ -433,7 +430,7 @@ bowerFileEncoding = do
           ]
       description = Nothing
       bowerFile = Bowerfile
-        { license: NEA.fromArray $ Array.catMaybes [ NES.fromString "MIT" ]
+        { license: [ "MIT" ]
         , dependencies
         , description
         }

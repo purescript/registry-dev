@@ -6,6 +6,7 @@
   , "affjax"
   , "argonaut-core"
   , "arrays"
+  , "avar"
   , "b64"
   , "bifunctors"
   , "console"
@@ -46,7 +47,6 @@
   , "partial"
   , "precise-datetime"
   , "prelude"
-  , "profunctor-lenses"
   , "record"
   , "refs"
   , "safe-coerce"
@@ -56,6 +56,7 @@
   , "sunde"
   , "transformers"
   , "tuples"
+  , "validation"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]
