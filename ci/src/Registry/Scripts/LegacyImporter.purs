@@ -164,12 +164,12 @@ main = launchAff_ do
         let printPackage (Manifest { name, version }) = PackageName.print name <> "@" <> Version.printVersion version
         log $ "\n----------"
         log $ "Ready to publish: " <> String.joinWith "\n  " (map printPackage manifests)
-        log $ "----------\n"
+        log $ "----------"
 
         let
           publish env =
             void $ for notPublished \(Manifest manifest) -> do
-              log "\n\n--------------------"
+              log "\n--------------------"
               log $ "UPLOADING PACKAGE: " <> show manifest.name <> "@" <> show manifest.version <> " at " <> show manifest.location
               log "--------------------"
               API.runOperation octokit (mkOperation manifest)
