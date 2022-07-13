@@ -10,7 +10,7 @@ import Registry.Prelude
 
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
-import Control.Monad.Reader (ask)
+import Control.Monad.Reader (ask, asks)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Compactable (separate)
@@ -43,7 +43,7 @@ import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
-import Registry.RegistryM (readPackagesMetadata, runRegistryM)
+import Registry.RegistryM (RegistryM, readPackagesMetadata, runRegistryM)
 import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -106,20 +106,26 @@ main = launchAff_ do
     API.fillMetadataRef
 
     registryIndexPath <- asks _.registryIndex
+    registryPath <- asks _.registry
+
     existingRegistry <- do
       -- To ensure the metadata and registry index are always in sync, we remove
       -- any entries from the registry index that don't have accompanying metadata
       metadata <- liftEffect $ Ref.read metadataRef
       registry <- liftAff $ Index.readRegistryIndex registryIndexPath
       let hasMetadata package version = API.isPackageVersionInMetadata package version metadata
-      -- TODO: Delete missing metadata.
-      pure $ mapWithIndex (Map.filterKeys <<< hasMetadata) registry
+      let mismatched = mapWithIndex (Map.filterKeys <<< not <<< hasMetadata) registry
+      liftAff $ do
+        void $ forWithIndex mismatched \package versions ->
+          forWithIndex versions \version _ ->
+            Index.deleteManifest registryIndexPath package version
+        Index.readRegistryIndex registryIndexPath
 
     log "Reading legacy registry..."
     legacyRegistry <- liftAff readLegacyRegistryFiles
 
     log "Importing legacy registry packages..."
-    importedIndex <- importLegacyRegistry legacyRegistry (Just existingRegistry)
+    importedIndex <- importLegacyRegistry legacyRegistry existingRegistry
 
     liftAff do
       logImportStats legacyRegistry importedIndex
@@ -131,7 +137,7 @@ main = launchAff_ do
       log "Writing metadata for legacy packages that can't be registered..."
       void $ forWithIndex importedIndex.reservedPackages \package location -> do
         let metadata = { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
-        Json.writeJsonFile (API.metadataFile API.registryPath package) metadata
+        Json.writeJsonFile (API.metadataFile registryPath package) metadata
         liftEffect $ Ref.modify_ (Map.insert package metadata) metadataRef
 
     log "Sorting packages for upload..."
@@ -167,12 +173,12 @@ main = launchAff_ do
         log $ "----------"
 
         let
-          publish env =
+          publishPackages =
             void $ for notPublished \(Manifest manifest) -> do
               log "\n--------------------"
               log $ "UPLOADING PACKAGE: " <> show manifest.name <> "@" <> show manifest.version <> " at " <> show manifest.location
               log "--------------------"
-              API.runOperation octokit (mkOperation manifest)
+              API.runOperation (mkOperation manifest)
 
         case mode of
           -- Simulate the API pipeline by importing package versions that have been
@@ -185,7 +191,7 @@ main = launchAff_ do
           -- real-world look at how the registry works.
           UpdateRegistry -> do
             log "Executing API for new package versions..."
-            publish
+            publishPackages
             log "Done!"
 
           -- Generate manifest and metadata files for all packages in the legacy
@@ -197,10 +203,11 @@ main = launchAff_ do
           -- not commit changes: you are expected to commit those changes yourself.
           GenerateRegistry -> do
             log "Executing local API for new package versions..."
-            publish env
+            publishPackages
             log "Writing registry index to disk..."
             void $ for indexPackages \manifest ->
-              liftAff $ Index.insertManifest API.registryIndexPath manifest
+              liftAff $ Index.insertManifest registryIndexPath manifest
+            log "Done!"
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
@@ -333,9 +340,7 @@ buildLegacyPackageManifests existingRegistry rawPackage rawUrl = do
               LegacyManifest.parseLegacyManifest package.name location version legacyManifest
             pure parsedManifest
 
-        -- If an existing registry was provided, then we can look up the existing
-        -- manifest rather than produce a new one.
-        case Map.lookup package.name registry >>= Map.lookup version of
+        case Map.lookup package.name existingRegistry >>= Map.lookup version of
           Just manifest -> pure manifest
           _ -> do
             let key = "manifest__" <> show package.name <> "--" <> tag.name

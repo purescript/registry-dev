@@ -105,7 +105,7 @@ main = launchAff_ $ do
         fetchRegistry
         fetchRegistryIndex
         fillMetadataRef
-        runOperation octokit op
+        runOperation op
 
 data OperationDecoding
   = NotJson
@@ -138,8 +138,8 @@ readOperation eventPath = do
 
 -- TODO: test all the points where the pipeline could throw, to show that we are implementing
 -- all the necessary checks
-runOperation :: Octokit -> Operation -> RegistryM Unit
-runOperation octokit operation = case operation of
+runOperation :: Operation -> RegistryM Unit
+runOperation operation = case operation of
   Addition { packageName, newRef, buildPlan, newPackageLocation } -> do
     packagesMetadata <- readPackagesMetadata
     -- If we already have a metadata file for this package, then it is already
@@ -149,7 +149,7 @@ runOperation octokit operation = case operation of
       -- registered, then we convert their operation to an update under the
       -- assumption they are trying to publish a new version.
       Just metadata | metadata.location == newPackageLocation ->
-        runOperation octokit $ Update { packageName, buildPlan, updateRef: newRef }
+        runOperation $ Update { packageName, buildPlan, updateRef: newRef }
       -- Otherwise, if they attempted to re-register the package under a new
       -- location, then they either did not know the package already existed or
       -- they are attempting a transfer.
