@@ -85,7 +85,7 @@ dateFormatter = List.fromFoldable
 
 newtype PackageSet = PackageSet
   { compiler :: Version
-  , publishedTime :: Date
+  , published :: Date
   , packages :: Map PackageName Version
   , version :: Version
   }
