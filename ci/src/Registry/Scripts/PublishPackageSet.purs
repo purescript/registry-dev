@@ -53,7 +53,6 @@ main = Aff.launchAff_ do
   let
     env :: Env
     env =
-      -- TODO: Do we need to comment?
       { comment: mempty
       , closeIssue: mempty
       , commitMetadataFile: \_ _ -> pure (Right unit)
@@ -95,13 +94,6 @@ main = Aff.launchAff_ do
         pure (Tuple packageName versions)
 
     liftEffect $ Console.log "Fetching latest package set..."
-
-    -- Read package set directory from "registry" - FS.Aff.readDir
-    -- Trim JSON extension, parse versions, sort, take highest version
-    -- Check purescript-formatters for formatDateTime
-    -- Read that file as `PackageSet` - Date (YYYY-MM-DD, add newtype around DateTime, format as YYYY-MM-DD), not RFC3339String - to compare: date, then version
-    --    encode :: turn string to datetime
-    --    decode :: turn string to datetime, then print
 
     packageSets <- liftAff $ FS.Aff.readdir (Path.concat [ "registry", "package-sets" ])
 
@@ -147,13 +139,5 @@ main = Aff.launchAff_ do
 
     liftEffect $ Console.log "Found the following uploads eligible for inclusion in package set:"
     liftEffect $ Console.log (show uploads)
-
-    -- NOTE:
-    --    - Compute eligible uploads
-    --    - Compute batches via dependencies
-    --    - Make sure dependencies are in the package set unioned with the batch
-
-
-    -- Determine semver 
 
     pure unit
