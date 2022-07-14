@@ -173,42 +173,18 @@ main = launchAff_ do
         log "----------"
         log $ "  " <> String.joinWith "\n  " (map printPackage manifests)
 
-        let
-          publishPackages =
-            void $ for notPublished \(Manifest manifest) -> do
-              log "\n----------"
-              log "UPLOADING"
-              log $ PackageName.print manifest.name <> "@" <> Version.printVersion manifest.version
-              log $ show manifest.location
-              log "----------"
-              API.runOperation (mkOperation manifest)
+        void $ for notPublished \(Manifest manifest) -> do
+          log "\n----------"
+          log "UPLOADING"
+          log $ PackageName.print manifest.name <> "@" <> Version.printVersion manifest.version
+          log $ show manifest.location
+          log "----------"
+          API.runOperation (mkOperation manifest)
 
-        case mode of
-          -- Simulate the API pipeline by importing package versions that have been
-          -- released since the last time the registry was updated. This function will
-          -- use PacchettiBotti to commit changes upstream to both the registry and
-          -- the registry index.
-          --
-          -- TODO: If we are able to construct a build plan, then we could open an
-          -- issue rather than exercise the API directly, which would give us a more
-          -- real-world look at how the registry works.
-          UpdateRegistry -> do
-            publishPackages
-            log "Done!"
+    when (mode == GenerateRegistry) do
+      void $ for indexPackages (liftAff <<< Index.insertManifest registryIndexPath)
 
-          -- Generate manifest and metadata files for all packages in the legacy
-          -- registry that don't already have them. To generate the full index from
-          -- scratch, delete the contents of the registry metadata directory.
-          --
-          -- This branch uploads any packages that are not already in the registry and
-          -- writes the resulting metadata and manifest files on disk. It does not
-          -- not commit changes: you are expected to commit those changes yourself.
-          GenerateRegistry -> do
-            publishPackages
-            log "Writing registry index to disk..."
-            void $ for indexPackages \manifest ->
-              liftAff $ Index.insertManifest registryIndexPath manifest
-            log "Done!"
+    log "Done!"
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
