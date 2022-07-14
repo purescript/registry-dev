@@ -101,7 +101,7 @@ main = Aff.launchAff_ do
 
     let
       packageSetVersions :: Array Version
-      packageSetVersions = packageSets # Array.mapMaybe \s -> do 
+      packageSetVersions = packageSets # Array.mapMaybe \s -> do
         let versionString = String.take (String.length s - 5) s
         hush $ Version.parseVersion Version.Lenient versionString
 
@@ -117,7 +117,7 @@ main = Aff.launchAff_ do
     packageSetPath :: FilePath <- case latestPackageSet of
       Nothing -> unsafeCrashWith "ERROR: No existing package set."
       Just packageSetPath -> pure packageSetPath
-    
+
     packageSetResult :: Either String PackageSet <- liftAff $ Json.readJsonFile packageSetPath
 
     PackageSet { packages } :: PackageSet <- case packageSetResult of
