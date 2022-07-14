@@ -147,7 +147,6 @@ For example, in JSON:
 
 Package sets use the same versioning scheme as packages in the registry: semantic versions with no build metadata or prerelease identifiers. The package set version can be used to determine if is is safe for your project to update to a new package set. We version according to the following rules:
 
-The package sets version number can be used to determine if it is safe for your project to update to a new package set. We version according to the following rules:
 
 1. The major version is incremented when breaking changes occur in the package set: a package is removed, or a major version of a package in the set is incremented.
 2. The minor version is incremented when new packages are added to the package set, or when there was a minor version update in the package set.
