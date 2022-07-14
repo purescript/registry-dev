@@ -2,7 +2,11 @@ module Registry.Schema where
 
 import Registry.Prelude
 
+import Data.DateTime (DateTime(..))
+import Data.Formatter.DateTime (FormatterCommand(..), Formatter)
+import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Generic.Rep as Generic
+import Data.List as List
 import Data.Map as Map
 import Data.RFC3339String (RFC3339String)
 import Foreign.SPDX (License)
@@ -59,9 +63,29 @@ derive newtype instance Eq Owner
 derive newtype instance Show Owner
 derive newtype instance RegistryJson Owner
 
+newtype Date = Date DateTime
+
+derive instance Newtype Date _
+derive newtype instance Eq Date
+derive newtype instance Ord Date
+derive newtype instance Show Date
+
+instance RegistryJson Date where
+  encode (Date date) = Json.encode (Formatter.DateTime.format dateFormatter date)
+  decode = map Date <<< Formatter.DateTime.unformat dateFormatter <=< Json.decode
+
+dateFormatter :: Formatter
+dateFormatter = List.fromFoldable
+  [ YearFull
+  , Placeholder "-"
+  , MonthTwoDigits
+  , Placeholder "-"
+  , DayOfMonthTwoDigits
+  ]
+
 newtype PackageSet = PackageSet
   { compiler :: Version
-  , publishedTime :: RFC3339String
+  , publishedTime :: Date
   , packages :: Map PackageName Version
   , version :: Version
   }
