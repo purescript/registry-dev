@@ -2,6 +2,7 @@ module Registry.Scripts.PublishPackageSet where
 
 import Registry.Prelude
 
+import Control.Monad.Reader (asks)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
@@ -95,7 +96,8 @@ main = Aff.launchAff_ do
 
     liftEffect $ Console.log "Fetching latest package set..."
 
-    packageSets <- liftAff $ FS.Aff.readdir (Path.concat [ "registry", "package-sets" ])
+    registryPath <- asks _.registry
+    packageSets <- liftAff $ FS.Aff.readdir (Path.concat [ registryPath, "package-sets" ])
 
     let
       packageSetVersions :: Array Version
