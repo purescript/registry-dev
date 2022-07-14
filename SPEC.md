@@ -126,7 +126,7 @@ Package sets are stored in the `registry` repository under the `package-sets` di
 
 1. `version`, which is a string containing the SemVer package set version for this set.
 2. `compiler`, which is a string containing the SemVer compiler version used to verify the package set.
-3. `date`, which is a date string in YYYY-MM-DD format that describes which day this package set was produced.
+3. `published`, which is a date string in YYYY-MM-DD format that describes which day this package set was produced.
 4. `packages`, which is an object in which keys are package names and values are package versions (a SemVer version).
 
 For example, in JSON:
@@ -134,7 +134,7 @@ For example, in JSON:
 ```json
 {
   "version": "2.3.1",
-  "date": "2022-04-19",
+  "published": "2022-04-19",
   "compiler": "0.14.9",
   "packages": {
     "aff": "5.0.0",
@@ -145,17 +145,8 @@ For example, in JSON:
 
 #### Package Set Naming Conventions
 
-Package sets use the following naming convention:
+Package sets use the same versioning scheme as packages in the registry: semantic versions with no build metadata or prerelease identifiers. The package set version can be used to determine if is is safe for your project to update to a new package set. We version according to the following rules:
 
-`MAJOR.MINOR.PATCH+YYYY-MM-DD-purs-MAJOR.MINOR.PATCH`
-
-The first major/minor/patch version refers to the package set version. The date refers to the date the package set was produced. The `purs-` major/minor/patch version refers to the compiler version used to produce the set. Here's an example package set version:
-
-`2.3.1+2022-04-19-purs-0_14_9`
-
-This information is also contained in the package set file itself.
-
-The package sets version number can be used to determine if it is safe for your project to update to a new package set. We version according to the following rules:
 
 1. The major version is incremented when breaking changes occur in the package set: a package is removed, or a major version of a package in the set is incremented.
 2. The minor version is incremented when new packages are added to the package set, or when there was a minor version update in the package set.
@@ -193,7 +184,7 @@ Fourth, we release the new package set (if we could produce one). Automatic pack
 2. If the highest SemVer upgrade in the set was a minor version, or any new packages were added to the package set, then the package set increments a minor version.
 3. If the highest SemVer upgrade in the set was a patch version, then the package set increments a patch version.
 
-For example, if the previous release was `2.1.1+2022-06-01-purs-0_15_2` (`2.1.1` for short), and the next day no packages changed versions but a new package was registered, the new version would be `2.2.0+2022-06-02-purs-0_15_2` (`2.2.0` for short).
+For example, if the previous release was `2.1.1`, and the next day no packages changed versions but a new package was registered, the new version would be `2.2.0`.
 
 #### Manual Intervention in the Package Sets via the Package Sets API
 
