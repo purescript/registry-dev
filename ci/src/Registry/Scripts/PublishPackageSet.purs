@@ -8,6 +8,7 @@ import Data.DateTime as DateTime
 import Data.Int as Int
 import Data.Map as Map
 import Data.PreciseDateTime as PDT
+import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
@@ -18,14 +19,16 @@ import Effect.Ref as Ref
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
 import Foreign.Tmp as Tmp
+import Node.FS.Aff as FS.Aff
+import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
 import Registry.API as API
 import Registry.Cache as Cache
 import Registry.Json as Json
-import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry(..))
 import Registry.PackageName (PackageName)
-import Registry.RegistryM (readPackagesMetadata, runRegistryM)
+import Registry.RegistryM (Env, readPackagesMetadata, runRegistryM)
+import Registry.Schema (PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -47,7 +50,24 @@ main = Aff.launchAff_ do
 
   metadataRef <- liftEffect $ Ref.new Map.empty
 
-  runRegistryM (API.mkLocalEnv octokit cache metadataRef) do
+  let
+    env :: Env
+    env =
+      -- TODO: Do we need to comment?
+      { comment: mempty
+      , closeIssue: mempty
+      , commitMetadataFile: \_ _ -> pure (Right unit)
+      , commitIndexFile: \_ _ -> pure (Right unit)
+      , uploadPackage: mempty
+      , deletePackage: mempty
+      , octokit
+      , cache
+      , packagesMetadata: metadataRef
+      , registry: "registry"
+      , registryIndex: "registry-index"
+      }
+
+  runRegistryM env do
     API.fetchRegistryIndex
     API.fetchRegistry
     API.fillMetadataRef
@@ -76,11 +96,37 @@ main = Aff.launchAff_ do
 
     liftEffect $ Console.log "Fetching latest package set..."
 
-    API.wget "https://raw.githubusercontent.com/purescript/package-sets/master/packages.json" "packages.json"
+    -- Read package set directory from "registry" - FS.Aff.readDir
+    -- Trim JSON extension, parse versions, sort, take highest version
+    -- Check purescript-formatters for formatDateTime
+    -- Read that file as `PackageSet` - Date (YYYY-MM-DD, add newtype around DateTime, format as YYYY-MM-DD), not RFC3339String - to compare: date, then version
+    --    encode :: turn string to datetime
+    --    decode :: turn string to datetime, then print
 
-    packageSetResult :: Either String LegacyPackageSet <- liftAff $ Json.readJsonFile "packages.json"
+    packageSets <- liftAff $ FS.Aff.readdir (Path.concat [ "registry", "package-sets" ])
 
-    LegacyPackageSet packageSet :: LegacyPackageSet <- case packageSetResult of
+    let
+      packageSetVersions :: Array Version
+      packageSetVersions = packageSets # Array.mapMaybe \s -> do 
+        let versionString = String.take (String.length s - 5) s
+        hush $ Version.parseVersion Version.Lenient versionString
+
+      latestPackageSet :: Maybe FilePath
+      latestPackageSet = do
+        latestVersion <- Array.last (Array.sort packageSetVersions)
+        pure $ Path.concat
+          [ "registry"
+          , "package-sets"
+          , Version.printVersion latestVersion <> ".json"
+          ]
+
+    packageSetPath :: FilePath <- case latestPackageSet of
+      Nothing -> unsafeCrashWith "ERROR: No existing package set."
+      Just packageSetPath -> pure packageSetPath
+    
+    packageSetResult :: Either String PackageSet <- liftAff $ Json.readJsonFile packageSetPath
+
+    PackageSet { packages } :: PackageSet <- case packageSetResult of
       Left err -> unsafeCrashWith err
       Right packageSet -> pure packageSet
 
@@ -93,15 +139,21 @@ main = Aff.launchAff_ do
         -- We only care about the latest version
         let version = NonEmptyArray.last (NonEmptyArray.sort versions')
         -- Ensure package is not in package set, or latest version is newer than that in package set
-        checkedVersion <- case Map.lookup packageName packageSet of
+        checkedVersion <- case Map.lookup packageName packages of
           Nothing -> pure version
-          Just (LegacyPackageSetEntry { version: RawVersion v' })
-            | Right v <- Version.parseVersion Version.Lenient v'
-            , v < version -> pure version
+          Just v | v < version -> pure version
           _ -> []
         pure (Tuple packageName checkedVersion)
 
     liftEffect $ Console.log "Found the following uploads eligible for inclusion in package set:"
     liftEffect $ Console.log (show uploads)
+
+    -- NOTE:
+    --    - Compute eligible uploads
+    --    - Compute batches via dependencies
+    --    - Make sure dependencies are in the package set unioned with the batch
+
+
+    -- Determine semver 
 
     pure unit
