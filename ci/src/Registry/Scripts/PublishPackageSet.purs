@@ -148,10 +148,11 @@ main = Aff.launchAff_ do
     liftEffect $ Console.log "Found the following uploads eligible for inclusion in package set:"
     liftEffect $ Console.log (show uploads)
 
-    buildPackageSet (unsafeFromRight packageSetResult) >>= case _ of
+    buildPackageSet tmpDir (unsafeFromRight packageSetResult) >>= case _ of
       Left MissingCompiler -> logShow "Missing compiler"
-      Left (UnknownError err) -> log err
-      Right str -> log str
+      Left (CompilationError err) -> log $ "Failed compilation: " <> err
+      Left (UnknownError err) -> log $ "Unknown error: " <> err
+      Right _ -> log "All good!"
 
     pure unit
 
@@ -193,35 +194,27 @@ computeVersion (PackageSet { packages, version: packageSetVersion }) updates =
 =======
 -- | Install all packages in the given package set and compile them with the
 -- | correct compiler version.
-buildPackageSet :: PackageSet -> RegistryM (Either CompilerFailure String)
-buildPackageSet (PackageSet { compiler, packages }) = do
-  installDir <- installPackages packages
+buildPackageSet :: FilePath -> PackageSet -> RegistryM (Either CompilerFailure String)
+buildPackageSet installDir (PackageSet { compiler, packages }) = do
+  installPackages installDir packages
   compileInstalledPackages installDir compiler
 
 -- | Install all packages in a package set into a temporary directory, returning
 -- | the reference to the installation directory. Installed packages have the
 -- | form: "package-name-major.minor.patch" and are stored in the "packages"
 -- | directory.
-installPackages :: Map PackageName Version -> RegistryM FilePath
-installPackages packages = do
-  tmp <- liftEffect Tmp.mkTmpDir
+installPackages :: FilePath -> Map PackageName Version -> RegistryM Unit
+installPackages tmp packages = do
   liftAff $ FSE.ensureDirectory $ Path.concat [ tmp, "packages" ]
   forWithIndex_ packages (installPackage tmp)
-  pure tmp
 
 -- | Compile all PureScript files in the given directory. Expects all packages
 -- | to be installed in a subdirectory "packages".
 compileInstalledPackages :: FilePath -> Version -> RegistryM (Either CompilerFailure String)
 compileInstalledPackages tmp compilerVersion = do
-  liftEffect $ Process.chdir tmp
   let args = [ "compile", "packages/**/*.purs" ]
   let version = Version.printVersion compilerVersion
-  liftAff $ callCompiler { args, version, cwd: Nothing }
-
--- liftAff (callCompiler { args, version, cwd: Nothing }) >>= case _ of
---   Left MissingCompiler -> throwWithComment $ "Compiler version " <> version <> " is missing!"
---   Left (UnknownError err) -> throwWithComment $ "Compilation failed: " <> err
---   Right _ -> pure unit
+  liftAff $ callCompiler { args, version, cwd: Just tmp }
 
 -- | Install a package into the given installation directory, replacing an
 -- | existing installation if there is on. Package sources are stored in the
@@ -229,6 +222,7 @@ compileInstalledPackages tmp compilerVersion = do
 -- | ie. 'aff'.
 installPackage :: FilePath -> PackageName -> Version -> RegistryM Unit
 installPackage tmp name version = do
+  log $ "installing " <> PackageName.print name <> "@" <> Version.printVersion version
   void $ liftAff $ Aff.try $ FSA.unlink installPath
   API.wget registryUrl tarballPath
   liftEffect $ Tar.extract { cwd: packagesDir, filename: tarballPath }

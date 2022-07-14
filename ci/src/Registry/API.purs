@@ -594,8 +594,9 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
     }
 
   publishJson <- case compilerOutput of
-    Left (UnknownError err) -> throwWithComment $ String.joinWith "\n" [ "Publishing failed for your package due to a compiler error:", "```", err, "```" ]
     Left MissingCompiler -> throwWithComment $ Array.fold [ "Publishing failed because the build plan compiler version ", Version.printVersion compiler, " is not supported. Please try again with a different compiler." ]
+    Left (CompilationError err) -> throwWithComment $ String.joinWith "\n" [ "Publishing failed because the build plan does not compile with version " <> Version.printVersion compiler <> " of the compiler:", "```", err, "```" ]
+    Left (UnknownError err) -> throwWithComment $ String.joinWith "\n" [ "Publishing failed for your package due to a compiler error:", "```", err, "```" ]
     Right publishResult -> do
       -- The output contains plenty of diagnostic lines, ie. "Compiling ..."
       -- but we only want the final JSON payload.
@@ -1044,7 +1045,10 @@ writeDeleteIndex name version = do
 callCompiler_ :: { version :: String, args :: Array String, cwd :: Maybe FilePath } -> Aff Unit
 callCompiler_ = void <<< callCompiler
 
-data CompilerFailure = UnknownError String | MissingCompiler
+data CompilerFailure
+  = CompilationError String
+  | UnknownError String
+  | MissingCompiler
 
 derive instance Eq CompilerFailure
 
@@ -1068,5 +1072,7 @@ callCompiler { version, args, cwd } = do
         | otherwise -> Left $ UnknownError errorMessage
     Right { exit: NodeProcess.Normally 0, stdout } ->
       Right $ String.trim stdout
+    Right output | String.null (String.trim output.stderr) ->
+      Left $ CompilationError $ String.trim output.stdout
     Right { stderr } ->
       Left $ UnknownError $ String.trim stderr
