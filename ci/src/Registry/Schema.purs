@@ -63,17 +63,6 @@ derive newtype instance Eq Owner
 derive newtype instance Show Owner
 derive newtype instance RegistryJson Owner
 
-newtype Date = Date DateTime
-
-derive instance Newtype Date _
-derive newtype instance Eq Date
-derive newtype instance Ord Date
-derive newtype instance Show Date
-
-instance RegistryJson Date where
-  encode (Date date) = Json.encode (Formatter.DateTime.format dateFormatter date)
-  decode = map Date <<< Formatter.DateTime.unformat dateFormatter <=< Json.decode
-
 dateFormatter :: Formatter
 dateFormatter = List.fromFoldable
   [ YearFull
@@ -85,7 +74,7 @@ dateFormatter = List.fromFoldable
 
 newtype PackageSet = PackageSet
   { compiler :: Version
-  , published :: Date
+  , published :: DateTime
   , packages :: Map PackageName Version
   , version :: Version
   }
@@ -95,8 +84,11 @@ derive newtype instance Eq PackageSet
 derive newtype instance Show PackageSet
 
 instance RegistryJson PackageSet where
-  encode (PackageSet plan) = Json.encode plan
-  decode = map PackageSet <<< Json.decode
+  encode (PackageSet set) = Json.encode (set { published = Formatter.DateTime.format dateFormatter set.published })
+  decode json = do
+    fields <- Json.decode json
+    published <- Formatter.DateTime.unformat dateFormatter fields.published
+    pure $ PackageSet $ fields { published = published }
 
 -- | A compiler version and exact dependency versions that should be used to
 -- | compile a newly-uploaded package as an API verification check.
