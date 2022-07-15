@@ -148,11 +148,10 @@ main = Aff.launchAff_ do
     liftEffect $ Console.log "Found the following uploads eligible for inclusion in package set:"
     liftEffect $ Console.log (show uploads)
 
-    buildPackageSet tmpDir (unsafeFromRight packageSetResult) >>= case _ of
+    buildPackageSet (unsafeFromRight packageSetResult) >>= case _ of
       Left MissingCompiler -> logShow "Missing compiler"
-      Left (CompilationError err) -> log $ "Failed compilation: " <> err
-      Left (UnknownError err) -> log $ "Unknown error: " <> err
-      Right _ -> log "All good!"
+      Left (UnknownError err) -> log err
+      Right str -> log str
 
     pure unit
 
