@@ -3,107 +3,131 @@ module Registry.Legacy.Manifest where
 import Registry.Prelude
 
 import Control.Monad.Except as Except
+import Control.Monad.Reader (ask)
 import Data.Array as Array
-import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either as Either
+import Data.Foldable (sum)
+import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
-import Data.Validation.Semigroup as Validation
+import Data.These (These(..))
+import Data.These as These
 import Foreign.Dhall as Dhall
 import Foreign.GitHub as GitHub
 import Foreign.JsonRepair as JsonRepair
 import Foreign.Licensee as Licensee
+import Foreign.SPDX (License)
 import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FSA
 import Node.Path as Path
-import Registry.Cache (Cache)
 import Registry.Json ((.:), (.:?))
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.RegistryM (RegistryM)
 import Registry.Schema (Location, Manifest(..))
-import Registry.Version (Version)
+import Registry.Version (Range, Version)
 import Registry.Version as Version
 import Text.Parsing.StringParser as Parser
 
--- | Parse a legacy manifest into a registry manifest
-parseLegacyManifest
-  :: PackageName
-  -> Location
-  -> Version
-  -> LegacyManifest
-  -> Either (NonEmptyArray LegacyManifestValidationError) Manifest
-parseLegacyManifest name location version legacyManifest = Validation.toEither ado
-  license <- do
-    let
-      rewrite = case _ of
-        "Apache 2" -> "Apache-2.0"
-        "Apache-2" -> "Apache-2.0"
-        "Apache 2.0" -> "Apache-2.0"
-        "BSD" -> "BSD-3-Clause"
-        "BSD3" -> "BSD-3-Clause"
-        "BSD-3" -> "BSD-3-Clause"
-        "3-Clause BSD" -> "BSD-3-Clause"
-        other -> other
+type LegacyManifest =
+  { license :: License
+  , description :: Maybe String
+  , dependencies :: Map PackageName Range
+  }
 
-    case legacyManifest.license of
-      Nothing -> invalid { error: MissingLicense, reason: "No licenses found." }
-      Just licenses -> do
-        let toArray = map NonEmptyString.toString <<< NonEmptyArray.toArray
-        let parsedLicenses = map (SPDX.parse <<< rewrite) $ Array.filter (_ /= "LICENSE") $ toArray licenses
-        case partitionEithers parsedLicenses of
-          { fail: [], success: [] } -> invalid { error: MissingLicense, reason: "No licenses found." }
-          { fail: [], success } -> pure $ SPDX.joinWith SPDX.And success
-          { fail } -> invalid { error: InvalidLicense fail, reason: "Licenses found, but not valid SPDX identifiers." }
+toManifest :: PackageName -> Version -> Location -> LegacyManifest -> Manifest
+toManifest name version location { license, description, dependencies } = do
+  let files = Nothing
+  let owners = Nothing
+  Manifest { name, version, location, license, description, dependencies, files, owners }
+
+fetchLegacyManifest :: GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError RegistryM LegacyManifest
+fetchLegacyManifest address ref = do
+  manifests <- fetchLegacyManifestFiles address ref
 
   dependencies <- do
     let
-      parsePackageName = lmap Parser.printParserError <<< PackageName.parse <<< stripPureScriptPrefix
-      parseVersionRange = lmap Parser.printParserError <<< Version.parseRange Version.Lenient
+      -- Package sets will produce exact versions for dependencies, ie. a
+      -- dependency on "strings: 4.1.2" will produce the version range
+      -- "strings: >=4.1.2 <4.1.3", which while technically correct is almost
+      -- certainly not what the user wants. We instead treat these ranges as
+      -- caret ranges, so "strings: 4.1.2" becomes "strings: >=4.1.2 <5.0.0".
+      convertSpagoDeps packages = Array.foldl foldFn Map.empty
+        where
+        foldFn deps name = maybe deps (\{ version } -> Map.insert name (toRange version) deps) (findPackage name)
+        findPackage name = Map.lookup name packages
+        toRange (RawVersion fixed) = do
+          let parsedVersion = Version.parseVersion Version.Lenient fixed
+          let bump version = Version.printVersion (Version.bumpHighest version)
+          let printRange version = Array.fold [ ">=", fixed, " <", bump version ]
+          RawVersionRange $ Either.either (const fixed) printRange parsedVersion
 
-      foldFn (RawPackageName name) acc (RawVersionRange range) = do
-        let parsedName = parsePackageName name
-        let parsedRange = parseVersionRange range
-        let failWith = { name, range, error: _ }
-        case parsedName, parsedRange of
-          Left nameErr, Left rangeErr ->
-            acc { no = Array.cons (failWith (nameErr <> rangeErr)) acc.no }
-          Left nameErr, Right _ ->
-            acc { no = Array.cons (failWith nameErr) acc.no }
-          Right _, Left rangeErr ->
-            acc { no = Array.cons (failWith rangeErr) acc.no }
-          Right name, Right range ->
-            acc { yes = Array.cons (Tuple name range) acc.yes }
+      validateSpagoDeps (SpagoDhallJson { dependencies, packages }) =
+        validateDependencies (convertSpagoDeps packages dependencies)
 
-      parsedDependencies =
-        foldlWithIndex foldFn { no: [], yes: [] } legacyManifest.dependencies
+      -- We remove dependencies that don't begin with 'purescript-', as these
+      -- indicate JavaScript dependencies.
+      convertBowerDeps = Map.mapMaybeWithKey \(RawPackageName name) range -> do
+        _ <- String.stripPrefix (String.Pattern "purescript-") name
+        pure range
 
-    case parsedDependencies of
-      { no: [], yes } -> pure $ Map.fromFoldable yes
-      { no } -> invalid { error: InvalidDependencies no, reason: "Version specifies invalid dependencies." }
+      validateBowerDeps (Bowerfile { dependencies }) =
+        validateDependencies (convertBowerDeps dependencies)
 
-  let description = map NonEmptyString.toString legacyManifest.description
+    Except.except case manifests of
+      This bower -> validateBowerDeps bower
+      That spago -> validateSpagoDeps spago
+      Both bower spago -> case validateBowerDeps bower, validateSpagoDeps spago of
+        Left bowerError, Left _ -> Left bowerError
+        Right bowerDeps, Left _ -> pure bowerDeps
+        Left _, Right spagoDeps -> pure spagoDeps
+        -- When both manifests produce viable dependencies, we first check to
+        -- see if one is more up-to-date (e.g. has higher ranges specified).
+        -- If so, we take that one. If not, we take the Bower manifest.
+        Right bowerDeps, Right spagoDeps -> pure do
+          let
+            compareToSpago key bowerRange = fromMaybe 0 do
+              spagoRange <- Map.lookup key spagoDeps
+              let bowerUpperBound = Version.lessThan bowerRange
+              let spagoUpperBound = Version.lessThan spagoRange
+              if bowerUpperBound >= spagoUpperBound then pure 1 else pure (-1)
 
-  in Manifest { name, license, location, description, dependencies, version, owners: Nothing, files: Nothing }
-  where
-  invalid :: forall e a. e -> Validation.V (NonEmptyArray e) a
-  invalid = Validation.invalid <<< NonEmptyArray.singleton
+          if sum (mapWithIndex compareToSpago bowerDeps) >= 0 then bowerDeps else spagoDeps
+
+  license <- do
+    let unBower (Bowerfile { license }) = Array.mapMaybe NonEmptyString.fromString license
+    let unSpago (SpagoDhallJson { license }) = Array.catMaybes [ license ]
+    let manifestLicenses = These.these unBower unSpago (\bower spago -> unBower bower <> unSpago spago) manifests
+    detectedLicenses <- lift $ detectLicenses address ref
+    let licenses = Array.nub $ Array.concat [ detectedLicenses, manifestLicenses ]
+    Except.except $ validateLicense licenses
+
+  let
+    description = do
+      Bowerfile fields <- These.theseLeft manifests
+      fields.description
+
+  pure { license, dependencies, description }
 
 type LegacyManifestValidationError = { error :: LegacyManifestError, reason :: String }
 
 data LegacyManifestError
-  = MissingLicense
+  = NoManifests
+  | MissingLicense
   | InvalidLicense (Array String)
   | InvalidDependencies (Array { name :: String, range :: String, error :: String })
 
 instance RegistryJson LegacyManifestError where
   encode = case _ of
+    NoManifests -> Json.encode { tag: "NoManifests" }
     MissingLicense -> Json.encode { tag: "MissingLicense" }
     InvalidLicense arr -> Json.encode { tag: "InvalidLicense", value: arr }
     InvalidDependencies arr -> Json.encode { tag: "InvalidDependencies", value: arr }
   decode = Json.decode >=> \obj -> (obj .: "tag") >>= case _ of
+    "NoManifests" -> pure NoManifests
     "MissingLicense" -> pure MissingLicense
     "InvalidLicense" -> map InvalidLicense $ obj .: "value"
     "InvalidDependencies" -> map InvalidDependencies $ obj .: "value"
@@ -111,55 +135,82 @@ instance RegistryJson LegacyManifestError where
 
 printLegacyManifestError :: LegacyManifestError -> String
 printLegacyManifestError = case _ of
+  NoManifests -> "NoManifests"
   MissingLicense -> "MissingLicense"
   InvalidLicense licenses -> "InvalidLicense (" <> String.joinWith ", " licenses <> ")"
   InvalidDependencies errors -> "InvalidDependencies (" <> String.joinWith ", " (map printDepError errors) <> ")"
   where
   printDepError { name, range, error } = "[{ " <> name <> ": " <> range <> "}, " <> error <> "]"
 
-type LegacyManifest =
-  { license :: Maybe (NonEmptyArray NonEmptyString)
-  , description :: Maybe NonEmptyString
-  , dependencies :: Map RawPackageName RawVersionRange
-  }
+fetchLegacyManifestFiles :: GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError RegistryM (These Bowerfile SpagoDhallJson)
+fetchLegacyManifestFiles address ref = ExceptT do
+  eitherBower <- Except.runExceptT $ fetchBowerfile address ref
+  eitherSpago <- Except.runExceptT $ fetchSpagoDhallJson address ref
+  pure $ case eitherBower, eitherSpago of
+    Left _, Left _ -> Left { error: NoManifests, reason: "No bower.json or spago.dhall files available." }
+    Right bower, Left _ -> Right $ This bower
+    Left _, Right spago -> Right $ That spago
+    Right bower, Right spago -> Right $ Both bower spago
 
-fetchLegacyManifest :: GitHub.Octokit -> Cache -> GitHub.Address -> RawVersion -> Aff (Either String LegacyManifest)
-fetchLegacyManifest octokit cache address ref = Except.runExceptT do
-  eitherSpago <- liftAff $ fetchSpagoDhallJson octokit cache address ref
-  eitherBower <- liftAff $ fetchBowerfile octokit cache address ref
-  let eitherSpagoManifest = map spagoDhallJsonToLegacyManifest eitherSpago
-  let eitherBowerManifest = map bowerfileToLegacyManifest eitherBower
+detectLicenses :: GitHub.Address -> RawVersion -> RegistryM (Array NonEmptyString)
+detectLicenses address ref = do
+  { octokit, cache } <- ask
+  let getFile = liftAff <<< Except.runExceptT <<< GitHub.getContent octokit cache address (un RawVersion ref)
+  packageJsonFile <- getFile "package.json"
+  licenseFile <- getFile "LICENSE"
+  let packageJsonInput = { name: "package.json", contents: _ } <$> hush packageJsonFile
+  let licenseInput = { name: "LICENSE", contents: _ } <$> hush licenseFile
+  liftAff $ Licensee.detectFiles (Array.catMaybes [ packageJsonInput, licenseInput ]) >>= case _ of
+    Left err -> log ("Licensee decoding error, ignoring: " <> err) $> []
+    Right licenses -> pure $ Array.mapMaybe NonEmptyString.fromString licenses
 
-  dependencies <- case eitherBowerManifest, eitherSpagoManifest of
-    Left bowerErr, Left spagoErr -> throwError $ String.joinWith "\n"
-      [ "Failed to fetch legacy manifest from repo " <> show address <> " at ref " <> show ref
-      , "  Bower error: " <> GitHub.printGitHubError bowerErr
-      , "  Spago error: " <> GitHub.printGitHubError spagoErr
-      ]
-    _, Right spago -> pure spago.dependencies
-    Right bower, _ -> pure bower.dependencies
+validateLicense :: Array NonEmptyString -> Either LegacyManifestValidationError License
+validateLicense licenses = do
+  let
+    rewrite = case _ of
+      "Apache 2" -> "Apache-2.0"
+      "Apache-2" -> "Apache-2.0"
+      "Apache 2.0" -> "Apache-2.0"
+      "BSD" -> "BSD-3-Clause"
+      "BSD3" -> "BSD-3-Clause"
+      "BSD-3" -> "BSD-3-Clause"
+      "3-Clause BSD" -> "BSD-3-Clause"
+      other -> other
 
-  license <- liftAff do
-    let getFile = Except.runExceptT <<< GitHub.getContent octokit cache address (un RawVersion ref)
-    packageJsonFile <- getFile "package.json"
-    licenseFile <- getFile "LICENSE"
-    detectedLicenses <- do
-      let packageJsonInput = { name: "package.json", contents: _ } <$> hush packageJsonFile
-      let licenseInput = { name: "LICENSE", contents: _ } <$> hush licenseFile
-      Licensee.detectFiles (Array.catMaybes [ packageJsonInput, licenseInput ]) >>= case _ of
-        Left err ->
-          log ("Licensee decoding error, ignoring: " <> err) $> []
-        Right licenses ->
-          pure $ Array.mapMaybe NonEmptyString.fromString licenses
-    pure $ NonEmptyArray.fromArray $ Array.nub $ Array.concat
-      [ detectedLicenses
-      , maybe [] NonEmptyArray.toArray $ _.license =<< hush eitherSpagoManifest
-      , maybe [] NonEmptyArray.toArray $ _.license =<< hush eitherBowerManifest
-      ]
+    parsedLicenses =
+      map (SPDX.parse <<< rewrite)
+        $ Array.filter (_ /= "LICENSE")
+        $ map NonEmptyString.toString licenses
 
-  let description = join (_.description <$> hush eitherBowerManifest)
+  case partitionEithers parsedLicenses of
+    { fail: [], success: [] } -> Left { error: MissingLicense, reason: "No licenses found." }
+    { fail: [], success } -> Right $ SPDX.joinWith SPDX.And success
+    { fail } -> Left { error: InvalidLicense fail, reason: "Licenses found, but not valid SPDX identifiers." }
 
-  pure { dependencies, license, description }
+validateDependencies :: Map RawPackageName RawVersionRange -> Either LegacyManifestValidationError (Map PackageName Range)
+validateDependencies dependencies = do
+  let
+    parsePackageName = lmap Parser.printParserError <<< PackageName.parse <<< stripPureScriptPrefix
+    parseVersionRange = lmap Parser.printParserError <<< Version.parseRange Version.Lenient
+
+    foldFn (RawPackageName name) acc (RawVersionRange range) = do
+      let failWith = { name, range, error: _ }
+      case parsePackageName name, parseVersionRange range of
+        Left nameErr, Left rangeErr ->
+          acc { no = Array.cons (failWith (nameErr <> rangeErr)) acc.no }
+        Left nameErr, Right _ ->
+          acc { no = Array.cons (failWith nameErr) acc.no }
+        Right _, Left rangeErr ->
+          acc { no = Array.cons (failWith rangeErr) acc.no }
+        Right parsedName, Right parsedRange ->
+          acc { yes = Array.cons (Tuple parsedName parsedRange) acc.yes }
+
+    parsedDependencies =
+      foldlWithIndex foldFn { no: [], yes: [] } dependencies
+
+  case parsedDependencies of
+    { no: [], yes } -> pure $ Map.fromFoldable yes
+    { no } -> Left { error: InvalidDependencies no, reason: "Version specifies invalid dependencies." }
 
 -- | The result of calling 'dhall-to-json' on a 'spago.dhall' file and
 -- | accompanying 'packages.dhall' file.
@@ -178,34 +229,12 @@ instance RegistryJson SpagoDhallJson where
     packages <- fromMaybe Map.empty <$> obj .:? "packages"
     pure $ SpagoDhallJson { license, dependencies, packages }
 
--- | Convert a Spago JSON file into the universal legacy manifest format.
-spagoDhallJsonToLegacyManifest :: SpagoDhallJson -> LegacyManifest
-spagoDhallJsonToLegacyManifest (SpagoDhallJson fields) = do
-  let
-    description = Nothing
-    license = map NonEmptyArray.singleton fields.license
-    dependencies = do
-      let
-        -- Package sets will produce exact versions for dependencies, ie. a
-        -- dependency on "strings: 4.1.2" will produce the version range
-        -- "strings: >=4.1.2 <4.1.3", which while technically correct is almost
-        -- certainly not what the user wants. We instead treat these ranges as
-        -- caret ranges, so "strings: 4.1.2" becomes "strings: >=4.1.2 <5.0.0".
-        toRange (RawVersion fixed) = do
-          let parsedVersion = Version.parseVersion Version.Lenient fixed
-          let bump version = Version.printVersion (Version.bumpHighest version)
-          RawVersionRange $ Either.either (const fixed) (\version -> Array.fold [ ">=", fixed, " <", bump version ]) parsedVersion
-        findPackage name = Map.lookup name fields.packages
-        foldFn deps name = maybe deps (\{ version } -> Map.insert name (toRange version) deps) (findPackage name)
-      Array.foldl foldFn Map.empty fields.dependencies
-
-  { description, license, dependencies }
-
 -- | Attempt to construct a SpagoDhallJson file from a spago.dhall and
 -- | packages.dhall file located in a remote repository at the given ref.
-fetchSpagoDhallJson :: GitHub.Octokit -> Cache -> GitHub.Address -> RawVersion -> Aff (Either GitHub.GitHubError SpagoDhallJson)
-fetchSpagoDhallJson octokit cache address (RawVersion ref) = Except.runExceptT do
-  let getFile = GitHub.getContent octokit cache address ref
+fetchSpagoDhallJson :: GitHub.Address -> RawVersion -> ExceptT GitHub.GitHubError RegistryM SpagoDhallJson
+fetchSpagoDhallJson address (RawVersion ref) = do
+  { octokit, cache } <- ask
+  let getFile = Except.mapExceptT liftAff <<< GitHub.getContent octokit cache address ref
   spagoDhall <- getFile "spago.dhall"
   packagesDhall <- getFile "packages.dhall"
   tmp <- liftEffect Tmp.mkTmpDir
@@ -238,25 +267,12 @@ instance RegistryJson Bowerfile where
       Just jsonValue -> (Json.decode jsonValue <#> Array.singleton) <|> Json.decode jsonValue
     pure $ Bowerfile { description, dependencies, license }
 
--- | Convert a Bowerfile into the universal legacy manifest format.
-bowerfileToLegacyManifest :: Bowerfile -> LegacyManifest
-bowerfileToLegacyManifest (Bowerfile fields) = do
-  let
-    description = NonEmptyString.fromString =<< fields.description
-    license = NonEmptyArray.fromArray $ Array.mapMaybe NonEmptyString.fromString fields.license
-    dependencies = fields.dependencies # Map.mapMaybeWithKey \(RawPackageName name) versionRange -> do
-      -- We remove dependencies that don't begin with 'purescript-', as these
-      -- indicate JavaScript dependencies.
-      _ <- String.stripPrefix (String.Pattern "purescript-") name
-      pure versionRange
-
-  { description, license, dependencies }
-
 -- | Attempt to construct a Bowerfile from a bower.json file rlocated in a
 -- | remote repository at the given ref.
-fetchBowerfile :: GitHub.Octokit -> Cache -> GitHub.Address -> RawVersion -> Aff (Either GitHub.GitHubError Bowerfile)
-fetchBowerfile octokit cache address (RawVersion ref) = Except.runExceptT do
-  bowerfile <- GitHub.getContent octokit cache address ref "bower.json"
+fetchBowerfile :: GitHub.Address -> RawVersion -> ExceptT GitHub.GitHubError RegistryM Bowerfile
+fetchBowerfile address (RawVersion ref) = do
+  { octokit, cache } <- ask
+  bowerfile <- Except.mapExceptT liftAff $ GitHub.getContent octokit cache address ref "bower.json"
   Except.except $ case Json.parseJson (JsonRepair.tryRepair bowerfile) of
     Left err -> Left $ GitHub.DecodeError err
     Right value -> pure value

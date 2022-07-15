@@ -53,9 +53,9 @@
   , "string-parsers"
   , "strings"
   , "sunde"
+  , "these"
   , "transformers"
   , "tuples"
-  , "validation"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]

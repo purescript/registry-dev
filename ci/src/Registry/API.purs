@@ -12,7 +12,6 @@ import Control.Monad.Reader (ask, asks)
 import Data.Argonaut.Parser as Argonaut.Core
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
-import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
 import Data.Foldable (traverse_)
 import Data.Generic.Rep as Generic
@@ -317,7 +316,6 @@ metadataFile registryPath packageName = Path.concat [ registryPath, "metadata", 
 
 addOrUpdate :: UpdateData -> Metadata -> RegistryM Unit
 addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
-  { octokit, cache } <- ask
   tmpDir <- liftEffect $ Tmp.mkTmpDir
 
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
@@ -344,18 +342,16 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
       Left _ -> throwWithComment $ "Not a valid registry version: " <> updateRef
       Right result -> pure result
 
-    legacyManifest <- liftAff (Legacy.Manifest.fetchLegacyManifest octokit cache address (RawVersion updateRef)) >>= case _ of
-      Left err -> throwWithComment $ "Unable to retrieve legacy manifest: " <> err
-      Right legacy -> pure legacy
-
-    case Legacy.Manifest.parseLegacyManifest packageName inputMetadata.location version legacyManifest of
-      Left errors -> do
+    Except.runExceptT (Legacy.Manifest.fetchLegacyManifest address (RawVersion updateRef)) >>= case _ of
+      Left manifestError -> do
         let formatError { error, reason } = reason <> " " <> Legacy.Manifest.printLegacyManifestError error
-        throwWithComment $ String.joinWith "\n" $ Array.concat
-          [ [ "There were problems with the legacy manifest file:" ]
-          , map formatError $ NonEmptyArray.toArray errors
+        throwWithComment $ String.joinWith "\n"
+          [ "There were problems with the legacy manifest file:"
+          , formatError manifestError
           ]
-      Right manifest -> liftAff $ Json.writeJsonFile manifestPath manifest
+      Right legacyManifest -> do
+        let manifest = Legacy.Manifest.toManifest packageName version inputMetadata.location legacyManifest
+        liftAff $ Json.writeJsonFile manifestPath manifest
 
   -- TODO: Verify the manifest against metadata.
   -- Try to read the manifest, typechecking it
@@ -768,7 +764,7 @@ fetchRepo address path = FS.exists path >>= case _ of
           [ "Cannot import using a branch other than 'main'. Got: "
           , branch
           ]
-      runGit_ [ "pull", "--rebase" ] (Just path)
+      runGit_ [ "pull", "--rebase", "--autostash" ] (Just path)
     case result of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> pure unit
