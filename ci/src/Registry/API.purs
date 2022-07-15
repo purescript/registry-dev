@@ -951,7 +951,7 @@ copyPackageSourceFiles files { source, destination } = do
 
   let
     copyFiles = userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded
-    makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ] }
+    makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ], preserveTimestamps: false }
 
   liftAff $ traverse_ (makePaths >>> FS.Extra.copy) copyFiles
 

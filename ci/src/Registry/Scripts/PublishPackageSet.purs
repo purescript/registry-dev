@@ -235,12 +235,12 @@ tryBatch :: PackageSet -> Map PackageName Version -> Aff (Either CompilerFailure
 tryBatch (PackageSet set) packages = do
   let backupDir = "output-backup"
   let outputDir = "output"
-  FSE.copy { from: outputDir, to: backupDir }
+  FSE.copy { from: outputDir, to: backupDir, preserveTimestamps: true }
   installPackages packages
   compileInstalledPackages set.compiler >>= case _ of
     Left err -> do
       FSE.remove outputDir
-      FSE.copy { from: backupDir, to: outputDir }
+      FSE.copy { from: backupDir, to: outputDir, preserveTimestamps: true }
       removePackages (Map.keys packages)
       pure $ Left err
     Right _ -> do
@@ -256,12 +256,12 @@ tryPackage :: PackageSet -> PackageName -> Version -> Aff (Either CompilerFailur
 tryPackage (PackageSet set) package version = do
   let backupDir = "output-backup"
   let outputDir = "output"
-  FSE.copy { from: outputDir, to: backupDir }
+  FSE.copy { from: outputDir, to: backupDir, preserveTimestamps: true }
   installPackage package version
   compileInstalledPackages set.compiler >>= case _ of
     Left err -> do
       FSE.remove outputDir
-      FSE.copy { from: backupDir, to: outputDir }
+      FSE.copy { from: backupDir, to: outputDir, preserveTimestamps: true }
       removePackage package
       pure $ Left err
     Right _ -> do

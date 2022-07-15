@@ -26,7 +26,17 @@ foreign import removeImpl :: String -> Effect (Promise Unit)
 remove :: FilePath -> Aff Unit
 remove = removeImpl >>> Promise.toAffE
 
-foreign import copyImpl :: String -> String -> Effect (Promise Unit)
+type JSCopyOptions =
+  { preserveTimestamps :: Boolean
+  }
+
+foreign import copyImpl :: String -> String -> JSCopyOptions -> Effect (Promise Unit)
+
+type CopyArgs =
+  { from :: FilePath
+  , to :: FilePath
+  , preserveTimestamps :: Boolean
+  }
 
 -- | Copies a file or directory. If a file or directory already exists at the
 -- | destination, that file or directory will be overwritten.
@@ -35,5 +45,5 @@ foreign import copyImpl :: String -> String -> Effect (Promise Unit)
 -- |
 -- | When `from` is a directory then `to` must be a directory; only directory
 -- | contents are copied, not the directory itself.
-copy :: { from :: FilePath, to :: FilePath } -> Aff Unit
-copy { from, to } = Promise.toAffE $ copyImpl from to
+copy :: CopyArgs -> Aff Unit
+copy { from, to, preserveTimestamps } = Promise.toAffE $ copyImpl from to { preserveTimestamps }
