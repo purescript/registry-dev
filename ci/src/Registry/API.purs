@@ -316,7 +316,6 @@ metadataFile registryPath packageName = Path.concat [ registryPath, "metadata", 
 
 addOrUpdate :: UpdateData -> Metadata -> RegistryM Unit
 addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
-  { octokit, cache } <- ask
   tmpDir <- liftEffect $ Tmp.mkTmpDir
 
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
