@@ -8,6 +8,7 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bitraversable (ltraverse)
 import Data.DateTime as DateTime
+import Data.Foldable (traverse_)
 import Data.Int as Int
 import Data.Map as Map
 import Data.PreciseDateTime as PDT
@@ -32,11 +33,14 @@ import Node.Process as Process
 import Registry.API (CompilerFailure(..), callCompiler)
 import Registry.API as API
 import Registry.Cache as Cache
+import Registry.Index as Index
 import Registry.Json as Json
+import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (Env, readPackagesMetadata, runRegistryM)
-import Registry.Schema (PackageSet(..))
+import Registry.Prelude as Maybe
+import Registry.RegistryM (Env, RegistryM, readPackagesMetadata, runRegistryM)
+import Registry.Schema (Manifest(..), PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -127,7 +131,7 @@ main = Aff.launchAff_ do
 
     packageSetResult :: Either String PackageSet <- liftAff $ Json.readJsonFile packageSetPath
 
-    PackageSet { packages } :: PackageSet <- case packageSetResult of
+    packageSet@(PackageSet { packages }) <- case packageSetResult of
       Left err -> unsafeCrashWith err
       Right packageSet -> pure packageSet
 
@@ -149,13 +153,120 @@ main = Aff.launchAff_ do
     liftEffect $ Console.log "Found the following uploads eligible for inclusion in package set:"
     liftEffect $ Console.log (show uploads)
 
-    liftAff $ buildPackageSet tmpDir (unsafeFromRight packageSetResult) >>= case _ of
-      Left MissingCompiler -> logShow "Missing compiler"
-      Left (CompilationError err) -> log $ "Failed compilation: " <> err
-      Left (UnknownError err) -> log $ "Unknown error: " <> err
-      Right _ -> log "All good!"
+    result <- processBatch tmpDir packageSet (Map.fromFoldable uploads)
+    logShow result
 
-    pure unit
+type BatchResult =
+  { fail :: Map PackageName Version
+  , success :: Map PackageName Version
+  , packageSet :: PackageSet
+  }
+
+-- | Attempt to produce a new package set from the given package set by adding
+-- | the provided packages.
+processBatch :: FilePath -> PackageSet -> Map PackageName Version -> RegistryM BatchResult
+processBatch tmp prevSet@(PackageSet { compiler }) batch = do
+  let
+    handleCompilerError = case _ of
+      MissingCompiler -> throwError $ Aff.error $ "Missing compiler version " <> Version.printVersion compiler
+      UnknownError err -> throwError $ Aff.error $ "Unknown error: " <> err
+      CompilationError err -> log err
+
+  liftAff (buildPackageSet tmp prevSet) >>= case _ of
+    Left compilerError -> do
+      handleCompilerError compilerError
+      throwError $ Aff.error $ "Starting package set must compile in order to process a batch."
+    Right _ -> pure unit
+
+  -- First we attempt to add the entire batch.
+  log "Compiling new batch..."
+  liftAff (tryBatch tmp prevSet batch) >>= case _ of
+    Right newSet -> pure { fail: Map.empty, success: batch, packageSet: newSet }
+    Left batchCompilerError -> do
+      log "Batch failed to process: \n"
+      handleCompilerError batchCompilerError
+
+      -- If compiling the full batch failed, then we move on to adding packages
+      -- one-by-one. To ensure the greatest likelihood of success, we sort
+      -- packages by their dependencies.
+      registryIndexPath <- asks _.registryIndex
+      registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
+      let sortedPackages = PackageGraph.topologicalSort registryIndex
+      let sortedBatch = Array.filter (\(Manifest { name }) -> Maybe.isJust (Map.lookup name batch)) sortedPackages
+
+      failRef <- liftEffect $ Ref.new Map.empty
+      successRef <- liftEffect $ Ref.new Map.empty
+      packageSetRef <- liftEffect $ Ref.new prevSet
+
+      let formatName name version = PackageName.print name <> "@" <> Version.printVersion version
+
+      -- Then we attempt to add them one-by-one.
+      for_ sortedBatch \(Manifest { name, version }) -> do
+        set <- liftEffect $ Ref.read packageSetRef
+        result <- liftAff (tryPackage tmp set name version)
+        case result of
+          -- If the package could not be added, then the state of the filesystem
+          -- is rolled back. We just need to insert the package into the
+          -- failures map to record that it could not be added.
+          Left packageCompilerError -> do
+            liftEffect $ Ref.modify_ (Map.insert name version) failRef
+            log $ "Could not add " <> formatName name version
+            handleCompilerError packageCompilerError
+          -- If the package could be added, then the state of the filesystem is
+          -- stepped and we need to record the success of this package and step
+          -- the package set in memory for the next package to be added to.
+          Right newSet -> do
+            liftEffect $ Ref.modify_ (Map.insert name version) successRef
+            liftEffect $ Ref.write newSet packageSetRef
+            log $ "Added " <> formatName name version
+
+      liftEffect do
+        fail <- Ref.read failRef
+        success <- Ref.read successRef
+        packageSet <- Ref.read packageSetRef
+        pure { fail, success, packageSet }
+
+-- | Attempt to add or update a collection of packages in the package set. This
+-- | operation will be rolled back if the addition fails.
+-- |
+-- | NOTE: You must have previously built a package set with
+-- | `buildPackageSet` before running this function.
+tryBatch :: FilePath -> PackageSet -> Map PackageName Version -> Aff (Either CompilerFailure PackageSet)
+tryBatch tmp (PackageSet set) packages = do
+  let backupDir = Path.concat [ tmp, "output-backup" ]
+  let outputDir = Path.concat [ tmp, "output" ]
+  FSE.copy { from: outputDir, to: backupDir }
+  installPackages tmp packages
+  compileInstalledPackages tmp set.compiler >>= case _ of
+    Left err -> do
+      FSE.remove outputDir
+      FSE.copy { from: backupDir, to: outputDir }
+      removePackages tmp (Map.keys packages)
+      pure $ Left err
+    Right _ -> do
+      FSE.remove backupDir
+      pure $ Right $ PackageSet $ set { packages = Map.union packages set.packages }
+
+-- | Attempt to add or update a package in the package set. This operation will
+-- | be rolled back if the addition fails.
+-- |
+-- | NOTE: You must have previously built a package set with
+-- | `buildPackageSet` before running this function.
+tryPackage :: FilePath -> PackageSet -> PackageName -> Version -> Aff (Either CompilerFailure PackageSet)
+tryPackage tmp (PackageSet set) package version = do
+  let backupDir = Path.concat [ tmp, "output-backup" ]
+  let outputDir = Path.concat [ tmp, "output" ]
+  FSE.copy { from: outputDir, to: backupDir }
+  installPackage tmp package version
+  compileInstalledPackages tmp set.compiler >>= case _ of
+    Left err -> do
+      FSE.remove outputDir
+      FSE.copy { from: backupDir, to: outputDir }
+      removePackage tmp package
+      pure $ Left err
+    Right _ -> do
+      FSE.remove backupDir
+      pure $ Right $ PackageSet $ set { packages = Map.insert package version set.packages }
 
 <<<<<<< HEAD
 -- | Computes new package set version from old package set and version information of successfully added/updated packages.
@@ -196,11 +307,28 @@ computeVersion (PackageSet { packages, version: packageSetVersion }) updates =
 -- | Install all packages in the given package set and compile them with the
 -- | correct compiler version.
 buildPackageSet :: FilePath -> PackageSet -> Aff (Either CompilerFailure String)
-buildPackageSet installDir (PackageSet { compiler, packages }) = do
+buildPackageSet tmp (PackageSet { compiler, packages }) = do
   log "Installing packages..."
-  installPackages installDir packages
+  installPackages tmp packages
   log "Compiling package set..."
-  compileInstalledPackages installDir compiler
+  compileInstalledPackages tmp compiler
+
+-- | Compile all PureScript files in the given directory. Expects all packages
+-- | to be installed in a subdirectory "packages".
+compileInstalledPackages :: FilePath -> Version -> Aff (Either CompilerFailure String)
+compileInstalledPackages tmp compilerVersion = do
+  let args = [ "compile", "packages/**/*.purs" ]
+  let version = Version.printVersion compilerVersion
+  callCompiler { args, version, cwd: Just tmp }
+
+-- | Delete package source directories in the given installation directory.
+removePackages :: FilePath -> Set PackageName -> Aff Unit
+removePackages tmp = traverse_ (removePackage tmp)
+
+-- | Delete a package source directory in the given installation directory.
+removePackage :: FilePath -> PackageName -> Aff Unit
+removePackage tmp name =
+  FSE.remove (Path.concat [ tmp, "packages", PackageName.print name ])
 
 -- | Install all packages in a package set into a temporary directory, returning
 -- | the reference to the installation directory. Installed packages have the
@@ -211,14 +339,6 @@ installPackages tmp packages = do
   FSE.ensureDirectory $ Path.concat [ tmp, "packages" ]
   forWithIndex_ packages (installPackage tmp)
 
--- | Compile all PureScript files in the given directory. Expects all packages
--- | to be installed in a subdirectory "packages".
-compileInstalledPackages :: FilePath -> Version -> Aff (Either CompilerFailure String)
-compileInstalledPackages tmp compilerVersion = do
-  let args = [ "compile", "packages/**/*.purs" ]
-  let version = Version.printVersion compilerVersion
-  callCompiler { args, version, cwd: Just tmp }
-
 -- | Install a package into the given installation directory, replacing an
 -- | existing installation if there is on. Package sources are stored in the
 -- | "packages" subdirectory of the given directory using their package name
@@ -226,10 +346,10 @@ compileInstalledPackages tmp compilerVersion = do
 installPackage :: FilePath -> PackageName -> Version -> Aff Unit
 installPackage tmp name version = do
   log $ "installing " <> PackageName.print name <> "@" <> Version.printVersion version
-  _ <- Aff.try $ FSA.unlink installPath
+  removePackage tmp name
   _ <- API.wget registryUrl tarballPath >>= ltraverse (Aff.error >>> throwError)
   liftEffect $ Tar.extract { cwd: packagesDir, filename: tarballPath }
-  void $ Aff.try $ FSA.unlink tarballPath
+  FSE.remove tarballPath
   FSA.rename extractedPath installPath
   where
   packagesDir :: FilePath
