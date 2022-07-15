@@ -764,7 +764,7 @@ fetchRepo address path = FS.exists path >>= case _ of
           [ "Cannot import using a branch other than 'main'. Got: "
           , branch
           ]
-      runGit_ [ "pull", "--rebase" ] (Just path)
+      runGit_ [ "pull", "--rebase", "--autostash" ] (Just path)
     case result of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> pure unit
