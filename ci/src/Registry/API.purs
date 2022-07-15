@@ -841,10 +841,12 @@ fetchPackageSource { tmpDir, ref, location } = case location of
 
 -- | Clone a package from a Git location to the provided directory.
 cloneGitTag :: Http.URL -> String -> FilePath -> Aff Unit
-cloneGitTag url ref targetDir =
-  Except.runExceptT (runGit [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false" ] (Just targetDir)) >>= case _ of
-    Left err -> Aff.throwError $ Aff.error err
-    Right _ -> log "Successfully cloned package."
+cloneGitTag url ref targetDir = do
+  let args = [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false" ]
+  withBackoff' (Except.runExceptT (runGit args (Just targetDir))) >>= case _ of
+    Nothing -> Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> url <> " " <> ref
+    Just (Left err) -> Aff.throwError $ Aff.error err
+    Just (Right _) -> log "Successfully cloned package."
 
 -- | Read the published time of the checked-out commit.
 gitGetRefTime :: String -> FilePath -> Aff RFC3339String
