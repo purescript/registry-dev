@@ -1,19 +1,21 @@
 module Registry.Prelude
-  ( module Prelude
-  , module Extra
+  ( fromJust'
+  , guardA
+  , mapKeys
   , module Either
+  , module Extra
   , module Maybe
+  , module Prelude
   , module Registry.Json
   , module Registry.Types
+  , newlines
   , partitionEithers
   , stripPureScriptPrefix
-  , newlines
-  , fromJust'
+  , traverseKeys
   , unsafeFromJust
   , unsafeFromRight
-  , mapKeys
-  , traverseKeys
-  , guardA
+  , withBackoff
+  , withBackoff'
   ) where
 
 import Prelude
@@ -23,17 +25,18 @@ import Control.Alternative (class Alternative, empty)
 import Control.Monad.Error.Class (throwError) as Extra
 import Control.Monad.Except (ExceptT(..)) as Extra
 import Control.Monad.Trans.Class (lift) as Extra
+import Control.Parallel.Class as Parallel
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray) as Extra
 import Data.Bifunctor (bimap, lmap, rmap) as Extra
 import Data.Bitraversable (ltraverse)
 import Data.Either (Either(..), either, fromLeft, fromRight', isRight, hush, note) as Either
 import Data.Foldable (and, any, all, fold) as Extra
+import Data.Foldable as Foldable
 import Data.FoldableWithIndex (forWithIndex_, foldlWithIndex) as Extra
 import Data.Identity (Identity) as Extra
 import Data.List (List) as Extra
 import Data.Map (Map) as Extra
-import Data.String.NonEmpty (NonEmptyString) as Extra
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, isNothing, isJust, maybe) as Maybe
 import Data.Newtype (un, class Newtype) as Extra
@@ -41,12 +44,14 @@ import Data.Nullable (toMaybe, toNullable, Nullable) as Extra
 import Data.Set (Set) as Extra
 import Data.Show.Generic (genericShow) as Extra
 import Data.String as String
+import Data.String.NonEmpty (NonEmptyString) as Extra
 import Data.Traversable (for, for_, traverse, sequence) as Extra
 import Data.TraversableWithIndex (forWithIndex) as Extra
 import Data.Tuple (Tuple(..), fst, snd) as Extra
 import Data.Tuple.Nested ((/\)) as Extra
 import Effect (Effect) as Extra
 import Effect.Aff (Aff, launchAff_, try) as Extra
+import Effect.Aff as Aff
 import Effect.Aff.Class (liftAff, class MonadAff) as Extra
 import Effect.Class (liftEffect, class MonadEffect) as Extra
 import Effect.Class.Console (error, log, info, logShow) as Extra
@@ -105,3 +110,21 @@ traverseKeys k = map Map.fromFoldable <<< Extra.traverse (ltraverse k) <<< (Map.
 
 guardA :: forall f. Alternative f => Boolean -> f Unit
 guardA = if _ then pure unit else empty
+
+-- | Attempt an effectful computation with exponential backoff.
+withBackoff' :: forall a. Extra.Aff a -> Extra.Aff (Maybe.Maybe a)
+withBackoff' = withBackoff (Aff.Milliseconds 10_000.0)
+
+-- | Attempt an effectful computation with exponential backoff, starting with
+-- | the provided timeout.
+withBackoff :: forall a. Aff.Milliseconds -> Extra.Aff a -> Extra.Aff (Maybe.Maybe a)
+withBackoff (Aff.Milliseconds timeout) f =
+  withTimeout timeout
+    Extra.<|> withTimeout (timeout * 3.0)
+    Extra.<|> withTimeout (timeout * 6.0)
+    Extra.<|> withTimeout (timeout * 24.0)
+  where
+  withTimeout ms = Parallel.sequential $ Foldable.oneOf
+    [ Parallel.parallel (map Maybe.Just f)
+    , Parallel.parallel (Maybe.Nothing <$ Aff.delay (Aff.Milliseconds ms))
+    ]
