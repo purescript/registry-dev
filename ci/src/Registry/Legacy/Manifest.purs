@@ -6,6 +6,8 @@ import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Either as Either
+import Data.Foldable (sum)
+import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
@@ -37,16 +39,10 @@ type LegacyManifest =
   }
 
 toManifest :: PackageName -> Version -> Location -> LegacyManifest -> Manifest
-toManifest name version location { license, description, dependencies } =
-  Manifest { name, version, location, license, description, dependencies, files: Nothing, owners: Nothing }
-
--- TODO: If both dependency maps parse, then find shared dependencies and
---       check if one set uses higher ranges than the other (ie. one uses
---       prelude >=4 and the other uses prelude >=5). If so, prefer it. If not,
---       prefer Bower. Compare the ranges on their `rhs`?
--- TODO: Go put this in place of the existing 'fetch >>= parse' pipeline.
-
--- TODO: (Separately: add the `supervise` guard on top of calls to the uploader.)
+toManifest name version location { license, description, dependencies } = do
+  let files = Nothing
+  let owners = Nothing
+  Manifest { name, version, location, license, description, dependencies, files, owners }
 
 fetchLegacyManifest :: GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError RegistryM LegacyManifest
 fetchLegacyManifest address ref = do
@@ -84,16 +80,22 @@ fetchLegacyManifest address ref = do
     Except.except case manifests of
       This bower -> validateBowerDeps bower
       That spago -> validateSpagoDeps spago
-      Both bower spago -> case validateBowerDeps bower of
-        Left bowerError -> case validateSpagoDeps spago of
-          Left spagoError -> Left $ case bowerError.error, spagoError.error of
-            InvalidDependencies a, InvalidDependencies b ->
-              { error: InvalidDependencies (a <> b)
-              , reason: "Bowerfile and Spago file both report invalid dependencies"
-              }
-            _, _ -> bowerError
-          Right valid -> pure valid
-        Right valid -> pure valid
+      Both bower spago -> case validateBowerDeps bower, validateSpagoDeps spago of
+        Left bowerError, Left _ -> Left bowerError
+        Right bowerDeps, Left _ -> pure bowerDeps
+        Left _, Right spagoDeps -> pure spagoDeps
+        -- When both manifests produce viable dependencies, we first check to
+        -- see if one is more up-to-date (e.g. has higher ranges specified).
+        -- If so, we take that one. If not, we take the Bower manifest.
+        Right bowerDeps, Right spagoDeps -> pure do
+          let
+            compareToSpago key bowerRange = fromMaybe 0 do
+              spagoRange <- Map.lookup key spagoDeps
+              let bowerUpperBound = Version.lessThan bowerRange
+              let spagoUpperBound = Version.lessThan spagoRange
+              if bowerUpperBound >= spagoUpperBound then pure 1 else pure (-1)
+
+          if sum (mapWithIndex compareToSpago bowerDeps) >= 0 then bowerDeps else spagoDeps
 
   license <- do
     let unBower (Bowerfile { license }) = Array.mapMaybe NonEmptyString.fromString license
