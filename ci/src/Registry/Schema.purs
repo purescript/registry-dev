@@ -2,7 +2,7 @@ module Registry.Schema where
 
 import Registry.Prelude
 
-import Data.DateTime (DateTime(..))
+import Data.DateTime (DateTime)
 import Data.Formatter.DateTime (FormatterCommand(..), Formatter)
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Generic.Rep as Generic

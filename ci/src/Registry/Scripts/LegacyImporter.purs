@@ -12,7 +12,6 @@ import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
 import Data.Array as Array
-import Data.Array.NonEmpty as NonEmptyArray
 import Data.Compactable (separate)
 import Data.Filterable (partition)
 import Data.Foldable as Foldable
@@ -30,7 +29,6 @@ import Foreign.GitHub as GitHub
 import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.API as API
-import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
@@ -210,7 +208,8 @@ type ImportedIndex =
 -- | legacy registry but not in the resulting registry.
 importLegacyRegistry :: LegacyRegistry -> RegistryIndex -> RegistryM ImportedIndex
 importLegacyRegistry legacyRegistry existingRegistry = do
-  manifests <- forWithIndex legacyRegistry (buildLegacyPackageManifests existingRegistry)
+  manifests <- forWithIndex legacyRegistry \name address ->
+    Except.runExceptT (buildLegacyPackageManifests existingRegistry name address)
 
   let
     separatedPackages = separate manifests
@@ -290,54 +289,54 @@ buildLegacyPackageManifests
   :: RegistryIndex
   -> RawPackageName
   -> GitHub.PackageURL
-  -> RegistryM (Either PackageValidationError (Map RawVersion (Either VersionValidationError Manifest)))
+  -> ExceptT PackageValidationError RegistryM (Map RawVersion (Either VersionValidationError Manifest))
 buildLegacyPackageManifests existingRegistry rawPackage rawUrl = do
-  { cache, octokit } <- ask
-  liftAff $ Except.runExceptT do
-    package <- do
-      name <- Except.except $ validatePackageName rawPackage
-      Except.except $ validatePackageDisabled name
-      address <- Except.except $ validatePackageAddress rawUrl
-      tags <- ExceptT $ fetchPackageTags octokit cache address
-      pure { name, address, tags }
+  { cache } <- ask
 
-    let
-      location = GitHub { owner: package.address.owner, repo: package.address.repo, subdir: Nothing }
-      buildManifestForVersion tag = Except.runExceptT do
-        version <- Except.except $ validateVersion tag
+  package <- do
+    name <- Except.except $ validatePackageName rawPackage
+    Except.except $ validatePackageDisabled name
+    address <- Except.except $ validatePackageAddress rawUrl
+    tags <- fetchPackageTags address
+    pure { name, address, tags }
 
-        let
-          buildManifest = do
-            Except.except $ validateVersionDisabled package.name version
-            let fetchManifestError = { error: CannotAccessLegacyManifest, reason: _ }
-            legacyManifest <- Except.withExceptT fetchManifestError $ ExceptT do
-              LegacyManifest.fetchLegacyManifest octokit cache package.address (RawVersion tag.name)
-            let parseManifestError err = { error: InvalidManifest err, reason: "Legacy manifest could not be parsed." }
-            parsedManifest <- Except.withExceptT parseManifestError $ Except.except do
-              LegacyManifest.parseLegacyManifest package.name location version legacyManifest
-            pure parsedManifest
+  let
+    location :: Location
+    location = GitHub { owner: package.address.owner, repo: package.address.repo, subdir: Nothing }
 
-        case Map.lookup package.name existingRegistry >>= Map.lookup version of
-          Just manifest -> pure manifest
-          _ -> do
-            let key = "manifest__" <> show package.name <> "--" <> tag.name
-            liftEffect (Cache.readJsonEntry key cache) >>= case _ of
-              -- We can't just write the version directly, as we need to preserve the _raw_ version.
-              -- So we update the manifest fields before reading/writing the cache.
-              Left _ -> ExceptT do
-                log $ "CACHE MISS: Building manifest for " <> show package.name <> "@" <> tag.name
-                manifest <- Except.runExceptT buildManifest
-                liftEffect $ Cache.writeJsonEntry key (map (_ { version = Version.rawVersion version } <<< un Manifest) manifest) cache
-                pure manifest
-              Right contents -> do
-                fields <- Except.except contents.value
-                pure $ Manifest $ fields { version = unsafeFromRight $ Version.parseVersion Version.Lenient fields.version }
+    buildManifestForVersion :: GitHub.Tag -> ExceptT _ RegistryM Manifest
+    buildManifestForVersion tag = do
+      version <- Except.except $ validateVersion tag
 
-    manifests <- liftAff $ for package.tags \tag -> do
-      manifest <- buildManifestForVersion tag
-      pure (Tuple (RawVersion tag.name) manifest)
+      let
+        buildManifest = do
+          Except.except $ validateVersionDisabled package.name version
+          let manifestError err = { error: InvalidManifest err, reason: "Legacy manifest could not be parsed." }
+          Except.withExceptT manifestError do
+            legacyManifest <- LegacyManifest.fetchLegacyManifest package.address (RawVersion tag.name)
+            pure $ LegacyManifest.toManifest package.name version location legacyManifest
 
-    pure $ Map.fromFoldable manifests
+      case Map.lookup package.name existingRegistry >>= Map.lookup version of
+        Just manifest -> pure manifest
+        _ -> do
+          let key = "manifest__" <> show package.name <> "--" <> tag.name
+          liftEffect (Cache.readJsonEntry key cache) >>= case _ of
+            -- We can't just write the version directly, as we need to preserve the _raw_ version.
+            -- So we update the manifest fields before reading/writing the cache.
+            Left _ -> ExceptT do
+              log $ "CACHE MISS: Building manifest for " <> show package.name <> "@" <> tag.name
+              manifest <- Except.runExceptT buildManifest
+              liftEffect $ Cache.writeJsonEntry key (map (_ { version = Version.rawVersion version } <<< un Manifest) manifest) cache
+              pure manifest
+            Right contents -> do
+              fields <- Except.except contents.value
+              pure $ Manifest $ fields { version = unsafeFromRight $ Version.parseVersion Version.Lenient fields.version }
+
+  manifests <- lift $ for package.tags \tag -> do
+    manifest <- Except.runExceptT $ buildManifestForVersion tag
+    pure (Tuple (RawVersion tag.name) manifest)
+
+  pure $ Map.fromFoldable manifests
 
 type VersionValidationError = { error :: VersionError, reason :: String }
 
@@ -345,21 +344,18 @@ type VersionValidationError = { error :: VersionError, reason :: String }
 data VersionError
   = InvalidTag GitHub.Tag
   | DisabledVersion
-  | CannotAccessLegacyManifest
-  | InvalidManifest (NonEmptyArray LegacyManifestValidationError)
+  | InvalidManifest LegacyManifestValidationError
   | UnregisteredDependencies (Array PackageName)
 
 instance RegistryJson VersionError where
   encode = case _ of
     InvalidTag tag -> Json.encode { tag: "InvalidTag", value: tag }
     DisabledVersion -> Json.encode { tag: "DisabledVersion" }
-    CannotAccessLegacyManifest -> Json.encode { tag: "CannotAccessLegacyManifest" }
-    InvalidManifest errs -> Json.encode { tag: "InvalidManifest", value: errs }
+    InvalidManifest err -> Json.encode { tag: "InvalidManifest", value: err }
     UnregisteredDependencies names -> Json.encode { tag: "UnregisteredDependencies", value: names }
   decode = Json.decode >=> \obj -> (obj .: "tag") >>= case _ of
     "InvalidTag" -> map InvalidTag $ obj .: "value"
     "DisabledVersion" -> pure DisabledVersion
-    "CannotAccessLegacyManifest" -> pure CannotAccessLegacyManifest
     "InvalidManifest" -> map InvalidManifest $ obj .: "value"
     "UnregisteredDependencies" -> map UnregisteredDependencies $ obj .: "value"
     tag -> Left $ "Unexpected tag: " <> tag
@@ -400,22 +396,23 @@ data PackageError
 
 derive instance Eq PackageError
 
-fetchPackageTags :: GitHub.Octokit -> Cache -> GitHub.Address -> Aff (Either PackageValidationError (Array GitHub.Tag))
-fetchPackageTags octokit cache address = do
-  result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache address
+fetchPackageTags :: GitHub.Address -> ExceptT PackageValidationError RegistryM (Array GitHub.Tag)
+fetchPackageTags address = do
+  { octokit, cache } <- ask
+  result <- Except.runExceptT $ Except.mapExceptT liftAff $ GitHub.listTags octokit cache address
   case result of
     Left err -> case err of
       GitHub.APIError apiError | apiError.statusCode >= 400 -> do
         let error = CannotAccessRepo address
         let reason = "GitHub API error with status code " <> show apiError.statusCode
-        pure $ Left { error, reason }
+        throwError { error, reason }
       _ ->
         liftEffect $ Exception.throw $ String.joinWith "\n"
           [ "Unexpected GitHub error with a status <= 400"
           , GitHub.printGitHubError err
           ]
     Right tags ->
-      pure $ Right tags
+      pure tags
 
 validatePackageAddress :: GitHub.PackageURL -> Either PackageValidationError GitHub.Address
 validatePackageAddress packageUrl =
@@ -477,10 +474,8 @@ formatVersionValidationError { error, reason } = case error of
     { tag: "InvalidTag", value: Just tag.name, reason }
   DisabledVersion ->
     { tag: "DisabledVersion", value: Nothing, reason }
-  CannotAccessLegacyManifest ->
-    { tag: "CannotAccessLegacyManifest", value: Nothing, reason }
-  InvalidManifest errs -> do
-    let errorValue = String.joinWith ", " $ map (Legacy.Manifest.printLegacyManifestError <<< _.error) $ NonEmptyArray.toArray errs
+  InvalidManifest err -> do
+    let errorValue = Legacy.Manifest.printLegacyManifestError err.error
     { tag: "InvalidManifest", value: Just errorValue, reason }
   UnregisteredDependencies names -> do
     let errorValue = String.joinWith ", " $ map PackageName.print names
@@ -591,19 +586,18 @@ calculateImportStats legacyRegistry imported = do
 
     versionErrors =
       Array.foldl (\m error -> Map.insertWith (+) error 1 m) Map.empty
-        $ Array.concatMap toKey
         $ Array.fromFoldable
-        $ List.concatMap Map.values
+        $ List.concatMap (map toKey <<< Map.values)
         $ Map.values imported.failedVersions
       where
       toKey = _.error >>> case _ of
-        InvalidTag _ -> [ "Invalid Tag" ]
-        DisabledVersion -> [ "Disabled Version" ]
-        CannotAccessLegacyManifest -> [ "Cannot Access Legacy Manifest" ]
-        InvalidManifest errs -> map (\err -> "Invalid Manifest (" <> innerKey err <> ")") (NonEmptyArray.toArray errs)
-        UnregisteredDependencies _ -> [ "Unregistered Dependencies" ]
+        InvalidTag _ -> "Invalid Tag"
+        DisabledVersion -> "Disabled Version"
+        InvalidManifest err -> "Invalid Manifest (" <> innerKey err <> ")"
+        UnregisteredDependencies _ -> "Unregistered Dependencies"
 
       innerKey = _.error >>> case _ of
+        NoManifests -> "No Manifests"
         MissingLicense -> "Missing License"
         InvalidLicense _ -> "Invalid License"
         InvalidDependencies _ -> "Invalid Dependencies"
