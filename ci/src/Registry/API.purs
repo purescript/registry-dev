@@ -570,7 +570,9 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
       -- unpacked, ie. package-name-major.minor.patch
       filename = PackageName.print packageName <> "-" <> Version.printVersion version <> ".tar.gz"
       filepath = dependenciesDir <> Path.sep <> filename
-    wget ("packages.registry.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath
+    liftAff (wget ("packages.registry.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath) >>= case _ of
+      Left err -> throwWithComment $ "Error while fetching tarball: " <> err
+      Right _ -> pure unit
     liftEffect $ Tar.extract { cwd: dependenciesDir, filename: filepath }
     liftAff $ FS.unlink filepath
 
@@ -679,15 +681,18 @@ mkEnv octokit cache packagesMetadata issue =
   , registryIndex: Path.concat [ "..", "registry-index" ]
   }
 
-wget :: String -> FilePath -> RegistryM Unit
+wget :: String -> FilePath -> Aff (Either String Unit)
 wget url path = do
   let cmd = "wget"
   let stdin = Nothing
   let args = [ "-O", path, url ]
-  result <- liftAff $ Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
-  case result.exit of
-    NodeProcess.Normally 0 -> pure unit
-    _ -> throwWithComment $ "Error while fetching tarball: " <> result.stderr
+  maybeResult <- withBackoff' $ Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
+  pure $ case maybeResult of
+    Nothing ->
+      Left $ "Timed out attempting to use wget to fetch " <> url
+    Just { exit, stderr } -> case exit of
+      NodeProcess.Normally 0 -> Right unit
+      _ -> Left $ String.trim stderr
 
 mkLocalEnv :: Octokit -> Cache -> Ref (Map PackageName Metadata) -> Env
 mkLocalEnv octokit cache packagesMetadata =
@@ -830,7 +835,9 @@ fetchPackageSource { tmpDir, ref, location } = case location of
         let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
         let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
         log $ "Fetching tarball from GitHub: " <> archiveUrl
-        wget archiveUrl absoluteTarballPath
+        liftAff (wget archiveUrl absoluteTarballPath) >>= case _ of
+          Left err -> throwWithComment $ "Error while fetching tarball: " <> err
+          Right _ -> pure unit
         log $ "Tarball downloaded in " <> absoluteTarballPath
         liftEffect (Tar.getToplevelDir absoluteTarballPath) >>= case _ of
           Nothing ->

@@ -6,6 +6,7 @@ import Affjax as Http
 import Control.Monad.Reader (asks)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
+import Data.Bitraversable (ltraverse)
 import Data.DateTime as DateTime
 import Data.Int as Int
 import Data.Map as Map
@@ -34,7 +35,7 @@ import Registry.Cache as Cache
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (Env, RegistryM, readPackagesMetadata, runRegistryM)
+import Registry.RegistryM (Env, readPackagesMetadata, runRegistryM)
 import Registry.Schema (PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -148,7 +149,7 @@ main = Aff.launchAff_ do
     liftEffect $ Console.log "Found the following uploads eligible for inclusion in package set:"
     liftEffect $ Console.log (show uploads)
 
-    buildPackageSet tmpDir (unsafeFromRight packageSetResult) >>= case _ of
+    liftAff $ buildPackageSet tmpDir (unsafeFromRight packageSetResult) >>= case _ of
       Left MissingCompiler -> logShow "Missing compiler"
       Left (CompilationError err) -> log $ "Failed compilation: " <> err
       Left (UnknownError err) -> log $ "Unknown error: " <> err
@@ -194,40 +195,42 @@ computeVersion (PackageSet { packages, version: packageSetVersion }) updates =
 =======
 -- | Install all packages in the given package set and compile them with the
 -- | correct compiler version.
-buildPackageSet :: FilePath -> PackageSet -> RegistryM (Either CompilerFailure String)
+buildPackageSet :: FilePath -> PackageSet -> Aff (Either CompilerFailure String)
 buildPackageSet installDir (PackageSet { compiler, packages }) = do
+  log "Installing packages..."
   installPackages installDir packages
+  log "Compiling package set..."
   compileInstalledPackages installDir compiler
 
 -- | Install all packages in a package set into a temporary directory, returning
 -- | the reference to the installation directory. Installed packages have the
 -- | form: "package-name-major.minor.patch" and are stored in the "packages"
 -- | directory.
-installPackages :: FilePath -> Map PackageName Version -> RegistryM Unit
+installPackages :: FilePath -> Map PackageName Version -> Aff Unit
 installPackages tmp packages = do
-  liftAff $ FSE.ensureDirectory $ Path.concat [ tmp, "packages" ]
+  FSE.ensureDirectory $ Path.concat [ tmp, "packages" ]
   forWithIndex_ packages (installPackage tmp)
 
 -- | Compile all PureScript files in the given directory. Expects all packages
 -- | to be installed in a subdirectory "packages".
-compileInstalledPackages :: FilePath -> Version -> RegistryM (Either CompilerFailure String)
+compileInstalledPackages :: FilePath -> Version -> Aff (Either CompilerFailure String)
 compileInstalledPackages tmp compilerVersion = do
   let args = [ "compile", "packages/**/*.purs" ]
   let version = Version.printVersion compilerVersion
-  liftAff $ callCompiler { args, version, cwd: Just tmp }
+  callCompiler { args, version, cwd: Just tmp }
 
 -- | Install a package into the given installation directory, replacing an
 -- | existing installation if there is on. Package sources are stored in the
 -- | "packages" subdirectory of the given directory using their package name
 -- | ie. 'aff'.
-installPackage :: FilePath -> PackageName -> Version -> RegistryM Unit
+installPackage :: FilePath -> PackageName -> Version -> Aff Unit
 installPackage tmp name version = do
   log $ "installing " <> PackageName.print name <> "@" <> Version.printVersion version
-  void $ liftAff $ Aff.try $ FSA.unlink installPath
-  API.wget registryUrl tarballPath
+  _ <- Aff.try $ FSA.unlink installPath
+  _ <- API.wget registryUrl tarballPath >>= ltraverse (Aff.error >>> throwError)
   liftEffect $ Tar.extract { cwd: packagesDir, filename: tarballPath }
-  void $ liftAff $ Aff.try $ FSA.unlink tarballPath
-  liftAff $ FSA.rename extractedPath installPath
+  void $ Aff.try $ FSA.unlink tarballPath
+  FSA.rename extractedPath installPath
   where
   packagesDir :: FilePath
   packagesDir = Path.concat [ tmp, "packages" ]
