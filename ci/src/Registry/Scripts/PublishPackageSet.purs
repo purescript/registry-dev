@@ -143,3 +143,38 @@ main = Aff.launchAff_ do
     liftEffect $ Console.log (show uploads)
 
     pure unit
+
+-- | Computes new package set version from old package set and version information of successfully added/updated packages.
+-- | Note: this must be called with the old `PackageSet` that has not had updates applied.
+computeVersion :: PackageSet -> Map PackageName Version -> Version
+computeVersion (PackageSet { packages, version: packageSetVersion }) updates =
+  updateVersion packageSetVersion
+  where
+  updateVersion =
+    if major then
+      Version.bumpMajor
+    else if minor then
+      Version.bumpMinor
+    else if patch then
+      Version.bumpPatch
+    else
+      identity
+
+  -- Check for major version bumps for existing packages
+  major :: Boolean
+  major = Map.toUnfoldable updates # Array.any \(Tuple package version) -> fromMaybe false do
+    prevVersion <- Map.lookup package packages
+    pure (version >= Version.bumpMajor prevVersion)
+
+  -- Check for minor version bumps for existing packages or package introductions
+  minor :: Boolean
+  minor = Map.toUnfoldable updates # Array.any \(Tuple package version) -> fromMaybe true do
+    prevVersion <- Map.lookup package packages
+    pure (version >= Version.bumpMinor prevVersion)
+
+  -- Check for patch version bumps for existing packages
+  patch :: Boolean
+  patch = Map.toUnfoldable updates # Array.any \(Tuple package version) -> fromMaybe false do
+    prevVersion <- Map.lookup package packages
+    pure (version >= Version.bumpPatch prevVersion)
+
