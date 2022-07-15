@@ -45,7 +45,7 @@ import Data.String as String
 import Data.String.Base64 as Base64
 import Data.String.CodeUnits (fromCharArray)
 import Data.Time.Duration as Duration
-import Effect.Exception as Aff
+import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Effect.Now as Now
 import Effect.Uncurried (EffectFn1, EffectFn6, runEffectFn1, runEffectFn6)
@@ -115,7 +115,7 @@ getContent octokit cache address ref path = do
     encoding <- _data .: "encoding"
     if encoding == "base64" && _type == "file" then do
       contentsb64 <- _data .: "content"
-      contents <- lmap Aff.message $ traverse Base64.decode $ String.split (String.Pattern "\n") contentsb64
+      contents <- lmap Exception.message $ traverse Base64.decode $ String.split (String.Pattern "\n") contentsb64
       pure $ fold contents
     else
       Left $ "Expected file with encoding base64, but got: " <> show { encoding, type: _type }
@@ -241,8 +241,8 @@ type UncachedRequestArgs args =
 -- | of the cache. Prefer `requestCache` when possible.
 uncachedRequest :: forall args. UncachedRequestArgs args -> ExceptT GitHubAPIError Aff Json
 uncachedRequest { octokit, route, headers, args } = ExceptT do
-  result <- Promise.toAffE $ runEffectFn6 requestImpl octokit route headers args Left Right
-  convertGitHubAPIError result
+  let request = runEffectFn6 requestImpl octokit route headers args Left Right
+  rateLimitBackoff octokit (Promise.toAffE request)
 
 foreign import paginateImpl :: forall args r. EffectFn6 Octokit Route (Object String) (Record args) (Object Json -> r) (Json -> r) (Promise r)
 
@@ -250,8 +250,24 @@ foreign import paginateImpl :: forall args r. EffectFn6 Octokit Route (Object St
 -- | This function should only be used on the GitHub 'list' endpoints.
 uncachedPaginatedRequest :: forall args. UncachedRequestArgs args -> ExceptT GitHubAPIError Aff Json
 uncachedPaginatedRequest { octokit, route, headers, args } = ExceptT do
-  result <- Promise.toAffE $ runEffectFn6 paginateImpl octokit route headers args Left Right
-  convertGitHubAPIError result
+  let request = runEffectFn6 paginateImpl octokit route headers args Left Right
+  rateLimitBackoff octokit (Promise.toAffE request)
+
+-- | Apply exponential backoff to requests that hang, but without cancelling
+-- | requests if we have reached our rate limit and have been throttled.
+rateLimitBackoff :: Octokit -> Aff (Either (Object Json) Json) -> Aff (Either GitHubAPIError Json)
+rateLimitBackoff octokit action = do
+  maybeResult <- withBackoff
+    { delay: Aff.Milliseconds 5_000.0
+    , action
+    , shouldCancel: \_ -> Except.runExceptT (getRateLimit octokit) >>= case _ of
+        Right { remaining } | remaining == 0 -> pure false
+        _ -> pure true
+    , shouldRetry: \attempt -> if attempt <= 3 then pure (Just action) else pure Nothing
+    }
+  case maybeResult of
+    Nothing -> pure $ Left { statusCode: 400, message: "Unable to reach GitHub servers." }
+    Just result -> convertGitHubAPIError result
 
 -- GitHub uses the RFC1123 time format: "Thu, 05 Jul 2022"
 -- http://www.csgnetwork.com/timerfc1123calc.html

@@ -35,6 +35,7 @@ import Data.Foldable (and, any, all, fold) as Extra
 import Data.Foldable as Foldable
 import Data.FoldableWithIndex (forWithIndex_, foldlWithIndex) as Extra
 import Data.Identity (Identity) as Extra
+import Data.Int as Int
 import Data.List (List) as Extra
 import Data.Map (Map) as Extra
 import Data.Map as Map
@@ -113,18 +114,51 @@ guardA = if _ then pure unit else empty
 
 -- | Attempt an effectful computation with exponential backoff.
 withBackoff' :: forall a. Extra.Aff a -> Extra.Aff (Maybe.Maybe a)
-withBackoff' = withBackoff (Aff.Milliseconds 10_000.0)
+withBackoff' action = withBackoff
+  { delay: Aff.Milliseconds 5_000.0
+  , action
+  , shouldCancel: \_ -> pure true
+  , shouldRetry: \attempt -> if attempt > 3 then pure Maybe.Nothing else pure (Maybe.Just action)
+  }
+
+type Backoff a =
+  { delay :: Aff.Milliseconds
+  , action :: Extra.Aff a
+  , shouldCancel :: Int -> Extra.Aff Boolean
+  , shouldRetry :: Int -> Extra.Aff (Maybe.Maybe (Extra.Aff a))
+  }
 
 -- | Attempt an effectful computation with exponential backoff, starting with
 -- | the provided timeout.
-withBackoff :: forall a. Aff.Milliseconds -> Extra.Aff a -> Extra.Aff (Maybe.Maybe a)
-withBackoff (Aff.Milliseconds timeout) f =
-  withTimeout timeout
-    Extra.<|> withTimeout (timeout * 3.0)
-    Extra.<|> withTimeout (timeout * 6.0)
-    Extra.<|> withTimeout (timeout * 24.0)
-  where
-  withTimeout ms = Parallel.sequential $ Foldable.oneOf
-    [ Parallel.parallel (map Maybe.Just f)
-    , Parallel.parallel (Maybe.Nothing <$ Aff.delay (Aff.Milliseconds ms))
-    ]
+withBackoff :: forall a. Backoff a -> Extra.Aff (Maybe.Maybe a)
+withBackoff { delay: Aff.Milliseconds timeout, action, shouldCancel, shouldRetry } = do
+  let
+    runAction attempt action' ms =
+      Parallel.sequential $ Foldable.oneOf
+        [ Parallel.parallel (map Maybe.Just action')
+        , Parallel.parallel (runTimeout attempt ms)
+        ]
+
+    runTimeout attempt ms = do
+      _ <- Aff.delay (Aff.Milliseconds (Int.toNumber ms))
+      shouldCancel attempt >>=
+        if _ then do
+          Extra.log $ "Cancelled after " <> show ms <> " milliseconds, retrying (attempt " <> show attempt <> ")..."
+          pure Maybe.Nothing
+        else runTimeout attempt (ms * 2)
+
+    loop :: Int -> Maybe.Maybe a -> Extra.Aff (Maybe.Maybe a)
+    loop attempt = case _ of
+      Maybe.Nothing -> do
+        maybeRetry <- shouldRetry attempt
+        case maybeRetry of
+          Maybe.Nothing -> pure Maybe.Nothing
+          Maybe.Just newAction -> do
+            let newTimeout = Int.floor timeout `Int.pow` (attempt + 1)
+            maybeResult <- runAction attempt newAction newTimeout
+            loop (attempt + 1) maybeResult
+      Maybe.Just result ->
+        pure (Maybe.Just result)
+
+  maybeResult <- runAction 0 action (Int.floor timeout)
+  loop 1 maybeResult
