@@ -153,7 +153,7 @@ main = Aff.launchAff_ do
     liftEffect $ Console.log "Found the following uploads eligible for inclusion in package set:"
     liftEffect $ Console.log (show uploads)
 
-    result <- processBatch tmpDir packageSet (Map.fromFoldable uploads)
+    result <- processBatch packageSet (Map.fromFoldable uploads)
     logShow result
 
 type BatchResult =
@@ -164,8 +164,10 @@ type BatchResult =
 
 -- | Attempt to produce a new package set from the given package set by adding
 -- | the provided packages.
-processBatch :: FilePath -> PackageSet -> Map PackageName Version -> RegistryM BatchResult
-processBatch tmp prevSet@(PackageSet { compiler }) batch = do
+processBatch :: PackageSet -> Map PackageName Version -> RegistryM BatchResult
+processBatch prevSet@(PackageSet { compiler }) batch = do
+  tmp <- liftEffect Process.cwd
+
   let
     handleCompilerError = case _ of
       MissingCompiler -> throwError $ Aff.error $ "Missing compiler version " <> Version.printVersion compiler
