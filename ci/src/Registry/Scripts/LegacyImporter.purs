@@ -106,6 +106,7 @@ main = launchAff_ do
     registryIndexPath <- asks _.registryIndex
     registryPath <- asks _.registry
 
+    log "Reading existing registry index..."
     existingRegistry <- do
       -- To ensure the metadata and registry index are always in sync, we remove
       -- any entries from the registry index that don't have accompanying metadata
@@ -123,7 +124,7 @@ main = launchAff_ do
     legacyRegistry <- liftAff readLegacyRegistryFiles
 
     log "Importing legacy registry packages..."
-    importedIndex <- importLegacyRegistry legacyRegistry existingRegistry
+    importedIndex <- importLegacyRegistry existingRegistry legacyRegistry
 
     liftAff do
       logImportStats legacyRegistry importedIndex
@@ -206,10 +207,11 @@ type ImportedIndex =
 -- | the legacy registry files. This function also collects import errors for
 -- | packages and package versions and reports packages that are present in the
 -- | legacy registry but not in the resulting registry.
-importLegacyRegistry :: LegacyRegistry -> RegistryIndex -> RegistryM ImportedIndex
-importLegacyRegistry legacyRegistry existingRegistry = do
+importLegacyRegistry :: RegistryIndex -> LegacyRegistry -> RegistryM ImportedIndex
+importLegacyRegistry existingRegistry legacyRegistry = do
+  legacyPackageSets <- LegacyManifest.fetchLegacyPackageSets
   manifests <- forWithIndex legacyRegistry \name address ->
-    Except.runExceptT (buildLegacyPackageManifests existingRegistry name address)
+    Except.runExceptT (buildLegacyPackageManifests existingRegistry legacyPackageSets name address)
 
   let
     separatedPackages = separate manifests
@@ -287,10 +289,11 @@ importLegacyRegistry legacyRegistry existingRegistry = do
 -- | versions that don't produce valid manifests, and manifests for all that do.
 buildLegacyPackageManifests
   :: RegistryIndex
+  -> LegacyManifest.LegacyPackageSetEntries
   -> RawPackageName
   -> GitHub.PackageURL
   -> ExceptT PackageValidationError RegistryM (Map RawVersion (Either VersionValidationError Manifest))
-buildLegacyPackageManifests existingRegistry rawPackage rawUrl = do
+buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl = do
   { cache } <- ask
 
   package <- do
@@ -311,9 +314,10 @@ buildLegacyPackageManifests existingRegistry rawPackage rawUrl = do
       let
         buildManifest = do
           Except.except $ validateVersionDisabled package.name version
+          let packageSetDeps = Map.lookup (RawVersion tag.name) =<< Map.lookup package.name legacyPackageSets
           let manifestError err = { error: InvalidManifest err, reason: "Legacy manifest could not be parsed." }
           Except.withExceptT manifestError do
-            legacyManifest <- LegacyManifest.fetchLegacyManifest package.address (RawVersion tag.name)
+            legacyManifest <- LegacyManifest.fetchLegacyManifest packageSetDeps package.address (RawVersion tag.name)
             pure $ LegacyManifest.toManifest package.name version location legacyManifest
 
       case Map.lookup package.name existingRegistry >>= Map.lookup version of
@@ -485,7 +489,7 @@ type LegacyRegistry = Map RawPackageName GitHub.PackageURL
 
 -- | Read the legacy registry files stored in the root of the registry-dev.
 -- | Package names have their 'purescript-' prefix trimmed.
-readLegacyRegistryFiles :: Aff (Map RawPackageName GitHub.PackageURL)
+readLegacyRegistryFiles :: Aff LegacyRegistry
 readLegacyRegistryFiles = do
   bowerPackages <- readLegacyRegistryFile "bower-packages.json"
   registryPackages <- readLegacyRegistryFile "new-packages.json"

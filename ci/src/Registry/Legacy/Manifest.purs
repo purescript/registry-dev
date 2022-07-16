@@ -2,10 +2,12 @@ module Registry.Legacy.Manifest where
 
 import Registry.Prelude
 
+import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Either as Either
+import Data.Filterable (filterMap)
 import Data.Foldable (sum)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
@@ -22,11 +24,13 @@ import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FSA
 import Node.Path as Path
+import Registry.Cache as Cache
 import Registry.Json ((.:), (.:?))
 import Registry.Json as Json
+import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (RegistryM)
+import Registry.RegistryM (RegistryM, throwWithComment)
 import Registry.Schema (Location, Manifest(..))
 import Registry.Version (Range, Version)
 import Registry.Version as Version
@@ -44,8 +48,8 @@ toManifest name version location { license, description, dependencies } = do
   let owners = Nothing
   Manifest { name, version, location, license, description, dependencies, files, owners }
 
-fetchLegacyManifest :: GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError RegistryM LegacyManifest
-fetchLegacyManifest address ref = do
+fetchLegacyManifest :: Maybe (Map PackageName RawVersion) -> GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError RegistryM LegacyManifest
+fetchLegacyManifest packageSetsDeps address ref = do
   manifests <- fetchLegacyManifestFiles address ref
 
   dependencies <- do
@@ -55,18 +59,28 @@ fetchLegacyManifest address ref = do
       -- "strings: >=4.1.2 <4.1.3", which while technically correct is almost
       -- certainly not what the user wants. We instead treat these ranges as
       -- caret ranges, so "strings: 4.1.2" becomes "strings: >=4.1.2 <5.0.0".
+      toRange (RawVersion fixed) = do
+        let parsedVersion = Version.parseVersion Version.Lenient fixed
+        let bump version = Version.printVersion (Version.bumpHighest version)
+        let printRange version = Array.fold [ ">=", fixed, " <", bump version ]
+        RawVersionRange $ Either.either (const fixed) printRange parsedVersion
+
       convertSpagoDeps packages = Array.foldl foldFn Map.empty
         where
         foldFn deps name = maybe deps (\{ version } -> Map.insert name (toRange version) deps) (findPackage name)
         findPackage name = Map.lookup name packages
-        toRange (RawVersion fixed) = do
-          let parsedVersion = Version.parseVersion Version.Lenient fixed
-          let bump version = Version.printVersion (Version.bumpHighest version)
-          let printRange version = Array.fold [ ">=", fixed, " <", bump version ]
-          RawVersionRange $ Either.either (const fixed) printRange parsedVersion
 
-      validateSpagoDeps (SpagoDhallJson { dependencies, packages }) =
-        validateDependencies (convertSpagoDeps packages dependencies)
+      validateSpagoDeps (SpagoDhallJson { dependencies, packages }) = do
+        case packageSetsDeps of
+          Nothing ->
+            validateDependencies (convertSpagoDeps packages dependencies)
+          Just deps -> do
+            let converted = mapKeys (RawPackageName <<< PackageName.print) $ map toRange deps
+            case validateDependencies converted of
+              Left _ ->
+                validateDependencies (convertSpagoDeps packages dependencies)
+              Right validated ->
+                pure validated
 
       -- We remove dependencies that don't begin with 'purescript-', as these
       -- indicate JavaScript dependencies.
@@ -276,3 +290,69 @@ fetchBowerfile address (RawVersion ref) = do
   Except.except $ case Json.parseJson (JsonRepair.tryRepair bowerfile) of
     Left err -> Left $ GitHub.DecodeError err
     Right value -> pure value
+
+type LegacyPackageSetEntries = Map PackageName (Map RawVersion (Map PackageName RawVersion))
+
+fetchLegacyPackageSets :: RegistryM LegacyPackageSetEntries
+fetchLegacyPackageSets = do
+  { octokit, cache } <- ask
+  result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache { owner: "purescript", repo: "package-sets" }
+  tags <- case result of
+    Left err -> throwWithComment (GitHub.printGitHubError err)
+    Right tags -> do
+      let
+        pred { name } = do
+          -- "psc-0.12.4" or "psc-0.12.4-2019-01-01" should both produce "0.12.4"
+          let trimmed = String.takeWhile (_ /= String.codePointFromChar '-') $ String.drop 4 name
+          tagVersion <- hush $ Version.parseVersion Version.Lenient trimmed
+          -- The package sets did not have Spago-compatible sets until after
+          -- the 0.12.3 compiler sets. We only refer to the package sets when
+          -- looking at Spago packages, so those are all we need.
+          minimumVersion <- hush $ Version.parseVersion Version.Lenient "0.12.4"
+          guard $ tagVersion >= minimumVersion
+          pure name
+
+      pure $ filterMap pred tags
+
+  let
+    convertPackageSet :: LegacyPackageSet -> LegacyPackageSetEntries
+    convertPackageSet (LegacyPackageSet packages) =
+      map (convertEntry packages) packages
+
+    convertEntry :: Map PackageName LegacyPackageSetEntry -> LegacyPackageSetEntry -> Map RawVersion (Map PackageName RawVersion)
+    convertEntry entries (LegacyPackageSetEntry { dependencies, version }) = do
+      let
+        -- Package sets are only valid if all packages in the set have dependencies that are also in
+        -- the set, so this (should) be safe.
+        resolveDependencyVersion dep = unsafeFromJust do
+          LegacyPackageSetEntry entry <- Map.lookup dep entries
+          pure entry.version
+        resolveDependencyVersions =
+          Array.foldl (\m name -> Map.insert name (resolveDependencyVersion name) m) Map.empty
+      Map.singleton version (resolveDependencyVersions dependencies)
+
+  legacySets <- for tags \ref -> do
+    let key = "legacy-package-set__" <> ref
+
+    entries <- liftEffect (Cache.readJsonEntry key cache) >>= case _ of
+      Left _ -> do
+        log $ "CACHE MISS: Building legacy package set for " <> ref
+        converted <- Except.runExceptT do
+          packagesJson <- Except.mapExceptT liftAff $ GitHub.getContent octokit cache { owner: "purescript", repo: "package-sets" } ref "packages.json"
+          parsed <- Except.except $ case Json.parseJson packagesJson of
+            Left decodeError -> throwError $ GitHub.DecodeError decodeError
+            Right legacySet -> pure legacySet
+          pure $ convertPackageSet parsed
+        liftEffect $ Cache.writeJsonEntry key converted cache
+        pure converted
+      Right contents ->
+        pure contents.value
+
+    case entries of
+      Left err -> do
+        log $ "Failed to retrieve " <> ref <> " package set:\n" <> GitHub.printGitHubError err
+        pure Map.empty
+      Right value ->
+        pure value
+
+  pure $ Map.empty -- Array.foldl (\m legacySet -> Map.unionWith Map.union legacySet m) Map.empty legacySets
