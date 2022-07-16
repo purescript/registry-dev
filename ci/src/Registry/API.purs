@@ -602,11 +602,11 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
       , " is not supported. Please try again with a different compiler."
       ]
     Left (CompilationError errs) -> throwWithComment $ String.joinWith "\n"
-        [ "Publishing failed because the build plan does not compile with version " <> Version.printVersion compiler <> " of the compiler:"
-        , "```"
-        , (printCompilerErrors errs)
-        , "```"
-        ]
+      [ "Publishing failed because the build plan does not compile with version " <> Version.printVersion compiler <> " of the compiler:"
+      , "```"
+      , (printCompilerErrors errs)
+      , "```"
+      ]
     Left (UnknownError err) -> throwWithComment $ String.joinWith "\n"
       [ "Publishing failed for your package due to a compiler error:"
       , "```"
