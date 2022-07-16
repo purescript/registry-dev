@@ -57,7 +57,7 @@ import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
-import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
+import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), PackageSet(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Version (ParseMode(..), Range, Version)
 import Registry.Version as Version
@@ -672,6 +672,7 @@ mkEnv octokit cache packagesMetadata issue =
       Right _ -> pure unit
   , commitMetadataFile: pacchettiBottiPushToRegistryMetadata
   , commitIndexFile: pacchettiBottiPushToRegistryIndex
+  , commitPackageSetFile: pacchettiBottiPushToRegistryPackageSets
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
   , packagesMetadata
@@ -703,6 +704,9 @@ mkLocalEnv octokit cache packagesMetadata =
       pure (Right unit)
   , commitIndexFile: \_ _ -> do
       log "Skipping committing to registry index..."
+      pure (Right unit)
+  , commitPackageSetFile: \_ _ -> do
+      log "Skipping committing to registry package sets..."
       pure (Right unit)
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
@@ -895,6 +899,16 @@ pacchettiBottiPushToRegistryMetadata packageName registryDir = Except.runExceptT
   let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
   void $ runGitSilent [ "push", origin, "main" ] (Just registryDir)
 
+pacchettiBottiPushToRegistryPackageSets :: PackageSet -> FilePath -> Aff (Either String Unit)
+pacchettiBottiPushToRegistryPackageSets (PackageSet set) registryDir = Except.runExceptT do
+  GitHubToken token <- configurePacchettiBotti (Just registryDir)
+  runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
+  runGit_ [ "add", Path.concat [ "package-sets", Version.printVersion set.version <> ".json" ] ] (Just registryDir)
+  let message = "Release " <> Version.printVersion set.version <> " package set."
+  runGit_ [ "commit", "-m", message ] (Just registryDir)
+  let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
+  void $ runGitSilent [ "push", origin, "main" ] (Just registryDir)
+
 runGit_ :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
 runGit_ args cwd = void $ runGit args cwd
 
@@ -1034,19 +1048,19 @@ writeMetadata packageName metadata = do
   registryDir <- asks _.registry
   liftAff $ Json.writeJsonFile (metadataFile registryDir packageName) metadata
   updatePackagesMetadata packageName metadata
-  commitMetadataFile packageName registryDir
+  commitMetadataFile packageName
 
 writeInsertIndex :: Manifest -> RegistryM (Either String Unit)
 writeInsertIndex manifest@(Manifest { name }) = do
   registryIndexDir <- asks _.registryIndex
   liftAff $ Index.insertManifest registryIndexDir manifest
-  commitIndexFile name registryIndexDir
+  commitIndexFile name
 
 writeDeleteIndex :: PackageName -> Version -> RegistryM (Either String Unit)
 writeDeleteIndex name version = do
   registryIndexDir <- asks _.registryIndex
   liftAff $ Index.deleteManifest registryIndexDir name version
-  commitIndexFile name registryIndexDir
+  commitIndexFile name
 
 -- | Call a specific version of the PureScript compiler
 callCompiler_ :: { version :: String, args :: Array String, cwd :: Maybe FilePath } -> Aff Unit

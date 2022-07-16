@@ -39,6 +39,7 @@ main = launchAff_ $ do
       , closeIssue: mempty
       , commitMetadataFile: \_ _ -> pure (Right unit)
       , commitIndexFile: \_ _ -> pure (Right unit)
+      , commitPackageSetFile: \_ _ -> pure (Right unit)
       , uploadPackage: mempty
       , deletePackage: mempty
       , packagesMetadata: unsafePerformEffect (Ref.new Map.empty)

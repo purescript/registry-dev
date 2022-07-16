@@ -3,7 +3,7 @@ module Registry.RegistryM where
 import Registry.Prelude
 
 import Control.Monad.Error.Class (class MonadThrow)
-import Control.Monad.Reader (class MonadAsk, ReaderT, asks, runReaderT)
+import Control.Monad.Reader (class MonadAsk, ReaderT, ask, asks, runReaderT)
 import Data.Map as Map
 import Effect.Aff (Error)
 import Effect.Aff as Aff
@@ -12,13 +12,14 @@ import Foreign.GitHub (Octokit)
 import Registry.Cache as Registry
 import Registry.PackageName (PackageName)
 import Registry.PackageUpload as Upload
-import Registry.Schema (Metadata)
+import Registry.Schema (Metadata, PackageSet)
 
 type Env =
   { comment :: String -> Aff Unit
   , closeIssue :: Aff Unit
   , commitMetadataFile :: PackageName -> FilePath -> Aff (Either String Unit)
   , commitIndexFile :: PackageName -> FilePath -> Aff (Either String Unit)
+  , commitPackageSetFile :: PackageSet -> FilePath -> Aff (Either String Unit)
   , uploadPackage :: Upload.PackageInfo -> FilePath -> Aff Unit
   , deletePackage :: Upload.PackageInfo -> Aff Unit
   , octokit :: Octokit
@@ -59,15 +60,20 @@ closeIssue = asks _.closeIssue >>= liftAff
 throwWithComment :: forall a. String -> RegistryM a
 throwWithComment body = comment body *> Aff.throwError (Aff.error body)
 
-commitMetadataFile :: PackageName -> FilePath -> RegistryM (Either String Unit)
-commitMetadataFile packageName path = do
-  f <- asks _.commitMetadataFile
-  liftAff $ f packageName path
+commitMetadataFile :: PackageName -> RegistryM (Either String Unit)
+commitMetadataFile packageName = do
+  env <- ask
+  liftAff $ env.commitMetadataFile packageName env.registry
 
-commitIndexFile :: PackageName -> FilePath -> RegistryM (Either String Unit)
-commitIndexFile packageName path = do
-  f <- asks _.commitIndexFile
-  liftAff $ f packageName path
+commitIndexFile :: PackageName -> RegistryM (Either String Unit)
+commitIndexFile packageName = do
+  env <- ask
+  liftAff $ env.commitIndexFile packageName env.registryIndex
+
+commitPackageSetFile :: PackageSet -> RegistryM (Either String Unit)
+commitPackageSetFile packageSet = do
+  env <- ask
+  liftAff $ env.commitPackageSetFile packageSet env.registry
 
 -- | Upload a package to the backend storage provider
 uploadPackage :: Upload.PackageInfo -> FilePath -> RegistryM Unit
