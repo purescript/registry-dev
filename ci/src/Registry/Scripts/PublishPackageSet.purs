@@ -2,6 +2,7 @@ module Registry.Scripts.PublishPackageSet where
 
 import Registry.Prelude
 
+import Affjax as Http
 import Control.Monad.Reader (asks)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
@@ -19,16 +20,21 @@ import Effect.Now as Now
 import Effect.Ref as Ref
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
+import Foreign.Node.FS as FSE
+import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS.Aff
+import Node.FS.Aff as FSA
 import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
+import Registry.API (CompilerFailure(..), callCompiler)
 import Registry.API as API
 import Registry.Cache as Cache
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
-import Registry.RegistryM (Env, readPackagesMetadata, runRegistryM)
+import Registry.PackageName as PackageName
+import Registry.RegistryM (Env, RegistryM, readPackagesMetadata, runRegistryM)
 import Registry.Schema (PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -54,7 +60,7 @@ main = Aff.launchAff_ do
   let
     env :: Env
     env =
-      { comment: mempty
+      { comment: \comment -> log ("[COMMENT] " <> comment)
       , closeIssue: mempty
       , commitMetadataFile: \_ _ -> pure (Right unit)
       , commitIndexFile: \_ _ -> pure (Right unit)
@@ -142,8 +148,14 @@ main = Aff.launchAff_ do
     liftEffect $ Console.log "Found the following uploads eligible for inclusion in package set:"
     liftEffect $ Console.log (show uploads)
 
+    buildPackageSet (unsafeFromRight packageSetResult) >>= case _ of
+      Left MissingCompiler -> logShow "Missing compiler"
+      Left (UnknownError err) -> log err
+      Right str -> log str
+
     pure unit
 
+<<<<<<< HEAD
 -- | Computes new package set version from old package set and version information of successfully added/updated packages.
 -- | Note: this must be called with the old `PackageSet` that has not had updates applied.
 computeVersion :: PackageSet -> Map PackageName Version -> Version
@@ -178,3 +190,72 @@ computeVersion (PackageSet { packages, version: packageSetVersion }) updates =
     prevVersion <- Map.lookup package packages
     pure (version >= Version.bumpPatch prevVersion)
 
+=======
+-- | Install all packages in the given package set and compile them with the
+-- | correct compiler version.
+buildPackageSet :: PackageSet -> RegistryM (Either CompilerFailure String)
+buildPackageSet (PackageSet { compiler, packages }) = do
+  installDir <- installPackages packages
+  compileInstalledPackages installDir compiler
+
+-- | Install all packages in a package set into a temporary directory, returning
+-- | the reference to the installation directory. Installed packages have the
+-- | form: "package-name-major.minor.patch" and are stored in the "packages"
+-- | directory.
+installPackages :: Map PackageName Version -> RegistryM FilePath
+installPackages packages = do
+  tmp <- liftEffect Tmp.mkTmpDir
+  liftAff $ FSE.ensureDirectory $ Path.concat [ tmp, "packages" ]
+  forWithIndex_ packages (installPackage tmp)
+  pure tmp
+
+-- | Compile all PureScript files in the given directory. Expects all packages
+-- | to be installed in a subdirectory "packages".
+compileInstalledPackages :: FilePath -> Version -> RegistryM (Either CompilerFailure String)
+compileInstalledPackages tmp compilerVersion = do
+  liftEffect $ Process.chdir tmp
+  let args = [ "compile", "packages/**/*.purs" ]
+  let version = Version.printVersion compilerVersion
+  liftAff $ callCompiler { args, version, cwd: Nothing }
+
+-- liftAff (callCompiler { args, version, cwd: Nothing }) >>= case _ of
+--   Left MissingCompiler -> throwWithComment $ "Compiler version " <> version <> " is missing!"
+--   Left (UnknownError err) -> throwWithComment $ "Compilation failed: " <> err
+--   Right _ -> pure unit
+
+-- | Install a package into the given installation directory, replacing an
+-- | existing installation if there is on. Package sources are stored in the
+-- | "packages" subdirectory of the given directory using their package name
+-- | ie. 'aff'.
+installPackage :: FilePath -> PackageName -> Version -> RegistryM Unit
+installPackage tmp name version = do
+  void $ liftAff $ Aff.try $ FSA.unlink installPath
+  API.wget registryUrl tarballPath
+  liftEffect $ Tar.extract { cwd: packagesDir, filename: tarballPath }
+  void $ liftAff $ Aff.try $ FSA.unlink tarballPath
+  liftAff $ FSA.rename extractedPath installPath
+  where
+  packagesDir :: FilePath
+  packagesDir = Path.concat [ tmp, "packages" ]
+
+  installPath :: FilePath
+  installPath = Path.concat [ packagesDir, PackageName.print name ]
+
+  extractedPath :: FilePath
+  extractedPath = Path.concat [ packagesDir, extractedName ]
+
+  tarballPath :: FilePath
+  tarballPath = extractedPath <> ".tar.gz"
+
+  extractedName :: String
+  extractedName = PackageName.print name <> "-" <> Version.printVersion version
+
+  registryUrl :: Http.URL
+  registryUrl = Array.fold
+    [ "https://packages.registry.purescript.org/"
+    , PackageName.print name
+    , "/"
+    , Version.printVersion version
+    , ".tar.gz"
+    ]
+>>>>>>> d40ff9f (Build package set)
