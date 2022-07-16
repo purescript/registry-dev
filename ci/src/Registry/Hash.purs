@@ -1,7 +1,8 @@
 module Registry.Hash
   ( Sha256
-  , sha256File
   , parseSha256
+  , sha256File
+  , sha256String
   , unsafeSha256
   ) where
 
@@ -37,13 +38,23 @@ instance RegistryJson Sha256 where
 sha256File :: FilePath -> Aff Sha256
 sha256File filepath = do
   fileBuffer <- FS.readFile filepath
-  liftEffect do
-    newHash <- Hash.createHash "sha256"
-    fileHash <- Hash.update fileBuffer newHash
-    digest <- Hash.digest fileHash
-    string <- Buffer.toString Base64 digest
-    let sriString = "sha256-" <> string
-    pure $ Sha256 sriString
+  liftEffect $ sha256Buffer fileBuffer
+
+-- | Hash a string using SHA256
+sha256String :: String -> Effect Sha256
+sha256String string = do
+  buffer <- Buffer.fromString string UTF8
+  sha256Buffer buffer
+
+-- | Hash a buffer using SHA256
+sha256Buffer :: Buffer -> Effect Sha256
+sha256Buffer buffer = do
+  newHash <- Hash.createHash "sha256"
+  hash <- Hash.update buffer newHash
+  digest <- Hash.digest hash
+  string <- Buffer.toString Base64 digest
+  let sriString = "sha256-" <> string
+  pure $ Sha256 sriString
 
 -- | A valid hash has a "sha256-" prefix, 43 chars, and a "=" padding character.
 parseSha256 :: String -> Either ParseError Sha256

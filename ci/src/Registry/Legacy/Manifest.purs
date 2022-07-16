@@ -25,6 +25,7 @@ import Foreign.Tmp as Tmp
 import Node.FS.Aff as FSA
 import Node.Path as Path
 import Registry.Cache as Cache
+import Registry.Hash (sha256String)
 import Registry.Json ((.:), (.:?))
 import Registry.Json as Json
 import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry(..))
@@ -331,28 +332,40 @@ fetchLegacyPackageSets = do
           Array.foldl (\m name -> Map.insert name (resolveDependencyVersion name) m) Map.empty
       Map.singleton version (resolveDependencyVersions dependencies)
 
-  legacySets <- for tags \ref -> do
-    let key = "legacy-package-set__" <> ref
+  legacySets <- do
+    tagKey <- liftEffect do
+      tagsSha <- sha256String (String.joinWith " " tags)
+      pure ("package-sets-" <> show tagsSha)
 
-    entries <- liftEffect (Cache.readJsonEntry key cache) >>= case _ of
+    liftEffect (Cache.readJsonEntry tagKey cache) >>= case _ of
       Left _ -> do
-        log $ "CACHE MISS: Building legacy package set for " <> ref
-        converted <- Except.runExceptT do
-          packagesJson <- Except.mapExceptT liftAff $ GitHub.getContent octokit cache { owner: "purescript", repo: "package-sets" } ref "packages.json"
-          parsed <- Except.except $ case Json.parseJson packagesJson of
-            Left decodeError -> throwError $ GitHub.DecodeError decodeError
-            Right legacySet -> pure legacySet
-          pure $ convertPackageSet parsed
-        liftEffect $ Cache.writeJsonEntry key converted cache
-        pure converted
+        log $ "CACHE MISS: Building legacy package sets..."
+        entries <- for tags \ref -> do
+          let setKey = "legacy-package-set__" <> ref
+          setEntries <- liftEffect (Cache.readJsonEntry setKey cache) >>= case _ of
+            Left _ -> do
+              log $ "CACHE MISS: Building legacy package set for " <> ref
+              converted <- Except.runExceptT do
+                packagesJson <- Except.mapExceptT liftAff $ GitHub.getContent octokit cache { owner: "purescript", repo: "package-sets" } ref "packages.json"
+                parsed <- Except.except $ case Json.parseJson packagesJson of
+                  Left decodeError -> throwError $ GitHub.DecodeError decodeError
+                  Right legacySet -> pure legacySet
+                pure $ convertPackageSet parsed
+              liftEffect $ Cache.writeJsonEntry setKey converted cache
+              pure converted
+            Right contents ->
+              pure contents.value
+          case setEntries of
+            Left err -> do
+              log $ "Failed to retrieve " <> ref <> " package set:\n" <> GitHub.printGitHubError err
+              pure Map.empty
+            Right value -> pure value
+
+        let merged = Array.foldl (\m set -> Map.unionWith Map.union set m) Map.empty entries
+        liftEffect $ Cache.writeJsonEntry tagKey merged cache
+        pure merged
+
       Right contents ->
         pure contents.value
 
-    case entries of
-      Left err -> do
-        log $ "Failed to retrieve " <> ref <> " package set:\n" <> GitHub.printGitHubError err
-        pure Map.empty
-      Right value ->
-        pure value
-
-  pure $ Map.empty -- Array.foldl (\m legacySet -> Map.unionWith Map.union legacySet m) Map.empty legacySets
+  pure legacySets
