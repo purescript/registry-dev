@@ -2,12 +2,10 @@ module Registry.Legacy.Manifest where
 
 import Registry.Prelude
 
-import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Either as Either
-import Data.Filterable (filterMap)
 import Data.Foldable (sum)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
@@ -66,22 +64,20 @@ fetchLegacyManifest packageSetsDeps address ref = do
         let printRange version = Array.fold [ ">=", fixed, " <", bump version ]
         RawVersionRange $ Either.either (const fixed) printRange parsedVersion
 
+      validatePackageSetDeps = case packageSetsDeps of
+        Nothing ->
+          Left { error: InvalidDependencies [], reason: "No package sets dependencies." }
+        Just deps -> do
+          let converted = mapKeys (RawPackageName <<< PackageName.print) $ map toRange deps
+          validateDependencies converted
+
       convertSpagoDeps packages = Array.foldl foldFn Map.empty
         where
         foldFn deps name = maybe deps (\{ version } -> Map.insert name (toRange version) deps) (findPackage name)
         findPackage name = Map.lookup name packages
 
       validateSpagoDeps (SpagoDhallJson { dependencies, packages }) = do
-        case packageSetsDeps of
-          Nothing ->
-            validateDependencies (convertSpagoDeps packages dependencies)
-          Just deps -> do
-            let converted = mapKeys (RawPackageName <<< PackageName.print) $ map toRange deps
-            case validateDependencies converted of
-              Left _ ->
-                validateDependencies (convertSpagoDeps packages dependencies)
-              Right validated ->
-                pure validated
+        validateDependencies (convertSpagoDeps packages dependencies)
 
       -- We remove dependencies that don't begin with 'purescript-', as these
       -- indicate JavaScript dependencies.
@@ -93,16 +89,16 @@ fetchLegacyManifest packageSetsDeps address ref = do
         validateDependencies (convertBowerDeps dependencies)
 
     Except.except case manifests of
-      This bower -> validateBowerDeps bower
-      That spago -> validateSpagoDeps spago
-      Both bower spago -> case validateBowerDeps bower, validateSpagoDeps spago of
+      This bower -> validatePackageSetDeps <|> validateBowerDeps bower
+      That spago -> validatePackageSetDeps <|> validateSpagoDeps spago
+      Both bower spago -> validatePackageSetDeps <|> case validateBowerDeps bower, validateSpagoDeps spago of
         Left bowerError, Left _ -> Left bowerError
         Right bowerDeps, Left _ -> pure bowerDeps
         Left _, Right spagoDeps -> pure spagoDeps
-        -- When both manifests produce viable dependencies, we first check to
-        -- see if one is more up-to-date (e.g. has higher ranges specified).
-        -- If so, we take that one. If not, we take the Bower manifest.
-        Right bowerDeps, Right spagoDeps -> pure do
+        Right bowerDeps, Right spagoDeps -> pure $ do
+          -- When both manifests produce viable dependencies, we first check to
+          -- see if one is more up-to-date (e.g. has higher ranges specified).
+          -- If so, we take that one. If not, we take the Bower manifest.
           let
             compareToSpago key bowerRange = fromMaybe 0 do
               spagoRange <- Map.lookup key spagoDeps
@@ -300,20 +296,7 @@ fetchLegacyPackageSets = do
   result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache { owner: "purescript", repo: "package-sets" }
   tags <- case result of
     Left err -> throwWithComment (GitHub.printGitHubError err)
-    Right tags -> do
-      let
-        pred { name } = do
-          -- "psc-0.12.4" or "psc-0.12.4-2019-01-01" should both produce "0.12.4"
-          let trimmed = String.takeWhile (_ /= String.codePointFromChar '-') $ String.drop 4 name
-          tagVersion <- hush $ Version.parseVersion Version.Lenient trimmed
-          -- The package sets did not have Spago-compatible sets until after
-          -- the 0.12.3 compiler sets. We only refer to the package sets when
-          -- looking at Spago packages, so those are all we need.
-          minimumVersion <- hush $ Version.parseVersion Version.Lenient "0.12.4"
-          guard $ tagVersion >= minimumVersion
-          pure name
-
-      pure $ filterMap pred tags
+    Right tags -> pure $ map _.name tags
 
   let
     convertPackageSet :: LegacyPackageSet -> LegacyPackageSetEntries
@@ -337,6 +320,9 @@ fetchLegacyPackageSets = do
       tagsSha <- sha256String (String.joinWith " " tags)
       pure ("package-sets-" <> show tagsSha)
 
+    -- It's important that we cache the end result of unioning all package sets
+    -- because the package sets are quite large and it's expensive to read them
+    -- all into memory and fold over them.
     liftEffect (Cache.readJsonEntry tagKey cache) >>= case _ of
       Left _ -> do
         log $ "CACHE MISS: Building legacy package sets..."
