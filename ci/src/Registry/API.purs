@@ -1157,7 +1157,7 @@ callCompiler compilerArgs = do
         | errorMessage == String.joinWith " " [ "spawn", cmd, "ENOENT" ] -> MissingCompiler
         | otherwise -> UnknownError errorMessage
     Right { exit: NodeProcess.Normally 0, stdout } -> Right $ String.trim stdout
-    Right { stderr, stdout } -> Left do
+    Right { stdout } -> Left do
       case Json.parseJson (String.trim stdout) of
         Left err -> UnknownError $ String.joinWith "\n" [ stdout, err ]
         Right ({ errors } :: { errors :: Array CompilerError })

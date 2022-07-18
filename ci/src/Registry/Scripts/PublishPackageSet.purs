@@ -153,13 +153,13 @@ main = Aff.launchAff_ do
       forWithIndex_ uploads (\name version -> log $ format name version)
       processBatch prevPackageSet uploads >>= case _ of
         Nothing -> do
-          log "No packages could be added to the set. All packages failed:"
+          log "\n----------\nNo packages could be added to the set. All packages failed:"
           forWithIndex_ uploads (\name version -> log $ format name version)
         Just { success, fail, packageSet } -> do
           unless (Map.isEmpty fail) do
-            log "Some packages could not be added to the set:"
+            log "\n----------\nSome packages could not be added to the set:"
             forWithIndex_ fail (\name version -> log $ format name version)
-          log "New packages were added to the set!"
+          log "\n----------\nNew packages were added to the set!"
           forWithIndex_ success (\name version -> log $ format name version)
           let
             newVersion = (un PackageSet packageSet).version
@@ -196,8 +196,8 @@ processBatch prevSet@(PackageSet { compiler, packages }) batch = do
     Right _ -> pure unit
 
   let
-    mkNewPackageSet :: PackageSet -> Map PackageName Version -> RegistryM PackageSet
-    mkNewPackageSet (PackageSet new) successes = do
+    updatePackageSetMetadata :: PackageSet -> Map PackageName Version -> RegistryM PackageSet
+    updatePackageSetMetadata (PackageSet new) successes = do
       now <- liftEffect Now.nowDateTime
       let newVersion = computeVersion prevSet successes
       pure $ PackageSet $ new { version = newVersion, published = now }
@@ -206,7 +206,7 @@ processBatch prevSet@(PackageSet { compiler, packages }) batch = do
   log "Compiling new batch..."
   liftAff (tryBatch prevSet batch) >>= case _ of
     Right newSet -> do
-      packageSet <- mkNewPackageSet newSet batch
+      packageSet <- updatePackageSetMetadata newSet batch
       pure $ Just { fail: Map.empty, success: batch, packageSet }
     Left batchCompilerError -> do
       log "Batch failed to process: \n"
@@ -256,7 +256,7 @@ processBatch prevSet@(PackageSet { compiler, packages }) batch = do
       newSet <- liftEffect $ Ref.read packageSetRef
       if Map.isEmpty success then pure Nothing
       else do
-        packageSet <- mkNewPackageSet newSet success
+        packageSet <- updatePackageSetMetadata newSet success
         pure $ Just { fail, success, packageSet }
 
 -- | Attempt to add or update a collection of packages in the package set. This
