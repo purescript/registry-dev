@@ -87,6 +87,7 @@ main = launchAff_ do
         , closeIssue: log "Running locally, not closing issue..."
         , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
         , commitIndexFile: API.pacchettiBottiPushToRegistryIndex
+        , commitPackageSetFile: \_ _ -> log "Not committing package set in legacy import." $> Right unit
         , uploadPackage: Upload.upload
         , deletePackage: Upload.delete
         , packagesMetadata: metadataRef
