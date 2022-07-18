@@ -17,7 +17,6 @@ import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
-import Effect.Console as Console
 import Effect.Exception (throw)
 import Effect.Now as Now
 import Effect.Ref as Ref
@@ -39,7 +38,7 @@ import Registry.Json as Json
 import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (Env, RegistryM, readPackagesMetadata, runRegistryM)
+import Registry.RegistryM (Env, RegistryM, commitPackageSetFile, readPackagesMetadata, runRegistryM)
 import Registry.Schema (Manifest(..), PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -48,7 +47,7 @@ main :: Effect Unit
 main = Aff.launchAff_ do
   _ <- Dotenv.loadFile
 
-  liftEffect $ Console.log "Starting package set publishing..."
+  log "Starting package set publishing..."
 
   githubToken <- liftEffect do
     Process.lookupEnv "GITHUB_TOKEN"
@@ -69,6 +68,7 @@ main = Aff.launchAff_ do
       , closeIssue: mempty
       , commitMetadataFile: \_ _ -> pure (Right unit)
       , commitIndexFile: \_ _ -> pure (Right unit)
+      , commitPackageSetFile: API.pacchettiBottiPushToRegistryPackageSets
       , uploadPackage: mempty
       , deletePackage: mempty
       , octokit
@@ -105,41 +105,36 @@ main = Aff.launchAff_ do
         versions <- Array.fromFoldable (NonEmptyArray.fromArray versions')
         pure (Tuple packageName versions)
 
-    liftEffect $ Console.log "Fetching latest package set..."
+    log "Fetching latest package set..."
 
     registryPath <- asks _.registry
     packageSets <- liftAff $ FS.Aff.readdir (Path.concat [ registryPath, "package-sets" ])
 
     let
+      buildPackageSetPath :: Version -> FilePath
+      buildPackageSetPath version = Path.concat [ registryPath, "package-sets", Version.printVersion version <> ".json" ]
+
       packageSetVersions :: Array Version
       packageSetVersions = packageSets # Array.mapMaybe \s -> do
         let versionString = String.take (String.length s - 5) s
         hush $ Version.parseVersion Version.Lenient versionString
 
-      latestPackageSet :: Maybe FilePath
-      latestPackageSet = do
-        latestVersion <- Array.last (Array.sort packageSetVersions)
-        pure $ Path.concat
-          [ "registry"
-          , "package-sets"
-          , Version.printVersion latestVersion <> ".json"
-          ]
+      latestPackageSetPath :: Maybe FilePath
+      latestPackageSetPath = buildPackageSetPath <$> Array.last (Array.sort packageSetVersions)
 
-    packageSetPath :: FilePath <- case latestPackageSet of
+    packageSetPath <- case latestPackageSetPath of
       Nothing -> unsafeCrashWith "ERROR: No existing package set."
       Just packageSetPath -> pure packageSetPath
 
-    packageSetResult :: Either String PackageSet <- liftAff $ Json.readJsonFile packageSetPath
-
-    packageSet@(PackageSet { packages }) <- case packageSetResult of
+    prevPackageSet@(PackageSet { packages }) <- liftAff (Json.readJsonFile packageSetPath) >>= case _ of
       Left err -> unsafeCrashWith err
       Right packageSet -> pure packageSet
 
-    liftEffect $ Console.log "Computing candidates for inclusion in package set..."
+    log "Computing candidates for inclusion in package set..."
 
     let
-      uploads :: Array (Tuple PackageName Version)
-      uploads = do
+      uploads :: Map PackageName Version
+      uploads = Map.fromFoldable do
         Tuple packageName versions' <- recentUploads
         -- We only care about the latest version
         let version = NonEmptyArray.last (NonEmptyArray.sort versions')
@@ -150,11 +145,29 @@ main = Aff.launchAff_ do
           _ -> []
         pure (Tuple packageName checkedVersion)
 
-    liftEffect $ Console.log "Found the following uploads eligible for inclusion in package set:"
-    liftEffect $ Console.log (show uploads)
-
-    result <- processBatch packageSet (Map.fromFoldable uploads)
-    logShow result
+    if Map.isEmpty uploads then do
+      log "No new uploads eligible for inclusion in the package set."
+    else do
+      let format name version = PackageName.print name <> "@" <> Version.printVersion version
+      log "Found the following uploads eligible for inclusion in package set:"
+      forWithIndex_ uploads (\name version -> log $ format name version)
+      processBatch prevPackageSet uploads >>= case _ of
+        Nothing -> do
+          log "\n----------\nNo packages could be added to the set. All packages failed:"
+          forWithIndex_ uploads (\name version -> log $ format name version)
+        Just { success, fail, packageSet } -> do
+          unless (Map.isEmpty fail) do
+            log "\n----------\nSome packages could not be added to the set:"
+            forWithIndex_ fail (\name version -> log $ format name version)
+          log "\n----------\nNew packages were added to the set!"
+          forWithIndex_ success (\name version -> log $ format name version)
+          let
+            newVersion = (un PackageSet packageSet).version
+            newPath = buildPackageSetPath newVersion
+          liftAff $ Json.writeJsonFile newPath packageSet
+          commitPackageSetFile packageSet >>= case _ of
+            Left err -> throwError $ Aff.error $ "Failed to commit package set file: " <> err
+            Right _ -> pure unit
 
 type BatchResult =
   { fail :: Map PackageName Version
@@ -164,7 +177,7 @@ type BatchResult =
 
 -- | Attempt to produce a new package set from the given package set by adding
 -- | the provided packages.
-processBatch :: PackageSet -> Map PackageName Version -> RegistryM BatchResult
+processBatch :: PackageSet -> Map PackageName Version -> RegistryM (Maybe BatchResult)
 processBatch prevSet@(PackageSet { compiler, packages }) batch = do
   let
     handleCompilerError = case _ of
@@ -182,10 +195,19 @@ processBatch prevSet@(PackageSet { compiler, packages }) batch = do
       throwError $ Aff.error $ "Starting package set must compile in order to process a batch."
     Right _ -> pure unit
 
+  let
+    updatePackageSetMetadata :: PackageSet -> Map PackageName Version -> RegistryM PackageSet
+    updatePackageSetMetadata (PackageSet new) successes = do
+      now <- liftEffect Now.nowDateTime
+      let newVersion = computeVersion prevSet successes
+      pure $ PackageSet $ new { version = newVersion, published = now }
+
   -- First we attempt to add the entire batch.
   log "Compiling new batch..."
   liftAff (tryBatch prevSet batch) >>= case _ of
-    Right newSet -> pure { fail: Map.empty, success: batch, packageSet: newSet }
+    Right newSet -> do
+      packageSet <- updatePackageSetMetadata newSet batch
+      pure $ Just { fail: Map.empty, success: batch, packageSet }
     Left batchCompilerError -> do
       log "Batch failed to process: \n"
       handleCompilerError batchCompilerError
@@ -211,8 +233,8 @@ processBatch prevSet@(PackageSet { compiler, packages }) batch = do
 
       -- Then we attempt to add them one-by-one.
       for_ sortedBatch \(Manifest { name, version }) -> do
-        set <- liftEffect $ Ref.read packageSetRef
-        result <- liftAff (tryPackage set name version)
+        currentSet <- liftEffect $ Ref.read packageSetRef
+        result <- liftAff (tryPackage currentSet name version)
         case result of
           -- If the package could not be added, then the state of the filesystem
           -- is rolled back. We just need to insert the package into the
@@ -229,11 +251,13 @@ processBatch prevSet@(PackageSet { compiler, packages }) batch = do
             liftEffect $ Ref.write newSet packageSetRef
             log $ "Added " <> formatName name version
 
-      liftEffect do
-        fail <- Ref.read failRef
-        success <- Ref.read successRef
-        packageSet <- Ref.read packageSetRef
-        pure { fail, success, packageSet }
+      fail <- liftEffect $ Ref.read failRef
+      success <- liftEffect $ Ref.read successRef
+      newSet <- liftEffect $ Ref.read packageSetRef
+      if Map.isEmpty success then pure Nothing
+      else do
+        packageSet <- updatePackageSetMetadata newSet success
+        pure $ Just { fail, success, packageSet }
 
 -- | Attempt to add or update a collection of packages in the package set. This
 -- | operation will be rolled back if the addition fails.
@@ -244,12 +268,14 @@ tryBatch (PackageSet set) packages = do
   let backupDir = "output-backup"
   let outputDir = "output"
   FSE.copy { from: outputDir, to: backupDir, preserveTimestamps: true }
+  removePackages (Map.keys packages)
   installPackages packages
   compileInstalledPackages set.compiler >>= case _ of
     Left err -> do
       FSE.remove outputDir
       FSE.copy { from: backupDir, to: outputDir, preserveTimestamps: true }
-      for_ (Map.keys packages) \packageName ->
+      for_ (Map.keys packages) \packageName -> do
+        removePackage packageName
         for_ (Map.lookup packageName set.packages) (installPackage packageName)
       pure $ Left err
     Right _ -> do
@@ -265,12 +291,14 @@ tryPackage (PackageSet set) package version = do
   let backupDir = "output-backup"
   let outputDir = "output"
   FSE.copy { from: outputDir, to: backupDir, preserveTimestamps: true }
+  removePackage package
   installPackage package version
   compileInstalledPackages set.compiler >>= case _ of
     Left err -> do
       log $ "Failed to build set with " <> PackageName.print package <> "@" <> Version.printVersion version
       FSE.remove outputDir
       FSE.copy { from: backupDir, to: outputDir, preserveTimestamps: true }
+      removePackage package
       for_ (Map.lookup package set.packages) (installPackage package)
       pure $ Left err
     Right _ -> do
@@ -311,7 +339,6 @@ installPackages packages = do
 installPackage :: PackageName -> Version -> Aff Unit
 installPackage name version = do
   log $ "installing " <> PackageName.print name <> "@" <> Version.printVersion version
-  removePackage name
   _ <- API.wget registryUrl tarballPath >>= ltraverse (Aff.error >>> throwError)
   liftEffect $ Tar.extract { cwd: packagesDir, filename: tarballPath }
   FSE.remove tarballPath

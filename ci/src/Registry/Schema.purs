@@ -84,7 +84,12 @@ derive newtype instance Eq PackageSet
 derive newtype instance Show PackageSet
 
 instance RegistryJson PackageSet where
-  encode (PackageSet set) = Json.encode (set { published = Formatter.DateTime.format dateFormatter set.published })
+  -- This instance is manually encoded so we can control the order of fields.
+  encode (PackageSet set) = Json.encodeObject do
+    "version" := set.version
+    "compiler" := set.compiler
+    "published" := Formatter.DateTime.format dateFormatter set.published
+    "packages" := set.packages
   decode json = do
     fields <- Json.decode json
     published <- Formatter.DateTime.unformat dateFormatter fields.published
