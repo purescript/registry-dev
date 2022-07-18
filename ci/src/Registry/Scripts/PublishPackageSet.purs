@@ -18,6 +18,7 @@ import Data.Time.Duration (Hours(..))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Exception (throw)
+import Effect.Exception as Exception
 import Effect.Now as Now
 import Effect.Ref as Ref
 import Foreign.GitHub (GitHubToken(..))
@@ -43,9 +44,27 @@ import Registry.Schema (Manifest(..), PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
+data PublishMode = GeneratePackageSet | CommitPackageSet
+
+derive instance Eq PublishMode
+
 main :: Effect Unit
 main = Aff.launchAff_ do
   _ <- Dotenv.loadFile
+
+  log "Parsing CLI args..."
+  mode <- liftEffect do
+    args <- Array.drop 2 <$> Node.Process.argv
+    case Array.uncons args of
+      Nothing -> Exception.throw "Expected 'generate' or 'commit', but received no arguments."
+      Just { head, tail: [] } -> case head of
+        "generate" -> pure GeneratePackageSet
+        "commit" -> pure CommitPackageSet
+        other -> Exception.throw $ "Expected 'generate' or 'commit' but received: " <> other
+      Just _ -> Exception.throw $ String.joinWith "\n"
+        [ "Expected 'generate' or 'commit', but received multiple arguments:"
+        , String.joinWith " " args
+        ]
 
   log "Starting package set publishing..."
 
@@ -165,9 +184,13 @@ main = Aff.launchAff_ do
             newVersion = (un PackageSet packageSet).version
             newPath = buildPackageSetPath newVersion
           liftAff $ Json.writeJsonFile newPath packageSet
-          commitPackageSetFile packageSet >>= case _ of
-            Left err -> throwError $ Aff.error $ "Failed to commit package set file: " <> err
-            Right _ -> pure unit
+          case mode of
+            GeneratePackageSet ->
+              pure unit
+            CommitPackageSet ->
+              commitPackageSetFile packageSet >>= case _ of
+                Left err -> throwError $ Aff.error $ "Failed to commit package set file: " <> err
+                Right _ -> pure unit
 
 type BatchResult =
   { fail :: Map PackageName Version
