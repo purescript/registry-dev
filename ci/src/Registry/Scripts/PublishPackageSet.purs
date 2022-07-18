@@ -413,11 +413,11 @@ computeCandidates registryIndex metadata previousPackageSet = do
     Manifest manifest <- Map.lookup packageName registryIndex >>= Map.lookup version
 
     let
-     dependencies = Array.fromFoldable (Map.keys manifest.dependencies)
-     -- A package can only be added to the package set if
-     -- all of its dependencies are in the previous package set
-     -- or in the current batch.
-     checkDependency dependency =
-       Map.member dependency previousPackageSet || Map.member dependency uploads
+      dependencies = Array.fromFoldable (Map.keys manifest.dependencies)
+      -- A package can only be added to the package set if
+      -- all of its dependencies are in the previous package set
+      -- or in the current batch.
+      checkDependency dependency =
+        Map.member dependency previousPackageSet || Map.member dependency uploads
 
     pure $ Array.all checkDependency dependencies
