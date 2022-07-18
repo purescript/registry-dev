@@ -267,12 +267,14 @@ tryBatch (PackageSet set) packages = do
   let backupDir = "output-backup"
   let outputDir = "output"
   FSE.copy { from: outputDir, to: backupDir, preserveTimestamps: true }
+  removePackages (Map.keys packages)
   installPackages packages
   compileInstalledPackages set.compiler >>= case _ of
     Left err -> do
       FSE.remove outputDir
       FSE.copy { from: backupDir, to: outputDir, preserveTimestamps: true }
-      for_ (Map.keys packages) \packageName ->
+      for_ (Map.keys packages) \packageName -> do
+        removePackage packageName
         for_ (Map.lookup packageName set.packages) (installPackage packageName)
       pure $ Left err
     Right _ -> do
@@ -288,12 +290,14 @@ tryPackage (PackageSet set) package version = do
   let backupDir = "output-backup"
   let outputDir = "output"
   FSE.copy { from: outputDir, to: backupDir, preserveTimestamps: true }
+  removePackage package
   installPackage package version
   compileInstalledPackages set.compiler >>= case _ of
     Left err -> do
       log $ "Failed to build set with " <> PackageName.print package <> "@" <> Version.printVersion version
       FSE.remove outputDir
       FSE.copy { from: backupDir, to: outputDir, preserveTimestamps: true }
+      removePackage package
       for_ (Map.lookup package set.packages) (installPackage package)
       pure $ Left err
     Right _ -> do
@@ -334,7 +338,6 @@ installPackages packages = do
 installPackage :: PackageName -> Version -> Aff Unit
 installPackage name version = do
   log $ "installing " <> PackageName.print name <> "@" <> Version.printVersion version
-  removePackage name
   _ <- API.wget registryUrl tarballPath >>= ltraverse (Aff.error >>> throwError)
   liftEffect $ Tar.extract { cwd: packagesDir, filename: tarballPath }
   FSE.remove tarballPath
