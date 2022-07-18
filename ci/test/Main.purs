@@ -523,7 +523,7 @@ compilerVersions = do
           MissingCompiler ->
             Assert.fail "MissingCompiler"
           CompilationError errs ->
-            Assert.fail ("CompilationError: " <> API.printCompilerErrors errs)
+            Assert.fail ("CompilationError:\n" <> API.printCompilerErrors errs)
           UnknownError err' ->
             Assert.fail ("UnknownError: " <> err')
         Right stdout ->
