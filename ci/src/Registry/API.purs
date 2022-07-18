@@ -604,18 +604,34 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
     }
 
   publishJson <- case compilerOutput of
-    Left MissingCompiler -> throwWithComment $ Array.fold [ "Publishing failed because the build plan compiler version ", Version.printVersion compiler, " is not supported. Please try again with a different compiler." ]
-    Left (CompilationError err) -> throwWithComment $ String.joinWith "\n" [ "Publishing failed because the build plan does not compile with version " <> Version.printVersion compiler <> " of the compiler:", "```", err, "```" ]
-    Left (UnknownError err) -> throwWithComment $ String.joinWith "\n" [ "Publishing failed for your package due to a compiler error:", "```", err, "```" ]
+    Left MissingCompiler -> throwWithComment $ Array.fold
+      [ "Publishing failed because the build plan compiler version "
+      , Version.printVersion compiler
+      , " is not supported. Please try again with a different compiler."
+      ]
+    Left (CompilationError errs) -> throwWithComment $ String.joinWith "\n"
+      [ "Publishing failed because the build plan does not compile with version " <> Version.printVersion compiler <> " of the compiler:"
+      , "```"
+      , (printCompilerErrors errs)
+      , "```"
+      ]
+    Left (UnknownError err) -> throwWithComment $ String.joinWith "\n"
+      [ "Publishing failed for your package due to a compiler error:"
+      , "```"
+      , err
+      , "```"
+      ]
     Right publishResult -> do
       -- The output contains plenty of diagnostic lines, ie. "Compiling ..."
       -- but we only want the final JSON payload.
       let lines = String.split (String.Pattern "\n") publishResult
       case Array.last lines of
-        Nothing -> throwWithComment $ Array.fold [ "Publishing failed because of an unexpected compiler error. cc @purescript/packaging" ]
+        Nothing -> throwWithComment "Publishing failed because of an unexpected compiler error. cc @purescript/packaging"
         Just jsonString -> case Argonaut.Core.jsonParser jsonString of
-          Left err ->
-            throwWithComment $ String.joinWith "\n" [ "Failed to parse output of publishing. cc @purescript/packaging", "```" <> err <> "```" ]
+          Left err -> throwWithComment $ String.joinWith "\n"
+            [ "Failed to parse output of publishing. cc @purescript/packaging"
+            , "```" <> err <> "```"
+            ]
           Right json ->
             pure json
 
@@ -1061,33 +1077,83 @@ callCompiler_ :: { version :: String, args :: Array String, cwd :: Maybe FilePat
 callCompiler_ = void <<< callCompiler
 
 data CompilerFailure
-  = CompilationError String
+  = CompilationError (Array CompilerError)
   | UnknownError String
   | MissingCompiler
 
 derive instance Eq CompilerFailure
 
--- | Call a specific version of the PureScript compiler
-callCompiler :: { version :: String, args :: Array String, cwd :: Maybe FilePath } -> Aff (Either CompilerFailure String)
-callCompiler { version, args, cwd } = do
+type CompilerError =
+  { position :: SourcePosition
+  , message :: String
+  , errorCode :: String
+  , errorLink :: String
+  , filename :: FilePath
+  , moduleName :: String
+  }
+
+type SourcePosition =
+  { startLine :: Int
+  , startColumn :: Int
+  , endLine :: Int
+  , endColumn :: Int
+  }
+
+printCompilerErrors :: Array CompilerError -> String
+printCompilerErrors errors = do
   let
+    total = Array.length errors
+    printed =
+      errors # Array.mapWithIndex \n error -> String.joinWith "\n"
+        [ "Error " <> show (n + 1) <> " of " <> show total
+        , ""
+        , printCompilerError error
+        ]
+
+  String.joinWith "\n" printed
+  where
+  printCompilerError :: CompilerError -> String
+  printCompilerError { moduleName, filename, message, errorLink } =
+    String.joinWith "\n"
+      [ "  Module: " <> moduleName
+      , "  File: " <> filename
+      , "  Message:"
+      , ""
+      , "  " <> message
+      , ""
+      , "  Error details:"
+      , "  " <> errorLink
+      ]
+
+type CompilerArgs =
+  { version :: String
+  , cwd :: Maybe FilePath
+  , args :: Array String
+  }
+
+-- | Call a specific version of the PureScript compiler
+callCompiler :: CompilerArgs -> Aff (Either CompilerFailure String)
+callCompiler compilerArgs = do
+  let
+    args = Array.snoc compilerArgs.args "--json-errors"
     -- Converts a string version 'v0.13.0' or '0.13.0' to the standard format for
     -- executables 'purs-0_13_0'
-    compiler =
+    cmd =
       append "purs-"
         $ String.replaceAll (String.Pattern ".") (String.Replacement "_")
-        $ fromMaybe version
-        $ String.stripPrefix (String.Pattern "v") version
+        $ fromMaybe compilerArgs.version
+        $ String.stripPrefix (String.Pattern "v") compilerArgs.version
 
-  result <- Aff.try $ Process.spawn { cmd: compiler, stdin: Nothing, args } (NodeProcess.defaultSpawnOptions { cwd = cwd })
+  result <- Aff.try $ Process.spawn { cmd, stdin: Nothing, args } (NodeProcess.defaultSpawnOptions { cwd = compilerArgs.cwd })
   pure $ case result of
-    Left exception -> case Aff.message exception of
+    Left exception -> Left $ case Aff.message exception of
       errorMessage
-        | errorMessage == String.joinWith " " [ "spawn", compiler, "ENOENT" ] -> Left MissingCompiler
-        | otherwise -> Left $ UnknownError errorMessage
-    Right { exit: NodeProcess.Normally 0, stdout } ->
-      Right $ String.trim stdout
-    Right output | String.null (String.trim output.stderr) ->
-      Left $ CompilationError $ String.trim output.stdout
-    Right { stderr } ->
-      Left $ UnknownError $ String.trim stderr
+        | errorMessage == String.joinWith " " [ "spawn", cmd, "ENOENT" ] -> MissingCompiler
+        | otherwise -> UnknownError errorMessage
+    Right { exit: NodeProcess.Normally 0, stdout } -> Right $ String.trim stdout
+    Right { stderr, stdout } -> Left do
+      case Json.parseJson (String.trim stdout) of
+        Left err -> UnknownError $ String.joinWith "\n" [ stdout, err ]
+        Right ({ errors } :: { errors :: Array CompilerError })
+          | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
+          | otherwise -> CompilationError errors
