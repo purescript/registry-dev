@@ -415,6 +415,15 @@ data GitHubError
 derive instance Eq GitHubError
 derive instance Ord GitHubError
 
+instance RegistryJson GitHubError where
+  encode = case _ of
+    APIError value -> Json.encode { tag: "APIError", value }
+    DecodeError value -> Json.encode { tag: "DecodeError", value }
+  decode = Json.decode >=> \obj -> (obj .: "tag") >>= case _ of
+    "APIError" -> map APIError $ obj .: "value"
+    "DecodeError" -> map DecodeError $ obj .: "value"
+    tag -> Left $ "Unexpected tag: " <> tag
+
 printGitHubError :: GitHubError -> String
 printGitHubError = case _ of
   APIError fields -> Array.fold

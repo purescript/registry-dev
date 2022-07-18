@@ -22,11 +22,14 @@ import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FSA
 import Node.Path as Path
+import Registry.Cache as Cache
+import Registry.Hash (sha256String)
 import Registry.Json ((.:), (.:?))
 import Registry.Json as Json
+import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (RegistryM)
+import Registry.RegistryM (RegistryM, throwWithComment)
 import Registry.Schema (Location, Manifest(..))
 import Registry.Version (Range, Version)
 import Registry.Version as Version
@@ -44,8 +47,8 @@ toManifest name version location { license, description, dependencies } = do
   let owners = Nothing
   Manifest { name, version, location, license, description, dependencies, files, owners }
 
-fetchLegacyManifest :: GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError RegistryM LegacyManifest
-fetchLegacyManifest address ref = do
+fetchLegacyManifest :: Maybe (Map PackageName RawVersion) -> GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError RegistryM LegacyManifest
+fetchLegacyManifest packageSetsDeps address ref = do
   manifests <- fetchLegacyManifestFiles address ref
 
   dependencies <- do
@@ -55,17 +58,25 @@ fetchLegacyManifest address ref = do
       -- "strings: >=4.1.2 <4.1.3", which while technically correct is almost
       -- certainly not what the user wants. We instead treat these ranges as
       -- caret ranges, so "strings: 4.1.2" becomes "strings: >=4.1.2 <5.0.0".
+      toRange (RawVersion fixed) = do
+        let parsedVersion = Version.parseVersion Version.Lenient fixed
+        let bump version = Version.printVersion (Version.bumpHighest version)
+        let printRange version = Array.fold [ ">=", fixed, " <", bump version ]
+        RawVersionRange $ Either.either (const fixed) printRange parsedVersion
+
+      validatePackageSetDeps = case packageSetsDeps of
+        Nothing ->
+          Left { error: InvalidDependencies [], reason: "No package sets dependencies." }
+        Just deps -> do
+          let converted = mapKeys (RawPackageName <<< PackageName.print) $ map toRange deps
+          validateDependencies converted
+
       convertSpagoDeps packages = Array.foldl foldFn Map.empty
         where
         foldFn deps name = maybe deps (\{ version } -> Map.insert name (toRange version) deps) (findPackage name)
         findPackage name = Map.lookup name packages
-        toRange (RawVersion fixed) = do
-          let parsedVersion = Version.parseVersion Version.Lenient fixed
-          let bump version = Version.printVersion (Version.bumpHighest version)
-          let printRange version = Array.fold [ ">=", fixed, " <", bump version ]
-          RawVersionRange $ Either.either (const fixed) printRange parsedVersion
 
-      validateSpagoDeps (SpagoDhallJson { dependencies, packages }) =
+      validateSpagoDeps (SpagoDhallJson { dependencies, packages }) = do
         validateDependencies (convertSpagoDeps packages dependencies)
 
       -- We remove dependencies that don't begin with 'purescript-', as these
@@ -78,16 +89,16 @@ fetchLegacyManifest address ref = do
         validateDependencies (convertBowerDeps dependencies)
 
     Except.except case manifests of
-      This bower -> validateBowerDeps bower
-      That spago -> validateSpagoDeps spago
-      Both bower spago -> case validateBowerDeps bower, validateSpagoDeps spago of
+      This bower -> validatePackageSetDeps <|> validateBowerDeps bower
+      That spago -> validatePackageSetDeps <|> validateSpagoDeps spago
+      Both bower spago -> validatePackageSetDeps <|> case validateBowerDeps bower, validateSpagoDeps spago of
         Left bowerError, Left _ -> Left bowerError
         Right bowerDeps, Left _ -> pure bowerDeps
         Left _, Right spagoDeps -> pure spagoDeps
-        -- When both manifests produce viable dependencies, we first check to
-        -- see if one is more up-to-date (e.g. has higher ranges specified).
-        -- If so, we take that one. If not, we take the Bower manifest.
-        Right bowerDeps, Right spagoDeps -> pure do
+        Right bowerDeps, Right spagoDeps -> pure $ do
+          -- When both manifests produce viable dependencies, we first check to
+          -- see if one is more up-to-date (e.g. has higher ranges specified).
+          -- If so, we take that one. If not, we take the Bower manifest.
           let
             compareToSpago key bowerRange = fromMaybe 0 do
               spagoRange <- Map.lookup key spagoDeps
@@ -276,3 +287,71 @@ fetchBowerfile address (RawVersion ref) = do
   Except.except $ case Json.parseJson (JsonRepair.tryRepair bowerfile) of
     Left err -> Left $ GitHub.DecodeError err
     Right value -> pure value
+
+type LegacyPackageSetEntries = Map PackageName (Map RawVersion (Map PackageName RawVersion))
+
+fetchLegacyPackageSets :: RegistryM LegacyPackageSetEntries
+fetchLegacyPackageSets = do
+  { octokit, cache } <- ask
+  result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache { owner: "purescript", repo: "package-sets" }
+  tags <- case result of
+    Left err -> throwWithComment (GitHub.printGitHubError err)
+    Right tags -> pure $ map _.name tags
+
+  let
+    convertPackageSet :: LegacyPackageSet -> LegacyPackageSetEntries
+    convertPackageSet (LegacyPackageSet packages) =
+      map (convertEntry packages) packages
+
+    convertEntry :: Map PackageName LegacyPackageSetEntry -> LegacyPackageSetEntry -> Map RawVersion (Map PackageName RawVersion)
+    convertEntry entries (LegacyPackageSetEntry { dependencies, version }) = do
+      let
+        -- Package sets are only valid if all packages in the set have dependencies that are also in
+        -- the set, so this (should) be safe.
+        resolveDependencyVersion dep = unsafeFromJust do
+          LegacyPackageSetEntry entry <- Map.lookup dep entries
+          pure entry.version
+        resolveDependencyVersions =
+          Array.foldl (\m name -> Map.insert name (resolveDependencyVersion name) m) Map.empty
+      Map.singleton version (resolveDependencyVersions dependencies)
+
+  legacySets <- do
+    tagKey <- liftEffect do
+      tagsSha <- sha256String (String.joinWith " " tags)
+      pure ("package-sets-" <> show tagsSha)
+
+    -- It's important that we cache the end result of unioning all package sets
+    -- because the package sets are quite large and it's expensive to read them
+    -- all into memory and fold over them.
+    liftEffect (Cache.readJsonEntry tagKey cache) >>= case _ of
+      Left _ -> do
+        log $ "CACHE MISS: Building legacy package sets..."
+        entries <- for tags \ref -> do
+          let setKey = "legacy-package-set__" <> ref
+          setEntries <- liftEffect (Cache.readJsonEntry setKey cache) >>= case _ of
+            Left _ -> do
+              log $ "CACHE MISS: Building legacy package set for " <> ref
+              converted <- Except.runExceptT do
+                packagesJson <- Except.mapExceptT liftAff $ GitHub.getContent octokit cache { owner: "purescript", repo: "package-sets" } ref "packages.json"
+                parsed <- Except.except $ case Json.parseJson packagesJson of
+                  Left decodeError -> throwError $ GitHub.DecodeError decodeError
+                  Right legacySet -> pure legacySet
+                pure $ convertPackageSet parsed
+              liftEffect $ Cache.writeJsonEntry setKey converted cache
+              pure converted
+            Right contents ->
+              pure contents.value
+          case setEntries of
+            Left err -> do
+              log $ "Failed to retrieve " <> ref <> " package set:\n" <> GitHub.printGitHubError err
+              pure Map.empty
+            Right value -> pure value
+
+        let merged = Array.foldl (\m set -> Map.unionWith Map.union set m) Map.empty entries
+        liftEffect $ Cache.writeJsonEntry tagKey merged cache
+        pure merged
+
+      Right contents ->
+        pure contents.value
+
+  pure legacySets

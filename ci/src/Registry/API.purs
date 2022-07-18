@@ -342,7 +342,15 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
       Left _ -> throwWithComment $ "Not a valid registry version: " <> updateRef
       Right result -> pure result
 
-    Except.runExceptT (Legacy.Manifest.fetchLegacyManifest address (RawVersion updateRef)) >>= case _ of
+    legacyPackageSets <- Legacy.Manifest.fetchLegacyPackageSets
+
+    let
+      packageSetDeps = do
+        versions <- Map.lookup packageName legacyPackageSets
+        deps <- Map.lookup (RawVersion updateRef) versions
+        pure deps
+
+    Except.runExceptT (Legacy.Manifest.fetchLegacyManifest packageSetDeps address (RawVersion updateRef)) >>= case _ of
       Left manifestError -> do
         let formatError { error, reason } = reason <> " " <> Legacy.Manifest.printLegacyManifestError error
         throwWithComment $ String.joinWith "\n"
@@ -981,7 +989,7 @@ copyPackageSourceFiles files { source, destination } = do
 
   let
     copyFiles = userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded
-    makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ], preserveTimestamps: false }
+    makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ], preserveTimestamps: true }
 
   liftAff $ traverse_ (makePaths >>> FS.Extra.copy) copyFiles
 
