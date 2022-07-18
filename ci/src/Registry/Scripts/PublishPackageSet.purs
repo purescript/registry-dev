@@ -165,17 +165,18 @@ type BatchResult =
 -- | Attempt to produce a new package set from the given package set by adding
 -- | the provided packages.
 processBatch :: PackageSet -> Map PackageName Version -> RegistryM BatchResult
-processBatch prevSet@(PackageSet set) batch = do
+processBatch prevSet@(PackageSet { compiler, packages }) batch = do
   let
     handleCompilerError = case _ of
       MissingCompiler ->
-        throwError $ Aff.error $ "Missing compiler version " <> Version.printVersion set.compiler
+        throwError $ Aff.error $ "Missing compiler version " <> Version.printVersion compiler
       UnknownError err ->
-        log err -- throwError $ Aff.error $ "Unknown error: " <> err
-      CompilationError err ->
-        log err
+        throwError $ Aff.error $ "Unknown error: " <> err
+      CompilationError errs -> do
+        log "Compilation failed:\n"
+        log $ API.printCompilerErrors errs <> "\n"
 
-  liftAff (installPackages set.packages *> compileInstalledPackages set.compiler) >>= case _ of
+  liftAff (installPackages packages *> compileInstalledPackages compiler) >>= case _ of
     Left compilerError -> do
       handleCompilerError compilerError
       throwError $ Aff.error $ "Starting package set must compile in order to process a batch."
