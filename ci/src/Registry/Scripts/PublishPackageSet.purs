@@ -31,9 +31,10 @@ import Node.FS.Aff as FSA
 import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
-import Registry.API (CompilerFailure(..), callCompiler)
+import Registry.API (CompilerFailure(..), MetadataMap, callCompiler)
 import Registry.API as API
 import Registry.Cache as Cache
+import Registry.Index (RegistryIndex)
 import Registry.Index as Index
 import Registry.Json as Json
 import Registry.PackageGraph as PackageGraph
@@ -104,26 +105,6 @@ main = Aff.launchAff_ do
 
     metadata <- readPackagesMetadata
 
-    now <- liftEffect $ Now.nowDateTime
-
-    let
-      -- TODO: Use latest package's `publishedTime` to find new uploads.
-      recentUploads :: Array (Tuple PackageName (NonEmptyArray Version))
-      recentUploads = do
-        Tuple packageName packageMetadata <- Map.toUnfoldable metadata
-        let
-          versions' :: Array Version
-          versions' = do
-            Tuple version { publishedTime } <- Map.toUnfoldable packageMetadata.published
-            published <- maybe [] (pure <<< PDT.toDateTimeLossy) (PDT.fromRFC3339String publishedTime)
-            let diff = DateTime.diff now published
-            -- NOTE: Change this line for configurable lookback.
-            guardA (diff <= Hours (Int.toNumber 240))
-            pure version
-
-        versions <- Array.fromFoldable (NonEmptyArray.fromArray versions')
-        pure (Tuple packageName versions)
-
     log "Fetching latest package set..."
 
     registryPath <- asks _.registry
@@ -151,29 +132,21 @@ main = Aff.launchAff_ do
 
     log "Computing candidates for inclusion in package set..."
 
-    let
-      uploads :: Map PackageName Version
-      uploads = Map.fromFoldable do
-        Tuple packageName versions' <- recentUploads
-        -- We only care about the latest version
-        let version = NonEmptyArray.last (NonEmptyArray.sort versions')
-        -- Ensure package is not in package set, or latest version is newer than that in package set
-        checkedVersion <- case Map.lookup packageName packages of
-          Nothing -> pure version
-          Just v | v < version -> pure version
-          _ -> []
-        pure (Tuple packageName checkedVersion)
+    registryIndexPath <- asks _.registryIndex
+    registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
 
-    if Map.isEmpty uploads then do
-      log "No new uploads eligible for inclusion in the package set."
+    candidates <- liftEffect $ computeCandidates registryIndex metadata packages
+
+    if Map.isEmpty candidates then do
+      log "No new package versions eligible for inclusion in the package set."
     else do
       let format name version = PackageName.print name <> "@" <> Version.printVersion version
-      log "Found the following uploads eligible for inclusion in package set:"
-      forWithIndex_ uploads (\name version -> log $ format name version)
-      processBatch prevPackageSet uploads >>= case _ of
+      log "Found the following package versions eligible for inclusion in package set:"
+      forWithIndex_ candidates (\name version -> log $ format name version)
+      processBatch registryIndex prevPackageSet candidates >>= case _ of
         Nothing -> do
           log "\n----------\nNo packages could be added to the set. All packages failed:"
-          forWithIndex_ uploads (\name version -> log $ format name version)
+          forWithIndex_ candidates (\name version -> log $ format name version)
         Just { success, fail, packageSet } -> do
           unless (Map.isEmpty fail) do
             log "\n----------\nSome packages could not be added to the set:"
@@ -200,8 +173,8 @@ type BatchResult =
 
 -- | Attempt to produce a new package set from the given package set by adding
 -- | the provided packages.
-processBatch :: PackageSet -> Map PackageName Version -> RegistryM (Maybe BatchResult)
-processBatch prevSet@(PackageSet { compiler, packages }) batch = do
+processBatch :: RegistryIndex -> PackageSet -> Map PackageName Version -> RegistryM (Maybe BatchResult)
+processBatch registryIndex prevSet@(PackageSet { compiler, packages }) batch = do
   let
     handleCompilerError = case _ of
       MissingCompiler ->
@@ -238,8 +211,6 @@ processBatch prevSet@(PackageSet { compiler, packages }) batch = do
       -- If compiling the full batch failed, then we move on to adding packages
       -- one-by-one. To ensure the greatest likelihood of success, we sort
       -- packages by their dependencies.
-      registryIndexPath <- asks _.registryIndex
-      registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
       let
         sortedPackages = PackageGraph.topologicalSort registryIndex
         sortedBatch =
@@ -424,3 +395,52 @@ computeVersion (PackageSet { packages, version: packageSetVersion }) updates =
   patch = Map.toUnfoldable updates # Array.any \(Tuple package version) -> fromMaybe false do
     prevVersion <- Map.lookup package packages
     pure (version >= Version.bumpPatch prevVersion)
+
+computeCandidates :: RegistryIndex -> MetadataMap -> Map PackageName Version -> Effect (Map PackageName Version)
+computeCandidates registryIndex metadata previousPackageSet = do
+  now <- Now.nowDateTime
+  pure (validateDependencies (validateVersions (uploadCandidates now)))
+  where
+  uploadCandidates :: DateTime.DateTime -> Array (Tuple PackageName (NonEmptyArray Version))
+  uploadCandidates now = do
+    Tuple packageName packageMetadata <- Map.toUnfoldable metadata
+    let
+      versions' :: Array Version
+      versions' = do
+        Tuple version { publishedTime } <- Map.toUnfoldable packageMetadata.published
+        published <- maybe [] (pure <<< PDT.toDateTimeLossy) (PDT.fromRFC3339String publishedTime)
+        let diff = DateTime.diff now published
+        -- NOTE: Change this line for configurable lookback.
+        guardA (diff <= Hours (Int.toNumber 24))
+        pure version
+
+    versions <- Array.fromFoldable (NonEmptyArray.fromArray versions')
+    pure (Tuple packageName versions)
+
+  validateVersions :: Array (Tuple PackageName (NonEmptyArray Version)) -> Map PackageName Version
+  validateVersions candidates = Map.fromFoldable do
+    Tuple packageName versions' <- candidates
+    -- We only care about the latest version
+    let version = NonEmptyArray.last (NonEmptyArray.sort versions')
+    -- Ensure package is not in package set, or latest version is newer than that in package set
+    checkedVersion <- case Map.lookup packageName previousPackageSet of
+      Nothing -> pure version
+      Just v | v < version -> pure version
+      _ -> []
+    pure (Tuple packageName checkedVersion)
+
+  -- A proper solution to this would be to topologically sort by dependencies
+  -- and keep track of dropped packages as we go, to transitively drop packages based on missing versions.
+  validateDependencies :: Map PackageName Version -> Map PackageName Version
+  validateDependencies uploads = uploads # Map.filterWithKey \packageName version -> fromMaybe false do
+    Manifest manifest <- Map.lookup packageName registryIndex >>= Map.lookup version
+
+    let
+      dependencies = Array.fromFoldable (Map.keys manifest.dependencies)
+      -- A package can only be added to the package set if
+      -- all of its dependencies are in the previous package set
+      -- or in the current batch.
+      checkDependency dependency =
+        Map.member dependency previousPackageSet || Map.member dependency uploads
+
+    pure $ Array.all checkDependency dependencies
