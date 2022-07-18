@@ -1,0 +1,201 @@
+{
+  "TypeAhead": {
+    "reason": "Package name should start with a lower case char or a digit; pos = 0",
+    "tag": "InvalidPackageName"
+  },
+  "arb-instances": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "purescript/purescript-arb-instances"
+  },
+  "big-integer": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "athanclark/purescript-big-integer"
+  },
+  "bitstrings": {
+    "reason": "No version contains a 'src' directory.",
+    "tag": "DisabledPackage"
+  },
+  "chosen": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "michael-swan/purescript-chosen"
+  },
+  "chosen-halogen": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "michael-swan/purescript-chosen-halogen"
+  },
+  "combinators": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "awkure/purescript-combinators"
+  },
+  "constraint-kanren": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "raduom/purescript-constraint-kanren"
+  },
+  "datareify": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "alexknvl/purescript-datareify"
+  },
+  "dynamic": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "raduom/purescript-dynamic"
+  },
+  "flux-store": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "KolesnichenkoDS/purescript-flux-store"
+  },
+  "focus-ui": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "mbid/purescript-focus-ui"
+  },
+  "fussy": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "garyb/purescript-fussy"
+  },
+  "globals-safe": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "nsaunders/purescript-globals-safe"
+  },
+  "hashable": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "paf31/purescript-hashable"
+  },
+  "hubot": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "mcoffin/purescript-hubot"
+  },
+  "mailgun": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "piq9117/purescript-mailgun"
+  },
+  "mdcss": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "askasp/purescript-mdcss"
+  },
+  "metadata": {
+    "reason": "Reserved package which cannot be uploaded.",
+    "tag": "DisabledPackage"
+  },
+  "node-args": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "purescript/purescript-node-args"
+  },
+  "node-readline-question": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "i-am-tom/purescript-node-readline-question"
+  },
+  "nunjucks": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "plippe/purescript-nunjucks"
+  },
+  "org": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "birdgg/purescript-org"
+  },
+  "phantomjs": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "cxfreeio/purescript-phantomjs"
+  },
+  "photons": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "slamdata/purescript-photons"
+  },
+  "plaid-node": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "piq9117/purescript-plaid-node"
+  },
+  "pouchdb-ffi": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "fehrenbach/purescript-pouchdb-ffi"
+  },
+  "purveyor": {
+    "reason": "No version contains a 'src' directory.",
+    "tag": "DisabledPackage"
+  },
+  "pux-router": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "alvart/purescript-pux-router"
+  },
+  "reactive": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "purescript/purescript-reactive"
+  },
+  "reactive-jquery": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "purescript/purescript-reactive-jquery"
+  },
+  "slack": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "saksdirect/purescript-slack"
+  },
+  "stablename": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "alexknvl/purescript-stablename"
+  },
+  "stm": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "rightfold/purescript-stm"
+  },
+  "styled-components": {
+    "reason": "No version contains a 'src' directory.",
+    "tag": "DisabledPackage"
+  },
+  "styled-system": {
+    "reason": "No version contains a 'src' directory.",
+    "tag": "DisabledPackage"
+  },
+  "subtype": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "rightfold/purescript-subtype"
+  },
+  "toastr": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "dbushenko/purescript-toastr"
+  },
+  "uport": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "f-o-a-m/purescript-uport"
+  },
+  "web-page-visibility": {
+    "reason": "Expected 'git@github.com:'.; pos = 0",
+    "tag": "InvalidPackageURL",
+    "value": "https://git.sr.ht/~toastal/purescript-web-page-visibility"
+  },
+  "yaml": {
+    "reason": "GitHub API error with status code 404",
+    "tag": "CannotAccessRepo",
+    "value": "CapillarySoftware/purescript-yaml"
+  }
+}
