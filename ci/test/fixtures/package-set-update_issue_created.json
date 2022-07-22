@@ -1,0 +1,29 @@
+{
+  "action": "opened",
+  "issue": {
+    "active_lock_reason": null,
+    "assignee": null,
+    "assignees": [],
+    "author_association": "CONTRIBUTOR",
+    "body": "{ \"compiler\": \"0.15.0\", \"packages\": { \"aff\": \"7.0.0\", \"argonaut\": null } }",
+    "closed_at": null,
+    "comments": 0,
+    "comments_url": "https://api.github.com/repos/purescript/registry/issues/149/comments",
+    "created_at": "2021-01-31T13:36:07Z",
+    "events_url": "https://api.github.com/repos/purescript/registry/issues/149/events",
+    "html_url": "https://github.com/purescript/registry/issues/149",
+    "id": 797713050,
+    "labels": [],
+    "labels_url": "https://api.github.com/repos/purescript/registry/issues/149/labels{/name}",
+    "locked": false,
+    "milestone": null,
+    "node_id": "MDU6SXNzdWU3OTc3MTMwNTA=",
+    "number": 149,
+    "performed_via_github_app": null,
+    "repository_url": "https://api.github.com/repos/purescript/registry",
+    "state": "open",
+    "title": "Package set update",
+    "updated_at": "2021-01-31T13:36:07Z",
+    "url": "https://api.github.com/repos/purescript/registry/issues/149"
+  }
+}

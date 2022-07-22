@@ -334,7 +334,7 @@ decodeEventsToOps = do
             }
         }
 
-    res <- API.readOperation "test/fixtures/issue_comment.json"
+    res <- API.readOperation "test/fixtures/update_issue_comment.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
   Spec.it "decodes an Addition operation" do
@@ -350,7 +350,21 @@ decodeEventsToOps = do
             }
         }
 
-    res <- API.readOperation "test/fixtures/issue_created.json"
+    res <- API.readOperation "test/fixtures/addition_issue_created.json"
+    res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
+
+  Spec.it "decodes a Package Set Update operation" do
+    let
+      issueNumber = IssueNumber 149
+      operation = PackageSetUpdate
+        { compiler: mkUnsafeVersion "0.15.0"
+        , packages: Map.fromFoldable
+            [ mkUnsafePackage "aff" /\ Just (mkUnsafeVersion "7.0.0")
+            , mkUnsafePackage "argonaut" /\ Nothing
+            ]
+        }
+
+    res <- API.readOperation "test/fixtures/package-set-update_issue_created.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
 
 goodBowerfiles :: Spec.Spec Unit

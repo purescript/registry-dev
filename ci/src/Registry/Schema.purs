@@ -164,6 +164,7 @@ instance RegistryJson Location where
 data Operation
   = Addition AdditionData
   | Update UpdateData
+  | PackageSetUpdate PackageSetUpdateData
   | Authenticated AuthenticatedData
 
 derive instance Eq Operation
@@ -174,6 +175,7 @@ instance Show Operation where
   show = case _ of
     Addition inner -> "Addition (" <> show (showWithPackage inner) <> ")"
     Update inner -> "Update (" <> show (showWithPackage inner) <> ")"
+    PackageSetUpdate inner -> "PackageSetUpdate (" <> show inner <> ")"
     Authenticated inner -> "Authenticated (" <> show inner <> ")"
     where
     showWithPackage :: forall r. { packageName :: PackageName | r } -> { packageName :: String | r }
@@ -184,13 +186,18 @@ instance RegistryJson Operation where
   encode = case _ of
     Addition fields -> Json.encode fields
     Update fields -> Json.encode fields
+    PackageSetUpdate fields -> Json.encode fields
     Authenticated fields -> Json.encode fields
 
   decode json = do
     let parseAddition = Addition <$> Json.decode json
     let parseUpdate = Update <$> Json.decode json
+    let parsePackageSetUpdate = PackageSetUpdate <$> Json.decode json
     let parseAuthenticated = Authenticated <$> Json.decode json
-    parseAddition <|> parseUpdate <|> parseAuthenticated
+    parseAddition
+      <|> parseUpdate
+      <|> parsePackageSetUpdate
+      <|> parseAuthenticated
 
 data AuthenticatedOperation
   = Unpublish UnpublishData
@@ -251,6 +258,11 @@ type UpdateData =
   { packageName :: PackageName
   , updateRef :: String
   , buildPlan :: BuildPlan
+  }
+
+type PackageSetUpdateData =
+  { compiler :: Version
+  , packages :: Map PackageName (Maybe Version)
   }
 
 type UnpublishData =

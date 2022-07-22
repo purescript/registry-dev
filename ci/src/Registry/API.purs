@@ -176,6 +176,9 @@ runOperation operation = case operation of
     metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Did you mean to create an Addition?" }
     addOrUpdate { packageName, buildPlan, updateRef } metadata
 
+  PackageSetUpdate { compiler, packages } -> do
+    throwWithComment "Unimplemented"
+
   Authenticated auth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
       metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Only published packages can be unpublished." }
