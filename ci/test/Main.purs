@@ -357,7 +357,7 @@ decodeEventsToOps = do
     let
       issueNumber = IssueNumber 149
       operation = PackageSetUpdate
-        { compiler: mkUnsafeVersion "0.15.0"
+        { compiler: Nothing
         , packages: Map.fromFoldable
             [ mkUnsafePackage "aff" /\ Just (mkUnsafeVersion "7.0.0")
             , mkUnsafePackage "argonaut" /\ Nothing

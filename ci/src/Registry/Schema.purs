@@ -261,7 +261,7 @@ type UpdateData =
   }
 
 type PackageSetUpdateData =
-  { compiler :: Version
+  { compiler :: Maybe Version
   , packages :: Map PackageName (Maybe Version)
   }
 
