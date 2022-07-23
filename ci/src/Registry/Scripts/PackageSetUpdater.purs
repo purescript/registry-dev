@@ -96,7 +96,7 @@ main = Aff.launchAff_ do
       let logPackage name version = log (PackageName.print name <> "@" <> Version.printVersion version)
       log "Found the following package versions eligible for inclusion in package set:"
       forWithIndex_ candidates logPackage
-      PackageSet.processBatch registryIndex prevPackageSet candidates >>= case _ of
+      PackageSet.processBatch registryIndex prevPackageSet Nothing candidates >>= case _ of
         Nothing -> do
           log "\n----------\nNo packages could be added to the set. All packages failed:"
           forWithIndex_ candidates logPackage

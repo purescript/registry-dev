@@ -12,6 +12,8 @@ import Effect.Aff as Exception
 import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Node.FS as FS.Extra
+import Foreign.Purs (CompilerFailure(..))
+import Foreign.Purs as Purs
 import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
@@ -19,8 +21,6 @@ import Node.Path as Path
 import Node.Process as Process
 import Registry.API (copyPackageSourceFiles)
 import Registry.API as API
-import Registry.Compiler (CompilerFailure(..))
-import Registry.Compiler as Compiler
 import Registry.Json as Json
 import Registry.Legacy.Manifest (Bowerfile(..))
 import Registry.PackageName (PackageName)
@@ -537,12 +537,12 @@ compilerVersions = do
   where
   testVersion version =
     Spec.it ("Calls compiler version " <> version) do
-      Compiler.callCompiler { args: [ "--version" ], cwd: Nothing, version } >>= case _ of
+      Purs.callCompiler { args: [ "--version" ], cwd: Nothing, version } >>= case _ of
         Left err -> case err of
           MissingCompiler ->
             Assert.fail "MissingCompiler"
           CompilationError errs ->
-            Assert.fail ("CompilationError:\n" <> Compiler.printCompilerErrors errs)
+            Assert.fail ("CompilationError:\n" <> Purs.printCompilerErrors errs)
           UnknownError err' ->
             Assert.fail ("UnknownError: " <> err')
         Right stdout ->
@@ -550,7 +550,7 @@ compilerVersions = do
 
   testMissingVersion version =
     Spec.it ("Handles failure when compiler is missing " <> version) do
-      result <- Compiler.callCompiler { args: [ "--version" ], cwd: Nothing, version }
+      result <- Purs.callCompiler { args: [ "--version" ], cwd: Nothing, version }
       case result of
         Left MissingCompiler -> pure unit
         _ -> Assert.fail "Should have failed with MissingCompiler"

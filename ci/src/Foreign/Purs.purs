@@ -1,4 +1,4 @@
-module Registry.Compiler where
+module Foreign.Purs where
 
 import Registry.Prelude
 

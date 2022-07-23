@@ -26,20 +26,20 @@ import Effect.Aff as Aff
 import Effect.Now as Now
 import Effect.Ref as Ref
 import Foreign.Node.FS as FSE
+import Foreign.Purs (CompilerFailure(..))
+import Foreign.Purs as Purs
 import Foreign.Tar as Tar
+import Foreign.Wget as Wget
 import Node.FS.Aff as FS.Aff
 import Node.FS.Aff as FSA
 import Node.Path as Path
-import Registry.API as API
-import Registry.Compiler (CompilerFailure(..))
-import Registry.Compiler as Compiler
 import Registry.Index (RegistryIndex)
 import Registry.Json as Json
 import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
-import Registry.Schema (Manifest(..), PackageSet(..), Metadata)
+import Registry.Schema (Manifest(..), Metadata, PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -81,22 +81,24 @@ type PackageSetBatchResult =
 
 -- | Attempt to produce a new package set from the given package set by adding
 -- | the provided packages.
-processBatch :: RegistryIndex -> PackageSet -> Map PackageName Version -> RegistryM (Maybe PackageSetBatchResult)
-processBatch registryIndex prevSet@(PackageSet { compiler, packages }) batch = do
+processBatch :: RegistryIndex -> PackageSet -> Maybe Version -> Map PackageName Version -> RegistryM (Maybe PackageSetBatchResult)
+processBatch registryIndex prevSet@(PackageSet { compiler: prevCompiler, packages }) newCompiler newPackages = do
   let
+    compilerVersion = fromMaybe prevCompiler newCompiler
+
     handleCompilerError = case _ of
       MissingCompiler ->
-        throwError $ Aff.error $ "Missing compiler version " <> Version.printVersion compiler
+        throwWithComment $ "Missing compiler version " <> Version.printVersion compilerVersion
       UnknownError err ->
-        throwError $ Aff.error $ "Unknown error: " <> err
+        throwWithComment $ "Unknown error: " <> err
       CompilationError errs -> do
         log "Compilation failed:\n"
-        log $ Compiler.printCompilerErrors errs <> "\n"
+        log $ Purs.printCompilerErrors errs <> "\n"
 
-  liftAff (installPackages packages *> compileInstalledPackages compiler) >>= case _ of
+  liftAff (installPackages packages *> compileInstalledPackages compilerVersion) >>= case _ of
     Left compilerError -> do
       handleCompilerError compilerError
-      throwError $ Aff.error $ "Starting package set must compile in order to process a batch."
+      throwWithComment "Starting package set must compile in order to process a batch."
     Right _ -> pure unit
 
   let
@@ -108,10 +110,10 @@ processBatch registryIndex prevSet@(PackageSet { compiler, packages }) batch = d
 
   -- First we attempt to add the entire batch.
   log "Compiling new batch..."
-  liftAff (tryBatch prevSet batch) >>= case _ of
+  liftAff (tryBatch prevSet newPackages) >>= case _ of
     Right newSet -> do
-      packageSet <- updatePackageSetMetadata newSet batch
-      pure $ Just { fail: Map.empty, success: batch, packageSet }
+      packageSet <- updatePackageSetMetadata newSet newPackages
+      pure $ Just { fail: Map.empty, success: newPackages, packageSet }
     Left batchCompilerError -> do
       log "Batch failed to process: \n"
       handleCompilerError batchCompilerError
@@ -123,7 +125,7 @@ processBatch registryIndex prevSet@(PackageSet { compiler, packages }) batch = d
         sortedPackages = PackageGraph.topologicalSort registryIndex
         sortedBatch =
           sortedPackages # Array.filter \(Manifest { name, version }) -> fromMaybe false do
-            batchVersion <- Map.lookup name batch
+            batchVersion <- Map.lookup name newPackages
             guard $ version == batchVersion
             pure true
 
@@ -214,7 +216,7 @@ compileInstalledPackages compilerVersion = do
   log "Compiling installed packages..."
   let args = [ "compile", "packages/**/*.purs" ]
   let version = Version.printVersion compilerVersion
-  Compiler.callCompiler { args, version, cwd: Nothing }
+  Purs.callCompiler { args, version, cwd: Nothing }
 
 -- | Delete package source directories in the given installation directory.
 removePackages :: Set PackageName -> Aff Unit
@@ -241,7 +243,7 @@ installPackages packages = do
 installPackage :: PackageName -> Version -> Aff Unit
 installPackage name version = do
   log $ "installing " <> PackageName.print name <> "@" <> Version.printVersion version
-  _ <- API.wget registryUrl tarballPath >>= ltraverse (Aff.error >>> throwError)
+  _ <- Wget.wget registryUrl tarballPath >>= ltraverse (Aff.error >>> throwError)
   liftEffect $ Tar.extract { cwd: packagesDir, filename: tarballPath }
   FSE.remove tarballPath
   FSA.rename extractedPath installPath

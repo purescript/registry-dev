@@ -7,6 +7,7 @@ import Affjax.RequestBody as RequestBody
 import Affjax.RequestHeader as RequestHeader
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
+import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
 import Data.Argonaut.Parser as Argonaut.Core
@@ -38,8 +39,11 @@ import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (GitHubToken(..), IssueNumber, Octokit)
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
+import Foreign.Purs (CompilerFailure(..))
+import Foreign.Purs as Purs
 import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
+import Foreign.Wget as Wget
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
 import Node.FS.Stats as FS.Stats
@@ -48,16 +52,15 @@ import Node.Process as Env
 import Node.Process as Node.Process
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
-import Registry.Compiler (CompilerFailure(..))
-import Registry.Compiler as Compiler
 import Registry.Hash as Hash
 import Registry.Index as Index
 import Registry.Json as Json
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.PackageSet as PackageSet
 import Registry.PackageUpload as Upload
-import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
+import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
 import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), PackageSet(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Types (RawPackageName(..), RawVersion(..))
@@ -179,12 +182,20 @@ runOperation operation = case operation of
     addOrUpdate { packageName, buildPlan, updateRef } metadata
 
   PackageSetUpdate { compiler, packages } -> do
-    { octokit, cache, username } <- ask
+    { octokit, cache, username, registryIndex: registryIndexPath } <- ask
+
+    latestPackageSet <- PackageSet.readLatestPackageSet
+    let prevCompiler = (un PackageSet latestPackageSet).compiler
+    let prevPackages = (un PackageSet latestPackageSet).packages
+
+    let didChangeCompiler = maybe false (not <<< eq prevCompiler) compiler
+    let didRemovePackages = any isNothing packages
+
     -- Changing the compiler version or removing packages are both restricted
     -- to only the packaging team. We throw here if this is an authenticated
     -- operation and we can't verify they are a member of the packaging team.
-    when (isJust compiler || any isNothing packages) do
-      let packagingTeam = { org: "purescript", team: "" }
+    when (didChangeCompiler || didRemovePackages) do
+      let packagingTeam = { org: "purescript", team: "packaging" }
       -- We always throw if we couldn't verify the user who opened or commented
       -- is a member of the packaging team.
       liftAff (Except.runExceptT (GitHub.listTeamMembers octokit cache packagingTeam)) >>= case _ of
@@ -197,32 +208,72 @@ runOperation operation = case operation of
           ]
         Right members -> do
           unless (Array.elem username (map _.username members)) do
-            throwWithComment $ Array.fold
-              [ "This package set update changes the compiler version or "
-              , "removes a package from the package set. Only members of the "
-              , "@purescript/packaging team can take these actions, but your "
+            throwWithComment $ String.joinWith " "
+              [ "This package set update changes the compiler version or"
+              , "removes a package from the package set. Only members of the"
+              , "@purescript/packaging team can take these actions, but your"
               , "username is not a member of the packaging team."
               ]
 
-  -- TODO: Rename 'Scripts/PublishPackageSet' to 'Scripts/PackageSetUpdater'
-  -- TODO: Migrate most of 'PublishPackageSet' to 'Registry.PublishPackageSet'
-  -- TODO: Import functions like 'readLatestPackageSet' into the API
+    -- The compiler version cannot be downgraded.
+    for_ compiler \version -> when (version < prevCompiler) do
+      throwWithComment $ String.joinWith " "
+        [ "You are downgrading the compiler used in the package set from"
+        , "the current version (" <> Version.printVersion prevCompiler <> ")"
+        , "to the lower version (" <> Version.printVersion version <> ")."
+        , "The package set compiler version cannot be downgraded."
+        ]
 
-  -- Versions cannot be downgraded, even as an authenticated action. We throw
-  -- if the compiler or any package version is being downgraded.
-  -- TODO:
-  -- - read the latest package set
-  -- - diff the compiler, if it's changed
-  -- - diff every package in the packages, ensuring that the package set version
-  --     is lower than or equal to the proposed version
+    -- Package versions cannot be downgraded.
+    let
+      downgradedPackages = Array.catMaybes do
+        Tuple packageName packageVersion <- Map.toUnfoldable packages
+        pure do
+          newVersion <- packageVersion
+          prevVersion <- Map.lookup packageName prevPackages
+          guard (prevVersion <= newVersion)
+          pure (Tuple packageName { old: prevVersion, new: newVersion })
 
-  -- With these conditions met, we can attempt to process the batch with the
-  -- new packages and/or compiler version. Note: if the compiler is updated to
-  -- a version that isn't supported by the registry then an 'unsupported
-  -- compiler' error will be thrown.
-  -- TODO
-  -- - call processBatch with the new batch and compiler (this presumably has
-  --     been migrated to 'Registry.PublishPackageSet'.
+    when (not (Array.null downgradedPackages)) do
+      let
+        formatPackage (Tuple name { old, new }) = Array.fold
+          [ "  - "
+          , PackageName.print name
+          , " from "
+          , Version.printVersion old
+          , " to "
+          , Version.printVersion new
+          ]
+
+      throwWithComment $ Array.fold
+        [ "You are attempting to downgrade one or more package versions from "
+        , "their version in the previous set. Affected packages:\n\n"
+        , String.joinWith "\n" $ map formatPackage downgradedPackages
+        ]
+
+    -- With these conditions met, we can attempt to process the batch with the
+    -- new packages and/or compiler version. Note: if the compiler is updated to
+    -- a version that isn't supported by the registry then an 'unsupported
+    -- compiler' error will be thrown.
+    registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
+    candidates <- PackageSet.findPackageSetCandidates registryIndex latestPackageSet
+
+    if Map.isEmpty candidates then do
+      comment "No new package versions eligible for inclusion in the package set."
+      closeIssue
+    else do
+      PackageSet.processBatch registryIndex latestPackageSet compiler candidates >>= case _ of
+        Nothing -> do
+          comment "No packages could be added or updated in the set. All candidates failed."
+          closeIssue
+        Just { packageSet } -> do
+          newPath <- PackageSet.getPackageSetPath (un PackageSet packageSet).version
+          liftAff $ Json.writeJsonFile newPath packageSet
+          commitPackageSetFile packageSet >>= case _ of
+            Left err -> throwWithComment $ "Failed to commit package set file: " <> err
+            Right _ -> do
+              comment "Built and released a new package set!"
+              closeIssue
 
   Authenticated auth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
@@ -626,7 +677,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
       -- unpacked, ie. package-name-major.minor.patch
       filename = PackageName.print packageName <> "-" <> Version.printVersion version <> ".tar.gz"
       filepath = dependenciesDir <> Path.sep <> filename
-    liftAff (wget ("packages.registry.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath) >>= case _ of
+    liftAff (Wget.wget ("packages.registry.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath) >>= case _ of
       Left err -> throwWithComment $ "Error while fetching tarball: " <> err
       Right _ -> pure unit
     liftEffect $ Tar.extract { cwd: dependenciesDir, filename: filepath }
@@ -645,7 +696,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
   --
   -- The resulting documentation will all use purescript- prefixes in keeping
   -- with the format used by Pursuit in PureScript versions at least up to 0.16
-  compilerOutput <- liftAff $ Compiler.callCompiler
+  compilerOutput <- liftAff $ Purs.callCompiler
     { args: [ "publish", "--manifest", "purs.json", "--resolutions", resolutionsFilePath ]
     , version: Version.printVersion compiler
     , cwd: Just packageSourceDir
@@ -660,7 +711,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
     Left (CompilationError errs) -> throwWithComment $ String.joinWith "\n"
       [ "Publishing failed because the build plan does not compile with version " <> Version.printVersion compiler <> " of the compiler:"
       , "```"
-      , Compiler.printCompilerErrors errs
+      , Purs.printCompilerErrors errs
       , "```"
       ]
     Left (UnknownError err) -> throwWithComment $ String.joinWith "\n"
@@ -754,19 +805,6 @@ mkEnv octokit cache metadataRef issue username =
   , registry: Path.concat [ "..", "registry" ]
   , registryIndex: Path.concat [ "..", "registry-index" ]
   }
-
-wget :: String -> FilePath -> Aff (Either String Unit)
-wget url path = do
-  let cmd = "wget"
-  let stdin = Nothing
-  let args = [ "-O", path, url ]
-  maybeResult <- withBackoff' $ Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
-  pure $ case maybeResult of
-    Nothing ->
-      Left $ "Timed out attempting to use wget to fetch " <> url
-    Just { exit, stderr } -> case exit of
-      NodeProcess.Normally 0 -> Right unit
-      _ -> Left $ String.trim stderr
 
 mkLocalEnv :: Octokit -> Cache -> Ref (Map PackageName Metadata) -> Env
 mkLocalEnv octokit cache packagesMetadata =
@@ -908,7 +946,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
         let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
         let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
         log $ "Fetching tarball from GitHub: " <> archiveUrl
-        liftAff (wget archiveUrl absoluteTarballPath) >>= case _ of
+        liftAff (Wget.wget archiveUrl absoluteTarballPath) >>= case _ of
           Left err -> throwWithComment $ "Error while fetching tarball: " <> err
           Right _ -> pure unit
         log $ "Tarball downloaded in " <> absoluteTarballPath
