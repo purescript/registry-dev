@@ -325,6 +325,7 @@ decodeEventsToOps = do
   Spec.it "decodes an Update operation" do
     let
       issueNumber = IssueNumber 43
+      username = "Codertocat"
       operation = Update
         { packageName: mkUnsafePackage "something"
         , updateRef: "v1.2.3"
@@ -335,11 +336,12 @@ decodeEventsToOps = do
         }
 
     res <- API.readOperation "test/fixtures/update_issue_comment.json"
-    res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
+    res `Assert.shouldEqual` API.DecodedOperation issueNumber username operation
 
   Spec.it "decodes an Addition operation" do
     let
       issueNumber = IssueNumber 149
+      username = "Codertocat"
       operation = Addition
         { packageName: mkUnsafePackage "prelude"
         , newRef: "v5.0.0"
@@ -351,11 +353,12 @@ decodeEventsToOps = do
         }
 
     res <- API.readOperation "test/fixtures/addition_issue_created.json"
-    res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
+    res `Assert.shouldEqual` API.DecodedOperation issueNumber username operation
 
   Spec.it "decodes a Package Set Update operation" do
     let
       issueNumber = IssueNumber 149
+      username = "Codertocat"
       operation = PackageSetUpdate
         { compiler: Nothing
         , packages: Map.fromFoldable
@@ -365,7 +368,7 @@ decodeEventsToOps = do
         }
 
     res <- API.readOperation "test/fixtures/package-set-update_issue_created.json"
-    res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
+    res `Assert.shouldEqual` API.DecodedOperation issueNumber username operation
 
 goodBowerfiles :: Spec.Spec Unit
 goodBowerfiles = do

@@ -93,6 +93,7 @@ main = Aff.launchAff_ do
       , deletePackage: mempty
       , octokit
       , cache
+      , username: mempty
       , packagesMetadata: metadataRef
       , registry: "registry"
       , registryIndex: "registry-index"

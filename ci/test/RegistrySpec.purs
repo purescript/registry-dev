@@ -31,6 +31,7 @@ defaultTestEnv =
       , write: mempty
       , remove: mempty
       }
+  , username: mempty
   , registry: mempty
   , registryIndex: mempty
   }

@@ -97,19 +97,19 @@ main = launchAff_ $ do
         Left githubError -> throwError $ Aff.error $ GitHub.printGitHubError githubError
         Right _ -> pure unit
 
-    DecodedOperation issue op -> do
+    DecodedOperation issue username operation -> do
       cache <- Cache.useCache
       packagesMetadata <- liftEffect $ Ref.new Map.empty
-      runRegistryM (mkEnv octokit cache packagesMetadata issue) do
+      runRegistryM (mkEnv octokit cache packagesMetadata issue username) do
         fetchRegistry
         fetchRegistryIndex
         fillMetadataRef
-        runOperation op
+        runOperation operation
 
 data OperationDecoding
   = NotJson
   | MalformedJson IssueNumber String
-  | DecodedOperation IssueNumber Operation
+  | DecodedOperation IssueNumber String Operation
 
 derive instance Eq OperationDecoding
 derive instance Generic.Generic OperationDecoding _
@@ -121,7 +121,7 @@ readOperation :: FilePath -> Aff OperationDecoding
 readOperation eventPath = do
   fileContents <- FS.readTextFile UTF8 eventPath
 
-  GitHub.Event { issueNumber, body } <- case Json.parseJson fileContents of
+  GitHub.Event { issueNumber, body, username } <- case Json.parseJson fileContents of
     Left err ->
       -- If we don't receive a valid event path or the contents can't be decoded
       -- then this is a catastrophic error and we exit the workflow.
@@ -133,7 +133,7 @@ readOperation eventPath = do
     Left _err -> NotJson
     Right json -> case Json.decode json of
       Left err -> MalformedJson issueNumber err
-      Right op -> DecodedOperation issueNumber op
+      Right operation -> DecodedOperation issueNumber username operation
 
 -- TODO: test all the points where the pipeline could throw, to show that we are implementing
 -- all the necessary checks
@@ -177,7 +177,40 @@ runOperation operation = case operation of
     addOrUpdate { packageName, buildPlan, updateRef } metadata
 
   PackageSetUpdate { compiler, packages } -> do
-    throwWithComment "Unimplemented"
+    { octokit, cache, username } <- ask
+    -- Changing the compiler version or removing packages are both restricted
+    -- to only the packaging team. We throw here if this is an authenticated
+    -- operation and we can't verify they are a member of the packaging team.
+    when (isJust compiler || any isNothing packages) do
+      let packagingTeam = { org: "purescript", team: "" }
+      -- We always throw if we couldn't verify the user who opened or commented
+      -- is a member of the packaging team.
+      liftAff (Except.runExceptT (GitHub.listTeamMembers octokit cache packagingTeam)) >>= case _ of
+        Left githubError -> throwWithComment $ Array.fold
+          [ "This package set update changes the compiler version or removes a "
+          , "package from the package set. Only members of the "
+          , "@purescript/packaging team can take these actions, but we were "
+          , "unable to authenticate your account:\n"
+          , GitHub.printGitHubError githubError
+          ]
+        Right members -> do
+          unless (Array.elem username (map _.username members)) do
+            throwWithComment $ Array.fold
+              [ "This package set update changes the compiler version or "
+              , "removes a package from the package set. Only members of the "
+              , "@purescript/packaging team can take these actions, but your "
+              , "username is not a member of the packaging team."
+              ]
+
+  -- Versions cannot be downgraded, even as an authenticated action. We throw
+  -- if the compiler or any package version is being downgraded.
+  -- TODO
+
+  -- With these conditions met, we can attempt to process the batch with the
+  -- new packages and/or compiler version. Note: if the compiler is updated to
+  -- a version that isn't supported by the registry then an 'unsupported
+  -- compiler' error will be thrown.
+  -- TODO
 
   Authenticated auth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
@@ -689,8 +722,8 @@ buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir }
       packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.printVersion version ]
     pure $ Tuple bowerPackageName { path: packagePath, version }
 
-mkEnv :: GitHub.Octokit -> Cache -> MetadataRef -> IssueNumber -> Env
-mkEnv octokit cache packagesMetadata issue =
+mkEnv :: GitHub.Octokit -> Cache -> MetadataRef -> IssueNumber -> String -> Env
+mkEnv octokit cache packagesMetadata issue username =
   { comment: \comment -> Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
       Left _ -> throwError $ Aff.error "Unable to create comment!"
       Right _ -> pure unit
@@ -705,6 +738,7 @@ mkEnv octokit cache packagesMetadata issue =
   , packagesMetadata
   , cache
   , octokit
+  , username
   , registry: Path.concat [ "..", "registry" ]
   , registryIndex: Path.concat [ "..", "registry-index" ]
   }
@@ -739,6 +773,7 @@ mkLocalEnv octokit cache packagesMetadata =
   , deletePackage: Upload.delete
   , octokit
   , cache
+  , username: ""
   , packagesMetadata
   , registry: Path.concat [ "..", "registry" ]
   , registryIndex: Path.concat [ "..", "registry-index" ]

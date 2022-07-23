@@ -45,6 +45,7 @@ main = launchAff_ $ do
       , packagesMetadata: unsafePerformEffect (Ref.new Map.empty)
       , cache
       , octokit
+      , username: mempty
       , registry: mempty
       , registryIndex: mempty
       }
