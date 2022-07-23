@@ -204,8 +204,6 @@ runOperation operation = case operation of
               , "username is not a member of the packaging team."
               ]
 
-  -- TODO: Move functions like 'callCompiler' into a 'Registry.Compile' file
-  -- TODO: Remove 'MetadataMap' and 'MetadataRef' synonyms altogether
   -- TODO: Rename 'Scripts/PublishPackageSet' to 'Scripts/PackageSetUpdater'
   -- TODO: Migrate most of 'PublishPackageSet' to 'Registry.PublishPackageSet'
   -- TODO: Import functions like 'readLatestPackageSet' into the API
@@ -736,8 +734,8 @@ buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir }
       packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.printVersion version ]
     pure $ Tuple bowerPackageName { path: packagePath, version }
 
-mkEnv :: GitHub.Octokit -> Cache -> MetadataRef -> IssueNumber -> String -> Env
-mkEnv octokit cache packagesMetadata issue username =
+mkEnv :: GitHub.Octokit -> Cache -> Ref (Map PackageName Metadata) -> IssueNumber -> String -> Env
+mkEnv octokit cache metadataRef issue username =
   { comment: \comment -> Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
       Left _ -> throwError $ Aff.error "Unable to create comment!"
       Right _ -> pure unit
@@ -749,7 +747,7 @@ mkEnv octokit cache packagesMetadata issue username =
   , commitPackageSetFile: pacchettiBottiPushToRegistryPackageSets
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
-  , packagesMetadata
+  , packagesMetadata: metadataRef
   , cache
   , octokit
   , username
@@ -793,9 +791,6 @@ mkLocalEnv octokit cache packagesMetadata =
   , registryIndex: Path.concat [ "..", "registry-index" ]
   }
 
-type MetadataMap = Map PackageName Metadata
-type MetadataRef = Ref MetadataMap
-
 fillMetadataRef :: RegistryM Unit
 fillMetadataRef = do
   registryDir <- asks _.registry
@@ -822,19 +817,17 @@ fillMetadataRef = do
   metadataRef <- asks _.packagesMetadata
   liftEffect $ Ref.write packages metadataRef
 
-isPackageVersionInMetadata :: PackageName -> Version -> MetadataMap -> Boolean
-isPackageVersionInMetadata packageName version metadataMap =
-  case Map.lookup packageName metadataMap of
+isPackageVersionInMetadata :: PackageName -> Version -> Map PackageName Metadata -> Boolean
+isPackageVersionInMetadata packageName version metadata =
+  case Map.lookup packageName metadata of
     Nothing -> false
-    Just metadata -> isVersionInMetadata version metadata
+    Just packageMetadata -> isVersionInMetadata version packageMetadata
 
-packageNameIsUnique :: PackageName -> MetadataMap -> Boolean
+packageNameIsUnique :: PackageName -> Map PackageName Metadata -> Boolean
 packageNameIsUnique name = isNothing <<< Map.lookup name
 
-locationIsUnique :: Location -> MetadataMap -> Boolean
-locationIsUnique location metadata = do
-  let duplicates = Map.size $ Map.filter (eq location <<< _.location) metadata
-  duplicates == 0
+locationIsUnique :: Location -> Map PackageName Metadata -> Boolean
+locationIsUnique location = Map.isEmpty <<< Map.filter (eq location <<< _.location)
 
 -- | Fetch the latest from the given repository. Will perform a fresh clone if
 -- | a checkout of the repository does not exist at the given path, and will
