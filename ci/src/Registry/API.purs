@@ -202,15 +202,27 @@ runOperation operation = case operation of
               , "username is not a member of the packaging team."
               ]
 
+  -- TODO: Move functions like 'callCompiler' into a 'Registry.Compile' file
+  -- TODO: Remove 'MetadataMap' and 'MetadataRef' synonyms altogether
+  -- TODO: Rename 'Scripts/PublishPackageSet' to 'Scripts/PackageSetUpdater'
+  -- TODO: Migrate most of 'PublishPackageSet' to 'Registry.PublishPackageSet'
+  -- TODO: Import functions like 'readLatestPackageSet' into the API
+
   -- Versions cannot be downgraded, even as an authenticated action. We throw
   -- if the compiler or any package version is being downgraded.
-  -- TODO
+  -- TODO:
+  -- - read the latest package set
+  -- - diff the compiler, if it's changed
+  -- - diff every package in the packages, ensuring that the package set version
+  --     is lower than or equal to the proposed version
 
   -- With these conditions met, we can attempt to process the batch with the
   -- new packages and/or compiler version. Note: if the compiler is updated to
   -- a version that isn't supported by the registry then an 'unsupported
   -- compiler' error will be thrown.
   -- TODO
+  -- - call processBatch with the new batch and compiler (this presumably has
+  --     been migrated to 'Registry.PublishPackageSet'.
 
   Authenticated auth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
