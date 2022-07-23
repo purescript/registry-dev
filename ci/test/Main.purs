@@ -17,8 +17,10 @@ import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
-import Registry.API (CompilerFailure(..), callCompiler, copyPackageSourceFiles)
+import Registry.API (copyPackageSourceFiles)
 import Registry.API as API
+import Registry.Compiler (CompilerFailure(..))
+import Registry.Compiler as Compiler
 import Registry.Json as Json
 import Registry.Legacy.Manifest (Bowerfile(..))
 import Registry.PackageName (PackageName)
@@ -535,12 +537,12 @@ compilerVersions = do
   where
   testVersion version =
     Spec.it ("Calls compiler version " <> version) do
-      callCompiler { args: [ "--version" ], cwd: Nothing, version } >>= case _ of
+      Compiler.callCompiler { args: [ "--version" ], cwd: Nothing, version } >>= case _ of
         Left err -> case err of
           MissingCompiler ->
             Assert.fail "MissingCompiler"
           CompilationError errs ->
-            Assert.fail ("CompilationError:\n" <> API.printCompilerErrors errs)
+            Assert.fail ("CompilationError:\n" <> Compiler.printCompilerErrors errs)
           UnknownError err' ->
             Assert.fail ("UnknownError: " <> err')
         Right stdout ->
@@ -548,7 +550,7 @@ compilerVersions = do
 
   testMissingVersion version =
     Spec.it ("Handles failure when compiler is missing " <> version) do
-      result <- callCompiler { args: [ "--version" ], cwd: Nothing, version }
+      result <- Compiler.callCompiler { args: [ "--version" ], cwd: Nothing, version }
       case result of
         Left MissingCompiler -> pure unit
         _ -> Assert.fail "Should have failed with MissingCompiler"

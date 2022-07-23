@@ -31,9 +31,10 @@ import Node.FS.Aff as FSA
 import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
-import Registry.API (CompilerFailure(..), MetadataMap, callCompiler)
 import Registry.API as API
 import Registry.Cache as Cache
+import Registry.Compiler (CompilerFailure(..))
+import Registry.Compiler as Compiler
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
 import Registry.Json as Json
@@ -41,7 +42,7 @@ import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.RegistryM (Env, RegistryM, commitPackageSetFile, readPackagesMetadata, runRegistryM)
-import Registry.Schema (Manifest(..), PackageSet(..))
+import Registry.Schema (Manifest(..), PackageSet(..), Metadata)
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -184,7 +185,7 @@ processBatch registryIndex prevSet@(PackageSet { compiler, packages }) batch = d
         throwError $ Aff.error $ "Unknown error: " <> err
       CompilationError errs -> do
         log "Compilation failed:\n"
-        log $ API.printCompilerErrors errs <> "\n"
+        log $ Compiler.printCompilerErrors errs <> "\n"
 
   liftAff (installPackages packages *> compileInstalledPackages compiler) >>= case _ of
     Left compilerError -> do
@@ -307,7 +308,7 @@ compileInstalledPackages compilerVersion = do
   log "Compiling installed packages..."
   let args = [ "compile", "packages/**/*.purs" ]
   let version = Version.printVersion compilerVersion
-  callCompiler { args, version, cwd: Nothing }
+  Compiler.callCompiler { args, version, cwd: Nothing }
 
 -- | Delete package source directories in the given installation directory.
 removePackages :: Set PackageName -> Aff Unit
@@ -397,7 +398,7 @@ computeVersion (PackageSet { packages, version: packageSetVersion }) updates =
     prevVersion <- Map.lookup package packages
     pure (version >= Version.bumpPatch prevVersion)
 
-computeCandidates :: RegistryIndex -> MetadataMap -> Map PackageName Version -> Effect (Map PackageName Version)
+computeCandidates :: RegistryIndex -> Map PackageName Metadata -> Map PackageName Version -> Effect (Map PackageName Version)
 computeCandidates registryIndex metadata previousPackageSet = do
   now <- Now.nowDateTime
   pure (validateDependencies (validateVersions (uploadCandidates now)))
