@@ -1,4 +1,5 @@
 {
+  "purescript-splitmix": "https://github.com/the-dr-lazy/purescript-splitmix.git",
   "purescript-quickcheck-state-machine": "https://github.com/the-dr-lazy/purescript-quickcheck-state-machine.git",
   "purescript-effectful": "https://github.com/the-dr-lazy/purescript-effectful.git",
   "purescript-barbies": "https://github.com/the-dr-lazy/purescript-barbies.git",
