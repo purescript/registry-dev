@@ -298,12 +298,7 @@ buildLegacyPackageManifests
 buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl = do
   { cache } <- ask
 
-  package <- do
-    name <- Except.except $ validatePackageName rawPackage
-    Except.except $ validatePackageDisabled name
-    address <- Except.except $ validatePackageAddress rawUrl
-    tags <- fetchPackageTags address
-    pure { name, address, tags }
+  package <- validatePackage rawPackage rawUrl
 
   let
     location :: Location
@@ -402,6 +397,20 @@ data PackageError
 
 derive instance Eq PackageError
 
+type PackageResult =
+  { name :: PackageName
+  , address :: GitHub.Address
+  , tags :: Array GitHub.Tag
+  }
+
+validatePackage :: RawPackageName -> GitHub.PackageURL -> ExceptT PackageValidationError RegistryM PackageResult
+validatePackage rawPackage rawUrl = do
+  name <- Except.except $ validatePackageName rawPackage
+  Except.except $ validatePackageDisabled name
+  address <- Except.except $ validatePackageAddress rawUrl
+  tags <- fetchPackageTags address
+  pure { name, address, tags }
+
 fetchPackageTags :: GitHub.Address -> ExceptT PackageValidationError RegistryM (Array GitHub.Tag)
 fetchPackageTags address = do
   { octokit, cache } <- ask
@@ -498,18 +507,18 @@ readLegacyRegistryFiles = do
   let allPackages = Map.union bowerPackages registryPackages
   let stripPrefixes = mapKeys (RawPackageName <<< stripPureScriptPrefix)
   pure $ stripPrefixes allPackages
-  where
-  readLegacyRegistryFile :: String -> Aff (Map String GitHub.PackageURL)
-  readLegacyRegistryFile sourceFile = do
-    let path = Path.concat [ "..", sourceFile ]
-    legacyPackages <- Json.readJsonFile path
-    case legacyPackages of
-      Left err -> do
-        throwError $ Exception.error $ String.joinWith "\n"
-          [ "Decoding registry file from " <> path <> "failed:"
-          , err
-          ]
-      Right packages -> pure packages
+
+readLegacyRegistryFile :: String -> Aff (Map String GitHub.PackageURL)
+readLegacyRegistryFile sourceFile = do
+  let path = Path.concat [ "..", sourceFile ]
+  legacyPackages <- Json.readJsonFile path
+  case legacyPackages of
+    Left err -> do
+      throwError $ Exception.error $ String.joinWith "\n"
+        [ "Decoding registry file from " <> path <> "failed:"
+        , err
+        ]
+    Right packages -> pure packages
 
 type ImportStats =
   { packagesProcessed :: Int

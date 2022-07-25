@@ -28,6 +28,7 @@ module Foreign.GitHub
 
 import Registry.Prelude
 
+import Affjax as Http
 import Control.Monad.Except as Except
 import Control.Promise (Promise)
 import Control.Promise as Promise
@@ -119,7 +120,8 @@ listTags octokit cache address = do
     name <- obj .: "name"
     commitObj <- obj .: "commit"
     sha <- commitObj .: "sha"
-    pure { name, sha }
+    url <- commitObj .: "url"
+    pure { name, sha, url }
 
 -- | Fetch a specific file  from the provided repository at the given ref and
 -- | filepath. Filepaths should lead to a single file from the root of the repo.
@@ -423,7 +425,7 @@ type Address = { owner :: String, repo :: String }
 registryAddress :: Address
 registryAddress = { owner: "purescript", repo: "registry-preview" }
 
-type Tag = { name :: String, sha :: String }
+type Tag = { name :: String, sha :: String, url :: Http.URL }
 
 parseRepo :: PackageURL -> Either Parser.ParseError Address
 parseRepo = unwrap >>> Parser.runParser do
