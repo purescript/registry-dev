@@ -23,6 +23,7 @@ type Env =
   , uploadPackage :: Upload.PackageInfo -> FilePath -> Aff Unit
   , deletePackage :: Upload.PackageInfo -> Aff Unit
   , octokit :: Octokit
+  , username :: String
   , packagesMetadata :: Ref (Map PackageName Metadata)
   , cache :: Registry.Cache
   , registry :: FilePath

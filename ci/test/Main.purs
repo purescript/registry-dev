@@ -12,12 +12,14 @@ import Effect.Aff as Exception
 import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Node.FS as FS.Extra
+import Foreign.Purs (CompilerFailure(..))
+import Foreign.Purs as Purs
 import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
-import Registry.API (CompilerFailure(..), callCompiler, copyPackageSourceFiles)
+import Registry.API (copyPackageSourceFiles)
 import Registry.API as API
 import Registry.Json as Json
 import Registry.Legacy.Manifest (Bowerfile(..))
@@ -325,6 +327,7 @@ decodeEventsToOps = do
   Spec.it "decodes an Update operation" do
     let
       issueNumber = IssueNumber 43
+      username = "Codertocat"
       operation = Update
         { packageName: mkUnsafePackage "something"
         , updateRef: "v1.2.3"
@@ -334,12 +337,13 @@ decodeEventsToOps = do
             }
         }
 
-    res <- API.readOperation "test/fixtures/issue_comment.json"
-    res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
+    res <- API.readOperation "test/fixtures/update_issue_comment.json"
+    res `Assert.shouldEqual` API.DecodedOperation issueNumber username operation
 
   Spec.it "decodes an Addition operation" do
     let
       issueNumber = IssueNumber 149
+      username = "Codertocat"
       operation = Addition
         { packageName: mkUnsafePackage "prelude"
         , newRef: "v5.0.0"
@@ -350,8 +354,23 @@ decodeEventsToOps = do
             }
         }
 
-    res <- API.readOperation "test/fixtures/issue_created.json"
-    res `Assert.shouldEqual` API.DecodedOperation issueNumber operation
+    res <- API.readOperation "test/fixtures/addition_issue_created.json"
+    res `Assert.shouldEqual` API.DecodedOperation issueNumber username operation
+
+  Spec.it "decodes a Package Set Update operation" do
+    let
+      issueNumber = IssueNumber 149
+      username = "Codertocat"
+      operation = PackageSetUpdate
+        { compiler: Nothing
+        , packages: Map.fromFoldable
+            [ mkUnsafePackage "aff" /\ Just (mkUnsafeVersion "7.0.0")
+            , mkUnsafePackage "argonaut" /\ Nothing
+            ]
+        }
+
+    res <- API.readOperation "test/fixtures/package-set-update_issue_created.json"
+    res `Assert.shouldEqual` API.DecodedOperation issueNumber username operation
 
 goodBowerfiles :: Spec.Spec Unit
 goodBowerfiles = do
@@ -518,12 +537,12 @@ compilerVersions = do
   where
   testVersion version =
     Spec.it ("Calls compiler version " <> version) do
-      callCompiler { args: [ "--version" ], cwd: Nothing, version } >>= case _ of
+      Purs.callCompiler { args: [ "--version" ], cwd: Nothing, version } >>= case _ of
         Left err -> case err of
           MissingCompiler ->
             Assert.fail "MissingCompiler"
           CompilationError errs ->
-            Assert.fail ("CompilationError:\n" <> API.printCompilerErrors errs)
+            Assert.fail ("CompilationError:\n" <> Purs.printCompilerErrors errs)
           UnknownError err' ->
             Assert.fail ("UnknownError: " <> err')
         Right stdout ->
@@ -531,7 +550,7 @@ compilerVersions = do
 
   testMissingVersion version =
     Spec.it ("Handles failure when compiler is missing " <> version) do
-      result <- callCompiler { args: [ "--version" ], cwd: Nothing, version }
+      result <- Purs.callCompiler { args: [ "--version" ], cwd: Nothing, version }
       case result of
         Left MissingCompiler -> pure unit
         _ -> Assert.fail "Should have failed with MissingCompiler"

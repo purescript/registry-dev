@@ -108,13 +108,13 @@
               spago run -m Registry.Scripts.LegacyImporter --node-args $1
             '';
 
-            registry-package-set = ''
+            registry-package-set-updater = ''
               if [ -z "$1" ]; then
                 echo "No arguments supplied. Expected one of: generate, commit"
                 exit 1
               fi
 
-              spago run -m Registry.Scripts.PublishPackageSet --node-args $1
+              spago run -m Registry.Scripts.PackageSetUpdater --node-args $1
             '';
 
             # This script checks that there are no duplicate entries in the two json files listing packages

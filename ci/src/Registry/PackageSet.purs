@@ -1,4 +1,11 @@
-module Registry.Scripts.PublishPackageSet where
+module Registry.PackageSet
+  ( PackageSetBatchResult
+  , findPackageSetCandidates
+  , getPackageSetPath
+  , getPackageSetsPath
+  , processBatch
+  , readLatestPackageSet
+  ) where
 
 import Registry.Prelude
 
@@ -8,164 +15,65 @@ import Control.Monad.Reader (asks)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bitraversable (ltraverse)
+import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Foldable (traverse_)
-import Data.Int as Int
 import Data.Map as Map
 import Data.PreciseDateTime as PDT
 import Data.String as String
 import Data.Time.Duration (Hours(..))
-import Dotenv as Dotenv
 import Effect.Aff as Aff
-import Effect.Exception (throw)
-import Effect.Exception as Exception
 import Effect.Now as Now
 import Effect.Ref as Ref
-import Foreign.GitHub (GitHubToken(..))
-import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FSE
+import Foreign.Purs (CompilerFailure(..))
+import Foreign.Purs as Purs
 import Foreign.Tar as Tar
-import Foreign.Tmp as Tmp
+import Foreign.Wget as Wget
 import Node.FS.Aff as FS.Aff
 import Node.FS.Aff as FSA
 import Node.Path as Path
-import Node.Process as Node.Process
-import Node.Process as Process
-import Registry.API (CompilerFailure(..), MetadataMap, callCompiler)
-import Registry.API as API
-import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
-import Registry.Index as Index
 import Registry.Json as Json
 import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (Env, RegistryM, commitPackageSetFile, readPackagesMetadata, runRegistryM)
-import Registry.Schema (Manifest(..), PackageSet(..))
+import Registry.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
+import Registry.Schema (Manifest(..), Metadata, PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
-data PublishMode = GeneratePackageSet | CommitPackageSet
+getPackageSetsPath :: RegistryM FilePath
+getPackageSetsPath = do
+  registryPath <- asks _.registry
+  pure $ Path.concat [ registryPath, "package-sets" ]
 
-derive instance Eq PublishMode
+getPackageSetPath :: Version -> RegistryM FilePath
+getPackageSetPath version = do
+  packageSets <- getPackageSetsPath
+  pure $ Path.concat [ packageSets, Version.printVersion version <> ".json" ]
 
-main :: Effect Unit
-main = Aff.launchAff_ do
-  _ <- Dotenv.loadFile
-
-  log "Parsing CLI args..."
-  mode <- liftEffect do
-    args <- Array.drop 2 <$> Node.Process.argv
-    case Array.uncons args of
-      Nothing -> Exception.throw "Expected 'generate' or 'commit', but received no arguments."
-      Just { head, tail: [] } -> case head of
-        "generate" -> pure GeneratePackageSet
-        "commit" -> pure CommitPackageSet
-        other -> Exception.throw $ "Expected 'generate' or 'commit' but received: " <> other
-      Just _ -> Exception.throw $ String.joinWith "\n"
-        [ "Expected 'generate' or 'commit', but received multiple arguments:"
-        , String.joinWith " " args
-        ]
-
-  log "Starting package set publishing..."
-
-  githubToken <- liftEffect do
-    Process.lookupEnv "GITHUB_TOKEN"
-      >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
-
-  octokit <- liftEffect $ GitHub.mkOctokit githubToken
-  cache <- Cache.useCache
-
-  tmpDir <- liftEffect $ Tmp.mkTmpDir
-  liftEffect $ Node.Process.chdir tmpDir
-
-  metadataRef <- liftEffect $ Ref.new Map.empty
+-- | Read the most recent package set release
+readLatestPackageSet :: RegistryM PackageSet
+readLatestPackageSet = do
+  packageSetsPath <- getPackageSetsPath
+  packageSetFiles <- liftAff $ FS.Aff.readdir packageSetsPath
 
   let
-    env :: Env
-    env =
-      { comment: \comment -> log ("[COMMENT] " <> comment)
-      , closeIssue: mempty
-      , commitMetadataFile: \_ _ -> pure (Right unit)
-      , commitIndexFile: \_ _ -> pure (Right unit)
-      , commitPackageSetFile: API.pacchettiBottiPushToRegistryPackageSets
-      , uploadPackage: mempty
-      , deletePackage: mempty
-      , octokit
-      , cache
-      , packagesMetadata: metadataRef
-      , registry: "registry"
-      , registryIndex: "registry-index"
-      }
+    packageSetVersions :: Array Version
+    packageSetVersions = packageSetFiles # Array.mapMaybe \fileName -> do
+      versionString <- String.stripSuffix (String.Pattern ".json") fileName
+      hush $ Version.parseVersion Version.Lenient versionString
 
-  runRegistryM env do
-    API.fetchRegistryIndex
-    API.fetchRegistry
-    API.fillMetadataRef
+  case Array.last (Array.sort packageSetVersions) of
+    Nothing -> throwWithComment "No existing package set."
+    Just version -> do
+      path <- getPackageSetPath version
+      liftAff (Json.readJsonFile path) >>= case _ of
+        Left err -> throwWithComment $ "Could not decode latest package set: " <> err
+        Right set -> pure set
 
-    metadata <- readPackagesMetadata
-
-    log "Fetching latest package set..."
-
-    registryPath <- asks _.registry
-    packageSets <- liftAff $ FS.Aff.readdir (Path.concat [ registryPath, "package-sets" ])
-
-    let
-      buildPackageSetPath :: Version -> FilePath
-      buildPackageSetPath version = Path.concat [ registryPath, "package-sets", Version.printVersion version <> ".json" ]
-
-      packageSetVersions :: Array Version
-      packageSetVersions = packageSets # Array.mapMaybe \s -> do
-        let versionString = String.take (String.length s - 5) s
-        hush $ Version.parseVersion Version.Lenient versionString
-
-      latestPackageSetPath :: Maybe FilePath
-      latestPackageSetPath = buildPackageSetPath <$> Array.last (Array.sort packageSetVersions)
-
-    packageSetPath <- case latestPackageSetPath of
-      Nothing -> unsafeCrashWith "ERROR: No existing package set."
-      Just packageSetPath -> pure packageSetPath
-
-    prevPackageSet@(PackageSet { packages }) <- liftAff (Json.readJsonFile packageSetPath) >>= case _ of
-      Left err -> unsafeCrashWith err
-      Right packageSet -> pure packageSet
-
-    log "Computing candidates for inclusion in package set..."
-
-    registryIndexPath <- asks _.registryIndex
-    registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
-
-    candidates <- liftEffect $ computeCandidates registryIndex metadata packages
-
-    if Map.isEmpty candidates then do
-      log "No new package versions eligible for inclusion in the package set."
-    else do
-      let format name version = PackageName.print name <> "@" <> Version.printVersion version
-      log "Found the following package versions eligible for inclusion in package set:"
-      forWithIndex_ candidates (\name version -> log $ format name version)
-      processBatch registryIndex prevPackageSet candidates >>= case _ of
-        Nothing -> do
-          log "\n----------\nNo packages could be added to the set. All packages failed:"
-          forWithIndex_ candidates (\name version -> log $ format name version)
-        Just { success, fail, packageSet } -> do
-          unless (Map.isEmpty fail) do
-            log "\n----------\nSome packages could not be added to the set:"
-            forWithIndex_ fail (\name version -> log $ format name version)
-          log "\n----------\nNew packages were added to the set!"
-          forWithIndex_ success (\name version -> log $ format name version)
-          let
-            newVersion = (un PackageSet packageSet).version
-            newPath = buildPackageSetPath newVersion
-          liftAff $ Json.writeJsonFile newPath packageSet
-          case mode of
-            GeneratePackageSet ->
-              pure unit
-            CommitPackageSet ->
-              commitPackageSetFile packageSet >>= case _ of
-                Left err -> throwError $ Aff.error $ "Failed to commit package set file: " <> err
-                Right _ -> pure unit
-
-type BatchResult =
+type PackageSetBatchResult =
   { fail :: Map PackageName Version
   , success :: Map PackageName Version
   , packageSet :: PackageSet
@@ -173,22 +81,24 @@ type BatchResult =
 
 -- | Attempt to produce a new package set from the given package set by adding
 -- | the provided packages.
-processBatch :: RegistryIndex -> PackageSet -> Map PackageName Version -> RegistryM (Maybe BatchResult)
-processBatch registryIndex prevSet@(PackageSet { compiler, packages }) batch = do
+processBatch :: RegistryIndex -> PackageSet -> Maybe Version -> Map PackageName Version -> RegistryM (Maybe PackageSetBatchResult)
+processBatch registryIndex prevSet@(PackageSet { compiler: prevCompiler, packages }) newCompiler newPackages = do
   let
+    compilerVersion = fromMaybe prevCompiler newCompiler
+
     handleCompilerError = case _ of
       MissingCompiler ->
-        throwError $ Aff.error $ "Missing compiler version " <> Version.printVersion compiler
+        throwWithComment $ "Missing compiler version " <> Version.printVersion compilerVersion
       UnknownError err ->
-        throwError $ Aff.error $ "Unknown error: " <> err
+        throwWithComment $ "Unknown error: " <> err
       CompilationError errs -> do
         log "Compilation failed:\n"
-        log $ API.printCompilerErrors errs <> "\n"
+        log $ Purs.printCompilerErrors errs <> "\n"
 
-  liftAff (installPackages packages *> compileInstalledPackages compiler) >>= case _ of
+  liftAff (installPackages packages *> compileInstalledPackages compilerVersion) >>= case _ of
     Left compilerError -> do
       handleCompilerError compilerError
-      throwError $ Aff.error $ "Starting package set must compile in order to process a batch."
+      throwWithComment "Starting package set must compile in order to process a batch."
     Right _ -> pure unit
 
   let
@@ -200,10 +110,10 @@ processBatch registryIndex prevSet@(PackageSet { compiler, packages }) batch = d
 
   -- First we attempt to add the entire batch.
   log "Compiling new batch..."
-  liftAff (tryBatch prevSet batch) >>= case _ of
+  liftAff (tryBatch prevSet newPackages) >>= case _ of
     Right newSet -> do
-      packageSet <- updatePackageSetMetadata newSet batch
-      pure $ Just { fail: Map.empty, success: batch, packageSet }
+      packageSet <- updatePackageSetMetadata newSet newPackages
+      pure $ Just { fail: Map.empty, success: newPackages, packageSet }
     Left batchCompilerError -> do
       log "Batch failed to process: \n"
       handleCompilerError batchCompilerError
@@ -215,7 +125,7 @@ processBatch registryIndex prevSet@(PackageSet { compiler, packages }) batch = d
         sortedPackages = PackageGraph.topologicalSort registryIndex
         sortedBatch =
           sortedPackages # Array.filter \(Manifest { name, version }) -> fromMaybe false do
-            batchVersion <- Map.lookup name batch
+            batchVersion <- Map.lookup name newPackages
             guard $ version == batchVersion
             pure true
 
@@ -306,7 +216,7 @@ compileInstalledPackages compilerVersion = do
   log "Compiling installed packages..."
   let args = [ "compile", "packages/**/*.purs" ]
   let version = Version.printVersion compilerVersion
-  callCompiler { args, version, cwd: Nothing }
+  Purs.callCompiler { args, version, cwd: Nothing }
 
 -- | Delete package source directories in the given installation directory.
 removePackages :: Set PackageName -> Aff Unit
@@ -333,7 +243,7 @@ installPackages packages = do
 installPackage :: PackageName -> Version -> Aff Unit
 installPackage name version = do
   log $ "installing " <> PackageName.print name <> "@" <> Version.printVersion version
-  _ <- API.wget registryUrl tarballPath >>= ltraverse (Aff.error >>> throwError)
+  _ <- Wget.wget registryUrl tarballPath >>= ltraverse (Aff.error >>> throwError)
   liftEffect $ Tar.extract { cwd: packagesDir, filename: tarballPath }
   FSE.remove tarballPath
   FSA.rename extractedPath installPath
@@ -369,14 +279,10 @@ computeVersion (PackageSet { packages, version: packageSetVersion }) updates =
   updateVersion packageSetVersion
   where
   updateVersion =
-    if major then
-      Version.bumpMajor
-    else if minor then
-      Version.bumpMinor
-    else if patch then
-      Version.bumpPatch
-    else
-      identity
+    if major then Version.bumpMajor
+    else if minor then Version.bumpMinor
+    else if patch then Version.bumpPatch
+    else identity
 
   -- Check for major version bumps for existing packages
   major :: Boolean
@@ -396,25 +302,25 @@ computeVersion (PackageSet { packages, version: packageSetVersion }) updates =
     prevVersion <- Map.lookup package packages
     pure (version >= Version.bumpPatch prevVersion)
 
-computeCandidates :: RegistryIndex -> MetadataMap -> Map PackageName Version -> Effect (Map PackageName Version)
-computeCandidates registryIndex metadata previousPackageSet = do
-  now <- Now.nowDateTime
-  pure (validateDependencies (validateVersions (uploadCandidates now)))
+-- | Find new candidates for the package sets by finding package versions
+-- | released over the 24 hours and filtering out ones that obviously cannot be
+-- | included (for example, because they already have a more recent version in
+-- | the package set or batch).
+findPackageSetCandidates :: RegistryIndex -> PackageSet -> RegistryM (Map PackageName Version)
+findPackageSetCandidates registryIndex (PackageSet { packages: previousPackages }) = do
+  metadata <- readPackagesMetadata
+  now <- liftEffect Now.nowDateTime
+  pure $ validateDependencies $ validateVersions $ uploadCandidates now metadata
   where
-  uploadCandidates :: DateTime.DateTime -> Array (Tuple PackageName (NonEmptyArray Version))
-  uploadCandidates now = do
+  uploadCandidates :: DateTime -> Map PackageName Metadata -> Array (Tuple PackageName (NonEmptyArray Version))
+  uploadCandidates now metadata = do
     Tuple packageName packageMetadata <- Map.toUnfoldable metadata
-    let
-      versions' :: Array Version
-      versions' = do
-        Tuple version { publishedTime } <- Map.toUnfoldable packageMetadata.published
-        published <- maybe [] (pure <<< PDT.toDateTimeLossy) (PDT.fromRFC3339String publishedTime)
-        let diff = DateTime.diff now published
-        -- NOTE: Change this line for configurable lookback.
-        guardA (diff <= Hours (Int.toNumber 24))
-        pure version
-
-    versions <- Array.fromFoldable (NonEmptyArray.fromArray versions')
+    versions <- Array.fromFoldable $ NonEmptyArray.fromArray do
+      Tuple version { publishedTime } <- Map.toUnfoldable packageMetadata.published
+      published <- maybe [] (pure <<< PDT.toDateTimeLossy) (PDT.fromRFC3339String publishedTime)
+      let diff = DateTime.diff now published
+      guardA (diff <= Hours 24.0)
+      pure version
     pure (Tuple packageName versions)
 
   validateVersions :: Array (Tuple PackageName (NonEmptyArray Version)) -> Map PackageName Version
@@ -423,7 +329,7 @@ computeCandidates registryIndex metadata previousPackageSet = do
     -- We only care about the latest version
     let version = NonEmptyArray.last (NonEmptyArray.sort versions')
     -- Ensure package is not in package set, or latest version is newer than that in package set
-    checkedVersion <- case Map.lookup packageName previousPackageSet of
+    checkedVersion <- case Map.lookup packageName previousPackages of
       Nothing -> pure version
       Just v | v < version -> pure version
       _ -> []
@@ -441,6 +347,6 @@ computeCandidates registryIndex metadata previousPackageSet = do
       -- all of its dependencies are in the previous package set
       -- or in the current batch.
       checkDependency dependency =
-        Map.member dependency previousPackageSet || Map.member dependency uploads
+        Map.member dependency previousPackages || Map.member dependency uploads
 
     pure $ Array.all checkDependency dependencies

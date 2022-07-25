@@ -7,6 +7,7 @@ import Affjax.RequestBody as RequestBody
 import Affjax.RequestHeader as RequestHeader
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
+import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
 import Data.Argonaut.Parser as Argonaut.Core
@@ -38,8 +39,11 @@ import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (GitHubToken(..), IssueNumber, Octokit)
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
+import Foreign.Purs (CompilerFailure(..))
+import Foreign.Purs as Purs
 import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
+import Foreign.Wget as Wget
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
 import Node.FS.Stats as FS.Stats
@@ -54,8 +58,9 @@ import Registry.Json as Json
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.PackageSet as PackageSet
 import Registry.PackageUpload as Upload
-import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
+import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
 import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), PackageSet(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Types (RawPackageName(..), RawVersion(..))
@@ -97,19 +102,19 @@ main = launchAff_ $ do
         Left githubError -> throwError $ Aff.error $ GitHub.printGitHubError githubError
         Right _ -> pure unit
 
-    DecodedOperation issue op -> do
+    DecodedOperation issue username operation -> do
       cache <- Cache.useCache
       packagesMetadata <- liftEffect $ Ref.new Map.empty
-      runRegistryM (mkEnv octokit cache packagesMetadata issue) do
+      runRegistryM (mkEnv octokit cache packagesMetadata issue username) do
         fetchRegistry
         fetchRegistryIndex
         fillMetadataRef
-        runOperation op
+        runOperation operation
 
 data OperationDecoding
   = NotJson
   | MalformedJson IssueNumber String
-  | DecodedOperation IssueNumber Operation
+  | DecodedOperation IssueNumber String Operation
 
 derive instance Eq OperationDecoding
 derive instance Generic.Generic OperationDecoding _
@@ -121,7 +126,7 @@ readOperation :: FilePath -> Aff OperationDecoding
 readOperation eventPath = do
   fileContents <- FS.readTextFile UTF8 eventPath
 
-  GitHub.Event { issueNumber, body } <- case Json.parseJson fileContents of
+  GitHub.Event { issueNumber, body, username } <- case Json.parseJson fileContents of
     Left err ->
       -- If we don't receive a valid event path or the contents can't be decoded
       -- then this is a catastrophic error and we exit the workflow.
@@ -133,7 +138,7 @@ readOperation eventPath = do
     Left _err -> NotJson
     Right json -> case Json.decode json of
       Left err -> MalformedJson issueNumber err
-      Right op -> DecodedOperation issueNumber op
+      Right operation -> DecodedOperation issueNumber username operation
 
 -- TODO: test all the points where the pipeline could throw, to show that we are implementing
 -- all the necessary checks
@@ -175,6 +180,100 @@ runOperation operation = case operation of
   Update { packageName, buildPlan, updateRef } -> do
     metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Did you mean to create an Addition?" }
     addOrUpdate { packageName, buildPlan, updateRef } metadata
+
+  PackageSetUpdate { compiler, packages } -> do
+    { octokit, cache, username, registryIndex: registryIndexPath } <- ask
+
+    latestPackageSet <- PackageSet.readLatestPackageSet
+    let prevCompiler = (un PackageSet latestPackageSet).compiler
+    let prevPackages = (un PackageSet latestPackageSet).packages
+
+    let didChangeCompiler = maybe false (not <<< eq prevCompiler) compiler
+    let didRemovePackages = any isNothing packages
+
+    -- Changing the compiler version or removing packages are both restricted
+    -- to only the packaging team. We throw here if this is an authenticated
+    -- operation and we can't verify they are a member of the packaging team.
+    when (didChangeCompiler || didRemovePackages) do
+      let packagingTeam = { org: "purescript", team: "packaging" }
+      -- We always throw if we couldn't verify the user who opened or commented
+      -- is a member of the packaging team.
+      liftAff (Except.runExceptT (GitHub.listTeamMembers octokit cache packagingTeam)) >>= case _ of
+        Left githubError -> throwWithComment $ Array.fold
+          [ "This package set update changes the compiler version or removes a "
+          , "package from the package set. Only members of the "
+          , "@purescript/packaging team can take these actions, but we were "
+          , "unable to authenticate your account:\n"
+          , GitHub.printGitHubError githubError
+          ]
+        Right members -> do
+          unless (Array.elem username (map _.username members)) do
+            throwWithComment $ String.joinWith " "
+              [ "This package set update changes the compiler version or"
+              , "removes a package from the package set. Only members of the"
+              , "@purescript/packaging team can take these actions, but your"
+              , "username is not a member of the packaging team."
+              ]
+
+    -- The compiler version cannot be downgraded.
+    for_ compiler \version -> when (version < prevCompiler) do
+      throwWithComment $ String.joinWith " "
+        [ "You are downgrading the compiler used in the package set from"
+        , "the current version (" <> Version.printVersion prevCompiler <> ")"
+        , "to the lower version (" <> Version.printVersion version <> ")."
+        , "The package set compiler version cannot be downgraded."
+        ]
+
+    -- Package versions cannot be downgraded.
+    let
+      downgradedPackages = Array.catMaybes do
+        Tuple packageName packageVersion <- Map.toUnfoldable packages
+        pure do
+          newVersion <- packageVersion
+          prevVersion <- Map.lookup packageName prevPackages
+          guard (prevVersion <= newVersion)
+          pure (Tuple packageName { old: prevVersion, new: newVersion })
+
+    when (not (Array.null downgradedPackages)) do
+      let
+        formatPackage (Tuple name { old, new }) = Array.fold
+          [ "  - "
+          , PackageName.print name
+          , " from "
+          , Version.printVersion old
+          , " to "
+          , Version.printVersion new
+          ]
+
+      throwWithComment $ Array.fold
+        [ "You are attempting to downgrade one or more package versions from "
+        , "their version in the previous set. Affected packages:\n\n"
+        , String.joinWith "\n" $ map formatPackage downgradedPackages
+        ]
+
+    -- With these conditions met, we can attempt to process the batch with the
+    -- new packages and/or compiler version. Note: if the compiler is updated to
+    -- a version that isn't supported by the registry then an 'unsupported
+    -- compiler' error will be thrown.
+    registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
+    candidates <- PackageSet.findPackageSetCandidates registryIndex latestPackageSet
+
+    if Map.isEmpty candidates then do
+      comment "No new package versions eligible for inclusion in the package set."
+      closeIssue
+    else do
+      PackageSet.processBatch registryIndex latestPackageSet compiler candidates >>= case _ of
+        Nothing -> do
+          comment "No packages could be added or updated in the set. All candidates failed."
+          closeIssue
+        Just { packageSet } -> do
+          newPath <- PackageSet.getPackageSetPath (un PackageSet packageSet).version
+          liftAff $ Json.writeJsonFile newPath packageSet
+          commitPackageSetFile packageSet >>= case _ of
+            Left err -> throwWithComment $ "Failed to commit package set file: " <> err
+            Right _ -> do
+              comment "Built and released a new package set!"
+              closeIssue
 
   Authenticated auth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
@@ -578,7 +677,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
       -- unpacked, ie. package-name-major.minor.patch
       filename = PackageName.print packageName <> "-" <> Version.printVersion version <> ".tar.gz"
       filepath = dependenciesDir <> Path.sep <> filename
-    liftAff (wget ("packages.registry.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath) >>= case _ of
+    liftAff (Wget.wget ("packages.registry.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath) >>= case _ of
       Left err -> throwWithComment $ "Error while fetching tarball: " <> err
       Right _ -> pure unit
     liftEffect $ Tar.extract { cwd: dependenciesDir, filename: filepath }
@@ -597,7 +696,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
   --
   -- The resulting documentation will all use purescript- prefixes in keeping
   -- with the format used by Pursuit in PureScript versions at least up to 0.16
-  compilerOutput <- liftAff $ callCompiler
+  compilerOutput <- liftAff $ Purs.callCompiler
     { args: [ "publish", "--manifest", "purs.json", "--resolutions", resolutionsFilePath ]
     , version: Version.printVersion compiler
     , cwd: Just packageSourceDir
@@ -612,7 +711,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
     Left (CompilationError errs) -> throwWithComment $ String.joinWith "\n"
       [ "Publishing failed because the build plan does not compile with version " <> Version.printVersion compiler <> " of the compiler:"
       , "```"
-      , (printCompilerErrors errs)
+      , Purs.printCompilerErrors errs
       , "```"
       ]
     Left (UnknownError err) -> throwWithComment $ String.joinWith "\n"
@@ -686,8 +785,8 @@ buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir }
       packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.printVersion version ]
     pure $ Tuple bowerPackageName { path: packagePath, version }
 
-mkEnv :: GitHub.Octokit -> Cache -> MetadataRef -> IssueNumber -> Env
-mkEnv octokit cache packagesMetadata issue =
+mkEnv :: GitHub.Octokit -> Cache -> Ref (Map PackageName Metadata) -> IssueNumber -> String -> Env
+mkEnv octokit cache metadataRef issue username =
   { comment: \comment -> Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
       Left _ -> throwError $ Aff.error "Unable to create comment!"
       Right _ -> pure unit
@@ -699,25 +798,13 @@ mkEnv octokit cache packagesMetadata issue =
   , commitPackageSetFile: pacchettiBottiPushToRegistryPackageSets
   , uploadPackage: Upload.upload
   , deletePackage: Upload.delete
-  , packagesMetadata
+  , packagesMetadata: metadataRef
   , cache
   , octokit
+  , username
   , registry: Path.concat [ "..", "registry" ]
   , registryIndex: Path.concat [ "..", "registry-index" ]
   }
-
-wget :: String -> FilePath -> Aff (Either String Unit)
-wget url path = do
-  let cmd = "wget"
-  let stdin = Nothing
-  let args = [ "-O", path, url ]
-  maybeResult <- withBackoff' $ Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
-  pure $ case maybeResult of
-    Nothing ->
-      Left $ "Timed out attempting to use wget to fetch " <> url
-    Just { exit, stderr } -> case exit of
-      NodeProcess.Normally 0 -> Right unit
-      _ -> Left $ String.trim stderr
 
 mkLocalEnv :: Octokit -> Cache -> Ref (Map PackageName Metadata) -> Env
 mkLocalEnv octokit cache packagesMetadata =
@@ -736,13 +823,11 @@ mkLocalEnv octokit cache packagesMetadata =
   , deletePackage: Upload.delete
   , octokit
   , cache
+  , username: ""
   , packagesMetadata
   , registry: Path.concat [ "..", "registry" ]
   , registryIndex: Path.concat [ "..", "registry-index" ]
   }
-
-type MetadataMap = Map PackageName Metadata
-type MetadataRef = Ref MetadataMap
 
 fillMetadataRef :: RegistryM Unit
 fillMetadataRef = do
@@ -770,19 +855,17 @@ fillMetadataRef = do
   metadataRef <- asks _.packagesMetadata
   liftEffect $ Ref.write packages metadataRef
 
-isPackageVersionInMetadata :: PackageName -> Version -> MetadataMap -> Boolean
-isPackageVersionInMetadata packageName version metadataMap =
-  case Map.lookup packageName metadataMap of
+isPackageVersionInMetadata :: PackageName -> Version -> Map PackageName Metadata -> Boolean
+isPackageVersionInMetadata packageName version metadata =
+  case Map.lookup packageName metadata of
     Nothing -> false
-    Just metadata -> isVersionInMetadata version metadata
+    Just packageMetadata -> isVersionInMetadata version packageMetadata
 
-packageNameIsUnique :: PackageName -> MetadataMap -> Boolean
+packageNameIsUnique :: PackageName -> Map PackageName Metadata -> Boolean
 packageNameIsUnique name = isNothing <<< Map.lookup name
 
-locationIsUnique :: Location -> MetadataMap -> Boolean
-locationIsUnique location metadata = do
-  let duplicates = Map.size $ Map.filter (eq location <<< _.location) metadata
-  duplicates == 0
+locationIsUnique :: Location -> Map PackageName Metadata -> Boolean
+locationIsUnique location = Map.isEmpty <<< Map.filter (eq location <<< _.location)
 
 -- | Fetch the latest from the given repository. Will perform a fresh clone if
 -- | a checkout of the repository does not exist at the given path, and will
@@ -863,7 +946,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
         let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
         let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
         log $ "Fetching tarball from GitHub: " <> archiveUrl
-        liftAff (wget archiveUrl absoluteTarballPath) >>= case _ of
+        liftAff (Wget.wget archiveUrl absoluteTarballPath) >>= case _ of
           Left err -> throwWithComment $ "Error while fetching tarball: " <> err
           Right _ -> pure unit
         log $ "Tarball downloaded in " <> absoluteTarballPath
@@ -1085,89 +1168,3 @@ writeDeleteIndex name version = do
   registryIndexDir <- asks _.registryIndex
   liftAff $ Index.deleteManifest registryIndexDir name version
   commitIndexFile name
-
--- | Call a specific version of the PureScript compiler
-callCompiler_ :: { version :: String, args :: Array String, cwd :: Maybe FilePath } -> Aff Unit
-callCompiler_ = void <<< callCompiler
-
-data CompilerFailure
-  = CompilationError (Array CompilerError)
-  | UnknownError String
-  | MissingCompiler
-
-derive instance Eq CompilerFailure
-
-type CompilerError =
-  { position :: SourcePosition
-  , message :: String
-  , errorCode :: String
-  , errorLink :: String
-  , filename :: FilePath
-  , moduleName :: String
-  }
-
-type SourcePosition =
-  { startLine :: Int
-  , startColumn :: Int
-  , endLine :: Int
-  , endColumn :: Int
-  }
-
-printCompilerErrors :: Array CompilerError -> String
-printCompilerErrors errors = do
-  let
-    total = Array.length errors
-    printed =
-      errors # Array.mapWithIndex \n error -> String.joinWith "\n"
-        [ "Error " <> show (n + 1) <> " of " <> show total
-        , ""
-        , printCompilerError error
-        ]
-
-  String.joinWith "\n" printed
-  where
-  printCompilerError :: CompilerError -> String
-  printCompilerError { moduleName, filename, message, errorLink } =
-    String.joinWith "\n"
-      [ "  Module: " <> moduleName
-      , "  File: " <> filename
-      , "  Message:"
-      , ""
-      , "  " <> message
-      , ""
-      , "  Error details:"
-      , "  " <> errorLink
-      ]
-
-type CompilerArgs =
-  { version :: String
-  , cwd :: Maybe FilePath
-  , args :: Array String
-  }
-
--- | Call a specific version of the PureScript compiler
-callCompiler :: CompilerArgs -> Aff (Either CompilerFailure String)
-callCompiler compilerArgs = do
-  let
-    args = Array.snoc compilerArgs.args "--json-errors"
-    -- Converts a string version 'v0.13.0' or '0.13.0' to the standard format for
-    -- executables 'purs-0_13_0'
-    cmd =
-      append "purs-"
-        $ String.replaceAll (String.Pattern ".") (String.Replacement "_")
-        $ fromMaybe compilerArgs.version
-        $ String.stripPrefix (String.Pattern "v") compilerArgs.version
-
-  result <- Aff.try $ Process.spawn { cmd, stdin: Nothing, args } (NodeProcess.defaultSpawnOptions { cwd = compilerArgs.cwd })
-  pure $ case result of
-    Left exception -> Left $ case Aff.message exception of
-      errorMessage
-        | errorMessage == String.joinWith " " [ "spawn", cmd, "ENOENT" ] -> MissingCompiler
-        | otherwise -> UnknownError errorMessage
-    Right { exit: NodeProcess.Normally 0, stdout } -> Right $ String.trim stdout
-    Right { stdout } -> Left do
-      case Json.parseJson (String.trim stdout) of
-        Left err -> UnknownError $ String.joinWith "\n" [ stdout, err ]
-        Right ({ errors } :: { errors :: Array CompilerError })
-          | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
-          | otherwise -> CompilationError errors

@@ -10,6 +10,7 @@ module Foreign.GitHub
   , RateLimit
   , Route
   , Tag
+  , TeamMember
   , closeIssue
   , createComment
   , getCommitDate
@@ -17,6 +18,7 @@ module Foreign.GitHub
   , getRateLimit
   , getRefCommit
   , listTags
+  , listTeamMembers
   , mkOctokit
   , parseRepo
   , printGitHubError
@@ -70,6 +72,31 @@ foreign import mkOctokitImpl :: EffectFn1 GitHubToken Octokit
 
 mkOctokit :: GitHubToken -> Effect Octokit
 mkOctokit = runEffectFn1 mkOctokitImpl
+
+-- | Member of a GitHub organization
+type TeamMember = { username :: String, userId :: Int }
+
+-- | List members of the given team
+-- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/teams/listMembersInOrg.md
+listTeamMembers :: Octokit -> Cache -> { org :: String, team :: String } -> ExceptT GitHubError Aff (Array TeamMember)
+listTeamMembers octokit cache { org, team } = do
+  let requestArgs = { octokit, route, headers: Object.empty, args: {} }
+  let cacheArgs = { cache, checkGitHub: true }
+  result <- Except.withExceptT APIError $ cachedRequest uncachedPaginatedRequest requestArgs cacheArgs
+  Except.except $ lmap DecodeError $ decodeTeamMembers result
+  where
+  route :: Route
+  route = Route $ i "GET /orgs/" org "/teams/" team "/members"
+
+  decodeTeamMembers :: Json -> Either String (Array TeamMember)
+  decodeTeamMembers = Json.decode >=> traverse decodeTeamMember
+
+  decodeTeamMember :: Json -> Either String TeamMember
+  decodeTeamMember json = do
+    obj <- Json.decode json
+    username <- obj .: "login"
+    userId <- obj .: "id"
+    pure { username, userId }
 
 -- | List repository tags
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/listTags.md
@@ -372,6 +399,7 @@ derive newtype instance RegistryJson PackageURL
 newtype Event = Event
   { issueNumber :: IssueNumber
   , body :: String
+  , username :: String
   }
 
 derive instance Newtype Event _
@@ -382,12 +410,13 @@ instance RegistryJson Event where
     obj <- Json.decode json
     issue <- obj .: "issue"
     issueNumber <- issue .: "number"
+    username <- (_ .: "login") =<< obj .: "sender"
     -- We accept issue creation and issue comment events, but both contain an
     -- 'issue' field. However, only comments contain a 'comment' field. For that
     -- reason we first try to parse the comment and fall back to the issue if
     -- that fails.
     body <- (_ .: "body") =<< obj .: "comment" <|> pure issue
-    pure $ Event { body, issueNumber: IssueNumber issueNumber }
+    pure $ Event { body, username, issueNumber: IssueNumber issueNumber }
 
 type Address = { owner :: String, repo :: String }
 

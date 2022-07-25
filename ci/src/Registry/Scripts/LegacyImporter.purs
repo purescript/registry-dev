@@ -93,6 +93,7 @@ main = launchAff_ do
         , packagesMetadata: metadataRef
         , cache
         , octokit
+        , username: mempty
         , registry: Path.concat [ "..", "registry" ]
         , registryIndex: Path.concat [ "..", "registry-index" ]
         }

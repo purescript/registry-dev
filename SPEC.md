@@ -74,13 +74,16 @@ Walkthrough of package registration. Includes the various checks performed to en
 **5.2 Update a Package**
 Walkthrough of updating a package version.
 
-**5.3 Authenticated Operations**
+**5.3 Update the Package Set**
+Walkthrough of updating the package sets.
+
+**5.4 Authenticated Operations**
 Walkthrough of how authentication works in the registry, note that it applies to the following operations.
   
-  **5.3.1 Transfer a Package**
+  **5.4.1 Transfer a Package**
   Walkthrough of the `Transfer` operation, assuming the operation was properly authenticated.
   
-  **5.3.2 Unpublish a Package**
+  **5.4.2 Unpublish a Package**
   Walkthrough of the `Unpublish` operation, assuming the operation was properly authenticated.
 
 ## 6. Post-Publishing Operations
@@ -147,7 +150,6 @@ For example, in JSON:
 
 Package sets use the same versioning scheme as packages in the registry: semantic versions with no build metadata or prerelease identifiers. The package set version can be used to determine if is is safe for your project to update to a new package set. We version according to the following rules:
 
-
 1. The major version is incremented when breaking changes occur in the package set: a package is removed, or a major version of a package in the set is incremented.
 2. The minor version is incremented when new packages are added to the package set, or when there was a minor version update in the package set.
 3. The patch version is incremented when a patch version was updated in the package set.
@@ -196,11 +198,14 @@ In these situations, contributors to the registry can use the package sets API t
 
 Anyone can suggest a package set update to the registry. However, community members can only add or upgrade packages in the package set. To remove a package or downgrade a package version, the update must be submitted by a member of the packaging team or a Registry Trustee.
 
-A package set update is an object where keys are package names and values are either a version number or `null`. A version number indicates the package should be added to the set or updated to the given version, and `null` indicates the package should be dropped from the package set.
+A package set update is an object with two keys: `compiler`, an optional field that allows updating the compiler version used to compile the package sets, and `packages`, an object where keys are package names and values are either a version number or `null`. A version number indicates the package should be added to the set or updated to the given version, and `null` indicates the package should be dropped from the package set.
 
 ```jsonc
-{ "aff": "8.0.0"   // update `aff` to v8.0.0
-, "argonaut": null // remove `argonaut` from the package sets
+{ "compiler": "0.15.2", // set the package set compiler version to 0.15.2
+  "packages" {
+    "aff": "8.0.0",   // update `aff` to v8.0.0
+    "argonaut": null // remove `argonaut` from the package sets
+  }
 }
 ```
 
