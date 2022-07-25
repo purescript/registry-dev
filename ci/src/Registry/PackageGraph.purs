@@ -63,19 +63,21 @@ checkRegistryIndex original = do
     { satisfied, unsatisfied: allUnsatisfied } = go { satisfied: Map.empty, constraints }
 
     -- Once we have satisfied as many package dependencies as possible,
-    -- prune provided RegistryIndex to only include Manifest entries with satisfied dependencies
-    -- to create a self-contained RegistryIndex.
+    -- prune provided RegistryIndex to only include Manifest entries with
+    -- satisfied dependencies to create a self-contained RegistryIndex.
     index :: RegistryIndex
-    index = Map.fromFoldable do
+    index = Map.filter (not Map.isEmpty) $ Map.fromFoldable do
       Tuple package versions <- Map.toUnfoldable original
       Array.singleton $ Tuple package $ Map.fromFoldable do
         Tuple version manifest <- Map.toUnfoldable versions
         satisfiedVersions <- maybe [] Array.singleton (Map.lookup package satisfied)
         guard (Array.elem version satisfiedVersions) [ Tuple version manifest ]
 
-    unsatisfied =
-      map (\{ package: { package, version }, dependencies } -> { package, version, dependencies })
-        allUnsatisfied
+    unsatisfied = allUnsatisfied <#> \{ package, dependencies } ->
+      { package: package.package
+      , version: package.version
+      , dependencies
+      }
 
   { index, unsatisfied }
   where
