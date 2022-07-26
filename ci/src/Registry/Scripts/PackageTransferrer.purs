@@ -69,7 +69,7 @@ processLegacyRegistry legacyFile = do
   packages <- liftAff $ LegacyImporter.readLegacyRegistryFile legacyFile
   locations <- latestLocations packages
   newPackages <- transferAll packages (Map.catMaybes locations)
-  liftAff $ writeLegacyRegistryFile legacyFile packages
+  liftAff $ writeLegacyRegistryFile legacyFile newPackages
   liftAff (commitLegacyRegistryFile legacyFile) >>= case _ of
     Left err -> throwWithComment err
     Right _ -> pure unit
@@ -141,11 +141,9 @@ latestLocations packages = forWithIndex packages \package location -> do
               | otherwise -> pure $ Just locations
   where
   -- The eq instance for locations has case sensitivity, but GitHub doesn't care.
-  -- We require that locations are lowercase, so we can compare that directly. But
-  -- owner names can be case-insensitive; we don't enforce this.
   locationsMatch :: Location -> Location -> Boolean
   locationsMatch (GitHub location1) (GitHub location2) =
-    location1.repo == location2.repo
+    (String.toLower location1.repo == String.toLower location2.repo)
       && (String.toLower location1.owner == String.toLower location2.owner)
   locationsMatch _ _ =
     unsafeCrashWith "Only GitHub locations can be considered in legacy registries."
