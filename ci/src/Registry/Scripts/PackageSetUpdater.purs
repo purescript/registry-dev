@@ -54,10 +54,11 @@ main = Aff.launchAff_ do
       >>= maybe (Exception.throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
   octokit <- liftEffect $ GitHub.mkOctokit githubToken
-  cache <- Cache.useCache
 
   tmpDir <- liftEffect $ Tmp.mkTmpDir
   liftEffect $ Node.Process.chdir tmpDir
+
+  cache <- Cache.useCache
 
   metadataRef <- liftEffect $ Ref.new Map.empty
 
