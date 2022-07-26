@@ -1,4 +1,8 @@
-module Registry.SSH where
+module Registry.SSH
+  ( SignAuthenticated
+  , signPacchettiBotti
+  , verifyPayload
+  ) where
 
 import Registry.Prelude
 
@@ -7,15 +11,19 @@ import Data.String as String
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
+import Node.FS.Perms as Perms
 import Node.Path as Path
 import Registry.Schema (AuthenticatedData(..), Owner(..))
 import Sunde as Process
 
-allowedSigners :: FilePath
-allowedSigners = "allowed_signers"
+allowedSignersPath :: FilePath
+allowedSignersPath = "allowed_signers"
 
-payloadSignature :: FilePath
-payloadSignature = "payload_signature.sig"
+payloadSignaturePath :: FilePath
+payloadSignaturePath = "payload_signature.sig"
+
+sshKeyPath :: FilePath
+sshKeyPath = "id_ed25519"
 
 -- Payload verification is based on this description:
 -- https://www.agwa.name/blog/post/ssh_signatures
@@ -24,8 +32,8 @@ verifyPayload owners (AuthenticatedData { email, signature, rawPayload }) = do
   tmp <- liftEffect Tmp.mkTmpDir
   let joinWithNewlines = String.joinWith "\n"
   let signers = joinWithNewlines $ NEA.toArray $ map formatOwner owners
-  FS.writeTextFile UTF8 (Path.concat [ tmp, allowedSigners ]) signers
-  FS.writeTextFile UTF8 (Path.concat [ tmp, payloadSignature ]) (joinWithNewlines signature)
+  FS.writeTextFile UTF8 (Path.concat [ tmp, allowedSignersPath ]) signers
+  FS.writeTextFile UTF8 (Path.concat [ tmp, payloadSignaturePath ]) (joinWithNewlines signature)
   -- The 'ssh-keygen' command will only exit normally if the signature verifies,
   -- and otherwise will report an error status code.
   sshKeygenVerify tmp
@@ -36,8 +44,34 @@ verifyPayload owners (AuthenticatedData { email, signature, rawPayload }) = do
   sshKeygenVerify tmp = do
     let cmd = "ssh-keygen"
     let stdin = Just rawPayload
-    let args = [ "-Y", "verify", "-f", allowedSigners, "-I", email, "-n", "file", "-s", payloadSignature ]
+    let args = [ "-Y", "verify", "-f", allowedSignersPath, "-I", email, "-n", "file", "-s", payloadSignaturePath ]
     result <- Process.spawn { cmd, stdin, args } (NodeProcess.defaultSpawnOptions { cwd = Just tmp })
     pure $ bimap String.trim String.trim case result.exit of
       NodeProcess.Normally 0 -> Right result.stdout
       _ -> Left result.stderr
+
+type SignAuthenticated =
+  { pacchettiBottiPrivateKey :: String
+  , rawPayload :: String
+  }
+
+signPacchettiBotti :: SignAuthenticated -> Aff (Either String (Array String))
+signPacchettiBotti { pacchettiBottiPrivateKey, rawPayload } = do
+  tmp <- liftEffect Tmp.mkTmpDir
+  FS.writeTextFile UTF8 (Path.concat [ tmp, sshKeyPath ]) pacchettiBottiPrivateKey
+  let perms = Perms.permsFromString "0600"
+  for_ perms (FS.chmod (Path.concat [ tmp, sshKeyPath ]))
+  sshKeygenSign tmp
+  where
+  sshKeygenSign tmp = do
+    let cmd = "ssh-keygen"
+    let stdin = Just rawPayload
+    -- If you specify - for the filename, the file to sign is read from standard
+    -- in and the signature is written to standard out.
+    let args = [ "-Y", "sign", "-f", sshKeyPath, "-n", "file", "-" ]
+    result <- Process.spawn { cmd, stdin, args } (NodeProcess.defaultSpawnOptions { cwd = Just tmp })
+    pure case result.exit of
+      NodeProcess.Normally 0 ->
+        Right $ String.split (String.Pattern "\n") $ String.trim result.stdout
+      _ ->
+        Left $ String.trim result.stderr

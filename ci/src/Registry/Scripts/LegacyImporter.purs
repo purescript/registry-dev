@@ -41,7 +41,7 @@ import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
-import Registry.RegistryM (RegistryM, readPackagesMetadata, runRegistryM)
+import Registry.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -135,11 +135,18 @@ main = launchAff_ do
       writePackageFailures importedIndex.failedPackages
       writeVersionFailures importedIndex.failedVersions
 
-      log "Writing metadata for legacy packages that can't be registered..."
-      void $ forWithIndex importedIndex.reservedPackages \package location -> do
-        let metadata = { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
-        Json.writeJsonFile (API.metadataFile registryPath package) metadata
-        liftEffect $ Ref.modify_ (Map.insert package metadata) metadataRef
+    log "Writing metadata for legacy packages that can't be registered..."
+    void $ forWithIndex importedIndex.reservedPackages \package location -> do
+      metadataMap <- liftEffect $ Ref.read metadataRef
+      case Map.lookup package metadataMap of
+        Nothing -> do
+          let metadata = { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
+          liftAff $ Json.writeJsonFile (API.metadataFile registryPath package) metadata
+          liftEffect $ Ref.modify_ (Map.insert package metadata) metadataRef
+          commitMetadataFile package >>= case _ of
+            Left err -> throwWithComment err
+            Right _ -> pure unit
+        Just _ -> pure unit
 
     log "Sorting packages for upload..."
     let indexPackages = Graph.topologicalSort importedIndex.registryIndex
@@ -505,8 +512,8 @@ readLegacyRegistryFiles = do
   bowerPackages <- readLegacyRegistryFile "bower-packages.json"
   registryPackages <- readLegacyRegistryFile "new-packages.json"
   let allPackages = Map.union bowerPackages registryPackages
-  let stripPrefixes = mapKeys (RawPackageName <<< stripPureScriptPrefix)
-  pure $ stripPrefixes allPackages
+  let fixupNames = mapKeys (RawPackageName <<< stripPureScriptPrefix)
+  pure $ fixupNames allPackages
 
 readLegacyRegistryFile :: String -> Aff (Map String GitHub.PackageURL)
 readLegacyRegistryFile sourceFile = do
