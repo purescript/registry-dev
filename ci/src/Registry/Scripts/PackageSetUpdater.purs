@@ -16,7 +16,6 @@ import Foreign.Tmp as Tmp
 import Node.Process as Node.Process
 import Node.Process as Process
 import Registry.API as API
-import Registry.Cache as Cache
 import Registry.Index as Index
 import Registry.Json as Json
 import Registry.PackageName as PackageName
@@ -54,7 +53,6 @@ main = Aff.launchAff_ do
       >>= maybe (Exception.throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
   octokit <- liftEffect $ GitHub.mkOctokit githubToken
-  cache <- Cache.useCache
 
   tmpDir <- liftEffect $ Tmp.mkTmpDir
   liftEffect $ Node.Process.chdir tmpDir
@@ -72,7 +70,7 @@ main = Aff.launchAff_ do
       , uploadPackage: mempty
       , deletePackage: mempty
       , octokit
-      , cache
+      , cache: { write: mempty, read: \_ -> pure (Left mempty), remove: mempty }
       , username: mempty
       , packagesMetadata: metadataRef
       , registry: "registry"

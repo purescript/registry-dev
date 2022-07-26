@@ -421,7 +421,7 @@ instance RegistryJson Event where
 type Address = { owner :: String, repo :: String }
 
 registryAddress :: Address
-registryAddress = { owner: "purescript", repo: "registry" }
+registryAddress = { owner: "purescript", repo: "registry-preview" }
 
 type Tag = { name :: String, sha :: String }
 
