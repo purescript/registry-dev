@@ -13,6 +13,7 @@
   , "convertable-options"
   , "crypto"
   , "datetime"
+  , "dodo-printer"
   , "dotenv"
   , "effect"
   , "either"
