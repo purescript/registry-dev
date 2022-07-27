@@ -83,7 +83,7 @@ fromPackageSet index metadata (PackageSet { compiler, packages, published, versi
 
     pure
       { version: RawVersion metadataEntry.ref
-      , dependencies: Array.sort $ Array.fromFoldable $ Map.keys $ manifest.dependencies
+      , dependencies: Array.fromFoldable $ Map.keys $ manifest.dependencies
       , repo
       }
     where
