@@ -260,7 +260,7 @@ runOperation operation = case operation of
 
     when (not Map.isEmpty candidates.rejected) do
       throwWithComment $ String.joinWith "\n"
-        [ "One or more packages in the suggested batch cannot be processed:"
+        [ "One or more packages in the suggested batch cannot be processed.\n"
         , PackageSet.printRejections candidates.rejected
         ]
 
