@@ -415,7 +415,7 @@ validatePackageSetCandidates index (PackageSet { packages: previousPackages }) c
     -- stop compiling, namely because they depend on this package. The
     -- dependents must also be removed if the removal must be processed.
     let otherPackages = Map.delete name updatedPackages
-    case Array.filter (not <<< dependsOn name) (Map.toUnfoldable otherPackages) of
+    case Array.filter (dependsOn name) (Map.toUnfoldable otherPackages) of
       [] -> pure unit
       dependents -> case Array.filter (fst >>> flip Set.member removals) dependents of
         -- A package can be removed if the only packages that depend on it are also being removed.
