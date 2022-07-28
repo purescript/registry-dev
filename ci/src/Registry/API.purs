@@ -259,7 +259,7 @@ runOperation operation = case operation of
     let candidates = PackageSet.validatePackageSetCandidates registryIndex latestPackageSet packages
 
     when (not Map.isEmpty candidates.rejected) do
-      comment $ String.joinWith "\n"
+      throwWithComment $ String.joinWith "\n"
         [ "One or more packages in the suggested batch cannot be processed:"
         , PackageSet.printRejections candidates.rejected
         ]
