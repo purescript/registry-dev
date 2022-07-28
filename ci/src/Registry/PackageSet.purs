@@ -3,7 +3,8 @@ module Registry.PackageSet
   , getPackageSetPath
   , getPackageSetsPath
   , printRejections
-  , processBatch
+  , processBatchAtomic
+  , processBatchSequential
   , readLatestPackageSet
   , validatePackageSetCandidates
   ) where
@@ -21,7 +22,6 @@ import Data.Map as Map
 import Data.Monoid as Monoid
 import Data.Set as Set
 import Data.String as String
-import Data.Tuple as Tuple
 import Effect.Aff as Aff
 import Effect.Now as Now
 import Effect.Ref as Ref
@@ -76,142 +76,169 @@ readLatestPackageSet = do
 -- TODO: It would be ideal to report _why_ a package failed, similar to the
 -- batch validation.
 type PackageSetBatchResult =
-  { fail :: Map PackageName Version
-  , success :: Map PackageName Version
+  { fail :: Map PackageName (Maybe Version)
+  , success :: Map PackageName (Maybe Version)
   , packageSet :: PackageSet
   }
 
--- TODO: Removals (ie. Map PackageName (Maybe Version))
-
 -- | Attempt to produce a new package set from the given package set by adding
--- | the provided packages.
-processBatch :: RegistryIndex -> PackageSet -> Maybe Version -> Map PackageName Version -> RegistryM (Maybe PackageSetBatchResult)
-processBatch registryIndex prevSet@(PackageSet { compiler: prevCompiler, packages }) newCompiler newPackages = do
-  let
-    compilerVersion = fromMaybe prevCompiler newCompiler
-
-    handleCompilerError = case _ of
-      MissingCompiler ->
-        throwWithComment $ "Missing compiler version " <> Version.printVersion compilerVersion
-      UnknownError err ->
-        throwWithComment $ "Unknown error: " <> err
-      CompilationError errs -> do
-        log "Compilation failed:\n"
-        log $ Purs.printCompilerErrors errs <> "\n"
+-- | or removing the provided packages. Fails if the batch is not usable as a
+-- | whole. To fall back to sequential processing, use `processBatchSequential`.
+processBatchAtomic :: PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> RegistryM (Maybe PackageSetBatchResult)
+processBatchAtomic prevSet@(PackageSet { compiler: prevCompiler, packages }) newCompiler batch = do
+  let compilerVersion = fromMaybe prevCompiler newCompiler
 
   liftAff (installPackages packages *> compileInstalledPackages compilerVersion) >>= case _ of
     Left compilerError -> do
-      handleCompilerError compilerError
+      handleCompilerError compilerVersion compilerError
       throwWithComment "Starting package set must compile in order to process a batch."
     Right _ -> pure unit
 
-  let
-    updatePackageSetMetadata :: PackageSet -> Map PackageName Version -> RegistryM PackageSet
-    updatePackageSetMetadata (PackageSet new) successes = do
-      now <- liftEffect Now.nowDateTime
-      let newVersion = computeVersion prevSet successes
-      pure $ PackageSet $ new { version = newVersion, published = now }
-
-  -- First we attempt to add the entire batch.
-  log "Compiling new batch..."
-  liftAff (tryBatch prevSet newPackages) >>= case _ of
+  liftAff (tryBatch compilerVersion prevSet batch) >>= case _ of
     Right newSet -> do
-      packageSet <- updatePackageSetMetadata newSet newPackages
-      pure $ Just { fail: Map.empty, success: newPackages, packageSet }
+      packageSet <- liftEffect $ updatePackageSetMetadata { previous: prevSet, pending: newSet } batch
+      pure $ Just { fail: Map.empty, success: batch, packageSet }
     Left batchCompilerError -> do
-      log "Batch failed to process: \n"
-      handleCompilerError batchCompilerError
+      handleCompilerError compilerVersion batchCompilerError
+      pure Nothing
 
+-- | Attempt to produce a new package set from the given package set by addin
+-- | or removing the provided packages. Attempts the entire batch first, and
+-- | then falls sequential processing if that fails.
+processBatchSequential :: RegistryIndex -> PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> RegistryM (Maybe PackageSetBatchResult)
+processBatchSequential registryIndex prevSet@(PackageSet { compiler: prevCompiler, packages }) newCompiler batch = do
+  processBatchAtomic prevSet newCompiler batch >>= case _ of
+    Just batchResult ->
+      pure (Just batchResult)
+    Nothing -> do
       -- If compiling the full batch failed, then we move on to adding packages
       -- one-by-one. To ensure the greatest likelihood of success, we sort
       -- packages by their dependencies.
       let
+        compilerVersion = fromMaybe prevCompiler newCompiler
         sortedPackages = PackageGraph.topologicalSort registryIndex
         sortedBatch =
-          sortedPackages # Array.filter \(Manifest { name, version }) -> fromMaybe false do
-            batchVersion <- Map.lookup name newPackages
-            guard $ version == batchVersion
-            pure true
+          sortedPackages # Array.mapMaybe \(Manifest { name, version }) -> do
+            update <- Map.lookup name batch
+            case update of
+              Nothing -> do
+                prevVersion <- Map.lookup name packages
+                guard (version == prevVersion)
+                pure (Tuple name Nothing)
+              Just batchVersion -> do
+                guard (version == batchVersion)
+                pure (Tuple name (Just version))
 
       failRef <- liftEffect $ Ref.new Map.empty
       successRef <- liftEffect $ Ref.new Map.empty
       packageSetRef <- liftEffect $ Ref.new prevSet
 
-      let formatName name version = PackageName.print name <> "@" <> Version.printVersion version
+      let
+        formatName name version =
+          PackageName.print name <> "@" <> Version.printVersion version
 
       -- Then we attempt to add them one-by-one.
-      for_ sortedBatch \(Manifest { name, version }) -> do
+      for_ sortedBatch \(Tuple name maybeVersion) -> do
         currentSet <- liftEffect $ Ref.read packageSetRef
-        result <- liftAff (tryPackage currentSet name version)
+        result <- liftAff (tryPackage currentSet name maybeVersion)
         case result of
           -- If the package could not be added, then the state of the filesystem
           -- is rolled back. We just need to insert the package into the
           -- failures map to record that it could not be added.
           Left packageCompilerError -> do
-            liftEffect $ Ref.modify_ (Map.insert name version) failRef
-            log $ "Could not add " <> formatName name version
-            handleCompilerError packageCompilerError
+            liftEffect $ Ref.modify_ (Map.insert name maybeVersion) failRef
+            log $ case maybeVersion of
+              Nothing -> "Could not remove " <> PackageName.print name
+              Just version -> "Could not add or update " <> formatName name version
+            handleCompilerError compilerVersion packageCompilerError
           -- If the package could be added, then the state of the filesystem is
           -- stepped and we need to record the success of this package and step
           -- the package set in memory for the next package to be added to.
           Right newSet -> do
-            liftEffect $ Ref.modify_ (Map.insert name version) successRef
+            liftEffect $ Ref.modify_ (Map.insert name maybeVersion) successRef
             liftEffect $ Ref.write newSet packageSetRef
-            log $ "Added " <> formatName name version
+            log $ case maybeVersion of
+              Nothing -> "Removed " <> PackageName.print name
+              Just version -> "Added or updated " <> formatName name version
 
       fail <- liftEffect $ Ref.read failRef
       success <- liftEffect $ Ref.read successRef
       newSet <- liftEffect $ Ref.read packageSetRef
       if Map.isEmpty success then pure Nothing
       else do
-        packageSet <- updatePackageSetMetadata newSet success
+        packageSet <- liftEffect $ updatePackageSetMetadata { previous: prevSet, pending: newSet } success
         pure $ Just { fail, success, packageSet }
+
+updatePackageSetMetadata :: { previous :: PackageSet, pending :: PackageSet } -> Map PackageName (Maybe Version) -> Effect PackageSet
+updatePackageSetMetadata { previous, pending: PackageSet pending } changed = do
+  now <- Now.nowDateTime
+  let version = computeVersion previous changed
+  pure $ PackageSet (pending { version = version, published = now })
+
+handleCompilerError :: Version -> Purs.CompilerFailure -> RegistryM Unit
+handleCompilerError compilerVersion = case _ of
+  MissingCompiler ->
+    throwWithComment $ "Missing compiler version " <> Version.printVersion compilerVersion
+  UnknownError err ->
+    throwWithComment $ "Unknown error: " <> err
+  CompilationError errs -> do
+    log "Compilation failed:\n"
+    log $ Purs.printCompilerErrors errs <> "\n"
 
 -- | Attempt to add or update a collection of packages in the package set. This
 -- | operation will be rolled back if the addition fails.
 -- |
 -- | NOTE: You must have previously built a package set.
-tryBatch :: PackageSet -> Map PackageName Version -> Aff (Either CompilerFailure PackageSet)
-tryBatch (PackageSet set) packages = do
+tryBatch :: Version -> PackageSet -> Map PackageName (Maybe Version) -> Aff (Either CompilerFailure PackageSet)
+tryBatch compilerVersion (PackageSet set) batch = do
   let backupDir = "output-backup"
   let outputDir = "output"
   FSE.copy { from: outputDir, to: backupDir, preserveTimestamps: true }
-  removePackages (Map.keys packages)
-  installPackages packages
-  compileInstalledPackages set.compiler >>= case _ of
+  removePackages (Map.keys batch)
+  installPackages (Map.catMaybes batch)
+  compileInstalledPackages compilerVersion >>= case _ of
     Left err -> do
       FSE.remove outputDir
       FSE.copy { from: backupDir, to: outputDir, preserveTimestamps: true }
-      for_ (Map.keys packages) \packageName -> do
+      for_ (Map.keys batch) \packageName -> do
         removePackage packageName
         for_ (Map.lookup packageName set.packages) (installPackage packageName)
       pure $ Left err
     Right _ -> do
       FSE.remove backupDir
-      pure $ Right $ PackageSet $ set { packages = Map.union packages set.packages }
+      let
+        foldFn name existingSet = case _ of
+          Nothing -> Map.delete name existingSet
+          Just version -> Map.insert name version existingSet
+        newSet = foldlWithIndex foldFn set.packages batch
+      pure $ Right $ PackageSet $ set { packages = newSet }
 
--- | Attempt to add or update a package in the package set. This operation will
--- | be rolled back if the addition fails.
+-- | Attempt to add, update, or remove a package in the package set. This
+-- | operation will be rolled back if the addition fails.
 -- |
 -- | NOTE: You must have previously built a package set.
-tryPackage :: PackageSet -> PackageName -> Version -> Aff (Either CompilerFailure PackageSet)
-tryPackage (PackageSet set) package version = do
+tryPackage :: PackageSet -> PackageName -> Maybe Version -> Aff (Either CompilerFailure PackageSet)
+tryPackage (PackageSet set) package maybeVersion = do
   let backupDir = "output-backup"
   let outputDir = "output"
   FSE.copy { from: outputDir, to: backupDir, preserveTimestamps: true }
   removePackage package
-  installPackage package version
+  for_ maybeVersion (installPackage package)
   compileInstalledPackages set.compiler >>= case _ of
     Left err -> do
-      log $ "Failed to build set with " <> PackageName.print package <> "@" <> Version.printVersion version
+      log $ case maybeVersion of
+        Nothing -> "Failed to build set without " <> PackageName.print package
+        Just version -> "Failed to build set with " <> PackageName.print package <> "@" <> Version.printVersion version
       FSE.remove outputDir
       FSE.copy { from: backupDir, to: outputDir, preserveTimestamps: true }
-      removePackage package
+      for_ maybeVersion \_ -> removePackage package
       for_ (Map.lookup package set.packages) (installPackage package)
       pure $ Left err
     Right _ -> do
       FSE.remove backupDir
-      pure $ Right $ PackageSet $ set { packages = Map.insert package version set.packages }
+      pure $ Right $ PackageSet $ case maybeVersion of
+        Nothing -> set { packages = Map.delete package set.packages }
+        Just version -> set { packages = Map.insert package version set.packages }
 
 -- | Compile all PureScript files in the given directory. Expects all packages
 -- | to be installed in a subdirectory "packages".
@@ -278,32 +305,36 @@ installPackage name version = do
 
 -- | Computes new package set version from old package set and version information of successfully added/updated packages.
 -- | Note: this must be called with the old `PackageSet` that has not had updates applied.
-computeVersion :: PackageSet -> Map PackageName Version -> Version
-computeVersion (PackageSet { packages, version: packageSetVersion }) updates =
-  updateVersion packageSetVersion
-  where
-  updateVersion =
-    if major then Version.bumpMajor
-    else if minor then Version.bumpMinor
-    else if patch then Version.bumpPatch
-    else identity
+computeVersion :: PackageSet -> Map PackageName (Maybe Version) -> Version
+computeVersion (PackageSet set) changes = do
+  let updates = Map.catMaybes changes
+  -- Removals always require a major version bump.
+  if Map.size updates < Map.size changes || isMajor updates then
+    Version.bumpMajor set.version
+  else if isMinor updates then
+    Version.bumpMinor set.version
+  else if isPatch updates then
+    Version.bumpPatch set.version
+  else
+    set.version
 
+  where
   -- Check for major version bumps for existing packages
-  major :: Boolean
-  major = Map.toUnfoldable updates # Array.any \(Tuple package version) -> fromMaybe false do
-    prevVersion <- Map.lookup package packages
+  isMajor :: Map PackageName Version -> Boolean
+  isMajor updates = Map.toUnfoldable updates # Array.any \(Tuple package version) -> fromMaybe false do
+    prevVersion <- Map.lookup package set.packages
     pure (version >= Version.bumpMajor prevVersion)
 
   -- Check for minor version bumps for existing packages or package introductions
-  minor :: Boolean
-  minor = Map.toUnfoldable updates # Array.any \(Tuple package version) -> fromMaybe true do
-    prevVersion <- Map.lookup package packages
+  isMinor :: Map PackageName Version -> Boolean
+  isMinor updates = Map.toUnfoldable updates # Array.any \(Tuple package version) -> fromMaybe true do
+    prevVersion <- Map.lookup package set.packages
     pure (version >= Version.bumpMinor prevVersion)
 
   -- Check for patch version bumps for existing packages
-  patch :: Boolean
-  patch = Map.toUnfoldable updates # Array.any \(Tuple package version) -> fromMaybe false do
-    prevVersion <- Map.lookup package packages
+  isPatch :: Map PackageName Version -> Boolean
+  isPatch updates = Map.toUnfoldable updates # Array.any \(Tuple package version) -> fromMaybe false do
+    prevVersion <- Map.lookup package set.packages
     pure (version >= Version.bumpPatch prevVersion)
 
 type ValidatedCandidates =

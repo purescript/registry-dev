@@ -97,21 +97,24 @@ main = Aff.launchAff_ do
 
     let filteredUploads = removeDuplicates recentUploads
     let candidates = PackageSet.validatePackageSetCandidates registryIndex prevPackageSet (map Just filteredUploads.accepted)
-
     log $ PackageSet.printRejections candidates.rejected
 
     if Map.isEmpty candidates.accepted then do
       log "No eligible additions, updates, or removals to produce a new package set."
     else do
-      -- There are no removals in the automated packag sets.
-      let updates = Map.catMaybes candidates.accepted
-      let logPackage name version = log (PackageName.print name <> "@" <> Version.printVersion version)
+      let
+        logPackage name maybeVersion = case maybeVersion of
+          -- There are no removals in the automated package sets. This should be
+          -- an unreachable case.
+          Nothing -> throwWithComment "Package removals are not accepted in automatic package sets."
+          Just version -> log (PackageName.print name <> "@" <> Version.printVersion version)
+
       log "Found the following package versions eligible for inclusion in package set:"
-      forWithIndex_ updates logPackage
-      PackageSet.processBatch registryIndex prevPackageSet Nothing updates >>= case _ of
+      forWithIndex_ candidates.accepted logPackage
+      PackageSet.processBatchSequential registryIndex prevPackageSet Nothing candidates.accepted >>= case _ of
         Nothing -> do
           log "\n----------\nNo packages could be added to the set. All packages failed:"
-          forWithIndex_ updates logPackage
+          forWithIndex_ candidates.accepted logPackage
         Just { success, fail, packageSet } -> do
           unless (Map.isEmpty fail) do
             log "\n----------\nSome packages could not be added to the set:"

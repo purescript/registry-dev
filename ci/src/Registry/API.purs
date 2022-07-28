@@ -267,17 +267,8 @@ runOperation operation = case operation of
     if Map.isEmpty candidates.accepted then do
       throwWithComment "No packages in the suggested batch can be processed; all failed validation checks."
     else do
-      -- TODO: Removals.
-      let updates = Map.catMaybes candidates.accepted
-      PackageSet.processBatch registryIndex latestPackageSet compiler updates >>= case _ of
-        Nothing -> do
-          throwWithComment "No packages from the suggested batch could be added, updated, or removed. All failed compilation."
-        Just { fail } | not Map.isEmpty fail -> do
-          throwWithComment $ String.joinWith "\n"
-            [ "Some packages from the suggested batch could not be added, updated, or removed."
-            -- TODO: Print failure error messages?
-            ]
-        Just { packageSet } -> do
+      PackageSet.processBatchAtomic latestPackageSet compiler candidates.accepted >>= case _ of
+        Just { fail, packageSet } | Map.isEmpty fail -> do
           newPath <- PackageSet.getPackageSetPath (un PackageSet packageSet).version
           liftAff $ Json.writeJsonFile newPath packageSet
           commitPackageSetFile packageSet >>= case _ of
@@ -285,6 +276,8 @@ runOperation operation = case operation of
             Right _ -> do
               comment "Built and released a new package set!"
               closeIssue
+        _ -> do
+          throwWithComment "The package set produced from this suggested update does not compile."
 
   Authenticated auth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
