@@ -1147,13 +1147,15 @@ writeDeleteIndex name version = do
   liftAff $ Index.deleteManifest registryIndexDir name version
   commitIndexFile name
 
--- | @pacchettibotti is considered an 'owner' of all packages for
--- | authenticated operations. This represents an action made by the
--- | Registry Trustees, who are the only ones able to sign for the
--- | @pacchettibotti account.
-
 -- | Re-sign a payload as pacchettibotti if the authenticated operation was
 -- | submitted by a registry trustee.
+--
+-- @pacchettibotti is considered an 'owner' of all packages for authenticated
+-- operations. Registry trustees can ask pacchettibotti to perform an action on
+-- behalf of a package by submitting a payload with the @pacchettibotti email
+-- address. If the payload was submitted by a trustee (ie. a member of the
+-- packaging team) then pacchettibotti will re-sign it and add itself as an
+-- owner before continuing with the authenticated operation.
 acceptTrustees
   :: String
   -> AuthenticatedData
