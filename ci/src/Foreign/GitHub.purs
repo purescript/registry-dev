@@ -196,7 +196,7 @@ createComment octokit issue body = do
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/issues/update.md
 closeIssue :: Octokit -> IssueNumber -> ExceptT GitHubError Aff Unit
 closeIssue octokit issue = do
-  let args = { status: "closed" }
+  let args = { state: "closed" }
   _ <- Except.withExceptT APIError $ uncachedRequest { octokit, route, headers: Object.empty, args }
   pure unit
   where
