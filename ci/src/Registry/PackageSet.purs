@@ -1,10 +1,11 @@
 module Registry.PackageSet
   ( PackageSetBatchResult
-  , findPackageSetCandidates
   , getPackageSetPath
   , getPackageSetsPath
+  , printRejections
   , processBatch
   , readLatestPackageSet
+  , validatePackageSetCandidates
   ) where
 
 import Registry.Prelude
@@ -13,15 +14,12 @@ import Affjax as Http
 import Control.Alternative (guard)
 import Control.Monad.Reader (asks)
 import Data.Array as Array
-import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bitraversable (ltraverse)
-import Data.DateTime (DateTime)
-import Data.DateTime as DateTime
-import Data.Foldable (traverse_)
+import Data.Filterable (partitionMap)
+import Data.Foldable (foldl, traverse_)
 import Data.Map as Map
-import Data.PreciseDateTime as PDT
+import Data.Monoid as Monoid
 import Data.String as String
-import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
 import Effect.Now as Now
 import Effect.Ref as Ref
@@ -38,8 +36,8 @@ import Registry.Json as Json
 import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
-import Registry.Schema (Manifest(..), Metadata, PackageSet(..))
+import Registry.RegistryM (RegistryM, throwWithComment)
+import Registry.Schema (Manifest(..), PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -73,11 +71,15 @@ readLatestPackageSet = do
         Left err -> throwWithComment $ "Could not decode latest package set: " <> err
         Right set -> pure set
 
+-- TODO: It would be ideal to report _why_ a package failed, similar to the
+-- batch validation.
 type PackageSetBatchResult =
   { fail :: Map PackageName Version
   , success :: Map PackageName Version
   , packageSet :: PackageSet
   }
+
+-- TODO: Removals (ie. Map PackageName (Maybe Version))
 
 -- | Attempt to produce a new package set from the given package set by adding
 -- | the provided packages.
@@ -302,51 +304,100 @@ computeVersion (PackageSet { packages, version: packageSetVersion }) updates =
     prevVersion <- Map.lookup package packages
     pure (version >= Version.bumpPatch prevVersion)
 
--- | Find new candidates for the package sets by finding package versions
--- | released over the 24 hours and filtering out ones that obviously cannot be
--- | included (for example, because they already have a more recent version in
--- | the package set or batch).
-findPackageSetCandidates :: RegistryIndex -> PackageSet -> RegistryM (Map PackageName Version)
-findPackageSetCandidates registryIndex (PackageSet { packages: previousPackages }) = do
-  metadata <- readPackagesMetadata
-  now <- liftEffect Now.nowDateTime
-  pure $ validateDependencies $ validateVersions $ uploadCandidates now metadata
+type ValidatedCandidates =
+  { accepted :: Map PackageName (Maybe Version)
+  , rejected :: Map PackageName { reason :: String, value :: Maybe Version }
+  }
+
+-- | Validate a provided set of package set candidates. Should be used before
+-- | attempting to process a batch of packages for a package set.
+validatePackageSetCandidates
+  :: RegistryIndex
+  -> PackageSet
+  -> Map PackageName (Maybe Version)
+  -> ValidatedCandidates
+validatePackageSetCandidates index (PackageSet { packages: previousPackages }) candidates = do
+  let { left: removalCandidates, right: updateCandidates } = partitionMap (maybe (Left Nothing) Right) candidates
+  let updates = validateUpdates updateCandidates
+  let removals = validateRemovals (Map.keys removalCandidates)
+  { accepted: Map.union updates.accepted removals.accepted
+  , rejected: Map.union updates.rejected removals.rejected
+  }
   where
-  uploadCandidates :: DateTime -> Map PackageName Metadata -> Array (Tuple PackageName (NonEmptyArray Version))
-  uploadCandidates now metadata = do
-    Tuple packageName packageMetadata <- Map.toUnfoldable metadata
-    versions <- Array.fromFoldable $ NonEmptyArray.fromArray do
-      Tuple version { publishedTime } <- Map.toUnfoldable packageMetadata.published
-      published <- maybe [] (pure <<< PDT.toDateTimeLossy) (PDT.fromRFC3339String publishedTime)
-      let diff = DateTime.diff now published
-      guardA (diff <= Hours 24.0)
-      pure version
-    pure (Tuple packageName versions)
+  emptyValidated :: ValidatedCandidates
+  emptyValidated = { accepted: Map.empty, rejected: Map.empty }
 
-  validateVersions :: Array (Tuple PackageName (NonEmptyArray Version)) -> Map PackageName Version
-  validateVersions candidates = Map.fromFoldable do
-    Tuple packageName versions' <- candidates
-    -- We only care about the latest version
-    let version = NonEmptyArray.last (NonEmptyArray.sort versions')
-    -- Ensure package is not in package set, or latest version is newer than that in package set
-    checkedVersion <- case Map.lookup packageName previousPackages of
-      Nothing -> pure version
-      Just v | v < version -> pure version
-      _ -> []
-    pure (Tuple packageName checkedVersion)
+  validateUpdates :: Map PackageName Version -> ValidatedCandidates
+  validateUpdates =
+    flip foldlWithIndex emptyValidated \name acc version -> case validateUpdate name version of
+      Left error ->
+        acc { rejected = Map.insert name { reason: error, value: Just version } acc.rejected }
+      Right _ ->
+        acc { accepted = Map.insert name (Just version) acc.accepted }
 
-  -- A proper solution to this would be to topologically sort by dependencies
-  -- and keep track of dropped packages as we go, to transitively drop packages based on missing versions.
-  validateDependencies :: Map PackageName Version -> Map PackageName Version
-  validateDependencies uploads = uploads # Map.filterWithKey \packageName version -> fromMaybe false do
-    Manifest manifest <- Map.lookup packageName registryIndex >>= Map.lookup version
+  validateUpdate :: PackageName -> Version -> Either String Unit
+  validateUpdate name version = do
+    -- A package can't be "updated" to a lower version of a package that already
+    -- exists in the package set.
+    case Map.lookup name previousPackages of
+      Nothing -> Right unit
+      Just v | v < version -> Right unit
+      Just v -> Left $ "A higher version already exists in the package set: " <> Version.printVersion v
+
+    -- A package can only be added to the package set if all its dependencies
+    -- already exist in the package set or the batch being processed.
+    let noManifestError = "No manifest entry exists in the registry index."
+    Manifest manifest <- note noManifestError (Map.lookup version =<< Map.lookup name index)
 
     let
       dependencies = Array.fromFoldable (Map.keys manifest.dependencies)
-      -- A package can only be added to the package set if
-      -- all of its dependencies are in the previous package set
-      -- or in the current batch.
-      checkDependency dependency =
-        Map.member dependency previousPackages || Map.member dependency uploads
+      -- Note: A proper verification would topologically sort by dependencies
+      -- and  track dropped packages as we go so we can transitively drop
+      -- packages if a dependency in the batch is itself dropped due to a
+      -- validation error.
+      dependencyExists dependency = case Map.lookup dependency candidates of
+        Nothing -> Map.member dependency previousPackages
+        -- This indicates that the dependency is being removed.
+        Just Nothing -> false
+        Just (Just _) -> true
 
-    pure $ Array.all checkDependency dependencies
+    case Array.filter (not <<< dependencyExists) dependencies of
+      [] -> pure unit
+      missing -> Left $ "Missing dependencies: " <> String.joinWith ", " (map PackageName.print missing)
+
+  validateRemovals :: Set PackageName -> ValidatedCandidates
+  validateRemovals =
+    flip foldl emptyValidated \acc name -> case validateRemoval name of
+      Left error ->
+        acc { rejected = Map.insert name { reason: error, value: Nothing } acc.rejected }
+      Right _ ->
+        acc { accepted = Map.insert name Nothing acc.accepted }
+
+  -- FIXME: TODO: Does this need to have work done in PackageGraph?
+  validateRemoval :: PackageName -> Either String Unit
+  validateRemoval name = do
+    -- A package can't be removed if it would cause other packages in the set to
+    -- stop compiling, namely because they depend on this package. The
+    -- dependents must also be removed if the removal must be processed.
+    pure unit
+
+printRejections :: Map PackageName { reason :: String, value :: Maybe Version } -> String
+printRejections rejections = do
+  let sift { value, reason } = maybe (Left reason) (\version -> Right { reason, version }) value
+  let { left, right } = partitionMap sift rejections
+  Array.fold
+    [ Monoid.guard (not Map.isEmpty left) do
+        let init = "Cannot be removed:\n"
+        left # flip foldlWithIndex init \name acc reason ->
+          acc <> "  - " <> printRemoval name reason <> "\n"
+    , Monoid.guard (not Map.isEmpty right) do
+        let init = "Cannot be added or updated:\n"
+        right # flip foldlWithIndex init \name acc val ->
+          acc <> "  - " <> printUpdate name val <> "\n"
+    ]
+  where
+  printUpdate name { version, reason } =
+    Array.fold [ PackageName.print name, "@", Version.printVersion version, ": ", reason ]
+
+  printRemoval name reason =
+    Array.fold [ PackageName.print name, ": ", reason ]

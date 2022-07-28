@@ -256,16 +256,27 @@ runOperation operation = case operation of
     -- a version that isn't supported by the registry then an 'unsupported
     -- compiler' error will be thrown.
     registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
-    candidates <- PackageSet.findPackageSetCandidates registryIndex latestPackageSet
+    let candidates = PackageSet.validatePackageSetCandidates registryIndex latestPackageSet packages
 
-    if Map.isEmpty candidates then do
-      comment "No new package versions eligible for inclusion in the package set."
-      closeIssue
+    when (not Map.isEmpty candidates.rejected) do
+      comment $ String.joinWith "\n"
+        [ "One or more packages in the suggested batch cannot be processed:"
+        , PackageSet.printRejections candidates.rejected
+        ]
+
+    if Map.isEmpty candidates.accepted then do
+      throwWithComment "No packages in the suggested batch can be processed; all failed validation checks."
     else do
-      PackageSet.processBatch registryIndex latestPackageSet compiler candidates >>= case _ of
+      -- TODO: Removals.
+      let updates = Map.catMaybes candidates.accepted
+      PackageSet.processBatch registryIndex latestPackageSet compiler updates >>= case _ of
         Nothing -> do
-          comment "No packages could be added or updated in the set. All candidates failed."
-          closeIssue
+          throwWithComment "No packages from the suggested batch could be added, updated, or removed. All failed compilation."
+        Just { fail } | not Map.isEmpty fail -> do
+          throwWithComment $ String.joinWith "\n"
+            [ "Some packages from the suggested batch could not be added, updated, or removed."
+            -- TODO: Print failure error messages?
+            ]
         Just { packageSet } -> do
           newPath <- PackageSet.getPackageSetPath (un PackageSet packageSet).version
           liftAff $ Json.writeJsonFile newPath packageSet
