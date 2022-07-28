@@ -19,7 +19,9 @@ import Data.Filterable (partitionMap)
 import Data.Foldable (foldl, traverse_)
 import Data.Map as Map
 import Data.Monoid as Monoid
+import Data.Set as Set
 import Data.String as String
+import Data.Tuple as Tuple
 import Effect.Aff as Aff
 import Effect.Now as Now
 import Effect.Ref as Ref
@@ -319,7 +321,9 @@ validatePackageSetCandidates
 validatePackageSetCandidates index (PackageSet { packages: previousPackages }) candidates = do
   let { left: removalCandidates, right: updateCandidates } = partitionMap (maybe (Left Nothing) Right) candidates
   let updates = validateUpdates updateCandidates
-  let removals = validateRemovals (Map.keys removalCandidates)
+  -- We assume a batch either succeeds or fails atomically when it contains removals.
+  -- Therefore we want to validate removals against the package set with accepted updates applied.
+  let removals = validateRemovals (Map.catMaybes updates.accepted) (Map.keys removalCandidates)
   { accepted: Map.union updates.accepted removals.accepted
   , rejected: Map.union updates.rejected removals.rejected
   }
@@ -363,23 +367,36 @@ validatePackageSetCandidates index (PackageSet { packages: previousPackages }) c
 
     case Array.filter (not <<< dependencyExists) dependencies of
       [] -> pure unit
-      missing -> Left $ "Missing dependencies: " <> String.joinWith ", " (map PackageName.print missing)
+      missing -> Left $ "Missing dependencies (" <> String.joinWith ", " (map PackageName.print missing) <> ")"
 
-  validateRemovals :: Set PackageName -> ValidatedCandidates
-  validateRemovals =
-    flip foldl emptyValidated \acc name -> case validateRemoval name of
+  validateRemovals :: Map PackageName Version -> Set PackageName -> ValidatedCandidates
+  validateRemovals updates removals = do
+    let updatedPackages = Map.union updates previousPackages
+    removals # flip foldl emptyValidated \acc name -> case validateRemoval updatedPackages removals name of
       Left error ->
         acc { rejected = Map.insert name { reason: error, value: Nothing } acc.rejected }
       Right _ ->
         acc { accepted = Map.insert name Nothing acc.accepted }
 
-  -- FIXME: TODO: Does this need to have work done in PackageGraph?
-  validateRemoval :: PackageName -> Either String Unit
-  validateRemoval name = do
+  validateRemoval :: Map PackageName Version -> Set PackageName -> PackageName -> Either String Unit
+  validateRemoval updatedPackages removals name = do
     -- A package can't be removed if it would cause other packages in the set to
     -- stop compiling, namely because they depend on this package. The
     -- dependents must also be removed if the removal must be processed.
-    pure unit
+    let otherPackages = Map.delete name updatedPackages
+    case Array.filter (not <<< dependsOn name) (Map.toUnfoldable otherPackages) of
+      [] -> pure unit
+      dependents -> case Array.filter (fst >>> flip Set.member removals) dependents of
+        -- A package can be removed if the only packages that depend on it are also being removed.
+        [] -> pure unit
+        missing -> do
+          let printPackage (Tuple packageName version) = String.joinWith "@" [ PackageName.print packageName, Version.printVersion version ]
+          Left $ "Has dependents that aren't also being removed (" <> String.joinWith ", " (map printPackage missing) <> ")"
+
+  dependsOn :: PackageName -> Tuple PackageName Version -> Boolean
+  dependsOn removal (Tuple package version) = fromMaybe false do
+    Manifest manifest <- Map.lookup version =<< Map.lookup package index
+    pure $ Map.member removal manifest.dependencies
 
 printRejections :: Map PackageName { reason :: String, value :: Maybe Version } -> String
 printRejections rejections = do
