@@ -77,8 +77,8 @@ processLegacyRegistry legacyFile = do
 transferAll :: Map String GitHub.PackageURL -> Map String PackageLocations -> RegistryM (Map String GitHub.PackageURL)
 transferAll packages packageLocations = do
   pacchettiBottiPrivateKey <- liftEffect do
-    mbToken <- Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519"
-    maybe (Exception.throw "PACCHETTIBOTTI_ED25519 not defined in the environment.") pure mbToken
+    mbKey <- Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519"
+    maybe (Exception.throw "PACCHETTIBOTTI_ED25519 not defined in the environment.") pure mbKey
   packagesRef <- liftEffect (Ref.new packages)
   forWithIndex_ packageLocations \package locations -> do
     let newPackageLocation = locations.tagLocation

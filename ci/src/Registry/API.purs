@@ -195,7 +195,6 @@ runOperation operation = case operation of
     -- to only the packaging team. We throw here if this is an authenticated
     -- operation and we can't verify they are a member of the packaging team.
     when (didChangeCompiler || didRemovePackages) do
-      let packagingTeam = { org: "purescript", team: "packaging" }
       -- We always throw if we couldn't verify the user who opened or commented
       -- is a member of the packaging team.
       liftAff (Except.runExceptT (GitHub.listTeamMembers octokit cache packagingTeam)) >>= case _ of
@@ -275,8 +274,9 @@ runOperation operation = case operation of
               comment "Built and released a new package set!"
               closeIssue
 
-  Authenticated auth@(AuthenticatedData { payload, email }) -> case payload of
+  Authenticated submittedAuth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
+      username <- asks _.username
       metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Only published packages can be unpublished." }
 
       let
@@ -300,7 +300,9 @@ runOperation operation = case operation of
             , "cc @purescript/packaging"
             ]
 
-      case insertPacchettiBottiOwner email metadata.owners of
+      Tuple auth maybeOwners <- acceptTrustees username submittedAuth metadata.owners
+
+      case maybeOwners of
         Nothing ->
           throwWithComment $ String.joinWith " "
             [ "Cannot verify package ownership because no owners are listed in the package metadata."
@@ -359,6 +361,7 @@ runOperation operation = case operation of
       closeIssue
 
     Transfer { packageName, newPackageLocation } -> do
+      username <- asks _.username
       metadata <- readMetadata packageName
         { noMetadata: String.joinWith " "
             [ "No metadata found for your package."
@@ -375,7 +378,9 @@ runOperation operation = case operation of
           , "because another package is already registered at that location."
           ]
 
-      case insertPacchettiBottiOwner email metadata.owners of
+      Tuple auth maybeOwners <- acceptTrustees username submittedAuth metadata.owners
+
+      case maybeOwners of
         Nothing ->
           throwWithComment $ String.joinWith " "
             [ "Cannot verify package ownership because no owners are listed in the package metadata."
@@ -1146,13 +1151,50 @@ writeDeleteIndex name version = do
 -- | authenticated operations. This represents an action made by the
 -- | Registry Trustees, who are the only ones able to sign for the
 -- | @pacchettibotti account.
-insertPacchettiBottiOwner :: String -> Maybe (NonEmptyArray Owner) -> Maybe (NonEmptyArray Owner)
-insertPacchettiBottiOwner email mbOwners =
-  if email == (un Owner pacchettiBottiOwner).email then
-    case mbOwners of
-      Nothing -> Just (NonEmptyArray.singleton pacchettiBottiOwner)
-      Just owners -> Just (NonEmptyArray.cons pacchettiBottiOwner owners)
-  else mbOwners
+
+-- | Re-sign a payload as pacchettibotti if the authenticated operation was
+-- | submitted by a registry trustee.
+acceptTrustees
+  :: String
+  -> AuthenticatedData
+  -> Maybe (NonEmptyArray Owner)
+  -> RegistryM (Tuple AuthenticatedData (Maybe (NonEmptyArray Owner)))
+acceptTrustees username authData@(AuthenticatedData authenticated) maybeOwners = do
+  { octokit, cache } <- ask
+  if authenticated.email /= (un Owner pacchettiBottiOwner).email then
+    pure (Tuple authData maybeOwners)
+  else do
+    let
+      ownersWithPacchettiBotti = case maybeOwners of
+        Nothing -> NonEmptyArray.singleton pacchettiBottiOwner
+        Just owners -> NonEmptyArray.cons pacchettiBottiOwner owners
+
+    liftAff (Except.runExceptT (GitHub.listTeamMembers octokit cache packagingTeam)) >>= case _ of
+      Left githubError -> throwWithComment $ Array.fold
+        [ "This authenticated operation was opened using the pacchettibotti "
+        , "email address, but we were unable to authenticate that you are a "
+        , "member of the @purescript/packaging team:\n\n"
+        , GitHub.printGitHubError githubError
+        ]
+      Right members -> do
+        unless (Array.elem username (map _.username members)) do
+          throwWithComment $ String.joinWith " "
+            [ "This authenticated operation was opened using the pacchettibotti "
+            , "email address, but your username is not a member of the "
+            , "@purescript/packaging team."
+            ]
+
+        pacchettiBottiPrivateKey <- liftEffect do
+          mbKey <- Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519"
+          maybe (throw "PACCHETTIBOTTI_ED25519 not defined in the environment.") pure mbKey
+
+        signature <- liftAff (SSH.signPacchettiBotti { rawPayload: authenticated.rawPayload, pacchettiBottiPrivateKey }) >>= case _ of
+          Left _ -> throwWithComment "Error signing transfer. cc: @purescript/packaging"
+          Right signature -> pure signature
+
+        let newAuth = AuthenticatedData (authenticated { signature = signature })
+
+        pure (Tuple newAuth (Just ownersWithPacchettiBotti))
 
 pacchettiBottiOwner :: Owner
 pacchettiBottiOwner = Owner
@@ -1160,3 +1202,6 @@ pacchettiBottiOwner = Owner
   , keytype: "ssh-ed25519"
   , public: "AAAAC3NzaC1lZDI1NTE5AAAAIA/zFrxmSFY1ku0/Se5pgRJiy5IBgxDXyGBL8An892Mt"
   }
+
+packagingTeam :: GitHub.Team
+packagingTeam = { org: "purescript", team: "packaging" }

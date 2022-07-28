@@ -10,6 +10,7 @@ module Foreign.GitHub
   , RateLimit
   , Route
   , Tag
+  , Team
   , TeamMember
   , closeIssue
   , createComment
@@ -74,12 +75,15 @@ foreign import mkOctokitImpl :: EffectFn1 GitHubToken Octokit
 mkOctokit :: GitHubToken -> Effect Octokit
 mkOctokit = runEffectFn1 mkOctokitImpl
 
+-- | A team within a GitHub organization
+type Team = { org :: String, team :: String }
+
 -- | Member of a GitHub organization
 type TeamMember = { username :: String, userId :: Int }
 
 -- | List members of the given team
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/teams/listMembersInOrg.md
-listTeamMembers :: Octokit -> Cache -> { org :: String, team :: String } -> ExceptT GitHubError Aff (Array TeamMember)
+listTeamMembers :: Octokit -> Cache -> Team -> ExceptT GitHubError Aff (Array TeamMember)
 listTeamMembers octokit cache { org, team } = do
   let requestArgs = { octokit, route, headers: Object.empty, args: {} }
   let cacheArgs = { cache, checkGitHub: true }
