@@ -106,13 +106,20 @@ printDhall (LegacyPackageSet entries) = do
     Dodo.Common.jsCurlies
       $ Dodo.foldWithSeparator Dodo.Common.leadingComma
       $ map printPackage packages
+  
+  quoteReserved :: String -> String
+  quoteReserved input = do
+    -- We can't use any reserved keywords:
+    -- https://docs.dhall-lang.org/references/Built-in-types.html#built-in-types-functions-and-operators
+    if input `Array.elem` [ "assert", "let", "using", "missing", "merge", "if", "then", "else" ] then
+      Array.fold [ "`", input, "`" ]
+    else
+      input
 
   printPackage :: forall a. Tuple PackageName LegacyPackageSetEntry -> Dodo.Doc a
   printPackage (Tuple name entry) =
     Array.fold
-      [ Dodo.text do
-          let nameStr = PackageName.print name
-          if nameStr == "assert" then "`assert`" else nameStr
+      [ Dodo.text (quoteReserved (PackageName.print name))
       , Dodo.text " ="
       , Dodo.break
       , Dodo.indent (printEntry entry)
