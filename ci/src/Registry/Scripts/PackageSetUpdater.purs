@@ -95,8 +95,7 @@ main = Aff.launchAff_ do
     prevPackageSet <- PackageSet.readLatestPackageSet
     recentUploads <- findRecentUploads (Hours 24.0)
 
-    let filteredUploads = removeDuplicates recentUploads
-    let candidates = PackageSet.validatePackageSetCandidates registryIndex prevPackageSet (map Just filteredUploads.accepted)
+    let candidates = PackageSet.validatePackageSetCandidates registryIndex prevPackageSet (map Just recentUploads.accepted)
     log $ PackageSet.printRejections candidates.rejected
 
     if Map.isEmpty candidates.accepted then do
@@ -133,6 +132,7 @@ findRecentUploads :: Hours -> RegistryM (Map PackageName (NonEmptyArray Version)
 findRecentUploads limit = do
   metadata <- readPackagesMetadata
   now <- liftEffect Now.nowDateTime
+
   let
     packageUploads = Map.fromFoldable do
       Tuple packageName packageMetadata <- Map.toUnfoldable metadata
@@ -143,12 +143,11 @@ findRecentUploads limit = do
         guardA (diff <= limit)
         pure version
       pure (Tuple packageName versions)
-  pure packageUploads
 
-removeDuplicates :: Map PackageName (NonEmptyArray Version) -> { rejected :: Map PackageName (NonEmptyArray Version), accepted :: Map PackageName Version }
-removeDuplicates =
-  flip foldlWithIndex { rejected: Map.empty, accepted: Map.empty } \name acc versions -> do
-    let { init, last } = NonEmptyArray.unsnoc versions
-    case NonEmptyArray.fromArray init of
-      Nothing -> acc { accepted = Map.insert name last acc.accepted }
-      Just entries -> acc { accepted = Map.insert name last acc.accepted, rejected = Map.insert name entries acc.rejected }
+    deduplicated = flip foldlWithIndex { rejected: Map.empty, accepted: Map.empty } \name acc versions -> do
+      let { init, last } = NonEmptyArray.unsnoc versions
+      case NonEmptyArray.fromArray init of
+        Nothing -> acc { accepted = Map.insert name last acc.accepted }
+        Just entries -> acc { accepted = Map.insert name last acc.accepted, rejected = Map.insert name entries acc.rejected }
+
+  pure deduplicated
