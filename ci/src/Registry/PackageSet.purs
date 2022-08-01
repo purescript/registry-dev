@@ -102,7 +102,7 @@ processBatchAtomic prevSet@(PackageSet { compiler: prevCompiler, packages }) new
       handleCompilerError compilerVersion batchCompilerError
       pure Nothing
 
--- | Attempt to produce a new package set from the given package set by addin
+-- | Attempt to produce a new package set from the given package set by adding
 -- | or removing the provided packages. Attempts the entire batch first, and
 -- | then falls sequential processing if that fails.
 processBatchSequential :: RegistryIndex -> PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> RegistryM (Maybe PackageSetBatchResult)
@@ -111,9 +111,9 @@ processBatchSequential registryIndex prevSet@(PackageSet { compiler: prevCompile
     Just batchResult ->
       pure (Just batchResult)
     Nothing -> do
-      -- If compiling the full batch failed, then we move on to adding packages
-      -- one-by-one. To ensure the greatest likelihood of success, we sort
-      -- packages by their dependencies.
+      -- If compiling the full batch failed, then we move on to processing
+      -- packages one-by-one. To ensure the greatest likelihood of success, we
+      -- sort packages by their dependencies.
       let
         compilerVersion = fromMaybe prevCompiler newCompiler
         sortedPackages = PackageGraph.topologicalSort registryIndex
@@ -142,18 +142,19 @@ processBatchSequential registryIndex prevSet@(PackageSet { compiler: prevCompile
         currentSet <- liftEffect $ Ref.read packageSetRef
         result <- liftAff (tryPackage currentSet name maybeVersion)
         case result of
-          -- If the package could not be added, then the state of the filesystem
-          -- is rolled back. We just need to insert the package into the
-          -- failures map to record that it could not be added.
+          -- If the package could not be processed, then the state of the
+          -- filesystem is rolled back. We just need to insert the package into
+          -- the failures map to record that it could not be processed..
           Left packageCompilerError -> do
             liftEffect $ Ref.modify_ (Map.insert name maybeVersion) failRef
             log $ case maybeVersion of
               Nothing -> "Could not remove " <> PackageName.print name
               Just version -> "Could not add or update " <> formatName name version
             handleCompilerError compilerVersion packageCompilerError
-          -- If the package could be added, then the state of the filesystem is
-          -- stepped and we need to record the success of this package and step
-          -- the package set in memory for the next package to be added to.
+          -- If the package could be processed, then the state of the filesystem
+          -- is stepped and we need to record the success of this package and
+          -- step the package set in memory for the next package to be processed
+          -- with.
           Right newSet -> do
             liftEffect $ Ref.modify_ (Map.insert name maybeVersion) successRef
             liftEffect $ Ref.write newSet packageSetRef
@@ -185,8 +186,8 @@ handleCompilerError compilerVersion = case _ of
     log "Compilation failed:\n"
     log $ Purs.printCompilerErrors errs <> "\n"
 
--- | Attempt to add or update a collection of packages in the package set. This
--- | operation will be rolled back if the addition fails.
+-- | Attempt to add, update, or delete a collection of packages in the package
+-- | set. This will be rolled back if the operation fails.
 -- |
 -- | NOTE: You must have previously built a package set.
 tryBatch :: Version -> PackageSet -> Map PackageName (Maybe Version) -> Aff (Either CompilerFailure PackageSet)
