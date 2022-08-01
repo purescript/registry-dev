@@ -144,7 +144,7 @@ findRecentUploads limit = do
         pure version
       pure (Tuple packageName versions)
 
-    deduplicated = flip foldlWithIndex { rejected: Map.empty, accepted: Map.empty } \name acc versions -> do
+    deduplicated = packageUploads # foldlWithIndex { rejected: Map.empty, accepted: Map.empty } \name acc versions -> do
       let { init, last } = NonEmptyArray.unsnoc versions
       case NonEmptyArray.fromArray init of
         Nothing -> acc { accepted = Map.insert name last acc.accepted }
