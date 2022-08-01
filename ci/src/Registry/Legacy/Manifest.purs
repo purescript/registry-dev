@@ -26,7 +26,7 @@ import Registry.Cache as Cache
 import Registry.Hash (sha256String)
 import Registry.Json ((.:), (.:?))
 import Registry.Json as Json
-import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry(..))
+import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, throwWithComment)
@@ -304,13 +304,12 @@ fetchLegacyPackageSets = do
       map (convertEntry packages) packages
 
     convertEntry :: Map PackageName LegacyPackageSetEntry -> LegacyPackageSetEntry -> Map RawVersion (Map PackageName RawVersion)
-    convertEntry entries (LegacyPackageSetEntry { dependencies, version }) = do
+    convertEntry entries { dependencies, version } = do
       let
         -- Package sets are only valid if all packages in the set have dependencies that are also in
         -- the set, so this (should) be safe.
-        resolveDependencyVersion dep = unsafeFromJust do
-          LegacyPackageSetEntry entry <- Map.lookup dep entries
-          pure entry.version
+        resolveDependencyVersion dep =
+          unsafeFromJust (_.version <$> Map.lookup dep entries)
         resolveDependencyVersions =
           Array.foldl (\m name -> Map.insert name (resolveDependencyVersion name) m) Map.empty
       Map.singleton version (resolveDependencyVersions dependencies)
