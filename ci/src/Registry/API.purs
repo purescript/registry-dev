@@ -258,7 +258,7 @@ runOperation operation = case operation of
     registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
     let candidates = PackageSet.validatePackageSetCandidates registryIndex latestPackageSet packages
 
-    when (not Map.isEmpty candidates.rejected) do
+    unless (Map.isEmpty candidates.rejected) do
       throwWithComment $ String.joinWith "\n"
         [ "One or more packages in the suggested batch cannot be processed.\n"
         , PackageSet.printRejections candidates.rejected
