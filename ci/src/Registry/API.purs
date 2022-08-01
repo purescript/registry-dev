@@ -255,17 +255,19 @@ runOperation operation = case operation of
     -- a version that isn't supported by the registry then an 'unsupported
     -- compiler' error will be thrown.
     registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
-    candidates <- PackageSet.findPackageSetCandidates registryIndex latestPackageSet
+    let candidates = PackageSet.validatePackageSetCandidates registryIndex latestPackageSet packages
 
-    if Map.isEmpty candidates then do
-      comment "No new package versions eligible for inclusion in the package set."
-      closeIssue
+    unless (Map.isEmpty candidates.rejected) do
+      throwWithComment $ String.joinWith "\n"
+        [ "One or more packages in the suggested batch cannot be processed.\n"
+        , PackageSet.printRejections candidates.rejected
+        ]
+
+    if Map.isEmpty candidates.accepted then do
+      throwWithComment "No packages in the suggested batch can be processed; all failed validation checks."
     else do
-      PackageSet.processBatch registryIndex latestPackageSet compiler candidates >>= case _ of
-        Nothing -> do
-          comment "No packages could be added or updated in the set. All candidates failed."
-          closeIssue
-        Just { packageSet } -> do
+      PackageSet.processBatchAtomic latestPackageSet compiler candidates.accepted >>= case _ of
+        Just { fail, packageSet } | Map.isEmpty fail -> do
           newPath <- PackageSet.getPackageSetPath (un PackageSet packageSet).version
           liftAff $ Json.writeJsonFile newPath packageSet
           commitPackageSetFile packageSet >>= case _ of
@@ -273,6 +275,8 @@ runOperation operation = case operation of
             Right _ -> do
               comment "Built and released a new package set!"
               closeIssue
+        _ -> do
+          throwWithComment "The package set produced from this suggested update does not compile."
 
   Authenticated submittedAuth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
