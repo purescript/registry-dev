@@ -106,7 +106,7 @@ printDhall (LegacyPackageSet entries) = do
     Dodo.Common.jsCurlies
       $ Dodo.foldWithSeparator Dodo.Common.leadingComma
       $ map printPackage packages
-  
+
   quoteReserved :: String -> String
   quoteReserved input = do
     -- We can't use any reserved keywords:
