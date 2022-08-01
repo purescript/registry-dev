@@ -128,7 +128,7 @@ main = Aff.launchAff_ do
               Left err -> throwWithComment $ "Failed to commit package set file: " <> err
               Right _ -> pure unit
 
-findRecentUploads :: Hours -> RegistryM (Map PackageName (NonEmptyArray Version))
+findRecentUploads :: Hours -> RegistryM { accepted :: Map PackageName Version, rejected :: Map PackageName (NonEmptyArray Version) }
 findRecentUploads limit = do
   metadata <- readPackagesMetadata
   now <- liftEffect Now.nowDateTime
@@ -144,7 +144,7 @@ findRecentUploads limit = do
         pure version
       pure (Tuple packageName versions)
 
-    deduplicated = packageUploads # foldlWithIndex { rejected: Map.empty, accepted: Map.empty } \name acc versions -> do
+    deduplicated = packageUploads # flip foldlWithIndex { rejected: Map.empty, accepted: Map.empty } \name acc versions -> do
       let { init, last } = NonEmptyArray.unsnoc versions
       case NonEmptyArray.fromArray init of
         Nothing -> acc { accepted = Map.insert name last acc.accepted }
