@@ -13,6 +13,7 @@ import Control.Monad.Reader (ask, asks)
 import Data.Argonaut.Parser as Argonaut.Core
 import Data.Argonaut.Parser as JsonParser
 import Data.Array as Array
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
 import Data.Foldable (traverse_)
 import Data.Generic.Rep as Generic
@@ -36,6 +37,7 @@ import Effect.Now as Now
 import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
 import Foreign.FastGlob as FastGlob
+import Foreign.Git as Git
 import Foreign.GitHub (GitHubToken(..), IssueNumber, Octokit)
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
@@ -44,7 +46,6 @@ import Foreign.Purs as Purs
 import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
 import Foreign.Wget as Wget
-import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
 import Node.FS.Stats as FS.Stats
 import Node.Path as Path
@@ -62,11 +63,10 @@ import Registry.PackageSet as PackageSet
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
-import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), PackageSet(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
+import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), Owner(..), PackageSet(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Version (ParseMode(..), Range, Version)
 import Registry.Version as Version
-import Sunde as Process
 import Text.Parsing.StringParser as StringParser
 
 main :: Effect Unit
@@ -195,7 +195,6 @@ runOperation operation = case operation of
     -- to only the packaging team. We throw here if this is an authenticated
     -- operation and we can't verify they are a member of the packaging team.
     when (didChangeCompiler || didRemovePackages) do
-      let packagingTeam = { org: "purescript", team: "packaging" }
       -- We always throw if we couldn't verify the user who opened or commented
       -- is a member of the packaging team.
       liftAff (Except.runExceptT (GitHub.listTeamMembers octokit cache packagingTeam)) >>= case _ of
@@ -279,8 +278,9 @@ runOperation operation = case operation of
         _ -> do
           throwWithComment "The package set produced from this suggested update does not compile."
 
-  Authenticated auth@(AuthenticatedData { payload }) -> case payload of
+  Authenticated submittedAuth@(AuthenticatedData { payload }) -> case payload of
     Unpublish { packageName, unpublishReason, unpublishVersion } -> do
+      username <- asks _.username
       metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Only published packages can be unpublished." }
 
       let
@@ -304,67 +304,68 @@ runOperation operation = case operation of
             , "cc @purescript/packaging"
             ]
 
-      case metadata.owners of
+      Tuple auth maybeOwners <- acceptTrustees username submittedAuth metadata.owners
+
+      case maybeOwners of
         Nothing ->
           throwWithComment $ String.joinWith " "
             [ "Cannot verify package ownership because no owners are listed in the package metadata."
             , "Please publish a package version with your SSH public key in the owners field."
             , "You can then retry unpublishing this version by authenticating with your private key."
             ]
-        Just owners ->
-          liftAff (SSH.verifyPayload owners auth) >>= case _ of
-            Left err ->
-              throwWithComment $ String.joinWith "\n"
-                [ "Failed to verify package ownership:"
-                , "  " <> err
+        Just owners -> liftAff (SSH.verifyPayload owners auth) >>= case _ of
+          Left err -> throwWithComment $ String.joinWith "\n"
+            [ "Failed to verify package ownership:"
+            , err
+            ]
+          Right _ -> do
+            now <- liftEffect $ Now.nowDateTime
+
+            publishedDate <- case PDT.fromRFC3339String publishedMetadata.publishedTime of
+              Nothing ->
+                throwWithComment "Published time is an invalid RFC3339String\ncc @purescript/packaging"
+              Just precise ->
+                pure $ PDT.toDateTimeLossy precise
+
+            let hourLimit = 48
+            let diff = DateTime.diff now publishedDate
+            when (diff > Hours (Int.toNumber hourLimit)) do
+              throwWithComment $ "Packages can only be unpublished within " <> show hourLimit <> " hours."
+
+            deletePackage { name: packageName, version: unpublishVersion }
+
+            let
+              unpublishedMetadata =
+                { ref: publishedMetadata.ref
+                , reason: unpublishReason
+                , publishedTime: publishedMetadata.publishedTime
+                , unpublishedTime: RFC3339String.fromDateTime now
+                }
+
+              updatedMetadata = unpublishVersionInMetadata unpublishVersion unpublishedMetadata metadata
+
+            writeMetadata packageName updatedMetadata >>= case _ of
+              Left err -> throwWithComment $ String.joinWith "\n"
+                [ "Unpublish succeeded, but committing metadata failed."
+                , err
+                , "cc @purescript/packaging"
                 ]
-            Right _ -> do
-              now <- liftEffect $ Now.nowDateTime
+              Right _ -> pure unit
 
-              publishedDate <- case PDT.fromRFC3339String publishedMetadata.publishedTime of
-                Nothing ->
-                  throwWithComment "Published time is an invalid RFC3339String\ncc @purescript/packaging"
-                Just precise ->
-                  pure $ PDT.toDateTimeLossy precise
+            writeDeleteIndex packageName unpublishVersion >>= case _ of
+              Left err -> throwWithComment $ String.joinWith "\n"
+                [ "Unpublish succeeded, but committing to the registry index failed."
+                , err
+                , "cc: @purescript/packaging"
+                ]
+              Right _ -> pure unit
 
-              let hourLimit = 48
-              let diff = DateTime.diff now publishedDate
-              when (diff > Hours (Int.toNumber hourLimit)) do
-                throwWithComment $ "Packages can only be unpublished within " <> show hourLimit <> " hours."
-
-              deletePackage { name: packageName, version: unpublishVersion }
-
-              let
-                unpublishedMetadata =
-                  { ref: publishedMetadata.ref
-                  , reason: unpublishReason
-                  , publishedTime: publishedMetadata.publishedTime
-                  , unpublishedTime: RFC3339String.fromDateTime now
-                  }
-
-                updatedMetadata = unpublishVersionInMetadata unpublishVersion unpublishedMetadata metadata
-
-              writeMetadata packageName updatedMetadata >>= case _ of
-                Left err -> throwWithComment $ String.joinWith "\n"
-                  [ "Unpublish succeeded, but committing metadata failed."
-                  , err
-                  , "cc @purescript/packaging"
-                  ]
-                Right _ -> pure unit
-
-              writeDeleteIndex packageName unpublishVersion >>= case _ of
-                Left err -> throwWithComment $ String.joinWith "\n"
-                  [ "Unpublish succeeded, but committing to the registry index failed."
-                  , err
-                  , "cc: @purescript/packaging"
-                  ]
-                Right _ -> pure unit
-
-              comment "Successfully unpublished!"
+            comment "Successfully unpublished!"
 
       closeIssue
 
     Transfer { packageName, newPackageLocation } -> do
+      username <- asks _.username
       metadata <- readMetadata packageName
         { noMetadata: String.joinWith " "
             [ "No metadata found for your package."
@@ -381,7 +382,9 @@ runOperation operation = case operation of
           , "because another package is already registered at that location."
           ]
 
-      case metadata.owners of
+      Tuple auth maybeOwners <- acceptTrustees username submittedAuth metadata.owners
+
+      case maybeOwners of
         Nothing ->
           throwWithComment $ String.joinWith " "
             [ "Cannot verify package ownership because no owners are listed in the package metadata."
@@ -879,19 +882,19 @@ fetchRepo address path = FS.exists path >>= case _ of
   true -> do
     log $ "Found the " <> address.repo <> " repo locally, pulling..."
     result <- Except.runExceptT do
-      branch <- runGitSilent [ "rev-parse", "--abbrev-ref", "HEAD" ] (Just path)
+      branch <- Git.runGitSilent [ "rev-parse", "--abbrev-ref", "HEAD" ] (Just path)
       when (branch /= "main") do
         throwError $ Array.fold
           [ "Cannot import using a branch other than 'main'. Got: "
           , branch
           ]
-      runGit_ [ "pull", "--rebase", "--autostash" ] (Just path)
+      Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just path)
     case result of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> pure unit
   _ -> do
     log $ "Didn't find the " <> address.repo <> " repo, cloning..."
-    Except.runExceptT (runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
+    Except.runExceptT (Git.runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> pure unit
 
@@ -966,7 +969,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
 cloneGitTag :: Http.URL -> String -> FilePath -> Aff Unit
 cloneGitTag url ref targetDir = do
   let args = [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false" ]
-  withBackoff' (Except.runExceptT (runGit args (Just targetDir))) >>= case _ of
+  withBackoff' (Except.runExceptT (Git.runGit args (Just targetDir))) >>= case _ of
     Nothing -> Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> url <> " " <> ref
     Just (Left err) -> Aff.throwError $ Aff.error err
     Just (Right _) -> log "Successfully cloned package."
@@ -975,7 +978,7 @@ cloneGitTag url ref targetDir = do
 gitGetRefTime :: String -> FilePath -> Aff RFC3339String
 gitGetRefTime ref repoDir = do
   result <- Except.runExceptT do
-    timestamp <- runGit [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir)
+    timestamp <- Git.runGit [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir)
     jsDate <- liftEffect $ JSDate.parse timestamp
     dateTime <- Except.except $ note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
     pure $ PDT.toRFC3339String $ PDT.fromDateTime dateTime
@@ -985,65 +988,40 @@ gitGetRefTime ref repoDir = do
 
 configurePacchettiBotti :: Maybe FilePath -> ExceptT String Aff GitHubToken
 configurePacchettiBotti cwd = do
-  pacchettibotti <- liftEffect do
+  pacchettiBotti <- liftEffect do
     Env.lookupEnv "PACCHETTIBOTTI_TOKEN"
       >>= maybe (throw "PACCHETTIBOTTI_TOKEN not defined in the environment") pure
-  runGit_ [ "config", "user.name", "PacchettiBotti" ] cwd
-  runGit_ [ "config", "user.email", "<pacchettibotti@purescript.org>" ] cwd
-  pure (GitHubToken pacchettibotti)
+  Git.runGit_ [ "config", "user.name", "PacchettiBotti" ] cwd
+  Git.runGit_ [ "config", "user.email", "<pacchettibotti@purescript.org>" ] cwd
+  pure (GitHubToken pacchettiBotti)
 
 pacchettiBottiPushToRegistryIndex :: PackageName -> FilePath -> Aff (Either String Unit)
 pacchettiBottiPushToRegistryIndex packageName registryIndexDir = Except.runExceptT do
   GitHubToken token <- configurePacchettiBotti (Just registryIndexDir)
-  runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryIndexDir)
-  runGit_ [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
-  runGit_ [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
+  Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryIndexDir)
+  Git.runGit_ [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
+  Git.runGit_ [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
   let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-index.git"
-  void $ runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
+  void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
 
 pacchettiBottiPushToRegistryMetadata :: PackageName -> FilePath -> Aff (Either String Unit)
 pacchettiBottiPushToRegistryMetadata packageName registryDir = Except.runExceptT do
   GitHubToken token <- configurePacchettiBotti (Just registryDir)
-  runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
-  runGit_ [ "add", Path.concat [ "metadata", PackageName.print packageName <> ".json" ] ] (Just registryDir)
-  runGit_ [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] (Just registryDir)
+  Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
+  Git.runGit_ [ "add", Path.concat [ "metadata", PackageName.print packageName <> ".json" ] ] (Just registryDir)
+  Git.runGit_ [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] (Just registryDir)
   let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
-  void $ runGitSilent [ "push", origin, "main" ] (Just registryDir)
+  void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryDir)
 
 pacchettiBottiPushToRegistryPackageSets :: PackageSet -> FilePath -> Aff (Either String Unit)
 pacchettiBottiPushToRegistryPackageSets (PackageSet set) registryDir = Except.runExceptT do
   GitHubToken token <- configurePacchettiBotti (Just registryDir)
-  runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
-  runGit_ [ "add", Path.concat [ "package-sets", Version.printVersion set.version <> ".json" ] ] (Just registryDir)
+  Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
+  Git.runGit_ [ "add", Path.concat [ "package-sets", Version.printVersion set.version <> ".json" ] ] (Just registryDir)
   let message = "Release " <> Version.printVersion set.version <> " package set."
-  runGit_ [ "commit", "-m", message ] (Just registryDir)
+  Git.runGit_ [ "commit", "-m", message ] (Just registryDir)
   let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
-  void $ runGitSilent [ "push", origin, "main" ] (Just registryDir)
-
-runGit_ :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
-runGit_ args cwd = void $ runGit args cwd
-
-runGit :: Array String -> Maybe FilePath -> ExceptT String Aff String
-runGit args cwd = ExceptT do
-  result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
-  let stdout = String.trim result.stdout
-  let stderr = String.trim result.stderr
-  case result.exit of
-    NodeProcess.Normally 0 -> do
-      unless (String.null stdout) (info stdout)
-      pure $ Right stdout
-    _ -> do
-      unless (String.null stderr) (error stderr)
-      pure $ Left stderr
-
-runGitSilent :: Array String -> Maybe FilePath -> ExceptT String Aff String
-runGitSilent args cwd = ExceptT do
-  result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
-  case result.exit of
-    NodeProcess.Normally 0 -> do
-      let stdout = String.trim result.stdout
-      pure $ Right stdout
-    _ -> pure $ Left $ "Failed to run git command via runGitSilent."
+  void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryDir)
 
 -- | The absolute maximum bytes allowed in a package
 maxPackageBytes :: Number
@@ -1172,3 +1150,64 @@ writeDeleteIndex name version = do
   registryIndexDir <- asks _.registryIndex
   liftAff $ Index.deleteManifest registryIndexDir name version
   commitIndexFile name
+
+-- | Re-sign a payload as pacchettibotti if the authenticated operation was
+-- | submitted by a registry trustee.
+--
+-- @pacchettibotti is considered an 'owner' of all packages for authenticated
+-- operations. Registry trustees can ask pacchettibotti to perform an action on
+-- behalf of a package by submitting a payload with the @pacchettibotti email
+-- address. If the payload was submitted by a trustee (ie. a member of the
+-- packaging team) then pacchettibotti will re-sign it and add itself as an
+-- owner before continuing with the authenticated operation.
+acceptTrustees
+  :: String
+  -> AuthenticatedData
+  -> Maybe (NonEmptyArray Owner)
+  -> RegistryM (Tuple AuthenticatedData (Maybe (NonEmptyArray Owner)))
+acceptTrustees username authData@(AuthenticatedData authenticated) maybeOwners = do
+  { octokit, cache } <- ask
+  if authenticated.email /= (un Owner pacchettiBottiOwner).email then
+    pure (Tuple authData maybeOwners)
+  else do
+    let
+      ownersWithPacchettiBotti = case maybeOwners of
+        Nothing -> NonEmptyArray.singleton pacchettiBottiOwner
+        Just owners -> NonEmptyArray.cons pacchettiBottiOwner owners
+
+    liftAff (Except.runExceptT (GitHub.listTeamMembers octokit cache packagingTeam)) >>= case _ of
+      Left githubError -> throwWithComment $ Array.fold
+        [ "This authenticated operation was opened using the pacchettibotti "
+        , "email address, but we were unable to authenticate that you are a "
+        , "member of the @purescript/packaging team:\n\n"
+        , GitHub.printGitHubError githubError
+        ]
+      Right members -> do
+        unless (Array.elem username (map _.username members)) do
+          throwWithComment $ String.joinWith " "
+            [ "This authenticated operation was opened using the pacchettibotti "
+            , "email address, but your username is not a member of the "
+            , "@purescript/packaging team."
+            ]
+
+        pacchettiBottiPrivateKey <- liftEffect do
+          mbKey <- Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519"
+          maybe (throw "PACCHETTIBOTTI_ED25519 not defined in the environment.") pure mbKey
+
+        signature <- liftAff (SSH.signPacchettiBotti { rawPayload: authenticated.rawPayload, pacchettiBottiPrivateKey }) >>= case _ of
+          Left _ -> throwWithComment "Error signing transfer. cc: @purescript/packaging"
+          Right signature -> pure signature
+
+        let newAuth = AuthenticatedData (authenticated { signature = signature })
+
+        pure (Tuple newAuth (Just ownersWithPacchettiBotti))
+
+pacchettiBottiOwner :: Owner
+pacchettiBottiOwner = Owner
+  { email: "pacchettibotti@purescript.org"
+  , keytype: "ssh-ed25519"
+  , public: "AAAAC3NzaC1lZDI1NTE5AAAAIA/zFrxmSFY1ku0/Se5pgRJiy5IBgxDXyGBL8An892Mt"
+  }
+
+packagingTeam :: GitHub.Team
+packagingTeam = { org: "purescript", team: "packaging" }

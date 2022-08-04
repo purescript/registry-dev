@@ -10,6 +10,7 @@ module Foreign.GitHub
   , RateLimit
   , Route
   , Tag
+  , Team
   , TeamMember
   , closeIssue
   , createComment
@@ -28,6 +29,7 @@ module Foreign.GitHub
 
 import Registry.Prelude
 
+import Affjax as Http
 import Control.Monad.Except as Except
 import Control.Promise (Promise)
 import Control.Promise as Promise
@@ -73,12 +75,15 @@ foreign import mkOctokitImpl :: EffectFn1 GitHubToken Octokit
 mkOctokit :: GitHubToken -> Effect Octokit
 mkOctokit = runEffectFn1 mkOctokitImpl
 
+-- | A team within a GitHub organization
+type Team = { org :: String, team :: String }
+
 -- | Member of a GitHub organization
 type TeamMember = { username :: String, userId :: Int }
 
 -- | List members of the given team
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/teams/listMembersInOrg.md
-listTeamMembers :: Octokit -> Cache -> { org :: String, team :: String } -> ExceptT GitHubError Aff (Array TeamMember)
+listTeamMembers :: Octokit -> Cache -> Team -> ExceptT GitHubError Aff (Array TeamMember)
 listTeamMembers octokit cache { org, team } = do
   let requestArgs = { octokit, route, headers: Object.empty, args: {} }
   let cacheArgs = { cache, checkGitHub: true }
@@ -119,7 +124,8 @@ listTags octokit cache address = do
     name <- obj .: "name"
     commitObj <- obj .: "commit"
     sha <- commitObj .: "sha"
-    pure { name, sha }
+    url <- commitObj .: "url"
+    pure { name, sha, url }
 
 -- | Fetch a specific file  from the provided repository at the given ref and
 -- | filepath. Filepaths should lead to a single file from the root of the repo.
@@ -423,7 +429,7 @@ type Address = { owner :: String, repo :: String }
 registryAddress :: Address
 registryAddress = { owner: "purescript", repo: "registry-preview" }
 
-type Tag = { name :: String, sha :: String }
+type Tag = { name :: String, sha :: String, url :: Http.URL }
 
 parseRepo :: PackageURL -> Either Parser.ParseError Address
 parseRepo = unwrap >>> Parser.runParser do
