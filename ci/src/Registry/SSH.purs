@@ -1,6 +1,6 @@
 module Registry.SSH
   ( SignAuthenticated
-  , signPacchettiBotti
+  , signPayload
   , verifyPayload
   ) where
 
@@ -56,17 +56,15 @@ type SignAuthenticated =
   , rawPayload :: String
   }
 
-signPacchettiBotti :: SignAuthenticated -> Aff (Either String (Array String))
-signPacchettiBotti { publicKey, privateKey, rawPayload } = do
+signPayload :: SignAuthenticated -> Aff (Either String (Array String))
+signPayload { publicKey, privateKey, rawPayload } = do
   tmp <- liftEffect Tmp.mkTmpDir
+  let publicKeyPath = Path.concat [ tmp, sshKeyPath <> ".pub" ]
   let privateKeyPath = Path.concat [ tmp, sshKeyPath ]
-  let publicKeyPath = privateKeyPath <> ".pub"
-  FS.writeTextFile UTF8 publicKeyPath publicKey
-  FS.writeTextFile UTF8 privateKeyPath privateKey
-  let maybePerms = Perms.permsFromString "0600"
-  for_ maybePerms \perms -> do
-    FS.chmod publicKeyPath perms
-    FS.chmod privateKeyPath perms
+  -- Key files must have a single trailing newline.
+  FS.writeTextFile UTF8 publicKeyPath (String.trim publicKey <> "\n")
+  FS.writeTextFile UTF8 privateKeyPath (String.trim privateKey <> "\n")
+  for_ (Perms.permsFromString "0600") (FS.chmod privateKeyPath)
   sshKeygenSign tmp
   where
   sshKeygenSign tmp = do

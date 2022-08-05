@@ -28,6 +28,7 @@ import Data.RFC3339String (RFC3339String)
 import Data.RFC3339String as RFC3339String
 import Data.Set as Set
 import Data.String as String
+import Data.String.Base64 as Base64
 import Data.Time.Duration (Hours(..))
 import Data.Tuple (uncurry)
 import Data.Tuple.Nested (type (/\))
@@ -1167,14 +1168,9 @@ acceptTrustees
   -> RegistryM (Tuple AuthenticatedData (Maybe (NonEmptyArray Owner)))
 acceptTrustees username authData@(AuthenticatedData authenticated) maybeOwners = do
   { octokit, cache } <- ask
-  if authenticated.email /= (un Owner pacchettiBottiOwner).email then
+  if authenticated.email /= "pacchettibotti@purescript.org" then
     pure (Tuple authData maybeOwners)
   else do
-    let
-      ownersWithPacchettiBotti = case maybeOwners of
-        Nothing -> NonEmptyArray.singleton pacchettiBottiOwner
-        Just owners -> NonEmptyArray.cons pacchettiBottiOwner owners
-
     liftAff (Except.runExceptT (GitHub.listTeamMembers octokit cache packagingTeam)) >>= case _ of
       Left githubError -> throwWithComment $ Array.fold
         [ "This authenticated operation was opened using the pacchettibotti "
@@ -1184,41 +1180,86 @@ acceptTrustees username authData@(AuthenticatedData authenticated) maybeOwners =
         ]
       Right members -> do
         unless (Array.elem username (map _.username members)) do
-          throwWithComment $ String.joinWith " "
+          throwWithComment $ Array.fold
             [ "This authenticated operation was opened using the pacchettibotti "
             , "email address, but your username is not a member of the "
             , "@purescript/packaging team."
             ]
 
-        pacchettiBottiPublicKey <- liftEffect do
-          mbKey <- Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519_PUB"
-          maybe (throw "PACCHETTIBOTTI_ED25519_PUB not defined in the environment.") pure mbKey
+        { publicKey, privateKey } <- readPacchettiBottiKeys
 
-        pacchettiBottiPrivateKey <- liftEffect do
-          mbKey <- Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519"
-          maybe (throw "PACCHETTIBOTTI_ED25519 not defined in the environment.") pure mbKey
-
-        let
-          auth =
-            { publicKey: pacchettiBottiPublicKey
-            , privateKey: pacchettiBottiPrivateKey
-            , rawPayload: authenticated.rawPayload
-            }
-
-        signature <- liftAff (SSH.signPacchettiBotti auth) >>= case _ of
-          Left _ -> throwWithComment "Error signing transfer. cc: @purescript/packaging"
+        signature <- liftAff (SSH.signPayload { publicKey, privateKey, rawPayload: authenticated.rawPayload }) >>= case _ of
+          Left err -> log err *> throwWithComment "Error signing transfer. cc: @purescript/packaging"
           Right signature -> pure signature
 
-        let newAuth = AuthenticatedData (authenticated { signature = signature })
+        let
+          newAuth = AuthenticatedData (authenticated { signature = signature })
+
+          pacchettiBottiOwner = Owner
+            { email: "pacchettibotti@purescript.org"
+            , keytype: "ssh-ed25519"
+            , public: publicKey
+            }
+
+          ownersWithPacchettiBotti = case maybeOwners of
+            Nothing -> NonEmptyArray.singleton pacchettiBottiOwner
+            Just owners -> NonEmptyArray.cons pacchettiBottiOwner owners
 
         pure (Tuple newAuth (Just ownersWithPacchettiBotti))
 
-pacchettiBottiOwner :: Owner
-pacchettiBottiOwner = Owner
-  { email: "pacchettibotti@purescript.org"
-  , keytype: "ssh-ed25519"
-  , public: "AAAAC3NzaC1lZDI1NTE5AAAAIA/zFrxmSFY1ku0/Se5pgRJiy5IBgxDXyGBL8An892Mt"
-  }
+-- | Read the PacchettiBotti SSH keypair from the environment.
+--
+-- PacchettiBotti's keys are stored in base64-encoded strings in the
+-- environment. To regenerate SSH keys for pacchettibotti:
+--
+-- 1. Generate the keypair
+-- $ ssh-keygen -t ed25519 -C "pacchettibotti@purescript.org"
+--
+-- 2. Encode the keypair (run this for both public and private):
+-- $ cat id_ed25519 | base64 | tr -d \\n
+-- $ cat id_ed25519.pub | base64 | tr -d \\n
+--
+-- 3. Store the results in 1Password and in GitHub secrets storage.
+readPacchettiBottiKeys :: RegistryM { publicKey :: String, privateKey :: String }
+readPacchettiBottiKeys = do
+  publicKey <- liftEffect (Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519_PUB") >>= case _ of
+    Nothing -> throwWithComment "PACCHETTIBOTTI_ED25519_PUB not defined in the environment."
+    Just b64Key -> case Base64.decode b64Key of
+      Left b64Error -> throwWithComment $ "Failed to decode base64-encoded public key: " <> Aff.message b64Error
+      Right decoded -> case verifyPublicKey (String.trim decoded) of
+        Left error -> throwWithComment $ "Public key is malformed: " <> error
+        Right key -> pure key
+
+  privateKey <- liftEffect (Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519") >>= case _ of
+    Nothing -> throwWithComment "PACCHETTIBOTTI_ED25519 not defined in the environment."
+    Just b64Key -> case Base64.decode b64Key of
+      Left _ -> throwWithComment $ "Failed to decode base64-encoded private key."
+      Right key -> pure (String.trim key)
+
+  pure { publicKey, privateKey }
+  where
+  verifyPublicKey :: String -> Either String String
+  verifyPublicKey decodedKey = do
+    let split = String.split (String.Pattern " ") decodedKey
+
+    keyFields <- note "Key must be of the form 'keytype key email'" do
+      keyType <- Array.index split 0
+      key <- Array.index split 1
+      email <- Array.index split 2
+      pure { keyType, key, email }
+
+    if keyFields.keyType /= pacchettiBottiKeyType then
+      Left $ Array.fold [ "Key type must be ", pacchettiBottiKeyType, " but received ", keyFields.keyType, " instead." ]
+    else if keyFields.email /= pacchettiBottiEmail then
+      Left $ Array.fold [ "Email must be ", pacchettiBottiEmail, " but received: ", keyFields.email, " instead." ]
+    else
+      pure keyFields.key
 
 packagingTeam :: GitHub.Team
 packagingTeam = { org: "purescript", team: "packaging" }
+
+pacchettiBottiEmail :: String
+pacchettiBottiEmail = "pacchettibotti@purescript.org"
+
+pacchettiBottiKeyType :: String
+pacchettiBottiKeyType = "ssh-ed25519"

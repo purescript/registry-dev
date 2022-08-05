@@ -22,8 +22,7 @@ import Registry.Json as Json
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
 import Registry.RegistryM as RegistryM
-import Registry.SSH as SSH
-import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Location(..), Metadata, Operation(..), Owner(..))
+import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Location(..), Metadata, Operation(..))
 import Registry.Scripts.LegacyImporter as LegacyImporter
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -52,7 +51,7 @@ main = launchAff_ do
       , packagesMetadata: unsafePerformEffect (Ref.new Map.empty)
       , cache
       , octokit
-      , username: ""
+      , username: "pacchettibotti"
       , registry: Path.concat [ "..", "registry" ]
       , registryIndex: Path.concat [ "..", "registry-index" ]
       }
@@ -83,34 +82,16 @@ processLegacyRegistry legacyFile = do
 
 transferAll :: Map String GitHub.PackageURL -> Map String PackageLocations -> RegistryM (Map String GitHub.PackageURL)
 transferAll packages packageLocations = do
-  pacchettiBottiPublicKey <- liftEffect do
-    mbKey <- Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519_PUB"
-    maybe (Exception.throw "PACCHETTIBOTTI_ED25519_PUB not defined in the environment.") pure mbKey
-  pacchettiBottiPrivateKey <- liftEffect do
-    mbKey <- Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519"
-    maybe (Exception.throw "PACCHETTIBOTTI_ED25519 not defined in the environment.") pure mbKey
   packagesRef <- liftEffect (Ref.new packages)
   forWithIndex_ packageLocations \package locations -> do
     let newPackageLocation = locations.tagLocation
-    transferPackage
-      { publicKey: pacchettiBottiPublicKey
-      , privateKey: pacchettiBottiPrivateKey
-      , rawPackageName: package
-      , newPackageLocation
-      }
+    transferPackage package newPackageLocation
     let url = locationToPackageUrl newPackageLocation
     liftEffect $ Ref.modify_ (Map.insert package url) packagesRef
   liftEffect $ Ref.read packagesRef
 
-type TransferArgs =
-  { publicKey :: String
-  , privateKey :: String
-  , rawPackageName :: String
-  , newPackageLocation :: Location
-  }
-
-transferPackage :: TransferArgs -> RegistryM Unit
-transferPackage { publicKey, privateKey, rawPackageName, newPackageLocation } = do
+transferPackage :: String -> Location -> RegistryM Unit
+transferPackage rawPackageName newPackageLocation = do
   packageName <- case PackageName.parse (stripPureScriptPrefix rawPackageName) of
     Left _ -> throwWithComment $ "Unexpected package name parsing failure for " <> rawPackageName
     Right value -> pure value
@@ -119,15 +100,11 @@ transferPackage { publicKey, privateKey, rawPackageName, newPackageLocation } = 
     payload = Transfer { packageName, newPackageLocation }
     rawPayload = Json.stringifyJson payload
 
-  signature <- liftAff (SSH.signPacchettiBotti { rawPayload, publicKey, privateKey }) >>= case _ of
-    Left err -> throwWithComment $ "Error signing transfer: " <> err
-    Right signature -> pure signature
-
   API.runOperation $ Authenticated $ AuthenticatedData
-    { email: (un Owner API.pacchettiBottiOwner).email
+    { email: "pacchettibotti@purescript.org"
     , payload
     , rawPayload
-    , signature
+    , signature: [] -- The API will re-sign using @pacchettibotti credentials.
     }
 
 type PackageLocations =
