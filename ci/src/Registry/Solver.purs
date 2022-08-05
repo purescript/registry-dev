@@ -26,9 +26,9 @@ newtype SolverT m a =
       -- `get`
       -> State
       -- `empty`
-      -> (State -> m b)
+      -> (Unit -> m b)
       -- `pure`/`put`
-      -> ((State -> m b) -> State -> a -> m b)
+      -> ((Unit -> m b) -> State -> a -> m b)
       -> m b
     )
 
@@ -63,10 +63,10 @@ instance monadStateSolver :: MonadState State (SolverT m) where
 
 instance altSolver :: Alt (SolverT m) where
   alt (Solver c1) (Solver c2) = Solver \r s back ok ->
-    c1 r s (\s' -> c2 r s' back ok) ok
+    c1 r s (\_ -> c2 r s back ok) ok
 
 instance plusSolver :: Plus (SolverT m) where
-  empty = Solver \_ s back _ -> back s
+  empty = Solver \_ _ back _ -> back unit
 
 type Goals = Map PackageName Range
 type Solved = Map PackageName Version
