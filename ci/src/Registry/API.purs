@@ -993,7 +993,7 @@ configurePacchettiBotti cwd = do
     Env.lookupEnv "PACCHETTIBOTTI_TOKEN"
       >>= maybe (throw "PACCHETTIBOTTI_TOKEN not defined in the environment") pure
   Git.runGit_ [ "config", "user.name", "PacchettiBotti" ] cwd
-  Git.runGit_ [ "config", "user.email", "<pacchettibotti@purescript.org>" ] cwd
+  Git.runGit_ [ "config", "user.email", "<" <> pacchettiBottiEmail <> ">" ] cwd
   pure (GitHubToken pacchettiBotti)
 
 pacchettiBottiPushToRegistryIndex :: PackageName -> FilePath -> Aff (Either String Unit)
@@ -1196,8 +1196,8 @@ acceptTrustees username authData@(AuthenticatedData authenticated) maybeOwners =
           newAuth = AuthenticatedData (authenticated { signature = signature })
 
           pacchettiBottiOwner = Owner
-            { email: "pacchettibotti@purescript.org"
-            , keytype: "ssh-ed25519"
+            { email: pacchettiBottiEmail
+            , keytype: pacchettiBottiKeyType
             , public: publicKey
             }
 

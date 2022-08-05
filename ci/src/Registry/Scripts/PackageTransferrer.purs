@@ -101,7 +101,7 @@ transferPackage rawPackageName newPackageLocation = do
     rawPayload = Json.stringifyJson payload
 
   API.runOperation $ Authenticated $ AuthenticatedData
-    { email: "pacchettibotti@purescript.org"
+    { email: API.pacchettiBottiEmail
     , payload
     , rawPayload
     , signature: [] -- The API will re-sign using @pacchettibotti credentials.
