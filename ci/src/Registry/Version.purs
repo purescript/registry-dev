@@ -7,6 +7,7 @@ module Registry.Version
   , bumpMinor
   , bumpPatch
   , greaterThanOrEq
+  , intersect
   , lessThan
   , major
   , minor
@@ -165,6 +166,16 @@ printRange range =
     , " <"
     , printVersion (lessThan range)
     ]
+
+intersect :: Range -> Range -> Maybe Range
+intersect (Range r1) (Range r2)
+  | r1.lhs > r2.rhs || r2.lhs < r1.rhs = Nothing
+  | otherwise = Just $ Range
+    { lhs: max r1.lhs r2.lhs
+    , rhs: min r1.rhs r2.rhs
+    , mode: Lenient
+    , raw: r1.raw <> " && " <> r2.raw
+    }
 
 parseRange :: ParseMode -> String -> Either ParseError Range
 parseRange mode input = do
