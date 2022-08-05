@@ -1190,11 +1190,22 @@ acceptTrustees username authData@(AuthenticatedData authenticated) maybeOwners =
             , "@purescript/packaging team."
             ]
 
+        pacchettiBottiPublicKey <- liftEffect do
+          mbKey <- Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519_PUB"
+          maybe (throw "PACCHETTIBOTTI_ED25519_PUB not defined in the environment.") pure mbKey
+
         pacchettiBottiPrivateKey <- liftEffect do
           mbKey <- Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519"
           maybe (throw "PACCHETTIBOTTI_ED25519 not defined in the environment.") pure mbKey
 
-        signature <- liftAff (SSH.signPacchettiBotti { rawPayload: authenticated.rawPayload, pacchettiBottiPrivateKey }) >>= case _ of
+        let
+          auth =
+            { publicKey: pacchettiBottiPublicKey
+            , privateKey: pacchettiBottiPrivateKey
+            , rawPayload: authenticated.rawPayload
+            }
+
+        signature <- liftAff (SSH.signPacchettiBotti auth) >>= case _ of
           Left _ -> throwWithComment "Error signing transfer. cc: @purescript/packaging"
           Right signature -> pure signature
 
