@@ -1,5 +1,5 @@
 {
-  "purescript-TypeAhead": "https://github.com/mckeankylej/purescript-typeahead.git",
+  "purescript-typeahead": "https://github.com/mckeankylej/purescript-typeahead.git",
   "purescript-abides": "https://github.com/athanclark/purescript-abides.git",
   "purescript-abstract-database": "https://github.com/chrisdotcode/purescript-abstract-database.git",
   "purescript-accounting": "https://github.com/ascjones/purescript-accounting.git",
@@ -564,7 +564,7 @@
   "purescript-halogen-monaco": "https://github.com/maxhillaert/purescript-halogen-monaco.git",
   "purescript-halogen-proxy": "https://github.com/slamdata/purescript-halogen-proxy.git",
   "purescript-halogen-pure": "https://github.com/aij/purescript-halogen-pure.git",
-  "purescript-halogen-renderless": "https://github.com/purescript-deprecated/purescript-halogen-renderless.git",
+  "purescript-halogen-renderless": "https://github.com/thomashoneyman/purescript-halogen-renderless.git",
   "purescript-halogen-select": "https://github.com/citizennet/purescript-halogen-select.git",
   "purescript-halogen-selects": "https://github.com/slamdata/purescript-halogen-selects.git",
   "purescript-halogen-storybook": "https://github.com/rnons/purescript-halogen-storybook.git",
