@@ -55,6 +55,12 @@ spec = do
       , p "prelude" /\ v "0.0.0"
       ]
     testsucceeds
+      [ p "simple" /\ r ">=0.0.0 <2.0.0"
+      ]
+      [ p "simple" /\ v "1.0.0"
+      , p "prelude" /\ v "1.0.0"
+      ]
+    testsucceeds
       [ p "broken-fixed" /\ r ">=0.0.0 <2.0.0"
       ]
       [ p "broken-fixed" /\ v "1.0.0"
@@ -104,6 +110,13 @@ spec = do
     testsucceeds
       [ p "prelude" /\ r ">=0.0.0 <2.0.0" -- loose
       , p "simple" /\ r ">=1.0.0 <2.0.0" -- tight
+      ]
+      [ p "simple" /\ v "1.0.0"
+      , p "prelude" /\ v "1.0.0"
+      ]
+    testsucceeds
+      [ p "prelude" /\ r ">=0.0.0 <2.0.0" -- loose
+      , p "simple" /\ r ">=0.0.0 <2.0.0" -- loose
       ]
       [ p "simple" /\ v "1.0.0"
       , p "prelude" /\ v "1.0.0"

@@ -5,12 +5,12 @@ import Registry.Prelude
 import Control.Monad.Reader (class MonadAsk, ask, asks)
 import Control.Monad.State (class MonadState, get, modify_, put)
 import Control.Plus (class Alt, class Plus, empty)
+import Data.Array as Array
 import Data.Foldable (foldMap, oneOfMap)
 import Data.FoldableWithIndex (traverseWithIndex_)
 import Data.Identity (Identity(..))
 import Data.Map as Map
 import Data.Newtype (unwrap)
-import Data.Set as Set
 import Registry.PackageName (PackageName)
 import Registry.Version (Range, Version, intersect, rangeIncludes)
 
@@ -122,11 +122,13 @@ addConstraint name newConstraint = do
               if oldConstraint == mergedConstraint then pure unit
               else put $ goals { pending = Map.insert name mergedConstraint pending }
 
-getRelevantVersions :: PackageName -> Range -> Solver (Set Version)
+getRelevantVersions :: PackageName -> Range -> Solver (Array Version)
 getRelevantVersions name constraint =
   asks \index ->
     Map.lookup name index # foldMap do
-      Map.keys >>> Set.filter (rangeIncludes constraint)
+      -- Put newest versions first
+      Map.keys >>> Array.fromFoldable >>> Array.reverse
+        >>> Array.filter (rangeIncludes constraint)
 
 getConstraints :: PackageName -> Version -> Solver (Map PackageName Range)
 getConstraints pkg vsn =
