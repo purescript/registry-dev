@@ -222,5 +222,6 @@
   "purescript-workly": "https://github.com/cakekindel/purescript-workly.git",
   "purescript-yoga-fetch": "https://github.com/rowtype-yoga/purescript-yoga-fetch.git",
   "purescript-yoga-json": "https://github.com/rowtype-yoga/purescript-yoga-json.git",
-  "purescript-yoga-postgres": "https://github.com/rowtype-yoga/purescript-yoga-postgres.git"
+  "purescript-yoga-postgres": "https://github.com/rowtype-yoga/purescript-yoga-postgres.git",
+  "purescript-mermaid": "https://github.com/PureFunctor/purescript-mermaid.git"
 }
