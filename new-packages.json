@@ -48,6 +48,7 @@
   "purescript-elm-license-checker": "https://github.com/kakkun61/elm-license-checker.git",
   "purescript-elmish-enzyme": "https://github.com/collegevine/purescript-elmish-enzyme.git",
   "purescript-elmish-hooks": "https://github.com/collegevine/purescript-elmish-hooks.git",
+  "purescript-elmish-testing-library": "https://github.com/collegevine/purescript-elmish-testing-library.git",
   "purescript-envparse": "https://github.com/srghma/purescript-envparse.git",
   "purescript-erlps-core": "https://github.com/erlscripten/erlps-core.git",
   "purescript-fahrtwind": "https://github.com/rowtype-yoga/purescript-fahrtwind.git",
