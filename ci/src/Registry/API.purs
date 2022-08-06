@@ -1168,7 +1168,7 @@ acceptTrustees
   -> RegistryM (Tuple AuthenticatedData (Maybe (NonEmptyArray Owner)))
 acceptTrustees username authData@(AuthenticatedData authenticated) maybeOwners = do
   { octokit, cache } <- ask
-  if authenticated.email /= "pacchettibotti@purescript.org" then
+  if authenticated.email /= pacchettiBottiEmail then
     pure (Tuple authData maybeOwners)
   else do
     liftAff (Except.runExceptT (GitHub.listTeamMembers octokit cache packagingTeam)) >>= case _ of
