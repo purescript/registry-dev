@@ -1189,7 +1189,7 @@ acceptTrustees username authData@(AuthenticatedData authenticated) maybeOwners =
         { publicKey, privateKey } <- readPacchettiBottiKeys
 
         signature <- liftAff (SSH.signPayload { publicKey, privateKey, rawPayload: authenticated.rawPayload }) >>= case _ of
-          Left err -> log err *> throwWithComment "Error signing transfer. cc: @purescript/packaging"
+          Left _ -> throwWithComment "Error signing transfer. cc: @purescript/packaging"
           Right signature -> pure signature
 
         let
