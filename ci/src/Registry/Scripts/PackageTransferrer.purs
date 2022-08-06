@@ -194,13 +194,12 @@ commitLegacyRegistryFile sourceFile = Except.runExceptT do
   Git.runGitSilent [ "diff", "--stat" ] Nothing >>= case _ of
     files | String.contains (String.Pattern sourceFile) files -> do
       GitHubToken token <- API.configurePacchettiBotti Nothing
-      branch <- Git.runGitSilent [ "rev-parse", "--abbrev-ref", "HEAD" ] Nothing
       Git.runGit_ [ "pull" ] Nothing
       Git.runGit_ [ "add", path ] Nothing
       log "Committing to registry..."
       let message = Array.fold [ "Sort ", sourceFile, " and transfer packages that have moved repositories." ]
       Git.runGit_ [ "commit", "-m", message ] Nothing
       let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry.git"
-      void $ Git.runGitSilent [ "push", origin, branch ] Nothing
+      void $ Git.runGitSilent [ "push", origin, "master" ] Nothing
     _ ->
       log "No changes to commit."
