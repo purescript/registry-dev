@@ -175,6 +175,7 @@
               # Project tooling
               nixFlakes
               nixfmt
+              openssh
               git
               wget
               bash

@@ -22,8 +22,7 @@ import Registry.Json as Json
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
 import Registry.RegistryM as RegistryM
-import Registry.SSH as SSH
-import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Location(..), Metadata, Operation(..), Owner(..))
+import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Location(..), Metadata, Operation(..))
 import Registry.Scripts.LegacyImporter as LegacyImporter
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -52,7 +51,7 @@ main = launchAff_ do
       , packagesMetadata: unsafePerformEffect (Ref.new Map.empty)
       , cache
       , octokit
-      , username: ""
+      , username: "pacchettibotti"
       , registry: Path.concat [ "..", "registry" ]
       , registryIndex: Path.concat [ "..", "registry-index" ]
       }
@@ -66,39 +65,33 @@ main = launchAff_ do
 
 processLegacyRegistry :: FilePath -> RegistryM Unit
 processLegacyRegistry legacyFile = do
+  log $ Array.fold [ "Reading legacy registry file (", legacyFile, ")" ]
   packages <- liftAff $ LegacyImporter.readLegacyRegistryFile legacyFile
+  log "Reading latest locations..."
   locations <- latestLocations packages
-  newPackages <- transferAll packages (Map.catMaybes locations)
-  liftAff $ writeLegacyRegistryFile legacyFile newPackages
+  let needsTransfer = Map.catMaybes locations
+  case Map.size needsTransfer of
+    0 -> log "No packages require transferring."
+    n -> log $ Array.fold [ show n, " packages need transferring." ]
+  newPackages <- transferAll packages needsTransfer
+  log "Writing legacy registry file..."
+  liftAff (writeLegacyRegistryFile legacyFile newPackages)
   liftAff (commitLegacyRegistryFile legacyFile) >>= case _ of
     Left err -> throwWithComment err
     Right _ -> pure unit
 
 transferAll :: Map String GitHub.PackageURL -> Map String PackageLocations -> RegistryM (Map String GitHub.PackageURL)
 transferAll packages packageLocations = do
-  pacchettiBottiPrivateKey <- liftEffect do
-    mbKey <- Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519"
-    maybe (Exception.throw "PACCHETTIBOTTI_ED25519 not defined in the environment.") pure mbKey
   packagesRef <- liftEffect (Ref.new packages)
   forWithIndex_ packageLocations \package locations -> do
     let newPackageLocation = locations.tagLocation
-    transferPackage
-      { pacchettiBottiPrivateKey
-      , rawPackageName: package
-      , newPackageLocation
-      }
+    transferPackage package newPackageLocation
     let url = locationToPackageUrl newPackageLocation
     liftEffect $ Ref.modify_ (Map.insert package url) packagesRef
   liftEffect $ Ref.read packagesRef
 
-type TransferArgs =
-  { pacchettiBottiPrivateKey :: String
-  , rawPackageName :: String
-  , newPackageLocation :: Location
-  }
-
-transferPackage :: TransferArgs -> RegistryM Unit
-transferPackage { pacchettiBottiPrivateKey, rawPackageName, newPackageLocation } = do
+transferPackage :: String -> Location -> RegistryM Unit
+transferPackage rawPackageName newPackageLocation = do
   packageName <- case PackageName.parse (stripPureScriptPrefix rawPackageName) of
     Left _ -> throwWithComment $ "Unexpected package name parsing failure for " <> rawPackageName
     Right value -> pure value
@@ -107,15 +100,11 @@ transferPackage { pacchettiBottiPrivateKey, rawPackageName, newPackageLocation }
     payload = Transfer { packageName, newPackageLocation }
     rawPayload = Json.stringifyJson payload
 
-  signature <- liftAff (SSH.signPacchettiBotti { rawPayload, pacchettiBottiPrivateKey }) >>= case _ of
-    Left err -> throwWithComment $ "Error signing transfer: " <> err
-    Right signature -> pure signature
-
   API.runOperation $ Authenticated $ AuthenticatedData
-    { email: (un Owner API.pacchettiBottiOwner).email
+    { email: API.pacchettiBottiEmail
     , payload
     , rawPayload
-    , signature
+    , signature: [] -- The API will re-sign using @pacchettibotti credentials.
     }
 
 type PackageLocations =
@@ -202,9 +191,15 @@ writeLegacyRegistryFile sourceFile packages = do
 commitLegacyRegistryFile :: FilePath -> Aff (Either String Unit)
 commitLegacyRegistryFile sourceFile = Except.runExceptT do
   let path = Path.concat [ "..", sourceFile ]
-  GitHubToken token <- API.configurePacchettiBotti Nothing
-  Git.runGit_ [ "pull" ] Nothing
-  Git.runGit_ [ "add", path ] Nothing
-  Git.runGit_ [ "commit", "-m", "Transfer packages that have moved repositories." ] Nothing
-  let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry.git"
-  void $ Git.runGitSilent [ "push", origin, "master" ] Nothing
+  Git.runGitSilent [ "diff", "--stat" ] Nothing >>= case _ of
+    files | String.contains (String.Pattern sourceFile) files -> do
+      GitHubToken token <- API.configurePacchettiBotti Nothing
+      Git.runGit_ [ "pull" ] Nothing
+      Git.runGit_ [ "add", path ] Nothing
+      log "Committing to registry..."
+      let message = Array.fold [ "Sort ", sourceFile, " and transfer packages that have moved repositories." ]
+      Git.runGit_ [ "commit", "-m", message ] Nothing
+      let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry.git"
+      void $ Git.runGitSilent [ "push", origin, "master" ] Nothing
+    _ ->
+      log "No changes to commit."
