@@ -62,6 +62,10 @@ spec = do
       Left err -> verifyError err "Signature verification failed: incorrect signature"
       Right _ -> Assert.fail "Verified with a modified payload."
 
+  Spec.it "Signs and verifies payload" do
+    SSH.signPayload { publicKey, rawPayload, privateKey: String.joinWith "\n" privateKey } >>= case _ of
+      Left err -> Assert.fail $ "Failed to sign raw payload: " <> err
+      Right signature -> Assert.shouldEqual signature rawPayloadSignature
   where
   verifyError err intended =
     unless (err == intended) do
@@ -119,8 +123,6 @@ rawPayloadSignature =
   , "-----END SSH SIGNATURE-----"
   ]
 
-{- This private key can be written to a file if to test commands manually
-
 privateKey :: Array String
 privateKey =
   [ "-----BEGIN OPENSSH PRIVATE KEY-----"
@@ -131,4 +133,3 @@ privateKey =
   , "ZAefKWkvsTET+KeaegY/AAAACW93bmVyQGZvbwECAwQ="
   , "-----END OPENSSH PRIVATE KEY-----"
   ]
--}
