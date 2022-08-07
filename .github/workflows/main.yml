@@ -50,7 +50,7 @@ jobs:
         run: nix develop --command 'registry-install'
 
       - name: "Run tests"
-        run: nix develop --command 'registry-install'
+        run: nix develop --command 'registry-test'
 
       - name: "Verify CI code formats"
         run: nix develop --command 'registry-check-format'
