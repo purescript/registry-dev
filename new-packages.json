@@ -109,6 +109,7 @@
   "purescript-maps-eager": "https://github.com/JoelLefkowitz/purescript-maps-eager.git",
   "purescript-mason-prelude": "https://github.com/ursi/purescript-mason-prelude.git",
   "purescript-mdast-util-from-markdown": "https://github.com/sigma-andex/purescript-mdast-util-from-markdown.git",
+  "purescript-mermaid": "https://github.com/PureFunctor/purescript-mermaid.git",
   "purescript-mol-draw": "https://github.com/lukasturcani/mol-draw.git",
   "purescript-monoid-extras": "https://github.com/mikesol/purescript-monoid-extras.git",
   "purescript-monoidal": "https://github.com/mcneissue/purescript-monoidal.git",
