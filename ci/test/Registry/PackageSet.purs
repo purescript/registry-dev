@@ -43,7 +43,7 @@ spec = do
   Spec.it "Encodes legacy package set as Dhall" do
     Legacy.PackageSet.printDhall convertedPackageSet.packageSet `Assert.shouldEqual` legacyPackageSetDhall
 
-  Spec.it "Reported package set changes correctly" do
+  Spec.it "Reports package set changelog correctly" do
     let 
       operations = Map.fromFoldable
         [ map (const Nothing) assert
@@ -53,6 +53,15 @@ spec = do
 
     PackageSet.commitMessage packageSet operations `Assert.shouldEqual` packageSetCommitMessage
 
+  Spec.it "Reports package set changelog correctly (no updates)" do
+    let 
+      operations = Map.fromFoldable
+        [ map (const Nothing) assert
+        , Tuple (unsafeName "math") (Just (unsafeVersion "1.0.0"))
+        ]
+
+    PackageSet.commitMessage packageSet operations `Assert.shouldEqual` packageSetCommitMessageNoUpdates
+
 packageSetCommitMessage :: String
 packageSetCommitMessage =
   """New packages:
@@ -60,6 +69,15 @@ packageSetCommitMessage =
 
 Updated packages:
   - effect@4.0.0 -> 4.0.1
+
+Removed packages:
+  - assert@6.0.0
+"""
+
+packageSetCommitMessageNoUpdates :: String
+packageSetCommitMessageNoUpdates =
+  """New packages:
+  - math@1.0.0
 
 Removed packages:
   - assert@6.0.0
