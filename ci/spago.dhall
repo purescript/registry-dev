@@ -11,7 +11,6 @@
   , "console"
   , "control"
   , "convertable-options"
-  , "crypto"
   , "datetime"
   , "dodo-printer"
   , "dotenv"
