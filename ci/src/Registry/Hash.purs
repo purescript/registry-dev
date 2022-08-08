@@ -11,8 +11,8 @@ import Registry.Prelude
 import Data.Array as Array
 import Data.List.Lazy as List.Lazy
 import Data.String.CodeUnits as CodeUnits
+import Foreign.Node.Crypto as Crypto
 import Node.Buffer as Buffer
-import Node.Crypto.Hash as Hash
 import Node.FS.Aff as FS
 import Registry.Json as Json
 import Text.Parsing.StringParser (ParseError)
@@ -49,9 +49,9 @@ sha256String string = do
 -- | Hash a buffer using SHA256
 sha256Buffer :: Buffer -> Effect Sha256
 sha256Buffer buffer = do
-  newHash <- Hash.createHash "sha256"
-  hash <- Hash.update buffer newHash
-  digest <- Hash.digest hash
+  newHash <- Crypto.createHash "sha256"
+  hash <- Crypto.updateHash buffer newHash
+  digest <- Crypto.digestHash hash
   string <- Buffer.toString Base64 digest
   let sriString = "sha256-" <> string
   pure $ Sha256 sriString
