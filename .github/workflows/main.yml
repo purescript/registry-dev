@@ -46,11 +46,11 @@ jobs:
       - name: "Check that all Dhall compiles, and examples correctly conform to a Manifest"
         run: nix develop --command 'registry-verify-dhall'
 
+      - name: "Install dependencies"
+        run: nix develop --command 'registry-install'
+
       - name: "Run tests"
-        run: |
-          cd ci
-          nix develop --command 'registry-install'
-          nix develop --command 'registry-test'
+        run: nix develop --command 'registry-test'
 
       - name: "Verify CI code formats"
-        run: cd ci && nix develop --command 'registry-check-format'
+        run: nix develop --command 'registry-check-format'
