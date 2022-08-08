@@ -268,10 +268,11 @@ runOperation operation = case operation of
       throwWithComment "No packages in the suggested batch can be processed; all failed validation checks."
     else do
       PackageSet.processBatchAtomic latestPackageSet compiler candidates.accepted >>= case _ of
-        Just { fail, packageSet } | Map.isEmpty fail -> do
+        Just { fail, packageSet, success } | Map.isEmpty fail -> do
           newPath <- PackageSet.getPackageSetPath (un PackageSet packageSet).version
           liftAff $ Json.writeJsonFile newPath packageSet
-          commitPackageSetFile packageSet >>= case _ of
+          let commitMessage = PackageSet.commitMessage latestPackageSet success (un PackageSet packageSet).version
+          commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
             Left err -> throwWithComment $ "Failed to commit package set file: " <> err
             Right _ -> do
               comment "Built and released a new package set!"
@@ -824,7 +825,7 @@ mkLocalEnv octokit cache packagesMetadata =
   , commitIndexFile: \_ _ -> do
       log "Skipping committing to registry index..."
       pure (Right unit)
-  , commitPackageSetFile: \_ _ -> do
+  , commitPackageSetFile: \_ _ _ -> do
       log "Skipping committing to registry package sets..."
       pure (Right unit)
   , uploadPackage: Upload.upload
@@ -1014,13 +1015,12 @@ pacchettiBottiPushToRegistryMetadata packageName registryDir = Except.runExceptT
   let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
   void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryDir)
 
-pacchettiBottiPushToRegistryPackageSets :: PackageSet -> FilePath -> Aff (Either String Unit)
-pacchettiBottiPushToRegistryPackageSets (PackageSet set) registryDir = Except.runExceptT do
+pacchettiBottiPushToRegistryPackageSets :: Version -> String -> FilePath -> Aff (Either String Unit)
+pacchettiBottiPushToRegistryPackageSets version commitMessage registryDir = Except.runExceptT do
   GitHubToken token <- configurePacchettiBotti (Just registryDir)
   Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
-  Git.runGit_ [ "add", Path.concat [ "package-sets", Version.printVersion set.version <> ".json" ] ] (Just registryDir)
-  let message = "Release " <> Version.printVersion set.version <> " package set."
-  Git.runGit_ [ "commit", "-m", message ] (Just registryDir)
+  Git.runGit_ [ "add", Path.concat [ "package-sets", Version.printVersion version <> ".json" ] ] (Just registryDir)
+  Git.runGit_ [ "commit", "-m", commitMessage ] (Just registryDir)
   let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
   void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryDir)
 

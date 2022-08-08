@@ -124,9 +124,11 @@ main = Aff.launchAff_ do
           liftAff $ Json.writeJsonFile newPath packageSet
           case mode of
             GeneratePackageSet -> pure unit
-            CommitPackageSet -> commitPackageSetFile packageSet >>= case _ of
-              Left err -> throwWithComment $ "Failed to commit package set file: " <> err
-              Right _ -> pure unit
+            CommitPackageSet -> do
+              let commitMessage = PackageSet.commitMessage prevPackageSet success (un PackageSet packageSet).version
+              commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
+                Left err -> throwWithComment $ "Failed to commit package set file: " <> err
+                Right _ -> pure unit
 
 findRecentUploads :: Hours -> RegistryM { accepted :: Map PackageName Version, rejected :: Map PackageName (NonEmptyArray Version) }
 findRecentUploads limit = do

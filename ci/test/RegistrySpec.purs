@@ -21,7 +21,7 @@ defaultTestEnv =
   , comment: mempty
   , commitMetadataFile: \_ _ -> pure (Right unit)
   , commitIndexFile: \_ _ -> pure (Right unit)
-  , commitPackageSetFile: \_ _ -> pure (Right unit)
+  , commitPackageSetFile: \_ _ _ -> pure (Right unit)
   , deletePackage: mempty
   , uploadPackage: mempty
   , packagesMetadata: unsafePerformEffect (Ref.new Map.empty)
