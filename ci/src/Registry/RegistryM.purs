@@ -12,7 +12,7 @@ import Foreign.GitHub (Octokit)
 import Registry.Cache as Registry
 import Registry.PackageName (PackageName)
 import Registry.PackageUpload as Upload
-import Registry.Schema (Metadata, PackageSet)
+import Registry.Schema (Metadata)
 import Registry.Version (Version)
 
 type Env =

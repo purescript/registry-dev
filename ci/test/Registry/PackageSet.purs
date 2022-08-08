@@ -44,7 +44,7 @@ spec = do
     Legacy.PackageSet.printDhall convertedPackageSet.packageSet `Assert.shouldEqual` legacyPackageSetDhall
 
   Spec.it "Reports package set changelog correctly" do
-    let 
+    let
       operations = Map.fromFoldable
         [ map (const Nothing) assert
         , map (Version.bumpPatch >>> Just) effect
@@ -54,7 +54,7 @@ spec = do
     PackageSet.commitMessage packageSet operations `Assert.shouldEqual` packageSetCommitMessage
 
   Spec.it "Reports package set changelog correctly (no updates)" do
-    let 
+    let
       operations = Map.fromFoldable
         [ map (const Nothing) assert
         , Tuple (unsafeName "math") (Just (unsafeVersion "1.0.0"))
@@ -200,16 +200,16 @@ legacyPackageSetDhall =
 }"""
 
 assert :: Tuple PackageName Version
-assert = Tuple (unsafeName "assert") (unsafeVersion "6.0.0")
+assert = Tuple (unsafeName "assert") (unsafeVersion "v6.0.0")
 
 console :: Tuple PackageName Version
-console = Tuple (unsafeName "console") (unsafeVersion "6.0.0")
+console = Tuple (unsafeName "console") (unsafeVersion "v6.0.0")
 
 effect :: Tuple PackageName Version
-effect = Tuple (unsafeName "effect") (unsafeVersion "4.0.0")
+effect = Tuple (unsafeName "effect") (unsafeVersion "v4.0.0")
 
 prelude :: Tuple PackageName Version
-prelude = Tuple (unsafeName "prelude") (unsafeVersion "6.0.0")
+prelude = Tuple (unsafeName "prelude") (unsafeVersion "v6.0.0")
 
 unsafeName :: String -> PackageName
 unsafeName = unsafeFromRight <<< PackageName.parse
