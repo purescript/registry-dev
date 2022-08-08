@@ -307,9 +307,10 @@ installPackage name version = do
 
 -- | Computes commit mesage for new package set publication.
 -- | Note: The `PackageSet` argument is the old package set.
-commitMessage :: PackageSet -> Map PackageName (Maybe Version) -> String
-commitMessage (PackageSet set) accepted = String.joinWith "\n" $ fold
-  [ guardA (not (Array.null added)) $> (addedLines <> "\n")
+commitMessage :: PackageSet -> Map PackageName (Maybe Version) -> Version -> String
+commitMessage (PackageSet set) accepted newVersion = String.joinWith "\n" $ fold
+  [ [ "Release " <> Version.printVersion newVersion <> " package set.\n" ]
+  , guardA (not (Array.null added)) $> (addedLines <> "\n")
   , guardA (not (Array.null updated)) $> (updatedLines <> "\n")
   , guardA (not (Array.null removed)) $> (removedLines <> "\n")
   ]

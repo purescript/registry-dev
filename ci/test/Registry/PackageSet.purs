@@ -51,7 +51,7 @@ spec = do
         , Tuple (unsafeName "math") (Just (unsafeVersion "1.0.0"))
         ]
 
-    PackageSet.commitMessage packageSet operations `Assert.shouldEqual` packageSetCommitMessage
+    PackageSet.commitMessage packageSet operations (unsafeVersion "2.0.0") `Assert.shouldEqual` packageSetCommitMessage
 
   Spec.it "Reports package set changelog correctly (no updates)" do
     let
@@ -60,11 +60,13 @@ spec = do
         , Tuple (unsafeName "math") (Just (unsafeVersion "1.0.0"))
         ]
 
-    PackageSet.commitMessage packageSet operations `Assert.shouldEqual` packageSetCommitMessageNoUpdates
+    PackageSet.commitMessage packageSet operations (unsafeVersion "2.0.0") `Assert.shouldEqual` packageSetCommitMessageNoUpdates
 
 packageSetCommitMessage :: String
 packageSetCommitMessage =
-  """New packages:
+  """Release 2.0.0 package set.
+
+New packages:
   - math@1.0.0
 
 Updated packages:
@@ -76,7 +78,9 @@ Removed packages:
 
 packageSetCommitMessageNoUpdates :: String
 packageSetCommitMessageNoUpdates =
-  """New packages:
+  """Release 2.0.0 package set.
+
+New packages:
   - math@1.0.0
 
 Removed packages:

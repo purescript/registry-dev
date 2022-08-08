@@ -271,7 +271,7 @@ runOperation operation = case operation of
         Just { fail, packageSet, success } | Map.isEmpty fail -> do
           newPath <- PackageSet.getPackageSetPath (un PackageSet packageSet).version
           liftAff $ Json.writeJsonFile newPath packageSet
-          let commitMessage = PackageSet.commitMessage latestPackageSet success
+          let commitMessage = PackageSet.commitMessage latestPackageSet success (un PackageSet packageSet).version
           commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
             Left err -> throwWithComment $ "Failed to commit package set file: " <> err
             Right _ -> do
