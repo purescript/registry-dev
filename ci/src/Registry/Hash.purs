@@ -6,6 +6,8 @@ module Registry.Hash
   , unsafeSha256
   ) where
 
+import Registry.Prelude
+
 import Data.Array as Array
 import Data.List.Lazy as List.Lazy
 import Data.String.CodeUnits as String.CodeUnits
@@ -16,7 +18,6 @@ import Parsing (ParseError)
 import Parsing as Parsing
 import Parsing.String as Parsing.String
 import Registry.Json as Json
-import Registry.Prelude (class Eq, class RegistryJson, class Show, Aff, Buffer, Effect, Either(..), Encoding(..), FilePath, append, bind, liftEffect, lmap, pure, unsafeCrashWith, ($), (<<<), (<>))
 
 -- | A base64-encoded subresource integrity hash using the SHA256 algorithm.
 newtype Sha256 = Sha256 String

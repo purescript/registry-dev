@@ -1,12 +1,13 @@
 module Test.Registry.Hash where
 
+import Registry.Prelude
+
 import Control.Monad.Except as Except
 import Node.ChildProcess as NodeProcess
 import Node.Path as Path
 import Parsing as Parsing
 import Registry.Hash as Hash
 import Registry.Json as Json
-import Registry.Prelude (Aff, Either(..), ExceptT(..), FilePath, Maybe(..), Unit, bind, discard, lmap, pure, ($))
 import Sunde as Process
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert

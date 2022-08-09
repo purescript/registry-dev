@@ -6,6 +6,8 @@
 -- | you just want to iteratively pick up new releases.
 module Registry.Scripts.LegacyImporter where
 
+import Registry.Prelude
+
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
@@ -40,7 +42,6 @@ import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
-import Registry.Prelude (class Eq, class RegistryJson, Aff, Effect, Either(..), ExceptT(..), Map, Maybe(..), RawPackageName(..), RawVersion(..), Tuple(..), Unit, bind, compare, discard, flip, foldlWithIndex, for, forWithIndex, hush, isNothing, launchAff_, lift, liftAff, liftEffect, lmap, log, map, mapKeys, maybe, mempty, not, pure, show, snd, stripPureScriptPrefix, throwError, un, unit, unsafeFromRight, void, when, (#), ($), ($>), (+), (-), (<$>), (<<<), (<>), (=<<), (==), (>=), (>=>), (>>=), (>>>))
 import Registry.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
 import Registry.Version (Version)

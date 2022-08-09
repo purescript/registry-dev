@@ -1,5 +1,7 @@
 module Registry.Legacy.Manifest where
 
+import Registry.Prelude
+
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
@@ -28,7 +30,6 @@ import Registry.Json as Json
 import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Prelude (class Eq, class RegistryJson, class Show, Either(..), Encoding(..), ExceptT(..), Map, Maybe(..), NonEmptyString, RawPackageName(..), RawVersion(..), RawVersionRange(..), Tuple(..), bind, const, discard, foldlWithIndex, for, fromMaybe, hush, lift, liftAff, liftEffect, lmap, log, map, mapKeys, maybe, negate, partitionEithers, pure, show, stripPureScriptPrefix, throwError, un, unsafeFromJust, ($), ($>), (/=), (<#>), (<$>), (<<<), (<>), (<|>), (>=), (>=>), (>>=))
 import Registry.RegistryM (RegistryM, throwWithComment)
 import Registry.Schema (Location, Manifest(..))
 import Registry.Version (Range, Version)
