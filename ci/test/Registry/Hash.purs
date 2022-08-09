@@ -1,16 +1,15 @@
 module Test.Registry.Hash where
 
-import Registry.Prelude
-
 import Control.Monad.Except as Except
 import Node.ChildProcess as NodeProcess
 import Node.Path as Path
+import Parsing as Parsing
 import Registry.Hash as Hash
 import Registry.Json as Json
+import Registry.Prelude (Aff, Either(..), ExceptT(..), FilePath, Maybe(..), Unit, bind, discard, lmap, pure, ($))
 import Sunde as Process
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
-import Text.Parsing.StringParser as SP
 
 testHash :: Spec.Spec Unit
 testHash = do
@@ -64,6 +63,6 @@ sha256Nix path = ExceptT do
   case result.exit of
     NodeProcess.Normally 0 -> do
       let hash = Hash.parseSha256 result.stdout
-      pure $ lmap SP.printParserError hash
+      pure $ lmap Parsing.parseErrorMessage hash
     _ ->
       pure $ Left result.stderr

@@ -1,6 +1,6 @@
-const jsonrepair = require("jsonrepair");
+import jsonrepair from "jsonrepair";
 
-exports.repairImpl = (onError, onSuccess, input) => {
+export const repairImpl = (onError, onSuccess, input) => {
   try {
     const repaired = jsonrepair(input);
     return onSuccess(repaired);

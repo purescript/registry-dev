@@ -2,7 +2,7 @@ module Registry.API where
 
 import Registry.Prelude
 
-import Affjax as Http
+import Affjax.Node as Http
 import Affjax.RequestBody as RequestBody
 import Affjax.RequestHeader as RequestHeader
 import Affjax.ResponseFormat as ResponseFormat
@@ -10,8 +10,7 @@ import Affjax.StatusCode (StatusCode(..))
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
-import Data.Argonaut.Parser as Argonaut.Core
-import Data.Argonaut.Parser as JsonParser
+import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
@@ -49,9 +48,11 @@ import Foreign.Tmp as Tmp
 import Foreign.Wget as Wget
 import Node.FS.Aff as FS
 import Node.FS.Stats as FS.Stats
+import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Env
 import Node.Process as Node.Process
+import Parsing as Parsing
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Hash as Hash
@@ -68,7 +69,6 @@ import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Build
 import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Version (ParseMode(..), Range, Version)
 import Registry.Version as Version
-import Text.Parsing.StringParser as StringParser
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -135,7 +135,7 @@ readOperation eventPath = do
     Right event ->
       pure event
 
-  pure $ case JsonParser.jsonParser body of
+  pure $ case Argonaut.Parser.jsonParser body of
     Left _err -> NotJson
     Right json -> case Json.decode json of
       Left err -> MalformedJson issueNumber err
@@ -440,7 +440,7 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
   -- We also won't run the compiler verification.
-  isLegacyImport <- liftAff $ map not $ FS.exists manifestPath
+  isLegacyImport <- liftEffect $ map not $ FS.Sync.exists manifestPath
   when isLegacyImport do
     address <- case inputMetadata.location of
       Git _ -> throwWithComment "Legacy packages can only come from GitHub. Aborting."
@@ -735,7 +735,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
       let lines = String.split (String.Pattern "\n") publishResult
       case Array.last lines of
         Nothing -> throwWithComment "Publishing failed because of an unexpected compiler error. cc @purescript/packaging"
-        Just jsonString -> case Argonaut.Core.jsonParser jsonString of
+        Just jsonString -> case Argonaut.Parser.jsonParser jsonString of
           Left err -> throwWithComment $ String.joinWith "\n"
             [ "Failed to parse output of publishing. cc @purescript/packaging"
             , "```" <> err <> "```"
@@ -854,7 +854,7 @@ fillMetadataRef = do
         Right p -> pure p
         Left err -> do
           log $ "Encountered error while parsing package name! It was: " <> rawPackageName
-          Aff.throwError $ Aff.error $ StringParser.printParserError err
+          Aff.throwError $ Aff.error $ Parsing.parseErrorMessage err
       let metadataPath = metadataFile registryDir packageName
       metadata <- Json.readJsonFile metadataPath >>= case _ of
         Left err -> Aff.throwError $ Aff.error $ "Error parsing metadata file located at " <> metadataPath <> ": " <> err
@@ -880,7 +880,7 @@ locationIsUnique location = Map.isEmpty <<< Map.filter (eq location <<< _.locati
 -- | a checkout of the repository does not exist at the given path, and will
 -- | pull otherwise.
 fetchRepo :: GitHub.Address -> FilePath -> Aff Unit
-fetchRepo address path = FS.exists path >>= case _ of
+fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
   true -> do
     log $ "Found the " <> address.repo <> " repo locally, pulling..."
     result <- Except.runExceptT do
@@ -1125,7 +1125,7 @@ readMetadata :: PackageName -> { noMetadata :: String } -> RegistryM Metadata
 readMetadata packageName { noMetadata } = do
   registryDir <- asks _.registry
   let metadataFilePath = metadataFile registryDir packageName
-  liftAff (FS.exists metadataFilePath) >>= case _ of
+  liftEffect (FS.Sync.exists metadataFilePath) >>= case _ of
     false -> throwWithComment noMetadata
     _ -> pure unit
 

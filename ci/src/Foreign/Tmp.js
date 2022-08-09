@@ -1,14 +1,13 @@
-const tmp = require('tmp');
+import { setGracefulCleanup, dirSync } from "tmp";
 
-tmp.setGracefulCleanup();
+setGracefulCleanup();
 
-exports.mkTmpDirImpl = function() {
-  return function() {
-    const tmpobj = tmp.dirSync();
+export function mkTmpDirImpl() {
+  return function () {
+    const tmpobj = dirSync();
     return tmpobj.name;
   };
-};
-
+}
 
 // TODO: we should do proper bracketing when creating the temporary directory
 // so that if the program crashes we still remove it.

@@ -6,8 +6,6 @@
 -- | you just want to iteratively pick up new releases.
 module Registry.Scripts.LegacyImporter where
 
-import Registry.Prelude
-
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
@@ -28,6 +26,7 @@ import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
 import Node.Path as Path
 import Node.Process as Node.Process
+import Parsing as Parsing
 import Registry.API as API
 import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
@@ -41,11 +40,11 @@ import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
+import Registry.Prelude (class Eq, class RegistryJson, Aff, Effect, Either(..), ExceptT(..), Map, Maybe(..), RawPackageName(..), RawVersion(..), Tuple(..), Unit, bind, compare, discard, flip, foldlWithIndex, for, forWithIndex, hush, isNothing, launchAff_, lift, liftAff, liftEffect, lmap, log, map, mapKeys, maybe, mempty, not, pure, show, snd, stripPureScriptPrefix, throwError, un, unit, unsafeFromRight, void, when, (#), ($), ($>), (+), (-), (<$>), (<<<), (<>), (=<<), (==), (>=), (>=>), (>>=), (>>>))
 import Registry.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
 import Registry.Version (Version)
 import Registry.Version as Version
-import Text.Parsing.StringParser as Parser
 
 data ImportMode = GenerateRegistry | UpdateRegistry
 
@@ -390,7 +389,7 @@ validateVersion :: GitHub.Tag -> Either VersionValidationError Version
 validateVersion tag =
   Version.parseVersion Version.Lenient tag.name # lmap \parserError ->
     { error: InvalidTag tag
-    , reason: Parser.printParserError parserError
+    , reason: Parsing.parseErrorMessage parserError
     }
 
 type PackageValidationError = { error :: PackageError, reason :: String }
@@ -440,7 +439,7 @@ validatePackageAddress :: GitHub.PackageURL -> Either PackageValidationError Git
 validatePackageAddress packageUrl =
   GitHub.parseRepo packageUrl # lmap \parserError ->
     { error: InvalidPackageURL packageUrl
-    , reason: Parser.printParserError parserError
+    , reason: Parsing.parseErrorMessage parserError
     }
 
 validatePackageDisabled :: PackageName -> Either PackageValidationError Unit
@@ -470,7 +469,7 @@ validatePackageName :: RawPackageName -> Either PackageValidationError PackageNa
 validatePackageName (RawPackageName name) =
   PackageName.parse name # lmap \parserError ->
     { error: InvalidPackageName
-    , reason: Parser.printParserError parserError
+    , reason: Parsing.parseErrorMessage parserError
     }
 
 type JsonValidationError =

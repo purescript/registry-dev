@@ -47,20 +47,23 @@ import Data.Newtype (over, unwrap)
 import Data.RFC3339String (RFC3339String(..))
 import Data.String as String
 import Data.String.Base64 as Base64
-import Data.String.CodeUnits (fromCharArray)
+import Data.String.CodeUnits as String.CodeUnits
 import Data.Time.Duration as Duration
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Effect.Now as Now
 import Effect.Uncurried (EffectFn1, EffectFn6, runEffectFn1, runEffectFn6)
 import Foreign.Object as Object
+import Parsing (ParseError)
+import Parsing as Parsing
+import Parsing.Combinators as Parsing.Combinators
+import Parsing.Combinators.Array as Parsing.Combinators.Array
+import Parsing.String as Parsing.String
+import Parsing.String.Basic as Parsing.String.Basic
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Json ((.:))
 import Registry.Json as Json
-import Text.Parsing.StringParser as Parser
-import Text.Parsing.StringParser.CodePoints as Parse
-import Text.Parsing.StringParser.Combinators as ParseC
 
 foreign import data Octokit :: Type
 
@@ -431,16 +434,26 @@ registryAddress = { owner: "purescript", repo: "registry-preview" }
 
 type Tag = { name :: String, sha :: String, url :: Http.URL }
 
-parseRepo :: PackageURL -> Either Parser.ParseError Address
-parseRepo = unwrap >>> Parser.runParser do
-  void $ Parse.string "https://github.com/"
-    <|> Parse.string "git://github.com/"
-    <|> Parse.string "git@github.com:"
-  owner <- map (fromCharArray <<< List.toUnfoldable)
-    $ ParseC.manyTill (ParseC.choice [ Parse.alphaNum, Parse.char '-' ]) (Parse.char '/')
-  repoWithSuffix <- map (fromCharArray <<< List.toUnfoldable)
-    $ ParseC.many Parse.anyChar
-  let repo = fromMaybe repoWithSuffix $ String.stripSuffix (String.Pattern ".git") repoWithSuffix
+parseRepo :: PackageURL -> Either ParseError Address
+parseRepo (PackageURL input) = Parsing.runParser input do
+  _ <- Parsing.Combinators.choice
+    [ Parsing.String.string "https://github.com/"
+    , Parsing.String.string "git://github.com/"
+    , Parsing.String.string "git@github.com/"
+    ]
+
+  owner <- do
+    let
+      ownerChoice = Parsing.Combinators.choice
+        [ Parsing.String.Basic.alphaNum
+        , Parsing.String.char '-'
+        ]
+    Tuple chars _ <- Parsing.Combinators.Array.manyTill_ ownerChoice (Parsing.String.char '/')
+    pure $ String.CodeUnits.fromCharArray chars
+
+  repoWithSuffix <- String.CodeUnits.fromCharArray <$> Array.many Parsing.String.anyChar
+  let repo = fromMaybe repoWithSuffix (String.stripSuffix (String.Pattern ".git") repoWithSuffix)
+
   pure { owner, repo }
 
 data GitHubError

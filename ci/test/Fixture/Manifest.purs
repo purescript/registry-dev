@@ -11,6 +11,7 @@ import Data.Newtype (unwrap)
 import Data.String as String
 import Foreign.SPDX (License)
 import Foreign.SPDX as SPDX
+import Parsing as Parsing
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Location(..), Manifest(..), Owner(..))
@@ -89,12 +90,11 @@ setDependencies dependencies (Manifest manifest) =
     Tuple (unsafeFromRight (PackageName.parse package)) (mkRangeIncluding (unsafeFromRight (Version.parseVersion Version.Lenient version)))
 
   mkRangeIncluding :: Version -> Range
-  mkRangeIncluding version =
-    unsafeFromRight (Version.parseRange Version.Lenient (String.joinWith "" [ ">=", Version.printVersion version, " <", Version.printVersion bumpPatch ]))
-    where
-    bumpPatch :: Version
-    bumpPatch =
-      unsafeFromRight (Version.parseVersion Version.Lenient (String.joinWith "." (map show [ Version.major version, Version.minor version, Version.patch version + 1 ])))
+  mkRangeIncluding version = do
+    let input = Array.fold [ ">=", Version.printVersion version, " <", Version.printVersion (Version.bumpPatch version) ]
+    case Version.parseRange Version.Strict input of
+      Left err -> unsafeCrashWith $ show { error: Parsing.parseErrorMessage err, input }
+      Right range -> range
 
 -- | Creates a perfect binary tree of Manifests
 -- | with all transitive dependencies contained in the resulting array.

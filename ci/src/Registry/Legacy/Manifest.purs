@@ -1,7 +1,5 @@
 module Registry.Legacy.Manifest where
 
-import Registry.Prelude
-
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
@@ -22,6 +20,7 @@ import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FSA
 import Node.Path as Path
+import Parsing as Parsing
 import Registry.Cache as Cache
 import Registry.Hash (sha256String)
 import Registry.Json ((.:), (.:?))
@@ -29,11 +28,11 @@ import Registry.Json as Json
 import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Prelude (class Eq, class RegistryJson, class Show, Either(..), Encoding(..), ExceptT(..), Map, Maybe(..), NonEmptyString, RawPackageName(..), RawVersion(..), RawVersionRange(..), Tuple(..), bind, const, discard, foldlWithIndex, for, fromMaybe, hush, lift, liftAff, liftEffect, lmap, log, map, mapKeys, maybe, negate, partitionEithers, pure, show, stripPureScriptPrefix, throwError, un, unsafeFromJust, ($), ($>), (/=), (<#>), (<$>), (<<<), (<>), (<|>), (>=), (>=>), (>>=))
 import Registry.RegistryM (RegistryM, throwWithComment)
 import Registry.Schema (Location, Manifest(..))
 import Registry.Version (Range, Version)
 import Registry.Version as Version
-import Text.Parsing.StringParser as Parser
 
 type LegacyManifest =
   { license :: License
@@ -201,8 +200,8 @@ validateLicense licenses = do
 validateDependencies :: Map RawPackageName RawVersionRange -> Either LegacyManifestValidationError (Map PackageName Range)
 validateDependencies dependencies = do
   let
-    parsePackageName = lmap Parser.printParserError <<< PackageName.parse <<< stripPureScriptPrefix
-    parseVersionRange = lmap Parser.printParserError <<< Version.parseRange Version.Lenient
+    parsePackageName = lmap Parsing.parseErrorMessage <<< PackageName.parse <<< stripPureScriptPrefix
+    parseVersionRange = lmap Parsing.parseErrorMessage <<< Version.parseRange Version.Lenient
 
     foldFn (RawPackageName name) acc (RawVersionRange range) = do
       let failWith = { name, range, error: _ }
