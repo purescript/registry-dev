@@ -23,22 +23,24 @@ module Registry.Version
 
 import Registry.Prelude
 
+import Control.Monad.Error.Class as Monad.Error
 import Data.Array as Array
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either (fromRight)
-import Data.Foldable (class Foldable)
 import Data.Function (on)
 import Data.Int as Int
-import Data.List as List
-import Data.List.NonEmpty as NEL
 import Data.String as String
 import Data.String.CodeUnits as CodeUnits
+import Data.String.CodeUnits as String.CodeUnits
 import Foreign.SemVer as SemVer
+import Parsing (ParseError, Parser)
+import Parsing as Parsing
+import Parsing.Combinators as Parsing.Combinators
+import Parsing.Combinators.Array as Parsing.Combinators.Array
+import Parsing.String as Parsing.String
+import Parsing.String.Basic as Parsing.String.Basic
 import Registry.Json (class StringEncodable)
 import Registry.Json as Json
-import Text.Parsing.StringParser (ParseError, Parser)
-import Text.Parsing.StringParser as StringParser
-import Text.Parsing.StringParser.CodeUnits as StringParser.CodeUnits
-import Text.Parsing.StringParser.Combinators as StringParser.Combinators
 
 -- | A Registry-compliant version of the form 'X.Y.Z', where each place is a
 -- | non-negative integer.
@@ -61,7 +63,7 @@ instance Show Version where
 
 instance StringEncodable Version where
   toEncodableString = printVersion
-  fromEncodableString = lmap StringParser.printParserError <<< parseVersion Strict
+  fromEncodableString = lmap Parsing.parseErrorMessage <<< parseVersion Strict
 
 instance RegistryJson Version where
   encode = Json.encode <<< Json.toEncodableString
@@ -91,37 +93,41 @@ printVersion version = do
     ]
 
 parseVersion :: ParseMode -> String -> Either ParseError Version
-parseVersion mode input = flip StringParser.runParser input do
+parseVersion mode input = Parsing.runParser input (versionParser mode)
+
+versionParser :: ParseMode -> Parser String Version
+versionParser mode = do
+  Parsing.ParseState input _ _ <- Parsing.getParserT
   -- We allow leading whitespace and the commonly-used 'v' character prefix in
   -- lenient mode.
   when (mode == Lenient) do
-    _ <- StringParser.CodeUnits.whiteSpace
-    _ <- StringParser.Combinators.optional $ StringParser.CodeUnits.char 'v'
+    _ <- Parsing.String.Basic.whiteSpace
+    _ <- Parsing.Combinators.optional $ Parsing.String.char 'v'
     pure unit
   major' <- nonNegativeInt
-  _ <- StringParser.CodeUnits.char '.'
+  _ <- Parsing.String.char '.'
   minor' <- nonNegativeInt
-  _ <- StringParser.CodeUnits.char '.'
+  _ <- Parsing.String.char '.'
   patch' <- nonNegativeInt
   when (mode == Lenient) do
-    _ <- StringParser.CodeUnits.whiteSpace
+    _ <- Parsing.String.Basic.whiteSpace
     pure unit
-  StringParser.CodeUnits.eof
+  Parsing.String.eof
   pure $ Version { major: major', minor: minor', patch: patch', mode, raw: input }
   where
-  nonNegativeInt :: Parser Int
+  nonNegativeInt :: Parser String Int
   nonNegativeInt = do
-    digitChars <- StringParser.Combinators.many1 StringParser.CodeUnits.anyDigit
+    digitChars <- Parsing.Combinators.Array.many1 Parsing.String.Basic.digit
     let
-      zeroCount = List.length $ NEL.takeWhile (_ == '0') digitChars
-      digitString = CodeUnits.fromCharArray $ Array.fromFoldable digitChars
-      failInteger = StringParser.fail $ "Invalid 32-bit integer: " <> digitString
+      zeroCount = Array.length $ NonEmptyArray.takeWhile (_ == '0') digitChars
+      digitString = CodeUnits.fromCharArray $ NonEmptyArray.toArray digitChars
+      failInteger = Parsing.fail $ "Invalid 32-bit integer: " <> digitString
     integer <- maybe failInteger pure $ Int.fromString digitString
     -- We do not accept leading zeros in versions unless we are in lenient mode
     when (mode == Strict && (zeroCount > 1 || (zeroCount == 1 && integer /= 0))) do
-      StringParser.fail $ "Leading zeros are not allowed: " <> digitString
+      Parsing.fail $ "Leading zeros are not allowed: " <> digitString
     when (integer < 0) do
-      StringParser.fail $ "Invalid non-negative integer: " <> show integer
+      Parsing.fail $ "Invalid non-negative integer: " <> show integer
     pure integer
 
 -- | A Registry-compliant version range of the form '>=X.Y.Z <X.Y.Z', where the
@@ -140,7 +146,7 @@ instance RegistryJson Range where
   encode = Json.encode <<< printRange
   decode json = do
     string <- Json.decode json
-    lmap StringParser.printParserError $ parseRange Strict string
+    lmap Parsing.parseErrorMessage $ parseRange Strict string
 
 instance Show Range where
   show = printRange
@@ -185,12 +191,12 @@ parseRange mode input = do
       Lenient -> convertRange input
       Strict -> input
 
-  parserInput # StringParser.runParser do
-    _ <- StringParser.CodeUnits.string ">="
-    lhs <- toVersion mode =<< map toString charsUntilSpace
-    _ <- StringParser.CodeUnits.char '<'
-    rhs <- toVersion mode =<< map toString chars
-    StringParser.CodeUnits.eof
+  Parsing.runParser parserInput do
+    _ <- Parsing.String.string ">=" <|> Parsing.fail "Ranges must begin with >="
+    lhs <- toVersion mode =<< map String.CodeUnits.fromCharArray charsUntilSpace
+    _ <- Parsing.String.char '<' <|> Parsing.fail "Ranges must end with <"
+    rhs <- toVersion mode =<< map String.CodeUnits.fromCharArray chars
+    -- Parsing.String.eof
     -- Trimming prerelease identifiers in lenient mode can produce ranges
     -- where the lhs was less than the rhs, but no longer is. For example:
     -- '>=1.0.0-rc.1 <1.0.0-rc.5' -> '>=1.0.0 <1.0.0'.
@@ -198,7 +204,7 @@ parseRange mode input = do
     if (mode == Lenient && lhs == rhs) then
       pure $ Range { lhs, rhs: bumpPatch rhs, mode, raw: input }
     else if (lhs >= rhs) then
-      StringParser.fail $ Array.fold
+      Parsing.fail $ Array.fold
         [ "Left-hand version ("
         , printVersion lhs
         , ") must be less than right-hand version ("
@@ -243,86 +249,55 @@ convertRange input = fromRight input do
       # fixExactVersions
   where
   -- Fix ranges that begin with '>' instead of '>='
-  fixGtLhs str = fromRight str do
-    let
-      parser = do
-        _ <- StringParser.CodeUnits.char '>'
-        lhs <- toVersion Lenient =<< map toString charsUntilSpace
-        pure lhs
-
-    StringParser.unParser parser { str, pos: 0 } <#> \{ result: version, suffix } ->
-      ">=" <> printVersion (bumpPatch version) <> " " <> String.drop suffix.pos suffix.str
+  fixGtLhs :: String -> String
+  fixGtLhs str = fromRight str $ Parsing.runParser str do
+    _ <- Parsing.String.char '>'
+    Parsing.Combinators.notFollowedBy (Parsing.String.char '=')
+    lhsChars <- map String.CodeUnits.fromCharArray charsUntilSpace
+    lhs <- toVersion Lenient lhsChars
+    Parsing.ParseState suffix _ _ <- Parsing.getParserT
+    pure $ Array.fold [ ">=", printVersion (bumpPatch lhs), " ", suffix ]
 
   -- Fix ranges that end with '<=' instead of '<'
-  fixLtRhs str = fromRight str do
-    let
-      parser = do
-        _ <- StringParser.CodeUnits.string ">="
-        lhs <- toVersion Lenient =<< map toString charsUntilSpace
-        _ <- StringParser.CodeUnits.string "<="
-        rhs <- toVersion Lenient =<< map toString chars
-        StringParser.CodeUnits.eof
-        pure { lhs, rhs }
-
-    StringParser.runParser parser str <#> \{ lhs, rhs } ->
-      Array.fold
-        [ ">="
-        , printVersion lhs
-        , " <"
-        , printVersion (bumpPatch rhs)
-        ]
+  fixLtRhs str = fromRight str $ Parsing.runParser str do
+    _ <- Parsing.String.string ">="
+    lhs <- toVersion Lenient =<< map String.CodeUnits.fromCharArray charsUntilSpace
+    _ <- Parsing.String.string "<="
+    rhs <- toVersion Lenient =<< map String.CodeUnits.fromCharArray chars
+    Parsing.String.eof
+    pure $ Array.fold [ ">=", printVersion lhs, " <", printVersion (bumpPatch rhs) ]
 
   -- Fix ranges that only consist of an upper bound ('<1.0.0')
-  fixUpperOnly str = fromRight str do
-    let
-      parser = do
-        _ <- StringParser.CodeUnits.char '<'
-        hasEq <- StringParser.Combinators.optionMaybe $ StringParser.CodeUnits.char '='
-        lhs <- toVersion Lenient =<< map toString chars
-        StringParser.CodeUnits.eof
-        pure { lhs, hasEq: isJust hasEq }
-
-    StringParser.runParser parser str <#> \{ lhs, hasEq } ->
-      ">=0.0.0 <" <> printVersion (if hasEq then bumpPatch lhs else lhs)
+  fixUpperOnly str = fromRight str $ Parsing.runParser str do
+    _ <- Parsing.String.char '<'
+    hasEq <- Parsing.Combinators.optionMaybe (Parsing.String.char '=')
+    lhs <- toVersion Lenient =<< map String.CodeUnits.fromCharArray chars
+    Parsing.String.eof
+    pure $ Array.fold [ ">=0.0.0 <", printVersion (if isJust hasEq then bumpPatch lhs else lhs) ]
 
   -- Replace exact ranges ('1.0.0') with ranges ('>=1.0.0 <1.0.1')
   fixExactVersions str = fromRight str do
     version <- parseVersion Lenient str
-    pure $ Array.fold
-      [ ">="
-      , printVersion version
-      , " <"
-      , printVersion (bumpPatch version)
-      ]
+    pure $ Array.fold [ ">=", printVersion version, " <", printVersion (bumpPatch version) ]
 
-toVersion :: ParseMode -> String -> Parser Version
-toVersion mode string = do
-  let
-    parsed = case mode of
-      Lenient -> do
-        let truncate pattern input = fromMaybe input $ Array.head $ String.split pattern input
-        let noPrerelease = truncate (String.Pattern "-")
-        let noBuild = truncate (String.Pattern "+")
-        parseVersion Lenient (noPrerelease (noBuild string))
-      Strict ->
-        parseVersion Strict string
+toVersion :: ParseMode -> String -> Parser String Version
+toVersion mode string = Monad.Error.liftEither case mode of
+  Lenient -> do
+    let truncate pattern input = fromMaybe input $ Array.head $ String.split pattern input
+    let noPrerelease = truncate (String.Pattern "-")
+    let noBuild = truncate (String.Pattern "+")
+    Parsing.runParser (noPrerelease (noBuild string)) (versionParser Lenient)
+  Strict ->
+    Parsing.runParser string (versionParser Strict)
 
-  either (_.error >>> StringParser.fail) pure parsed
+chars :: Parser String (Array Char)
+chars = Array.many Parsing.String.anyChar
 
-toString :: forall f. Foldable f => f Char -> String
-toString =
-  CodeUnits.fromCharArray <<< Array.fromFoldable
+charsUntil :: forall a. Parser String a -> Parser String (Array Char)
+charsUntil = map fst <<< Parsing.Combinators.Array.manyTill_ Parsing.String.anyChar
 
-chars :: Parser (List Char)
-chars =
-  StringParser.Combinators.many
-    StringParser.CodeUnits.anyChar
-
-charsUntilSpace :: Parser (List Char)
-charsUntilSpace =
-  StringParser.Combinators.manyTill
-    StringParser.CodeUnits.anyChar
-    (StringParser.CodeUnits.char ' ')
+charsUntilSpace :: Parser String (Array Char)
+charsUntilSpace = charsUntil (Parsing.String.char ' ')
 
 -- | Increments the greatest SemVer position.
 -- |   - 0.0.1 becomes 0.0.2

@@ -19,6 +19,7 @@ import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
+import Parsing as Parsing
 import Registry.API (copyPackageSourceFiles)
 import Registry.API as API
 import Registry.Json as Json
@@ -262,9 +263,11 @@ badPackageName :: Spec.Spec Unit
 badPackageName = do
   let
     failParse str err = Spec.it str do
-      (PackageName.print <$> PackageName.parse str) `Assert.shouldSatisfy` case _ of
-        Right _ -> false
-        Left { error } -> error == err
+      case PackageName.print <$> PackageName.parse str of
+        Left parseError ->
+          Assert.shouldEqual err (Parsing.parseErrorMessage parseError)
+        Right _ ->
+          Assert.fail $ str <> " should have failed with error: " <> err
 
   let startErr = "Package name should start with a lower case char or a digit"
   let midErr = "Package name can contain lower case chars, digits and non-consecutive dashes"

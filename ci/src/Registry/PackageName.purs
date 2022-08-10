@@ -7,16 +7,17 @@ module Registry.PackageName
 import Registry.Prelude
 
 import Data.Array as Array
-import Data.List as List
-import Data.List.NonEmpty as NEL
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.String as String
-import Data.String.CodeUnits (fromCharArray)
+import Data.String.CodeUnits as String.CodeUnits
+import Parsing (ParseError)
+import Parsing as Parsing
+import Parsing.Combinators as Parsing.Combinators
+import Parsing.Combinators.Array as Parsing.Combinators.Array
+import Parsing.String as Parsing.String
+import Parsing.String.Basic as Parsing.String.Basic
 import Registry.Json (class StringEncodable)
 import Registry.Json as Json
-import Text.Parsing.StringParser as Parser
-import Text.Parsing.StringParser.CodePoints as Parse
-import Text.Parsing.StringParser.Combinators ((<?>))
-import Text.Parsing.StringParser.Combinators as ParseC
 
 newtype PackageName = PackageName String
 
@@ -28,7 +29,7 @@ instance Show PackageName where
 
 instance StringEncodable PackageName where
   toEncodableString = print
-  fromEncodableString = lmap (append "Expected PackageName: " <<< Parser.printParserError) <<< parse
+  fromEncodableString = lmap (append "Expected PackageName: " <<< Parsing.parseErrorMessage) <<< parse
 
 instance RegistryJson PackageName where
   encode = Json.encode <<< Json.toEncodableString
@@ -37,8 +38,8 @@ instance RegistryJson PackageName where
 print :: PackageName -> String
 print (PackageName package) = package
 
-parse :: String -> Either Parser.ParseError PackageName
-parse inputStr = flip Parser.runParser inputStr do
+parse :: String -> Either ParseError PackageName
+parse inputStr = Parsing.runParser inputStr do
   let
     -- Error messages which also define our rules for package names
     endErr = "Package name should end with a lower case char or digit"
@@ -58,36 +59,35 @@ parse inputStr = flip Parser.runParser inputStr do
     hasPureScriptPrefix = isJust $ String.stripPrefix (String.Pattern "purescript-") inputStr
 
   when (hasPureScriptPrefix && not isBlessedPackage) do
-    Parser.fail prefixErr
+    Parsing.fail prefixErr
 
   let
-    char = ParseC.choice [ Parse.lowerCaseChar, Parse.anyDigit ] <?> charErr
-    dash = void $ Parse.char '-'
-    chunk = ParseC.many1 char
+    acceptedChars = Parsing.Combinators.choice [ Parsing.String.Basic.lower, Parsing.String.Basic.digit ] <|> Parsing.fail charErr
+    chunk1 = Parsing.Combinators.Array.many1 acceptedChars
 
-  -- A "chunk" is an alphanumeric word between dashes
-  firstChunk <- chunk <?> startErr
+  -- A "chunk" is a lowercase alphanumeric word delimited by dashes
+  firstChunk <- chunk1 <|> Parsing.fail startErr
 
   nextChunks <- do
-    chunks <- ParseC.many do
-      void dash
-      void $ ParseC.optionMaybe (ParseC.lookAhead Parse.anyChar) >>= case _ of
+    chunks <- flip Parsing.Combinators.Array.manyTill_ Parsing.String.eof do
+      _ <- Parsing.String.char '-' <|> Parsing.fail charErr
+      _ <- Parsing.Combinators.optionMaybe (Parsing.Combinators.lookAhead Parsing.String.anyChar) >>= case _ of
         Just v
-          | v == '-' -> Parser.fail manyDashesErr
+          | v == '-' -> Parsing.fail manyDashesErr
           | otherwise -> pure unit
-        Nothing -> ParseC.lookAhead Parse.eof *> Parser.fail endErr
-      map (NEL.cons '-') chunk <?> endErr
-    pure chunks
+        Nothing -> Parsing.Combinators.lookAhead Parsing.String.eof *> Parsing.fail endErr
+      map (NonEmptyArray.cons '-') chunk1 <|> Parsing.fail endErr
+    pure (fst chunks)
 
   -- Make sure that we consume all the string in input
-  Parse.eof <?> charErr
+  Parsing.String.eof <|> Parsing.fail charErr
 
   let
-    chars = List.concat $ map NEL.toList $ List.Cons firstChunk nextChunks
-    name = fromCharArray $ List.toUnfoldable $ chars
+    allChunks = Array.concatMap NonEmptyArray.toArray (Array.cons firstChunk nextChunks)
+    name = String.CodeUnits.fromCharArray allChunks
 
   -- and check that it's not longer than 50 chars
   if String.length name > 50 then
-    Parser.fail "Package name cannot be longer than 50 chars"
+    Parsing.fail "Package name cannot be longer than 50 chars"
   else
     pure $ PackageName name

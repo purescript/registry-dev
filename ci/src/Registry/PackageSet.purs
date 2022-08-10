@@ -1,5 +1,6 @@
 module Registry.PackageSet
   ( PackageSetBatchResult
+  , commitMessage
   , getPackageSetPath
   , getPackageSetsPath
   , printRejections
@@ -303,6 +304,46 @@ installPackage name version = do
     , Version.printVersion version
     , ".tar.gz"
     ]
+
+-- | Computes commit mesage for new package set publication.
+-- | Note: The `PackageSet` argument is the old package set.
+commitMessage :: PackageSet -> Map PackageName (Maybe Version) -> Version -> String
+commitMessage (PackageSet set) accepted newVersion = String.joinWith "\n" $ fold
+  [ [ "Release " <> Version.printVersion newVersion <> " package set.\n" ]
+  , guardA (not (Array.null added)) $> (addedLines <> "\n")
+  , guardA (not (Array.null updated)) $> (updatedLines <> "\n")
+  , guardA (not (Array.null removed)) $> (removedLines <> "\n")
+  ]
+  where
+  added = do
+    Tuple packageName maybeVersion <- Map.toUnfoldable accepted
+    version <- maybe [] pure maybeVersion
+    guardA (not (Map.member packageName set.packages))
+    pure $ Tuple packageName version
+
+  addedLines = "New packages:\n" <> String.joinWith "\n" do
+    Tuple packageName version <- added
+    pure $ Array.fold [ "  - ", PackageName.print packageName, "@", Version.printVersion version ]
+
+  updated = do
+    Tuple packageName maybeVersion <- Map.toUnfoldable accepted
+    version <- maybe [] pure maybeVersion
+    previousVersion <- maybe [] pure (Map.lookup packageName set.packages)
+    pure $ Tuple packageName { version, previousVersion }
+
+  updatedLines = "Updated packages:\n" <> String.joinWith "\n" do
+    Tuple packageName { version, previousVersion } <- updated
+    pure $ Array.fold [ "  - ", PackageName.print packageName, "@", Version.printVersion previousVersion, " -> ", Version.printVersion version ]
+
+  removed = do
+    Tuple packageName maybeVersion <- Map.toUnfoldable accepted
+    guardA (isNothing maybeVersion)
+    version <- maybe [] pure (Map.lookup packageName set.packages)
+    pure $ Tuple packageName version
+
+  removedLines = "Removed packages:\n" <> String.joinWith "\n" do
+    Tuple packageName version <- removed
+    pure $ Array.fold [ "  - ", PackageName.print packageName, "@", Version.printVersion version ]
 
 -- | Computes new package set version from old package set and version information of successfully added/updated packages.
 -- | Note: this must be called with the old `PackageSet` that has not had updates applied.

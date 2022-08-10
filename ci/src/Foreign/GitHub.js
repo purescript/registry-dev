@@ -1,9 +1,10 @@
-const { Octokit: GitHubOctokit } = require("@octokit/rest");
-const { retry } = require("@octokit/plugin-retry");
-const { throttling } = require("@octokit/plugin-throttling");
+import { Octokit as GitHubOctokit } from "@octokit/rest";
+import { retry } from "@octokit/plugin-retry";
+import { throttling } from "@octokit/plugin-throttling";
+
 const Octokit = GitHubOctokit.plugin(retry, throttling);
 
-exports.mkOctokitImpl = function (authToken) {
+export const mkOctokitImpl = (authToken) => {
   const octokit = new Octokit({
     auth: authToken,
     request: {
@@ -31,18 +32,25 @@ exports.mkOctokitImpl = function (authToken) {
   return octokit;
 };
 
-exports.requestImpl = function (octokit, route, headers, args, onError, onSuccess) {
+export function requestImpl(octokit, route, headers, args, onError, onSuccess) {
   args["headers"] = headers;
   return octokit
     .request(route, args)
     .then((data) => onSuccess(data))
     .catch((err) => onError(err));
-};
+}
 
-exports.paginateImpl = function (octokit, route, headers, args, onError, onSuccess) {
+export function paginateImpl(
+  octokit,
+  route,
+  headers,
+  args,
+  onError,
+  onSuccess
+) {
   args["headers"] = headers;
   return octokit
     .paginate(route, args)
     .then((data) => onSuccess(data))
     .catch((err) => onError(err));
-};
+}

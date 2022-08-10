@@ -28,6 +28,7 @@ import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
 import Node.Path as Path
 import Node.Process as Node.Process
+import Parsing as Parsing
 import Registry.API as API
 import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
@@ -45,7 +46,6 @@ import Registry.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, 
 import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
 import Registry.Version (Version)
 import Registry.Version as Version
-import Text.Parsing.StringParser as Parser
 
 data ImportMode = GenerateRegistry | UpdateRegistry
 
@@ -87,7 +87,7 @@ main = launchAff_ do
         , closeIssue: log "Running locally, not closing issue..."
         , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
         , commitIndexFile: API.pacchettiBottiPushToRegistryIndex
-        , commitPackageSetFile: \_ _ -> log "Not committing package set in legacy import." $> Right unit
+        , commitPackageSetFile: \_ _ _ -> log "Not committing package set in legacy import." $> Right unit
         , uploadPackage: Upload.upload
         , deletePackage: Upload.delete
         , packagesMetadata: metadataRef
@@ -390,7 +390,7 @@ validateVersion :: GitHub.Tag -> Either VersionValidationError Version
 validateVersion tag =
   Version.parseVersion Version.Lenient tag.name # lmap \parserError ->
     { error: InvalidTag tag
-    , reason: Parser.printParserError parserError
+    , reason: Parsing.parseErrorMessage parserError
     }
 
 type PackageValidationError = { error :: PackageError, reason :: String }
@@ -440,7 +440,7 @@ validatePackageAddress :: GitHub.PackageURL -> Either PackageValidationError Git
 validatePackageAddress packageUrl =
   GitHub.parseRepo packageUrl # lmap \parserError ->
     { error: InvalidPackageURL packageUrl
-    , reason: Parser.printParserError parserError
+    , reason: Parsing.parseErrorMessage parserError
     }
 
 validatePackageDisabled :: PackageName -> Either PackageValidationError Unit
@@ -470,7 +470,7 @@ validatePackageName :: RawPackageName -> Either PackageValidationError PackageNa
 validatePackageName (RawPackageName name) =
   PackageName.parse name # lmap \parserError ->
     { error: InvalidPackageName
-    , reason: Parser.printParserError parserError
+    , reason: Parsing.parseErrorMessage parserError
     }
 
 type JsonValidationError =

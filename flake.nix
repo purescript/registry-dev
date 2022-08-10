@@ -83,23 +83,29 @@
           name = "scripts";
           paths = pkgs.lib.mapAttrsToList pkgs.writeShellScriptBin {
             registry-install = ''
+              cd $(git rev-parse --show-toplevel)/ci
               npm ci
               spago install
             '';
 
             registry-test = ''
+              cd $(git rev-parse --show-toplevel)/ci
               spago test
             '';
 
             registry-check-format = ''
+              cd $(git rev-parse --show-toplevel)/ci
               purs-tidy check src test
             '';
 
             registry-api = ''
+              cd $(git rev-parse --show-toplevel)/ci
               spago run -m Registry.API
             '';
 
             registry-importer = ''
+              cd $(git rev-parse --show-toplevel)/ci
+
               if [ -z "$1" ]; then
                 echo "No arguments supplied. Expected one of: generate, update"
                 exit 1
@@ -109,6 +115,8 @@
             '';
 
             registry-package-set-updater = ''
+              cd $(git rev-parse --show-toplevel)/ci
+
               if [ -z "$1" ]; then
                 echo "No arguments supplied. Expected one of: generate, commit"
                 exit 1
@@ -118,11 +126,13 @@
             '';
 
             registry-package-transferrer = ''
+              cd $(git rev-parse --show-toplevel)/ci
               spago run -m Registry.Scripts.PackageTransferrer
             '';
 
             # This script checks that there are no duplicate entries in the two json files listing packages
             registry-verify-unique = ''
+              cd $(git rev-parse --show-toplevel)
               set -euxo pipefail
 
               total=$(cat bower-packages.json new-packages.json | jq -s "add | length")
@@ -146,6 +156,7 @@
             # - all the dhall we have in the repo actually compiles
             # - all the example manifests actually typecheck as Manifests
             registry-verify-dhall = ''
+              cd $(git rev-parse --show-toplevel)
               set -euo pipefail
 
               for FILE in $(find v1 -iname "*.dhall")
@@ -187,7 +198,7 @@
               dhallPackages.dhall-json-simple
 
               # Development tooling
-              pursPackages.purs-0_14_7
+              pursPackages.purs-0_15_2
               pursPackages.spago
               pursPackages.psa
               pursPackages.purs-tidy

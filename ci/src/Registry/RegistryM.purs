@@ -12,14 +12,15 @@ import Foreign.GitHub (Octokit)
 import Registry.Cache as Registry
 import Registry.PackageName (PackageName)
 import Registry.PackageUpload as Upload
-import Registry.Schema (Metadata, PackageSet)
+import Registry.Schema (Metadata)
+import Registry.Version (Version)
 
 type Env =
   { comment :: String -> Aff Unit
   , closeIssue :: Aff Unit
   , commitMetadataFile :: PackageName -> FilePath -> Aff (Either String Unit)
   , commitIndexFile :: PackageName -> FilePath -> Aff (Either String Unit)
-  , commitPackageSetFile :: PackageSet -> FilePath -> Aff (Either String Unit)
+  , commitPackageSetFile :: Version -> String -> FilePath -> Aff (Either String Unit)
   , uploadPackage :: Upload.PackageInfo -> FilePath -> Aff Unit
   , deletePackage :: Upload.PackageInfo -> Aff Unit
   , octokit :: Octokit
@@ -71,10 +72,10 @@ commitIndexFile packageName = do
   env <- ask
   liftAff $ env.commitIndexFile packageName env.registryIndex
 
-commitPackageSetFile :: PackageSet -> RegistryM (Either String Unit)
-commitPackageSetFile packageSet = do
+commitPackageSetFile :: Version -> String -> RegistryM (Either String Unit)
+commitPackageSetFile version commitMessage = do
   env <- ask
-  liftAff $ env.commitPackageSetFile packageSet env.registry
+  liftAff $ env.commitPackageSetFile version commitMessage env.registry
 
 -- | Upload a package to the backend storage provider
 uploadPackage :: Upload.PackageInfo -> FilePath -> RegistryM Unit

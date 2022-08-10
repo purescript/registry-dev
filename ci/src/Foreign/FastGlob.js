@@ -1,3 +1,3 @@
-const fg = require("fast-glob");
+import fg from "fast-glob";
 
-exports.matchImpl = (entries) => (options) => () => fg(entries, options);
+export const matchImpl = (entries) => (options) => () => fg(entries, options);

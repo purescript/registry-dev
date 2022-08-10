@@ -22,6 +22,7 @@ import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FSA
 import Node.Path as Path
+import Parsing as Parsing
 import Registry.Cache as Cache
 import Registry.Hash (sha256String)
 import Registry.Json ((.:), (.:?))
@@ -33,7 +34,6 @@ import Registry.RegistryM (RegistryM, throwWithComment)
 import Registry.Schema (Location, Manifest(..))
 import Registry.Version (Range, Version)
 import Registry.Version as Version
-import Text.Parsing.StringParser as Parser
 
 type LegacyManifest =
   { license :: License
@@ -201,8 +201,8 @@ validateLicense licenses = do
 validateDependencies :: Map RawPackageName RawVersionRange -> Either LegacyManifestValidationError (Map PackageName Range)
 validateDependencies dependencies = do
   let
-    parsePackageName = lmap Parser.printParserError <<< PackageName.parse <<< stripPureScriptPrefix
-    parseVersionRange = lmap Parser.printParserError <<< Version.parseRange Version.Lenient
+    parsePackageName = lmap Parsing.parseErrorMessage <<< PackageName.parse <<< stripPureScriptPrefix
+    parseVersionRange = lmap Parsing.parseErrorMessage <<< Version.parseRange Version.Lenient
 
     foldFn (RawPackageName name) acc (RawVersionRange range) = do
       let failWith = { name, range, error: _ }
