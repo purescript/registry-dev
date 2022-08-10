@@ -2,19 +2,51 @@ module Registry.Solver where
 
 import Registry.Prelude
 
-import Control.Monad.Reader (class MonadAsk, ask, asks)
+import Control.Monad.Error.Class (class MonadThrow)
+import Control.Monad.Reader (class MonadAsk, ask)
 import Control.Monad.State (class MonadState, get, modify_, put)
-import Control.Plus (class Alt, class Plus, empty)
+import Control.Plus (class Alt)
 import Data.Array as Array
-import Data.Foldable (foldMap, oneOfMap)
+import Data.Array.NonEmpty (foldMap1)
+import Data.Array.NonEmpty as NEA
+import Data.Foldable (foldMap)
 import Data.FoldableWithIndex (traverseWithIndex_)
-import Data.Identity (Identity(..))
 import Data.Map as Map
-import Data.Newtype (unwrap)
+import Data.Monoid.Alternate (Alternate(..))
+import Data.Newtype (alaF, unwrap)
+import Data.Semigroup.Foldable (intercalateMap)
 import Registry.PackageName (PackageName)
 import Registry.Version (Range, Version, intersect, rangeIncludes)
 
 type Dependencies = Map PackageName (Map Version (Map PackageName Range))
+
+data SolverPosition
+  = SolveRoot
+  | Solving PackageName Version SolverPosition
+
+derive instance eqSolverPosition :: Eq SolverPosition
+derive instance ordSolverPosition :: Ord SolverPosition
+
+instance showSolverPosition :: Show SolverPosition where
+  show SolveRoot = ""
+  show (Solving name version pos) = " while solving " <> show name <> "@" <> show version <> show pos
+
+data SolverError
+  = NoVersionsInRange PackageName (Set Version) Range SolverPosition
+  | VersionNotInRange PackageName Version Range SolverPosition
+  | DisjointRanges PackageName Range SolverPosition Range SolverPosition
+
+derive instance eqSolverError :: Eq SolverError
+
+instance showSolverError :: Show SolverError where
+  show (NoVersionsInRange name versions range pos) =
+    "Package index contained no versions for " <> show name <> " in the range " <> show range <> " (existing versions: " <> shownVersions <> ")" <> show pos
+    where
+    shownVersions = maybe "none" (intercalateMap ", " show) (NEA.fromFoldable versions)
+  show (VersionNotInRange name version range pos) =
+    "Committed to " <> show name <> "@" <> show version <> " but the range " <> show range <> " was also required" <> show pos
+  show (DisjointRanges name range1 pos1 range2 pos2) =
+    "Committed to " <> show name <> " in range " <> show range1 <> show pos1 <> " but the range " <> show range2 <> " was also required" <> show pos2
 
 newtype SolverT :: (Type -> Type) -> Type -> Type
 newtype SolverT m a =
@@ -26,9 +58,9 @@ newtype SolverT m a =
       -- `get`
       -> State
       -- `empty`
-      -> (Unit -> m b)
+      -> (SolverError -> m b)
       -- `pure`/`put`
-      -> ((Unit -> m b) -> State -> a -> m b)
+      -> ((SolverError -> m b) -> State -> a -> m b)
       -> m b
     )
 
@@ -65,77 +97,77 @@ instance altSolver :: Alt (SolverT m) where
   alt (Solver c1) (Solver c2) = Solver \r s back ok ->
     c1 r s (\_ -> c2 r s back ok) ok
 
-instance plusSolver :: Plus (SolverT m) where
-  empty = Solver \_ _ back _ -> back unit
+instance monadThrowSolver :: MonadThrow SolverError (SolverT m) where
+  throwError e = Solver \_ _ back _ -> back e
 
-type Goals = Map PackageName Range
+type Goals = Map PackageName (Tuple SolverPosition Range)
 type Solved = Map PackageName Version
 type State =
   { pending :: Goals
   , solved :: Map PackageName Version
   }
 
-solve :: Dependencies -> Goals -> Maybe Solved
+oneOfMap1 :: forall f a b. Alt f => (a -> f b) -> NonEmptyArray a -> f b
+oneOfMap1 = alaF Alternate foldMap1
+
+solve :: Dependencies -> Map PackageName Range -> Either SolverError Solved
 solve index pending = unwrap $ case exploreGoals of
   Solver c ->
-    c index { pending, solved: Map.empty } (const (Identity Nothing)) (\_ _ solved -> Identity (Just solved))
+    c index { pending: map (Tuple SolveRoot) pending, solved: Map.empty }
+      (pure <<< Left)
+      (\_ _ solved -> pure (pure solved))
 
 exploreGoals :: Solver Solved
 exploreGoals =
-  get >>= \{ pending, solved } ->
+  get >>= \goals@{ pending, solved } ->
     case Map.findMin pending of
       Nothing ->
         pure solved
 
-      Just { key: name, value: constraint } -> do
+      Just { key: name, value: Tuple pos constraint } -> do
         let otherPending = Map.delete name pending
-        let goals1 = { pending: otherPending, solved }
-        put goals1
-        oneOfMap (addVersion name) =<< getRelevantVersions name constraint
+        let goals' = goals { pending = otherPending }
+        put goals'
+        _ <- oneOfMap1 (addVersion pos name) =<< getRelevantVersions pos name constraint
         exploreGoals
 
-addVersion :: PackageName -> Version -> Solver Unit
-addVersion name version = do
+addVersion :: SolverPosition -> PackageName -> (Tuple Version (Map PackageName Range)) -> Solver Unit
+addVersion pos name (Tuple version deps) = do
   modify_ \s -> s { solved = Map.insert name version s.solved }
-  deps <- getConstraints name version
-  traverseWithIndex_ addConstraint deps
+  traverseWithIndex_ (addConstraint (Solving name version pos)) deps
 
-addConstraint :: PackageName -> Range -> Solver Unit
-addConstraint name newConstraint = do
+addConstraint :: SolverPosition -> PackageName -> Range -> Solver Unit
+addConstraint pos name newConstraint = do
   goals@{ pending, solved } <- get
   case Map.lookup name solved of
     Just version ->
       if rangeIncludes newConstraint version then pure unit
-      else empty
+      else throwError $ VersionNotInRange name version newConstraint pos
 
     Nothing ->
       case Map.lookup name pending of
-        Nothing ->
-          put $ goals { pending = Map.insert name newConstraint pending }
+        Nothing -> put $ goals { pending = Map.insert name (Tuple pos newConstraint) pending }
 
-        Just oldConstraint ->
+        Just (Tuple oldPos oldConstraint) ->
           case intersect oldConstraint newConstraint of
             Nothing ->
-              empty
+              throwError $ DisjointRanges name oldConstraint oldPos newConstraint pos
 
             Just mergedConstraint ->
               if oldConstraint == mergedConstraint then pure unit
-              else put $ goals { pending = Map.insert name mergedConstraint pending }
+              else put $ goals { pending = Map.insert name (Tuple pos mergedConstraint) pending }
 
-getRelevantVersions :: PackageName -> Range -> Solver (Array Version)
-getRelevantVersions name constraint =
-  asks \index ->
-    Map.lookup name index # foldMap do
-      -- Put newest versions first
-      Map.keys >>> Array.fromFoldable >>> Array.reverse
-        >>> Array.filter (rangeIncludes constraint)
-
-getConstraints :: PackageName -> Version -> Solver (Map PackageName Range)
-getConstraints pkg vsn =
-  ask >>= \index ->
-    case Map.lookup pkg index >>= Map.lookup vsn of
-      Just cs ->
-        pure cs
-
-      Nothing ->
-        empty
+getRelevantVersions :: SolverPosition -> PackageName -> Range -> Solver (NonEmptyArray (Tuple Version (Map PackageName Range)))
+getRelevantVersions pos name constraint = do
+  index <- ask
+  let
+    versions =
+      Map.lookup name index # foldMap do
+        -- Put newest versions first
+        Map.toUnfoldable >>> Array.reverse
+          >>> Array.filter (fst >>> rangeIncludes constraint)
+          >>> NEA.fromArray
+  case versions of
+    Just vs -> pure vs
+    Nothing ->
+      throwError $ NoVersionsInRange name (Map.lookup name index # foldMap Map.keys) constraint pos
