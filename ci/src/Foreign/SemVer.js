@@ -1,6 +1,6 @@
-const semver = require("semver");
+import semver from "semver";
 
-exports.parseRangeImpl = (rangeString) =>
+export const parseRangeImpl = (rangeString) => {
   // `validRange` cleans the input string (in loose mode) and converts it into a range
   // using only comparative operators (no ^, ~, -, or other range operators), and then
   // checks whether the result is a valid SemVer range. It then returns `null` if the
@@ -19,4 +19,8 @@ exports.parseRangeImpl = (rangeString) =>
   //
   // We set these options because we should only be using this function to clean up ranges,
   // not to validate them.
-  semver.validRange(rangeString, { loose: true, includePrerelease: false });
+  return semver.validRange(rangeString, {
+    loose: true,
+    includePrerelease: false,
+  });
+};

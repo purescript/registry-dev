@@ -198,7 +198,7 @@
               dhallPackages.dhall-json-simple
 
               # Development tooling
-              pursPackages.purs-0_14_7
+              pursPackages.purs-0_15_2
               pursPackages.spago
               pursPackages.psa
               pursPackages.purs-tidy

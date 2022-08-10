@@ -1,13 +1,18 @@
-var parse = require("spdx-expression-parse");
-var ids = require("spdx-license-ids");
-var deprecatedIds = require("spdx-license-ids/deprecated");
-var Fuse = require("fuse.js");
+import parse from "spdx-expression-parse";
+import Fuse from "fuse.js";
+import { createRequire } from "module";
 
-const identifiers = ids.concat(deprecatedIds);
+// The spdx-license-ids project is just a set of JSON files, which can't be
+// imported directly into ESM without import assertions to guide TypeScript.
+const require = createRequire(import.meta.url);
+const identifiers = require("spdx-license-ids");
+const deprecatedIdentifiers = require("spdx-license-ids/deprecated");
 
-const fuse = new Fuse(identifiers);
+const allIdentifiers = identifiers.concat(deprecatedIdentifiers);
 
-exports.parseSPDXLicenseIdImpl = function (onError, onSuccess, identifier) {
+const fuse = new Fuse(allIdentifiers);
+
+export const parseSPDXLicenseIdImpl = (onError, onSuccess, identifier) => {
   try {
     parse(identifier);
     return onSuccess(identifier);

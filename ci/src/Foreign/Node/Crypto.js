@@ -1,7 +1,7 @@
-var crypto = require("crypto");
+import crypto from "crypto";
 
-exports.createHash = (algorithm) => () => crypto.createHash(algorithm);
+export const createHash = (algorithm) => () => crypto.createHash(algorithm);
 
-exports.updateHash = (buffer) => (hash) => () => hash.update(buffer);
+export const updateHash = (buffer) => (hash) => () => hash.update(buffer);
 
-exports.digestHash = (hash) => () => hash.digest();
+export const digestHash = (hash) => () => hash.digest();

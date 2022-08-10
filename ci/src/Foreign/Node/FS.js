@@ -1,8 +1,8 @@
-const fs = require("fs-extra");
+import { ensureDir, remove, copy } from "fs-extra";
 
-exports.ensureDirectoryImpl = (path) => () => fs.ensureDir(path);
+export const ensureDirectoryImpl = (path) => () => ensureDir(path);
 
-exports.removeImpl = (path) => () => fs.remove(path);
+export const removeImpl = (path) => () => remove(path);
 
-exports.copyImpl = (source) => (destination) => (options) => () =>
-  fs.copy(source, destination, options);
+export const copyImpl = (source) => (destination) => (options) => () =>
+  copy(source, destination, options);

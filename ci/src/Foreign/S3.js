@@ -1,6 +1,6 @@
-const AWS = require("aws-sdk");
+import aws from "aws-sdk";
 
-exports.connectImpl = function (endpoint) {
+export function connectImpl(endpoint) {
   if ("SPACES_KEY" in process.env && "SPACES_SECRET" in process.env) {
   } else {
     console.log("Please set SPACES_KEY and SPACES_SECRET envvars");
@@ -8,17 +8,17 @@ exports.connectImpl = function (endpoint) {
   }
 
   return function () {
-    const spacesEndpoint = new AWS.Endpoint(endpoint);
-    const s3 = new AWS.S3({
+    const spacesEndpoint = new aws.Endpoint(endpoint);
+    const s3 = new aws.S3({
       endpoint: spacesEndpoint,
       accessKeyId: process.env.SPACES_KEY,
       secretAccessKey: process.env.SPACES_SECRET,
     });
     return s3;
   };
-};
+}
 
-exports.listObjectsImpl = function (s3, params) {
+export function listObjectsImpl(s3, params) {
   return function () {
     return new Promise(function (resolve, reject) {
       s3.listObjectsV2(params, function (err, data) {
@@ -30,9 +30,9 @@ exports.listObjectsImpl = function (s3, params) {
       });
     });
   };
-};
+}
 
-exports.putObjectImpl = function (s3, params) {
+export function putObjectImpl(s3, params) {
   return function () {
     return new Promise(function (resolve, reject) {
       s3.putObject(params, function (err, data) {
@@ -44,9 +44,9 @@ exports.putObjectImpl = function (s3, params) {
       });
     });
   };
-};
+}
 
-exports.deleteObjectImpl = function (s3, params) {
+export function deleteObjectImpl(s3, params) {
   return function () {
     return new Promise(function (resolve, reject) {
       s3.deleteObject(params, function (err, data) {
@@ -58,4 +58,4 @@ exports.deleteObjectImpl = function (s3, params) {
       });
     });
   };
-};
+}
