@@ -2,7 +2,7 @@ module Registry.Solver where
 
 import Registry.Prelude
 
-import Control.Monad.Error.Class (class MonadError, class MonadThrow, catchError)
+import Control.Monad.Error.Class (class MonadError, class MonadThrow)
 import Control.Monad.Reader (class MonadAsk, ask)
 import Control.Monad.State (class MonadState, get, modify_, put)
 import Control.Plus (class Alt)
@@ -15,6 +15,7 @@ import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Data.Newtype (alaF, unwrap)
 import Data.Semigroup.Foldable (intercalateMap)
+import Effect.Unsafe (unsafePerformEffect)
 import Registry.PackageName (PackageName)
 import Registry.Version (Range, Version, intersect, rangeIncludes)
 
@@ -67,7 +68,7 @@ newtype SolverT m a =
       Dependencies
       -- `get`
       -> State
-      -- `empty`
+      -- `throwError`
       -> (NonEmptyArray SolverError -> m b)
       -- `pure`/`put`
       -> ((NonEmptyArray SolverError -> m b) -> State -> a -> m b)
@@ -87,9 +88,12 @@ instance Applicative (SolverT m) where
 
 instance Bind (SolverT m) where
   bind (Solver c) f = Solver \r s back ok ->
-    c r s back \back' s' a ->
-      case f a of
-        Solver c' -> c' r s' back' ok
+    let
+      ok' back' s' a =
+        case f a of
+          Solver c' -> c' r s' back' ok
+    in
+      c r s back ok'
 
 instance Monad (SolverT m)
 
@@ -103,21 +107,30 @@ instance MonadState State (SolverT m) where
     in
       ok back s' a
 
-instance Alt (SolverT m) where
-  alt (Solver c1) (Solver c2) = Solver \r s back ok ->
-    c1 r s (\_ -> c2 r s back ok) ok
-
 instance MonadThrow (NonEmptyArray SolverError) (SolverT m) where
   throwError e = Solver \_ _ back _ -> back e
 
-instance MonadError (NonEmptyArray SolverError) (SolverT m) where
-  catchError (Solver ma) recover = Solver \r s back ok ->
-    let
-      back' e = case recover e of
+unsafeLog = unsafePerformEffect <<< log
+
+catchError :: forall a. String -> Solver a -> (NonEmptyArray SolverError -> Solver a) -> Solver a
+catchError lbl (Solver ma) recover = Solver \r s back ok ->
+  let
+    back' e = do
+      let _ = unsafeLog $ "Catching error " <> lbl <> ": " <> show e
+      let
+        back'' e' = do
+          let _ = unsafeLog $ "Rethrown error " <> lbl <> ": " <> show e'
+          back e'
+
+        ok' back''' s' a = do
+          let _ = unsafeLog $ "Succeeded " <> lbl <> "??"
+          ok back''' s' a
+      case recover e of
         Solver ma' ->
-          ma' r s back ok
-    in
-      ma r s back' ok
+          ma' r s back'' ok'
+          -- ma' r s back ok
+  in
+    ma r s back' ok
 
 type Goals = Map PackageName (Tuple SolverPosition Range)
 type Solved = Map PackageName Version
@@ -131,44 +144,71 @@ newtype CollectErrors f a = CollectErrors (f a)
 
 derive instance Newtype (CollectErrors f a) _
 
-instance (Semigroup e, MonadError e f) => Semigroup (CollectErrors f a) where
+instance Semigroup (CollectErrors Solver a) where
   append (CollectErrors fa) (CollectErrors fb) = CollectErrors $
-    catchError fa \e1 ->
-      catchError fb \e2 ->
+    catchError "1" fa \e1 ->
+      catchError "2" fb \e2 ->
         throwError (e1 <> e2)
 
-oneOfMap1 :: forall e f a b. Semigroup e => MonadError e f => (a -> f b) -> NonEmptyArray a -> f b
+oneOfMap1 :: forall a b. (a -> Solver b) -> NonEmptyArray a -> Solver b
 oneOfMap1 = alaF CollectErrors foldMap1
 
-moreErrors
-  :: forall e f a b
-   . Discard a
-  => Semigroup e
-  => MonadError e f
-  => f a
-  -> f b
-  -> f b
+peekState :: String -> Solver Unit
+peekState t = do
+  s <- get
+  let _ = unsafePerformEffect $ log $ t <> ": " <> show s
+  pure unit
+
 moreErrors a b = do
-  catchError a \e1 -> do
-    _ <- catchError b \e2 -> throwError (e1 <> e2)
+  -- peekState "Initial"
+  catchError "Primary" a \e1 -> do
+    -- original `back`
+    -- peekState "Final"
+    let
+      peekRight v =
+        let _ = unsafeLog $ "Right " <> show v
+        in Right v
+    mb <- catchError "Secondary" (peekRight <$> b) \e2 -> do
+      pure (Left e2)
+    case mb of
+      Right _ ->
+        throwError e1
+      Left e2 -> do
+        let _ = unsafePerformEffect $ log $ "Errors: " <> show { e1 , e2 }
+        throwError (e1 <> e2)
+    {-
+    _ <- catchError b \e2 -> do
+      -- original `back`
+      -- Why is it throwing??
+      let _ = unsafePerformEffect $ log $ "Errors: " <> show { e1 , e2 }
+      -- Accumulate
+      throwError (e1 <> e2) -- `back`
+    -- Rethrow
     throwError e1
+    -}
   b
 
 solve :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
 solve index pending = unwrap $ case exploreGoals of
   Solver c ->
     c index { pending: map (Tuple SolveRoot) pending, solved: Map.empty }
-      (pure <<< Left)
+      (\e ->
+        let _ = unsafeLog $ "Top-level error: " <> show e
+        in pure (Left e)
+      )
       (\_ _ solved -> pure (pure solved))
 
 exploreGoals :: Solver Solved
-exploreGoals =
+exploreGoals = do
+  peekState "exploreGoals"
   get >>= \goals@{ pending, solved } ->
     case Map.findMin pending of
-      Nothing ->
+      Nothing -> do
+        peekState "No more goals!"
         pure solved
 
       Just { key: name, value: Tuple pos constraint } -> do
+        peekState $ "Next goal: " <> show name
         put $ goals { pending = Map.delete name pending }
         moreErrors
           do oneOfMap1 (addVersion pos name) =<< getRelevantVersions pos name constraint
@@ -212,5 +252,6 @@ getRelevantVersions pos name constraint = do
           >>> NEA.fromArray
   case versions of
     Just vs -> pure vs
-    Nothing ->
+    Nothing -> do
+      let _ = unsafePerformEffect $ log "NO VERSIONS IN RANGE"
       throwError $ pure $ NoVersionsInRange name (Map.lookup name index # foldMap Map.keys) constraint pos
