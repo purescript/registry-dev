@@ -2,10 +2,9 @@ module Registry.Solver where
 
 import Registry.Prelude
 
-import Control.Monad.Error.Class (class MonadError, class MonadThrow, catchError)
-import Control.Monad.Reader (class MonadAsk, ask)
-import Control.Monad.State (class MonadState, get, modify_, put)
-import Control.Plus (class Alt)
+import Control.Monad.Error.Class (class MonadError, catchError)
+import Control.Monad.Reader (ask)
+import Control.Monad.State (get, modify_, put)
 import Data.Array as Array
 import Data.Array.NonEmpty (foldMap1)
 import Data.Array.NonEmpty as NEA
@@ -13,10 +12,11 @@ import Data.Foldable (foldMap)
 import Data.FoldableWithIndex (traverseWithIndex_)
 import Data.Generic.Rep as Generic
 import Data.Map as Map
-import Data.Newtype (alaF, unwrap)
+import Data.Newtype (alaF)
 import Data.Semigroup.Foldable (intercalateMap)
 import Registry.PackageName (PackageName)
 import Registry.Version (Range, Version, intersect, rangeIncludes)
+import Uncurried.RWSE (RWSE, runRWSE)
 
 type Dependencies = Map PackageName (Map Version (Map PackageName Range))
 
@@ -58,66 +58,7 @@ printSolverError = case _ of
   DisjointRanges name range1 pos1 range2 pos2 ->
     "Committed to " <> show name <> " in range " <> show range1 <> show pos1 <> " but the range " <> show range2 <> " was also required" <> show pos2
 
-newtype SolverT :: (Type -> Type) -> Type -> Type
-newtype SolverT m a =
-  Solver
-    ( forall b
-       .
-      -- `ask`
-      Dependencies
-      -- `get`
-      -> State
-      -- `empty`
-      -> (NonEmptyArray SolverError -> m b)
-      -- `pure`/`put`
-      -> ((NonEmptyArray SolverError -> m b) -> State -> a -> m b)
-      -> m b
-    )
-
-type Solver = SolverT Identity
-
-instance Functor (SolverT m) where
-  map f (Solver c) = Solver \r s back ok -> c r s back (\back' s' a -> ok back' s' (f a))
-
-instance Apply (SolverT m) where
-  apply = ap
-
-instance Applicative (SolverT m) where
-  pure a = Solver \_ s back ok -> ok back s a
-
-instance Bind (SolverT m) where
-  bind (Solver c) f = Solver \r s back ok ->
-    c r s back \back' s' a ->
-      case f a of
-        Solver c' -> c' r s' back' ok
-
-instance Monad (SolverT m)
-
-instance MonadAsk Dependencies (SolverT m) where
-  ask = Solver \r s back ok -> ok back s r
-
-instance MonadState State (SolverT m) where
-  state f = Solver \_ s back ok ->
-    let
-      Tuple a s' = f s
-    in
-      ok back s' a
-
-instance Alt (SolverT m) where
-  alt (Solver c1) (Solver c2) = Solver \r s back ok ->
-    c1 r s (\_ -> c2 r s back ok) ok
-
-instance MonadThrow (NonEmptyArray SolverError) (SolverT m) where
-  throwError e = Solver \_ _ back _ -> back e
-
-instance MonadError (NonEmptyArray SolverError) (SolverT m) where
-  catchError (Solver ma) recover = Solver \r s back ok ->
-    let
-      back' e = case recover e of
-        Solver ma' ->
-          ma' r s back ok
-    in
-      ma r s back' ok
+type Solver = RWSE Dependencies Unit State (NonEmptyArray SolverError)
 
 type Goals = Map PackageName (Tuple SolverPosition Range)
 type Solved = Map PackageName Version
@@ -141,11 +82,9 @@ oneOfMap1 :: forall e f a b. Semigroup e => MonadError e f => (a -> f b) -> NonE
 oneOfMap1 = alaF CollectErrors foldMap1
 
 solve :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
-solve index pending = unwrap $ case exploreGoals of
-  Solver c ->
-    c index { pending: map (Tuple SolveRoot) pending, solved: Map.empty }
-      (pure <<< Left)
-      (\_ _ solved -> pure (pure solved))
+solve index pending =
+  case runRWSE index { pending: map (Tuple SolveRoot) pending, solved: Map.empty } exploreGoals of
+    _ /\ r /\ _ -> r
 
 exploreGoals :: Solver Solved
 exploreGoals =
@@ -158,8 +97,9 @@ exploreGoals =
         let otherPending = Map.delete name pending
         let goals' = goals { pending = otherPending }
         put goals'
-        _ <- oneOfMap1 (addVersion pos name) =<< getRelevantVersions pos name constraint
-        exploreGoals
+        versions <- getRelevantVersions pos name constraint
+        versions # oneOfMap1 \version ->
+          addVersion pos name version *> exploreGoals
 
 addVersion :: SolverPosition -> PackageName -> (Tuple Version (Map PackageName Range)) -> Solver Unit
 addVersion pos name (Tuple version deps) = do
