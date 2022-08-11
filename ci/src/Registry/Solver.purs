@@ -2,7 +2,7 @@ module Registry.Solver where
 
 import Registry.Prelude
 
-import Control.Monad.Error.Class (class MonadThrow)
+import Control.Monad.Error.Class (class MonadError, class MonadThrow, catchError)
 import Control.Monad.Reader (class MonadAsk, ask)
 import Control.Monad.State (class MonadState, get, modify_, put)
 import Control.Plus (class Alt)
@@ -12,7 +12,6 @@ import Data.Array.NonEmpty as NEA
 import Data.Foldable (foldMap)
 import Data.FoldableWithIndex (traverseWithIndex_)
 import Data.Map as Map
-import Data.Monoid.Alternate (Alternate(..))
 import Data.Newtype (alaF, unwrap)
 import Data.Semigroup.Foldable (intercalateMap)
 import Registry.PackageName (PackageName)
@@ -58,9 +57,9 @@ newtype SolverT m a =
       -- `get`
       -> State
       -- `empty`
-      -> (SolverError -> m b)
+      -> (NonEmptyArray SolverError -> m b)
       -- `pure`/`put`
-      -> ((SolverError -> m b) -> State -> a -> m b)
+      -> ((NonEmptyArray SolverError -> m b) -> State -> a -> m b)
       -> m b
     )
 
@@ -97,8 +96,17 @@ instance altSolver :: Alt (SolverT m) where
   alt (Solver c1) (Solver c2) = Solver \r s back ok ->
     c1 r s (\_ -> c2 r s back ok) ok
 
-instance monadThrowSolver :: MonadThrow SolverError (SolverT m) where
+instance monadThrowSolver :: MonadThrow (NonEmptyArray SolverError) (SolverT m) where
   throwError e = Solver \_ _ back _ -> back e
+
+instance monadErrorSolver :: MonadError (NonEmptyArray SolverError) (SolverT m) where
+  catchError (Solver ma) recover = Solver \r s back ok ->
+    let
+      back' e = case recover e of
+        Solver ma' ->
+          ma' r s back ok
+    in
+      ma r s back' ok
 
 type Goals = Map PackageName (Tuple SolverPosition Range)
 type Solved = Map PackageName Version
@@ -107,10 +115,21 @@ type State =
   , solved :: Map PackageName Version
   }
 
-oneOfMap1 :: forall f a b. Alt f => (a -> f b) -> NonEmptyArray a -> f b
-oneOfMap1 = alaF Alternate foldMap1
+newtype CollectErrors :: (Type -> Type) -> Type -> Type
+newtype CollectErrors f a = CollectErrors (f a)
 
-solve :: Dependencies -> Map PackageName Range -> Either SolverError Solved
+derive instance newtypeCollectErrors :: Newtype (CollectErrors f a) _
+
+instance semigroupCollectErrors :: (Semigroup e, MonadError e f) => Semigroup (CollectErrors f a) where
+  append (CollectErrors fa) (CollectErrors fb) = CollectErrors $
+    catchError fa \e1 ->
+      catchError fb \e2 ->
+        throwError (e1 <> e2)
+
+oneOfMap1 :: forall e f a b. Semigroup e => MonadError e f => (a -> f b) -> NonEmptyArray a -> f b
+oneOfMap1 = alaF CollectErrors foldMap1
+
+solve :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
 solve index pending = unwrap $ case exploreGoals of
   Solver c ->
     c index { pending: map (Tuple SolveRoot) pending, solved: Map.empty }
@@ -142,7 +161,7 @@ addConstraint pos name newConstraint = do
   case Map.lookup name solved of
     Just version ->
       if rangeIncludes newConstraint version then pure unit
-      else throwError $ VersionNotInRange name version newConstraint pos
+      else throwError $ pure $ VersionNotInRange name version newConstraint pos
 
     Nothing ->
       case Map.lookup name pending of
@@ -151,7 +170,7 @@ addConstraint pos name newConstraint = do
         Just (Tuple oldPos oldConstraint) ->
           case intersect oldConstraint newConstraint of
             Nothing ->
-              throwError $ DisjointRanges name oldConstraint oldPos newConstraint pos
+              throwError $ pure $ DisjointRanges name oldConstraint oldPos newConstraint pos
 
             Just mergedConstraint ->
               if oldConstraint == mergedConstraint then pure unit
@@ -170,4 +189,4 @@ getRelevantVersions pos name constraint = do
   case versions of
     Just vs -> pure vs
     Nothing ->
-      throwError $ NoVersionsInRange name (Map.lookup name index # foldMap Map.keys) constraint pos
+      throwError $ pure $ NoVersionsInRange name (Map.lookup name index # foldMap Map.keys) constraint pos
