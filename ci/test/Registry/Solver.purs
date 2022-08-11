@@ -18,9 +18,9 @@ spec = do
     -- For all these tests, we work with major versions only because we do not
     -- need to exercise the intricacies of the range relations, just the solver,
     -- which does not care about what versions are, just how they relate
-    p = unsafeFromRight <<< PackageName.parse
-    v = unsafeFromRight <<< Version.parseVersion Strict <<< (_ <> ".0.0") <<< show
-    r l u = unsafeFromRight <<< Version.parseRange Strict
+    package = unsafeFromRight <<< PackageName.parse
+    version = unsafeFromRight <<< Version.parseVersion Strict <<< (_ <> ".0.0") <<< show
+    range l u = unsafeFromRight <<< Version.parseRange Strict
       $ ">="
       <> show l
       <> ".0.0 <"
@@ -28,33 +28,33 @@ spec = do
       <> ".0.0"
     index = Map.fromFoldableWith Map.union $ (map <<< map) (uncurry Map.singleton) $
       -- simple and prelude have corresponding versions 0.0.0 and 1.0.0
-      [ p "simple" /\ v 0 /\ Map.fromFoldable
-          [ p "prelude" /\ r 0 1 ]
-      , p "simple" /\ v 1 /\ Map.fromFoldable
-          [ p "prelude" /\ r 1 2 ]
-      , p "prelude" /\ v 0 /\ Map.empty
-      , p "prelude" /\ v 1 /\ Map.empty
+      [ package "simple" /\ version 0 /\ Map.fromFoldable
+          [ package "prelude" /\ range 0 1 ]
+      , package "simple" /\ version 1 /\ Map.fromFoldable
+          [ package "prelude" /\ range 1 2 ]
+      , package "prelude" /\ version 0 /\ Map.empty
+      , package "prelude" /\ version 1 /\ Map.empty
       -- not-updated only has version 0.0.0 depending on simple 0.0.0
-      , p "not-updated" /\ v 0 /\ Map.fromFoldable
-          [ p "simple" /\ r 0 1 ]
+      , package "not-updated" /\ version 0 /\ Map.fromFoldable
+          [ package "simple" /\ range 0 1 ]
       -- packages that are broken and fixed at different versions
-      , p "broken-fixed" /\ v 0 /\ Map.fromFoldable
-          [ p "does-not-exist" /\ r 0 4 ]
-      , p "broken-fixed" /\ v 1 /\ Map.fromFoldable
-          [ p "prelude" /\ r 0 1 ]
-      , p "fixed-broken" /\ v 0 /\ Map.fromFoldable
-          [ p "prelude" /\ r 0 1 ]
-      , p "fixed-broken" /\ v 1 /\ Map.fromFoldable
-          [ p "does-not-exist" /\ r 0 5 ]
-      , p "broken-broken" /\ v 0 /\ Map.fromFoldable
-          [ p "does-not-exist" /\ r 0 5 ]
-      , p "broken-broken" /\ v 1 /\ Map.fromFoldable
-          [ p "does-not-exist" /\ r 0 5 ]
+      , package "broken-fixed" /\ version 0 /\ Map.fromFoldable
+          [ package "does-not-exist" /\ range 0 4 ]
+      , package "broken-fixed" /\ version 1 /\ Map.fromFoldable
+          [ package "prelude" /\ range 0 1 ]
+      , package "fixed-broken" /\ version 0 /\ Map.fromFoldable
+          [ package "prelude" /\ range 0 1 ]
+      , package "fixed-broken" /\ version 1 /\ Map.fromFoldable
+          [ package "does-not-exist" /\ range 0 5 ]
+      , package "broken-broken" /\ version 0 /\ Map.fromFoldable
+          [ package "does-not-exist" /\ range 0 5 ]
+      , package "broken-broken" /\ version 1 /\ Map.fromFoldable
+          [ package "does-not-exist" /\ range 0 5 ]
       -- just broken
-      , p "transitive-broken2" /\ v 0 /\ Map.fromFoldable
-          [ p "broken-fixed" /\ r 0 1 ]
-      , p "transitive-broken1" /\ v 0 /\ Map.fromFoldable
-          [ p "fixed-broken" /\ r 1 2 ]
+      , package "transitive-broken2" /\ version 0 /\ Map.fromFoldable
+          [ package "broken-fixed" /\ range 0 1 ]
+      , package "transitive-broken1" /\ version 0 /\ Map.fromFoldable
+          [ package "fixed-broken" /\ range 1 2 ]
       ]
     testsucceeds goals result =
       solve index (Map.fromFoldable goals) `Assert.shouldEqual` Right (Map.fromFoldable result)
@@ -63,130 +63,130 @@ spec = do
       solve index (Map.fromFoldable goals) `Assert.shouldEqual` Left error
   Spec.it "Solves" do
     testsucceeds
-      [ p "simple" /\ r 0 1
+      [ package "simple" /\ range 0 1
       ]
-      [ p "simple" /\ v 0
-      , p "prelude" /\ v 0
-      ]
-    testsucceeds
-      [ p "simple" /\ r 0 2
-      ]
-      [ p "simple" /\ v 1
-      , p "prelude" /\ v 1
+      [ package "simple" /\ version 0
+      , package "prelude" /\ version 0
       ]
     testsucceeds
-      [ p "broken-fixed" /\ r 0 2
+      [ package "simple" /\ range 0 2
       ]
-      [ p "broken-fixed" /\ v 1
-      , p "prelude" /\ v 0
+      [ package "simple" /\ version 1
+      , package "prelude" /\ version 1
       ]
     testsucceeds
-      [ p "broken-fixed" /\ r 1 2
+      [ package "broken-fixed" /\ range 0 2
       ]
-      [ p "broken-fixed" /\ v 1
-      , p "prelude" /\ v 0
+      [ package "broken-fixed" /\ version 1
+      , package "prelude" /\ version 0
+      ]
+    testsucceeds
+      [ package "broken-fixed" /\ range 1 2
+      ]
+      [ package "broken-fixed" /\ version 1
+      , package "prelude" /\ version 0
       ]
     -- Loose bounds should find the older fixed version
     testsucceeds
-      [ p "fixed-broken" /\ r 0 2
+      [ package "fixed-broken" /\ range 0 2
       ]
-      [ p "fixed-broken" /\ v 0
-      , p "prelude" /\ v 0
+      [ package "fixed-broken" /\ version 0
+      , package "prelude" /\ version 0
       ]
     testsucceeds
-      [ p "fixed-broken" /\ r 0 1
+      [ package "fixed-broken" /\ range 0 1
       ]
-      [ p "fixed-broken" /\ v 0
-      , p "prelude" /\ v 0
+      [ package "fixed-broken" /\ version 0
+      , package "prelude" /\ version 0
       ]
     -- Test that tight bounds on simple/prelude forces the other to match
     testsucceeds
-      [ p "simple" /\ r 0 2 -- loose
-      , p "prelude" /\ r 0 1 -- tight
+      [ package "simple" /\ range 0 2 -- loose
+      , package "prelude" /\ range 0 1 -- tight
       ]
-      [ p "simple" /\ v 0
-      , p "prelude" /\ v 0
-      ]
-    testsucceeds
-      [ p "simple" /\ r 0 2 -- loose
-      , p "prelude" /\ r 1 2 -- tight
-      ]
-      [ p "simple" /\ v 1
-      , p "prelude" /\ v 1
+      [ package "simple" /\ version 0
+      , package "prelude" /\ version 0
       ]
     testsucceeds
-      [ p "prelude" /\ r 0 2 -- loose
-      , p "simple" /\ r 0 1 -- tight
+      [ package "simple" /\ range 0 2 -- loose
+      , package "prelude" /\ range 1 2 -- tight
       ]
-      [ p "simple" /\ v 0
-      , p "prelude" /\ v 0
-      ]
-    testsucceeds
-      [ p "prelude" /\ r 0 2 -- loose
-      , p "simple" /\ r 1 2 -- tight
-      ]
-      [ p "simple" /\ v 1
-      , p "prelude" /\ v 1
+      [ package "simple" /\ version 1
+      , package "prelude" /\ version 1
       ]
     testsucceeds
-      [ p "prelude" /\ r 0 2 -- loose
-      , p "simple" /\ r 0 2 -- loose
+      [ package "prelude" /\ range 0 2 -- loose
+      , package "simple" /\ range 0 1 -- tight
       ]
-      [ p "simple" /\ v 1
-      , p "prelude" /\ v 1
+      [ package "simple" /\ version 0
+      , package "prelude" /\ version 0
+      ]
+    testsucceeds
+      [ package "prelude" /\ range 0 2 -- loose
+      , package "simple" /\ range 1 2 -- tight
+      ]
+      [ package "simple" /\ version 1
+      , package "prelude" /\ version 1
+      ]
+    testsucceeds
+      [ package "prelude" /\ range 0 2 -- loose
+      , package "simple" /\ range 0 2 -- loose
+      ]
+      [ package "simple" /\ version 1
+      , package "prelude" /\ version 1
       ]
   Spec.it "Does not solve" do
     testfails
-      [ p "prelude" /\ r 20 50 ]
+      [ package "prelude" /\ range 20 50 ]
       -- Package index contained no versions for prelude in the range >=20.0.0 <50.0.0 (existing versions: 0.0.0, 1.0.0)
-      (pure $ NoVersionsInRange (p "prelude") (Set.fromFoldable [ v 0, v 1 ]) (r 20 50) SolveRoot)
+      (pure $ NoVersionsInRange (package "prelude") (Set.fromFoldable [ version 0, version 1 ]) (range 20 50) SolveRoot)
     testfails
-      [ p "does-not-exist" /\ r 0 4 ]
+      [ package "does-not-exist" /\ range 0 4 ]
       -- Package index contained no versions for does-not-exist in the range >=0.0.0 <4.0.0 (existing versions: none)
-      (pure $ NoVersionsInRange (p "does-not-exist") Set.empty (r 0 4) SolveRoot)
+      (pure $ NoVersionsInRange (package "does-not-exist") Set.empty (range 0 4) SolveRoot)
     testfails
-      [ p "broken-fixed" /\ r 0 1 ]
+      [ package "broken-fixed" /\ range 0 1 ]
       -- Package index contained no versions for does-not-exist in the range >=0.0.0 <4.0.0 (existing versions: none) while solving broken-fixed@0.0.0
-      (pure $ NoVersionsInRange (p "does-not-exist") Set.empty (r 0 4) (Solving (p "broken-fixed") (v 0) SolveRoot))
+      (pure $ NoVersionsInRange (package "does-not-exist") Set.empty (range 0 4) (Solving (package "broken-fixed") (version 0) SolveRoot))
     testfails
-      [ p "fixed-broken" /\ r 1 2 ]
+      [ package "fixed-broken" /\ range 1 2 ]
       -- Package index contained no versions for does-not-exist in the range >=0.0.0 <5.0.0 (existing versions: none) while solving fixed-broken@1.0.0
-      (pure $ NoVersionsInRange (p "does-not-exist") Set.empty (r 0 5) (Solving (p "fixed-broken") (v 1) SolveRoot))
+      (pure $ NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving (package "fixed-broken") (version 1) SolveRoot))
     testfails
-      [ p "transitive-broken1" /\ r 0 1 ]
+      [ package "transitive-broken1" /\ range 0 1 ]
       -- Package index contained no versions for does-not-exist in the range >=0.0.0 <5.0.0 (existing versions: none) while solving fixed-broken@1.0.0 while solving transitive-broken1@0.0.0
-      (pure $ NoVersionsInRange (p "does-not-exist") Set.empty (r 0 5) (Solving (p "fixed-broken") (v 1) (Solving (p "transitive-broken1") (v 0) SolveRoot)))
+      (pure $ NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving (package "fixed-broken") (version 1) (Solving (package "transitive-broken1") (version 0) SolveRoot)))
     testfails
-      [ p "transitive-broken2" /\ r 0 1 ]
+      [ package "transitive-broken2" /\ range 0 1 ]
       -- Package index contained no versions for does-not-exist in the range >=0.0.0 <4.0.0 (existing versions: none) while solving broken-fixed@0.0.0 while solving transitive-broken2@0.0.0
-      (pure $ NoVersionsInRange (p "does-not-exist") Set.empty (r 0 4) (Solving (p "broken-fixed") (v 0) (Solving (p "transitive-broken2") (v 0) SolveRoot)))
+      (pure $ NoVersionsInRange (package "does-not-exist") Set.empty (range 0 4) (Solving (package "broken-fixed") (version 0) (Solving (package "transitive-broken2") (version 0) SolveRoot)))
     -- Incompatible versions
     testfails
-      [ p "simple" /\ r 0 1
-      , p "prelude" /\ r 1 2
+      [ package "simple" /\ range 0 1
+      , package "prelude" /\ range 1 2
       ]
       -- Committed to prelude@1.0.0 but the range >=0.0.0 <1.0.0 was also required while solving simple@0.0.0
-      (pure $ VersionNotInRange (p "prelude") (v 1) (r 0 1) (Solving (p "simple") (v 0) SolveRoot))
+      (pure $ VersionNotInRange (package "prelude") (version 1) (range 0 1) (Solving (package "simple") (version 0) SolveRoot))
     -- Updated prelude with unupdated package
     testfails
-      [ p "not-updated" /\ r 0 4
-      , p "prelude" /\ r 1 2
+      [ package "not-updated" /\ range 0 4
+      , package "prelude" /\ range 1 2
       ]
       -- Committed to prelude@1.0.0 but the range >=0.0.0 <1.0.0 was also required while solving simple@0.0.0 while solving not-updated@0.0.0
-      (pure $ VersionNotInRange (p "prelude") (v 1) (r 0 1) (Solving (p "simple") (v 0) (Solving (p "not-updated") (v 0) SolveRoot)))
+      (pure $ VersionNotInRange (package "prelude") (version 1) (range 0 1) (Solving (package "simple") (version 0) (Solving (package "not-updated") (version 0) SolveRoot)))
     -- Updated prelude with unupdated package
     testfails
-      [ p "not-updated" /\ r 0 4
-      , p "prelude" /\ r 1 2
+      [ package "not-updated" /\ range 0 4
+      , package "prelude" /\ range 1 2
       ]
       -- Committed to prelude@1.0.0 but the range >=0.0.0 <1.0.0 was also required while solving simple@0.0.0 while solving not-updated@0.0.0
-      (pure $ VersionNotInRange (p "prelude") (v 1) (r 0 1) (Solving (p "simple") (v 0) (Solving (p "not-updated") (v 0) SolveRoot)))
+      (pure $ VersionNotInRange (package "prelude") (version 1) (range 0 1) (Solving (package "simple") (version 0) (Solving (package "not-updated") (version 0) SolveRoot)))
     -- Multiple errors, since broken-broken@1.0.0 and broken-broken@0.0.0 both fit but cannot be solved
     testfails
-      [ p "broken-broken" /\ r 0 2
+      [ package "broken-broken" /\ range 0 2
       ]
       $
         -- Note that the higher version will appear first!
-        (pure (v 1) <|> pure (v 0))
+        (pure (version 1) <|> pure (version 0))
       <#> \brokenBrokenVersion -> do
-        NoVersionsInRange (p "does-not-exist") Set.empty (r 0 5) (Solving (p "broken-broken") brokenBrokenVersion SolveRoot)
+        NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving (package "broken-broken") brokenBrokenVersion SolveRoot)

@@ -11,6 +11,7 @@ import Data.Array.NonEmpty (foldMap1)
 import Data.Array.NonEmpty as NEA
 import Data.Foldable (foldMap)
 import Data.FoldableWithIndex (traverseWithIndex_)
+import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Data.Newtype (alaF, unwrap)
 import Data.Semigroup.Foldable (intercalateMap)
@@ -23,28 +24,38 @@ data SolverPosition
   = SolveRoot
   | Solving PackageName Version SolverPosition
 
-derive instance eqSolverPosition :: Eq SolverPosition
-derive instance ordSolverPosition :: Ord SolverPosition
+derive instance Eq SolverPosition
+derive instance Ord SolverPosition
+derive instance Generic.Generic SolverPosition _
 
-instance showSolverPosition :: Show SolverPosition where
-  show SolveRoot = ""
-  show (Solving name version pos) = " while solving " <> show name <> "@" <> show version <> show pos
+instance Show SolverPosition where
+  show a = genericShow a
+
+printSolverPosition :: SolverPosition -> String
+printSolverPosition = case _ of
+  SolveRoot -> ""
+  Solving name version pos -> " while solving " <> show name <> "@" <> show version <> show pos
 
 data SolverError
   = NoVersionsInRange PackageName (Set Version) Range SolverPosition
   | VersionNotInRange PackageName Version Range SolverPosition
   | DisjointRanges PackageName Range SolverPosition Range SolverPosition
 
-derive instance eqSolverError :: Eq SolverError
+derive instance Eq SolverError
+derive instance Generic.Generic SolverError _
 
-instance showSolverError :: Show SolverError where
-  show (NoVersionsInRange name versions range pos) =
+instance Show SolverError where
+  show a = genericShow a
+
+printSolverError :: SolverError -> String
+printSolverError = case _ of
+  NoVersionsInRange name versions range pos ->
     "Package index contained no versions for " <> show name <> " in the range " <> show range <> " (existing versions: " <> shownVersions <> ")" <> show pos
     where
     shownVersions = maybe "none" (intercalateMap ", " show) (NEA.fromFoldable versions)
-  show (VersionNotInRange name version range pos) =
+  VersionNotInRange name version range pos ->
     "Committed to " <> show name <> "@" <> show version <> " but the range " <> show range <> " was also required" <> show pos
-  show (DisjointRanges name range1 pos1 range2 pos2) =
+  DisjointRanges name range1 pos1 range2 pos2 ->
     "Committed to " <> show name <> " in range " <> show range1 <> show pos1 <> " but the range " <> show range2 <> " was also required" <> show pos2
 
 newtype SolverT :: (Type -> Type) -> Type -> Type
@@ -65,41 +76,41 @@ newtype SolverT m a =
 
 type Solver = SolverT Identity
 
-instance functorSolver :: Functor (SolverT m) where
+instance Functor (SolverT m) where
   map f (Solver c) = Solver \r s back ok -> c r s back (\back' s' a -> ok back' s' (f a))
 
-instance applySolver :: Apply (SolverT m) where
+instance Apply (SolverT m) where
   apply = ap
 
-instance applicativeSolver :: Applicative (SolverT m) where
+instance Applicative (SolverT m) where
   pure a = Solver \_ s back ok -> ok back s a
 
-instance bindSolver :: Bind (SolverT m) where
+instance Bind (SolverT m) where
   bind (Solver c) f = Solver \r s back ok ->
     c r s back \back' s' a ->
       case f a of
         Solver c' -> c' r s' back' ok
 
-instance monadSolver :: Monad (SolverT m)
+instance Monad (SolverT m)
 
-instance monadAskSolver :: MonadAsk Dependencies (SolverT m) where
+instance MonadAsk Dependencies (SolverT m) where
   ask = Solver \r s back ok -> ok back s r
 
-instance monadStateSolver :: MonadState State (SolverT m) where
+instance MonadState State (SolverT m) where
   state f = Solver \_ s back ok ->
     let
       Tuple a s' = f s
     in
       ok back s' a
 
-instance altSolver :: Alt (SolverT m) where
+instance Alt (SolverT m) where
   alt (Solver c1) (Solver c2) = Solver \r s back ok ->
     c1 r s (\_ -> c2 r s back ok) ok
 
-instance monadThrowSolver :: MonadThrow (NonEmptyArray SolverError) (SolverT m) where
+instance MonadThrow (NonEmptyArray SolverError) (SolverT m) where
   throwError e = Solver \_ _ back _ -> back e
 
-instance monadErrorSolver :: MonadError (NonEmptyArray SolverError) (SolverT m) where
+instance MonadError (NonEmptyArray SolverError) (SolverT m) where
   catchError (Solver ma) recover = Solver \r s back ok ->
     let
       back' e = case recover e of
@@ -118,9 +129,9 @@ type State =
 newtype CollectErrors :: (Type -> Type) -> Type -> Type
 newtype CollectErrors f a = CollectErrors (f a)
 
-derive instance newtypeCollectErrors :: Newtype (CollectErrors f a) _
+derive instance Newtype (CollectErrors f a) _
 
-instance semigroupCollectErrors :: (Semigroup e, MonadError e f) => Semigroup (CollectErrors f a) where
+instance (Semigroup e, MonadError e f) => Semigroup (CollectErrors f a) where
   append (CollectErrors fa) (CollectErrors fb) = CollectErrors $
     catchError fa \e1 ->
       catchError fb \e2 ->
