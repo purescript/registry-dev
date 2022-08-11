@@ -2,12 +2,11 @@ module Test.Registry.Solver where
 
 import Registry.Prelude
 
-import Data.Identity (Identity(..))
 import Data.Map as Map
 import Data.Set as Set
 import Data.Tuple (uncurry)
 import Registry.PackageName as PackageName
-import Registry.Solver (SolverError(..), SolverPosition(..), SolverT(..), catchError, solve)
+import Registry.Solver (SolverError(..), SolverPosition(..), solve)
 import Registry.Version (ParseMode(..))
 import Registry.Version as Version
 import Test.Spec as Spec
@@ -57,15 +56,11 @@ spec = do
       , package "transitive-broken1" /\ version 0 /\ Map.fromFoldable
           [ package "fixed-broken" /\ range 1 2 ]
       ]
-    testsucceeds goals result = do
-      pure unit
+    testsucceeds goals result =
       solve index (Map.fromFoldable goals) `Assert.shouldEqual` Right (Map.fromFoldable result)
     testfails goals error = do
-      pure unit
       -- logShow error
       solve index (Map.fromFoldable goals) `Assert.shouldEqual` Left error
-    solver = case _ of
-      Solver c -> un Identity $ c index { pending: Map.empty, solved: Map.empty } (pure <<< Left) (\_ _ -> pure <<< Right)
   Spec.it "Solves" do
     testsucceeds
       [ package "simple" /\ range 0 1
@@ -140,28 +135,15 @@ spec = do
       [ package "simple" /\ version 1
       , package "prelude" /\ version 1
       ]
-  Spec.itOnly "TESTING" do
-    let e = NoVersionsInRange (package "fictional-error") Set.empty (range 0 1) SolveRoot
-    let
-      -- Minimized example that reproduces the error:
-      ex = void $ catchError "Primary" (throwError (pure e)) \e1 -> do
-        catchError "Secondary" (pure unit) \e2 -> do
-          -- This is called because of backtracking below, not because `pure unit` fails
-          throwError (e1 <> e2)
-        -- Throwing here causes it to backtrack to the `e2` error handler …
-        -- If this line is commented out, the whole operation succeeds of course
-        throwError e1
-    solver ex `Assert.shouldEqual` Left (pure e)
-    logShow "HI"
+  Spec.it "Does not solve" do
+    compose const pure unit $ testfails
+      [ package "prelude" /\ range 20 50 ]
+      -- Package index contained no versions for prelude in the range >=20.0.0 <50.0.0 (existing versions: 0.0.0, 1.0.0)
+      (pure $ NoVersionsInRange (package "prelude") (Set.fromFoldable [ version 0, version 1 ]) (range 20 50) SolveRoot)
     testfails
       [ package "does-not-exist" /\ range 0 4 ]
       -- Package index contained no versions for does-not-exist in the range >=0.0.0 <4.0.0 (existing versions: none)
       (pure $ NoVersionsInRange (package "does-not-exist") Set.empty (range 0 4) SolveRoot)
-  Spec.it "Does not solve" do
-    testfails
-      [ package "prelude" /\ range 20 50 ]
-      -- Package index contained no versions for prelude in the range >=20.0.0 <50.0.0 (existing versions: 0.0.0, 1.0.0)
-      (pure $ NoVersionsInRange (package "prelude") (Set.fromFoldable [ version 0, version 1 ]) (range 20 50) SolveRoot)
     testfails
       [ package "broken-fixed" /\ range 0 1 ]
       -- Package index contained no versions for does-not-exist in the range >=0.0.0 <4.0.0 (existing versions: none) while solving broken-fixed@0.0.0
