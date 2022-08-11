@@ -181,6 +181,7 @@ spec = do
       ]
       -- Committed to prelude@1.0.0 but the range >=0.0.0 <1.0.0 was also required while solving simple@0.0.0 while solving not-updated@0.0.0
       (pure $ VersionNotInRange (package "prelude") (version 1) (range 0 1) (Solving (package "simple") (version 0) (Solving (package "not-updated") (version 0) SolveRoot)))
+  Spec.it "Reports multiple errors" do
     -- Multiple errors, since broken-broken@1.0.0 and broken-broken@0.0.0 both fit but cannot be solved
     testfails
       [ package "broken-broken" /\ range 0 2
@@ -190,3 +191,9 @@ spec = do
         (pure (version 1) <|> pure (version 0))
       <#> \brokenBrokenVersion -> do
         NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving (package "broken-broken") brokenBrokenVersion SolveRoot)
+    testfails
+      [ package "broken-fixed" /\ range 0 1
+      , package "fixed-broken" /\ range 1 2
+      ]
+      $ (pure $ NoVersionsInRange (package "does-not-exist") Set.empty (range 0 4) (Solving (package "broken-fixed") (version 0) SolveRoot))
+      <|> (pure $ NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving (package "fixed-broken") (version 1) SolveRoot))

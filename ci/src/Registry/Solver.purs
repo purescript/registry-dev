@@ -98,8 +98,13 @@ exploreGoals =
         let goals' = goals { pending = otherPending }
         put goals'
         versions <- getRelevantVersions pos name constraint
-        versions # oneOfMap1 \version ->
-          addVersion pos name version *> exploreGoals
+        let
+          act = versions # oneOfMap1 \version ->
+            addVersion pos name version *> exploreGoals
+        catchError act \e1 -> do
+          _ <- catchError exploreGoals \e2 -> do
+            throwError (e1 <> e2)
+          throwError e1
 
 addVersion :: SolverPosition -> PackageName -> (Tuple Version (Map PackageName Range)) -> Solver Unit
 addVersion pos name (Tuple version deps) = do
