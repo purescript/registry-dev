@@ -140,6 +140,20 @@ instance (Semigroup e, MonadError e f) => Semigroup (CollectErrors f a) where
 oneOfMap1 :: forall e f a b. Semigroup e => MonadError e f => (a -> f b) -> NonEmptyArray a -> f b
 oneOfMap1 = alaF CollectErrors foldMap1
 
+moreErrors
+  :: forall e f a b
+   . Discard a
+  => Semigroup e
+  => MonadError e f
+  => f a
+  -> f b
+  -> f b
+moreErrors a b = do
+  catchError a \e1 -> do
+    _ <- catchError b \e2 -> throwError (e1 <> e2)
+    throwError e1
+  b
+
 solve :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
 solve index pending = unwrap $ case exploreGoals of
   Solver c ->
@@ -155,11 +169,10 @@ exploreGoals =
         pure solved
 
       Just { key: name, value: Tuple pos constraint } -> do
-        let otherPending = Map.delete name pending
-        let goals' = goals { pending = otherPending }
-        put goals'
-        _ <- oneOfMap1 (addVersion pos name) =<< getRelevantVersions pos name constraint
-        exploreGoals
+        put $ goals { pending = Map.delete name pending }
+        moreErrors
+          do oneOfMap1 (addVersion pos name) =<< getRelevantVersions pos name constraint
+          do exploreGoals
 
 addVersion :: SolverPosition -> PackageName -> (Tuple Version (Map PackageName Range)) -> Solver Unit
 addVersion pos name (Tuple version deps) = do

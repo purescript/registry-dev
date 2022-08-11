@@ -136,7 +136,7 @@ spec = do
       , package "prelude" /\ version 1
       ]
   Spec.it "Does not solve" do
-    testfails
+    compose const pure unit $ testfails
       [ package "prelude" /\ range 20 50 ]
       -- Package index contained no versions for prelude in the range >=20.0.0 <50.0.0 (existing versions: 0.0.0, 1.0.0)
       (pure $ NoVersionsInRange (package "prelude") (Set.fromFoldable [ version 0, version 1 ]) (range 20 50) SolveRoot)
