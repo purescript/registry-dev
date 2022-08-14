@@ -191,6 +191,7 @@
               wget
               bash
               nodejs
+              nodePackages.bower
               jq
               licensee
 
