@@ -3,40 +3,48 @@ module Test.Integration where
 import Registry.Prelude
 
 import Control.Monad.Except as Except
+import Data.Array.NonEmpty as NEA
 import Data.Map as Map
+import Data.String as String
 import Effect.Exception as Exception
 import Foreign.Git as Git
 import Foreign.Tmp as Tmp
 import Node.Path as Path
+import Registry.Index (RegistryIndex)
 import Registry.Index as Index
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..))
+import Registry.Schema (Location(..), Manifest(..))
 import Registry.Solver as Solver
 import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
+import Test.Spec.Reporter (consoleReporter)
+import Test.Spec.Runner (defaultConfig, runSpec')
 
-solverSpec :: Spec.SpecT Aff Unit Aff Unit
-solverSpec = Spec.beforeAll setup do
-  Spec.describe "Solves packages in 1.0.0 package set" do
-    for_ packages \(Tuple name version) ->
-      Spec.it (PackageName.print name <> "@" <> Version.printVersion version) \index -> do
+main :: Effect Unit
+main = launchAff_ do
+  index <- setup
+  let depsOnly = map (map (\(Manifest m) -> m.dependencies)) index
+  runSpec' defaultConfig [ consoleReporter ] do
+    Spec.describe "Solves packages in 1.0.0 package set" do
+      for_ packages \(Tuple name version) ->
         case Map.lookup version =<< Map.lookup name index of
-          Nothing -> Assert.fail "Does not exist in registry index."
-          Just deps -> do
-            case Solver.solve index deps of
-              Left err -> Assert.fail $ show err
-              Right _ -> pure unit
+          Just (Manifest { location: GitHub { owner }, dependencies }) | owner == "purescript" -> do
+            Spec.it (PackageName.print name <> "@" <> Version.printVersion version) do
+              case Solver.solve depsOnly dependencies of
+                Left err -> Assert.fail $ String.joinWith "\n" $ NEA.toArray $ map Solver.printSolverError err
+                Right _ -> pure unit
+          _ -> pure unit
   where
+  setup :: Aff RegistryIndex
   setup = do
     tmp <- liftEffect Tmp.mkTmpDir
     Except.runExceptT (Git.runGit_ [ "clone", "https://github.com/purescript/registry-index" ] (Just tmp)) >>= case _ of
       Left err -> throwError (Exception.error err)
       Right _ -> pure unit
-    indexFull <- Index.readRegistryIndex (Path.concat [ tmp, "registry-index" ])
-    pure $ map (map (\(Manifest m) -> m.dependencies)) indexFull
+    Index.readRegistryIndex (Path.concat [ tmp, "registry-index" ])
 
 packages :: Array (Tuple PackageName Version)
 packages = map (bimap (unsafeFromRight <<< PackageName.parse) (unsafeFromRight <<< Version.parseVersion Version.Strict))
