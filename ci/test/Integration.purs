@@ -14,7 +14,7 @@ import Registry.Index (RegistryIndex)
 import Registry.Index as Index
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Location(..), Manifest(..))
+import Registry.Schema (Manifest(..))
 import Registry.Solver as Solver
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -31,17 +31,29 @@ main = launchAff_ do
     Spec.describe "Solves packages in 1.0.0 package set" do
       for_ packages \(Tuple name version) ->
         case Map.lookup version =<< Map.lookup name index of
-          Just (Manifest { location: GitHub { owner }, dependencies }) | owner == "purescript" -> do
+          Just (Manifest { dependencies }) -> do
+            let
+              unsafeParse (Tuple p v) = unsafeFromRight (PackageName.parse p) /\ unsafeFromRight (Version.parseVersion Version.Strict v)
+              knownFailures = Map.fromFoldable $ map unsafeParse
+                [ "halogen-formless" /\ "4.0.0"
+                , "logging-journald" /\ "0.4.0"
+                , "ps-cst" /\ "1.2.0"
+                ]
+
             Spec.it (PackageName.print name <> "@" <> Version.printVersion version) do
               case Solver.solve depsOnly dependencies of
-                Left err -> Assert.fail $ String.joinWith "\n" $ NEA.toArray $ map Solver.printSolverError err
-                Right _ -> pure unit
+                Left err ->
+                  unless (Map.lookup name knownFailures == Just version) do
+                    Assert.fail $ String.joinWith "\n" $ NEA.toArray $ map Solver.printSolverError err
+                Right _ ->
+                  when (Map.lookup name knownFailures == Just version) do
+                    Assert.fail "Unexpected failure! Should have succeeded."
           _ -> pure unit
   where
   setup :: Aff RegistryIndex
   setup = do
     tmp <- liftEffect Tmp.mkTmpDir
-    Except.runExceptT (Git.runGit_ [ "clone", "https://github.com/purescript/registry-index" ] (Just tmp)) >>= case _ of
+    Except.runExceptT (Git.runGit_ [ "clone", "https://github.com/purescript/registry-index", "--depth", "1" ] (Just tmp)) >>= case _ of
       Left err -> throwError (Exception.error err)
       Right _ -> pure unit
     Index.readRegistryIndex (Path.concat [ tmp, "registry-index" ])
