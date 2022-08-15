@@ -6,8 +6,10 @@ module Registry.Scripts.BowerInstaller where
 
 import Registry.Prelude
 
+import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
 import Data.Array as Array
+import Data.Filterable (filterMap)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.String as String
@@ -16,6 +18,7 @@ import Dotenv as Dotenv
 import Effect.Exception as Exception
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
+import Foreign.Git as Git
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
@@ -23,6 +26,7 @@ import Foreign.Tmp as Tmp
 import Node.ChildProcess (Exit(..))
 import Node.ChildProcess as ChildProcess
 import Node.FS.Aff as FS.Aff
+import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
 import Parsing as Parsing
@@ -33,12 +37,15 @@ import Registry.Index as Index
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Prelude as Aff
 import Registry.RegistryM (RegistryM, readPackagesMetadata)
 import Registry.RegistryM as RegistryM
 import Registry.Schema (Location(..), Manifest(..), Metadata)
 import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Sunde
+
+type BowerSolverResults = Map PackageName (Map Version (Map PackageName Version))
 
 main :: Effect Unit
 main = launchAff_ do
@@ -78,30 +85,60 @@ main = launchAff_ do
     registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
     metadata <- readPackagesMetadata
 
+    previousResults :: BowerSolverResults <- liftAff do
+      log "Fetching thomashoneyman/bower-solver-results"
+      fetchRepo { owner: "thomashoneyman", repo: "bower-solver-results" } "bower-solver-results"
+      allContents <- FS.Aff.readdir "bower-solver-results"
+      let files = filterMap (String.stripSuffix (String.Pattern ".json")) allContents
+      log $ "Reading " <> show (Array.length files) <> " input files..."
+      result <- for files \file -> do
+        package <- case PackageName.parse file of
+          Left err -> throwError $ Exception.error $ Parsing.parseErrorMessage err
+          Right res -> pure res
+        versions <- Json.readJsonFile (Path.concat [ "bower-solver-results", file <> ".json" ]) >>= case _ of
+          Left err -> throwError $ Exception.error err
+          Right versions -> pure versions
+        pure (Tuple package versions)
+      pure $ Map.fromFoldable result
+
     -- Install packages one-by-one, collecting which ones succeed and which ones
     -- fail. Note: this will take forever to complete, so feel free to step away
     -- for a few hours.
-    bowerSolverResults <- runBowerSolver registryIndex metadata
+    log $ "Solving registry packages..."
+    allResults <- runBowerSolver registryIndex metadata previousResults
 
-    forWithIndex_ (map Map.catMaybes bowerSolverResults) \package versions ->
+    let
+      bowerSolverResults :: BowerSolverResults
+      bowerSolverResults = map Map.catMaybes allResults
+
+    forWithIndex_ bowerSolverResults \package versions ->
       -- NOTE: These results are ignored to keep the file sizes in the repo down
       -- but they can be seen at https://github.com/thomashoneyman/bower-solver-results
+      --
+      -- If you would like to add your new results to the repo, please open a PR
       liftAff $ Json.writeJsonFile (Path.concat [ "bower-solver-results", PackageName.print package <> ".json" ]) versions
 
     log "Done!"
 
-runBowerSolver :: RegistryIndex -> Map PackageName Metadata -> RegistryM (Map PackageName (Map Version (Maybe (Map PackageName Version))))
-runBowerSolver index metadata =
+-- | Attempt to solve the entire registry index, relying on previous solver
+-- | results if available.
+runBowerSolver :: RegistryIndex -> Map PackageName Metadata -> BowerSolverResults -> RegistryM (Map PackageName (Map Version (Maybe (Map PackageName Version))))
+runBowerSolver index metadata previousResults =
   forWithIndex index \package versions ->
-    forWithIndex versions \version (Manifest { dependencies }) -> do
-      let
-        bowerfile = Json.printJson { name: PackageName.print package, dependencies: bowerDependencies }
-        bowerDependencies = mapWithIndex bowerDependency dependencies
-        bowerDependency depName range = case Map.lookup depName metadata of
-          Just { location: GitHub dep } -> "https://github.com/" <> dep.owner <> "/" <> dep.repo <> ".git#" <> Version.printRange range
-          _ -> unsafeCrashWith $ Array.fold [ PackageName.print depName, " not in metadata." ]
+    forWithIndex versions \version (Manifest { dependencies }) ->
+      case Map.lookup package previousResults >>= Map.lookup version of
+        Nothing -> do
+          let
+            bowerfile = Json.printJson { name: PackageName.print package, dependencies: bowerDependencies }
+            bowerDependencies = mapWithIndex bowerDependency dependencies
+            bowerDependency depName range = case Map.lookup depName metadata of
+              Just { location: GitHub dep } -> "https://github.com/" <> dep.owner <> "/" <> dep.repo <> ".git#" <> Version.printRange range
+              _ -> unsafeCrashWith $ Array.fold [ PackageName.print depName, " not in metadata." ]
 
-      runBowerInstall package version bowerfile
+          runBowerInstall package version bowerfile
+
+        Just resolutions ->
+          pure (Just resolutions)
 
 -- It would be even better to record bower resolutions, but it's a little hairy:
 -- Record bower resolutions, not just success / failure?
@@ -166,3 +203,14 @@ readResolutions tmp = do
     pure (Tuple package version)
 
   pure $ Map.fromFoldable result
+
+fetchRepo :: GitHub.Address -> FilePath -> Aff Unit
+fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
+  true -> do
+    Except.runExceptT (Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just path)) >>= case _ of
+      Left err -> Aff.throwError $ Exception.error err
+      Right _ -> pure unit
+  _ -> do
+    Except.runExceptT (Git.runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
+      Left err -> Aff.throwError $ Exception.error err
+      Right _ -> pure unit
