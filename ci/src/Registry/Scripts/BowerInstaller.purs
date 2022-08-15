@@ -85,7 +85,7 @@ main = launchAff_ do
 
     forWithIndex_ (map Map.catMaybes bowerSolverResults) \package versions ->
       -- NOTE: These results are ignored to keep the file sizes in the repo down
-      -- but they can be seen at https://github.com/thomashoneyman/registry-bower-solver
+      -- but they can be seen at https://github.com/thomashoneyman/bower-solver-results
       liftAff $ Json.writeJsonFile (Path.concat [ "bower-solver-results", PackageName.print package <> ".json" ]) versions
 
     log "Done!"
