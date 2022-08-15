@@ -178,10 +178,6 @@ runBowerInstall name version contents = do
     Right { value } ->
       pure value
 
--- case value of
---   Nothing -> liftEffect (cache.remove key) *> runBowerInstall name version contents
---   otherwise -> pure otherwise
-
 readResolutions :: FilePath -> Aff (Map PackageName Version)
 readResolutions tmp = do
   let components = Path.concat [ tmp, "bower_components" ]
