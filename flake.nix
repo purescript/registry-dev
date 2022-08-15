@@ -191,7 +191,6 @@
               wget
               bash
               nodejs
-              nodePackages.bower
               jq
               licensee
 
@@ -204,6 +203,7 @@
               pursPackages.psa
               pursPackages.purs-tidy
               pursPackages.purescript-language-server
+              nodePackages.bower
             ];
           };
         };
