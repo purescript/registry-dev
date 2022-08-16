@@ -2,24 +2,27 @@ module Test.Integration where
 
 import Registry.Prelude
 
-import Control.Alternative (guard)
 import Control.Monad.Except as Except
-import Data.Array as Array
+import Control.Monad.State as State
 import Data.Array.NonEmpty as NEA
+import Data.Filterable (filterMap)
+import Data.Foldable (foldl)
 import Data.Map as Map
-import Data.Set as Set
 import Data.String as String
 import Effect.Exception as Exception
 import Foreign.Git as Git
 import Foreign.Tmp as Tmp
+import Node.FS.Aff as FS.Aff
 import Node.Path as Path
+import Parsing as Parsing
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
+import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Location(..), Manifest(..))
 import Registry.Solver as Solver
-import Registry.Version (Version)
+import Registry.Version (Range, Version)
 import Registry.Version as Version
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
@@ -28,93 +31,130 @@ import Test.Spec.Runner (defaultConfig, runSpec')
 
 main :: Effect Unit
 main = launchAff_ do
-  index <- setup
+  { index, bowerSolutions } <- setup
+
   let
-    depsOnly :: Solver.Dependencies
-    depsOnly = map (map (\(Manifest m) -> m.dependencies)) index
+    -- Note: this segmented index only considers packages that have a
+    -- corresponding Bower solution.
+    segmentedIndex :: SegmentedByOwner
+    segmentedIndex = segmentSolvableByOwner index bowerSolutions
 
-    chunkSize :: Int
-    chunkSize = 250
+    solverIndex :: Solver.Dependencies
+    solverIndex = map (map (\(Manifest m) -> m.dependencies)) index
 
-    chunk :: Array _ -> Array (Array _)
-    chunk elems = case Array.take chunkSize elems of
-      newElems | Array.length newElems == chunkSize -> Array.cons newElems (chunk (Array.drop chunkSize elems))
-      newElems -> [ newElems ]
+    corePackages :: Solver.Dependencies
+    corePackages = unsafeFromJust $ Map.lookup "purescript" segmentedIndex
 
-    -- Adjust this range to narrow down to a particular segment of packages. We
-    -- have to chunk things in order to preserve stack safety.
-    indices :: Array Int
-    indices = Array.range 0 1 -- 45
+    contribPackages :: Solver.Dependencies
+    contribPackages = unsafeFromJust $ Map.lookup "purescript-contrib" segmentedIndex
 
-    -- Adjust this filter to include specific packages
-    shouldInclude :: Manifest -> Boolean
-    shouldInclude (Manifest { location }) = case location of
-      GitHub { owner } | owner == "purescript" -> true
-      _ -> false
+    nodePackages :: Solver.Dependencies
+    nodePackages = unsafeFromJust $ Map.lookup "purescript-node" segmentedIndex
 
-    flatIndex :: Array (Array Manifest)
-    flatIndex = chunk do
-      Tuple _ versions <- Map.toUnfoldableUnordered index
-      Tuple _ manifest <- Map.toUnfoldableUnordered versions
-      guard (shouldInclude manifest)
-      pure manifest
+    webPackages :: Solver.Dependencies
+    webPackages = unsafeFromJust $ Map.lookup "purescript-web" segmentedIndex
+
+    -- These are not run by default, but they can be added at any time for spot
+    -- checks.
+    _otherPackages :: Solver.Dependencies
+    _otherPackages =
+      foldl (Map.unionWith Map.union) Map.empty
+        $ Map.delete "purescript"
+        $ Map.delete "purescript-contrib"
+        $ Map.delete "purescript-node"
+        $ Map.delete "purescript-web" segmentedIndex
 
   runSpec' defaultConfig [ consoleReporter ] do
-    void $ for indices \ix -> do
-      Spec.describe ("Solves packages from " <> show (ix * chunkSize) <> " to " <> show (ix * chunkSize + chunkSize) <> " of registry index") do
-        for_ (Array.index flatIndex ix) \piece -> for piece \(Manifest { name, version, dependencies }) -> do
-          Spec.it (Array.fold [ PackageName.print name, "@", Version.printVersion version ]) do
-            case Solver.solve depsOnly dependencies of
-              Left err ->
-                unless (Set.member (Tuple name version) knownFailures) do
-                  Assert.fail $ PackageName.print name <> "@" <> Version.printVersion version <> "\n" <> (String.joinWith "\n" $ NEA.toArray $ map Solver.printSolverError err)
-              Right _ ->
-                when (Set.member (Tuple name version) knownFailures) do
-                  Assert.fail "Unexpected failure! Should have succeeded."
+    let
+      testPackages :: Solver.Dependencies -> Spec.Spec Unit
+      testPackages pkgs = void $ forWithIndex pkgs \package versions ->
+        Spec.it ("Solves " <> PackageName.print package) do
+          void $ forWithIndex versions \version dependencies -> do
+            let
+              name = PackageName.print package <> "@" <> Version.printVersion version
+              isNoVersionsError = case _ of
+                Solver.NoVersionsInRange _ _ _ _ -> true
+                _ -> false
+
+            case Solver.solve solverIndex dependencies of
+              -- If we can't provide a solution because no versions are available in
+              -- the index, then we either restricted our ranges too much or the
+              -- problem is that our index has fewer versions than Bower's. In the
+              -- interest of useful tests, we assume the latter.
+              Left errs | NEA.any isNoVersionsError errs -> pure unit
+              -- Otherwise, we failed to find a solution and failed the test.
+              Left errs -> do
+                let printedErrs = String.joinWith "\n" $ NEA.toArray $ map Solver.printSolverError errs
+                let bowerSolution = unsafeFromJust $ Map.lookup package bowerSolutions >>= Map.lookup version
+                Assert.fail $ String.joinWith "\n----------\n"
+                  [ name
+                  , printedErrs
+                  , Json.printJson bowerSolution
+                  ]
+              -- If we found a solution then we passed the test.
+              -- TODO: We can also check that our solution produces versions as
+              -- high as those produced by Bower, if we want.
+              Right _ -> pure unit
+
+    Spec.describe "Solves core packages" do
+      testPackages corePackages
+
+    Spec.describe "Solves contrib packages" do
+      testPackages contribPackages
+
+    Spec.describe "Solves web packages" do
+      testPackages webPackages
+
+    Spec.describe "Solves node packages" do
+      testPackages nodePackages
   where
-  setup :: Aff RegistryIndex
+  setup :: Aff { index :: RegistryIndex, bowerSolutions :: Map PackageName (Map Version (Map PackageName Version)) }
   setup = do
     tmp <- liftEffect Tmp.mkTmpDir
-    Except.runExceptT (Git.runGit_ [ "clone", "https://github.com/purescript/registry-index", "--depth", "1" ] (Just tmp)) >>= case _ of
-      Left err -> throwError (Exception.error err)
-      Right _ -> pure unit
-    Index.readRegistryIndex (Path.concat [ tmp, "registry-index" ])
 
-knownFailures :: Set (Tuple PackageName Version)
-knownFailures = Set.fromFoldable $ map unsafeParse
-  [ "aff-coroutines" /\ "4.0.0"
+    result <- withBackoff' $ Except.runExceptT do
+      Git.runGit_ [ "clone", "https://github.com/purescript/registry-index", "--depth", "1" ] (Just tmp)
+      Git.runGit_ [ "clone", "https://github.com/thomashoneyman/bower-solver-results", "--depth", "1" ] (Just tmp)
 
-  , "halogen-formless" /\ "4.0.0"
+    case result of
+      Nothing -> throwError $ Exception.error "Could not clone registry index and/or solver results."
+      Just _ -> pure unit
 
-  , "logging-journald" /\ "0.4.0"
+    index <- Index.readRegistryIndex (Path.concat [ tmp, "registry-index" ])
 
-  , "ps-cst" /\ "1.2.0"
+    bowerSolutions <- do
+      contents <- FS.Aff.readdir (Path.concat [ tmp, "bower-solver-results" ])
+      let files = filterMap (String.stripSuffix (String.Pattern ".json")) contents
+      parsed <- for files \filename -> do
+        package <- case PackageName.parse filename of
+          Left err -> throwError $ Exception.error $ Parsing.parseErrorMessage err
+          Right parsed -> pure parsed
+        versions <- Json.readJsonFile (Path.concat [ tmp, "bower-solver-results", filename <> ".json" ]) >>= case _ of
+          Left err -> throwError $ Exception.error err
+          Right versions -> pure versions
+        pure (Tuple package versions)
+      pure $ Map.fromFoldable parsed
 
-  , "stac" /\ "1.0.0"
+    pure { index, bowerSolutions }
 
-  , "telegraf" /\ "0.5.0"
-  , "test-unit" /\ "10.0.1"
-  , "trout" /\ "0.11.0"
+type BowerSolutions = Map PackageName (Map Version (Map PackageName Version))
 
-  , "uint-instances" /\ "0.0.0"
-  , "uint" /\ "4.1.0"
+type Owner = String
 
-  , "virtual-dom-typed" /\ "0.1.0"
-  , "virtual-dom-typed" /\ "0.0.2"
-  , "vom" /\ "0.1.0"
+type SegmentedByOwner = Map Owner (Map PackageName (Map Version (Map PackageName Range)))
 
-  , "webgl" /\ "1.1.0"
-  , "webgl" /\ "1.1.1"
-  , "webgl" /\ "1.1.2"
-  , "webgl" /\ "1.1.3"
-  , "webgl" /\ "1.2.0"
-  , "webworkers" /\ "0.1.2"
-  , "webworkers" /\ "0.1.1"
-
-  , "zipperarray" /\ "1.0.0"
-  , "zipperarray" /\ "1.0.1"
-  , "zipperarray" /\ "1.1.0"
-  , "z85" /\ "0.0.2"
-  ]
-  where
-  unsafeParse (Tuple p v) = unsafeFromRight (PackageName.parse p) /\ unsafeFromRight (Version.parseVersion Version.Strict v)
+segmentSolvableByOwner :: RegistryIndex -> BowerSolutions -> SegmentedByOwner
+segmentSolvableByOwner index bower = snd $ flip State.runState Map.empty do
+  void $ forWithIndex index \package versions ->
+    void $ forWithIndex versions \version (Manifest manifest) -> do
+      -- We only include packages that Bower considers solvable.
+      case Map.lookup package bower >>= Map.lookup version of
+        Nothing -> pure unit
+        Just _ -> case manifest.location of
+          GitHub { owner } -> do
+            let
+              modifier :: SegmentedByOwner -> SegmentedByOwner
+              modifier = Map.insertWith (Map.unionWith Map.union) owner (Map.singleton package (Map.singleton manifest.version manifest.dependencies))
+            State.modify_ modifier
+          _ ->
+            pure unit
