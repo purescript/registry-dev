@@ -204,6 +204,7 @@
               pursPackages.psa
               pursPackages.purs-tidy
               pursPackages.purescript-language-server
+              nodePackages.bower
             ];
           };
         };

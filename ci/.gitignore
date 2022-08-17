@@ -19,3 +19,4 @@ bower-exclusions.json
 unsatisfied-dependencies.json
 package-failures.json
 version-failures.json
+/bower-solver-results
