@@ -57,6 +57,7 @@
   , "these"
   , "transformers"
   , "tuples"
+  , "uncurried-transformers"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]

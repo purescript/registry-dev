@@ -1,4 +1,4 @@
 .psc*
-examples
-registry-index
-registry
+/examples
+/registry-index
+/registry

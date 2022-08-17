@@ -37,6 +37,7 @@ import Test.Registry.Hash as Registry.Hash
 import Test.Registry.Index as Registry.Index
 import Test.Registry.PackageSet as PackageSet
 import Test.Registry.SSH as SSH
+import Test.Registry.Solver as TestSolver
 import Test.Registry.Version as TestVersion
 import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
@@ -94,6 +95,8 @@ main = launchAff_ do
       TestVersion.testVersion
     Spec.describe "Range" do
       TestVersion.testRange
+    Spec.describe "Solver" do
+      TestSolver.spec
     Spec.describe "Glob" do
       safeGlob
     Spec.describe "Package Set" do
