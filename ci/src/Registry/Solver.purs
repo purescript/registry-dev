@@ -15,7 +15,9 @@ import Data.Map as Map
 import Data.Newtype (alaF)
 import Data.Semigroup.Foldable (intercalateMap)
 import Registry.PackageName (PackageName)
+import Registry.PackageName as PackageName
 import Registry.Version (Range, Version, intersect, rangeIncludes)
+import Registry.Version as Version
 import Uncurried.RWSE (RWSE, runRWSE)
 
 type Dependencies = Map PackageName (Map Version (Map PackageName Range))
@@ -34,7 +36,13 @@ instance Show SolverPosition where
 printSolverPosition :: SolverPosition -> String
 printSolverPosition = case _ of
   SolveRoot -> ""
-  Solving name version pos -> " while solving " <> show name <> "@" <> show version <> show pos
+  Solving name version pos -> Array.fold
+    [ " while solving "
+    , PackageName.print name
+    , "@"
+    , Version.printVersion version
+    , printSolverPosition pos
+    ]
 
 data SolverError
   = NoVersionsInRange PackageName (Set Version) Range SolverPosition
@@ -49,14 +57,37 @@ instance Show SolverError where
 
 printSolverError :: SolverError -> String
 printSolverError = case _ of
-  NoVersionsInRange name versions range pos ->
-    "Package index contained no versions for " <> show name <> " in the range " <> show range <> " (existing versions: " <> shownVersions <> ")" <> show pos
-    where
-    shownVersions = maybe "none" (intercalateMap ", " show) (NEA.fromFoldable versions)
-  VersionNotInRange name version range pos ->
-    "Committed to " <> show name <> "@" <> show version <> " but the range " <> show range <> " was also required" <> show pos
-  DisjointRanges name range1 pos1 range2 pos2 ->
-    "Committed to " <> show name <> " in range " <> show range1 <> show pos1 <> " but the range " <> show range2 <> " was also required" <> show pos2
+  NoVersionsInRange name versions range pos -> Array.fold
+    [ "Package index contained no versions for "
+    , PackageName.print name
+    , " in the range "
+    , Version.printRange range
+    , " (existing versions: "
+    , maybe "none" (intercalateMap ", " Version.printVersion) (NEA.fromFoldable versions)
+    , ")"
+    , printSolverPosition pos
+    ]
+  VersionNotInRange name version range pos -> Array.fold
+    [ "Committed to "
+    , PackageName.print name
+    , "@"
+    , Version.printVersion version
+    , " but the range "
+    , Version.printRange range
+    , " was also required"
+    , printSolverPosition pos
+    ]
+  DisjointRanges name range1 pos1 range2 pos2 -> Array.fold
+    [ "Committed to "
+    , PackageName.print name
+    , " in range "
+    , Version.printRange range1
+    , printSolverPosition pos1
+    , " but the range "
+    , Version.printRange range2
+    , " was also required"
+    , printSolverPosition pos2
+    ]
 
 type Solver = RWSE Dependencies Unit State (NonEmptyArray SolverError)
 
