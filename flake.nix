@@ -91,7 +91,6 @@
             registry-test = ''
               cd $(git rev-parse --show-toplevel)/ci
               spago test
-              spago test -m Test.Integration
             '';
 
             registry-check-format = ''
