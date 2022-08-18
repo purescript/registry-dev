@@ -1,4 +1,17 @@
-.psc*
-/examples
 /registry-index
 /registry
+/node_modules
+/output
+.psc*
+.purs*
+.psa*
+.spago
+.cache
+
+# Keep it secret, keep it safe.
+.env
+
+# Files generated as part of the legacy import process.
+package-failures.json
+version-failures.json
+/bower-solver-results
