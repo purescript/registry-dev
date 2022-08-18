@@ -8,8 +8,5 @@
 .spago
 .cache
 
-package-failures.json
-version-failures.json
-
 # Keep it secret, keep it safe.
 .env
