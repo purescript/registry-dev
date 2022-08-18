@@ -449,7 +449,6 @@
   "purescript-facebook": "https://github.com/Unisay/purescript-facebook.git",
   "purescript-fancy-operators": "https://github.com/Thimoteus/purescript-fancy-operators.git",
   "purescript-fedger": "https://github.com/brakmic/purescript-fedger.git",
-  "purescript-fetch": "https://github.com/rightfold/purescript-fetch.git",
   "purescript-fetch-api": "https://github.com/iarthstar/purescript-fetch-api.git",
   "purescript-fetch-free": "https://github.com/ethul/purescript-fetch-free.git",
   "purescript-ffi-props": "https://github.com/justinwoo/purescript-ffi-props.git",
