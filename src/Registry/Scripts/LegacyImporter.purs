@@ -26,6 +26,7 @@ import Effect.Exception as Exception
 import Effect.Ref as Ref
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
+import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
 import Parsing as Parsing
@@ -55,6 +56,8 @@ main :: Effect Unit
 main = launchAff_ do
   log "Reading .env file..."
   _ <- Dotenv.loadFile
+
+  FS.Extra.ensureDirectory API.scratchDir
 
   log "Parsing CLI args..."
   mode <- liftEffect do
@@ -190,6 +193,7 @@ main = launchAff_ do
           API.runOperation (mkOperation manifest)
 
     when (mode == GenerateRegistry) do
+      log "Regenerating registry index..."
       void $ for indexPackages (liftAff <<< Index.insertManifest registryIndexPath)
 
     log "Done!"

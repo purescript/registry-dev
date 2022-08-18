@@ -51,6 +51,8 @@ main :: Effect Unit
 main = launchAff_ do
   _ <- Dotenv.loadFile
 
+  FS.Extra.ensureDirectory API.scratchDir
+
   octokit <- liftEffect do
     mbToken <- Node.Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
     token <- maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHubToken) mbToken

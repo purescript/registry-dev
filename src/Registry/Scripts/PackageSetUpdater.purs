@@ -17,7 +17,8 @@ import Effect.Now as Now
 import Effect.Ref as Ref
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
-import Foreign.Tmp as Tmp
+import Foreign.Node.FS as FS.Extra
+import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
 import Registry.API as API
@@ -38,6 +39,8 @@ derive instance Eq PublishMode
 main :: Effect Unit
 main = Aff.launchAff_ do
   _ <- Dotenv.loadFile
+
+  FS.Extra.ensureDirectory API.scratchDir
 
   log "Parsing CLI args..."
   mode <- liftEffect do
@@ -60,10 +63,6 @@ main = Aff.launchAff_ do
       >>= maybe (Exception.throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
   octokit <- liftEffect $ GitHub.mkOctokit githubToken
-
-  tmpDir <- liftEffect $ Tmp.mkTmpDir
-  liftEffect $ Node.Process.chdir tmpDir
-
   metadataRef <- liftEffect $ Ref.new Map.empty
 
   let
@@ -80,8 +79,8 @@ main = Aff.launchAff_ do
       , cache: { write: mempty, read: \_ -> pure (Left mempty), remove: mempty }
       , username: mempty
       , packagesMetadata: metadataRef
-      , registry: "registry"
-      , registryIndex: "registry-index"
+      , registry: Path.concat [ API.scratchDir, "registry" ]
+      , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
       }
 
   runRegistryM env do

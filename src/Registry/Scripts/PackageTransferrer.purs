@@ -14,6 +14,7 @@ import Effect.Unsafe (unsafePerformEffect)
 import Foreign.Git as Git
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
+import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.API as API
@@ -30,6 +31,8 @@ import Registry.Version as Version
 main :: Effect Unit
 main = launchAff_ do
   _ <- Dotenv.loadFile
+
+  FS.Extra.ensureDirectory API.scratchDir
 
   octokit <- liftEffect do
     mbToken <- Node.Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
