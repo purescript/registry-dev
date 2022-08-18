@@ -1,17 +1,15 @@
-/registry-index
-/registry
 /node_modules
 /output
+/scratch
+
 .psc*
 .purs*
 .psa*
 .spago
 .cache
 
-# Keep it secret, keep it safe.
-.env
-
-# Files generated as part of the legacy import process.
 package-failures.json
 version-failures.json
-/bower-solver-results
+
+# Keep it secret, keep it safe.
+.env
