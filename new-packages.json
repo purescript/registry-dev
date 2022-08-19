@@ -225,5 +225,6 @@
   "purescript-yoga-fetch": "https://github.com/rowtype-yoga/purescript-yoga-fetch.git",
   "purescript-yoga-json": "https://github.com/rowtype-yoga/purescript-yoga-json.git",
   "purescript-yoga-postgres": "https://github.com/rowtype-yoga/purescript-yoga-postgres.git",
-  "purescript-fetch-core": "https://github.com/rowtype-yoga/purescript-fetch-core.git"
+  "purescript-fetch-core": "https://github.com/rowtype-yoga/purescript-fetch-core.git",
+  "purescript-fetch-yoga-json": "https://github.com/rowtype-yoga/purescript-fetch-yoga-json.git"
 }
