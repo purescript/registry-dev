@@ -83,29 +83,28 @@
           name = "scripts";
           paths = pkgs.lib.mapAttrsToList pkgs.writeShellScriptBin {
             registry-install = ''
-              cd $(git rev-parse --show-toplevel)/ci
+              cd $(git rev-parse --show-toplevel)
               npm ci
               spago install
             '';
 
             registry-test = ''
-              cd $(git rev-parse --show-toplevel)/ci
+              cd $(git rev-parse --show-toplevel)
               spago test
             '';
 
             registry-check-format = ''
-              cd $(git rev-parse --show-toplevel)/ci
+              cd $(git rev-parse --show-toplevel)
               purs-tidy check src test
             '';
 
             registry-api = ''
-              cd $(git rev-parse --show-toplevel)/ci
+              cd $(git rev-parse --show-toplevel)
               spago run -m Registry.API
             '';
 
             registry-importer = ''
-              cd $(git rev-parse --show-toplevel)/ci
-
+              cd $(git rev-parse --show-toplevel)
               if [ -z "$1" ]; then
                 echo "No arguments supplied. Expected one of: generate, update"
                 exit 1
@@ -115,8 +114,7 @@
             '';
 
             registry-package-set-updater = ''
-              cd $(git rev-parse --show-toplevel)/ci
-
+              cd $(git rev-parse --show-toplevel)
               if [ -z "$1" ]; then
                 echo "No arguments supplied. Expected one of: generate, commit"
                 exit 1
@@ -126,7 +124,7 @@
             '';
 
             registry-package-transferrer = ''
-              cd $(git rev-parse --show-toplevel)/ci
+              cd $(git rev-parse --show-toplevel)
               spago run -m Registry.Scripts.PackageTransferrer
             '';
 

@@ -4,7 +4,6 @@ module Test.Main
 
 import Registry.Prelude
 
-import Data.Array as Array
 import Data.Foldable (traverse_)
 import Data.Map as Map
 import Data.Time.Duration (Milliseconds(..))
@@ -16,7 +15,8 @@ import Foreign.Purs (CompilerFailure(..))
 import Foreign.Purs as Purs
 import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
-import Node.FS.Aff as FS
+import Node.FS as FS
+import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
 import Parsing as Parsing
@@ -51,11 +51,11 @@ main = launchAff_ do
   registryEnv <- Registry.Index.mkTestIndexEnv
 
   -- get Manifest examples paths
-  let examplesDir = "../examples/"
-  packages <- FS.readdir examplesDir
+  let examplesDir = "examples"
+  packages <- FS.Aff.readdir examplesDir
   manifestExamplePaths <- join <$> for packages \package -> do
-    let packageDir = examplesDir <> package
-    manifests <- FS.readdir packageDir
+    let packageDir = Path.concat [ examplesDir, package ]
+    manifests <- FS.Aff.readdir packageDir
     pure $ map (\manifestFile -> Path.concat [ packageDir, manifestFile ]) manifests
 
   runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
@@ -106,7 +106,7 @@ main = launchAff_ do
 manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit
 manifestExamplesRoundtrip paths = for_ paths \manifestPath -> Spec.it ("Roundrip check for " <> show manifestPath) do
   -- Now we read every manifest to our purescript type
-  manifestStr <- FS.readTextFile UTF8 manifestPath
+  manifestStr <- FS.Aff.readTextFile UTF8 manifestPath
   case Json.parseJson manifestStr of
     Left err -> do
       error $ "Got error while parsing manifest"
@@ -131,15 +131,24 @@ safeGlob :: Spec.Spec Unit
 safeGlob = do
   Spec.describe "Prevents directory traversals" do
     Spec.it "Directory traversal" do
-      cwd <- liftEffect Process.cwd
-      { succeeded, failed } <- FastGlob.match cwd [ "../flake.nix" ]
-      succeeded `Assert.shouldSatisfy` Array.null
+      tmp <- liftEffect Tmp.mkTmpDir
+      let outerFile = Path.concat [ tmp, "flake.nix" ]
+      FS.Aff.writeTextFile UTF8 outerFile "<contents>"
+      let innerDirectory = Path.concat [ tmp, "inner" ]
+      FS.Extra.ensureDirectory innerDirectory
+      { succeeded, failed } <- FastGlob.match innerDirectory [ "../flake.nix" ]
+      succeeded `Assert.shouldEqual` []
       failed `Assert.shouldEqual` [ "../flake.nix" ]
 
     Spec.it "Symlink traversal" do
-      cwd <- liftEffect Process.cwd
-      { succeeded, failed } <- FastGlob.match cwd [ "./shell.nix" ]
-      succeeded `Assert.shouldSatisfy` Array.null
+      tmp <- liftEffect Tmp.mkTmpDir
+      let outerFile = Path.concat [ tmp, "shell.nix" ]
+      FS.Aff.writeTextFile UTF8 outerFile "<contents>"
+      let innerDirectory = Path.concat [ tmp, "inner" ]
+      FS.Extra.ensureDirectory innerDirectory
+      FS.Aff.symlink outerFile (Path.concat [ innerDirectory, "shell.nix" ]) FS.FileLink
+      { succeeded, failed } <- FastGlob.match innerDirectory [ "./shell.nix" ]
+      succeeded `Assert.shouldEqual` []
       failed `Assert.shouldEqual` [ "./shell.nix" ]
 
     -- A glob that is technically a directory traversal but which doesn't
@@ -185,7 +194,7 @@ removeIgnoredTarballFiles = Spec.before runBefore do
       writeDirectories = traverse_ (FS.Extra.ensureDirectory <<< inTmp)
 
       writeFiles :: Array FilePath -> _
-      writeFiles = traverse_ (\path -> FS.writeTextFile UTF8 (inTmp path) "<test>")
+      writeFiles = traverse_ (\path -> FS.Aff.writeTextFile UTF8 (inTmp path) "<test>")
 
     pure { tmp, writeDirectories, writeFiles }
 
@@ -244,7 +253,7 @@ copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
       writeDirectories = liftAff <<< traverse_ (FS.Extra.ensureDirectory <<< inTmp)
 
       writeFiles :: Array FilePath -> _
-      writeFiles = liftAff <<< traverse_ (\path -> FS.writeTextFile UTF8 (inTmp path) "<test>")
+      writeFiles = liftAff <<< traverse_ (\path -> FS.Aff.writeTextFile UTF8 (inTmp path) "<test>")
 
     pure { source: tmp, destination: destTmp, writeDirectories, writeFiles }
 

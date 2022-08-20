@@ -14,6 +14,7 @@ import Effect.Unsafe (unsafePerformEffect)
 import Foreign.Git as Git
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
+import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.API as API
@@ -30,6 +31,8 @@ import Registry.Version as Version
 main :: Effect Unit
 main = launchAff_ do
   _ <- Dotenv.loadFile
+
+  FS.Extra.ensureDirectory API.scratchDir
 
   octokit <- liftEffect do
     mbToken <- Node.Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
@@ -52,8 +55,8 @@ main = launchAff_ do
       , cache
       , octokit
       , username: "pacchettibotti"
-      , registry: Path.concat [ "..", "registry" ]
-      , registryIndex: Path.concat [ "..", "registry-index" ]
+      , registry: Path.concat [ API.scratchDir, "registry" ]
+      , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
       }
 
   RegistryM.runRegistryM env do
@@ -184,18 +187,15 @@ locationToPackageUrl = case _ of
     unsafeCrashWith "Git urls cannot be registered."
 
 writeLegacyRegistryFile :: FilePath -> Map String GitHub.PackageURL -> Aff Unit
-writeLegacyRegistryFile sourceFile packages = do
-  let path = Path.concat [ "..", sourceFile ]
-  Json.writeJsonFile path packages
+writeLegacyRegistryFile sourceFile packages = Json.writeJsonFile sourceFile packages
 
 commitLegacyRegistryFile :: FilePath -> Aff (Either String Unit)
 commitLegacyRegistryFile sourceFile = Except.runExceptT do
-  let path = Path.concat [ "..", sourceFile ]
   Git.runGitSilent [ "diff", "--stat" ] Nothing >>= case _ of
     files | String.contains (String.Pattern sourceFile) files -> do
       GitHubToken token <- API.configurePacchettiBotti Nothing
       Git.runGit_ [ "pull" ] Nothing
-      Git.runGit_ [ "add", path ] Nothing
+      Git.runGit_ [ "add", sourceFile ] Nothing
       log "Committing to registry..."
       let message = Array.fold [ "Sort ", sourceFile, " and transfer packages that have moved repositories." ]
       Git.runGit_ [ "commit", "-m", message ] Nothing
