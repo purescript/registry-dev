@@ -1,4 +1,12 @@
+/node_modules
+/output
+/scratch
+
 .psc*
-/examples
-/registry-index
-/registry
+.purs*
+.psa*
+.spago
+.cache
+
+# Keep it secret, keep it safe.
+.env

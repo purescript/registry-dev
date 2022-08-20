@@ -26,6 +26,7 @@ import Effect.Exception as Exception
 import Effect.Ref as Ref
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
+import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
 import Parsing as Parsing
@@ -55,6 +56,8 @@ main :: Effect Unit
 main = launchAff_ do
   log "Reading .env file..."
   _ <- Dotenv.loadFile
+
+  FS.Extra.ensureDirectory API.scratchDir
 
   log "Parsing CLI args..."
   mode <- liftEffect do
@@ -94,8 +97,8 @@ main = launchAff_ do
         , cache
         , octokit
         , username: mempty
-        , registry: Path.concat [ "..", "registry" ]
-        , registryIndex: Path.concat [ "..", "registry-index" ]
+        , registry: Path.concat [ API.scratchDir, "registry" ]
+        , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
         }
       GenerateRegistry ->
         API.mkLocalEnv octokit cache metadataRef
@@ -190,17 +193,22 @@ main = launchAff_ do
           API.runOperation (mkOperation manifest)
 
     when (mode == GenerateRegistry) do
+      log "Regenerating registry index..."
       void $ for indexPackages (liftAff <<< Index.insertManifest registryIndexPath)
 
     log "Done!"
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
-writePackageFailures = Json.writeJsonFile "package-failures.json" <<< map formatPackageValidationError
+writePackageFailures =
+  Json.writeJsonFile (Path.concat [ API.scratchDir, "package-failures.json" ])
+    <<< map formatPackageValidationError
 
 -- | Record all version failures to the 'version-failures.json' file.
 writeVersionFailures :: Map RawPackageName (Map RawVersion VersionValidationError) -> Aff Unit
-writeVersionFailures = Json.writeJsonFile "version-failures.json" <<< map (map formatVersionValidationError)
+writeVersionFailures =
+  Json.writeJsonFile (Path.concat [ API.scratchDir, "version-failures.json" ])
+    <<< map (map formatVersionValidationError)
 
 logImportStats :: LegacyRegistry -> ImportedIndex -> Aff Unit
 logImportStats legacy = log <<< formatImportStats <<< calculateImportStats legacy
@@ -517,12 +525,11 @@ readLegacyRegistryFiles = do
 
 readLegacyRegistryFile :: String -> Aff (Map String GitHub.PackageURL)
 readLegacyRegistryFile sourceFile = do
-  let path = Path.concat [ "..", sourceFile ]
-  legacyPackages <- Json.readJsonFile path
+  legacyPackages <- Json.readJsonFile sourceFile
   case legacyPackages of
     Left err -> do
       throwError $ Exception.error $ String.joinWith "\n"
-        [ "Decoding registry file from " <> path <> "failed:"
+        [ "Decoding registry file from " <> sourceFile <> "failed:"
         , err
         ]
     Right packages -> pure packages

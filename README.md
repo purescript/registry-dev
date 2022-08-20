@@ -516,3 +516,19 @@ ideas from:
 - [**@justinwoo**](https://github.com/justinwoo)
 - [**@thomashoneyman**](https://github.com/thomashoneyman)
 - [**@hdgarrood**](https://github.com/hdgarrood)
+
+## Development
+
+### Setup
+
+Create a `.env` file based off [`.env.example`](./.env.example) and fill in the values for the environment variables:
+
+```sh
+cp .env.example .env
+```
+
+If you are running scripts in the repository, such as the legacy registry import script, then you may wish to use the provided Nix shell to make sure you have all necessary dependencies available.
+
+```console
+$ nix develop
+```

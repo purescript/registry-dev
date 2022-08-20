@@ -21,17 +21,17 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('./ci/**/package-lock.json') }}
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
 
       - name: Cache PureScript dependencies
         uses: actions/cache@v2
         with:
-          key: ${{ runner.os }}-spago-${{ hashFiles('./ci/**/*.dhall') }}
+          key: ${{ runner.os }}-spago-${{ hashFiles('*.dhall') }}
           path: |
-            ./ci/.spago
-            ./ci/output
+            .spago
+            output
 
       - name: Install Nix
         uses: cachix/install-nix-action@v16

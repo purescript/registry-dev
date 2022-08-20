@@ -51,6 +51,8 @@ main :: Effect Unit
 main = launchAff_ do
   _ <- Dotenv.loadFile
 
+  FS.Extra.ensureDirectory API.scratchDir
+
   octokit <- liftEffect do
     mbToken <- Node.Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
     token <- maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHubToken) mbToken
@@ -72,8 +74,8 @@ main = launchAff_ do
       , cache
       , octokit
       , username: ""
-      , registry: Path.concat [ "..", "registry" ]
-      , registryIndex: Path.concat [ "..", "registry-index" ]
+      , registry: Path.concat [ API.scratchDir, "registry" ]
+      , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
       }
 
   RegistryM.runRegistryM env do
@@ -85,17 +87,19 @@ main = launchAff_ do
     registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
     metadata <- readPackagesMetadata
 
+    let resultsPath = Path.concat [ API.scratchDir, "bower-solver-results" ]
+
     previousResults :: BowerSolverResults <- liftAff do
       log "Fetching thomashoneyman/bower-solver-results"
-      fetchRepo { owner: "thomashoneyman", repo: "bower-solver-results" } "bower-solver-results"
-      allContents <- FS.Aff.readdir "bower-solver-results"
+      fetchRepo { owner: "thomashoneyman", repo: "bower-solver-results" } resultsPath
+      allContents <- FS.Aff.readdir resultsPath
       let files = filterMap (String.stripSuffix (String.Pattern ".json")) allContents
       log $ "Reading " <> show (Array.length files) <> " input files..."
       result <- for files \file -> do
         package <- case PackageName.parse file of
           Left err -> throwError $ Exception.error $ Parsing.parseErrorMessage err
           Right res -> pure res
-        versions <- Json.readJsonFile (Path.concat [ "bower-solver-results", file <> ".json" ]) >>= case _ of
+        versions <- Json.readJsonFile (Path.concat [ resultsPath, file <> ".json" ]) >>= case _ of
           Left err -> throwError $ Exception.error err
           Right versions -> pure versions
         pure (Tuple package versions)
@@ -116,7 +120,7 @@ main = launchAff_ do
       -- but they can be seen at https://github.com/thomashoneyman/bower-solver-results
       --
       -- If you would like to add your new results to the repo, please open a PR
-      liftAff $ Json.writeJsonFile (Path.concat [ "bower-solver-results", PackageName.print package <> ".json" ]) versions
+      liftAff $ Json.writeJsonFile (Path.concat [ resultsPath, PackageName.print package <> ".json" ]) versions
 
     log "Done!"
 

@@ -811,8 +811,8 @@ mkEnv octokit cache metadataRef issue username =
   , cache
   , octokit
   , username
-  , registry: Path.concat [ "..", "registry" ]
-  , registryIndex: Path.concat [ "..", "registry-index" ]
+  , registry: Path.concat [ scratchDir, "registry" ]
+  , registryIndex: Path.concat [ scratchDir, "registry-index" ]
   }
 
 mkLocalEnv :: Octokit -> Cache -> Ref (Map PackageName Metadata) -> Env
@@ -834,8 +834,8 @@ mkLocalEnv octokit cache packagesMetadata =
   , cache
   , username: ""
   , packagesMetadata
-  , registry: Path.concat [ "..", "registry" ]
-  , registryIndex: Path.concat [ "..", "registry-index" ]
+  , registry: Path.concat [ scratchDir, "registry" ]
+  , registryIndex: Path.concat [ scratchDir, "registry-index" ]
   }
 
 fillMetadataRef :: RegistryM Unit
@@ -1263,3 +1263,8 @@ pacchettiBottiEmail = "pacchettibotti@purescript.org"
 
 pacchettiBottiKeyType :: String
 pacchettiBottiKeyType = "ssh-ed25519"
+
+-- | An ignored directory suitable for storing results when running the API or
+-- | scripts.
+scratchDir :: String
+scratchDir = "scratch"
