@@ -20,7 +20,7 @@ spec :: Spec.Spec Unit
 spec = do
   let
     shouldSucceed goals result =
-      solve solverIndex (Map.fromFoldable goals) `Assert.shouldContain` (Map.fromFoldable result)
+      solveAndValidate solverIndex (Map.fromFoldable goals) `Assert.shouldContain` (Map.fromFoldable result)
 
     shouldFail goals errors = case solve solverIndex (Map.fromFoldable goals) of
       Left solverErrors -> do

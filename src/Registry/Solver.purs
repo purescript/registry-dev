@@ -112,10 +112,32 @@ instance (Semigroup e, MonadError e f) => Semigroup (CollectErrors f a) where
 oneOfMap1 :: forall e f a b. Semigroup e => MonadError e f => (a -> f b) -> NonEmptyArray a -> f b
 oneOfMap1 = alaF CollectErrors foldMap1
 
+type ValidationError =
+  { name :: PackageName
+  , range :: Range
+  , version :: Maybe Version
+  }
+validate :: Dependencies -> Solved -> Either (NonEmptyArray ValidationError) Unit
+validate index sols = maybe mempty Left $ NEA.fromArray $
+  index # foldMapWithIndex \name range ->
+    case Map.lookup name sols of
+      Just version | rangeIncludes range version -> empty
+      version -> pure { name, range, version }
+
 solve :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
 solve index pending =
   case runRWSE index { pending: map (Tuple SolveRoot) pending, solved: Map.empty } exploreGoals of
     _ /\ r /\ _ -> r
+
+solveAndValidate :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
+solveAndValidate index pending = do
+  sols <- solve index pending
+  case validate index sols of
+    Left es -> Left $ es <#> \r ->
+      case r.version of
+        Nothing -> NoVersionsInRange r.name Set.empty r.range SolveRoot
+        Just version -> VersionNotInRange r.name version r.range SolveRoot
+    Right _ -> sols
 
 exploreGoals :: Solver Solved
 exploreGoals =
