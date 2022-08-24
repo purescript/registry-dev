@@ -162,12 +162,14 @@ type ValidationError =
   , range :: Range
   , version :: Maybe Version
   }
+
 validate :: Map PackageName Range -> Solved -> Either (NonEmptyArray ValidationError) Unit
-validate index sols = maybe (Right unit) Left $ NEA.fromArray $
-  index # foldMapWithIndex \name range ->
-    case Map.lookup name sols of
-      Just version | rangeIncludes range version -> empty
-      version -> pure { name, range, version }
+validate index sols = maybe (Right unit) Left $ NEA.fromArray
+  $ index
+  # foldMapWithIndex \name range ->
+      case Map.lookup name sols of
+        Just version | rangeIncludes range version -> empty
+        version -> pure { name, range, version }
 
 solve :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
 solve index pending = lmap groupErrors

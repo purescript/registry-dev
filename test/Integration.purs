@@ -148,13 +148,11 @@ segmentSolvableByOwner index bower = snd $ flip State.runState Map.empty do
   void $ forWithIndex index \package versions ->
     void $ forWithIndex versions \version (Manifest manifest) -> do
       -- We only include packages that Bower considers solvable.
-      case Map.lookup package bower >>= Map.lookup version of
-        Nothing -> pure unit
-        Just _ -> case manifest.location of
-          GitHub { owner } -> do
-            let
-              modifier :: SegmentedByOwner -> SegmentedByOwner
-              modifier = Map.insertWith (Map.unionWith Map.union) owner (Map.singleton package (Map.singleton manifest.version manifest.dependencies))
-            State.modify_ modifier
-          _ ->
-            pure unit
+      case manifest.location of
+        GitHub { owner } -> do
+          let
+            modifier :: SegmentedByOwner -> SegmentedByOwner
+            modifier = Map.insertWith (Map.unionWith Map.union) owner (Map.singleton package (Map.singleton manifest.version manifest.dependencies))
+          State.modify_ modifier
+        _ ->
+          pure unit
