@@ -10,7 +10,7 @@ import Data.Map as Map
 import Data.Set as Set
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Solver (SolverError(..), SolverPosition(..), printSolverError, solve)
+import Registry.Solver (SolverError(..), SolverPosition(..), printSolverError, solve, solveAndValidate)
 import Registry.Version (ParseMode(..), Range, Version)
 import Registry.Version as Version
 import Test.Spec as Spec
@@ -127,7 +127,7 @@ spec = do
     Spec.it "Direct dependency of target package has no versions in range." do
       shouldFail
         [ brokenFixed.package /\ range 0 1 ]
-        [ { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 4) (Solving brokenFixed.package (version 0) SolveRoot)
+        [ { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 4) (Solving brokenFixed.package (pure (version 0)) SolveRoot)
           , message: "Package index contained no versions for does-not-exist in the range >=0.0.0 <4.0.0 (existing versions: none) while solving broken-fixed@0.0.0"
           }
         ]
@@ -135,7 +135,7 @@ spec = do
     Spec.it "Nested dependency of target package has no versions in range." do
       shouldFail
         [ transitiveBroken.package /\ range 0 1 ]
-        [ { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving fixedBroken.package (version 2) (Solving transitiveBroken.package (version 0) SolveRoot))
+        [ { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving fixedBroken.package (pure (version 2)) (Solving transitiveBroken.package (pure (version 0)) SolveRoot))
           , message: "Package index contained no versions for does-not-exist in the range >=0.0.0 <5.0.0 (existing versions: none) while solving fixed-broken@2.0.0 while solving transitive-broken@0.0.0"
           }
         ]
@@ -144,7 +144,7 @@ spec = do
     Spec.it "Simple disjoint ranges" do
       shouldFail
         [ simple.package /\ range 0 1, prelude.package /\ range 1 2 ]
-        [ { error: VersionNotInRange prelude.package (version 1) (range 0 1) (Solving simple.package (version 0) SolveRoot)
+        [ { error: VersionNotInRange prelude.package (version 1) (range 0 1) (Solving simple.package (pure (version 0)) SolveRoot)
           , message: "Committed to prelude@1.0.0 but the range >=0.0.0 <1.0.0 was also required while solving simple@0.0.0"
           }
         ]
@@ -156,7 +156,7 @@ spec = do
         [ onlySimple.package /\ range 0 4
         , prelude.package /\ range 1 2
         ]
-        [ { error: VersionNotInRange prelude.package (version 1) (range 0 1) (Solving simple.package (version 0) (Solving onlySimple.package (version 0) SolveRoot))
+        [ { error: VersionNotInRange prelude.package (version 1) (range 0 1) (Solving simple.package (pure (version 0)) (Solving onlySimple.package (pure (version 0)) SolveRoot))
           , message: "Committed to prelude@1.0.0 but the range >=0.0.0 <1.0.0 was also required while solving simple@0.0.0 while solving only-simple@0.0.0"
           }
         ]
@@ -166,7 +166,7 @@ spec = do
       shouldFail
         [ brokenBroken.package /\ range 0 2 ]
         ( Array.reverse (Set.toUnfoldable (Map.keys brokenBroken.versions)) <#> \brokenVersion ->
-            { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving brokenBroken.package brokenVersion SolveRoot)
+            { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving brokenBroken.package (pure brokenVersion) SolveRoot)
             , message: "Package index contained no versions for does-not-exist in the range >=0.0.0 <5.0.0 (existing versions: none) while solving broken-broken@" <> Version.printVersion brokenVersion
             }
         )
@@ -176,10 +176,10 @@ spec = do
         [ brokenFixed.package /\ range 0 1
         , fixedBroken.package /\ range 2 3
         ]
-        [ { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 4) (Solving brokenFixed.package (version 0) SolveRoot)
+        [ { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 4) (Solving brokenFixed.package (pure (version 0)) SolveRoot)
           , message: "Package index contained no versions for does-not-exist in the range >=0.0.0 <4.0.0 (existing versions: none) while solving broken-fixed@0.0.0"
           }
-        , { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving fixedBroken.package (version 2) SolveRoot)
+        , { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving fixedBroken.package (pure (version 2)) SolveRoot)
           , message: "Package index contained no versions for does-not-exist in the range >=0.0.0 <5.0.0 (existing versions: none) while solving fixed-broken@2.0.0"
           }
         ]

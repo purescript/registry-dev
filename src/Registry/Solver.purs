@@ -5,18 +5,20 @@ import Registry.Prelude
 import Control.Monad.Error.Class (class MonadError, catchError)
 import Control.Monad.Reader (ask)
 import Control.Monad.State (get, modify_, put)
+import Control.Plus (empty)
 import Data.Array as Array
 import Data.Array.NonEmpty (foldMap1)
 import Data.Array.NonEmpty as NEA
 import Data.Foldable (foldMap)
-import Data.FoldableWithIndex (traverseWithIndex_)
+import Data.FoldableWithIndex (foldMapWithIndex, traverseWithIndex_)
 import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Data.Newtype (alaF)
 import Data.Semigroup.Foldable (intercalateMap)
+import Data.Set as Set
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Version (Range, Version, intersect, rangeIncludes)
+import Registry.Version (Range, Version, intersect, printRange, rangeIncludes)
 import Registry.Version as Version
 import Uncurried.RWSE (RWSE, runRWSE)
 
@@ -24,7 +26,7 @@ type Dependencies = Map PackageName (Map Version (Map PackageName Range))
 
 data SolverPosition
   = SolveRoot
-  | Solving PackageName Version SolverPosition
+  | Solving PackageName (NonEmptyArray Version) SolverPosition
 
 derive instance Eq SolverPosition
 derive instance Ord SolverPosition
@@ -36,11 +38,11 @@ instance Show SolverPosition where
 printSolverPosition :: SolverPosition -> String
 printSolverPosition = case _ of
   SolveRoot -> ""
-  Solving name version pos -> Array.fold
+  Solving name versions pos -> Array.fold
     [ " while solving "
     , PackageName.print name
     , "@"
-    , Version.printVersion version
+    , intercalateMap ", " Version.printVersion versions
     , printSolverPosition pos
     ]
 
@@ -48,6 +50,49 @@ data SolverError
   = NoVersionsInRange PackageName (Set Version) Range SolverPosition
   | VersionNotInRange PackageName Version Range SolverPosition
   | DisjointRanges PackageName Range SolverPosition Range SolverPosition
+
+groupErrors :: NonEmptyArray SolverError -> NonEmptyArray SolverError
+groupErrors = fromGroup <=< NEA.groupAllBy grouping
+  where
+  grouping (NoVersionsInRange p1 v1 r1 _) (NoVersionsInRange p2 v2 r2 _) =
+    compare p1 p2 <> compare v1 v2 <> compare (printRange r1) (printRange r2)
+  grouping (NoVersionsInRange _ _ _ _) _ = LT
+  grouping _ (NoVersionsInRange _ _ _ _) = GT
+  grouping (VersionNotInRange p1 v1 r1 _) (VersionNotInRange p2 v2 r2 _) =
+    compare p1 p2 <> compare v1 v2 <> compare (printRange r1) (printRange r2)
+  grouping (VersionNotInRange _ _ _ _) _ = LT
+  grouping _ (VersionNotInRange _ _ _ _) = GT
+  grouping (DisjointRanges p1 r1 s1 q1 _) (DisjointRanges p2 r2 s2 q2 _) =
+    compare p1 p2 <> compare (printRange r1) (printRange r2) <> compare s1 s2 <> compare (printRange q1) (printRange q2)
+
+  fromGroup es = setPosition (NEA.head es) $ map getPosition es
+
+  getPosition (NoVersionsInRange _ _ _ p) = p
+  getPosition (VersionNotInRange _ _ _ p) = p
+  getPosition (DisjointRanges _ _ _ _ p) = p
+
+  setPosition (NoVersionsInRange p v r _) = map $ NoVersionsInRange p v r
+  setPosition (VersionNotInRange p v r _) = map $ VersionNotInRange p v r
+  setPosition (DisjointRanges p r s q _) = map $ DisjointRanges p r s q
+
+groupPositions :: NonEmptyArray SolverPosition -> NonEmptyArray SolverPosition
+groupPositions = fromGroup <=< NEA.groupAllBy grouping
+  where
+  grouping SolveRoot SolveRoot = EQ
+  grouping SolveRoot _ = LT
+  grouping _ SolveRoot = GT
+  grouping (Solving p1 _ s1) (Solving p2 _ s2) =
+    compare p1 p2 <> compare s1 s2
+
+  fromGroup es = setVersion es $ getVersions =<< NEA.toArray es
+
+  getVersions SolveRoot = empty
+  getVersions (Solving _ v _) = NEA.toArray v
+
+  setVersion os = NEA.fromArray >>>
+    maybe os case NEA.head os, _ of
+      SolveRoot, _ -> pure SolveRoot
+      Solving p _ s, v -> pure (Solving p v s)
 
 derive instance Eq SolverError
 derive instance Generic.Generic SolverError _
@@ -117,30 +162,30 @@ type ValidationError =
   , range :: Range
   , version :: Maybe Version
   }
-validate :: Dependencies -> Solved -> Either (NonEmptyArray ValidationError) Unit
-validate index sols = maybe mempty Left $ NEA.fromArray $
+validate :: Map PackageName Range -> Solved -> Either (NonEmptyArray ValidationError) Unit
+validate index sols = maybe (Right unit) Left $ NEA.fromArray $
   index # foldMapWithIndex \name range ->
     case Map.lookup name sols of
       Just version | rangeIncludes range version -> empty
       version -> pure { name, range, version }
 
 solve :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
-solve index pending =
-  case runRWSE index { pending: map (Tuple SolveRoot) pending, solved: Map.empty } exploreGoals of
+solve index pending = lmap groupErrors
+  case runRWSE index { pending: map (Tuple SolveRoot) pending, solved: Map.empty } (exploreGoals true) of
     _ /\ r /\ _ -> r
 
 solveAndValidate :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
 solveAndValidate index pending = do
   sols <- solve index pending
-  case validate index sols of
+  case validate pending sols of
     Left es -> Left $ es <#> \r ->
       case r.version of
         Nothing -> NoVersionsInRange r.name Set.empty r.range SolveRoot
         Just version -> VersionNotInRange r.name version r.range SolveRoot
-    Right _ -> sols
+    Right _ -> Right sols
 
-exploreGoals :: Solver Solved
-exploreGoals =
+exploreGoals :: Boolean -> Solver Solved
+exploreGoals recover =
   get >>= \goals@{ pending, solved } ->
     case Map.findMin pending of
       Nothing ->
@@ -153,16 +198,17 @@ exploreGoals =
         versions <- getRelevantVersions pos name constraint
         let
           act = versions # oneOfMap1 \version ->
-            addVersion pos name version *> exploreGoals
+            addVersion pos name version *> exploreGoals false
         catchError act \e1 -> do
-          _ <- catchError exploreGoals \e2 -> do
-            throwError (e1 <> e2)
+          when recover $ void $
+            catchError (exploreGoals recover) \e2 -> do
+              throwError (e1 <> e2)
           throwError e1
 
 addVersion :: SolverPosition -> PackageName -> (Tuple Version (Map PackageName Range)) -> Solver Unit
 addVersion pos name (Tuple version deps) = do
   modify_ \s -> s { solved = Map.insert name version s.solved }
-  traverseWithIndex_ (addConstraint (Solving name version pos)) deps
+  traverseWithIndex_ (addConstraint (Solving name (pure version) pos)) deps
 
 addConstraint :: SolverPosition -> PackageName -> Range -> Solver Unit
 addConstraint pos name newConstraint = do
