@@ -53,8 +53,7 @@ printCompilerErrors errors = do
   printCompilerError :: CompilerError -> String
   printCompilerError { moduleName, filename, message, errorLink } =
     String.joinWith "\n"
-      [ foldMap (\name -> "  Module: " <> name) moduleName
-      , "  File: " <> filename
+      [ foldMap (\name -> "  Module: " <> name <> "\n") moduleName <> "  File: " <> filename
       , "  Message:"
       , ""
       , "  " <> message
