@@ -3,6 +3,7 @@ module Foreign.Purs where
 import Registry.Prelude
 
 import Data.Array as Array
+import Data.Foldable (foldMap)
 import Data.String as String
 import Effect.Exception as Exception
 import Node.ChildProcess as NodeProcess
@@ -26,7 +27,7 @@ type CompilerError =
   , errorCode :: String
   , errorLink :: String
   , filename :: FilePath
-  , moduleName :: String
+  , moduleName :: Maybe String
   }
 
 type SourcePosition =
@@ -52,7 +53,7 @@ printCompilerErrors errors = do
   printCompilerError :: CompilerError -> String
   printCompilerError { moduleName, filename, message, errorLink } =
     String.joinWith "\n"
-      [ "  Module: " <> moduleName
+      [ foldMap (\name -> "  Module: " <> name) moduleName
       , "  File: " <> filename
       , "  Message:"
       , ""
@@ -90,7 +91,7 @@ callCompiler compilerArgs = do
     Right { exit: NodeProcess.Normally 0, stdout } -> Right $ String.trim stdout
     Right { stdout } -> Left do
       case Json.parseJson (String.trim stdout) of
-        Left err -> UnknownError $ String.joinWith "\n" [ stdout, err ]
+        Left err -> UnknownError stdout
         Right ({ errors } :: { errors :: Array CompilerError })
           | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
           | otherwise -> CompilationError errors
