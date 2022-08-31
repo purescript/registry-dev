@@ -16,7 +16,7 @@ import Test.Spec.Assertions as Assert
 
 tar :: Spec.Spec Unit
 tar = do
-  Spec.describeOnly "Tar" do
+  Spec.describe "Tar" do
     Spec.it "Successfully produces tarball from directory" do
       { bytes } <- createTarball
       bytes `Assert.shouldSatisfy` (_ > 30.0)
@@ -33,11 +33,16 @@ tar = do
     FSE.ensureDirectory packagePath
     writeTmp packagePath "README.md" "# README\nThis is my package."
     writeTmp packagePath "purs.json" "{ \"name\": \"project\" }"
-    let archiveName = packagePath <> ".tar.gz"
     liftEffect $ Tar.create { cwd: packageTmp, folderName: "package" }
+    -- Before we complete the process, a quick check to verify that our tarball
+    -- does indeed include the contents we expect.
     FSE.remove packagePath
     liftEffect $ Tar.extract { cwd: packageTmp, archive: "package.tar.gz" }
-    hashAndBytes archiveName
+    files <- FS.readdir packagePath
+    if files == [ "README.md", "purs.json" ] then
+      hashAndBytes (packagePath <> ".tar.gz")
+    else
+      unsafeCrashWith "Tar extraction failed."
 
   writeTmp tmp name contents =
     FSA.writeTextFile UTF8 (Path.concat [ tmp, name ]) contents

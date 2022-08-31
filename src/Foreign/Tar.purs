@@ -3,7 +3,7 @@ module Foreign.Tar (getToplevelDir, create, extract) where
 import Prelude
 
 import Data.Array as Array
-import Data.Function.Uncurried (Fn1, Fn2, runFn1, runFn2)
+import Data.Function.Uncurried (Fn1, runFn1)
 import Data.Maybe (Maybe(..))
 import Data.String as String
 import Effect (Effect)
@@ -33,7 +33,7 @@ create { cwd, folderName } = do
     gzipCmd = "gzip " <> String.joinWith " " [ "--name", ">", folderName <> ".tar.gz" ]
     tarCmd = "tar " <> String.joinWith " "
       [ "--sort=name"
-      , "--mtime=1970-01-01"
+      , "--mtime=1970-01-01 00:00:Z"
       , "--owner=0"
       , "--group=0"
       , "--numeric-owner"
