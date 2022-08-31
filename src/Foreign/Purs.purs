@@ -91,7 +91,7 @@ callCompiler compilerArgs = do
     Right { exit: NodeProcess.Normally 0, stdout } -> Right $ String.trim stdout
     Right { stdout } -> Left do
       case Json.parseJson (String.trim stdout) of
-        Left err -> UnknownError stdout
+        Left err -> UnknownError $ String.joinWith "\n" [ stdout, err ]
         Right ({ errors } :: { errors :: Array CompilerError })
           | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
           | otherwise -> CompilationError errors
