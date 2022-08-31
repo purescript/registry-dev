@@ -502,7 +502,7 @@ addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
   copyPackageSourceFiles manifestRecord.files { source: absoluteFolderPath, destination: packageSourceDir }
   liftAff $ removeIgnoredTarballFiles packageSourceDir
   let tarballPath = packageSourceDir <> ".tar.gz"
-  liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname, archiveName: tarballPath }
+  liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname }
   log "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.stat tarballPath
   when (not isLegacyImport && bytes > warnPackageBytes) do
@@ -689,7 +689,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
     liftAff (Wget.wget ("packages.registry.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath) >>= case _ of
       Left err -> throwWithComment $ "Error while fetching tarball: " <> err
       Right _ -> pure unit
-    liftEffect $ Tar.extract { cwd: dependenciesDir, filename: filepath }
+    liftEffect $ Tar.extract { cwd: dependenciesDir, archive: filename }
     liftAff $ FS.unlink filepath
 
   log "Generating a resolutions file"
@@ -964,7 +964,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
             throwWithComment "Could not find a toplevel dir in the tarball!"
           Just dir -> do
             log "Extracting the tarball..."
-            liftEffect $ Tar.extract { cwd: tmpDir, filename: absoluteTarballPath }
+            liftEffect $ Tar.extract { cwd: tmpDir, archive: tarballName }
             pure { packageDirectory: dir, publishedTime: commitDate }
 
 -- | Clone a package from a Git location to the provided directory.

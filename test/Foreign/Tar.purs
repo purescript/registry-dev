@@ -34,12 +34,13 @@ tar = do
     writeTmp packagePath "README.md" "# README\nThis is my package."
     writeTmp packagePath "purs.json" "{ \"name\": \"project\" }"
     let archiveName = packagePath <> ".tar.gz"
-    liftEffect $ Tar.create { cwd: packageTmp, folderName: packagePath, archiveName }
-    liftEffect $ Tar.extract { cwd: packageTmp, filename: archiveName }
+    liftEffect $ Tar.create { cwd: packageTmp, folderName: "package" }
+    FSE.remove packagePath
+    liftEffect $ Tar.extract { cwd: packageTmp, archive: "package.tar.gz" }
     hashAndBytes archiveName
 
   writeTmp tmp name contents =
-    FSA.writeTextFile ASCII (Path.concat [ tmp, name ]) contents
+    FSA.writeTextFile UTF8 (Path.concat [ tmp, name ]) contents
 
   hashAndBytes path = do
     FS.Stats.Stats { size: bytes } <- FS.stat path
