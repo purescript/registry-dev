@@ -277,7 +277,7 @@ installPackage :: PackageName -> Version -> Aff Unit
 installPackage name version = do
   log $ "installing " <> PackageName.print name <> "@" <> Version.printVersion version
   _ <- Wget.wget registryUrl tarballPath >>= ltraverse (Aff.error >>> throwError)
-  liftEffect $ Tar.extract { cwd: packagesDir, filename: tarballPath }
+  liftEffect $ Tar.extract { cwd: packagesDir, archive: Path.concat [ extractedName, extractedPath, ".tar.gz" ] }
   FSE.remove tarballPath
   FSA.rename extractedPath installPath
   where
