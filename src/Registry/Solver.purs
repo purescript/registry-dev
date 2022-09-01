@@ -4,7 +4,7 @@ import Registry.Prelude
 
 import Control.Monad.Error.Class (class MonadError, catchError)
 import Control.Monad.Reader (ask)
-import Control.Monad.State (get, modify_, put)
+import Control.Monad.State (class MonadState, get, modify_, put)
 import Control.Plus (empty)
 import Data.Array as Array
 import Data.Array.NonEmpty (foldMap1)
@@ -52,7 +52,7 @@ data SolverError
   | DisjointRanges PackageName Range SolverPosition Range SolverPosition
 
 groupErrors :: NonEmptyArray SolverError -> NonEmptyArray SolverError
-groupErrors = fromGroup <=< NEA.groupAllBy grouping
+groupErrors = map NEA.nubEq $ fromGroup <=< NEA.groupAllBy grouping
   where
   grouping (NoVersionsInRange p1 v1 r1 _) (NoVersionsInRange p2 v2 r2 _) =
     compare p1 p2 <> compare v1 v2 <> compare (printRange r1) (printRange r2)
@@ -65,7 +65,7 @@ groupErrors = fromGroup <=< NEA.groupAllBy grouping
   grouping (DisjointRanges p1 r1 s1 q1 _) (DisjointRanges p2 r2 s2 q2 _) =
     compare p1 p2 <> compare (printRange r1) (printRange r2) <> compare s1 s2 <> compare (printRange q1) (printRange q2)
 
-  fromGroup es = setPosition (NEA.head es) $ map getPosition es
+  fromGroup es = setPosition (NEA.head es) $ groupPositions $ map getPosition es
 
   getPosition (NoVersionsInRange _ _ _ p) = p
   getPosition (VersionNotInRange _ _ _ p) = p
@@ -84,7 +84,7 @@ groupPositions = fromGroup <=< NEA.groupAllBy grouping
   grouping (Solving p1 _ s1) (Solving p2 _ s2) =
     compare p1 p2 <> compare s1 s2
 
-  fromGroup es = setVersion es $ getVersions =<< NEA.toArray es
+  fromGroup es = setVersion es $ Array.nub $ getVersions =<< NEA.toArray es
 
   getVersions SolveRoot = empty
   getVersions (Solving _ v _) = NEA.toArray v
@@ -143,18 +143,21 @@ type State =
   , solved :: Map PackageName Version
   }
 
-newtype CollectErrors :: (Type -> Type) -> Type -> Type
-newtype CollectErrors f a = CollectErrors (f a)
+newtype CollectErrors :: Type -> Type
+newtype CollectErrors a = CollectErrors (Solver a)
 
-derive instance Newtype (CollectErrors f a) _
+derive instance Newtype (CollectErrors a) _
 
-instance (Semigroup e, MonadError e f) => Semigroup (CollectErrors f a) where
-  append (CollectErrors fa) (CollectErrors fb) = CollectErrors $
-    catchError fa \e1 ->
-      catchError fb \e2 ->
+instance Semigroup (CollectErrors a) where
+  append (CollectErrors fa) (CollectErrors fb) = CollectErrors do
+    s <- get
+    catchError fa \e1 -> do
+      -- if unrelated, drop the conflict from state, advance
+      put s
+      catchError fb \e2 -> do
         throwError (e1 <> e2)
 
-oneOfMap1 :: forall e f a b. Semigroup e => MonadError e f => (a -> f b) -> NonEmptyArray a -> f b
+oneOfMap1 :: forall a b. (a -> Solver b) -> NonEmptyArray a -> Solver b
 oneOfMap1 = alaF CollectErrors foldMap1
 
 type ValidationError =
@@ -201,7 +204,7 @@ exploreGoals recover =
         let
           act = versions # oneOfMap1 \version ->
             addVersion pos name version *> exploreGoals false
-        catchError act \e1 -> do
+        const act $ catchError act \e1 -> do
           when recover $ void $
             catchError (exploreGoals recover) \e2 -> do
               throwError (e1 <> e2)
