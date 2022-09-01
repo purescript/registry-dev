@@ -288,10 +288,10 @@ mirrorLegacySet { tag, packageSet, upstream } = do
     let commitMessage = "Update to the " <> Version.printVersion upstream <> " package set."
     Git.runGit_ [ "commit", "-m", commitMessage ] (Just packageSetsPath)
     let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/package-sets.git"
+    void $ Git.runGitSilent [ "push", origin, "master" ] (Just packageSetsPath)
     for_ tagsToPush \pushTag -> do
       Git.runGit_ [ "tag", pushTag ] (Just packageSetsPath)
       Git.runGitSilent [ "push", origin, pushTag ] (Just packageSetsPath)
-    void $ Git.runGitSilent [ "push", origin, "master" ] (Just packageSetsPath)
 
   case result of
     Left error -> RegistryM.throwWithComment $ "Package set mirroring failed: " <> error
