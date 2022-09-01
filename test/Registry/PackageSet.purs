@@ -11,7 +11,7 @@ import Data.Map as Map
 import Data.RFC3339String (RFC3339String(..))
 import Registry.Hash (unsafeSha256)
 import Registry.Json as Json
-import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, parsePscTag, printPscTag)
+import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, parsePscTag, printPscTag)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -38,6 +38,13 @@ spec = do
     let roundtrip = map printPscTag <<< parsePscTag
     roundtrip valid `Assert.shouldContain` valid
     roundtrip invalid `Assert.shouldSatisfy` Either.isLeft
+
+  Spec.it "Parses legacy 'latest compatible set' files" do
+    let
+      parsed :: Either _ LatestCompatibleSets
+      parsed = Json.parseJson latestCompatibleSets
+
+    map Json.printJson parsed `Assert.shouldContain` latestCompatibleSets
 
   Spec.it "Produces correct legacy package set name" do
     printPscTag convertedPackageSet.tag `Assert.shouldEqual` "psc-0.15.2-20220725"
@@ -94,6 +101,36 @@ New packages:
 Removed packages:
   - assert@6.0.0
 """
+
+latestCompatibleSets :: String
+latestCompatibleSets =
+  """{
+  "0.12.0": "psc-0.12.0-20181024",
+  "0.12.1": "psc-0.12.1-20190107",
+  "0.12.2": "psc-0.12.2-20190210",
+  "0.12.3": "psc-0.12.3-20190409",
+  "0.12.4": "psc-0.12.4-20190418",
+  "0.12.5": "psc-0.12.5-20190525",
+  "0.13.0": "psc-0.13.0-20190713",
+  "0.13.2": "psc-0.13.2-20190815",
+  "0.13.3": "psc-0.13.3-20191005",
+  "0.13.4": "psc-0.13.4-20191125",
+  "0.13.5": "psc-0.13.5-20200103",
+  "0.13.6": "psc-0.13.6-20200507",
+  "0.13.8": "psc-0.13.8-20210226",
+  "0.14.0": "psc-0.14.0-20210409",
+  "0.14.1": "psc-0.14.1-20210613",
+  "0.14.2": "psc-0.14.2-20210713",
+  "0.14.3": "psc-0.14.3-20210825",
+  "0.14.4": "psc-0.14.4-20211109",
+  "0.14.5": "psc-0.14.5-20220224",
+  "0.14.6": "psc-0.14.6-20220228",
+  "0.14.7": "psc-0.14.7-20220418",
+  "0.15.0": "psc-0.15.0-20220527",
+  "0.15.2": "psc-0.15.2-20220706",
+  "0.15.3": "psc-0.15.3-20220712",
+  "0.15.4": "psc-0.15.4-20220829"
+}"""
 
 packageSet :: PackageSet
 packageSet = PackageSet

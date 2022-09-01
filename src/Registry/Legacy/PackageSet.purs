@@ -1,5 +1,6 @@
 module Registry.Legacy.PackageSet
   ( ConvertedLegacyPackageSet
+  , LatestCompatibleSets
   , LegacyPackageSet(..)
   , LegacyPackageSetEntry
   , PscTag(..)
@@ -84,7 +85,7 @@ instance RegistryJson PscTag where
 parsePscTag :: String -> Either String PscTag
 parsePscTag = lmap Parsing.parseErrorMessage <<< flip Parsing.runParser do
   _ <- Parsing.String.string "psc-"
-  version <- Version.mkVersionParser Version.Lenient =<< charsUntilHyphen
+  version <- Version.mkVersionParser Version.Strict =<< charsUntilHyphen
   date <- Parsing.String.rest
   case Format.DateTime.unformat (YearFull : MonthTwoDigits : DayOfMonthTwoDigits : Nil) date of
     Left err ->
