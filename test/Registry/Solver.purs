@@ -165,11 +165,10 @@ spec = do
     Spec.it "Fails when target package cannot be satisfied" do
       shouldFail
         [ brokenBroken.package /\ range 0 2 ]
-        ( Array.reverse (Set.toUnfoldable (Map.keys brokenBroken.versions)) <#> \brokenVersion ->
-            { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving brokenBroken.package (pure brokenVersion) SolveRoot)
-            , message: "Package index contained no versions for does-not-exist in the range >=0.0.0 <5.0.0 (existing versions: none) while solving broken-broken@" <> Version.printVersion brokenVersion
-            }
-        )
+        [ { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving brokenBroken.package (pure (version 1) <|> pure (version 0)) SolveRoot)
+          , message: "Package index contained no versions for does-not-exist in the range >=0.0.0 <5.0.0 (existing versions: none) while solving broken-broken@1.0.0, 0.0.0"
+          }
+        ]
 
     Spec.it "Fails on disjoint ranges" do
       shouldFail

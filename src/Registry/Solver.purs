@@ -51,8 +51,14 @@ data SolverError
   | VersionNotInRange PackageName Version Range SolverPosition
   | DisjointRanges PackageName Range SolverPosition Range SolverPosition
 
+derive instance Eq SolverError
+derive instance Generic.Generic SolverError _
+
+instance Show SolverError where
+  show a = genericShow a
+
 groupErrors :: NonEmptyArray SolverError -> NonEmptyArray SolverError
-groupErrors = map NEA.nubEq $ fromGroup <=< NEA.groupAllBy grouping
+groupErrors = fromGroup <=< NEA.groupAllBy grouping
   where
   grouping (NoVersionsInRange p1 v1 r1 _) (NoVersionsInRange p2 v2 r2 _) =
     compare p1 p2 <> compare v1 v2 <> compare (printRange r1) (printRange r2)
@@ -93,12 +99,6 @@ groupPositions = fromGroup <=< NEA.groupAllBy grouping
     maybe os case NEA.head os, _ of
       SolveRoot, _ -> pure SolveRoot
       Solving p _ s, v -> pure (Solving p v s)
-
-derive instance Eq SolverError
-derive instance Generic.Generic SolverError _
-
-instance Show SolverError where
-  show a = genericShow a
 
 printSolverError :: SolverError -> String
 printSolverError = case _ of
@@ -152,7 +152,6 @@ instance Semigroup (CollectErrors a) where
   append (CollectErrors fa) (CollectErrors fb) = CollectErrors do
     s <- get
     catchError fa \e1 -> do
-      -- if unrelated, drop the conflict from state, advance
       put s
       catchError fb \e2 -> do
         throwError (e1 <> e2)
@@ -176,7 +175,7 @@ validate index sols = maybe (Right unit) Left $ NEA.fromArray
 
 solve :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
 solve index pending = lmap groupErrors
-  case runRWSE index { pending: map (Tuple SolveRoot) pending, solved: Map.empty } (exploreGoals true) of
+  case runRWSE index { pending: map (Tuple SolveRoot) pending, solved: Map.empty } (exploreGoals 20) of
     _ /\ r /\ _ -> r
 
 solveAndValidate :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
@@ -189,8 +188,8 @@ solveAndValidate index pending = do
         Just version -> VersionNotInRange r.name version r.range SolveRoot
     Right _ -> Right sols
 
-exploreGoals :: Boolean -> Solver Solved
-exploreGoals recover =
+exploreGoals :: Int -> Solver Solved
+exploreGoals work =
   get >>= \goals@{ pending, solved } ->
     case Map.findMin pending of
       Nothing ->
@@ -203,10 +202,11 @@ exploreGoals recover =
         versions <- getRelevantVersions pos name constraint
         let
           act = versions # oneOfMap1 \version ->
-            addVersion pos name version *> exploreGoals false
-        const act $ catchError act \e1 -> do
-          when recover $ void $
-            catchError (exploreGoals recover) \e2 -> do
+            addVersion pos name version *> exploreGoals 0
+        catchError act \e1 -> do
+          when (work > 0) $ void do
+            put goals'
+            catchError (exploreGoals (work - NEA.length e1)) \e2 -> do
               throwError (e1 <> e2)
           throwError e1
 
