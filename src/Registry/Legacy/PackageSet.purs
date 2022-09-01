@@ -24,6 +24,7 @@ import Data.List (List(..), (:))
 import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
+import Data.String.CodeUnits as String.CodeUnits
 import Dodo as Dodo
 import Dodo.Common as Dodo.Common
 import Foreign.Git as Git
@@ -32,6 +33,7 @@ import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Parsing as Parsing
+import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Registry.Index (RegistryIndex)
 import Registry.Json as Json
@@ -82,14 +84,19 @@ instance RegistryJson PscTag where
 parsePscTag :: String -> Either String PscTag
 parsePscTag = lmap Parsing.parseErrorMessage <<< flip Parsing.runParser do
   _ <- Parsing.String.string "psc-"
-  version <- Version.versionParser Version.Lenient
-  _ <- Parsing.String.char '-'
+  version <- Version.mkVersionParser Version.Lenient =<< charsUntilHyphen
   date <- Parsing.String.rest
   case Format.DateTime.unformat (YearFull : MonthTwoDigits : DayOfMonthTwoDigits : Nil) date of
     Left err ->
       Parsing.fail $ "Expected an 8-digit date such as '20220101': " <> err
     Right parsedDate ->
       pure $ PscTag { compiler: version, date: parsedDate }
+  where
+  charsUntilHyphen =
+    map String.CodeUnits.fromCharArray
+      $ map fst
+      $ Parsing.Combinators.Array.manyTill_ Parsing.String.anyChar
+      $ Parsing.String.char '-'
 
 printPscTag :: PscTag -> String
 printPscTag (PscTag { compiler, date }) =

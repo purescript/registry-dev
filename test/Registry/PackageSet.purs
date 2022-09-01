@@ -5,12 +5,13 @@ module Test.Registry.PackageSet
 import Registry.Prelude
 
 import Data.DateTime (DateTime)
+import Data.Either as Either
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.RFC3339String (RFC3339String(..))
 import Registry.Hash (unsafeSha256)
 import Registry.Json as Json
-import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, printPscTag)
+import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, parsePscTag, printPscTag)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -30,6 +31,13 @@ spec = do
 
   Spec.it "Encodes package set" do
     Json.printJson packageSet `Assert.shouldEqual` packageSetJson
+
+  Spec.it "Parses legacy package set tags" do
+    let valid = "psc-0.12.18-20220102"
+    let invalid = "psc-0.14.3.1-2022-01-02"
+    let roundtrip = map printPscTag <<< parsePscTag
+    roundtrip valid `Assert.shouldContain` valid
+    roundtrip invalid `Assert.shouldSatisfy` Either.isLeft
 
   Spec.it "Produces correct legacy package set name" do
     printPscTag convertedPackageSet.tag `Assert.shouldEqual` "psc-0.15.2-20220725"
