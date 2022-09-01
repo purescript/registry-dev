@@ -10,7 +10,7 @@ import Data.Map as Map
 import Data.RFC3339String (RFC3339String(..))
 import Registry.Hash (unsafeSha256)
 import Registry.Json as Json
-import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet)
+import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, printPscTag)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -32,7 +32,7 @@ spec = do
     Json.printJson packageSet `Assert.shouldEqual` packageSetJson
 
   Spec.it "Produces correct legacy package set name" do
-    convertedPackageSet.name `Assert.shouldEqual` "psc-0.15.2-20220725"
+    printPscTag convertedPackageSet.tag `Assert.shouldEqual` "psc-0.15.2-20220725"
 
   Spec.it "Decodes legacy package set" do
     Json.parseJson legacyPackageSetJson `Assert.shouldContain` convertedPackageSet.packageSet

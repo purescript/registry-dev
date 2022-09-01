@@ -19,7 +19,6 @@ import Data.Generic.Rep as Generic
 import Data.HTTP.Method as Method
 import Data.Int as Int
 import Data.Interpolate (i)
-import Data.JSDate as JSDate
 import Data.Map as Map
 import Data.MediaType.Common as MediaType
 import Data.PreciseDateTime as PDT
@@ -59,6 +58,7 @@ import Registry.Hash as Hash
 import Registry.Index as Index
 import Registry.Json as Json
 import Registry.Legacy.Manifest as Legacy.Manifest
+import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
@@ -273,10 +273,16 @@ runOperation operation = case operation of
           liftAff $ Json.writeJsonFile newPath packageSet
           let commitMessage = PackageSet.commitMessage latestPackageSet success (un PackageSet packageSet).version
           commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
-            Left err -> throwWithComment $ "Failed to commit package set file: " <> err
+            Left err -> throwWithComment $ "Failed to commit package set file (cc: @purescript/packaging): " <> err
             Right _ -> do
-              comment "Built and released a new package set!"
-              closeIssue
+              comment "Built and released a new package set! Now mirroring to the package-sets repo..."
+              metadata <- readPackagesMetadata
+              case Legacy.PackageSet.fromPackageSet registryIndex metadata packageSet of
+                Left err -> throwWithComment $ "Failed to convert to legacy package set (cc: @purescript/packaging): " <> err
+                Right legacyPackageSet -> do
+                  Legacy.PackageSet.mirrorLegacySet legacyPackageSet
+                  comment "Mirrored a new legacy package set."
+                  closeIssue
         _ -> do
           throwWithComment "The package set produced from this suggested update does not compile."
 
@@ -885,9 +891,9 @@ fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
     log $ "Found the " <> address.repo <> " repo locally, pulling..."
     result <- Except.runExceptT do
       branch <- Git.runGitSilent [ "rev-parse", "--abbrev-ref", "HEAD" ] (Just path)
-      when (branch /= "main") do
+      unless (branch == "main" || branch == "master") do
         throwError $ Array.fold
-          [ "Cannot import using a branch other than 'main'. Got: "
+          [ "Cannot fetch using a branch other than 'main' or 'master'. Got: "
           , branch
           ]
       Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just path)
@@ -936,10 +942,12 @@ fetchPackageSource { tmpDir, ref, location } = case location of
     case pursPublishMethod of
       LegacyPursPublish -> liftAff do
         log $ "Cloning repo at tag: " <> show { owner, repo, ref }
-        cloneGitTag (i "https://github.com/" owner "/" repo) ref tmpDir
+        Git.cloneGitTag (i "https://github.com/" owner "/" repo) ref tmpDir
         log $ "Getting published time..."
         -- Cloning will result in the `repo` name as the directory name
-        publishedTime <- gitGetRefTime ref (Path.concat [ tmpDir, repo ])
+        publishedTime <- Except.runExceptT (Git.gitGetRefTime ref (Path.concat [ tmpDir, repo ])) >>= case _ of
+          Left error -> Aff.throwError $ Aff.error $ "Failed to get published time: " <> error
+          Right value -> pure value
         pure { packageDirectory: repo, publishedTime }
 
       PursPublish -> do
@@ -967,39 +975,9 @@ fetchPackageSource { tmpDir, ref, location } = case location of
             liftEffect $ Tar.extract { cwd: tmpDir, archive: tarballName }
             pure { packageDirectory: dir, publishedTime: commitDate }
 
--- | Clone a package from a Git location to the provided directory.
-cloneGitTag :: Http.URL -> String -> FilePath -> Aff Unit
-cloneGitTag url ref targetDir = do
-  let args = [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false" ]
-  withBackoff' (Except.runExceptT (Git.runGit args (Just targetDir))) >>= case _ of
-    Nothing -> Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> url <> " " <> ref
-    Just (Left err) -> Aff.throwError $ Aff.error err
-    Just (Right _) -> log "Successfully cloned package."
-
--- | Read the published time of the checked-out commit.
-gitGetRefTime :: String -> FilePath -> Aff RFC3339String
-gitGetRefTime ref repoDir = do
-  result <- Except.runExceptT do
-    timestamp <- Git.runGit [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir)
-    jsDate <- liftEffect $ JSDate.parse timestamp
-    dateTime <- Except.except $ note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
-    pure $ PDT.toRFC3339String $ PDT.fromDateTime dateTime
-  case result of
-    Left err -> Aff.throwError $ Aff.error $ "Failed to get ref time: " <> err
-    Right res -> pure res
-
-configurePacchettiBotti :: Maybe FilePath -> ExceptT String Aff GitHubToken
-configurePacchettiBotti cwd = do
-  pacchettiBotti <- liftEffect do
-    Env.lookupEnv "PACCHETTIBOTTI_TOKEN"
-      >>= maybe (throw "PACCHETTIBOTTI_TOKEN not defined in the environment") pure
-  Git.runGit_ [ "config", "user.name", "PacchettiBotti" ] cwd
-  Git.runGit_ [ "config", "user.email", "<" <> pacchettiBottiEmail <> ">" ] cwd
-  pure (GitHubToken pacchettiBotti)
-
 pacchettiBottiPushToRegistryIndex :: PackageName -> FilePath -> Aff (Either String Unit)
 pacchettiBottiPushToRegistryIndex packageName registryIndexDir = Except.runExceptT do
-  GitHubToken token <- configurePacchettiBotti (Just registryIndexDir)
+  GitHubToken token <- Git.configurePacchettiBotti (Just registryIndexDir)
   Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryIndexDir)
   Git.runGit_ [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
   Git.runGit_ [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
@@ -1008,7 +986,7 @@ pacchettiBottiPushToRegistryIndex packageName registryIndexDir = Except.runExcep
 
 pacchettiBottiPushToRegistryMetadata :: PackageName -> FilePath -> Aff (Either String Unit)
 pacchettiBottiPushToRegistryMetadata packageName registryDir = Except.runExceptT do
-  GitHubToken token <- configurePacchettiBotti (Just registryDir)
+  GitHubToken token <- Git.configurePacchettiBotti (Just registryDir)
   Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
   Git.runGit_ [ "add", Path.concat [ "metadata", PackageName.print packageName <> ".json" ] ] (Just registryDir)
   Git.runGit_ [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] (Just registryDir)
@@ -1017,7 +995,7 @@ pacchettiBottiPushToRegistryMetadata packageName registryDir = Except.runExceptT
 
 pacchettiBottiPushToRegistryPackageSets :: Version -> String -> FilePath -> Aff (Either String Unit)
 pacchettiBottiPushToRegistryPackageSets version commitMessage registryDir = Except.runExceptT do
-  GitHubToken token <- configurePacchettiBotti (Just registryDir)
+  GitHubToken token <- Git.configurePacchettiBotti (Just registryDir)
   Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
   Git.runGit_ [ "add", Path.concat [ "package-sets", Version.printVersion version <> ".json" ] ] (Just registryDir)
   Git.runGit_ [ "commit", "-m", commitMessage ] (Just registryDir)
@@ -1168,7 +1146,7 @@ acceptTrustees
   -> RegistryM (Tuple AuthenticatedData (Maybe (NonEmptyArray Owner)))
 acceptTrustees username authData@(AuthenticatedData authenticated) maybeOwners = do
   { octokit, cache } <- ask
-  if authenticated.email /= pacchettiBottiEmail then
+  if authenticated.email /= Git.pacchettiBottiEmail then
     pure (Tuple authData maybeOwners)
   else do
     liftAff (Except.runExceptT (GitHub.listTeamMembers octokit cache packagingTeam)) >>= case _ of
@@ -1196,7 +1174,7 @@ acceptTrustees username authData@(AuthenticatedData authenticated) maybeOwners =
           newAuth = AuthenticatedData (authenticated { signature = signature })
 
           pacchettiBottiOwner = Owner
-            { email: pacchettiBottiEmail
+            { email: Git.pacchettiBottiEmail
             , keytype: pacchettiBottiKeyType
             , public: publicKey
             }
@@ -1250,16 +1228,13 @@ readPacchettiBottiKeys = do
 
     if keyFields.keyType /= pacchettiBottiKeyType then
       Left $ Array.fold [ "Key type must be ", pacchettiBottiKeyType, " but received ", keyFields.keyType, " instead." ]
-    else if keyFields.email /= pacchettiBottiEmail then
-      Left $ Array.fold [ "Email must be ", pacchettiBottiEmail, " but received: ", keyFields.email, " instead." ]
+    else if keyFields.email /= Git.pacchettiBottiEmail then
+      Left $ Array.fold [ "Email must be ", Git.pacchettiBottiEmail, " but received: ", keyFields.email, " instead." ]
     else
       pure keyFields.key
 
 packagingTeam :: GitHub.Team
 packagingTeam = { org: "purescript", team: "packaging" }
-
-pacchettiBottiEmail :: String
-pacchettiBottiEmail = "pacchettibotti@purescript.org"
 
 pacchettiBottiKeyType :: String
 pacchettiBottiKeyType = "ssh-ed25519"

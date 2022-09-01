@@ -104,7 +104,7 @@ transferPackage rawPackageName newPackageLocation = do
     rawPayload = Json.stringifyJson payload
 
   API.runOperation $ Authenticated $ AuthenticatedData
-    { email: API.pacchettiBottiEmail
+    { email: Git.pacchettiBottiEmail
     , payload
     , rawPayload
     , signature: [] -- The API will re-sign using @pacchettibotti credentials.
@@ -193,7 +193,7 @@ commitLegacyRegistryFile :: FilePath -> Aff (Either String Unit)
 commitLegacyRegistryFile sourceFile = Except.runExceptT do
   Git.runGitSilent [ "diff", "--stat" ] Nothing >>= case _ of
     files | String.contains (String.Pattern sourceFile) files -> do
-      GitHubToken token <- API.configurePacchettiBotti Nothing
+      GitHubToken token <- Git.configurePacchettiBotti Nothing
       Git.runGit_ [ "pull" ] Nothing
       Git.runGit_ [ "add", sourceFile ] Nothing
       log "Committing to registry..."

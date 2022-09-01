@@ -19,6 +19,7 @@ module Registry.Version
   , rangeIncludes
   , rawRange
   , rawVersion
+  , versionParser
   ) where
 
 import Registry.Prelude
