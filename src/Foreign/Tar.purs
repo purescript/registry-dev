@@ -31,6 +31,8 @@ create { cwd, folderName } = do
   let
     cmd = String.joinWith " | " [ tarCmd, gzipCmd ]
     gzipCmd = "gzip " <> String.joinWith " " [ "--name", ">", folderName <> ".tar.gz" ]
+    -- All these flags are here to ensure that the tarball creation is deterministic/reproducible.
+    -- They come from https://reproducible-builds.org/docs/archives/
     tarCmd = "tar " <> String.joinWith " "
       [ "--sort=name"
       , "--mtime=1970-01-01 00:00:Z"
