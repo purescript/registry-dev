@@ -24,7 +24,6 @@ module Foreign.GitHub
   , parseRepo
   , printGitHubError
   , printRateLimit
-  , registryAddress
   ) where
 
 import Registry.Prelude
@@ -62,6 +61,7 @@ import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
+import Registry.Constants as Constants
 import Registry.Json ((.:))
 import Registry.Json as Json
 
@@ -199,7 +199,7 @@ createComment octokit issue body = do
   pure unit
   where
   route :: Route
-  route = Route $ i "POST /repos/" registryAddress.owner "/" registryAddress.repo "/issues/" (unwrap issue) "/comments"
+  route = Route $ i "POST /repos/" Constants.registryRepo.owner "/" Constants.registryRepo.repo "/issues/" (unwrap issue) "/comments"
 
 -- | Close an issue in the registry repo.
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/issues/update.md
@@ -210,7 +210,7 @@ closeIssue octokit issue = do
   pure unit
   where
   route :: Route
-  route = Route $ i "PATCH /repos/" registryAddress.owner "/" registryAddress.repo "/issues/" (unwrap issue)
+  route = Route $ i "PATCH /repos/" Constants.registryRepo.owner "/" Constants.registryRepo.repo "/issues/" (unwrap issue)
 
 type RateLimit =
   { limit :: Int
@@ -428,9 +428,6 @@ instance RegistryJson Event where
     pure $ Event { body, username, issueNumber: IssueNumber issueNumber }
 
 type Address = { owner :: String, repo :: String }
-
-registryAddress :: Address
-registryAddress = { owner: "purescript", repo: "registry-preview" }
 
 type Tag = { name :: String, sha :: String, url :: Http.URL }
 

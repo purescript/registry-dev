@@ -54,6 +54,7 @@ import Node.Process as Node.Process
 import Parsing as Parsing
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
+import Registry.Constants as Constants
 import Registry.Hash as Hash
 import Registry.Index as Index
 import Registry.Json as Json
@@ -420,13 +421,13 @@ runOperation operation = case operation of
       closeIssue
 
 registryMetadataPath :: FilePath -> FilePath
-registryMetadataPath registryPath = Path.concat [ registryPath, "metadata" ]
+registryMetadataPath registryPath = Path.concat [ registryPath, Constants.metadataPath ]
 
 registryPackageSetsPath :: FilePath -> FilePath
-registryPackageSetsPath registryPath = Path.concat [ registryPath, "package-sets" ]
+registryPackageSetsPath registryPath = Path.concat [ registryPath, Constants.packageSetsPath ]
 
 metadataFile :: FilePath -> PackageName -> FilePath
-metadataFile registryPath packageName = Path.concat [ registryPath, "metadata", PackageName.print packageName <> ".json" ]
+metadataFile registryPath packageName = Path.concat [ registryPath, Constants.metadataPath, PackageName.print packageName <> ".json" ]
 
 addOrUpdate :: UpdateData -> Metadata -> RegistryM Unit
 addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
@@ -692,7 +693,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
       -- unpacked, ie. package-name-major.minor.patch
       filename = PackageName.print packageName <> "-" <> Version.printVersion version <> ".tar.gz"
       filepath = dependenciesDir <> Path.sep <> filename
-    liftAff (Wget.wget ("packages.registry.purescript.org/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath) >>= case _ of
+    liftAff (Wget.wget (Constants.registryPackagesUrl <> "/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath) >>= case _ of
       Left err -> throwWithComment $ "Error while fetching tarball: " <> err
       Right _ -> pure unit
     liftEffect $ Tar.extract { cwd: dependenciesDir, archive: filename }
@@ -910,14 +911,13 @@ fetchRegistryIndex :: RegistryM Unit
 fetchRegistryIndex = do
   registryIndexPath <- asks _.registryIndex
   log "Fetching the most recent registry index..."
-  liftAff $ fetchRepo { owner: "purescript", repo: "registry-index" } registryIndexPath
+  liftAff $ fetchRepo Constants.registryIndexRepo registryIndexPath
 
 fetchRegistry :: RegistryM Unit
 fetchRegistry = do
   registryPath <- asks _.registry
   log "Fetching the most recent registry ..."
-  -- TODO: When the registry is migrated, rename this to 'registry'
-  liftAff $ fetchRepo { owner: "purescript", repo: "registry-preview" } registryPath
+  liftAff $ fetchRepo Constants.registryRepo registryPath
 
 data PursPublishMethod = LegacyPursPublish | PursPublish
 
@@ -981,7 +981,8 @@ pacchettiBottiPushToRegistryIndex packageName registryIndexDir = Except.runExcep
   Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryIndexDir)
   Git.runGit_ [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
   Git.runGit_ [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
-  let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-index.git"
+  let upstreamRepo = Constants.registryIndexRepo.owner <> "/" <> Constants.registryIndexRepo.repo
+  let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
   void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
 
 pacchettiBottiPushToRegistryMetadata :: PackageName -> FilePath -> Aff (Either String Unit)
@@ -990,16 +991,18 @@ pacchettiBottiPushToRegistryMetadata packageName registryDir = Except.runExceptT
   Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
   Git.runGit_ [ "add", Path.concat [ "metadata", PackageName.print packageName <> ".json" ] ] (Just registryDir)
   Git.runGit_ [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] (Just registryDir)
-  let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
+  let upstreamRepo = Constants.registryRepo.owner <> "/" <> Constants.registryRepo.repo
+  let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
   void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryDir)
 
 pacchettiBottiPushToRegistryPackageSets :: Version -> String -> FilePath -> Aff (Either String Unit)
 pacchettiBottiPushToRegistryPackageSets version commitMessage registryDir = Except.runExceptT do
   GitHubToken token <- Git.configurePacchettiBotti (Just registryDir)
   Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
-  Git.runGit_ [ "add", Path.concat [ "package-sets", Version.printVersion version <> ".json" ] ] (Just registryDir)
+  Git.runGit_ [ "add", Path.concat [ Constants.packageSetsPath, Version.printVersion version <> ".json" ] ] (Just registryDir)
   Git.runGit_ [ "commit", "-m", commitMessage ] (Just registryDir)
-  let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry-preview.git"
+  let upstreamRepo = Constants.registryRepo.owner <> "/" <> Constants.registryRepo.repo
+  let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
   void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryDir)
 
 -- | The absolute maximum bytes allowed in a package

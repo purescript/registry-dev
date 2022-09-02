@@ -19,6 +19,7 @@ import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.API as API
 import Registry.Cache as Cache
+import Registry.Constants as Constants
 import Registry.Json as Json
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
@@ -199,7 +200,8 @@ commitLegacyRegistryFile sourceFile = Except.runExceptT do
       log "Committing to registry..."
       let message = Array.fold [ "Sort ", sourceFile, " and transfer packages that have moved repositories." ]
       Git.runGit_ [ "commit", "-m", message ] Nothing
-      let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry.git"
+      let upstreamRepo = Constants.registryDevRepo.owner <> "/" <> Constants.registryDevRepo.repo
+      let origin = "https://pacchettibotti:" <> token <> "@github.com" <> upstreamRepo <> ".git"
       void $ Git.runGitSilent [ "push", origin, "master" ] Nothing
     _ ->
       log "No changes to commit."

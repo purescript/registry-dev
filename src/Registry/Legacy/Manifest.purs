@@ -23,10 +23,11 @@ import Node.FS.Aff as FSA
 import Node.Path as Path
 import Parsing as Parsing
 import Registry.Cache as Cache
+import Registry.Constants as Constants
 import Registry.Hash (sha256String)
 import Registry.Json ((.:), (.:?))
 import Registry.Json as Json
-import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry, legacyPackageSetsRepo)
+import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, throwWithComment)
@@ -299,7 +300,7 @@ type LegacyPackageSetEntries = Map PackageName (Map RawVersion (Map PackageName 
 fetchLegacyPackageSets :: RegistryM LegacyPackageSetEntries
 fetchLegacyPackageSets = do
   { octokit, cache } <- ask
-  result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache legacyPackageSetsRepo
+  result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache Constants.legacyPackageSetsRepo
   tags <- case result of
     Left err -> throwWithComment (GitHub.printGitHubError err)
     Right tags -> pure $ map _.name tags
@@ -337,7 +338,7 @@ fetchLegacyPackageSets = do
             Left _ -> do
               log $ "CACHE MISS: Building legacy package set for " <> ref
               converted <- Except.runExceptT do
-                packagesJson <- Except.mapExceptT liftAff $ GitHub.getContent octokit cache legacyPackageSetsRepo ref "packages.json"
+                packagesJson <- Except.mapExceptT liftAff $ GitHub.getContent octokit cache Constants.legacyPackageSetsRepo ref "packages.json"
                 parsed <- Except.except $ case Json.parseJson packagesJson of
                   Left decodeError -> throwError $ GitHub.DecodeError decodeError
                   Right legacySet -> pure legacySet
