@@ -5,7 +5,6 @@ module Registry.Legacy.PackageSet
   , LegacyPackageSetEntry
   , PscTag(..)
   , fromPackageSet
-  , legacyPackageSetsRepo
   , mirrorLegacySet
   , parsePscTag
   , printDhall
