@@ -6,7 +6,6 @@ import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Either as Either
-import Data.Foldable (sum)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.String as String
@@ -58,7 +57,7 @@ fetchLegacyManifest packageSetsDeps address ref = do
       -- "strings: >=4.1.2 <4.1.3", which while technically correct is almost
       -- certainly not what the user wants. We instead treat these ranges as
       -- caret ranges, so "strings: 4.1.2" becomes "strings: >=4.1.2 <5.0.0".
-      toRange (RawVersion fixed) = do
+      fixedToRange (RawVersion fixed) = do
         let parsedVersion = Version.parseVersion Version.Lenient fixed
         let bump version = Version.printVersion (Version.bumpHighest version)
         let printRange version = Array.fold [ ">=", fixed, " <", bump version ]
@@ -68,12 +67,12 @@ fetchLegacyManifest packageSetsDeps address ref = do
         Nothing ->
           Left { error: InvalidDependencies [], reason: "No package sets dependencies." }
         Just deps -> do
-          let converted = mapKeys (RawPackageName <<< PackageName.print) $ map toRange deps
+          let converted = mapKeys (RawPackageName <<< PackageName.print) $ map fixedToRange deps
           validateDependencies converted
 
       convertSpagoDeps packages = Array.foldl foldFn Map.empty
         where
-        foldFn deps name = maybe deps (\{ version } -> Map.insert name (toRange version) deps) (findPackage name)
+        foldFn deps name = maybe deps (\{ version } -> Map.insert name (fixedToRange version) deps) (findPackage name)
         findPackage name = Map.lookup name packages
 
       validateSpagoDeps (SpagoDhallJson { dependencies, packages }) = do
@@ -88,25 +87,32 @@ fetchLegacyManifest packageSetsDeps address ref = do
       validateBowerDeps (Bowerfile { dependencies }) =
         validateDependencies (convertBowerDeps dependencies)
 
-    Except.except case manifests of
-      This bower -> validatePackageSetDeps <|> validateBowerDeps bower
-      That spago -> validatePackageSetDeps <|> validateSpagoDeps spago
-      Both bower spago -> validatePackageSetDeps <|> case validateBowerDeps bower, validateSpagoDeps spago of
-        Left bowerError, Left _ -> Left bowerError
-        Right bowerDeps, Left _ -> pure bowerDeps
-        Left _, Right spagoDeps -> pure spagoDeps
-        Right bowerDeps, Right spagoDeps -> pure $ do
-          -- When both manifests produce viable dependencies, we first check to
-          -- see if one is more up-to-date (e.g. has higher ranges specified).
-          -- If so, we take that one. If not, we take the Bower manifest.
-          let
-            compareToSpago key bowerRange = fromMaybe 0 do
-              spagoRange <- Map.lookup key spagoDeps
-              let bowerUpperBound = Version.lessThan bowerRange
-              let spagoUpperBound = Version.lessThan spagoRange
-              if bowerUpperBound >= spagoUpperBound then pure 1 else pure (-1)
+      unionManifests = do
+        case manifests of
+          This bower -> validateBowerDeps bower
+          That spago -> validateSpagoDeps spago
+          Both bower spago ->
+            case validateBowerDeps bower, validateSpagoDeps spago of
+              Left bowerError, Left _ -> Left bowerError
+              Right bowerDeps, Left _ -> Right bowerDeps
+              Left _, Right spagoDeps -> Right spagoDeps
+              Right bowerDeps, Right spagoDeps -> Right do
+                bowerDeps # mapWithIndex \package range ->
+                  case Map.lookup package spagoDeps of
+                    Nothing -> range
+                    Just spagoRange -> Version.union range spagoRange
 
-          if sum (mapWithIndex compareToSpago bowerDeps) >= 0 then bowerDeps else spagoDeps
+      unionPackageSets = case validatePackageSetDeps, unionManifests of
+        Left _, Left manifestError -> Left manifestError
+        Left _, Right manifestDeps -> Right manifestDeps
+        Right packageSetDeps, Left _ -> Right packageSetDeps
+        Right packageSetDeps, Right manifestDeps -> Right do
+          packageSetDeps # mapWithIndex \package range ->
+            case Map.lookup package manifestDeps of
+              Nothing -> range
+              Just manifestRange -> Version.union range manifestRange
+
+    Except.except unionPackageSets
 
   license <- do
     let unBower (Bowerfile { license }) = Array.mapMaybe NonEmptyString.fromString license

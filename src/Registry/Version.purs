@@ -19,6 +19,7 @@ module Registry.Version
   , rangeIncludes
   , rawRange
   , rawVersion
+  , union
   ) where
 
 import Registry.Prelude
@@ -172,6 +173,17 @@ printRange range =
     , " <"
     , printVersion (lessThan range)
     ]
+
+union :: Range -> Range -> Range
+union (Range r1) (Range r2) = do
+  let lhs = min r1.lhs r2.lhs
+  let rhs = max r1.rhs r2.rhs
+  Range
+    { lhs
+    , rhs
+    , mode: Lenient
+    , raw: Array.fold [ ">=", printVersion lhs, " <", printVersion rhs ]
+    }
 
 intersect :: Range -> Range -> Maybe Range
 intersect (Range r1) (Range r2)
