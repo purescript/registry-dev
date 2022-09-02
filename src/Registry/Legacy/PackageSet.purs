@@ -47,9 +47,6 @@ import Registry.Schema (Location(..), Manifest(..), Metadata, PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
-legacyPackageSetsRepo :: GitHub.Address
-legacyPackageSetsRepo = { owner: "purescript", repo: "package-sets-preview" }
-
 -- | The format of a legacy packages.json package set file
 newtype LegacyPackageSet = LegacyPackageSet (Map PackageName LegacyPackageSetEntry)
 
@@ -231,6 +228,9 @@ mirrorLegacySet { tag, packageSet, upstream } = do
   { octokit, cache } <- ask
 
   let packageSetsPath = Path.concat [ tmp, "package-sets" ]
+  -- TODO: FIXME: Replace this once we no longer rely on the 'preview' repository.
+  -- Should be 'Constants.legacyPackageSetsRepo' at that point.
+  let legacyPackageSetsRepo = { owner: "purescript", repo: "package-sets-preview" }
 
   packageSetsTags <- liftAff (Except.runExceptT (GitHub.listTags octokit cache legacyPackageSetsRepo)) >>= case _ of
     Left error -> do
