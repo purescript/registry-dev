@@ -5,6 +5,7 @@ module Registry.Legacy.PackageSet
   , LegacyPackageSetEntry
   , PscTag(..)
   , fromPackageSet
+  , legacyPackageSetsRepo
   , mirrorLegacySet
   , parsePscTag
   , printDhall
@@ -45,6 +46,9 @@ import Registry.RegistryM as RegistryM
 import Registry.Schema (Location(..), Manifest(..), Metadata, PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
+
+legacyPackageSetsRepo :: GitHub.Address
+legacyPackageSetsRepo = { owner: "purescript", repo: "package-sets-preview" }
 
 -- | The format of a legacy packages.json package set file
 newtype LegacyPackageSet = LegacyPackageSet (Map PackageName LegacyPackageSetEntry)
@@ -226,11 +230,9 @@ mirrorLegacySet { tag, packageSet, upstream } = do
 
   { octokit, cache } <- ask
 
-  let
-    packageSetsRepo = { owner: "purescript", repo: "package-sets" }
-    packageSetsPath = Path.concat [ tmp, "package-sets" ]
+  let packageSetsPath = Path.concat [ tmp, "package-sets" ]
 
-  packageSetsTags <- liftAff (Except.runExceptT (GitHub.listTags octokit cache packageSetsRepo)) >>= case _ of
+  packageSetsTags <- liftAff (Except.runExceptT (GitHub.listTags octokit cache legacyPackageSetsRepo)) >>= case _ of
     Left error -> do
       let formatted = GitHub.printGitHubError error
       RegistryM.throwWithComment $ "Could not fetch tags for the package-sets repo: " <> formatted
@@ -241,7 +243,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
   when (Set.member printedTag packageSetsTags) do
     RegistryM.throwWithComment $ "Package set tag " <> printedTag <> "already exists, aborting..."
 
-  let packageSetsUrl = "https://github.com/" <> packageSetsRepo.owner <> "/" <> packageSetsRepo.repo <> ".git"
+  let packageSetsUrl = "https://github.com/" <> legacyPackageSetsRepo.owner <> "/" <> legacyPackageSetsRepo.repo <> ".git"
   liftAff (Except.runExceptT (Git.runGit [ "clone", packageSetsUrl, "--depth", "1" ] (Just tmp))) >>= case _ of
     Left error -> RegistryM.throwWithComment error
     Right _ -> pure unit
@@ -295,7 +297,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
       Git.runGit_ [ "add", path ] (Just packageSetsPath)
     let commitMessage = "Update to the " <> Version.printVersion upstream <> " package set."
     Git.runGit_ [ "commit", "-m", commitMessage ] (Just packageSetsPath)
-    let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/package-sets.git"
+    let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> legacyPackageSetsRepo.owner <> "/" <> legacyPackageSetsRepo.repo <> ".git"
     void $ Git.runGitSilent [ "push", origin, "master" ] (Just packageSetsPath)
     for_ tagsToPush \pushTag -> do
       Git.runGit_ [ "tag", pushTag ] (Just packageSetsPath)
