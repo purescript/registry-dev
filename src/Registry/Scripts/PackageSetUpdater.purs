@@ -24,11 +24,12 @@ import Node.Process as Process
 import Registry.API as API
 import Registry.Index as Index
 import Registry.Json as Json
+import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
 import Registry.RegistryM (Env, RegistryM, commitPackageSetFile, readPackagesMetadata, runRegistryM, throwWithComment)
-import Registry.Schema (PackageSet(..))
+import Registry.Schema (Metadata, PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -92,7 +93,9 @@ main = Aff.launchAff_ do
     registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
 
     prevPackageSet <- PackageSet.readLatestPackageSet
-    recentUploads <- findRecentUploads (Hours 24.0)
+
+    metadata <- readPackagesMetadata
+    recentUploads <- findRecentUploads metadata (Hours 24.0)
 
     let candidates = PackageSet.validatePackageSetCandidates registryIndex prevPackageSet (map Just recentUploads.accepted)
     log $ PackageSet.printRejections candidates.rejected
@@ -127,11 +130,13 @@ main = Aff.launchAff_ do
               let commitMessage = PackageSet.commitMessage prevPackageSet success (un PackageSet packageSet).version
               commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
                 Left err -> throwWithComment $ "Failed to commit package set file: " <> err
-                Right _ -> pure unit
+                Right _ -> do
+                  case Legacy.PackageSet.fromPackageSet registryIndex metadata packageSet of
+                    Left err -> throwWithComment err
+                    Right converted -> Legacy.PackageSet.mirrorLegacySet converted
 
-findRecentUploads :: Hours -> RegistryM { accepted :: Map PackageName Version, rejected :: Map PackageName (NonEmptyArray Version) }
-findRecentUploads limit = do
-  metadata <- readPackagesMetadata
+findRecentUploads :: Map PackageName Metadata -> Hours -> RegistryM { accepted :: Map PackageName Version, rejected :: Map PackageName (NonEmptyArray Version) }
+findRecentUploads metadata limit = do
   now <- liftEffect Now.nowDateTime
 
   let
