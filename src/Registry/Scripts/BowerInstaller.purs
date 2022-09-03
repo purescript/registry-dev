@@ -21,6 +21,7 @@ import Effect.Unsafe (unsafePerformEffect)
 import Foreign.Git as Git
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
+import Foreign.JsonRepair as JsonRepair
 import Foreign.Node.FS as FS.Extra
 import Foreign.Tmp as Tmp
 import Node.ChildProcess (Exit(..))
@@ -41,11 +42,20 @@ import Registry.Prelude as Aff
 import Registry.RegistryM (RegistryM, readPackagesMetadata)
 import Registry.RegistryM as RegistryM
 import Registry.Schema (Location(..), Manifest(..), Metadata)
-import Registry.Version (Version)
+import Registry.Version (Range, Version)
 import Registry.Version as Version
 import Sunde as Sunde
 
-type BowerSolverResults = Map PackageName (Map Version (Map PackageName Version))
+type BowerSolverResults = Map PackageName (Map Version BowerSolved)
+
+-- The results for each package consist of the Bower solver running on the
+-- Bowerfile, the Bower solver running on a manifest converted from the registry
+-- index into a Bowerfile, and the parsed dependencies of the Bowerfile.
+type BowerSolved =
+  { bowerfileSolution :: Map PackageName Version
+  , manifestSolution :: Map PackageName Version
+  , dependencies :: Map PackageName Range
+  }
 
 main :: Effect Unit
 main = launchAff_ do
@@ -124,33 +134,66 @@ main = launchAff_ do
 
     log "Done!"
 
+data BowerInstallType = ManifestInstall | BowerfileInstall
+
+derive instance Eq BowerInstallType
+
+printBowerInstallType :: BowerInstallType -> String
+printBowerInstallType = case _ of
+  ManifestInstall -> "manifest-install"
+  BowerfileInstall -> "bowerfile-install"
+
 -- | Attempt to solve the entire registry index, relying on previous solver
 -- | results if available.
-runBowerSolver :: RegistryIndex -> Map PackageName Metadata -> BowerSolverResults -> RegistryM (Map PackageName (Map Version (Maybe (Map PackageName Version))))
+runBowerSolver :: RegistryIndex -> Map PackageName Metadata -> BowerSolverResults -> RegistryM (Map PackageName (Map Version (Maybe BowerSolved)))
 runBowerSolver index metadata previousResults =
   forWithIndex index \package versions ->
-    forWithIndex versions \version (Manifest { dependencies }) ->
+    forWithIndex versions \version (Manifest manifest) ->
       case Map.lookup package previousResults >>= Map.lookup version of
-        Nothing -> do
-          let
-            bowerfile = Json.printJson { name: PackageName.print package, dependencies: bowerDependencies }
-            bowerDependencies = mapWithIndex bowerDependency dependencies
-            bowerDependency depName range = case Map.lookup depName metadata of
-              Just { location: GitHub dep } -> "https://github.com/" <> dep.owner <> "/" <> dep.repo <> ".git#" <> Version.printRange range
-              _ -> unsafeCrashWith $ Array.fold [ PackageName.print depName, " not in metadata." ]
+        Nothing -> map hush $ Except.runExceptT do
+          originalBowerfile <- case Map.lookup package metadata of
+            Just { location: GitHub { owner, repo }, published } | Just { ref } <- Map.lookup version published -> do
+              { octokit, cache } <- ask
+              bowerfile <- Except.mapExceptT (liftAff <<< map (lmap GitHub.printGitHubError)) $ GitHub.getContent octokit cache { owner, repo } ref "bower.json"
+              pure $ JsonRepair.tryRepair bowerfile
+            _ -> unsafeCrashWith $ Array.fold [ PackageName.print package, " not in metadata." ]
 
-          runBowerInstall package version bowerfile
+          dependencies <- case Json.parseJson originalBowerfile of
+            Left err -> Except.throwError err
+            Right ({ dependencies } :: { dependencies :: Map String String }) -> either Except.throwError pure do
+              parsedNames <- traverseKeys (lmap Parsing.parseErrorMessage <<< PackageName.parse <<< stripPureScriptPrefix) dependencies
+              parsedRanges <- traverse (lmap Parsing.parseErrorMessage <<< Version.parseRange Version.Lenient) parsedNames
+              pure parsedRanges
 
-        Just resolutions ->
-          pure (Just resolutions)
+          bowerfileSolution <- Except.ExceptT do
+            maybeRes <- runBowerInstall BowerfileInstall package version originalBowerfile
+            pure $ case maybeRes of
+              Nothing -> Left $ "Failed to install from bowerfile:\n" <> originalBowerfile
+              Just result -> Right result
 
--- It would be even better to record bower resolutions, but it's a little hairy:
--- Record bower resolutions, not just success / failure?
-runBowerInstall :: PackageName -> Version -> String -> RegistryM (Maybe (Map PackageName Version))
-runBowerInstall name version contents = do
+          manifestSolution <- Except.ExceptT do
+            let
+              bowerfile = Json.printJson { name: PackageName.print package, dependencies: bowerDependencies }
+              bowerDependencies = mapWithIndex bowerDependency manifest.dependencies
+              bowerDependency depName range = case Map.lookup depName metadata of
+                Just { location: GitHub dep } -> "https://github.com/" <> dep.owner <> "/" <> dep.repo <> ".git#" <> Version.printRange range
+                _ -> unsafeCrashWith $ Array.fold [ PackageName.print depName, " not in metadata." ]
+
+            maybeRes <- runBowerInstall ManifestInstall package version bowerfile
+            pure $ case maybeRes of
+              Nothing -> Left $ "Failed to install from manifest-produced bowerfile:\n" <> bowerfile
+              Just result -> Right result
+
+          pure { dependencies, bowerfileSolution, manifestSolution }
+
+        Just solutions ->
+          pure (Just solutions)
+
+runBowerInstall :: BowerInstallType -> PackageName -> Version -> String -> RegistryM (Maybe (Map PackageName Version))
+runBowerInstall installType name version contents = do
   tmp <- liftEffect Tmp.mkTmpDir
   { cache } <- ask
-  let key = "bower-solver__" <> PackageName.print name <> "__" <> Version.printVersion version
+  let key = "bower-solved-" <> printBowerInstallType installType <> "-" <> PackageName.print name <> "__" <> Version.printVersion version
   liftEffect (Cache.readJsonEntry key cache) >>= case _ of
     Left _ -> do
       log key
