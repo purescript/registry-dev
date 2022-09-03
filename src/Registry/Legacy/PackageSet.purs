@@ -226,10 +226,10 @@ mirrorLegacySet { tag, packageSet, upstream } = do
 
   { octokit, cache } <- ask
 
-  let packageSetsPath = Path.concat [ tmp, "package-sets" ]
   -- TODO: FIXME: Replace this once we no longer rely on the 'preview' repository.
   -- Should be 'Constants.legacyPackageSetsRepo' at that point.
   let legacyPackageSetsRepo = { owner: "purescript", repo: "package-sets-preview" }
+  let packageSetsPath = Path.concat [ tmp, legacyPackageSetsRepo.repo ]
 
   packageSetsTags <- liftAff (Except.runExceptT (GitHub.listTags octokit cache legacyPackageSetsRepo)) >>= case _ of
     Left error -> do
