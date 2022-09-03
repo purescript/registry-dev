@@ -8,13 +8,14 @@ import Dotenv as Dotenv
 import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
+import Foreign.Git as Git
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
-import Registry.API (cloneGitTag, publishToPursuit)
+import Registry.API (publishToPursuit)
 import Registry.Cache as Cache
 import Registry.PackageName as PackageName
 import Registry.RegistryM (Env, runRegistryM)
@@ -52,7 +53,7 @@ main = launchAff_ $ do
 
   runRegistryM env do
     tmpDir <- liftEffect Tmp.mkTmpDir
-    liftAff $ cloneGitTag ("https://github.com/purescript/purescript-console") "v5.0.0" tmpDir
+    liftAff $ Git.cloneGitTag ("https://github.com/purescript/purescript-console") "v5.0.0" tmpDir
     let
       packageSourceDir = tmpDir <> Path.sep <> "purescript-console"
       pursJson =

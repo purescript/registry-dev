@@ -2,6 +2,7 @@ module Registry.Constants
   ( legacyPackageSetsRepo
   , metadataPath
   , packageSetsPath
+  , registryDevRepo
   , registryIndexRepo
   , registryPackagesUrl
   , registryRepo
@@ -20,6 +21,9 @@ packageSetsPath = "package-sets"
 
 metadataPath :: FilePath
 metadataPath = "metadata"
+
+registryDevRepo :: Repository
+registryDevRepo = { owner: "purescript", repo: "registry" }
 
 registryIndexRepo :: Repository
 registryIndexRepo = { owner: "purescript", repo: "registry-index" }
