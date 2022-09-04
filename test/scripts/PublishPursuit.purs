@@ -75,7 +75,7 @@ main = launchAff_ $ do
 
       buildPlan = BuildPlan
         { compiler: unsafeFromRight (Version.parseVersion Version.Lenient "v0.14.7")
-        , resolutions: Map.fromFoldable
+        , resolutions: Just $ Map.fromFoldable
             [ Tuple (unsafeFromRight (PackageName.parse "prelude")) (unsafeFromRight (Version.parseVersion Version.Lenient "v5.0.0"))
             , Tuple (unsafeFromRight (PackageName.parse "effect")) (unsafeFromRight (Version.parseVersion Version.Lenient "v3.0.0"))
             ]

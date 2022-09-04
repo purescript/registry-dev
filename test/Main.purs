@@ -354,7 +354,7 @@ decodeEventsToOps = do
         , updateRef: "v1.2.3"
         , buildPlan: BuildPlan
             { compiler: mkUnsafeVersion "0.15.0"
-            , resolutions: Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
+            , resolutions: Just $ Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
             }
         }
 
@@ -371,7 +371,7 @@ decodeEventsToOps = do
         , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
         , buildPlan: BuildPlan
             { compiler: mkUnsafeVersion "0.15.0"
-            , resolutions: Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
+            , resolutions: Just $ Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
             }
         }
 
@@ -494,7 +494,7 @@ checkDependencyResolution = do
 
   exactBuildPlan = BuildPlan
     { compiler: mkUnsafeVersion "0.14.2"
-    , resolutions: Map.fromFoldable
+    , resolutions: Just $ Map.fromFoldable
         [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
         , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
         ]
@@ -502,7 +502,7 @@ checkDependencyResolution = do
 
   extraBuildPlan = BuildPlan
     { compiler: mkUnsafeVersion "0.14.2"
-    , resolutions: Map.fromFoldable
+    , resolutions: Just $ Map.fromFoldable
         [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
         , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
         , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
@@ -511,7 +511,7 @@ checkDependencyResolution = do
 
   buildPlanMissingPackage = BuildPlan
     { compiler: mkUnsafeVersion "0.14.2"
-    , resolutions: Map.fromFoldable
+    , resolutions: Just $ Map.fromFoldable
         [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
         , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
         ]
@@ -519,7 +519,7 @@ checkDependencyResolution = do
 
   buildPlanWrongVersion = BuildPlan
     { compiler: mkUnsafeVersion "0.14.2"
-    , resolutions: Map.fromFoldable
+    , resolutions: Just $ Map.fromFoldable
         [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
         , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "7.0.0")
         ]
@@ -540,7 +540,7 @@ checkBuildPlanToResolutions = do
 
   generatedResolutions =
     API.buildPlanToResolutions
-      { buildPlan: BuildPlan { compiler: mkUnsafeVersion "0.14.2", resolutions }
+      { buildPlan: BuildPlan { compiler: mkUnsafeVersion "0.14.2", resolutions: Just resolutions }
       , dependenciesDir
       }
 

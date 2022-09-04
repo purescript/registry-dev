@@ -37,7 +37,7 @@ import Effect.Ref as Ref
 import Foreign.Dhall as Dhall
 import Foreign.FastGlob as FastGlob
 import Foreign.Git as Git
-import Foreign.GitHub (GitHubToken(..), IssueNumber, Octokit)
+import Foreign.GitHub (GitHubToken(..), IssueNumber)
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Foreign.Purs (CompilerFailure(..))
@@ -111,7 +111,14 @@ main = launchAff_ $ do
         fetchRegistry
         fetchRegistryIndex
         fillMetadataRef
-        runOperation operation
+        runOperation API operation
+
+-- | Operations are exercised via the API and the importer. If the importer is
+-- | used, then we have relaxed restrictions on the build (ie. the package does
+-- | not have to compile).
+data Source = API | Importer
+
+derive instance Eq Source
 
 data OperationDecoding
   = NotJson
@@ -144,8 +151,8 @@ readOperation eventPath = do
 
 -- TODO: test all the points where the pipeline could throw, to show that we are implementing
 -- all the necessary checks
-runOperation :: Operation -> RegistryM Unit
-runOperation operation = case operation of
+runOperation :: Source -> Operation -> RegistryM Unit
+runOperation source operation = case operation of
   Addition { packageName, newRef, buildPlan, newPackageLocation } -> do
     packagesMetadata <- readPackagesMetadata
     -- If we already have a metadata file for this package, then it is already
@@ -155,7 +162,7 @@ runOperation operation = case operation of
       -- registered, then we convert their operation to an update under the
       -- assumption they are trying to publish a new version.
       Just metadata | metadata.location == newPackageLocation ->
-        runOperation $ Update { packageName, buildPlan, updateRef: newRef }
+        runOperation source $ Update { packageName, buildPlan, updateRef: newRef }
       -- Otherwise, if they attempted to re-register the package under a new
       -- location, then they either did not know the package already existed or
       -- they are attempting a transfer.
@@ -177,11 +184,11 @@ runOperation operation = case operation of
         , "because that location is already in use to publish another package."
         ]
       Nothing ->
-        addOrUpdate { packageName, buildPlan, updateRef: newRef } (mkNewMetadata newPackageLocation)
+        addOrUpdate source { packageName, buildPlan, updateRef: newRef } (mkNewMetadata newPackageLocation)
 
   Update { packageName, buildPlan, updateRef } -> do
     metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Did you mean to create an Addition?" }
-    addOrUpdate { packageName, buildPlan, updateRef } metadata
+    addOrUpdate source { packageName, buildPlan, updateRef } metadata
 
   PackageSetUpdate { compiler, packages } -> do
     { octokit, cache, username, registryIndex: registryIndexPath } <- ask
@@ -429,8 +436,8 @@ registryPackageSetsPath registryPath = Path.concat [ registryPath, Constants.pac
 metadataFile :: FilePath -> PackageName -> FilePath
 metadataFile registryPath packageName = Path.concat [ registryPath, Constants.metadataPath, PackageName.print packageName <> ".json" ]
 
-addOrUpdate :: UpdateData -> Metadata -> RegistryM Unit
-addOrUpdate { updateRef, buildPlan, packageName } inputMetadata = do
+addOrUpdate :: Source -> UpdateData -> Metadata -> RegistryM Unit
+addOrUpdate _source { updateRef, buildPlan, packageName } inputMetadata = do
   tmpDir <- liftEffect $ Tmp.mkTmpDir
 
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
@@ -659,7 +666,7 @@ getUnresolvedDependencies (Manifest { dependencies }) (BuildPlan { resolutions }
   where
   dependencyUnresolved :: PackageName -> Range -> Maybe (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
   dependencyUnresolved dependencyName dependencyRange =
-    case Map.lookup dependencyName resolutions of
+    case Map.lookup dependencyName (fromMaybe Map.empty resolutions) of
       -- If the package is missing from the build plan then the plan is incorrect.
       Nothing -> Just $ Left $ dependencyName /\ dependencyRange
       -- If the package exists, but the version is not in the manifest range
@@ -687,7 +694,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
 
   -- We fetch every dependency at its resolved version, unpack the tarball, and
   -- store the resulting source code in a specified directory for dependencies.
-  for_ (Map.toUnfoldable resolutions :: Array _) \(Tuple packageName version) -> do
+  for_ (Map.toUnfoldable (fromMaybe Map.empty resolutions) :: Array _) \(Tuple packageName version) -> do
     let
       -- This filename uses the format the directory name will have once
       -- unpacked, ie. package-name-major.minor.patch
@@ -795,7 +802,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
 buildPlanToResolutions :: { buildPlan :: BuildPlan, dependenciesDir :: FilePath } -> Map RawPackageName { version :: Version, path :: FilePath }
 buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir } =
   Map.fromFoldable do
-    Tuple name version <- (Map.toUnfoldable resolutions :: Array _)
+    Tuple name version <- (Map.toUnfoldable (fromMaybe Map.empty resolutions) :: Array _)
     let
       bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
       packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.printVersion version ]
@@ -818,29 +825,6 @@ mkEnv octokit cache metadataRef issue username =
   , cache
   , octokit
   , username
-  , registry: Path.concat [ scratchDir, "registry" ]
-  , registryIndex: Path.concat [ scratchDir, "registry-index" ]
-  }
-
-mkLocalEnv :: Octokit -> Cache -> Ref (Map PackageName Metadata) -> Env
-mkLocalEnv octokit cache packagesMetadata =
-  { comment: \err -> error err
-  , closeIssue: log "Skipping GitHub issue closing, we're running locally.."
-  , commitMetadataFile: \_ _ -> do
-      log "Skipping committing to registry metadata..."
-      pure (Right unit)
-  , commitIndexFile: \_ _ -> do
-      log "Skipping committing to registry index..."
-      pure (Right unit)
-  , commitPackageSetFile: \_ _ _ -> do
-      log "Skipping committing to registry package sets..."
-      pure (Right unit)
-  , uploadPackage: Upload.upload
-  , deletePackage: Upload.delete
-  , octokit
-  , cache
-  , username: ""
-  , packagesMetadata
   , registry: Path.concat [ scratchDir, "registry" ]
   , registryIndex: Path.concat [ scratchDir, "registry-index" ]
   }

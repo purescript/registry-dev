@@ -30,6 +30,7 @@ import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
 import Parsing as Parsing
+import Registry.API (Source(..))
 import Registry.API as API
 import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
@@ -101,7 +102,26 @@ main = launchAff_ do
         , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
         }
       GenerateRegistry ->
-        API.mkLocalEnv octokit cache metadataRef
+        { comment: \err -> error err
+        , closeIssue: log "Skipping GitHub issue closing, we're running locally.."
+        , commitMetadataFile: \_ _ -> do
+            log "Skipping committing to registry metadata..."
+            pure (Right unit)
+        , commitIndexFile: \_ _ -> do
+            log "Skipping committing to registry index..."
+            pure (Right unit)
+        , commitPackageSetFile: \_ _ _ -> do
+            log "Skipping committing to registry package sets..."
+            pure (Right unit)
+        , uploadPackage: Upload.upload
+        , deletePackage: Upload.delete
+        , octokit
+        , cache
+        , username: ""
+        , packagesMetadata: metadataRef
+        , registry: Path.concat [ API.scratchDir, "registry" ]
+        , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
+        }
 
   runRegistryM env do
     API.fetchRegistry
@@ -166,12 +186,9 @@ main = launchAff_ do
         { newPackageLocation: manifest.location
         , packageName: manifest.name
         , newRef: Version.rawVersion manifest.version
-        -- TODO: Technically, we could produce build plans for legacy packages
-        -- by generating resolutions via Spago or Bower. We'd have to guess at
-        -- the compiler.
         , buildPlan: BuildPlan
-            { compiler: unsafeFromRight $ Version.parseVersion Version.Strict "0.15.0"
-            , resolutions: Map.empty
+            { compiler: unsafeFromRight $ Version.parseVersion Version.Strict "0.15.4"
+            , resolutions: Nothing
             }
         }
 
@@ -184,13 +201,18 @@ main = launchAff_ do
         log "----------"
         log $ "  " <> String.joinWith "\n  " (map printPackage manifests)
 
+        let
+          source = case mode of
+            UpdateRegistry -> API
+            GenerateRegistry -> Importer
+
         void $ for notPublished \(Manifest manifest) -> do
           log "\n----------"
           log "UPLOADING"
           log $ PackageName.print manifest.name <> "@" <> Version.printVersion manifest.version
           log $ show manifest.location
           log "----------"
-          API.runOperation (mkOperation manifest)
+          API.runOperation source (mkOperation manifest)
 
     when (mode == GenerateRegistry) do
       log "Regenerating registry index..."
