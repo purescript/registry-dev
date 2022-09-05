@@ -15,6 +15,7 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
 import Data.Foldable (traverse_)
+import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Generic.Rep as Generic
 import Data.HTTP.Method as Method
 import Data.Int as Int
@@ -34,7 +35,6 @@ import Effect.Aff as Aff
 import Effect.Exception (throw)
 import Effect.Now as Now
 import Effect.Ref as Ref
-import Foreign.Dhall as Dhall
 import Foreign.FastGlob as FastGlob
 import Foreign.Git as Git
 import Foreign.GitHub (GitHubToken(..), IssueNumber)
@@ -67,6 +67,7 @@ import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
 import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), Owner(..), PackageSet(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
+import Registry.Solver as Solver
 import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Version (ParseMode(..), Range, Version)
 import Registry.Version as Version
@@ -437,7 +438,7 @@ metadataFile :: FilePath -> PackageName -> FilePath
 metadataFile registryPath packageName = Path.concat [ registryPath, Constants.metadataPath, PackageName.print packageName <> ".json" ]
 
 addOrUpdate :: Source -> UpdateData -> Metadata -> RegistryM Unit
-addOrUpdate _source { updateRef, buildPlan, packageName } inputMetadata = do
+addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inputMetadata = do
   tmpDir <- liftEffect $ Tmp.mkTmpDir
 
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
@@ -453,7 +454,6 @@ addOrUpdate _source { updateRef, buildPlan, packageName } inputMetadata = do
     throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
-  -- We also won't run the compiler verification.
   isLegacyImport <- liftEffect $ map not $ FS.Sync.exists manifestPath
   when isLegacyImport do
     address <- case inputMetadata.location of
@@ -484,24 +484,29 @@ addOrUpdate _source { updateRef, buildPlan, packageName } inputMetadata = do
         liftAff $ Json.writeJsonFile manifestPath manifest
 
   -- TODO: Verify the manifest against metadata.
-  -- Try to read the manifest, typechecking it
+  -- We trust the manifest for updating the owners field in the metadata, and
+  -- trust the metadata for everything else. No field should be different.
   manifest@(Manifest manifestRecord) <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of
     Left _err -> throwWithComment $ "Manifest not found at " <> manifestPath
-    Right manifestStr -> do
-      liftAff (Dhall.jsonToDhallManifest manifestStr) >>= case _ of
-        Left err ->
-          throwWithComment $ "Could not type-check Manifest file: " <> err
-        Right _ -> case Json.parseJson manifestStr of
-          Left err -> throwWithComment $ "Could not convert Manifest to JSON: " <> err
-          Right res -> pure res
+    Right manifestStr -> case Json.parseJson manifestStr of
+      Left err -> throwWithComment $ "Could not parse manifest: " <> err
+      Right res -> pure res
 
   let
     -- As soon as we have the manifest we need to update any fields that can
-    -- change from version to version.
-    metadata =
-      inputMetadata { owners = manifestRecord.owners }
+    -- change from version to version. As per the spec, that's only the 'owners'
+    -- field.
+    metadata = inputMetadata { owners = manifestRecord.owners }
 
-  runChecks { isLegacyImport, buildPlan, metadata, manifest }
+  -- Then, we can run verification checks on the manifest and either verify the
+  -- provided build plan or produce a new one.
+  verifyManifest { metadata, manifest }
+  buildPlan <- verifyBuildPlan { source, buildPlan: providedBuildPlan, manifest }
+
+  -- TODO:
+  -- Verify that the build plan can be used to compile the package. Build the
+  -- package and hold on to the directory so it can be reused later to publish
+  -- the package to Pursuit.
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
@@ -558,15 +563,12 @@ addOrUpdate _source { updateRef, buildPlan, packageName } inputMetadata = do
       ]
     Right _ -> pure unit
 
-  -- We don't upload legacy packages to Pursuit because we don't have a build
-  -- plan for them. If we want to upload them, we have to produce a build plan.
-  unless isLegacyImport do
-    log "Uploading to Pursuit"
-    publishToPursuit { packageSourceDir, buildPlan }
-    comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+  log "Uploading to Pursuit"
+  publishToPursuit { packageSourceDir, buildPlan }
+  comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
-runChecks :: { isLegacyImport :: Boolean, buildPlan :: BuildPlan, metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
-runChecks { isLegacyImport, buildPlan, metadata, manifest } = do
+verifyManifest :: { metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
+verifyManifest { metadata, manifest } = do
   let Manifest manifestFields = manifest
 
   -- TODO: collect all errors and return them at once. Note: some of the checks
@@ -614,11 +616,40 @@ runChecks { isLegacyImport, buildPlan, metadata, manifest } = do
   unless (Array.null pkgsNotInRegistry) do
     throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
 
+-- | Verify the build plan for the package. If the user provided a build plan,
+-- | we ensure that the provided versions are within the ranges listed in the
+-- | manifest. If not, we solve their manifest to produce a build plan.
+verifyBuildPlan :: { source :: Source, buildPlan :: BuildPlan, manifest :: Manifest } -> RegistryM BuildPlan
+verifyBuildPlan { source, buildPlan: buildPlan@(BuildPlan plan), manifest } = do
   log "Check the submitted build plan matches the manifest"
+  -- We don't verify packages provided via the mass import.
+  case source of
+    Importer -> pure buildPlan
+    API -> case plan.resolutions of
+      Nothing -> do
+        indexPath <- asks _.registryIndex
+        registryIndex <- liftAff $ Index.readRegistryIndex indexPath
+        let getDependencies = _.dependencies <<< un Manifest
+        case Solver.solve (map (map getDependencies) registryIndex) (getDependencies manifest) of
+          Left errors -> do
+            throwWithComment $ String.joinWith "\n"
+              [ "Could not produce valid dependencies for manifest."
+              , ""
+              , errors # foldMapWithIndex \index error -> String.joinWith "\n"
+                  [ "[Error " <> show (index + 1) <> "]"
+                  , Solver.printSolverError error
+                  ]
+              ]
+          Right solution ->
+            pure $ BuildPlan $ plan { resolutions = Just solution }
+      Just resolutions -> do
+        validateResolutions manifest resolutions
+        pure buildPlan
 
-  let unresolvedDependencies = getUnresolvedDependencies manifest buildPlan
-
-  unless (isLegacyImport || Array.null unresolvedDependencies) do
+validateResolutions :: Manifest -> Map PackageName Version -> RegistryM Unit
+validateResolutions manifest resolutions = do
+  let unresolvedDependencies = getUnresolvedDependencies manifest resolutions
+  unless (Array.null unresolvedDependencies) do
     let
       { fail: missingPackages, success: incorrectVersions } = partitionEithers unresolvedDependencies
 
@@ -660,13 +691,17 @@ runChecks { isLegacyImport, buildPlan, metadata, manifest } = do
       , incorrectVersionsError
       ]
 
-getUnresolvedDependencies :: Manifest -> BuildPlan -> Array (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
-getUnresolvedDependencies (Manifest { dependencies }) (BuildPlan { resolutions }) =
+-- | Verifies that all dependencies in the manifest are present in the build
+-- | plan, and the version listed in the build plan is within the range provided
+-- | in the manifest. Note: this only checks dependencies listed in the manifest
+-- | and will ignore transitive dependecies.
+getUnresolvedDependencies :: Manifest -> Map PackageName Version -> Array (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
+getUnresolvedDependencies (Manifest { dependencies }) resolutions =
   Array.mapMaybe (uncurry dependencyUnresolved) (Map.toUnfoldable dependencies)
   where
   dependencyUnresolved :: PackageName -> Range -> Maybe (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
   dependencyUnresolved dependencyName dependencyRange =
-    case Map.lookup dependencyName (fromMaybe Map.empty resolutions) of
+    case Map.lookup dependencyName resolutions of
       -- If the package is missing from the build plan then the plan is incorrect.
       Nothing -> Just $ Left $ dependencyName /\ dependencyRange
       -- If the package exists, but the version is not in the manifest range
