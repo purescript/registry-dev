@@ -546,7 +546,7 @@ compilerVersions = do
   where
   testVersion version =
     Spec.it ("Calls compiler version " <> version) do
-      Purs.callCompiler { args: [ "--version" ], cwd: Nothing, version } >>= case _ of
+      Purs.callCompiler { command: Purs.Version, cwd: Nothing, version } >>= case _ of
         Left err -> case err of
           MissingCompiler ->
             Assert.fail "MissingCompiler"
@@ -559,7 +559,7 @@ compilerVersions = do
 
   testMissingVersion version =
     Spec.it ("Handles failure when compiler is missing " <> version) do
-      result <- Purs.callCompiler { args: [ "--version" ], cwd: Nothing, version }
+      result <- Purs.callCompiler { command: Purs.Version, cwd: Nothing, version }
       case result of
         Left MissingCompiler -> pure unit
         _ -> Assert.fail "Should have failed with MissingCompiler"

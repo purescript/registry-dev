@@ -731,7 +731,7 @@ compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
   case plan.resolutions of
     Nothing -> do
       compilerOutput <- liftAff $ Purs.callCompiler
-        { args: [ "compile", "src/**/*.purs" ]
+        { command: Purs.Compile { globs: [ "src/**/*.purs" ] }
         , version: Version.printVersion plan.compiler
         , cwd: Just packageSourceDir
         }
@@ -741,7 +741,7 @@ compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
       let (packages :: Array _) = Map.toUnfoldable resolved
       for_ packages (uncurry (installPackage dependenciesDir))
       compilerOutput <- liftAff $ Purs.callCompiler
-        { args: [ "compile", "src/**/*.purs", ".registry/*/src/**/*.purs" ]
+        { command: Purs.Compile { globs: [ "src/**/*.purs", ".registry/*/src/**/*.purs" ] }
         , version: Version.printVersion plan.compiler
         , cwd: Just packageSourceDir
         }
@@ -814,7 +814,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, buildPlan: buildPlan@(Buil
   -- The resulting documentation will all use purescript- prefixes in keeping
   -- with the format used by Pursuit in PureScript versions at least up to 0.16
   compilerOutput <- liftAff $ Purs.callCompiler
-    { args: [ "publish", "--manifest", "purs.json", "--resolutions", resolutionsFilePath ]
+    { command: Purs.Publish { resolutions: resolutionsFilePath }
     , version: Version.printVersion compiler
     , cwd: Just packageSourceDir
     }
