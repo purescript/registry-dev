@@ -14,6 +14,7 @@ import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
+import Data.Either (isLeft)
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Generic.Rep as Generic
@@ -503,11 +504,6 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
   verifyManifest { metadata, manifest }
   buildPlan <- verifyBuildPlan { source, buildPlan: providedBuildPlan, manifest }
 
-  -- TODO:
-  -- Verify that the build plan can be used to compile the package. Build the
-  -- package and hold on to the directory so it can be reused later to publish
-  -- the package to Pursuit.
-
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
   -- We need the version number to upload the package
@@ -532,6 +528,17 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
   log "Hashing the tarball..."
   hash <- liftAff $ Hash.sha256File tarballPath
   log $ "Hash: " <> show hash
+
+  -- Now that we have the package source contents we can verify we can compile
+  -- the package. We skip failures when the package is a legacy package.
+  compilationResult <- compilePackage { packageSourceDir, buildPlan }
+  case compilationResult of
+    Right _ -> pure unit
+    Left error
+      | source == Importer -> pure unit
+      | source == API && isLegacyImport -> pure unit
+      | otherwise -> throwWithComment error
+
   log "Uploading package to the storage backend..."
   let uploadPackageInfo = { name: packageName, version: newVersion }
   uploadPackage uploadPackageInfo tarballPath
@@ -563,9 +570,10 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
       ]
     Right _ -> pure unit
 
-  log "Uploading to Pursuit"
-  publishToPursuit { packageSourceDir, buildPlan }
-  comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+  unless (source == Importer || isLeft compilationResult) do
+    log "Uploading to Pursuit"
+    publishToPursuit { packageSourceDir, buildPlan, dependenciesDir: Path.concat [ packageSourceDir, ".registry" ] }
+    comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
 verifyManifest :: { metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
 verifyManifest { metadata, manifest } = do
@@ -711,8 +719,76 @@ getUnresolvedDependencies (Manifest { dependencies }) resolutions =
         | not (Version.rangeIncludes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
         | otherwise -> Nothing
 
+type CompilePackage =
+  { packageSourceDir :: FilePath
+  , buildPlan :: BuildPlan
+  }
+
+compilePackage :: CompilePackage -> RegistryM (Either String Unit)
+compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
+  let dependenciesDir = Path.concat [ packageSourceDir, ".registry" ]
+  liftAff $ FS.Extra.ensureDirectory dependenciesDir
+  case plan.resolutions of
+    Nothing -> do
+      compilerOutput <- liftAff $ Purs.callCompiler
+        { args: [ "compile", "src/**/*.purs" ]
+        , version: Version.printVersion plan.compiler
+        , cwd: Just packageSourceDir
+        }
+      pure (handleCompiler compilerOutput)
+
+    Just resolved -> do
+      let (packages :: Array _) = Map.toUnfoldable resolved
+      for_ packages (uncurry (installPackage dependenciesDir))
+      compilerOutput <- liftAff $ Purs.callCompiler
+        { args: [ "compile", "src/**/*.purs", ".registry/*/src/**/*.purs" ]
+        , version: Version.printVersion plan.compiler
+        , cwd: Just packageSourceDir
+        }
+      pure (handleCompiler compilerOutput)
+  where
+  -- We fetch every dependency at its resolved version, unpack the tarball, and
+  -- store the resulting source code in a specified directory for dependencies.
+  installPackage dir packageName version = do
+    let
+      -- This filename uses the format the directory name will have once
+      -- unpacked, ie. package-name-major.minor.patch
+      filename = PackageName.print packageName <> "-" <> Version.printVersion version <> ".tar.gz"
+      filepath = Path.concat [ dir, filename ]
+
+    liftAff (withBackoff' (Wget.wget (Constants.registryPackagesUrl <> "/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath)) >>= case _ of
+      Nothing -> throwWithComment "Could not fetch tarball."
+      Just (Left err) -> throwWithComment $ "Error while fetching tarball: " <> err
+      Just (Right _) -> pure unit
+
+    liftEffect $ Tar.extract { cwd: dir, archive: filename }
+    liftAff $ FS.unlink filepath
+    log $ "Installed " <> PackageName.print packageName <> "@" <> Version.printVersion version
+
+  handleCompiler = case _ of
+    Right _ ->
+      Right unit
+    Left MissingCompiler -> Left $ Array.fold
+      [ "Compilation failed because the build plan compiler version "
+      , Version.printVersion plan.compiler
+      , " is not supported. Please try again with a different compiler."
+      ]
+    Left (CompilationError errs) -> Left $ String.joinWith "\n"
+      [ "Compilation failed because the build plan does not compile with version " <> Version.printVersion plan.compiler <> " of the compiler:"
+      , "```"
+      , Purs.printCompilerErrors errs
+      , "```"
+      ]
+    Left (UnknownError err) -> Left $ String.joinWith "\n"
+      [ "Compilation failed for your package due to a compiler error:"
+      , "```"
+      , err
+      , "```"
+      ]
+
 type PublishToPursuit =
   { packageSourceDir :: FilePath
+  , dependenciesDir :: FilePath
   , buildPlan :: BuildPlan
   }
 
@@ -721,30 +797,13 @@ type PublishToPursuit =
 -- | ASSUMPTIONS: This function should not be run on legacy packages or on
 -- | packages where the `purescript-` prefix is still present.
 publishToPursuit :: PublishToPursuit -> RegistryM Unit
-publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler, resolutions }) } = do
-  log "Fetching package dependencies"
-  tmpDir <- liftEffect $ Tmp.mkTmpDir
-  let dependenciesDir = tmpDir <> Path.sep <> "dependencies"
-  liftAff $ FS.mkdir dependenciesDir
-
-  -- We fetch every dependency at its resolved version, unpack the tarball, and
-  -- store the resulting source code in a specified directory for dependencies.
-  for_ (Map.toUnfoldable (fromMaybe Map.empty resolutions) :: Array _) \(Tuple packageName version) -> do
-    let
-      -- This filename uses the format the directory name will have once
-      -- unpacked, ie. package-name-major.minor.patch
-      filename = PackageName.print packageName <> "-" <> Version.printVersion version <> ".tar.gz"
-      filepath = dependenciesDir <> Path.sep <> filename
-    liftAff (Wget.wget (Constants.registryPackagesUrl <> "/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath) >>= case _ of
-      Left err -> throwWithComment $ "Error while fetching tarball: " <> err
-      Right _ -> pure unit
-    liftEffect $ Tar.extract { cwd: dependenciesDir, archive: filename }
-    liftAff $ FS.unlink filepath
-
+publishToPursuit { packageSourceDir, dependenciesDir, buildPlan: buildPlan@(BuildPlan { compiler }) } = do
   log "Generating a resolutions file"
+  tmp <- liftEffect Tmp.mkTmpDir
+
   let
     resolvedPaths = buildPlanToResolutions { buildPlan, dependenciesDir }
-    resolutionsFilePath = tmpDir <> Path.sep <> "resolutions.json"
+    resolutionsFilePath = Path.concat [ tmp, "resolutions.json" ]
 
   liftAff $ Json.writeJsonFile resolutionsFilePath resolvedPaths
 
@@ -773,7 +832,7 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
       , "```"
       ]
     Left (UnknownError err) -> throwWithComment $ String.joinWith "\n"
-      [ "Publishing failed for your package due to a compiler error:"
+      [ "Publishing failed for your package due to an unknown compiler error:"
       , "```"
       , err
       , "```"
@@ -827,8 +886,6 @@ publishToPursuit { packageSourceDir, buildPlan: buildPlan@(BuildPlan { compiler,
     Left err -> do
       let printedErr = Http.printError err
       throwWithComment $ String.joinWith "\n" [ "Received a failed response from Pursuit (cc: @purescript/packaging): ", "```" <> printedErr <> "```" ]
-
-  pure unit
 
 -- Resolutions format: https://github.com/purescript/purescript/pull/3565
 --

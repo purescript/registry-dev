@@ -492,38 +492,26 @@ checkDependencyResolution = do
   packageTwoName = mkUnsafePackage "package-two"
   packageTwoRange = unsafeFromJust $ Map.lookup packageTwoName dependencies
 
-  exactBuildPlan = BuildPlan
-    { compiler: mkUnsafeVersion "0.14.2"
-    , resolutions: Just $ Map.fromFoldable
-        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-        , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
-        ]
-    }
+  exactBuildPlan = Map.fromFoldable
+    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+    , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
+    ]
 
-  extraBuildPlan = BuildPlan
-    { compiler: mkUnsafeVersion "0.14.2"
-    , resolutions: Just $ Map.fromFoldable
-        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-        , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
-        , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
-        ]
-    }
+  extraBuildPlan = Map.fromFoldable
+    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+    , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
+    , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
+    ]
 
-  buildPlanMissingPackage = BuildPlan
-    { compiler: mkUnsafeVersion "0.14.2"
-    , resolutions: Just $ Map.fromFoldable
-        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-        , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
-        ]
-    }
+  buildPlanMissingPackage = Map.fromFoldable
+    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+    , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
+    ]
 
-  buildPlanWrongVersion = BuildPlan
-    { compiler: mkUnsafeVersion "0.14.2"
-    , resolutions: Just $ Map.fromFoldable
-        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-        , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "7.0.0")
-        ]
-    }
+  buildPlanWrongVersion = Map.fromFoldable
+    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+    , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "7.0.0")
+    ]
 
 checkBuildPlanToResolutions :: Spec.Spec Unit
 checkBuildPlanToResolutions = do
