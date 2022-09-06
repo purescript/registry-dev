@@ -8,7 +8,7 @@ A longer summary of the registry, why it came to exist, its high-level design. A
 
 **1.1 Important Terminology**
 
-Quick definitions of words that will be used frequently throughout the document. Readers can breeze through this section and refer back to it if they forget to what a common term refers. Some of these terms are in common use (like "hash"), but they're included because we mean something specific when we use it (ie. "a base64-encoded subresource integrity hash using the SHA256 algorithm.") 
+Quick definitions of words that will be used frequently throughout the document. Readers can breeze through this section and refer back to it if they forget to what a common term refers. Some of these terms are in common use (like "hash"), but they're included because we mean something specific when we use it (ie. "a base64-encoded subresource integrity hash using the SHA256 algorithm.")
 
 Terms include:
 
@@ -53,6 +53,11 @@ Specifies how the registry index works (data format, purpose of it existing, whe
 **4.2 Storage Backend**
 Specifies how the storage backend works (data format, naming conventions, location)
 
+Package tarballs are stored at [packages.registry.purescript.org](https://packages.registry.purescript.org). Each package version is stored in a tarball nested under its package name, ie. `/<package-name>/package-name-version.tar.gz`. For example:
+
+- `console@4.0.0` is stored at the path `/console/console-4.0.0.tar.gz`
+- `effect@4.0.0` is stored at the path `/effect/effect-4.0.0.tar.gz`
+
 **4.3 Package Metadata**
 Specifies where package metadata is stored and in what format, naming conventions.
 
@@ -79,12 +84,12 @@ Walkthrough of updating the package sets.
 
 **5.4 Authenticated Operations**
 Walkthrough of how authentication works in the registry, note that it applies to the following operations.
-  
-  **5.4.1 Transfer a Package**
-  Walkthrough of the `Transfer` operation, assuming the operation was properly authenticated.
-  
-  **5.4.2 Unpublish a Package**
-  Walkthrough of the `Unpublish` operation, assuming the operation was properly authenticated.
+
+**5.4.1 Transfer a Package**
+Walkthrough of the `Transfer` operation, assuming the operation was properly authenticated.
+
+**5.4.2 Unpublish a Package**
+Walkthrough of the `Unpublish` operation, assuming the operation was properly authenticated.
 
 ## 6. Post-Publishing Operations
 
@@ -101,7 +106,7 @@ A spec of how the registry attempts to add the package to the package sets, how 
 
 ## 7. Non-JavaScript Backends
 
-A section summarizing the aliasing solution used to support alternate backends, along with a status note stating that this is currently un-implemented. 
+A section summarizing the aliasing solution used to support alternate backends, along with a status note stating that this is currently un-implemented.
 
 ## 8. Package Managers
 
@@ -114,9 +119,11 @@ This section is meant to be reasonably self-contained, so someone writing a new 
 Policies followed by the registry — though maybe these are better-suited to be stored as separate specs apart from this document.
 
 ### 9.1 Registry Trustees
+
 A summary of the actions that registry trustees are permitted to take and when they should be taken.
 
 ### 9.2 Name Squatting & Reassigning Names
+
 Our policy on changing package names
 
 ### 9.3 Package Sets
