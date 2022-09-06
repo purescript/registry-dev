@@ -2,7 +2,7 @@
   "action": "created",
   "comment": {
     "author_association": "MEMBER",
-    "body": "{\"packageName\":\"something\",\"updateRef\":\"v1.2.3\", \"buildPlan\": { \"compiler\": \"0.15.0\", \"resolutions\": { \"prelude\": \"1.0.0\" } } }",
+    "body": "```{\"packageName\":\"something\",\"updateRef\":\"v1.2.3\", \"buildPlan\": { \"compiler\": \"0.15.0\", \"resolutions\": { \"prelude\": \"1.0.0\" } } }```",
     "created_at": "2021-03-09T02:03:56Z",
     "html_url": "https://github.com/purescript/registry/issues/43#issuecomment-793265839",
     "id": 793265839,
