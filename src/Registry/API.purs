@@ -763,6 +763,7 @@ compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
   liftAff $ FS.Extra.ensureDirectory dependenciesDir
   case plan.resolutions of
     Nothing -> do
+      log "Compiling..."
       compilerOutput <- liftAff $ Purs.callCompiler
         { command: Purs.Compile { globs: [ "src/**/*.purs" ] }
         , version: Version.printVersion plan.compiler
@@ -773,6 +774,7 @@ compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
     Just resolved -> do
       let (packages :: Array _) = Map.toUnfoldable resolved
       for_ packages (uncurry (installPackage dependenciesDir))
+      log "Compiling..."
       compilerOutput <- liftAff $ Purs.callCompiler
         { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ dependenciesDir, "*/src/**/*.purs" ] ] }
         , version: Version.printVersion plan.compiler

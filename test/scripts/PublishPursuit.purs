@@ -15,9 +15,9 @@ import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
-import Registry.API (compilePackage, publishToPursuit)
+import Registry.API (Source(..), compilePackage, publishToPursuit, verifyBuildPlan)
 import Registry.Cache as Cache
-import Registry.PackageName as PackageName
+import Registry.Json as Json
 import Registry.RegistryM (Env, runRegistryM, throwWithComment)
 import Registry.Schema (BuildPlan(..))
 import Registry.Version as Version
@@ -48,46 +48,32 @@ main = launchAff_ $ do
       , octokit
       , username: mempty
       , registry: mempty
-      , registryIndex: mempty
+      , registryIndex: Path.concat [ "scratch", "registry-index" ]
       }
 
   runRegistryM env do
     tmp <- liftEffect Tmp.mkTmpDir
-    liftAff $ Git.cloneGitTag ("https://github.com/purescript/purescript-console") "v5.0.0" tmp
+    liftAff $ Git.cloneGitTag ("https://github.com/thomashoneyman/purescript-slug") "v3.0.6" tmp
+
     let
-      packageSourceDir = Path.concat [ tmp, "purescript-console" ]
-      pursJson =
-        """
-        {
-          "name": "console",
-          "version": "5.0.0",
-          "license": "BSD-3-Clause",
-          "location": {
-            "githubOwner": "purescript",
-            "githubRepo": "purescript-console"
-          },
-          "dependencies": {
-            "effect": ">=3.0.0 <4.0.0",
-            "prelude": ">=5.0.0 <6.0.0"
-          }
-        }
-        """
-
-      buildPlan = BuildPlan
-        { compiler: unsafeFromRight (Version.parseVersion Version.Lenient "v0.14.7")
-        , resolutions: Just $ Map.fromFoldable
-            [ Tuple (unsafeFromRight (PackageName.parse "prelude")) (unsafeFromRight (Version.parseVersion Version.Lenient "v5.0.0"))
-            , Tuple (unsafeFromRight (PackageName.parse "effect")) (unsafeFromRight (Version.parseVersion Version.Lenient "v3.0.0"))
-            ]
+      packageSourceDir = Path.concat [ tmp, "purescript-slug" ]
+      eitherManifest = Json.parseJson """{"name":"slug","version":"3.0.6","license":"MIT","location":{"githubOwner":"thomashoneyman","githubRepo":"purescript-slug"},"dependencies":{"argonaut-codecs":">=9.0.0 <10.0.0","arrays":">=7.0.0 <8.0.0","either":">=6.1.0 <7.0.0","maybe":">=6.0.0 <7.0.0","prelude":">=6.0.0 <7.0.0","strings":">=6.0.0 <7.0.0","unicode":">=6.0.0 <7.0.0"}}"""
+      providedBuildPlan = BuildPlan
+        { compiler: unsafeFromRight (Version.parseVersion Version.Lenient "v0.15.4")
+        , resolutions: Nothing
         }
 
-    liftAff $ FS.writeTextFile UTF8 (Path.concat [ packageSourceDir, "purs.json" ]) pursJson
-
-    compilePackage { packageSourceDir, buildPlan } >>= case _ of
-      Left err -> throwWithComment err
-      Right dependenciesDir -> do
-        files <- liftAff $ FS.readdir packageSourceDir
-        logShow files
-        deps <- liftAff $ FS.readdir dependenciesDir
-        logShow deps
-        publishToPursuit { packageSourceDir, buildPlan, dependenciesDir }
+    case eitherManifest of
+      Left err ->
+        throwWithComment err
+      Right manifest -> do
+        liftAff $ Json.writeJsonFile (Path.concat [ packageSourceDir, "purs.json" ]) manifest
+        buildPlan <- verifyBuildPlan { source: API, buildPlan: providedBuildPlan, manifest }
+        compilePackage { packageSourceDir, buildPlan } >>= case _ of
+          Left err -> throwWithComment err
+          Right dependenciesDir -> do
+            files <- liftAff $ FS.readdir packageSourceDir
+            logShow files
+            deps <- liftAff $ FS.readdir dependenciesDir
+            logShow deps
+            publishToPursuit { packageSourceDir, buildPlan, dependenciesDir }
