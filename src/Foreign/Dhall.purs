@@ -6,8 +6,6 @@ import Node.ChildProcess as NodeProcess
 import Registry.Json as Json
 import Sunde as Process
 
--- | Attempt to convert a JSON file representing a PureScript manifest into
--- | the corresponding `Manifest.dhall` type using the `json-to-dhall` CLI.
 jsonToDhallManifest :: String -> Aff (Either String String)
 jsonToDhallManifest jsonStr = do
   let cmd = "json-to-dhall"

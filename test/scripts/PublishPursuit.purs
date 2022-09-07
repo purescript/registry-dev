@@ -15,10 +15,10 @@ import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
-import Registry.API (publishToPursuit)
+import Registry.API (compilePackage, publishToPursuit)
 import Registry.Cache as Cache
 import Registry.PackageName as PackageName
-import Registry.RegistryM (Env, runRegistryM)
+import Registry.RegistryM (Env, runRegistryM, throwWithComment)
 import Registry.Schema (BuildPlan(..))
 import Registry.Version as Version
 
@@ -52,10 +52,10 @@ main = launchAff_ $ do
       }
 
   runRegistryM env do
-    tmpDir <- liftEffect Tmp.mkTmpDir
-    liftAff $ Git.cloneGitTag ("https://github.com/purescript/purescript-console") "v5.0.0" tmpDir
+    tmp <- liftEffect Tmp.mkTmpDir
+    liftAff $ Git.cloneGitTag ("https://github.com/purescript/purescript-console") "v5.0.0" tmp
     let
-      packageSourceDir = tmpDir <> Path.sep <> "purescript-console"
+      packageSourceDir = Path.concat [ tmp, "purescript-console" ]
       pursJson =
         """
         {
@@ -75,15 +75,20 @@ main = launchAff_ $ do
 
       buildPlan = BuildPlan
         { compiler: unsafeFromRight (Version.parseVersion Version.Lenient "v0.14.7")
-        , resolutions: Map.fromFoldable
+        , resolutions: Just $ Map.fromFoldable
             [ Tuple (unsafeFromRight (PackageName.parse "prelude")) (unsafeFromRight (Version.parseVersion Version.Lenient "v5.0.0"))
             , Tuple (unsafeFromRight (PackageName.parse "effect")) (unsafeFromRight (Version.parseVersion Version.Lenient "v3.0.0"))
             ]
         }
 
-    liftAff $ FS.writeTextFile UTF8 (packageSourceDir <> Path.sep <> "purs.json") pursJson
+    liftAff $ FS.writeTextFile UTF8 (Path.concat [ packageSourceDir, "purs.json" ]) pursJson
 
-    publishToPursuit
-      { packageSourceDir
-      , buildPlan
-      }
+    compilePackage { packageSourceDir, buildPlan } >>= case _ of
+      Left err -> throwWithComment err
+      Right _ -> do
+        let dependenciesDir = Path.concat [ packageSourceDir, ".registry" ]
+        files <- liftAff $ FS.readdir packageSourceDir
+        logShow files
+        deps <- liftAff $ FS.readdir dependenciesDir
+        logShow deps
+        publishToPursuit { packageSourceDir, buildPlan, dependenciesDir: Path.concat [ packageSourceDir, ".registry" ] }

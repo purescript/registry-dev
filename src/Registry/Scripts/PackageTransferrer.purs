@@ -17,6 +17,7 @@ import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
+import Registry.API (Source(..))
 import Registry.API as API
 import Registry.Cache as Cache
 import Registry.Constants as Constants
@@ -104,7 +105,7 @@ transferPackage rawPackageName newPackageLocation = do
     payload = Transfer { packageName, newPackageLocation }
     rawPayload = Json.stringifyJson payload
 
-  API.runOperation $ Authenticated $ AuthenticatedData
+  API.runOperation Importer $ Authenticated $ AuthenticatedData
     { email: Git.pacchettiBottiEmail
     , payload
     , rawPayload
