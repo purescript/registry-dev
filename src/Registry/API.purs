@@ -1282,6 +1282,12 @@ syncLegacyRegistry package location = do
   let
     rawPackageName = "purescript-" <> PackageName.print package
 
+    -- Here we determine which, if any, legacy registry file should be updated with this package.
+    -- If the package is new (ie. not listed in either registry file) then we insert it into the
+    -- new-packages.json file. If not (ie. we found it in one of the registry files), and the location
+    -- of the package in the registry file is different from its one in the registry metadata, then we
+    -- update the package in that registry file. If the package exists at the proper location already
+    -- then we do nothing.
     targetFile = case Map.lookup rawPackageName newPackages, Map.lookup rawPackageName bowerPackages of
       Nothing, Nothing -> Just NewPackages
       Just url, _
