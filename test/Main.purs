@@ -393,6 +393,22 @@ decodeEventsToOps = do
     res <- API.readOperation "test/fixtures/package-set-update_issue_created.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber username operation
 
+  Spec.it "decodes lenient JSON" do
+    let
+      operation = Addition
+        { packageName: mkUnsafePackage "prelude"
+        , newRef: "v5.0.0"
+        , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
+        , buildPlan: BuildPlan
+            { compiler: mkUnsafeVersion "0.15.0"
+            , resolutions: Map.empty
+            }
+        }
+
+      rawOperation = preludeAdditionString
+
+    Json.parseJson (API.firstObject rawOperation) `Assert.shouldEqual` (Right operation)
+
 goodBowerfiles :: Spec.Spec Unit
 goodBowerfiles = do
   let
@@ -563,3 +579,23 @@ compilerVersions = do
       case result of
         Left MissingCompiler -> pure unit
         _ -> Assert.fail "Should have failed with MissingCompiler"
+
+preludeAdditionString :: String
+preludeAdditionString =
+  """
+  Here's my new package!
+
+  ```json
+  {
+    "packageName": "prelude",
+    "newRef": "v5.0.0",
+    "newPackageLocation": {
+      "githubOwner": "purescript",
+      "githubRepo": "purescript-prelude"
+    },
+    "buildPlan": { "compiler": "0.15.0", "resolutions": {} }
+  }
+  ```
+
+  Thanks!
+  """

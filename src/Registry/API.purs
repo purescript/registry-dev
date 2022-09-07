@@ -145,11 +145,22 @@ readOperation eventPath = do
     Right event ->
       pure event
 
-  pure $ case Argonaut.Parser.jsonParser body of
+  pure $ case Argonaut.Parser.jsonParser (firstObject body) of
     Left _err -> NotJson
     Right json -> case Json.decode json of
       Left err -> MalformedJson issueNumber err
       Right operation -> DecodedOperation issueNumber username operation
+
+-- | Users may submit issues with contents wrapped in code fences, perhaps with
+-- | a language specifier, trailing lines, and other issues. This rudimentary
+-- | cleanup pass retrieves all contents within an opening { and closing }
+-- | delimiter.
+firstObject :: String -> String
+firstObject input = fromMaybe input do
+  before <- String.indexOf (String.Pattern "{") input
+  let start = String.drop before input
+  after <- String.lastIndexOf (String.Pattern "}") start
+  pure (String.take (after + 1) start)
 
 -- TODO: test all the points where the pipeline could throw, to show that we are implementing
 -- all the necessary checks
