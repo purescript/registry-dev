@@ -555,9 +555,14 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
   case compilationResult of
     Right _ -> pure unit
     Left error
-      | source == Importer -> pure unit
-      | source == API && isLegacyImport -> pure unit
-      | otherwise -> throwWithComment error
+      | source == Importer -> do
+          log error
+          log "Failed to compile, but continuing because the API source was the importer."
+      | source == API && isLegacyImport -> do
+          log error
+          log "Failed to compile, but continuing because this is a legacy package."
+      | otherwise ->
+          throwWithComment error
 
   log "Uploading package to the storage backend..."
   let uploadPackageInfo = { name: packageName, version: newVersion }
@@ -594,8 +599,9 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
       ]
     Right _ -> pure unit
 
-  unless (source == Importer) $ case compilationResult of
-    Left _ -> pure unit
+  when (source == API) $ case compilationResult of
+    Left error ->
+      comment $ Array.fold [ "Skipping Pursuit publishing because this package failed to compile:\n\n", error ]
     Right dependenciesDir -> do
       log "Uploading to Pursuit"
       publishToPursuit { packageSourceDir: packageDirectory, buildPlan, dependenciesDir }
