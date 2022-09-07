@@ -248,9 +248,9 @@ tryPackage (PackageSet set) package maybeVersion = do
 compileInstalledPackages :: Version -> Aff (Either CompilerFailure String)
 compileInstalledPackages compilerVersion = do
   log "Compiling installed packages..."
-  let args = [ "compile", "packages/**/*.purs" ]
+  let command = Purs.Compile { globs: [ "packages/**/*.purs" ] }
   let version = Version.printVersion compilerVersion
-  Purs.callCompiler { args, version, cwd: Nothing }
+  Purs.callCompiler { command, version, cwd: Nothing }
 
 -- | Delete package source directories in the given installation directory.
 removePackages :: Set PackageName -> Aff Unit

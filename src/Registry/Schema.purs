@@ -97,11 +97,9 @@ instance RegistryJson PackageSet where
 
 -- | A compiler version and exact dependency versions that should be used to
 -- | compile a newly-uploaded package as an API verification check.
--- |
--- | The build plan verification is NOT used for legacy packages.
 newtype BuildPlan = BuildPlan
   { compiler :: Version
-  , resolutions :: Map PackageName Version
+  , resolutions :: Maybe (Map PackageName Version)
   }
 
 derive instance Newtype BuildPlan _

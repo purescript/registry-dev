@@ -354,7 +354,7 @@ decodeEventsToOps = do
         , updateRef: "v1.2.3"
         , buildPlan: BuildPlan
             { compiler: mkUnsafeVersion "0.15.0"
-            , resolutions: Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
+            , resolutions: Just $ Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
             }
         }
 
@@ -371,7 +371,7 @@ decodeEventsToOps = do
         , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
         , buildPlan: BuildPlan
             { compiler: mkUnsafeVersion "0.15.0"
-            , resolutions: Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
+            , resolutions: Just $ Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
             }
         }
 
@@ -401,7 +401,7 @@ decodeEventsToOps = do
         , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
         , buildPlan: BuildPlan
             { compiler: mkUnsafeVersion "0.15.0"
-            , resolutions: Map.empty
+            , resolutions: Nothing
             }
         }
 
@@ -508,38 +508,26 @@ checkDependencyResolution = do
   packageTwoName = mkUnsafePackage "package-two"
   packageTwoRange = unsafeFromJust $ Map.lookup packageTwoName dependencies
 
-  exactBuildPlan = BuildPlan
-    { compiler: mkUnsafeVersion "0.14.2"
-    , resolutions: Map.fromFoldable
-        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-        , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
-        ]
-    }
+  exactBuildPlan = Map.fromFoldable
+    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+    , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
+    ]
 
-  extraBuildPlan = BuildPlan
-    { compiler: mkUnsafeVersion "0.14.2"
-    , resolutions: Map.fromFoldable
-        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-        , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
-        , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
-        ]
-    }
+  extraBuildPlan = Map.fromFoldable
+    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+    , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
+    , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
+    ]
 
-  buildPlanMissingPackage = BuildPlan
-    { compiler: mkUnsafeVersion "0.14.2"
-    , resolutions: Map.fromFoldable
-        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-        , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
-        ]
-    }
+  buildPlanMissingPackage = Map.fromFoldable
+    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+    , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
+    ]
 
-  buildPlanWrongVersion = BuildPlan
-    { compiler: mkUnsafeVersion "0.14.2"
-    , resolutions: Map.fromFoldable
-        [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-        , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "7.0.0")
-        ]
-    }
+  buildPlanWrongVersion = Map.fromFoldable
+    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
+    , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "7.0.0")
+    ]
 
 checkBuildPlanToResolutions :: Spec.Spec Unit
 checkBuildPlanToResolutions = do
@@ -556,7 +544,7 @@ checkBuildPlanToResolutions = do
 
   generatedResolutions =
     API.buildPlanToResolutions
-      { buildPlan: BuildPlan { compiler: mkUnsafeVersion "0.14.2", resolutions }
+      { buildPlan: BuildPlan { compiler: mkUnsafeVersion "0.14.2", resolutions: Just resolutions }
       , dependenciesDir
       }
 
@@ -574,7 +562,7 @@ compilerVersions = do
   where
   testVersion version =
     Spec.it ("Calls compiler version " <> version) do
-      Purs.callCompiler { args: [ "--version" ], cwd: Nothing, version } >>= case _ of
+      Purs.callCompiler { command: Purs.Version, cwd: Nothing, version } >>= case _ of
         Left err -> case err of
           MissingCompiler ->
             Assert.fail "MissingCompiler"
@@ -587,7 +575,7 @@ compilerVersions = do
 
   testMissingVersion version =
     Spec.it ("Handles failure when compiler is missing " <> version) do
-      result <- Purs.callCompiler { args: [ "--version" ], cwd: Nothing, version }
+      result <- Purs.callCompiler { command: Purs.Version, cwd: Nothing, version }
       case result of
         Left MissingCompiler -> pure unit
         _ -> Assert.fail "Should have failed with MissingCompiler"
@@ -605,7 +593,7 @@ preludeAdditionString =
       "githubOwner": "purescript",
       "githubRepo": "purescript-prelude"
     },
-    "buildPlan": { "compiler": "0.15.0", "resolutions": {} }
+    "buildPlan": { "compiler": "0.15.0" }
   }
   ```
 

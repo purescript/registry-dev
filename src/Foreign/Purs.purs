@@ -11,7 +11,7 @@ import Registry.Json as Json
 import Sunde as Process
 
 -- | Call a specific version of the PureScript compiler
-callCompiler_ :: { version :: String, args :: Array String, cwd :: Maybe FilePath } -> Aff Unit
+callCompiler_ :: { version :: String, command :: PursCommand, cwd :: Maybe FilePath } -> Aff Unit
 callCompiler_ = void <<< callCompiler
 
 data CompilerFailure
@@ -65,14 +65,24 @@ printCompilerErrors errors = do
 type CompilerArgs =
   { version :: String
   , cwd :: Maybe FilePath
-  , args :: Array String
+  , command :: PursCommand
   }
+
+data PursCommand
+  = Version
+  | Compile { globs :: Array FilePath }
+  | Publish { resolutions :: FilePath }
+
+printCommand :: PursCommand -> Array String
+printCommand = case _ of
+  Version -> [ "--version", "--json-errors" ]
+  Compile { globs } -> [ "compile" ] <> globs <> [ "--json-errors" ]
+  Publish { resolutions } -> [ "publish", "--manifest", "purs.json", "--resolutions", resolutions ]
 
 -- | Call a specific version of the PureScript compiler
 callCompiler :: CompilerArgs -> Aff (Either CompilerFailure String)
 callCompiler compilerArgs = do
   let
-    args = Array.snoc compilerArgs.args "--json-errors"
     -- Converts a string version 'v0.13.0' or '0.13.0' to the standard format for
     -- executables 'purs-0_13_0'
     cmd =
@@ -81,16 +91,16 @@ callCompiler compilerArgs = do
         $ fromMaybe compilerArgs.version
         $ String.stripPrefix (String.Pattern "v") compilerArgs.version
 
-  result <- try $ Process.spawn { cmd, stdin: Nothing, args } (NodeProcess.defaultSpawnOptions { cwd = compilerArgs.cwd })
+  result <- try $ Process.spawn { cmd, stdin: Nothing, args: printCommand compilerArgs.command } (NodeProcess.defaultSpawnOptions { cwd = compilerArgs.cwd })
   pure $ case result of
     Left exception -> Left $ case Exception.message exception of
       errorMessage
         | errorMessage == String.joinWith " " [ "spawn", cmd, "ENOENT" ] -> MissingCompiler
         | otherwise -> UnknownError errorMessage
     Right { exit: NodeProcess.Normally 0, stdout } -> Right $ String.trim stdout
-    Right { stdout } -> Left do
+    Right { stdout, stderr } -> Left do
       case Json.parseJson (String.trim stdout) of
-        Left err -> UnknownError $ String.joinWith "\n" [ stdout, err ]
+        Left err -> UnknownError $ String.joinWith "\n" [ stdout, stderr, err ]
         Right ({ errors } :: { errors :: Array CompilerError })
           | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
           | otherwise -> CompilationError errors
