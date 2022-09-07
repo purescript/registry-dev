@@ -438,8 +438,13 @@ runOperation source operation = case operation of
                   , err
                   , "cc: @purescript/packaging"
                   ]
-                Right _ ->
+                Right _ -> do
                   comment "Successfully transferred your package!"
+                  liftAff (Except.runExceptT (syncLegacyRegistry packageName newPackageLocation)) >>= case _ of
+                    Left err ->
+                      throwWithComment $ "Failed to synchronize with legacy registry (cc: @purescript/packaging): " <> err
+                    Right _ ->
+                      pure unit
 
       closeIssue
 
@@ -571,6 +576,10 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
       comment "Successfully uploaded package to the registry! 🎉 🚀"
 
   closeIssue
+
+  liftAff (Except.runExceptT (syncLegacyRegistry packageName newMetadata.location)) >>= case _ of
+    Left err -> throwWithComment $ "Failed to synchronize with legacy registry (cc: @purescript/packaging): " <> err
+    Right _ -> pure unit
 
   -- After a package has been uploaded we add it to the registry index, we
   -- upload its documentation to Pursuit, and we can now process it for package
@@ -1338,3 +1347,64 @@ pacchettiBottiKeyType = "ssh-ed25519"
 -- | scripts.
 scratchDir :: String
 scratchDir = "scratch"
+
+data LegacyRegistryFile = BowerPackages | NewPackages
+
+derive instance Eq LegacyRegistryFile
+
+legacyRegistryFilePath :: LegacyRegistryFile -> FilePath
+legacyRegistryFilePath = case _ of
+  BowerPackages -> "bower-packages.json"
+  NewPackages -> "new-packages.json"
+
+-- | A helper function that syncs API operations to the new-packages.json or
+-- | bower-packages.json files, namely registrations and transfers.
+syncLegacyRegistry :: PackageName -> Location -> ExceptT String Aff Unit
+syncLegacyRegistry package location = do
+  packageUrl <- case location of
+    GitHub { owner, repo } -> pure $ GitHub.PackageURL $ Array.fold [ "https://github.com/", owner, "/", repo, ".git" ]
+    _ -> throwError "Packages must come from GitHub."
+
+  let newPackagesPath = legacyRegistryFilePath NewPackages
+  let bowerPackagesPath = legacyRegistryFilePath BowerPackages
+
+  newPackages <- Except.ExceptT $ Json.readJsonFile newPackagesPath
+  bowerPackages <- Except.ExceptT $ Json.readJsonFile bowerPackagesPath
+
+  let
+    rawPackageName = "purescript-" <> PackageName.print package
+
+    -- Here we determine which, if any, legacy registry file should be updated with this package.
+    -- If the package is new (ie. not listed in either registry file) then we insert it into the
+    -- new-packages.json file. If not (ie. we found it in one of the registry files), and the location
+    -- of the package in the registry file is different from its one in the registry metadata, then we
+    -- update the package in that registry file. If the package exists at the proper location already
+    -- then we do nothing.
+    targetFile = case Map.lookup rawPackageName newPackages, Map.lookup rawPackageName bowerPackages of
+      Nothing, Nothing -> Just NewPackages
+      Just url, _
+        | url /= packageUrl -> Just NewPackages
+        | otherwise -> Nothing
+      _, Just url
+        | url /= packageUrl -> Just BowerPackages
+        | otherwise -> Nothing
+
+  for_ targetFile \target -> do
+    let sourcePackages = if target == NewPackages then newPackages else bowerPackages
+    let sourceFile = legacyRegistryFilePath target
+    let packages = Map.insert rawPackageName packageUrl sourcePackages
+    liftAff $ Json.writeJsonFile sourceFile packages
+    -- A simple cehck to verify that a change was indeed written to disk, before
+    -- we attempt to commit and push.
+    Git.runGitSilent [ "diff", "--stat" ] Nothing >>= case _ of
+      files | String.contains (String.Pattern sourceFile) files -> do
+        GitHubToken token <- Git.configurePacchettiBotti Nothing
+        Git.runGit_ [ "pull" ] Nothing
+        Git.runGit_ [ "add", sourceFile ] Nothing
+        let message = Array.fold [ "Mirror registry API operation to ", sourceFile ]
+        Git.runGit_ [ "commit", "-m", message ] Nothing
+        let upstreamRepo = Constants.registryDevRepo.owner <> "/" <> Constants.registryDevRepo.repo
+        let origin = "https://pacchettibotti:" <> token <> "@github.com" <> upstreamRepo <> ".git"
+        void $ Git.runGitSilent [ "push", origin, "master" ] Nothing
+      _ ->
+        log "No changes to commit."
