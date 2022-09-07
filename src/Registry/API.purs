@@ -115,9 +115,11 @@ main = launchAff_ $ do
         fillMetadataRef
         runOperation API operation
 
--- | Operations are exercised via the API and the importer. If the importer is
--- | used, then we have relaxed restrictions on the build (ie. the package does
--- | not have to compile).
+-- | Operations are exercised via the API and the legacy importer. If the
+-- | importer is used then we don't compile or publish docs for the package.
+-- | If the API is used for a 'legacy' package (ie. a Spago-based project), then
+-- | we attempt to compile the package and warn if compilation fails. If the API
+-- | is used for a normal package then failed compilation fails the pipeline.
 data Source = API | Importer
 
 derive instance Eq Source

@@ -401,7 +401,7 @@ decodeEventsToOps = do
         , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
         , buildPlan: BuildPlan
             { compiler: mkUnsafeVersion "0.15.0"
-            , resolutions: Map.empty
+            , resolutions: Nothing
             }
         }
 
@@ -593,7 +593,7 @@ preludeAdditionString =
       "githubOwner": "purescript",
       "githubRepo": "purescript-prelude"
     },
-    "buildPlan": { "compiler": "0.15.0", "resolutions": {} }
+    "buildPlan": { "compiler": "0.15.0" }
   }
   ```
 
