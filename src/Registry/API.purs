@@ -36,6 +36,7 @@ import Effect.Aff as Aff
 import Effect.Exception (throw)
 import Effect.Now as Now
 import Effect.Ref as Ref
+import Foreign.Dhall as Dhall
 import Foreign.FastGlob as FastGlob
 import Foreign.Git as Git
 import Foreign.GitHub (GitHubToken(..), IssueNumber)
@@ -502,9 +503,11 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
   -- trust the metadata for everything else. No field should be different.
   manifest@(Manifest manifestRecord) <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of
     Left _err -> throwWithComment $ "Manifest not found at " <> manifestPath
-    Right manifestStr -> case Json.parseJson manifestStr of
-      Left err -> throwWithComment $ "Could not parse manifest: " <> err
-      Right res -> pure res
+    Right manifestStr -> liftAff (Dhall.jsonToDhallManifest manifestStr) >>= case _ of
+      Left err -> throwWithComment $ "Could not typecheck manifest: " <> err
+      Right _ -> case Json.parseJson manifestStr of
+        Left err -> throwWithComment $ "Could not parse manifest as JSON: " <> err
+        Right res -> pure res
 
   let
     -- As soon as we have the manifest we need to update any fields that can
