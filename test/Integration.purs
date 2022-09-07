@@ -104,15 +104,18 @@ setup = do
 mkTest :: Solver.Dependencies -> Map PackageName (Map Version { bower :: BowerSolved, manifest :: Map PackageName Range }) -> Spec.Spec Unit
 mkTest solverIndex pkgs = void $ forWithIndex pkgs \package versions -> do
   Spec.describe ("Solves " <> PackageName.print package) do
+    pure unit
     -- We try comparing Bower's solution from the Bowerfile to our
     -- solver's attempt on the Bowerfile dependencies.
     Spec.it "Bowerfile" do
+      pure unit
       void $ forWithIndex versions \version { bower } -> do
         solve package version bower.dependencies bower.bowerfileSolution
 
     -- We also try comparing Bower's solution using the manifest dependencies
     -- to our solver's attempt on the same.
     Spec.it "Manifest file " do
+      pure unit
       void $ forWithIndex versions \version { bower, manifest } -> do
         solve package version manifest bower.manifestSolution
   where
