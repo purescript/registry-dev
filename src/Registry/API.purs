@@ -110,6 +110,19 @@ main = launchAff_ $ do
       cache <- Cache.useCache
       packagesMetadata <- liftEffect $ Ref.new Map.empty
       runRegistryM (mkEnv octokit cache packagesMetadata issue username) do
+        comment $ case operation of
+          Addition { packageName, newRef } ->
+            "Adding package `" <> PackageName.print packageName <> "` at the ref `" <> newRef <> "`."
+          Update { packageName, updateRef } ->
+            "Updating package `" <> PackageName.print packageName <> "` at the ref `" <> updateRef <> "`."
+          PackageSetUpdate _ ->
+            "Processing package set update."
+          Authenticated (AuthenticatedData { payload }) -> case payload of
+            Unpublish { packageName, unpublishVersion } ->
+              "Unpublishing `" <> PackageName.print packageName <> "` at version `" <> Version.printVersion unpublishVersion <> "`."
+            Transfer { packageName } ->
+              "Transferring `" <> PackageName.print packageName <> "`."
+
         fetchRegistry
         fetchRegistryIndex
         fillMetadataRef
