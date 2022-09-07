@@ -595,10 +595,12 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
       ]
     Right _ -> pure unit
 
-  unless (source == Importer || isLeft compilationResult) do
-    log "Uploading to Pursuit"
-    publishToPursuit { packageSourceDir: packageDirectory, buildPlan, dependenciesDir: Path.concat [ packageDirectory, ".registry" ] }
-    comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+  unless (source == Importer) $ case compilationResult of
+    Left _ -> pure unit
+    Right dependenciesDir -> do
+      log "Uploading to Pursuit"
+      publishToPursuit { packageSourceDir: packageDirectory, buildPlan, dependenciesDir }
+      comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
 verifyManifest :: { metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
 verifyManifest { metadata, manifest } = do
@@ -749,10 +751,9 @@ type CompilePackage =
   , buildPlan :: BuildPlan
   }
 
-compilePackage :: CompilePackage -> RegistryM (Either String Unit)
+compilePackage :: CompilePackage -> RegistryM (Either String FilePath)
 compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
-  let dependenciesDir = Path.concat [ packageSourceDir, ".registry" ]
-  liftAff $ FS.Extra.ensureDirectory dependenciesDir
+  tmp <- liftEffect $ Tmp.mkTmpDir
   case plan.resolutions of
     Nothing -> do
       compilerOutput <- liftAff $ Purs.callCompiler
@@ -760,17 +761,17 @@ compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
         , version: Version.printVersion plan.compiler
         , cwd: Just packageSourceDir
         }
-      pure (handleCompiler compilerOutput)
+      pure (handleCompiler tmp compilerOutput)
 
     Just resolved -> do
       let (packages :: Array _) = Map.toUnfoldable resolved
-      for_ packages (uncurry (installPackage dependenciesDir))
+      for_ packages (uncurry (installPackage tmp))
       compilerOutput <- liftAff $ Purs.callCompiler
-        { command: Purs.Compile { globs: [ "src/**/*.purs", ".registry/*/src/**/*.purs" ] }
+        { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ tmp, "*/src/**/*.purs" ] }
         , version: Version.printVersion plan.compiler
         , cwd: Just packageSourceDir
         }
-      pure (handleCompiler compilerOutput)
+      pure (handleCompiler tmp compilerOutput)
   where
   -- We fetch every dependency at its resolved version, unpack the tarball, and
   -- store the resulting source code in a specified directory for dependencies.
@@ -790,9 +791,9 @@ compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
     liftAff $ FS.unlink filepath
     log $ "Installed " <> PackageName.print packageName <> "@" <> Version.printVersion version
 
-  handleCompiler = case _ of
+  handleCompiler tmp = case _ of
     Right _ ->
-      Right unit
+      Right tmp
     Left MissingCompiler -> Left $ Array.fold
       [ "Compilation failed because the build plan compiler version "
       , Version.printVersion plan.compiler
