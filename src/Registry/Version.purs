@@ -11,6 +11,7 @@ module Registry.Version
   , lessThan
   , major
   , minor
+  , mkVersionParser
   , parseRange
   , parseVersion
   , patch
@@ -19,6 +20,7 @@ module Registry.Version
   , rangeIncludes
   , rawRange
   , rawVersion
+  , union
   ) where
 
 import Registry.Prelude
@@ -173,6 +175,17 @@ printRange range =
     , printVersion (lessThan range)
     ]
 
+union :: Range -> Range -> Range
+union (Range r1) (Range r2) = do
+  let lhs = min r1.lhs r2.lhs
+  let rhs = max r1.rhs r2.rhs
+  Range
+    { lhs
+    , rhs
+    , mode: Lenient
+    , raw: Array.fold [ ">=", printVersion lhs, " <", printVersion rhs ]
+    }
+
 intersect :: Range -> Range -> Maybe Range
 intersect (Range r1) (Range r2)
   | r1.lhs >= r2.rhs || r2.lhs >= r1.rhs = Nothing
@@ -193,9 +206,9 @@ parseRange mode input = do
 
   Parsing.runParser parserInput do
     _ <- Parsing.String.string ">=" <|> Parsing.fail "Ranges must begin with >="
-    lhs <- toVersion mode =<< map String.CodeUnits.fromCharArray charsUntilSpace
+    lhs <- mkVersionParser mode =<< map String.CodeUnits.fromCharArray charsUntilSpace
     _ <- Parsing.String.char '<' <|> Parsing.fail "Ranges must end with <"
-    rhs <- toVersion mode =<< map String.CodeUnits.fromCharArray chars
+    rhs <- mkVersionParser mode =<< map String.CodeUnits.fromCharArray chars
     -- Parsing.String.eof
     -- Trimming prerelease identifiers in lenient mode can produce ranges
     -- where the lhs was less than the rhs, but no longer is. For example:
@@ -254,16 +267,16 @@ convertRange input = fromRight input do
     _ <- Parsing.String.char '>'
     Parsing.Combinators.notFollowedBy (Parsing.String.char '=')
     lhsChars <- map String.CodeUnits.fromCharArray charsUntilSpace
-    lhs <- toVersion Lenient lhsChars
+    lhs <- mkVersionParser Lenient lhsChars
     Parsing.ParseState suffix _ _ <- Parsing.getParserT
     pure $ Array.fold [ ">=", printVersion (bumpPatch lhs), " ", suffix ]
 
   -- Fix ranges that end with '<=' instead of '<'
   fixLtRhs str = fromRight str $ Parsing.runParser str do
     _ <- Parsing.String.string ">="
-    lhs <- toVersion Lenient =<< map String.CodeUnits.fromCharArray charsUntilSpace
+    lhs <- mkVersionParser Lenient =<< map String.CodeUnits.fromCharArray charsUntilSpace
     _ <- Parsing.String.string "<="
-    rhs <- toVersion Lenient =<< map String.CodeUnits.fromCharArray chars
+    rhs <- mkVersionParser Lenient =<< map String.CodeUnits.fromCharArray chars
     Parsing.String.eof
     pure $ Array.fold [ ">=", printVersion lhs, " <", printVersion (bumpPatch rhs) ]
 
@@ -271,7 +284,7 @@ convertRange input = fromRight input do
   fixUpperOnly str = fromRight str $ Parsing.runParser str do
     _ <- Parsing.String.char '<'
     hasEq <- Parsing.Combinators.optionMaybe (Parsing.String.char '=')
-    lhs <- toVersion Lenient =<< map String.CodeUnits.fromCharArray chars
+    lhs <- mkVersionParser Lenient =<< map String.CodeUnits.fromCharArray chars
     Parsing.String.eof
     pure $ Array.fold [ ">=0.0.0 <", printVersion (if isJust hasEq then bumpPatch lhs else lhs) ]
 
@@ -280,8 +293,8 @@ convertRange input = fromRight input do
     version <- parseVersion Lenient str
     pure $ Array.fold [ ">=", printVersion version, " <", printVersion (bumpPatch version) ]
 
-toVersion :: ParseMode -> String -> Parser String Version
-toVersion mode string = Monad.Error.liftEither case mode of
+mkVersionParser :: ParseMode -> String -> Parser String Version
+mkVersionParser mode string = Monad.Error.liftEither case mode of
   Lenient -> do
     let truncate pattern input = fromMaybe input $ Array.head $ String.split pattern input
     let noPrerelease = truncate (String.Pattern "-")

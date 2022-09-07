@@ -34,6 +34,7 @@ import Foreign.Wget as Wget
 import Node.FS.Aff as FS.Aff
 import Node.FS.Aff as FSA
 import Node.Path as Path
+import Registry.Constants as Constants
 import Registry.Index (RegistryIndex)
 import Registry.Json as Json
 import Registry.PackageGraph as PackageGraph
@@ -47,7 +48,7 @@ import Registry.Version as Version
 getPackageSetsPath :: RegistryM FilePath
 getPackageSetsPath = do
   registryPath <- asks _.registry
-  pure $ Path.concat [ registryPath, "package-sets" ]
+  pure $ Path.concat [ registryPath, Constants.packageSetsPath ]
 
 getPackageSetPath :: Version -> RegistryM FilePath
 getPackageSetPath version = do
@@ -277,7 +278,7 @@ installPackage :: PackageName -> Version -> Aff Unit
 installPackage name version = do
   log $ "installing " <> PackageName.print name <> "@" <> Version.printVersion version
   _ <- Wget.wget registryUrl tarballPath >>= ltraverse (Aff.error >>> throwError)
-  liftEffect $ Tar.extract { cwd: packagesDir, filename: tarballPath }
+  liftEffect $ Tar.extract { cwd: packagesDir, archive: extractedName <> ".tar.gz" }
   FSE.remove tarballPath
   FSA.rename extractedPath installPath
   where
@@ -298,7 +299,8 @@ installPackage name version = do
 
   registryUrl :: Http.URL
   registryUrl = Array.fold
-    [ "https://packages.registry.purescript.org/"
+    [ Constants.registryPackagesUrl
+    , "/"
     , PackageName.print name
     , "/"
     , Version.printVersion version

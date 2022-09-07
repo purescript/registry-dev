@@ -16,26 +16,3 @@ export const getToplevelDirImpl = (filename) => () => {
   });
   return entries;
 };
-
-// extract tar
-export const extractImpl = (cwd, filename) => () => {
-  extract({
-    sync: true,
-    cwd: cwd,
-    file: filename,
-  });
-};
-
-// create .tar.gz from a folder
-export const createImpl = (cwd, foldername, archivename) => () => {
-  create(
-    {
-      sync: true,
-      gzip: true,
-      portable: true,
-      cwd: cwd,
-      file: archivename,
-    },
-    [foldername]
-  );
-};

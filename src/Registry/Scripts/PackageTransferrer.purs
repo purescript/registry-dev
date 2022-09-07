@@ -19,6 +19,7 @@ import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.API as API
 import Registry.Cache as Cache
+import Registry.Constants as Constants
 import Registry.Json as Json
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
@@ -104,7 +105,7 @@ transferPackage rawPackageName newPackageLocation = do
     rawPayload = Json.stringifyJson payload
 
   API.runOperation $ Authenticated $ AuthenticatedData
-    { email: API.pacchettiBottiEmail
+    { email: Git.pacchettiBottiEmail
     , payload
     , rawPayload
     , signature: [] -- The API will re-sign using @pacchettibotti credentials.
@@ -193,13 +194,14 @@ commitLegacyRegistryFile :: FilePath -> Aff (Either String Unit)
 commitLegacyRegistryFile sourceFile = Except.runExceptT do
   Git.runGitSilent [ "diff", "--stat" ] Nothing >>= case _ of
     files | String.contains (String.Pattern sourceFile) files -> do
-      GitHubToken token <- API.configurePacchettiBotti Nothing
+      GitHubToken token <- Git.configurePacchettiBotti Nothing
       Git.runGit_ [ "pull" ] Nothing
       Git.runGit_ [ "add", sourceFile ] Nothing
       log "Committing to registry..."
       let message = Array.fold [ "Sort ", sourceFile, " and transfer packages that have moved repositories." ]
       Git.runGit_ [ "commit", "-m", message ] Nothing
-      let origin = "https://pacchettibotti:" <> token <> "@github.com/purescript/registry.git"
+      let upstreamRepo = Constants.registryDevRepo.owner <> "/" <> Constants.registryDevRepo.repo
+      let origin = "https://pacchettibotti:" <> token <> "@github.com" <> upstreamRepo <> ".git"
       void $ Git.runGitSilent [ "push", origin, "master" ] Nothing
     _ ->
       log "No changes to commit."

@@ -101,6 +101,7 @@
   "purescript-interpolate": "https://github.com/jordanmartinez/purescript-interpolate.git",
   "purescript-jelly": "https://github.com/yukikurage/purescript-jelly.git",
   "purescript-js-fileio": "https://github.com/newlandsvalley/purescript-js-fileio.git",
+  "purescript-js-promise": "https://github.com/purescript-contrib/purescript-js-promise.git",
   "purescript-js-uri": "https://github.com/purescript-contrib/purescript-js-uri.git",
   "purescript-justifill": "https://github.com/i-am-the-slime/purescript-justifill.git",
   "purescript-kafkajs": "https://github.com/HivemindTechnologies/purescript-kafkajs.git",
@@ -145,6 +146,7 @@
   "purescript-parsing-validation": "https://github.com/markfarrell/purescript-parsing-validation.git",
   "purescript-peregrine": "https://github.com/maxdeviant/peregrine.git",
   "purescript-phaser": "https://github.com/lfarroco/purescript-phaser.git",
+  "purescript-phylio": "https://github.com/vibbits/phylio.git",
   "purescript-pino": "https://github.com/PureFunctor/purescript-pino.git",
   "purescript-point-free": "https://github.com/ursi/purescript-point-free.git",
   "purescript-pointed": "https://github.com/eviefp/purescript-pointed.git",
@@ -178,6 +180,7 @@
   "purescript-run-external-state": "https://github.com/Mateiadrielrafael/purescript-run-external-state.git",
   "purescript-simple-csv": "https://github.com/fujisawa/purescript-simple-csv.git",
   "purescript-simple-ulid": "https://github.com/oreshinya/purescript-simple-ulid.git",
+  "purescript-small-ffi": "https://github.com/lfarroco/purescript-small-ffi.git",
   "purescript-splitmix": "https://github.com/the-dr-lazy/purescript-splitmix.git",
   "purescript-ssrs": "https://github.com/PureFunctor/purescript-ssrs.git",
   "purescript-stac": "https://github.com/jisantuc/purescript-stac.git",
@@ -227,5 +230,6 @@
   "purescript-workly": "https://github.com/cakekindel/purescript-workly.git",
   "purescript-yoga-fetch": "https://github.com/rowtype-yoga/purescript-yoga-fetch.git",
   "purescript-yoga-json": "https://github.com/rowtype-yoga/purescript-yoga-json.git",
-  "purescript-yoga-postgres": "https://github.com/rowtype-yoga/purescript-yoga-postgres.git"
+  "purescript-yoga-postgres": "https://github.com/rowtype-yoga/purescript-yoga-postgres.git",
+  "purescript-yoga-tree": "https://github.com/rowtype-yoga/purescript-yoga-tree.git"
 }

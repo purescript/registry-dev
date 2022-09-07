@@ -1,25 +1,52 @@
-module Registry.Legacy.PackageSet where
+module Registry.Legacy.PackageSet
+  ( ConvertedLegacyPackageSet
+  , LatestCompatibleSets
+  , LegacyPackageSet(..)
+  , LegacyPackageSetEntry
+  , PscTag(..)
+  , fromPackageSet
+  , mirrorLegacySet
+  , parsePscTag
+  , printDhall
+  , printPscTag
+  ) where
 
 import Registry.Prelude
 
+import Control.Monad.Except as Except
+import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Compactable (separate)
+import Data.DateTime (DateTime)
 import Data.Formatter.DateTime (FormatterCommand(..))
-import Data.Formatter.DateTime as Formatter.DateTime
+import Data.Formatter.DateTime as Format.DateTime
 import Data.FunctorWithIndex (mapWithIndex)
-import Data.List as List
+import Data.List (List(..), (:))
 import Data.Map as Map
+import Data.Set as Set
 import Data.String as String
+import Data.String.CodeUnits as String.CodeUnits
 import Dodo as Dodo
 import Dodo.Common as Dodo.Common
+import Foreign.Git as Git
+import Foreign.GitHub as GitHub
+import Foreign.Tmp as Tmp
+import Node.FS.Aff as FS.Aff
+import Node.Path as Path
+import Parsing as Parsing
+import Parsing.Combinators.Array as Parsing.Combinators.Array
+import Parsing.String as Parsing.String
 import Registry.Index (RegistryIndex)
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.RegistryM (RegistryM)
+import Registry.RegistryM as RegistryM
 import Registry.Schema (Location(..), Manifest(..), Metadata, PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
+-- | The format of a legacy packages.json package set file
 newtype LegacyPackageSet = LegacyPackageSet (Map PackageName LegacyPackageSetEntry)
 
 derive instance Newtype LegacyPackageSet _
@@ -30,6 +57,8 @@ instance RegistryJson LegacyPackageSet where
   encode (LegacyPackageSet plan) = Json.encode plan
   decode = map LegacyPackageSet <<< Json.decode
 
+-- | The format of a legacy packages.json package set entry for an individual
+-- | package.
 type LegacyPackageSetEntry =
   { dependencies :: Array PackageName
   , repo :: String
@@ -37,10 +66,47 @@ type LegacyPackageSetEntry =
   }
 
 type ConvertedLegacyPackageSet =
-  { name :: String
+  { tag :: PscTag
   , upstream :: Version
   , packageSet :: LegacyPackageSet
   }
+
+-- | A package set tag for the legacy package sets.
+newtype PscTag = PscTag { compiler :: Version, date :: DateTime }
+
+derive instance Newtype PscTag _
+derive instance Eq PscTag
+derive instance Ord PscTag
+
+instance RegistryJson PscTag where
+  encode = Json.encode <<< printPscTag
+  decode = Json.decode >=> parsePscTag
+
+parsePscTag :: String -> Either String PscTag
+parsePscTag = lmap Parsing.parseErrorMessage <<< flip Parsing.runParser do
+  _ <- Parsing.String.string "psc-"
+  version <- Version.mkVersionParser Version.Strict =<< charsUntilHyphen
+  date <- Parsing.String.rest
+  case Format.DateTime.unformat (YearFull : MonthTwoDigits : DayOfMonthTwoDigits : Nil) date of
+    Left err ->
+      Parsing.fail $ "Expected an 8-digit date such as '20220101': " <> err
+    Right parsedDate ->
+      pure $ PscTag { compiler: version, date: parsedDate }
+  where
+  charsUntilHyphen =
+    map String.CodeUnits.fromCharArray
+      $ map fst
+      $ Parsing.Combinators.Array.manyTill_ Parsing.String.anyChar
+      $ Parsing.String.char '-'
+
+printPscTag :: PscTag -> String
+printPscTag (PscTag { compiler, date }) =
+  Array.fold
+    [ "psc-"
+    , Version.printVersion compiler
+    , "-"
+    , Format.DateTime.format (YearFull : MonthTwoDigits : DayOfMonthTwoDigits : Nil) date
+    ]
 
 fromPackageSet :: RegistryIndex -> Map PackageName Metadata -> PackageSet -> Either String ConvertedLegacyPackageSet
 fromPackageSet index metadata (PackageSet { compiler, packages, published, version }) = do
@@ -51,12 +117,10 @@ fromPackageSet index metadata (PackageSet { compiler, packages, published, versi
       Left $ String.joinWith "\n" $ Array.cons "Failed to convert packages:" $ toValues left
 
   let converted' = Map.insert (unsafeFromRight (PackageName.parse "metadata")) metadataPackage converted
-  pure { name, upstream: version, packageSet: LegacyPackageSet converted' }
+  pure { tag, upstream: version, packageSet: LegacyPackageSet converted' }
   where
-  name :: String
-  name = do
-    let dateFormat = List.fromFoldable [ YearFull, MonthTwoDigits, DayOfMonthTwoDigits ]
-    "psc-" <> Version.printVersion compiler <> "-" <> Formatter.DateTime.format dateFormat published
+  tag :: PscTag
+  tag = PscTag { compiler, date: published }
 
   -- Legacy package sets determine their compiler version by the version of
   -- the 'metadata' package.
@@ -151,3 +215,93 @@ printDhall (LegacyPackageSet entries) = do
 
   quoteString :: forall a. String -> Dodo.Doc a
   quoteString = Dodo.enclose (Dodo.text "\"") (Dodo.text "\"") <<< Dodo.text
+
+type LatestCompatibleSets = Map Version PscTag
+
+-- https://github.com/purescript/package-sets/blob/psc-0.15.4-20220829/release.sh
+-- https://github.com/purescript/package-sets/blob/psc-0.15.4-20220829/update-latest-compatible-sets.sh
+mirrorLegacySet :: ConvertedLegacyPackageSet -> RegistryM Unit
+mirrorLegacySet { tag, packageSet, upstream } = do
+  tmp <- liftEffect Tmp.mkTmpDir
+
+  { octokit, cache } <- ask
+
+  -- TODO: FIXME: Replace this once we no longer rely on the 'preview' repository.
+  -- Should be 'Constants.legacyPackageSetsRepo' at that point.
+  let legacyPackageSetsRepo = { owner: "purescript", repo: "package-sets-preview" }
+  let packageSetsPath = Path.concat [ tmp, legacyPackageSetsRepo.repo ]
+
+  packageSetsTags <- liftAff (Except.runExceptT (GitHub.listTags octokit cache legacyPackageSetsRepo)) >>= case _ of
+    Left error -> do
+      let formatted = GitHub.printGitHubError error
+      RegistryM.throwWithComment $ "Could not fetch tags for the package-sets repo: " <> formatted
+    Right tags -> pure $ Set.fromFoldable $ map _.name tags
+
+  let printedTag = printPscTag tag
+
+  when (Set.member printedTag packageSetsTags) do
+    RegistryM.throwWithComment $ "Package set tag " <> printedTag <> "already exists, aborting..."
+
+  let packageSetsUrl = "https://github.com/" <> legacyPackageSetsRepo.owner <> "/" <> legacyPackageSetsRepo.repo <> ".git"
+  liftAff (Except.runExceptT (Git.runGit [ "clone", packageSetsUrl, "--depth", "1" ] (Just tmp))) >>= case _ of
+    Left error -> RegistryM.throwWithComment error
+    Right _ -> pure unit
+
+  -- We need to write three files to the package sets repository:
+  --
+  -- * latest-compatible-sets.json
+  --   stores a mapping of compiler versions to their highest compatible tag
+  --
+  -- * packages.json
+  --   stores the JSON representation of the latest package set
+  --
+  -- * src/packages.dhall
+  --   stores the Dhall representation of the latest package set
+
+  let latestSetsPath = Path.concat [ packageSetsPath, "latest-compatible-sets.json" ]
+  latestCompatibleSets :: LatestCompatibleSets <- do
+    latestSets <- liftAff (Json.readJsonFile latestSetsPath) >>= case _ of
+      Left err -> RegistryM.throwWithComment $ "Failed to read latest-compatible-sets: " <> err
+      Right parsed -> pure parsed
+    let key = (un PscTag tag).compiler
+    case Map.lookup key latestSets of
+      Just existingTag | existingTag >= tag -> do
+        RegistryM.comment "Not updating latest-compatible sets because this tag (or a higher one) already exists."
+        pure latestSets
+      _ ->
+        pure $ Map.insert key tag latestSets
+
+  let
+    packagesDhallPath = Path.concat [ packageSetsPath, "src", "packages.dhall" ]
+    packagesJsonPath = Path.concat [ packageSetsPath, "packages.json" ]
+    commitFiles =
+      [ Tuple packagesDhallPath (printDhall packageSet)
+      , Tuple packagesJsonPath (Json.printJson packageSet)
+      , Tuple latestSetsPath (Json.printJson latestCompatibleSets)
+      ]
+
+  let
+    -- We push the stable tag (ie. just a compiler version) if one does not yet
+    -- exist. We always push the full tag.
+    printedCompiler = Version.printVersion (un PscTag tag).compiler
+    tagsToPush = Array.catMaybes
+      [ if Set.member printedCompiler packageSetsTags then Nothing else Just printedCompiler
+      , Just printedTag
+      ]
+
+  result <- liftAff $ Except.runExceptT do
+    GitHub.GitHubToken token <- Git.configurePacchettiBotti (Just packageSetsPath)
+    for_ commitFiles \(Tuple path contents) -> do
+      liftAff $ FS.Aff.writeTextFile UTF8 path (contents <> "\n")
+      Git.runGit_ [ "add", path ] (Just packageSetsPath)
+    let commitMessage = "Update to the " <> Version.printVersion upstream <> " package set."
+    Git.runGit_ [ "commit", "-m", commitMessage ] (Just packageSetsPath)
+    let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> legacyPackageSetsRepo.owner <> "/" <> legacyPackageSetsRepo.repo <> ".git"
+    void $ Git.runGitSilent [ "push", origin, "master" ] (Just packageSetsPath)
+    for_ tagsToPush \pushTag -> do
+      Git.runGit_ [ "tag", pushTag ] (Just packageSetsPath)
+      Git.runGitSilent [ "push", origin, pushTag ] (Just packageSetsPath)
+
+  case result of
+    Left error -> RegistryM.throwWithComment $ "Package set mirroring failed: " <> error
+    Right _ -> pure unit

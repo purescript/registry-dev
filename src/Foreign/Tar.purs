@@ -3,9 +3,11 @@ module Foreign.Tar (getToplevelDir, create, extract) where
 import Prelude
 
 import Data.Array as Array
-import Data.Function.Uncurried (Fn1, Fn2, Fn3, runFn1, runFn2, runFn3)
-import Data.Maybe (Maybe)
+import Data.Function.Uncurried (Fn1, runFn1)
+import Data.Maybe (Maybe(..))
+import Data.String as String
 import Effect (Effect)
+import Node.ChildProcess as ChildProcess
 
 foreign import getToplevelDirImpl :: Fn1 String (Effect (Array String))
 
@@ -14,20 +16,32 @@ getToplevelDir filename = do
   paths <- runFn1 getToplevelDirImpl filename
   pure $ Array.head paths
 
-foreign import extractImpl :: Fn2 String String (Effect Unit)
+type ExtractArgs = { cwd :: String, archive :: String }
 
--- | Extracts the tarball at the given filename into cwd.
--- |
--- | Note: `filename` should be an absolute path. The extracted result will be
--- | a directory within `cwd`.
+-- | Extracts the tarball at the given relative file path into cwd.
 extract :: ExtractArgs -> Effect Unit
-extract { cwd, filename } = runFn2 extractImpl cwd filename
+extract { cwd, archive } = do
+  let cmd = "tar -xzf " <> archive
+  void $ ChildProcess.execSync cmd (ChildProcess.defaultExecSyncOptions { cwd = Just cwd })
 
-type ExtractArgs = { cwd :: String, filename :: String }
-
-foreign import createImpl :: Fn3 String String String (Effect Unit)
+type CreateArgs = { cwd :: String, folderName :: String }
 
 create :: CreateArgs -> Effect Unit
-create { cwd, archiveName, folderName } = runFn3 createImpl cwd folderName archiveName
-
-type CreateArgs = { cwd :: String, archiveName :: String, folderName :: String }
+create { cwd, folderName } = do
+  let
+    cmd = String.joinWith " | " [ tarCmd, gzipCmd ]
+    gzipCmd = "gzip " <> String.joinWith " " [ "--name", ">", folderName <> ".tar.gz" ]
+    -- All these flags are here to ensure that the tarball creation is deterministic/reproducible.
+    -- They come from https://reproducible-builds.org/docs/archives/
+    tarCmd = "tar " <> String.joinWith " "
+      [ "--sort=name"
+      , "--mtime=1970-01-01 00:00:Z"
+      , "--owner=0"
+      , "--group=0"
+      , "--numeric-owner"
+      , "--pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime"
+      , "-cf"
+      , "-"
+      , folderName
+      ]
+  void $ ChildProcess.execSync cmd (ChildProcess.defaultExecSyncOptions { cwd = Just cwd })
