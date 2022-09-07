@@ -85,10 +85,9 @@ main = launchAff_ $ do
 
     compilePackage { packageSourceDir, buildPlan } >>= case _ of
       Left err -> throwWithComment err
-      Right _ -> do
-        let dependenciesDir = Path.concat [ packageSourceDir, ".registry" ]
+      Right dependenciesDir -> do
         files <- liftAff $ FS.readdir packageSourceDir
         logShow files
         deps <- liftAff $ FS.readdir dependenciesDir
         logShow deps
-        publishToPursuit { packageSourceDir, buildPlan, dependenciesDir: Path.concat [ packageSourceDir, ".registry" ] }
+        publishToPursuit { packageSourceDir, buildPlan, dependenciesDir }

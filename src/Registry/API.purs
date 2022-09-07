@@ -759,6 +759,8 @@ type CompilePackage =
 compilePackage :: CompilePackage -> RegistryM (Either String FilePath)
 compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
   tmp <- liftEffect $ Tmp.mkTmpDir
+  let dependenciesDir = Path.concat [ tmp, ".registry" ]
+  liftAff $ FS.Extra.ensureDirectory dependenciesDir
   case plan.resolutions of
     Nothing -> do
       compilerOutput <- liftAff $ Purs.callCompiler
@@ -766,17 +768,17 @@ compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
         , version: Version.printVersion plan.compiler
         , cwd: Just packageSourceDir
         }
-      pure (handleCompiler tmp compilerOutput)
+      pure (handleCompiler dependenciesDir compilerOutput)
 
     Just resolved -> do
       let (packages :: Array _) = Map.toUnfoldable resolved
-      for_ packages (uncurry (installPackage tmp))
+      for_ packages (uncurry (installPackage dependenciesDir))
       compilerOutput <- liftAff $ Purs.callCompiler
-        { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ tmp, "*/src/**/*.purs" ] ] }
+        { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ dependenciesDir, "*/src/**/*.purs" ] ] }
         , version: Version.printVersion plan.compiler
         , cwd: Just packageSourceDir
         }
-      pure (handleCompiler tmp compilerOutput)
+      pure (handleCompiler dependenciesDir compilerOutput)
   where
   -- We fetch every dependency at its resolved version, unpack the tarball, and
   -- store the resulting source code in a specified directory for dependencies.
