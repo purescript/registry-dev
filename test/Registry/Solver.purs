@@ -8,6 +8,7 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Map as Map
 import Data.Set as Set
+import Data.Set.NonEmpty as NES
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Solver (SolverError(..), SolverPosition(..), printSolverError, solve, solveAndValidate)
@@ -144,7 +145,7 @@ spec = do
     Spec.it "Simple disjoint ranges" do
       shouldFail
         [ simple.package /\ range 0 1, prelude.package /\ range 1 2 ]
-        [ { error: VersionNotInRange prelude.package (version 1) (range 0 1) (Solving simple.package (pure (version 0)) SolveRoot)
+        [ { error: VersionNotInRange prelude.package (NES.singleton (version 1)) (range 0 1) (Solving simple.package (pure (version 0)) SolveRoot)
           , message: "Committed to prelude@1.0.0 but the range >=0.0.0 <1.0.0 was also required while solving simple@0.0.0"
           }
         ]
@@ -156,7 +157,7 @@ spec = do
         [ onlySimple.package /\ range 0 4
         , prelude.package /\ range 1 2
         ]
-        [ { error: VersionNotInRange prelude.package (version 1) (range 0 1) (Solving simple.package (pure (version 0)) (Solving onlySimple.package (pure (version 0)) SolveRoot))
+        [ { error: VersionNotInRange prelude.package (NES.singleton (version 1)) (range 0 1) (Solving simple.package (pure (version 0)) (Solving onlySimple.package (pure (version 0)) SolveRoot))
           , message: "Committed to prelude@1.0.0 but the range >=0.0.0 <1.0.0 was also required while solving simple@0.0.0 while solving only-simple@0.0.0"
           }
         ]

@@ -69,6 +69,7 @@ main = launchAff_ do
       testPackages :: Solver.Dependencies -> Spec.Spec Unit
       testPackages pkgs = void $ forWithIndex pkgs \package versions ->
         Spec.it ("Solves " <> PackageName.print package) do
+          log $ "Solving " <> PackageName.print package <> "..."
           void $ forWithIndex versions \version dependencies -> do
             let
               name = PackageName.print package <> "@" <> Version.printVersion version
@@ -99,22 +100,29 @@ main = launchAff_ do
     Spec.describe "Solves core packages" do
       testPackages corePackages
 
-    Spec.describe "Solves contrib packages" do
-      testPackages contribPackages
+  {-
+  Spec.describe "Solves contrib packages" do
+    const (pure unit) $ testPackages contribPackages
 
-    Spec.describe "Solves web packages" do
-      testPackages webPackages
+  Spec.describe "Solves web packages" do
+    const (pure unit) $ testPackages webPackages
 
-    Spec.describe "Solves node packages" do
-      testPackages nodePackages
+  Spec.describe "Solves node packages" do
+    const (pure unit) $ testPackages nodePackages
+
+  Spec.describe "Solves other packages" do
+    const (pure unit) $ testPackages _otherPackages
+  -}
   where
   setup :: Aff { index :: RegistryIndex, bowerSolutions :: Map PackageName (Map Version (Map PackageName Version)) }
   setup = do
     tmp <- liftEffect Tmp.mkTmpDir
 
     result <- withBackoff' $ Except.runExceptT do
-      Git.runGit_ [ "clone", "https://github.com/purescript/registry-index", "--depth", "1" ] (Just tmp)
-      Git.runGit_ [ "clone", "https://github.com/thomashoneyman/bower-solver-results", "--depth", "1" ] (Just tmp)
+      Git.runGit_ [ "clone", "https://github.com/purescript/registry-index", "--depth", "20" ] (Just tmp)
+      Git.runGit_ [ "checkout", "b2aaad20631178421e1140a414f02c89374341e9" ] (Just (Path.concat [ tmp, "registry-index" ]))
+      Git.runGit_ [ "clone", "https://github.com/thomashoneyman/bower-solver-results" ] (Just tmp)
+      Git.runGit_ [ "checkout", "302e26e0c9a1c587c1acdb04192d0b93c073bdf1" ] (Just (Path.concat [ tmp, "bower-solver-results" ]))
 
     case result of
       Nothing -> throwError $ Exception.error "Could not clone registry index and/or solver results."
@@ -133,6 +141,7 @@ main = launchAff_ do
           Left err -> throwError $ Exception.error err
           Right versions -> pure versions
         pure (Tuple package versions)
+      liftEffect $ log "Finished reading JSON"
       pure $ Map.fromFoldable parsed
 
     pure { index, bowerSolutions }

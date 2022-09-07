@@ -2,9 +2,9 @@ module Registry.Solver where
 
 import Registry.Prelude
 
-import Control.Monad.Error.Class (class MonadError, catchError)
+import Control.Monad.Error.Class (catchError)
 import Control.Monad.Reader (ask)
-import Control.Monad.State (class MonadState, get, modify_, put)
+import Control.Monad.State (get, modify_, put)
 import Control.Plus (empty)
 import Data.Array as Array
 import Data.Array.NonEmpty (foldMap1)
@@ -16,6 +16,8 @@ import Data.Map as Map
 import Data.Newtype (alaF)
 import Data.Semigroup.Foldable (intercalateMap)
 import Data.Set as Set
+import Data.Set.NonEmpty (NonEmptySet)
+import Data.Set.NonEmpty as NES
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Version (Range, Version, intersect, printRange, rangeIncludes)
@@ -48,7 +50,7 @@ printSolverPosition = case _ of
 
 data SolverError
   = NoVersionsInRange PackageName (Set Version) Range SolverPosition
-  | VersionNotInRange PackageName Version Range SolverPosition
+  | VersionNotInRange PackageName (NonEmptySet Version) Range SolverPosition
   | DisjointRanges PackageName Range SolverPosition Range SolverPosition
 
 derive instance Eq SolverError
@@ -58,7 +60,7 @@ instance Show SolverError where
   show a = genericShow a
 
 groupErrors :: NonEmptyArray SolverError -> NonEmptyArray SolverError
-groupErrors = fromGroup <=< NEA.groupAllBy grouping
+groupErrors = compose groupErrors2 $ fromGroup <=< NEA.groupAllBy grouping
   where
   grouping (NoVersionsInRange p1 v1 r1 _) (NoVersionsInRange p2 v2 r2 _) =
     compare p1 p2 <> compare v1 v2 <> compare (printRange r1) (printRange r2)
@@ -80,6 +82,28 @@ groupErrors = fromGroup <=< NEA.groupAllBy grouping
   setPosition (NoVersionsInRange p v r _) = map $ NoVersionsInRange p v r
   setPosition (VersionNotInRange p v r _) = map $ VersionNotInRange p v r
   setPosition (DisjointRanges p r s q _) = map $ DisjointRanges p r s q
+
+groupErrors2 :: NonEmptyArray SolverError -> NonEmptyArray SolverError
+groupErrors2 = map fromGroup <<< NEA.groupAllBy grouping
+  where
+  grouping (VersionNotInRange p1 _ r1 t1) (VersionNotInRange p2 _ r2 t2) =
+    compare p1 p2 <> compare (printRange r1) (printRange r2) <> compare t1 t2
+  grouping (VersionNotInRange _ _ _ _) _ = LT
+  grouping _ (VersionNotInRange _ _ _ _) = GT
+  grouping (NoVersionsInRange p1 v1 r1 q1) (NoVersionsInRange p2 v2 r2 q2) =
+    compare p1 p2 <> compare v1 v2 <> compare (printRange r1) (printRange r2) <> compare q1 q2
+  grouping (NoVersionsInRange _ _ _ _) _ = LT
+  grouping _ (NoVersionsInRange _ _ _ _) = GT
+  grouping (DisjointRanges p1 r1 s1 q1 t1) (DisjointRanges p2 r2 s2 q2 t2) =
+    compare p1 p2 <> compare (printRange r1) (printRange r2) <> compare s1 s2 <> compare (printRange q1) (printRange q2) <> compare t1 t2
+
+  fromGroup :: NonEmptyArray SolverError -> SolverError
+  fromGroup es = setVersions (NEA.head es) $ foldMap1 getVersion es
+
+  setVersions (VersionNotInRange p _ r q) (Just vs) = VersionNotInRange p vs r q
+  setVersions e _ = e
+  getVersion (VersionNotInRange _ vs _ _) = Just vs
+  getVersion _ = Nothing
 
 groupPositions :: NonEmptyArray SolverPosition -> NonEmptyArray SolverPosition
 groupPositions = fromGroup <=< NEA.groupAllBy grouping
@@ -116,7 +140,7 @@ printSolverError = case _ of
     [ "Committed to "
     , PackageName.print name
     , "@"
-    , Version.printVersion version
+    , intercalateMap ", " Version.printVersion version
     , " but the range "
     , Version.printRange range
     , " was also required"
@@ -185,7 +209,7 @@ solveAndValidate index pending = do
     Left es -> Left $ es <#> \r ->
       case r.version of
         Nothing -> NoVersionsInRange r.name Set.empty r.range SolveRoot
-        Just version -> VersionNotInRange r.name version r.range SolveRoot
+        Just version -> VersionNotInRange r.name (NES.singleton version) r.range SolveRoot
     Right _ -> Right sols
 
 exploreGoals :: Int -> Solver Solved
@@ -221,7 +245,7 @@ addConstraint pos name newConstraint = do
   case Map.lookup name solved of
     Just version ->
       if rangeIncludes newConstraint version then pure unit
-      else throwError $ pure $ VersionNotInRange name version newConstraint pos
+      else throwError $ pure $ VersionNotInRange name (NES.singleton version) newConstraint pos
 
     Nothing ->
       case Map.lookup name pending of
