@@ -14,6 +14,7 @@ import Data.FoldableWithIndex (foldMapWithIndex, traverseWithIndex_)
 import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Data.Newtype (alaF)
+import Data.Semigroup.First (First(..))
 import Data.Semigroup.Foldable (intercalateMap)
 import Data.Set as Set
 import Data.Set.NonEmpty (NonEmptySet)
@@ -48,6 +49,39 @@ printSolverPosition = case _ of
     , printSolverPosition pos
     ]
 
+-- Find the shortest path from the initial dependencies to the desired specific
+-- dependencies (package@version)
+minimizeSolverPositions :: Dependencies -> Map PackageName Range -> Map PackageName (Set Version) -> Map (Tuple PackageName Version) (First SolverPosition)
+minimizeSolverPositions index initialGoals errored = go Map.empty (map (NEA.singleton <<< Tuple SolveRoot) initialGoals)
+  where
+  toBeFound :: Set (Tuple PackageName Version)
+  toBeFound = errored # foldMapWithIndex (Set.map <<< Tuple)
+
+  go
+    :: Map (Tuple PackageName Version) (First SolverPosition)
+    -> Map PackageName (NonEmptyArray (Tuple SolverPosition Range))
+    -> Map (Tuple PackageName Version) (First SolverPosition)
+  -- Found enough, go home
+  go found _ | toBeFound `Set.subset` Map.keys found = found
+  -- Add relevant things from `currentGoals`, go to next layer
+  go alreadyFound currentGoals =
+    let
+      foundHere = currentGoals
+        # foldMapWithIndex \package -> foldMap \(Tuple pos range) ->
+            Map.lookup package errored
+              # foldMap (Set.filter (Version.rangeIncludes range))
+              # foldMap \version -> Map.singleton (Tuple package version) (First pos)
+
+      nextGoals :: Map PackageName (NonEmptyArray (Tuple SolverPosition Range))
+      nextGoals = currentGoals
+        # foldMapWithIndex \package -> foldMap \(Tuple pos range) ->
+            Map.lookup package index
+              # maybe Map.empty (Map.filterWithKey (\v _ -> Version.rangeIncludes range v))
+              # foldMapWithIndex \version deps ->
+                  NEA.singleton <<< Tuple (Solving package (pure version) pos) <$> deps
+    in
+      go (alreadyFound <> foundHere) nextGoals
+
 data SolverError
   = NoVersionsInRange PackageName (Set Version) Range SolverPosition
   | VersionNotInRange PackageName (NonEmptySet Version) Range SolverPosition
@@ -58,6 +92,32 @@ derive instance Generic.Generic SolverError _
 
 instance Show SolverError where
   show a = genericShow a
+
+-- Minimize the positions on the errors and group/deduplicate them
+minimizeErrors :: Dependencies -> Map PackageName Range -> NonEmptyArray SolverError -> NonEmptyArray SolverError
+minimizeErrors index goals errs = groupErrors (minimizePosition =<< errs)
+  where
+  collected = errs # foldMap case _ of
+    NoVersionsInRange _ _ _ pos -> collectPackageVersion pos
+    VersionNotInRange _ _ _ pos -> collectPackageVersion pos
+    DisjointRanges _ _ p1 _ p2 ->
+      collectPackageVersion p1 <> collectPackageVersion p2
+
+  collectPackageVersion SolveRoot = mempty
+  collectPackageVersion (Solving package version _) =
+    foldMap (Map.singleton package <<< Set.singleton) version
+
+  minimizePosition (NoVersionsInRange a b c pos) = NoVersionsInRange a b c <$> getMinimized pos
+  minimizePosition (VersionNotInRange a b c pos) = VersionNotInRange a b c <$> getMinimized pos
+  minimizePosition (DisjointRanges a b p1 c p2) = DisjointRanges a b <$> getMinimized p1 <@> c <*> getMinimized p2
+
+  minimized = minimizeSolverPositions index goals collected
+
+  lookupMinimized package versions = map sequence $ versions # traverse
+    \version -> Map.lookup (Tuple package version) minimized
+  getMinimized (Solving package versions _)
+    | Just (First pos) <- lookupMinimized package versions = Solving package versions <$> NEA.nub pos
+  getMinimized pos = pure pos
 
 groupErrors :: NonEmptyArray SolverError -> NonEmptyArray SolverError
 groupErrors = compose groupErrors2 $ fromGroup <=< NEA.groupAllBy grouping
@@ -198,7 +258,7 @@ validate index sols = maybe (Right unit) Left $ NEA.fromArray
         version -> pure { name, range, version }
 
 solve :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
-solve index pending = lmap groupErrors
+solve index pending = lmap (minimizeErrors index pending)
   case runRWSE index { pending: map (Tuple SolveRoot) pending, solved: Map.empty } (exploreGoals 20) of
     _ /\ r /\ _ -> r
 
