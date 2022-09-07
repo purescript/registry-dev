@@ -552,7 +552,7 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
 
   -- Now that we have the package source contents we can verify we can compile
   -- the package. We skip failures when the package is a legacy package.
-  compilationResult <- compilePackage { packageSourceDir, buildPlan }
+  compilationResult <- compilePackage { packageSourceDir: packageDirectory, buildPlan }
   case compilationResult of
     Right _ -> pure unit
     Left error
@@ -597,7 +597,7 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
 
   unless (source == Importer || isLeft compilationResult) do
     log "Uploading to Pursuit"
-    publishToPursuit { packageSourceDir, buildPlan, dependenciesDir: Path.concat [ packageSourceDir, ".registry" ] }
+    publishToPursuit { packageSourceDir: packageDirectory, buildPlan, dependenciesDir: Path.concat [ packageDirectory, ".registry" ] }
     comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
 verifyManifest :: { metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
