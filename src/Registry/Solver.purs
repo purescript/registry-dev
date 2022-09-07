@@ -154,7 +154,7 @@ instance Semigroup (CollectErrors a) where
     catchError fa \e1 -> do
       put s
       catchError fb \e2 -> do
-        throwError (e1 <> e2)
+        throwError (groupErrors $ e1 <> e2)
 
 oneOfMap1 :: forall a b. (a -> Solver b) -> NonEmptyArray a -> Solver b
 oneOfMap1 = alaF CollectErrors foldMap1
