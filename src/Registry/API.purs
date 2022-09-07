@@ -14,7 +14,6 @@ import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
-import Data.Either (isLeft)
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Generic.Rep as Generic
@@ -767,7 +766,7 @@ compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
       let (packages :: Array _) = Map.toUnfoldable resolved
       for_ packages (uncurry (installPackage tmp))
       compilerOutput <- liftAff $ Purs.callCompiler
-        { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ tmp, "*/src/**/*.purs" ] }
+        { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ tmp, "*/src/**/*.purs" ] ] }
         , version: Version.printVersion plan.compiler
         , cwd: Just packageSourceDir
         }
