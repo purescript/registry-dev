@@ -557,7 +557,7 @@ checkBuildPlanToResolutions = do
 
 compilerVersions :: Spec.Spec Unit
 compilerVersions = do
-  traverse_ testVersion [ "0.13.0", "0.14.0", "0.14.7" ]
+  traverse_ testVersion [ "0.13.0", "0.14.0", "0.14.7", "0.15.4" ]
   traverse_ testMissingVersion [ "0.13.1", "0.14.8" ]
   where
   testVersion version =
