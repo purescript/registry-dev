@@ -549,7 +549,7 @@ readLegacyRegistryFile :: LegacyRegistryFile -> RegistryM (Map String GitHub.Pac
 readLegacyRegistryFile sourceFile = do
   { registry } <- ask
   let path = API.legacyRegistryFilePath registry sourceFile
-  legacyPackages <- liftAff $ Json.readJsonFile (Path.concat [ registry, path ])
+  legacyPackages <- liftAff $ Json.readJsonFile path
   case legacyPackages of
     Left err -> do
       throwWithComment $ String.joinWith "\n"
