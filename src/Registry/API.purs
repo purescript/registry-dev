@@ -476,13 +476,12 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
   { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir, ref: updateRef, location: inputMetadata.location }
 
-  let absoluteFolderPath = Path.concat [ tmpDir, packageDirectory ]
-  let manifestPath = Path.concat [ absoluteFolderPath, "purs.json" ]
+  let manifestPath = Path.concat [ packageDirectory, "purs.json" ]
 
-  log $ "Package available in " <> absoluteFolderPath
+  log $ "Package available in " <> packageDirectory
 
   log "Verifying that the package contains a `src` directory"
-  whenM (liftAff $ map (Array.null <<< _.succeeded) $ FastGlob.match absoluteFolderPath [ "src/**/*.purs" ]) do
+  whenM (liftAff $ map (Array.null <<< _.succeeded) $ FastGlob.match packageDirectory [ "src/**/*.purs" ]) do
     throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
@@ -547,7 +546,7 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
   -- We copy over all files that are always included (ie. src dir, purs.json file),
   -- and any files the user asked for via the 'files' key, and remove all files
   -- that should never be included (even if the user asked for them).
-  copyPackageSourceFiles manifestRecord.files { source: absoluteFolderPath, destination: packageSourceDir }
+  copyPackageSourceFiles manifestRecord.files { source: packageDirectory, destination: packageSourceDir }
   liftAff $ removeIgnoredTarballFiles packageSourceDir
   let tarballPath = packageSourceDir <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname }
@@ -1072,7 +1071,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
         publishedTime <- Except.runExceptT (Git.gitGetRefTime ref (Path.concat [ tmpDir, repo ])) >>= case _ of
           Left error -> Aff.throwError $ Aff.error $ "Failed to get published time: " <> error
           Right value -> pure value
-        pure { packageDirectory: repo, publishedTime }
+        pure { packageDirectory: Path.concat [ tmpDir, repo ], publishedTime }
 
       PursPublish -> do
         { octokit, cache } <- ask
