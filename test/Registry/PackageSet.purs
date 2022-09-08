@@ -220,32 +220,31 @@ legacyPackageSetJson =
 
 legacyPackageSetDhall :: String
 legacyPackageSetDhall =
-  """{
-  `assert` =
-    { dependencies = [ "console", "effect", "prelude" ]
-    , repo = "https://github.com/purescript/purescript-assert.git"
-    , version = "v6.0.0"
-    }
-  , console =
-    { dependencies = [ "effect", "prelude" ]
-    , repo = "https://github.com/purescript/purescript-console.git"
-    , version = "v6.0.0"
-    }
-  , effect =
-    { dependencies = [ "prelude" ]
-    , repo = "https://github.com/purescript/purescript-effect.git"
-    , version = "v4.0.0"
-    }
-  , metadata =
-    { dependencies = [] : List Text
-    , repo = "https://github.com/purescript/purescript-metadata.git"
-    , version = "v0.15.2"
-    }
-  , prelude =
-    { dependencies = [] : List Text
-    , repo = "https://github.com/purescript/purescript-prelude.git"
-    , version = "v6.0.0"
-    }
+  """{ `assert` =
+  { dependencies = [ "console", "effect", "prelude" ]
+  , repo = "https://github.com/purescript/purescript-assert.git"
+  , version = "v6.0.0"
+  }
+, console =
+  { dependencies = [ "effect", "prelude" ]
+  , repo = "https://github.com/purescript/purescript-console.git"
+  , version = "v6.0.0"
+  }
+, effect =
+  { dependencies = [ "prelude" ]
+  , repo = "https://github.com/purescript/purescript-effect.git"
+  , version = "v4.0.0"
+  }
+, metadata =
+  { dependencies = [] : List Text
+  , repo = "https://github.com/purescript/purescript-metadata.git"
+  , version = "v0.15.2"
+  }
+, prelude =
+  { dependencies = [] : List Text
+  , repo = "https://github.com/purescript/purescript-prelude.git"
+  , version = "v6.0.0"
+  }
 }"""
 
 assert :: Tuple PackageName Version
