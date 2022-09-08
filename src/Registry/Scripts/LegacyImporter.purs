@@ -30,7 +30,7 @@ import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
 import Parsing as Parsing
-import Registry.API (Source(..))
+import Registry.API (LegacyRegistryFile(..), Source(..))
 import Registry.API as API
 import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
@@ -146,7 +146,7 @@ main = launchAff_ do
         Index.readRegistryIndex registryIndexPath
 
     log "Reading legacy registry..."
-    legacyRegistry <- liftAff readLegacyRegistryFiles
+    legacyRegistry <- readLegacyRegistryFiles
 
     log "Importing legacy registry packages..."
     importedIndex <- importLegacyRegistry existingRegistry legacyRegistry
@@ -535,23 +535,25 @@ formatVersionValidationError { error, reason } = case error of
 
 type LegacyRegistry = Map RawPackageName GitHub.PackageURL
 
--- | Read the legacy registry files stored in the root of the registry-dev.
+-- | Read the legacy registry files stored in the root of the registry repo.
 -- | Package names have their 'purescript-' prefix trimmed.
-readLegacyRegistryFiles :: Aff LegacyRegistry
+readLegacyRegistryFiles :: RegistryM LegacyRegistry
 readLegacyRegistryFiles = do
-  bowerPackages <- readLegacyRegistryFile "bower-packages.json"
-  registryPackages <- readLegacyRegistryFile "new-packages.json"
+  bowerPackages <- readLegacyRegistryFile BowerPackages
+  registryPackages <- readLegacyRegistryFile NewPackages
   let allPackages = Map.union bowerPackages registryPackages
   let fixupNames = mapKeys (RawPackageName <<< stripPureScriptPrefix)
   pure $ fixupNames allPackages
 
-readLegacyRegistryFile :: String -> Aff (Map String GitHub.PackageURL)
+readLegacyRegistryFile :: LegacyRegistryFile -> RegistryM (Map String GitHub.PackageURL)
 readLegacyRegistryFile sourceFile = do
-  legacyPackages <- Json.readJsonFile sourceFile
+  { registry } <- ask
+  let path = API.legacyRegistryFilePath registry sourceFile
+  legacyPackages <- liftAff $ Json.readJsonFile (Path.concat [ registry, path ])
   case legacyPackages of
     Left err -> do
-      throwError $ Exception.error $ String.joinWith "\n"
-        [ "Decoding registry file from " <> sourceFile <> "failed:"
+      throwWithComment $ String.joinWith "\n"
+        [ "Decoding registry file from " <> path <> "failed:"
         , err
         ]
     Right packages -> pure packages
