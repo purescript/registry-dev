@@ -39,9 +39,6 @@ jobs:
           extra_nix_config: |
             access-tokens = github.com=${{ env.GITHUB_TOKEN }}
 
-      # Pro-tempore checks, should go away once new registry is in place
-      - run: nix develop --command 'registry-verify-unique'
-
       # Checks for the Registry Draft
       - name: "Check that all Dhall compiles, and examples correctly conform to a Manifest"
         run: nix develop --command 'registry-verify-dhall'

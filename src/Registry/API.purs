@@ -14,7 +14,6 @@ import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
-import Data.Either (isLeft)
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Generic.Rep as Generic
@@ -111,6 +110,19 @@ main = launchAff_ $ do
       cache <- Cache.useCache
       packagesMetadata <- liftEffect $ Ref.new Map.empty
       runRegistryM (mkEnv octokit cache packagesMetadata issue username) do
+        comment $ case operation of
+          Addition { packageName, newRef } ->
+            "Adding package `" <> PackageName.print packageName <> "` at the ref `" <> newRef <> "`."
+          Update { packageName, updateRef } ->
+            "Updating package `" <> PackageName.print packageName <> "` at the ref `" <> updateRef <> "`."
+          PackageSetUpdate _ ->
+            "Processing package set update."
+          Authenticated (AuthenticatedData { payload }) -> case payload of
+            Unpublish { packageName, unpublishVersion } ->
+              "Unpublishing `" <> PackageName.print packageName <> "` at version `" <> Version.printVersion unpublishVersion <> "`."
+            Transfer { packageName } ->
+              "Transferring `" <> PackageName.print packageName <> "`."
+
         fetchRegistry
         fetchRegistryIndex
         fillMetadataRef
@@ -440,7 +452,8 @@ runOperation source operation = case operation of
                   ]
                 Right _ -> do
                   comment "Successfully transferred your package!"
-                  liftAff (Except.runExceptT (syncLegacyRegistry packageName newPackageLocation)) >>= case _ of
+                  registryPath <- asks _.registry
+                  liftAff (Except.runExceptT (syncLegacyRegistry registryPath packageName newPackageLocation)) >>= case _ of
                     Left err ->
                       throwWithComment $ "Failed to synchronize with legacy registry (cc: @purescript/packaging): " <> err
                     Right _ ->
@@ -464,13 +477,12 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
   { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir, ref: updateRef, location: inputMetadata.location }
 
-  let absoluteFolderPath = Path.concat [ tmpDir, packageDirectory ]
-  let manifestPath = Path.concat [ absoluteFolderPath, "purs.json" ]
+  let manifestPath = Path.concat [ packageDirectory, "purs.json" ]
 
-  log $ "Package available in " <> absoluteFolderPath
+  log $ "Package available in " <> packageDirectory
 
   log "Verifying that the package contains a `src` directory"
-  whenM (liftAff $ map (Array.null <<< _.succeeded) $ FastGlob.match absoluteFolderPath [ "src/**/*.purs" ]) do
+  whenM (liftAff $ map (Array.null <<< _.succeeded) $ FastGlob.match packageDirectory [ "src/**/*.purs" ]) do
     throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
@@ -535,7 +547,7 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
   -- We copy over all files that are always included (ie. src dir, purs.json file),
   -- and any files the user asked for via the 'files' key, and remove all files
   -- that should never be included (even if the user asked for them).
-  copyPackageSourceFiles manifestRecord.files { source: absoluteFolderPath, destination: packageSourceDir }
+  copyPackageSourceFiles manifestRecord.files { source: packageDirectory, destination: packageSourceDir }
   liftAff $ removeIgnoredTarballFiles packageSourceDir
   let tarballPath = packageSourceDir <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname }
@@ -552,13 +564,18 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
 
   -- Now that we have the package source contents we can verify we can compile
   -- the package. We skip failures when the package is a legacy package.
-  compilationResult <- compilePackage { packageSourceDir, buildPlan }
+  compilationResult <- compilePackage { packageSourceDir: packageDirectory, buildPlan }
   case compilationResult of
     Right _ -> pure unit
     Left error
-      | source == Importer -> pure unit
-      | source == API && isLegacyImport -> pure unit
-      | otherwise -> throwWithComment error
+      | source == Importer -> do
+          log error
+          log "Failed to compile, but continuing because the API source was the importer."
+      | source == API && isLegacyImport -> do
+          log error
+          log "Failed to compile, but continuing because this is a legacy package."
+      | otherwise ->
+          throwWithComment error
 
   log "Uploading package to the storage backend..."
   let uploadPackageInfo = { name: packageName, version: newVersion }
@@ -577,7 +594,8 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
 
   closeIssue
 
-  liftAff (Except.runExceptT (syncLegacyRegistry packageName newMetadata.location)) >>= case _ of
+  registryPath <- asks _.registry
+  liftAff (Except.runExceptT (syncLegacyRegistry registryPath packageName newMetadata.location)) >>= case _ of
     Left err -> throwWithComment $ "Failed to synchronize with legacy registry (cc: @purescript/packaging): " <> err
     Right _ -> pure unit
 
@@ -595,10 +613,13 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
       ]
     Right _ -> pure unit
 
-  unless (source == Importer || isLeft compilationResult) do
-    log "Uploading to Pursuit"
-    publishToPursuit { packageSourceDir, buildPlan, dependenciesDir: Path.concat [ packageSourceDir, ".registry" ] }
-    comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+  when (source == API) $ case compilationResult of
+    Left error ->
+      comment $ Array.fold [ "Skipping Pursuit publishing because this package failed to compile:\n\n", error ]
+    Right dependenciesDir -> do
+      log "Uploading to Pursuit"
+      publishToPursuit { packageSourceDir: packageDirectory, buildPlan, dependenciesDir }
+      comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
 verifyManifest :: { metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
 verifyManifest { metadata, manifest } = do
@@ -749,28 +770,31 @@ type CompilePackage =
   , buildPlan :: BuildPlan
   }
 
-compilePackage :: CompilePackage -> RegistryM (Either String Unit)
+compilePackage :: CompilePackage -> RegistryM (Either String FilePath)
 compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
-  let dependenciesDir = Path.concat [ packageSourceDir, ".registry" ]
+  tmp <- liftEffect $ Tmp.mkTmpDir
+  let dependenciesDir = Path.concat [ tmp, ".registry" ]
   liftAff $ FS.Extra.ensureDirectory dependenciesDir
   case plan.resolutions of
     Nothing -> do
+      log "Compiling..."
       compilerOutput <- liftAff $ Purs.callCompiler
         { command: Purs.Compile { globs: [ "src/**/*.purs" ] }
         , version: Version.printVersion plan.compiler
         , cwd: Just packageSourceDir
         }
-      pure (handleCompiler compilerOutput)
+      pure (handleCompiler dependenciesDir compilerOutput)
 
     Just resolved -> do
       let (packages :: Array _) = Map.toUnfoldable resolved
       for_ packages (uncurry (installPackage dependenciesDir))
+      log "Compiling..."
       compilerOutput <- liftAff $ Purs.callCompiler
-        { command: Purs.Compile { globs: [ "src/**/*.purs", ".registry/*/src/**/*.purs" ] }
+        { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ dependenciesDir, "*/src/**/*.purs" ] ] }
         , version: Version.printVersion plan.compiler
         , cwd: Just packageSourceDir
         }
-      pure (handleCompiler compilerOutput)
+      pure (handleCompiler dependenciesDir compilerOutput)
   where
   -- We fetch every dependency at its resolved version, unpack the tarball, and
   -- store the resulting source code in a specified directory for dependencies.
@@ -790,9 +814,9 @@ compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
     liftAff $ FS.unlink filepath
     log $ "Installed " <> PackageName.print packageName <> "@" <> Version.printVersion version
 
-  handleCompiler = case _ of
+  handleCompiler tmp = case _ of
     Right _ ->
-      Right unit
+      Right tmp
     Left MissingCompiler -> Left $ Array.fold
       [ "Compilation failed because the build plan compiler version "
       , Version.printVersion plan.compiler
@@ -1049,7 +1073,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
         publishedTime <- Except.runExceptT (Git.gitGetRefTime ref (Path.concat [ tmpDir, repo ])) >>= case _ of
           Left error -> Aff.throwError $ Aff.error $ "Failed to get published time: " <> error
           Right value -> pure value
-        pure { packageDirectory: repo, publishedTime }
+        pure { packageDirectory: Path.concat [ tmpDir, repo ], publishedTime }
 
       PursPublish -> do
         { octokit, cache } <- ask
@@ -1352,21 +1376,29 @@ data LegacyRegistryFile = BowerPackages | NewPackages
 
 derive instance Eq LegacyRegistryFile
 
-legacyRegistryFilePath :: LegacyRegistryFile -> FilePath
-legacyRegistryFilePath = case _ of
-  BowerPackages -> "bower-packages.json"
-  NewPackages -> "new-packages.json"
+instance Show LegacyRegistryFile where
+  show = case _ of
+    BowerPackages -> "BowerPackages"
+    NewPackages -> "NewPackages"
+
+legacyRegistryFilePath :: FilePath -> LegacyRegistryFile -> FilePath
+legacyRegistryFilePath registryPath file = Path.concat
+  [ registryPath
+  , case file of
+      BowerPackages -> "bower-packages.json"
+      NewPackages -> "new-packages.json"
+  ]
 
 -- | A helper function that syncs API operations to the new-packages.json or
 -- | bower-packages.json files, namely registrations and transfers.
-syncLegacyRegistry :: PackageName -> Location -> ExceptT String Aff Unit
-syncLegacyRegistry package location = do
+syncLegacyRegistry :: FilePath -> PackageName -> Location -> ExceptT String Aff Unit
+syncLegacyRegistry registry package location = do
   packageUrl <- case location of
     GitHub { owner, repo } -> pure $ GitHub.PackageURL $ Array.fold [ "https://github.com/", owner, "/", repo, ".git" ]
     _ -> throwError "Packages must come from GitHub."
 
-  let newPackagesPath = legacyRegistryFilePath NewPackages
-  let bowerPackagesPath = legacyRegistryFilePath BowerPackages
+  let newPackagesPath = legacyRegistryFilePath registry NewPackages
+  let bowerPackagesPath = legacyRegistryFilePath registry BowerPackages
 
   newPackages <- Except.ExceptT $ Json.readJsonFile newPackagesPath
   bowerPackages <- Except.ExceptT $ Json.readJsonFile bowerPackagesPath
@@ -1391,20 +1423,20 @@ syncLegacyRegistry package location = do
 
   for_ targetFile \target -> do
     let sourcePackages = if target == NewPackages then newPackages else bowerPackages
-    let sourceFile = legacyRegistryFilePath target
+    let sourceFile = if target == NewPackages then newPackagesPath else bowerPackagesPath
     let packages = Map.insert rawPackageName packageUrl sourcePackages
     liftAff $ Json.writeJsonFile sourceFile packages
     -- A simple cehck to verify that a change was indeed written to disk, before
     -- we attempt to commit and push.
-    Git.runGitSilent [ "diff", "--stat" ] Nothing >>= case _ of
+    Git.runGitSilent [ "diff", "--stat" ] (Just registry) >>= case _ of
       files | String.contains (String.Pattern sourceFile) files -> do
-        GitHubToken token <- Git.configurePacchettiBotti Nothing
-        Git.runGit_ [ "pull" ] Nothing
-        Git.runGit_ [ "add", sourceFile ] Nothing
+        GitHubToken token <- Git.configurePacchettiBotti (Just registry)
+        Git.runGit_ [ "pull" ] (Just registry)
+        Git.runGit_ [ "add", sourceFile ] (Just registry)
         let message = Array.fold [ "Mirror registry API operation to ", sourceFile ]
-        Git.runGit_ [ "commit", "-m", message ] Nothing
-        let upstreamRepo = Constants.registryDevRepo.owner <> "/" <> Constants.registryDevRepo.repo
+        Git.runGit_ [ "commit", "-m", message ] (Just registry)
+        let upstreamRepo = Constants.registryRepo.owner <> "/" <> Constants.registryRepo.repo
         let origin = "https://pacchettibotti:" <> token <> "@github.com" <> upstreamRepo <> ".git"
-        void $ Git.runGitSilent [ "push", origin, "master" ] Nothing
+        void $ Git.runGitSilent [ "push", origin, "main" ] Nothing
       _ ->
         log "No changes to commit."

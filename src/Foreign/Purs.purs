@@ -75,7 +75,7 @@ data PursCommand
 
 printCommand :: PursCommand -> Array String
 printCommand = case _ of
-  Version -> [ "--version", "--json-errors" ]
+  Version -> [ "--version" ]
   Compile { globs } -> [ "compile" ] <> globs <> [ "--json-errors" ]
   Publish { resolutions } -> [ "publish", "--manifest", "purs.json", "--resolutions", resolutions ]
 

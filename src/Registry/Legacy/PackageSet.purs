@@ -167,7 +167,7 @@ printDhall (LegacyPackageSet entries) = do
   where
   printPackageSet :: forall a. Array (Tuple PackageName LegacyPackageSetEntry) -> Dodo.Doc a
   printPackageSet packages =
-    Dodo.Common.jsCurlies
+    Dodo.Common.pursCurlies
       $ Dodo.foldWithSeparator Dodo.Common.leadingComma
       $ map printPackage packages
 
@@ -199,7 +199,7 @@ printDhall (LegacyPackageSet entries) = do
 
   breakAlign :: forall a. Dodo.Doc a -> Dodo.Doc a
   breakAlign doc =
-    Dodo.flexGroup (Dodo.spaceBreak <> Dodo.align 4 doc)
+    Dodo.flexGroup (Dodo.spaceBreak <> Dodo.align 2 doc)
 
   printDependencies :: forall a. Array PackageName -> Dodo.Doc a
   printDependencies dependencies =

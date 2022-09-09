@@ -4,6 +4,7 @@ import Registry.Prelude
 
 import Affjax as Http
 import Control.Monad.Except as Except
+import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Map as Map
 import Data.String as String
@@ -17,7 +18,7 @@ import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
-import Registry.API (Source(..))
+import Registry.API (LegacyRegistryFile(..), Source(..))
 import Registry.API as API
 import Registry.Cache as Cache
 import Registry.Constants as Constants
@@ -64,14 +65,13 @@ main = launchAff_ do
   RegistryM.runRegistryM env do
     API.fetchRegistry
     API.fillMetadataRef
-    processLegacyRegistry "bower-packages.json"
-    processLegacyRegistry "new-packages.json"
+    for_ [ BowerPackages, NewPackages ] processLegacyRegistry
     log "Done!"
 
-processLegacyRegistry :: FilePath -> RegistryM Unit
+processLegacyRegistry :: LegacyRegistryFile -> RegistryM Unit
 processLegacyRegistry legacyFile = do
-  log $ Array.fold [ "Reading legacy registry file (", legacyFile, ")" ]
-  packages <- liftAff $ LegacyImporter.readLegacyRegistryFile legacyFile
+  log $ Array.fold [ "Reading legacy registry file (", show legacyFile, ")" ]
+  packages <- LegacyImporter.readLegacyRegistryFile legacyFile
   log "Reading latest locations..."
   locations <- latestLocations packages
   let needsTransfer = Map.catMaybes locations
@@ -80,8 +80,7 @@ processLegacyRegistry legacyFile = do
     n -> log $ Array.fold [ show n, " packages need transferring." ]
   newPackages <- transferAll packages needsTransfer
   log "Writing legacy registry file..."
-  liftAff (writeLegacyRegistryFile legacyFile newPackages)
-  liftAff (commitLegacyRegistryFile legacyFile) >>= case _ of
+  commitLegacyRegistryFile newPackages legacyFile >>= case _ of
     Left err -> throwWithComment err
     Right _ -> pure unit
 
@@ -188,21 +187,22 @@ locationToPackageUrl = case _ of
   Git _ ->
     unsafeCrashWith "Git urls cannot be registered."
 
-writeLegacyRegistryFile :: FilePath -> Map String GitHub.PackageURL -> Aff Unit
-writeLegacyRegistryFile sourceFile packages = Json.writeJsonFile sourceFile packages
-
-commitLegacyRegistryFile :: FilePath -> Aff (Either String Unit)
-commitLegacyRegistryFile sourceFile = Except.runExceptT do
-  Git.runGitSilent [ "diff", "--stat" ] Nothing >>= case _ of
-    files | String.contains (String.Pattern sourceFile) files -> do
-      GitHubToken token <- Git.configurePacchettiBotti Nothing
-      Git.runGit_ [ "pull" ] Nothing
-      Git.runGit_ [ "add", sourceFile ] Nothing
-      log "Committing to registry..."
-      let message = Array.fold [ "Sort ", sourceFile, " and transfer packages that have moved repositories." ]
-      Git.runGit_ [ "commit", "-m", message ] Nothing
-      let upstreamRepo = Constants.registryDevRepo.owner <> "/" <> Constants.registryDevRepo.repo
-      let origin = "https://pacchettibotti:" <> token <> "@github.com" <> upstreamRepo <> ".git"
-      void $ Git.runGitSilent [ "push", origin, "master" ] Nothing
-    _ ->
-      log "No changes to commit."
+commitLegacyRegistryFile :: Map Http.URL GitHub.PackageURL -> LegacyRegistryFile -> RegistryM (Either String Unit)
+commitLegacyRegistryFile packages file = do
+  { registry } <- ask
+  let registryFilePath = API.legacyRegistryFilePath registry file
+  liftAff $ Except.runExceptT do
+    liftAff $ Json.writeJsonFile registryFilePath packages
+    Git.runGitSilent [ "diff", "--stat" ] (Just registry) >>= case _ of
+      files | String.contains (String.Pattern (Path.basename registryFilePath)) files -> do
+        GitHubToken token <- Git.configurePacchettiBotti (Just registry)
+        Git.runGit_ [ "pull" ] (Just registry)
+        Git.runGit_ [ "add", registryFilePath ] (Just registry)
+        log "Committing to registry..."
+        let message = Array.fold [ "Sort ", registryFilePath, " and transfer packages that have moved repositories." ]
+        Git.runGit_ [ "commit", "-m", message ] (Just registry)
+        let upstreamRepo = Constants.registryRepo.owner <> "/" <> Constants.registryRepo.repo
+        let origin = "https://pacchettibotti:" <> token <> "@github.com" <> upstreamRepo <> ".git"
+        void $ Git.runGitSilent [ "push", origin, "main" ] (Just registry)
+      _ ->
+        log "No changes to commit."

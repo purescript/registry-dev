@@ -133,28 +133,6 @@
             spago run -m Registry.Scripts.PackageTransferrer
           '';
 
-          # This script checks that there are no duplicate entries in the two json files listing packages
-          registry-verify-unique = ''
-            cd $(git rev-parse --show-toplevel)
-            set -euxo pipefail
-
-            total=$(cat bower-packages.json new-packages.json | jq -s "add | length")
-            unique_keys=$(cat bower-packages.json new-packages.json | jq -s "add | keys | unique | length")
-            unique_values=$(cat bower-packages.json new-packages.json | jq -s "add | to_entries | map(.value) | unique | length")
-
-            if [ "$total" -ne "$unique_keys" ]; then
-              echo "New packages already exist in the registry!"
-              exit 1
-            fi
-
-            if [ "$total" -ne "$unique_values" ]; then
-              echo "New package URL already exists in the registry!"
-              exit 1
-            fi
-
-            exit 0
-          '';
-
           # This script verifies that
           # - all the dhall we have in the repo actually compiles
           # - all the example manifests actually typecheck as Manifests
