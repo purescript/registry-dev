@@ -36,6 +36,7 @@ import Node.Path as Path
 import Parsing as Parsing
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
+import Registry.Constants as Constants
 import Registry.Index (RegistryIndex)
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
@@ -226,12 +227,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
 
   { octokit, cache } <- ask
 
-  -- TODO: FIXME: Replace this once we no longer rely on the 'preview' repository.
-  -- Should be 'Constants.legacyPackageSetsRepo' at that point.
-  let legacyPackageSetsRepo = { owner: "purescript", repo: "package-sets-preview" }
-  let packageSetsPath = Path.concat [ tmp, legacyPackageSetsRepo.repo ]
-
-  packageSetsTags <- liftAff (Except.runExceptT (GitHub.listTags octokit cache legacyPackageSetsRepo)) >>= case _ of
+  packageSetsTags <- liftAff (Except.runExceptT (GitHub.listTags octokit cache Constants.legacyPackageSetsRepo)) >>= case _ of
     Left error -> do
       let formatted = GitHub.printGitHubError error
       RegistryM.throwWithComment $ "Could not fetch tags for the package-sets repo: " <> formatted
@@ -242,7 +238,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
   when (Set.member printedTag packageSetsTags) do
     RegistryM.throwWithComment $ "Package set tag " <> printedTag <> "already exists, aborting..."
 
-  let packageSetsUrl = "https://github.com/" <> legacyPackageSetsRepo.owner <> "/" <> legacyPackageSetsRepo.repo <> ".git"
+  let packageSetsUrl = "https://github.com/" <> Constants.legacyPackageSetsRepo.owner <> "/" <> Constants.legacyPackageSetsRepo.repo <> ".git"
   liftAff (Except.runExceptT (Git.runGit [ "clone", packageSetsUrl, "--depth", "1" ] (Just tmp))) >>= case _ of
     Left error -> RegistryM.throwWithComment error
     Right _ -> pure unit
@@ -258,6 +254,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
   -- * src/packages.dhall
   --   stores the Dhall representation of the latest package set
 
+  let packageSetsPath = Path.concat [ tmp, Constants.legacyPackageSetsRepo.repo ]
   let latestSetsPath = Path.concat [ packageSetsPath, "latest-compatible-sets.json" ]
   latestCompatibleSets :: LatestCompatibleSets <- do
     latestSets <- liftAff (Json.readJsonFile latestSetsPath) >>= case _ of
@@ -296,7 +293,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
       Git.runGit_ [ "add", path ] (Just packageSetsPath)
     let commitMessage = "Update to the " <> Version.printVersion upstream <> " package set."
     Git.runGit_ [ "commit", "-m", commitMessage ] (Just packageSetsPath)
-    let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> legacyPackageSetsRepo.owner <> "/" <> legacyPackageSetsRepo.repo <> ".git"
+    let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> Constants.legacyPackageSetsRepo.owner <> "/" <> Constants.legacyPackageSetsRepo.repo <> ".git"
     void $ Git.runGitSilent [ "push", origin, "master" ] (Just packageSetsPath)
     for_ tagsToPush \pushTag -> do
       Git.runGit_ [ "tag", pushTag ] (Just packageSetsPath)
