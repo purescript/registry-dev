@@ -267,7 +267,9 @@ runOperation source operation = case operation of
         pure do
           newVersion <- packageVersion
           prevVersion <- Map.lookup packageName prevPackages
-          guard (prevVersion <= newVersion)
+          -- We want to fail if the existing version is greater than the
+          -- new proposed version.
+          guard (prevVersion > newVersion)
           pure (Tuple packageName { old: prevVersion, new: newVersion })
 
     when (not (Array.null downgradedPackages)) do
