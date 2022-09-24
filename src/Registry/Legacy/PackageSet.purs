@@ -4,6 +4,7 @@ module Registry.Legacy.PackageSet
   , LegacyPackageSet(..)
   , LegacyPackageSetEntry
   , PscTag(..)
+  , filterLegacyPackageSets
   , fromPackageSet
   , mirrorLegacySet
   , parsePscTag
@@ -18,8 +19,10 @@ import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Compactable (separate)
 import Data.DateTime (DateTime)
+import Data.Filterable (filterMap)
 import Data.Formatter.DateTime (FormatterCommand(..))
 import Data.Formatter.DateTime as Format.DateTime
+import Data.Formatter.DateTime as Formatter.DateTime
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.List (List(..), (:))
 import Data.Map as Map
@@ -44,6 +47,7 @@ import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM)
 import Registry.RegistryM as RegistryM
 import Registry.Schema (Location(..), Manifest(..), Metadata, PackageSet(..))
+import Registry.Schema as Schema
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -231,7 +235,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
     Left error -> do
       let formatted = GitHub.printGitHubError error
       RegistryM.throwWithComment $ "Could not fetch tags for the package-sets repo: " <> formatted
-    Right tags -> pure $ Set.fromFoldable $ map _.name tags
+    Right tags -> pure $ Set.fromFoldable $ filterLegacyPackageSets tags
 
   let printedTag = printPscTag tag
 
@@ -302,3 +306,15 @@ mirrorLegacySet { tag, packageSet, upstream } = do
   case result of
     Left error -> RegistryM.throwWithComment $ "Package set mirroring failed: " <> error
     Right _ -> pure unit
+
+filterLegacyPackageSets :: Array GitHub.Tag -> Array String
+filterLegacyPackageSets tags = do
+  let
+    -- Package sets after this date are published by the registry, and are
+    -- therefore not legacy package sets.
+    lastLegacyDate = unsafeFromRight $ Formatter.DateTime.unformat Schema.dateFormatter "2022-09-01"
+    legacyTag { name } = case parsePscTag name of
+      Right (PscTag { date }) | date <= lastLegacyDate -> Just name
+      _ -> Nothing
+
+  filterMap legacyTag tags

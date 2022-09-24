@@ -306,17 +306,7 @@ fetchLegacyPackageSets = do
   result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache Constants.legacyPackageSetsRepo
   tags <- case result of
     Left err -> throwWithComment (GitHub.printGitHubError err)
-    Right tags -> pure do
-      let
-        -- Package sets after this date are published by the registry, and are
-        -- therefore not legacy package sets.
-        lastLegacyDate = unsafeFromRight $ Formatter.DateTime.unformat dateFormatter "2022-09-01"
-        legacyTag { name } = case Legacy.PackageSet.parsePscTag name of
-          Right (PscTag { date }) | date <= lastLegacyDate -> Just name
-          _ -> Nothing
-
-      filterMap legacyTag tags
-
+    Right tags -> pure $ Legacy.PackageSet.filterLegacyPackageSets tags
   let
     convertPackageSet :: LegacyPackageSet -> LegacyPackageSetEntries
     convertPackageSet (LegacyPackageSet packages) =
@@ -373,3 +363,15 @@ fetchLegacyPackageSets = do
         pure contents.value
 
   pure legacySets
+
+filterLegacyPackageSets :: Array GitHub.Tag -> Array String
+filterLegacyPackageSets tags = do
+  let
+    -- Package sets after this date are published by the registry, and are
+    -- therefore not legacy package sets.
+    lastLegacyDate = unsafeFromRight $ Formatter.DateTime.unformat dateFormatter "2022-09-01"
+    legacyTag { name } = case Legacy.PackageSet.parsePscTag name of
+      Right (PscTag { date }) | date <= lastLegacyDate -> Just name
+      _ -> Nothing
+
+  filterMap legacyTag tags
