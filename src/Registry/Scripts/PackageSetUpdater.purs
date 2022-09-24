@@ -91,8 +91,8 @@ main = Aff.launchAff_ do
 
     registryIndexPath <- asks _.registryIndex
     registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
-
     prevPackageSet <- PackageSet.readLatestPackageSet
+    PackageSet.validatePackageSet registryIndex prevPackageSet
 
     metadata <- readPackagesMetadata
     recentUploads <- findRecentUploads metadata (Hours 24.0)

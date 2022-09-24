@@ -294,6 +294,8 @@ runOperation source operation = case operation of
     -- a version that isn't supported by the registry then an 'unsupported
     -- compiler' error will be thrown.
     registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
+    PackageSet.validatePackageSet registryIndex latestPackageSet
+
     let candidates = PackageSet.validatePackageSetCandidates registryIndex latestPackageSet packages
 
     unless (Map.isEmpty candidates.rejected) do
@@ -305,7 +307,7 @@ runOperation source operation = case operation of
     if Map.isEmpty candidates.accepted then do
       throwWithComment "No packages in the suggested batch can be processed; all failed validation checks."
     else do
-      PackageSet.processBatchAtomic latestPackageSet compiler candidates.accepted >>= case _ of
+      PackageSet.processBatchAtomic registryIndex latestPackageSet compiler candidates.accepted >>= case _ of
         Just { fail, packageSet, success } | Map.isEmpty fail -> do
           newPath <- PackageSet.getPackageSetPath (un PackageSet packageSet).version
           liftAff $ Json.writeJsonFile newPath packageSet
