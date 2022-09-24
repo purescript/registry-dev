@@ -235,7 +235,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
     Left error -> do
       let formatted = GitHub.printGitHubError error
       RegistryM.throwWithComment $ "Could not fetch tags for the package-sets repo: " <> formatted
-    Right tags -> pure $ Set.fromFoldable $ filterLegacyPackageSets tags
+    Right tags -> pure $ Set.fromFoldable $ map _.name tags
 
   let printedTag = printPscTag tag
 
@@ -298,10 +298,10 @@ mirrorLegacySet { tag, packageSet, upstream } = do
     let commitMessage = "Update to the " <> Version.printVersion upstream <> " package set."
     Git.runGit_ [ "commit", "-m", commitMessage ] (Just packageSetsPath)
     let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> Constants.legacyPackageSetsRepo.owner <> "/" <> Constants.legacyPackageSetsRepo.repo <> ".git"
-    void $ Git.runGitSilent [ "push", origin, "master" ] (Just packageSetsPath)
+    Git.runGit_ [ "push", origin, "master" ] (Just packageSetsPath)
     for_ tagsToPush \pushTag -> do
       Git.runGit_ [ "tag", pushTag ] (Just packageSetsPath)
-      Git.runGitSilent [ "push", origin, pushTag ] (Just packageSetsPath)
+      Git.runGit_ [ "push", origin, pushTag ] (Just packageSetsPath)
 
   case result of
     Left error -> RegistryM.throwWithComment $ "Package set mirroring failed: " <> error
