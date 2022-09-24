@@ -7,6 +7,7 @@ module Registry.PackageSet
   , processBatchAtomic
   , processBatchSequential
   , readLatestPackageSet
+  , validatePackageSet
   , validatePackageSetCandidates
   ) where
 
@@ -86,8 +87,8 @@ type PackageSetBatchResult =
 -- | Attempt to produce a new package set from the given package set by adding
 -- | or removing the provided packages. Fails if the batch is not usable as a
 -- | whole. To fall back to sequential processing, use `processBatchSequential`.
-processBatchAtomic :: PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> RegistryM (Maybe PackageSetBatchResult)
-processBatchAtomic prevSet@(PackageSet { compiler: prevCompiler, packages }) newCompiler batch = do
+processBatchAtomic :: RegistryIndex -> PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> RegistryM (Maybe PackageSetBatchResult)
+processBatchAtomic index prevSet@(PackageSet { compiler: prevCompiler, packages }) newCompiler batch = do
   let compilerVersion = fromMaybe prevCompiler newCompiler
 
   liftAff (installPackages packages *> compileInstalledPackages compilerVersion) >>= case _ of
@@ -99,6 +100,7 @@ processBatchAtomic prevSet@(PackageSet { compiler: prevCompiler, packages }) new
   liftAff (tryBatch compilerVersion prevSet batch) >>= case _ of
     Right newSet -> do
       packageSet <- liftEffect $ updatePackageSetMetadata { previous: prevSet, pending: newSet } batch
+      validatePackageSet index packageSet
       pure $ Just { fail: Map.empty, success: batch, packageSet }
     Left batchCompilerError -> do
       handleCompilerError compilerVersion batchCompilerError
@@ -109,7 +111,7 @@ processBatchAtomic prevSet@(PackageSet { compiler: prevCompiler, packages }) new
 -- | then falls sequential processing if that fails.
 processBatchSequential :: RegistryIndex -> PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> RegistryM (Maybe PackageSetBatchResult)
 processBatchSequential registryIndex prevSet@(PackageSet { compiler: prevCompiler, packages }) newCompiler batch = do
-  processBatchAtomic prevSet newCompiler batch >>= case _ of
+  processBatchAtomic registryIndex prevSet newCompiler batch >>= case _ of
     Just batchResult ->
       pure (Just batchResult)
     Nothing -> do
@@ -385,6 +387,23 @@ type ValidatedCandidates =
   { accepted :: Map PackageName (Maybe Version)
   , rejected :: Map PackageName { reason :: String, value :: Maybe Version }
   }
+
+-- | Validate a package set is self-contained
+validatePackageSet :: RegistryIndex -> PackageSet -> RegistryM Unit
+validatePackageSet index (PackageSet { packages, version }) = case PackageGraph.checkPackages index packages of
+  { rejected } | not Array.null rejected -> do
+    let
+      message = "Package set " <> Version.printVersion version <> " is invalid! Some packages have dependencies not in the set:\n"
+      packageMessages = rejected <#> \{ package, dependencies } -> Array.fold
+        [ "\n  - "
+        , PackageName.print package
+        , " ("
+        , String.joinWith ", " (map PackageName.print dependencies)
+        , ")"
+        ]
+    throwWithComment (message <> Array.fold packageMessages)
+  _ ->
+    pure unit
 
 -- | Validate a provided set of package set candidates. Should be used before
 -- | attempting to process a batch of packages for a package set.

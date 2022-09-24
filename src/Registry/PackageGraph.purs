@@ -1,5 +1,7 @@
 module Registry.PackageGraph
-  ( CheckResult
+  ( CheckedPackages
+  , checkPackages
+  , CheckedRegistryIndex
   , checkRegistryIndex
   , topologicalSort
   ) where
@@ -8,6 +10,7 @@ import Registry.Prelude
 
 import Control.Bind (bindFlipped)
 import Data.Array as Array
+import Data.Filterable (filterMap)
 import Data.Foldable (foldMap)
 import Data.Graph (Graph)
 import Data.Graph as Graph
@@ -24,23 +27,49 @@ type PackageWithVersion = { package :: PackageName, version :: Version }
 
 type PackageWithDependencies = { package :: PackageWithVersion, dependencies :: Array PackageName }
 
-type ConstraintArgs =
-  { satisfied :: Map PackageName (Array Version)
-  , constraints :: Array PackageWithDependencies
+type CheckedPackages =
+  { accepted :: Map PackageName Version
+  , rejected :: Array { package :: PackageName, version :: Version, dependencies :: Array PackageName }
   }
 
-type ConstraintResult =
-  { satisfied :: Map PackageName (Array Version)
-  , unsatisfied :: Array PackageWithDependencies
-  }
+-- Verify that a collection of package versions are self-contained (no package
+-- has dependencies outside the provided set of packages).
+checkPackages :: RegistryIndex -> Map PackageName Version -> CheckedPackages
+checkPackages index packages = do
+  let
+    constraints :: Array PackageWithDependencies
+    constraints = Array.sortWith (_.dependencies >>> Array.length) do
+      Tuple package version <- Map.toUnfoldable packages
+      case Map.lookup package index >>= Map.lookup version of
+        Nothing -> unsafeCrashWith ("Unregistered package version: " <> show { package, version })
+        Just (Manifest manifest) -> do
+          let dependencies = Set.toUnfoldable (Map.keys manifest.dependencies)
+          [ { package: { package, version }, dependencies } ]
 
-type CheckResult =
+    { satisfied, unsatisfied } =
+      solveConstraints { satisfied: Map.empty, constraints }
+
+    -- Our input maps a package name to a version, so all successes must also be
+    -- a package name -> single version, despite the array returned by
+    -- solveConstraints.
+    accepted =
+      filterMap Array.head satisfied
+
+    rejected = unsatisfied <#> \{ package, dependencies } ->
+      { package: package.package
+      , version: package.version
+      , dependencies
+      }
+
+  { accepted, rejected }
+
+type CheckedRegistryIndex =
   { index :: RegistryIndex
   , unsatisfied :: Array { package :: PackageName, version :: Version, dependencies :: Array PackageName }
   }
 
 -- Produces a maximally self-contained RegistryIndex, recording any unsatisfied dependencies.
-checkRegistryIndex :: RegistryIndex -> CheckResult
+checkRegistryIndex :: RegistryIndex -> CheckedRegistryIndex
 checkRegistryIndex original = do
   let
     -- From a RegistryIndex, construct a list of constraints that we would like to satisfy,
@@ -60,7 +89,8 @@ checkRegistryIndex original = do
 
       [ { package: { package, version }, dependencies } ]
 
-    { satisfied, unsatisfied: allUnsatisfied } = go { satisfied: Map.empty, constraints }
+    { satisfied, unsatisfied: allUnsatisfied } =
+      solveConstraints { satisfied: Map.empty, constraints }
 
     -- Once we have satisfied as many package dependencies as possible,
     -- prune provided RegistryIndex to only include Manifest entries with
@@ -80,40 +110,50 @@ checkRegistryIndex original = do
       }
 
   { index, unsatisfied }
+
+type ConstraintArgs =
+  { satisfied :: Map PackageName (Array Version)
+  , constraints :: Array PackageWithDependencies
+  }
+
+type ConstraintResult =
+  { satisfied :: Map PackageName (Array Version)
+  , unsatisfied :: Array PackageWithDependencies
+  }
+
+solveConstraints :: ConstraintArgs -> ConstraintResult
+solveConstraints args = do
+  let
+    -- Go through each constraint, recording satisfied manifest dependencies & updating constraints.
+    { satisfied, iterationProgress, constraints } =
+      Array.foldl go { satisfied: args.satisfied, iterationProgress: false, constraints: [] } args.constraints
+
+  -- If there was progress, then we need to iterate through constraints again.
+  -- When there is no progress, we have satisfied all of the constraints possible.
+  if iterationProgress then
+    solveConstraints { satisfied, constraints }
+  else
+    { satisfied, unsatisfied: constraints }
   where
-  go :: ConstraintArgs -> ConstraintResult
-  go args = do
-    let
-      -- Check if the given constraint is satisfied
-      -- If so, add package/version to satisfied & record progress
-      -- If not, update constraint to only include unsatisfied dependencies
-      go' { satisfied, iterationProgress, constraints } { package, dependencies } = do
-        let
-          unsolved = Array.filter (not <<< isSolved satisfied) dependencies
-        if Array.null unsolved then
-          { satisfied: Map.insertWith append package.package [ package.version ] satisfied
-          , iterationProgress: true
-          , constraints
-          }
-        else
-          { satisfied
-          , iterationProgress
-          , constraints: constraints <> [ { package, dependencies: unsolved } ]
-          }
-
-      -- Go through each constraint, recording satisfied manifest dependencies & updating constraints.
-      { satisfied, iterationProgress, constraints } =
-        Array.foldl go' { satisfied: args.satisfied, iterationProgress: false, constraints: [] } args.constraints
-
-    -- If there was progress, then we need to iterate through constraints again.
-    -- When there is no progress, we have satisfied all of the constraints possible.
-    if iterationProgress then do
-      go { satisfied, constraints }
-    else
-      { satisfied, unsatisfied: constraints }
-
   isSolved :: Map PackageName (Array Version) -> PackageName -> Boolean
   isSolved solved package = Map.member package solved
+
+  -- Check if the given constraint is satisfied
+  -- If so, add package/version to satisfied & record progress
+  -- If not, update constraint to only include unsatisfied dependencies
+  go { satisfied, iterationProgress, constraints } { package, dependencies } = do
+    let
+      unsolved = Array.filter (not <<< isSolved satisfied) dependencies
+    if Array.null unsolved then
+      { satisfied: Map.insertWith append package.package [ package.version ] satisfied
+      , iterationProgress: true
+      , constraints
+      }
+    else
+      { satisfied
+      , iterationProgress
+      , constraints: constraints <> [ { package, dependencies: unsolved } ]
+      }
 
 topologicalSort :: RegistryIndex -> Array Manifest
 topologicalSort index = do
@@ -126,7 +166,6 @@ topologicalSort index = do
 type PackageGraph = Graph (Tuple PackageName Version) Manifest
 
 -- We will construct an edge to each version of each dependency PackageName.
--- Note: This function only looks at the `lib` target of a `Manifest`.
 toPackageGraph :: RegistryIndex -> PackageGraph
 toPackageGraph index =
   Graph.fromMap

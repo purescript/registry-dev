@@ -278,7 +278,7 @@ importLegacyRegistry existingRegistry legacyRegistry = do
 
     -- A 'checked' index is one where we have verified that all dependencies
     -- are self-contained within the registry.
-    checkedIndex :: Graph.CheckResult
+    checkedIndex :: Graph.CheckedRegistryIndex
     checkedIndex = Graph.checkRegistryIndex rawLegacyIndex
 
     -- The list of all packages that were present in the legacy registry files,
