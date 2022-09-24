@@ -6,6 +6,8 @@ import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Either as Either
+import Data.Filterable (filterMap)
+import Data.Formatter.DateTime as Formatter.DateTime
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.String as String
@@ -27,11 +29,12 @@ import Registry.Constants as Constants
 import Registry.Hash (sha256String)
 import Registry.Json ((.:), (.:?))
 import Registry.Json as Json
-import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry)
+import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry, PscTag(..))
+import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, throwWithComment)
-import Registry.Schema (Location, Manifest(..))
+import Registry.Schema (Location, Manifest(..), dateFormatter)
 import Registry.Version (Range, Version)
 import Registry.Version as Version
 
@@ -303,7 +306,16 @@ fetchLegacyPackageSets = do
   result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache Constants.legacyPackageSetsRepo
   tags <- case result of
     Left err -> throwWithComment (GitHub.printGitHubError err)
-    Right tags -> pure $ map _.name tags
+    Right tags -> pure do
+      let
+        -- Package sets after this date are published by the registry, and are
+        -- therefore not legacy package sets.
+        lastLegacyDate = unsafeFromRight $ Formatter.DateTime.unformat dateFormatter "2022-09-01"
+        legacyTag { name } = case Legacy.PackageSet.parsePscTag name of
+          Right (PscTag { date }) | date <= lastLegacyDate -> Just name
+          _ -> Nothing
+
+      filterMap legacyTag tags
 
   let
     convertPackageSet :: LegacyPackageSet -> LegacyPackageSetEntries
