@@ -421,6 +421,7 @@ validatePackageSetCandidates index (PackageSet { packages: previousPackages }) c
     case Map.lookup name previousPackages of
       Nothing -> Right unit
       Just v | v < version -> Right unit
+      Just v | v == version -> Left "This version already exists in the package set."
       Just v -> Left $ "A higher version already exists in the package set: " <> Version.printVersion v
 
     -- A package can only be added to the package set if all its dependencies
