@@ -6,6 +6,7 @@ import Registry.Prelude
 
 import Control.Monad.Except as Except
 import Control.Monad.State as State
+import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
 import Data.String as String
@@ -104,16 +105,20 @@ setup = do
 mkTest :: Solver.Dependencies -> Map PackageName (Map Version { bower :: BowerSolved, manifest :: Map PackageName Range }) -> Spec.Spec Unit
 mkTest solverIndex pkgs = void $ forWithIndex pkgs \package versions -> do
   Spec.describe ("Solves " <> PackageName.print package) do
+    pure unit
+    let versionsBackwards = Array.reverse (Map.toUnfoldable versions)
     -- We try comparing Bower's solution from the Bowerfile to our
     -- solver's attempt on the Bowerfile dependencies.
     Spec.it "Bowerfile" do
-      void $ forWithIndex versions \version { bower } -> do
+      pure unit
+      for_ versionsBackwards \(Tuple version { bower }) -> do
         solve package version bower.dependencies bower.bowerfileSolution
 
     -- We also try comparing Bower's solution using the manifest dependencies
     -- to our solver's attempt on the same.
     Spec.it "Manifest file " do
-      void $ forWithIndex versions \version { bower, manifest } -> do
+      pure unit
+      for_ versionsBackwards \(Tuple version { bower, manifest }) -> do
         solve package version manifest bower.manifestSolution
   where
   solve package version dependencies solution = do

@@ -2,21 +2,26 @@ module Registry.Solver where
 
 import Registry.Prelude
 
-import Control.Monad.Error.Class (class MonadError, catchError)
+import Control.Monad.Error.Class (catchError)
 import Control.Monad.Reader (ask)
 import Control.Monad.State (get, modify_, put)
+import Control.Plus (empty)
 import Data.Array as Array
 import Data.Array.NonEmpty (foldMap1)
 import Data.Array.NonEmpty as NEA
 import Data.Foldable (foldMap)
-import Data.FoldableWithIndex (traverseWithIndex_)
+import Data.FoldableWithIndex (foldMapWithIndex, traverseWithIndex_)
 import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Data.Newtype (alaF)
+import Data.Semigroup.First (First(..))
 import Data.Semigroup.Foldable (intercalateMap)
+import Data.Set as Set
+import Data.Set.NonEmpty (NonEmptySet)
+import Data.Set.NonEmpty as NES
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Version (Range, Version, intersect, rangeIncludes)
+import Registry.Version (Range, Version, intersect, printRange, rangeIncludes)
 import Registry.Version as Version
 import Uncurried.RWSE (RWSE, runRWSE)
 
@@ -24,7 +29,7 @@ type Dependencies = Map PackageName (Map Version (Map PackageName Range))
 
 data SolverPosition
   = SolveRoot
-  | Solving PackageName Version SolverPosition
+  | Solving PackageName (NonEmptyArray Version) SolverPosition
 
 derive instance Eq SolverPosition
 derive instance Ord SolverPosition
@@ -36,17 +41,50 @@ instance Show SolverPosition where
 printSolverPosition :: SolverPosition -> String
 printSolverPosition = case _ of
   SolveRoot -> ""
-  Solving name version pos -> Array.fold
+  Solving name versions pos -> Array.fold
     [ " while solving "
     , PackageName.print name
     , "@"
-    , Version.printVersion version
+    , intercalateMap ", " Version.printVersion versions
     , printSolverPosition pos
     ]
 
+-- Find the shortest path from the initial dependencies to the desired specific
+-- dependencies (package@version)
+minimizeSolverPositions :: Dependencies -> Map PackageName Range -> Map PackageName (Set Version) -> Map (Tuple PackageName Version) (First SolverPosition)
+minimizeSolverPositions index initialGoals errored = go Map.empty (map (NEA.singleton <<< Tuple SolveRoot) initialGoals)
+  where
+  toBeFound :: Set (Tuple PackageName Version)
+  toBeFound = errored # foldMapWithIndex (Set.map <<< Tuple)
+
+  go
+    :: Map (Tuple PackageName Version) (First SolverPosition)
+    -> Map PackageName (NonEmptyArray (Tuple SolverPosition Range))
+    -> Map (Tuple PackageName Version) (First SolverPosition)
+  -- Found enough, go home
+  go found _ | toBeFound `Set.subset` Map.keys found = found
+  -- Add relevant things from `currentGoals`, go to next layer
+  go alreadyFound currentGoals =
+    let
+      foundHere = currentGoals
+        # foldMapWithIndex \package -> foldMap \(Tuple pos range) ->
+            Map.lookup package errored
+              # foldMap (Set.filter (Version.rangeIncludes range))
+              # foldMap \version -> Map.singleton (Tuple package version) (First pos)
+
+      nextGoals :: Map PackageName (NonEmptyArray (Tuple SolverPosition Range))
+      nextGoals = currentGoals
+        # foldMapWithIndex \package -> foldMap \(Tuple pos range) ->
+            Map.lookup package index
+              # maybe Map.empty (Map.filterWithKey (\v _ -> Version.rangeIncludes range v))
+              # foldMapWithIndex \version deps ->
+                  NEA.singleton <<< Tuple (Solving package (pure version) pos) <$> deps
+    in
+      go (alreadyFound <> foundHere) nextGoals
+
 data SolverError
   = NoVersionsInRange PackageName (Set Version) Range SolverPosition
-  | VersionNotInRange PackageName Version Range SolverPosition
+  | VersionNotInRange PackageName (NonEmptySet Version) Range SolverPosition
   | DisjointRanges PackageName Range SolverPosition Range SolverPosition
 
 derive instance Eq SolverError
@@ -54,6 +92,97 @@ derive instance Generic.Generic SolverError _
 
 instance Show SolverError where
   show a = genericShow a
+
+-- Minimize the positions on the errors and group/deduplicate them
+minimizeErrors :: Dependencies -> Map PackageName Range -> NonEmptyArray SolverError -> NonEmptyArray SolverError
+minimizeErrors index goals errs = groupErrors (minimizePosition =<< errs)
+  where
+  collected = errs # foldMap case _ of
+    NoVersionsInRange _ _ _ pos -> collectPackageVersion pos
+    VersionNotInRange _ _ _ pos -> collectPackageVersion pos
+    DisjointRanges _ _ p1 _ p2 ->
+      collectPackageVersion p1 <> collectPackageVersion p2
+
+  collectPackageVersion SolveRoot = mempty
+  collectPackageVersion (Solving package version _) =
+    foldMap (Map.singleton package <<< Set.singleton) version
+
+  minimizePosition (NoVersionsInRange a b c pos) = NoVersionsInRange a b c <$> getMinimized pos
+  minimizePosition (VersionNotInRange a b c pos) = VersionNotInRange a b c <$> getMinimized pos
+  minimizePosition (DisjointRanges a b p1 c p2) = DisjointRanges a b <$> getMinimized p1 <@> c <*> getMinimized p2
+
+  minimized = minimizeSolverPositions index goals collected
+
+  lookupMinimized package versions = map sequence $ versions # traverse
+    \version -> Map.lookup (Tuple package version) minimized
+  getMinimized (Solving package versions _)
+    | Just (First pos) <- lookupMinimized package versions = Solving package versions <$> NEA.nub pos
+  getMinimized pos = pure pos
+
+groupErrors :: NonEmptyArray SolverError -> NonEmptyArray SolverError
+groupErrors = compose groupErrors2 $ fromGroup <=< NEA.groupAllBy grouping
+  where
+  grouping (NoVersionsInRange p1 v1 r1 _) (NoVersionsInRange p2 v2 r2 _) =
+    compare p1 p2 <> compare v1 v2 <> compare (printRange r1) (printRange r2)
+  grouping (NoVersionsInRange _ _ _ _) _ = LT
+  grouping _ (NoVersionsInRange _ _ _ _) = GT
+  grouping (VersionNotInRange p1 v1 r1 _) (VersionNotInRange p2 v2 r2 _) =
+    compare p1 p2 <> compare v1 v2 <> compare (printRange r1) (printRange r2)
+  grouping (VersionNotInRange _ _ _ _) _ = LT
+  grouping _ (VersionNotInRange _ _ _ _) = GT
+  grouping (DisjointRanges p1 r1 s1 q1 _) (DisjointRanges p2 r2 s2 q2 _) =
+    compare p1 p2 <> compare (printRange r1) (printRange r2) <> compare s1 s2 <> compare (printRange q1) (printRange q2)
+
+  fromGroup es = setPosition (NEA.head es) $ groupPositions $ map getPosition es
+
+  getPosition (NoVersionsInRange _ _ _ p) = p
+  getPosition (VersionNotInRange _ _ _ p) = p
+  getPosition (DisjointRanges _ _ _ _ p) = p
+
+  setPosition (NoVersionsInRange p v r _) = map $ NoVersionsInRange p v r
+  setPosition (VersionNotInRange p v r _) = map $ VersionNotInRange p v r
+  setPosition (DisjointRanges p r s q _) = map $ DisjointRanges p r s q
+
+groupErrors2 :: NonEmptyArray SolverError -> NonEmptyArray SolverError
+groupErrors2 = map fromGroup <<< NEA.groupAllBy grouping
+  where
+  grouping (VersionNotInRange p1 _ r1 t1) (VersionNotInRange p2 _ r2 t2) =
+    compare p1 p2 <> compare (printRange r1) (printRange r2) <> compare t1 t2
+  grouping (VersionNotInRange _ _ _ _) _ = LT
+  grouping _ (VersionNotInRange _ _ _ _) = GT
+  grouping (NoVersionsInRange p1 v1 r1 q1) (NoVersionsInRange p2 v2 r2 q2) =
+    compare p1 p2 <> compare v1 v2 <> compare (printRange r1) (printRange r2) <> compare q1 q2
+  grouping (NoVersionsInRange _ _ _ _) _ = LT
+  grouping _ (NoVersionsInRange _ _ _ _) = GT
+  grouping (DisjointRanges p1 r1 s1 q1 t1) (DisjointRanges p2 r2 s2 q2 t2) =
+    compare p1 p2 <> compare (printRange r1) (printRange r2) <> compare s1 s2 <> compare (printRange q1) (printRange q2) <> compare t1 t2
+
+  fromGroup :: NonEmptyArray SolverError -> SolverError
+  fromGroup es = setVersions (NEA.head es) $ foldMap1 getVersion es
+
+  setVersions (VersionNotInRange p _ r q) (Just vs) = VersionNotInRange p vs r q
+  setVersions e _ = e
+  getVersion (VersionNotInRange _ vs _ _) = Just vs
+  getVersion _ = Nothing
+
+groupPositions :: NonEmptyArray SolverPosition -> NonEmptyArray SolverPosition
+groupPositions = fromGroup <=< NEA.groupAllBy grouping
+  where
+  grouping SolveRoot SolveRoot = EQ
+  grouping SolveRoot _ = LT
+  grouping _ SolveRoot = GT
+  grouping (Solving p1 _ s1) (Solving p2 _ s2) =
+    compare p1 p2 <> compare s1 s2
+
+  fromGroup es = setVersion es $ Array.nub $ getVersions =<< NEA.toArray es
+
+  getVersions SolveRoot = empty
+  getVersions (Solving _ v _) = NEA.toArray v
+
+  setVersion os = NEA.fromArray >>>
+    maybe os case NEA.head os, _ of
+      SolveRoot, _ -> pure SolveRoot
+      Solving p _ s, v -> pure (Solving p v s)
 
 printSolverError :: SolverError -> String
 printSolverError = case _ of
@@ -71,7 +200,7 @@ printSolverError = case _ of
     [ "Committed to "
     , PackageName.print name
     , "@"
-    , Version.printVersion version
+    , intercalateMap ", " Version.printVersion version
     , " but the range "
     , Version.printRange range
     , " was also required"
@@ -98,27 +227,53 @@ type State =
   , solved :: Map PackageName Version
   }
 
-newtype CollectErrors :: (Type -> Type) -> Type -> Type
-newtype CollectErrors f a = CollectErrors (f a)
+newtype CollectErrors :: Type -> Type
+newtype CollectErrors a = CollectErrors (Solver a)
 
-derive instance Newtype (CollectErrors f a) _
+derive instance Newtype (CollectErrors a) _
 
-instance (Semigroup e, MonadError e f) => Semigroup (CollectErrors f a) where
-  append (CollectErrors fa) (CollectErrors fb) = CollectErrors $
-    catchError fa \e1 ->
-      catchError fb \e2 ->
-        throwError (e1 <> e2)
+instance Semigroup (CollectErrors a) where
+  append (CollectErrors fa) (CollectErrors fb) = CollectErrors do
+    s <- get
+    catchError fa \e1 -> do
+      put s
+      catchError fb \e2 -> do
+        throwError (groupErrors $ e1 <> e2)
 
-oneOfMap1 :: forall e f a b. Semigroup e => MonadError e f => (a -> f b) -> NonEmptyArray a -> f b
+oneOfMap1 :: forall a b. (a -> Solver b) -> NonEmptyArray a -> Solver b
 oneOfMap1 = alaF CollectErrors foldMap1
 
+type ValidationError =
+  { name :: PackageName
+  , range :: Range
+  , version :: Maybe Version
+  }
+
+validate :: Map PackageName Range -> Solved -> Either (NonEmptyArray ValidationError) Unit
+validate index sols = maybe (Right unit) Left $ NEA.fromArray
+  $ index
+  # foldMapWithIndex \name range ->
+      case Map.lookup name sols of
+        Just version | rangeIncludes range version -> empty
+        version -> pure { name, range, version }
+
 solve :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
-solve index pending =
-  case runRWSE index { pending: map (Tuple SolveRoot) pending, solved: Map.empty } exploreGoals of
+solve index pending = lmap (minimizeErrors index pending)
+  case runRWSE index { pending: map (Tuple SolveRoot) pending, solved: Map.empty } (exploreGoals 20) of
     _ /\ r /\ _ -> r
 
-exploreGoals :: Solver Solved
-exploreGoals =
+solveAndValidate :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
+solveAndValidate index pending = do
+  sols <- solve index pending
+  case validate pending sols of
+    Left es -> Left $ es <#> \r ->
+      case r.version of
+        Nothing -> NoVersionsInRange r.name Set.empty r.range SolveRoot
+        Just version -> VersionNotInRange r.name (NES.singleton version) r.range SolveRoot
+    Right _ -> Right sols
+
+exploreGoals :: Int -> Solver Solved
+exploreGoals work =
   get >>= \goals@{ pending, solved } ->
     case Map.findMin pending of
       Nothing ->
@@ -131,16 +286,18 @@ exploreGoals =
         versions <- getRelevantVersions pos name constraint
         let
           act = versions # oneOfMap1 \version ->
-            addVersion pos name version *> exploreGoals
+            addVersion pos name version *> exploreGoals 0
         catchError act \e1 -> do
-          _ <- catchError exploreGoals \e2 -> do
-            throwError (e1 <> e2)
+          when (work > 0) $ void do
+            put goals'
+            catchError (exploreGoals (work - NEA.length e1)) \e2 -> do
+              throwError (e1 <> e2)
           throwError e1
 
 addVersion :: SolverPosition -> PackageName -> (Tuple Version (Map PackageName Range)) -> Solver Unit
 addVersion pos name (Tuple version deps) = do
   modify_ \s -> s { solved = Map.insert name version s.solved }
-  traverseWithIndex_ (addConstraint (Solving name version pos)) deps
+  traverseWithIndex_ (addConstraint (Solving name (pure version) pos)) deps
 
 addConstraint :: SolverPosition -> PackageName -> Range -> Solver Unit
 addConstraint pos name newConstraint = do
@@ -148,7 +305,7 @@ addConstraint pos name newConstraint = do
   case Map.lookup name solved of
     Just version ->
       if rangeIncludes newConstraint version then pure unit
-      else throwError $ pure $ VersionNotInRange name version newConstraint pos
+      else throwError $ pure $ VersionNotInRange name (NES.singleton version) newConstraint pos
 
     Nothing ->
       case Map.lookup name pending of
