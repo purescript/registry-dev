@@ -622,8 +622,11 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
       comment $ Array.fold [ "Skipping Pursuit publishing because this package failed to compile:\n\n", error ]
     Right dependenciesDir -> do
       log "Uploading to Pursuit"
-      publishToPursuit { packageSourceDir: packageDirectory, buildPlan, dependenciesDir }
-      comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+      publishToPursuit { packageSourceDir: packageDirectory, buildPlan, dependenciesDir } >>= case _ of
+        Left error ->
+          comment $ "Pursuit publishing failed: " <> error
+        Right message ->
+          comment message
 
 verifyManifest :: { metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
 verifyManifest { metadata, manifest } = do
@@ -849,10 +852,11 @@ type PublishToPursuit =
 -- |
 -- | ASSUMPTIONS: This function should not be run on legacy packages or on
 -- | packages where the `purescript-` prefix is still present.
-publishToPursuit :: PublishToPursuit -> RegistryM Unit
-publishToPursuit { packageSourceDir, dependenciesDir, buildPlan: buildPlan@(BuildPlan { compiler }) } = do
+publishToPursuit :: PublishToPursuit -> RegistryM (Either String String)
+publishToPursuit { packageSourceDir, dependenciesDir, buildPlan: buildPlan@(BuildPlan { compiler }) } = Except.runExceptT do
   log "Generating a resolutions file"
   tmp <- liftEffect Tmp.mkTmpDir
+
 
   let
     resolvedPaths = buildPlanToResolutions { buildPlan, dependenciesDir }
@@ -873,18 +877,18 @@ publishToPursuit { packageSourceDir, dependenciesDir, buildPlan: buildPlan@(Buil
     }
 
   publishJson <- case compilerOutput of
-    Left MissingCompiler -> throwWithComment $ Array.fold
+    Left MissingCompiler -> throwError $ Array.fold
       [ "Publishing failed because the build plan compiler version "
       , Version.printVersion compiler
       , " is not supported. Please try again with a different compiler."
       ]
-    Left (CompilationError errs) -> throwWithComment $ String.joinWith "\n"
+    Left (CompilationError errs) -> throwError $ String.joinWith "\n"
       [ "Publishing failed because the build plan does not compile with version " <> Version.printVersion compiler <> " of the compiler:"
       , "```"
       , Purs.printCompilerErrors errs
       , "```"
       ]
-    Left (UnknownError err) -> throwWithComment $ String.joinWith "\n"
+    Left (UnknownError err) -> throwError $ String.joinWith "\n"
       [ "Publishing failed for your package due to an unknown compiler error:"
       , "```"
       , err
@@ -895,9 +899,9 @@ publishToPursuit { packageSourceDir, dependenciesDir, buildPlan: buildPlan@(Buil
       -- but we only want the final JSON payload.
       let lines = String.split (String.Pattern "\n") publishResult
       case Array.last lines of
-        Nothing -> throwWithComment "Publishing failed because of an unexpected compiler error. cc @purescript/packaging"
+        Nothing -> throwError "Publishing failed because of an unexpected compiler error. cc @purescript/packaging"
         Just jsonString -> case Argonaut.Parser.jsonParser jsonString of
-          Left err -> throwWithComment $ String.joinWith "\n"
+          Left err -> throwError $ String.joinWith "\n"
             [ "Failed to parse output of publishing. cc @purescript/packaging"
             , "```" <> err <> "```"
             ]
@@ -907,7 +911,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, buildPlan: buildPlan@(Buil
   authToken <- liftEffect (Node.Process.lookupEnv "PACCHETTIBOTTI_TOKEN") >>= case _ of
     Nothing -> do
       logShow =<< liftEffect Node.Process.getEnv
-      throwWithComment "Publishing failed because there is no available auth token. cc: @purescript/packaging"
+      throwError "Publishing failed because there is no available auth token. cc: @purescript/packaging"
     Just token ->
       pure token
 
@@ -929,16 +933,16 @@ publishToPursuit { packageSourceDir, dependenciesDir, buildPlan: buildPlan@(Buil
 
   case result of
     Right { status } | status == StatusCode 201 ->
-      pure unit
+      pure $ "Successfully uploaded package docs to Pursuit! 🎉 🚀"
     Right { body, status: StatusCode status } ->
-      throwWithComment $ String.joinWith "\n"
+      throwError $ String.joinWith "\n"
         [ "Expected a 201 response from Pursuit, but received " <> show status <> " instead (cc: @purescript/packaging)."
         , "Body:"
         , "```" <> body <> "```"
         ]
     Left err -> do
       let printedErr = Http.printError err
-      throwWithComment $ String.joinWith "\n" [ "Received a failed response from Pursuit (cc: @purescript/packaging): ", "```" <> printedErr <> "```" ]
+      throwError $ String.joinWith "\n" [ "Received a failed response from Pursuit (cc: @purescript/packaging): ", "```" <> printedErr <> "```" ]
 
 -- Resolutions format: https://github.com/purescript/purescript/pull/3565
 --

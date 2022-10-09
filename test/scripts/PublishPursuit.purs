@@ -76,4 +76,7 @@ main = launchAff_ $ do
             logShow files
             deps <- liftAff $ FS.readdir dependenciesDir
             logShow deps
-            publishToPursuit { packageSourceDir, buildPlan, dependenciesDir }
+            result <- publishToPursuit { packageSourceDir, buildPlan, dependenciesDir }
+            case result of
+              Left error -> throwWithComment error
+              Right message -> log message
