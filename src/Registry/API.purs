@@ -151,6 +151,7 @@ instance Show OperationDecoding where
 readOperation :: FilePath -> Aff OperationDecoding
 readOperation eventPath = do
   fileContents <- FS.readTextFile UTF8 eventPath
+  log $ "Event Contents:\n" <> fileContents
 
   GitHub.Event { issueNumber, body, username } <- case Json.parseJson fileContents of
     Left err ->
@@ -856,7 +857,6 @@ publishToPursuit :: PublishToPursuit -> RegistryM (Either String String)
 publishToPursuit { packageSourceDir, dependenciesDir, buildPlan: buildPlan@(BuildPlan { compiler }) } = Except.runExceptT do
   log "Generating a resolutions file"
   tmp <- liftEffect Tmp.mkTmpDir
-
 
   let
     resolvedPaths = buildPlanToResolutions { buildPlan, dependenciesDir }
