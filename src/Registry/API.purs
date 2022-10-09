@@ -540,7 +540,7 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
   -- Then, we can run verification checks on the manifest and either verify the
   -- provided build plan or produce a new one.
   verifyManifest { metadata, manifest }
-  buildPlan <- verifyBuildPlan { source, buildPlan: providedBuildPlan, manifest }
+  eitherBuildPlan <- verifyBuildPlan { source, buildPlan: providedBuildPlan, manifest }
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
@@ -569,9 +569,16 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
 
   -- Now that we have the package source contents we can verify we can compile
   -- the package. We skip failures when the package is a legacy package.
-  compilationResult <- compilePackage { packageSourceDir: packageDirectory, buildPlan }
+  compilationResult <- case eitherBuildPlan of
+    -- We do not throw an exception if we're bulk-uploading legacy packages
+    Left error | source == Importer ->
+      pure (Left error)
+    Left error ->
+      throwWithComment error
+    Right buildPlan ->
+      compilePackage { packageSourceDir: packageDirectory, buildPlan }
+
   case compilationResult of
-    Right _ -> pure unit
     Left error
       | source == Importer -> do
           log error
@@ -581,6 +588,8 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
           log "Failed to compile, but continuing because this is a legacy package."
       | otherwise ->
           throwWithComment error
+    Right _ ->
+      pure unit
 
   log "Uploading package to the storage backend..."
   let uploadPackageInfo = { name: packageName, version: newVersion }
@@ -623,11 +632,12 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
       comment $ Array.fold [ "Skipping Pursuit publishing because this package failed to compile:\n\n", error ]
     Right dependenciesDir -> do
       log "Uploading to Pursuit"
-      publishToPursuit { packageSourceDir: packageDirectory, buildPlan, dependenciesDir } >>= case _ of
-        Left error ->
-          comment $ "Pursuit publishing failed: " <> error
-        Right message ->
-          comment message
+      for_ eitherBuildPlan \buildPlan -> do
+        publishToPursuit { packageSourceDir: packageDirectory, buildPlan, dependenciesDir } >>= case _ of
+          Left error ->
+            comment $ "Pursuit publishing failed: " <> error
+          Right message ->
+            comment message
 
 verifyManifest :: { metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
 verifyManifest { metadata, manifest } = do
@@ -681,8 +691,8 @@ verifyManifest { metadata, manifest } = do
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the
 -- | manifest. If not, we solve their manifest to produce a build plan.
-verifyBuildPlan :: { source :: Source, buildPlan :: BuildPlan, manifest :: Manifest } -> RegistryM BuildPlan
-verifyBuildPlan { source, buildPlan: buildPlan@(BuildPlan plan), manifest } = do
+verifyBuildPlan :: { source :: Source, buildPlan :: BuildPlan, manifest :: Manifest } -> RegistryM (Either String BuildPlan)
+verifyBuildPlan { source, buildPlan: buildPlan@(BuildPlan plan), manifest } = Except.runExceptT do
   log "Check the submitted build plan matches the manifest"
   -- We don't verify packages provided via the mass import.
   case source of
@@ -694,7 +704,7 @@ verifyBuildPlan { source, buildPlan: buildPlan@(BuildPlan plan), manifest } = do
         let getDependencies = _.dependencies <<< un Manifest
         case Solver.solve (map (map getDependencies) registryIndex) (getDependencies manifest) of
           Left errors -> do
-            throwWithComment $ String.joinWith "\n"
+            throwError $ String.joinWith "\n"
               [ "Could not produce valid dependencies for manifest."
               , ""
               , errors # foldMapWithIndex \index error -> String.joinWith "\n"
@@ -705,11 +715,11 @@ verifyBuildPlan { source, buildPlan: buildPlan@(BuildPlan plan), manifest } = do
           Right solution ->
             pure $ BuildPlan $ plan { resolutions = Just solution }
       Just resolutions -> do
-        validateResolutions manifest resolutions
+        Except.ExceptT $ validateResolutions manifest resolutions
         pure buildPlan
 
-validateResolutions :: Manifest -> Map PackageName Version -> RegistryM Unit
-validateResolutions manifest resolutions = do
+validateResolutions :: Manifest -> Map PackageName Version -> RegistryM (Either String Unit)
+validateResolutions manifest resolutions = Except.runExceptT do
   let unresolvedDependencies = getUnresolvedDependencies manifest resolutions
   unless (Array.null unresolvedDependencies) do
     let
@@ -747,7 +757,7 @@ validateResolutions manifest resolutions = do
           $ Array.cons "The build plan provides dependencies at versions outside the range listed in the manifest:"
           $ map printPackageVersion incorrectVersions
 
-    throwWithComment $ String.joinWith "\n\n" $ Array.catMaybes
+    throwError $ String.joinWith "\n\n" $ Array.catMaybes
       [ Just "All dependencies from the manifest must be in the build plan at valid versions."
       , missingPackagesError
       , incorrectVersionsError

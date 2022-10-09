@@ -68,15 +68,16 @@ main = launchAff_ $ do
         throwWithComment err
       Right manifest -> do
         liftAff $ Json.writeJsonFile (Path.concat [ packageSourceDir, "purs.json" ]) manifest
-        buildPlan <- verifyBuildPlan { source: API, buildPlan: providedBuildPlan, manifest }
-        compilePackage { packageSourceDir, buildPlan } >>= case _ of
-          Left err -> throwWithComment err
-          Right dependenciesDir -> do
-            files <- liftAff $ FS.readdir packageSourceDir
-            logShow files
-            deps <- liftAff $ FS.readdir dependenciesDir
-            logShow deps
-            result <- publishToPursuit { packageSourceDir, buildPlan, dependenciesDir }
-            case result of
-              Left error -> throwWithComment error
-              Right message -> log message
+        eitherBuildPlan <- verifyBuildPlan { source: API, buildPlan: providedBuildPlan, manifest }
+        for_ eitherBuildPlan \buildPlan ->
+          compilePackage { packageSourceDir, buildPlan } >>= case _ of
+            Left err -> throwWithComment err
+            Right dependenciesDir -> do
+              files <- liftAff $ FS.readdir packageSourceDir
+              logShow files
+              deps <- liftAff $ FS.readdir dependenciesDir
+              logShow deps
+              result <- publishToPursuit { packageSourceDir, buildPlan, dependenciesDir }
+              case result of
+                Left error -> throwWithComment error
+                Right message -> log message
