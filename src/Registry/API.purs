@@ -571,7 +571,7 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
   -- the package. We skip failures when the package is a legacy package.
   compilationResult <- case eitherBuildPlan of
     -- We do not throw an exception if we're bulk-uploading legacy packages
-    Left error | source == Importer ->
+    Left error | source == Importer || (source == API && isLegacyImport) ->
       pure (Left error)
     Left error ->
       throwWithComment error
