@@ -151,7 +151,6 @@ instance Show OperationDecoding where
 readOperation :: FilePath -> Aff OperationDecoding
 readOperation eventPath = do
   fileContents <- FS.readTextFile UTF8 eventPath
-  log $ "Event Contents:\n" <> fileContents
 
   GitHub.Event { issueNumber, body, username } <- case Json.parseJson fileContents of
     Left err ->
@@ -161,11 +160,18 @@ readOperation eventPath = do
     Right event ->
       pure event
 
-  pure $ case Argonaut.Parser.jsonParser (firstObject body) of
-    Left _err -> NotJson
+  case Argonaut.Parser.jsonParser (firstObject body) of
+    Left err -> do
+      log "Not JSON."
+      logShow { err, body }
+      pure NotJson
     Right json -> case Json.decode json of
-      Left err -> MalformedJson issueNumber err
-      Right operation -> DecodedOperation issueNumber username operation
+      Left err -> do
+        log "Malformed JSON."
+        logShow { err, body }
+        pure $ MalformedJson issueNumber err
+      Right operation ->
+        pure $ DecodedOperation issueNumber username operation
 
 -- | Users may submit issues with contents wrapped in code fences, perhaps with
 -- | a language specifier, trailing lines, and other issues. This rudimentary
