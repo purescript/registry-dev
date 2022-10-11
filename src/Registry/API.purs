@@ -463,12 +463,7 @@ runOperation source operation = case operation of
                   ]
                 Right _ -> do
                   comment "Successfully transferred your package!"
-                  registryPath <- asks _.registry
-                  liftAff (Except.runExceptT (syncLegacyRegistry registryPath packageName newPackageLocation)) >>= case _ of
-                    Left err ->
-                      throwWithComment $ "Failed to synchronize with legacy registry (cc: @purescript/packaging): " <> err
-                    Right _ ->
-                      pure unit
+                  syncLegacyRegistry packageName newPackageLocation
 
       closeIssue
 
@@ -614,11 +609,6 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
 
   closeIssue
 
-  registryPath <- asks _.registry
-  liftAff (Except.runExceptT (syncLegacyRegistry registryPath packageName newMetadata.location)) >>= case _ of
-    Left err -> throwWithComment $ "Failed to synchronize with legacy registry (cc: @purescript/packaging): " <> err
-    Right _ -> pure unit
-
   -- After a package has been uploaded we add it to the registry index, we
   -- upload its documentation to Pursuit, and we can now process it for package
   -- sets when the next batch goes out.
@@ -644,6 +634,8 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
             comment $ "Pursuit publishing failed: " <> error
           Right message ->
             comment message
+
+  syncLegacyRegistry packageName newMetadata.location
 
 verifyManifest :: { metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
 verifyManifest { metadata, manifest } = do
@@ -1415,17 +1407,24 @@ legacyRegistryFilePath registryPath file = Path.concat
 
 -- | A helper function that syncs API operations to the new-packages.json or
 -- | bower-packages.json files, namely registrations and transfers.
-syncLegacyRegistry :: FilePath -> PackageName -> Location -> ExceptT String Aff Unit
-syncLegacyRegistry registry package location = do
+syncLegacyRegistry :: PackageName -> Location -> RegistryM Unit
+syncLegacyRegistry package location = do
+  registry <- asks _.registry
+
   packageUrl <- case location of
     GitHub { owner, repo } -> pure $ GitHub.PackageURL $ Array.fold [ "https://github.com/", owner, "/", repo, ".git" ]
-    _ -> throwError "Packages must come from GitHub."
+    _ -> throwWithComment "Could not sync package with legacy registry: packages must come from GitHub. (cc: @purescript/packaging)"
 
   let newPackagesPath = legacyRegistryFilePath registry NewPackages
   let bowerPackagesPath = legacyRegistryFilePath registry BowerPackages
 
-  newPackages <- Except.ExceptT $ Json.readJsonFile newPackagesPath
-  bowerPackages <- Except.ExceptT $ Json.readJsonFile bowerPackagesPath
+  newPackages <- liftAff (Json.readJsonFile newPackagesPath) >>= case _ of
+    Left err -> throwWithComment $ "Could not sync package with legacy registry: could not read " <> newPackagesPath <> "(cc: @purescript/packaging): " <> err
+    Right packages -> pure packages
+
+  bowerPackages <- liftAff (Json.readJsonFile bowerPackagesPath) >>= case _ of
+    Left err -> throwWithComment $ "Could not sync package with legacy registry: could not read " <> bowerPackagesPath <> "(cc: @purescript/packaging): " <> err
+    Right packages -> pure packages
 
   let
     rawPackageName = "purescript-" <> PackageName.print package
@@ -1449,18 +1448,16 @@ syncLegacyRegistry registry package location = do
     let sourcePackages = if target == NewPackages then newPackages else bowerPackages
     let sourceFile = if target == NewPackages then newPackagesPath else bowerPackagesPath
     let packages = Map.insert rawPackageName packageUrl sourcePackages
-    liftAff $ Json.writeJsonFile sourceFile packages
-    -- A simple cehck to verify that a change was indeed written to disk, before
-    -- we attempt to commit and push.
-    Git.runGitSilent [ "diff", "--stat" ] (Just registry) >>= case _ of
-      files | String.contains (String.Pattern sourceFile) files -> do
-        GitHubToken token <- Git.configurePacchettiBotti (Just registry)
-        Git.runGit_ [ "pull" ] (Just registry)
-        Git.runGit_ [ "add", sourceFile ] (Just registry)
-        let message = Array.fold [ "Mirror registry API operation to ", sourceFile ]
-        Git.runGit_ [ "commit", "-m", message ] (Just registry)
-        let upstreamRepo = Constants.registryRepo.owner <> "/" <> Constants.registryRepo.repo
-        let origin = "https://pacchettibotti:" <> token <> "@github.com" <> upstreamRepo <> ".git"
-        void $ Git.runGitSilent [ "push", origin, "main" ] Nothing
-      _ ->
-        log "No changes to commit."
+    result <- liftAff $ Except.runExceptT do
+      liftAff $ Json.writeJsonFile sourceFile packages
+      GitHubToken token <- Git.configurePacchettiBotti (Just registry)
+      Git.runGit_ [ "pull" ] (Just registry)
+      Git.runGit_ [ "add", sourceFile ] (Just registry)
+      let message = Array.fold [ "Mirror registry API operation to ", sourceFile ]
+      Git.runGit_ [ "commit", "-m", message ] (Just registry)
+      let upstreamRepo = Constants.registryRepo.owner <> "/" <> Constants.registryRepo.repo
+      let origin = "https://pacchettibotti:" <> token <> "@github.com" <> upstreamRepo <> ".git"
+      void $ Git.runGit_ [ "push", origin, "main" ] Nothing
+    case result of
+      Left err -> throwWithComment err
+      Right _ -> comment "Synced new package with legacy registry files."
