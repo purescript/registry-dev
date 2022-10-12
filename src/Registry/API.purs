@@ -61,13 +61,14 @@ import Registry.Index as Index
 import Registry.Json as Json
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.PackageSet as Legacy.PackageSet
+import Registry.Operation (AuthenticatedData(..), AuthenticatedOperation(..), Operation(..), PublishData)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
-import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), BuildPlan(..), Location(..), Manifest(..), Metadata, Operation(..), Owner(..), PackageSet(..), UpdateData, addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
+import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Metadata, Owner(..), PackageSet(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Solver as Solver
 import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Version (ParseMode(..), Range, Version)
@@ -111,17 +112,15 @@ main = launchAff_ $ do
       packagesMetadata <- liftEffect $ Ref.new Map.empty
       runRegistryM (mkEnv octokit cache packagesMetadata issue username) do
         comment $ case operation of
-          Addition { packageName, newRef } ->
-            "Adding package `" <> PackageName.print packageName <> "` at the ref `" <> newRef <> "`."
-          Update { packageName, updateRef } ->
-            "Updating package `" <> PackageName.print packageName <> "` at the ref `" <> updateRef <> "`."
+          Publish { name, ref } ->
+            "Publishing package `" <> PackageName.print name <> "` at the ref `" <> ref <> "`."
           PackageSetUpdate _ ->
             "Processing package set update."
           Authenticated (AuthenticatedData { payload }) -> case payload of
-            Unpublish { packageName, unpublishVersion } ->
-              "Unpublishing `" <> PackageName.print packageName <> "` at version `" <> Version.printVersion unpublishVersion <> "`."
-            Transfer { packageName } ->
-              "Transferring `" <> PackageName.print packageName <> "`."
+            Unpublish { name, version } ->
+              "Unpublishing `" <> PackageName.print name <> "` at version `" <> Version.printVersion version <> "`."
+            Transfer { name } ->
+              "Transferring `" <> PackageName.print name <> "`."
 
         fetchRegistry
         fetchRegistryIndex
@@ -188,22 +187,20 @@ firstObject input = fromMaybe input do
 -- all the necessary checks
 runOperation :: Source -> Operation -> RegistryM Unit
 runOperation source operation = case operation of
-  Addition { packageName, newRef, buildPlan, newPackageLocation } -> do
+  Publish fields@{ name, location } -> do
     packagesMetadata <- readPackagesMetadata
-    -- If we already have a metadata file for this package, then it is already
-    -- registered and an addition is not a valid operation.
-    case Map.lookup packageName packagesMetadata of
+    case Map.lookup name packagesMetadata of
       -- If the user is trying to add the package from the same location it was
       -- registered, then we convert their operation to an update under the
       -- assumption they are trying to publish a new version.
-      Just metadata | metadata.location == newPackageLocation ->
-        runOperation source $ Update { packageName, buildPlan, updateRef: newRef }
+      Just metadata | Just packageLocation <- location, metadata.location == packageLocation ->
+        publish source fields metadata
       -- Otherwise, if they attempted to re-register the package under a new
       -- location, then they either did not know the package already existed or
       -- they are attempting a transfer.
       Just _ -> throwWithComment $ String.joinWith " "
         [ "Cannot register"
-        , PackageName.print packageName
+        , PackageName.print name
         , "because it has already been registered.\nIf you are attempting to"
         , "register your package, please choose a different package name."
         , "If you are attempting to transfer this package to a new location,"
@@ -211,19 +208,21 @@ runOperation source operation = case operation of
         ]
       -- If this is a brand-new package, then we can allow them to register it
       -- so long as they aren't publishing an existing location under a new name
-      Nothing | not (locationIsUnique newPackageLocation packagesMetadata) -> throwWithComment $ String.joinWith " "
-        [ "Cannot register"
-        , PackageName.print packageName
-        , "at the location"
-        , show newPackageLocation
-        , "because that location is already in use to publish another package."
-        ]
-      Nothing ->
-        addOrUpdate source { packageName, buildPlan, updateRef: newRef } (mkNewMetadata newPackageLocation)
-
-  Update { packageName, buildPlan, updateRef } -> do
-    metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Did you mean to create an Addition?" }
-    addOrUpdate source { packageName, buildPlan, updateRef } metadata
+      Nothing -> case location of
+        Nothing -> throwWithComment $ String.joinWith " "
+          [ "Cannot register"
+          , PackageName.print name
+          , "because no 'location' field was provided."
+          ]
+        Just packageLocation | not (locationIsUnique packageLocation packagesMetadata) -> throwWithComment $ String.joinWith " "
+          [ "Cannot register"
+          , PackageName.print name
+          , "at the location"
+          , show packageLocation
+          , "because that location is already in use to publish another package."
+          ]
+        Just packageLocation ->
+          publish source fields (mkNewMetadata packageLocation)
 
   PackageSetUpdate { compiler, packages } -> do
     { octokit, cache, username, registryIndex: registryIndexPath } <- ask
@@ -334,26 +333,26 @@ runOperation source operation = case operation of
           throwWithComment "The package set produced from this suggested update does not compile."
 
   Authenticated submittedAuth@(AuthenticatedData { payload }) -> case payload of
-    Unpublish { packageName, unpublishReason, unpublishVersion } -> do
+    Unpublish { name, version, reason } -> do
       username <- asks _.username
-      metadata <- readMetadata packageName { noMetadata: "No metadata found for your package. Only published packages can be unpublished." }
+      metadata <- readMetadata name { noMetadata: "No metadata found for your package. Only published packages can be unpublished." }
 
       let
-        inPublished = Map.lookup unpublishVersion metadata.published
-        inUnpublished = Map.lookup unpublishVersion metadata.unpublished
+        inPublished = Map.lookup version metadata.published
+        inUnpublished = Map.lookup version metadata.unpublished
 
       publishedMetadata <- case inPublished, inUnpublished of
         Nothing, Nothing ->
-          throwWithComment $ "Cannot unpublish " <> Version.printVersion unpublishVersion <> " because it is not a published version."
+          throwWithComment $ "Cannot unpublish " <> Version.printVersion version <> " because it is not a published version."
         Just published, Nothing ->
           -- We only pass through the case where the user is unpublishing a
           -- package that has been published and not yet unpublished.
           pure published
         Nothing, Just _ ->
-          throwWithComment $ "Cannot unpublish " <> Version.printVersion unpublishVersion <> " because it has already been unpublished."
+          throwWithComment $ "Cannot unpublish " <> Version.printVersion version <> " because it has already been unpublished."
         Just _, Just _ ->
           throwWithComment $ String.joinWith "\n"
-            [ "Cannot unpublish " <> Version.printVersion unpublishVersion <> "."
+            [ "Cannot unpublish " <> Version.printVersion version <> "."
             , ""
             , "This version is listed both as published and unpublished. This is an internal error."
             , "cc @purescript/packaging"
@@ -387,19 +386,19 @@ runOperation source operation = case operation of
             when (diff > Hours (Int.toNumber hourLimit)) do
               throwWithComment $ "Packages can only be unpublished within " <> show hourLimit <> " hours."
 
-            deletePackage { name: packageName, version: unpublishVersion }
+            deletePackage { name, version }
 
             let
               unpublishedMetadata =
                 { ref: publishedMetadata.ref
-                , reason: unpublishReason
+                , reason
                 , publishedTime: publishedMetadata.publishedTime
                 , unpublishedTime: RFC3339String.fromDateTime now
                 }
 
-              updatedMetadata = unpublishVersionInMetadata unpublishVersion unpublishedMetadata metadata
+              updatedMetadata = unpublishVersionInMetadata version unpublishedMetadata metadata
 
-            writeMetadata packageName updatedMetadata >>= case _ of
+            writeMetadata name updatedMetadata >>= case _ of
               Left err -> throwWithComment $ String.joinWith "\n"
                 [ "Unpublish succeeded, but committing metadata failed."
                 , err
@@ -407,7 +406,7 @@ runOperation source operation = case operation of
                 ]
               Right _ -> pure unit
 
-            writeDeleteIndex packageName unpublishVersion >>= case _ of
+            writeDeleteIndex name version >>= case _ of
               Left err -> throwWithComment $ String.joinWith "\n"
                 [ "Unpublish succeeded, but committing to the registry index failed."
                 , err
@@ -419,9 +418,9 @@ runOperation source operation = case operation of
 
       closeIssue
 
-    Transfer { packageName, newPackageLocation } -> do
+    Transfer { name, newLocation } -> do
       username <- asks _.username
-      metadata <- readMetadata packageName
+      metadata <- readMetadata name
         { noMetadata: String.joinWith " "
             [ "No metadata found for your package."
             , "You can only transfer packages that have already been published."
@@ -430,10 +429,10 @@ runOperation source operation = case operation of
         }
 
       packagesMetadata <- readPackagesMetadata
-      unless (locationIsUnique newPackageLocation packagesMetadata) do
+      unless (locationIsUnique newLocation packagesMetadata) do
         throwWithComment $ String.joinWith " "
           [ "Cannot transfer package to"
-          , show newPackageLocation
+          , show newLocation
           , "because another package is already registered at that location."
           ]
 
@@ -454,8 +453,8 @@ runOperation source operation = case operation of
                 , "  " <> err
                 ]
             Right _ -> do
-              let updatedMetadata = metadata { location = newPackageLocation }
-              writeMetadata packageName updatedMetadata >>= case _ of
+              let updatedMetadata = metadata { location = newLocation }
+              writeMetadata name updatedMetadata >>= case _ of
                 Left err -> throwWithComment $ String.joinWith "\n"
                   [ "Transferred package location, but failed to commit metadata."
                   , err
@@ -463,7 +462,7 @@ runOperation source operation = case operation of
                   ]
                 Right _ -> do
                   comment "Successfully transferred your package!"
-                  syncLegacyRegistry packageName newPackageLocation
+                  syncLegacyRegistry name newLocation
 
       closeIssue
 
@@ -476,12 +475,12 @@ registryPackageSetsPath registryPath = Path.concat [ registryPath, Constants.pac
 metadataFile :: FilePath -> PackageName -> FilePath
 metadataFile registryPath packageName = Path.concat [ registryPath, Constants.metadataPath, PackageName.print packageName <> ".json" ]
 
-addOrUpdate :: Source -> UpdateData -> Metadata -> RegistryM Unit
-addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inputMetadata = do
+publish :: Source -> PublishData -> Metadata -> RegistryM Unit
+publish source { name, ref, compiler, resolutions } inputMetadata = do
   tmpDir <- liftEffect $ Tmp.mkTmpDir
 
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
-  { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir, ref: updateRef, location: inputMetadata.location }
+  { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir, ref, location: inputMetadata.location }
 
   let manifestPath = Path.concat [ packageDirectory, "purs.json" ]
 
@@ -498,19 +497,19 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
       Git _ -> throwWithComment "Legacy packages can only come from GitHub. Aborting."
       GitHub { owner, repo } -> pure { owner, repo }
 
-    version <- case Version.parseVersion Lenient updateRef of
-      Left _ -> throwWithComment $ "Not a valid registry version: " <> updateRef
+    version <- case Version.parseVersion Lenient ref of
+      Left _ -> throwWithComment $ "Not a valid registry version: " <> ref
       Right result -> pure result
 
     legacyPackageSets <- Legacy.Manifest.fetchLegacyPackageSets
 
     let
       packageSetDeps = do
-        versions <- Map.lookup packageName legacyPackageSets
-        deps <- Map.lookup (RawVersion updateRef) versions
+        versions <- Map.lookup name legacyPackageSets
+        deps <- Map.lookup (RawVersion ref) versions
         pure deps
 
-    Except.runExceptT (Legacy.Manifest.fetchLegacyManifest packageSetDeps address (RawVersion updateRef)) >>= case _ of
+    Except.runExceptT (Legacy.Manifest.fetchLegacyManifest packageSetDeps address (RawVersion ref)) >>= case _ of
       Left manifestError -> do
         let formatError { error, reason } = reason <> " " <> Legacy.Manifest.printLegacyManifestError error
         throwWithComment $ String.joinWith "\n"
@@ -518,7 +517,7 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
           , formatError manifestError
           ]
       Right legacyManifest -> do
-        let manifest = Legacy.Manifest.toManifest packageName version inputMetadata.location legacyManifest
+        let manifest = Legacy.Manifest.toManifest name version inputMetadata.location legacyManifest
         liftAff $ Json.writeJsonFile manifestPath manifest
 
   -- TODO: Verify the manifest against metadata.
@@ -541,13 +540,13 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
   -- Then, we can run verification checks on the manifest and either verify the
   -- provided build plan or produce a new one.
   verifyManifest { metadata, manifest }
-  eitherBuildPlan <- verifyBuildPlan { source, buildPlan: providedBuildPlan, manifest }
+  eitherBuildPlan <- verifyBuildPlan { source, buildPlan: BuildPlan { compiler, resolutions }, manifest }
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
   -- We need the version number to upload the package
   let newVersion = manifestRecord.version
-  let newDirname = PackageName.print packageName <> "-" <> Version.printVersion newVersion
+  let newDirname = PackageName.print name <> "-" <> Version.printVersion newVersion
   let packageSourceDir = Path.concat [ tmpDir, newDirname ]
   liftAff $ FS.Extra.ensureDirectory packageSourceDir
   -- We copy over all files that are always included (ie. src dir, purs.json file),
@@ -593,12 +592,12 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
       pure unit
 
   log "Uploading package to the storage backend..."
-  let uploadPackageInfo = { name: packageName, version: newVersion }
+  let uploadPackageInfo = { name, version: newVersion }
   uploadPackage uploadPackageInfo tarballPath
   log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
-  log $ "Hash for ref " <> show updateRef <> " was " <> show hash
-  let newMetadata = addVersionToMetadata newVersion { hash, ref: updateRef, publishedTime, bytes } metadata
-  writeMetadata packageName newMetadata >>= case _ of
+  log $ "Hash for ref " <> ref <> " was " <> show hash
+  let newMetadata = addVersionToMetadata newVersion { hash, ref, publishedTime, bytes } metadata
+  writeMetadata name newMetadata >>= case _ of
     Left err -> throwWithComment $ String.joinWith "\n"
       [ "Package uploaded, but committing metadata failed."
       , err
@@ -635,7 +634,7 @@ addOrUpdate source { updateRef, buildPlan: providedBuildPlan, packageName } inpu
           Right message ->
             comment message
 
-  syncLegacyRegistry packageName newMetadata.location
+  syncLegacyRegistry name newMetadata.location
 
 verifyManifest :: { metadata :: Metadata, manifest :: Manifest } -> RegistryM Unit
 verifyManifest { metadata, manifest } = do

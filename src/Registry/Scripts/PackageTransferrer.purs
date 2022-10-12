@@ -23,10 +23,11 @@ import Registry.API as API
 import Registry.Cache as Cache
 import Registry.Constants as Constants
 import Registry.Json as Json
+import Registry.Operation (AuthenticatedData(..), AuthenticatedOperation(..), Operation(..))
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
 import Registry.RegistryM as RegistryM
-import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Location(..), Metadata, Operation(..))
+import Registry.Schema (Location(..), Metadata)
 import Registry.Scripts.LegacyImporter as LegacyImporter
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -95,13 +96,13 @@ transferAll packages packageLocations = do
   liftEffect $ Ref.read packagesRef
 
 transferPackage :: String -> Location -> RegistryM Unit
-transferPackage rawPackageName newPackageLocation = do
-  packageName <- case PackageName.parse (stripPureScriptPrefix rawPackageName) of
+transferPackage rawPackageName newLocation = do
+  name <- case PackageName.parse (stripPureScriptPrefix rawPackageName) of
     Left _ -> throwWithComment $ "Unexpected package name parsing failure for " <> rawPackageName
     Right value -> pure value
 
   let
-    payload = Transfer { packageName, newPackageLocation }
+    payload = Transfer { name, newLocation }
     rawPayload = Json.stringifyJson payload
 
   API.runOperation Importer $ Authenticated $ AuthenticatedData

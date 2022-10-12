@@ -24,9 +24,10 @@ import Registry.API (copyPackageSourceFiles)
 import Registry.API as API
 import Registry.Json as Json
 import Registry.Legacy.Manifest (Bowerfile(..))
+import Registry.Operation (Operation(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
+import Registry.Schema (BuildPlan(..), Location(..), Manifest(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 import Safe.Coerce (coerce)
@@ -349,13 +350,12 @@ decodeEventsToOps = do
     let
       issueNumber = IssueNumber 43
       username = "Codertocat"
-      operation = Update
-        { packageName: mkUnsafePackage "something"
-        , updateRef: "v1.2.3"
-        , buildPlan: BuildPlan
-            { compiler: mkUnsafeVersion "0.15.0"
-            , resolutions: Just $ Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
-            }
+      operation = Publish
+        { name: mkUnsafePackage "something"
+        , ref: "v1.2.3"
+        , compiler: mkUnsafeVersion "0.15.0"
+        , resolutions: Just $ Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
+        , location: Nothing
         }
 
     res <- API.readOperation "test/fixtures/update_issue_comment.json"
@@ -365,14 +365,12 @@ decodeEventsToOps = do
     let
       issueNumber = IssueNumber 149
       username = "Codertocat"
-      operation = Addition
-        { packageName: mkUnsafePackage "prelude"
-        , newRef: "v5.0.0"
-        , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
-        , buildPlan: BuildPlan
-            { compiler: mkUnsafeVersion "0.15.0"
-            , resolutions: Just $ Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
-            }
+      operation = Publish
+        { name: mkUnsafePackage "prelude"
+        , ref: "v5.0.0"
+        , location: Just $ GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
+        , compiler: mkUnsafeVersion "0.15.0"
+        , resolutions: Just $ Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
         }
 
     res <- API.readOperation "test/fixtures/addition_issue_created.json"
@@ -395,14 +393,12 @@ decodeEventsToOps = do
 
   Spec.it "decodes lenient JSON" do
     let
-      operation = Addition
-        { packageName: mkUnsafePackage "prelude"
-        , newRef: "v5.0.0"
-        , newPackageLocation: GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
-        , buildPlan: BuildPlan
-            { compiler: mkUnsafeVersion "0.15.0"
-            , resolutions: Nothing
-            }
+      operation = Publish
+        { name: mkUnsafePackage "prelude"
+        , ref: "v5.0.0"
+        , location: Just $ GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
+        , compiler: mkUnsafeVersion "0.15.0"
+        , resolutions: Nothing
         }
 
       rawOperation = preludeAdditionString
@@ -587,13 +583,13 @@ preludeAdditionString =
 
   ```json
   {
-    "packageName": "prelude",
-    "newRef": "v5.0.0",
-    "newPackageLocation": {
+    "name": "prelude",
+    "ref": "v5.0.0",
+    "location": {
       "githubOwner": "purescript",
       "githubRepo": "purescript-prelude"
     },
-    "buildPlan": { "compiler": "0.15.0" }
+    "compiler": "0.15.0"
   }
   ```
 

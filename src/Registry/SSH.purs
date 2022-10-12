@@ -13,7 +13,8 @@ import Node.ChildProcess as Node.ChildProcess
 import Node.FS.Aff as FS
 import Node.FS.Perms as Perms
 import Node.Path as Path
-import Registry.Schema (AuthenticatedData(..), Owner(..))
+import Registry.Operation (AuthenticatedData(..))
+import Registry.Schema (Owner(..))
 import Sunde as Process
 
 allowedSignersPath :: FilePath

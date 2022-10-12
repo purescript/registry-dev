@@ -5,10 +5,11 @@ import Registry.Prelude
 import Data.Array.NonEmpty as NEA
 import Data.Newtype (over)
 import Data.String as String
+import Registry.Operation (AuthenticatedData(..), AuthenticatedOperation(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.SSH as SSH
-import Registry.Schema (AuthenticatedData(..), AuthenticatedOperation(..), Owner(..))
+import Registry.Schema (Owner(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Spec as Spec
@@ -88,18 +89,18 @@ validPayload = AuthenticatedData
   { email
   , signature: rawPayloadSignature
   , payload: Unpublish
-      { packageName
-      , unpublishVersion
-      , unpublishReason: "Committed bad credentials"
+      { name
+      , version
+      , reason: "Committed bad credentials"
       }
   , rawPayload
   }
 
-packageName :: PackageName
-packageName = unsafeFromRight $ PackageName.parse "foo"
+name :: PackageName
+name = unsafeFromRight $ PackageName.parse "foo"
 
-unpublishVersion :: Version
-unpublishVersion = unsafeFromRight $ Version.parseVersion Version.Strict "1.2.3"
+version :: Version
+version = unsafeFromRight $ Version.parseVersion Version.Strict "1.2.3"
 
 email :: String
 email = "test@foo"
