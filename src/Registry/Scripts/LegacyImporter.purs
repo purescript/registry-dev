@@ -40,12 +40,13 @@ import Registry.Json as Json
 import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.Manifest as LegacyManifest
+import Registry.Operation (Operation(..))
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
-import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Operation(..))
+import Registry.Schema (BuildPlan(..), Location(..), Manifest(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -182,14 +183,12 @@ main = launchAff_ do
       notPublished =
         indexPackages # Array.filter \(Manifest manifest) -> not (isPublished manifest)
 
-      mkOperation manifest = Addition
-        { newPackageLocation: manifest.location
-        , packageName: manifest.name
-        , newRef: Version.rawVersion manifest.version
-        , buildPlan: BuildPlan
-            { compiler: unsafeFromRight $ Version.parseVersion Version.Strict "0.15.4"
-            , resolutions: Nothing
-            }
+      mkOperation manifest = Publish
+        { location: Just manifest.location
+        , name: manifest.name
+        , ref: Version.rawVersion manifest.version
+        , compiler: unsafeFromRight $ Version.parseVersion Version.Strict "0.15.4"
+        , resolutions: Nothing
         }
 
     case notPublished of
