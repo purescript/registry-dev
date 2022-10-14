@@ -1411,7 +1411,7 @@ legacyRegistryFilePath = case _ of
 -- | bower-packages.json files, namely registrations and transfers.
 syncLegacyRegistry :: PackageName -> Location -> RegistryM Unit
 syncLegacyRegistry package location = do
-  registry <- asks _.registry
+  registryDir <- asks _.registry
 
   packageUrl <- case location of
     GitHub { owner, repo } -> pure $ GitHub.PackageURL $ Array.fold [ "https://github.com/", owner, "/", repo, ".git" ]
@@ -1419,7 +1419,7 @@ syncLegacyRegistry package location = do
 
   let
     readLegacyFile file = do
-      let path = Path.concat [ registry, legacyRegistryFilePath file ]
+      let path = Path.concat [ registryDir, legacyRegistryFilePath file ]
       liftAff (Json.readJsonFile path) >>= case _ of
         Left err -> throwWithComment $ "Could not sync package with legacy registry (could not read " <> path <> "(cc: @purescript/packaging): " <> err
         Right packages -> pure packages
@@ -1450,15 +1450,15 @@ syncLegacyRegistry package location = do
     let sourceFile = legacyRegistryFilePath target
     let packages = Map.insert rawPackageName packageUrl sourcePackages
     result <- liftAff $ Except.runExceptT do
-      liftAff $ Json.writeJsonFile (Path.concat [ registry, sourceFile ]) packages
-      GitHubToken token <- Git.configurePacchettiBotti (Just registry)
-      Git.runGit_ [ "pull" ] (Just registry)
-      Git.runGit_ [ "add", sourceFile ] (Just registry)
+      liftAff $ Json.writeJsonFile (Path.concat [ registryDir, sourceFile ]) packages
+      GitHubToken token <- Git.configurePacchettiBotti (Just registryDir)
+      Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
+      Git.runGit_ [ "add", sourceFile ] (Just registryDir)
       let message = Array.fold [ "Mirror registry API operation to ", sourceFile ]
-      Git.runGit_ [ "commit", "-m", message ] (Just registry)
+      Git.runGit_ [ "commit", "-m", message ] (Just registryDir)
       let upstreamRepo = Constants.registryRepo.owner <> "/" <> Constants.registryRepo.repo
       let origin = "https://pacchettibotti:" <> token <> "@github.com" <> upstreamRepo <> ".git"
-      void $ Git.runGit_ [ "push", origin, "main" ] Nothing
+      void $ Git.runGit_ [ "push", origin, "main" ] (Just registryDir)
     case result of
       Left err -> throwWithComment err
       Right _ -> comment "Synced new package with legacy registry files."
