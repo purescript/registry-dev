@@ -191,22 +191,27 @@ runOperation source operation = case operation of
   Publish fields@{ name, location } -> do
     packagesMetadata <- readPackagesMetadata
     case Map.lookup name packagesMetadata of
-      -- If the user is trying to add the package from the same location it was
-      -- registered, then we convert their operation to an update under the
-      -- assumption they are trying to publish a new version.
-      Just metadata | Just packageLocation <- location, metadata.location == packageLocation ->
-        publish source fields metadata
-      -- Otherwise, if they attempted to re-register the package under a new
-      -- location, then they either did not know the package already existed or
-      -- they are attempting a transfer.
-      Just _ -> throwWithComment $ String.joinWith " "
-        [ "Cannot register"
-        , PackageName.print name
-        , "because it has already been registered.\nIf you are attempting to"
-        , "register your package, please choose a different package name."
-        , "If you are attempting to transfer this package to a new location,"
-        , "please submit a transfer instead."
-        ]
+      Just metadata ->
+        case location of
+          -- The user can add a new version of their package if it comes from
+          -- the same location listed in the metadata OR if they do not provide
+          -- a location.
+          Nothing ->
+            publish source fields metadata
+          Just packageLocation | metadata.location == packageLocation ->
+            publish source fields metadata
+          -- Otherwise, if they attempted to re-register the package under a new
+          -- location, then they either did not know the package already existed or
+          -- they are attempting a transfer.
+          Just _ -> throwWithComment $ String.joinWith " "
+            [ "Cannot register"
+            , PackageName.print name
+            , "because it has already been registered.\nIf you are attempting to"
+            , "register your package, please choose a different package name."
+            , "If you are attempting to transfer this package to a new location,"
+            , "please submit a transfer instead."
+            ]
+
       -- If this is a brand-new package, then we can allow them to register it
       -- so long as they aren't publishing an existing location under a new name
       Nothing -> case location of
