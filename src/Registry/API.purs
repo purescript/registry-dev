@@ -1457,7 +1457,7 @@ syncLegacyRegistry package location = do
       let message = Array.fold [ "Mirror registry API operation to ", sourceFile ]
       Git.runGit_ [ "commit", "-m", message ] (Just registryDir)
       let upstreamRepo = Constants.registryRepo.owner <> "/" <> Constants.registryRepo.repo
-      let origin = "https://pacchettibotti:" <> token <> "@github.com" <> upstreamRepo <> ".git"
+      let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
       void $ Git.runGit_ [ "push", origin, "main" ] (Just registryDir)
     case result of
       Left err -> throwWithComment err
