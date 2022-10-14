@@ -46,7 +46,7 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
-import Registry.Schema (BuildPlan(..), Location(..), Manifest(..))
+import Registry.Schema (Location(..), Manifest(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 

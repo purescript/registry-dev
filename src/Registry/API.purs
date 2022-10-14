@@ -108,6 +108,7 @@ main = launchAff_ $ do
         Right _ -> pure unit
 
     DecodedOperation issue username operation -> do
+      FS.Extra.ensureDirectory scratchDir
       cache <- Cache.useCache
       packagesMetadata <- liftEffect $ Ref.new Map.empty
       runRegistryM (mkEnv octokit cache packagesMetadata issue username) do

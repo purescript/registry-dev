@@ -50,7 +50,7 @@ main = launchAff_ do
     env =
       { comment: \comment -> log ("[COMMENT] " <> comment)
       , closeIssue: log "Running locally, not closing issue..."
-      , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
+      , commitMetadataFile: \_ _ -> pure (Right unit) -- API.pacchettiBottiPushToRegistryMetadata
       , commitIndexFile: \_ _ -> unsafeCrashWith "Should not push to registry index in transfer."
       , commitPackageSetFile: \_ _ -> unsafeCrashWith "Should not modify package set in transfer."
       , uploadPackage: \_ -> unsafeCrashWith "Should not upload anything in transfer."
