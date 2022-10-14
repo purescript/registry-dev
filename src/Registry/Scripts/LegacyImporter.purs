@@ -547,7 +547,7 @@ readLegacyRegistryFiles = do
 readLegacyRegistryFile :: LegacyRegistryFile -> RegistryM (Map String GitHub.PackageURL)
 readLegacyRegistryFile sourceFile = do
   { registry } <- ask
-  let path = API.legacyRegistryFilePath registry sourceFile
+  let path = Path.concat [ registry, API.legacyRegistryFilePath sourceFile ]
   legacyPackages <- liftAff $ Json.readJsonFile path
   case legacyPackages of
     Left err -> do

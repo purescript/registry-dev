@@ -1397,13 +1397,10 @@ instance Show LegacyRegistryFile where
     BowerPackages -> "BowerPackages"
     NewPackages -> "NewPackages"
 
-legacyRegistryFilePath :: FilePath -> LegacyRegistryFile -> FilePath
-legacyRegistryFilePath registryPath file = Path.concat
-  [ registryPath
-  , case file of
-      BowerPackages -> "bower-packages.json"
-      NewPackages -> "new-packages.json"
-  ]
+legacyRegistryFilePath :: LegacyRegistryFile -> FilePath
+legacyRegistryFilePath = case _ of
+  BowerPackages -> "bower-packages.json"
+  NewPackages -> "new-packages.json"
 
 -- | A helper function that syncs API operations to the new-packages.json or
 -- | bower-packages.json files, namely registrations and transfers.
@@ -1415,16 +1412,15 @@ syncLegacyRegistry package location = do
     GitHub { owner, repo } -> pure $ GitHub.PackageURL $ Array.fold [ "https://github.com/", owner, "/", repo, ".git" ]
     _ -> throwWithComment "Could not sync package with legacy registry: packages must come from GitHub. (cc: @purescript/packaging)"
 
-  let newPackagesPath = legacyRegistryFilePath registry NewPackages
-  let bowerPackagesPath = legacyRegistryFilePath registry BowerPackages
+  let
+    readLegacyFile file = do
+      let path = Path.concat [ registry, legacyRegistryFilePath file ]
+      liftAff (Json.readJsonFile path) >>= case _ of
+        Left err -> throwWithComment $ "Could not sync package with legacy registry (could not read " <> path <> "(cc: @purescript/packaging): " <> err
+        Right packages -> pure packages
 
-  newPackages <- liftAff (Json.readJsonFile newPackagesPath) >>= case _ of
-    Left err -> throwWithComment $ "Could not sync package with legacy registry: could not read " <> newPackagesPath <> "(cc: @purescript/packaging): " <> err
-    Right packages -> pure packages
-
-  bowerPackages <- liftAff (Json.readJsonFile bowerPackagesPath) >>= case _ of
-    Left err -> throwWithComment $ "Could not sync package with legacy registry: could not read " <> bowerPackagesPath <> "(cc: @purescript/packaging): " <> err
-    Right packages -> pure packages
+  newPackages <- readLegacyFile NewPackages
+  bowerPackages <- readLegacyFile BowerPackages
 
   let
     rawPackageName = "purescript-" <> PackageName.print package
@@ -1446,10 +1442,10 @@ syncLegacyRegistry package location = do
 
   for_ targetFile \target -> do
     let sourcePackages = if target == NewPackages then newPackages else bowerPackages
-    let sourceFile = if target == NewPackages then newPackagesPath else bowerPackagesPath
+    let sourceFile = legacyRegistryFilePath target
     let packages = Map.insert rawPackageName packageUrl sourcePackages
     result <- liftAff $ Except.runExceptT do
-      liftAff $ Json.writeJsonFile sourceFile packages
+      liftAff $ Json.writeJsonFile (Path.concat [ registry, sourceFile ]) packages
       GitHubToken token <- Git.configurePacchettiBotti (Just registry)
       Git.runGit_ [ "pull" ] (Just registry)
       Git.runGit_ [ "add", sourceFile ] (Just registry)

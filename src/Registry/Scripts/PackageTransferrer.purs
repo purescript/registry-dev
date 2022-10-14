@@ -4,7 +4,6 @@ import Registry.Prelude
 
 import Affjax as Http
 import Control.Monad.Except as Except
-import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Map as Map
 import Data.String as String
@@ -21,7 +20,6 @@ import Node.Process as Node.Process
 import Registry.API (LegacyRegistryFile(..), Source(..))
 import Registry.API as API
 import Registry.Cache as Cache
-import Registry.Constants as Constants
 import Registry.Json as Json
 import Registry.Operation (AuthenticatedData(..), AuthenticatedOperation(..), Operation(..))
 import Registry.PackageName as PackageName
@@ -50,7 +48,7 @@ main = launchAff_ do
     env =
       { comment: \comment -> log ("[COMMENT] " <> comment)
       , closeIssue: log "Running locally, not closing issue..."
-      , commitMetadataFile: \_ _ -> pure (Right unit) -- API.pacchettiBottiPushToRegistryMetadata
+      , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
       , commitIndexFile: \_ _ -> unsafeCrashWith "Should not push to registry index in transfer."
       , commitPackageSetFile: \_ _ -> unsafeCrashWith "Should not modify package set in transfer."
       , uploadPackage: \_ -> unsafeCrashWith "Should not upload anything in transfer."
@@ -79,11 +77,8 @@ processLegacyRegistry legacyFile = do
   case Map.size needsTransfer of
     0 -> log "No packages require transferring."
     n -> log $ Array.fold [ show n, " packages need transferring." ]
-  newPackages <- transferAll packages needsTransfer
-  log "Writing legacy registry file..."
-  commitLegacyRegistryFile newPackages legacyFile >>= case _ of
-    Left err -> throwWithComment err
-    Right _ -> pure unit
+  _ <- transferAll packages needsTransfer
+  log "Completed transfers!"
 
 transferAll :: Map String GitHub.PackageURL -> Map String PackageLocations -> RegistryM (Map String GitHub.PackageURL)
 transferAll packages packageLocations = do
@@ -187,23 +182,3 @@ locationToPackageUrl = case _ of
     GitHub.PackageURL $ Array.fold [ "https://github.com/", owner, "/", repo, ".git" ]
   Git _ ->
     unsafeCrashWith "Git urls cannot be registered."
-
-commitLegacyRegistryFile :: Map Http.URL GitHub.PackageURL -> LegacyRegistryFile -> RegistryM (Either String Unit)
-commitLegacyRegistryFile packages file = do
-  { registry } <- ask
-  let registryFilePath = API.legacyRegistryFilePath registry file
-  liftAff $ Except.runExceptT do
-    liftAff $ Json.writeJsonFile registryFilePath packages
-    Git.runGitSilent [ "diff", "--stat" ] (Just registry) >>= case _ of
-      files | String.contains (String.Pattern (Path.basename registryFilePath)) files -> do
-        GitHubToken token <- Git.configurePacchettiBotti (Just registry)
-        Git.runGit_ [ "pull" ] (Just registry)
-        Git.runGit_ [ "add", registryFilePath ] (Just registry)
-        log "Committing to registry..."
-        let message = Array.fold [ "Sort ", registryFilePath, " and transfer packages that have moved repositories." ]
-        Git.runGit_ [ "commit", "-m", message ] (Just registry)
-        let upstreamRepo = Constants.registryRepo.owner <> "/" <> Constants.registryRepo.repo
-        let origin = "https://pacchettibotti:" <> token <> "@github.com" <> upstreamRepo <> ".git"
-        void $ Git.runGitSilent [ "push", origin, "main" ] (Just registry)
-      _ ->
-        log "No changes to commit."
