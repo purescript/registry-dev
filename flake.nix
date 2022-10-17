@@ -13,8 +13,9 @@
       flake = false;
     };
 
+    # Temporary until spago@next is published as alpha
     easy-purescript-nix = {
-      url = "github:justinwoo/easy-purescript-nix";
+      url = "github:f-f/easy-purescript-nix";
       flake = false;
     };
 
@@ -32,7 +33,7 @@
     easy-dhall-nix,
     ...
   }: let
-    supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin"];
+    supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
 
     registryOverlay = final: prev: {
       pursPackages = prev.callPackage easy-purescript-nix {};
@@ -93,7 +94,9 @@
           '';
 
           registry-test = ''
-            cd $(git rev-parse --show-toplevel)
+            cd $(git rev-parse --show-toplevel)/lib
+            npm ci
+            cd ..
             spago test
           '';
 
@@ -104,7 +107,7 @@
 
           registry-api = ''
             cd $(git rev-parse --show-toplevel)
-            spago run -m Registry.API
+            spago run -p registry-api
           '';
 
           registry-importer = ''
@@ -114,7 +117,7 @@
               exit 1
             fi
 
-            spago run -m Registry.Scripts.LegacyImporter --node-args $1
+            spago run -p registry-legacy-importer -- $1
           '';
 
           registry-package-set-updater = ''
@@ -124,12 +127,12 @@
               exit 1
             fi
 
-            spago run -m Registry.Scripts.PackageSetUpdater --node-args $1
+            spago run -p registry-package-set-updater -- $1
           '';
 
           registry-package-transferrer = ''
             cd $(git rev-parse --show-toplevel)
-            spago run -m Registry.Scripts.PackageTransferrer
+            spago run -p registry-package-transferrer
           '';
 
           # This script verifies that
@@ -180,7 +183,7 @@
 
             # Development tooling
             pursPackages.purs-0_15_4
-            pursPackages.spago
+            pursPackages.spago-next
             pursPackages.psa
             pursPackages.purs-tidy
             nodePackages.bower

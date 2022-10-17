@@ -3,6 +3,7 @@ module Registry.Hash
   , parseSha256
   , sha256File
   , sha256String
+  , sha256Buffer
   , unsafeSha256
   ) where
 

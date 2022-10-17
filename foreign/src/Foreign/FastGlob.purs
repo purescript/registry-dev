@@ -6,17 +6,24 @@ module Foreign.FastGlob
   , match'
   ) where
 
-import Registry.Prelude
+import Prelude
 
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import ConvertableOptions (class Defaults)
 import ConvertableOptions as ConvertableOptions
 import Data.Compactable (separate)
+import Data.Either (Either(..))
+import Data.Maybe (Maybe(..))
 import Data.String as String
+import Data.Traversable (traverse)
+import Effect (Effect)
+import Effect.Aff (Aff)
 import Effect.Aff as Aff
 import Node.FS.Aff as FS
+import Node.Path (FilePath)
 import Node.Path as Path
+import Partial.Unsafe (unsafeCrashWith)
 
 type SanitizedPaths = { succeeded :: Array FilePath, failed :: Array FilePath }
 
