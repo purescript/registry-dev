@@ -1,0 +1,8 @@
+package:
+  name: registry-package-set-updater
+  publish:
+    license: BSD-3-Clause
+  run:
+    main: Registry.Scripts.PackageSetUpdater
+  dependencies:
+    - registry-lib

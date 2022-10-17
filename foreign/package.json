@@ -1,0 +1,10 @@
+{
+  "name": "registry-foreign",
+  "scripts": {
+    "test": "spago test"
+  },
+  "license": "BSD-3-Clause",
+  "dependencies": {
+    "fast-glob": "^3.2.11"
+  }
+}
