@@ -35,7 +35,6 @@ import Effect.Aff as Aff
 import Effect.Exception (throw)
 import Effect.Now as Now
 import Effect.Ref as Ref
-import Foreign.Dhall as Dhall
 import Foreign.FastGlob as FastGlob
 import Foreign.Git as Git
 import Foreign.GitHub (GitHubToken(..), IssueNumber)
@@ -46,6 +45,7 @@ import Foreign.Purs as Purs
 import Foreign.Tar as Tar
 import Foreign.Tmp as Tmp
 import Foreign.Wget as Wget
+import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
 import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
@@ -73,6 +73,7 @@ import Registry.Solver as Solver
 import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Version (ParseMode(..), Range, Version)
 import Registry.Version as Version
+import Sunde as Process
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -481,6 +482,16 @@ registryPackageSetsPath registryPath = Path.concat [ registryPath, Constants.pac
 metadataFile :: FilePath -> PackageName -> FilePath
 metadataFile registryPath packageName = Path.concat [ registryPath, Constants.metadataPath, PackageName.print packageName <> ".json" ]
 
+jsonToDhallManifest :: String -> Aff (Either String String)
+jsonToDhallManifest jsonStr = do
+  let cmd = "json-to-dhall"
+  let stdin = Just jsonStr
+  let args = [ "--records-loose", "--unions-strict", "../v1/Manifest.dhall" ]
+  result <- Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
+  pure $ case result.exit of
+    NodeProcess.Normally 0 -> Right jsonStr
+    _ -> Left result.stderr
+
 publish :: Source -> PublishData -> Metadata -> RegistryM Unit
 publish source { name, ref, compiler, resolutions } inputMetadata = do
   tmpDir <- liftEffect $ Tmp.mkTmpDir
@@ -531,7 +542,7 @@ publish source { name, ref, compiler, resolutions } inputMetadata = do
   -- trust the metadata for everything else. No field should be different.
   manifest@(Manifest manifestRecord) <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of
     Left _err -> throwWithComment $ "Manifest not found at " <> manifestPath
-    Right manifestStr -> liftAff (Dhall.jsonToDhallManifest manifestStr) >>= case _ of
+    Right manifestStr -> liftAff (jsonToDhallManifest manifestStr) >>= case _ of
       Left err -> throwWithComment $ "Could not typecheck manifest: " <> err
       Right _ -> case Json.parseJson manifestStr of
         Left err -> throwWithComment $ "Could not parse manifest as JSON: " <> err

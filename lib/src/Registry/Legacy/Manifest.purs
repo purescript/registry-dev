@@ -14,13 +14,13 @@ import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
 import Data.These (These(..))
 import Data.These as These
-import Foreign.Dhall as Dhall
 import Foreign.GitHub as GitHub
 import Foreign.JsonRepair as JsonRepair
 import Foreign.Licensee as Licensee
 import Foreign.SPDX (License)
 import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
+import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FSA
 import Node.Path as Path
 import Parsing as Parsing
@@ -37,6 +37,7 @@ import Registry.RegistryM (RegistryM, throwWithComment)
 import Registry.Schema (Location, Manifest(..), dateFormatter)
 import Registry.Version (Range, Version)
 import Registry.Version as Version
+import Sunde as Process
 
 type LegacyManifest =
   { license :: License
@@ -260,12 +261,24 @@ fetchSpagoDhallJson address (RawVersion ref) = do
   packagesDhall <- getFile "packages.dhall"
   tmp <- liftEffect Tmp.mkTmpDir
   liftAff $ FSA.writeTextFile UTF8 (Path.concat [ tmp, "packages.dhall" ]) packagesDhall
-  dhallJson <- liftAff $ Dhall.dhallToJson { dhall: spagoDhall, cwd: Just tmp }
+  dhallJson <- liftAff $ dhallToJson { dhall: spagoDhall, cwd: Just tmp }
   Except.except $ case dhallJson of
     Left err -> Left $ GitHub.DecodeError err
     Right json -> case Json.decode json of
       Left err -> Left $ GitHub.DecodeError err
       Right value -> pure value
+  where
+  -- | Convert a string representing a Dhall expression into JSON using the
+  -- | `dhall-to-json` CLI.
+  dhallToJson :: { dhall :: String, cwd :: Maybe FilePath } -> Aff (Either String Json.Json)
+  dhallToJson { dhall, cwd } = do
+    let cmd = "dhall-to-json"
+    let stdin = Just dhall
+    let args = []
+    result <- Process.spawn { cmd, stdin, args } (NodeProcess.defaultSpawnOptions { cwd = cwd })
+    pure $ case result.exit of
+      NodeProcess.Normally 0 -> Json.parseJson result.stdout
+      _ -> Left result.stderr
 
 newtype Bowerfile = Bowerfile
   { description :: Maybe String
