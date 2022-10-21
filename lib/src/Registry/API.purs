@@ -1207,6 +1207,7 @@ includedGlobs =
   , "packages.dhall"
   , "bower.json"
   , "package.json"
+  , "spago.yaml"
   ]
 
 -- | These files are always included and should be globbed in case-insensitive
