@@ -1404,7 +1404,7 @@ pacchettiBottiKeyType = "ssh-ed25519"
 -- | Path to the root of the registry-dev repository from the directory where
 -- | Spago executes the API script
 rootDir :: FilePath
-rootDir = Path.concat [ "..", ".." ]
+rootDir = Path.concat [ ".." ]
 
 -- | An ignored directory suitable for storing results when running the API or
 -- | scripts.

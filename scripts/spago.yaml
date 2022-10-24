@@ -1,0 +1,6 @@
+package:
+  name: registry-scripts
+  publish:
+    license: BSD-3-Clause
+  dependencies:
+    - registry-lib

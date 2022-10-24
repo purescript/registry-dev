@@ -117,7 +117,7 @@
               exit 1
             fi
 
-            spago run -p registry-legacy-importer -- $1
+            spago run -p registry-scripts -m Registry.Scripts.LegacyImporter -- $1
           '';
 
           registry-package-set-updater = ''
@@ -127,12 +127,12 @@
               exit 1
             fi
 
-            spago run -p registry-package-set-updater -- $1
+            spago run -p registry-scripts -m Registry.Scripts.PackageSetUpdater -- $1
           '';
 
           registry-package-transferrer = ''
             cd $(git rev-parse --show-toplevel)
-            spago run -p registry-package-transferrer
+            spago run -p registry-scripts -m Registry.Scripts.PackageTransferrer -- $1
           '';
 
           # This script verifies that
