@@ -4,7 +4,6 @@ module PublishPursuit where
 import Registry.Prelude
 
 import Data.Map as Map
-import Dotenv as Dotenv
 import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
@@ -16,6 +15,7 @@ import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
 import Registry.API (Source(..), compilePackage, publishToPursuit, verifyBuildPlan)
+import Registry.API as API
 import Registry.Cache as Cache
 import Registry.Json as Json
 import Registry.RegistryM (Env, runRegistryM, throwWithComment)
@@ -24,14 +24,14 @@ import Registry.Version as Version
 
 main :: Effect Unit
 main = launchAff_ $ do
-  _ <- Dotenv.loadFile
+  _ <- API.loadEnv
 
   githubToken <- liftEffect do
     Process.lookupEnv "GITHUB_TOKEN"
       >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
   octokit <- liftEffect $ GitHub.mkOctokit githubToken
-  cache <- Cache.useCache
+  cache <- Cache.useCache API.cacheDir
 
   let
     env :: Env

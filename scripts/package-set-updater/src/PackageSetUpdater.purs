@@ -10,7 +10,6 @@ import Data.Map as Map
 import Data.PreciseDateTime as PDT
 import Data.String as String
 import Data.Time.Duration (Hours(..))
-import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Effect.Now as Now
@@ -39,7 +38,8 @@ derive instance Eq PublishMode
 
 main :: Effect Unit
 main = Aff.launchAff_ do
-  _ <- Dotenv.loadFile
+  log "Loading env..."
+  _ <- API.loadEnv
 
   FS.Extra.ensureDirectory API.scratchDir
 

@@ -37,11 +37,8 @@ nowUTC = do
   now <- Now.nowDateTime
   pure $ fromMaybe now $ DateTime.adjust (offset :: Duration.Minutes) now
 
-cacheDir :: FilePath
-cacheDir = ".cache"
-
-entryPath :: CacheKey -> FilePath
-entryPath (CacheKey filename) = Path.concat [ cacheDir, filename ]
+entryPath :: FilePath -> CacheKey -> FilePath
+entryPath cacheDir (CacheKey filename) = Path.concat [ cacheDir, filename ]
 
 type CacheEntry =
   { modified :: DateTime
@@ -78,14 +75,14 @@ readJsonEntry key { read } =
 writeJsonEntry :: forall a. Json.RegistryJson a => String -> a -> Cache -> Effect Unit
 writeJsonEntry key value { write } = write key (Json.stringifyJson value)
 
-useCache :: Aff Cache
-useCache = do
+useCache :: FilePath -> Aff Cache
+useCache cacheDir = do
   FSE.ensureDirectory cacheDir
 
   entries <- do
     files <- FSA.readdir cacheDir
     for files \file -> do
-      contents <- Json.readJsonFile (entryPath (CacheKey file))
+      contents <- Json.readJsonFile (entryPath cacheDir (CacheKey file))
       case contents of
         Left err -> do
           log $ "Failed to decode entry (" <> file <> "): " <> err
@@ -106,7 +103,7 @@ useCache = do
       utcTime <- nowUTC
       let entry = { modified: utcTime, value }
       let jsonEntry = entry { modified = RFC3339String.fromDateTime entry.modified }
-      FS.writeTextFile UTF8 (entryPath key) (Json.stringifyJson jsonEntry)
+      FS.writeTextFile UTF8 (entryPath cacheDir key) (Json.stringifyJson jsonEntry)
       Ref.modify_ (Map.insert key entry) cacheRef
 
     read :: CacheKey -> Effect (Either String CacheEntry)
@@ -114,7 +111,7 @@ useCache = do
       cache <- Ref.read cacheRef
       case Map.lookup key cache of
         Nothing -> do
-          try (FS.readTextFile UTF8 (entryPath key)) >>= case _ of
+          try (FS.readTextFile UTF8 (entryPath cacheDir key)) >>= case _ of
             Left err -> pure $ Left $ Aff.message err
             Right contents -> case Json.parseJson contents of
               Left err ->
@@ -128,7 +125,7 @@ useCache = do
     remove :: CacheKey -> Effect Unit
     remove key = do
       Ref.modify_ (Map.delete key) cacheRef
-      FS.unlink (entryPath key)
+      FS.unlink (entryPath cacheDir key)
 
   pure
     { read: \key -> read (toCacheKey key)
