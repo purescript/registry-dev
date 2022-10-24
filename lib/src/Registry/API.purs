@@ -1420,8 +1420,10 @@ envFilePath = Path.concat [ rootDir, ".env" ]
 -- | Loads the `.env` file into the environment.
 loadEnv :: Aff Dotenv.Settings
 loadEnv = do
-  contents <- FS.Aff.readTextFile UTF8 envFilePath
-  Dotenv.loadContents (String.trim contents)
+  contents <- Aff.try $ FS.Aff.readTextFile UTF8 envFilePath
+  case contents of
+    Left _ -> log ("Not loading .env file because none was found at path: " <> envFilePath) $> []
+    Right string -> Dotenv.loadContents (String.trim string)
 
 data LegacyRegistryFile = BowerPackages | NewPackages
 
