@@ -7,7 +7,6 @@ import Control.Monad.Except as Except
 import Data.Array as Array
 import Data.Map as Map
 import Data.String as String
-import Dotenv as Dotenv
 import Effect.Exception as Exception
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
@@ -32,7 +31,7 @@ import Registry.Version as Version
 
 main :: Effect Unit
 main = launchAff_ do
-  _ <- Dotenv.loadFile
+  _ <- API.loadEnv
 
   FS.Extra.ensureDirectory API.scratchDir
 
@@ -41,7 +40,7 @@ main = launchAff_ do
     token <- maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHubToken) mbToken
     GitHub.mkOctokit token
 
-  cache <- Cache.useCache
+  cache <- Cache.useCache API.cacheDir
 
   let
     env :: RegistryM.Env

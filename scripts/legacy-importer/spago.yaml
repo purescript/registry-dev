@@ -1,8 +1,0 @@
-package:
-  name: registry-legacy-importer
-  publish:
-    license: BSD-3-Clause
-  run:
-    main: Registry.Scripts.LegacyImporter
-  dependencies:
-    - registry-lib

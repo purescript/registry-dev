@@ -21,7 +21,6 @@ import Data.Map as Map
 import Data.Ordering (invert)
 import Data.Set as Set
 import Data.String as String
-import Dotenv as Dotenv
 import Effect.Exception as Exception
 import Effect.Ref as Ref
 import Foreign.GitHub (GitHubToken(..))
@@ -57,7 +56,7 @@ derive instance Eq ImportMode
 main :: Effect Unit
 main = launchAff_ do
   log "Reading .env file..."
-  _ <- Dotenv.loadFile
+  _ <- API.loadEnv
 
   FS.Extra.ensureDirectory API.scratchDir
 
@@ -81,7 +80,7 @@ main = launchAff_ do
       maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHubToken) result
     GitHub.mkOctokit token
 
-  cache <- Cache.useCache
+  cache <- Cache.useCache API.cacheDir
 
   metadataRef <- liftEffect $ Ref.new Map.empty
 

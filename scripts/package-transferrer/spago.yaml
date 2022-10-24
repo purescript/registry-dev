@@ -1,9 +1,0 @@
-package:
-  name: registry-package-transferrer
-  publish:
-    license: BSD-3-Clause
-  run:
-    main: Registry.Scripts.PackageTransferrer
-  dependencies:
-    - registry-lib
-    - registry-legacy-importer

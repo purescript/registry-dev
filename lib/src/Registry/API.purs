@@ -31,6 +31,7 @@ import Data.String.Base64 as Base64
 import Data.Time.Duration (Hours(..))
 import Data.Tuple (uncurry)
 import Data.Tuple.Nested (type (/\))
+import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Exception (throw)
 import Effect.Now as Now
@@ -47,10 +48,10 @@ import Foreign.Tmp as Tmp
 import Foreign.Wget as Wget
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
+import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
-import Node.Process as Env
 import Node.Process as Node.Process
 import Parsing as Parsing
 import Registry.Cache (Cache)
@@ -78,11 +79,11 @@ import Sunde as Process
 main :: Effect Unit
 main = launchAff_ $ do
   eventPath <- liftEffect do
-    Env.lookupEnv "GITHUB_EVENT_PATH"
+    Node.Process.lookupEnv "GITHUB_EVENT_PATH"
       >>= maybe (throw "GITHUB_EVENT_PATH not defined in the environment") pure
 
   githubToken <- liftEffect do
-    Env.lookupEnv "GITHUB_TOKEN"
+    Node.Process.lookupEnv "GITHUB_TOKEN"
       >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
   octokit <- liftEffect $ GitHub.mkOctokit githubToken
@@ -110,7 +111,7 @@ main = launchAff_ $ do
 
     DecodedOperation issue username operation -> do
       FS.Extra.ensureDirectory scratchDir
-      cache <- Cache.useCache
+      cache <- Cache.useCache cacheDir
       packagesMetadata <- liftEffect $ Ref.new Map.empty
       runRegistryM (mkEnv octokit cache packagesMetadata issue username) do
         comment $ case operation of
@@ -486,7 +487,7 @@ jsonToDhallManifest :: String -> Aff (Either String String)
 jsonToDhallManifest jsonStr = do
   let cmd = "json-to-dhall"
   let stdin = Just jsonStr
-  let args = [ "--records-loose", "--unions-strict", "../v1/Manifest.dhall" ]
+  let args = [ "--records-loose", "--unions-strict", Path.concat [ rootDir, "v1", "Manifest.dhall" ] ]
   result <- Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
   pure $ case result.exit of
     NodeProcess.Normally 0 -> Right jsonStr
@@ -1400,10 +1401,27 @@ packagingTeam = { org: "purescript", team: "packaging" }
 pacchettiBottiKeyType :: String
 pacchettiBottiKeyType = "ssh-ed25519"
 
+-- | Path to the root of the registry-dev repository from the directory where
+-- | Spago executes the API script
+rootDir :: FilePath
+rootDir = Path.concat [ ".." ]
+
 -- | An ignored directory suitable for storing results when running the API or
 -- | scripts.
-scratchDir :: String
-scratchDir = "scratch"
+scratchDir :: FilePath
+scratchDir = Path.concat [ rootDir, "scratch" ]
+
+cacheDir :: FilePath
+cacheDir = Path.concat [ rootDir, ".cache" ]
+
+envFilePath :: FilePath
+envFilePath = Path.concat [ rootDir, ".env" ]
+
+-- | Loads the `.env` file into the environment.
+loadEnv :: Aff Dotenv.Settings
+loadEnv = do
+  contents <- FS.Aff.readTextFile UTF8 envFilePath
+  Dotenv.loadContents (String.trim contents)
 
 data LegacyRegistryFile = BowerPackages | NewPackages
 
