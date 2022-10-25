@@ -1,5 +1,5 @@
 -- | A test script that exercises publishing to Pursuit only.
-module PublishPursuit where
+module Test.Scripts.PublishPursuit where
 
 import Registry.Prelude
 
