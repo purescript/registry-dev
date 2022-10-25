@@ -240,15 +240,15 @@ If there are no published or unpublished versions then these fields contain empt
     "1.0.0": {
       "bytes": 5579,
       "hash": "sha256-00bKlr9eKgTwrAsF+AE5rX7LN1rqij5yH9A78UKCL/I=",
-      "publishedTime": "2020-02-27T21:10:55.0Z",
+      "publishedTime": "2020-02-27T21:10:55.0Z"
     },
   "unpublished": {
     "1.0.1": {
       "reason": "Accidentally committed credentials",
       "publishedTime": "2020-02-27T22:10:55.0Z",
-      "unpublishedTime": "2020-02-28T00:02:35.0Z",
-    },
-  },
+      "unpublishedTime": "2020-02-28T00:02:35.0Z"
+    }
+  }
 }
 ```
 
@@ -469,7 +469,7 @@ For example, in JSON:
     "OQAttrDyjWPjmOdG8HJ8gh1CbM8WDDWoGfm+TTd8Qa8eua9Bt5Cc+43S24i/JqVWmk98qV",
     "YXoQmOYL4bY8t/q7cSNeMH",
     "-----END SSH SIGNATURE-----"
-  ]
+  ],
   "email": "trh@example.com"
 }
 ```
