@@ -241,7 +241,8 @@ If there are no published or unpublished versions then these fields contain empt
       "bytes": 5579,
       "hash": "sha256-00bKlr9eKgTwrAsF+AE5rX7LN1rqij5yH9A78UKCL/I=",
       "publishedTime": "2020-02-27T21:10:55.0Z"
-    },
+    }
+  },
   "unpublished": {
     "1.0.1": {
       "reason": "Accidentally committed credentials",
