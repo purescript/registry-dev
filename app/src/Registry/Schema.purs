@@ -10,10 +10,10 @@ import Data.List as List
 import Data.Map as Map
 import Data.RFC3339String (RFC3339String)
 import Foreign.SPDX (License)
-import Registry.Hash (Sha256)
 import Registry.Json ((.:), (.:?), (:=))
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
+import Registry.SRIHash (SRIHash)
 import Registry.Version (Range, Version)
 
 -- | PureScript encoding of ../v1/Manifest.dhall
@@ -166,7 +166,7 @@ type Metadata =
 
 type PublishedMetadata =
   { ref :: String
-  , hash :: Sha256
+  , hash :: SRIHash
   , bytes :: Number
   , publishedTime :: RFC3339String
   }

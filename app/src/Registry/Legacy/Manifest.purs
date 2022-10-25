@@ -26,7 +26,6 @@ import Node.Path as Path
 import Parsing as Parsing
 import Registry.Cache as Cache
 import Registry.Constants as Constants
-import Registry.Hash (sha256String)
 import Registry.Json ((.:), (.:?))
 import Registry.Json as Json
 import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry, PscTag(..))
@@ -34,6 +33,7 @@ import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, throwWithComment)
+import Registry.SRIHash as SRIHash
 import Registry.Schema (Location, Manifest(..), dateFormatter)
 import Registry.Version (Range, Version)
 import Registry.Version as Version
@@ -338,8 +338,8 @@ fetchLegacyPackageSets = do
 
   legacySets <- do
     tagKey <- liftEffect do
-      tagsSha <- sha256String (String.joinWith " " tags)
-      pure ("package-sets-" <> show tagsSha)
+      tagsSha <- SRIHash.hashString (String.joinWith " " tags)
+      pure ("package-sets-" <> SRIHash.print tagsSha)
 
     -- It's important that we cache the end result of unioning all package sets
     -- because the package sets are quite large and it's expensive to read them
