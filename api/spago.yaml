@@ -1,8 +1,0 @@
-package:
-  name: registry-api
-  publish:
-    license: BSD-3-Clause
-  run:
-    main: Registry.API
-  dependencies:
-    - registry-lib

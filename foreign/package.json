@@ -1,8 +1,0 @@
-{
-  "name": "registry-foreign",
-  "private": true,
-  "license": "BSD-3-Clause",
-  "dependencies": {
-    "fast-glob": "^3.2.11"
-  }
-}
