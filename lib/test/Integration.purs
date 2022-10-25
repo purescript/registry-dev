@@ -20,10 +20,10 @@ import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Location(..), Manifest(..))
-import Registry.Scripts.BowerInstaller (BowerSolved)
 import Registry.Solver as Solver
 import Registry.Version (Range, Version)
 import Registry.Version as Version
+import Test.Scripts.BowerInstaller (BowerSolved)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter (consoleReporter)
