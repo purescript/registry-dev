@@ -610,7 +610,7 @@ For example, if the previous release was `2.1.1`, and the package set update add
 
 Summarizes what operations the registry will take after a package is published, transferred, or unpublished. This section _could_ be folded back into the previous section, but I worry that doing so would make that section too long and unfocused.
 
-#### 6.1 Update PAckage Index
+#### 6.1 Update Package Index
 
 A spec of how the registry attempts to update the registry index.
 
