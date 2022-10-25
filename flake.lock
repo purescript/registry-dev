@@ -19,11 +19,11 @@
     "easy-purescript-nix": {
       "flake": false,
       "locked": {
-        "lastModified": 1666036571,
-        "narHash": "sha256-AxjZ70ap44jcKzHcKl6FPYor2EMddUWKEwdY3Xie/pw=",
+        "lastModified": 1666271405,
+        "narHash": "sha256-rBUF78MxVrZm4ZB2u6Ag/iRBD6Agg1a8IYgFRafdVds=",
         "owner": "f-f",
         "repo": "easy-purescript-nix",
-        "rev": "d96a1fe60bd18953a75d8cf94204b9362aecd051",
+        "rev": "eaae09072cf170503a3f9d0603957d63dfbed0af",
         "type": "github"
       },
       "original": {
@@ -65,11 +65,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1666014999,
-        "narHash": "sha256-gvKl8xlPJreezNG1NVTJv/HdGC69MSrM+IpCxS+eFvw=",
+        "lastModified": 1666610816,
+        "narHash": "sha256-q4F2VNe5bpxXOvp16DyLwE1SgNZMbNO29ZQJPIomedg=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "1935dd8fdab8e022a9d958419663162fd840014c",
+        "rev": "6107f97012a0c134c5848125b5aa1b149b76d2c9",
         "type": "github"
       },
       "original": {

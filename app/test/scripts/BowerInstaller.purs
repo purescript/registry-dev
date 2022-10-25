@@ -2,7 +2,7 @@
 -- | Bower, recording which packages have a successful run and which packages
 -- | fail to install. This is used to generate the list of Bower packages that
 -- | succeed in the integration tests for the registry solver.
-module Registry.Scripts.BowerInstaller where
+module Test.Scripts.BowerInstaller where
 
 import Registry.Prelude
 
