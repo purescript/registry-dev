@@ -3,4 +3,12 @@ package:
   publish:
     license: BSD-3-Clause
   dependencies:
+    - effect
+    - node-buffer
+    - node-fs-aff
+    - node-path
+    - parsing
     - prelude
+    - strings
+  test_dependencies:
+    - spec
