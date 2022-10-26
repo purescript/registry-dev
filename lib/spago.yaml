@@ -11,4 +11,6 @@ package:
     - prelude
     - strings
   test_dependencies:
+    - argonaut-core
     - spec
+    - sunde

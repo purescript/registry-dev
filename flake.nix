@@ -96,7 +96,8 @@
           registry-test = ''
             cd $(git rev-parse --show-toplevel)
             npm ci
-            spago test
+            spago test -p registry-app
+            spago test -p registry-lib -m Test.Registry
           '';
 
           registry-check-format = ''

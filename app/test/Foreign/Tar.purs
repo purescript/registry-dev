@@ -12,8 +12,8 @@ import Node.FS.Stats as FS.Stats
 import Node.Path as Path
 import Registry.SRIHash as SRIHash
 import Test.Spec as Spec
+import Test.Spec.Assertions (AnyShow(..))
 import Test.Spec.Assertions as Assert
-import Test.Utils (shouldEqual)
 
 tar :: Spec.Spec Unit
 tar = do
@@ -26,7 +26,7 @@ tar = do
       tarball1 <- createTarball
       Aff.delay (Aff.Milliseconds 1010.0)
       tarball2 <- createTarball
-      tarball1 `shouldEqual` tarball2
+      AnyShow tarball1 `Assert.shouldEqual` AnyShow tarball2
   where
   createTarball = do
     packageTmp <- liftEffect Tmp.mkTmpDir

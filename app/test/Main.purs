@@ -35,7 +35,6 @@ import Test.Fixture.Manifest as Fixture
 import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
 import Test.Foreign.Tar as Foreign.Tar
-import Test.Registry.Hash as Registry.Hash
 import Test.Registry.Index as Registry.Index
 import Test.Registry.PackageSet as PackageSet
 import Test.Registry.SSH as SSH
@@ -89,8 +88,6 @@ main = launchAff_ do
       Spec.describe "Encoding examples" (manifestExamplesRoundtrip manifestExamplePaths)
     Spec.describe "Registry Index" do
       Registry.Index.spec registryEnv
-    Spec.describe "Hash" do
-      Registry.Hash.testHash
     Spec.describe "Tar" do
       Foreign.Tar.tar
     Spec.describe "Json Repair" do
