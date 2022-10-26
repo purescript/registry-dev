@@ -16,16 +16,6 @@ data Operation
 
 derive instance Eq Operation
 
-instance Show Operation where
-  show = case _ of
-    Publish inner -> "Publish (" <> show (showWithPackage inner) <> ")"
-    PackageSetUpdate inner -> "PackageSetUpdate (" <> show inner <> ")"
-    Authenticated inner -> "Authenticated (" <> show inner <> ")"
-    where
-    showWithPackage :: forall r. { name :: PackageName | r } -> { name :: String | r }
-    showWithPackage inner =
-      inner { name = "PackageName (" <> PackageName.print inner.name <> ")" }
-
 instance RegistryJson Operation where
   encode = case _ of
     Publish fields -> Json.encode fields
@@ -56,15 +46,6 @@ instance RegistryJson AuthenticatedOperation where
     let parseTransfer = Transfer <$> Json.decode json
     parseUnpublish <|> parseTransfer
 
-instance Show AuthenticatedOperation where
-  show = case _ of
-    Unpublish inner -> "Unpublish (" <> show (showWithPackage inner) <> ")"
-    Transfer inner -> "Transfer (" <> show (showWithPackage inner) <> ")"
-    where
-    showWithPackage :: forall r. { name :: PackageName | r } -> { name :: String | r }
-    showWithPackage inner =
-      inner { name = "PackageName (" <> PackageName.print inner.name <> ")" }
-
 newtype AuthenticatedData = AuthenticatedData
   { payload :: AuthenticatedOperation
   -- We include the unparsed payload for use in verification so as to preserve
@@ -76,7 +57,6 @@ newtype AuthenticatedData = AuthenticatedData
 
 derive instance Newtype AuthenticatedData _
 derive newtype instance Eq AuthenticatedData
-derive newtype instance Show AuthenticatedData
 
 instance RegistryJson AuthenticatedData where
   encode (AuthenticatedData fields) = Json.encode fields

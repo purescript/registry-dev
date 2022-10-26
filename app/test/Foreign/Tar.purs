@@ -11,9 +11,8 @@ import Node.FS.Aff as FSA
 import Node.FS.Stats as FS.Stats
 import Node.Path as Path
 import Registry.Sha256 as Sha256
+import Test.Assert as Assert
 import Test.Spec as Spec
-import Test.Spec.Assertions (AnyShow(..))
-import Test.Spec.Assertions as Assert
 
 tar :: Spec.Spec Unit
 tar = do
@@ -26,7 +25,7 @@ tar = do
       tarball1 <- createTarball
       Aff.delay (Aff.Milliseconds 1010.0)
       tarball2 <- createTarball
-      AnyShow tarball1 `Assert.shouldEqual` AnyShow tarball2
+      tarball1 `Assert.shouldEqual` tarball2
   where
   createTarball = do
     packageTmp <- liftEffect Tmp.mkTmpDir

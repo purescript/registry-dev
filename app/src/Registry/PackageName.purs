@@ -24,9 +24,6 @@ newtype PackageName = PackageName String
 derive newtype instance Eq PackageName
 derive newtype instance Ord PackageName
 
-instance Show PackageName where
-  show = print
-
 instance StringEncodable PackageName where
   toEncodableString = print
   fromEncodableString = lmap (append "Expected PackageName: " <<< Parsing.parseErrorMessage) <<< parse

@@ -22,9 +22,6 @@ instance RegistryJson License where
   encode = Json.encode <<< print
   decode = parse <=< Json.decode
 
-instance Show License where
-  show = print
-
 -- | Print an SPDX license identifier.
 print :: License -> String
 print (License license) = license

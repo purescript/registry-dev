@@ -60,9 +60,6 @@ instance Eq Version where
 instance Ord Version where
   compare = compare `on` (\(Version v) -> [ v.major, v.minor, v.patch ])
 
-instance Show Version where
-  show = printVersion
-
 instance StringEncodable Version where
   toEncodableString = printVersion
   fromEncodableString = lmap Parsing.parseErrorMessage <<< parseVersion Strict
@@ -149,9 +146,6 @@ instance RegistryJson Range where
   decode json = do
     string <- Json.decode json
     lmap Parsing.parseErrorMessage $ parseRange Strict string
-
-instance Show Range where
-  show = printRange
 
 greaterThanOrEq :: Range -> Version
 greaterThanOrEq (Range range) = range.lhs

@@ -23,9 +23,9 @@ import Registry.Schema (Location(..), Manifest(..))
 import Registry.Solver as Solver
 import Registry.Version (Range, Version)
 import Registry.Version as Version
+import Test.Assert as Assert
 import Test.Scripts.BowerInstaller (BowerSolved)
 import Test.Spec as Spec
-import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter (consoleReporter)
 import Test.Spec.Runner (defaultConfig, runSpec')
 

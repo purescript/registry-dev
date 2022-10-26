@@ -22,9 +22,9 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Schema (Location(..), Manifest(..))
 import Registry.Version as Version
+import Test.Assert as Assert
 import Test.Fixture.Manifest as Fixture
 import Test.Spec as Spec
-import Test.Spec.Assertions as Assert
 
 type TestIndexEnv =
   { tmp :: FilePath
@@ -104,7 +104,7 @@ testRegistryIndex = Spec.before runBefore do
     pure { tmp, index, writeMemory }
 
   insertAndCheck manifest@(Manifest { name: packageName, version }) = do
-    let specName = "Inserts " <> PackageName.print packageName <> " version " <> show version
+    let specName = "Inserts " <> PackageName.print packageName <> " version " <> Version.printVersion version
 
     Spec.it specName \{ tmp, index, writeMemory } -> do
       -- First, we insert the manifest to disk and then read back the result.

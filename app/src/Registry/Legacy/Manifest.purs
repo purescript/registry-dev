@@ -287,7 +287,6 @@ newtype Bowerfile = Bowerfile
   }
 
 derive newtype instance Eq Bowerfile
-derive newtype instance Show Bowerfile
 
 instance RegistryJson Bowerfile where
   encode (Bowerfile fields) = Json.encode fields

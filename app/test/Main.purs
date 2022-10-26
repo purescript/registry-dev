@@ -31,6 +31,7 @@ import Registry.Schema (BuildPlan(..), Location(..), Manifest(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 import Safe.Coerce (coerce)
+import Test.Assert as Assert
 import Test.Fixture.Manifest as Fixture
 import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
@@ -42,7 +43,6 @@ import Test.Registry.Solver as TestSolver
 import Test.Registry.Version as TestVersion
 import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
-import Test.Spec.Assertions as Assert
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (defaultConfig, runSpec')
 

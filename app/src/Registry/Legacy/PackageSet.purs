@@ -56,7 +56,6 @@ newtype LegacyPackageSet = LegacyPackageSet (Map PackageName LegacyPackageSetEnt
 
 derive instance Newtype LegacyPackageSet _
 derive newtype instance Eq LegacyPackageSet
-derive newtype instance Show LegacyPackageSet
 
 instance RegistryJson LegacyPackageSet where
   encode (LegacyPackageSet plan) = Json.encode plan
