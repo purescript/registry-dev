@@ -50,6 +50,7 @@ import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
 import Data.Bifunctor (lmap)
 import Data.Bitraversable (ltraverse)
+import Data.Codec.Argonaut as CA
 import Data.Either (Either(..), note)
 import Data.Int as Int
 import Data.Map (Map)
@@ -228,8 +229,8 @@ instance (EncodeRecord row list, DecodeRecord row list, RL.RowToList row list) =
     Just object -> decodeRecord object (Proxy :: Proxy list)
 
 instance RegistryJson SRIHash where
-  encode = encode <<< SRIHash.print
-  decode = SRIHash.parse <=< decode
+  encode = CA.encode SRIHash.codec
+  decode = lmap CA.printJsonDecodeError <<< CA.decode SRIHash.codec
 
 ---------
 

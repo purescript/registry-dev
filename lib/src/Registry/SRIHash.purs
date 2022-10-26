@@ -4,6 +4,7 @@
 -- | https://github.com/purescript/registry-dev/blob/master/SPEC.md#srihash
 module Registry.SRIHash
   ( SRIHash
+  , codec
   , hashBuffer
   , hashFile
   , hashString
@@ -16,7 +17,10 @@ import Prelude
 
 import Data.Array as Array
 import Data.Bifunctor (lmap)
+import Data.Codec.Argonaut (JsonCodec)
+import Data.Codec.Argonaut as CA
 import Data.Either (Either)
+import Data.Either as Either
 import Data.List.Lazy as List.Lazy
 import Data.String.CodeUnits as String.CodeUnits
 import Effect (Effect)
@@ -37,6 +41,10 @@ newtype SRIHash = SRIHash { sri :: String, hash :: String }
 
 derive instance Eq SRIHash
 
+codec :: JsonCodec SRIHash
+codec = CA.prismaticCodec "SRIHash" (Either.hush <<< parse) print CA.string
+
+-- | Print a SRIHash as a subresource integrity hash using sha256
 print :: SRIHash -> String
 print (SRIHash { sri, hash }) = sri <> "-" <> hash
 
