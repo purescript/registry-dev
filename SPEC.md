@@ -28,7 +28,7 @@ A description of our forward-compatibility guarantees and what that means.
 
 ### 3.2 Atomic Data
 
-Schemas for `PackageName`, `Version`, `Range`, `Location`, `SRIHash`, `Owner`, `License`, and other simple data used in the registry. Each is a subsection which includes its rules, the representations in Dhall and JSON, and a link to the PureScript implementation in `Schema.purs`.
+Schemas for `PackageName`, `Version`, `Range`, `Location`, `Sha256`, `Owner`, `License`, and other simple data used in the registry. Each is a subsection which includes its rules, the representations in Dhall and JSON, and a link to the PureScript implementation in `Schema.purs`.
 
 #### PackageName
 
@@ -158,10 +158,10 @@ All packages in the registry must have a license that grants permission for redi
 
 `"MIT OR APACHE-2.0"`
 
-#### SRIHash
+#### Sha256
 
-**[Source](./lib/src/Registry/SRIHash.purs)**
-**[Spec](./specs/v1/SRIHash.dhall)**
+**[Source](./lib/src/Registry/Sha256.purs)**
+**[Spec](./specs/v1/Sha256.dhall)**
 
 The registry produces a tarball when publishing a package. The hash of this tarball is recorded so that package managers can verify the integrity of packages they download from the registry. The hash is stored in the [subresource integrity (SRI) format](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity). , A SRI hash is represented as a `string`. For example:
 
@@ -211,7 +211,7 @@ All packages in the registry have an associated metadata file, which is located 
 
 Each published version of a package records three fields:
 
-- `hash`: a [`SRIHash`](#srihash) of the tarball contents of the given version
+- `hash`: a [`Sha256`](#Sha256) of the tarball contents of the given version
 - `bytes`: the size of the tarball in bytes
 - `publishedTime`: the time the package was published as an `ISO8601` string
 

@@ -7,12 +7,12 @@ let Location = ./Location.dhall
 
 let Version = Text
 
-let SRIHash = Text
+let Sha256 = Text
 
 let ISO8601String = Text
 
 let PublishedMetadata =
-      { hash : SRIHash
+      { hash : Sha256
       , bytes : Natural
       , publishedTime : ISO8601String
       }
