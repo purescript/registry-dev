@@ -73,8 +73,8 @@ import Node.Path (FilePath)
 import Prim.Row as Row
 import Prim.RowList as RL
 import Record as Record
-import Registry.SRIHash (SRIHash)
-import Registry.SRIHash as SRIHash
+import Registry.Sha256 (Sha256)
+import Registry.Sha256 as Sha256
 import Type.Proxy (Proxy(..))
 
 -- | Print a type as a formatted JSON string
@@ -228,9 +228,9 @@ instance (EncodeRecord row list, DecodeRecord row list, RL.RowToList row list) =
     Nothing -> Left "Expected Object"
     Just object -> decodeRecord object (Proxy :: Proxy list)
 
-instance RegistryJson SRIHash where
-  encode = CA.encode SRIHash.codec
-  decode = lmap CA.printJsonDecodeError <<< CA.decode SRIHash.codec
+instance RegistryJson Sha256 where
+  encode = CA.encode Sha256.codec
+  decode = lmap CA.printJsonDecodeError <<< CA.decode Sha256.codec
 
 ---------
 

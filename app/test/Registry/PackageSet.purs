@@ -15,7 +15,7 @@ import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
-import Registry.SRIHash as SRIHash
+import Registry.Sha256 as Sha256
 import Registry.Schema (Location(..), Manifest, Metadata, PackageSet(..))
 import Registry.Schema as Schema
 import Registry.Version (Version)
@@ -284,7 +284,7 @@ unsafeMetadataEntry (Tuple name version) = do
   let
     published =
       { ref: Version.rawVersion version
-      , hash: unsafeFromRight $ SRIHash.parse "sha256-gb24ZRec6mgR8TFBVR2eIh5vsMdhuL+zK9VKjWP74Cw="
+      , hash: unsafeFromRight $ Sha256.parse "sha256-gb24ZRec6mgR8TFBVR2eIh5vsMdhuL+zK9VKjWP74Cw="
       , bytes: 0.0
       , publishedTime: RFC3339String ""
       }

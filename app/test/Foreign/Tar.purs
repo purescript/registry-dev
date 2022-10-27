@@ -10,7 +10,7 @@ import Node.FS.Aff as FS
 import Node.FS.Aff as FSA
 import Node.FS.Stats as FS.Stats
 import Node.Path as Path
-import Registry.SRIHash as SRIHash
+import Registry.Sha256 as Sha256
 import Test.Spec as Spec
 import Test.Spec.Assertions (AnyShow(..))
 import Test.Spec.Assertions as Assert
@@ -50,5 +50,5 @@ tar = do
 
   hashAndBytes path = do
     FS.Stats.Stats { size: bytes } <- FS.stat path
-    hash <- SRIHash.hashFile path
+    hash <- Sha256.hashFile path
     pure { hash, bytes }

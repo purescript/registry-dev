@@ -67,7 +67,7 @@ import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.SRIHash as SRIHash
+import Registry.Sha256 as Sha256
 import Registry.SSH as SSH
 import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Metadata, Owner(..), PackageSet(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Solver as Solver
@@ -582,8 +582,8 @@ publish source { name, ref, compiler, resolutions } inputMetadata = do
     else
       log $ "WARNING: Package tarball is " <> show bytes <> ".\ncc: @purescript/packaging"
   log "Hashing the tarball..."
-  hash <- liftAff $ SRIHash.hashFile tarballPath
-  log $ "Hash: " <> SRIHash.print hash
+  hash <- liftAff $ Sha256.hashFile tarballPath
+  log $ "Hash: " <> Sha256.print hash
 
   -- Now that we have the package source contents we can verify we can compile
   -- the package. We skip failures when the package is a legacy package.
@@ -613,7 +613,7 @@ publish source { name, ref, compiler, resolutions } inputMetadata = do
   let uploadPackageInfo = { name, version: newVersion }
   uploadPackage uploadPackageInfo tarballPath
   log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
-  log $ "Hash for ref " <> ref <> " was " <> SRIHash.print hash
+  log $ "Hash for ref " <> ref <> " was " <> Sha256.print hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref, publishedTime, bytes } metadata
   writeMetadata name newMetadata >>= case _ of
     Left err -> throwWithComment $ String.joinWith "\n"

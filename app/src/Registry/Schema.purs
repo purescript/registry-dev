@@ -13,7 +13,7 @@ import Foreign.SPDX (License)
 import Registry.Json ((.:), (.:?), (:=))
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
-import Registry.SRIHash (SRIHash)
+import Registry.Sha256 (Sha256)
 import Registry.Version (Range, Version)
 
 -- | PureScript encoding of ../v1/Manifest.dhall
@@ -166,7 +166,7 @@ type Metadata =
 
 type PublishedMetadata =
   { ref :: String
-  , hash :: SRIHash
+  , hash :: Sha256
   , bytes :: Number
   , publishedTime :: RFC3339String
   }
