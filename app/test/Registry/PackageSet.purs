@@ -15,9 +15,9 @@ import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
-import Registry.Sha256 as Sha256
 import Registry.Schema (Location(..), Manifest, Metadata, PackageSet(..))
 import Registry.Schema as Schema
+import Registry.Sha256 as Sha256
 import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Fixture.Manifest (fixture, setDependencies, setName, setVersion)

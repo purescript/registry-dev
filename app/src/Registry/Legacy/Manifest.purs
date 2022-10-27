@@ -33,8 +33,8 @@ import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, throwWithComment)
-import Registry.Sha256 as Sha256
 import Registry.Schema (Location, Manifest(..), dateFormatter)
+import Registry.Sha256 as Sha256
 import Registry.Version (Range, Version)
 import Registry.Version as Version
 import Sunde as Process
