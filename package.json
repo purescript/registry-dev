@@ -3,8 +3,7 @@
   "license": "BSD-3-Clause",
   "private": true,
   "workspaces": [
-    "api",
-    "foreign",
+    "app",
     "lib"
   ]
 }

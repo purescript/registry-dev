@@ -1,5 +1,5 @@
 {
-  "name": "registry-lib",
+  "name": "registry-app",
   "private": true,
   "license": "BSD-3-Clause",
   "dependencies": {

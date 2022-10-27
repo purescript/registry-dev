@@ -3,4 +3,5 @@ package:
   publish:
     license: BSD-3-Clause
   dependencies:
+    - registry-app
     - registry-lib
