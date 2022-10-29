@@ -112,7 +112,8 @@ main = Aff.launchAff_ do
 
       log "Found the following package versions eligible for inclusion in package set:"
       forWithIndex_ candidates.accepted logPackage
-      PackageSet.processBatchSequential registryIndex prevPackageSet Nothing candidates.accepted >>= case _ of
+      let workDir = Path.concat [ API.scratchDir, "package-set-build" ]
+      PackageSet.processBatchSequential workDir registryIndex prevPackageSet Nothing candidates.accepted >>= case _ of
         Nothing -> do
           log "\n----------\nNo packages could be added to the set. All packages failed:"
           forWithIndex_ candidates.accepted logPackage
