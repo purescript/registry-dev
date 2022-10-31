@@ -10,8 +10,9 @@ import Node.FS.Aff as FS
 import Node.FS.Aff as FSA
 import Node.FS.Stats as FS.Stats
 import Node.Path as Path
-import Registry.Hash as Hash
+import Registry.Sha256 as Sha256
 import Test.Spec as Spec
+import Test.Spec.Assertions (AnyShow(..))
 import Test.Spec.Assertions as Assert
 
 tar :: Spec.Spec Unit
@@ -25,7 +26,7 @@ tar = do
       tarball1 <- createTarball
       Aff.delay (Aff.Milliseconds 1010.0)
       tarball2 <- createTarball
-      tarball1 `Assert.shouldEqual` tarball2
+      AnyShow tarball1 `Assert.shouldEqual` AnyShow tarball2
   where
   createTarball = do
     packageTmp <- liftEffect Tmp.mkTmpDir
@@ -49,5 +50,5 @@ tar = do
 
   hashAndBytes path = do
     FS.Stats.Stats { size: bytes } <- FS.stat path
-    hash <- Hash.sha256File path
+    hash <- Sha256.hashFile path
     pure { hash, bytes }

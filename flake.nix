@@ -94,15 +94,15 @@
           '';
 
           registry-test = ''
-            cd $(git rev-parse --show-toplevel)/lib
+            cd $(git rev-parse --show-toplevel)
             npm ci
-            cd ..
-            spago test
+            spago test -p registry-app
+            spago test -p registry-lib -m Test.Registry
           '';
 
           registry-check-format = ''
             cd $(git rev-parse --show-toplevel)
-            purs-tidy check src test
+            purs-tidy check app lib scripts
           '';
 
           registry-api = ''

@@ -3,4 +3,16 @@ package:
   publish:
     license: BSD-3-Clause
   dependencies:
+    - codec-argonaut
+    - effect
+    - node-buffer
+    - node-fs-aff
+    - node-path
+    - parsing
     - prelude
+    - strings
+  test_dependencies:
+    - argonaut-core
+    - spec
+    - sunde
+

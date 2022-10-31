@@ -53,6 +53,7 @@ package:
     - prelude
     - record
     - refs
+    - registry-lib
     - safe-coerce
     - spec
     - strings

@@ -57,7 +57,6 @@ import Parsing as Parsing
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Constants as Constants
-import Registry.Hash as Hash
 import Registry.Index as Index
 import Registry.Json as Json
 import Registry.Legacy.Manifest as Legacy.Manifest
@@ -70,6 +69,7 @@ import Registry.PackageUpload as Upload
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
 import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Metadata, Owner(..), PackageSet(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
+import Registry.Sha256 as Sha256
 import Registry.Solver as Solver
 import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Version (ParseMode(..), Range, Version)
@@ -583,8 +583,8 @@ publish source { name, ref, compiler, resolutions } inputMetadata = do
     else
       log $ "WARNING: Package tarball is " <> show bytes <> ".\ncc: @purescript/packaging"
   log "Hashing the tarball..."
-  hash <- liftAff $ Hash.sha256File tarballPath
-  log $ "Hash: " <> show hash
+  hash <- liftAff $ Sha256.hashFile tarballPath
+  log $ "Hash: " <> Sha256.print hash
 
   -- Now that we have the package source contents we can verify we can compile
   -- the package. We skip failures when the package is a legacy package.
@@ -614,7 +614,7 @@ publish source { name, ref, compiler, resolutions } inputMetadata = do
   let uploadPackageInfo = { name, version: newVersion }
   uploadPackage uploadPackageInfo tarballPath
   log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
-  log $ "Hash for ref " <> ref <> " was " <> show hash
+  log $ "Hash for ref " <> ref <> " was " <> Sha256.print hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref, publishedTime, bytes } metadata
   writeMetadata name newMetadata >>= case _ of
     Left err -> throwWithComment $ String.joinWith "\n"
@@ -676,7 +676,7 @@ verifyManifest { metadata, manifest } = do
       [ "You tried to upload a version that already exists: " <> Version.printVersion manifestFields.version
       , "Its metadata is:"
       , "```"
-      , show info
+      , Json.printJson info
       , "```"
       ]
 
