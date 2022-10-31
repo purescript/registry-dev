@@ -16,7 +16,6 @@ package:
     - control
     - convertable-options
     - datetime
-    - debug
     - dodo-printer
     - dotenv
     - effect
@@ -63,4 +62,3 @@ package:
     - transformers
     - tuples
     - uncurried-transformers
-

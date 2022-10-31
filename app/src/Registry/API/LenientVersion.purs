@@ -10,7 +10,6 @@ module Registry.API.LenientVersion
 import Registry.Prelude
 
 import Control.Monad.Error.Class as Error
-import Data.Array as Array
 import Data.Function (on)
 import Data.Int as Int
 import Data.String as String
@@ -81,5 +80,4 @@ convertVersion input = do
     # String.joinWith "."
   where
   maybeIdentity k x = fromMaybe x (k x)
-  dropLeadingZeros =
-    map (Int.toStringAs Int.decimal) <<< Int.fromString
+  dropLeadingZeros = map (Int.toStringAs Int.decimal) <<< Int.fromString
