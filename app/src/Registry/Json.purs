@@ -74,7 +74,9 @@ import Prim.Row as Row
 import Prim.RowList as RL
 import Record as Record
 import Registry.PackageName as PackageName
+import Registry.Range as Range
 import Registry.Sha256 as Sha256
+import Registry.Version as Version
 import Type.Proxy (Proxy(..))
 
 -- | Print a type as a formatted JSON string
@@ -143,6 +145,10 @@ instance StringEncodable String where
 instance StringEncodable PackageName.PackageName where
   toEncodableString = PackageName.print
   fromEncodableString = PackageName.parse
+
+instance StringEncodable Version.Version where
+  toEncodableString = Version.print
+  fromEncodableString = Version.parse
 
 -- | A class for encoding and decoding JSON
 class RegistryJson a where
@@ -239,6 +245,14 @@ instance RegistryJson Sha256.Sha256 where
 instance RegistryJson PackageName.PackageName where
   encode = CA.encode PackageName.codec
   decode = lmap CA.printJsonDecodeError <<< CA.decode PackageName.codec
+
+instance RegistryJson Version.Version where
+  encode = CA.encode Version.codec
+  decode = lmap CA.printJsonDecodeError <<< CA.decode Version.codec
+
+instance RegistryJson Range.Range where
+  encode = CA.encode Range.codec
+  decode = lmap CA.printJsonDecodeError <<< CA.decode Range.codec
 
 ---------
 

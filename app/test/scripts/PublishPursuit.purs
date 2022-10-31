@@ -59,7 +59,7 @@ main = launchAff_ $ do
       packageSourceDir = Path.concat [ tmp, "purescript-slug" ]
       eitherManifest = Json.parseJson """{"name":"slug","version":"3.0.6","license":"MIT","location":{"githubOwner":"thomashoneyman","githubRepo":"purescript-slug"},"dependencies":{"argonaut-codecs":">=9.0.0 <10.0.0","arrays":">=7.0.0 <8.0.0","either":">=6.1.0 <7.0.0","maybe":">=6.0.0 <7.0.0","prelude":">=6.0.0 <7.0.0","strings":">=6.0.0 <7.0.0","unicode":">=6.0.0 <7.0.0"}}"""
       providedBuildPlan = BuildPlan
-        { compiler: unsafeFromRight (Version.parseVersion Version.Lenient "v0.15.4")
+        { compiler: unsafeFromRight (Version.parse "0.15.4")
         , resolutions: Nothing
         }
 

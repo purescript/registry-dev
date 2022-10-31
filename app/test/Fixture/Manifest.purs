@@ -11,11 +11,12 @@ import Data.Newtype (unwrap)
 import Data.String as String
 import Foreign.SPDX (License)
 import Foreign.SPDX as SPDX
-import Parsing as Parsing
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Range (Range)
+import Registry.Range as Range
 import Registry.Schema (Location(..), Manifest(..), Owner(..))
-import Registry.Version (Range, Version)
+import Registry.Version (Version)
 import Registry.Version as Version
 
 class Fixture a where
@@ -28,7 +29,7 @@ instance Fixture PackageName where
   fixture = unsafeFromRight $ PackageName.parse "fixture-package-name"
 
 instance Fixture Version where
-  fixture = unsafeFromRight $ Version.parseVersion Version.Lenient "1.0.0"
+  fixture = unsafeFromRight $ Version.parse "1.0.0"
 
 instance Fixture License where
   fixture = unsafeFromRight $ SPDX.parse "MIT"
@@ -69,11 +70,11 @@ instance (Fixture a) => Fixture (NonEmptyArray a) where
 
 setName :: String -> Manifest -> Manifest
 setName name (Manifest manifest) =
-  Manifest (manifest { name = unsafeFromRight (PackageName.parse name) })
+  Manifest (manifest { name = unsafeFromRight $ PackageName.parse name })
 
 setVersion :: String -> Manifest -> Manifest
 setVersion version (Manifest manifest) =
-  Manifest (manifest { version = unsafeFromRight (Version.parseVersion Version.Lenient version) })
+  Manifest (manifest { version = unsafeFromRight $ Version.parse version })
 
 setDescription :: String -> Manifest -> Manifest
 setDescription description (Manifest manifest) =
@@ -87,14 +88,12 @@ setDependencies dependencies (Manifest manifest) =
   dependencies' = Map.fromFoldable (map go dependencies)
 
   go (Tuple package version) =
-    Tuple (unsafeFromRight (PackageName.parse package)) (mkRangeIncluding (unsafeFromRight (Version.parseVersion Version.Lenient version)))
+    Tuple (unsafeFromRight (PackageName.parse package)) (mkRangeIncluding (unsafeFromRight (Version.parse version)))
 
   mkRangeIncluding :: Version -> Range
   mkRangeIncluding version = do
-    let input = Array.fold [ ">=", Version.printVersion version, " <", Version.printVersion (Version.bumpPatch version) ]
-    case Version.parseRange Version.Strict input of
-      Left err -> unsafeCrashWith $ show { error: Parsing.parseErrorMessage err, input }
-      Right range -> range
+    let input = Array.fold [ ">=", Version.print version, " <", Version.print (Version.bumpPatch version) ]
+    unsafeFromRight $ Range.parse input
 
 -- | Creates a perfect binary tree of Manifests
 -- | with all transitive dependencies contained in the resulting array.
@@ -121,8 +120,8 @@ manifestTree depth =
   go ix manifest = do
     let
       deps =
-        [ Tuple (name (left ix)) (Version.printVersion fixture)
-        , Tuple (name (right ix)) (Version.printVersion fixture)
+        [ Tuple (name (left ix)) (Version.print fixture)
+        , Tuple (name (right ix)) (Version.print fixture)
         ]
 
       updateDeps =

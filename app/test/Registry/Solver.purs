@@ -12,8 +12,10 @@ import Data.Set.NonEmpty as NES
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Range (Range)
+import Registry.Range as Range
 import Registry.Solver (SolverError(..), SolverPosition(..), printSolverError, solve, solveAndValidate)
-import Registry.Version (ParseMode(..), Range, Version)
+import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.Spec as Spec
@@ -279,13 +281,13 @@ package :: String -> PackageName
 package = unsafeFromRight <<< PackageName.parse
 
 version :: Int -> Version
-version = unsafeFromRight <<< Version.parseVersion Strict <<< (_ <> ".0.0") <<< show
+version = unsafeFromRight <<< Version.parse <<< (_ <> ".0.0") <<< show
 
 -- For all these tests, we work with major versions only because we do not
 -- need to exercise the intricacies of the range relations, just the solver,
 -- which does not care about what versions are, just how they relate
 range :: Int -> Int -> Range
-range lower upper = unsafeFromRight $ Version.parseRange Strict $ Array.fold
+range lower upper = unsafeFromRight $ Range.parse $ Array.fold
   [ ">="
   , show lower
   , ".0.0 <"

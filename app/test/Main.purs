@@ -39,7 +39,6 @@ import Test.Registry.Index as Registry.Index
 import Test.Registry.PackageSet as PackageSet
 import Test.Registry.SSH as SSH
 import Test.Registry.Solver as TestSolver
-import Test.Registry.Version as TestVersion
 import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -89,10 +88,6 @@ main = launchAff_ do
       Foreign.Tar.tar
     Spec.describe "Json Repair" do
       Foreign.JsonRepair.testJsonRepair
-    Spec.describe "Version" do
-      TestVersion.testVersion
-    Spec.describe "Range" do
-      TestVersion.testRange
     Spec.describe "Solver" do
       TestSolver.spec
     Spec.describe "Glob" do
@@ -119,7 +114,7 @@ manifestEncoding :: Spec.Spec Unit
 manifestEncoding = do
   let
     roundTrip (Manifest manifest) = do
-      Spec.it (PackageName.print manifest.name <> " " <> Version.rawVersion manifest.version) do
+      Spec.it (PackageName.print manifest.name <> " " <> Version.print manifest.version) do
         Json.roundtrip manifest `Assert.shouldContain` manifest
 
   roundTrip Fixture.fixture
@@ -300,7 +295,7 @@ mkUnsafePackage :: String -> PackageName
 mkUnsafePackage = unsafeFromRight <<< PackageName.parse
 
 mkUnsafeVersion :: String -> Version
-mkUnsafeVersion = unsafeFromRight <<< Version.parseVersion Version.Strict
+mkUnsafeVersion = unsafeFromRight <<< Version.parse
 
 decodeEventsToOps :: Spec.Spec Unit
 decodeEventsToOps = do
@@ -506,7 +501,7 @@ checkBuildPlanToResolutions = do
     packageName /\ version <- (Map.toUnfoldable resolutions :: Array _)
     let
       bowerName = RawPackageName ("purescript-" <> PackageName.print packageName)
-      path = Path.concat [ dependenciesDir, PackageName.print packageName <> "-" <> Version.printVersion version ]
+      path = Path.concat [ dependenciesDir, PackageName.print packageName <> "-" <> Version.print version ]
     pure $ Tuple bowerName { path, version }
 
 compilerVersions :: Spec.Spec Unit

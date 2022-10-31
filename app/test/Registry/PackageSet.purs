@@ -9,6 +9,8 @@ import Data.Either as Either
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.RFC3339String (RFC3339String(..))
+import Registry.API.LenientVersion (LenientVersion(..))
+import Registry.API.LenientVersion as LenientVersion
 import Registry.Json as Json
 import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, parsePscTag, printPscTag)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
@@ -62,7 +64,7 @@ spec = do
     let
       operations = Map.fromFoldable
         [ map (const Nothing) assert
-        , map (Version.bumpPatch >>> Just) effect
+        , map (LenientVersion.version >>> Version.bumpPatch >>> Just) effect
         , Tuple (unsafeName "math") (Just (unsafeVersion "1.0.0"))
         ]
 
@@ -137,7 +139,7 @@ packageSet = PackageSet
   { compiler: unsafeVersion "0.15.2"
   , published: unsafeDate "2022-07-25"
   , version: unsafeVersion "4.2.0"
-  , packages: Map.fromFoldable do
+  , packages: map LenientVersion.version $ Map.fromFoldable do
       [ assert
       , console
       , effect
@@ -166,10 +168,10 @@ convertedPackageSet =
     Right value -> value
   where
   index = Map.fromFoldable
-    [ unsafeIndexEntry assert [ console, effect, prelude ]
-    , unsafeIndexEntry console [ effect, prelude ]
-    , unsafeIndexEntry effect [ prelude ]
-    , unsafeIndexEntry prelude []
+    [ mkManifest assert [ console, effect, prelude ]
+    , mkManifest console [ effect, prelude ]
+    , mkManifest effect [ prelude ]
+    , mkManifest prelude []
     ]
 
   metadata = Map.fromFoldable
@@ -247,43 +249,45 @@ legacyPackageSetDhall =
   }
 }"""
 
-assert :: Tuple PackageName Version
-assert = Tuple (unsafeName "assert") (unsafeVersion "v6.0.0")
+assert :: Tuple PackageName LenientVersion
+assert = Tuple (unsafeName "assert") (unsafeLenientVersion "v6.0.0")
 
-console :: Tuple PackageName Version
-console = Tuple (unsafeName "console") (unsafeVersion "v6.0.0")
+console :: Tuple PackageName LenientVersion
+console = Tuple (unsafeName "console") (unsafeLenientVersion "v6.0.0")
 
-effect :: Tuple PackageName Version
-effect = Tuple (unsafeName "effect") (unsafeVersion "v4.0.0")
+effect :: Tuple PackageName LenientVersion
+effect = Tuple (unsafeName "effect") (unsafeLenientVersion "v4.0.0")
 
-prelude :: Tuple PackageName Version
-prelude = Tuple (unsafeName "prelude") (unsafeVersion "v6.0.0")
+prelude :: Tuple PackageName LenientVersion
+prelude = Tuple (unsafeName "prelude") (unsafeLenientVersion "v6.0.0")
 
 unsafeName :: String -> PackageName
 unsafeName = unsafeFromRight <<< PackageName.parse
 
 unsafeVersion :: String -> Version
-unsafeVersion = unsafeFromRight <<< Version.parseVersion Version.Lenient
+unsafeVersion = unsafeFromRight <<< Version.parse
+
+unsafeLenientVersion :: String -> LenientVersion
+unsafeLenientVersion = unsafeFromRight <<< LenientVersion.parse
 
 unsafeDate :: String -> DateTime
 unsafeDate = unsafeFromRight <<< Formatter.DateTime.unformat Schema.dateFormatter
 
-unsafeIndexEntry :: Tuple PackageName Version -> Array (Tuple PackageName Version) -> Tuple PackageName (Map Version Manifest)
-unsafeIndexEntry (Tuple name version) deps = do
+mkManifest :: Tuple PackageName LenientVersion -> Array (Tuple PackageName LenientVersion) -> Tuple PackageName (Map Version Manifest)
+mkManifest (Tuple name version) deps = do
   let
-    manifest =
-      fixture
-        # setName (PackageName.print name)
-        # setVersion (Version.rawVersion version)
-        # setDependencies (map (bimap PackageName.print Version.rawVersion) deps)
+    manifest = fixture
+      # setName (PackageName.print name)
+      # setVersion (LenientVersion.print version)
+      # setDependencies (map (bimap PackageName.print LenientVersion.print) deps)
 
-  name /\ Map.singleton version manifest
+  name /\ Map.singleton (LenientVersion.version version) manifest
 
-unsafeMetadataEntry :: Tuple PackageName Version -> Tuple PackageName Metadata
+unsafeMetadataEntry :: Tuple PackageName LenientVersion -> Tuple PackageName Metadata
 unsafeMetadataEntry (Tuple name version) = do
   let
     published =
-      { ref: Version.rawVersion version
+      { ref: LenientVersion.raw version
       , hash: unsafeFromRight $ Sha256.parse "sha256-gb24ZRec6mgR8TFBVR2eIh5vsMdhuL+zK9VKjWP74Cw="
       , bytes: 0.0
       , publishedTime: RFC3339String ""
@@ -292,7 +296,7 @@ unsafeMetadataEntry (Tuple name version) = do
     metadata =
       { location: GitHub { owner: "purescript", repo: "purescript-" <> PackageName.print name, subdir: Nothing }
       , owners: Nothing
-      , published: Map.singleton version published
+      , published: Map.singleton (LenientVersion.version version) published
       , unpublished: Map.empty
       }
 

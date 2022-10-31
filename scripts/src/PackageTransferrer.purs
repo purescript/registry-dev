@@ -18,6 +18,7 @@ import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.API (LegacyRegistryFile(..), Source(..))
 import Registry.API as API
+import Registry.API.LenientVersion as LenientVersion
 import Registry.Cache as Cache
 import Registry.Json as Json
 import Registry.Operation (AuthenticatedData(..), AuthenticatedOperation(..), Operation(..))
@@ -27,7 +28,6 @@ import Registry.RegistryM as RegistryM
 import Registry.Schema (Location(..), Metadata)
 import Registry.Scripts.LegacyImporter as LegacyImporter
 import Registry.Version (Version)
-import Registry.Version as Version
 
 main :: Effect Unit
 main = launchAff_ do
@@ -141,8 +141,8 @@ latestPackageLocations package { location, published } = do
   let
     isMatchingTag :: Version -> GitHub.Tag -> Boolean
     isMatchingTag version tag = fromMaybe false do
-      tagVersion <- hush $ Version.parseVersion Version.Lenient tag.name
-      pure $ version == tagVersion
+      tagVersion <- hush $ LenientVersion.parse tag.name
+      pure $ version == LenientVersion.version tagVersion
 
     matchMetadata :: Either String PackageLocations
     matchMetadata = do

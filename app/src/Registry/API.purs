@@ -52,6 +52,7 @@ import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
+import Registry.API.LenientVersion as LenientVersion
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Constants as Constants
@@ -64,13 +65,15 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
 import Registry.PackageUpload as Upload
+import Registry.Range (Range)
+import Registry.Range as Range
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
 import Registry.Schema (BuildPlan(..), Location(..), Manifest(..), Metadata, Owner(..), PackageSet(..), addVersionToMetadata, isVersionInMetadata, mkNewMetadata, unpublishVersionInMetadata)
 import Registry.Sha256 as Sha256
 import Registry.Solver as Solver
 import Registry.Types (RawPackageName(..), RawVersion(..))
-import Registry.Version (ParseMode(..), Range, Version)
+import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Process
 
@@ -119,7 +122,7 @@ main = launchAff_ $ do
             "Processing package set update."
           Authenticated (AuthenticatedData { payload }) -> case payload of
             Unpublish { name, version } ->
-              "Unpublishing `" <> PackageName.print name <> "` at version `" <> Version.printVersion version <> "`."
+              "Unpublishing `" <> PackageName.print name <> "` at version `" <> Version.print version <> "`."
             Transfer { name } ->
               "Transferring `" <> PackageName.print name <> "`."
 
@@ -263,8 +266,8 @@ runOperation source operation = case operation of
     for_ compiler \version -> when (version < prevCompiler) do
       throwWithComment $ String.joinWith " "
         [ "You are downgrading the compiler used in the package set from"
-        , "the current version (" <> Version.printVersion prevCompiler <> ")"
-        , "to the lower version (" <> Version.printVersion version <> ")."
+        , "the current version (" <> Version.print prevCompiler <> ")"
+        , "to the lower version (" <> Version.print version <> ")."
         , "The package set compiler version cannot be downgraded."
         ]
 
@@ -286,9 +289,9 @@ runOperation source operation = case operation of
           [ "  - "
           , PackageName.print name
           , " from "
-          , Version.printVersion old
+          , Version.print old
           , " to "
-          , Version.printVersion new
+          , Version.print new
           ]
 
       throwWithComment $ Array.fold
@@ -346,16 +349,16 @@ runOperation source operation = case operation of
 
       publishedMetadata <- case inPublished, inUnpublished of
         Nothing, Nothing ->
-          throwWithComment $ "Cannot unpublish " <> Version.printVersion version <> " because it is not a published version."
+          throwWithComment $ "Cannot unpublish " <> Version.print version <> " because it is not a published version."
         Just published, Nothing ->
           -- We only pass through the case where the user is unpublishing a
           -- package that has been published and not yet unpublished.
           pure published
         Nothing, Just _ ->
-          throwWithComment $ "Cannot unpublish " <> Version.printVersion version <> " because it has already been unpublished."
+          throwWithComment $ "Cannot unpublish " <> Version.print version <> " because it has already been unpublished."
         Just _, Just _ ->
           throwWithComment $ String.joinWith "\n"
-            [ "Cannot unpublish " <> Version.printVersion version <> "."
+            [ "Cannot unpublish " <> Version.print version <> "."
             , ""
             , "This version is listed both as published and unpublished. This is an internal error."
             , "cc @purescript/packaging"
@@ -510,9 +513,9 @@ publish source { name, ref, compiler, resolutions } inputMetadata = do
       Git _ -> throwWithComment "Legacy packages can only come from GitHub. Aborting."
       GitHub { owner, repo } -> pure { owner, repo }
 
-    version <- case Version.parseVersion Lenient ref of
+    version <- case LenientVersion.parse ref of
       Left _ -> throwWithComment $ "Not a valid registry version: " <> ref
-      Right result -> pure result
+      Right result -> pure $ LenientVersion.version result
 
     legacyPackageSets <- Legacy.Manifest.fetchLegacyPackageSets
 
@@ -559,7 +562,7 @@ publish source { name, ref, compiler, resolutions } inputMetadata = do
   log "Packaging the tarball to upload..."
   -- We need the version number to upload the package
   let newVersion = manifestRecord.version
-  let newDirname = PackageName.print name <> "-" <> Version.printVersion newVersion
+  let newDirname = PackageName.print name <> "-" <> Version.print newVersion
   let packageSourceDir = Path.concat [ tmpDir, newDirname ]
   liftAff $ FS.Extra.ensureDirectory packageSourceDir
   -- We copy over all files that are always included (ie. src dir, purs.json file),
@@ -607,7 +610,7 @@ publish source { name, ref, compiler, resolutions } inputMetadata = do
   log "Uploading package to the storage backend..."
   let uploadPackageInfo = { name, version: newVersion }
   uploadPackage uploadPackageInfo tarballPath
-  log $ "Adding the new version " <> Version.printVersion newVersion <> " to the package metadata file (hashes, etc)"
+  log $ "Adding the new version " <> Version.print newVersion <> " to the package metadata file (hashes, etc)"
   log $ "Hash for ref " <> ref <> " was " <> Sha256.print hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref, publishedTime, bytes } metadata
   writeMetadata name newMetadata >>= case _ of
@@ -667,7 +670,7 @@ verifyManifest { metadata, manifest } = do
   case Map.lookup manifestFields.version metadata.published of
     Nothing -> pure unit
     Just info -> throwWithComment $ String.joinWith "\n"
-      [ "You tried to upload a version that already exists: " <> Version.printVersion manifestFields.version
+      [ "You tried to upload a version that already exists: " <> Version.print manifestFields.version
       , "Its metadata is:"
       , "```"
       , Json.printJson info
@@ -678,7 +681,7 @@ verifyManifest { metadata, manifest } = do
   case Map.lookup manifestFields.version metadata.unpublished of
     Nothing -> pure unit
     Just info -> throwWithComment $ String.joinWith "\n"
-      [ "You tried to upload a version that has been unpublished: " <> Version.printVersion manifestFields.version
+      [ "You tried to upload a version that has been unpublished: " <> Version.print manifestFields.version
       , "Details:"
       , "```"
       , show info
@@ -739,7 +742,7 @@ validateResolutions manifest resolutions = Except.runExceptT do
         [ "`"
         , PackageName.print name
         , "` in range `"
-        , Version.printRange range
+        , Range.print range
         , "`"
         ]
 
@@ -754,9 +757,9 @@ validateResolutions manifest resolutions = Except.runExceptT do
         [ "`"
         , PackageName.print name
         , "@"
-        , Version.printVersion version
+        , Version.print version
         , "` does not satisfy range `"
-        , Version.printRange range
+        , Range.print range
         , "`"
         ]
 
@@ -790,7 +793,7 @@ getUnresolvedDependencies (Manifest { dependencies }) resolutions =
       -- then the build plan is incorrect. Otherwise, this part of the build
       -- plan is correct.
       Just version
-        | not (Version.rangeIncludes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
+        | not (Range.includes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
         | otherwise -> Nothing
 
 type CompilePackage =
@@ -808,7 +811,7 @@ compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
       log "Compiling..."
       compilerOutput <- liftAff $ Purs.callCompiler
         { command: Purs.Compile { globs: [ "src/**/*.purs" ] }
-        , version: Version.printVersion plan.compiler
+        , version: Version.print plan.compiler
         , cwd: Just packageSourceDir
         }
       pure (handleCompiler dependenciesDir compilerOutput)
@@ -819,7 +822,7 @@ compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
       log "Compiling..."
       compilerOutput <- liftAff $ Purs.callCompiler
         { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ dependenciesDir, "*/src/**/*.purs" ] ] }
-        , version: Version.printVersion plan.compiler
+        , version: Version.print plan.compiler
         , cwd: Just packageSourceDir
         }
       pure (handleCompiler dependenciesDir compilerOutput)
@@ -830,28 +833,28 @@ compilePackage { packageSourceDir, buildPlan: BuildPlan plan } = do
     let
       -- This filename uses the format the directory name will have once
       -- unpacked, ie. package-name-major.minor.patch
-      filename = PackageName.print packageName <> "-" <> Version.printVersion version <> ".tar.gz"
+      filename = PackageName.print packageName <> "-" <> Version.print version <> ".tar.gz"
       filepath = Path.concat [ dir, filename ]
 
-    liftAff (withBackoff' (Wget.wget (Constants.registryPackagesUrl <> "/" <> PackageName.print packageName <> "/" <> Version.printVersion version <> ".tar.gz") filepath)) >>= case _ of
+    liftAff (withBackoff' (Wget.wget (Constants.registryPackagesUrl <> "/" <> PackageName.print packageName <> "/" <> Version.print version <> ".tar.gz") filepath)) >>= case _ of
       Nothing -> throwWithComment "Could not fetch tarball."
       Just (Left err) -> throwWithComment $ "Error while fetching tarball: " <> err
       Just (Right _) -> pure unit
 
     liftEffect $ Tar.extract { cwd: dir, archive: filename }
     liftAff $ FS.unlink filepath
-    log $ "Installed " <> PackageName.print packageName <> "@" <> Version.printVersion version
+    log $ "Installed " <> PackageName.print packageName <> "@" <> Version.print version
 
   handleCompiler tmp = case _ of
     Right _ ->
       Right tmp
     Left MissingCompiler -> Left $ Array.fold
       [ "Compilation failed because the build plan compiler version "
-      , Version.printVersion plan.compiler
+      , Version.print plan.compiler
       , " is not supported. Please try again with a different compiler."
       ]
     Left (CompilationError errs) -> Left $ String.joinWith "\n"
-      [ "Compilation failed because the build plan does not compile with version " <> Version.printVersion plan.compiler <> " of the compiler:"
+      [ "Compilation failed because the build plan does not compile with version " <> Version.print plan.compiler <> " of the compiler:"
       , "```"
       , Purs.printCompilerErrors errs
       , "```"
@@ -892,18 +895,18 @@ publishToPursuit { packageSourceDir, dependenciesDir, buildPlan: buildPlan@(Buil
   -- with the format used by Pursuit in PureScript versions at least up to 0.16
   compilerOutput <- liftAff $ Purs.callCompiler
     { command: Purs.Publish { resolutions: resolutionsFilePath }
-    , version: Version.printVersion compiler
+    , version: Version.print compiler
     , cwd: Just packageSourceDir
     }
 
   publishJson <- case compilerOutput of
     Left MissingCompiler -> throwError $ Array.fold
       [ "Publishing failed because the build plan compiler version "
-      , Version.printVersion compiler
+      , Version.print compiler
       , " is not supported. Please try again with a different compiler."
       ]
     Left (CompilationError errs) -> throwError $ String.joinWith "\n"
-      [ "Publishing failed because the build plan does not compile with version " <> Version.printVersion compiler <> " of the compiler:"
+      [ "Publishing failed because the build plan does not compile with version " <> Version.print compiler <> " of the compiler:"
       , "```"
       , Purs.printCompilerErrors errs
       , "```"
@@ -974,7 +977,7 @@ buildPlanToResolutions { buildPlan: BuildPlan { resolutions }, dependenciesDir }
     Tuple name version <- (Map.toUnfoldable (fromMaybe Map.empty resolutions) :: Array _)
     let
       bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
-      packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.printVersion version ]
+      packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.print version ]
     pure $ Tuple bowerPackageName { path: packagePath, version }
 
 mkEnv :: GitHub.Octokit -> Cache -> Ref (Map PackageName Metadata) -> IssueNumber -> String -> Env
@@ -1152,7 +1155,7 @@ pacchettiBottiPushToRegistryPackageSets :: Version -> String -> FilePath -> Aff 
 pacchettiBottiPushToRegistryPackageSets version commitMessage registryDir = Except.runExceptT do
   GitHubToken token <- Git.configurePacchettiBotti (Just registryDir)
   Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
-  Git.runGit_ [ "add", Path.concat [ Constants.packageSetsPath, Version.printVersion version <> ".json" ] ] (Just registryDir)
+  Git.runGit_ [ "add", Path.concat [ Constants.packageSetsPath, Version.print version <> ".json" ] ] (Just registryDir)
   Git.runGit_ [ "commit", "-m", commitMessage ] (Just registryDir)
   let upstreamRepo = Constants.registryRepo.owner <> "/" <> Constants.registryRepo.repo
   let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
