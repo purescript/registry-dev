@@ -5,7 +5,6 @@ import Registry.Prelude
 import Registry.Json ((.:))
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
-import Registry.PackageName as PackageName
 import Registry.Schema (Location)
 import Registry.Version (Version)
 
