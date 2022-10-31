@@ -9,13 +9,14 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Map as Map
 import Data.Set as Set
 import Data.Set.NonEmpty as NES
+import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Solver (SolverError(..), SolverPosition(..), printSolverError, solve, solveAndValidate)
 import Registry.Version (ParseMode(..), Range, Version)
 import Registry.Version as Version
+import Test.Assert as Assert
 import Test.Spec as Spec
-import Test.Spec.Assertions as Assert
 
 spec :: Spec.Spec Unit
 spec = do
@@ -39,7 +40,7 @@ spec = do
           received.message `Assert.shouldEqual` expected.message
 
       Right value ->
-        Assert.fail $ "Expected failure, but received: " <> show value
+        Assert.fail $ "Expected failure, but received: " <> Json.stringifyJson value
 
   Spec.describe "Valid dependency ranges" do
     Spec.it "Solves simple range" do

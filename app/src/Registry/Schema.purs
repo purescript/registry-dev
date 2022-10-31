@@ -5,7 +5,6 @@ import Registry.Prelude
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime (Formatter, FormatterCommand(..))
 import Data.Formatter.DateTime as Formatter.DateTime
-import Data.Generic.Rep as Generic
 import Data.List as List
 import Data.Map as Map
 import Data.RFC3339String (RFC3339String)
@@ -59,7 +58,6 @@ newtype Owner = Owner
 
 derive instance Newtype Owner _
 derive newtype instance Eq Owner
-derive newtype instance Show Owner
 derive newtype instance RegistryJson Owner
 
 dateFormatter :: Formatter
@@ -80,7 +78,6 @@ newtype PackageSet = PackageSet
 
 derive instance Newtype PackageSet _
 derive newtype instance Eq PackageSet
-derive newtype instance Show PackageSet
 
 instance RegistryJson PackageSet where
   -- This instance is manually encoded so we can control the order of fields.
@@ -103,7 +100,6 @@ newtype BuildPlan = BuildPlan
 
 derive instance Newtype BuildPlan _
 derive newtype instance Eq BuildPlan
-derive newtype instance Show BuildPlan
 
 instance RegistryJson BuildPlan where
   encode (BuildPlan plan) = Json.encode plan
@@ -126,11 +122,6 @@ data Location
   | GitHub GitHubData
 
 derive instance Eq Location
-
-derive instance Generic.Generic Location _
-
-instance Show Location where
-  show = genericShow
 
 -- | We encode it this way so that json-to-dhall can read it
 instance RegistryJson Location where

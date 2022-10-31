@@ -20,9 +20,9 @@ import Registry.Schema as Schema
 import Registry.Sha256 as Sha256
 import Registry.Version (Version)
 import Registry.Version as Version
+import Test.Assert as Assert
 import Test.Fixture.Manifest (fixture, setDependencies, setName, setVersion)
 import Test.Spec as Spec
-import Test.Spec.Assertions as Assert
 
 spec :: Spec.Spec Unit
 spec = do

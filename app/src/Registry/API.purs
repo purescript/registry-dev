@@ -16,7 +16,6 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
-import Data.Generic.Rep as Generic
 import Data.HTTP.Method as Method
 import Data.Int as Int
 import Data.Interpolate (i)
@@ -145,10 +144,6 @@ data OperationDecoding
   | DecodedOperation IssueNumber String Operation
 
 derive instance Eq OperationDecoding
-derive instance Generic.Generic OperationDecoding _
-
-instance Show OperationDecoding where
-  show = genericShow
 
 readOperation :: FilePath -> Aff OperationDecoding
 readOperation eventPath = do
@@ -226,7 +221,7 @@ runOperation source operation = case operation of
           [ "Cannot register"
           , PackageName.print name
           , "at the location"
-          , show packageLocation
+          , Json.stringifyJson packageLocation
           , "because that location is already in use to publish another package."
           ]
         Just packageLocation ->
@@ -393,7 +388,7 @@ runOperation source operation = case operation of
             let hourLimit = 48
             let diff = DateTime.diff now publishedDate
             when (diff > Hours (Int.toNumber hourLimit)) do
-              throwWithComment $ "Packages can only be unpublished within " <> show hourLimit <> " hours."
+              throwWithComment $ "Packages can only be unpublished within " <> Int.toStringAs Int.decimal hourLimit <> " hours."
 
             deletePackage { name, version }
 
@@ -441,7 +436,7 @@ runOperation source operation = case operation of
       unless (locationIsUnique newLocation packagesMetadata) do
         throwWithComment $ String.joinWith " "
           [ "Cannot transfer package to"
-          , show newLocation
+          , Json.stringifyJson newLocation
           , "because another package is already registered at that location."
           ]
 
@@ -663,7 +658,7 @@ verifyManifest { metadata, manifest } = do
   -- are going to fail while parsing from JSON, so we should move them here if we
   -- want to handle everything together
   log "Running checks for the following manifest:"
-  logShow manifestFields
+  log $ Json.printJson manifestFields
 
   log "Ensuring the package is not the purescript-metadata package, which cannot be published."
   when (PackageName.print manifestFields.name == "metadata") do
@@ -702,7 +697,7 @@ verifyManifest { metadata, manifest } = do
       Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifestFields.dependencies
 
   unless (Array.null pkgsNotInRegistry) do
-    throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> show pkgsNotInRegistry
+    throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> String.joinWith ", " (map PackageName.print pkgsNotInRegistry)
 
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the
@@ -1429,11 +1424,6 @@ loadEnv = do
 data LegacyRegistryFile = BowerPackages | NewPackages
 
 derive instance Eq LegacyRegistryFile
-
-instance Show LegacyRegistryFile where
-  show = case _ of
-    BowerPackages -> "BowerPackages"
-    NewPackages -> "NewPackages"
 
 legacyRegistryFilePath :: LegacyRegistryFile -> FilePath
 legacyRegistryFilePath = case _ of

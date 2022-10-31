@@ -68,7 +68,7 @@ main = launchAff_ do
 
 processLegacyRegistry :: LegacyRegistryFile -> RegistryM Unit
 processLegacyRegistry legacyFile = do
-  log $ Array.fold [ "Reading legacy registry file (", show legacyFile, ")" ]
+  log $ Array.fold [ "Reading legacy registry file (", API.legacyRegistryFilePath legacyFile, ")" ]
   packages <- LegacyImporter.readLegacyRegistryFile legacyFile
   log "Reading latest locations..."
   locations <- latestLocations packages

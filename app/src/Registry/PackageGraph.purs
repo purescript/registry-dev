@@ -20,8 +20,10 @@ import Data.Monoid (guard)
 import Data.Set as Set
 import Registry.Index (RegistryIndex)
 import Registry.PackageName (PackageName)
+import Registry.PackageName as PackageName
 import Registry.Schema (Manifest(..))
 import Registry.Version (Range, Version)
+import Registry.Version as Version
 
 type PackageWithVersion = { package :: PackageName, version :: Version }
 
@@ -41,7 +43,7 @@ checkPackages index packages = do
     constraints = Array.sortWith (_.dependencies >>> Array.length) do
       Tuple package version <- Map.toUnfoldable packages
       case Map.lookup package index >>= Map.lookup version of
-        Nothing -> unsafeCrashWith ("Unregistered package version: " <> show { package, version })
+        Nothing -> unsafeCrashWith ("Unregistered package version: " <> show { package: PackageName.print package, version: Version.printVersion version })
         Just (Manifest manifest) -> do
           let dependencies = Set.toUnfoldable (Map.keys manifest.dependencies)
           [ { package: { package, version }, dependencies } ]

@@ -11,7 +11,6 @@ import Data.Array.NonEmpty (foldMap1)
 import Data.Array.NonEmpty as NEA
 import Data.Foldable (foldMap)
 import Data.FoldableWithIndex (foldMapWithIndex, traverseWithIndex_)
-import Data.Generic.Rep as Generic
 import Data.Map as Map
 import Data.Newtype (alaF)
 import Data.Semigroup.First (First(..))
@@ -33,10 +32,6 @@ data SolverPosition
 
 derive instance Eq SolverPosition
 derive instance Ord SolverPosition
-derive instance Generic.Generic SolverPosition _
-
-instance Show SolverPosition where
-  show a = genericShow a
 
 printSolverPosition :: SolverPosition -> String
 printSolverPosition = case _ of
@@ -88,10 +83,6 @@ data SolverError
   | DisjointRanges PackageName Range SolverPosition Range SolverPosition
 
 derive instance Eq SolverError
-derive instance Generic.Generic SolverError _
-
-instance Show SolverError where
-  show a = genericShow a
 
 -- Minimize the positions on the errors and group/deduplicate them
 minimizeErrors :: Dependencies -> Map PackageName Range -> NonEmptyArray SolverError -> NonEmptyArray SolverError

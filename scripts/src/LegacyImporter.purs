@@ -208,7 +208,7 @@ main = launchAff_ do
           log "\n----------"
           log "UPLOADING"
           log $ PackageName.print manifest.name <> "@" <> Version.printVersion manifest.version
-          log $ show manifest.location
+          log $ Json.stringifyJson manifest.location
           log "----------"
           API.runOperation source (mkOperation manifest)
 
@@ -355,12 +355,12 @@ buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl
       case Map.lookup package.name existingRegistry >>= Map.lookup version of
         Just manifest -> pure manifest
         _ -> do
-          let key = "manifest__" <> show package.name <> "--" <> tag.name
+          let key = "manifest__" <> PackageName.print package.name <> "--" <> tag.name
           liftEffect (Cache.readJsonEntry key cache) >>= case _ of
             -- We can't just write the version directly, as we need to preserve the _raw_ version.
             -- So we update the manifest fields before reading/writing the cache.
             Left _ -> ExceptT do
-              log $ "CACHE MISS: Building manifest for " <> show package.name <> "@" <> tag.name
+              log $ "CACHE MISS: Building manifest for " <> PackageName.print package.name <> "@" <> tag.name
               manifest <- Except.runExceptT buildManifest
               liftEffect $ Cache.writeJsonEntry key (map (_ { version = Version.rawVersion version } <<< un Manifest) manifest) cache
               pure manifest

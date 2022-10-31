@@ -12,8 +12,8 @@ import Registry.SSH as SSH
 import Registry.Schema (Owner(..))
 import Registry.Version (Version)
 import Registry.Version as Version
+import Test.Assert as Assert
 import Test.Spec as Spec
-import Test.Spec.Assertions as Assert
 
 spec :: Spec.Spec Unit
 spec = do

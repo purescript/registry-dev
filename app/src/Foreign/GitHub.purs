@@ -395,7 +395,6 @@ newtype IssueNumber = IssueNumber Int
 
 instance Newtype IssueNumber Int
 derive newtype instance Eq IssueNumber
-derive newtype instance Show IssueNumber
 derive newtype instance RegistryJson IssueNumber
 
 newtype PackageURL = PackageURL String

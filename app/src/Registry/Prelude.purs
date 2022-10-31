@@ -43,7 +43,6 @@ import Data.Maybe (Maybe(..), fromJust, fromMaybe, isJust, isNothing, maybe) as 
 import Data.Newtype (class Newtype, un) as Extra
 import Data.Nullable (Nullable, toMaybe, toNullable) as Extra
 import Data.Set (Set) as Extra
-import Data.Show.Generic (genericShow) as Extra
 import Data.String as String
 import Data.String.NonEmpty (NonEmptyString) as Extra
 import Data.Traversable (for, for_, sequence, traverse) as Extra

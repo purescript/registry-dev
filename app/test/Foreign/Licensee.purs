@@ -4,8 +4,8 @@ import Registry.Prelude
 
 import Foreign.Licensee as Licensee
 import Node.Path as Path
+import Test.Assert as Assert
 import Test.Spec as Spec
-import Test.Spec.Assertions as Assert
 import Test.Support.ManifestFiles as ManifestFiles
 
 licensee :: Spec.Spec Unit

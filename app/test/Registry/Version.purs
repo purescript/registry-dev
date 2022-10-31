@@ -8,8 +8,8 @@ import Registry.Prelude
 import Data.Either as Either
 import Registry.Version (ParseMode(..))
 import Registry.Version as Version
+import Test.Assert as Assert
 import Test.Spec as Spec
-import Test.Spec.Assertions as Assert
 
 testVersion :: Spec.Spec Unit
 testVersion = do
