@@ -19,7 +19,6 @@ import Node.FS as FS
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
-import Parsing as Parsing
 import Registry.API (copyPackageSourceFiles)
 import Registry.API as API
 import Registry.Json as Json
@@ -62,8 +61,6 @@ main = launchAff_ do
   runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
     Spec.describe "API" do
       Spec.describe "Checks" do
-        Spec.describe "Good package names" goodPackageName
-        Spec.describe "Bad package names" badPackageName
         Spec.describe "Good SPDX licenses" goodSPDXLicense
         Spec.describe "Bad SPDX licenses" badSPDXLicense
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
@@ -257,42 +254,6 @@ copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
       writeFiles = liftAff <<< traverse_ (\path -> FS.Aff.writeTextFile UTF8 (inTmp path) "<test>")
 
     pure { source: tmp, destination: destTmp, writeDirectories, writeFiles }
-
-goodPackageName :: Spec.Spec Unit
-goodPackageName = do
-  let
-    parseName str res = Spec.it str do
-      (PackageName.print <$> PackageName.parse str) `Assert.shouldEqual` (Right res)
-
-  parseName "a" "a"
-  parseName "some-dash" "some-dash"
-  -- A blessed prefixed package
-  parseName "purescript-compiler-backend-utilities" "purescript-compiler-backend-utilities"
-
-badPackageName :: Spec.Spec Unit
-badPackageName = do
-  let
-    failParse str err = Spec.it str do
-      case PackageName.print <$> PackageName.parse str of
-        Left parseError ->
-          Assert.shouldEqual err (Parsing.parseErrorMessage parseError)
-        Right _ ->
-          Assert.fail $ str <> " should have failed with error: " <> err
-
-  let startErr = "Package name should start with a lower case char or a digit"
-  let midErr = "Package name can contain lower case chars, digits and non-consecutive dashes"
-  let prefixErr = "Package names should not begin with 'purescript-'"
-  let endErr = "Package name should end with a lower case char or digit"
-  let manyDashes = "Package names cannot contain consecutive dashes"
-
-  failParse "-a" startErr
-  failParse "double--dash" manyDashes
-  failParse "BIGLETTERS" startErr
-  failParse "some space" midErr
-  failParse "a-" endErr
-  failParse "" startErr
-  failParse "🍝" startErr
-  failParse "purescript-aff" prefixErr
 
 goodSPDXLicense :: Spec.Spec Unit
 goodSPDXLicense = do

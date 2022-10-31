@@ -1,42 +1,59 @@
+-- | Implementation of the `PackageName` data type from the registry spec. A
+-- | package name uniquely identifies a package.
+-- | https://github.com/purescript/registry-dev/blob/master/SPEC.md#packagename
 module Registry.PackageName
   ( PackageName
+  , codec
   , parse
+  , parser
   , print
   ) where
 
-import Registry.Prelude
+import Prelude
 
+import Control.Alt ((<|>))
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
+import Data.Bifunctor (lmap)
+import Data.Codec.Argonaut (JsonCodec)
+import Data.Codec.Argonaut as CA
+import Data.Either (Either)
+import Data.Either as Either
+import Data.Maybe (Maybe(..), isJust)
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
-import Parsing (ParseError)
+import Data.Tuple (fst)
+import Parsing (Parser)
 import Parsing as Parsing
 import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
-import Registry.Json (class StringEncodable)
-import Registry.Json as Json
 
+-- | A Registry-compliant package name
 newtype PackageName = PackageName String
 
 derive newtype instance Eq PackageName
 derive newtype instance Ord PackageName
 
-instance StringEncodable PackageName where
-  toEncodableString = print
-  fromEncodableString = lmap (append "Expected PackageName: " <<< Parsing.parseErrorMessage) <<< parse
+-- | A codec for encoding and decoding a `PackageName` as a JSON string
+codec :: JsonCodec PackageName
+codec = CA.prismaticCodec "PackageName" (Either.hush <<< parse) print CA.string
 
-instance RegistryJson PackageName where
-  encode = Json.encode <<< Json.toEncodableString
-  decode = Json.fromEncodableString <=< Json.decode
-
+-- | Print a package name as a string
 print :: PackageName -> String
 print (PackageName package) = package
 
-parse :: String -> Either ParseError PackageName
-parse inputStr = Parsing.runParser inputStr do
+-- | Parse a package name from a string, reporting errors on failure
+parse :: String -> Either String PackageName
+parse = lmap Parsing.parseErrorMessage <<< flip Parsing.runParser parser
+
+-- | A parser for package names according to the registry spec:
+-- | https://github.com/purescript/registry-dev/blob/master/SPEC.md#packagename
+parser :: Parser String PackageName
+parser = do
+  Parsing.ParseState unparsed _ _ <- Parsing.getParserT
+
   let
     -- Error messages which also define our rules for package names
     endErr = "Package name should end with a lower case char or digit"
@@ -52,8 +69,8 @@ parse inputStr = Parsing.runParser inputStr do
     allowedPrefixNames =
       [ "purescript-compiler-backend-utilities"
       ]
-    isBlessedPackage = inputStr `Array.elem` allowedPrefixNames
-    hasPureScriptPrefix = isJust $ String.stripPrefix (String.Pattern "purescript-") inputStr
+    isBlessedPackage = unparsed `Array.elem` allowedPrefixNames
+    hasPureScriptPrefix = isJust $ String.stripPrefix (String.Pattern "purescript-") unparsed
 
   when (hasPureScriptPrefix && not isBlessedPackage) do
     Parsing.fail prefixErr
@@ -83,8 +100,9 @@ parse inputStr = Parsing.runParser inputStr do
     allChunks = Array.concatMap NonEmptyArray.toArray (Array.cons firstChunk nextChunks)
     name = String.CodeUnits.fromCharArray allChunks
 
-  -- and check that it's not longer than 50 chars
-  if String.length name > 50 then
-    Parsing.fail "Package name cannot be longer than 50 chars"
+  if String.null name then
+    Parsing.fail "Package name cannot be empty"
+  else if String.length name > 50 then
+    Parsing.fail "Package name cannot be longer than 50 characters"
   else
     pure $ PackageName name

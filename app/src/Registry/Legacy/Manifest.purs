@@ -212,7 +212,7 @@ validateLicense licenses = do
 validateDependencies :: Map RawPackageName RawVersionRange -> Either LegacyManifestValidationError (Map PackageName Range)
 validateDependencies dependencies = do
   let
-    parsePackageName = lmap Parsing.parseErrorMessage <<< PackageName.parse <<< stripPureScriptPrefix
+    parsePackageName = PackageName.parse <<< stripPureScriptPrefix
     parseVersionRange = lmap Parsing.parseErrorMessage <<< Version.parseRange Version.Lenient
 
     foldFn (RawPackageName name) acc (RawVersionRange range) = do
