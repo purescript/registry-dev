@@ -12,6 +12,7 @@ import Registry.Prelude
 import Control.Monad.Error.Class as Error
 import Data.Array as Array
 import Data.Function (on)
+import Data.Int as Int
 import Data.String as String
 import Parsing (Parser)
 import Parsing as Parsing
@@ -68,8 +69,17 @@ parser = do
 
 convertVersion :: String -> String
 convertVersion input = do
-  let truncate pattern str = fromMaybe str $ Array.head $ String.split pattern str
-  let noPrerelease = truncate (String.Pattern "-")
-  let noBuild = truncate (String.Pattern "+")
-  let noV str = fromMaybe input $ String.stripPrefix (String.Pattern "v") str
-  noPrerelease $ noBuild $ noV $ String.trim input
+  -- First we ensure there are no leading or trailing spaces.
+  String.trim input
+    -- Then we remove a 'v' prefix, if present.
+    # maybeIdentity (String.stripPrefix (String.Pattern "v"))
+    -- Then we group by where the version digits ought to be...
+    # String.split (String.Pattern ".")
+    -- ...so that we can trim any leading zeros
+    # map (maybeIdentity dropLeadingZeros)
+    -- and rejoin the string.
+    # String.joinWith "."
+  where
+  maybeIdentity k x = fromMaybe x (k x)
+  dropLeadingZeros =
+    map (Int.toStringAs Int.decimal) <<< Int.fromString

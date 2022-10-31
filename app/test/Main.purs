@@ -35,6 +35,8 @@ import Test.Fixture.Manifest as Fixture
 import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
 import Test.Foreign.Tar as Foreign.Tar
+import Test.Registry.API.LenientRange as Test.LenientRange
+import Test.Registry.API.LenientVersion as Test.LenientVersion
 import Test.Registry.Index as Registry.Index
 import Test.Registry.PackageSet as PackageSet
 import Test.Registry.SSH as SSH
@@ -94,6 +96,11 @@ main = launchAff_ do
       safeGlob
     Spec.describe "Package Set" do
       PackageSet.spec
+
+    Spec.describe "Lenient Version"
+      Test.LenientVersion.spec
+    Spec.describe "Lenient Range"
+      Test.LenientRange.spec
 
 -- | Check all the example Manifests roundtrip (read+write) through PureScript
 manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit

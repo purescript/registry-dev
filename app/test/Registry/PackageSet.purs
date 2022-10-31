@@ -9,7 +9,7 @@ import Data.Either as Either
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.RFC3339String (RFC3339String(..))
-import Registry.API.LenientVersion (LenientVersion(..))
+import Registry.API.LenientVersion (LenientVersion)
 import Registry.API.LenientVersion as LenientVersion
 import Registry.Json as Json
 import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, parsePscTag, printPscTag)

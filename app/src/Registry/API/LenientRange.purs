@@ -10,14 +10,16 @@ import Registry.Prelude
 
 import Control.Monad.Error.Class as Error
 import Data.Array as Array
+import Data.CodePoint.Unicode as Unicode
 import Data.Either (fromRight)
 import Data.Function (on)
+import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
 import Foreign.SemVer as SemVer
+import Parsing (Parser)
 import Parsing as Parsing
 import Parsing.Combinators as Parsing.Combinators
 import Parsing.String as Parsing.String
-import Parsing.String.Basic as Parsing.String.Basic
 import Registry.API.LenientVersion (LenientVersion(..))
 import Registry.API.LenientVersion as LenientVersion
 import Registry.Internal.Parsing as Internal.Parsing
@@ -56,20 +58,21 @@ raw (LenientRange r) = r.raw
 -- | trailing spaces.
 parse :: String -> Either String LenientRange
 parse input = lmap Parsing.parseErrorMessage do
-  let versionParser = Error.liftEither <<< flip Parsing.runParser LenientVersion.parser
+  -- We trim off prerelease identifiers and build metadata in lenient parsing
+  -- mode. Notably, we do not do this at the version level -- even lenient
+  -- version parsing will fail if these identifiers are present -- so we need
+  -- to pass through the range and do the work here.
+  --
   -- Trimming prerelease identifiers in lenient mode can produce ranges
   -- where the lhs was less than the rhs, but no longer is. For example:
   -- '>=1.0.0-rc.1 <1.0.0-rc.5' -> '>=1.0.0 <1.0.0'.
   --
-  -- We fix these ranges in lenient mode by bumping the rhs patch by one. But
-  -- first we must parse out the lhs and rhs.
+  -- We fix these ranges by bumping the rhs patch by one.
   { lhs, rhs } <- Parsing.runParser (convertRange input) do
-    _ <- Parsing.String.Basic.whiteSpace
     _ <- Parsing.String.string ">=" <|> Parsing.fail "Ranges must begin with >="
     LenientVersion { version: lhs } <- versionParser =<< map String.CodeUnits.fromCharArray Internal.Parsing.charsUntilSpace
     _ <- Parsing.String.char '<' <|> Parsing.fail "Ranges must end with <"
     LenientVersion { version: rhs } <- versionParser =<< map String.CodeUnits.fromCharArray Internal.Parsing.chars
-    _ <- Parsing.String.Basic.whiteSpace
     let rhs' = if lhs == rhs then Version.bumpPatch rhs else rhs
     pure { lhs, rhs: rhs' }
 
@@ -101,12 +104,11 @@ convertRange input = fromRight input do
   -- The `parseRange` function converts most ranges into simple ranges that are
   -- likely to be accepted by the registry.
   semVer <- note "Could not parse with parseRange" (SemVer.parseRange input)
-  semVer
+  pure $ semVer
     # fixGtLhs
     # fixLtRhs
     # fixUpperOnly
     # fixExactVersions
-    # pure
   where
   -- Fix ranges that begin with '>' instead of '>='
   fixGtLhs :: String -> String
@@ -140,4 +142,8 @@ convertRange input = fromRight input do
     LenientVersion { version } <- LenientVersion.parse str
     pure $ Array.fold [ ">=", Version.print version, " <", Version.print (Version.bumpPatch version) ]
 
-  versionParser = Error.liftEither <<< flip Parsing.runParser LenientVersion.parser
+versionParser :: String -> Parser String LenientVersion
+versionParser =
+  Error.liftEither
+    <<< flip Parsing.runParser LenientVersion.parser
+    <<< String.takeWhile (Unicode.isAlphaNum || eq (String.codePointFromChar '.'))
