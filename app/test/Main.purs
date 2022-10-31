@@ -19,7 +19,6 @@ import Node.FS as FS
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
-import Parsing as Parsing
 import Registry.API (copyPackageSourceFiles)
 import Registry.API as API
 import Registry.Json as Json
@@ -275,7 +274,7 @@ badPackageName = do
     failParse str err = Spec.it str do
       case PackageName.print <$> PackageName.parse str of
         Left parseError ->
-          Assert.shouldEqual err (Parsing.parseErrorMessage parseError)
+          Assert.shouldEqual err parseError
         Right _ ->
           Assert.fail $ str <> " should have failed with error: " <> err
 

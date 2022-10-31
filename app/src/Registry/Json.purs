@@ -73,7 +73,7 @@ import Node.Path (FilePath)
 import Prim.Row as Row
 import Prim.RowList as RL
 import Record as Record
-import Registry.Sha256 (Sha256)
+import Registry.PackageName as PackageName
 import Registry.Sha256 as Sha256
 import Type.Proxy (Proxy(..))
 
@@ -139,6 +139,10 @@ class StringEncodable a where
 instance StringEncodable String where
   toEncodableString = identity
   fromEncodableString = Right
+
+instance StringEncodable PackageName.PackageName where
+  toEncodableString = PackageName.print
+  fromEncodableString = PackageName.parse
 
 -- | A class for encoding and decoding JSON
 class RegistryJson a where
@@ -228,9 +232,13 @@ instance (EncodeRecord row list, DecodeRecord row list, RL.RowToList row list) =
     Nothing -> Left "Expected Object"
     Just object -> decodeRecord object (Proxy :: Proxy list)
 
-instance RegistryJson Sha256 where
+instance RegistryJson Sha256.Sha256 where
   encode = CA.encode Sha256.codec
   decode = lmap CA.printJsonDecodeError <<< CA.decode Sha256.codec
+
+instance RegistryJson PackageName.PackageName where
+  encode = CA.encode PackageName.codec
+  decode = lmap CA.printJsonDecodeError <<< CA.decode PackageName.codec
 
 ---------
 

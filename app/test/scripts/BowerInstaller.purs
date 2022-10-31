@@ -106,7 +106,7 @@ main = launchAff_ do
       log $ "Reading " <> show (Array.length files) <> " input files..."
       result <- for files \file -> do
         package <- case PackageName.parse file of
-          Left err -> throwError $ Exception.error $ Parsing.parseErrorMessage err
+          Left err -> throwError $ Exception.error err
           Right res -> pure res
         versions <- Json.readJsonFile (Path.concat [ resultsPath, file <> ".json" ]) >>= case _ of
           Left err -> throwError $ Exception.error err
@@ -160,7 +160,7 @@ runBowerSolver index metadata previousResults =
           dependencies <- case Json.parseJson originalBowerfile of
             Left err -> Except.throwError err
             Right ({ dependencies } :: { dependencies :: Map String String }) -> either Except.throwError pure do
-              parsedNames <- traverseKeys (lmap Parsing.parseErrorMessage <<< PackageName.parse <<< stripPureScriptPrefix) dependencies
+              parsedNames <- traverseKeys (PackageName.parse <<< stripPureScriptPrefix) dependencies
               parsedRanges <- traverse (lmap Parsing.parseErrorMessage <<< Version.parseRange Version.Lenient) parsedNames
               pure parsedRanges
 
@@ -235,7 +235,7 @@ readResolutions tmp = do
       Right val -> pure val
 
     package <- case PackageName.parse (stripPureScriptPrefix dir) of
-      Left err -> throwError $ Exception.error $ Parsing.parseErrorMessage err
+      Left err -> throwError $ Exception.error err
       Right res -> pure res
 
     version <- case Version.parseVersion Version.Lenient rawVersion of

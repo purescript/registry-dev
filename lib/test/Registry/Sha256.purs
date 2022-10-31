@@ -19,31 +19,29 @@ import Test.Utils as Utils
 
 spec :: Spec.Spec Unit
 spec = do
-  Spec.describe "Creates a valid sha256 SRI hash" do
-    Spec.it "Hashes a spago.dhall file the same as openssl" do
-      hash <- Sha256.hashFile hooksSpago
-      hash `Assert.shouldEqual` hooksSpagoHash
+  Spec.it "Hashes a spago.dhall file the same as openssl" do
+    hash <- Sha256.hashFile hooksSpago
+    hash `Assert.shouldEqual` hooksSpagoHash
 
-    Spec.it "Hashes a LICENSE file the same as openssl" do
-      hash <- Sha256.hashFile hooksLicense
-      hash `Assert.shouldEqual` hooksLicenseHash
+  Spec.it "Hashes a LICENSE file the same as openssl" do
+    hash <- Sha256.hashFile hooksLicense
+    hash `Assert.shouldEqual` hooksLicenseHash
 
-    Spec.it "spago.dhall hash matches the nix hash" do
-      hash <- Sha256.hashFile hooksSpago
-      nix <- Except.runExceptT $ sha256Nix hooksSpago
-      hash `Assert.shouldEqualRight` nix
+  Spec.it "spago.dhall hash matches the nix hash" do
+    hash <- Sha256.hashFile hooksSpago
+    nix <- Except.runExceptT $ sha256Nix hooksSpago
+    hash `Assert.shouldEqualRight` nix
 
-    Spec.it "LICENSE hash matches the nix hash" do
-      hash <- Sha256.hashFile hooksLicense
-      nix <- Except.runExceptT $ sha256Nix hooksLicense
-      hash `Assert.shouldEqualRight` nix
+  Spec.it "LICENSE hash matches the nix hash" do
+    hash <- Sha256.hashFile hooksLicense
+    nix <- Except.runExceptT $ sha256Nix hooksLicense
+    hash `Assert.shouldEqualRight` nix
 
-  Spec.describe "Encodes and decodes from string" do
-    Spec.it "Round-trips spago.dhall file" do
-      hooksSpagoHash `Assert.shouldEqualRight` Sha256.parse (Sha256.print hooksSpagoHash)
+  Spec.it "Round-trips spago.dhall file" do
+    hooksSpagoHash `Assert.shouldEqualRight` Sha256.parse (Sha256.print hooksSpagoHash)
 
-    Spec.it "Round-trips LICENSE file" do
-      hooksLicenseHash `Assert.shouldEqualRight` Sha256.parse (Sha256.print hooksLicenseHash)
+  Spec.it "Round-trips LICENSE file" do
+    hooksLicenseHash `Assert.shouldEqualRight` Sha256.parse (Sha256.print hooksLicenseHash)
 
 -- Test hash produced by `openssl`:
 -- openssl dgst -sha256 -binary < test/_fixtures/halogen-hooks/spago.dhall | openssl base64 -A

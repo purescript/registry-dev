@@ -41,6 +41,7 @@ newtype Sha256 = Sha256 { sri :: String, hash :: String }
 
 derive instance Eq Sha256
 
+-- | A codec for encoding and decoding a `Sha256` as a JSON string
 codec :: JsonCodec Sha256
 codec = CA.prismaticCodec "Sha256" (Either.hush <<< parse) print CA.string
 

@@ -498,7 +498,7 @@ validatePackageName :: RawPackageName -> Either PackageValidationError PackageNa
 validatePackageName (RawPackageName name) =
   PackageName.parse name # lmap \parserError ->
     { error: InvalidPackageName
-    , reason: Parsing.parseErrorMessage parserError
+    , reason: parserError
     }
 
 type JsonValidationError =

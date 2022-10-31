@@ -52,7 +52,6 @@ import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
-import Parsing as Parsing
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Constants as Constants
@@ -1015,7 +1014,7 @@ fillMetadataRef = do
         Right p -> pure p
         Left err -> do
           log $ "Encountered error while parsing package name! It was: " <> rawPackageName
-          Aff.throwError $ Aff.error $ Parsing.parseErrorMessage err
+          Aff.throwError $ Aff.error err
       let metadataPath = metadataFile registryDir packageName
       metadata <- Json.readJsonFile metadataPath >>= case _ of
         Left err -> Aff.throwError $ Aff.error $ "Error parsing metadata file located at " <> metadataPath <> ": " <> err
