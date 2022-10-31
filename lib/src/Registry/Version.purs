@@ -86,7 +86,7 @@ parser = do
       digitString = CodeUnits.fromCharArray $ NonEmptyArray.toArray digitChars
       failInteger = Parsing.fail $ "Invalid 32-bit integer: " <> digitString
     integer <- maybe failInteger pure $ Int.fromString digitString
-    -- We do not accept leading zeros in versions unless we are in lenient mode
+    -- We do not accept leading zeros in versions
     when (zeroCount > 1 || (zeroCount == 1 && integer /= 0)) do
       Parsing.fail $ "Leading zeros are not allowed: " <> digitString
     when (integer < 0) do
