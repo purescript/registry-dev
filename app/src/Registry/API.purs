@@ -321,7 +321,8 @@ runOperation source operation = case operation of
     if Map.isEmpty candidates.accepted then do
       throwWithComment "No packages in the suggested batch can be processed; all failed validation checks."
     else do
-      PackageSet.processBatchAtomic registryIndex latestPackageSet compiler candidates.accepted >>= case _ of
+      workDir <- liftEffect Tmp.mkTmpDir
+      PackageSet.processBatchAtomic workDir registryIndex latestPackageSet compiler candidates.accepted >>= case _ of
         Just { fail, packageSet, success } | Map.isEmpty fail -> do
           newPath <- PackageSet.getPackageSetPath (un PackageSet packageSet).version
           liftAff $ Json.writeJsonFile newPath packageSet
