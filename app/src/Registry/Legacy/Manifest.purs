@@ -21,7 +21,7 @@ import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FSA
 import Node.Path as Path
-import Registry.API.LenientVersion as LenientVersion
+import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
 import Registry.Constants as Constants
 import Registry.Json ((.:), (.:?))

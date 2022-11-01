@@ -1,9 +1,9 @@
-module Test.Registry.API.LenientRange (spec) where
+module Test.Registry.App.LenientRange (spec) where
 
 import Registry.Prelude
 
 import Data.Either as Either
-import Registry.API.LenientRange as LenientRange
+import Registry.App.LenientRange as LenientRange
 import Test.Assert as Assert
 import Test.Spec as Spec
 

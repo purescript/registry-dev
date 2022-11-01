@@ -1,9 +1,9 @@
-module Test.Registry.API.LenientVersion (spec) where
+module Test.Registry.App.LenientVersion (spec) where
 
 import Registry.Prelude
 
 import Data.Either as Either
-import Registry.API.LenientVersion as LenientVersion
+import Registry.App.LenientVersion as LenientVersion
 import Test.Assert as Assert
 import Test.Spec as Spec
 

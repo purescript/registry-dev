@@ -1,4 +1,4 @@
-module Registry.API.LenientRange
+module Registry.App.LenientRange
   ( LenientRange(..)
   , parse
   , print
@@ -20,8 +20,8 @@ import Parsing (Parser)
 import Parsing as Parsing
 import Parsing.Combinators as Parsing.Combinators
 import Parsing.String as Parsing.String
-import Registry.API.LenientVersion (LenientVersion(..))
-import Registry.API.LenientVersion as LenientVersion
+import Registry.App.LenientVersion (LenientVersion(..))
+import Registry.App.LenientVersion as LenientVersion
 import Registry.Internal.Parsing as Internal.Parsing
 import Registry.Json as Json
 import Registry.Range (Range)

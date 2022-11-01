@@ -30,8 +30,8 @@ import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.API as API
-import Registry.API.LenientRange as LenientRange
-import Registry.API.LenientVersion as LenientVersion
+import Registry.App.LenientRange as LenientRange
+import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index

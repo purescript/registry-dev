@@ -31,8 +31,8 @@ import Node.Process as Node.Process
 import Parsing as Parsing
 import Registry.API (LegacyRegistryFile(..), Source(..))
 import Registry.API as API
-import Registry.API.LenientVersion (LenientVersion)
-import Registry.API.LenientVersion as LenientVersion
+import Registry.App.LenientVersion (LenientVersion)
+import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index

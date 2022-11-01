@@ -52,7 +52,7 @@ import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
-import Registry.API.LenientVersion as LenientVersion
+import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Constants as Constants

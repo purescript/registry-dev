@@ -35,8 +35,8 @@ import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
 import Test.Foreign.SPDX as Foreign.SPDX
 import Test.Foreign.Tar as Foreign.Tar
-import Test.Registry.API.LenientRange as Test.LenientRange
-import Test.Registry.API.LenientVersion as Test.LenientVersion
+import Test.Registry.App.LenientRange as Test.LenientRange
+import Test.Registry.App.LenientVersion as Test.LenientVersion
 import Test.Registry.Index as Registry.Index
 import Test.Registry.PackageSet as PackageSet
 import Test.Registry.SSH as SSH

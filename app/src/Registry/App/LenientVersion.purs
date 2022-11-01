@@ -1,4 +1,4 @@
-module Registry.API.LenientVersion
+module Registry.App.LenientVersion
   ( LenientVersion(..)
   , parse
   , parser
