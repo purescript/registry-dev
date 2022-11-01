@@ -17,8 +17,6 @@ import Data.These as These
 import Foreign.GitHub as GitHub
 import Foreign.JsonRepair as JsonRepair
 import Foreign.Licensee as Licensee
-import Foreign.SPDX (License)
-import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FSA
@@ -30,6 +28,8 @@ import Registry.Json ((.:), (.:?))
 import Registry.Json as Json
 import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry, PscTag(..))
 import Registry.Legacy.PackageSet as Legacy.PackageSet
+import Registry.License (License)
+import Registry.License as License
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, throwWithComment)
@@ -200,13 +200,13 @@ validateLicense licenses = do
       other -> other
 
     parsedLicenses =
-      map (SPDX.parse <<< rewrite)
+      map (License.parse <<< rewrite)
         $ Array.filter (_ /= "LICENSE")
         $ map NonEmptyString.toString licenses
 
   case partitionEithers parsedLicenses of
     { fail: [], success: [] } -> Left { error: MissingLicense, reason: "No licenses found." }
-    { fail: [], success } -> Right $ SPDX.joinWith SPDX.And success
+    { fail: [], success } -> Right $ License.joinWith License.And success
     { fail } -> Left { error: InvalidLicense fail, reason: "Licenses found, but not valid SPDX identifiers." }
 
 validateDependencies :: Map RawPackageName RawVersionRange -> Either LegacyManifestValidationError (Map PackageName Range)

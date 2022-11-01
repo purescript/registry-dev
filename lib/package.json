@@ -2,5 +2,7 @@
   "name": "registry-lib",
   "private": true,
   "license": "BSD-3-Clause",
-  "dependencies": {}
+  "dependencies": {
+    "spdx-expression-parse": "^3.0.0"
+  }
 }

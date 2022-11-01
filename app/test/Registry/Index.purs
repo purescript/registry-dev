@@ -11,12 +11,12 @@ import Effect.Ref as Ref
 import Foreign.FastGlob (Include(..))
 import Foreign.FastGlob as FastGlob
 import Foreign.Node.FS as FSE
-import Foreign.SPDX as License
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FSA
 import Node.Path as Path
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
+import Registry.License as License
 import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName

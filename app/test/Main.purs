@@ -13,7 +13,6 @@ import Foreign.GitHub (IssueNumber(..))
 import Foreign.Node.FS as FS.Extra
 import Foreign.Purs (CompilerFailure(..))
 import Foreign.Purs as Purs
-import Foreign.SPDX as SPDX
 import Foreign.Tmp as Tmp
 import Node.FS as FS
 import Node.FS.Aff as FS.Aff
@@ -34,6 +33,7 @@ import Test.Assert as Assert
 import Test.Fixture.Manifest as Fixture
 import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
+import Test.Foreign.SPDX as Foreign.SPDX
 import Test.Foreign.Tar as Foreign.Tar
 import Test.Registry.Index as Registry.Index
 import Test.Registry.PackageSet as PackageSet
@@ -61,8 +61,6 @@ main = launchAff_ do
   runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
     Spec.describe "API" do
       Spec.describe "Checks" do
-        Spec.describe "Good SPDX licenses" goodSPDXLicense
-        Spec.describe "Bad SPDX licenses" badSPDXLicense
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
         Spec.describe "Authenticated operations" SSH.spec
       Spec.describe "Tarball" do
@@ -99,6 +97,8 @@ main = launchAff_ do
       safeGlob
     Spec.describe "Package Set" do
       PackageSet.spec
+    Spec.describe "SPDX Fuzzy Match" do
+      Foreign.SPDX.spec
 
 -- | Check all the example Manifests roundtrip (read+write) through PureScript
 manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit
@@ -254,47 +254,6 @@ copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
       writeFiles = liftAff <<< traverse_ (\path -> FS.Aff.writeTextFile UTF8 (inTmp path) "<test>")
 
     pure { source: tmp, destination: destTmp, writeDirectories, writeFiles }
-
-goodSPDXLicense :: Spec.Spec Unit
-goodSPDXLicense = do
-  let
-    parseLicense str = Spec.it str do
-      (SPDX.print <$> SPDX.parse str) `Assert.shouldSatisfy` isRight
-
-  -- current licenses
-  parseLicense "MIT"
-  parseLicense "BSD-3-Clause"
-  parseLicense "CC-BY-1.0"
-  parseLicense "Apache-2.0"
-
-  -- deprecated licenses
-  parseLicense "GPL-3.0"
-  parseLicense "AGPL-1.0"
-
-  -- combinations
-  parseLicense "LGPL-2.1 OR BSD-3-Clause AND MIT"
-  parseLicense "MIT AND (LGPL-2.1+ AND BSD-3-Clause)"
-
-  -- exceptions
-  parseLicense "GPL-3.0 WITH GPL-3.0-linking-exception"
-
-badSPDXLicense :: Spec.Spec Unit
-badSPDXLicense = do
-  let
-    invalid str suggestion = "Invalid SPDX identifier: " <> str <> case suggestion of
-      Nothing -> ""
-      Just s -> "\nDid you mean " <> s <> "?"
-    parseLicense str suggestion = Spec.it str do
-      (SPDX.print <$> SPDX.parse str) `Assert.shouldSatisfy` case _ of
-        Right _ -> false
-        Left err -> err == invalid str suggestion
-
-  -- common mistakes
-  parseLicense "Apache" (Just "Apache-1.0")
-  parseLicense "Apache-2" (Just "Apache-2.0")
-  parseLicense "Apache 2" (Just "Apache-2.0")
-  parseLicense "BSD-3" (Just "BSD-3-Clause")
-  parseLicense "MIT AND BSD-3" Nothing
 
 mkUnsafePackage :: String -> PackageName
 mkUnsafePackage = unsafeFromRight <<< PackageName.parse
