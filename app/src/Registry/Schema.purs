@@ -8,9 +8,9 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.List as List
 import Data.Map as Map
 import Data.RFC3339String (RFC3339String)
-import Foreign.SPDX (License)
 import Registry.Json ((.:), (.:?), (:=))
 import Registry.Json as Json
+import Registry.License (License)
 import Registry.PackageName (PackageName)
 import Registry.Range (Range)
 import Registry.Sha256 (Sha256)

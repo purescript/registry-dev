@@ -23,12 +23,12 @@ spec = do
 
       formatError (Tuple name error) = name <> ": " <> error
 
-      { fail } = Utils.partitionEithers $ map parse goodPackageNames
+      { fail } = Utils.partitionEithers $ map parse valid
 
     unless (Array.null fail) do
       Assert.fail $ String.joinWith "\n"
         [ "Some well-formed package names were not parsed correctly:"
-        , String.joinWith "\n  - " $ map formatError fail
+        , Array.foldMap (append "\n  - " <<< formatError) fail
         ]
 
   Spec.it "Fails to parse malformed package names" do
@@ -42,16 +42,16 @@ spec = do
         Nothing -> [ name, "...should have failed with '" <> expectedError <> "'", "...but succeeded instead." ]
         Just error -> [ name, "...should have failed with '" <> expectedError <> "'", "...but failed with '" <> error <> "' instead." ]
 
-      { fail } = Utils.partitionEithers $ map parse badPackageNames
+      { fail } = Utils.partitionEithers $ map parse invalid
 
     unless (Array.null fail) do
       Assert.fail $ String.joinWith "\n"
         [ "Some malformed package names were not parsed correctly:"
-        , String.joinWith "\n  - " $ map formatError fail
+        , Array.foldMap (append "\n  - " <<< formatError) fail
         ]
 
-goodPackageNames :: Array String
-goodPackageNames =
+valid :: Array String
+valid =
   -- standard package names
   [ "a"
   , "ab"
@@ -63,8 +63,8 @@ goodPackageNames =
   , "purescript-compiler-backend-utilities"
   ]
 
-badPackageNames :: Array (Tuple String String)
-badPackageNames = do
+invalid :: Array (Tuple String String)
+invalid = do
   let startErr = "Package name should start with a lower case char or a digit"
   let midErr = "Package name can contain lower case chars, digits and non-consecutive dashes"
   let prefixErr = "Package names should not begin with 'purescript-'"

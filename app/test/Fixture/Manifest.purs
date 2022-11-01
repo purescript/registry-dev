@@ -9,8 +9,8 @@ import Data.Monoid (power)
 import Data.Monoid.Multiplicative (Multiplicative(..))
 import Data.Newtype (unwrap)
 import Data.String as String
-import Foreign.SPDX (License)
-import Foreign.SPDX as SPDX
+import Registry.License (License)
+import Registry.License as License
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
@@ -32,7 +32,7 @@ instance Fixture Version where
   fixture = unsafeFromRight $ Version.parse "1.0.0"
 
 instance Fixture License where
-  fixture = unsafeFromRight $ SPDX.parse "MIT"
+  fixture = unsafeFromRight $ License.parse "MIT"
 
 instance Fixture Owner where
   fixture = Owner

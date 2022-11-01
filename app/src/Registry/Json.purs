@@ -73,6 +73,7 @@ import Node.Path (FilePath)
 import Prim.Row as Row
 import Prim.RowList as RL
 import Record as Record
+import Registry.License as License
 import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
@@ -253,6 +254,10 @@ instance RegistryJson Version.Version where
 instance RegistryJson Range.Range where
   encode = CA.encode Range.codec
   decode = lmap CA.printJsonDecodeError <<< CA.decode Range.codec
+
+instance RegistryJson License.License where
+  encode = CA.encode License.codec
+  decode = lmap CA.printJsonDecodeError <<< CA.decode License.codec
 
 ---------
 
