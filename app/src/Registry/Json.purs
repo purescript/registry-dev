@@ -73,6 +73,7 @@ import Node.Path (FilePath)
 import Prim.Row as Row
 import Prim.RowList as RL
 import Record as Record
+import Registry.License as License
 import Registry.PackageName as PackageName
 import Registry.Sha256 as Sha256
 import Type.Proxy (Proxy(..))
@@ -239,6 +240,10 @@ instance RegistryJson Sha256.Sha256 where
 instance RegistryJson PackageName.PackageName where
   encode = CA.encode PackageName.codec
   decode = lmap CA.printJsonDecodeError <<< CA.decode PackageName.codec
+
+instance RegistryJson License.License where
+  encode = CA.encode License.codec
+  decode = lmap CA.printJsonDecodeError <<< CA.decode License.codec
 
 ---------
 
