@@ -21,6 +21,7 @@ import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FSA
 import Node.Path as Path
+import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
 import Registry.Constants as Constants
@@ -216,7 +217,7 @@ validateDependencies dependencies = do
   let
     foldFn (RawPackageName name) acc (RawVersionRange range) = do
       let failWith = { name, range, error: _ }
-      case PackageName.parse (stripPureScriptPrefix name), Range.parse range of
+      case PackageName.parse (stripPureScriptPrefix name), LenientRange.parse range of
         Left nameErr, Left rangeErr ->
           acc { no = Array.cons (failWith (nameErr <> rangeErr)) acc.no }
         Left nameErr, Right _ ->
@@ -224,7 +225,7 @@ validateDependencies dependencies = do
         Right _, Left rangeErr ->
           acc { no = Array.cons (failWith rangeErr) acc.no }
         Right parsedName, Right parsedRange ->
-          acc { yes = Array.cons (Tuple parsedName parsedRange) acc.yes }
+          acc { yes = Array.cons (Tuple parsedName (LenientRange.range parsedRange)) acc.yes }
 
     parsedDependencies =
       foldlWithIndex foldFn { no: [], yes: [] } dependencies
