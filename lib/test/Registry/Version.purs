@@ -37,7 +37,7 @@ invalid =
   [ { version: ".12.0", label: "Malformed" }
   , { version: "12.0", label: "Too few places" }
   , { version: "0.12.12.1", label: "Too many places" }
-  , { version: "1.0.1-rc.1", label: "Contains prerelease identiiers" }
+  , { version: "1.0.1-rc.1", label: "Contains prerelease identifiers" }
   , { version: "1.0.0+nightly", label: "Contains build metadata" }
   , { version: "1.a.2", label: "Contains non-digit characters" }
   , { version: "1.-1.2", label: "Contains non-digit characters" }
