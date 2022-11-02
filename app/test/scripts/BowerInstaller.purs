@@ -29,8 +29,9 @@ import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
-import Parsing as Parsing
 import Registry.API as API
+import Registry.App.LenientRange as LenientRange
+import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
@@ -38,10 +39,12 @@ import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Prelude as Aff
+import Registry.Range (Range)
+import Registry.Range as Range
 import Registry.RegistryM (RegistryM, readPackagesMetadata)
 import Registry.RegistryM as RegistryM
 import Registry.Schema (Location(..), Manifest(..), Metadata)
-import Registry.Version (Range, Version)
+import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Sunde
 
@@ -161,7 +164,7 @@ runBowerSolver index metadata previousResults =
             Left err -> Except.throwError err
             Right ({ dependencies } :: { dependencies :: Map String String }) -> either Except.throwError pure do
               parsedNames <- traverseKeys (PackageName.parse <<< stripPureScriptPrefix) dependencies
-              parsedRanges <- traverse (lmap Parsing.parseErrorMessage <<< Version.parseRange Version.Lenient) parsedNames
+              parsedRanges <- traverse (map LenientRange.range <<< LenientRange.parse) parsedNames
               pure parsedRanges
 
           bowerfileSolution <- Except.ExceptT do
@@ -175,7 +178,7 @@ runBowerSolver index metadata previousResults =
               bowerfile = Json.printJson { name: PackageName.print package, dependencies: bowerDependencies }
               bowerDependencies = mapWithIndex bowerDependency manifest.dependencies
               bowerDependency depName range = case Map.lookup depName metadata of
-                Just { location: GitHub dep } -> "https://github.com/" <> dep.owner <> "/" <> dep.repo <> ".git#" <> Version.printRange range
+                Just { location: GitHub dep } -> "https://github.com/" <> dep.owner <> "/" <> dep.repo <> ".git#" <> Range.print range
                 _ -> unsafeCrashWith $ Array.fold [ PackageName.print depName, " not in metadata." ]
 
             maybeRes <- runBowerInstall ManifestInstall package version bowerfile
@@ -192,7 +195,7 @@ runBowerInstall :: BowerInstallType -> PackageName -> Version -> String -> Regis
 runBowerInstall installType name version contents = do
   tmp <- liftEffect Tmp.mkTmpDir
   { cache } <- ask
-  let key = "bower-solved-" <> printBowerInstallType installType <> "-" <> PackageName.print name <> "__" <> Version.printVersion version
+  let key = "bower-solved-" <> printBowerInstallType installType <> "-" <> PackageName.print name <> "__" <> Version.print version
   liftEffect (Cache.readJsonEntry key cache) >>= case _ of
     Left _ -> do
       log key
@@ -238,9 +241,9 @@ readResolutions tmp = do
       Left err -> throwError $ Exception.error err
       Right res -> pure res
 
-    version <- case Version.parseVersion Version.Lenient rawVersion of
-      Left err -> throwError $ Exception.error $ Parsing.parseErrorMessage err
-      Right res -> pure res
+    version <- case LenientVersion.parse rawVersion of
+      Left err -> throwError $ Exception.error err
+      Right res -> pure $ LenientVersion.version res
 
     pure (Tuple package version)
 

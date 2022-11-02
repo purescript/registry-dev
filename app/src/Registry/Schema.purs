@@ -12,8 +12,9 @@ import Registry.Json ((.:), (.:?), (:=))
 import Registry.Json as Json
 import Registry.License (License)
 import Registry.PackageName (PackageName)
+import Registry.Range (Range)
 import Registry.Sha256 (Sha256)
-import Registry.Version (Range, Version)
+import Registry.Version (Version)
 
 -- | PureScript encoding of ../v1/Manifest.dhall
 newtype Manifest = Manifest

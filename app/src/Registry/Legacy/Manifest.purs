@@ -21,7 +21,8 @@ import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FSA
 import Node.Path as Path
-import Parsing as Parsing
+import Registry.App.LenientRange as LenientRange
+import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
 import Registry.Constants as Constants
 import Registry.Json ((.:), (.:?))
@@ -32,10 +33,12 @@ import Registry.License (License)
 import Registry.License as License
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Range (Range)
+import Registry.Range as Range
 import Registry.RegistryM (RegistryM, throwWithComment)
 import Registry.Schema (Location, Manifest(..), dateFormatter)
 import Registry.Sha256 as Sha256
-import Registry.Version (Range, Version)
+import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Process
 
@@ -63,10 +66,10 @@ fetchLegacyManifest packageSetsDeps address ref = do
       -- certainly not what the user wants. We instead treat these ranges as
       -- caret ranges, so "strings: 4.1.2" becomes "strings: >=4.1.2 <5.0.0".
       fixedToRange (RawVersion fixed) = do
-        let parsedVersion = Version.parseVersion Version.Lenient fixed
-        let bump version = Version.printVersion (Version.bumpHighest version)
+        let parsedVersion = LenientVersion.parse fixed
+        let bump version = Version.print (Version.bumpHighest version)
         let printRange version = Array.fold [ ">=", fixed, " <", bump version ]
-        RawVersionRange $ Either.either (const fixed) printRange parsedVersion
+        RawVersionRange $ Either.either (const fixed) (printRange <<< LenientVersion.version) parsedVersion
 
       validatePackageSetDeps = case packageSetsDeps of
         Nothing ->
@@ -105,7 +108,7 @@ fetchLegacyManifest packageSetsDeps address ref = do
                 bowerDeps # mapWithIndex \package range ->
                   case Map.lookup package spagoDeps of
                     Nothing -> range
-                    Just spagoRange -> Version.union range spagoRange
+                    Just spagoRange -> Range.union range spagoRange
 
       unionPackageSets = case validatePackageSetDeps, unionManifests of
         Left _, Left manifestError -> Left manifestError
@@ -115,7 +118,7 @@ fetchLegacyManifest packageSetsDeps address ref = do
           packageSetDeps # mapWithIndex \package range ->
             case Map.lookup package manifestDeps of
               Nothing -> range
-              Just manifestRange -> Version.union range manifestRange
+              Just manifestRange -> Range.union range manifestRange
 
     Except.except unionPackageSets
 
@@ -212,12 +215,9 @@ validateLicense licenses = do
 validateDependencies :: Map RawPackageName RawVersionRange -> Either LegacyManifestValidationError (Map PackageName Range)
 validateDependencies dependencies = do
   let
-    parsePackageName = PackageName.parse <<< stripPureScriptPrefix
-    parseVersionRange = lmap Parsing.parseErrorMessage <<< Version.parseRange Version.Lenient
-
     foldFn (RawPackageName name) acc (RawVersionRange range) = do
       let failWith = { name, range, error: _ }
-      case parsePackageName name, parseVersionRange range of
+      case PackageName.parse (stripPureScriptPrefix name), LenientRange.parse range of
         Left nameErr, Left rangeErr ->
           acc { no = Array.cons (failWith (nameErr <> rangeErr)) acc.no }
         Left nameErr, Right _ ->
@@ -225,7 +225,7 @@ validateDependencies dependencies = do
         Right _, Left rangeErr ->
           acc { no = Array.cons (failWith rangeErr) acc.no }
         Right parsedName, Right parsedRange ->
-          acc { yes = Array.cons (Tuple parsedName parsedRange) acc.yes }
+          acc { yes = Array.cons (Tuple parsedName (LenientRange.range parsedRange)) acc.yes }
 
     parsedDependencies =
       foldlWithIndex foldFn { no: [], yes: [] } dependencies

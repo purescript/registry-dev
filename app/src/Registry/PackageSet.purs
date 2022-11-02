@@ -57,7 +57,7 @@ getPackageSetsPath = do
 getPackageSetPath :: Version -> RegistryM FilePath
 getPackageSetPath version = do
   packageSets <- getPackageSetsPath
-  pure $ Path.concat [ packageSets, Version.printVersion version <> ".json" ]
+  pure $ Path.concat [ packageSets, Version.print version <> ".json" ]
 
 -- | Read the most recent package set release
 readLatestPackageSet :: RegistryM PackageSet
@@ -69,7 +69,7 @@ readLatestPackageSet = do
     packageSetVersions :: Array Version
     packageSetVersions = packageSetFiles # Array.mapMaybe \fileName -> do
       versionString <- String.stripSuffix (String.Pattern ".json") fileName
-      hush $ Version.parseVersion Version.Lenient versionString
+      hush $ Version.parse versionString
 
   case Array.last (Array.sort packageSetVersions) of
     Nothing -> throwWithComment "No existing package set."
@@ -208,7 +208,7 @@ updatePackageSetMetadata { previous, pending: PackageSet pending } changed = do
 handleCompilerError :: Version -> Purs.CompilerFailure -> RegistryM Unit
 handleCompilerError compilerVersion = case _ of
   MissingCompiler ->
-    throwWithComment $ "Missing compiler version " <> Version.printVersion compilerVersion
+    throwWithComment $ "Missing compiler version " <> Version.print compilerVersion
   UnknownError err ->
     throwWithComment $ "Unknown error: " <> err
   CompilationError errs -> do
@@ -283,7 +283,7 @@ compileInstalledPackages compilerVersion = do
   paths <- ReaderT.ask
   log "Compiling installed packages..."
   let command = Purs.Compile { globs: [ Path.concat [ Path.basename paths.packagesDirectory, "**/*.purs" ] ] }
-  let version = Version.printVersion compilerVersion
+  let version = Version.print compilerVersion
   liftAff $ Purs.callCompiler { command, version, cwd: Just paths.workDirectory }
 
 -- | Delete package source directories in the given installation directory.
@@ -318,7 +318,7 @@ installPackage name version = do
   paths <- ReaderT.ask
   let
     formattedPackage = formatPackage name version
-    extractedName = PackageName.print name <> "-" <> Version.printVersion version
+    extractedName = PackageName.print name <> "-" <> Version.print version
     tarballPath = Path.concat [ paths.packagesDirectory, extractedName <> ".tar.gz" ]
     extractedPath = Path.concat [ paths.packagesDirectory, extractedName ]
     installPath = Path.concat [ paths.packagesDirectory, formattedPackage ]
@@ -335,7 +335,7 @@ installPackage name version = do
     , "/"
     , PackageName.print name
     , "/"
-    , Version.printVersion version
+    , Version.print version
     , ".tar.gz"
     ]
 
@@ -343,7 +343,7 @@ installPackage name version = do
 -- | Note: The `PackageSet` argument is the old package set.
 commitMessage :: PackageSet -> Map PackageName (Maybe Version) -> Version -> String
 commitMessage (PackageSet set) accepted newVersion = String.joinWith "\n" $ fold
-  [ [ "Release " <> Version.printVersion newVersion <> " package set.\n" ]
+  [ [ "Release " <> Version.print newVersion <> " package set.\n" ]
   , guardA (not (Array.null added)) $> (addedLines <> "\n")
   , guardA (not (Array.null updated)) $> (updatedLines <> "\n")
   , guardA (not (Array.null removed)) $> (removedLines <> "\n")
@@ -367,7 +367,7 @@ commitMessage (PackageSet set) accepted newVersion = String.joinWith "\n" $ fold
 
   updatedLines = "Updated packages:\n" <> String.joinWith "\n" do
     Tuple packageName { version, previousVersion } <- updated
-    pure $ Array.fold [ "  - ", formatPackage packageName previousVersion, " -> ", Version.printVersion version ]
+    pure $ Array.fold [ "  - ", formatPackage packageName previousVersion, " -> ", Version.print version ]
 
   removed = do
     Tuple packageName maybeVersion <- Map.toUnfoldable accepted
@@ -423,7 +423,7 @@ validatePackageSet :: RegistryIndex -> PackageSet -> RegistryM Unit
 validatePackageSet index (PackageSet { packages, version }) = case PackageGraph.checkPackages index packages of
   { rejected } | not Array.null rejected -> do
     let
-      message = "Package set " <> Version.printVersion version <> " is invalid! Some packages have dependencies not in the set:\n"
+      message = "Package set " <> Version.print version <> " is invalid! Some packages have dependencies not in the set:\n"
       packageMessages = rejected <#> \{ package, dependencies } -> Array.fold
         [ "\n  - "
         , PackageName.print package
@@ -471,7 +471,7 @@ validatePackageSetCandidates index (PackageSet { packages: previousPackages }) c
       Nothing -> Right unit
       Just v | v < version -> Right unit
       Just v | v == version -> Left "This version already exists in the package set."
-      Just v -> Left $ "A higher version already exists in the package set: " <> Version.printVersion v
+      Just v -> Left $ "A higher version already exists in the package set: " <> Version.print v
 
     -- A package can only be added to the package set if all its dependencies
     -- already exist in the package set or the batch being processed.
@@ -547,4 +547,4 @@ printRejections rejections = do
     PackageName.print name <> ": " <> reason
 
 formatPackage :: PackageName -> Version -> FilePath
-formatPackage name version = PackageName.print name <> "@" <> Version.printVersion version
+formatPackage name version = PackageName.print name <> "@" <> Version.print version

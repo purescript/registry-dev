@@ -31,6 +31,8 @@ import Node.Process as Node.Process
 import Parsing as Parsing
 import Registry.API (LegacyRegistryFile(..), Source(..))
 import Registry.API as API
+import Registry.App.LenientVersion (LenientVersion)
+import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
@@ -182,18 +184,24 @@ main = launchAff_ do
       notPublished =
         indexPackages # Array.filter \(Manifest manifest) -> not (isPublished manifest)
 
-      mkOperation manifest = Publish
-        { location: Just manifest.location
-        , name: manifest.name
-        , ref: Version.rawVersion manifest.version
-        , compiler: unsafeFromRight $ Version.parseVersion Version.Strict "0.15.4"
-        , resolutions: Nothing
-        }
+      mkOperation :: Manifest -> Operation
+      mkOperation (Manifest manifest) =
+        case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
+          Nothing ->
+            unsafeCrashWith $ "Unable to recover package ref for " <> PackageName.print manifest.name <> "@" <> Version.print manifest.version
+          Just ref ->
+            Publish
+              { location: Just manifest.location
+              , name: manifest.name
+              , ref: un RawVersion ref
+              , compiler: unsafeFromRight $ Version.parse "0.15.4"
+              , resolutions: Nothing
+              }
 
     case notPublished of
       [] -> log "No packages to publish."
       manifests -> do
-        let printPackage (Manifest { name, version }) = PackageName.print name <> "@" <> Version.printVersion version
+        let printPackage (Manifest { name, version }) = PackageName.print name <> "@" <> Version.print version
         log "\n----------"
         log "AVAILABLE TO PUBLISH"
         log "----------"
@@ -207,10 +215,10 @@ main = launchAff_ do
         void $ for notPublished \(Manifest manifest) -> do
           log "\n----------"
           log "UPLOADING"
-          log $ PackageName.print manifest.name <> "@" <> Version.printVersion manifest.version
+          log $ PackageName.print manifest.name <> "@" <> Version.print manifest.version
           log $ Json.stringifyJson manifest.location
           log "----------"
-          API.runOperation source (mkOperation manifest)
+          API.runOperation source (mkOperation (Manifest manifest))
 
     when (mode == GenerateRegistry) do
       log "Regenerating registry index..."
@@ -238,6 +246,7 @@ type ImportedIndex =
   , failedVersions :: Map RawPackageName (Map RawVersion VersionValidationError)
   , reservedPackages :: Map PackageName Location
   , registryIndex :: RegistryIndex
+  , packageRefs :: Map PackageName (Map Version RawVersion)
   }
 
 -- | Construct a valid registry index containing manifests for all packages from
@@ -251,13 +260,23 @@ importLegacyRegistry existingRegistry legacyRegistry = do
     Except.runExceptT (buildLegacyPackageManifests existingRegistry legacyPackageSets name address)
 
   let
+    separatedPackages :: { left :: Map RawPackageName PackageValidationError, right :: Map RawPackageName (Map RawVersion _) }
     separatedPackages = separate manifests
+
+    separatedVersions :: { left :: Map RawPackageName (Map RawVersion VersionValidationError), right :: Map RawPackageName (Map RawVersion Manifest) }
     separatedVersions =
       separatedPackages.right # flip foldlWithIndex { left: Map.empty, right: Map.empty } \key acc next -> do
         let { left, right } = separate next
         { left: if Map.isEmpty left then acc.left else Map.insert key left acc.left
         , right: if Map.isEmpty right then acc.right else Map.insert key right acc.right
         }
+
+    -- The raw ref strings associated with the input package names and versions
+    packageRefs :: Map PackageName (Map Version RawVersion)
+    packageRefs = Map.fromFoldableWith Map.union do
+      Tuple _ rawVersions <- Map.toUnfoldable separatedVersions.right
+      Tuple rawVersion (Manifest manifest) <- Map.toUnfoldable rawVersions
+      [ Tuple manifest.name (Map.singleton manifest.version rawVersion) ]
 
     toValues :: forall k v. Map k v -> Array v
     toValues = Array.fromFoldable <<< Map.values
@@ -305,12 +324,13 @@ importLegacyRegistry existingRegistry legacyRegistry = do
     versionFailures = do
       let
         foldFn acc fail = do
-          let package = RawPackageName $ PackageName.print fail.package
-          let version = RawVersion $ Version.rawVersion fail.version
           let error = { error: UnregisteredDependencies fail.dependencies, reason: "Contains dependencies that are not registered." }
-          Map.insertWith Map.union package (Map.singleton version error) acc
+          Map.insertWith Map.union fail.package (Map.singleton fail.version error) acc
         dependencyFailures =
-          Array.foldl foldFn Map.empty checkedIndex.unsatisfied
+          Array.foldl foldFn Map.empty do
+            { dependencies, package, version } <- checkedIndex.unsatisfied
+            let ref = unsafeFromJust $ Map.lookup package packageRefs >>= Map.lookup version
+            [ { package: RawPackageName (PackageName.print package), version: ref, dependencies } ]
       Map.unionWith Map.union separatedVersions.left dependencyFailures
 
   pure
@@ -318,6 +338,7 @@ importLegacyRegistry existingRegistry legacyRegistry = do
     , failedVersions: versionFailures
     , reservedPackages: reservedPackages
     , registryIndex: checkedIndex.index
+    , packageRefs
     }
 
 -- | Attempt to build valid manifests for all releases associated with the given
@@ -350,23 +371,20 @@ buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl
           let manifestError err = { error: InvalidManifest err, reason: "Legacy manifest could not be parsed." }
           Except.withExceptT manifestError do
             legacyManifest <- LegacyManifest.fetchLegacyManifest packageSetDeps package.address (RawVersion tag.name)
-            pure $ LegacyManifest.toManifest package.name version location legacyManifest
+            pure $ LegacyManifest.toManifest package.name (LenientVersion.version version) location legacyManifest
 
-      case Map.lookup package.name existingRegistry >>= Map.lookup version of
+      case Map.lookup package.name existingRegistry >>= Map.lookup (LenientVersion.version version) of
         Just manifest -> pure manifest
         _ -> do
           let key = "manifest__" <> PackageName.print package.name <> "--" <> tag.name
           liftEffect (Cache.readJsonEntry key cache) >>= case _ of
-            -- We can't just write the version directly, as we need to preserve the _raw_ version.
-            -- So we update the manifest fields before reading/writing the cache.
             Left _ -> ExceptT do
               log $ "CACHE MISS: Building manifest for " <> PackageName.print package.name <> "@" <> tag.name
               manifest <- Except.runExceptT buildManifest
-              liftEffect $ Cache.writeJsonEntry key (map (_ { version = Version.rawVersion version } <<< un Manifest) manifest) cache
+              liftEffect $ Cache.writeJsonEntry key manifest cache
               pure manifest
-            Right contents -> do
-              fields <- Except.except contents.value
-              pure $ Manifest $ fields { version = unsafeFromRight $ Version.parseVersion Version.Lenient fields.version }
+            Right contents ->
+              Except.except contents.value
 
   manifests <- lift $ for package.tags \tag -> do
     manifest <- Except.runExceptT $ buildManifestForVersion tag
@@ -396,13 +414,13 @@ instance RegistryJson VersionError where
     "UnregisteredDependencies" -> map UnregisteredDependencies $ obj .: "value"
     tag -> Left $ "Unexpected tag: " <> tag
 
-validateVersionDisabled :: PackageName -> Version -> Either VersionValidationError Unit
+validateVersionDisabled :: PackageName -> LenientVersion -> Either VersionValidationError Unit
 validateVersionDisabled package version =
-  case Map.lookup (Tuple package version) disabledPackageVersions of
+  case Map.lookup (Tuple package (LenientVersion.raw version)) disabledPackageVersions of
     Nothing -> pure unit
     Just reason -> Left { error: DisabledVersion, reason }
   where
-  disabledPackageVersions :: Map (Tuple PackageName Version) String
+  disabledPackageVersions :: Map (Tuple PackageName String) String
   disabledPackageVersions = Map.fromFoldable
     [ Tuple (disabled "concur-core" "v0.3.9") noSrcDirectory
     , Tuple (disabled "concur-react" "v0.3.9") noSrcDirectory
@@ -411,14 +429,13 @@ validateVersionDisabled package version =
     ]
     where
     noSrcDirectory = "Does not contain a 'src' directory."
-    disabled name rawVersion =
-      Tuple (unsafeFromRight $ PackageName.parse name) (unsafeFromRight $ Version.parseVersion Version.Lenient rawVersion)
+    disabled name = Tuple (unsafeFromRight $ PackageName.parse name)
 
-validateVersion :: GitHub.Tag -> Either VersionValidationError Version
+validateVersion :: GitHub.Tag -> Either VersionValidationError LenientVersion
 validateVersion tag =
-  Version.parseVersion Version.Lenient tag.name # lmap \parserError ->
+  LenientVersion.parse tag.name # lmap \parseError ->
     { error: InvalidTag tag
-    , reason: Parsing.parseErrorMessage parserError
+    , reason: parseError
     }
 
 type PackageValidationError = { error :: PackageError, reason :: String }
@@ -595,9 +612,12 @@ formatImportStats stats = String.joinWith "\n"
 calculateImportStats :: LegacyRegistry -> ImportedIndex -> ImportStats
 calculateImportStats legacyRegistry imported = do
   let
-    registryIndex =
-      mapKeys (RawPackageName <<< PackageName.print)
-        $ map (mapKeys (RawVersion <<< Version.rawVersion)) imported.registryIndex
+    registryIndex :: Map RawPackageName (Map RawVersion Manifest)
+    registryIndex = Map.fromFoldableWith Map.union do
+      Tuple name versions <- Map.toUnfoldable imported.registryIndex
+      Tuple version manifest <- Map.toUnfoldable versions
+      let ref = unsafeFromJust (Map.lookup name imported.packageRefs >>= Map.lookup version)
+      [ Tuple (RawPackageName (PackageName.print name)) (Map.singleton ref manifest) ]
 
     packagesProcessed =
       Map.size legacyRegistry

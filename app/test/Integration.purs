@@ -19,9 +19,10 @@ import Registry.Index as Index
 import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Range (Range)
 import Registry.Schema (Location(..), Manifest(..))
 import Registry.Solver as Solver
-import Registry.Version (Range, Version)
+import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.Scripts.BowerInstaller (BowerSolved)
@@ -123,7 +124,7 @@ mkTest solverIndex pkgs = void $ forWithIndex pkgs \package versions -> do
   where
   solve package version dependencies solution = do
     let
-      name = PackageName.print package <> "@" <> Version.printVersion version
+      name = PackageName.print package <> "@" <> Version.print version
       isNoVersionsError = case _ of
         Solver.NoVersionsInRange _ _ _ _ -> true
         _ -> false

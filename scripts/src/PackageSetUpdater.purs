@@ -108,7 +108,7 @@ main = Aff.launchAff_ do
           -- There are no removals in the automated package sets. This should be
           -- an unreachable case.
           Nothing -> throwWithComment "Package removals are not accepted in automatic package sets."
-          Just version -> log (PackageName.print name <> "@" <> Version.printVersion version)
+          Just version -> log (PackageName.print name <> "@" <> Version.print version)
 
       log "Found the following package versions eligible for inclusion in package set:"
       forWithIndex_ candidates.accepted logPackage

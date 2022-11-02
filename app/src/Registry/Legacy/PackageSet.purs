@@ -14,6 +14,7 @@ module Registry.Legacy.PackageSet
 
 import Registry.Prelude
 
+import Control.Monad.Error.Class as Error
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
@@ -89,7 +90,7 @@ instance RegistryJson PscTag where
 parsePscTag :: String -> Either String PscTag
 parsePscTag = lmap Parsing.parseErrorMessage <<< flip Parsing.runParser do
   _ <- Parsing.String.string "psc-"
-  version <- Version.mkVersionParser Version.Strict =<< charsUntilHyphen
+  version <- parseVersion =<< charsUntilHyphen
   date <- Parsing.String.rest
   case Format.DateTime.unformat (YearFull : MonthTwoDigits : DayOfMonthTwoDigits : Nil) date of
     Left err ->
@@ -97,6 +98,9 @@ parsePscTag = lmap Parsing.parseErrorMessage <<< flip Parsing.runParser do
     Right parsedDate ->
       pure $ PscTag { compiler: version, date: parsedDate }
   where
+  parseVersion =
+    Error.liftEither <<< flip Parsing.runParser Version.parser
+
   charsUntilHyphen =
     map String.CodeUnits.fromCharArray
       $ map fst
@@ -107,7 +111,7 @@ printPscTag :: PscTag -> String
 printPscTag (PscTag { compiler, date }) =
   Array.fold
     [ "psc-"
-    , Version.printVersion compiler
+    , Version.print compiler
     , "-"
     , Format.DateTime.format (YearFull : MonthTwoDigits : DayOfMonthTwoDigits : Nil) date
     ]
@@ -131,7 +135,7 @@ fromPackageSet index metadata (PackageSet { compiler, packages, published, versi
   metadataPackage :: LegacyPackageSetEntry
   metadataPackage =
     { repo: "https://github.com/purescript/purescript-metadata.git"
-    , version: RawVersion ("v" <> Version.printVersion compiler)
+    , version: RawVersion ("v" <> Version.print compiler)
     , dependencies: []
     }
 
@@ -156,7 +160,7 @@ fromPackageSet index metadata (PackageSet { compiler, packages, published, versi
       }
     where
     nameStr = PackageName.print packageName
-    versionStr = Version.printVersion packageVersion
+    versionStr = Version.print packageVersion
     noIndexPackageError = "No registry index entry found for " <> nameStr
     noIndexVersionError = "Found registry index entry for " <> nameStr <> " but none for version " <> versionStr
     noMetadataPackageError = "No metadata entry found for " <> nameStr
@@ -283,7 +287,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
   let
     -- We push the stable tag (ie. just a compiler version) if one does not yet
     -- exist. We always push the full tag.
-    printedCompiler = Version.printVersion (un PscTag tag).compiler
+    printedCompiler = Version.print (un PscTag tag).compiler
     tagsToPush = Array.catMaybes
       [ if Set.member printedCompiler packageSetsTags then Nothing else Just printedCompiler
       , Just printedTag
@@ -294,7 +298,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
     for_ commitFiles \(Tuple path contents) -> do
       liftAff $ FS.Aff.writeTextFile UTF8 path (contents <> "\n")
       Git.runGit_ [ "add", path ] (Just packageSetsPath)
-    let commitMessage = "Update to the " <> Version.printVersion upstream <> " package set."
+    let commitMessage = "Update to the " <> Version.print upstream <> " package set."
     Git.runGit_ [ "commit", "-m", commitMessage ] (Just packageSetsPath)
     let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> Constants.legacyPackageSetsRepo.owner <> "/" <> Constants.legacyPackageSetsRepo.repo <> ".git"
     Git.runGit_ [ "push", origin, "master" ] (Just packageSetsPath)

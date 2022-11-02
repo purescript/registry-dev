@@ -28,7 +28,7 @@ formatPackagePath :: String -> Version -> String
 formatPackagePath name version = Array.fold
   [ name
   , "/"
-  , Version.printVersion version
+  , Version.print version
   , ".tar.gz"
   ]
 

@@ -100,7 +100,7 @@ name :: PackageName
 name = unsafeFromRight $ PackageName.parse "foo"
 
 version :: Version
-version = unsafeFromRight $ Version.parseVersion Version.Strict "1.2.3"
+version = unsafeFromRight $ Version.parse "1.2.3"
 
 email :: String
 email = "test@foo"

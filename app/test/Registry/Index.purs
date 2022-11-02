@@ -104,7 +104,7 @@ testRegistryIndex = Spec.before runBefore do
     pure { tmp, index, writeMemory }
 
   insertAndCheck manifest@(Manifest { name: packageName, version }) = do
-    let specName = "Inserts " <> PackageName.print packageName <> " version " <> Version.printVersion version
+    let specName = "Inserts " <> PackageName.print packageName <> " version " <> Version.print version
 
     Spec.it specName \{ tmp, index, writeMemory } -> do
       -- First, we insert the manifest to disk and then read back the result.
@@ -148,7 +148,7 @@ contextManifest version =
   Manifest
     { name: unsafeFromRight $ PackageName.parse "context"
     , owners: Nothing
-    , version: unsafeFromRight $ Version.parseVersion Version.Strict version
+    , version: unsafeFromRight $ Version.parse version
     , license: unsafeFromRight $ License.parse "MIT"
     , location: GitHub { owner: "Fresheyeball", repo: "purescript-owner", subdir: Nothing }
     , description: Nothing
