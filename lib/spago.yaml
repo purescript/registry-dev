@@ -5,6 +5,7 @@ package:
   dependencies:
     - codec-argonaut
     - effect
+    - formatters
     - node-buffer
     - node-fs-aff
     - node-path
