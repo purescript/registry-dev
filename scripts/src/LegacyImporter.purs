@@ -425,7 +425,7 @@ validateVersionDisabled package version =
     [ Tuple (disabled "concur-core" "v0.3.9") noSrcDirectory
     , Tuple (disabled "concur-react" "v0.3.9") noSrcDirectory
     , Tuple (disabled "pux-devtool" "v5.0.0") noSrcDirectory
-    , Tuple (disabled "endpoints-express" "v0.0.1") noSrcDirectory
+    , Tuple (disabled "endpoints-express" "0.0.1") noSrcDirectory
     ]
     where
     noSrcDirectory = "Does not contain a 'src' directory."
