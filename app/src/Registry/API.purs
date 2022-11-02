@@ -536,10 +536,8 @@ publish source { name, ref, compiler, resolutions } inputMetadata = do
         let manifest = Legacy.Manifest.toManifest name version inputMetadata.location legacyManifest
         liftAff $ Json.writeJsonFile manifestPath manifest
 
-  -- TODO: Verify the manifest against metadata.
-  -- We trust the manifest for updating the owners field in the metadata, and
-  -- trust the metadata for everything else. No field should be different.
-  manifest@(Manifest manifestRecord) <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of
+  -- Try to read the manifest, typechecking it
+  manifest@(Manifest manifestFields) <- liftAff (try $ FS.readTextFile UTF8 manifestPath) >>= case _ of
     Left _err -> throwWithComment $ "Manifest not found at " <> manifestPath
     Right manifestStr -> liftAff (jsonToDhallManifest manifestStr) >>= case _ of
       Left err -> throwWithComment $ "Could not typecheck manifest: " <> err
@@ -547,11 +545,27 @@ publish source { name, ref, compiler, resolutions } inputMetadata = do
         Left err -> throwWithComment $ "Could not parse manifest as JSON: " <> err
         Right res -> pure res
 
-  let
-    -- As soon as we have the manifest we need to update any fields that can
-    -- change from version to version. As per the spec, that's only the 'owners'
-    -- field.
-    metadata = inputMetadata { owners = manifestRecord.owners }
+  -- We trust the manifest for any changes to the 'owners' field, but for all
+  -- other fields we trust the registry metadata.
+  let metadata = inputMetadata { owners = manifestFields.owners }
+  when (not isLegacyImport && manifestFields.name /= name) do
+    throwWithComment $ Array.fold
+      [ "The manifest file specifies a package name ("
+      , PackageName.print manifestFields.name
+      , ") that differs from the package name submitted to the API ("
+      , PackageName.print name
+      , "). The manifest and API request must match."
+      ]
+
+  when (manifestFields.location /= metadata.location) do
+    throwWithComment $ Array.fold
+      [ "The manifest file specifies a location ("
+      , Json.stringifyJson manifestFields.location
+      , ") that differs from the location in the registry metadata ("
+      , Json.stringifyJson metadata.location
+      , "). If you would like to change the location of your package you should "
+      , "submit a Transfer operation."
+      ]
 
   -- Then, we can run verification checks on the manifest and either verify the
   -- provided build plan or produce a new one.
@@ -561,14 +575,14 @@ publish source { name, ref, compiler, resolutions } inputMetadata = do
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
   -- We need the version number to upload the package
-  let newVersion = manifestRecord.version
+  let newVersion = manifestFields.version
   let newDirname = PackageName.print name <> "-" <> Version.print newVersion
   let packageSourceDir = Path.concat [ tmpDir, newDirname ]
   liftAff $ FS.Extra.ensureDirectory packageSourceDir
   -- We copy over all files that are always included (ie. src dir, purs.json file),
   -- and any files the user asked for via the 'files' key, and remove all files
   -- that should never be included (even if the user asked for them).
-  copyPackageSourceFiles manifestRecord.files { source: packageDirectory, destination: packageSourceDir }
+  copyPackageSourceFiles manifestFields.files { source: packageDirectory, destination: packageSourceDir }
   liftAff $ removeIgnoredTarballFiles packageSourceDir
   let tarballPath = packageSourceDir <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname }
