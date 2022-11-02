@@ -115,8 +115,8 @@ main = launchAff_ do
         , commitPackageSetFile: \_ _ _ -> do
             log "Skipping committing to registry package sets..."
             pure (Right unit)
-        , uploadPackage: mempty -- Upload.upload
-        , deletePackage: mempty -- Upload.delete
+        , uploadPackage: Upload.upload
+        , deletePackage: Upload.delete
         , octokit
         , cache
         , username: ""
