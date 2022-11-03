@@ -485,7 +485,7 @@ jsonToDhallManifest :: String -> Aff (Either String String)
 jsonToDhallManifest jsonStr = do
   let cmd = "json-to-dhall"
   let stdin = Just jsonStr
-  let args = [ "--records-loose", "--unions-strict", Path.concat [ rootDir, "v1", "Manifest.dhall" ] ]
+  let args = [ "--records-loose", "--unions-strict", Path.concat [ "v1", "Manifest.dhall" ] ]
   result <- Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
   pure $ case result.exit of
     NodeProcess.Normally 0 -> Right jsonStr
@@ -1413,21 +1413,16 @@ packagingTeam = { org: "purescript", team: "packaging" }
 pacchettiBottiKeyType :: String
 pacchettiBottiKeyType = "ssh-ed25519"
 
--- | Path to the root of the registry-dev repository from the directory where
--- | Spago executes the API script
-rootDir :: FilePath
-rootDir = Path.concat [ ".." ]
-
 -- | An ignored directory suitable for storing results when running the API or
 -- | scripts.
 scratchDir :: FilePath
-scratchDir = Path.concat [ rootDir, "scratch" ]
+scratchDir = "scratch"
 
 cacheDir :: FilePath
-cacheDir = Path.concat [ rootDir, ".cache" ]
+cacheDir = ".cache"
 
 envFilePath :: FilePath
-envFilePath = Path.concat [ rootDir, ".env" ]
+envFilePath = ".env"
 
 -- | Loads the `.env` file into the environment.
 loadEnv :: Aff Dotenv.Settings

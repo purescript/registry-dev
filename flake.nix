@@ -107,7 +107,7 @@
 
           registry-api = ''
             cd $(git rev-parse --show-toplevel)
-            spago run -p registry-app -m Registry.API
+            spago run -p registry-app
           '';
 
           registry-importer = ''
