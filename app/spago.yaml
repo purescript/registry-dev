@@ -57,10 +57,13 @@ package:
     - refs
     - registry-lib
     - safe-coerce
-    - spec
     - strings
     - sunde
     - these
     - transformers
     - tuples
     - uncurried-transformers
+  test:
+    main: Test.Main
+    dependencies:
+      - spec
