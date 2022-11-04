@@ -6,6 +6,7 @@ import Effect (Effect)
 import Effect.Aff as Aff
 import Test.Registry.Internal as Test.Internal
 import Test.Registry.Manifest as Test.Manifest
+import Test.Registry.Metadata as Test.Metadata
 import Test.Registry.PackageName as Test.PackageName
 import Test.Registry.Range as Test.Range
 import Test.Registry.Sha256 as Test.Sha256
@@ -24,3 +25,4 @@ main = Aff.launchAff_ $ Spec.Runner.runSpec [ Spec.Reporter.consoleReporter ] do
     Spec.describe "Version" Test.Version.spec
     Spec.describe "Range" Test.Range.spec
     Spec.describe "Manifest" Test.Manifest.spec
+    Spec.describe "Metadata" Test.Metadata.spec
