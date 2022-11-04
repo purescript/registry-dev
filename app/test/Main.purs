@@ -9,7 +9,6 @@ import Data.Foldable (traverse_)
 import Data.Map as Map
 import Data.String.NonEmpty as NonEmptyString
 import Data.Time.Duration (Milliseconds(..))
-import Effect.Aff as Exception
 import Foreign.FastGlob as FastGlob
 import Foreign.GitHub (IssueNumber(..))
 import Foreign.Node.FS as FS.Extra
@@ -54,14 +53,6 @@ main = launchAff_ do
   -- Setup the Registry Index for tests
   registryEnv <- Registry.Index.mkTestIndexEnv
 
-  -- get Manifest examples paths
-  let examplesDir = "examples"
-  packages <- FS.Aff.readdir examplesDir
-  manifestExamplePaths <- join <$> for packages \package -> do
-    let packageDir = Path.concat [ examplesDir, package ]
-    manifests <- FS.Aff.readdir packageDir
-    pure $ map (\manifestFile -> Path.concat [ packageDir, manifestFile ]) manifests
-
   runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
     Spec.describe "API" do
       Spec.describe "Checks" do
@@ -82,9 +73,6 @@ main = launchAff_ do
         Spec.describe "Bad bower files" badBowerfiles
       Spec.describe "Encoding" bowerFileEncoding
     Spec.describe "Licensee" licensee
-    Spec.describe "Manifest" do
-      Spec.describe "Encoding" manifestEncoding
-      Spec.describe "Encoding examples" (manifestExamplesRoundtrip manifestExamplePaths)
     Spec.describe "Registry Index" do
       Registry.Index.spec registryEnv
     Spec.describe "Tar" do
@@ -104,31 +92,6 @@ main = launchAff_ do
       Test.LenientVersion.spec
     Spec.describe "Lenient Range"
       Test.LenientRange.spec
-
--- | Check all the example Manifests roundtrip (read+write) through PureScript
-manifestExamplesRoundtrip :: Array FilePath -> Spec.Spec Unit
-manifestExamplesRoundtrip paths = for_ paths \manifestPath -> Spec.it ("Roundrip check for " <> show manifestPath) do
-  -- Now we read every manifest to our purescript type
-  manifestStr <- FS.Aff.readTextFile UTF8 manifestPath
-  case Json.parseJson manifestStr of
-    Left err -> do
-      error $ "Got error while parsing manifest"
-      throwError $ Exception.error err
-    Right (manifest :: Manifest) -> do
-      -- And if that works, we then try to convert them back to JSON, and
-      -- error out if any differ
-      let newManifestStr = Json.printJson manifest
-      manifestStr `Assert.shouldEqual` newManifestStr
-
-manifestEncoding :: Spec.Spec Unit
-manifestEncoding = do
-  let
-    roundTrip (Manifest manifest) = do
-      Spec.it (PackageName.print manifest.name <> " " <> Version.print manifest.version) do
-        Json.roundtrip manifest `Assert.shouldContain` manifest
-
-  roundTrip Fixture.fixture
-  roundTrip (Fixture.setDependencies [ Tuple "package-a" "1.0.0" ] Fixture.fixture)
 
 safeGlob :: Spec.Spec Unit
 safeGlob = do

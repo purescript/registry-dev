@@ -92,6 +92,6 @@ type UnpublishedMetadata =
 unpublishedMetadataCodec :: JsonCodec UnpublishedMetadata
 unpublishedMetadataCodec = CA.Record.object "UnpublishedMetadata"
   { publishedTime: Internal.Codec.iso8601DateTime
-  , reason: CA.string
+  , reason: Internal.Codec.limitedString 300
   , unpublishedTime: Internal.Codec.iso8601DateTime
   }

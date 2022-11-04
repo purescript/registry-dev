@@ -75,9 +75,9 @@ codec = Profunctor.wrapIso Manifest $ CA.object "Manifest"
   $ CA.recordProp (Proxy :: _ "name") PackageName.codec
   $ CA.recordProp (Proxy :: _ "version") Version.codec
   $ CA.recordProp (Proxy :: _ "license") License.codec
+  $ CA.recordPropOptional (Proxy :: _ "description") (Internal.Codec.limitedString 300)
   $ CA.recordProp (Proxy :: _ "location") Location.codec
   $ CA.recordPropOptional (Proxy :: _ "owners") (CA.nonEmptyArray Owner.codec)
-  $ CA.recordPropOptional (Proxy :: _ "description") CA.string
   $ CA.recordPropOptional (Proxy :: _ "files") (CA.nonEmptyArray CA.nonEmptyString)
   $ CA.recordProp (Proxy :: _ "dependencies") (Internal.Codec.packageMap Range.codec)
   $ CA.record

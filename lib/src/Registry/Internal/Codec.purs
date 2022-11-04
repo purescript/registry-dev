@@ -1,6 +1,7 @@
 module Registry.Internal.Codec
   ( iso8601Date
   , iso8601DateTime
+  , limitedString
   , packageMap
   , versionMap
   ) where
@@ -19,9 +20,11 @@ import Data.Either as Either
 import Data.FoldableWithIndex (forWithIndex_)
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Formatter.DateTime as Formatter.Datetime
+import Data.Int as Int
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe)
+import Data.String as String
 import Data.Traversable (for)
 import Data.Tuple (Tuple(..))
 import Foreign.Object as Object
@@ -76,6 +79,23 @@ iso8601Date = Codec.codec' decode encode
     string <- Codec.decode CA.string json
     dateTime <- lmap (CA.TypeMismatch <<< append "YYYY-MM-DD: ") (Formatter.DateTime.unformat Internal.Format.iso8601Date string)
     pure $ DateTime.date dateTime
+
+-- | INTERNAL
+-- |
+-- | A codec for `String` values with an explicit limited length.
+limitedString :: Int -> JsonCodec String
+limitedString limit = Codec.codec' decode encode
+  where
+  encode :: String -> Json
+  encode = Codec.encode CA.string
+
+  decode :: Json -> Either CA.JsonDecodeError String
+  decode json = do
+    string <- Codec.decode CA.string json
+    if String.length string > limit then
+      Left $ CA.TypeMismatch $ "LimitedString: Exceeds limit of " <> Int.toStringAs Int.decimal limit <> " characters."
+    else
+      Right string
 
 -- | INTERNAL
 -- |

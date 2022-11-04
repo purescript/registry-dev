@@ -44,20 +44,20 @@ spec = do
     hooksLicenseHash `Assert.shouldEqualRight` Sha256.parse (Sha256.print hooksLicenseHash)
 
 -- Test hash produced by `openssl`:
--- openssl dgst -sha256 -binary < test/_fixtures/halogen-hooks/spago.dhall | openssl base64 -A
+-- openssl dgst -sha256 -binary < test/_fixtures/packages/halogen-hooks/spago.dhall | openssl base64 -A
 hooksSpagoHash :: Sha256.Sha256
 hooksSpagoHash = Utils.fromRight "Failed to parse Sha256" $ Sha256.parse "sha256-fN9RUAzN21ZY4Y0UwqUSxwUPVz1g7/pcqoDvbJZoT04="
 
 hooksSpago :: FilePath
-hooksSpago = Path.concat [ "test", "_fixtures", "halogen-hooks", "spago.dhall" ]
+hooksSpago = Path.concat [ "test", "_fixtures", "packages", "halogen-hooks", "spago.dhall" ]
 
 -- Test hash produced by `openssl`:
--- openssl dgst -sha256 -binary < test/_fixtures/LICENSE | openssl base64 -A
+-- openssl dgst -sha256 -binary < test/_fixtures/packages/halogen-hooks/LICENSE | openssl base64 -A
 hooksLicenseHash :: Sha256.Sha256
 hooksLicenseHash = Utils.fromRight "Failed to parse Sha256" $ Sha256.parse "sha256-wOzNcCq20TAL/LMT1lYIiaoEIFGDBw+yp14bj7qK9v4="
 
 hooksLicense :: FilePath
-hooksLicense = Path.concat [ "test", "_fixtures", "halogen-hooks", "LICENSE" ]
+hooksLicense = Path.concat [ "test", "_fixtures", "packages", "halogen-hooks", "LICENSE" ]
 
 sha256Nix :: FilePath -> ExceptT String Aff Sha256.Sha256
 sha256Nix path = ExceptT do
@@ -65,7 +65,7 @@ sha256Nix path = ExceptT do
   let args = [ "hash-file", "--sri", path ]
   result <- Sunde.spawn { cmd: "nix", args, stdin: Nothing } Process.defaultSpawnOptions
   pure $ case result.exit of
-    Process.Normally 0 -> do
+    Process.Normally 0 ->
       Sha256.parse $ String.trim result.stdout
     _ ->
       Left result.stderr
