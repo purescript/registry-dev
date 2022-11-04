@@ -11,8 +11,9 @@ package:
     - parsing
     - prelude
     - strings
-  test_dependencies:
-    - argonaut-core
-    - spec
-    - sunde
-
+  test:
+    main: Test.Registry
+    dependencies:
+      - argonaut-core
+      - spec
+      - sunde

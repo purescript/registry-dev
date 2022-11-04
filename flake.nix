@@ -97,7 +97,7 @@
             cd $(git rev-parse --show-toplevel)
             npm ci
             spago test -p registry-app
-            spago test -p registry-lib -m Test.Registry
+            spago test -p registry-lib
           '';
 
           registry-check-format = ''
@@ -107,7 +107,7 @@
 
           registry-api = ''
             cd $(git rev-parse --show-toplevel)
-            spago run -p registry-app -m Registry.API
+            spago run -p registry-app
           '';
 
           registry-importer = ''
