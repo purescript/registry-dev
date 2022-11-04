@@ -15,6 +15,7 @@ import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec as Codec
+import Data.Codec.Argonaut as CA
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Foldable (traverse_)
@@ -24,7 +25,6 @@ import Data.Int as Int
 import Data.Interpolate (i)
 import Data.Map as Map
 import Data.MediaType.Common as MediaType
-import Data.Monoid as Monoid
 import Data.Set as Set
 import Data.String as String
 import Data.String.Base64 as Base64
@@ -63,6 +63,7 @@ import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
+import Registry.Manifest as Manifest
 import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
 import Registry.Metadata as Metadata
 import Registry.Operation (AuthenticatedData(..), AuthenticatedOperation(..), Operation(..), PublishData)
@@ -680,7 +681,7 @@ verifyManifest { metadata, manifest } = do
   -- are going to fail while parsing from JSON, so we should move them here if we
   -- want to handle everything together
   log "Running checks for the following manifest:"
-  log $ Json.printJson manifestFields
+  log $ Argonaut.stringifyWithIndent 2 $ CA.encode Manifest.codec manifest
 
   log "Ensuring the package is not the purescript-metadata package, which cannot be published."
   when (PackageName.print manifestFields.name == "metadata") do
@@ -728,28 +729,36 @@ verifyResolutions :: { source :: Source, resolutions :: Maybe (Map PackageName V
 verifyResolutions { source, resolutions, manifest } = Except.runExceptT do
   log "Check the submitted build plan matches the manifest"
   -- We don't verify packages provided via the mass import.
-  case source of
-    Importer -> pure $ fromMaybe Map.empty resolutions
-    API -> case resolutions of
-      Nothing -> do
-        indexPath <- asks _.registryIndex
-        registryIndex <- liftAff $ Index.readRegistryIndex indexPath
-        let getDependencies = _.dependencies <<< un Manifest
-        case Solver.solve (map (map getDependencies) registryIndex) (getDependencies manifest) of
-          Left errors -> do
-            throwError $ String.joinWith "\n"
-              [ "Could not produce valid dependencies for manifest."
-              , ""
-              , errors # foldMapWithIndex \index error -> String.joinWith "\n"
-                  [ "[Error " <> show (index + 1) <> "]"
-                  , Solver.printSolverError error
-                  ]
-              ]
-          Right solution ->
-            pure solution
-      Just provided -> do
-        Except.ExceptT $ validateResolutions manifest provided
-        pure provided
+  case resolutions of
+    Nothing -> do
+      indexPath <- asks _.registryIndex
+      registryIndex <- liftAff $ Index.readRegistryIndex indexPath
+      let getDependencies = _.dependencies <<< un Manifest
+      case Solver.solve (map (map getDependencies) registryIndex) (getDependencies manifest) of
+        Left errors -> do
+          case source of
+            Importer -> do
+              log "Could not solve manifest, but continuing because this is a legacy import package..."
+              pure Map.empty
+            API -> do
+              throwError $ String.joinWith "\n"
+                [ "Could not produce valid dependencies for manifest."
+                , ""
+                , errors # foldMapWithIndex \index error -> String.joinWith "\n"
+                    [ "[Error " <> show (index + 1) <> "]"
+                    , Solver.printSolverError error
+                    ]
+                ]
+        Right solution ->
+          pure solution
+
+    Just provided -> do
+      case source of
+        Importer ->
+          pure provided
+        API -> do
+          Except.ExceptT $ validateResolutions manifest provided
+          pure provided
 
 validateResolutions :: Manifest -> Map PackageName Version -> RegistryM (Either String Unit)
 validateResolutions manifest resolutions = Except.runExceptT do
@@ -829,9 +838,12 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
   liftAff $ FS.Extra.ensureDirectory dependenciesDir
   let
     globs =
-      [ "src/**/*.purs"
-      , Path.concat [ dependenciesDir, "*/src/**/*.purs" ] # Monoid.guard (not Map.isEmpty resolutions)
-      ]
+      if Map.isEmpty resolutions then
+        [ "src/**/*.purs" ]
+      else
+        [ "src/**/*.purs"
+        , Path.concat [ dependenciesDir, "*/src/**/*.purs" ]
+        ]
   forWithIndex_ resolutions (installPackage dependenciesDir)
   log "Compiling..."
   compilerOutput <- liftAff $ Purs.callCompiler
