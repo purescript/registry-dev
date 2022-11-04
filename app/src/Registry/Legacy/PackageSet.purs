@@ -19,7 +19,8 @@ import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Compactable (separate)
-import Data.DateTime (DateTime)
+import Data.DateTime (Date, DateTime(..))
+import Data.DateTime as DateTime
 import Data.Filterable (filterMap)
 import Data.Formatter.DateTime (FormatterCommand(..))
 import Data.Formatter.DateTime as Format.DateTime
@@ -42,13 +43,16 @@ import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Registry.Constants as Constants
 import Registry.Index (RegistryIndex)
+import Registry.Internal.Format as Internal.Format
 import Registry.Json as Json
+import Registry.Location (Location(..))
+import Registry.Manifest (Manifest(..))
+import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.PackageSet (PackageSet(..))
 import Registry.RegistryM (RegistryM)
 import Registry.RegistryM as RegistryM
-import Registry.Schema (Location(..), Manifest(..), Metadata, PackageSet(..))
-import Registry.Schema as Schema
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -77,7 +81,7 @@ type ConvertedLegacyPackageSet =
   }
 
 -- | A package set tag for the legacy package sets.
-newtype PscTag = PscTag { compiler :: Version, date :: DateTime }
+newtype PscTag = PscTag { compiler :: Version, date :: Date }
 
 derive instance Newtype PscTag _
 derive instance Eq PscTag
@@ -87,16 +91,19 @@ instance RegistryJson PscTag where
   encode = Json.encode <<< printPscTag
   decode = Json.decode >=> parsePscTag
 
+pscDateFormat :: List FormatterCommand
+pscDateFormat = YearFull : MonthTwoDigits : DayOfMonthTwoDigits : Nil
+
 parsePscTag :: String -> Either String PscTag
 parsePscTag = lmap Parsing.parseErrorMessage <<< flip Parsing.runParser do
   _ <- Parsing.String.string "psc-"
   version <- parseVersion =<< charsUntilHyphen
   date <- Parsing.String.rest
-  case Format.DateTime.unformat (YearFull : MonthTwoDigits : DayOfMonthTwoDigits : Nil) date of
+  case Format.DateTime.unformat pscDateFormat date of
     Left err ->
       Parsing.fail $ "Expected an 8-digit date such as '20220101': " <> err
     Right parsedDate ->
-      pure $ PscTag { compiler: version, date: parsedDate }
+      pure $ PscTag { compiler: version, date: DateTime.date parsedDate }
   where
   parseVersion =
     Error.liftEither <<< flip Parsing.runParser Version.parser
@@ -113,11 +120,11 @@ printPscTag (PscTag { compiler, date }) =
     [ "psc-"
     , Version.print compiler
     , "-"
-    , Format.DateTime.format (YearFull : MonthTwoDigits : DayOfMonthTwoDigits : Nil) date
+    , Format.DateTime.format pscDateFormat (DateTime date bottom)
     ]
 
 fromPackageSet :: RegistryIndex -> Map PackageName Metadata -> PackageSet -> Either String ConvertedLegacyPackageSet
-fromPackageSet index metadata (PackageSet { compiler, packages, published, version }) = do
+fromPackageSet index metadataMap (PackageSet { compiler, packages, published, version }) = do
   converted <- case separate $ mapWithIndex convertPackage packages of
     { left, right } | Map.isEmpty left -> Right right
     { left } -> do
@@ -144,17 +151,17 @@ fromPackageSet index metadata (PackageSet { compiler, packages, published, versi
     versions <- note noIndexPackageError $ Map.lookup packageName index
     Manifest manifest <- note noIndexVersionError $ Map.lookup packageVersion versions
 
-    metadataEntries <- note noMetadataPackageError $ Map.lookup packageName metadata
-    metadataEntry <- note noMetadataVersionError $ Map.lookup packageVersion metadataEntries.published
+    Metadata metadata <- note noMetadataPackageError $ Map.lookup packageName metadataMap
+    { ref } <- note noMetadataVersionError $ Map.lookup packageVersion metadata.published
 
-    repo <- case metadataEntries.location of
+    repo <- case metadata.location of
       GitHub { owner, repo, subdir: Nothing } -> Right $ "https://github.com/" <> owner <> "/" <> repo <> ".git"
-      Git { gitUrl, subdir: Nothing } -> Right gitUrl
+      Git { url, subdir: Nothing } -> Right url
       GitHub _ -> Left usesSubdirError
       Git _ -> Left usesSubdirError
 
     pure
-      { version: RawVersion metadataEntry.ref
+      { version: RawVersion ref
       , dependencies: Array.fromFoldable $ Map.keys $ manifest.dependencies
       , repo
       }
@@ -315,9 +322,9 @@ filterLegacyPackageSets tags = do
   let
     -- Package sets after this date are published by the registry, and are
     -- therefore not legacy package sets.
-    lastLegacyDate = unsafeFromRight $ Formatter.DateTime.unformat Schema.dateFormatter "2022-09-01"
+    lastLegacyDate = unsafeFromRight $ Formatter.DateTime.unformat Internal.Format.iso8601Date "2022-09-01"
     legacyTag { name } = case parsePscTag name of
-      Right (PscTag { date }) | date <= lastLegacyDate -> Just name
+      Right (PscTag { date }) | date <= (DateTime.date lastLegacyDate) -> Just name
       _ -> Nothing
 
   filterMap legacyTag tags

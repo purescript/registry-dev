@@ -6,7 +6,7 @@
 -- | idiomatic JSON as output rather than preserving PureScript constructors.
 -- |
 -- | The choice also allows us to define instances for types we don't define,
--- | like `RFC3339String` and `BigInt`, without newtypes.
+-- | like `DateTime` and `BigInt`, without newtypes.
 module Registry.Json
   ( module Exports
   , printJson
@@ -74,7 +74,12 @@ import Prim.Row as Row
 import Prim.RowList as RL
 import Record as Record
 import Registry.License as License
+import Registry.Location as Location
+import Registry.Manifest as Manifest
+import Registry.Metadata as Metadata
+import Registry.Owner as Owner
 import Registry.PackageName as PackageName
+import Registry.PackageSet as PackageSet
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
 import Registry.Version as Version
@@ -258,6 +263,26 @@ instance RegistryJson Range.Range where
 instance RegistryJson License.License where
   encode = CA.encode License.codec
   decode = lmap CA.printJsonDecodeError <<< CA.decode License.codec
+
+instance RegistryJson Owner.Owner where
+  encode = CA.encode Owner.codec
+  decode = lmap CA.printJsonDecodeError <<< CA.decode Owner.codec
+
+instance RegistryJson Location.Location where
+  encode = CA.encode Location.codec
+  decode = lmap CA.printJsonDecodeError <<< CA.decode Location.codec
+
+instance RegistryJson Manifest.Manifest where
+  encode = CA.encode Manifest.codec
+  decode = lmap CA.printJsonDecodeError <<< CA.decode Manifest.codec
+
+instance RegistryJson Metadata.Metadata where
+  encode = CA.encode Metadata.codec
+  decode = lmap CA.printJsonDecodeError <<< CA.decode Metadata.codec
+
+instance RegistryJson PackageSet.PackageSet where
+  encode = CA.encode PackageSet.codec
+  decode = lmap CA.printJsonDecodeError <<< CA.decode PackageSet.codec
 
 ---------
 

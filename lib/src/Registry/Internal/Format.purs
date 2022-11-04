@@ -6,12 +6,14 @@ module Registry.Internal.Format
 
 import Prelude
 
+import Data.Array as Array
+import Data.Bifunctor (lmap)
+import Data.Either (Either)
 import Data.Formatter.DateTime (FormatterCommand(..))
-import Data.Int as Int
 import Data.List (List)
 import Data.List as List
-import Data.String as String
-import Partial.Unsafe (unsafeCrashWith)
+import Parsing as Parsing
+import Registry.Internal.Parsing as Internal.Parsing
 
 -- | INTERNAL
 -- |
@@ -58,17 +60,7 @@ iso8601DateTime = List.fold
 -- | library, which are almost exactly equivalent with simplified ISO8601 strings,
 -- | except that they use 1-3 millisecond places instead of the 3 places mandated
 -- | by the ECMAScript spec for ISO8601.
-rfc3339ToISO8601 :: String -> String
+rfc3339ToISO8601 :: String -> Either String String
 rfc3339ToISO8601 input = do
-  let
-    takeUntilDot = String.takeWhile (_ /= String.codePointFromChar '.')
-    dropUntilDot = String.dropWhile (_ /= String.codePointFromChar '.')
-    takeUntilZ = String.takeWhile (_ /= String.codePointFromChar 'Z')
-    milliseconds = takeUntilZ (String.drop 1 (dropUntilDot input))
-    ms = case String.length milliseconds of
-      1 -> milliseconds <> "00"
-      2 -> milliseconds <> "0"
-      3 -> milliseconds
-      other -> unsafeCrashWith $ "ISO8601: Received incorrect number of milliseconds places (got " <> Int.toStringAs Int.decimal other <> ", but expected 1-3)"
-
-  takeUntilDot input <> "." <> ms <> "Z"
+  { date, time, milliseconds } <- lmap Parsing.parseErrorMessage $ Parsing.runParser input Internal.Parsing.rfc3339
+  pure $ Array.fold [ date, "T", time, ".", milliseconds, "Z" ]

@@ -20,11 +20,12 @@ import Registry.API as API
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
 import Registry.Json as Json
+import Registry.Location (Location(..))
+import Registry.Metadata (Metadata(..))
 import Registry.Operation (AuthenticatedData(..), AuthenticatedOperation(..), Operation(..))
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
 import Registry.RegistryM as RegistryM
-import Registry.Schema (Location(..), Metadata)
 import Registry.Scripts.LegacyImporter as LegacyImporter
 import Registry.Version (Version)
 
@@ -136,7 +137,7 @@ latestLocations packages = forWithIndex packages \package location -> do
     unsafeCrashWith "Only GitHub locations can be considered in legacy registries."
 
 latestPackageLocations :: LegacyImporter.PackageResult -> Metadata -> ExceptT String RegistryM PackageLocations
-latestPackageLocations package { location, published } = do
+latestPackageLocations package (Metadata { location, published }) = do
   let
     isMatchingTag :: Version -> GitHub.Tag -> Boolean
     isMatchingTag version tag = fromMaybe false do

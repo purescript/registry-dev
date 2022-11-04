@@ -6,15 +6,15 @@ module Registry.SSH
 
 import Registry.Prelude
 
-import Data.Array.NonEmpty as NEA
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.String as String
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as Node.ChildProcess
-import Node.FS.Aff as FS
+import Node.FS.Aff as FS.Aff
 import Node.FS.Perms as Perms
 import Node.Path as Path
 import Registry.Operation (AuthenticatedData(..))
-import Registry.Schema (Owner(..))
+import Registry.Owner (Owner(..))
 import Sunde as Process
 
 allowedSignersPath :: FilePath
@@ -32,9 +32,9 @@ verifyPayload :: NonEmptyArray Owner -> AuthenticatedData -> Aff (Either String 
 verifyPayload owners (AuthenticatedData { email, signature, rawPayload }) = do
   tmp <- liftEffect Tmp.mkTmpDir
   let joinWithNewlines = String.joinWith "\n"
-  let signers = joinWithNewlines $ NEA.toArray $ map formatOwner owners
-  FS.writeTextFile UTF8 (Path.concat [ tmp, allowedSignersPath ]) signers
-  FS.writeTextFile UTF8 (Path.concat [ tmp, payloadSignaturePath ]) (joinWithNewlines signature)
+  let signers = joinWithNewlines $ NonEmptyArray.toArray $ map formatOwner owners
+  FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, allowedSignersPath ]) signers
+  FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, payloadSignaturePath ]) (joinWithNewlines signature)
   -- The 'ssh-keygen' command will only exit normally if the signature verifies,
   -- and otherwise will report an error status code.
   sshKeygenVerify tmp
@@ -63,9 +63,9 @@ signPayload { publicKey, privateKey, rawPayload } = do
   let publicKeyPath = Path.concat [ tmp, sshKeyPath <> ".pub" ]
   let privateKeyPath = Path.concat [ tmp, sshKeyPath ]
   -- Key files must have a single trailing newline.
-  FS.writeTextFile UTF8 publicKeyPath (String.trim publicKey <> "\n")
-  FS.writeTextFile UTF8 privateKeyPath (String.trim privateKey <> "\n")
-  for_ (Perms.permsFromString "0600") (FS.chmod privateKeyPath)
+  FS.Aff.writeTextFile UTF8 publicKeyPath (String.trim publicKey <> "\n")
+  FS.Aff.writeTextFile UTF8 privateKeyPath (String.trim privateKey <> "\n")
+  for_ (Perms.permsFromString "0600") (FS.Aff.chmod privateKeyPath)
   sshKeygenSign tmp
   where
   sshKeygenSign tmp = do

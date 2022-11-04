@@ -34,6 +34,8 @@ import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.Array as Array
 import Data.Bitraversable (ltraverse)
+import Data.Codec.Argonaut as CA
+import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.DateTime.Instant (Instant)
 import Data.DateTime.Instant as Instant
@@ -43,7 +45,6 @@ import Data.Int as Int
 import Data.Interpolate (i)
 import Data.List as List
 import Data.Newtype (over, unwrap)
-import Data.RFC3339String (RFC3339String(..))
 import Data.String as String
 import Data.String.Base64 as Base64
 import Data.String.CodeUnits as String.CodeUnits
@@ -62,6 +63,7 @@ import Parsing.String.Basic as Parsing.String.Basic
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Constants as Constants
+import Registry.Internal.Codec as Internal.Codec
 import Registry.Json ((.:))
 import Registry.Json as Json
 
@@ -173,7 +175,7 @@ getRefCommit octokit cache address ref = do
 
 -- | Fetch the date associated with a given commit, in the RFC3339String format.
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getCommit.md
-getCommitDate :: Octokit -> Cache -> Address -> String -> ExceptT GitHubError Aff RFC3339String
+getCommitDate :: Octokit -> Cache -> Address -> String -> ExceptT GitHubError Aff DateTime
 getCommitDate octokit cache address commitSha = do
   let requestArgs = { octokit, route, headers: Object.empty, args: {} }
   let cacheArgs = { cache, checkGitHub: false }
@@ -183,12 +185,13 @@ getCommitDate octokit cache address commitSha = do
   route :: Route
   route = Route $ i "GET /repos/" address.owner "/" address.repo "/git/commits/" commitSha
 
-  decodeCommit :: Json -> Either String RFC3339String
+  decodeCommit :: Json -> Either String DateTime
   decodeCommit json = do
     obj <- Json.decode json
     committer <- obj .: "committer"
-    date <- committer .: "date"
-    pure $ RFC3339String date
+    dateString <- committer .: "date"
+    date <- lmap CA.printJsonDecodeError $ CA.decode Internal.Codec.iso8601DateTime dateString
+    pure date
 
 -- | Create a comment on an issue in the registry repo.
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/issues/createComment.md
@@ -340,7 +343,7 @@ cachedRequest
   -> ExceptT GitHubAPIError Aff Json
 cachedRequest runRequest requestArgs@{ route: Route route } { cache, checkGitHub } = do
   entry <- liftEffect (Cache.readJsonEntry route cache)
-  now <- liftEffect Cache.nowUTC
+  now <- liftEffect nowUTC
   ExceptT $ case entry of
     Left _ -> do
       log $ "CACHE MISS: Malformed or no entry for " <> route

@@ -4,9 +4,8 @@ import Registry.Prelude
 
 import Affjax as Http
 import Control.Monad.Except as Except
+import Data.DateTime (DateTime)
 import Data.JSDate as JSDate
-import Data.PreciseDateTime as PDT
-import Data.RFC3339String (RFC3339String)
 import Data.String as String
 import Effect.Aff as Aff
 import Effect.Exception as Exception
@@ -50,12 +49,12 @@ cloneGitTag url ref targetDir = do
     Just (Right _) -> log "Successfully cloned package."
 
 -- | Read the published time of the checked-out commit.
-gitGetRefTime :: String -> FilePath -> ExceptT String Aff RFC3339String
+gitGetRefTime :: String -> FilePath -> ExceptT String Aff DateTime
 gitGetRefTime ref repoDir = do
   timestamp <- runGit [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir)
   jsDate <- liftEffect $ JSDate.parse timestamp
   dateTime <- Except.except $ note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
-  pure $ PDT.toRFC3339String $ PDT.fromDateTime dateTime
+  pure dateTime
 
 configurePacchettiBotti :: Maybe FilePath -> ExceptT String Aff GitHub.GitHubToken
 configurePacchettiBotti cwd = do

@@ -19,10 +19,10 @@ import Data.Map as Map
 import Data.Monoid (guard)
 import Data.Set as Set
 import Registry.Index (RegistryIndex)
+import Registry.Manifest (Manifest(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
-import Registry.Schema (Manifest(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 

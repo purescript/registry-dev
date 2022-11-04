@@ -7,12 +7,10 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
 import Data.Map as Map
-import Data.PreciseDateTime as PDT
 import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
 import Effect.Exception as Exception
-import Effect.Now as Now
 import Effect.Ref as Ref
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
@@ -21,14 +19,15 @@ import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
 import Registry.API as API
+import Registry.App.PackageSets as App.PackageSets
 import Registry.Index as Index
 import Registry.Json as Json
 import Registry.Legacy.PackageSet as Legacy.PackageSet
+import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.PackageSet as PackageSet
+import Registry.PackageSet (PackageSet(..))
 import Registry.RegistryM (Env, RegistryM, commitPackageSetFile, readPackagesMetadata, runRegistryM, throwWithComment)
-import Registry.Schema (Metadata, PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -91,14 +90,14 @@ main = Aff.launchAff_ do
 
     registryIndexPath <- asks _.registryIndex
     registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
-    prevPackageSet <- PackageSet.readLatestPackageSet
-    PackageSet.validatePackageSet registryIndex prevPackageSet
+    prevPackageSet <- App.PackageSets.readLatestPackageSet
+    App.PackageSets.validatePackageSet registryIndex prevPackageSet
 
     metadata <- readPackagesMetadata
     recentUploads <- findRecentUploads metadata (Hours 24.0)
 
-    let candidates = PackageSet.validatePackageSetCandidates registryIndex prevPackageSet (map Just recentUploads.accepted)
-    log $ PackageSet.printRejections candidates.rejected
+    let candidates = App.PackageSets.validatePackageSetCandidates registryIndex prevPackageSet (map Just recentUploads.accepted)
+    log $ App.PackageSets.printRejections candidates.rejected
 
     if Map.isEmpty candidates.accepted then do
       log "No eligible additions, updates, or removals to produce a new package set."
@@ -113,7 +112,7 @@ main = Aff.launchAff_ do
       log "Found the following package versions eligible for inclusion in package set:"
       forWithIndex_ candidates.accepted logPackage
       let workDir = Path.concat [ API.scratchDir, "package-set-build" ]
-      PackageSet.processBatchSequential workDir registryIndex prevPackageSet Nothing candidates.accepted >>= case _ of
+      App.PackageSets.processBatchSequential workDir registryIndex prevPackageSet Nothing candidates.accepted >>= case _ of
         Nothing -> do
           log "\n----------\nNo packages could be added to the set. All packages failed:"
           forWithIndex_ candidates.accepted logPackage
@@ -123,12 +122,12 @@ main = Aff.launchAff_ do
             forWithIndex_ fail logPackage
           log "\n----------\nNew packages were added to the set!"
           forWithIndex_ success logPackage
-          newPath <- PackageSet.getPackageSetPath (un PackageSet packageSet).version
+          newPath <- App.PackageSets.getPackageSetPath (un PackageSet packageSet).version
           liftAff $ Json.writeJsonFile newPath packageSet
           case mode of
             GeneratePackageSet -> pure unit
             CommitPackageSet -> do
-              let commitMessage = PackageSet.commitMessage prevPackageSet success (un PackageSet packageSet).version
+              let commitMessage = App.PackageSets.commitMessage prevPackageSet success (un PackageSet packageSet).version
               commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
                 Left err -> throwWithComment $ "Failed to commit package set file: " <> err
                 Right _ -> do
@@ -138,15 +137,14 @@ main = Aff.launchAff_ do
 
 findRecentUploads :: Map PackageName Metadata -> Hours -> RegistryM { accepted :: Map PackageName Version, rejected :: Map PackageName (NonEmptyArray Version) }
 findRecentUploads metadata limit = do
-  now <- liftEffect Now.nowDateTime
+  now <- liftEffect nowUTC
 
   let
     packageUploads = Map.fromFoldable do
-      Tuple packageName packageMetadata <- Map.toUnfoldable metadata
+      Tuple packageName (Metadata packageMetadata) <- Map.toUnfoldable metadata
       versions <- Array.fromFoldable $ NonEmptyArray.fromArray do
         Tuple version { publishedTime } <- Map.toUnfoldable packageMetadata.published
-        published <- maybe [] (pure <<< PDT.toDateTimeLossy) (PDT.fromRFC3339String publishedTime)
-        let diff = DateTime.diff now published
+        let diff = DateTime.diff now publishedTime
         guardA (diff <= limit)
         pure version
       pure (Tuple packageName versions)

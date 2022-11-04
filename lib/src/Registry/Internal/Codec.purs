@@ -14,7 +14,7 @@ import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.DateTime (Date, DateTime)
 import Data.DateTime as DateTime
-import Data.Either (Either)
+import Data.Either (Either(..))
 import Data.Either as Either
 import Data.FoldableWithIndex (forWithIndex_)
 import Data.Formatter.DateTime as Formatter.DateTime
@@ -53,8 +53,10 @@ iso8601DateTime = Codec.codec' decode encode
   decode :: Json -> Either CA.JsonDecodeError DateTime
   decode json = do
     string <- Codec.decode CA.string json
-    let fixed = Internal.Format.rfc3339ToISO8601 string
-    lmap (CA.TypeMismatch <<< append "ISO8601: ") (Formatter.Datetime.unformat Internal.Format.iso8601DateTime fixed)
+    case Internal.Format.rfc3339ToISO8601 string of
+      Left err -> Left $ CA.TypeMismatch $ "Unable to parse input as ISO8601: " <> err
+      Right fixed ->
+        lmap (CA.TypeMismatch <<< append "ISO8601: ") (Formatter.Datetime.unformat Internal.Format.iso8601DateTime fixed)
 
 -- | INTERNAL
 -- |

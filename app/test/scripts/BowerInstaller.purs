@@ -36,6 +36,9 @@ import Registry.Cache as Cache
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
 import Registry.Json as Json
+import Registry.Location (Location(..))
+import Registry.Manifest (Manifest(..))
+import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Prelude as Aff
@@ -43,7 +46,6 @@ import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.RegistryM (RegistryM, readPackagesMetadata)
 import Registry.RegistryM as RegistryM
-import Registry.Schema (Location(..), Manifest(..), Metadata)
 import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Sunde
@@ -154,7 +156,7 @@ runBowerSolver index metadata previousResults =
       case Map.lookup package previousResults >>= Map.lookup version of
         Nothing -> map hush $ Except.runExceptT do
           originalBowerfile <- case Map.lookup package metadata of
-            Just { location: GitHub { owner, repo }, published } | Just { ref } <- Map.lookup version published -> do
+            Just (Metadata { location: GitHub { owner, repo }, published }) | Just { ref } <- Map.lookup version published -> do
               { octokit, cache } <- ask
               bowerfile <- Except.mapExceptT (liftAff <<< map (lmap GitHub.printGitHubError)) $ GitHub.getContent octokit cache { owner, repo } ref "bower.json"
               pure $ JsonRepair.tryRepair bowerfile
@@ -178,7 +180,7 @@ runBowerSolver index metadata previousResults =
               bowerfile = Json.printJson { name: PackageName.print package, dependencies: bowerDependencies }
               bowerDependencies = mapWithIndex bowerDependency manifest.dependencies
               bowerDependency depName range = case Map.lookup depName metadata of
-                Just { location: GitHub dep } -> "https://github.com/" <> dep.owner <> "/" <> dep.repo <> ".git#" <> Range.print range
+                Just (Metadata { location: GitHub dep }) -> "https://github.com/" <> dep.owner <> "/" <> dep.repo <> ".git#" <> Range.print range
                 _ -> unsafeCrashWith $ Array.fold [ PackageName.print depName, " not in metadata." ]
 
             maybeRes <- runBowerInstall ManifestInstall package version bowerfile

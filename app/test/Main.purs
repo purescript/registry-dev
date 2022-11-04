@@ -4,8 +4,10 @@ module Test.Main
 
 import Registry.Prelude
 
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable (traverse_)
 import Data.Map as Map
+import Data.String.NonEmpty as NonEmptyString
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Exception
 import Foreign.FastGlob as FastGlob
@@ -22,10 +24,11 @@ import Registry.API (copyPackageSourceFiles)
 import Registry.API as API
 import Registry.Json as Json
 import Registry.Legacy.Manifest (Bowerfile(..))
+import Registry.Location (Location(..))
+import Registry.Manifest (Manifest(..))
 import Registry.Operation (Operation(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (BuildPlan(..), Location(..), Manifest(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 import Safe.Coerce (coerce)
@@ -37,8 +40,8 @@ import Test.Foreign.SPDX as Foreign.SPDX
 import Test.Foreign.Tar as Foreign.Tar
 import Test.Registry.App.LenientRange as Test.LenientRange
 import Test.Registry.App.LenientVersion as Test.LenientVersion
+import Test.Registry.App.PackageSets as PackageSets
 import Test.Registry.Index as Registry.Index
-import Test.Registry.PackageSet as PackageSet
 import Test.Registry.SSH as SSH
 import Test.Registry.Solver as TestSolver
 import Test.RegistrySpec as RegistrySpec
@@ -93,7 +96,7 @@ main = launchAff_ do
     Spec.describe "Glob" do
       safeGlob
     Spec.describe "Package Set" do
-      PackageSet.spec
+      PackageSets.spec
     Spec.describe "SPDX Fuzzy Match" do
       Foreign.SPDX.spec
 
@@ -224,7 +227,7 @@ copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
 
   Spec.it "Copies user-specified files" \{ source, destination, writeDirectories, writeFiles } -> do
     let
-      userFiles = Just [ "test/**/*.purs" ]
+      userFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/*.purs" ]
       testDir = [ "test" ]
       testFiles = [ Path.concat [ "test", "Main.purs" ], Path.concat [ "test", "Test.purs" ] ]
 
@@ -458,8 +461,8 @@ checkBuildPlanToResolutions = do
     ]
 
   generatedResolutions =
-    API.buildPlanToResolutions
-      { buildPlan: BuildPlan { compiler: mkUnsafeVersion "0.14.2", resolutions: Just resolutions }
+    API.formatPursuitResolutions
+      { resolutions
       , dependenciesDir
       }
 

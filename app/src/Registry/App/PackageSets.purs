@@ -1,4 +1,4 @@
-module Registry.PackageSet
+module Registry.App.PackageSets
   ( PackageSetBatchResult
   , commitMessage
   , getPackageSetPath
@@ -19,6 +19,7 @@ import Control.Monad.Reader (ReaderT, asks)
 import Control.Monad.Reader as ReaderT
 import Data.Array as Array
 import Data.Bitraversable (ltraverse)
+import Data.DateTime as DateTime
 import Data.Filterable (partitionMap)
 import Data.Foldable (foldl)
 import Data.FoldableWithIndex (traverseWithIndex_)
@@ -28,7 +29,6 @@ import Data.Set as Set
 import Data.String as String
 import Data.Tuple (uncurry)
 import Effect.Aff as Aff
-import Effect.Now as Now
 import Effect.Ref as Ref
 import Foreign.Node.FS as FS.Extra
 import Foreign.Purs (CompilerFailure(..))
@@ -41,11 +41,12 @@ import Node.Path as Path
 import Registry.Constants as Constants
 import Registry.Index (RegistryIndex)
 import Registry.Json as Json
+import Registry.Manifest (Manifest(..))
 import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.PackageSet (PackageSet(..))
 import Registry.RegistryM (RegistryM, throwWithComment)
-import Registry.Schema (Manifest(..), PackageSet(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -201,9 +202,9 @@ processBatchSequential workDir registryIndex prevSet@(PackageSet { compiler: pre
 
 updatePackageSetMetadata :: { previous :: PackageSet, pending :: PackageSet } -> Map PackageName (Maybe Version) -> Effect PackageSet
 updatePackageSetMetadata { previous, pending: PackageSet pending } changed = do
-  now <- Now.nowDateTime
+  now <- nowUTC
   let version = computeVersion previous changed
-  pure $ PackageSet (pending { version = version, published = now })
+  pure $ PackageSet (pending { version = version, published = DateTime.date now })
 
 handleCompilerError :: Version -> Purs.CompilerFailure -> RegistryM Unit
 handleCompilerError compilerVersion = case _ of
