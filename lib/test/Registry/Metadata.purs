@@ -1,62 +1,18 @@
-module Test.Registry.Metadata where
+module Test.Registry.Metadata (spec) where
 
 import Prelude
 
-import Data.Argonaut.Core as Argonaut
-import Data.Argonaut.Parser as Argonaut.Parser
-import Data.Array as Array
-import Data.Bifunctor (lmap)
-import Data.Codec.Argonaut as CA
-import Data.Either (Either(..))
-import Data.String as String
-import Data.Tuple (Tuple(..))
 import Registry.Metadata as Metadata
 import Test.Assert as Assert
 import Test.Spec (Spec)
 import Test.Spec as Spec
-import Test.Utils as Utils
 
 spec :: Spec Unit
 spec = do
   Spec.it "Round-trips metadata fixtures" do
-    let
-      fixtures =
-        [ Tuple "record-studio" recordStudio
-        ]
-
-      parse (Tuple name input) =
-        case lmap CA.printJsonDecodeError <<< CA.decode Metadata.codec =<< Argonaut.Parser.jsonParser input of
-          Left error -> Left { name, input, error }
-          Right result -> Right { name, input, result }
-
-      { fail, success } = Utils.partitionEithers $ map parse fixtures
-
-      formatError { name, error } = name <> ": " <> error
-
-    unless (Array.null fail) do
-      Assert.fail $ String.joinWith "\n"
-        [ "Some well-formed metadata strings were not parsed correctly:"
-        , Array.foldMap (append "\n  - " <<< formatError) fail
-        ]
-
-    let
-      roundtrip = success <#> \{ name, input, result } -> do
-        let printed = Argonaut.stringifyWithIndent 2 $ CA.encode Metadata.codec result
-        if String.trim input == String.trim printed then Right unit else Left { name, input, printed }
-
-      roundtripResult = Utils.partitionEithers roundtrip
-
-      formatRoundtripError { name, input, printed } =
-        String.joinWith "\n"
-          [ name <> " input does not match output."
-          , String.joinWith "\n" [ input, "/=", printed ]
-          ]
-
-    unless (Array.null roundtripResult.fail) do
-      Assert.fail $ String.joinWith "\n"
-        [ "Some well-formed manifests did not round-trip:"
-        , Array.foldMap (append "\n  - " <<< formatRoundtripError) roundtripResult.fail
-        ]
+    Assert.shouldRoundTrip "Metadata" Metadata.codec
+      [ { label: "record-studio", value: recordStudio }
+      ]
 
 recordStudio :: String
 recordStudio =
