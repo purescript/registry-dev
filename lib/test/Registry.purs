@@ -7,6 +7,7 @@ import Effect.Aff as Aff
 import Test.Registry.Internal as Test.Internal
 import Test.Registry.Manifest as Test.Manifest
 import Test.Registry.Metadata as Test.Metadata
+import Test.Registry.Operation as Test.Operation
 import Test.Registry.PackageName as Test.PackageName
 import Test.Registry.PackageSet as Test.PackageSet
 import Test.Registry.Range as Test.Range
@@ -28,3 +29,4 @@ main = Aff.launchAff_ $ Spec.Runner.runSpec [ Spec.Reporter.consoleReporter ] do
     Spec.describe "Manifest" Test.Manifest.spec
     Spec.describe "Metadata" Test.Metadata.spec
     Spec.describe "Package Set" Test.PackageSet.spec
+    Spec.describe "Operation" Test.Operation.spec

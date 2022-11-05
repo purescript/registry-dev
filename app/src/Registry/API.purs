@@ -66,7 +66,8 @@ import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
 import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
 import Registry.Metadata as Metadata
-import Registry.Operation (AuthenticatedData(..), AuthenticatedOperation(..), Operation(..), PublishData)
+import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageOperation(..), PackageSetOperation(..), PublishData)
+import Registry.Operation as Operation
 import Registry.Owner (Owner(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -122,15 +123,17 @@ main = launchAff_ $ do
       packagesMetadata <- liftEffect $ Ref.new Map.empty
       runRegistryM (mkEnv octokit cache packagesMetadata issue username) do
         comment $ case operation of
-          Publish { name, ref } ->
-            "Publishing package `" <> PackageName.print name <> "` at the ref `" <> ref <> "`."
-          PackageSetUpdate _ ->
-            "Processing package set update."
-          Authenticated (AuthenticatedData { payload }) -> case payload of
-            Unpublish { name, version } ->
-              "Unpublishing `" <> PackageName.print name <> "` at version `" <> Version.print version <> "`."
-            Transfer { name } ->
-              "Transferring `" <> PackageName.print name <> "`."
+          Left packageSetOperation -> case packageSetOperation of
+            PackageSetUpdate _ ->
+              "Processing package set update."
+          Right packageOperation -> case packageOperation of
+            Publish { name, ref } ->
+              "Publishing package `" <> PackageName.print name <> "` at the ref `" <> ref <> "`."
+            Authenticated { payload } -> case payload of
+              Unpublish { name, version } ->
+                "Unpublishing `" <> PackageName.print name <> "` at version `" <> Version.print version <> "`."
+              Transfer { name } ->
+                "Transferring `" <> PackageName.print name <> "`."
 
         fetchRegistry
         fetchRegistryIndex
@@ -149,7 +152,7 @@ derive instance Eq Source
 data OperationDecoding
   = NotJson
   | MalformedJson IssueNumber String
-  | DecodedOperation IssueNumber String Operation
+  | DecodedOperation IssueNumber String (Either PackageSetOperation PackageOperation)
 
 derive instance Eq OperationDecoding
 
@@ -165,16 +168,27 @@ readOperation eventPath = do
     Right event ->
       pure event
 
+  let
+    -- TODO: Right now we parse all operations from GitHub issues, but we should
+    -- in the future only parse out package set operations. The others should be
+    -- handled via a HTTP API.
+    decodeOperation :: Json -> Either CA.JsonDecodeError (Either PackageSetOperation PackageOperation)
+    decodeOperation json =
+      map (Left <<< PackageSetUpdate) (CA.decode Operation.packageSetUpdateCodec json)
+        <|> map (Right <<< Publish) (CA.decode Operation.publishCodec json)
+        <|> map (Right <<< Authenticated) (CA.decode Operation.authenticatedCodec json)
+
   case Argonaut.Parser.jsonParser (firstObject body) of
     Left err -> do
       log "Not JSON."
       logShow { err, body }
       pure NotJson
-    Right json -> case Json.decode json of
-      Left err -> do
-        log "Malformed JSON."
-        logShow { err, body }
-        pure $ MalformedJson issueNumber err
+    Right json -> case decodeOperation json of
+      Left jsonError -> do
+        let printedError = CA.printJsonDecodeError jsonError
+        log $ "Malformed JSON:\n" <> printedError
+        log $ "Received body:\n" <> body
+        pure $ MalformedJson issueNumber printedError
       Right operation ->
         pure $ DecodedOperation issueNumber username operation
 
@@ -191,9 +205,9 @@ firstObject input = fromMaybe input do
 
 -- TODO: test all the points where the pipeline could throw, to show that we are implementing
 -- all the necessary checks
-runOperation :: Source -> Operation -> RegistryM Unit
+runOperation :: Source -> Either PackageSetOperation PackageOperation -> RegistryM Unit
 runOperation source operation = case operation of
-  Publish fields@{ name, location } -> do
+  Right (Publish fields@{ name, location }) -> do
     packagesMetadata <- readPackagesMetadata
     case Map.lookup name packagesMetadata of
       Just metadata ->
@@ -235,7 +249,7 @@ runOperation source operation = case operation of
         Just packageLocation ->
           publish source fields (mkNewMetadata packageLocation)
 
-  PackageSetUpdate { compiler, packages } -> do
+  Left (PackageSetUpdate { compiler, packages }) -> do
     { octokit, cache, username, registryIndex: registryIndexPath } <- ask
 
     latestPackageSet <- App.PackageSets.readLatestPackageSet
@@ -344,7 +358,7 @@ runOperation source operation = case operation of
         _ -> do
           throwWithComment "The package set produced from this suggested update does not compile."
 
-  Authenticated submittedAuth@(AuthenticatedData { payload }) -> case payload of
+  Right (Authenticated submittedAuth@{ payload }) -> case payload of
     Unpublish { name, version, reason } -> do
       username <- asks _.username
       Metadata metadata <- readMetadata name { noMetadata: "No metadata found for your package. Only published packages can be unpublished." }
@@ -1332,10 +1346,10 @@ acceptTrustees
   -> AuthenticatedData
   -> Maybe (NonEmptyArray Owner)
   -> RegistryM (Tuple AuthenticatedData (Maybe (NonEmptyArray Owner)))
-acceptTrustees username authData@(AuthenticatedData authenticated) maybeOwners = do
+acceptTrustees username authenticated maybeOwners = do
   { octokit, cache } <- ask
   if authenticated.email /= Git.pacchettiBottiEmail then
-    pure (Tuple authData maybeOwners)
+    pure (Tuple authenticated maybeOwners)
   else do
     liftAff (Except.runExceptT (GitHub.listTeamMembers octokit cache packagingTeam)) >>= case _ of
       Left githubError -> throwWithComment $ Array.fold
@@ -1359,7 +1373,7 @@ acceptTrustees username authData@(AuthenticatedData authenticated) maybeOwners =
           Right signature -> pure signature
 
         let
-          newAuth = AuthenticatedData (authenticated { signature = signature })
+          newAuthenticated = authenticated { signature = signature }
 
           pacchettiBottiOwner = Owner
             { email: Git.pacchettiBottiEmail
@@ -1371,7 +1385,7 @@ acceptTrustees username authData@(AuthenticatedData authenticated) maybeOwners =
             Nothing -> NonEmptyArray.singleton pacchettiBottiOwner
             Just owners -> NonEmptyArray.cons pacchettiBottiOwner owners
 
-        pure (Tuple newAuth (Just ownersWithPacchettiBotti))
+        pure (Tuple newAuthenticated (Just ownersWithPacchettiBotti))
 
 -- | Read the PacchettiBotti SSH keypair from the environment.
 --

@@ -45,7 +45,7 @@ import Registry.Legacy.Manifest as LegacyManifest
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.Metadata (Metadata(..))
-import Registry.Operation (Operation(..))
+import Registry.Operation (PackageOperation(..))
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -210,7 +210,7 @@ main = launchAff_ do
       notPublished =
         indexPackages # Array.filter \(Manifest manifest) -> not (isPublished manifest)
 
-      mkOperation :: Manifest -> Operation
+      mkOperation :: Manifest -> PackageOperation
       mkOperation (Manifest manifest) =
         case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
           Nothing ->
@@ -245,7 +245,7 @@ main = launchAff_ do
           log $ PackageName.print manifest.name <> "@" <> Version.print manifest.version
           log $ Json.stringifyJson manifest.location
           log "----------"
-          API.runOperation source (mkOperation (Manifest manifest))
+          API.runOperation source (Right (mkOperation (Manifest manifest)))
 
     when (mode == GenerateRegistry || mode == DryRun) do
       log "Regenerating registry metadata..."

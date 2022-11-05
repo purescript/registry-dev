@@ -5,7 +5,7 @@ import Registry.Prelude
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Newtype (over)
 import Data.String as String
-import Registry.Operation (AuthenticatedData(..), AuthenticatedOperation(..))
+import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..))
 import Registry.Owner (Owner(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -39,14 +39,14 @@ spec = do
         , "-----END SSH SIGNATURE-----"
         ]
 
-      badSignatureData = over AuthenticatedData (_ { signature = badSignature }) validPayload
+      badSignatureData = validPayload { signature = badSignature }
 
     SSH.verifyPayload (NonEmptyArray.singleton validOwner) badSignatureData >>= case _ of
       Left err -> verifyError err "Signature verification failed: incorrect signature"
       Right _ -> Assert.fail "Verified an incorrect SSH signature for the payload."
 
   Spec.it "Fails to verify when email is incorrect in authenticated data" do
-    let badEmailData = over AuthenticatedData (_ { email = "test@bar" }) validPayload
+    let badEmailData = validPayload { email = "test@bar" }
     SSH.verifyPayload (NonEmptyArray.singleton validOwner) badEmailData >>= case _ of
       Left err -> verifyError err ""
       Right _ -> Assert.fail "Verified with an incorrect email address."
@@ -58,7 +58,7 @@ spec = do
       Right _ -> Assert.fail "Verified with an incorrect email address."
 
   Spec.it "Fails to verify when payload is incorrect" do
-    let badRawPayload = over AuthenticatedData (_ { rawPayload = "{}" }) validPayload
+    let badRawPayload = validPayload { rawPayload = "{}" }
     SSH.verifyPayload (NonEmptyArray.singleton validOwner) badRawPayload >>= case _ of
       Left err -> verifyError err "Signature verification failed: incorrect signature"
       Right _ -> Assert.fail "Verified with a modified payload."
@@ -85,7 +85,7 @@ validOwner = Owner
   }
 
 validPayload :: AuthenticatedData
-validPayload = AuthenticatedData
+validPayload =
   { email
   , signature: rawPayloadSignature
   , payload: Unpublish

@@ -4,6 +4,7 @@ import Registry.Prelude
 
 import Control.Monad.Except as Except
 import Data.Array as Array
+import Data.Codec as Codec
 import Data.Map as Map
 import Data.String as String
 import Effect.Exception as Exception
@@ -19,10 +20,11 @@ import Registry.API (LegacyRegistryFile(..), Source(..))
 import Registry.API as API
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
-import Registry.Json as Json
+import Registry.Json as Argonaut
 import Registry.Location (Location(..))
 import Registry.Metadata (Metadata(..))
-import Registry.Operation (AuthenticatedData(..), AuthenticatedOperation(..), Operation(..))
+import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))
+import Registry.Operation as Operation
 import Registry.PackageName as PackageName
 import Registry.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
 import Registry.RegistryM as RegistryM
@@ -96,12 +98,12 @@ transferPackage rawPackageName newLocation = do
     Right value -> pure value
 
   let
-    payload = Transfer { name, newLocation }
-    rawPayload = Json.stringifyJson payload
+    payload = { name, newLocation }
+    rawPayload = Argonaut.stringify $ Codec.encode Operation.transferCodec payload
 
-  API.runOperation Importer $ Authenticated $ AuthenticatedData
+  API.runOperation Importer $ Right $ Authenticated
     { email: Git.pacchettiBottiEmail
-    , payload
+    , payload: Transfer payload
     , rawPayload
     , signature: [] -- The API will re-sign using @pacchettibotti credentials.
     }

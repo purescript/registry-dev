@@ -13,7 +13,7 @@ import Node.ChildProcess as Node.ChildProcess
 import Node.FS.Aff as FS.Aff
 import Node.FS.Perms as Perms
 import Node.Path as Path
-import Registry.Operation (AuthenticatedData(..))
+import Registry.Operation (AuthenticatedData)
 import Registry.Owner (Owner(..))
 import Sunde as Process
 
@@ -29,7 +29,7 @@ sshKeyPath = "id_ed25519"
 -- Payload verification is based on this description:
 -- https://www.agwa.name/blog/post/ssh_signatures
 verifyPayload :: NonEmptyArray Owner -> AuthenticatedData -> Aff (Either String String)
-verifyPayload owners (AuthenticatedData { email, signature, rawPayload }) = do
+verifyPayload owners { email, signature, rawPayload } = do
   tmp <- liftEffect Tmp.mkTmpDir
   let joinWithNewlines = String.joinWith "\n"
   let signers = joinWithNewlines $ NonEmptyArray.toArray $ map formatOwner owners
