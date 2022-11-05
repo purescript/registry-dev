@@ -467,7 +467,7 @@ runOperation source operation = case operation of
                     ]
                 Right _ -> do
                   let updatedMetadata = metadata { location = newLocation }
-                  writeMetadata name updatedMetadata >>= case _ of
+                  writeMetadata name (Metadata updatedMetadata) >>= case _ of
                     Left err -> throwWithComment $ String.joinWith "\n"
                       [ "Transferred package location, but failed to commit metadata."
                       , err
