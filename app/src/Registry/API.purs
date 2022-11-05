@@ -435,42 +435,51 @@ runOperation source operation = case operation of
         }
 
       packagesMetadata <- readPackagesMetadata
-      unless (locationIsUnique newLocation packagesMetadata) do
-        throwWithComment $ String.joinWith " "
-          [ "Cannot transfer package to"
+      let
+        isUniqueLocation = locationIsUnique newLocation packagesMetadata
+        notUniqueError = String.joinWith " "
+          [ "Cannot transfer"
+          , PackageName.print name
+          , " to "
           , Json.stringifyJson newLocation
           , "because another package is already registered at that location."
           ]
 
-      Tuple auth maybeOwners <- acceptTrustees username submittedAuth metadata.owners
+      case source of
+        Importer | not isUniqueLocation ->
+          comment notUniqueError
+        API | not isUniqueLocation ->
+          throwWithComment notUniqueError
+        _ -> do
+          Tuple auth maybeOwners <- acceptTrustees username submittedAuth metadata.owners
 
-      case maybeOwners of
-        Nothing ->
-          throwWithComment $ String.joinWith " "
-            [ "Cannot verify package ownership because no owners are listed in the package metadata."
-            , "Please publish a package version with your SSH public key in the owners field."
-            , "You can then retry transferring this package by authenticating with your private key."
-            ]
-        Just owners ->
-          liftAff (SSH.verifyPayload owners auth) >>= case _ of
-            Left err ->
-              throwWithComment $ String.joinWith "\n"
-                [ "Failed to verify package ownership:"
-                , "  " <> err
+          case maybeOwners of
+            Nothing ->
+              throwWithComment $ String.joinWith " "
+                [ "Cannot verify package ownership because no owners are listed in the package metadata."
+                , "Please publish a package version with your SSH public key in the owners field."
+                , "You can then retry transferring this package by authenticating with your private key."
                 ]
-            Right _ -> do
-              let updatedMetadata = metadata { location = newLocation }
-              writeMetadata name updatedMetadata >>= case _ of
-                Left err -> throwWithComment $ String.joinWith "\n"
-                  [ "Transferred package location, but failed to commit metadata."
-                  , err
-                  , "cc: @purescript/packaging"
-                  ]
+            Just owners ->
+              liftAff (SSH.verifyPayload owners auth) >>= case _ of
+                Left err ->
+                  throwWithComment $ String.joinWith "\n"
+                    [ "Failed to verify package ownership:"
+                    , "  " <> err
+                    ]
                 Right _ -> do
-                  comment "Successfully transferred your package!"
-                  syncLegacyRegistry name newLocation
+                  let updatedMetadata = metadata { location = newLocation }
+                  writeMetadata name updatedMetadata >>= case _ of
+                    Left err -> throwWithComment $ String.joinWith "\n"
+                      [ "Transferred package location, but failed to commit metadata."
+                      , err
+                      , "cc: @purescript/packaging"
+                      ]
+                    Right _ -> do
+                      comment "Successfully transferred your package!"
+                      syncLegacyRegistry name newLocation
 
-      closeIssue
+          closeIssue
 
 registryMetadataPath :: FilePath -> FilePath
 registryMetadataPath registryPath = Path.concat [ registryPath, Constants.metadataPath ]

@@ -8,6 +8,7 @@ module Registry.Scripts.LegacyImporter where
 
 import Registry.Prelude
 
+import Affjax as Http
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
@@ -444,6 +445,7 @@ type PackageValidationError = { error :: PackageError, reason :: String }
 data PackageError
   = InvalidPackageName
   | InvalidPackageURL GitHub.PackageURL
+  | PackageURLRedirects { registered :: GitHub.Address, received :: GitHub.Address }
   | CannotAccessRepo GitHub.Address
   | DisabledPackage
 
@@ -461,7 +463,16 @@ validatePackage rawPackage rawUrl = do
   Except.except $ validatePackageDisabled name
   address <- Except.except $ validatePackageAddress rawUrl
   tags <- fetchPackageTags address
-  pure { name, address, tags }
+  -- We do not allow packages that redirect from their registered location elsewhere. The package
+  -- transferrer will handle automatically transferring these packages.
+  case Array.head tags of
+    Nothing -> pure { name, address, tags }
+    Just tag -> do
+      tagAddress <- Except.except case tagUrlToRepoUrl tag.url of
+        Nothing -> Left { error: InvalidPackageURL (GitHub.PackageURL tag.url), reason: "Failed to format redirected " <> tag.url <> " as a GitHub.Address." }
+        Just formatted -> Right formatted
+      Except.except $ validatePackageLocation { registered: address, received: tagAddress }
+      pure { name, address, tags }
 
 fetchPackageTags :: GitHub.Address -> ExceptT PackageValidationError RegistryM (Array GitHub.Tag)
 fetchPackageTags address = do
@@ -481,12 +492,32 @@ fetchPackageTags address = do
     Right tags ->
       pure tags
 
+validatePackageLocation :: { registered :: GitHub.Address, received :: GitHub.Address } -> Either PackageValidationError Unit
+validatePackageLocation addresses =
+  if addresses.registered /= addresses.received then
+    Left
+      { error: PackageURLRedirects addresses
+      , reason: "Registered address " <> show addresses.registered <> " redirects to another location " <> show addresses.received
+      }
+  else
+    Right unit
+
 validatePackageAddress :: GitHub.PackageURL -> Either PackageValidationError GitHub.Address
 validatePackageAddress packageUrl =
   GitHub.parseRepo packageUrl # lmap \parserError ->
     { error: InvalidPackageURL packageUrl
     , reason: Parsing.parseErrorMessage parserError
     }
+
+-- Example tag url:
+-- https://api.github.com/repos/octocat/Hello-World/commits/c5b97d5ae6c19d5c5df71a34c7fbeeda2479ccbc
+tagUrlToRepoUrl :: Http.URL -> Maybe GitHub.Address
+tagUrlToRepoUrl url = do
+  noPrefix <- String.stripPrefix (String.Pattern "https://api.github.com/repos/") url
+  let getOwnerRepoArray = Array.take 2 <<< String.split (String.Pattern "/")
+  case getOwnerRepoArray noPrefix of
+    [ owner, repo ] -> Just { owner, repo: String.toLower repo }
+    _ -> Nothing
 
 validatePackageDisabled :: PackageName -> Either PackageValidationError Unit
 validatePackageDisabled package =
@@ -530,6 +561,8 @@ formatPackageValidationError { error, reason } = case error of
     { tag: "InvalidPackageName", value: Nothing, reason }
   InvalidPackageURL (GitHub.PackageURL url) ->
     { tag: "InvalidPackageURL", value: Just url, reason }
+  PackageURLRedirects { registered } ->
+    { tag: "PackageURLRedirects", value: Just (registered.owner <> "/" <> registered.repo), reason }
   CannotAccessRepo address ->
     { tag: "CannotAccessRepo", value: Just (address.owner <> "/" <> address.repo), reason }
   DisabledPackage ->
@@ -652,6 +685,7 @@ calculateImportStats legacyRegistry imported = do
       toKey = _.error >>> case _ of
         InvalidPackageName -> "Invalid Package Name"
         InvalidPackageURL _ -> "Invalid Package URL"
+        PackageURLRedirects _ -> "Package URL Redirects"
         CannotAccessRepo _ -> "Cannot Access Repo"
         DisabledPackage -> "Disabled Package"
 

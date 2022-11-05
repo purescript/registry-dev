@@ -2,7 +2,6 @@ module Registry.Scripts.PackageTransferrer where
 
 import Registry.Prelude
 
-import Affjax as Http
 import Control.Monad.Except as Except
 import Data.Array as Array
 import Data.Map as Map
@@ -152,7 +151,7 @@ latestPackageLocations package { location, published } = do
         else do
           Tuple version _ <- note "No published versions" $ Array.last (Map.toUnfoldable published)
           note "No versions match repo tags" $ Array.find (isMatchingTag version) package.tags
-      tagUrl <- note ("Could not parse tag url " <> matchingTag.url) $ tagUrlToRepoUrl matchingTag.url
+      tagUrl <- note ("Could not parse tag url " <> matchingTag.url) $ LegacyImporter.tagUrlToRepoUrl matchingTag.url
       let tagLocation = GitHub { owner: tagUrl.owner, repo: tagUrl.repo, subdir: Nothing }
       pure { metadataLocation: location, tagLocation }
 
@@ -164,16 +163,6 @@ latestPackageLocations package { location, published } = do
       ]
     Right locations ->
       pure locations
-
--- Example tag url:
--- https://api.github.com/repos/octocat/Hello-World/commits/c5b97d5ae6c19d5c5df71a34c7fbeeda2479ccbc
-tagUrlToRepoUrl :: Http.URL -> Maybe GitHub.Address
-tagUrlToRepoUrl url = do
-  noPrefix <- String.stripPrefix (String.Pattern "https://api.github.com/repos/") url
-  let getOwnerRepoArray = Array.take 2 <<< String.split (String.Pattern "/")
-  case getOwnerRepoArray noPrefix of
-    [ owner, repo ] -> Just { owner, repo: String.toLower repo }
-    _ -> Nothing
 
 locationToPackageUrl :: Location -> GitHub.PackageURL
 locationToPackageUrl = case _ of
