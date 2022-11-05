@@ -8,6 +8,7 @@ module Registry.Scripts.LegacyImporter where
 
 import Registry.Prelude
 
+import Affjax as Http
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
@@ -51,7 +52,7 @@ import Registry.Schema (Location(..), Manifest(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
-data ImportMode = GenerateRegistry | UpdateRegistry
+data ImportMode = DryRun | GenerateRegistry | UpdateRegistry
 
 derive instance Eq ImportMode
 
@@ -64,15 +65,17 @@ main = launchAff_ do
 
   log "Parsing CLI args..."
   mode <- liftEffect do
+    let expected = "Expected 'dry-run', 'generate', or 'update'"
     args <- Array.drop 2 <$> Node.Process.argv
     case Array.uncons args of
-      Nothing -> Exception.throw "Expected 'generate' or 'update', but received no arguments."
+      Nothing -> Exception.throw $ expected <> ", but received no arguments."
       Just { head, tail: [] } -> case head of
+        "dry-run" -> pure DryRun
         "generate" -> pure GenerateRegistry
         "update" -> pure UpdateRegistry
-        other -> Exception.throw $ "Expected 'generate' or 'update' but received: " <> other
+        other -> Exception.throw $ expected <> ", but received: " <> other
       Just _ -> Exception.throw $ String.joinWith "\n"
-        [ "Expected 'generate' or 'update', but received multiple arguments:"
+        [ expected <> ", but received multiple arguments:"
         , String.joinWith " " args
         ]
 
@@ -88,6 +91,27 @@ main = launchAff_ do
 
   let
     env = case mode of
+      DryRun ->
+        { comment: \err -> error err
+        , closeIssue: log "Skipping GitHub issue closing, this is a dry run..."
+        , commitMetadataFile: \_ _ -> do
+            log "Skipping committing to registry metadata, this is a dry run..."
+            pure (Right unit)
+        , commitIndexFile: \_ _ -> do
+            log "Skipping committing to registry index, this is a dry run..."
+            pure (Right unit)
+        , commitPackageSetFile: \_ _ _ -> do
+            log "Skipping committing to registry package sets, this is a dry run..."
+            pure (Right unit)
+        , uploadPackage: \_ _ -> log "Skipping upload, this is a dry run..."
+        , deletePackage: \_ -> log "Skipping delete, this is a dry run..."
+        , octokit
+        , cache
+        , username: "NO USERNAME"
+        , packagesMetadata: metadataRef
+        , registry: Path.concat [ API.scratchDir, "registry" ]
+        , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
+        }
       UpdateRegistry ->
         { comment: \comment -> log ("[COMMENT] " <> comment)
         , closeIssue: log "Running locally, not closing issue..."
@@ -209,6 +233,7 @@ main = launchAff_ do
 
         let
           source = case mode of
+            DryRun -> Importer
             UpdateRegistry -> API
             GenerateRegistry -> Importer
 
@@ -220,7 +245,13 @@ main = launchAff_ do
           log "----------"
           API.runOperation source (mkOperation (Manifest manifest))
 
-    when (mode == GenerateRegistry) do
+    when (mode == GenerateRegistry || mode == DryRun) do
+      log "Regenerating registry metadata..."
+      metadataResult <- readPackagesMetadata
+      void $ forWithIndex metadataResult \name metadata -> do
+        dir <- asks _.registry
+        liftAff (Json.writeJsonFile (API.metadataFile dir name) metadata)
+
       log "Regenerating registry index..."
       void $ for indexPackages (liftAff <<< Index.insertManifest registryIndexPath)
 
@@ -444,6 +475,7 @@ type PackageValidationError = { error :: PackageError, reason :: String }
 data PackageError
   = InvalidPackageName
   | InvalidPackageURL GitHub.PackageURL
+  | PackageURLRedirects { registered :: GitHub.Address, received :: GitHub.Address }
   | CannotAccessRepo GitHub.Address
   | DisabledPackage
 
@@ -461,7 +493,16 @@ validatePackage rawPackage rawUrl = do
   Except.except $ validatePackageDisabled name
   address <- Except.except $ validatePackageAddress rawUrl
   tags <- fetchPackageTags address
-  pure { name, address, tags }
+  -- We do not allow packages that redirect from their registered location elsewhere. The package
+  -- transferrer will handle automatically transferring these packages.
+  case Array.head tags of
+    Nothing -> pure { name, address, tags }
+    Just tag -> do
+      tagAddress <- Except.except case tagUrlToRepoUrl tag.url of
+        Nothing -> Left { error: InvalidPackageURL (GitHub.PackageURL tag.url), reason: "Failed to format redirected " <> tag.url <> " as a GitHub.Address." }
+        Just formatted -> Right formatted
+      Except.except $ validatePackageLocation { registered: address, received: tagAddress }
+      pure { name, address, tags }
 
 fetchPackageTags :: GitHub.Address -> ExceptT PackageValidationError RegistryM (Array GitHub.Tag)
 fetchPackageTags address = do
@@ -481,12 +522,33 @@ fetchPackageTags address = do
     Right tags ->
       pure tags
 
+validatePackageLocation :: { registered :: GitHub.Address, received :: GitHub.Address } -> Either PackageValidationError Unit
+validatePackageLocation addresses = do
+  let lower { owner, repo } = String.toLower owner <> "/" <> String.toLower repo
+  if lower addresses.registered /= lower addresses.received then
+    Left
+      { error: PackageURLRedirects addresses
+      , reason: "Registered address " <> show addresses.registered <> " redirects to another location " <> show addresses.received
+      }
+  else
+    Right unit
+
 validatePackageAddress :: GitHub.PackageURL -> Either PackageValidationError GitHub.Address
 validatePackageAddress packageUrl =
   GitHub.parseRepo packageUrl # lmap \parserError ->
     { error: InvalidPackageURL packageUrl
     , reason: Parsing.parseErrorMessage parserError
     }
+
+-- Example tag url:
+-- https://api.github.com/repos/octocat/Hello-World/commits/c5b97d5ae6c19d5c5df71a34c7fbeeda2479ccbc
+tagUrlToRepoUrl :: Http.URL -> Maybe GitHub.Address
+tagUrlToRepoUrl url = do
+  noPrefix <- String.stripPrefix (String.Pattern "https://api.github.com/repos/") url
+  let getOwnerRepoArray = Array.take 2 <<< String.split (String.Pattern "/")
+  case getOwnerRepoArray noPrefix of
+    [ owner, repo ] -> Just { owner, repo: String.toLower repo }
+    _ -> Nothing
 
 validatePackageDisabled :: PackageName -> Either PackageValidationError Unit
 validatePackageDisabled package =
@@ -530,6 +592,8 @@ formatPackageValidationError { error, reason } = case error of
     { tag: "InvalidPackageName", value: Nothing, reason }
   InvalidPackageURL (GitHub.PackageURL url) ->
     { tag: "InvalidPackageURL", value: Just url, reason }
+  PackageURLRedirects { registered } ->
+    { tag: "PackageURLRedirects", value: Just (registered.owner <> "/" <> registered.repo), reason }
   CannotAccessRepo address ->
     { tag: "CannotAccessRepo", value: Just (address.owner <> "/" <> address.repo), reason }
   DisabledPackage ->
@@ -652,6 +716,7 @@ calculateImportStats legacyRegistry imported = do
       toKey = _.error >>> case _ of
         InvalidPackageName -> "Invalid Package Name"
         InvalidPackageURL _ -> "Invalid Package URL"
+        PackageURLRedirects _ -> "Package URL Redirects"
         CannotAccessRepo _ -> "Cannot Access Repo"
         DisabledPackage -> "Disabled Package"
 
