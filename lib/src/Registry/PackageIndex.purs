@@ -213,18 +213,14 @@ packageEntryDirectory = PackageName.print >>> \name -> case String.length name o
 packageEntryFilePath :: PackageName -> FilePath
 packageEntryFilePath name = Path.concat [ packageEntryDirectory name, PackageName.print name ]
 
--- | Encode a package entry by encoding all manifests in sorted order ascending
--- | by version in the JSON Lines format.
-encodePackageEntry :: Array Manifest -> String
-encodePackageEntry =
+parseEntry :: String -> Either String (Array Manifest)
+parseEntry entry = do
+  let split = String.split (String.Pattern "\n") <<< String.trim
+  jsonArray <- traverse Argonaut.Parser.jsonParser (split entry)
+  traverse (lmap CA.printJsonDecodeError <<< CA.decode Manifest.codec) jsonArray
+
+printEntry :: Array Manifest -> String
+printEntry =
   String.joinWith "\n"
     <<< map (Argonaut.stringify <<< CA.encode Manifest.codec)
     <<< Array.sortBy (comparing (_.version <<< un Manifest))
-
--- | Decode a package entry from a JSON Lines text string.
-decodePackageEntry :: String -> Either String (Array Manifest)
-decodePackageEntry entryString = do
-  let split = String.split (String.Pattern "\n") <<< String.trim
-  jsonArray <- traverse Argonaut.Parser.jsonParser (split entryString)
-  let decodeManifest = lmap CA.printJsonDecodeError <<< CA.decode Manifest.codec
-  traverse decodeManifest jsonArray
