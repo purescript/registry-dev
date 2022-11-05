@@ -61,7 +61,7 @@ import Registry.Index as Index
 import Registry.Json as Json
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.PackageSet as Legacy.PackageSet
-import Registry.Location (Location(..))
+import Registry.Location (GitHubData, Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
 import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
@@ -494,13 +494,13 @@ runOperation source operation = case operation of
           closeIssue
 
 registryMetadataPath :: FilePath -> FilePath
-registryMetadataPath registryPath = Path.concat [ registryPath, Constants.metadataPath ]
+registryMetadataPath registryPath = Path.concat [ registryPath, Constants.packageMetadataDirectory ]
 
 registryPackageSetsPath :: FilePath -> FilePath
-registryPackageSetsPath registryPath = Path.concat [ registryPath, Constants.packageSetsPath ]
+registryPackageSetsPath registryPath = Path.concat [ registryPath, Constants.packageSetsDirectory ]
 
 metadataFile :: FilePath -> PackageName -> FilePath
-metadataFile registryPath packageName = Path.concat [ registryPath, Constants.metadataPath, PackageName.print packageName <> ".json" ]
+metadataFile registryPath packageName = Path.concat [ registryPath, Constants.packageMetadataDirectory, PackageName.print packageName <> ".json" ]
 
 jsonToDhallManifest :: String -> Aff (Either String String)
 jsonToDhallManifest jsonStr = do
@@ -876,7 +876,7 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
       filename = PackageName.print packageName <> "-" <> Version.print version <> ".tar.gz"
       filepath = Path.concat [ dir, filename ]
 
-    liftAff (withBackoff' (Wget.wget (Constants.registryPackagesUrl <> "/" <> PackageName.print packageName <> "/" <> Version.print version <> ".tar.gz") filepath)) >>= case _ of
+    liftAff (withBackoff' (Wget.wget (Constants.packageStorage <> "/" <> PackageName.print packageName <> "/" <> Version.print version <> ".tar.gz") filepath)) >>= case _ of
       Nothing -> throwWithComment "Could not fetch tarball."
       Just (Left err) -> throwWithComment $ "Error while fetching tarball: " <> err
       Just (Right _) -> pure unit
@@ -1083,7 +1083,7 @@ locationIsUnique location = Map.isEmpty <<< Map.filter (eq location <<< _.locati
 -- | Fetch the latest from the given repository. Will perform a fresh clone if
 -- | a checkout of the repository does not exist at the given path, and will
 -- | pull otherwise.
-fetchRepo :: GitHub.Address -> FilePath -> Aff Unit
+fetchRepo :: GitHubData -> FilePath -> Aff Unit
 fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
   true -> do
     log $ "Found the " <> address.repo <> " repo locally, pulling..."
@@ -1100,6 +1100,9 @@ fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
       Right _ -> pure unit
   _ -> do
     log $ "Didn't find the " <> address.repo <> " repo, cloning..."
+    case address.subdir of
+      Nothing -> Aff.throwError $ Aff.error "Cannot clone GitHub location using 'subdir' key."
+      Just _ -> pure unit
     Except.runExceptT (Git.runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> pure unit
@@ -1108,13 +1111,13 @@ fetchRegistryIndex :: RegistryM Unit
 fetchRegistryIndex = do
   registryIndexPath <- asks _.registryIndex
   log "Fetching the most recent registry index..."
-  liftAff $ fetchRepo Constants.registryIndexRepo registryIndexPath
+  liftAff $ fetchRepo Constants.packageIndex registryIndexPath
 
 fetchRegistry :: RegistryM Unit
 fetchRegistry = do
   registryPath <- asks _.registry
   log "Fetching the most recent registry ..."
-  liftAff $ fetchRepo Constants.registryRepo registryPath
+  liftAff $ fetchRepo Constants.registry registryPath
 
 data PursPublishMethod = LegacyPursPublish | PursPublish
 
@@ -1178,7 +1181,7 @@ pacchettiBottiPushToRegistryIndex packageName registryIndexDir = Except.runExcep
   Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryIndexDir)
   Git.runGit_ [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
   Git.runGit_ [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
-  let upstreamRepo = Constants.registryIndexRepo.owner <> "/" <> Constants.registryIndexRepo.repo
+  let upstreamRepo = Constants.packageIndex.owner <> "/" <> Constants.packageIndex.repo
   let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
   void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
 
@@ -1188,7 +1191,7 @@ pacchettiBottiPushToRegistryMetadata packageName registryDir = Except.runExceptT
   Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
   Git.runGit_ [ "add", Path.concat [ "metadata", PackageName.print packageName <> ".json" ] ] (Just registryDir)
   Git.runGit_ [ "commit", "-m", "Update metadata for package " <> PackageName.print packageName ] (Just registryDir)
-  let upstreamRepo = Constants.registryRepo.owner <> "/" <> Constants.registryRepo.repo
+  let upstreamRepo = Constants.registry.owner <> "/" <> Constants.registry.repo
   let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
   void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryDir)
 
@@ -1196,9 +1199,9 @@ pacchettiBottiPushToRegistryPackageSets :: Version -> String -> FilePath -> Aff 
 pacchettiBottiPushToRegistryPackageSets version commitMessage registryDir = Except.runExceptT do
   GitHubToken token <- Git.configurePacchettiBotti (Just registryDir)
   Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
-  Git.runGit_ [ "add", Path.concat [ Constants.packageSetsPath, Version.print version <> ".json" ] ] (Just registryDir)
+  Git.runGit_ [ "add", Path.concat [ Constants.packageSetsDirectory, Version.print version <> ".json" ] ] (Just registryDir)
   Git.runGit_ [ "commit", "-m", commitMessage ] (Just registryDir)
-  let upstreamRepo = Constants.registryRepo.owner <> "/" <> Constants.registryRepo.repo
+  let upstreamRepo = Constants.registry.owner <> "/" <> Constants.registry.repo
   let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
   void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryDir)
 
@@ -1518,7 +1521,7 @@ syncLegacyRegistry package location = do
       Git.runGit_ [ "add", sourceFile ] (Just registryDir)
       let message = Array.fold [ "Mirror registry API operation to ", sourceFile ]
       Git.runGit_ [ "commit", "-m", message ] (Just registryDir)
-      let upstreamRepo = Constants.registryRepo.owner <> "/" <> Constants.registryRepo.repo
+      let upstreamRepo = Constants.registry.owner <> "/" <> Constants.registry.repo
       let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
       void $ Git.runGit_ [ "push", origin, "main" ] (Just registryDir)
     case result of

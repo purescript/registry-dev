@@ -53,7 +53,7 @@ import Registry.Version as Version
 getPackageSetsPath :: RegistryM FilePath
 getPackageSetsPath = do
   registryPath <- asks _.registry
-  pure $ Path.concat [ registryPath, Constants.packageSetsPath ]
+  pure $ Path.concat [ registryPath, Constants.packageSetsDirectory ]
 
 getPackageSetPath :: Version -> RegistryM FilePath
 getPackageSetPath version = do
@@ -332,7 +332,7 @@ installPackage name version = do
   where
   registryUrl :: Http.URL
   registryUrl = Array.fold
-    [ Constants.registryPackagesUrl
+    [ Constants.packageStorage
     , "/"
     , PackageName.print name
     , "/"
