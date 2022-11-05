@@ -202,7 +202,7 @@ createComment octokit issue body = do
   pure unit
   where
   route :: Route
-  route = Route $ i "POST /repos/" Constants.registryRepo.owner "/" Constants.registryRepo.repo "/issues/" (unwrap issue) "/comments"
+  route = Route $ i "POST /repos/" Constants.registry.owner "/" Constants.registry.repo "/issues/" (unwrap issue) "/comments"
 
 -- | Close an issue in the registry repo.
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/issues/update.md
@@ -213,7 +213,7 @@ closeIssue octokit issue = do
   pure unit
   where
   route :: Route
-  route = Route $ i "PATCH /repos/" Constants.registryRepo.owner "/" Constants.registryRepo.repo "/issues/" (unwrap issue)
+  route = Route $ i "PATCH /repos/" Constants.registry.owner "/" Constants.registry.repo "/issues/" (unwrap issue)
 
 type RateLimit =
   { limit :: Int
