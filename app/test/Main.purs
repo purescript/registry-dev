@@ -4,7 +4,9 @@ module Test.Main
 
 import Registry.Prelude
 
+import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array.NonEmpty as NonEmptyArray
+import Data.Codec.Argonaut as CA
 import Data.Foldable (traverse_)
 import Data.Map as Map
 import Data.String.NonEmpty as NonEmptyString
@@ -25,7 +27,8 @@ import Registry.Json as Json
 import Registry.Legacy.Manifest (Bowerfile(..))
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
-import Registry.Operation (Operation(..))
+import Registry.Operation (PackageOperation(..), PackageSetOperation(..))
+import Registry.Operation as Operation
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Version (Version)
@@ -244,7 +247,7 @@ decodeEventsToOps = do
         }
 
     res <- API.readOperation "test/fixtures/update_issue_comment.json"
-    res `Assert.shouldEqual` API.DecodedOperation issueNumber username operation
+    res `Assert.shouldEqual` API.DecodedOperation issueNumber username (Right operation)
 
   Spec.it "decodes an Addition operation" do
     let
@@ -259,7 +262,7 @@ decodeEventsToOps = do
         }
 
     res <- API.readOperation "test/fixtures/addition_issue_created.json"
-    res `Assert.shouldEqual` API.DecodedOperation issueNumber username operation
+    res `Assert.shouldEqual` API.DecodedOperation issueNumber username (Right operation)
 
   Spec.it "decodes a Package Set Update operation" do
     let
@@ -274,7 +277,7 @@ decodeEventsToOps = do
         }
 
     res <- API.readOperation "test/fixtures/package-set-update_issue_created.json"
-    res `Assert.shouldEqual` API.DecodedOperation issueNumber username operation
+    res `Assert.shouldEqual` API.DecodedOperation issueNumber username (Left operation)
 
   Spec.it "decodes lenient JSON" do
     let
@@ -288,7 +291,9 @@ decodeEventsToOps = do
 
       rawOperation = preludeAdditionString
 
-    Json.parseJson (API.firstObject rawOperation) `Assert.shouldEqual` (Right operation)
+      parseJson = bimap CA.printJsonDecodeError Publish <<< CA.decode Operation.publishCodec <=< Argonaut.Parser.jsonParser
+
+    parseJson (API.firstObject rawOperation) `Assert.shouldEqual` (Right operation)
 
 goodBowerfiles :: Spec.Spec Unit
 goodBowerfiles = do
