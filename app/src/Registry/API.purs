@@ -52,6 +52,7 @@ import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
+import Record as Record
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageSets as App.PackageSets
 import Registry.Cache (Cache)
@@ -61,7 +62,7 @@ import Registry.Index as Index
 import Registry.Json as Json
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.PackageSet as Legacy.PackageSet
-import Registry.Location (GitHubData, Location(..))
+import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
 import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
@@ -83,6 +84,7 @@ import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Process
+import Type.Proxy (Proxy(..))
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -1083,7 +1085,7 @@ locationIsUnique location = Map.isEmpty <<< Map.filter (eq location <<< _.locati
 -- | Fetch the latest from the given repository. Will perform a fresh clone if
 -- | a checkout of the repository does not exist at the given path, and will
 -- | pull otherwise.
-fetchRepo :: GitHubData -> FilePath -> Aff Unit
+fetchRepo :: GitHub.Address -> FilePath -> Aff Unit
 fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
   true -> do
     log $ "Found the " <> address.repo <> " repo locally, pulling..."
@@ -1100,9 +1102,6 @@ fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
       Right _ -> pure unit
   _ -> do
     log $ "Didn't find the " <> address.repo <> " repo, cloning..."
-    case address.subdir of
-      Nothing -> Aff.throwError $ Aff.error "Cannot clone GitHub location using 'subdir' key."
-      Just _ -> pure unit
     Except.runExceptT (Git.runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> pure unit
@@ -1111,13 +1110,13 @@ fetchRegistryIndex :: RegistryM Unit
 fetchRegistryIndex = do
   registryIndexPath <- asks _.registryIndex
   log "Fetching the most recent registry index..."
-  liftAff $ fetchRepo Constants.packageIndex registryIndexPath
+  liftAff $ fetchRepo (Record.delete (Proxy :: _ "subdir") Constants.packageIndex) registryIndexPath
 
 fetchRegistry :: RegistryM Unit
 fetchRegistry = do
   registryPath <- asks _.registry
   log "Fetching the most recent registry ..."
-  liftAff $ fetchRepo Constants.registry registryPath
+  liftAff $ fetchRepo (Record.delete (Proxy :: _ "subdir") Constants.registry) registryPath
 
 data PursPublishMethod = LegacyPursPublish | PursPublish
 
