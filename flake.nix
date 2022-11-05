@@ -148,7 +148,7 @@
               dhall <<< "./''${FILE}" > /dev/null
             done
 
-            for FILE in $(find examples -iname "*.json")
+            for FILE in $(find lib/test/_fixtures/manifests -iname "*.json")
             do
               echo "Conforming ''${FILE} to the Manifest type"
               cat "''${FILE}" | json-to-dhall --records-loose --unions-strict "./v1/Manifest.dhall" > /dev/null

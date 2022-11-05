@@ -21,9 +21,9 @@ import Foreign.Node.FS as FS.Extra
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Registry.Json as Json
+import Registry.Manifest (Manifest(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Manifest(..))
 import Registry.Version (Version)
 
 type RegistryIndex = Map PackageName (Map Version Manifest)

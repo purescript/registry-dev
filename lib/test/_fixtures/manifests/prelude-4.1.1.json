@@ -1,0 +1,21 @@
+{
+  "name": "prelude",
+  "version": "4.1.1",
+  "license": "BSD-3-Clause",
+  "description": "A collection of functions and classes suitable for use in standard PureScript projects.",
+  "location": {
+    "githubOwner": "purescript",
+    "githubRepo": "purescript-prelude"
+  },
+  "owners": [
+    {
+      "email": "admin@purescript.org",
+      "keytype": "ed-25519",
+      "public": "abc123"
+    }
+  ],
+  "files": [
+    "test/**/*.purs"
+  ],
+  "dependencies": {}
+}

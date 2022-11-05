@@ -16,6 +16,7 @@ module Registry.Prelude
   , unsafeFromRight
   , withBackoff
   , withBackoff'
+  , nowUTC
   ) where
 
 import Prelude
@@ -30,6 +31,8 @@ import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray) as Extra
 import Data.Bifunctor (bimap, lmap, rmap) as Extra
 import Data.Bitraversable (ltraverse)
+import Data.DateTime (DateTime)
+import Data.DateTime as DateTime
 import Data.Either (Either(..), either, fromLeft, fromRight', hush, isRight, note) as Either
 import Data.Foldable (all, and, any, fold) as Extra
 import Data.Foldable as Foldable
@@ -41,20 +44,24 @@ import Data.Map (Map) as Extra
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, isJust, isNothing, maybe) as Maybe
 import Data.Newtype (class Newtype, un) as Extra
+import Data.Newtype as Newtype
 import Data.Nullable (Nullable, toMaybe, toNullable) as Extra
 import Data.Set (Set) as Extra
 import Data.String as String
 import Data.String.NonEmpty (NonEmptyString) as Extra
+import Data.Time.Duration as Duration
 import Data.Traversable (for, for_, sequence, traverse) as Extra
 import Data.TraversableWithIndex (forWithIndex) as Extra
 import Data.Tuple (Tuple(..), fst, snd) as Extra
 import Data.Tuple.Nested ((/\)) as Extra
+import Effect (Effect)
 import Effect (Effect) as Extra
 import Effect.Aff (Aff, launchAff_, try) as Extra
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff) as Extra
 import Effect.Class (class MonadEffect, liftEffect) as Extra
 import Effect.Class.Console (error, info, log, logShow) as Extra
+import Effect.Now as Now
 import Effect.Ref (Ref) as Extra
 import Foreign.Object (Object) as Extra
 import Node.Buffer (Buffer) as Extra
@@ -161,3 +168,11 @@ withBackoff { delay: Aff.Milliseconds timeout, action, shouldCancel, shouldRetry
 
   maybeResult <- runAction 0 action (Int.floor timeout)
   loop 1 maybeResult
+
+-- | Get the current time, standardizing on the UTC timezone to avoid ambiguity
+-- | when running on different machines.
+nowUTC :: Effect DateTime
+nowUTC = do
+  offset <- Newtype.over Duration.Minutes negate <$> Now.getTimezoneOffset
+  now <- Now.nowDateTime
+  pure $ Maybe.fromMaybe now $ DateTime.adjust (offset :: Duration.Minutes) now

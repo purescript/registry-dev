@@ -6,8 +6,6 @@ import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Either as Either
-import Data.Filterable (filterMap)
-import Data.Formatter.DateTime as Formatter.DateTime
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.String as String
@@ -27,16 +25,17 @@ import Registry.Cache as Cache
 import Registry.Constants as Constants
 import Registry.Json ((.:), (.:?))
 import Registry.Json as Json
-import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry, PscTag(..))
+import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.License (License)
 import Registry.License as License
+import Registry.Location (Location)
+import Registry.Manifest (Manifest(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.RegistryM (RegistryM, throwWithComment)
-import Registry.Schema (Location, Manifest(..), dateFormatter)
 import Registry.Sha256 as Sha256
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -375,15 +374,3 @@ fetchLegacyPackageSets = do
         pure contents.value
 
   pure legacySets
-
-filterLegacyPackageSets :: Array GitHub.Tag -> Array String
-filterLegacyPackageSets tags = do
-  let
-    -- Package sets after this date are published by the registry, and are
-    -- therefore not legacy package sets.
-    lastLegacyDate = unsafeFromRight $ Formatter.DateTime.unformat dateFormatter "2022-09-01"
-    legacyTag { name } = case Legacy.PackageSet.parsePscTag name of
-      Right (PscTag { date }) | date <= lastLegacyDate -> Just name
-      _ -> Nothing
-
-  filterMap legacyTag tags

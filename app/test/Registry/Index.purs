@@ -10,17 +10,18 @@ import Data.Set as Set
 import Effect.Ref as Ref
 import Foreign.FastGlob (Include(..))
 import Foreign.FastGlob as FastGlob
-import Foreign.Node.FS as FSE
+import Foreign.Node.FS as FS.Extra
 import Foreign.Tmp as Tmp
-import Node.FS.Aff as FSA
+import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
 import Registry.License as License
+import Registry.Location (Location(..))
+import Registry.Manifest (Manifest(..))
 import Registry.PackageGraph as PackageGraph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Schema (Location(..), Manifest(..))
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.Fixture.Manifest as Fixture
@@ -89,8 +90,8 @@ testRegistryIndex = Spec.before runBefore do
           contextDir = Path.concat [ tmp, Index.getIndexDir contextName ]
           contextPath = Path.concat [ tmp, Index.getIndexPath contextName ]
 
-        FSE.ensureDirectory contextDir
-        FSA.writeTextFile ASCII contextPath contextFile
+        FS.Extra.ensureDirectory contextDir
+        FS.Aff.writeTextFile ASCII contextPath contextFile
 
         Index.insertManifest tmp $ contextManifest "1.0.0"
         index <- Index.readRegistryIndex tmp

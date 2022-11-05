@@ -1,24 +1,27 @@
-module Test.Registry.PackageSet
+module Test.Registry.App.PackageSets
   ( spec
   ) where
 
 import Registry.Prelude
 
-import Data.DateTime (DateTime)
+import Data.DateTime (Date, DateTime)
+import Data.DateTime as DateTime
 import Data.Either as Either
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
-import Data.RFC3339String (RFC3339String(..))
 import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
+import Registry.App.PackageSets as PackageSet
+import Registry.Internal.Format as Internal.Formatter
 import Registry.Json as Json
 import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, parsePscTag, printPscTag)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
+import Registry.Location (Location(..))
+import Registry.Manifest (Manifest)
+import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.PackageSet as PackageSet
-import Registry.Schema (Location(..), Manifest, Metadata, PackageSet(..))
-import Registry.Schema as Schema
+import Registry.PackageSet (PackageSet(..))
 import Registry.Sha256 as Sha256
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -270,8 +273,11 @@ unsafeVersion = unsafeFromRight <<< Version.parse
 unsafeLenientVersion :: String -> LenientVersion
 unsafeLenientVersion = unsafeFromRight <<< LenientVersion.parse
 
-unsafeDate :: String -> DateTime
-unsafeDate = unsafeFromRight <<< Formatter.DateTime.unformat Schema.dateFormatter
+unsafeDateTime :: String -> DateTime
+unsafeDateTime = unsafeFromRight <<< Formatter.DateTime.unformat Internal.Formatter.iso8601Date
+
+unsafeDate :: String -> Date
+unsafeDate = DateTime.date <<< unsafeDateTime
 
 mkManifest :: Tuple PackageName LenientVersion -> Array (Tuple PackageName LenientVersion) -> Tuple PackageName (Map Version Manifest)
 mkManifest (Tuple name version) deps = do
@@ -290,10 +296,10 @@ unsafeMetadataEntry (Tuple name version) = do
       { ref: LenientVersion.raw version
       , hash: unsafeFromRight $ Sha256.parse "sha256-gb24ZRec6mgR8TFBVR2eIh5vsMdhuL+zK9VKjWP74Cw="
       , bytes: 0.0
-      , publishedTime: RFC3339String ""
+      , publishedTime: unsafeDateTime "2022-07-07"
       }
 
-    metadata =
+    metadata = Metadata
       { location: GitHub { owner: "purescript", repo: "purescript-" <> PackageName.print name, subdir: Nothing }
       , owners: Nothing
       , published: Map.singleton (LenientVersion.version version) published

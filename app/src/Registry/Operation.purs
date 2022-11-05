@@ -4,8 +4,8 @@ import Registry.Prelude
 
 import Registry.Json ((.:))
 import Registry.Json as Json
+import Registry.Location (Location)
 import Registry.PackageName (PackageName)
-import Registry.Schema (Location)
 import Registry.Version (Version)
 
 data Operation

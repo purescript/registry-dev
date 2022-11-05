@@ -42,13 +42,15 @@ import Registry.Json as Json
 import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.Manifest as LegacyManifest
+import Registry.Location (Location(..))
+import Registry.Manifest (Manifest(..))
+import Registry.Metadata (Metadata(..))
 import Registry.Operation (Operation(..))
 import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
 import Registry.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
-import Registry.Schema (Location(..), Manifest(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -189,7 +191,7 @@ main = launchAff_ do
       metadataMap <- liftEffect $ Ref.read metadataRef
       case Map.lookup package metadataMap of
         Nothing -> do
-          let metadata = { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
+          let metadata = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
           liftAff $ Json.writeJsonFile (API.metadataFile registryPath package) metadata
           liftEffect $ Ref.modify_ (Map.insert package metadata) metadataRef
           commitMetadataFile package >>= case _ of

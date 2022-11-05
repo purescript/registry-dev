@@ -2,14 +2,14 @@ module Test.Registry.SSH (spec) where
 
 import Registry.Prelude
 
-import Data.Array.NonEmpty as NEA
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Newtype (over)
 import Data.String as String
 import Registry.Operation (AuthenticatedData(..), AuthenticatedOperation(..))
+import Registry.Owner (Owner(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.SSH as SSH
-import Registry.Schema (Owner(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Assert as Assert
@@ -18,13 +18,13 @@ import Test.Spec as Spec
 spec :: Spec.Spec Unit
 spec = do
   Spec.it "Verifies correct payloads" do
-    SSH.verifyPayload (NEA.singleton validOwner) validPayload >>= case _ of
+    SSH.verifyPayload (NonEmptyArray.singleton validOwner) validPayload >>= case _ of
       Left err -> Assert.fail err
       Right _ -> mempty
 
   Spec.it "Fails to verify when public key is incorrect" do
     let badPublicKey = over Owner (_ { public = "" }) validOwner
-    SSH.verifyPayload (NEA.singleton badPublicKey) validPayload >>= case _ of
+    SSH.verifyPayload (NonEmptyArray.singleton badPublicKey) validPayload >>= case _ of
       Left err -> verifyError err "allowed_signers:1: invalid key"
       Right _ -> Assert.fail "Verified an invalid public key."
 
@@ -41,25 +41,25 @@ spec = do
 
       badSignatureData = over AuthenticatedData (_ { signature = badSignature }) validPayload
 
-    SSH.verifyPayload (NEA.singleton validOwner) badSignatureData >>= case _ of
+    SSH.verifyPayload (NonEmptyArray.singleton validOwner) badSignatureData >>= case _ of
       Left err -> verifyError err "Signature verification failed: incorrect signature"
       Right _ -> Assert.fail "Verified an incorrect SSH signature for the payload."
 
   Spec.it "Fails to verify when email is incorrect in authenticated data" do
     let badEmailData = over AuthenticatedData (_ { email = "test@bar" }) validPayload
-    SSH.verifyPayload (NEA.singleton validOwner) badEmailData >>= case _ of
+    SSH.verifyPayload (NonEmptyArray.singleton validOwner) badEmailData >>= case _ of
       Left err -> verifyError err ""
       Right _ -> Assert.fail "Verified with an incorrect email address."
 
   Spec.it "Fails to verify when email is incorrect in owner field" do
     let badEmailOwner = over Owner (_ { email = "test@bar" }) validOwner
-    SSH.verifyPayload (NEA.singleton badEmailOwner) validPayload >>= case _ of
+    SSH.verifyPayload (NonEmptyArray.singleton badEmailOwner) validPayload >>= case _ of
       Left err -> verifyError err ""
       Right _ -> Assert.fail "Verified with an incorrect email address."
 
   Spec.it "Fails to verify when payload is incorrect" do
     let badRawPayload = over AuthenticatedData (_ { rawPayload = "{}" }) validPayload
-    SSH.verifyPayload (NEA.singleton validOwner) badRawPayload >>= case _ of
+    SSH.verifyPayload (NonEmptyArray.singleton validOwner) badRawPayload >>= case _ of
       Left err -> verifyError err "Signature verification failed: incorrect signature"
       Right _ -> Assert.fail "Verified with a modified payload."
 

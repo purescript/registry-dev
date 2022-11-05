@@ -3,19 +3,22 @@ module Test.Fixture.Manifest where
 import Registry.Prelude
 
 import Data.Array as Array
-import Data.Array.NonEmpty as NEA
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Map as Map
 import Data.Monoid (power)
 import Data.Monoid.Multiplicative (Multiplicative(..))
 import Data.Newtype (unwrap)
 import Data.String as String
+import Data.String.NonEmpty as NonEmptyString
 import Registry.License (License)
 import Registry.License as License
+import Registry.Location (Location(..))
+import Registry.Manifest (Manifest(..))
+import Registry.Owner (Owner(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
 import Registry.Range as Range
-import Registry.Schema (Location(..), Manifest(..), Owner(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -24,6 +27,9 @@ class Fixture a where
 
 instance Fixture String where
   fixture = "fixture-string"
+
+instance Fixture NonEmptyString where
+  fixture = unsafeFromJust $ NonEmptyString.fromString "fixture-string"
 
 instance Fixture PackageName where
   fixture = unsafeFromRight $ PackageName.parse "fixture-package-name"
@@ -66,7 +72,7 @@ instance (Fixture a) => Fixture (Array a) where
   fixture = [ fixture ]
 
 instance (Fixture a) => Fixture (NonEmptyArray a) where
-  fixture = NEA.singleton fixture
+  fixture = NonEmptyArray.singleton fixture
 
 setName :: String -> Manifest -> Manifest
 setName name (Manifest manifest) =

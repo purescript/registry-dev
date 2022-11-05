@@ -17,10 +17,11 @@ import Node.Path as Path
 import Registry.Index (RegistryIndex)
 import Registry.Index as Index
 import Registry.Json as Json
+import Registry.Location (Location(..))
+import Registry.Manifest (Manifest(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
-import Registry.Schema (Location(..), Manifest(..))
 import Registry.Solver as Solver
 import Registry.Version (Version)
 import Registry.Version as Version
