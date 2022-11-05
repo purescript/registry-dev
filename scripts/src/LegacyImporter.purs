@@ -52,7 +52,7 @@ import Registry.Schema (Location(..), Manifest(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
-data ImportMode = GenerateRegistry | UpdateRegistry
+data ImportMode = DryRun | GenerateRegistry | UpdateRegistry
 
 derive instance Eq ImportMode
 
@@ -65,15 +65,17 @@ main = launchAff_ do
 
   log "Parsing CLI args..."
   mode <- liftEffect do
+    let expected = "Expected 'dry-run', 'generate', or 'update'"
     args <- Array.drop 2 <$> Node.Process.argv
     case Array.uncons args of
-      Nothing -> Exception.throw "Expected 'generate' or 'update', but received no arguments."
+      Nothing -> Exception.throw $ expected <> ", but received no arguments."
       Just { head, tail: [] } -> case head of
+        "dry-run" -> pure DryRun
         "generate" -> pure GenerateRegistry
         "update" -> pure UpdateRegistry
-        other -> Exception.throw $ "Expected 'generate' or 'update' but received: " <> other
+        other -> Exception.throw $ expected <> ", but received: " <> other
       Just _ -> Exception.throw $ String.joinWith "\n"
-        [ "Expected 'generate' or 'update', but received multiple arguments:"
+        [ expected <> ", but received multiple arguments:"
         , String.joinWith " " args
         ]
 
@@ -89,6 +91,27 @@ main = launchAff_ do
 
   let
     env = case mode of
+      DryRun ->
+        { comment: \err -> error err
+        , closeIssue: log "Skipping GitHub issue closing, this is a dry run..."
+        , commitMetadataFile: \_ _ -> do
+            log "Skipping committing to registry metadata, this is a dry run..."
+            pure (Right unit)
+        , commitIndexFile: \_ _ -> do
+            log "Skipping committing to registry index, this is a dry run..."
+            pure (Right unit)
+        , commitPackageSetFile: \_ _ _ -> do
+            log "Skipping committing to registry package sets, this is a dry run..."
+            pure (Right unit)
+        , uploadPackage: \_ _ -> log "Skipping upload, this is a dry run..."
+        , deletePackage: \_ -> log "Skipping delete, this is a dry run..."
+        , octokit
+        , cache
+        , username: "NO USERNAME"
+        , packagesMetadata: metadataRef
+        , registry: Path.concat [ API.scratchDir, "registry" ]
+        , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
+        }
       UpdateRegistry ->
         { comment: \comment -> log ("[COMMENT] " <> comment)
         , closeIssue: log "Running locally, not closing issue..."
@@ -210,6 +233,7 @@ main = launchAff_ do
 
         let
           source = case mode of
+            DryRun -> Importer
             UpdateRegistry -> API
             GenerateRegistry -> Importer
 
@@ -221,7 +245,13 @@ main = launchAff_ do
           log "----------"
           API.runOperation source (mkOperation (Manifest manifest))
 
-    when (mode == GenerateRegistry) do
+    when (mode == GenerateRegistry || mode == DryRun) do
+      log "Regenerating registry metadata..."
+      metadataResult <- readPackagesMetadata
+      void $ forWithIndex metadataResult \name metadata -> do
+        dir <- asks _.registry
+        liftAff (Json.writeJsonFile (API.metadataFile dir name) metadata)
+
       log "Regenerating registry index..."
       void $ for indexPackages (liftAff <<< Index.insertManifest registryIndexPath)
 
@@ -493,8 +523,9 @@ fetchPackageTags address = do
       pure tags
 
 validatePackageLocation :: { registered :: GitHub.Address, received :: GitHub.Address } -> Either PackageValidationError Unit
-validatePackageLocation addresses =
-  if addresses.registered /= addresses.received then
+validatePackageLocation addresses = do
+  let lower { owner, repo } = String.toLower owner <> "/" <> String.toLower repo
+  if lower addresses.registered /= lower addresses.received then
     Left
       { error: PackageURLRedirects addresses
       , reason: "Registered address " <> show addresses.registered <> " redirects to another location " <> show addresses.received
