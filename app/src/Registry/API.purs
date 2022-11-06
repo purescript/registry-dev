@@ -52,11 +52,11 @@ import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
-import Record as Record
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageSets as App.PackageSets
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
+import Registry.Constants (GitHubRepo)
 import Registry.Constants as Constants
 import Registry.Index as Index
 import Registry.Json as Json
@@ -84,7 +84,6 @@ import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Process
-import Type.Proxy (Proxy(..))
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -878,7 +877,7 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
       filename = PackageName.print packageName <> "-" <> Version.print version <> ".tar.gz"
       filepath = Path.concat [ dir, filename ]
 
-    liftAff (withBackoff' (Wget.wget (Constants.packageStorage <> "/" <> PackageName.print packageName <> "/" <> Version.print version <> ".tar.gz") filepath)) >>= case _ of
+    liftAff (withBackoff' (Wget.wget (Constants.packageStorageUrl <> "/" <> PackageName.print packageName <> "/" <> Version.print version <> ".tar.gz") filepath)) >>= case _ of
       Nothing -> throwWithComment "Could not fetch tarball."
       Just (Left err) -> throwWithComment $ "Error while fetching tarball: " <> err
       Just (Right _) -> pure unit
@@ -1085,7 +1084,7 @@ locationIsUnique location = Map.isEmpty <<< Map.filter (eq location <<< _.locati
 -- | Fetch the latest from the given repository. Will perform a fresh clone if
 -- | a checkout of the repository does not exist at the given path, and will
 -- | pull otherwise.
-fetchRepo :: GitHub.Address -> FilePath -> Aff Unit
+fetchRepo :: GitHubRepo -> FilePath -> Aff Unit
 fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
   true -> do
     log $ "Found the " <> address.repo <> " repo locally, pulling..."
@@ -1110,13 +1109,13 @@ fetchRegistryIndex :: RegistryM Unit
 fetchRegistryIndex = do
   registryIndexPath <- asks _.registryIndex
   log "Fetching the most recent registry index..."
-  liftAff $ fetchRepo (Record.delete (Proxy :: _ "subdir") Constants.packageIndex) registryIndexPath
+  liftAff $ fetchRepo Constants.packageIndex registryIndexPath
 
 fetchRegistry :: RegistryM Unit
 fetchRegistry = do
   registryPath <- asks _.registry
   log "Fetching the most recent registry ..."
-  liftAff $ fetchRepo (Record.delete (Proxy :: _ "subdir") Constants.registry) registryPath
+  liftAff $ fetchRepo Constants.registry registryPath
 
 data PursPublishMethod = LegacyPursPublish | PursPublish
 
