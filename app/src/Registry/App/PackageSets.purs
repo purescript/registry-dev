@@ -332,7 +332,7 @@ installPackage name version = do
   where
   registryUrl :: Http.URL
   registryUrl = Array.fold
-    [ Constants.packageStorage
+    [ Constants.packageStorageUrl
     , "/"
     , PackageName.print name
     , "/"
