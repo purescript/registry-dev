@@ -29,6 +29,8 @@ import Control.Monad.Error.Class as Error
 import Data.Argonaut.Core as Argonaut
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
+import Data.Array.NonEmpty (NonEmptyArray)
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bifunctor (lmap)
 import Data.Codec.Argonaut as CA
 import Data.Either (Either(..))
@@ -195,11 +197,14 @@ packageEntryFilePath name = Path.concat [ packageEntryDirectory name, PackageNam
 
 -- | Parse a JSON Lines string listing several manifests in sorted order from
 -- | lowest version to highest version.
-parseEntry :: String -> Either String (Array Manifest)
+parseEntry :: String -> Either String (NonEmptyArray Manifest)
 parseEntry entry = do
   let split = String.split (String.Pattern "\n") <<< String.trim
   jsonArray <- traverse Argonaut.Parser.jsonParser (split entry)
-  traverse (lmap CA.printJsonDecodeError <<< CA.decode Manifest.codec) jsonArray
+  entries <- traverse (lmap CA.printJsonDecodeError <<< CA.decode Manifest.codec) jsonArray
+  case NonEmptyArray.fromArray entries of
+    Nothing -> Left "No entries exist."
+    Just entries' -> pure entries'
 
 -- | Print an array of manifests as a JSON Lines string in sorted order from
 -- | lowest version to highest version.
@@ -212,11 +217,11 @@ printEntry =
 -- | Given the root of a manifest index on the file system and a package name,
 -- | retrieve the manifests associated with that package, in sorted order from
 -- | lowest to highest version.
-readEntryFile :: forall m. MonadAff m => FilePath -> PackageName -> m (Either String (Array Manifest))
+readEntryFile :: forall m. MonadAff m => FilePath -> PackageName -> m (Either String (NonEmptyArray Manifest))
 readEntryFile indexPath package = do
   let entryPath = Path.concat [ indexPath, packageEntryFilePath package ]
   liftAff (Error.try (FS.Aff.readTextFile UTF8 entryPath)) >>= case _ of
-    Left error -> pure $ Left $ Exception.message error
+    Left error -> pure $ Left $ "Failed to read entry: " <> Exception.message error
     Right contents -> pure $ parseEntry contents
 
 -- | Given the root of a manifest index on the file system, encode the provided
@@ -244,12 +249,40 @@ writeEntryFile indexPath manifests = do
       ]
 
 -- | Given the root of a manifest index on the file system, insert the specified
--- | manifest into the package entry. This will fail if the manifests in the
--- | entry do not share the same package name as the input.
+-- | manifest into the package entry. This will create the package entry if it
+-- | does not yet exist.
 insertIntoEntryFile :: forall m. MonadAff m => FilePath -> Manifest -> m (Either String Unit)
-insertIntoEntryFile indexPath manifest = pure (Left "")
+insertIntoEntryFile indexPath manifest@(Manifest { name }) = do
+  entry <- readEntryFile indexPath name
+
+  let
+    existing :: Maybe (NonEmptySet Manifest)
+    existing = case entry of
+      Left _ -> Nothing
+      Right previous -> Just (NonEmptySet.fromFoldable1 previous)
+
+    modified :: NonEmptySet Manifest
+    modified = case existing of
+      Nothing -> NonEmptySet.singleton manifest
+      Just previous -> NonEmptySet.insert manifest previous
+
+  case existing of
+    Just previous | previous == modified -> pure (Right unit)
+    _ -> writeEntryFile indexPath modified
 
 -- | Given the root of a manifest index on the file system, remove the specified
 -- | package version from the package entry.
 removeFromEntryFile :: forall m. MonadAff m => FilePath -> PackageName -> Version -> m (Either String Unit)
-removeFromEntryFile indexPath name version = pure (Left "")
+removeFromEntryFile indexPath name version = do
+  readEntryFile indexPath name >>= case _ of
+    Left error ->
+      pure $ Left error
+    Right contents -> do
+      let entryPath = Path.concat [ indexPath, packageEntryFilePath name ]
+      case NonEmptySet.fromFoldable $ NonEmptyArray.filter (\(Manifest m) -> m.version /= version) contents of
+        Nothing ->
+          liftAff (Error.try (FS.Aff.unlink entryPath)) >>= case _ of
+            Left error -> pure $ Left $ "Failed to delete entry:" <> Exception.message error
+            Right _ -> pure $ Right unit
+        Just modified ->
+          writeEntryFile indexPath modified
