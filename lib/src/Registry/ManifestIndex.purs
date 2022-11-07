@@ -5,13 +5,27 @@
 -- |
 -- | The manifest index is published in the registry-index repository:
 -- | https://github.com/purescript/registry-index
-module Registry.ManifestIndex where
+module Registry.ManifestIndex
+  ( ManifestIndex
+  , empty
+  , toMap
+  , fromSet
+  , topologicalSort
+  , maximalIndex
+  , lookup
+  , packageEntryDirectory
+  , packageEntryFilePath
+  , parseEntry
+  , printEntry
+  ) where
 
 import Prelude
 
 import Data.Argonaut.Core as Argonaut
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
+import Data.Array.NonEmpty (NonEmptyArray)
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bifunctor (lmap)
 import Data.Codec.Argonaut as CA
 import Data.Either (Either(..))
@@ -166,12 +180,17 @@ packageEntryDirectory = PackageName.print >>> \name -> case String.length name o
 packageEntryFilePath :: PackageName -> FilePath
 packageEntryFilePath name = Path.concat [ packageEntryDirectory name, PackageName.print name ]
 
-parseEntry :: String -> Either String (Array Manifest)
+-- | Parse a JSON Lines string listing several manifests.
+parseEntry :: String -> Either String (NonEmptyArray Manifest)
 parseEntry entry = do
   let split = String.split (String.Pattern "\n") <<< String.trim
   jsonArray <- traverse Argonaut.Parser.jsonParser (split entry)
-  traverse (lmap CA.printJsonDecodeError <<< CA.decode Manifest.codec) jsonArray
+  entries <- traverse (lmap CA.printJsonDecodeError <<< CA.decode Manifest.codec) jsonArray
+  case NonEmptyArray.fromArray entries of
+    Nothing -> Left "NonEmptyArray: No entries found."
+    Just entries' -> Right entries'
 
+-- | Print an array of manifests as a JSON Lines string.
 printEntry :: Array Manifest -> String
 printEntry =
   String.joinWith "\n"
