@@ -32,7 +32,6 @@ module Registry.Operation
 import Prelude
 
 import Control.Alt ((<|>))
-import Data.Argonaut.Core as Argonaut
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Bifunctor (lmap)
 import Data.Codec as Codec

@@ -6,9 +6,9 @@ import Effect (Effect)
 import Effect.Aff as Aff
 import Test.Registry.Internal as Test.Internal
 import Test.Registry.Manifest as Test.Manifest
+import Test.Registry.ManifestIndex as Test.ManifestIndex
 import Test.Registry.Metadata as Test.Metadata
 import Test.Registry.Operation as Test.Operation
-import Test.Registry.PackageIndex as Test.PackageIndex
 import Test.Registry.PackageName as Test.PackageName
 import Test.Registry.PackageSet as Test.PackageSet
 import Test.Registry.Range as Test.Range
@@ -34,4 +34,4 @@ main = Aff.launchAff_ $ Spec.Runner.runSpec [ Spec.Reporter.consoleReporter ] do
     Spec.describe "Operation" Test.Operation.spec
 
   Spec.describe "Structures" do
-    Spec.describe "PackageIndex" Test.PackageIndex.spec
+    Spec.describe "ManifestIndex" Test.ManifestIndex.spec

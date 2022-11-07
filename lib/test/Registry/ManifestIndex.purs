@@ -1,9 +1,9 @@
-module Test.Registry.PackageIndex (spec) where
+module Test.Registry.ManifestIndex (spec) where
 
 import Prelude
 
 import Data.String as String
-import Registry.PackageIndex as PackageIndex
+import Registry.ManifestIndex as ManifestIndex
 import Test.Assert as Assert
 import Test.Spec (Spec)
 import Test.Spec as Spec
@@ -12,8 +12,8 @@ spec :: Spec Unit
 spec = do
   Spec.it "Round-trips package entry fixture" do
     let contextEntry' = String.trim contextEntry
-    let parsedContext = PackageIndex.parseEntry contextEntry'
-    contextEntry' `Assert.shouldEqualRight` map PackageIndex.printEntry parsedContext
+    let parsedContext = ManifestIndex.parseEntry contextEntry'
+    contextEntry' `Assert.shouldEqualRight` map ManifestIndex.printEntry parsedContext
 
 contextEntry :: String
 contextEntry =
