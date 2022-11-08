@@ -2,7 +2,6 @@ module Registry.Scripts.PackageSetUpdater where
 
 import Registry.Prelude
 
-import Control.Monad.Reader (asks)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
@@ -19,8 +18,8 @@ import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
 import Registry.API as API
+import Registry.App.Index as App.Index
 import Registry.App.PackageSets as App.PackageSets
-import Registry.Index as Index
 import Registry.Json as Json
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.Metadata (Metadata(..))
@@ -88,8 +87,7 @@ main = Aff.launchAff_ do
     API.fetchRegistry
     API.fillMetadataRef
 
-    registryIndexPath <- asks _.registryIndex
-    registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
+    registryIndex <- App.Index.readManifestIndexFromDisk
     prevPackageSet <- App.PackageSets.readLatestPackageSet
     App.PackageSets.validatePackageSet registryIndex prevPackageSet
 

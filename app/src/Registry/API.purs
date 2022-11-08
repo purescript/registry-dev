@@ -52,18 +52,19 @@ import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
+import Registry.App.Index as App.Index
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageSets as App.PackageSets
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Constants as Constants
-import Registry.Index as Index
 import Registry.Json as Json
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.Location (GitHubData, Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
+import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
 import Registry.Metadata as Metadata
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageOperation(..), PackageSetOperation(..), PublishData)
@@ -75,7 +76,7 @@ import Registry.PackageSet (PackageSet(..))
 import Registry.PackageUpload as Upload
 import Registry.Range (Range)
 import Registry.Range as Range
-import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitIndexFile, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
+import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.SSH as SSH
 import Registry.Sha256 as Sha256
 import Registry.Solver as Solver
@@ -250,7 +251,7 @@ runOperation source operation = case operation of
           publish source fields (mkNewMetadata packageLocation)
 
   Left (PackageSetUpdate { compiler, packages }) -> do
-    { octokit, cache, username, registryIndex: registryIndexPath } <- ask
+    { octokit, cache, username } <- ask
 
     latestPackageSet <- App.PackageSets.readLatestPackageSet
     let prevCompiler = (un PackageSet latestPackageSet).compiler
@@ -324,7 +325,7 @@ runOperation source operation = case operation of
     -- new packages and/or compiler version. Note: if the compiler is updated to
     -- a version that isn't supported by the registry then an 'unsupported
     -- compiler' error will be thrown.
-    registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
+    registryIndex <- App.Index.readManifestIndexFromDisk
     App.PackageSets.validatePackageSet registryIndex latestPackageSet
 
     let candidates = App.PackageSets.validatePackageSetCandidates registryIndex latestPackageSet packages
@@ -424,7 +425,7 @@ runOperation source operation = case operation of
                 ]
               Right _ -> pure unit
 
-            writeDeleteIndex name version >>= case _ of
+            App.Index.writeDeleteIndex name version >>= case _ of
               Left err -> throwWithComment $ String.joinWith "\n"
                 [ "Unpublish succeeded, but committing to the registry index failed."
                 , err
@@ -665,7 +666,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
 
   -- We write to the registry index if possible. If this fails, the packaging
   -- team should manually insert the entry.
-  writeInsertIndex manifest >>= case _ of
+  App.Index.writeInsertIndex manifest >>= case _ of
     Left err -> comment $ String.joinWith "\n"
       [ "Package uploaded, but committing to the registry failed."
       , err
@@ -745,24 +746,25 @@ verifyResolutions { source, resolutions, manifest } = Except.runExceptT do
   -- We don't verify packages provided via the mass import.
   case resolutions of
     Nothing -> do
-      indexPath <- asks _.registryIndex
-      registryIndex <- liftAff $ Index.readRegistryIndex indexPath
+      registryIndex <- lift App.Index.readManifestIndexFromDisk
       let getDependencies = _.dependencies <<< un Manifest
-      case Solver.solve (map (map getDependencies) registryIndex) (getDependencies manifest) of
+      case Solver.solve (map (map getDependencies) (ManifestIndex.toMap registryIndex)) (getDependencies manifest) of
         Left errors -> do
+          let
+            printedError = String.joinWith "\n"
+              [ "Could not produce valid dependencies for manifest."
+              , ""
+              , errors # foldMapWithIndex \index error -> String.joinWith "\n"
+                  [ "[Error " <> show (index + 1) <> "]"
+                  , Solver.printSolverError error
+                  ]
+              ]
           case source of
             Importer -> do
-              log "Could not solve manifest, but continuing because this is a legacy import package..."
+              log $ "Could not solve manifest:\n" <> printedError <> "\n...but continuing because this is a legacy import."
               pure Map.empty
-            API -> do
-              throwError $ String.joinWith "\n"
-                [ "Could not produce valid dependencies for manifest."
-                , ""
-                , errors # foldMapWithIndex \index error -> String.joinWith "\n"
-                    [ "[Error " <> show (index + 1) <> "]"
-                    , Solver.printSolverError error
-                    ]
-                ]
+            API ->
+              throwError printedError
         Right solution ->
           pure solution
 
@@ -1179,7 +1181,7 @@ pacchettiBottiPushToRegistryIndex :: PackageName -> FilePath -> Aff (Either Stri
 pacchettiBottiPushToRegistryIndex packageName registryIndexDir = Except.runExceptT do
   GitHubToken token <- Git.configurePacchettiBotti (Just registryIndexDir)
   Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryIndexDir)
-  Git.runGit_ [ "add", Index.getIndexPath packageName ] (Just registryIndexDir)
+  Git.runGit_ [ "add", ManifestIndex.packageEntryFilePath packageName ] (Just registryIndexDir)
   Git.runGit_ [ "commit", "-m", "Update manifests for package " <> PackageName.print packageName ] (Just registryIndexDir)
   let upstreamRepo = Constants.packageIndex.owner <> "/" <> Constants.packageIndex.repo
   let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
@@ -1322,18 +1324,6 @@ writeMetadata packageName metadata = do
   liftAff $ Json.writeJsonFile (metadataFile registryDir packageName) metadata
   updatePackagesMetadata packageName metadata
   commitMetadataFile packageName
-
-writeInsertIndex :: Manifest -> RegistryM (Either String Unit)
-writeInsertIndex manifest@(Manifest { name }) = do
-  registryIndexDir <- asks _.registryIndex
-  liftAff $ Index.insertManifest registryIndexDir manifest
-  commitIndexFile name
-
-writeDeleteIndex :: PackageName -> Version -> RegistryM (Either String Unit)
-writeDeleteIndex name version = do
-  registryIndexDir <- asks _.registryIndex
-  liftAff $ Index.deleteManifest registryIndexDir name version
-  commitIndexFile name
 
 -- | Re-sign a payload as pacchettibotti if the authenticated operation was
 -- | submitted by a registry trustee.

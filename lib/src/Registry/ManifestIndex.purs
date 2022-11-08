@@ -8,19 +8,21 @@
 module Registry.ManifestIndex
   ( ManifestIndex
   , empty
-  , toMap
   , fromSet
-  , topologicalSort
-  , maximalIndex
+  , insertIntoEntryFile
   , lookup
+  , maximalIndex
+  , maximalIndexIgnoringBounds
   , packageEntryDirectory
   , packageEntryFilePath
   , parseEntry
   , printEntry
   , readEntryFile
-  , writeEntryFile
-  , insertIntoEntryFile
   , removeFromEntryFile
+  , toMap
+  , toSortedArray
+  , topologicalSort
+  , writeEntryFile
   ) where
 
 import Prelude
@@ -40,6 +42,7 @@ import Data.Int as Int
 import Data.List (List)
 import Data.List as List
 import Data.Map (Map)
+import Data.Map as MAp
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Maybe as Maybe
@@ -83,6 +86,13 @@ empty = ManifestIndex Map.empty
 -- | Convert a manifest index into a `Map`
 toMap :: ManifestIndex -> Map PackageName (Map Version Manifest)
 toMap (ManifestIndex index) = index
+
+-- | Produce an array of manifests topologically sorted by dependencies.
+toSortedArray :: ManifestIndex -> Array Manifest
+toSortedArray (ManifestIndex index) = topologicalSort $ Set.fromFoldable do
+  Tuple _ versions <- Map.toUnfoldableUnordered index
+  Tuple _ manifest <- MAp.toUnfoldableUnordered versions
+  [ manifest ]
 
 -- | Look up a package version's manifest in the manifest index.
 lookup :: PackageName -> Version -> ManifestIndex -> Maybe Manifest
@@ -128,6 +138,31 @@ maximalIndex manifests = do
       Right newIndex -> Tuple failed newIndex
 
   Array.foldl insertManifest (Tuple Map.empty empty) (topologicalSort manifests)
+
+-- | Convert a set of manifests into an approximate manifest index, ignoring
+-- | package version bounds. This is useful for verifying that a collection of
+-- | packages is self-contained in situations where ranges are ignored, such as
+-- | the package sets.
+maximalIndexIgnoringBounds :: Set Manifest -> Tuple (Map PackageName (Map Version (Array PackageName))) (Map PackageName (Map Version Manifest))
+maximalIndexIgnoringBounds manifests = do
+  let
+    insertIgnoringBounds :: Manifest -> Map PackageName (Map Version Manifest) -> Either (Array PackageName) (Map PackageName (Map Version Manifest))
+    insertIgnoringBounds manifest@(Manifest { name, version, dependencies }) index = do
+      let
+        unsatisfied = do
+          Tuple dependency _ <- Map.toUnfoldable dependencies
+          Maybe.maybe [ dependency ] (const []) $ Map.lookup dependency index
+
+      if not (Array.null unsatisfied) then
+        Left unsatisfied
+      else
+        Right $ Map.insertWith Map.union name (Map.singleton version manifest) index
+
+    foldFn (Tuple failed index) manifest@(Manifest { name, version }) = case insertIgnoringBounds manifest index of
+      Left errors -> Tuple (Map.insertWith Map.union name (Map.singleton version errors) failed) index
+      Right newIndex -> Tuple failed newIndex
+
+  Array.foldl foldFn (Tuple Map.empty Map.empty) (topologicalSort manifests)
 
 -- | Topologically sort a set of manifests so that each manifest in the array
 -- | depends only on package versions that have already been encountered.
