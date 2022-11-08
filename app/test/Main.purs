@@ -1,6 +1,4 @@
-module Test.Main
-  ( main
-  ) where
+module Test.Main (main) where
 
 import Registry.Prelude
 
@@ -40,12 +38,12 @@ import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
 import Test.Foreign.SPDX as Foreign.SPDX
 import Test.Foreign.Tar as Foreign.Tar
+import Test.Registry.App.Index as Test.Index
 import Test.Registry.App.LenientRange as Test.LenientRange
 import Test.Registry.App.LenientVersion as Test.LenientVersion
-import Test.Registry.App.PackageSets as PackageSets
-import Test.Registry.Index as Registry.Index
+import Test.Registry.App.PackageSets as Test.PackageSets
 import Test.Registry.SSH as SSH
-import Test.Registry.Solver as TestSolver
+import Test.Registry.Solver as Test.Solver
 import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -54,7 +52,7 @@ import Test.Spec.Runner (defaultConfig, runSpec')
 main :: Effect Unit
 main = launchAff_ do
   -- Setup the Registry Index for tests
-  registryEnv <- Registry.Index.mkTestIndexEnv
+  registryEnv <- Test.Index.mkTestIndexEnv
 
   runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
     Spec.describe "API" do
@@ -77,17 +75,17 @@ main = launchAff_ do
       Spec.describe "Encoding" bowerFileEncoding
     Spec.describe "Licensee" licensee
     Spec.describe "Registry Index" do
-      Registry.Index.spec registryEnv
+      Test.Index.spec registryEnv
     Spec.describe "Tar" do
       Foreign.Tar.tar
     Spec.describe "Json Repair" do
       Foreign.JsonRepair.testJsonRepair
     Spec.describe "Solver" do
-      TestSolver.spec
+      Test.Solver.spec
     Spec.describe "Glob" do
       safeGlob
     Spec.describe "Package Set" do
-      PackageSets.spec
+      Test.PackageSets.spec
     Spec.describe "SPDX Fuzzy Match" do
       Foreign.SPDX.spec
 

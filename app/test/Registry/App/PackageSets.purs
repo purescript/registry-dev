@@ -9,6 +9,7 @@ import Data.DateTime as DateTime
 import Data.Either as Either
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
+import Data.Set as Set
 import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageSets as PackageSet
@@ -18,6 +19,7 @@ import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSe
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest)
+import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -170,7 +172,7 @@ convertedPackageSet =
     Left err -> unsafeCrashWith err
     Right value -> value
   where
-  index = Map.fromFoldable
+  index = unsafeFromRight $ ManifestIndex.fromSet $ Set.fromFoldable
     [ mkManifest assert [ console, effect, prelude ]
     , mkManifest console [ effect, prelude ]
     , mkManifest effect [ prelude ]
@@ -279,15 +281,12 @@ unsafeDateTime = unsafeFromRight <<< Formatter.DateTime.unformat Internal.Format
 unsafeDate :: String -> Date
 unsafeDate = DateTime.date <<< unsafeDateTime
 
-mkManifest :: Tuple PackageName LenientVersion -> Array (Tuple PackageName LenientVersion) -> Tuple PackageName (Map Version Manifest)
+mkManifest :: Tuple PackageName LenientVersion -> Array (Tuple PackageName LenientVersion) -> Manifest
 mkManifest (Tuple name version) deps = do
-  let
-    manifest = fixture
-      # setName (PackageName.print name)
-      # setVersion (LenientVersion.print version)
-      # setDependencies (map (bimap PackageName.print LenientVersion.print) deps)
-
-  name /\ Map.singleton (LenientVersion.version version) manifest
+  fixture
+    # setName (PackageName.print name)
+    # setVersion (LenientVersion.print version)
+    # setDependencies (map (bimap PackageName.print LenientVersion.print) deps)
 
 unsafeMetadataEntry :: Tuple PackageName LenientVersion -> Tuple PackageName Metadata
 unsafeMetadataEntry (Tuple name version) = do

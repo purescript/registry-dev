@@ -3,7 +3,9 @@ module Test.Registry.App.Index (TestIndexEnv, mkTestIndexEnv, spec) where
 import Registry.Prelude
 
 import Control.Monad.Reader as Reader
+import Data.Argonaut.Core as Argonaut
 import Data.Array as Array
+import Data.Codec.Argonaut as CA
 import Data.Foldable (sequence_)
 import Data.Map as Map
 import Data.Set as Set
@@ -14,39 +16,48 @@ import Foreign.Node.FS as FS.Extra
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
-import Registry.Index (RegistryIndex)
-import Registry.Index as Index
+import Registry.App.Index as App.Index
+import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
-import Registry.PackageGraph as PackageGraph
+import Registry.ManifestIndex (ManifestIndex)
+import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Range as Range
+import Registry.RegistryM (RegistryM)
+import Registry.RegistryM as RegistryM
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.Fixture.Manifest as Fixture
+import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
 
 type TestIndexEnv =
   { tmp :: FilePath
-  , indexRef :: Ref RegistryIndex
+  , indexRef :: Ref ManifestIndex
   }
 
 mkTestIndexEnv :: Aff TestIndexEnv
 mkTestIndexEnv = liftEffect do
   tmp <- Tmp.mkTmpDir
-  indexRef <- Ref.new (Map.empty :: RegistryIndex)
+  indexRef <- Ref.new ManifestIndex.empty
   pure { tmp, indexRef }
 
 spec :: TestIndexEnv -> Spec.Spec Unit
 spec env = Spec.hoistSpec identity (\_ m -> Reader.runReaderT m env) testRegistryIndex
 
+runTestRegistryM :: forall m a. MonadAff m => FilePath -> RegistryM a -> m a
+runTestRegistryM index =
+  liftAff <<< RegistryM.runRegistryM (RegistrySpec.defaultTestEnv { registryIndex = index })
+
 testRegistryIndex :: Spec.SpecT (Reader.ReaderT TestIndexEnv Aff) Unit Identity Unit
 testRegistryIndex = Spec.before runBefore do
   Spec.describe "Registry index writes to and reads back from disk" do
     Spec.it "Reads an empty index from disk" \{ tmp } -> do
-      initialIndex <- lift $ Index.readRegistryIndex tmp
-      Map.size initialIndex `Assert.shouldEqual` 0
+      initialIndex <- runTestRegistryM tmp App.Index.readManifestIndexFromDisk
+      Map.size (ManifestIndex.toMap initialIndex) `Assert.shouldEqual` 0
 
     let
       mkManifest :: String -> String -> Maybe String -> Manifest
@@ -87,15 +98,18 @@ testRegistryIndex = Spec.before runBefore do
         -- written with a trailing newline, which caused it to fail to parse.
         let
           contextName = unsafeFromRight $ PackageName.parse "context"
-          contextDir = Path.concat [ tmp, Index.getIndexDir contextName ]
-          contextPath = Path.concat [ tmp, Index.getIndexPath contextName ]
+          contextDir = Path.concat [ tmp, ManifestIndex.packageEntryDirectory contextName ]
+          contextPath = Path.concat [ tmp, ManifestIndex.packageEntryFilePath contextName ]
 
         FS.Extra.ensureDirectory contextDir
         FS.Aff.writeTextFile ASCII contextPath contextFile
 
-        Index.insertManifest tmp $ contextManifest "1.0.0"
-        index <- Index.readRegistryIndex tmp
-        (Map.size <$> Map.lookup contextName index) `Assert.shouldEqual` Just 4
+        result <- ManifestIndex.insertIntoEntryFile tmp $ contextManifest "1.0.0"
+        case result of
+          Left error -> Assert.fail error
+          Right _ -> pure unit
+        index <- runTestRegistryM tmp App.Index.readManifestIndexFromDisk
+        (Map.size <$> Map.lookup contextName (ManifestIndex.toMap index)) `Assert.shouldEqual` Just 4
   where
   runBefore = do
     { tmp, indexRef } <- Reader.ask
@@ -109,25 +123,23 @@ testRegistryIndex = Spec.before runBefore do
 
     Spec.it specName \{ tmp, index, writeMemory } -> do
       -- First, we insert the manifest to disk and then read back the result.
-      lift $ Index.insertManifest tmp manifest
-      diskIndex <- lift $ Index.readRegistryIndex tmp
+      result <- ManifestIndex.insertIntoEntryFile tmp manifest
+      case result of
+        Left error -> Assert.fail error
+        Right _ -> pure unit
+      diskIndex <- runTestRegistryM tmp App.Index.readManifestIndexFromDisk
 
-      let
-        -- Then we insert the package into the in-memory index, preferring later
-        -- entries in the case of version collisions (as the registry index
-        -- itself does).
-        memoryIndex = Map.insertWith (flip Map.union) packageName (Map.singleton version manifest) index
-
-      _ <- writeMemory memoryIndex
-
-      let
-        memoryGraph = PackageGraph.checkRegistryIndex memoryIndex
-        sorted = PackageGraph.topologicalSort memoryIndex
-
-      -- Finally, we verify that the on-disk index equals the in-memory index.
-      (diskIndex == memoryIndex) `Assert.shouldEqual` true
-      (Array.null memoryGraph.unsatisfied) `Assert.shouldEqual` true
-      (isSorted sorted) `Assert.shouldEqual` true
+      case ManifestIndex.insert manifest index of
+        Left errors ->
+          Assert.fail
+            $ Argonaut.stringifyWithIndent 2
+            $ CA.encode (Internal.Codec.packageMap Range.codec) errors
+        Right memoryIndex -> do
+          _ <- writeMemory memoryIndex
+          let sorted = ManifestIndex.toSortedArray memoryIndex
+          -- Finally, we verify that the on-disk index equals the in-memory index.
+          (diskIndex == memoryIndex) `Assert.shouldEqual` true
+          (isSorted sorted) `Assert.shouldEqual` true
 
 -- | Verify that manifests are topologically sorted by their dependencies
 isSorted :: Array Manifest -> Boolean

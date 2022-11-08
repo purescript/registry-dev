@@ -9,6 +9,7 @@ module Registry.ManifestIndex
   ( ManifestIndex
   , empty
   , fromSet
+  , insert
   , insertIntoEntryFile
   , lookup
   , maximalIndex

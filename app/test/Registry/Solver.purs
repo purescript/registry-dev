@@ -1,6 +1,4 @@
-module Test.Registry.Solver
-  ( spec
-  ) where
+module Test.Registry.Solver (spec) where
 
 import Registry.Prelude
 
