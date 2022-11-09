@@ -43,6 +43,7 @@ import Test.Spec as Spec
 import Test.Utils (unsafeManifest)
 import Test.Utils as Utils
 
+-- TODO: Write, read, insert, remove file system operations.
 spec :: Spec Unit
 spec = do
   Spec.it "Round-trips package entry fixture" do

@@ -4,12 +4,14 @@ import Prelude
 
 import Data.Argonaut.Core as Argonaut
 import Data.Array as Array
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bifunctor (bimap)
 import Data.Either (Either(..))
 import Data.Either as Either
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple)
+import Partial.Unsafe (unsafeCrashWith)
 import Partial.Unsafe as Partial
 import Registry.License as License
 import Registry.Location (Location(..))
@@ -22,6 +24,13 @@ import Registry.Sha256 as Sha256
 import Registry.Version (Version)
 import Registry.Version as Version
 import Unsafe.Coerce (unsafeCoerce)
+
+-- | Unsafely unpack the `Just` of an `Maybe`, given a message to crash with
+-- | if the value is a `Nothing`.
+fromJust :: forall a. String -> Maybe a -> a
+fromJust msg = case _ of
+  Nothing -> unsafeCrashWith msg
+  Just a -> a
 
 -- | Unsafely unpack the `Right` of an `Either`, given a message to crash with
 -- | if the value is a `Left`.
@@ -37,6 +46,10 @@ partitionEithers :: forall e a. Array (Either e a) -> { fail :: Array e, success
 partitionEithers = Array.foldMap case _ of
   Left err -> { fail: [ err ], success: [] }
   Right res -> { fail: [], success: [ res ] }
+
+-- | Unsafely parse a license from a string
+unsafeNonEmptyArray :: forall a. Array a -> NonEmptyArray.NonEmptyArray a
+unsafeNonEmptyArray = fromJust "Failed to produce NonEmptyArray" <<< NonEmptyArray.fromArray
 
 -- | Unsafely parse a sri-prefixed sha256 hash from a string
 unsafeSha256 :: String -> Sha256.Sha256
