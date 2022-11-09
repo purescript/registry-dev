@@ -193,11 +193,15 @@ topologicalSort manifests =
   resolveDependencies :: Manifest -> Tuple (Tuple PackageName Version) (Tuple Manifest (List (Tuple PackageName Version)))
   resolveDependencies manifest@(Manifest { name, version, dependencies }) =
     Tuple (Tuple name version) $ Tuple manifest $ List.fromFoldable do
-      Tuple dependency range <- Map.toUnfoldable dependencies
+      Tuple dependency _ <- Map.toUnfoldable dependencies
       -- This case should not be possible: it means that the manifest indicates
       -- a dependency that does not exist at all. (TODO: Explain)
       let versions = Maybe.fromMaybe [] $ Map.lookup dependency allPackageVersions
-      included <- Array.filter (Range.includes range) versions
+      -- Technically, we should restrict the sort to only apply to package
+      -- versions admitted by the given range. This is faster and correct, but
+      -- fails in the case where we want to produce a maximal index while
+      -- ignoring version bounds.
+      included <- versions
       [ Tuple dependency included ]
 
 -- | Calculate the directory containing this package in the registry index,

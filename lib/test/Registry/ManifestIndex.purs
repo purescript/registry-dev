@@ -68,10 +68,12 @@ spec = do
             description `Assert.shouldEqual` (un Manifest manifest2).description
 
   Spec.it "Topologically sorts manifests" do
-    -- TODO: This is unspecified behavior if there is no relation in the ranges.
     testSorted
-      [ unsafeManifest "control" "1.0.0" [ Tuple "prelude" ">=2.0.0 <3.0.0" ]
+      [ unsafeManifest "control" "2.0.0" []
+      , unsafeManifest "prelude" "2.0.0" [ Tuple "control" ">=2.0.0 <3.0.0" ]
       , unsafeManifest "prelude" "1.0.0" []
+      , unsafeManifest "control" "1.0.0" [ Tuple "prelude" ">=1.0.0 <2.0.0" ]
+      , unsafeManifest "transformers" "1.0.0" [ Tuple "control" ">=2.0.0 <3.0.0", Tuple "prelude" ">=1.0.0 <2.0.0" ]
       ]
 
   Spec.it "Parses tiny index" do
@@ -118,7 +120,7 @@ spec = do
 
     testIndex { satisfied: [], unsatisfied }
 
-  Spec.it "Lenient mode accepts failed version bounds" do
+  Spec.it "Parsing maximal index ignoring bounds mode accepts invalid version bounds" do
     let
       index :: Set Manifest
       index = Set.fromFoldable
