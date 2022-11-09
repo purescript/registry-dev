@@ -13,7 +13,6 @@ module Registry.ManifestIndex
   , insertIntoEntryFile
   , lookup
   , maximalIndex
-  , maximalIndexIgnoringBounds
   , packageEntryDirectory
   , packageEntryFilePath
   , parseEntry
@@ -70,12 +69,11 @@ import Registry.Manifest as Manifest
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
-import Registry.Range as Range
 import Registry.Version (Version)
 
 -- | An index of package manifests, keyed by package name and version. The index
--- | is correct by construction: manifests only list dependencies on package
--- | versions which are also in the index.
+-- | enforces that manifests only list dependencies on packages also in the
+-- | index.
 newtype ManifestIndex = ManifestIndex (Map PackageName (Map Version Manifest))
 
 derive instance Eq ManifestIndex
@@ -103,8 +101,7 @@ lookup name version (ManifestIndex index) =
 
 -- | Insert a new manifest into the manifest index, failing if the manifest
 -- | indicates dependencies that cannot be satisfied. Dependencies are not
--- | satisfied if a) the package is not in the index or b) there are no versions
--- | in the indicated range.
+-- | satisfied if the package is not in the index.
 insert :: Manifest -> ManifestIndex -> Either (Map PackageName Range) ManifestIndex
 insert manifest@(Manifest { name, version, dependencies }) (ManifestIndex index) = do
   let
@@ -112,7 +109,17 @@ insert manifest@(Manifest { name, version, dependencies }) (ManifestIndex index)
     unsatisfied = Map.fromFoldable do
       Tuple dependency range <- Map.toUnfoldable dependencies
       case Map.lookup dependency index of
-        Just versions | Array.any (Range.includes range) (Set.toUnfoldable (Map.keys versions)) ->
+        Just _versions ->
+          -- Ideally we would enforce that inserting a manifest requires that
+          -- at least one version exists in the index in the given range already
+          -- Array.any (Range.includes range) (Set.toUnfoldable (Map.keys versions)) ->
+          --
+          -- However, to be somewhat lenient on what packages can be admitted to
+          -- the official index, we just look to see the package name exists.
+          --
+          -- Note that if we _do_ add this check later on, we will need to
+          -- produce an alternate version that does not check version bounds for
+          -- use in validatiing package sets, ie. 'maximalIndexIgnoringBounds'
           []
         _ ->
           [ Tuple dependency range ]
@@ -141,31 +148,6 @@ maximalIndex manifests = do
       Right newIndex -> Tuple failed newIndex
 
   Array.foldl insertManifest (Tuple Map.empty empty) (topologicalSort manifests)
-
--- | Convert a set of manifests into an approximate manifest index, ignoring
--- | package version bounds. This is useful for verifying that a collection of
--- | packages is self-contained in situations where ranges are ignored, such as
--- | the package sets.
-maximalIndexIgnoringBounds :: Set Manifest -> Tuple (Map PackageName (Map Version (Array PackageName))) (Map PackageName (Map Version Manifest))
-maximalIndexIgnoringBounds manifests = do
-  let
-    insertIgnoringBounds :: Manifest -> Map PackageName (Map Version Manifest) -> Either (Array PackageName) (Map PackageName (Map Version Manifest))
-    insertIgnoringBounds manifest@(Manifest { name, version, dependencies }) index = do
-      let
-        unsatisfied = do
-          Tuple dependency _ <- Map.toUnfoldable dependencies
-          Maybe.maybe [ dependency ] (const []) $ Map.lookup dependency index
-
-      if not (Array.null unsatisfied) then
-        Left unsatisfied
-      else
-        Right $ Map.insertWith Map.union name (Map.singleton version manifest) index
-
-    foldFn (Tuple failed index) manifest@(Manifest { name, version }) = case insertIgnoringBounds manifest index of
-      Left errors -> Tuple (Map.insertWith Map.union name (Map.singleton version errors) failed) index
-      Right newIndex -> Tuple failed newIndex
-
-  Array.foldl foldFn (Tuple Map.empty Map.empty) (topologicalSort manifests)
 
 -- | Topologically sort a set of manifests so that each manifest in the array
 -- | depends only on package versions that have already been encountered.
@@ -201,6 +183,7 @@ topologicalSort manifests =
       -- versions admitted by the given range. This is faster and correct, but
       -- fails in the case where we want to produce a maximal index while
       -- ignoring version bounds.
+      --     included <- Array.filter (Range.includes range) versions
       included <- versions
       [ Tuple dependency included ]
 

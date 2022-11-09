@@ -9,7 +9,6 @@ import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.Either (Either(..))
-import Data.Foldable (for_)
 import Data.Int as Int
 import Data.List as List
 import Data.Map (Map)
@@ -18,7 +17,6 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
 import Data.Newtype as Newtype
 import Data.Profunctor as Profunctor
-import Data.Set (Set)
 import Data.Set as Set
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
@@ -116,11 +114,14 @@ spec = do
       satisfied =
         [ unsafeManifest "prelude" "1.0.0" []
         , unsafeManifest "control" "1.0.0" [ Tuple "prelude" ">=1.0.0 <2.0.0" ]
+        -- It is OK for the version bounds to not exist, although we may
+        -- choose to make this more strict in the future.
+        , unsafeManifest "control" "2.0.0" [ Tuple "prelude" ">=2.0.0 <3.0.0" ]
         ]
 
       unsatisfied :: Array Manifest
       unsatisfied =
-        [ unsafeManifest "control" "2.0.0" [ Tuple "prelude" ">=2.0.0 <3.0.0" ]
+        [ unsafeManifest "control" "3.0.0" [ Tuple "tuples" ">=2.0.0 <3.0.0" ]
         ]
 
     testIndex { satisfied, unsatisfied }
@@ -146,19 +147,6 @@ spec = do
         ]
 
     testIndex { satisfied: [], unsatisfied }
-
-  Spec.it "Parsing maximal index ignoring bounds accepts invalid version bounds" do
-    let
-      index :: Set Manifest
-      index = Set.fromFoldable
-        [ unsafeManifest "prelude" "1.0.0" []
-        , unsafeManifest "control" "1.0.0" [ Tuple "prelude" ">=2.0.0 <3.0.0" ]
-        ]
-    for_ (ManifestIndex.fromSet index) \_ ->
-      Assert.fail "fromSet should not have succeeded on failed version bounds."
-    let Tuple errors _ = ManifestIndex.maximalIndexIgnoringBounds index
-    unless (Map.isEmpty errors) do
-      Assert.fail $ "Should not have failed, but did: " <> formatLenientErrors errors
 
 contextEntry :: String
 contextEntry =

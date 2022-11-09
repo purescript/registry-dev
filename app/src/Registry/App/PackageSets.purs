@@ -459,7 +459,7 @@ validatePackageSet index (PackageSet set) = do
     -- We can now attempt to produce a self-contained manifest index from the
     -- collected manifests. If this fails then the package set is not
     -- self-contained.
-    Tuple unsatisfied _ = ManifestIndex.maximalIndexIgnoringBounds (Set.fromFoldable success)
+    Tuple unsatisfied _ = ManifestIndex.maximalIndex (Set.fromFoldable success)
 
   -- Otherwise, we can check if we were able to produce an index from the
   -- package set alone, without errors.
@@ -476,7 +476,7 @@ validatePackageSet index (PackageSet set) = do
         , "@"
         , Version.print package.version
         , " ("
-        , String.joinWith ", " (map PackageName.print package.dependencies)
+        , String.joinWith ", " (map PackageName.print (Array.fromFoldable (Map.keys package.dependencies)))
         , ")."
         ]
 
