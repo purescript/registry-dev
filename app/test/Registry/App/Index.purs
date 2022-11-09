@@ -55,7 +55,7 @@ runTestRegistryM index =
 
 testRegistryIndex :: Spec.SpecT (Reader.ReaderT TestIndexEnv Aff) Unit Identity Unit
 testRegistryIndex = Spec.before runBefore do
-  Spec.describeOnly "Registry index writes to and reads back from disk" do
+  Spec.describe "Registry index writes to and reads back from disk" do
     Spec.it "Reads an empty index from disk" \{ tmp } -> do
       initialIndex <- runTestRegistryM tmp App.Index.readManifestIndexFromDisk
       Map.size (ManifestIndex.toMap initialIndex) `Assert.shouldEqual` 0

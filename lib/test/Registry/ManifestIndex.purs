@@ -2,24 +2,238 @@ module Test.Registry.ManifestIndex (spec) where
 
 import Prelude
 
+import Control.Monad.Error.Class (class MonadThrow)
+import Data.Argonaut.Core as Argonaut
+import Data.Array as Array
+import Data.Codec.Argonaut (JsonCodec)
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Record as CA.Record
+import Data.Either (Either(..))
+import Data.Foldable (for_)
+import Data.Int as Int
+import Data.List as List
+import Data.Map (Map)
+import Data.Map as Map
+import Data.Maybe (Maybe(..))
+import Data.Newtype (un)
+import Data.Newtype as Newtype
+import Data.Profunctor as Profunctor
+import Data.Set (Set)
+import Data.Set as Set
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
+import Data.Tuple (Tuple(..))
+import Effect.Exception (Error)
+import Registry.Internal.Codec as Internal.Codec
+import Registry.Location (Location(..))
+import Registry.Manifest (Manifest(..))
+import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
+import Registry.PackageName (PackageName)
+import Registry.PackageName as PackageName
+import Registry.Range (Range)
+import Registry.Range as Range
+import Registry.Version (Version)
+import Registry.Version as Version
 import Test.Assert as Assert
 import Test.Spec (Spec)
 import Test.Spec as Spec
+import Test.Utils (unsafeManifest)
+import Test.Utils as Utils
 
 spec :: Spec Unit
 spec = do
   Spec.it "Round-trips package entry fixture" do
-    let contextEntry' = String.trim contextEntry
-    let parsedContext = ManifestIndex.parseEntry contextEntry'
-    contextEntry' `Assert.shouldEqualRight` map (ManifestIndex.printEntry <<< NonEmptySet.fromFoldable1) parsedContext
+    let parsedContext = ManifestIndex.parseEntry contextEntry
+    contextEntry `Assert.shouldEqualRight` map (ManifestIndex.printEntry <<< NonEmptySet.fromFoldable1) parsedContext
+
+  Spec.it "Prefers second manifest in the case of insertion." do
+    let
+      manifest1 = unsafeManifest "prelude" "1.0.0" []
+      manifest2 = Newtype.over Manifest (_ { description = Just "My prelude description." }) manifest1
+      index =
+        ManifestIndex.insert manifest1 ManifestIndex.empty
+          >>= ManifestIndex.insert manifest2
+
+    case index of
+      Left errors ->
+        Assert.fail $ formatInsertErrors errors
+      Right result -> do
+        let name = (un Manifest manifest1).name
+        let version = (un Manifest manifest1).version
+        case ManifestIndex.lookup name version result of
+          Nothing ->
+            Assert.fail $ "Missing package: " <> Utils.formatPackageVersion name version
+          Just (Manifest { description }) ->
+            description `Assert.shouldEqual` (un Manifest manifest2).description
+
+  Spec.it "Topologically sorts manifests" do
+    -- TODO: This is unspecified behavior if there is no relation in the ranges.
+    testSorted
+      [ unsafeManifest "control" "1.0.0" [ Tuple "prelude" ">=2.0.0 <3.0.0" ]
+      , unsafeManifest "prelude" "1.0.0" []
+      ]
+
+  Spec.it "Parses tiny index" do
+    let
+      tinyIndex :: Array Manifest
+      tinyIndex = [ unsafeManifest "prelude" "1.0.0" [] ]
+
+    testIndex { satisfied: tinyIndex, unsatisfied: [] }
+
+  Spec.it "Fails to parse non-self-contained index" do
+    let
+      satisfied :: Array Manifest
+      satisfied =
+        [ unsafeManifest "prelude" "1.0.0" []
+        , unsafeManifest "control" "1.0.0" [ Tuple "prelude" ">=1.0.0 <2.0.0" ]
+        ]
+
+      unsatisfied :: Array Manifest
+      unsatisfied =
+        [ unsafeManifest "control" "2.0.0" [ Tuple "prelude" ">=2.0.0 <3.0.0" ]
+        ]
+
+    testIndex { satisfied, unsatisfied }
+
+  Spec.it "Parses cyclical but acceptable index" do
+    let
+      satisfied :: Array Manifest
+      satisfied =
+        [ unsafeManifest "prelude" "1.0.0" []
+        , unsafeManifest "prelude" "2.0.0" [ Tuple "control" ">=2.0.0 <3.0.0" ]
+        , unsafeManifest "control" "1.0.0" [ Tuple "prelude" ">=1.0.0 <2.0.0" ]
+        , unsafeManifest "control" "2.0.0" []
+        ]
+
+    testIndex { satisfied, unsatisfied: [] }
+
+  Spec.it "Does not parse unacceptable cyclical index" do
+    let
+      unsatisfied :: Array Manifest
+      unsatisfied =
+        [ unsafeManifest "prelude" "1.0.0" [ Tuple "control" ">=1.0.0 <2.0.0" ]
+        , unsafeManifest "control" "1.0.0" [ Tuple "prelude" ">=1.0.0 <2.0.0" ]
+        ]
+
+    testIndex { satisfied: [], unsatisfied }
+
+  Spec.it "Lenient mode accepts failed version bounds" do
+    let
+      index :: Set Manifest
+      index = Set.fromFoldable
+        [ unsafeManifest "prelude" "1.0.0" []
+        , unsafeManifest "control" "1.0.0" [ Tuple "prelude" ">=2.0.0 <3.0.0" ]
+        ]
+    for_ (ManifestIndex.fromSet index) \_ ->
+      Assert.fail "fromSet should not have succeeded on failed version bounds."
+    let Tuple errors _ = ManifestIndex.maximalIndexIgnoringBounds index
+    unless (Map.isEmpty errors) do
+      Assert.fail $ "Should not have failed, but did: " <> formatLenientErrors errors
 
 contextEntry :: String
 contextEntry =
-  """
-{"name":"context","version":"0.0.1","license":"MIT","location":{"githubOwner":"Fresheyeball","githubRepo":"purescript-owner"},"dependencies":{}}
+  """{"name":"context","version":"0.0.1","license":"MIT","location":{"githubOwner":"Fresheyeball","githubRepo":"purescript-owner"},"dependencies":{}}
 {"name":"context","version":"0.0.2","license":"MIT","location":{"githubOwner":"Fresheyeball","githubRepo":"purescript-owner"},"dependencies":{}}
 {"name":"context","version":"0.0.3","license":"MIT","location":{"githubOwner":"Fresheyeball","githubRepo":"purescript-owner"},"dependencies":{}}
 """
+
+testIndex
+  :: forall m
+   . MonadThrow Error m
+  => { satisfied :: Array Manifest, unsatisfied :: Array Manifest }
+  -> m Unit
+testIndex { satisfied, unsatisfied } = case ManifestIndex.maximalIndex (Set.fromFoldable (Array.fold [ satisfied, unsatisfied ])) of
+  Tuple errors result -> do
+    let
+      { fail: shouldHaveErrors } =
+        Utils.partitionEithers $ unsatisfied <#> \(Manifest m) ->
+          case Map.lookup m.name errors >>= Map.lookup m.version of
+            Nothing -> Left (Utils.formatPackageVersion m.name m.version)
+            Just _ -> Right unit
+
+      { fail: shouldHaveSuccess } =
+        Utils.partitionEithers $ satisfied <#> \(Manifest m) ->
+          case Map.lookup m.name errors >>= Map.lookup m.version of
+            Nothing -> Right unit
+            Just missing -> Left $ Array.fold
+              [ Utils.formatPackageVersion m.name m.version
+              , " could not satisfy "
+              , Array.foldMap
+                  ( \(Tuple name range) ->
+                      PackageName.print name <> " (" <> Range.print range <> ")"
+                  )
+                  (Map.toUnfoldable missing)
+              ]
+
+    unless (Array.null shouldHaveErrors && Array.null shouldHaveSuccess) do
+      Assert.fail $ String.joinWith "\n"
+        [ Array.foldMap (append "\n  - Should not have satisfied: ") shouldHaveErrors
+        , Array.foldMap (append "\n  - Should have satisfied: ") shouldHaveSuccess
+        ]
+
+    let expectedSize = Array.length (Array.nub satisfied)
+    case List.foldl (+) 0 $ map Map.size $ Map.values $ ManifestIndex.toMap result of
+      n | n == expectedSize -> pure unit
+      n -> Assert.fail $ Array.fold
+        [ "Index should have size "
+        , Int.toStringAs Int.decimal expectedSize
+        , " but has size "
+        , Int.toStringAs Int.decimal n
+        , ":\n"
+        , formatIndex result
+        ]
+
+testSorted :: forall m. MonadThrow Error m => Array Manifest -> m Unit
+testSorted input = do
+  let sorted = ManifestIndex.topologicalSort (Set.fromFoldable input)
+  unless (input == sorted) do
+    Assert.fail $ String.joinWith "\n"
+      [ Argonaut.stringifyWithIndent 2 $ CA.encode (CA.array manifestCodec') input
+      , " is not equal to "
+      , Argonaut.stringifyWithIndent 2 $ CA.encode (CA.array manifestCodec') sorted
+      ]
+
+formatInsertErrors :: Map PackageName Range -> String
+formatInsertErrors errors = String.joinWith "\n"
+  [ "Failed to insert. Failed to satisfy:"
+  , Argonaut.stringifyWithIndent 2 $ CA.encode (Internal.Codec.packageMap Range.codec) errors
+  ]
+
+formatLenientErrors :: Map PackageName (Map Version (Array PackageName)) -> String
+formatLenientErrors errors = String.joinWith "\n"
+  [ "Failed to produce index:"
+  , Argonaut.stringifyWithIndent 2
+      $ flip CA.encode errors
+      $ Internal.Codec.packageMap
+      $ Internal.Codec.versionMap
+      $ CA.array PackageName.codec
+  ]
+
+formatIndex :: ManifestIndex -> String
+formatIndex =
+  Argonaut.stringifyWithIndent 2
+    <<< CA.encode (Internal.Codec.packageMap (Internal.Codec.versionMap manifestCodec'))
+    <<< ManifestIndex.toMap
+
+manifestCodec' :: JsonCodec Manifest
+manifestCodec' = Profunctor.dimap to from $ CA.Record.object "ManifestRep"
+  { name: PackageName.codec
+  , version: Version.codec
+  , dependencies: Internal.Codec.packageMap Range.codec
+  }
+  where
+  to (Manifest { name, version, dependencies }) = { name, version, dependencies }
+  from { name, version, dependencies } = Manifest
+    { name
+    , version
+    , dependencies
+    , license: Utils.unsafeLicense "MIT"
+    , location: Git
+        { url: "https://github.com/purescript/purescript-" <> PackageName.print name <> ".git"
+        , subdir: Nothing
+        }
+    , description: Nothing
+    , owners: Nothing
+    , files: Nothing
+    }

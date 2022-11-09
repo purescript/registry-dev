@@ -34,4 +34,4 @@ main = Aff.launchAff_ $ Spec.Runner.runSpec [ Spec.Reporter.consoleReporter ] do
     Spec.describe "Operation" Test.Operation.spec
 
   Spec.describe "Structures" do
-    Spec.describe "ManifestIndex" Test.ManifestIndex.spec
+    Spec.describeOnly "ManifestIndex" Test.ManifestIndex.spec
