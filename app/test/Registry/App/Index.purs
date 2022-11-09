@@ -21,6 +21,7 @@ import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
+import Registry.Manifest as Manifest
 import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName (PackageName)
@@ -54,7 +55,7 @@ runTestRegistryM index =
 
 testRegistryIndex :: Spec.SpecT (Reader.ReaderT TestIndexEnv Aff) Unit Identity Unit
 testRegistryIndex = Spec.before runBefore do
-  Spec.describe "Registry index writes to and reads back from disk" do
+  Spec.describeOnly "Registry index writes to and reads back from disk" do
     Spec.it "Reads an empty index from disk" \{ tmp } -> do
       initialIndex <- runTestRegistryM tmp App.Index.readManifestIndexFromDisk
       Map.size (ManifestIndex.toMap initialIndex) `Assert.shouldEqual` 0
@@ -113,8 +114,7 @@ testRegistryIndex = Spec.before runBefore do
   where
   runBefore = do
     { tmp, indexRef } <- Reader.ask
-    let
-      writeMemory = liftEffect <<< flip Ref.write indexRef
+    let writeMemory = liftEffect <<< flip Ref.write indexRef
     index <- liftEffect $ Ref.read indexRef
     pure { tmp, index, writeMemory }
 
@@ -125,21 +125,23 @@ testRegistryIndex = Spec.before runBefore do
       -- First, we insert the manifest to disk and then read back the result.
       result <- ManifestIndex.insertIntoEntryFile tmp manifest
       case result of
-        Left error -> Assert.fail error
+        Left error -> Assert.fail $ "Failed to write to file " <> ManifestIndex.packageEntryFilePath packageName <> "\n" <> error
         Right _ -> pure unit
       diskIndex <- runTestRegistryM tmp App.Index.readManifestIndexFromDisk
 
       case ManifestIndex.insert manifest index of
         Left errors ->
           Assert.fail
+            $ append ("Failed to insert " <> PackageName.print packageName <> "\n")
             $ Argonaut.stringifyWithIndent 2
             $ CA.encode (Internal.Codec.packageMap Range.codec) errors
         Right memoryIndex -> do
           _ <- writeMemory memoryIndex
-          let sorted = ManifestIndex.toSortedArray memoryIndex
-          -- Finally, we verify that the on-disk index equals the in-memory index.
-          (diskIndex == memoryIndex) `Assert.shouldEqual` true
-          (isSorted sorted) `Assert.shouldEqual` true
+          let sortedMemoryIndex = ManifestIndex.toSortedArray memoryIndex
+          let sortedDiskIndex = ManifestIndex.toSortedArray diskIndex
+          let print = Argonaut.stringify <<< CA.encode (CA.array Manifest.codec)
+          print sortedDiskIndex `Assert.shouldEqual` print sortedMemoryIndex
+          isSorted sortedMemoryIndex `Assert.shouldEqual` true
 
 -- | Verify that manifests are topologically sorted by their dependencies
 isSorted :: Array Manifest -> Boolean

@@ -118,7 +118,9 @@ insert manifest@(Manifest { name, version, dependencies }) (ManifestIndex index)
           [ Tuple dependency range ]
 
   if Map.isEmpty unsatisfied then
-    Right $ ManifestIndex $ Map.insertWith Map.union name (Map.singleton version manifest) index
+    -- We flip `Map.union` below to ensure that later entries overwrite earlier
+    -- entries, as is typical for an insertion operation.
+    Right $ ManifestIndex $ Map.insertWith (flip Map.union) name (Map.singleton version manifest) index
   else
     Left unsatisfied
 
@@ -269,9 +271,10 @@ writeEntryFile indexPath manifests = do
   case NonEmptySet.size names of
     1 -> do
       let Manifest { name } = NonEmptySet.min manifests
+      let entryDirectory = Path.concat [ indexPath, packageEntryDirectory name ]
       let entryPath = Path.concat [ indexPath, packageEntryFilePath name ]
-      unlessM (liftEffect (FS.Sync.exists entryPath)) do
-        liftAff $ FS.Aff.mkdir' entryPath { recursive: true, mode: FS.Perms.mkPerms FS.Perms.all FS.Perms.all FS.Perms.all }
+      unlessM (liftEffect (FS.Sync.exists entryDirectory)) do
+        liftAff $ FS.Aff.mkdir' entryDirectory { recursive: true, mode: FS.Perms.mkPerms FS.Perms.all FS.Perms.all FS.Perms.all }
       let entry = printEntry manifests
       liftAff (Error.try (FS.Aff.writeTextFile UTF8 entryPath entry)) >>= case _ of
         Left error -> pure $ Left $ Exception.message error
