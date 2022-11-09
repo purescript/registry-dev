@@ -23,7 +23,9 @@ import Data.Set as Set
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.Tuple (Tuple(..))
+import Data.Tuple.Nested ((/\))
 import Effect.Exception (Error)
+import Node.Path as Path
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
@@ -47,7 +49,31 @@ spec = do
     let parsedContext = ManifestIndex.parseEntry contextEntry
     contextEntry `Assert.shouldEqualRight` map (ManifestIndex.printEntry <<< NonEmptySet.fromFoldable1) parsedContext
 
-  Spec.it "Prefers second manifest in the case of insertion." do
+  Spec.it "Produces correct entry file paths" do
+    let
+      entries =
+        [ "a" /\ Path.concat [ "1", "a" ]
+        , "ab" /\ Path.concat [ "2", "ab" ]
+        , "abc" /\ Path.concat [ "3", "a", "abc" ]
+        , "abcd" /\ Path.concat [ "ab", "cd", "abcd" ]
+        , "abcde" /\ Path.concat [ "ab", "cd", "abcde" ]
+        ]
+
+      parse (name /\ path) = do
+        let computedPath = ManifestIndex.packageEntryFilePath (Utils.unsafePackageName name)
+        if computedPath == path then Right unit else Left (name /\ path /\ computedPath)
+
+      formatError (name /\ expected /\ received) = name <> " should have path " <> expected <> " but got path " <> received
+
+      { fail } = Utils.partitionEithers $ map parse entries
+
+    unless (Array.null fail) do
+      Assert.fail $ String.joinWith "\n"
+        [ "Some package names did not map to correct directories:"
+        , Array.foldMap (append "\n  - " <<< formatError) fail
+        ]
+
+  Spec.it "Prefers second manifest in the case of duplicate insertion." do
     let
       manifest1 = unsafeManifest "prelude" "1.0.0" []
       manifest2 = Newtype.over Manifest (_ { description = Just "My prelude description." }) manifest1
@@ -120,7 +146,7 @@ spec = do
 
     testIndex { satisfied: [], unsatisfied }
 
-  Spec.it "Parsing maximal index ignoring bounds mode accepts invalid version bounds" do
+  Spec.it "Parsing maximal index ignoring bounds accepts invalid version bounds" do
     let
       index :: Set Manifest
       index = Set.fromFoldable
