@@ -57,11 +57,12 @@ import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageSets as App.PackageSets
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
+import Registry.Constants (GitHubRepo)
 import Registry.Constants as Constants
 import Registry.Json as Json
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.PackageSet as Legacy.PackageSet
-import Registry.Location (GitHubData, Location(..))
+import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
@@ -878,7 +879,7 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
       filename = PackageName.print packageName <> "-" <> Version.print version <> ".tar.gz"
       filepath = Path.concat [ dir, filename ]
 
-    liftAff (withBackoff' (Wget.wget (Constants.packageStorage <> "/" <> PackageName.print packageName <> "/" <> Version.print version <> ".tar.gz") filepath)) >>= case _ of
+    liftAff (withBackoff' (Wget.wget (Constants.packageStorageUrl <> "/" <> PackageName.print packageName <> "/" <> Version.print version <> ".tar.gz") filepath)) >>= case _ of
       Nothing -> throwWithComment "Could not fetch tarball."
       Just (Left err) -> throwWithComment $ "Error while fetching tarball: " <> err
       Just (Right _) -> pure unit
@@ -1085,7 +1086,7 @@ locationIsUnique location = Map.isEmpty <<< Map.filter (eq location <<< _.locati
 -- | Fetch the latest from the given repository. Will perform a fresh clone if
 -- | a checkout of the repository does not exist at the given path, and will
 -- | pull otherwise.
-fetchRepo :: GitHubData -> FilePath -> Aff Unit
+fetchRepo :: GitHubRepo -> FilePath -> Aff Unit
 fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
   true -> do
     log $ "Found the " <> address.repo <> " repo locally, pulling..."
@@ -1102,9 +1103,6 @@ fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
       Right _ -> pure unit
   _ -> do
     log $ "Didn't find the " <> address.repo <> " repo, cloning..."
-    case address.subdir of
-      Nothing -> Aff.throwError $ Aff.error "Cannot clone GitHub location using 'subdir' key."
-      Just _ -> pure unit
     Except.runExceptT (Git.runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> pure unit
