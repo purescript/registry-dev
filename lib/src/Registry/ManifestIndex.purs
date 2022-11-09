@@ -42,7 +42,6 @@ import Data.Int as Int
 import Data.List (List)
 import Data.List as List
 import Data.Map (Map)
-import Data.Map as MAp
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Maybe as Maybe
@@ -90,7 +89,7 @@ toMap (ManifestIndex index) = index
 toSortedArray :: ManifestIndex -> Array Manifest
 toSortedArray (ManifestIndex index) = topologicalSort $ Set.fromFoldable do
   Tuple _ versions <- Map.toUnfoldableUnordered index
-  Tuple _ manifest <- MAp.toUnfoldableUnordered versions
+  Tuple _ manifest <- Map.toUnfoldableUnordered versions
   [ manifest ]
 
 -- | Look up a package version's manifest in the manifest index.
