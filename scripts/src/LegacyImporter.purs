@@ -15,6 +15,7 @@ import Control.Monad.Reader (ask, asks)
 import Data.Array as Array
 import Data.Compactable (separate)
 import Data.Filterable (partition)
+import Data.Foldable (foldMap)
 import Data.Foldable as Foldable
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.List as List
@@ -32,11 +33,10 @@ import Node.Process as Node.Process
 import Parsing as Parsing
 import Registry.API (LegacyRegistryFile(..), Source(..))
 import Registry.API as API
+import Registry.App.Index as App.Index
 import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
-import Registry.Index (RegistryIndex)
-import Registry.Index as Index
 import Registry.Json ((.:))
 import Registry.Json as Json
 import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
@@ -44,9 +44,10 @@ import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.Manifest as LegacyManifest
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
+import Registry.ManifestIndex (ManifestIndex)
+import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata (Metadata(..))
 import Registry.Operation (PackageOperation(..))
-import Registry.PackageGraph as Graph
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageUpload as Upload
@@ -161,17 +162,19 @@ main = launchAff_ do
 
     log "Reading existing registry index..."
     existingRegistry <- do
+      registry <- App.Index.readManifestIndexFromDisk
       -- To ensure the metadata and registry index are always in sync, we remove
       -- any entries from the registry index that don't have accompanying metadata
       metadata <- liftEffect $ Ref.read metadataRef
-      registry <- liftAff $ Index.readRegistryIndex registryIndexPath
       let hasMetadata package version = API.isPackageVersionInMetadata package version metadata
-      let mismatched = mapWithIndex (Map.filterKeys <<< not <<< hasMetadata) registry
-      liftAff $ do
+      let mismatched = mapWithIndex (Map.filterKeys <<< not <<< hasMetadata) $ ManifestIndex.toMap registry
+      if Map.isEmpty mismatched then
+        pure registry
+      else do
         void $ forWithIndex mismatched \package versions ->
           forWithIndex versions \version _ ->
-            Index.deleteManifest registryIndexPath package version
-        Index.readRegistryIndex registryIndexPath
+            ManifestIndex.removeFromEntryFile registryIndexPath package version
+        App.Index.readManifestIndexFromDisk
 
     log "Reading legacy registry..."
     legacyRegistry <- readLegacyRegistryFiles
@@ -200,7 +203,7 @@ main = launchAff_ do
         Just _ -> pure unit
 
     log "Sorting packages for upload..."
-    let indexPackages = Graph.topologicalSort importedIndex.registryIndex
+    let indexPackages = ManifestIndex.toSortedArray importedIndex.registryIndex
     metadataMap <- readPackagesMetadata
 
     let
@@ -255,7 +258,7 @@ main = launchAff_ do
         liftAff (Json.writeJsonFile (API.metadataFile dir name) metadata)
 
       log "Regenerating registry index..."
-      void $ for indexPackages (liftAff <<< Index.insertManifest registryIndexPath)
+      void $ for indexPackages (liftAff <<< ManifestIndex.insertIntoEntryFile registryIndexPath)
 
     log "Done!"
 
@@ -278,7 +281,7 @@ type ImportedIndex =
   { failedPackages :: Map RawPackageName PackageValidationError
   , failedVersions :: Map RawPackageName (Map RawVersion VersionValidationError)
   , reservedPackages :: Map PackageName Location
-  , registryIndex :: RegistryIndex
+  , registryIndex :: ManifestIndex
   , packageRefs :: Map PackageName (Map Version RawVersion)
   }
 
@@ -286,7 +289,7 @@ type ImportedIndex =
 -- | the legacy registry files. This function also collects import errors for
 -- | packages and package versions and reports packages that are present in the
 -- | legacy registry but not in the resulting registry.
-importLegacyRegistry :: RegistryIndex -> LegacyRegistry -> RegistryM ImportedIndex
+importLegacyRegistry :: ManifestIndex -> LegacyRegistry -> RegistryM ImportedIndex
 importLegacyRegistry existingRegistry legacyRegistry = do
   legacyPackageSets <- LegacyManifest.fetchLegacyPackageSets
   manifests <- forWithIndex legacyRegistry \name address ->
@@ -304,6 +307,9 @@ importLegacyRegistry existingRegistry legacyRegistry = do
         , right: if Map.isEmpty right then acc.right else Map.insert key right acc.right
         }
 
+    validLegacyManifests :: Set Manifest
+    validLegacyManifests = Set.fromFoldable $ foldMap Map.values $ Map.values separatedVersions.right
+
     -- The raw ref strings associated with the input package names and versions
     packageRefs :: Map PackageName (Map Version RawVersion)
     packageRefs = Map.fromFoldableWith Map.union do
@@ -311,25 +317,9 @@ importLegacyRegistry existingRegistry legacyRegistry = do
       Tuple rawVersion (Manifest manifest) <- Map.toUnfoldable rawVersions
       [ Tuple manifest.name (Map.singleton manifest.version rawVersion) ]
 
-    toValues :: forall k v. Map k v -> Array v
-    toValues = Array.fromFoldable <<< Map.values
-
-    -- The registry index produced by fetching manifests for packages listed in
-    -- the legacy registry files. This is not an acceptable index because it
-    -- doesn't verify that all dependencies are contained in the registry.
-    rawLegacyIndex :: Map PackageName (Map Version Manifest)
-    rawLegacyIndex = do
-      let
-        validManifests =
-          Array.concatMap toValues (toValues separatedVersions.right)
-        foldFn m manifest@(Manifest { name, version }) =
-          Map.insertWith Map.union name (Map.singleton version manifest) m
-      Array.foldl foldFn Map.empty validManifests
-
     -- A 'checked' index is one where we have verified that all dependencies
     -- are self-contained within the registry.
-    checkedIndex :: Graph.CheckedRegistryIndex
-    checkedIndex = Graph.checkRegistryIndex rawLegacyIndex
+    Tuple unsatisfied validIndex = ManifestIndex.maximalIndex validLegacyManifests
 
     -- The list of all packages that were present in the legacy registry files,
     -- but which have no versions present in the fully-imported registry. These
@@ -340,7 +330,7 @@ importLegacyRegistry existingRegistry legacyRegistry = do
       where
       reserved (Tuple (RawPackageName name) address) = do
         packageName <- hush $ PackageName.parse name
-        guard $ isNothing $ Map.lookup packageName checkedIndex.index
+        guard $ isNothing $ Map.lookup packageName $ ManifestIndex.toMap validIndex
         { owner, repo } <- hush $ GitHub.parseRepo address
         pure (Tuple packageName (GitHub { owner, repo, subdir: Nothing }))
 
@@ -361,16 +351,17 @@ importLegacyRegistry existingRegistry legacyRegistry = do
           Map.insertWith Map.union fail.package (Map.singleton fail.version error) acc
         dependencyFailures =
           Array.foldl foldFn Map.empty do
-            { dependencies, package, version } <- checkedIndex.unsatisfied
-            let ref = unsafeFromJust $ Map.lookup package packageRefs >>= Map.lookup version
-            [ { package: RawPackageName (PackageName.print package), version: ref, dependencies } ]
+            Tuple name versions <- Map.toUnfoldable unsatisfied
+            Tuple version deps <- Map.toUnfoldable versions
+            let ref = unsafeFromJust (Map.lookup name packageRefs >>= Map.lookup version)
+            [ { package: RawPackageName (PackageName.print name), version: ref, dependencies: Array.fromFoldable $ Map.keys deps } ]
       Map.unionWith Map.union separatedVersions.left dependencyFailures
 
   pure
     { failedPackages: packageFailures
     , failedVersions: versionFailures
     , reservedPackages: reservedPackages
-    , registryIndex: checkedIndex.index
+    , registryIndex: validIndex
     , packageRefs
     }
 
@@ -379,7 +370,7 @@ importLegacyRegistry existingRegistry legacyRegistry = do
 -- | be fetched in the first place. Otherwise, it will produce errors for all
 -- | versions that don't produce valid manifests, and manifests for all that do.
 buildLegacyPackageManifests
-  :: RegistryIndex
+  :: ManifestIndex
   -> LegacyManifest.LegacyPackageSetEntries
   -> RawPackageName
   -> GitHub.PackageURL
@@ -406,7 +397,7 @@ buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl
             legacyManifest <- LegacyManifest.fetchLegacyManifest packageSetDeps package.address (RawVersion tag.name)
             pure $ LegacyManifest.toManifest package.name (LenientVersion.version version) location legacyManifest
 
-      case Map.lookup package.name existingRegistry >>= Map.lookup (LenientVersion.version version) of
+      case ManifestIndex.lookup package.name (LenientVersion.version version) existingRegistry of
         Just manifest -> pure manifest
         _ -> do
           let key = "manifest__" <> PackageName.print package.name <> "--" <> tag.name
@@ -680,7 +671,7 @@ calculateImportStats legacyRegistry imported = do
   let
     registryIndex :: Map RawPackageName (Map RawVersion Manifest)
     registryIndex = Map.fromFoldableWith Map.union do
-      Tuple name versions <- Map.toUnfoldable imported.registryIndex
+      Tuple name versions <- Map.toUnfoldable $ ManifestIndex.toMap imported.registryIndex
       Tuple version manifest <- Map.toUnfoldable versions
       let ref = unsafeFromJust (Map.lookup name imported.packageRefs >>= Map.lookup version)
       [ Tuple (RawPackageName (PackageName.print name)) (Map.singleton ref manifest) ]

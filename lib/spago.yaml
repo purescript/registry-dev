@@ -6,6 +6,7 @@ package:
     - codec-argonaut
     - effect
     - formatters
+    - graphs
     - node-buffer
     - node-fs-aff
     - node-path

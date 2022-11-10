@@ -42,11 +42,12 @@ import Node.Path as Path
 import Parsing as Parsing
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
-import Registry.Index (RegistryIndex)
 import Registry.Internal.Format as Internal.Format
 import Registry.Json as Json
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
+import Registry.ManifestIndex (ManifestIndex)
+import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -126,7 +127,7 @@ printPscTag (PscTag { compiler, date }) =
     , Format.DateTime.format pscDateFormat (DateTime date bottom)
     ]
 
-fromPackageSet :: RegistryIndex -> Map PackageName Metadata -> PackageSet -> Either String ConvertedLegacyPackageSet
+fromPackageSet :: ManifestIndex -> Map PackageName Metadata -> PackageSet -> Either String ConvertedLegacyPackageSet
 fromPackageSet index metadataMap (PackageSet { compiler, packages, published, version }) = do
   converted <- case separate $ mapWithIndex convertPackage packages of
     { left, right } | Map.isEmpty left -> Right right
@@ -151,7 +152,7 @@ fromPackageSet index metadataMap (PackageSet { compiler, packages, published, ve
 
   convertPackage :: PackageName -> Version -> Either String LegacyPackageSetEntry
   convertPackage packageName packageVersion = do
-    versions <- note noIndexPackageError $ Map.lookup packageName index
+    versions <- note noIndexPackageError $ Map.lookup packageName $ ManifestIndex.toMap index
     Manifest manifest <- note noIndexVersionError $ Map.lookup packageVersion versions
 
     Metadata metadata <- note noMetadataPackageError $ Map.lookup packageName metadataMap
@@ -253,7 +254,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
   let printedTag = printPscTag tag
 
   when (Set.member printedTag packageSetsTags) do
-    RegistryM.throwWithComment $ "Package set tag " <> printedTag <> "already exists, aborting..."
+    RegistryM.throwWithComment $ "Package set tag " <> printedTag <> " already exists, aborting..."
 
   let packageSetsUrl = "https://github.com/" <> legacyPackageSetsRepo.owner <> "/" <> legacyPackageSetsRepo.repo <> ".git"
   liftAff (Except.runExceptT (Git.runGit [ "clone", packageSetsUrl, "--depth", "1" ] (Just tmp))) >>= case _ of

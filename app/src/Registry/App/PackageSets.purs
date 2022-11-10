@@ -39,10 +39,10 @@ import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Registry.Constants as Constants
-import Registry.Index (RegistryIndex)
 import Registry.Json as Json
 import Registry.Manifest (Manifest(..))
-import Registry.PackageGraph as PackageGraph
+import Registry.ManifestIndex (ManifestIndex)
+import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageSet (PackageSet(..))
@@ -106,7 +106,7 @@ type PackageSetBatchResult =
 -- | Attempt to produce a new package set from the given package set by adding
 -- | or removing the provided packages. Fails if the batch is not usable as a
 -- | whole. To fall back to sequential processing, use `processBatchSequential`.
-processBatchAtomic :: FilePath -> RegistryIndex -> PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> RegistryM (Maybe PackageSetBatchResult)
+processBatchAtomic :: FilePath -> ManifestIndex -> PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> RegistryM (Maybe PackageSetBatchResult)
 processBatchAtomic workDir index prevSet@(PackageSet { compiler: prevCompiler, packages }) newCompiler batch = do
   let
     compilerVersion = fromMaybe prevCompiler newCompiler
@@ -139,7 +139,7 @@ processBatchAtomic workDir index prevSet@(PackageSet { compiler: prevCompiler, p
 -- | Attempt to produce a new package set from the given package set by adding
 -- | or removing the provided packages. Attempts the entire batch first, and
 -- | then falls sequential processing if that fails.
-processBatchSequential :: FilePath -> RegistryIndex -> PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> RegistryM (Maybe PackageSetBatchResult)
+processBatchSequential :: FilePath -> ManifestIndex -> PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> RegistryM (Maybe PackageSetBatchResult)
 processBatchSequential workDir registryIndex prevSet@(PackageSet { compiler: prevCompiler, packages }) newCompiler batch = do
   processBatchAtomic workDir registryIndex prevSet newCompiler batch >>= case _ of
     Just batchResult ->
@@ -150,7 +150,7 @@ processBatchSequential workDir registryIndex prevSet@(PackageSet { compiler: pre
       -- sort packages by their dependencies.
       let
         compilerVersion = fromMaybe prevCompiler newCompiler
-        sortedPackages = PackageGraph.topologicalSort registryIndex
+        sortedPackages = ManifestIndex.toSortedArray registryIndex
         sortedBatch =
           sortedPackages # Array.mapMaybe \(Manifest { name, version }) -> do
             update <- Map.lookup name batch
@@ -419,27 +419,77 @@ type ValidatedCandidates =
   , rejected :: Map PackageName { reason :: String, value :: Maybe Version }
   }
 
--- | Validate a package set is self-contained
-validatePackageSet :: RegistryIndex -> PackageSet -> RegistryM Unit
-validatePackageSet index (PackageSet { packages, version }) = case PackageGraph.checkPackages index packages of
-  { rejected } | not Array.null rejected -> do
+-- | Validate a package set is self-contained, ignoring version bounds.
+validatePackageSet :: ManifestIndex -> PackageSet -> RegistryM Unit
+validatePackageSet index (PackageSet set) = do
+  let
+    errorPrefix = "Package set " <> Version.print set.version <> " is invalid!\n"
+
+    -- First, we need to associate manifests with each package in the set so
+    -- we can verify their dependencies.
+    manifests = do
+      Tuple name version <- Map.toUnfoldable set.packages
+      case ManifestIndex.lookup name version index of
+        Nothing -> pure $ Left { name, version }
+        Just manifest -> pure $ Right manifest
+
+    -- No unregistered package versions are allowed in the package sets, so it
+    -- should be impossible for the lookup to fail. Nevertheless, we need to
+    -- verify that is in fact the case.
+    { fail, success } = partitionEithers manifests
+
+  -- If we failed to look up one or more manifests then the package versions are
+  -- unregistered according to the index, and therefore the set is invalid.
+  when (not (Array.null fail)) do
     let
-      message = "Package set " <> Version.print version <> " is invalid! Some packages have dependencies not in the set:\n"
-      packageMessages = rejected <#> \{ package, dependencies } -> Array.fold
-        [ "\n  - "
-        , PackageName.print package
-        , " ("
-        , String.joinWith ", " (map PackageName.print dependencies)
-        , ")"
+      failedMessages = fail <#> \package -> Array.fold
+        [ "  - "
+        , PackageName.print package.name
+        , "@"
+        , Version.print package.version
         ]
-    throwWithComment (message <> Array.fold packageMessages)
-  _ ->
-    pure unit
+
+    throwWithComment $ String.joinWith "\n"
+      [ errorPrefix
+      , "Some package versions in the package set are not registered:"
+      , String.joinWith "\n" failedMessages
+      ]
+
+  let
+    -- We can now attempt to produce a self-contained manifest index from the
+    -- collected manifests. If this fails then the package set is not
+    -- self-contained.
+    Tuple unsatisfied _ = ManifestIndex.maximalIndex (Set.fromFoldable success)
+
+  -- Otherwise, we can check if we were able to produce an index from the
+  -- package set alone, without errors.
+  unless (Map.isEmpty unsatisfied) do
+    let
+      failures = do
+        Tuple name versions <- Map.toUnfoldable unsatisfied
+        Tuple version dependencies <- Map.toUnfoldable versions
+        [ { name, version, dependencies } ]
+
+      failedMessages = failures <#> \package -> Array.fold
+        [ "  - "
+        , PackageName.print package.name
+        , "@"
+        , Version.print package.version
+        , " ("
+        , String.joinWith ", " (map PackageName.print (Array.fromFoldable (Map.keys package.dependencies)))
+        , ")."
+        ]
+
+    throwWithComment $ String.joinWith "\n"
+      [ errorPrefix
+      , "Some package versions in the set have unsatisfied dependencies:"
+      , String.joinWith "\n" failedMessages
+      ]
 
 -- | Validate a provided set of package set candidates. Should be used before
 -- | attempting to process a batch of packages for a package set.
 validatePackageSetCandidates
-  :: RegistryIndex
+  :: ManifestIndex
   -> PackageSet
   -> Map PackageName (Maybe Version)
   -> ValidatedCandidates
@@ -477,7 +527,7 @@ validatePackageSetCandidates index (PackageSet { packages: previousPackages }) c
     -- A package can only be added to the package set if all its dependencies
     -- already exist in the package set or the batch being processed.
     let noManifestError = "No manifest entry exists in the registry index."
-    Manifest manifest <- note noManifestError (Map.lookup version =<< Map.lookup name index)
+    Manifest manifest <- note noManifestError (ManifestIndex.lookup name version index)
 
     let
       dependencies = Array.fromFoldable (Map.keys manifest.dependencies)
@@ -523,7 +573,7 @@ validatePackageSetCandidates index (PackageSet { packages: previousPackages }) c
 
   dependsOn :: PackageName -> Tuple PackageName Version -> Boolean
   dependsOn removal (Tuple package version) = fromMaybe false do
-    Manifest manifest <- Map.lookup version =<< Map.lookup package index
+    Manifest manifest <- ManifestIndex.lookup package version index
     pure $ Map.member removal manifest.dependencies
 
 printRejections :: Map PackageName { reason :: String, value :: Maybe Version } -> String

@@ -14,18 +14,21 @@ import Effect.Exception as Exception
 import Foreign.Git as Git
 import Foreign.Tmp as Tmp
 import Node.Path as Path
-import Registry.Index (RegistryIndex)
-import Registry.Index as Index
+import Registry.App.Index as App.Index
 import Registry.Json as Json
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
+import Registry.ManifestIndex (ManifestIndex)
+import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
+import Registry.RegistryM as RegistryM
 import Registry.Solver as Solver
 import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Assert as Assert
+import Test.RegistrySpec as RegistrySpec
 import Test.Scripts.BowerInstaller (BowerSolved)
 import Test.Spec as Spec
 import Test.Spec.Reporter (consoleReporter)
@@ -52,9 +55,9 @@ type Owner = String
 
 type SegmentedByOwner = Map Owner (Map PackageName (Map Version { bower :: BowerSolved, manifest :: Map PackageName Range }))
 
-segmentSolvableByOwner :: RegistryIndex -> FilePath -> Aff SegmentedByOwner
+segmentSolvableByOwner :: ManifestIndex -> FilePath -> Aff SegmentedByOwner
 segmentSolvableByOwner index bowerDir = map snd $ flip State.runStateT Map.empty do
-  void $ forWithIndex index \package versions -> do
+  void $ forWithIndex (ManifestIndex.toMap index) \package versions -> do
     let
       readSolutions :: Aff (Either String (Map Version BowerSolved))
       readSolutions = Json.readJsonFile (Path.concat [ bowerDir, PackageName.print package <> ".json" ])
@@ -91,7 +94,8 @@ setup = do
     Just _ -> pure unit
 
   log "Reading registry index..."
-  index <- Index.readRegistryIndex (Path.concat [ tmp, "registry-index" ])
+  let indexPath = Path.concat [ tmp, "registry-index" ]
+  index <- RegistryM.runRegistryM (RegistrySpec.defaultTestEnv { registryIndex = indexPath }) App.Index.readManifestIndexFromDisk
 
   -- Note: this segmented index only considers packages that have a
   -- corresponding Bower solution.
@@ -100,7 +104,7 @@ setup = do
 
   let
     solverIndex :: Solver.Dependencies
-    solverIndex = map (map (\(Manifest m) -> m.dependencies)) index
+    solverIndex = map (map (\(Manifest m) -> m.dependencies)) (ManifestIndex.toMap index)
 
   pure { solverIndex, solutions: segmentedIndex }
 

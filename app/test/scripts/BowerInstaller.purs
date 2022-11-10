@@ -7,7 +7,7 @@ module Test.Scripts.BowerInstaller where
 import Registry.Prelude
 
 import Control.Monad.Except as Except
-import Control.Monad.Reader (ask, asks)
+import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Filterable (filterMap)
 import Data.FunctorWithIndex (mapWithIndex)
@@ -30,14 +30,15 @@ import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.API as API
+import Registry.App.Index as App.Index
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
-import Registry.Index (RegistryIndex)
-import Registry.Index as Index
 import Registry.Json as Json
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
+import Registry.ManifestIndex (ManifestIndex)
+import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -97,8 +98,7 @@ main = launchAff_ do
     API.fetchRegistryIndex
     API.fillMetadataRef
 
-    registryIndexPath <- asks _.registryIndex
-    registryIndex <- liftAff $ Index.readRegistryIndex registryIndexPath
+    registryIndex <- App.Index.readManifestIndexFromDisk
     metadata <- readPackagesMetadata
 
     let resultsPath = Path.concat [ API.scratchDir, "bower-solver-results" ]
@@ -149,9 +149,9 @@ printBowerInstallType = case _ of
 
 -- | Attempt to solve the entire registry index, relying on previous solver
 -- | results if available.
-runBowerSolver :: RegistryIndex -> Map PackageName Metadata -> BowerSolverResults -> RegistryM (Map PackageName (Map Version (Maybe BowerSolved)))
+runBowerSolver :: ManifestIndex -> Map PackageName Metadata -> BowerSolverResults -> RegistryM (Map PackageName (Map Version (Maybe BowerSolved)))
 runBowerSolver index metadata previousResults =
-  forWithIndex index \package versions ->
+  forWithIndex (ManifestIndex.toMap index) \package versions ->
     forWithIndex versions \version (Manifest manifest) ->
       case Map.lookup package previousResults >>= Map.lookup version of
         Nothing -> map hush $ Except.runExceptT do

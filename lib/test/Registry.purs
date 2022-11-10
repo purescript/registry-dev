@@ -6,6 +6,7 @@ import Effect (Effect)
 import Effect.Aff as Aff
 import Test.Registry.Internal as Test.Internal
 import Test.Registry.Manifest as Test.Manifest
+import Test.Registry.ManifestIndex as Test.ManifestIndex
 import Test.Registry.Metadata as Test.Metadata
 import Test.Registry.Operation as Test.Operation
 import Test.Registry.PackageName as Test.PackageName
@@ -19,7 +20,8 @@ import Test.Spec.Runner as Spec.Runner
 
 main :: Effect Unit
 main = Aff.launchAff_ $ Spec.Runner.runSpec [ Spec.Reporter.consoleReporter ] do
-  Spec.describe "Internal" Test.Internal.spec
+  Spec.describe "Internal"
+    Test.Internal.spec
 
   Spec.describe "Data Types" do
     Spec.describe "Sha256" Test.Sha256.spec
@@ -30,3 +32,6 @@ main = Aff.launchAff_ $ Spec.Runner.runSpec [ Spec.Reporter.consoleReporter ] do
     Spec.describe "Metadata" Test.Metadata.spec
     Spec.describe "Package Set" Test.PackageSet.spec
     Spec.describe "Operation" Test.Operation.spec
+
+  Spec.describe "Structures" do
+    Spec.describe "ManifestIndex" Test.ManifestIndex.spec
