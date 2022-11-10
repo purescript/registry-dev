@@ -5,6 +5,8 @@ module Registry.Internal.Path
 
 import Prelude
 
+import Control.Monad.Except (ExceptT(..), runExceptT)
+import Data.Bifunctor (lmap)
 import Data.Compactable (separate)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
@@ -15,7 +17,6 @@ import Effect.Aff as Aff
 import Node.FS.Aff as FS
 import Node.Path (FilePath)
 import Node.Path as Path
-import Partial.Unsafe (unsafeCrashWith)
 
 type SanitizedPaths = { succeeded :: Array FilePath, failed :: Array FilePath }
 
@@ -26,16 +27,11 @@ sanitizePaths baseDirectory paths = do
   pure { succeeded: right, failed: left }
 
 sanitizePath :: FilePath -> FilePath -> Aff (Either String FilePath)
-sanitizePath baseDirectory path = do
-  absoluteRoot <- Aff.attempt (FS.realpath baseDirectory) >>= case _ of
-    Left _ -> unsafeCrashWith $ "sanitizePath provided with a base directory that does not exist: " <> baseDirectory
-    Right canonical -> pure canonical
-
-  absolutePath <- Aff.attempt (FS.realpath $ Path.concat [ absoluteRoot, path ]) >>= case _ of
-    Left _ -> unsafeCrashWith $ "sanitizePath provided with a path that does not exist: " <> path
-    Right canonical -> pure canonical
+sanitizePath baseDirectory path = runExceptT do
+  absoluteRoot <- ExceptT $ map (lmap (\_ -> "sanitizePath provided with a base directory that does not exist: " <> baseDirectory)) (Aff.attempt (FS.realpath baseDirectory))
+  absolutePath <- ExceptT $ map (lmap (\_ -> "sanitizePath provided with a path that does not exist: " <> path)) (Aff.attempt (FS.realpath (Path.concat [ absoluteRoot, path ])))
 
   -- Protect against directory traversals
-  pure $ case String.indexOf (String.Pattern absoluteRoot) absolutePath of
+  ExceptT $ pure $ case String.indexOf (String.Pattern absoluteRoot) absolutePath of
     Just 0 -> Right path
     _ -> Left path
