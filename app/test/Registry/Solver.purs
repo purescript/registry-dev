@@ -7,7 +7,6 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Map as Map
 import Data.Set as Set
 import Data.Set.NonEmpty as NES
-import Registry.Json as Json
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)

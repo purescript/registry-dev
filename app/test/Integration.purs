@@ -15,7 +15,6 @@ import Foreign.Git as Git
 import Foreign.Tmp as Tmp
 import Node.Path as Path
 import Registry.App.Index as App.Index
-import Registry.Json as Json
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)

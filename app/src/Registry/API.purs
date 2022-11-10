@@ -59,7 +59,6 @@ import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Constants (GitHubRepo)
 import Registry.Constants as Constants
-import Registry.Json as Json
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.Location (Location(..))

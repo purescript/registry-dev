@@ -43,7 +43,6 @@ import Parsing as Parsing
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Registry.Internal.Format as Internal.Format
-import Registry.Json as Json
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)

@@ -32,9 +32,12 @@ import Affjax as Http
 import Control.Monad.Except as Except
 import Control.Promise (Promise)
 import Control.Promise as Promise
+import Data.Argonaut.Core (Json)
 import Data.Array as Array
 import Data.Bitraversable (ltraverse)
+import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.DateTime.Instant (Instant)
@@ -45,6 +48,7 @@ import Data.Int as Int
 import Data.Interpolate (i)
 import Data.List as List
 import Data.Newtype (over, unwrap)
+import Data.Profunctor as Profunctor
 import Data.String as String
 import Data.String.Base64 as Base64
 import Data.String.CodeUnits as String.CodeUnits
@@ -60,12 +64,11 @@ import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
+import Registry.App.Json as Json
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Constants as Constants
 import Registry.Internal.Codec as Internal.Codec
-import Registry.Json ((.:))
-import Registry.Json as Json
 
 foreign import data Octokit :: Type
 
@@ -83,8 +86,20 @@ mkOctokit = runEffectFn1 mkOctokitImpl
 -- | A team within a GitHub organization
 type Team = { org :: String, team :: String }
 
+codecTeam :: JsonCodec Team
+codecTeam = Json.object "Team" { org: CA.string, team: CA.string }
+
 -- | Member of a GitHub organization
 type TeamMember = { username :: String, userId :: Int }
+
+codecTeamMember :: JsonCodec TeamMember
+codecTeamMember = Profunctor.dimap fromJsonRep toJsonRep $ Json.object "TeamMember"
+  { username: CA.string
+  , userId: CA.int
+  }
+  where
+  toJsonRep { username, userId } = { login: username, id: userId }
+  fromJsonRep { login, id } = { username: login, userId: id }
 
 -- | List members of the given team
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/teams/listMembersInOrg.md
@@ -99,14 +114,7 @@ listTeamMembers octokit cache { org, team } = do
   route = Route $ i "GET /orgs/" org "/teams/" team "/members"
 
   decodeTeamMembers :: Json -> Either String (Array TeamMember)
-  decodeTeamMembers = Json.decode >=> traverse decodeTeamMember
-
-  decodeTeamMember :: Json -> Either String TeamMember
-  decodeTeamMember json = do
-    obj <- Json.decode json
-    username <- obj .: "login"
-    userId <- obj .: "id"
-    pure { username, userId }
+  decodeTeamMembers = Json.decode (CA.array codecTeamMember)
 
 -- | List repository tags
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/listTags.md
@@ -121,16 +129,7 @@ listTags octokit cache address = do
   route = Route $ i "GET /repos/" address.owner "/" address.repo "/tags"
 
   decodeTags :: Json -> Either String (Array Tag)
-  decodeTags = Json.decode >=> traverse decodeTag
-
-  decodeTag :: Json -> Either String Tag
-  decodeTag json = do
-    obj <- Json.decode json
-    name <- obj .: "name"
-    commitObj <- obj .: "commit"
-    sha <- commitObj .: "sha"
-    url <- commitObj .: "url"
-    pure { name, sha, url }
+  decodeTags = Json.decode (CA.array codecTag)
 
 -- | Fetch a specific file  from the provided repository at the given ref and
 -- | filepath. Filepaths should lead to a single file from the root of the repo.
@@ -265,7 +264,6 @@ newtype Route = Route String
 
 derive newtype instance Eq Route
 derive newtype instance Ord Route
-derive newtype instance Json.StringEncodable Route
 
 foreign import requestImpl :: forall args r. EffectFn6 Octokit Route (Object String) (Record args) (Object Json -> r) (Json -> r) (Promise r)
 
@@ -398,14 +396,12 @@ newtype IssueNumber = IssueNumber Int
 
 instance Newtype IssueNumber Int
 derive newtype instance Eq IssueNumber
-derive newtype instance RegistryJson IssueNumber
 
 newtype PackageURL = PackageURL String
 
 derive instance Newtype PackageURL _
 derive newtype instance Eq PackageURL
 derive newtype instance Ord PackageURL
-derive newtype instance RegistryJson PackageURL
 
 newtype Event = Event
   { issueNumber :: IssueNumber
@@ -432,6 +428,18 @@ instance RegistryJson Event where
 type Address = { owner :: String, repo :: String }
 
 type Tag = { name :: String, sha :: String, url :: Http.URL }
+
+codecTag :: JsonCodec Tag
+codecTag = Profunctor.dimap fromJsonRep toJsonRep $ Json.object "Tag"
+  { name: CA.string
+  , commit: Json.object "Commit"
+      { sha: CA.string
+      , url: CA.string
+      }
+  }
+  where
+  toJsonRep { name, sha, url } = { name, commit: { sha, url } }
+  fromJsonRep { name, commit } = { name, sha: commit.sha, url: commit.url }
 
 parseRepo :: PackageURL -> Either ParseError Address
 parseRepo (PackageURL input) = Parsing.runParser input do

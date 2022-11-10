@@ -14,7 +14,6 @@ import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageSets as PackageSet
 import Registry.Internal.Format as Internal.Formatter
-import Registry.Json as Json
 import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, parsePscTag, printPscTag)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.Location (Location(..))

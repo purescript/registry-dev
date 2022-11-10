@@ -4,7 +4,6 @@ import Registry.Prelude
 
 import Data.Either as Either
 import Foreign.JsonRepair as JsonRepair
-import Registry.Json as Json
 import Test.Assert as Assert
 import Test.Spec as Spec
 

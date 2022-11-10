@@ -22,8 +22,6 @@ import Node.Path as Path
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
-import Registry.Json ((.:), (.:?))
-import Registry.Json as Json
 import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.License (License)

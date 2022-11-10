@@ -3,11 +3,15 @@ module Foreign.Purs where
 import Registry.Prelude
 
 import Data.Array as Array
+import Data.Codec.Argonaut (JsonCodec)
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Compat as CA.Compat
+import Data.Codec.Argonaut.Record as CA.Record
 import Data.Foldable (foldMap)
 import Data.String as String
 import Effect.Exception as Exception
 import Node.ChildProcess as NodeProcess
-import Registry.Json as Json
+import Registry.App.Json as Json
 import Sunde as Process
 
 -- | Call a specific version of the PureScript compiler
@@ -30,11 +34,29 @@ type CompilerError =
   , moduleName :: Maybe String
   }
 
+compilerErrorCodec :: JsonCodec CompilerError
+compilerErrorCodec = CA.Record.object "CompilerError"
+  { position: sourcePositionCodec
+  , message: CA.string
+  , errorCode: CA.string
+  , errorLink: CA.string
+  , filename: CA.string
+  , moduleName: CA.Compat.maybe CA.string
+  }
+
 type SourcePosition =
   { startLine :: Int
   , startColumn :: Int
   , endLine :: Int
   , endColumn :: Int
+  }
+
+sourcePositionCodec :: JsonCodec SourcePosition
+sourcePositionCodec = CA.Record.object "SourcePosition"
+  { startLine: CA.int
+  , startColumn: CA.int
+  , endLine: CA.int
+  , endColumn: CA.int
   }
 
 printCompilerErrors :: Array CompilerError -> String
@@ -91,6 +113,9 @@ callCompiler compilerArgs = do
         $ fromMaybe compilerArgs.version
         $ String.stripPrefix (String.Pattern "v") compilerArgs.version
 
+    errorsCodec = CA.Record.object "CompilerErrors"
+      { errors: CA.array compilerErrorCodec }
+
   result <- try $ Process.spawn { cmd, stdin: Nothing, args: printCommand compilerArgs.command } (NodeProcess.defaultSpawnOptions { cwd = compilerArgs.cwd })
   pure $ case result of
     Left exception -> Left $ case Exception.message exception of
@@ -99,7 +124,7 @@ callCompiler compilerArgs = do
         | otherwise -> UnknownError errorMessage
     Right { exit: NodeProcess.Normally 0, stdout } -> Right $ String.trim stdout
     Right { stdout, stderr } -> Left do
-      case Json.parseJson (String.trim stdout) of
+      case Json.parseJson errorsCodec (String.trim stdout) of
         Left err -> UnknownError $ String.joinWith "\n" [ stdout, stderr, err ]
         Right ({ errors } :: { errors :: Array CompilerError })
           | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."

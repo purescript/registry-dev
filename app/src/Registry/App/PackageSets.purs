@@ -39,7 +39,6 @@ import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Registry.Constants as Constants
-import Registry.Json as Json
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex

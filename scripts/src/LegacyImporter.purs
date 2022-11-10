@@ -37,8 +37,6 @@ import Registry.App.Index as App.Index
 import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
-import Registry.Json ((.:))
-import Registry.Json as Json
 import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.Manifest as LegacyManifest

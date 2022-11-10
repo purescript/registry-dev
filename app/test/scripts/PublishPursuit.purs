@@ -17,7 +17,6 @@ import Node.Process as Process
 import Registry.API (Source(..), compilePackage, publishToPursuit)
 import Registry.API as API
 import Registry.Cache as Cache
-import Registry.Json as Json
 import Registry.RegistryM (Env, runRegistryM, throwWithComment)
 import Registry.Version as Version
 

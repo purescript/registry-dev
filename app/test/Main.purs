@@ -21,7 +21,6 @@ import Node.Path as Path
 import Node.Process as Process
 import Registry.API (copyPackageSourceFiles)
 import Registry.API as API
-import Registry.Json as Json
 import Registry.Legacy.Manifest (Bowerfile(..))
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))

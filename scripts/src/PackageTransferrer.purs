@@ -20,7 +20,6 @@ import Registry.API (LegacyRegistryFile(..), Source(..))
 import Registry.API as API
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
-import Registry.Json as Argonaut
 import Registry.Location (Location(..))
 import Registry.Metadata (Metadata(..))
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))

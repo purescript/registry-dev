@@ -34,7 +34,6 @@ import Registry.App.Index as App.Index
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
-import Registry.Json as Json
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)

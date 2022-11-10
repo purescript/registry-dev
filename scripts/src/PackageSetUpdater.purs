@@ -20,7 +20,6 @@ import Node.Process as Process
 import Registry.API as API
 import Registry.App.Index as App.Index
 import Registry.App.PackageSets as App.PackageSets
-import Registry.Json as Json
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
