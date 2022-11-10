@@ -5,16 +5,12 @@ module Foreign.FastGlob
   , match'
   ) where
 
-import Prelude
+import Registry.Prelude
 
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import ConvertableOptions (class Defaults)
 import ConvertableOptions as ConvertableOptions
-import Effect (Effect)
-import Effect.Aff (Aff)
-import Node.Path (FilePath)
-import Registry.Internal.Path (SanitizedPaths)
 import Registry.Internal.Path as Internal.Path
 
 data Include = FilesAndDirectories | FilesOnly | DirectoriesOnly
@@ -62,6 +58,8 @@ globOptionsToJSGlobOptions cwd options = do
 
 foreign import matchImpl :: Array String -> JSGlobOptions -> Effect (Promise (Array FilePath))
 
+type SanitizedPaths = { succeeded :: Array FilePath, failed :: Array String }
+
 -- | Match the provided list of glob patterns.
 match :: FilePath -> Array String -> Aff SanitizedPaths
 match baseDir entries = match' baseDir entries {}
@@ -77,7 +75,9 @@ match'
 match' baseDirectory entries opts = do
   let jsOptions = globOptionsToJSGlobOptions baseDirectory options
   matches <- Promise.toAffE $ matchImpl entries jsOptions
-  Internal.Path.sanitizePaths baseDirectory matches
+  results <- traverse (Internal.Path.sanitizePath baseDirectory) matches
+  let { success, fail } = partitionEithers results
+  pure { succeeded: success, failed: fail }
   where
   options :: { | GlobOptions }
   options = ConvertableOptions.defaults defaultGlobOptions opts
