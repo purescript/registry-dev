@@ -13,6 +13,7 @@ package:
     - parsing
     - prelude
     - strings
+    - filterable
   test:
     main: Test.Registry
     dependencies:
