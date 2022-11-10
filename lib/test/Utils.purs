@@ -89,4 +89,4 @@ unsafeManifest name version dependencies = Manifest
 
 -- | Format a package version as a string in the form 'name@X.Y.Z'
 formatPackageVersion :: PackageName -> Version -> String
-formatPackageVersion name version = PackgaeName.print name <> "@" <> Version.print version
+formatPackageVersion name version = PackageName.print name <> "@" <> Version.print version
