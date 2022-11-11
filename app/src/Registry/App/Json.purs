@@ -16,7 +16,7 @@ import Prelude
 import Data.Argonaut.Core (Json, stringify, stringifyWithIndent) as Core
 import Data.Argonaut.Parser (jsonParser) as Parser
 import Data.Bifunctor (lmap)
-import Data.Codec.Argonaut (JsonCodec, decode, encode, printJsonDecodeError) as Codec.Argonaut
+import Data.Codec.Argonaut (JsonCodec, JsonDecodeError(..), decode, encode, printJsonDecodeError) as Codec.Argonaut
 import Data.Codec.Argonaut.Record (object) as Codec.Argonaut.Record
 import Data.Either (Either)
 import Effect.Aff (Aff, try)
