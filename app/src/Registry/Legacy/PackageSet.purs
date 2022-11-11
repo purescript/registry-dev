@@ -65,10 +65,6 @@ newtype LegacyPackageSet = LegacyPackageSet (Map PackageName LegacyPackageSetEnt
 derive instance Newtype LegacyPackageSet _
 derive newtype instance Eq LegacyPackageSet
 
-instance RegistryJson LegacyPackageSet where
-  encode (LegacyPackageSet plan) = Json.encode plan
-  decode = map LegacyPackageSet <<< Json.decode
-
 -- | The format of a legacy packages.json package set entry for an individual
 -- | package.
 type LegacyPackageSetEntry =
@@ -89,10 +85,6 @@ newtype PscTag = PscTag { compiler :: Version, date :: Date }
 derive instance Newtype PscTag _
 derive instance Eq PscTag
 derive instance Ord PscTag
-
-instance RegistryJson PscTag where
-  encode = Json.encode <<< printPscTag
-  decode = Json.decode >=> parsePscTag
 
 pscDateFormat :: List FormatterCommand
 pscDateFormat = YearFull : MonthTwoDigits : DayOfMonthTwoDigits : Nil
