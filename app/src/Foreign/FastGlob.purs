@@ -1,31 +1,17 @@
 module Foreign.FastGlob
   ( GlobOptions(..)
   , Include(..)
-  , SanitizedPaths
   , match
   , match'
   ) where
 
-import Prelude
+import Registry.Prelude
 
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import ConvertableOptions (class Defaults)
 import ConvertableOptions as ConvertableOptions
-import Data.Compactable (separate)
-import Data.Either (Either(..))
-import Data.Maybe (Maybe(..))
-import Data.String as String
-import Data.Traversable (traverse)
-import Effect (Effect)
-import Effect.Aff (Aff)
-import Effect.Aff as Aff
-import Node.FS.Aff as FS
-import Node.Path (FilePath)
-import Node.Path as Path
-import Partial.Unsafe (unsafeCrashWith)
-
-type SanitizedPaths = { succeeded :: Array FilePath, failed :: Array FilePath }
+import Registry.Internal.Path as Internal.Path
 
 data Include = FilesAndDirectories | FilesOnly | DirectoriesOnly
 
@@ -72,6 +58,8 @@ globOptionsToJSGlobOptions cwd options = do
 
 foreign import matchImpl :: Array String -> JSGlobOptions -> Effect (Promise (Array FilePath))
 
+type SanitizedPaths = { succeeded :: Array FilePath, failed :: Array String }
+
 -- | Match the provided list of glob patterns.
 match :: FilePath -> Array String -> Aff SanitizedPaths
 match baseDir entries = match' baseDir entries {}
@@ -87,28 +75,9 @@ match'
 match' baseDirectory entries opts = do
   let jsOptions = globOptionsToJSGlobOptions baseDirectory options
   matches <- Promise.toAffE $ matchImpl entries jsOptions
-  sanitizePaths matches
+  results <- traverse (Internal.Path.sanitizePath baseDirectory) matches
+  let { success, fail } = partitionEithers results
+  pure { succeeded: success, failed: fail }
   where
   options :: { | GlobOptions }
   options = ConvertableOptions.defaults defaultGlobOptions opts
-
-  sanitizePaths :: Array FilePath -> Aff SanitizedPaths
-  sanitizePaths paths = do
-    sanitized <- traverse sanitizePath paths
-    let { right, left } = separate sanitized
-    pure { succeeded: right, failed: left }
-
-  sanitizePath :: FilePath -> Aff (Either String FilePath)
-  sanitizePath path = do
-    absoluteRoot <- Aff.attempt (FS.realpath baseDirectory) >>= case _ of
-      Left _ -> unsafeCrashWith $ "sanitizePath provided with a base directory that does not exist: " <> baseDirectory
-      Right canonical -> pure canonical
-
-    absolutePath <- Aff.attempt (FS.realpath $ Path.concat [ absoluteRoot, path ]) >>= case _ of
-      Left _ -> unsafeCrashWith $ "sanitizePath provided with a path that does not exist: " <> path
-      Right canonical -> pure canonical
-
-    -- Protect against directory traversals
-    pure $ case String.indexOf (String.Pattern absoluteRoot) absolutePath of
-      Just 0 -> Right path
-      _ -> Left path
