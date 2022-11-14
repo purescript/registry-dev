@@ -33,7 +33,7 @@ Schemas for `PackageName`, `Version`, `Range`, `Location`, `Sha256`, `Owner`, `L
 #### PackageName
 
 **[Source](./lib/src/Registry/PackageName.purs)**
-**[Spec](./specs/v1/Manifest.dhall)**
+**[Spec](./types/v1/Manifest.dhall)**
 
 Packages are uniquely identified by their `PackageName`. No two packages in the registry can share the same name. A package name represented as a `string`, with the following restrictions:
 
@@ -50,7 +50,7 @@ To prevent users from accidentally registering their packages with an unnecessar
 #### Version
 
 **[Source](./lib/src/Registry/Version.purs)**
-**[Spec](./specs/v1/Manifest.dhall)**
+**[Spec](./types/v1/Manifest.dhall)**
 
 Packages are associated with one or more versions, representing their source code at a point in time. The registry uses a restricted version of the SemVer spec which only allows versions with major, minor, and patch places (that means no build metadata and no prerelease identifiers). A version is represented as a `string` with the following restrictions:
 
@@ -76,7 +76,7 @@ If a package uses only one place (ie. it begins with two zeros, such as `"0.0.1"
 #### Range
 
 **[Source](./lib/src/Registry/Range.purs)**
-**[Spec](./specs/v1/Manifest.dhall)**
+**[Spec](./types/v1/Manifest.dhall)**
 
 It is sometimes necessary to refer to a range of versions, such as when specifying dependency versions or supported compiler versions. The registry uses a restricted form of SemVer ranges; a version range is represented as a `string` with the following restrictions:
 
@@ -95,7 +95,7 @@ For example: `">=1.0.1 <2.0.0"`
 #### Location
 
 **[Source](./lib/src/Registry/Location.purs)**
-**[Spec](./specs/v1/Location.dhall)**
+**[Spec](./types/v1/Location.dhall)**
 
 The registry operates on a pull-based model, in which package authors ask the registry to fetch their code and produce a package instead of uploading their package themselves. Accordingly, every package is associated with the location the registry will use to fetch it. A location is represented in JSON as an `object`.
 
@@ -133,7 +133,7 @@ The registry has special support for fetching Git repositories hosted on GitHub.
 #### Owner
 
 **[Source](./lib/src/Registry/Owner.purs)**
-**[Spec](./specs/v1/Owner.dhall)**
+**[Spec](./types/v1/Owner.dhall)**
 
 The registry relies on SSH key pairs to verify package ownership for the purposes of sensitive API operations like unpublishing versions or transferring packages. An `Owner` is made up of the three components of an SSH public key in text format ([RFC4253](https://www.rfc-editor.org/rfc/rfc4253#section-6.6)). That format looks like this:
 
@@ -152,7 +152,7 @@ Note that the email address does not have to be valid, but it must be the addres
 #### License
 
 **[Source](./lib/src/Registry/License.purs)**
-**[Spec](./specs/v1/License.dhall)**
+**[Spec](./types/v1/License.dhall)**
 
 All packages in the registry must have a license that grants permission for redistribution of the source code. Concretely, the registry requires that all packages use an SPDX license and specify an [SPDX license identifier](https://spdx.dev/ids/). `AND` and `OR` conjunctions are allowed. A `License` is represented as a string, which must be a valid SPDX identifier. For example:
 
@@ -161,7 +161,7 @@ All packages in the registry must have a license that grants permission for redi
 #### Sha256
 
 **[Source](./lib/src/Registry/Sha256.purs)**
-**[Spec](./specs/v1/Sha256.dhall)**
+**[Spec](./types/v1/Sha256.dhall)**
 
 The registry produces a tarball when publishing a package. The hash of this tarball is recorded so that package managers can verify the integrity of packages they download from the registry. The hash is stored in the [subresource integrity (SRI) format](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity). , A SRI hash is represented as a `string`. For example:
 
@@ -170,7 +170,7 @@ The registry produces a tarball when publishing a package. The hash of this tarb
 ### 3.3 Manifest
 
 **[Source](./lib/src/Registry/Manifest.purs)**
-**[Spec](./specs/v1/Manifest.dhall)**
+**[Spec](./types/v1/Manifest.dhall)**
 
 All packages in the registry contain a `purs.json` manifest file in their root directory. The manifest file specifies information necessary for the registry to package the source code, and it also serves as a lingua franca for package managers: all package managers are expected to support this manifest format. The manifest file is an object with the following fields:
 
@@ -205,7 +205,7 @@ A note about globs: globs must contain only `*`, `**`, `/`, `.`, `..`, and chara
 ### 3.4 Metadata
 
 **[Source](./lib/src/Registry/Metadata.purs)**
-**[Spec](./specs/v1/Metadata.dhall)**
+**[Spec](./types/v1/Metadata.dhall)**
 
 All packages in the registry have an associated metadata file, which is located in the `metadata` directory of the `registry` repository under the package name. For example, the metadata for the `aff` package is located at: https://github.com/purescript/registry/blob/main/metadata/aff.json. Metadata files are the source of truth on all published and unpublished versions for a particular package, as well as where the package is located. Metadata files are produced by the registry, not by package authors, though they take some information from package manifests.
 

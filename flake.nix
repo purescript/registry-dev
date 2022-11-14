@@ -133,7 +133,7 @@
               cd $(git rev-parse --show-toplevel)
               set -euo pipefail
 
-              for FILE in $(find ./specs/v1 -iname "*.dhall")
+              for FILE in $(find ./types/v1 -iname "*.dhall")
               do
                 echo "Typechecking ''${FILE}";
                 dhall <<< "./''${FILE}" > /dev/null
@@ -142,7 +142,7 @@
               for FILE in $(find ./lib/test/_fixtures/manifests -iname "*.json")
               do
                 echo "Conforming ''${FILE} to the Manifest type"
-                cat "''${FILE}" | json-to-dhall --records-loose --unions-strict "./specs/v1/Manifest.dhall" > /dev/null
+                cat "''${FILE}" | json-to-dhall --records-loose --unions-strict "./types/v1/Manifest.dhall" > /dev/null
               done
             '';
           };
