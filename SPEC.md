@@ -12,7 +12,7 @@ Quick definitions of words that will be used frequently throughout the document.
 
 Terms include:
 
-"package", "package name", "package version", "version range", "SRI hash", "package location", "package metadata", "package manager", "registry", "registry index", "storage backend", "registry trustee", "package set", "license"
+"package", "package name", "package version", "version range", "SRI hash", "package location", "package manager", "registry", "metadata index", "manifest index", "storage backend", "registry trustee", "package set", "license"
 
 ## 2. Package Publishing
 
@@ -45,7 +45,7 @@ Packages are uniquely identified by their `PackageName`. No two packages in the 
 
 The final point deserves elaboration. Historically, PureScript packages have been registered in the Bower registry using a `purescript-` prefix so as to avoid naming conflicts with JavaScript packages. However, the prefix is not actually part of the package name, so package managers like Spago refer to the package without the prefix. For example, the Bower-registered name `purescript-prelude` refers to the `prelude` package, which is located in the GitHub repository `purescript/purescript-prelude`. This prefix is not used in the PureScript registry. The `purescript-prelude` Bower package is simply `prelude` in the PureScript registry.
 
-To prevent users from accidentally registering their packages with an unnecessary prefix, the registry will not accept packages that begin with `purescript-` unless the package author confirms this is what they want with the Registry Trustees.
+We still encourage users to name their repositories with a `purescript-` prefix to make it easier to find PureScript packages on platforms like GitHub. However, to prevent users from accidentally registering their packages with an unnecessary prefix, the registry will not accept packages that begin with `purescript-` unless the package author confirms this is what they want with the Registry Trustees.
 
 #### Version
 
@@ -57,21 +57,19 @@ Packages are associated with one or more versions, representing their source cod
 - The string must have the form `"X.Y.Z"`, representing major, minor, and patch places.
 - The major, minor, and patch places must each be natural numbers (ie. whole numbers equal to or greater than 0).
 
-We never use a `v` prefix on versions in the registry.
+We never use a `v` prefix on versions.
 
-If a package uses all three places (ie. it begins with a non-zero number, such as `"1.0.0"`), then:
+The major, minor, and patch places of a version describe the public interface of the library (ie. everything exported by its modules, such as types, instances, functions, or values). Each place has a specific meaning:
 
-- `MAJOR` means values have been changed or removed, and represents a breaking change to the package.
-- `MINOR` means values have been added, but existing values are unchanged.
-- `PATCH` means the API is unchanged and there is no risk of breaking code.
+- `MAJOR`: Indicates a breaking change to the public interface, such as removing a function, changing its type, or changing its behavior in a significant way. Upgrading any dependency to a new major version also counts as a breaking change.
+- `MINOR`: Indicates a non-breaking change to the public interface, such as adding a new function. Updating any dependency to a new minor version also counts as a minor change.
+- `PATCH`: Indicates a documentation change or an internal change that does not change the public interface, such as fixing a bug in an implementation.
 
-If a package only uses two places (ie. it begins with a zero, such as `"0.1.0"`), then:
+The `X.Y.Z` form maps on to these three kinds of change with the following rules:
 
-- `MAJOR` is unused because it is zero
-- `MINOR` means values have been changed or removed and represents a breaking change to the package
-- `PATCH` means values may have been added, but existing values are unchanged
-
-If a package uses only one place (ie. it begins with two zeros, such as `"0.0.1"`), then all changes are potentially breaking changes.
+1. If a package uses all three places (ie. it begins with a non-zero number, such as `"1.0.0"`), then the version implies `MAJOR.MINOR.PATCH`.
+2. If a package only uses two places (ie. it begins with a zero, such as `"0.1.0"`), then the version implies `0.MAJOR.MINOR`.
+3. If a package uses only one place (ie. it begins with two zeros, such as `"0.0.1"`), then all changes are potentially breaking changes, ie. `0.0.MAJOR`.
 
 #### Range
 
@@ -106,7 +104,7 @@ By convention, locations are represented in JSON using the following rules:
 - Common fields (`url`, `owner`, `repo`) are prefixed with the provider name, ie. `githubOwner` or `gitlabRepo` or `gitUrl`.
 - Providers that support a typical filesystem structure must support an optional `subdir` key so that the registry can provide monorepo support for that location type.
 
-The currently-supported location types are below.
+The currently-supported location types are listed below.
 
 **Git Repository**
 
@@ -126,7 +124,17 @@ The registry has special support for fetching Git repositories hosted on GitHub.
 ```json
 {
   "githubOwner": "purescript",
-  "githubRepo": "prelude"
+  "githubRepo": "purescript-prelude"
+}
+```
+
+Or, using a monorepo:
+
+```json
+{
+  "githubOwner": "purescript",
+  "githubRepo": "purescript-core",
+  "subdir": "prelude"
 }
 ```
 
@@ -139,7 +147,7 @@ The registry relies on SSH key pairs to verify package ownership for the purpose
 
 `[keytype] [ssh-public-key] [email]`
 
-Note that the email address does not have to be valid, but it must be the address associated with the private key. A JSON example:
+Note that the email address does not have to be able to send or receive email, but it must be the email address that was associated with the private key. A JSON example:
 
 ```jsonc
 {
@@ -154,7 +162,9 @@ Note that the email address does not have to be valid, but it must be the addres
 **[Source](./lib/src/Registry/License.purs)**
 **[Spec](./types/v1/License.dhall)**
 
-All packages in the registry must have a license that grants permission for redistribution of the source code. Concretely, the registry requires that all packages use an SPDX license and specify an [SPDX license identifier](https://spdx.dev/ids/). `AND` and `OR` conjunctions are allowed. A `License` is represented as a string, which must be a valid SPDX identifier. For example:
+All packages in the registry must have a license that grants permission for redistribution of the source code. Concretely, the registry requires that all packages use an SPDX license and specify an [SPDX license identifier](https://spdx.dev/ids/). `AND` and `OR` conjunctions are allowed, and licenses can contain exceptions using the `WITH` preposition. The SPDX specification describes [how licenses can be combined and exceptions applied](https://spdx.dev/ids#how).
+
+A `License` is represented as a string, which must be a valid SPDX identifier. For example:
 
 `"MIT OR APACHE-2.0"`
 
@@ -163,7 +173,7 @@ All packages in the registry must have a license that grants permission for redi
 **[Source](./lib/src/Registry/Sha256.purs)**
 **[Spec](./types/v1/Sha256.dhall)**
 
-The registry produces a tarball when publishing a package. The hash of this tarball is recorded so that package managers can verify the integrity of packages they download from the registry. The hash is stored in the [subresource integrity (SRI) format](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity). , A SRI hash is represented as a `string`. For example:
+The registry produces an archive file when publishing a package. We use [tarballs](https://wiki.debian.org/TarBall) as our archive format. The registry produces a tarball when publishing a package. The hash of this tarball is recorded so that package managers can verify the integrity of packages they download from the registry. The hash is stored in the [subresource integrity (SRI) format](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity). A Sha256 is represented as a `string` in JSON. For example:
 
 `"sha256-uy7gpfhgyj+3Ylw65ROY6YOXHoC0M7Acb11Cd7pf1GU="`
 
@@ -178,10 +188,12 @@ All packages in the registry contain a `purs.json` manifest file in their root d
 - `version`: a valid [`Version`](#version)
 - `license`: a valid [`License`](#license)
 - `location`: a valid [`Location`](#location)
-- `owners`: a non-empty array of [`Owner`](#owner) (optional)
-- `description`: a description of your library as a plain text string, not markdown, up to 300 characters (optional)
-- `files`: a non-empty array of globs, where globs are used to match files outside the `src` directory you want included in your package tarball
+- `owners` (optional): a non-empty array of [`Owner`](#owner)
+- `description` (optional): a description of your library as a plain text string, not markdown, up to 300 characters
+- `files` (optional): a non-empty array of globs, where globs are used to match files outside the `src` directory you want included in your package tarball
+  - Globs must contain only `*`, `**`, `/`, `.`, `..`, and characters for Linux file paths. It is not possible to negate a glob (ie. the `!` character), and globs cannot represent a path out of the package source directory.
 - `dependencies`: dependencies of your package as key-value pairs where the keys are [`PackageName`](#packagename)s and values are [`Range`](#range)s; this is a required field, but if you have no dependencies you can provide an empty object.
+  - All dependencies you provide must exist in the registry, and the dependency ranges must be solvable (ie. it must be possible to produce a single version of each dependency that satisfies the provided version bounds, including any transitive dependencies).
 
 For example:
 
@@ -189,41 +201,39 @@ For example:
 {
   "name": "control",
   "version": "4.2.0",
+  "description": "Common control structures for PureScript",
   "license": "BSD-3-Clause",
   "location": {
     "githubOwner": "purescript",
     "githubRepo": "purescript-control"
   },
+  "files": ["test/**/*.purs"],
   "dependencies": { "newtype": ">=3.0.0 <4.0.0", "prelude": ">=4.0.0 <5.0.0" }
 }
 ```
-
-A note about dependencies: all dependencies you provide must exist in the registry, and the dependency ranges must be solvable (ie. it must be possible to produce a single version of each dependency that satisfies the provided version bounds, including any transitive dependencies).
-
-A note about globs: globs must contain only `*`, `**`, `/`, `.`, `..`, and characters for Linux file paths. It is not possible to negate a glob (ie. the `!` character), and globs cannot represent a path out of the package source directory.
 
 ### 3.4 Metadata
 
 **[Source](./lib/src/Registry/Metadata.purs)**
 **[Spec](./types/v1/Metadata.dhall)**
 
-All packages in the registry have an associated metadata file, which is located in the `metadata` directory of the `registry` repository under the package name. For example, the metadata for the `aff` package is located at: https://github.com/purescript/registry/blob/main/metadata/aff.json. Metadata files are the source of truth on all published and unpublished versions for a particular package, as well as where the package is located. Metadata files are produced by the registry, not by package authors, though they take some information from package manifests.
+All packages in the registry have an associated metadata file, which is located in the `metadata` directory of the `registry` repository under the package name. For example, the metadata for the `aff` package is located at: https://github.com/purescript/registry/blob/main/metadata/aff.json. Metadata files are the source of truth on all published and unpublished versions for a particular package for what there content is and where the package is located. Metadata files are produced by the registry, not by package authors, though they take some information from package manifests.
 
 Each published version of a package records three fields:
 
-- `hash`: a [`Sha256`](#Sha256) of the tarball contents of the given version
+- `hash`: a [`Sha256`](#Sha256) of the compressed archive fetched by the registry for the given version
 - `bytes`: the size of the tarball in bytes
 - `publishedTime`: the time the package was published as an `ISO8601` string
 
 Each unpublished version of a package records three fields:
 
 - `reason`: a plain text string up to 300 characters long explaining why the version was unpublished
-- `publishedTime`: the time the package was published as an `ISO8601` string
-- `unpublishedTime`: the time the package was unpublished as an `ISO8601` string
+- `publishedTime`: the time the `version` was published, as an `ISO8601` string
+- `unpublishedTime`: the time the `version` was unpublished, as an `ISO8601` string
 
 The metadata for a given package contains up to four fields:
 
-- `location`: a valid [`Location`](#location) representing where the registry is currently fetching this package's source code
+- `location`: a valid [`Location`](#location) representing where the registry is currently fetching this package's source code from
 - `owners`: an optional non-empty array of [`Owner`](#owner)s, representing who is able to take authenticated actions for this package
 - `published`: a map of package [`Version`](#version)s to published metadata as described above
 - `unpublished`: a map of package [`Version`](#version)s to unpublished metadata as described above
@@ -259,7 +269,7 @@ If there are no published or unpublished versions then these fields contain empt
 
 Package sets are stored in the `registry` repository under the `package-sets` directory. For example, the first package set was published at https://github.com/purescript/registry/blob/main/package-sets/0.0.1.json. Each package set is stored as a JSON file with the following fields:
 
-1. `version`, which is a string containing the package set [`Version`](#version) for this set.
+1. `version`, which is a string containing the package set [`Version`](#version) for this set, which follows the version rules described in [Releasing the Package Set](#releasing-the-package-set).
 2. `compiler`, which is a string containing the compiler [`Version`](#version) used to verify the package set.
 3. `published`, which is a date string in YYYY-MM-DD format that describes which day this package set was produced.
 4. `packages`, which is an object in which keys are [`PackageName`](#packagename)s and values are [`Version`](#version)s
@@ -278,32 +288,31 @@ For example, in JSON:
 }
 ```
 
-### 3.6 Package Index
+### 3.6 Manifest Index
 
-**[Source](./lib/src/Registry/PackageIndex.purs)**
+**[Source](./lib/src/Registry/ManifestIndex.purs)**
 
-The registry maintains an index of all package manifests in the [`registry-index`](https://github.com/purescript/registry-index) repository. This index makes it convenient for package managers to look up the manifest for a particular package version at any time. The package index maintains the invariant that all dependencies of packages in the index are themselves in the index.
+The registry maintains a cache of all package manifests in the manifest index, which is stored in the [`registry-index`](https://github.com/purescript/registry-index) repository. This index makes it convenient for package managers to look up the manifest for a particular package version at any time. The manifest index – just like the Registry itself - maintains the invariant that all dependencies of packages in the index are themselves in the index. The index can be regenerated from the package tarballs and metadata alone.
 
-All manifests for a given package in the registry are stored in the registry index according to the following rules:
+All manifests for a given package in the registry are cached in the manifest index according to the following rules, which follows the one [documented in the Cargo book](https://doc.rust-lang.org/cargo/reference/registries.html#index-format).
 
+- Each package entry is a JSON Lines file where each line is a package manifest encoded in JSON and stored in sorted order ascending by version.
 - Packages with 1-character names are stored in the directory named `1`.
 - Packages with 2-character names are stored in the directory named `2`.
 - Packages with 3-character names are stored in the directory `3/{first-character}` where `{first-character}` is the first character of the package name. For example, the `aff` package is stored in the `3/a` directory.
 - All other packages are stored in directories named `{first-two}/{second-two}` where the top directory is the first two characters of the package name, and the subdirectory is the third and fourth characters of the package name. For example, the `prelude` package is stored in the `pr/el` directory.
 
-Each package file is a JSON Lines file where each line is a package manifest, stored in sorted order ascending by version. This format follows the one documented in the Cargo book: https://doc.rust-lang.org/cargo/reference/registries.html#index-format.
-
 ## 4. Registry Infrastructure
 
 A section specifying how the registry should relate to other infrastructure and the responsibility of that infrastructure as it relates to the registry.
 
-**4.1 Package Index**
-Specifies how the registry index works (data format, purpose of it existing, where it is located)
-
-**4.2 Package Storage**
+**4.1 Package Storage**
 Specifies how the storage backend works (data format, naming conventions, location)
 
-**4.3 Package Metadata**
+**4.2 Manifest Index**
+Specifies how the manifest index works (data format, purpose of it existing, where it is located)
+
+**4.3 Metadata Index**
 Specifies where package metadata is stored and in what format, naming conventions.
 
 **4.4 Package Sets**
@@ -316,15 +325,15 @@ The big section! This builds on everything provided so far and summarizes the ro
 This is a good time for diagrams! (cc: @AndrewCondon, @JordanMartinez).Two notes:
 
 1. This section is only about _behavior_. The data types used in the API have already been described in prior sections.
-2. This section is only about _registry_ concerns. Actions taken after an operation (such as pushing to package sets, pursuit, the registry index) are in the next section.
+2. This section is only about _registry_ concerns. Actions taken after an operation (such as pushing to package sets, pursuit, the manifest index) are in the next section.
 
 ### Package Operations
 
 The registry supports three package operations: publishing, unpublishing, and transferring. These operations are exposed via an HTTP API at [registry.purescript.org/api](https://registry.purescript.org). You are expected to provide a JSON body matching the operation data type in a POST request.
 
-- `/api/publish`: The `Publish` operation
-- `/api/unpublish`: The `Unpublish` operation
-- `/api/transfer`: The `Transfer` operation
+- `/api/v1/publish`: The `Publish` operation
+- `/api/v1/unpublish`: The `Unpublish` operation
+- `/api/v1/transfer`: The `Transfer` operation
 
 Each operation is described below.
 
@@ -335,10 +344,10 @@ Each operation is described below.
 Publishing a package version results in a few steps:
 
 1. The package source is fetched by the registry.
-2. The JSON payload sent to the API, the package manifest, the source code, and any existing package metadata are verified.
+2. The JSON payload sent to the API, the package manifest, the source code, and the package metadata (if it exists) are verified together.
 3. The source code is packaged into a tarball.
 4. The package tarball is uploaded to the registry storage backend so package managers can download it.
-5. The package metadata and package index are updated to record the newly-published version.
+5. The metadata index and manifest index are updated to record the newly-published version.
 6. The package version is added to the candidates for the automatic package sets releases.
 
 To submit a `Publish` operation, you are expected to POST a JSON object with the below fields to the registry HTTP API:
@@ -366,7 +375,7 @@ For a `Publish` operation to succeed, the provided JSON payload must decode succ
 
 First, the registry uses the [`PackageName`](#packagename) listed in the JSON payload to read any existing [`Metadata`](#34-metadata) for the package. To be publishable, one of these two conditions must be true:
 
-1. The package name is not registered (ie. no metadata exists) AND a location is provided in the payload AND the location is not already in use. In this case, the registry will create new metadata to register this package at the given location.
+1. The package name is not registered (ie. no metadata exists) AND a location is provided in the payload. In this case, the registry will create new metadata to register this package at the given location. It is possible to register a package at the same location as one that already exists.
 2. The package name is registered (ie. metadata exists) AND either no location is provided in the payload OR the provided location matches the location recorded in the metadata. When no location is provided, the registry will use the location from the metadata.
 
 Next, the registry will use the provided [`Location`](#location) to fetch the package source at the provided `ref`. Packages must contain a `purs.json` manifest or `spago.yaml` manifest in the package root (in the presence of multiple manifest files, the `purs.json` file takes precedence and others are ignored). The registry will verify that the manifest matches with the JSON payload and metadata:
@@ -406,10 +415,10 @@ Mandatory file includes and excludes are subject to change at the registry's dis
 
 **Metadata Changes**
 
-When a package is published, its package metadata is updated according to the following rules:
+When a package is published its metadata entry is updated according to the following rules:
 
-1. If the package metadata did not exist, then a new [`Metadata`](#34-metadata) is created for the package with all fields taken from the manifest file.
-2. If the package metadata did exist, then the file is updated: the new version is inserted into the `published` field, and if the `owners` field in the manifest differs from the metadata then the metadata is overwritten.
+1. If the metadata entry did not exist, then a new [`Metadata`](#34-metadata) is created for the package with all fields taken from the manifest file.
+2. If the metadata entry did exist, then the file is updated: the new version is inserted into the `published` field, and if the `owners` field in the manifest differs from the metadata then the metadata is overwritten.
 
 #### 5.2 Authentication
 
@@ -479,7 +488,7 @@ For example, in JSON:
 
 When the registry receives an authenticated operation, it takes the following steps:
 
-1. The registry will create an [`allowed_signers`](https://man.openbsd.org/ssh-keygen#ALLOWED_SIGNERS) file, which will list all package owners from the package metadata as well as the @pacchettibotti SSH keys.
+1. The registry will create an [`allowed_signers`](https://man.openbsd.org/ssh-keygen#ALLOWED_SIGNERS) file, which will list all package owners from the package's metadata as well as the @pacchettibotti SSH keys.
 2. The registry will use `ssh-keygen` to verify the provided signature, the provided payload, and the provided email address. If the signature is valid, then `ssh-keygen` will exit with a 0 status and a message beginning with "Good 'file' signature for...". Otherwise, the command will exit with an error.
 3. If the signature was valid and the JSON operation payload was well-formed, then the registry will execute the provided operation.
 
@@ -489,13 +498,13 @@ When the registry receives an authenticated operation, it takes the following st
 
 Unpublishing a package version means that the following things happen:
 
-1. The package version is moved from the `published` to the `unpublished` section of the package metadata
-2. The package version is removed from package storage and the package index, which means that package managers can no longer install it and it will no longer be included in build plans.
+1. The package version is moved from the `published` to the `unpublished` section of the package's metadata entry in the metadata index.
+2. The package version is removed from package storage and the manifest index, which means that package managers can no longer install it and it will no longer be included in build plans.
 
 Notably, the package version will remain listed in the package sets, rendering those package sets invalid. To minimize the potential disruption caused by unpublishing a package, the following conditions must be met for a package to be unpublished:
 
 1. The package version must have been published (ie. you cannot unpublish a version that does not exist).
-2. The version must have been published within the last 48 hours.
+2. The version must have been published within the last 48 hours OR the registry must legally unpublish the package (for example, the registry has received a DMCA takedown notice).
 
 To unpublish a package you must construct a JSON payload of the form below and authenticate it according to the process described in [Section 5.2 (Authentication)](#52-authentication). An `Unpublish` operation is represented as an `object` with three fields:
 
@@ -519,12 +528,12 @@ For example, in JSON:
 
 Transferring a package version means that the following things happen:
 
-1. The package `location` is changed in the package metadata to the new location
+1. The package `location` is changed in the package's metadata index entry to the new location
 
 The package location is only used when publishing package versions, so this change will not affect any versions of the package which have previously been published. When verifying a transfer operation, the registry will ensure:
 
 1. The package must have been published before (ie. you cannot transfer a package that has not yet been registered).
-2. The location provided in the JSON payload MUST NOT be the same as the location listed in the package metadata or in any other package metadata (ie. the location cannot already be in use by the indicated package or any other).
+2. The location provided in the JSON payload MUST NOT be the same as the location listed in the package's metadata or in any other package's metadata (ie. the location cannot already be in use by the indicated package or any other).
 
 To transfer a package you must construct a JSON payload of the form below and authenticate it according to the process described in [Section 5.2 (Authentication)](#52-authentication). A `Transfer` operation is represented as an `object` with two fields:
 
@@ -555,7 +564,7 @@ Anyone can suggest a package set update to the registry. However, community memb
 
 A package set update must be submitted to the registry via GitHub issues on the registry repository. The body of the issue should contain the JSON object specified below, optionally within a code fence.
 
-A package set update is an object with two keys: `compiler`, an optional field that allows updating the compiler version used to compile the package sets, and `packages`, an object where keys are package names and values are either a version number or `null`. A version number indicates the package should be added to the set or updated to the given version, and `null` indicates the package should be dropped from the package set.
+A package set update is an object with two keys: `compiler`, an optional field that, if set, will update the compiler version used to compile the package sets (it cannot be downgraded), and `packages`, an object where keys are package names and values are either a version number or `null`. A version number indicates the package should be added to the set or updated to the given version, and `null` indicates the package should be dropped from the package set.
 
 ```jsonc
 { // Sets the package set compiler version to 0.15.2
@@ -575,13 +584,13 @@ If the package set operation JSON is well-formed, then we take three steps:
 2. Verify the new package set
 3. Release the new package set
 
-**Authentication**
+##### Authentication
 
-Only Registry Trustees are allowed to change the compiler version of a package set, remove packages, or downgrade packages. If any of these actions is implied by the JSON payload then the operation must be authenticated.
+Only Registry Trustees are allowed to advance the compiler version of a package set, remove packages, or downgrade packages. If any of these actions is implied by the JSON payload then the operation must be authenticated.
 
 Authentication is handled via GitHub. The registry will verify that the user ID used to submit the package set update is a member of the @purescript/packaging team (ie. the Registry Trustees) under the PureScript organization. If not, the operation is rejected. If so, the operation may continue.
 
-**Verifying the Package Set**
+##### Verifying the Package Set
 
 The suggested new package set can only be released if:
 
@@ -596,7 +605,7 @@ To verify the package set, we take the following steps:
 
 When we have verified the package set is self-contained and all packages compile together then we can release the package set.
 
-**Releasing the Package Set**
+##### Releasing the Package Set
 
 "Releasing" a package set means assigning it a Registry version and writing the set to the `package-sets` directory in the registry repository. To calculate the new version for a package set we follow these rules:
 
@@ -610,9 +619,9 @@ For example, if the previous release was `2.1.1`, and the package set update add
 
 Summarizes what operations the registry will take after a package is published, transferred, or unpublished. This section _could_ be folded back into the previous section, but I worry that doing so would make that section too long and unfocused.
 
-#### 6.1 Update Package Index
+#### 6.1 Update Manifest Index
 
-A spec of how the registry attempts to update the registry index.
+A spec of how the registry attempts to update the manifest index.
 
 #### 6.2 Publish to Pursuit
 
@@ -640,7 +649,7 @@ Third, we attempt to add the rest of the batch of package versions to the packag
 4. If a package fails to compile with the rest of the package set, then it is filtered from the batch.
 5. Once there are no more packages to consider in the batch, the new package set is ready.
 
-Fourth, we release the new package set (if we could produce one). Automatic package sets follow the versioning policy described in [Section 5.5 (Update the Package Set)](#55-update-the-package-set).
+Fourth, we release the new package set (if we could produce one). Automatic package sets follow the versioning policy described in [Section 5.5 (Update the Package Set)](#releasing-the-package-set).
 
 ## 7. Non-JavaScript Backends
 
