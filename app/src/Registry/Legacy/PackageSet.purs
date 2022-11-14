@@ -110,8 +110,9 @@ derive instance Ord PscTag
 pscTagCodec :: JsonCodec PscTag
 pscTagCodec = CA.codec' decode encode
   where
-  decode =
-    lmap (CA.Named "PscTag" <<< CA.TypeMismatch) <<< parsePscTag <=< CA.decode CA.string
+  decode json = do
+    tagStr <- CA.decode CA.string json
+    lmap (CA.Named "PscTag" <<< CA.TypeMismatch) (parsePscTag tagStr)
 
   encode =
     CA.encode CA.string <<< printPscTag
