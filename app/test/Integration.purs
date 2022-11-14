@@ -15,6 +15,8 @@ import Foreign.Git as Git
 import Foreign.Tmp as Tmp
 import Node.Path as Path
 import Registry.App.Index as App.Index
+import Registry.App.Json as Json
+import Registry.Internal.Codec as Internal.Codec
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)
@@ -28,7 +30,7 @@ import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.RegistrySpec as RegistrySpec
-import Test.Scripts.BowerInstaller (BowerSolved)
+import Test.Scripts.BowerInstaller (BowerSolved, bowerSolvedCodec)
 import Test.Spec as Spec
 import Test.Spec.Reporter (consoleReporter)
 import Test.Spec.Runner (defaultConfig, runSpec')
@@ -59,7 +61,7 @@ segmentSolvableByOwner index bowerDir = map snd $ flip State.runStateT Map.empty
   void $ forWithIndex (ManifestIndex.toMap index) \package versions -> do
     let
       readSolutions :: Aff (Either String (Map Version BowerSolved))
-      readSolutions = Json.readJsonFile (Path.concat [ bowerDir, PackageName.print package <> ".json" ])
+      readSolutions = Json.readJsonFile (Internal.Codec.versionMap bowerSolvedCodec) (Path.concat [ bowerDir, PackageName.print package <> ".json" ])
     liftAff readSolutions >>= case _ of
       Left err -> unsafeCrashWith $ "Unable to parse solutions for " <> PackageName.print package <> ": " <> err
       Right solutions -> forWithIndex versions \version (Manifest manifest) -> do
@@ -145,7 +147,7 @@ mkTest solverIndex pkgs = void $ forWithIndex pkgs \package versions -> do
         Assert.fail $ String.joinWith "\n----------\n"
           [ name
           , printedErrs
-          , Json.printJson solution
+          , Json.printJson (Internal.Codec.packageMap Version.codec) solution
           ]
       -- If we found a solution then we passed the test.
       -- TODO: We can also check that our solution produces versions as

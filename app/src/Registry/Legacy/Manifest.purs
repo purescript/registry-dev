@@ -5,13 +5,20 @@ import Registry.Prelude
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
+import Data.Codec.Argonaut (JsonCodec)
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as CA.Common
+import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec.Argonaut.Variant as CA.Variant
 import Data.Either as Either
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
+import Data.Profunctor as Profunctor
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
 import Data.These (These(..))
 import Data.These as These
+import Data.Variant as Variant
 import Foreign.GitHub as GitHub
 import Foreign.JsonRepair as JsonRepair
 import Foreign.Licensee as Licensee
@@ -19,10 +26,12 @@ import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FSA
 import Node.Path as Path
+import Registry.App.Json as Json
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
-import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry)
+import Registry.Internal.Codec as Internal.Codec
+import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry, legacyPackageSetCodec)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.License (License)
 import Registry.License as License
@@ -37,6 +46,7 @@ import Registry.Sha256 as Sha256
 import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Process
+import Type.Proxy (Proxy(..))
 
 type LegacyManifest =
   { license :: License
@@ -141,18 +151,32 @@ data LegacyManifestError
   | InvalidLicense (Array String)
   | InvalidDependencies (Array { name :: String, range :: String, error :: String })
 
-instance RegistryJson LegacyManifestError where
-  encode = case _ of
-    NoManifests -> Json.encode { tag: "NoManifests" }
-    MissingLicense -> Json.encode { tag: "MissingLicense" }
-    InvalidLicense arr -> Json.encode { tag: "InvalidLicense", value: arr }
-    InvalidDependencies arr -> Json.encode { tag: "InvalidDependencies", value: arr }
-  decode = Json.decode >=> \obj -> (obj .: "tag") >>= case _ of
-    "NoManifests" -> pure NoManifests
-    "MissingLicense" -> pure MissingLicense
-    "InvalidLicense" -> map InvalidLicense $ obj .: "value"
-    "InvalidDependencies" -> map InvalidDependencies $ obj .: "value"
-    tag -> Left $ "Unexpected Tag: " <> tag
+legacyManifestErrorCodec :: JsonCodec LegacyManifestError
+legacyManifestErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
+  { noManifests: Left unit
+  , missingLicense: Left unit
+  , invalidLicense: Right (CA.array CA.string)
+  , invalidDependencies: Right (CA.array dependencyCodec)
+  }
+  where
+  dependencyCodec = Json.object "Dependency"
+    { name: CA.string
+    , range: CA.string
+    , error: CA.string
+    }
+
+  toVariant = case _ of
+    NoManifests -> Variant.inj (Proxy :: _ "noManifests") unit
+    MissingLicense -> Variant.inj (Proxy :: _ "missingLicense") unit
+    InvalidLicense inner -> Variant.inj (Proxy :: _ "invalidLicense") inner
+    InvalidDependencies inner -> Variant.inj (Proxy :: _ "invalidDependencies") inner
+
+  fromVariant = Variant.match
+    { noManifests: \_ -> NoManifests
+    , missingLicense: \_ -> MissingLicense
+    , invalidLicense: InvalidLicense
+    , invalidDependencies: InvalidDependencies
+    }
 
 printLegacyManifestError :: LegacyManifestError -> String
 printLegacyManifestError = case _ of
@@ -238,14 +262,27 @@ newtype SpagoDhallJson = SpagoDhallJson
   , packages :: Map RawPackageName { version :: RawVersion }
   }
 
-instance RegistryJson SpagoDhallJson where
-  encode (SpagoDhallJson fields) = Json.encode fields
-  decode json = do
-    obj <- Json.decode json
-    license <- obj .:? "license"
-    dependencies <- fromMaybe [] <$> obj .:? "dependencies"
-    packages <- fromMaybe Map.empty <$> obj .:? "packages"
-    pure $ SpagoDhallJson { license, dependencies, packages }
+derive instance Newtype SpagoDhallJson _
+
+spagoDhallJsonCodec :: JsonCodec SpagoDhallJson
+spagoDhallJsonCodec = Profunctor.dimap toRep fromRep $ Json.object "SpagoDhallJson"
+  { license: CA.Record.optional CA.Common.nonEmptyString
+  , dependencies: CA.Record.optional (CA.array (Profunctor.wrapIso RawPackageName CA.string))
+  , packages: CA.Record.optional packageVersionMapCodec
+  }
+  where
+  packageVersionMapCodec :: JsonCodec (Map RawPackageName { version :: RawVersion })
+  packageVersionMapCodec = rawPackageNameMapCodec $ Json.object "VersionObject" { version: rawVersionCodec }
+
+  toRep (SpagoDhallJson fields) = fields
+    { dependencies = if Array.null fields.dependencies then Nothing else Just fields.dependencies
+    , packages = if Map.isEmpty fields.packages then Nothing else Just fields.packages
+    }
+
+  fromRep fields = SpagoDhallJson $ fields
+    { dependencies = fromMaybe [] fields.dependencies
+    , packages = fromMaybe Map.empty fields.packages
+    }
 
 -- | Attempt to construct a SpagoDhallJson file from a spago.dhall and
 -- | packages.dhall file located in a remote repository at the given ref.
@@ -260,7 +297,7 @@ fetchSpagoDhallJson address (RawVersion ref) = do
   dhallJson <- liftAff $ dhallToJson { dhall: spagoDhall, cwd: Just tmp }
   Except.except $ case dhallJson of
     Left err -> Left $ GitHub.DecodeError err
-    Right json -> case Json.decode json of
+    Right json -> case Json.decodeJson spagoDhallJsonCodec json of
       Left err -> Left $ GitHub.DecodeError err
       Right value -> pure value
   where
@@ -273,7 +310,7 @@ fetchSpagoDhallJson address (RawVersion ref) = do
     let args = []
     result <- Process.spawn { cmd, stdin, args } (NodeProcess.defaultSpawnOptions { cwd = cwd })
     pure $ case result.exit of
-      NodeProcess.Normally 0 -> Json.parseJson result.stdout
+      NodeProcess.Normally 0 -> Json.parseJson CA.json result.stdout
       _ -> Left result.stderr
 
 newtype Bowerfile = Bowerfile
@@ -282,31 +319,42 @@ newtype Bowerfile = Bowerfile
   , license :: Array String
   }
 
+derive instance Newtype Bowerfile _
 derive newtype instance Eq Bowerfile
 
-instance RegistryJson Bowerfile where
-  encode (Bowerfile fields) = Json.encode fields
-  decode json = do
-    obj <- Json.decode json
-    description <- obj .:? "description"
-    dependencies <- fromMaybe Map.empty <$> obj .:? "dependencies"
-    licenseField <- obj .:? "license"
-    license <- case licenseField of
-      Nothing -> pure []
-      Just jsonValue -> (Json.decode jsonValue <#> Array.singleton) <|> Json.decode jsonValue
-    pure $ Bowerfile { description, dependencies, license }
+bowerfileCodec :: JsonCodec Bowerfile
+bowerfileCodec = Profunctor.dimap toRep fromRep $ Json.object "Bowerfile"
+  { description: CA.Record.optional CA.string
+  , dependencies: CA.Record.optional dependenciesCodec
+  , license: licenseCodec
+  }
+  where
+  toRep (Bowerfile fields) = fields { dependencies = Just fields.dependencies }
+  fromRep fields = Bowerfile $ fields { dependencies = fromMaybe Map.empty fields.dependencies }
 
--- | Attempt to construct a Bowerfile from a bower.json file rlocated in a
+  dependenciesCodec :: JsonCodec (Map RawPackageName RawVersionRange)
+  dependenciesCodec = rawPackageNameMapCodec rawVersionRangeCodec
+
+  licenseCodec :: JsonCodec (Array String)
+  licenseCodec = CA.codec' decode encode
+    where
+    decode json = CA.decode (CA.array CA.string) json <|> map Array.singleton (CA.decode CA.string json)
+    encode = CA.encode (CA.array CA.string)
+
+-- | Attempt to construct a Bowerfile from a bower.json file located in a
 -- | remote repository at the given ref.
 fetchBowerfile :: GitHub.Address -> RawVersion -> ExceptT GitHub.GitHubError RegistryM Bowerfile
 fetchBowerfile address (RawVersion ref) = do
   { octokit, cache } <- ask
   bowerfile <- Except.mapExceptT liftAff $ GitHub.getContent octokit cache address ref "bower.json"
-  Except.except $ case Json.parseJson (JsonRepair.tryRepair bowerfile) of
+  Except.except $ case Json.parseJson bowerfileCodec (JsonRepair.tryRepair bowerfile) of
     Left err -> Left $ GitHub.DecodeError err
     Right value -> pure value
 
 type LegacyPackageSetEntries = Map PackageName (Map RawVersion (Map PackageName RawVersion))
+
+legacyPackageSetEntriesCodec :: JsonCodec LegacyPackageSetEntries
+legacyPackageSetEntriesCodec = Internal.Codec.packageMap $ rawVersionMapCodec $ Internal.Codec.packageMap rawVersionCodec
 
 fetchLegacyPackageSets :: RegistryM LegacyPackageSetEntries
 fetchLegacyPackageSets = do
@@ -315,6 +363,7 @@ fetchLegacyPackageSets = do
   tags <- case result of
     Left err -> throwWithComment (GitHub.printGitHubError err)
     Right tags -> pure $ Legacy.PackageSet.filterLegacyPackageSets tags
+
   let
     convertPackageSet :: LegacyPackageSet -> LegacyPackageSetEntries
     convertPackageSet (LegacyPackageSet packages) =
@@ -339,21 +388,23 @@ fetchLegacyPackageSets = do
     -- It's important that we cache the end result of unioning all package sets
     -- because the package sets are quite large and it's expensive to read them
     -- all into memory and fold over them.
-    liftEffect (Cache.readJsonEntry tagKey cache) >>= case _ of
+    liftEffect (Cache.readJsonEntry legacyPackageSetEntriesCodec tagKey cache) >>= case _ of
       Left _ -> do
         log $ "CACHE MISS: Building legacy package sets..."
         entries <- for tags \ref -> do
           let setKey = "legacy-package-set__" <> ref
-          setEntries <- liftEffect (Cache.readJsonEntry setKey cache) >>= case _ of
+          -- We persist API errors if received.
+          let setCodec = CA.Common.either GitHub.githubErrorCodec legacyPackageSetEntriesCodec
+          setEntries <- liftEffect (Cache.readJsonEntry setCodec setKey cache) >>= case _ of
             Left _ -> do
               log $ "CACHE MISS: Building legacy package set for " <> ref
               converted <- Except.runExceptT do
                 packagesJson <- Except.mapExceptT liftAff $ GitHub.getContent octokit cache Legacy.PackageSet.legacyPackageSetsRepo ref "packages.json"
-                parsed <- Except.except $ case Json.parseJson packagesJson of
+                parsed <- Except.except $ case Json.parseJson legacyPackageSetCodec packagesJson of
                   Left decodeError -> throwError $ GitHub.DecodeError decodeError
                   Right legacySet -> pure legacySet
                 pure $ convertPackageSet parsed
-              liftEffect $ Cache.writeJsonEntry setKey converted cache
+              liftEffect $ Cache.writeJsonEntry setCodec setKey converted cache
               pure converted
             Right contents ->
               pure contents.value
@@ -364,7 +415,7 @@ fetchLegacyPackageSets = do
             Right value -> pure value
 
         let merged = Array.foldl (\m set -> Map.unionWith Map.union set m) Map.empty entries
-        liftEffect $ Cache.writeJsonEntry tagKey merged cache
+        liftEffect $ Cache.writeJsonEntry legacyPackageSetEntriesCodec tagKey merged cache
         pure merged
 
       Right contents ->

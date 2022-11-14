@@ -3,6 +3,7 @@ module Registry.Scripts.PackageTransferrer where
 import Registry.Prelude
 
 import Control.Monad.Except as Except
+import Data.Argonaut.Core as Argonaut
 import Data.Array as Array
 import Data.Codec as Codec
 import Data.Map as Map

@@ -9,6 +9,9 @@ import Registry.Prelude
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
+import Data.Codec.Argonaut (JsonCodec)
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as CA.Common
 import Data.Filterable (filterMap)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
@@ -31,9 +34,11 @@ import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.API as API
 import Registry.App.Index as App.Index
+import Registry.App.Json as Json
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
+import Registry.Internal.Codec as Internal.Codec
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)
@@ -59,6 +64,13 @@ type BowerSolved =
   { bowerfileSolution :: Map PackageName Version
   , manifestSolution :: Map PackageName Version
   , dependencies :: Map PackageName Range
+  }
+
+bowerSolvedCodec :: JsonCodec BowerSolved
+bowerSolvedCodec = Json.object "BowerSolved"
+  { bowerfileSolution: Internal.Codec.packageMap Version.codec
+  , manifestSolution: Internal.Codec.packageMap Version.codec
+  , dependencies: Internal.Codec.packageMap Range.codec
   }
 
 main :: Effect Unit
@@ -112,7 +124,7 @@ main = launchAff_ do
         package <- case PackageName.parse file of
           Left err -> throwError $ Exception.error err
           Right res -> pure res
-        versions <- Json.readJsonFile (Path.concat [ resultsPath, file <> ".json" ]) >>= case _ of
+        versions <- Json.readJsonFile (Internal.Codec.versionMap bowerSolvedCodec) (Path.concat [ resultsPath, file <> ".json" ]) >>= case _ of
           Left err -> throwError $ Exception.error err
           Right versions -> pure versions
         pure (Tuple package versions)
@@ -133,7 +145,7 @@ main = launchAff_ do
       -- but they can be seen at https://github.com/thomashoneyman/bower-solver-results
       --
       -- If you would like to add your new results to the repo, please open a PR
-      liftAff $ Json.writeJsonFile (Path.concat [ resultsPath, PackageName.print package <> ".json" ]) versions
+      liftAff $ Json.writeJsonFile (Internal.Codec.versionMap bowerSolvedCodec) (Path.concat [ resultsPath, PackageName.print package <> ".json" ]) versions
 
     log "Done!"
 
@@ -161,9 +173,10 @@ runBowerSolver index metadata previousResults =
               pure $ JsonRepair.tryRepair bowerfile
             _ -> unsafeCrashWith $ Array.fold [ PackageName.print package, " not in metadata." ]
 
-          dependencies <- case Json.parseJson originalBowerfile of
+          let dependenciesCodec = Json.object "Depenencies" { dependencies: CA.Common.strMap CA.string }
+          dependencies <- case Json.parseJson dependenciesCodec originalBowerfile of
             Left err -> Except.throwError err
-            Right ({ dependencies } :: { dependencies :: Map String String }) -> either Except.throwError pure do
+            Right { dependencies } -> either Except.throwError pure do
               parsedNames <- traverseKeys (PackageName.parse <<< stripPureScriptPrefix) dependencies
               parsedRanges <- traverse (map LenientRange.range <<< LenientRange.parse) parsedNames
               pure parsedRanges
@@ -176,7 +189,8 @@ runBowerSolver index metadata previousResults =
 
           manifestSolution <- Except.ExceptT do
             let
-              bowerfile = Json.printJson { name: PackageName.print package, dependencies: bowerDependencies }
+              bowerfileCodec = Json.object "BowerfileRep" { dependencies: Internal.Codec.packageMap CA.string, name: CA.string }
+              bowerfile = Json.printJson bowerfileCodec { name: PackageName.print package, dependencies: bowerDependencies }
               bowerDependencies = mapWithIndex bowerDependency manifest.dependencies
               bowerDependency depName range = case Map.lookup depName metadata of
                 Just (Metadata { location: GitHub dep }) -> "https://github.com/" <> dep.owner <> "/" <> dep.repo <> ".git#" <> Range.print range
@@ -197,7 +211,8 @@ runBowerInstall installType name version contents = do
   tmp <- liftEffect Tmp.mkTmpDir
   { cache } <- ask
   let key = "bower-solved-" <> printBowerInstallType installType <> "-" <> PackageName.print name <> "__" <> Version.print version
-  liftEffect (Cache.readJsonEntry key cache) >>= case _ of
+  let codec = CA.Common.maybe (Internal.Codec.packageMap Version.codec)
+  liftEffect (Cache.readJsonEntry codec key cache) >>= case _ of
     Left _ -> do
       log key
 
@@ -222,7 +237,7 @@ runBowerInstall installType name version contents = do
           log (Array.fold [ String.trim stdout, String.trim stderr ])
           pure Nothing
 
-      liftEffect (Cache.writeJsonEntry key parsed cache)
+      liftEffect (Cache.writeJsonEntry codec key parsed cache)
       pure parsed
 
     Right { value } ->
@@ -234,7 +249,7 @@ readResolutions tmp = do
   FS.Extra.ensureDirectory components
   paths <- FS.Aff.readdir components
   result <- for paths \dir -> do
-    { version: rawVersion } :: { version :: String } <- Json.readJsonFile (Path.concat [ components, dir, ".bower.json" ]) >>= case _ of
+    { version } <- Json.readJsonFile (Json.object "Version" { version: CA.string }) (Path.concat [ components, dir, ".bower.json" ]) >>= case _ of
       Left err -> throwError $ Exception.error err
       Right val -> pure val
 
@@ -242,11 +257,11 @@ readResolutions tmp = do
       Left err -> throwError $ Exception.error err
       Right res -> pure res
 
-    version <- case LenientVersion.parse rawVersion of
+    parsedVersion <- case LenientVersion.parse version of
       Left err -> throwError $ Exception.error err
       Right res -> pure $ LenientVersion.version res
 
-    pure (Tuple package version)
+    pure (Tuple package parsedVersion)
 
   pure $ Map.fromFoldable result
 

@@ -25,6 +25,9 @@ module Foreign.GitHub
   , printGitHubError
   , printRateLimit
   , decodeEvent
+  , githubErrorCodec
+  , tagCodec
+  , addressCodec
   ) where
 
 import Registry.Prelude
@@ -38,6 +41,7 @@ import Data.Bitraversable (ltraverse)
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
+import Data.Codec.Argonaut.Variant as CA.Variant
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.DateTime.Instant (Instant)
@@ -48,10 +52,12 @@ import Data.Int as Int
 import Data.Interpolate (i)
 import Data.List as List
 import Data.Newtype (over, unwrap)
+import Data.Profunctor as Profunctor
 import Data.String as String
 import Data.String.Base64 as Base64
 import Data.String.CodeUnits as String.CodeUnits
 import Data.Time.Duration as Duration
+import Data.Variant as Variant
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Effect.Now as Now
@@ -69,6 +75,7 @@ import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Constants as Constants
 import Registry.Internal.Codec as Internal.Codec
+import Type.Proxy (Proxy(..))
 
 foreign import data Octokit :: Type
 
@@ -347,7 +354,7 @@ cachedRequest
   -> { cache :: Cache, checkGitHub :: Boolean }
   -> ExceptT GitHubAPIError Aff Json
 cachedRequest runRequest requestArgs@{ route: Route route } { cache, checkGitHub } = do
-  let codec = CA.Common.either apiErrorCodec CA.json
+  let codec = CA.Common.either githubApiErrorCodec CA.json
   entry <- liftEffect (Cache.readJsonEntry codec route cache)
   now <- liftEffect nowUTC
   ExceptT $ case entry of
@@ -436,7 +443,20 @@ decodeEvent json = do
 
 type Address = { owner :: String, repo :: String }
 
+addressCodec :: JsonCodec Address
+addressCodec = Json.object "Address"
+  { owner: CA.string
+  , repo: CA.string
+  }
+
 type Tag = { name :: String, sha :: String, url :: Http.URL }
+
+tagCodec :: JsonCodec Tag
+tagCodec = Json.object "Tag"
+  { name: CA.string
+  , sha: CA.string
+  , url: CA.string
+  }
 
 parseRepo :: PackageURL -> Either ParseError Address
 parseRepo (PackageURL input) = Parsing.runParser input do
@@ -467,14 +487,20 @@ data GitHubError
 derive instance Eq GitHubError
 derive instance Ord GitHubError
 
--- instance RegistryJson GitHubError where
---   encode = case _ of
---     APIError value -> Json.encode { tag: "APIError", value }
---     DecodeError value -> Json.encode { tag: "DecodeError", value }
---   decode = Json.decode >=> \obj -> (obj .: "tag") >>= case _ of
---     "APIError" -> map APIError $ obj .: "value"
---     "DecodeError" -> map DecodeError $ obj .: "value"
---     tag -> Left $ "Unexpected tag: " <> tag
+githubErrorCodec :: JsonCodec GitHubError
+githubErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
+  { apiError: Right githubApiErrorCodec
+  , decodeError: Right CA.string
+  }
+  where
+  toVariant = case _ of
+    APIError error -> Variant.inj (Proxy :: _ "apiError") error
+    DecodeError error -> Variant.inj (Proxy :: _ "decodeError") error
+
+  fromVariant = Variant.match
+    { apiError: APIError
+    , decodeError: DecodeError
+    }
 
 printGitHubError :: GitHubError -> String
 printGitHubError = case _ of
@@ -494,8 +520,8 @@ type GitHubAPIError =
   , message :: String
   }
 
-apiErrorCodec :: JsonCodec GitHubAPIError
-apiErrorCodec = Json.object "GitHubAPIError"
+githubApiErrorCodec :: JsonCodec GitHubAPIError
+githubApiErrorCodec = Json.object "GitHubAPIError"
   { statusCode: CA.int
   , message: CA.string
   }

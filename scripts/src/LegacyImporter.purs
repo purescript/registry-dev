@@ -13,6 +13,10 @@ import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
 import Data.Array as Array
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as CA.Common
+import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec.Argonaut.Variant as CA.Variant
 import Data.Compactable (separate)
 import Data.Filterable (partition)
 import Data.Foldable (foldMap)
@@ -21,8 +25,10 @@ import Data.FunctorWithIndex (mapWithIndex)
 import Data.List as List
 import Data.Map as Map
 import Data.Ordering (invert)
+import Data.Profunctor as Profunctor
 import Data.Set as Set
 import Data.String as String
+import Data.Variant as Variant
 import Effect.Exception as Exception
 import Effect.Ref as Ref
 import Foreign.GitHub (GitHubToken(..))
@@ -34,6 +40,8 @@ import Parsing as Parsing
 import Registry.API (LegacyRegistryFile(..), Source(..))
 import Registry.API as API
 import Registry.App.Index as App.Index
+import Registry.App.Json (JsonCodec)
+import Registry.App.Json as Json
 import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
@@ -41,10 +49,13 @@ import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidati
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.Manifest as LegacyManifest
 import Registry.Location (Location(..))
+import Registry.Location as Location
 import Registry.Manifest (Manifest(..))
+import Registry.Manifest as Manifest
 import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata (Metadata(..))
+import Registry.Metadata as Metadata
 import Registry.Operation (PackageOperation(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -52,6 +63,7 @@ import Registry.PackageUpload as Upload
 import Registry.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Version (Version)
 import Registry.Version as Version
+import Type.Proxy (Proxy(..))
 
 data ImportMode = DryRun | GenerateRegistry | UpdateRegistry
 
@@ -193,7 +205,7 @@ main = launchAff_ do
       case Map.lookup package metadataMap of
         Nothing -> do
           let metadata = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
-          liftAff $ Json.writeJsonFile (API.metadataFile registryPath package) metadata
+          liftAff $ Json.writeJsonFile Metadata.codec (API.metadataFile registryPath package) metadata
           liftEffect $ Ref.modify_ (Map.insert package metadata) metadataRef
           commitMetadataFile package >>= case _ of
             Left err -> throwWithComment err
@@ -244,7 +256,7 @@ main = launchAff_ do
           log "\n----------"
           log "UPLOADING"
           log $ PackageName.print manifest.name <> "@" <> Version.print manifest.version
-          log $ Json.stringifyJson manifest.location
+          log $ Json.stringifyJson Location.codec manifest.location
           log "----------"
           API.runOperation source (Right (mkOperation (Manifest manifest)))
 
@@ -253,7 +265,7 @@ main = launchAff_ do
       metadataResult <- readPackagesMetadata
       void $ forWithIndex metadataResult \name metadata -> do
         dir <- asks _.registry
-        liftAff (Json.writeJsonFile (API.metadataFile dir name) metadata)
+        liftAff (Json.writeJsonFile Metadata.codec (API.metadataFile dir name) metadata)
 
       log "Regenerating registry index..."
       void $ for indexPackages (liftAff <<< ManifestIndex.insertIntoEntryFile registryIndexPath)
@@ -263,13 +275,13 @@ main = launchAff_ do
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
 writePackageFailures =
-  Json.writeJsonFile (Path.concat [ API.scratchDir, "package-failures.json" ])
+  Json.writeJsonFile (rawPackageNameMapCodec jsonValidationErrorCodec) (Path.concat [ API.scratchDir, "package-failures.json" ])
     <<< map formatPackageValidationError
 
 -- | Record all version failures to the 'version-failures.json' file.
 writeVersionFailures :: Map RawPackageName (Map RawVersion VersionValidationError) -> Aff Unit
 writeVersionFailures =
-  Json.writeJsonFile (Path.concat [ API.scratchDir, "version-failures.json" ])
+  Json.writeJsonFile (rawPackageNameMapCodec (rawVersionMapCodec jsonValidationErrorCodec)) (Path.concat [ API.scratchDir, "version-failures.json" ])
     <<< map (map formatVersionValidationError)
 
 logImportStats :: LegacyRegistry -> ImportedIndex -> Aff Unit
@@ -399,11 +411,12 @@ buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl
         Just manifest -> pure manifest
         _ -> do
           let key = "manifest__" <> PackageName.print package.name <> "--" <> tag.name
-          liftEffect (Cache.readJsonEntry key cache) >>= case _ of
+          let codec = CA.Common.either (Json.object "Error" { error: versionErrorCodec, reason: CA.string }) Manifest.codec
+          liftEffect (Cache.readJsonEntry codec key cache) >>= case _ of
             Left _ -> ExceptT do
               log $ "CACHE MISS: Building manifest for " <> PackageName.print package.name <> "@" <> tag.name
               manifest <- Except.runExceptT buildManifest
-              liftEffect $ Cache.writeJsonEntry key manifest cache
+              liftEffect $ Cache.writeJsonEntry codec key manifest cache
               pure manifest
             Right contents ->
               Except.except contents.value
@@ -416,6 +429,12 @@ buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl
 
 type VersionValidationError = { error :: VersionError, reason :: String }
 
+versionValidationErrorCodec :: JsonCodec VersionValidationError
+versionValidationErrorCodec = Json.object "VersionValidationError"
+  { error: versionErrorCodec
+  , reason: CA.string
+  }
+
 -- | An error that affects a specific package version
 data VersionError
   = InvalidTag GitHub.Tag
@@ -423,18 +442,29 @@ data VersionError
   | InvalidManifest LegacyManifestValidationError
   | UnregisteredDependencies (Array PackageName)
 
-instance RegistryJson VersionError where
-  encode = case _ of
-    InvalidTag tag -> Json.encode { tag: "InvalidTag", value: tag }
-    DisabledVersion -> Json.encode { tag: "DisabledVersion" }
-    InvalidManifest err -> Json.encode { tag: "InvalidManifest", value: err }
-    UnregisteredDependencies names -> Json.encode { tag: "UnregisteredDependencies", value: names }
-  decode = Json.decode >=> \obj -> (obj .: "tag") >>= case _ of
-    "InvalidTag" -> map InvalidTag $ obj .: "value"
-    "DisabledVersion" -> pure DisabledVersion
-    "InvalidManifest" -> map InvalidManifest $ obj .: "value"
-    "UnregisteredDependencies" -> map UnregisteredDependencies $ obj .: "value"
-    tag -> Left $ "Unexpected tag: " <> tag
+versionErrorCodec :: JsonCodec VersionError
+versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
+  { invalidTag: Right GitHub.tagCodec
+  , disabledVersion: Left unit
+  , invalidManifest: Right $ Json.object "LegacyManifestValidationError"
+      { error: Legacy.Manifest.legacyManifestErrorCodec
+      , reason: CA.string
+      }
+  , unregisteredDependencies: Right (CA.array PackageName.codec)
+  }
+  where
+  toVariant = case _ of
+    InvalidTag tag -> Variant.inj (Proxy :: _ "invalidTag") tag
+    DisabledVersion -> Variant.inj (Proxy :: _ "disabledVersion") unit
+    InvalidManifest inner -> Variant.inj (Proxy :: _ "invalidManifest") inner
+    UnregisteredDependencies inner -> Variant.inj (Proxy :: _ "unregisteredDependencies") inner
+
+  fromVariant = Variant.match
+    { invalidTag: InvalidTag
+    , disabledVersion: \_ -> DisabledVersion
+    , invalidManifest: InvalidManifest
+    , unregisteredDependencies: UnregisteredDependencies
+    }
 
 validateVersionDisabled :: PackageName -> LenientVersion -> Either VersionValidationError Unit
 validateVersionDisabled package version =
@@ -577,6 +607,13 @@ type JsonValidationError =
   , reason :: String
   }
 
+jsonValidationErrorCodec :: JsonCodec JsonValidationError
+jsonValidationErrorCodec = Json.object "JsonValidationError"
+  { tag: CA.string
+  , value: CA.Record.optional CA.string
+  , reason: CA.string
+  }
+
 formatPackageValidationError :: PackageValidationError -> JsonValidationError
 formatPackageValidationError { error, reason } = case error of
   InvalidPackageName ->
@@ -619,7 +656,7 @@ readLegacyRegistryFile :: LegacyRegistryFile -> RegistryM (Map String GitHub.Pac
 readLegacyRegistryFile sourceFile = do
   { registry } <- ask
   let path = Path.concat [ registry, API.legacyRegistryFilePath sourceFile ]
-  legacyPackages <- liftAff $ Json.readJsonFile path
+  legacyPackages <- liftAff $ Json.readJsonFile API.legacyRegistryCodec path
   case legacyPackages of
     Left err -> do
       throwWithComment $ String.joinWith "\n"

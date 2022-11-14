@@ -2,6 +2,7 @@ module Test.Main (main) where
 
 import Registry.Prelude
 
+import Data.Argonaut.Encode as Argonaut.Codecs
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.Argonaut as CA
@@ -21,7 +22,9 @@ import Node.Path as Path
 import Node.Process as Process
 import Registry.API (copyPackageSourceFiles)
 import Registry.API as API
+import Registry.App.Json as Json
 import Registry.Legacy.Manifest (Bowerfile(..))
+import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.Operation (PackageOperation(..), PackageSetOperation(..))
@@ -296,30 +299,43 @@ goodBowerfiles :: Spec.Spec Unit
 goodBowerfiles = do
   let
     parse :: String -> Either String Bowerfile
-    parse = Json.parseJson
+    parse = Json.parseJson Legacy.Manifest.bowerfileCodec
 
     parseBowerfile' str = Spec.it str do
       parse str `Assert.shouldSatisfy` isRight
 
     parseBowerfile = parseBowerfile' <<< Json.stringify
 
-    simpleFile = Json.encode { version: "v1.0.0", license: "MIT" }
-    goodBowerfile = Json.encode { version: "v1.0.0", license: "", dependencies: {} }
+    simpleFile =
+      Argonaut.Codecs.encodeJson
+        { version: "v1.0.0"
+        , license: "MIT"
+        }
+
+    goodBowerfile =
+      Argonaut.Codecs.encodeJson
+        { version: "v1.0.0"
+        , license: ""
+        , dependencies: {}
+        }
+
     extraPropsBowerfile =
-      Json.encode
+      Argonaut.Codecs.encodeJson
         { extra: "value"
         , license: "not a license"
         , version: "v1.1.1"
         }
+
     nonSemverBowerfile =
-      Json.encode
+      Argonaut.Codecs.encodeJson
         { version: "notsemver"
         , license: ""
         , dependencies: { also: "not semver" }
         , devDependencies: { lastly: "🍝" }
         }
+
     completeBowerfile =
-      Json.encode
+      Argonaut.Codecs.encodeJson
         { version: "v1.0.1"
         , license: [ "license" ]
         , dependencies:
@@ -340,7 +356,7 @@ badBowerfiles :: Spec.Spec Unit
 badBowerfiles = do
   let
     parse :: String -> Either String Bowerfile
-    parse = Json.parseJson
+    parse = Json.parseJson Legacy.Manifest.bowerfileCodec
 
     failParseBowerfile' str = Spec.it str do
       parse str `Assert.shouldNotSatisfy` isRight
@@ -348,11 +364,10 @@ badBowerfiles = do
     failParseBowerfile = failParseBowerfile' <<< Json.stringify
 
     wrongLicenseFormat =
-      Json.encode { version: "", license: true }
+      Argonaut.Codecs.encodeJson { version: "", license: true }
 
     wrongDependenciesFormat =
-      Json.encode
-        { version: "", license: "", dependencies: ([] :: Array Int) }
+      Argonaut.Codecs.encodeJson { version: "", license: "", dependencies: ([] :: Array Int) }
 
   failParseBowerfile wrongLicenseFormat
   failParseBowerfile wrongDependenciesFormat
@@ -372,7 +387,9 @@ bowerFileEncoding = do
         , dependencies
         , description
         }
-    Json.roundtrip bowerFile `Assert.shouldContain` bowerFile
+
+    Json.decode Legacy.Manifest.bowerfileCodec (Json.encode Legacy.Manifest.bowerfileCodec bowerFile)
+      `Assert.shouldContain` bowerFile
 
 checkDependencyResolution :: Spec.Spec Unit
 checkDependencyResolution = do

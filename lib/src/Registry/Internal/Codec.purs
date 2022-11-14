@@ -4,6 +4,7 @@ module Registry.Internal.Codec
   , limitedString
   , packageMap
   , versionMap
+  , strMap
   ) where
 
 import Prelude
