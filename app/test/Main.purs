@@ -1,6 +1,6 @@
 module Test.Main (main) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.Argonaut.Encode as Argonaut.Codecs
 import Data.Argonaut.Parser as Argonaut.Parser

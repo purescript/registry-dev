@@ -1,6 +1,6 @@
 module Test.Foreign.JsonRepair (testJsonRepair) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA

@@ -1,4 +1,4 @@
-module Registry.Prelude
+module Registry.App.Prelude
   ( fromJust'
   , guardA
   , mapKeys

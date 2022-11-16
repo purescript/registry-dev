@@ -6,7 +6,7 @@
 -- | you just want to iteratively pick up new releases.
 module Registry.Scripts.LegacyImporter where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Affjax as Http
 import Control.Alternative (guard)

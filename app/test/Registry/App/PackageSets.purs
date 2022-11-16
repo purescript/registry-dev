@@ -2,7 +2,7 @@ module Test.Registry.App.PackageSets
   ( spec
   ) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.DateTime (Date, DateTime)
 import Data.DateTime as DateTime

@@ -1,6 +1,6 @@
 module Test.Registry.App.LenientVersion (spec) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.Either as Either
 import Registry.App.LenientVersion as LenientVersion

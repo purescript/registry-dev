@@ -1,6 +1,6 @@
 module Registry.App.PackageIndex where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Reader (asks)
 import Data.Array as Array

@@ -1,6 +1,6 @@
 module Test.Registry.App.LenientRange (spec) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.Either as Either
 import Registry.App.LenientRange as LenientRange

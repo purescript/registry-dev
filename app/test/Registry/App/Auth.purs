@@ -1,6 +1,6 @@
 module Test.Registry.Auth (spec) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Newtype (over)

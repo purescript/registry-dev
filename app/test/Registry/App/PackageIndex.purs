@@ -1,6 +1,6 @@
 module Test.Registry.App.PackageIndex (TestIndexEnv, mkTestIndexEnv, spec) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Reader as Reader
 import Data.Argonaut.Core as Argonaut

@@ -2,7 +2,7 @@ module Test.Integration
   ( main
   ) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Except as Except
 import Control.Monad.State as State

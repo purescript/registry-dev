@@ -1,6 +1,6 @@
 module Test.Support.ManifestFiles (ManifestFiles, readFiles) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Node.FS.Aff as FS
 import Node.Path as Path

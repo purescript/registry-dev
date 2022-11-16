@@ -1,6 +1,6 @@
 module Registry.App.API where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Affjax.Node as Http
 import Affjax.RequestBody as RequestBody

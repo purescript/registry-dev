@@ -6,7 +6,7 @@ module Registry.App.Cache
   , writeJsonEntry
   ) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.Array as Array
 import Data.Codec.Argonaut (JsonCodec)

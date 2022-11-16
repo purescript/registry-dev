@@ -1,6 +1,6 @@
 module Registry.App.PackageStorage where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.Array as Array
 import Effect.Aff as Aff

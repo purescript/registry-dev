@@ -17,7 +17,7 @@ module Registry.Legacy.PackageSet
   , latestCompatibleSetsCodec
   ) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Error.Class as Error
 import Control.Monad.Except as Except

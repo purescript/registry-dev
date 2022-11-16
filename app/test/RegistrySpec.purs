@@ -1,6 +1,6 @@
 module Test.RegistrySpec where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.Map as Map
 import Effect.Ref as Ref

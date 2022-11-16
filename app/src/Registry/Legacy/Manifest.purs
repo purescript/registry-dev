@@ -1,6 +1,6 @@
 module Registry.Legacy.Manifest where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)

@@ -1,6 +1,6 @@
 module Registry.Solver where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Error.Class (catchError)
 import Control.Monad.Reader (ask)

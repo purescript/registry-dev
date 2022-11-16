@@ -11,7 +11,7 @@ module Registry.App.PackageSets
   , validatePackageSetCandidates
   ) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Affjax as Http
 import Control.Alternative (guard)

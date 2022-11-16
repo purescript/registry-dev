@@ -1,7 +1,7 @@
 -- | A test script that exercises publishing to Pursuit only.
 module Test.Scripts.PublishPursuit where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.Map as Map
 import Effect.Exception (throw)

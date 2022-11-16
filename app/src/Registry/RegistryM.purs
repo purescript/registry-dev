@@ -1,6 +1,6 @@
 module Registry.RegistryM where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Error.Class (class MonadThrow)
 import Control.Monad.Reader (class MonadAsk, ReaderT, ask, asks, runReaderT)

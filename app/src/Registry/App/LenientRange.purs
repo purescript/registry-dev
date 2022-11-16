@@ -6,7 +6,7 @@ module Registry.App.LenientRange
   , raw
   ) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Error.Class as Error
 import Data.Array as Array

@@ -1,6 +1,6 @@
 module Registry.Scripts.PackageTransferrer where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Except as Except
 import Data.Argonaut.Core as Argonaut

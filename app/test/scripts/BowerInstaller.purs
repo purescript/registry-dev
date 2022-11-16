@@ -4,7 +4,7 @@
 -- | succeed in the integration tests for the registry solver.
 module Test.Scripts.BowerInstaller where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
@@ -38,6 +38,7 @@ import Registry.App.Json as Json
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageIndex as PackageIndex
+import Registry.App.Prelude as Aff
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
@@ -46,7 +47,6 @@ import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Prelude as Aff
 import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.RegistryM (RegistryM, readPackagesMetadata)

@@ -30,7 +30,7 @@ module Foreign.GitHub
   , addressCodec
   ) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Affjax as Http
 import Control.Monad.Except as Except
