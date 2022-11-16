@@ -30,6 +30,7 @@ import Registry.App.Cache as Cache
 import Registry.App.Json as Json
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
+import Registry.App.RegistryM (RegistryM, throwWithComment)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry, legacyPackageSetCodec)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
@@ -41,7 +42,6 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
 import Registry.Range as Range
-import Registry.RegistryM (RegistryM, throwWithComment)
 import Registry.Sha256 as Sha256
 import Registry.Version (Version)
 import Registry.Version as Version

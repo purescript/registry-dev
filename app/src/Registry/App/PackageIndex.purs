@@ -11,13 +11,13 @@ import Data.String as String
 import Foreign.FastGlob (Include(..))
 import Foreign.FastGlob as FastGlob
 import Node.Path as Path
+import Registry.App.RegistryM (RegistryM, commitIndexFile, throwWithComment)
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range as Range
-import Registry.RegistryM (RegistryM, commitIndexFile, throwWithComment)
 import Registry.Version (Version)
 import Registry.Version as Version
 

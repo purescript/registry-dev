@@ -17,6 +17,8 @@ import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.PackageIndex as PackageIndex
+import Registry.App.RegistryM (RegistryM)
+import Registry.App.RegistryM as RegistryM
 import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
 import Registry.Location (Location(..))
@@ -27,8 +29,6 @@ import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range as Range
-import Registry.RegistryM (RegistryM)
-import Registry.RegistryM as RegistryM
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.Fixture.Manifest as Fixture

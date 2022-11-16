@@ -50,6 +50,8 @@ import Parsing as Parsing
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Registry.App.Json as Json
+import Registry.App.RegistryM (RegistryM)
+import Registry.App.RegistryM as RegistryM
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
 import Registry.Location (Location(..))
@@ -60,8 +62,6 @@ import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageSet (PackageSet(..))
-import Registry.RegistryM (RegistryM)
-import Registry.RegistryM as RegistryM
 import Registry.Version (Version)
 import Registry.Version as Version
 

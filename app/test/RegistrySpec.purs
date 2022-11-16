@@ -7,8 +7,8 @@ import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as Octokit
-import Registry.RegistryM (Env, RegistryM)
-import Registry.RegistryM as RegistryM
+import Registry.App.RegistryM (Env, RegistryM)
+import Registry.App.RegistryM as RegistryM
 import Test.Spec as Spec
 import Test.Spec.Reporter as Reporter
 import Test.Spec.Runner as Runner

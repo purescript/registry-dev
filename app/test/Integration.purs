@@ -16,6 +16,7 @@ import Foreign.Tmp as Tmp
 import Node.Path as Path
 import Registry.App.Json as Json
 import Registry.App.PackageIndex as PackageIndex
+import Registry.App.RegistryM as RegistryM
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
@@ -24,7 +25,6 @@ import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
-import Registry.RegistryM as RegistryM
 import Registry.Solver as Solver
 import Registry.Version (Version)
 import Registry.Version as Version

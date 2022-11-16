@@ -18,8 +18,8 @@ import Registry.App.API (Source(..), compilePackage, publishToPursuit)
 import Registry.App.API as API
 import Registry.App.Cache as Cache
 import Registry.App.Json as Json
+import Registry.App.RegistryM (Env, runRegistryM, throwWithComment)
 import Registry.Manifest as Manifest
-import Registry.RegistryM (Env, runRegistryM, throwWithComment)
 import Registry.Version as Version
 
 main :: Effect Unit

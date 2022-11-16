@@ -21,13 +21,13 @@ import Registry.App.API (LegacyRegistryFile(..), Source(..))
 import Registry.App.API as API
 import Registry.App.Cache as Cache
 import Registry.App.LenientVersion as LenientVersion
+import Registry.App.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
+import Registry.App.RegistryM as RegistryM
 import Registry.Location (Location(..))
 import Registry.Metadata (Metadata(..))
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
-import Registry.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
-import Registry.RegistryM as RegistryM
 import Registry.Scripts.LegacyImporter as LegacyImporter
 import Registry.Version (Version)
 

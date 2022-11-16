@@ -1,4 +1,4 @@
-module Registry.RegistryM where
+module Registry.App.RegistryM where
 
 import Registry.App.Prelude
 

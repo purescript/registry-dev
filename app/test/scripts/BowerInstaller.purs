@@ -39,6 +39,8 @@ import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.Prelude as Aff
+import Registry.App.RegistryM (RegistryM, readPackagesMetadata)
+import Registry.App.RegistryM as RegistryM
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
@@ -49,8 +51,6 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
 import Registry.Range as Range
-import Registry.RegistryM (RegistryM, readPackagesMetadata)
-import Registry.RegistryM as RegistryM
 import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Sunde
