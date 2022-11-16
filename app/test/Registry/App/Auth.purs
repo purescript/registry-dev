@@ -1,15 +1,15 @@
-module Test.Registry.SSH (spec) where
+module Test.Registry.Auth (spec) where
 
 import Registry.Prelude
 
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Newtype (over)
 import Data.String as String
+import Registry.Auth as SSH
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..))
 import Registry.Owner (Owner(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.SSH as SSH
 import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Assert as Assert

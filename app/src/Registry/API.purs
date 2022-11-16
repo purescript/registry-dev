@@ -63,6 +63,7 @@ import Registry.App.Json as Json
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageSets as App.PackageSets
 import Registry.App.PackageStorage as Upload
+import Registry.Auth as SSH
 import Registry.Constants (GitHubRepo)
 import Registry.Constants as Constants
 import Registry.Legacy.Manifest as Legacy.Manifest
@@ -84,7 +85,6 @@ import Registry.PackageSet as PackageSet
 import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.SSH as SSH
 import Registry.Sha256 as Sha256
 import Registry.Solver as Solver
 import Registry.Types (RawPackageName(..), RawVersion(..))

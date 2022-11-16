@@ -1,4 +1,4 @@
-module Registry.SSH
+module Registry.Auth
   ( SignAuthenticated
   , signPayload
   , verifyPayload

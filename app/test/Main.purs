@@ -40,11 +40,11 @@ import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
 import Test.Foreign.SPDX as Foreign.SPDX
 import Test.Foreign.Tar as Foreign.Tar
-import Test.Registry.App.Index as Test.Index
 import Test.Registry.App.LenientRange as Test.LenientRange
 import Test.Registry.App.LenientVersion as Test.LenientVersion
+import Test.Registry.App.PackageIndex as Test.PackageIndex
 import Test.Registry.App.PackageSets as Test.PackageSets
-import Test.Registry.SSH as SSH
+import Test.Registry.Auth as SSH
 import Test.Registry.Solver as Test.Solver
 import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
@@ -54,7 +54,7 @@ import Test.Spec.Runner (defaultConfig, runSpec')
 main :: Effect Unit
 main = launchAff_ do
   -- Setup the Registry Index for tests
-  registryEnv <- Test.Index.mkTestIndexEnv
+  registryEnv <- Test.PackageIndex.mkTestIndexEnv
 
   runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
     Spec.describe "API" do
@@ -76,8 +76,8 @@ main = launchAff_ do
         Spec.describe "Bad bower files" badBowerfiles
       Spec.describe "Encoding" bowerFileEncoding
     Spec.describe "Licensee" licensee
-    Spec.describe "Registry Index" do
-      Test.Index.spec registryEnv
+    Spec.describe "Package Index" do
+      Test.PackageIndex.spec registryEnv
     Spec.describe "Tar" do
       Foreign.Tar.tar
     Spec.describe "Json Repair" do

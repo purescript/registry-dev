@@ -1,4 +1,4 @@
-module Test.Registry.App.Index (TestIndexEnv, mkTestIndexEnv, spec) where
+module Test.Registry.App.PackageIndex (TestIndexEnv, mkTestIndexEnv, spec) where
 
 import Registry.Prelude
 
