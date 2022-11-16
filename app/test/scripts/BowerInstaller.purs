@@ -32,12 +32,12 @@ import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
-import Registry.API as API
+import Registry.App.API as API
 import Registry.App.Cache as Cache
-import Registry.App.Index as App.Index
 import Registry.App.Json as Json
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
+import Registry.App.PackageIndex as PackageIndex
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
@@ -109,7 +109,7 @@ main = launchAff_ do
     API.fetchRegistryIndex
     API.fillMetadataRef
 
-    registryIndex <- App.Index.readManifestIndexFromDisk
+    registryIndex <- PackageIndex.readManifestIndexFromDisk
     metadata <- readPackagesMetadata
 
     let resultsPath = Path.concat [ API.scratchDir, "bower-solver-results" ]

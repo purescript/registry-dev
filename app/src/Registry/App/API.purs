@@ -1,4 +1,4 @@
-module Registry.API where
+module Registry.App.API where
 
 import Registry.Prelude
 
@@ -58,9 +58,9 @@ import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.App.Cache (Cache)
 import Registry.App.Cache as Cache
-import Registry.App.Index as App.Index
 import Registry.App.Json as Json
 import Registry.App.LenientVersion as LenientVersion
+import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
 import Registry.App.PackageStorage as Upload
 import Registry.Auth as SSH
@@ -331,7 +331,7 @@ runOperation source operation = case operation of
     -- new packages and/or compiler version. Note: if the compiler is updated to
     -- a version that isn't supported by the registry then an 'unsupported
     -- compiler' error will be thrown.
-    registryIndex <- App.Index.readManifestIndexFromDisk
+    registryIndex <- PackageIndex.readManifestIndexFromDisk
     App.PackageSets.validatePackageSet registryIndex latestPackageSet
 
     let candidates = App.PackageSets.validatePackageSetCandidates registryIndex latestPackageSet packages
@@ -431,7 +431,7 @@ runOperation source operation = case operation of
                 ]
               Right _ -> pure unit
 
-            App.Index.writeDeleteIndex name version >>= case _ of
+            PackageIndex.writeDeleteIndex name version >>= case _ of
               Left err -> throwWithComment $ String.joinWith "\n"
                 [ "Unpublish succeeded, but committing to the registry index failed."
                 , err
@@ -672,7 +672,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
 
   -- We write to the registry index if possible. If this fails, the packaging
   -- team should manually insert the entry.
-  App.Index.writeInsertIndex manifest >>= case _ of
+  PackageIndex.writeInsertIndex manifest >>= case _ of
     Left err -> comment $ String.joinWith "\n"
       [ "Package uploaded, but committing to the registry failed."
       , err
@@ -752,7 +752,7 @@ verifyResolutions { source, resolutions, manifest } = Except.runExceptT do
   -- We don't verify packages provided via the mass import.
   case resolutions of
     Nothing -> do
-      registryIndex <- lift App.Index.readManifestIndexFromDisk
+      registryIndex <- lift PackageIndex.readManifestIndexFromDisk
       let getDependencies = _.dependencies <<< un Manifest
       case Solver.solve (map (map getDependencies) (ManifestIndex.toMap registryIndex)) (getDependencies manifest) of
         Left errors -> do

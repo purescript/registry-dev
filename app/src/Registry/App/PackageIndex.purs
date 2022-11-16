@@ -1,4 +1,4 @@
-module Registry.App.Index where
+module Registry.App.PackageIndex where
 
 import Registry.Prelude
 

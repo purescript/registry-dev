@@ -14,8 +14,8 @@ import Effect.Exception as Exception
 import Foreign.Git as Git
 import Foreign.Tmp as Tmp
 import Node.Path as Path
-import Registry.App.Index as App.Index
 import Registry.App.Json as Json
+import Registry.App.PackageIndex as PackageIndex
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
@@ -96,7 +96,7 @@ setup = do
 
   log "Reading registry index..."
   let indexPath = Path.concat [ tmp, "registry-index" ]
-  index <- RegistryM.runRegistryM (RegistrySpec.defaultTestEnv { registryIndex = indexPath }) App.Index.readManifestIndexFromDisk
+  index <- RegistryM.runRegistryM (RegistrySpec.defaultTestEnv { registryIndex = indexPath }) PackageIndex.readManifestIndexFromDisk
 
   -- Note: this segmented index only considers packages that have a
   -- corresponding Bower solution.

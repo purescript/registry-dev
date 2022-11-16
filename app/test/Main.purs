@@ -20,8 +20,7 @@ import Node.FS as FS
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
-import Registry.API (copyPackageSourceFiles)
-import Registry.API as API
+import Registry.App.API as API
 import Registry.App.Json as Json
 import Registry.Legacy.Manifest (Bowerfile(..))
 import Registry.Legacy.Manifest as Legacy.Manifest
@@ -177,7 +176,7 @@ copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
     writeDirectories (goodDirectories <> API.ignoredDirectories <> [ "test" ])
     writeFiles (goodFiles <> API.ignoredFiles <> [ Path.concat [ "test", "Main.purs" ] ])
 
-    copyPackageSourceFiles Nothing { source, destination }
+    API.copyPackageSourceFiles Nothing { source, destination }
 
     paths <- liftAff $ FastGlob.match destination [ "**/*" ]
 
@@ -200,7 +199,7 @@ copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
     writeDirectories (goodDirectories <> testDir)
     writeFiles (goodFiles <> testFiles)
 
-    copyPackageSourceFiles userFiles { source, destination }
+    API.copyPackageSourceFiles userFiles { source, destination }
 
     paths <- liftAff $ FastGlob.match destination [ "**/*" ]
 

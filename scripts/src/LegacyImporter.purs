@@ -37,14 +37,14 @@ import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
 import Parsing as Parsing
-import Registry.API (LegacyRegistryFile(..), Source(..))
-import Registry.API as API
+import Registry.App.API (LegacyRegistryFile(..), Source(..))
+import Registry.App.API as API
 import Registry.App.Cache as Cache
-import Registry.App.Index as App.Index
 import Registry.App.Json (JsonCodec)
 import Registry.App.Json as Json
 import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
+import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageStorage as Upload
 import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.Legacy.Manifest as Legacy.Manifest
@@ -172,7 +172,7 @@ main = launchAff_ do
 
     log "Reading existing registry index..."
     existingRegistry <- do
-      registry <- App.Index.readManifestIndexFromDisk
+      registry <- PackageIndex.readManifestIndexFromDisk
       -- To ensure the metadata and registry index are always in sync, we remove
       -- any entries from the registry index that don't have accompanying metadata
       metadata <- liftEffect $ Ref.read metadataRef
@@ -184,7 +184,7 @@ main = launchAff_ do
         void $ forWithIndex mismatched \package versions ->
           forWithIndex versions \version _ ->
             ManifestIndex.removeFromEntryFile registryIndexPath package version
-        App.Index.readManifestIndexFromDisk
+        PackageIndex.readManifestIndexFromDisk
 
     log "Reading legacy registry..."
     legacyRegistry <- readLegacyRegistryFiles

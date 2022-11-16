@@ -14,8 +14,8 @@ import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
-import Registry.API (Source(..), compilePackage, publishToPursuit)
-import Registry.API as API
+import Registry.App.API (Source(..), compilePackage, publishToPursuit)
+import Registry.App.API as API
 import Registry.App.Cache as Cache
 import Registry.App.Json as Json
 import Registry.Manifest as Manifest

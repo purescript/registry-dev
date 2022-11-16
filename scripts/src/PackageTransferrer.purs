@@ -17,8 +17,8 @@ import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
-import Registry.API (LegacyRegistryFile(..), Source(..))
-import Registry.API as API
+import Registry.App.API (LegacyRegistryFile(..), Source(..))
+import Registry.App.API as API
 import Registry.App.Cache as Cache
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Location (Location(..))

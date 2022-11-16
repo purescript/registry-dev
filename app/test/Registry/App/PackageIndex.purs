@@ -16,7 +16,7 @@ import Foreign.Node.FS as FS.Extra
 import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
-import Registry.App.Index as App.Index
+import Registry.App.PackageIndex as PackageIndex
 import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
 import Registry.Location (Location(..))
@@ -57,7 +57,7 @@ testRegistryIndex :: Spec.SpecT (Reader.ReaderT TestIndexEnv Aff) Unit Identity 
 testRegistryIndex = Spec.before runBefore do
   Spec.describe "Registry index writes to and reads back from disk" do
     Spec.it "Reads an empty index from disk" \{ tmp } -> do
-      initialIndex <- runTestRegistryM tmp App.Index.readManifestIndexFromDisk
+      initialIndex <- runTestRegistryM tmp PackageIndex.readManifestIndexFromDisk
       Map.size (ManifestIndex.toMap initialIndex) `Assert.shouldEqual` 0
 
     let
@@ -109,7 +109,7 @@ testRegistryIndex = Spec.before runBefore do
         case result of
           Left error -> Assert.fail error
           Right _ -> pure unit
-        index <- runTestRegistryM tmp App.Index.readManifestIndexFromDisk
+        index <- runTestRegistryM tmp PackageIndex.readManifestIndexFromDisk
         (Map.size <$> Map.lookup contextName (ManifestIndex.toMap index)) `Assert.shouldEqual` Just 4
   where
   runBefore = do
@@ -127,7 +127,7 @@ testRegistryIndex = Spec.before runBefore do
       case result of
         Left error -> Assert.fail $ "Failed to write to file " <> ManifestIndex.packageEntryFilePath packageName <> "\n" <> error
         Right _ -> pure unit
-      diskIndex <- runTestRegistryM tmp App.Index.readManifestIndexFromDisk
+      diskIndex <- runTestRegistryM tmp PackageIndex.readManifestIndexFromDisk
 
       case ManifestIndex.insert manifest index of
         Left errors ->

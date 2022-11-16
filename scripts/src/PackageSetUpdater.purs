@@ -17,9 +17,9 @@ import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
-import Registry.API as API
-import Registry.App.Index as App.Index
+import Registry.App.API as API
 import Registry.App.Json as Json
+import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.Metadata (Metadata(..))
@@ -88,7 +88,7 @@ main = Aff.launchAff_ do
     API.fetchRegistry
     API.fillMetadataRef
 
-    registryIndex <- App.Index.readManifestIndexFromDisk
+    registryIndex <- PackageIndex.readManifestIndexFromDisk
     prevPackageSet <- App.PackageSets.readLatestPackageSet
     App.PackageSets.validatePackageSet registryIndex prevPackageSet
 
