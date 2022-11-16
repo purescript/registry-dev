@@ -6,7 +6,7 @@ module Registry.Prelude
   , module Extra
   , module Maybe
   , module Prelude
-  , module Registry.Types
+  , module Registry.App.Types
   , newlines
   , partitionEithers
   , stripPureScriptPrefix
@@ -67,7 +67,7 @@ import Node.Buffer (Buffer) as Extra
 import Node.Encoding (Encoding(..)) as Extra
 import Node.Path (FilePath) as Extra
 import Partial.Unsafe (unsafeCrashWith) as Extra
-import Registry.Types (RawPackageName(..), RawVersion(..), RawVersionRange(..), rawPackageNameCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionMapCodec, rawVersionRangeCodec) as Registry.Types
+import Registry.App.Types (RawPackageName(..), RawVersion(..), RawVersionRange(..), rawPackageNameCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionMapCodec, rawVersionRangeCodec) as Registry.App.Types
 
 -- | Partition an array of `Either` values into failure and success  values
 partitionEithers :: forall e a. Array (Either.Either e a) -> { fail :: Array e, success :: Array a }

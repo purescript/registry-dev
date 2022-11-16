@@ -1,4 +1,4 @@
-module Registry.Types where
+module Registry.App.Types where
 
 import Prelude
 

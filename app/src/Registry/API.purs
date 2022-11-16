@@ -87,7 +87,6 @@ import Registry.Range as Range
 import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Sha256 as Sha256
 import Registry.Solver as Solver
-import Registry.Types (RawPackageName(..), RawVersion(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Process
