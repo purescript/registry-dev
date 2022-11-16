@@ -6,7 +6,6 @@ module Registry.Prelude
   , module Extra
   , module Maybe
   , module Prelude
-  , module Registry.Json
   , module Registry.Types
   , newlines
   , partitionEithers
@@ -68,8 +67,7 @@ import Node.Buffer (Buffer) as Extra
 import Node.Encoding (Encoding(..)) as Extra
 import Node.Path (FilePath) as Extra
 import Partial.Unsafe (unsafeCrashWith) as Extra
-import Registry.Json (class RegistryJson, Json) as Registry.Json
-import Registry.Types (RawPackageName(..), RawVersion(..), RawVersionRange(..)) as Registry.Types
+import Registry.Types (RawPackageName(..), RawVersion(..), RawVersionRange(..), rawPackageNameCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionMapCodec, rawVersionRangeCodec) as Registry.Types
 
 -- | Partition an array of `Either` values into failure and success  values
 partitionEithers :: forall e a. Array (Either.Either e a) -> { fail :: Array e, success :: Array a }

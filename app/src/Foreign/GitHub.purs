@@ -24,6 +24,10 @@ module Foreign.GitHub
   , parseRepo
   , printGitHubError
   , printRateLimit
+  , decodeEvent
+  , githubErrorCodec
+  , tagCodec
+  , addressCodec
   ) where
 
 import Registry.Prelude
@@ -34,7 +38,10 @@ import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.Array as Array
 import Data.Bitraversable (ltraverse)
+import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as CA.Common
+import Data.Codec.Argonaut.Variant as CA.Variant
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.DateTime.Instant (Instant)
@@ -45,10 +52,12 @@ import Data.Int as Int
 import Data.Interpolate (i)
 import Data.List as List
 import Data.Newtype (over, unwrap)
+import Data.Profunctor as Profunctor
 import Data.String as String
 import Data.String.Base64 as Base64
 import Data.String.CodeUnits as String.CodeUnits
 import Data.Time.Duration as Duration
+import Data.Variant as Variant
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Effect.Now as Now
@@ -60,12 +69,13 @@ import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
+import Registry.App.Json (Json)
+import Registry.App.Json as Json
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Constants as Constants
 import Registry.Internal.Codec as Internal.Codec
-import Registry.Json ((.:))
-import Registry.Json as Json
+import Type.Proxy (Proxy(..))
 
 foreign import data Octokit :: Type
 
@@ -99,13 +109,13 @@ listTeamMembers octokit cache { org, team } = do
   route = Route $ i "GET /orgs/" org "/teams/" team "/members"
 
   decodeTeamMembers :: Json -> Either String (Array TeamMember)
-  decodeTeamMembers = Json.decode >=> traverse decodeTeamMember
+  decodeTeamMembers = Json.decodeJson (CA.array CA.json) >=> traverse decodeTeamMember
 
   decodeTeamMember :: Json -> Either String TeamMember
   decodeTeamMember json = do
-    obj <- Json.decode json
-    username <- obj .: "login"
-    userId <- obj .: "id"
+    object <- Json.decodeJson CA.jobject json
+    username <- Json.atKey "login" CA.string object
+    userId <- Json.atKey "id" CA.int object
     pure { username, userId }
 
 -- | List repository tags
@@ -121,15 +131,15 @@ listTags octokit cache address = do
   route = Route $ i "GET /repos/" address.owner "/" address.repo "/tags"
 
   decodeTags :: Json -> Either String (Array Tag)
-  decodeTags = Json.decode >=> traverse decodeTag
+  decodeTags = Json.decodeJson (CA.array CA.json) >=> traverse decodeTag
 
   decodeTag :: Json -> Either String Tag
   decodeTag json = do
-    obj <- Json.decode json
-    name <- obj .: "name"
-    commitObj <- obj .: "commit"
-    sha <- commitObj .: "sha"
-    url <- commitObj .: "url"
+    object <- Json.decodeJson CA.jobject json
+    name <- Json.atKey "name" CA.string object
+    commitObject <- Json.atKey "commit" CA.jobject object
+    sha <- Json.atKey "sha" CA.string commitObject
+    url <- Json.atKey "url" CA.string commitObject
     pure { name, sha, url }
 
 -- | Fetch a specific file  from the provided repository at the given ref and
@@ -147,16 +157,16 @@ getContent octokit cache address ref path = do
 
   decodeFile :: Json -> Either String String
   decodeFile json = do
-    obj <- Json.decode json
-    _data <- obj .: "data"
-    _type <- _data .: "type"
-    encoding <- _data .: "encoding"
-    if encoding == "base64" && _type == "file" then do
-      contentsb64 <- _data .: "content"
+    object <- Json.decodeJson CA.jobject json
+    data_ <- Json.atKey "data" CA.jobject object
+    type_ <- Json.atKey "type" CA.string data_
+    encoding <- Json.atKey "encoding" CA.string data_
+    if encoding == "base64" && type_ == "file" then do
+      contentsb64 <- Json.atKey "content" CA.string data_
       contents <- lmap Exception.message $ traverse Base64.decode $ String.split (String.Pattern "\n") contentsb64
       pure $ fold contents
     else
-      Left $ "Expected file with encoding base64, but got: " <> show { encoding, type: _type }
+      Left $ "Expected file with encoding base64, but got: " <> show { encoding, type: type_ }
 
 -- | Fetch the commit SHA for a given ref on a GitHub repository
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getRef.md
@@ -171,7 +181,10 @@ getRefCommit octokit cache address ref = do
   route = Route $ i "GET /repos/" address.owner "/" address.repo "/git/ref/" ref
 
   decodeRefSha :: Json -> Either String String
-  decodeRefSha = Json.decode >=> (_ .: "object") >=> (_ .: "sha")
+  decodeRefSha json = do
+    object <- Json.decodeJson CA.jobject json
+    innerObject <- Json.atKey "object" CA.jobject object
+    Json.atKey "sha" CA.string innerObject
 
 -- | Fetch the date associated with a given commit, in the RFC3339String format.
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getCommit.md
@@ -187,11 +200,9 @@ getCommitDate octokit cache address commitSha = do
 
   decodeCommit :: Json -> Either String DateTime
   decodeCommit json = do
-    obj <- Json.decode json
-    committer <- obj .: "committer"
-    dateString <- committer .: "date"
-    date <- lmap CA.printJsonDecodeError $ CA.decode Internal.Codec.iso8601DateTime dateString
-    pure date
+    object <- Json.decodeJson CA.jobject json
+    committerObject <- Json.atKey "committer" CA.jobject object
+    Json.atKey "date" Internal.Codec.iso8601DateTime committerObject
 
 -- | Create a comment on an issue in the registry repo.
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/issues/createComment.md
@@ -232,11 +243,13 @@ getRateLimit octokit = do
 
   decodeRateLimit :: Json -> Either String RateLimit
   decodeRateLimit json = do
-    obj <- Json.decode json
-    rateObj <- (_ .: "core") =<< (_ .: "resources") =<< obj .: "data"
-    limit <- rateObj .: "limit"
-    remaining <- rateObj .: "remaining"
-    reset <- rateObj .: "reset"
+    object <- Json.decodeJson CA.jobject json
+    dataObject <- Json.atKey "data" CA.jobject object
+    resourcesObject <- Json.atKey "resources" CA.jobject dataObject
+    coreObject <- Json.atKey "core" CA.jobject resourcesObject
+    limit <- Json.atKey "limit" CA.int coreObject
+    remaining <- Json.atKey "remaining" CA.int coreObject
+    reset <- Json.atKey "reset" CA.number coreObject
     let resetTime = Instant.instant $ Duration.Milliseconds $ reset * 1000.0
     pure { limit, remaining, resetTime }
 
@@ -265,7 +278,6 @@ newtype Route = Route String
 
 derive newtype instance Eq Route
 derive newtype instance Ord Route
-derive newtype instance Json.StringEncodable Route
 
 foreign import requestImpl :: forall args r. EffectFn6 Octokit Route (Object String) (Record args) (Object Json -> r) (Json -> r) (Promise r)
 
@@ -342,13 +354,14 @@ cachedRequest
   -> { cache :: Cache, checkGitHub :: Boolean }
   -> ExceptT GitHubAPIError Aff Json
 cachedRequest runRequest requestArgs@{ route: Route route } { cache, checkGitHub } = do
-  entry <- liftEffect (Cache.readJsonEntry route cache)
+  let codec = CA.Common.either githubApiErrorCodec CA.json
+  entry <- liftEffect (Cache.readJsonEntry codec route cache)
   now <- liftEffect nowUTC
   ExceptT $ case entry of
     Left _ -> do
       log $ "CACHE MISS: Malformed or no entry for " <> route
       result <- Except.runExceptT $ runRequest requestArgs
-      liftEffect $ Cache.writeJsonEntry route result cache
+      liftEffect $ Cache.writeJsonEntry codec route result cache
       pure result
 
     Right cached -> case cached.value of
@@ -389,7 +402,7 @@ cachedRequest runRequest requestArgs@{ route: Route route } { cache, checkGitHub
               Left err | err.statusCode == 304 -> do
                 pure $ Right payload
               _ -> do
-                liftEffect $ Cache.writeJsonEntry route result cache
+                liftEffect $ Cache.writeJsonEntry codec route result cache
                 pure result
         | otherwise ->
             pure $ Right payload
@@ -398,14 +411,12 @@ newtype IssueNumber = IssueNumber Int
 
 instance Newtype IssueNumber Int
 derive newtype instance Eq IssueNumber
-derive newtype instance RegistryJson IssueNumber
 
 newtype PackageURL = PackageURL String
 
 derive instance Newtype PackageURL _
 derive newtype instance Eq PackageURL
 derive newtype instance Ord PackageURL
-derive newtype instance RegistryJson PackageURL
 
 newtype Event = Event
   { issueNumber :: IssueNumber
@@ -415,23 +426,37 @@ newtype Event = Event
 
 derive instance Newtype Event _
 
-instance RegistryJson Event where
-  encode (Event fields) = Json.encode fields
-  decode json = do
-    obj <- Json.decode json
-    issue <- obj .: "issue"
-    issueNumber <- issue .: "number"
-    username <- (_ .: "login") =<< obj .: "sender"
-    -- We accept issue creation and issue comment events, but both contain an
-    -- 'issue' field. However, only comments contain a 'comment' field. For that
-    -- reason we first try to parse the comment and fall back to the issue if
-    -- that fails.
-    body <- (_ .: "body") =<< obj .: "comment" <|> pure issue
-    pure $ Event { body, username, issueNumber: IssueNumber issueNumber }
+decodeEvent :: Json -> Either String Event
+decodeEvent json = do
+  object <- Json.decodeJson CA.jobject json
+  username <- Json.atKey "login" CA.string =<< Json.atKey "sender" CA.jobject object
+
+  issueObject <- Json.atKey "issue" CA.jobject object
+  issueNumber <- Json.atKey "number" CA.int issueObject
+
+  -- We accept issue creation and issue comment events, but both contain an
+  -- 'issue' field. However, only comments contain a 'comment' field. For that
+  -- reason we first try to parse the comment and fall back to the issue if
+  -- that fails.
+  body <- Json.atKey "body" CA.string =<< Json.atKey "comment" CA.jobject object <|> pure issueObject
+  pure $ Event { body, username, issueNumber: IssueNumber issueNumber }
 
 type Address = { owner :: String, repo :: String }
 
+addressCodec :: JsonCodec Address
+addressCodec = Json.object "Address"
+  { owner: CA.string
+  , repo: CA.string
+  }
+
 type Tag = { name :: String, sha :: String, url :: Http.URL }
+
+tagCodec :: JsonCodec Tag
+tagCodec = Json.object "Tag"
+  { name: CA.string
+  , sha: CA.string
+  , url: CA.string
+  }
 
 parseRepo :: PackageURL -> Either ParseError Address
 parseRepo (PackageURL input) = Parsing.runParser input do
@@ -462,14 +487,20 @@ data GitHubError
 derive instance Eq GitHubError
 derive instance Ord GitHubError
 
-instance RegistryJson GitHubError where
-  encode = case _ of
-    APIError value -> Json.encode { tag: "APIError", value }
-    DecodeError value -> Json.encode { tag: "DecodeError", value }
-  decode = Json.decode >=> \obj -> (obj .: "tag") >>= case _ of
-    "APIError" -> map APIError $ obj .: "value"
-    "DecodeError" -> map DecodeError $ obj .: "value"
-    tag -> Left $ "Unexpected tag: " <> tag
+githubErrorCodec :: JsonCodec GitHubError
+githubErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
+  { apiError: Right githubApiErrorCodec
+  , decodeError: Right CA.string
+  }
+  where
+  toVariant = case _ of
+    APIError error -> Variant.inj (Proxy :: _ "apiError") error
+    DecodeError error -> Variant.inj (Proxy :: _ "decodeError") error
+
+  fromVariant = Variant.match
+    { apiError: APIError
+    , decodeError: DecodeError
+    }
 
 printGitHubError :: GitHubError -> String
 printGitHubError = case _ of
@@ -489,15 +520,25 @@ type GitHubAPIError =
   , message :: String
   }
 
+githubApiErrorCodec :: JsonCodec GitHubAPIError
+githubApiErrorCodec = Json.object "GitHubAPIError"
+  { statusCode: CA.int
+  , message: CA.string
+  }
+
 convertGitHubAPIError :: forall r. Either (Object Json) r -> Aff (Either GitHubAPIError r)
 convertGitHubAPIError = ltraverse \error -> case decodeGitHubAPIError error of
   Left err -> throwError $ Exception.error $ "Unexpected error decoding GitHubAPIError: " <> err
   Right value -> pure value
   where
   decodeGitHubAPIError :: Object Json -> Either String GitHubAPIError
-  decodeGitHubAPIError obj = do
-    statusCode <- obj .: "status"
+  decodeGitHubAPIError object = do
+    statusCode <- Json.atKey "status" CA.int object
     message <- case statusCode of
       304 -> pure ""
-      _ -> (_ .: "message") =<< (_ .: "data") =<< obj .: "response"
+      _ ->
+        Json.atKey "response" CA.jobject object
+          >>= Json.atKey "data" CA.jobject
+          >>= Json.atKey "message" CA.string
+
     pure { statusCode, message }

@@ -19,13 +19,14 @@ import Node.Process as Node.Process
 import Node.Process as Process
 import Registry.API as API
 import Registry.App.Index as App.Index
+import Registry.App.Json as Json
 import Registry.App.PackageSets as App.PackageSets
-import Registry.Json as Json
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageSet (PackageSet(..))
+import Registry.PackageSet as PackageSet
 import Registry.RegistryM (Env, RegistryM, commitPackageSetFile, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -121,7 +122,7 @@ main = Aff.launchAff_ do
           log "\n----------\nNew packages were added to the set!"
           forWithIndex_ success logPackage
           newPath <- App.PackageSets.getPackageSetPath (un PackageSet packageSet).version
-          liftAff $ Json.writeJsonFile newPath packageSet
+          liftAff $ Json.writeJsonFile PackageSet.codec newPath packageSet
           case mode of
             GeneratePackageSet -> pure unit
             CommitPackageSet -> do

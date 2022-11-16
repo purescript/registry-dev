@@ -7,7 +7,8 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Map as Map
 import Data.Set as Set
 import Data.Set.NonEmpty as NES
-import Registry.Json as Json
+import Registry.App.Json as Json
+import Registry.Internal.Codec as Internal.Codec
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
@@ -40,7 +41,10 @@ spec = do
           received.message `Assert.shouldEqual` expected.message
 
       Right value ->
-        Assert.fail $ "Expected failure, but received: " <> Json.stringifyJson value
+        Assert.fail $ Array.fold
+          [ "Expected failure, but received: "
+          , Json.stringifyJson (Internal.Codec.packageMap Version.codec) value
+          ]
 
   Spec.describe "Valid dependency ranges" do
     Spec.it "Solves simple range" do

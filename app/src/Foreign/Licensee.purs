@@ -4,12 +4,13 @@ import Registry.Prelude
 
 import Control.Parallel as Parallel
 import Data.Array as Array
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Record as CA.Record
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
 import Node.Path as Path
-import Registry.Json ((.:))
-import Registry.Json as Json
+import Registry.App.Json as Json
 import Sunde as Process
 
 -- | Attempt to detect the license associated with a set of provided files
@@ -34,11 +35,10 @@ detect directory = do
     NodeProcess.Normally n | n == 0 || n == 1 -> do
       let
         parse :: String -> Either String (Array String)
-        parse str = Json.parseJson str >>= \json -> do
-          obj <- Json.decode json
-          licenses <- obj .: "licenses"
-          spdxIds <- traverse (_ .: "spdx_id") licenses
-          pure spdxIds
+        parse str = map (map _.spdx_id <<< _.licenses) $ flip Json.parseJson str $ CA.Record.object "Licenses"
+          { licenses: CA.array $ CA.Record.object "SPDXIds"
+              { spdx_id: CA.string }
+          }
 
       case parse result.stdout of
         Left error -> do

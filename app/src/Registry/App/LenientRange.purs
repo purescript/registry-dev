@@ -23,7 +23,6 @@ import Parsing.String as Parsing.String
 import Registry.App.LenientVersion (LenientVersion(..))
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Internal.Parsing as Internal.Parsing
-import Registry.Json as Json
 import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.Version as Version
@@ -36,10 +35,6 @@ derive instance Newtype LenientRange _
 
 instance Eq LenientRange where
   eq = eq `on` (_.range <<< un LenientRange)
-
-instance RegistryJson LenientRange where
-  encode = Json.encode <<< raw
-  decode = parse <=< Json.decode
 
 -- | Print the `Range` from a lenient range in the form ">=X.Y.Z <X.Y.Z"
 print :: LenientRange -> String

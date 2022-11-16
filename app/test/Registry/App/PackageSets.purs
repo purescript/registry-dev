@@ -10,12 +10,12 @@ import Data.Either as Either
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.Set as Set
+import Registry.App.Json as Json
 import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
-import Registry.App.PackageSets as PackageSet
+import Registry.App.PackageSets as App.PackageSets
 import Registry.Internal.Format as Internal.Formatter
-import Registry.Json as Json
-import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, parsePscTag, printPscTag)
+import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, latestCompatibleSetsCodec, legacyPackageSetCodec, parsePscTag, printPscTag)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest)
@@ -24,6 +24,7 @@ import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageSet (PackageSet(..))
+import Registry.PackageSet as PackageSet
 import Registry.Sha256 as Sha256
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -34,10 +35,10 @@ import Test.Spec as Spec
 spec :: Spec.Spec Unit
 spec = do
   Spec.it "Decodes package set" do
-    Json.parseJson packageSetJson `Assert.shouldContain` packageSet
+    Json.parseJson PackageSet.codec packageSetJson `Assert.shouldContain` packageSet
 
   Spec.it "Encodes package set" do
-    Json.printJson packageSet `Assert.shouldEqual` packageSetJson
+    Json.printJson PackageSet.codec packageSet `Assert.shouldEqual` packageSetJson
 
   Spec.it "Parses legacy package set tags" do
     let valid = "psc-0.12.18-20220102"
@@ -49,18 +50,18 @@ spec = do
   Spec.it "Parses legacy 'latest compatible set' files" do
     let
       parsed :: Either _ LatestCompatibleSets
-      parsed = Json.parseJson latestCompatibleSets
+      parsed = Json.parseJson latestCompatibleSetsCodec latestCompatibleSets
 
-    map Json.printJson parsed `Assert.shouldContain` latestCompatibleSets
+    map (Json.printJson latestCompatibleSetsCodec) parsed `Assert.shouldContain` latestCompatibleSets
 
   Spec.it "Produces correct legacy package set name" do
     printPscTag convertedPackageSet.tag `Assert.shouldEqual` "psc-0.15.2-20220725"
 
   Spec.it "Decodes legacy package set" do
-    Json.parseJson legacyPackageSetJson `Assert.shouldContain` convertedPackageSet.packageSet
+    Json.parseJson legacyPackageSetCodec legacyPackageSetJson `Assert.shouldContain` convertedPackageSet.packageSet
 
   Spec.it "Encodes legacy package set as JSON" do
-    Json.printJson convertedPackageSet.packageSet `Assert.shouldEqual` legacyPackageSetJson
+    Json.printJson legacyPackageSetCodec convertedPackageSet.packageSet `Assert.shouldEqual` legacyPackageSetJson
 
   Spec.it "Encodes legacy package set as Dhall" do
     Legacy.PackageSet.printDhall convertedPackageSet.packageSet `Assert.shouldEqual` legacyPackageSetDhall
@@ -73,7 +74,7 @@ spec = do
         , Tuple (unsafeName "math") (Just (unsafeVersion "1.0.0"))
         ]
 
-    PackageSet.commitMessage packageSet operations (unsafeVersion "2.0.0") `Assert.shouldEqual` packageSetCommitMessage
+    App.PackageSets.commitMessage packageSet operations (unsafeVersion "2.0.0") `Assert.shouldEqual` packageSetCommitMessage
 
   Spec.it "Reports package set changelog correctly (no updates)" do
     let
@@ -82,7 +83,7 @@ spec = do
         , Tuple (unsafeName "math") (Just (unsafeVersion "1.0.0"))
         ]
 
-    PackageSet.commitMessage packageSet operations (unsafeVersion "2.0.0") `Assert.shouldEqual` packageSetCommitMessageNoUpdates
+    App.PackageSets.commitMessage packageSet operations (unsafeVersion "2.0.0") `Assert.shouldEqual` packageSetCommitMessageNoUpdates
 
 packageSetCommitMessage :: String
 packageSetCommitMessage =
