@@ -1,4 +1,4 @@
-module Registry.Cache
+module Registry.App.Cache
   ( Cache
   , CacheEntry
   , readJsonEntry

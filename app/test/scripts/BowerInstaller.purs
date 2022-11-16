@@ -33,11 +33,11 @@ import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.API as API
+import Registry.App.Cache as Cache
 import Registry.App.Index as App.Index
 import Registry.App.Json as Json
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
-import Registry.Cache as Cache
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))

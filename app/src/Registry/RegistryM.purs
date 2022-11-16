@@ -9,7 +9,7 @@ import Effect.Aff (Error)
 import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Foreign.GitHub (Octokit)
-import Registry.Cache as Registry
+import Registry.App.Cache (Cache)
 import Registry.Metadata (Metadata)
 import Registry.PackageName (PackageName)
 import Registry.PackageUpload as Upload
@@ -26,7 +26,7 @@ type Env =
   , octokit :: Octokit
   , username :: String
   , packagesMetadata :: Ref (Map PackageName Metadata)
-  , cache :: Registry.Cache
+  , cache :: Cache
   , registry :: FilePath
   , registryIndex :: FilePath
   }

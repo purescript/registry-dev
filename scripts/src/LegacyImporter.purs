@@ -39,12 +39,12 @@ import Node.Process as Node.Process
 import Parsing as Parsing
 import Registry.API (LegacyRegistryFile(..), Source(..))
 import Registry.API as API
+import Registry.App.Cache as Cache
 import Registry.App.Index as App.Index
 import Registry.App.Json (JsonCodec)
 import Registry.App.Json as Json
 import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
-import Registry.Cache as Cache
 import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.Manifest as LegacyManifest

@@ -19,8 +19,8 @@ import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.API (LegacyRegistryFile(..), Source(..))
 import Registry.API as API
+import Registry.App.Cache as Cache
 import Registry.App.LenientVersion as LenientVersion
-import Registry.Cache as Cache
 import Registry.Location (Location(..))
 import Registry.Metadata (Metadata(..))
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))

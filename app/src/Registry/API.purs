@@ -56,12 +56,12 @@ import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
+import Registry.App.Cache (Cache)
+import Registry.App.Cache as Cache
 import Registry.App.Index as App.Index
 import Registry.App.Json as Json
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageSets as App.PackageSets
-import Registry.Cache (Cache)
-import Registry.Cache as Cache
 import Registry.Constants (GitHubRepo)
 import Registry.Constants as Constants
 import Registry.Legacy.Manifest as Legacy.Manifest

@@ -69,10 +69,10 @@ import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
+import Registry.App.Cache (Cache)
+import Registry.App.Cache as Cache
 import Registry.App.Json (Json)
 import Registry.App.Json as Json
-import Registry.Cache (Cache)
-import Registry.Cache as Cache
 import Registry.Constants as Constants
 import Registry.Internal.Codec as Internal.Codec
 import Type.Proxy (Proxy(..))
