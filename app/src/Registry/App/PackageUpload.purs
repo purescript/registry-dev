@@ -1,4 +1,4 @@
-module Registry.PackageUpload where
+module Registry.App.PackageStorage where
 
 import Registry.Prelude
 

@@ -10,9 +10,9 @@ import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Foreign.GitHub (Octokit)
 import Registry.App.Cache (Cache)
+import Registry.App.PackageStorage as Upload
 import Registry.Metadata (Metadata)
 import Registry.PackageName (PackageName)
-import Registry.PackageUpload as Upload
 import Registry.Version (Version)
 
 type Env =
