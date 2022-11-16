@@ -43,7 +43,7 @@ import Test.Registry.App.LenientRange as Test.LenientRange
 import Test.Registry.App.LenientVersion as Test.LenientVersion
 import Test.Registry.App.PackageIndex as Test.PackageIndex
 import Test.Registry.App.PackageSets as Test.PackageSets
-import Test.Registry.Auth as SSH
+import Test.Registry.Auth as Auth
 import Test.Registry.Solver as Test.Solver
 import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
@@ -59,7 +59,7 @@ main = launchAff_ do
     Spec.describe "API" do
       Spec.describe "Checks" do
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
-        Spec.describe "Authenticated operations" SSH.spec
+        Spec.describe "Authenticated operations" Auth.spec
       Spec.describe "Tarball" do
         copySourceFiles
         removeIgnoredTarballFiles

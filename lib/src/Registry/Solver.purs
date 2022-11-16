@@ -1,28 +1,35 @@
 module Registry.Solver where
 
-import Registry.App.Prelude
+import Prelude
 
-import Control.Monad.Error.Class (catchError)
-import Control.Monad.Reader (ask)
-import Control.Monad.State (get, modify_, put)
+import Control.Monad.Error.Class as Error
+import Control.Monad.Reader as Reader
+import Control.Monad.State as State
 import Control.Plus (empty)
 import Data.Array as Array
-import Data.Array.NonEmpty (foldMap1)
+import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
+import Data.Bifunctor (lmap)
+import Data.Either (Either(..))
 import Data.Foldable (foldMap)
 import Data.FoldableWithIndex (foldMapWithIndex, traverseWithIndex_)
+import Data.Map (Map)
 import Data.Map as Map
-import Data.Newtype (alaF)
+import Data.Maybe (Maybe(..))
+import Data.Maybe as Maybe
+import Data.Newtype (class Newtype, alaF)
 import Data.Semigroup.First (First(..))
 import Data.Semigroup.Foldable (intercalateMap)
+import Data.Set (Set)
 import Data.Set as Set
 import Data.Set.NonEmpty (NonEmptySet)
 import Data.Set.NonEmpty as NES
-import Registry.PackageName (PackageName)
+import Data.Traversable (sequence, traverse)
+import Data.Tuple (Tuple(..), fst)
+import Data.Tuple.Nested ((/\))
 import Registry.PackageName as PackageName
-import Registry.Range (Range)
 import Registry.Range as Range
-import Registry.Version (Version)
+import Registry.Types (PackageName, Range, Version)
 import Registry.Version as Version
 import Uncurried.RWSE (RWSE, runRWSE)
 
@@ -73,7 +80,7 @@ minimizeSolverPositions index initialGoals errored = go Map.empty (map (NEA.sing
       nextGoals = currentGoals
         # foldMapWithIndex \package -> foldMap \(Tuple pos range) ->
             Map.lookup package index
-              # maybe Map.empty (Map.filterWithKey (\v _ -> Range.includes range v))
+              # Maybe.maybe Map.empty (Map.filterWithKey (\v _ -> Range.includes range v))
               # foldMapWithIndex \version deps ->
                   NEA.singleton <<< Tuple (Solving package (pure version) pos) <$> deps
     in
@@ -151,7 +158,7 @@ groupErrors2 = map fromGroup <<< NEA.groupAllBy grouping
     compare p1 p2 <> compare (Range.print r1) (Range.print r2) <> compare s1 s2 <> compare (Range.print q1) (Range.print q2) <> compare t1 t2
 
   fromGroup :: NonEmptyArray SolverError -> SolverError
-  fromGroup es = setVersions (NEA.head es) $ foldMap1 getVersion es
+  fromGroup es = setVersions (NEA.head es) $ NEA.foldMap1 getVersion es
 
   setVersions (VersionNotInRange p _ r q) (Just vs) = VersionNotInRange p vs r q
   setVersions e _ = e
@@ -173,7 +180,7 @@ groupPositions = fromGroup <=< NEA.groupAllBy grouping
   getVersions (Solving _ v _) = NEA.toArray v
 
   setVersion os = NEA.fromArray >>>
-    maybe os case NEA.head os, _ of
+    Maybe.maybe os case NEA.head os, _ of
       SolveRoot, _ -> pure SolveRoot
       Solving p _ s, v -> pure (Solving p v s)
 
@@ -185,7 +192,7 @@ printSolverError = case _ of
     , " in the range "
     , Range.print range
     , " (existing versions: "
-    , maybe "none" (intercalateMap ", " Version.print) (NEA.fromFoldable versions)
+    , Maybe.maybe "none" (intercalateMap ", " Version.print) (NEA.fromFoldable versions)
     , ")"
     , printSolverPosition pos
     ]
@@ -227,14 +234,14 @@ derive instance Newtype (CollectErrors a) _
 
 instance Semigroup (CollectErrors a) where
   append (CollectErrors fa) (CollectErrors fb) = CollectErrors do
-    s <- get
-    catchError fa \e1 -> do
-      put s
-      catchError fb \e2 -> do
-        throwError (groupErrors $ e1 <> e2)
+    s <- State.get
+    Error.catchError fa \e1 -> do
+      State.put s
+      Error.catchError fb \e2 -> do
+        Error.throwError (groupErrors $ e1 <> e2)
 
 oneOfMap1 :: forall a b. (a -> Solver b) -> NonEmptyArray a -> Solver b
-oneOfMap1 = alaF CollectErrors foldMap1
+oneOfMap1 = alaF CollectErrors NEA.foldMap1
 
 type ValidationError =
   { name :: PackageName
@@ -243,12 +250,12 @@ type ValidationError =
   }
 
 validate :: Map PackageName Range -> Solved -> Either (NonEmptyArray ValidationError) Unit
-validate index sols = maybe (Right unit) Left $ NEA.fromArray
+validate index sols = Maybe.maybe (Right unit) Left $ NEA.fromArray
   $ index
-  # foldMapWithIndex \name range ->
-      case Map.lookup name sols of
-        Just version | Range.includes range version -> empty
-        version -> pure { name, range, version }
+      # foldMapWithIndex \name range ->
+          case Map.lookup name sols of
+            Just version | Range.includes range version -> empty
+            version -> pure { name, range, version }
 
 solve :: Dependencies -> Map PackageName Range -> Either (NonEmptyArray SolverError) Solved
 solve index pending = lmap (minimizeErrors index pending)
@@ -267,7 +274,7 @@ solveAndValidate index pending = do
 
 exploreGoals :: Int -> Solver Solved
 exploreGoals work =
-  get >>= \goals@{ pending, solved } ->
+  State.get >>= \goals@{ pending, solved } ->
     case Map.findMin pending of
       Nothing ->
         pure solved
@@ -275,47 +282,47 @@ exploreGoals work =
       Just { key: name, value: Tuple pos constraint } -> do
         let otherPending = Map.delete name pending
         let goals' = goals { pending = otherPending }
-        put goals'
+        State.put goals'
         versions <- getRelevantVersions pos name constraint
         let
           act = versions # oneOfMap1 \version ->
             addVersion pos name version *> exploreGoals 0
-        catchError act \e1 -> do
+        Error.catchError act \e1 -> do
           when (work > 0) $ void do
-            put goals'
-            catchError (exploreGoals (work - NEA.length e1)) \e2 -> do
-              throwError (e1 <> e2)
-          throwError e1
+            State.put goals'
+            Error.catchError (exploreGoals (work - NEA.length e1)) \e2 -> do
+              Error.throwError (e1 <> e2)
+          Error.throwError e1
 
 addVersion :: SolverPosition -> PackageName -> (Tuple Version (Map PackageName Range)) -> Solver Unit
 addVersion pos name (Tuple version deps) = do
-  modify_ \s -> s { solved = Map.insert name version s.solved }
+  State.modify_ \s -> s { solved = Map.insert name version s.solved }
   traverseWithIndex_ (addConstraint (Solving name (pure version) pos)) deps
 
 addConstraint :: SolverPosition -> PackageName -> Range -> Solver Unit
 addConstraint pos name newConstraint = do
-  goals@{ pending, solved } <- get
+  goals@{ pending, solved } <- State.get
   case Map.lookup name solved of
     Just version ->
       if Range.includes newConstraint version then pure unit
-      else throwError $ pure $ VersionNotInRange name (NES.singleton version) newConstraint pos
+      else Error.throwError $ pure $ VersionNotInRange name (NES.singleton version) newConstraint pos
 
     Nothing ->
       case Map.lookup name pending of
-        Nothing -> put $ goals { pending = Map.insert name (Tuple pos newConstraint) pending }
+        Nothing -> State.put $ goals { pending = Map.insert name (Tuple pos newConstraint) pending }
 
         Just (Tuple oldPos oldConstraint) ->
           case Range.intersect oldConstraint newConstraint of
             Nothing ->
-              throwError $ pure $ DisjointRanges name oldConstraint oldPos newConstraint pos
+              Error.throwError $ pure $ DisjointRanges name oldConstraint oldPos newConstraint pos
 
             Just mergedConstraint ->
               if oldConstraint == mergedConstraint then pure unit
-              else put $ goals { pending = Map.insert name (Tuple pos mergedConstraint) pending }
+              else State.put $ goals { pending = Map.insert name (Tuple pos mergedConstraint) pending }
 
 getRelevantVersions :: SolverPosition -> PackageName -> Range -> Solver (NonEmptyArray (Tuple Version (Map PackageName Range)))
 getRelevantVersions pos name constraint = do
-  index <- ask
+  index <- Reader.ask
   let
     versions =
       Map.lookup name index # foldMap do
@@ -326,4 +333,4 @@ getRelevantVersions pos name constraint = do
   case versions of
     Just vs -> pure vs
     Nothing ->
-      throwError $ pure $ NoVersionsInRange name (Map.lookup name index # foldMap Map.keys) constraint pos
+      Error.throwError $ pure $ NoVersionsInRange name (Map.lookup name index # foldMap Map.keys) constraint pos

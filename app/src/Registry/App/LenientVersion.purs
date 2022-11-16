@@ -15,7 +15,6 @@ import Data.Int as Int
 import Data.String as String
 import Parsing (Parser)
 import Parsing as Parsing
-import Registry.Version (Version)
 import Registry.Version as Version
 
 -- | A lenient variant on the `Registry.Version` type, which attempts to correct

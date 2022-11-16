@@ -25,7 +25,6 @@ import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.HTTP.Method as Method
 import Data.Int as Int
-import Data.Interpolate (i)
 import Data.Map as Map
 import Data.MediaType.Common as MediaType
 import Data.Profunctor as Profunctor
@@ -64,30 +63,22 @@ import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
 import Registry.App.PackageStorage as Upload
 import Registry.App.RegistryM (Env, RegistryM, closeIssue, comment, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.Auth as SSH
+import Registry.Auth as Auth
 import Registry.Constants (GitHubRepo)
 import Registry.Constants as Constants
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.PackageSet as Legacy.PackageSet
-import Registry.Location (Location(..))
 import Registry.Location as Location
-import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
-import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
 import Registry.Metadata as Metadata
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageOperation(..), PackageSetOperation(..), PublishData)
 import Registry.Operation as Operation
-import Registry.Owner (Owner(..))
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.PackageSet (PackageSet(..))
 import Registry.PackageSet as PackageSet
-import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
 import Registry.Solver as Solver
-import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Process
 
@@ -400,7 +391,7 @@ runOperation source operation = case operation of
             , "Please publish a package version with your SSH public key in the owners field."
             , "You can then retry unpublishing this version by authenticating with your private key."
             ]
-        Just owners -> liftAff (SSH.verifyPayload owners auth) >>= case _ of
+        Just owners -> liftAff (Auth.verifyPayload owners auth) >>= case _ of
           Left err -> throwWithComment $ String.joinWith "\n"
             [ "Failed to verify package ownership:"
             , err
@@ -480,7 +471,7 @@ runOperation source operation = case operation of
                 , "You can then retry transferring this package by authenticating with your private key."
                 ]
             Just owners ->
-              liftAff (SSH.verifyPayload owners auth) >>= case _ of
+              liftAff (Auth.verifyPayload owners auth) >>= case _ of
                 Left err ->
                   throwWithComment $ String.joinWith "\n"
                     [ "Failed to verify package ownership:"
@@ -1152,7 +1143,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
     case pursPublishMethod of
       LegacyPursPublish -> liftAff do
         log $ "Cloning repo at tag: " <> show { owner, repo, ref }
-        Git.cloneGitTag (i "https://github.com/" owner "/" repo) ref tmpDir
+        Git.cloneGitTag (Array.fold [ "https://github.com/", owner, "/", repo ]) ref tmpDir
         log $ "Getting published time..."
         -- Cloning will result in the `repo` name as the directory name
         publishedTime <- Except.runExceptT (Git.gitGetRefTime ref (Path.concat [ tmpDir, repo ])) >>= case _ of
@@ -1369,7 +1360,7 @@ acceptTrustees username authenticated maybeOwners = do
 
         { publicKey, privateKey } <- readPacchettiBottiKeys
 
-        signature <- liftAff (SSH.signPayload { publicKey, privateKey, rawPayload: authenticated.rawPayload }) >>= case _ of
+        signature <- liftAff (Auth.signPayload { publicKey, privateKey, rawPayload: authenticated.rawPayload }) >>= case _ of
           Left _ -> throwWithComment "Error signing transfer. cc: @purescript/packaging"
           Right signature -> pure signature
 

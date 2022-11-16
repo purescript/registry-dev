@@ -12,13 +12,9 @@ import Foreign.FastGlob (Include(..))
 import Foreign.FastGlob as FastGlob
 import Node.Path as Path
 import Registry.App.RegistryM (RegistryM, commitIndexFile, throwWithComment)
-import Registry.Manifest (Manifest(..))
-import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range as Range
-import Registry.Version (Version)
 import Registry.Version as Version
 
 -- | Attempt to read a manifest index from disk, throwing an exception if the

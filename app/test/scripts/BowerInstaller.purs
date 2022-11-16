@@ -38,20 +38,12 @@ import Registry.App.Json as Json
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageIndex as PackageIndex
-import Registry.App.Prelude as Aff
 import Registry.App.RegistryM (RegistryM, readPackagesMetadata)
 import Registry.App.RegistryM as RegistryM
 import Registry.Internal.Codec as Internal.Codec
-import Registry.Location (Location(..))
-import Registry.Manifest (Manifest(..))
-import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
-import Registry.Metadata (Metadata(..))
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Range (Range)
 import Registry.Range as Range
-import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Sunde
 
@@ -269,9 +261,9 @@ fetchRepo :: GitHub.Address -> FilePath -> Aff Unit
 fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
   true -> do
     Except.runExceptT (Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just path)) >>= case _ of
-      Left err -> Aff.throwError $ Exception.error err
+      Left err -> throwError $ Exception.error err
       Right _ -> pure unit
   _ -> do
     Except.runExceptT (Git.runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
-      Left err -> Aff.throwError $ Exception.error err
+      Left err -> throwError $ Exception.error err
       Right _ -> pure unit

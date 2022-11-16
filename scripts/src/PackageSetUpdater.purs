@@ -16,19 +16,14 @@ import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
-import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.Json as Json
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
 import Registry.App.RegistryM (Env, RegistryM, commitPackageSetFile, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
-import Registry.Metadata (Metadata(..))
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.PackageSet (PackageSet(..))
 import Registry.PackageSet as PackageSet
-import Registry.Version (Version)
 import Registry.Version as Version
 
 data PublishMode = GeneratePackageSet | CommitPackageSet
@@ -59,7 +54,7 @@ main = Aff.launchAff_ do
   log "Starting package set publishing..."
 
   githubToken <- liftEffect do
-    Process.lookupEnv "GITHUB_TOKEN"
+    Node.Process.lookupEnv "GITHUB_TOKEN"
       >>= maybe (Exception.throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
   octokit <- liftEffect $ GitHub.mkOctokit githubToken

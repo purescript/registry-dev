@@ -10,7 +10,7 @@ import Data.Map as Map
 import Data.String as String
 import Effect.Exception as Exception
 import Effect.Ref as Ref
-import Effect.Unsafe (unsafePerformEffect)
+import Effect.Unsafe as Effect.Unsafe
 import Foreign.Git as Git
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
@@ -23,13 +23,10 @@ import Registry.App.Cache as Cache
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
 import Registry.App.RegistryM as RegistryM
-import Registry.Location (Location(..))
-import Registry.Metadata (Metadata(..))
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
 import Registry.Scripts.LegacyImporter as LegacyImporter
-import Registry.Version (Version)
 
 main :: Effect Unit
 main = launchAff_ do
@@ -54,7 +51,7 @@ main = launchAff_ do
       , commitPackageSetFile: \_ _ -> unsafeCrashWith "Should not modify package set in transfer."
       , uploadPackage: \_ -> unsafeCrashWith "Should not upload anything in transfer."
       , deletePackage: \_ -> unsafeCrashWith "Should not delete anything in transfer."
-      , packagesMetadata: unsafePerformEffect (Ref.new Map.empty)
+      , packagesMetadata: Effect.Unsafe.unsafePerformEffect (Ref.new Map.empty)
       , cache
       , octokit
       , username: "pacchettibotti"

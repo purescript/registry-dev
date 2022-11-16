@@ -21,12 +21,8 @@ import Registry.App.RegistryM (RegistryM)
 import Registry.App.RegistryM as RegistryM
 import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
-import Registry.Location (Location(..))
-import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
-import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Version as Version

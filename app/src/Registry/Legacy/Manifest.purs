@@ -34,16 +34,10 @@ import Registry.App.RegistryM (RegistryM, throwWithComment)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry, legacyPackageSetCodec)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
-import Registry.License (License)
 import Registry.License as License
-import Registry.Location (Location)
-import Registry.Manifest (Manifest(..))
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
-import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Process
 import Type.Proxy (Proxy(..))

@@ -14,7 +14,6 @@ import Node.FS.Aff as FS.Aff
 import Node.FS.Perms as Perms
 import Node.Path as Path
 import Registry.Operation (AuthenticatedData)
-import Registry.Owner (Owner(..))
 import Sunde as Process
 
 allowedSignersPath :: FilePath

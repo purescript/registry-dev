@@ -23,7 +23,6 @@ import Parsing.String as Parsing.String
 import Registry.App.LenientVersion (LenientVersion(..))
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Internal.Parsing as Internal.Parsing
-import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.Version as Version
 

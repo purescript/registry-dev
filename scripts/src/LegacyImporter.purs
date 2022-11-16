@@ -47,21 +47,14 @@ import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageStorage as Upload
 import Registry.App.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
-import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
+import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError, LegacyPackageSetEntries)
 import Registry.Legacy.Manifest as Legacy.Manifest
-import Registry.Legacy.Manifest as LegacyManifest
-import Registry.Location (Location(..))
 import Registry.Location as Location
-import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
-import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
-import Registry.Metadata (Metadata(..))
 import Registry.Metadata as Metadata
 import Registry.Operation (PackageOperation(..))
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Version (Version)
 import Registry.Version as Version
 import Type.Proxy (Proxy(..))
 
@@ -301,7 +294,7 @@ type ImportedIndex =
 -- | legacy registry but not in the resulting registry.
 importLegacyRegistry :: ManifestIndex -> LegacyRegistry -> RegistryM ImportedIndex
 importLegacyRegistry existingRegistry legacyRegistry = do
-  legacyPackageSets <- LegacyManifest.fetchLegacyPackageSets
+  legacyPackageSets <- Legacy.Manifest.fetchLegacyPackageSets
   manifests <- forWithIndex legacyRegistry \name address ->
     Except.runExceptT (buildLegacyPackageManifests existingRegistry legacyPackageSets name address)
 
@@ -381,7 +374,7 @@ importLegacyRegistry existingRegistry legacyRegistry = do
 -- | versions that don't produce valid manifests, and manifests for all that do.
 buildLegacyPackageManifests
   :: ManifestIndex
-  -> LegacyManifest.LegacyPackageSetEntries
+  -> LegacyPackageSetEntries
   -> RawPackageName
   -> GitHub.PackageURL
   -> ExceptT PackageValidationError RegistryM (Map RawVersion (Either VersionValidationError Manifest))
@@ -404,8 +397,8 @@ buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl
           let packageSetDeps = Map.lookup (RawVersion tag.name) =<< Map.lookup package.name legacyPackageSets
           let manifestError err = { error: InvalidManifest err, reason: "Legacy manifest could not be parsed." }
           Except.withExceptT manifestError do
-            legacyManifest <- LegacyManifest.fetchLegacyManifest packageSetDeps package.address (RawVersion tag.name)
-            pure $ LegacyManifest.toManifest package.name (LenientVersion.version version) location legacyManifest
+            legacyManifest <- Legacy.Manifest.fetchLegacyManifest packageSetDeps package.address (RawVersion tag.name)
+            pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
 
       case ManifestIndex.lookup package.name (LenientVersion.version version) existingRegistry of
         Just manifest -> pure manifest

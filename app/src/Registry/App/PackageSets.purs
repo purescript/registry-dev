@@ -41,14 +41,9 @@ import Node.Path as Path
 import Registry.App.Json as Json
 import Registry.App.RegistryM (RegistryM, throwWithComment)
 import Registry.Constants as Constants
-import Registry.Manifest (Manifest(..))
-import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.PackageSet (PackageSet(..))
 import Registry.PackageSet as PackageSet
-import Registry.Version (Version)
 import Registry.Version as Version
 
 getPackageSetsPath :: RegistryM FilePath

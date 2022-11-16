@@ -9,12 +9,9 @@ import Data.Set as Set
 import Data.Set.NonEmpty as NES
 import Registry.App.Json as Json
 import Registry.Internal.Codec as Internal.Codec
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.Solver (SolverError(..), SolverPosition(..), printSolverError, solve, solveAndValidate)
-import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.Spec as Spec

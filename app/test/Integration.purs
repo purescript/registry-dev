@@ -1,6 +1,4 @@
-module Test.Integration
-  ( main
-  ) where
+module Test.Integration (main) where
 
 import Registry.App.Prelude
 
@@ -18,15 +16,9 @@ import Registry.App.Json as Json
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.RegistryM as RegistryM
 import Registry.Internal.Codec as Internal.Codec
-import Registry.Location (Location(..))
-import Registry.Manifest (Manifest(..))
-import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Range (Range)
 import Registry.Solver as Solver
-import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.RegistrySpec as RegistrySpec
@@ -52,9 +44,9 @@ main = launchAff_ do
     Spec.describe "Solves node packages" do
       mkTest solverIndex $ unsafeFromJust $ Map.lookup "purescript-web" solutions
 
-type Owner = String
+type RepoOwner = String
 
-type SegmentedByOwner = Map Owner (Map PackageName (Map Version { bower :: BowerSolved, manifest :: Map PackageName Range }))
+type SegmentedByOwner = Map RepoOwner (Map PackageName (Map Version { bower :: BowerSolved, manifest :: Map PackageName Range }))
 
 segmentSolvableByOwner :: ManifestIndex -> FilePath -> Aff SegmentedByOwner
 segmentSolvableByOwner index bowerDir = map snd $ flip State.runStateT Map.empty do

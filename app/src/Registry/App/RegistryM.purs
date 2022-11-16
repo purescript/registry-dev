@@ -11,9 +11,6 @@ import Effect.Ref as Ref
 import Foreign.GitHub (Octokit)
 import Registry.App.Cache (Cache)
 import Registry.App.PackageStorage as Upload
-import Registry.Metadata (Metadata)
-import Registry.PackageName (PackageName)
-import Registry.Version (Version)
 
 type Env =
   { comment :: String -> Aff Unit

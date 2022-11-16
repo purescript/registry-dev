@@ -10,16 +10,9 @@ import Data.Monoid.Multiplicative (Multiplicative(..))
 import Data.Newtype (unwrap)
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
-import Registry.License (License)
 import Registry.License as License
-import Registry.Location (Location(..))
-import Registry.Manifest (Manifest(..))
-import Registry.Owner (Owner(..))
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Range (Range)
 import Registry.Range as Range
-import Registry.Version (Version)
 import Registry.Version as Version
 
 class Fixture a where

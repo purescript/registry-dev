@@ -6,9 +6,7 @@ import Data.Array as Array
 import Effect.Aff as Aff
 import Foreign.S3 as S3
 import Node.FS.Aff as FS
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Version (Version)
 import Registry.Version as Version
 
 connect :: Aff S3.Space
