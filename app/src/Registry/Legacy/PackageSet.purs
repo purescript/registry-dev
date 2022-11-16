@@ -11,6 +11,10 @@ module Registry.Legacy.PackageSet
   , parsePscTag
   , printDhall
   , printPscTag
+  , legacyPackageSetCodec
+  , legacyPackageSetEntryCodec
+  , pscTagCodec
+  , latestCompatibleSetsCodec
   ) where
 
 import Registry.Prelude
@@ -19,6 +23,8 @@ import Control.Monad.Error.Class as Error
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
+import Data.Codec.Argonaut (JsonCodec)
+import Data.Codec.Argonaut as CA
 import Data.Compactable (separate)
 import Data.DateTime (Date, DateTime(..))
 import Data.DateTime as DateTime
@@ -29,6 +35,7 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.List (List(..), (:))
 import Data.Map as Map
+import Data.Profunctor as Profunctor
 import Data.Set as Set
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
@@ -42,8 +49,9 @@ import Node.Path as Path
 import Parsing as Parsing
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
+import Registry.App.Json as Json
+import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
-import Registry.Json as Json
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)
@@ -66,9 +74,10 @@ newtype LegacyPackageSet = LegacyPackageSet (Map PackageName LegacyPackageSetEnt
 derive instance Newtype LegacyPackageSet _
 derive newtype instance Eq LegacyPackageSet
 
-instance RegistryJson LegacyPackageSet where
-  encode (LegacyPackageSet plan) = Json.encode plan
-  decode = map LegacyPackageSet <<< Json.decode
+legacyPackageSetCodec :: JsonCodec LegacyPackageSet
+legacyPackageSetCodec =
+  Profunctor.wrapIso LegacyPackageSet
+    $ Internal.Codec.packageMap legacyPackageSetEntryCodec
 
 -- | The format of a legacy packages.json package set entry for an individual
 -- | package.
@@ -76,6 +85,13 @@ type LegacyPackageSetEntry =
   { dependencies :: Array PackageName
   , repo :: String
   , version :: RawVersion
+  }
+
+legacyPackageSetEntryCodec :: JsonCodec LegacyPackageSetEntry
+legacyPackageSetEntryCodec = Json.object "LegacyPackageSetEntry"
+  { dependencies: CA.array PackageName.codec
+  , repo: CA.string
+  , version: Profunctor.wrapIso RawVersion CA.string
   }
 
 type ConvertedLegacyPackageSet =
@@ -91,9 +107,15 @@ derive instance Newtype PscTag _
 derive instance Eq PscTag
 derive instance Ord PscTag
 
-instance RegistryJson PscTag where
-  encode = Json.encode <<< printPscTag
-  decode = Json.decode >=> parsePscTag
+pscTagCodec :: JsonCodec PscTag
+pscTagCodec = CA.codec' decode encode
+  where
+  decode json = do
+    tagStr <- CA.decode CA.string json
+    lmap (CA.Named "PscTag" <<< CA.TypeMismatch) (parsePscTag tagStr)
+
+  encode =
+    CA.encode CA.string <<< printPscTag
 
 pscDateFormat :: List FormatterCommand
 pscDateFormat = YearFull : MonthTwoDigits : DayOfMonthTwoDigits : Nil
@@ -237,6 +259,9 @@ printDhall (LegacyPackageSet entries) = do
 
 type LatestCompatibleSets = Map Version PscTag
 
+latestCompatibleSetsCodec :: JsonCodec LatestCompatibleSets
+latestCompatibleSetsCodec = Internal.Codec.versionMap pscTagCodec
+
 -- https://github.com/purescript/package-sets/blob/psc-0.15.4-20220829/release.sh
 -- https://github.com/purescript/package-sets/blob/psc-0.15.4-20220829/update-latest-compatible-sets.sh
 mirrorLegacySet :: ConvertedLegacyPackageSet -> RegistryM Unit
@@ -274,8 +299,8 @@ mirrorLegacySet { tag, packageSet, upstream } = do
 
   let packageSetsPath = Path.concat [ tmp, legacyPackageSetsRepo.repo ]
   let latestSetsPath = Path.concat [ packageSetsPath, "latest-compatible-sets.json" ]
-  latestCompatibleSets :: LatestCompatibleSets <- do
-    latestSets <- liftAff (Json.readJsonFile latestSetsPath) >>= case _ of
+  latestCompatibleSets <- do
+    latestSets <- liftAff (Json.readJsonFile latestCompatibleSetsCodec latestSetsPath) >>= case _ of
       Left err -> RegistryM.throwWithComment $ "Failed to read latest-compatible-sets: " <> err
       Right parsed -> pure parsed
     let key = (un PscTag tag).compiler
@@ -291,8 +316,8 @@ mirrorLegacySet { tag, packageSet, upstream } = do
     packagesJsonPath = Path.concat [ packageSetsPath, "packages.json" ]
     commitFiles =
       [ Tuple packagesDhallPath (printDhall packageSet)
-      , Tuple packagesJsonPath (Json.printJson packageSet)
-      , Tuple latestSetsPath (Json.printJson latestCompatibleSets)
+      , Tuple packagesJsonPath (Json.printJson legacyPackageSetCodec packageSet)
+      , Tuple latestSetsPath (Json.printJson latestCompatibleSetsCodec latestCompatibleSets)
       ]
 
   let

@@ -38,14 +38,15 @@ import Foreign.Wget as Wget
 import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
+import Registry.App.Json as Json
 import Registry.Constants as Constants
-import Registry.Json as Json
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageSet (PackageSet(..))
+import Registry.PackageSet as PackageSet
 import Registry.RegistryM (RegistryM, throwWithComment)
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -76,7 +77,7 @@ readLatestPackageSet = do
     Nothing -> throwWithComment "No existing package set."
     Just version -> do
       path <- getPackageSetPath version
-      liftAff (Json.readJsonFile path) >>= case _ of
+      liftAff (Json.readJsonFile PackageSet.codec path) >>= case _ of
         Left err -> throwWithComment $ "Could not decode latest package set: " <> err
         Right set -> pure set
 

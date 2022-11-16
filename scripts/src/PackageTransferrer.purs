@@ -3,6 +3,7 @@ module Registry.Scripts.PackageTransferrer where
 import Registry.Prelude
 
 import Control.Monad.Except as Except
+import Data.Argonaut.Core as Argonaut
 import Data.Array as Array
 import Data.Codec as Codec
 import Data.Map as Map
@@ -20,7 +21,6 @@ import Registry.API (LegacyRegistryFile(..), Source(..))
 import Registry.API as API
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Cache as Cache
-import Registry.Json as Argonaut
 import Registry.Location (Location(..))
 import Registry.Metadata (Metadata(..))
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))

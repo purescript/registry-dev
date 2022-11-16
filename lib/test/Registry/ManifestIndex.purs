@@ -33,7 +33,6 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
 import Registry.Range as Range
-import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.Spec (Spec)
@@ -214,16 +213,6 @@ formatInsertErrors :: Map PackageName Range -> String
 formatInsertErrors errors = String.joinWith "\n"
   [ "Failed to insert. Failed to satisfy:"
   , Argonaut.stringifyWithIndent 2 $ CA.encode (Internal.Codec.packageMap Range.codec) errors
-  ]
-
-formatLenientErrors :: Map PackageName (Map Version (Array PackageName)) -> String
-formatLenientErrors errors = String.joinWith "\n"
-  [ "Failed to produce index:"
-  , Argonaut.stringifyWithIndent 2
-      $ flip CA.encode errors
-      $ Internal.Codec.packageMap
-      $ Internal.Codec.versionMap
-      $ CA.array PackageName.codec
   ]
 
 formatIndex :: ManifestIndex -> String

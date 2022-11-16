@@ -2,9 +2,12 @@ module Test.Foreign.JsonRepair (testJsonRepair) where
 
 import Registry.Prelude
 
+import Data.Codec.Argonaut (JsonCodec)
+import Data.Codec.Argonaut as CA
 import Data.Either as Either
 import Foreign.JsonRepair as JsonRepair
-import Registry.Json as Json
+import Registry.App.Json (Json)
+import Registry.App.Json as Json
 import Test.Assert as Assert
 import Test.Spec as Spec
 
@@ -18,30 +21,41 @@ testJsonRepair = do
   Spec.describe "Does not parse" do
     Spec.describe "Horrendous json" horrendousJson
 
-parseString :: String -> Either String String
-parseString = map Json.stringify <<< Json.parseJson <<< JsonRepair.tryRepair
+parseString :: forall a. JsonCodec a -> String -> Either String String
+parseString codec = map (Json.stringifyJson codec) <<< Json.parseJson codec <<< JsonRepair.tryRepair
 
-parseTest :: String -> Json -> Spec
-parseTest str json = Spec.it str do
-  parseString str `Assert.shouldContain` Json.stringify json
+parseTest :: forall a. JsonCodec a -> String -> Json -> Spec
+parseTest codec str json = Spec.it str do
+  parseString codec str `Assert.shouldContain` Json.stringify json
 
 goodJson :: Spec
 goodJson = do
-  let complexJson = Json.encode { complex: { nested: "json", bool: true } }
-  parseTest "[1,2,3]" $ Json.encode [ 1, 2, 3 ]
-  parseTest """{ "name": "test" }""" $ Json.encode { name: "test" }
-  parseTest (Json.stringify complexJson) complexJson
+  let arrayCodec = CA.array CA.int
+  parseTest arrayCodec "[1,2,3]" $ Json.encode arrayCodec [ 1, 2, 3 ]
+
+  let objectCodec = Json.object "Test" { name: CA.string }
+  parseTest objectCodec """{ "name": "test" }""" $ Json.encode objectCodec { name: "test" }
+
+  let
+    complexCodec = Json.object "Complex" { complex: Json.object "Nested" { nested: CA.string, bool: CA.boolean } }
+    complexJson = { complex: { nested: "json", bool: true } }
+
+  parseTest complexCodec (Json.stringifyJson complexCodec complexJson) (Json.encode complexCodec complexJson)
 
 badJson :: Spec
 badJson = do
-  parseTest """{ "trailing": "comma", }""" $ Json.encode { trailing: "comma" }
-  parseTest """[ "trailing comma", ]""" $ Json.encode [ "trailing comma" ]
+  let testObjectCodec = Json.object "Test" { trailing: CA.string }
+  parseTest testObjectCodec """{ "trailing": "comma", }""" $ Json.encode testObjectCodec { trailing: "comma" }
+
+  let testArrayCodec = CA.array CA.string
+  parseTest testArrayCodec """[ "trailing comma", ]""" $ Json.encode testArrayCodec [ "trailing comma" ]
 
 horrendousJson :: Spec
 horrendousJson = do
   let
-    failParse str = Spec.it str do
-      parseString str `Assert.shouldSatisfy` Either.isLeft
+    failParse :: forall a. JsonCodec a -> String -> Spec
+    failParse codec str = Spec.it str do
+      parseString codec str `Assert.shouldSatisfy` Either.isLeft
 
-  failParse "name: test"
-  failParse """{ "horrendously invalid json" }"""
+  failParse (Json.object "Test" { name: CA.string }) "name: test"
+  failParse (Json.object "Test" { key: CA.string }) """{ "horrendously invalid json" }"""

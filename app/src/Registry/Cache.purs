@@ -9,11 +9,12 @@ module Registry.Cache
 import Registry.Prelude
 
 import Data.Array as Array
+import Data.Codec.Argonaut (JsonCodec)
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
 import Data.Map as Map
 import Data.Maybe (maybe')
-import Data.RFC3339String (RFC3339String(..))
-import Data.RFC3339String as RFC3339String
 import Data.String as String
 import Effect.Exception as Aff
 import Effect.Ref as Ref
@@ -22,7 +23,8 @@ import JSURI (encodeURIComponent)
 import Node.FS.Aff as FSA
 import Node.FS.Sync as FS
 import Node.Path as Path
-import Registry.Json as Json
+import Registry.App.Json as Json
+import Registry.Internal.Codec as Internal.Codec
 
 entryPath :: FilePath -> CacheKey -> FilePath
 entryPath cacheDir (CacheKey filename) = Path.concat [ cacheDir, filename ]
@@ -30,6 +32,12 @@ entryPath cacheDir (CacheKey filename) = Path.concat [ cacheDir, filename ]
 type CacheEntry =
   { modified :: DateTime
   , value :: String
+  }
+
+cacheEntryCodec :: JsonCodec CacheEntry
+cacheEntryCodec = CA.Record.object "CacheEntry"
+  { modified: Internal.Codec.iso8601DateTime
+  , value: CA.string
   }
 
 type Cache =
@@ -51,16 +59,16 @@ toCacheKey key =
     $ String.replaceAll (String.Pattern "/") (String.Replacement "_")
     $ String.replaceAll (String.Pattern " ") (String.Replacement "__") key
 
-readJsonEntry :: forall a. Json.RegistryJson a => String -> Cache -> Effect (Either String { modified :: DateTime, value :: a })
-readJsonEntry key { read } =
+readJsonEntry :: forall a. JsonCodec a -> String -> Cache -> Effect (Either String { modified :: DateTime, value :: a })
+readJsonEntry codec key { read } =
   read key >>= case _ of
     Left err -> pure (Left err)
     Right { modified, value } -> pure do
-      parsedValue <- Json.parseJson value
+      parsedValue <- Json.parseJson codec value
       Right { modified, value: parsedValue }
 
-writeJsonEntry :: forall a. Json.RegistryJson a => String -> a -> Cache -> Effect Unit
-writeJsonEntry key value { write } = write key (Json.stringifyJson value)
+writeJsonEntry :: forall a. JsonCodec a -> String -> a -> Cache -> Effect Unit
+writeJsonEntry codec key value { write } = write key (Json.stringifyJson codec value)
 
 useCache :: FilePath -> Aff Cache
 useCache cacheDir = do
@@ -69,18 +77,13 @@ useCache cacheDir = do
   entries <- do
     files <- FSA.readdir cacheDir
     for files \file -> do
-      contents <- Json.readJsonFile (entryPath cacheDir (CacheKey file))
+      contents <- Json.readJsonFile cacheEntryCodec (entryPath cacheDir (CacheKey file))
       case contents of
         Left err -> do
           log $ "Failed to decode entry (" <> file <> "): " <> err
           pure Nothing
         Right result ->
-          case RFC3339String.toDateTime result.modified of
-            Nothing -> do
-              log $ "Failed to decode entry (" <> file <> ") because of a malformed RFC3339String: " <> un RFC3339String result.modified
-              pure Nothing
-            Just dateTime ->
-              pure $ Just $ Tuple (CacheKey file) (result { modified = dateTime })
+          pure $ Just $ Tuple (CacheKey file) result
 
   cacheRef <- liftEffect $ Ref.new $ Map.fromFoldable $ Array.catMaybes entries
 
@@ -89,8 +92,7 @@ useCache cacheDir = do
     write key value = do
       utcTime <- nowUTC
       let entry = { modified: utcTime, value }
-      let jsonEntry = entry { modified = RFC3339String.fromDateTime entry.modified }
-      FS.writeTextFile UTF8 (entryPath cacheDir key) (Json.stringifyJson jsonEntry)
+      FS.writeTextFile UTF8 (entryPath cacheDir key) (Json.stringifyJson cacheEntryCodec entry)
       Ref.modify_ (Map.insert key entry) cacheRef
 
     read :: CacheKey -> Effect (Either String CacheEntry)
@@ -100,12 +102,11 @@ useCache cacheDir = do
         Nothing -> do
           try (FS.readTextFile UTF8 (entryPath cacheDir key)) >>= case _ of
             Left err -> pure $ Left $ Aff.message err
-            Right contents -> case Json.parseJson contents of
+            Right contents -> case Json.parseJson cacheEntryCodec contents of
               Left err ->
                 remove key $> Left err
-              Right entry -> case RFC3339String.toDateTime entry.modified of
-                Nothing -> remove key $> Left ("Malformed RFC3339String: " <> un RFC3339String entry.modified)
-                Just dateTime -> pure $ Right $ entry { modified = dateTime }
+              Right entry ->
+                pure $ Right entry
         Just entry -> do
           pure $ Right entry
 

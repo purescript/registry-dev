@@ -67,3 +67,4 @@ package:
     main: Test.Main
     dependencies:
       - spec
+      - argonaut-codecs

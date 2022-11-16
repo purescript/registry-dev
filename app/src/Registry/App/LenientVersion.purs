@@ -15,8 +15,6 @@ import Data.Int as Int
 import Data.String as String
 import Parsing (Parser)
 import Parsing as Parsing
-import Registry.Json (class StringEncodable)
-import Registry.Json as Json
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -34,14 +32,6 @@ instance Eq LenientVersion where
 
 instance Ord LenientVersion where
   compare = comparing (_.version <<< un LenientVersion)
-
-instance StringEncodable LenientVersion where
-  toEncodableString = raw
-  fromEncodableString = parse
-
-instance RegistryJson LenientVersion where
-  encode = Json.encode <<< Json.toEncodableString
-  decode = Json.fromEncodableString <=< Json.decode
 
 -- | Print the `Version` within a lenient version
 print :: LenientVersion -> String

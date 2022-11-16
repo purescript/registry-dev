@@ -10,12 +10,15 @@ import Affjax.StatusCode (StatusCode(..))
 import Control.Alternative as Alternative
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
+import Data.Argonaut.Core (Json)
 import Data.Argonaut.Core as Argonaut
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec as Codec
+import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as CA.Common
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Foldable (traverse_)
@@ -25,6 +28,7 @@ import Data.Int as Int
 import Data.Interpolate (i)
 import Data.Map as Map
 import Data.MediaType.Common as MediaType
+import Data.Profunctor as Profunctor
 import Data.Set as Set
 import Data.String as String
 import Data.String.Base64 as Base64
@@ -38,7 +42,7 @@ import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Foreign.FastGlob as FastGlob
 import Foreign.Git as Git
-import Foreign.GitHub (GitHubToken(..), IssueNumber)
+import Foreign.GitHub (GitHubToken(..), IssueNumber, PackageURL(..))
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Foreign.Purs (CompilerFailure(..))
@@ -53,16 +57,17 @@ import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.App.Index as App.Index
+import Registry.App.Json as Json
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageSets as App.PackageSets
 import Registry.Cache (Cache)
 import Registry.Cache as Cache
 import Registry.Constants (GitHubRepo)
 import Registry.Constants as Constants
-import Registry.Json as Json
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.Location (Location(..))
+import Registry.Location as Location
 import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
@@ -74,6 +79,7 @@ import Registry.Owner (Owner(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.PackageSet (PackageSet(..))
+import Registry.PackageSet as PackageSet
 import Registry.PackageUpload as Upload
 import Registry.Range (Range)
 import Registry.Range as Range
@@ -162,7 +168,7 @@ readOperation :: FilePath -> Aff OperationDecoding
 readOperation eventPath = do
   fileContents <- FS.Aff.readTextFile UTF8 eventPath
 
-  GitHub.Event { issueNumber, body, username } <- case Json.parseJson fileContents of
+  GitHub.Event { issueNumber, body, username } <- case Json.jsonParser fileContents >>= GitHub.decodeEvent of
     Left err ->
       -- If we don't receive a valid event path or the contents can't be decoded
       -- then this is a catastrophic error and we exit the workflow.
@@ -245,7 +251,7 @@ runOperation source operation = case operation of
           [ "Cannot register"
           , PackageName.print name
           , "at the location"
-          , Json.stringifyJson packageLocation
+          , Json.stringifyJson Location.codec packageLocation
           , "because that location is already in use to publish another package."
           ]
         Just packageLocation ->
@@ -344,7 +350,7 @@ runOperation source operation = case operation of
       App.PackageSets.processBatchAtomic workDir registryIndex latestPackageSet compiler candidates.accepted >>= case _ of
         Just { fail, packageSet, success } | Map.isEmpty fail -> do
           newPath <- App.PackageSets.getPackageSetPath (un PackageSet packageSet).version
-          liftAff $ Json.writeJsonFile newPath packageSet
+          liftAff $ Json.writeJsonFile PackageSet.codec newPath packageSet
           let commitMessage = App.PackageSets.commitMessage latestPackageSet success (un PackageSet packageSet).version
           commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
             Left err -> throwWithComment $ "Failed to commit package set file (cc: @purescript/packaging): " <> err
@@ -455,7 +461,7 @@ runOperation source operation = case operation of
           [ "Cannot transfer"
           , PackageName.print name
           , " to "
-          , Json.stringifyJson newLocation
+          , Json.stringifyJson Location.codec newLocation
           , "because another package is already registered at that location."
           ]
 
@@ -557,14 +563,14 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
           ]
       Right legacyManifest -> do
         let manifest = Legacy.Manifest.toManifest name version inputMetadata.location legacyManifest
-        liftAff $ Json.writeJsonFile manifestPath manifest
+        liftAff $ Json.writeJsonFile Manifest.codec manifestPath manifest
 
   -- Try to read the manifest, typechecking it
   manifest@(Manifest manifestFields) <- liftAff (try $ FS.Aff.readTextFile UTF8 manifestPath) >>= case _ of
     Left _err -> throwWithComment $ "Manifest not found at " <> manifestPath
     Right manifestStr -> liftAff (jsonToDhallManifest manifestStr) >>= case _ of
       Left err -> throwWithComment $ "Could not typecheck manifest: " <> err
-      Right _ -> case Json.parseJson manifestStr of
+      Right _ -> case Json.parseJson Manifest.codec manifestStr of
         Left err -> throwWithComment $ "Could not parse manifest as JSON: " <> err
         Right res -> pure res
 
@@ -583,9 +589,9 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
   when (manifestFields.location /= metadata.location) do
     throwWithComment $ Array.fold
       [ "The manifest file specifies a location ("
-      , Json.stringifyJson manifestFields.location
+      , Json.stringifyJson Location.codec manifestFields.location
       , ") that differs from the location in the registry metadata ("
-      , Json.stringifyJson metadata.location
+      , Json.stringifyJson Location.codec metadata.location
       , "). If you would like to change the location of your package you should "
       , "submit a Transfer operation."
       ]
@@ -929,7 +935,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
     resolvedPaths = formatPursuitResolutions { resolutions, dependenciesDir }
     resolutionsFilePath = Path.concat [ tmp, "resolutions.json" ]
 
-  liftAff $ Json.writeJsonFile resolutionsFilePath resolvedPaths
+  liftAff $ Json.writeJsonFile pursuitResolutionsCodec resolutionsFilePath resolvedPaths
 
   -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
   -- package name in the manifest file:
@@ -1011,11 +1017,16 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
       let printedErr = Http.printError err
       throwError $ String.joinWith "\n" [ "Received a failed response from Pursuit (cc: @purescript/packaging): ", "```" <> printedErr <> "```" ]
 
+type PursuitResolutions = Map RawPackageName { version :: Version, path :: FilePath }
+
+pursuitResolutionsCodec :: JsonCodec PursuitResolutions
+pursuitResolutionsCodec = rawPackageNameMapCodec $ Json.object "Resolution" { version: Version.codec, path: CA.string }
+
 -- Resolutions format: https://github.com/purescript/purescript/pull/3565
 --
 -- Note: This interfaces with Pursuit, and therefore we must add purescript-
 -- prefixes to all package names for compatibility with the Bower naming format.
-formatPursuitResolutions :: { resolutions :: Map PackageName Version, dependenciesDir :: FilePath } -> Map RawPackageName { version :: Version, path :: FilePath }
+formatPursuitResolutions :: { resolutions :: Map PackageName Version, dependenciesDir :: FilePath } -> PursuitResolutions
 formatPursuitResolutions { resolutions, dependenciesDir } =
   Map.fromFoldable do
     Tuple name version <- Map.toUnfoldable resolutions
@@ -1063,7 +1074,7 @@ fillMetadataRef = do
           log $ "Encountered error while parsing package name! It was: " <> rawPackageName
           Aff.throwError $ Aff.error err
       let metadataPath = metadataFile registryDir packageName
-      metadata <- Json.readJsonFile metadataPath >>= case _ of
+      metadata <- Json.readJsonFile Metadata.codec metadataPath >>= case _ of
         Left err -> Aff.throwError $ Aff.error $ "Error parsing metadata file located at " <> metadataPath <> ": " <> err
         Right val -> pure val
       pure $ packageName /\ metadata
@@ -1319,7 +1330,7 @@ readMetadata packageName { noMetadata } = do
 writeMetadata :: PackageName -> Metadata -> RegistryM (Either String Unit)
 writeMetadata packageName metadata = do
   registryDir <- asks _.registry
-  liftAff $ Json.writeJsonFile (metadataFile registryDir packageName) metadata
+  liftAff $ Json.writeJsonFile Metadata.codec (metadataFile registryDir packageName) metadata
   updatePackagesMetadata packageName metadata
   commitMetadataFile packageName
 
@@ -1460,6 +1471,9 @@ legacyRegistryFilePath = case _ of
   BowerPackages -> "bower-packages.json"
   NewPackages -> "new-packages.json"
 
+legacyRegistryCodec :: JsonCodec (Map String PackageURL)
+legacyRegistryCodec = CA.Common.strMap (Profunctor.wrapIso PackageURL CA.string)
+
 -- | A helper function that syncs API operations to the new-packages.json or
 -- | bower-packages.json files, namely registrations and transfers.
 syncLegacyRegistry :: PackageName -> Location -> RegistryM Unit
@@ -1473,7 +1487,7 @@ syncLegacyRegistry package location = do
   let
     readLegacyFile file = do
       let path = Path.concat [ registryDir, legacyRegistryFilePath file ]
-      liftAff (Json.readJsonFile path) >>= case _ of
+      liftAff (Json.readJsonFile legacyRegistryCodec path) >>= case _ of
         Left err -> throwWithComment $ "Could not sync package with legacy registry (could not read " <> path <> "(cc: @purescript/packaging): " <> err
         Right packages -> pure packages
 
@@ -1503,7 +1517,7 @@ syncLegacyRegistry package location = do
     let sourceFile = legacyRegistryFilePath target
     let packages = Map.insert rawPackageName packageUrl sourcePackages
     result <- liftAff $ Except.runExceptT do
-      liftAff $ Json.writeJsonFile (Path.concat [ registryDir, sourceFile ]) packages
+      liftAff $ Json.writeJsonFile legacyRegistryCodec (Path.concat [ registryDir, sourceFile ]) packages
       GitHubToken token <- Git.configurePacchettiBotti (Just registryDir)
       Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
       Git.runGit_ [ "add", sourceFile ] (Just registryDir)
