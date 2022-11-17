@@ -1,6 +1,6 @@
 module Test.Foreign.Tar where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Effect.Aff as Aff
 import Foreign.Node.FS as FSE

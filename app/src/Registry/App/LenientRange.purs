@@ -6,7 +6,7 @@ module Registry.App.LenientRange
   , raw
   ) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Error.Class as Error
 import Data.Array as Array
@@ -23,7 +23,6 @@ import Parsing.String as Parsing.String
 import Registry.App.LenientVersion (LenientVersion(..))
 import Registry.App.LenientVersion as LenientVersion
 import Registry.Internal.Parsing as Internal.Parsing
-import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.Version as Version
 

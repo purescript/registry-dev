@@ -1,8 +1,6 @@
-module Test.Integration
-  ( main
-  ) where
+module Test.Integration (main) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Except as Except
 import Control.Monad.State as State
@@ -14,19 +12,13 @@ import Effect.Exception as Exception
 import Foreign.Git as Git
 import Foreign.Tmp as Tmp
 import Node.Path as Path
-import Registry.App.Index as App.Index
 import Registry.App.Json as Json
+import Registry.App.PackageIndex as PackageIndex
+import Registry.App.RegistryM as RegistryM
 import Registry.Internal.Codec as Internal.Codec
-import Registry.Location (Location(..))
-import Registry.Manifest (Manifest(..))
-import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Range (Range)
-import Registry.RegistryM as RegistryM
 import Registry.Solver as Solver
-import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.RegistrySpec as RegistrySpec
@@ -52,9 +44,9 @@ main = launchAff_ do
     Spec.describe "Solves node packages" do
       mkTest solverIndex $ unsafeFromJust $ Map.lookup "purescript-web" solutions
 
-type Owner = String
+type RepoOwner = String
 
-type SegmentedByOwner = Map Owner (Map PackageName (Map Version { bower :: BowerSolved, manifest :: Map PackageName Range }))
+type SegmentedByOwner = Map RepoOwner (Map PackageName (Map Version { bower :: BowerSolved, manifest :: Map PackageName Range }))
 
 segmentSolvableByOwner :: ManifestIndex -> FilePath -> Aff SegmentedByOwner
 segmentSolvableByOwner index bowerDir = map snd $ flip State.runStateT Map.empty do
@@ -96,7 +88,7 @@ setup = do
 
   log "Reading registry index..."
   let indexPath = Path.concat [ tmp, "registry-index" ]
-  index <- RegistryM.runRegistryM (RegistrySpec.defaultTestEnv { registryIndex = indexPath }) App.Index.readManifestIndexFromDisk
+  index <- RegistryM.runRegistryM (RegistrySpec.defaultTestEnv { registryIndex = indexPath }) PackageIndex.readManifestIndexFromDisk
 
   -- Note: this segmented index only considers packages that have a
   -- corresponding Bower solution.

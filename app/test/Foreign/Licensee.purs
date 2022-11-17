@@ -1,6 +1,6 @@
 module Test.Foreign.Licensee where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Foreign.Licensee as Licensee
 import Node.Path as Path

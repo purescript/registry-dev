@@ -1,6 +1,6 @@
 module Foreign.Wget where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.String as String
 import Node.ChildProcess as NodeProcess

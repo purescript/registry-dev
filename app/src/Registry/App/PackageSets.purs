@@ -11,7 +11,7 @@ module Registry.App.PackageSets
   , validatePackageSetCandidates
   ) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Affjax as Http
 import Control.Alternative (guard)
@@ -39,16 +39,11 @@ import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Registry.App.Json as Json
+import Registry.App.RegistryM (RegistryM, throwWithComment)
 import Registry.Constants as Constants
-import Registry.Manifest (Manifest(..))
-import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.PackageSet (PackageSet(..))
 import Registry.PackageSet as PackageSet
-import Registry.RegistryM (RegistryM, throwWithComment)
-import Registry.Version (Version)
 import Registry.Version as Version
 
 getPackageSetsPath :: RegistryM FilePath

@@ -2,7 +2,7 @@ module Foreign.SemVer
   ( parseRange
   ) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.String as String
 

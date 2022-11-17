@@ -1,6 +1,6 @@
 module Test.Main (main) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.Argonaut.Encode as Argonaut.Codecs
 import Data.Argonaut.Parser as Argonaut.Parser
@@ -20,18 +20,13 @@ import Node.FS as FS
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
-import Registry.API (copyPackageSourceFiles)
-import Registry.API as API
+import Registry.App.API as API
 import Registry.App.Json as Json
 import Registry.Legacy.Manifest (Bowerfile(..))
 import Registry.Legacy.Manifest as Legacy.Manifest
-import Registry.Location (Location(..))
-import Registry.Manifest (Manifest(..))
 import Registry.Operation (PackageOperation(..), PackageSetOperation(..))
 import Registry.Operation as Operation
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Version (Version)
 import Registry.Version as Version
 import Safe.Coerce (coerce)
 import Test.Assert as Assert
@@ -40,12 +35,11 @@ import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
 import Test.Foreign.SPDX as Foreign.SPDX
 import Test.Foreign.Tar as Foreign.Tar
-import Test.Registry.App.Index as Test.Index
+import Test.Registry.App.Auth as Auth
 import Test.Registry.App.LenientRange as Test.LenientRange
 import Test.Registry.App.LenientVersion as Test.LenientVersion
+import Test.Registry.App.PackageIndex as Test.PackageIndex
 import Test.Registry.App.PackageSets as Test.PackageSets
-import Test.Registry.SSH as SSH
-import Test.Registry.Solver as Test.Solver
 import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -54,13 +48,13 @@ import Test.Spec.Runner (defaultConfig, runSpec')
 main :: Effect Unit
 main = launchAff_ do
   -- Setup the Registry Index for tests
-  registryEnv <- Test.Index.mkTestIndexEnv
+  registryEnv <- Test.PackageIndex.mkTestIndexEnv
 
   runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
     Spec.describe "API" do
       Spec.describe "Checks" do
         Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
-        Spec.describe "Authenticated operations" SSH.spec
+        Spec.describe "Authenticated operations" Auth.spec
       Spec.describe "Tarball" do
         copySourceFiles
         removeIgnoredTarballFiles
@@ -76,14 +70,12 @@ main = launchAff_ do
         Spec.describe "Bad bower files" badBowerfiles
       Spec.describe "Encoding" bowerFileEncoding
     Spec.describe "Licensee" licensee
-    Spec.describe "Registry Index" do
-      Test.Index.spec registryEnv
+    Spec.describe "Package Index" do
+      Test.PackageIndex.spec registryEnv
     Spec.describe "Tar" do
       Foreign.Tar.tar
     Spec.describe "Json Repair" do
       Foreign.JsonRepair.testJsonRepair
-    Spec.describe "Solver" do
-      Test.Solver.spec
     Spec.describe "Glob" do
       safeGlob
     Spec.describe "Package Set" do
@@ -177,7 +169,7 @@ copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
     writeDirectories (goodDirectories <> API.ignoredDirectories <> [ "test" ])
     writeFiles (goodFiles <> API.ignoredFiles <> [ Path.concat [ "test", "Main.purs" ] ])
 
-    copyPackageSourceFiles Nothing { source, destination }
+    API.copyPackageSourceFiles Nothing { source, destination }
 
     paths <- liftAff $ FastGlob.match destination [ "**/*" ]
 
@@ -200,7 +192,7 @@ copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
     writeDirectories (goodDirectories <> testDir)
     writeFiles (goodFiles <> testFiles)
 
-    copyPackageSourceFiles userFiles { source, destination }
+    API.copyPackageSourceFiles userFiles { source, destination }
 
     paths <- liftAff $ FastGlob.match destination [ "**/*" ]
 

@@ -8,7 +8,7 @@ module Foreign.S3
   , ACL(..)
   ) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Promise (Promise)
 import Control.Promise as Promise

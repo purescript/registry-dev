@@ -6,7 +6,7 @@
 -- | you just want to iteratively pick up new releases.
 module Registry.Scripts.LegacyImporter where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Affjax as Http
 import Control.Alternative (guard)
@@ -37,31 +37,24 @@ import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
 import Parsing as Parsing
-import Registry.API (LegacyRegistryFile(..), Source(..))
-import Registry.API as API
-import Registry.App.Index as App.Index
+import Registry.App.API (LegacyRegistryFile(..), Source(..))
+import Registry.App.API as API
+import Registry.App.Cache as Cache
 import Registry.App.Json (JsonCodec)
 import Registry.App.Json as Json
 import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
-import Registry.Cache as Cache
-import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
+import Registry.App.PackageIndex as PackageIndex
+import Registry.App.PackageStorage as PackageStorage
+import Registry.App.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
+import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError, LegacyPackageSetEntries)
 import Registry.Legacy.Manifest as Legacy.Manifest
-import Registry.Legacy.Manifest as LegacyManifest
-import Registry.Location (Location(..))
 import Registry.Location as Location
-import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
-import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
-import Registry.Metadata (Metadata(..))
 import Registry.Metadata as Metadata
 import Registry.Operation (PackageOperation(..))
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.PackageUpload as Upload
-import Registry.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
-import Registry.Version (Version)
 import Registry.Version as Version
 import Type.Proxy (Proxy(..))
 
@@ -131,8 +124,8 @@ main = launchAff_ do
         , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
         , commitIndexFile: API.pacchettiBottiPushToRegistryIndex
         , commitPackageSetFile: \_ _ _ -> log "Not committing package set in legacy import." $> Right unit
-        , uploadPackage: Upload.upload
-        , deletePackage: Upload.delete
+        , uploadPackage: PackageStorage.upload
+        , deletePackage: PackageStorage.delete
         , packagesMetadata: metadataRef
         , cache
         , octokit
@@ -152,8 +145,8 @@ main = launchAff_ do
         , commitPackageSetFile: \_ _ _ -> do
             log "Skipping committing to registry package sets..."
             pure (Right unit)
-        , uploadPackage: Upload.upload
-        , deletePackage: Upload.delete
+        , uploadPackage: PackageStorage.upload
+        , deletePackage: PackageStorage.delete
         , octokit
         , cache
         , username: ""
@@ -172,7 +165,7 @@ main = launchAff_ do
 
     log "Reading existing registry index..."
     existingRegistry <- do
-      registry <- App.Index.readManifestIndexFromDisk
+      registry <- PackageIndex.readManifestIndexFromDisk
       -- To ensure the metadata and registry index are always in sync, we remove
       -- any entries from the registry index that don't have accompanying metadata
       metadata <- liftEffect $ Ref.read metadataRef
@@ -184,7 +177,7 @@ main = launchAff_ do
         void $ forWithIndex mismatched \package versions ->
           forWithIndex versions \version _ ->
             ManifestIndex.removeFromEntryFile registryIndexPath package version
-        App.Index.readManifestIndexFromDisk
+        PackageIndex.readManifestIndexFromDisk
 
     log "Reading legacy registry..."
     legacyRegistry <- readLegacyRegistryFiles
@@ -301,7 +294,7 @@ type ImportedIndex =
 -- | legacy registry but not in the resulting registry.
 importLegacyRegistry :: ManifestIndex -> LegacyRegistry -> RegistryM ImportedIndex
 importLegacyRegistry existingRegistry legacyRegistry = do
-  legacyPackageSets <- LegacyManifest.fetchLegacyPackageSets
+  legacyPackageSets <- Legacy.Manifest.fetchLegacyPackageSets
   manifests <- forWithIndex legacyRegistry \name address ->
     Except.runExceptT (buildLegacyPackageManifests existingRegistry legacyPackageSets name address)
 
@@ -381,7 +374,7 @@ importLegacyRegistry existingRegistry legacyRegistry = do
 -- | versions that don't produce valid manifests, and manifests for all that do.
 buildLegacyPackageManifests
   :: ManifestIndex
-  -> LegacyManifest.LegacyPackageSetEntries
+  -> LegacyPackageSetEntries
   -> RawPackageName
   -> GitHub.PackageURL
   -> ExceptT PackageValidationError RegistryM (Map RawVersion (Either VersionValidationError Manifest))
@@ -404,8 +397,8 @@ buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl
           let packageSetDeps = Map.lookup (RawVersion tag.name) =<< Map.lookup package.name legacyPackageSets
           let manifestError err = { error: InvalidManifest err, reason: "Legacy manifest could not be parsed." }
           Except.withExceptT manifestError do
-            legacyManifest <- LegacyManifest.fetchLegacyManifest packageSetDeps package.address (RawVersion tag.name)
-            pure $ LegacyManifest.toManifest package.name (LenientVersion.version version) location legacyManifest
+            legacyManifest <- Legacy.Manifest.fetchLegacyManifest packageSetDeps package.address (RawVersion tag.name)
+            pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
 
       case ManifestIndex.lookup package.name (LenientVersion.version version) existingRegistry of
         Just manifest -> pure manifest

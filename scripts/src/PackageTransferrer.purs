@@ -1,6 +1,6 @@
 module Registry.Scripts.PackageTransferrer where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Except as Except
 import Data.Argonaut.Core as Argonaut
@@ -10,26 +10,23 @@ import Data.Map as Map
 import Data.String as String
 import Effect.Exception as Exception
 import Effect.Ref as Ref
-import Effect.Unsafe (unsafePerformEffect)
+import Effect.Unsafe as Effect.Unsafe
 import Foreign.Git as Git
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
-import Registry.API (LegacyRegistryFile(..), Source(..))
-import Registry.API as API
+import Registry.App.API (LegacyRegistryFile(..), Source(..))
+import Registry.App.API as API
+import Registry.App.Cache as Cache
 import Registry.App.LenientVersion as LenientVersion
-import Registry.Cache as Cache
-import Registry.Location (Location(..))
-import Registry.Metadata (Metadata(..))
+import Registry.App.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
+import Registry.App.RegistryM as RegistryM
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
-import Registry.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
-import Registry.RegistryM as RegistryM
 import Registry.Scripts.LegacyImporter as LegacyImporter
-import Registry.Version (Version)
 
 main :: Effect Unit
 main = launchAff_ do
@@ -54,7 +51,7 @@ main = launchAff_ do
       , commitPackageSetFile: \_ _ -> unsafeCrashWith "Should not modify package set in transfer."
       , uploadPackage: \_ -> unsafeCrashWith "Should not upload anything in transfer."
       , deletePackage: \_ -> unsafeCrashWith "Should not delete anything in transfer."
-      , packagesMetadata: unsafePerformEffect (Ref.new Map.empty)
+      , packagesMetadata: Effect.Unsafe.unsafePerformEffect (Ref.new Map.empty)
       , cache
       , octokit
       , username: "pacchettibotti"
