@@ -8,7 +8,6 @@ PureScript needs a way to distribute packages. We used to rely on the Bower regi
 
 Here's a non-comprehensive list of desiderable properties/goals that we'd generally like to
 achieve when talking of a PureScript registry, and that we think this design covers:
-
 - **independent**: we're coming from a situation when relying on a third party registry has
   faulted us, so we'd need something that we can control and possibly host ourselves.
 - **immutable**: published packages are immutable - once a version has been published
@@ -16,7 +15,7 @@ achieve when talking of a PureScript registry, and that we think this design cov
   The only exception is that **unpublishing** will be possible for some time after publishing.
   This goal also directly stems from our experience with Bower, where we were not able to
   prevent packages from disappearing and/or being altered, since we were not storing the source
-  anywhere, but just pointing to the original location of the source, that we had no control over.
+  anywhere, but just pointing to the original location of the source, that we had no control over.  
   This means that with this Registry if your package is building today then you're guaranteed that
   the packages you're depending on will not disappear.
 - **with content hashes**, so that we're able to support independent storage backends
@@ -41,10 +40,10 @@ This section has been informed by happenings, discussions, and various other rea
 on the internet, such as [this one](https://github.com/ziglang/zig/issues/943) and
 [this one](https://forums.swift.org/t/swift-package-registry-service/37219).
 
+
 ## Non-goals of this design
 
 Things we _do not_ aim to achieve with this design:
-
 - **all-purpose use**: we are going to care about hosting PureScript packages only.
 - **user-facing frontend**: this design aims to provide procedures for publishing, collecting, hosting and distributing PureScript packages.
   The metadata about packages will be exposed publicly, but we do not concern ourselves with presenting it in a navigable/queriable way -
@@ -53,12 +52,10 @@ Things we _do not_ aim to achieve with this design:
 # Proposed design: "Just a GitHub Repo"
 
 Two main ideas here:
-
-- the Registry is nothing more than **some data** - in our case tarball of package sources stored somewhere public - and **some metadata** linked to the data so that we can make sense of it - in our case this GitHub repo is our "metadata storage"
-- to minimize the attack surface we will use a **pull model** where all sources are fetched by our CI rather than having authors upload them. In practice this means that all the registry operations will run on the CI infrastructure of this repo.
+- the Registry is nothing more than __some data__ - in our case tarball of package sources stored somewhere public - and __some metadata__ linked to the data so that we can make sense of it - in our case this GitHub repo is our "metadata storage"
+- to minimize the attack surface we will use a __pull model__ where all sources are fetched by our CI rather than having authors upload them. In practice this means that all the registry operations will run on the CI infrastructure of this repo.
 
 This repo will contain:
-
 - CI workflows that run the Registry operations
 - the source for all this CI
 - all the issues/pull-requests that trigger CI operations that affect the Registry
@@ -68,13 +65,14 @@ This repo will contain:
 All of the above is about metadata, while the real data (i.e. the package tarballs)
 will live on various [storage backends](#Storage-Backends).
 
+
 ## The Package `Manifest`
 
 A `Manifest` stores all the metadata (e.g. package name, version, dependencies, etc)
-for **a specific version** of **a specific package**.
+for **a specific  version** of **a specific package**.
 
 Packages are expected to version in their sources a `purs.json` file, that conforms
-to the [`Manifest` schema](./v1/Manifest.dhall) to ensure **forwards-compatibility**
+to the [`Manifest` schema](./v1/Manifest.dhall) to ensure __forwards-compatibility__
 with future schemas.
 This means that new clients will be able to read old schemas, but not vice-versa.
 And the reason why forward (rather than backwards) compatibility is needed is because
@@ -82,7 +80,6 @@ package manifests are baked in the (immutable) package tarballs forever, which m
 any client (especially old ones) should always be able to read that manifest.
 
 This means that the only changes allowed to the schema are:
-
 - adding new fields
 - removing optional fields
 - relaxing constraints not covered by the type system
@@ -137,7 +134,6 @@ We use a restricted version of the SemVer spec which only allows versions with m
 This decision keeps versions and version ranges easy to read, understand, and maintain over time.
 
 #### Package Versions
-
 Package versions always take the form `X.Y.Z`, representing major, minor, and patch places. All three places must be natural numbers. For example, in a manifest file:
 
 ```json
@@ -149,27 +145,26 @@ Package versions always take the form `X.Y.Z`, representing major, minor, and pa
 
 If a package uses all three places (ie. it begins with a non-zero number, such as `1.0.0`), then:
 
-- `MAJOR` means values have been changed or removed, and represents a breaking change to the package.
-- `MINOR` means values have been added, but existing values are unchanged.
-- `PATCH` means the API is unchanged and there is no risk of breaking code.
+* `MAJOR` means values have been changed or removed, and represents a breaking change to the package.
+* `MINOR` means values have been added, but existing values are unchanged.
+* `PATCH` means the API is unchanged and there is no risk of breaking code.
 
 If a package only uses two places (ie. it begins with a zero, such as `0.1.0`), then:
 
-- `MAJOR` is unused because it is zero
-- `MINOR` means values have been changed or removed and represents a breaking change to the package
-- `PATCH` means values may have been added, but existing values are unchanged
+* `MAJOR` is unused because it is zero
+* `MINOR` means values have been changed or removed and represents a breaking change to the package
+* `PATCH` means values may have been added, but existing values are unchanged
 
 If a package uses only one place (ie. it begins with two zeros, such as `0.0.1`), then all changes are potentially breaking changes.
 
 #### Version Ranges
-
 Version ranges are always of the form `>=X.Y.Z <X.Y.Z`, where both versions must be valid and the first version must be less than the second version.
 
 When comparing versions, the major place takes precedence, then the minor place, and then the patch place. For example:
 
-- `1.0.0` is greater than `0.12.0`
-- `0.1.0` is greater than `0.0.12`
-- `0.0.1` is greater than `0.0.0`
+* `1.0.0` is greater than `0.12.0`
+* `0.1.0` is greater than `0.0.12`
+* `0.0.1` is greater than `0.0.0`
 
 All dependencies must take this form. For example, in a manifest file:
 
@@ -189,7 +184,6 @@ All dependencies must take this form. For example, in a manifest file:
 ## The Registry API
 
 The Registry should support various automated (i.e. no/little human intervention required) operations:
-
 - adding new packages
 - adding new versions of a package
 - unpublishing a package
@@ -199,10 +193,10 @@ The Registry should support various automated (i.e. no/little human intervention
 As package authors the only thing that we need to do in order to have the Registry upload our
 package is to tell it where to get it.
 
-We can do that by _opening an issue_ containing JSON that conforms to the
+We can do that by *opening an issue* containing JSON that conforms to the
 schema of an [`Addition`](./v1/Operation.dhall).
 
-Note: this operation **should** be entirely automated by the package manager, and
+Note: this operation __should__ be entirely automated by the package manager, and
 transparent to the user. I.e. package authors shouldn't need to be aware of the inner
 workings of the Registry in order to publish a package, and they should be able to
 tell to the package manager "publish this" and be given back either a confirmation
@@ -216,7 +210,6 @@ the user can navigate to, so that they can preview the issue content before open
 is an example of such link.
 
 Once the issue is open, the [CI in this repo](#The-Registry-CI) will:
-
 - detect if this is an `Addition`, and continue running if so
 - fetch the git repo the `Repo` refers to, checking out the `ref` specified in the `Addition`,
   and considering the package directory to be `subdir` if specified, or the root of the repo if not
@@ -237,7 +230,7 @@ Once the issue is open, the [CI in this repo](#The-Registry-CI) will:
 The CI will post updates in the issue as it runs the various operations, and close the issue
 once all the above operations have completed correctly.
 
-Once the issue has been closed the package can be considered **published**.
+Once the issue has been closed the package can be considered __published__.
 
 ### Publishing a new version of an existing package
 
@@ -250,12 +243,10 @@ Unpublishing a version for a package can be done by creating an issue containing
 conforming to the schema of an [`Unpublish`](./v1/Operation.dhall).
 
 CI will verify that _all_ the following conditions hold:
-
 - the author of the issue is either one of the maintainers or one of the [Registry Trustees](#Registry-Trustees)
-- the version is less than **1 week old**
+- the version is less than __1 week old__
 
 If these conditions hold, then CI will:
-
 - move that package version from `published` to `unpublished` in the package `Metadata`
 - delete that package version from the storages
 
@@ -269,7 +260,6 @@ Exceptions to this rule are legal concerns (e.g. DMCA takedown requests) for whi
 Every package will have its own file in the `packages` folder of this repo.
 
 You can see the schema of this file [here](./v1/Metadata.dhall), and the main reasons for this file to exist are to track:
-
 - the upstream location for the sources of the package
 - published versions and the SHA256 for their tarball as computed by [our CI](#Adding-a-new-package).
   Note: these are going to be sorted in ascending order according to [SemVer](https://semver.org)
@@ -281,7 +271,7 @@ You can see the schema of this file [here](./v1/Metadata.dhall), and the main re
 As noted in the beginning, Package Sets are a first class citizen of this design.
 
 This repo will be the single source of truth for the package-sets - you can find an example [here](./v1/sets/20200911.dhall) - from
-which we'll generate various metadata files to be used by the package manager. **Further details are yet to be defined**.
+which we'll generate various metadata files to be used by the package manager. __Further details are yet to be defined__.
 
 ### Making your own Package Set
 
@@ -293,13 +283,12 @@ In this case the format in which the extra-Registry packages will depend on what
 the client accepts.
 
 One of such clients will be Spago, where we'll define an extra-Registry package as:
-
 ```dhall
 let Registry = https://raw.githubusercontent.com/purescript/registry/master/v1/Registry.dhall
 
 let SpagoPkg =
       < Repo : { repo : Registry.Location, ref : Text }
-      | Local : Registry.App.Prelude.Location.Type
+      | Local : Registry.Prelude.Location.Type
       >
 ```
 
@@ -352,27 +341,27 @@ They will also strive to involve maintainers in this process as much as possible
 In general, trustees aim to empower and educate maintainers about the tools at their disposal to better manage their own packages.
 Being a part of this curation process is entirely optional and can be opted-out from.
 
-Trustees will try to contact the maintainer of a package for **4 weeks** before publishing a new revision, except if the author
+Trustees will try to contact the maintainer of a package for __4 weeks__ before publishing a new revision, except if the author
 has opted out from this process, in which case they won't do anything.
 
-Trustees will **not** change the source of a package, but only its metadata in the `Manifest` file.
+Trustees will __not__ change the source of a package, but only its metadata in the `Manifest` file.
 
-Trustees are allowed to publish **new revisions** (i.e. versions that bump the `pre-release` segment from SemVer), to:
-
+Trustees are allowed to publish __new revisions__ (i.e. versions that bump the `pre-release` segment from SemVer), to:
 - relax version bounds
 - tighten version bounds
 - add/remove dependencies to make the package build correctly
 
-**Note: there is no API defined yet for this operation.**
+__Note: there is no API defined yet for this operation.__
 
 ## Name squatting and reassigning names
 
 If you'd like to reuse a package name that has already been taken, you can open an issue in this repo, tagging the current owner (whose username you can find in the package's metadata file).
 
-If no agreement with the current owner has not been found after **4 weeks**, then Registry Trustees will address it.
+If no agreement with the current owner has not been found after __4 weeks__, then Registry Trustees will address it.
 
 For more details see [the policy](https://www.npmjs.com/policies/disputes) that NPM has for this, that we will follow when
 not otherwise specified.
+
 
 ## The Package Index
 
@@ -387,6 +376,7 @@ we need to lookup lots of manifests to build the dependency graph.
 So we'll store _all the package manifests_ in a separate location **yet to be defined** (it's really an
 implementation detail and will most likely be just another repository, inspired
 by [the same infrastructure for Rust](https://github.com/rust-lang/crates.io-index)).
+
 
 ## Storage Backends
 
@@ -407,7 +397,6 @@ to use the mappings.
 
 There can be more than one storage backend at any given time, and it's always possible
 to add more - in fact this can easily be done by:
-
 - looking at all the [package metadata file](#Package-metadata) for every package, to get all the published versions
 - then downloading the tarballs from an existing backend, and uploading them to the new location
 - update the [mappings file](./v1/backends.dhall) with the new Backend.
@@ -415,7 +404,6 @@ to add more - in fact this can easily be done by:
 ### Downloading a package
 
 A package manager should download a specific version of a package in the following way:
-
 1. given "package name" and "version", the URL to fetch the tarball can be computed as described above
 2. fetch the tarball from one of the backends
 3. lookup the SHA256 for that tarball in the [package metadata file](#Package-metadata)
@@ -425,6 +413,7 @@ A package manager should download a specific version of a package in the followi
 Note: we are ensuring that the package we download is the same file for all backends
 because we are storing the SHA256 for every tarball in a separate location from
 the storage backends (this repo).
+
 
 ## Implementation plan
 
@@ -436,14 +425,12 @@ to avoid that with some planning.
 
 So a big chunk of our work is going towards ensuring that Bower packages are
 gracefully grandfathered into the new system. This basically means that for each of them we will:
-
 - generate a [package manifest](#The-Package-Manifest)
 - upload them to the first [storage backend](#Storage-backends)
 - keep doing that for a while so that package authors have some time to adjust to
   the new publishing flow
 
 What has happened already:
-
 - we're not relying on the Bower registry anymore for guaranteeing package uniqueness in the ecosystem.
   New packages are referenced [in this file](./new-packages.json), while all the packages from the Bower
   registry are referenced [here](./bower-packages.json)
@@ -451,19 +438,18 @@ What has happened already:
 - we set up the first [storage backend](#Storage-backends), maintained by the Packaging Team
 
 What is happening right now:
-
 - we're figuring out the last details of [the package `Manifest`](#The-Package-Manifest), which is the big blocker
   for proceeding further, since it will be baked into all the tarballs uploaded to the storage.
 - writing up the [CI code](#The-Registry-CI) to import the Bower packages as described above
 
 What will happen after this:
-
 - we'll start using this repo as the source of truth for publishing new package sets
 - we'll write the CI code to implement the [Registry API](#The-Registry-API), so that
   authors will be able to publish new packages (albeit manually at first)
 - then implement automation to interact with the API in one package manager
   (most likely Spago)
 - then only after that we'll adjust package managers to use the tarballs from the Registry in a way that is compliant with this spec.
+
 
 ### The Registry CI
 
@@ -475,15 +461,14 @@ contains the various CI flows.
 
 **Yet to be defined**: [see this issue](https://github.com/purescript/registry/issues/23)
 
+
 ### Mirroring the Registry
 
 As noted above, "The Registry" is really just:
-
 - this git repo containing metadata
 - plus various places that store the package tarballs
 
 Mirroring all of this to an alternative location would consist of:
-
 - mirroring the git repo - it's just another git remote and there are plenty of providers
 - copying all the release artifacts to another hosting location. This can be done by looking at the package metadata and literally downloading all the packages listed there, then reuploading them to the new location
 - add another "tarball upload destination" to the [registry CI](#The-Registry-CI), to keep all the backends in sync
@@ -491,6 +476,7 @@ Mirroring all of this to an alternative location would consist of:
 
 Additionally we could keep some kind of "RSS feed" in this repo with all the notifications from package uploads,
 so other tools will be able to listen to these events and act on that information.
+
 
 ## FAQ
 
@@ -511,7 +497,6 @@ to the needs of every package.
 ### Why not a webserver like everyone else?
 
 These are the main reasons why we prefer to handle this with git+CI, rather than deploying a separate service:
-
 - _visibility_: webserver logs are hidden, while CI happens in the open and everyone can audit what happens
 - _maintenance_: a webserver needs to be deployed and kept up, CI is always there
 
@@ -527,7 +512,6 @@ $ cat "your-file.json" | json-to-dhall --records-loose --unions-strict "./YourDh
 
 This design is authored by [**@f-f**](https://github.com/f-f), with suggestions and
 ideas from:
-
 - [**@reactormonk**](https://github.com/reactormonk)
 - [**@justinwoo**](https://github.com/justinwoo)
 - [**@thomashoneyman**](https://github.com/thomashoneyman)
