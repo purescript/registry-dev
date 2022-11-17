@@ -1,6 +1,6 @@
-module Registry.App.Index where
+module Registry.App.PackageIndex where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Reader (asks)
 import Data.Array as Array
@@ -11,14 +11,10 @@ import Data.String as String
 import Foreign.FastGlob (Include(..))
 import Foreign.FastGlob as FastGlob
 import Node.Path as Path
-import Registry.Manifest (Manifest(..))
-import Registry.ManifestIndex (ManifestIndex)
+import Registry.App.RegistryM (RegistryM, commitIndexFile, throwWithComment)
 import Registry.ManifestIndex as ManifestIndex
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range as Range
-import Registry.RegistryM (RegistryM, commitIndexFile, throwWithComment)
-import Registry.Version (Version)
 import Registry.Version as Version
 
 -- | Attempt to read a manifest index from disk, throwing an exception if the

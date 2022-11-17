@@ -13,6 +13,7 @@ package:
     - parsing
     - prelude
     - strings
+    - uncurried-transformers
   test:
     main: Test.Registry
     dependencies:

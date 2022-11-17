@@ -1,6 +1,6 @@
-module Registry.API where
+module Registry.App.API where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Affjax.Node as Http
 import Affjax.RequestBody as RequestBody
@@ -25,7 +25,6 @@ import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.HTTP.Method as Method
 import Data.Int as Int
-import Data.Interpolate (i)
 import Data.Map as Map
 import Data.MediaType.Common as MediaType
 import Data.Profunctor as Profunctor
@@ -56,39 +55,30 @@ import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
-import Registry.App.Index as App.Index
+import Registry.App.Auth as Auth
+import Registry.App.Cache (Cache)
+import Registry.App.Cache as Cache
 import Registry.App.Json as Json
 import Registry.App.LenientVersion as LenientVersion
+import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
-import Registry.Cache (Cache)
-import Registry.Cache as Cache
+import Registry.App.PackageStorage as PackageStorage
+import Registry.App.RegistryM (Env, RegistryM, closeIssue, comment, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Constants (GitHubRepo)
 import Registry.Constants as Constants
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.PackageSet as Legacy.PackageSet
-import Registry.Location (Location(..))
 import Registry.Location as Location
-import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
-import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
 import Registry.Metadata as Metadata
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageOperation(..), PackageSetOperation(..), PublishData)
 import Registry.Operation as Operation
-import Registry.Owner (Owner(..))
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.PackageSet (PackageSet(..))
 import Registry.PackageSet as PackageSet
-import Registry.PackageUpload as Upload
-import Registry.Range (Range)
 import Registry.Range as Range
-import Registry.RegistryM (Env, RegistryM, closeIssue, comment, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.SSH as SSH
 import Registry.Sha256 as Sha256
 import Registry.Solver as Solver
-import Registry.Types (RawPackageName(..), RawVersion(..))
-import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Process
 
@@ -332,7 +322,7 @@ runOperation source operation = case operation of
     -- new packages and/or compiler version. Note: if the compiler is updated to
     -- a version that isn't supported by the registry then an 'unsupported
     -- compiler' error will be thrown.
-    registryIndex <- App.Index.readManifestIndexFromDisk
+    registryIndex <- PackageIndex.readManifestIndexFromDisk
     App.PackageSets.validatePackageSet registryIndex latestPackageSet
 
     let candidates = App.PackageSets.validatePackageSetCandidates registryIndex latestPackageSet packages
@@ -401,7 +391,7 @@ runOperation source operation = case operation of
             , "Please publish a package version with your SSH public key in the owners field."
             , "You can then retry unpublishing this version by authenticating with your private key."
             ]
-        Just owners -> liftAff (SSH.verifyPayload owners auth) >>= case _ of
+        Just owners -> liftAff (Auth.verifyPayload owners auth) >>= case _ of
           Left err -> throwWithComment $ String.joinWith "\n"
             [ "Failed to verify package ownership:"
             , err
@@ -432,7 +422,7 @@ runOperation source operation = case operation of
                 ]
               Right _ -> pure unit
 
-            App.Index.writeDeleteIndex name version >>= case _ of
+            PackageIndex.writeDeleteIndex name version >>= case _ of
               Left err -> throwWithComment $ String.joinWith "\n"
                 [ "Unpublish succeeded, but committing to the registry index failed."
                 , err
@@ -481,7 +471,7 @@ runOperation source operation = case operation of
                 , "You can then retry transferring this package by authenticating with your private key."
                 ]
             Just owners ->
-              liftAff (SSH.verifyPayload owners auth) >>= case _ of
+              liftAff (Auth.verifyPayload owners auth) >>= case _ of
                 Left err ->
                   throwWithComment $ String.joinWith "\n"
                     [ "Failed to verify package ownership:"
@@ -673,7 +663,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
 
   -- We write to the registry index if possible. If this fails, the packaging
   -- team should manually insert the entry.
-  App.Index.writeInsertIndex manifest >>= case _ of
+  PackageIndex.writeInsertIndex manifest >>= case _ of
     Left err -> comment $ String.joinWith "\n"
       [ "Package uploaded, but committing to the registry failed."
       , err
@@ -753,7 +743,7 @@ verifyResolutions { source, resolutions, manifest } = Except.runExceptT do
   -- We don't verify packages provided via the mass import.
   case resolutions of
     Nothing -> do
-      registryIndex <- lift App.Index.readManifestIndexFromDisk
+      registryIndex <- lift PackageIndex.readManifestIndexFromDisk
       let getDependencies = _.dependencies <<< un Manifest
       case Solver.solve (map (map getDependencies) (ManifestIndex.toMap registryIndex)) (getDependencies manifest) of
         Left errors -> do
@@ -1046,8 +1036,8 @@ mkEnv octokit cache metadataRef issue username =
   , commitMetadataFile: pacchettiBottiPushToRegistryMetadata
   , commitIndexFile: pacchettiBottiPushToRegistryIndex
   , commitPackageSetFile: pacchettiBottiPushToRegistryPackageSets
-  , uploadPackage: Upload.upload
-  , deletePackage: Upload.delete
+  , uploadPackage: PackageStorage.upload
+  , deletePackage: PackageStorage.delete
   , packagesMetadata: metadataRef
   , cache
   , octokit
@@ -1153,7 +1143,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
     case pursPublishMethod of
       LegacyPursPublish -> liftAff do
         log $ "Cloning repo at tag: " <> show { owner, repo, ref }
-        Git.cloneGitTag (i "https://github.com/" owner "/" repo) ref tmpDir
+        Git.cloneGitTag (Array.fold [ "https://github.com/", owner, "/", repo ]) ref tmpDir
         log $ "Getting published time..."
         -- Cloning will result in the `repo` name as the directory name
         publishedTime <- Except.runExceptT (Git.gitGetRefTime ref (Path.concat [ tmpDir, repo ])) >>= case _ of
@@ -1370,7 +1360,7 @@ acceptTrustees username authenticated maybeOwners = do
 
         { publicKey, privateKey } <- readPacchettiBottiKeys
 
-        signature <- liftAff (SSH.signPayload { publicKey, privateKey, rawPayload: authenticated.rawPayload }) >>= case _ of
+        signature <- liftAff (Auth.signPayload { publicKey, privateKey, rawPayload: authenticated.rawPayload }) >>= case _ of
           Left _ -> throwWithComment "Error signing transfer. cc: @purescript/packaging"
           Right signature -> pure signature
 

@@ -1,6 +1,6 @@
 module Test.Foreign.SPDX (spec) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray

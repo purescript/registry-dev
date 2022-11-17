@@ -4,7 +4,7 @@
 -- | succeed in the integration tests for the registry solver.
 module Test.Scripts.BowerInstaller where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
@@ -32,26 +32,18 @@ import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
-import Registry.API as API
-import Registry.App.Index as App.Index
+import Registry.App.API as API
+import Registry.App.Cache as Cache
 import Registry.App.Json as Json
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
-import Registry.Cache as Cache
+import Registry.App.PackageIndex as PackageIndex
+import Registry.App.RegistryM (RegistryM, readPackagesMetadata)
+import Registry.App.RegistryM as RegistryM
 import Registry.Internal.Codec as Internal.Codec
-import Registry.Location (Location(..))
-import Registry.Manifest (Manifest(..))
-import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
-import Registry.Metadata (Metadata(..))
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Prelude as Aff
-import Registry.Range (Range)
 import Registry.Range as Range
-import Registry.RegistryM (RegistryM, readPackagesMetadata)
-import Registry.RegistryM as RegistryM
-import Registry.Version (Version)
 import Registry.Version as Version
 import Sunde as Sunde
 
@@ -109,7 +101,7 @@ main = launchAff_ do
     API.fetchRegistryIndex
     API.fillMetadataRef
 
-    registryIndex <- App.Index.readManifestIndexFromDisk
+    registryIndex <- PackageIndex.readManifestIndexFromDisk
     metadata <- readPackagesMetadata
 
     let resultsPath = Path.concat [ API.scratchDir, "bower-solver-results" ]
@@ -269,9 +261,9 @@ fetchRepo :: GitHub.Address -> FilePath -> Aff Unit
 fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
   true -> do
     Except.runExceptT (Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just path)) >>= case _ of
-      Left err -> Aff.throwError $ Exception.error err
+      Left err -> throwError $ Exception.error err
       Right _ -> pure unit
   _ -> do
     Except.runExceptT (Git.runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
-      Left err -> Aff.throwError $ Exception.error err
+      Left err -> throwError $ Exception.error err
       Right _ -> pure unit

@@ -1,6 +1,6 @@
 module Foreign.Licensee where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Parallel as Parallel
 import Data.Array as Array

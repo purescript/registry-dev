@@ -1,7 +1,7 @@
 -- | A test script that exercises publishing to Pursuit only.
 module Test.Scripts.PublishPursuit where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.Map as Map
 import Effect.Exception (throw)
@@ -14,12 +14,12 @@ import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
-import Registry.API (Source(..), compilePackage, publishToPursuit)
-import Registry.API as API
+import Registry.App.API (Source(..))
+import Registry.App.API as API
+import Registry.App.Cache as Cache
 import Registry.App.Json as Json
-import Registry.Cache as Cache
+import Registry.App.RegistryM (Env, runRegistryM, throwWithComment)
 import Registry.Manifest as Manifest
-import Registry.RegistryM (Env, runRegistryM, throwWithComment)
 import Registry.Version as Version
 
 main :: Effect Unit
@@ -69,14 +69,14 @@ main = launchAff_ $ do
         API.verifyResolutions { source: API, resolutions: Nothing, manifest } >>= case _ of
           Left err -> throwWithComment err
           Right verified -> do
-            compilePackage { packageSourceDir, resolutions: verified, compiler } >>= case _ of
+            API.compilePackage { packageSourceDir, resolutions: verified, compiler } >>= case _ of
               Left err -> throwWithComment err
               Right dependenciesDir -> do
                 files <- liftAff $ FS.readdir packageSourceDir
                 logShow files
                 deps <- liftAff $ FS.readdir dependenciesDir
                 logShow deps
-                result <- publishToPursuit { packageSourceDir, compiler, resolutions: verified, dependenciesDir }
+                result <- API.publishToPursuit { packageSourceDir, compiler, resolutions: verified, dependenciesDir }
                 case result of
                   Left error -> throwWithComment error
                   Right message -> log message

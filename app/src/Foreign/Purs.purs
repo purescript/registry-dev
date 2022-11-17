@@ -1,6 +1,6 @@
 module Foreign.Purs where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.Array as Array
 import Data.Codec.Argonaut (JsonCodec)

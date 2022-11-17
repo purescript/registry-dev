@@ -2,7 +2,7 @@ module Test.Registry.App.PackageSets
   ( spec
   ) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Data.DateTime (Date, DateTime)
 import Data.DateTime as DateTime
@@ -14,19 +14,13 @@ import Registry.App.Json as Json
 import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageSets as App.PackageSets
-import Registry.Internal.Format as Internal.Formatter
+import Registry.Internal.Format as Internal.Format
 import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, latestCompatibleSetsCodec, legacyPackageSetCodec, parsePscTag, printPscTag)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
-import Registry.Location (Location(..))
-import Registry.Manifest (Manifest)
 import Registry.ManifestIndex as ManifestIndex
-import Registry.Metadata (Metadata(..))
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.PackageSet (PackageSet(..))
 import Registry.PackageSet as PackageSet
 import Registry.Sha256 as Sha256
-import Registry.Version (Version)
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.Fixture.Manifest (fixture, setDependencies, setName, setVersion)
@@ -277,7 +271,7 @@ unsafeLenientVersion :: String -> LenientVersion
 unsafeLenientVersion = unsafeFromRight <<< LenientVersion.parse
 
 unsafeDateTime :: String -> DateTime
-unsafeDateTime = unsafeFromRight <<< Formatter.DateTime.unformat Internal.Formatter.iso8601Date
+unsafeDateTime = unsafeFromRight <<< Formatter.DateTime.unformat Internal.Format.iso8601Date
 
 unsafeDate :: String -> Date
 unsafeDate = DateTime.date <<< unsafeDateTime

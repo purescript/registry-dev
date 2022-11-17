@@ -7,7 +7,7 @@ module Registry.App.LenientVersion
   , version
   ) where
 
-import Registry.Prelude
+import Registry.App.Prelude
 
 import Control.Monad.Error.Class as Error
 import Data.Function (on)
@@ -15,7 +15,6 @@ import Data.Int as Int
 import Data.String as String
 import Parsing (Parser)
 import Parsing as Parsing
-import Registry.Version (Version)
 import Registry.Version as Version
 
 -- | A lenient variant on the `Registry.Version` type, which attempts to correct
