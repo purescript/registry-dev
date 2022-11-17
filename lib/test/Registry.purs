@@ -13,6 +13,7 @@ import Test.Registry.PackageName as Test.PackageName
 import Test.Registry.PackageSet as Test.PackageSet
 import Test.Registry.Range as Test.Range
 import Test.Registry.Sha256 as Test.Sha256
+import Test.Registry.Solver as Test.Solver
 import Test.Registry.Version as Test.Version
 import Test.Spec as Spec
 import Test.Spec.Reporter as Spec.Reporter
@@ -35,3 +36,4 @@ main = Aff.launchAff_ $ Spec.Runner.runSpec [ Spec.Reporter.consoleReporter ] do
 
   Spec.describe "Structures" do
     Spec.describe "ManifestIndex" Test.ManifestIndex.spec
+    Spec.describe "Solver" Test.Solver.spec

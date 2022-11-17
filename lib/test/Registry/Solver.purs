@@ -1,48 +1,33 @@
 module Test.Registry.Solver (spec) where
 
-import Registry.App.Prelude
+import Prelude
 
+import Control.Alt ((<|>))
+import Control.Monad.Error.Class (class MonadThrow)
+import Data.Argonaut.Core as Argonaut
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
+import Data.Codec as Codec
+import Data.Either (Either(..))
+import Data.Foldable (for_)
+import Data.Map (Map)
 import Data.Map as Map
+import Data.Maybe (Maybe(..))
 import Data.Set as Set
 import Data.Set.NonEmpty as NES
-import Registry.App.Json as Json
+import Data.Tuple (Tuple(..))
+import Data.Tuple.Nested ((/\))
+import Effect.Exception (Error)
 import Registry.Internal.Codec as Internal.Codec
-import Registry.PackageName as PackageName
-import Registry.Range as Range
 import Registry.Solver (SolverError(..), SolverPosition(..), printSolverError, solve, solveAndValidate)
+import Registry.Types (PackageName, Range, Version)
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.Spec as Spec
+import Test.Utils as Utils
 
 spec :: Spec.Spec Unit
 spec = do
-  let
-    shouldSucceed goals result =
-      solveAndValidate solverIndex (Map.fromFoldable goals) `Assert.shouldContain` (Map.fromFoldable result)
-
-    shouldFail goals errors = case solve solverIndex (Map.fromFoldable goals) of
-      Left solverErrors -> do
-        let expectedErrorCount = Array.length errors
-        let receivedErrorCount = NonEmptyArray.length solverErrors
-
-        when (expectedErrorCount /= receivedErrorCount) do
-          Assert.fail $ "Tests expect " <> show expectedErrorCount <> " errors, but received " <> show receivedErrorCount
-
-        let receivedErrors = map (\error -> { error, message: printSolverError error }) solverErrors
-        let combinedErrors = Array.zip errors (NonEmptyArray.toArray receivedErrors)
-
-        for_ combinedErrors \(Tuple expected received) -> do
-          received.error `Assert.shouldEqual` expected.error
-          received.message `Assert.shouldEqual` expected.message
-
-      Right value ->
-        Assert.fail $ Array.fold
-          [ "Expected failure, but received: "
-          , Json.stringifyJson (Internal.Codec.packageMap Version.codec) value
-          ]
-
   Spec.describe "Valid dependency ranges" do
     Spec.it "Solves simple range" do
       shouldSucceed
@@ -277,19 +262,56 @@ prelude =
   }
 
 package :: String -> PackageName
-package = unsafeFromRight <<< PackageName.parse
+package = Utils.unsafePackageName
 
 version :: Int -> Version
-version = unsafeFromRight <<< Version.parse <<< (_ <> ".0.0") <<< show
+version = Utils.unsafeVersion <<< (_ <> ".0.0") <<< show
 
 -- For all these tests, we work with major versions only because we do not
 -- need to exercise the intricacies of the range relations, just the solver,
 -- which does not care about what versions are, just how they relate
 range :: Int -> Int -> Range
-range lower upper = unsafeFromRight $ Range.parse $ Array.fold
+range lower upper = Utils.unsafeRange $ Array.fold
   [ ">="
   , show lower
   , ".0.0 <"
   , show upper
   , ".0.0"
   ]
+
+shouldSucceed
+  :: forall m
+   . MonadThrow Error m
+  => Array (Tuple PackageName Range)
+  -> Array (Tuple PackageName Version)
+  -> m Unit
+shouldSucceed goals result =
+  solveAndValidate solverIndex (Map.fromFoldable goals) `Assert.shouldContain` Map.fromFoldable result
+
+shouldFail
+  :: forall m
+   . MonadThrow Error m
+  => Array (Tuple PackageName Range)
+  -> Array { error :: SolverError, message :: String }
+  -> m Unit
+shouldFail goals errors = case solve solverIndex (Map.fromFoldable goals) of
+  Left solverErrors -> do
+    let expectedErrorCount = Array.length errors
+    let receivedErrorCount = NonEmptyArray.length solverErrors
+
+    when (expectedErrorCount /= receivedErrorCount) do
+      Assert.fail $ "Tests expect " <> show expectedErrorCount <> " errors, but received " <> show receivedErrorCount
+
+    let receivedErrors = map (\error -> { error, message: printSolverError error }) solverErrors
+    let combinedErrors = Array.zip errors (NonEmptyArray.toArray receivedErrors)
+
+    for_ combinedErrors \(Tuple expected received) -> do
+      received.error `Assert.shouldEqual` expected.error
+      received.message `Assert.shouldEqual` expected.message
+
+  Right value ->
+    Assert.fail $ Array.fold
+      [ "Expected failure, but received: "
+      , Argonaut.stringifyWithIndent 2 $ Codec.encode (Internal.Codec.packageMap Version.codec) value
+      ]
+

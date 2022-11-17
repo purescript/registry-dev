@@ -61,7 +61,7 @@ import Registry.App.Json as Json
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
-import Registry.App.PackageStorage as Upload
+import Registry.App.PackageStorage as PackageStorage
 import Registry.App.RegistryM (Env, RegistryM, closeIssue, comment, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Auth as Auth
 import Registry.Constants (GitHubRepo)
@@ -1036,8 +1036,8 @@ mkEnv octokit cache metadataRef issue username =
   , commitMetadataFile: pacchettiBottiPushToRegistryMetadata
   , commitIndexFile: pacchettiBottiPushToRegistryIndex
   , commitPackageSetFile: pacchettiBottiPushToRegistryPackageSets
-  , uploadPackage: Upload.upload
-  , deletePackage: Upload.delete
+  , uploadPackage: PackageStorage.upload
+  , deletePackage: PackageStorage.delete
   , packagesMetadata: metadataRef
   , cache
   , octokit

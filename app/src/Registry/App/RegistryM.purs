@@ -10,7 +10,7 @@ import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Foreign.GitHub (Octokit)
 import Registry.App.Cache (Cache)
-import Registry.App.PackageStorage as Upload
+import Registry.App.PackageStorage as PackageStorage
 
 type Env =
   { comment :: String -> Aff Unit
@@ -18,8 +18,8 @@ type Env =
   , commitMetadataFile :: PackageName -> FilePath -> Aff (Either String Unit)
   , commitIndexFile :: PackageName -> FilePath -> Aff (Either String Unit)
   , commitPackageSetFile :: Version -> String -> FilePath -> Aff (Either String Unit)
-  , uploadPackage :: Upload.PackageInfo -> FilePath -> Aff Unit
-  , deletePackage :: Upload.PackageInfo -> Aff Unit
+  , uploadPackage :: PackageStorage.PackageInfo -> FilePath -> Aff Unit
+  , deletePackage :: PackageStorage.PackageInfo -> Aff Unit
   , octokit :: Octokit
   , username :: String
   , packagesMetadata :: Ref (Map PackageName Metadata)
@@ -75,13 +75,13 @@ commitPackageSetFile version commitMessage = do
   liftAff $ env.commitPackageSetFile version commitMessage env.registry
 
 -- | Upload a package to the backend storage provider
-uploadPackage :: Upload.PackageInfo -> FilePath -> RegistryM Unit
+uploadPackage :: PackageStorage.PackageInfo -> FilePath -> RegistryM Unit
 uploadPackage info path = do
   f <- asks _.uploadPackage
   liftAff $ f info path
 
 -- | Delete a package from the backend storage provider
-deletePackage :: Upload.PackageInfo -> RegistryM Unit
+deletePackage :: PackageStorage.PackageInfo -> RegistryM Unit
 deletePackage info = do
   f <- asks _.deletePackage
   liftAff $ f info

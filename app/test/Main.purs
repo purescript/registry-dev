@@ -24,13 +24,9 @@ import Registry.App.API as API
 import Registry.App.Json as Json
 import Registry.Legacy.Manifest (Bowerfile(..))
 import Registry.Legacy.Manifest as Legacy.Manifest
-import Registry.Location (Location(..))
-import Registry.Manifest (Manifest(..))
 import Registry.Operation (PackageOperation(..), PackageSetOperation(..))
 import Registry.Operation as Operation
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.Version (Version)
 import Registry.Version as Version
 import Safe.Coerce (coerce)
 import Test.Assert as Assert
@@ -44,7 +40,6 @@ import Test.Registry.App.LenientVersion as Test.LenientVersion
 import Test.Registry.App.PackageIndex as Test.PackageIndex
 import Test.Registry.App.PackageSets as Test.PackageSets
 import Test.Registry.Auth as Auth
-import Test.Registry.Solver as Test.Solver
 import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -81,8 +76,6 @@ main = launchAff_ do
       Foreign.Tar.tar
     Spec.describe "Json Repair" do
       Foreign.JsonRepair.testJsonRepair
-    Spec.describe "Solver" do
-      Test.Solver.spec
     Spec.describe "Glob" do
       safeGlob
     Spec.describe "Package Set" do

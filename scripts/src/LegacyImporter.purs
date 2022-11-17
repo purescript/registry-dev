@@ -45,7 +45,7 @@ import Registry.App.Json as Json
 import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageIndex as PackageIndex
-import Registry.App.PackageStorage as Upload
+import Registry.App.PackageStorage as PackageStorage
 import Registry.App.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError, LegacyPackageSetEntries)
 import Registry.Legacy.Manifest as Legacy.Manifest
@@ -124,8 +124,8 @@ main = launchAff_ do
         , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
         , commitIndexFile: API.pacchettiBottiPushToRegistryIndex
         , commitPackageSetFile: \_ _ _ -> log "Not committing package set in legacy import." $> Right unit
-        , uploadPackage: Upload.upload
-        , deletePackage: Upload.delete
+        , uploadPackage: PackageStorage.upload
+        , deletePackage: PackageStorage.delete
         , packagesMetadata: metadataRef
         , cache
         , octokit
@@ -145,8 +145,8 @@ main = launchAff_ do
         , commitPackageSetFile: \_ _ _ -> do
             log "Skipping committing to registry package sets..."
             pure (Right unit)
-        , uploadPackage: Upload.upload
-        , deletePackage: Upload.delete
+        , uploadPackage: PackageStorage.upload
+        , deletePackage: PackageStorage.delete
         , octokit
         , cache
         , username: ""
