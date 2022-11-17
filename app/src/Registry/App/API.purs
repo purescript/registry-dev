@@ -55,6 +55,7 @@ import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Node.Process as Node.Process
+import Registry.App.Auth as Auth
 import Registry.App.Cache (Cache)
 import Registry.App.Cache as Cache
 import Registry.App.Json as Json
@@ -63,7 +64,6 @@ import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
 import Registry.App.PackageStorage as PackageStorage
 import Registry.App.RegistryM (Env, RegistryM, closeIssue, comment, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
-import Registry.Auth as Auth
 import Registry.Constants (GitHubRepo)
 import Registry.Constants as Constants
 import Registry.Legacy.Manifest as Legacy.Manifest

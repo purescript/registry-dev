@@ -1,11 +1,11 @@
-module Test.Registry.Auth (spec) where
+module Test.Registry.App.Auth (spec) where
 
 import Registry.App.Prelude
 
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Newtype (over)
 import Data.String as String
-import Registry.Auth as Auth
+import Registry.App.Auth as Auth
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..))
 import Registry.PackageName as PackageName
 import Registry.Version as Version

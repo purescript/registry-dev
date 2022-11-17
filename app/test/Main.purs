@@ -35,11 +35,11 @@ import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
 import Test.Foreign.SPDX as Foreign.SPDX
 import Test.Foreign.Tar as Foreign.Tar
+import Test.Registry.App.Auth as Auth
 import Test.Registry.App.LenientRange as Test.LenientRange
 import Test.Registry.App.LenientVersion as Test.LenientVersion
 import Test.Registry.App.PackageIndex as Test.PackageIndex
 import Test.Registry.App.PackageSets as Test.PackageSets
-import Test.Registry.Auth as Auth
 import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
 import Test.Spec.Reporter.Console (consoleReporter)

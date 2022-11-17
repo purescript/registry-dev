@@ -1,4 +1,4 @@
-module Registry.Auth
+module Registry.App.Auth
   ( SignAuthenticated
   , signPayload
   , verifyPayload
