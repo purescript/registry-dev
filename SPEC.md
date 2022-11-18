@@ -108,11 +108,11 @@ The currently-supported location types are listed below.
 
 **Git Repository**
 
-An arbitrary Git repository is represented by a JSON `object` with a required `gitUrl` key and optional `subdir` key. The Git URL must be of the form: `http[s]://host.xz/path/to/repo.git`. The registry uses the `git` CLI tool to fetch your repository. A JSON example:
+An arbitrary Git repository is represented by a JSON `object` with a required `gitUrl` key and optional `subdir` key. The Git URL must be of the form: `http[s]://host.xz/path/to/repo[.git]`. The registry uses the `git` CLI tool to fetch your repository. A JSON example:
 
 ```json
 {
-  "gitUrl": "https://gitlab.com/my-user/my-package.git",
+  "gitUrl": "https://git.sr.ht/~rj/purescript-image",
   "subdir": "lib"
 }
 ```
