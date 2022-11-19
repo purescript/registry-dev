@@ -1,4 +1,4 @@
-module Test.Assert where
+module Test.Utils.Assert where
 
 import Prelude
 

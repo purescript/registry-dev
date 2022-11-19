@@ -22,9 +22,9 @@ import Registry.Internal.Codec as Internal.Codec
 import Registry.Solver (SolverError(..), SolverPosition(..), printSolverError, solve, solveAndValidate)
 import Registry.Types (PackageName, Range, Version)
 import Registry.Version as Version
-import Test.Assert as Assert
 import Test.Spec as Spec
 import Test.Utils as Utils
+import Test.Utils.Assert as Assert
 
 spec :: Spec.Spec Unit
 spec = do

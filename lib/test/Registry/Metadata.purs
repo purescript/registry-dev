@@ -3,9 +3,9 @@ module Test.Registry.Metadata (spec) where
 import Prelude
 
 import Registry.Metadata as Metadata
-import Test.Assert as Assert
 import Test.Spec (Spec)
 import Test.Spec as Spec
+import Test.Utils.Assert as Assert
 
 spec :: Spec Unit
 spec = do

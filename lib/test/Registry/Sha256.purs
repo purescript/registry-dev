@@ -13,9 +13,9 @@ import Node.Path (FilePath)
 import Node.Path as Path
 import Registry.Sha256 as Sha256
 import Sunde as Sunde
-import Test.Assert as Assert
 import Test.Spec as Spec
 import Test.Utils as Utils
+import Test.Utils.Assert as Assert
 
 spec :: Spec.Spec Unit
 spec = do

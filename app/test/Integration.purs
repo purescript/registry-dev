@@ -20,12 +20,12 @@ import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Solver as Solver
 import Registry.Version as Version
-import Test.Assert as Assert
 import Test.RegistrySpec as RegistrySpec
 import Test.Scripts.BowerInstaller (BowerSolved, bowerSolvedCodec)
 import Test.Spec as Spec
 import Test.Spec.Reporter (consoleReporter)
 import Test.Spec.Runner (defaultConfig, runSpec')
+import Test.Utils.Assert as Assert
 
 main :: Effect Unit
 main = launchAff_ do

@@ -5,8 +5,8 @@ import Prelude
 import Data.Either as Either
 import Data.Foldable (for_)
 import Registry.Version as Version
-import Test.Assert as Assert
 import Test.Spec as Spec
+import Test.Utils.Assert as Assert
 
 spec :: Spec.Spec Unit
 spec = do

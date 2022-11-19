@@ -96,8 +96,9 @@
           registry-test = ''
             cd $(git rev-parse --show-toplevel)
             npm ci
-            spago test -p registry-app
             spago test -p registry-lib
+            spago test -p registry-app
+            spago test -p registry-scripts
           '';
 
           registry-check-format = ''
@@ -107,7 +108,7 @@
 
           registry-api = ''
             cd $(git rev-parse --show-toplevel)
-            spago run -p registry-app
+            spago run -p registry-scripts -m Registry.Scripts.GitHubEvent
           '';
 
           registry-importer = ''

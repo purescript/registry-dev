@@ -26,10 +26,10 @@ import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Version as Version
-import Test.Assert as Assert
 import Test.Fixture.Manifest as Fixture
 import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
+import Test.Utils.Assert as Assert
 
 type TestIndexEnv =
   { tmp :: FilePath

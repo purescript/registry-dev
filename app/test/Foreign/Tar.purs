@@ -11,8 +11,8 @@ import Node.FS.Aff as FSA
 import Node.FS.Stats as FS.Stats
 import Node.Path as Path
 import Registry.Sha256 as Sha256
-import Test.Assert as Assert
 import Test.Spec as Spec
+import Test.Utils.Assert as Assert
 
 tar :: Spec.Spec Unit
 tar = do

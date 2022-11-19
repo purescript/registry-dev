@@ -4,8 +4,8 @@ import Registry.App.Prelude
 
 import Data.Either as Either
 import Registry.App.LenientRange as LenientRange
-import Test.Assert as Assert
 import Test.Spec as Spec
+import Test.Utils.Assert as Assert
 
 spec :: Spec.Spec Unit
 spec = do

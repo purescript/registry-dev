@@ -12,10 +12,10 @@ import Data.Tuple (Tuple(..))
 import Parsing as Parsing
 import Registry.Internal.Format as Internal.Format
 import Registry.Internal.Parsing as Internal.Parsing
-import Test.Assert as Assert
 import Test.Spec (Spec)
 import Test.Spec as Spec
 import Test.Utils as Utils
+import Test.Utils.Assert as Assert
 
 spec :: Spec Unit
 spec = do

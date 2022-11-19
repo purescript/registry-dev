@@ -10,7 +10,6 @@ import Affjax.StatusCode (StatusCode(..))
 import Control.Alternative as Alternative
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
-import Data.Argonaut.Core (Json)
 import Data.Argonaut.Core as Argonaut
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
@@ -37,7 +36,6 @@ import Data.Tuple (uncurry)
 import Data.Tuple.Nested (type (/\))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
-import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Foreign.FastGlob as FastGlob
 import Foreign.Git as Git
@@ -57,13 +55,12 @@ import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.App.Auth as Auth
 import Registry.App.Cache (Cache)
-import Registry.App.Cache as Cache
 import Registry.App.Json as Json
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
 import Registry.App.PackageStorage as PackageStorage
-import Registry.App.RegistryM (Env, RegistryM, closeIssue, comment, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
+import Registry.App.RegistryM (Env, RegistryM, closeIssue, comment, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, throwWithComment, updatePackagesMetadata, uploadPackage)
 import Registry.Constants (GitHubRepo)
 import Registry.Constants as Constants
 import Registry.Legacy.Manifest as Legacy.Manifest
@@ -73,7 +70,6 @@ import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata as Metadata
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageOperation(..), PackageSetOperation(..), PublishData)
-import Registry.Operation as Operation
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
 import Registry.Range as Range
@@ -81,62 +77,6 @@ import Registry.Sha256 as Sha256
 import Registry.Solver as Solver
 import Registry.Version as Version
 import Sunde as Process
-
-main :: Effect Unit
-main = launchAff_ $ do
-  eventPath <- liftEffect do
-    Node.Process.lookupEnv "GITHUB_EVENT_PATH"
-      >>= maybe (throw "GITHUB_EVENT_PATH not defined in the environment") pure
-
-  githubToken <- liftEffect do
-    Node.Process.lookupEnv "GITHUB_TOKEN"
-      >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
-
-  octokit <- liftEffect $ GitHub.mkOctokit githubToken
-
-  readOperation eventPath >>= case _ of
-    -- If the issue body is not just a JSON string, then we don't consider it
-    -- to be an attempted operation and it is presumably just an issue on the
-    -- registry repository.
-    NotJson ->
-      pure unit
-
-    MalformedJson issue err -> do
-      let
-        comment = Array.fold
-          [ "The JSON input for this package update is malformed:"
-          , newlines 2
-          , "```" <> err <> "```"
-          , newlines 2
-          , "You can try again by commenting on this issue with a corrected payload."
-          ]
-
-      Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
-        Left githubError -> throwError $ Aff.error $ GitHub.printGitHubError githubError
-        Right _ -> pure unit
-
-    DecodedOperation issue username operation -> do
-      FS.Extra.ensureDirectory scratchDir
-      cache <- Cache.useCache cacheDir
-      packagesMetadata <- liftEffect $ Ref.new Map.empty
-      runRegistryM (mkEnv octokit cache packagesMetadata issue username) do
-        comment $ case operation of
-          Left packageSetOperation -> case packageSetOperation of
-            PackageSetUpdate _ ->
-              "Processing package set update."
-          Right packageOperation -> case packageOperation of
-            Publish { name, ref } ->
-              "Publishing package `" <> PackageName.print name <> "` at the ref `" <> ref <> "`."
-            Authenticated { payload } -> case payload of
-              Unpublish { name, version } ->
-                "Unpublishing `" <> PackageName.print name <> "` at version `" <> Version.print version <> "`."
-              Transfer { name } ->
-                "Transferring `" <> PackageName.print name <> "`."
-
-        fetchRegistry
-        fetchRegistryIndex
-        fillMetadataRef
-        runOperation API operation
 
 -- | Operations are exercised via the API and the legacy importer. If the
 -- | importer is used then we don't compile or publish docs for the package.
@@ -146,60 +86,6 @@ main = launchAff_ $ do
 data Source = API | Importer
 
 derive instance Eq Source
-
-data OperationDecoding
-  = NotJson
-  | MalformedJson IssueNumber String
-  | DecodedOperation IssueNumber String (Either PackageSetOperation PackageOperation)
-
-derive instance Eq OperationDecoding
-
-readOperation :: FilePath -> Aff OperationDecoding
-readOperation eventPath = do
-  fileContents <- FS.Aff.readTextFile UTF8 eventPath
-
-  GitHub.Event { issueNumber, body, username } <- case Json.jsonParser fileContents >>= GitHub.decodeEvent of
-    Left err ->
-      -- If we don't receive a valid event path or the contents can't be decoded
-      -- then this is a catastrophic error and we exit the workflow.
-      Aff.throwError $ Aff.error $ "Error while parsing json from " <> eventPath <> " : " <> err
-    Right event ->
-      pure event
-
-  let
-    -- TODO: Right now we parse all operations from GitHub issues, but we should
-    -- in the future only parse out package set operations. The others should be
-    -- handled via a HTTP API.
-    decodeOperation :: Json -> Either CA.JsonDecodeError (Either PackageSetOperation PackageOperation)
-    decodeOperation json =
-      map (Left <<< PackageSetUpdate) (CA.decode Operation.packageSetUpdateCodec json)
-        <|> map (Right <<< Publish) (CA.decode Operation.publishCodec json)
-        <|> map (Right <<< Authenticated) (CA.decode Operation.authenticatedCodec json)
-
-  case Argonaut.Parser.jsonParser (firstObject body) of
-    Left err -> do
-      log "Not JSON."
-      logShow { err, body }
-      pure NotJson
-    Right json -> case decodeOperation json of
-      Left jsonError -> do
-        let printedError = CA.printJsonDecodeError jsonError
-        log $ "Malformed JSON:\n" <> printedError
-        log $ "Received body:\n" <> body
-        pure $ MalformedJson issueNumber printedError
-      Right operation ->
-        pure $ DecodedOperation issueNumber username operation
-
--- | Users may submit issues with contents wrapped in code fences, perhaps with
--- | a language specifier, trailing lines, and other issues. This rudimentary
--- | cleanup pass retrieves all contents within an opening { and closing }
--- | delimiter.
-firstObject :: String -> String
-firstObject input = fromMaybe input do
-  before <- String.indexOf (String.Pattern "{") input
-  let start = String.drop before input
-  after <- String.lastIndexOf (String.Pattern "}") start
-  pure (String.take (after + 1) start)
 
 -- TODO: test all the points where the pipeline could throw, to show that we are implementing
 -- all the necessary checks

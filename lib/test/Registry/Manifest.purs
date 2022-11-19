@@ -8,9 +8,9 @@ import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.Manifest as Manifest
-import Test.Assert as Assert
 import Test.Spec (Spec)
 import Test.Spec as Spec
+import Test.Utils.Assert as Assert
 
 spec :: Spec Unit
 spec = do

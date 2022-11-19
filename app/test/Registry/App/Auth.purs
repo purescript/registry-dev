@@ -9,8 +9,8 @@ import Registry.App.Auth as Auth
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..))
 import Registry.PackageName as PackageName
 import Registry.Version as Version
-import Test.Assert as Assert
 import Test.Spec as Spec
+import Test.Utils.Assert as Assert
 
 spec :: Spec.Spec Unit
 spec = do

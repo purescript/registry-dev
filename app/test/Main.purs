@@ -3,15 +3,12 @@ module Test.Main (main) where
 import Registry.App.Prelude
 
 import Data.Argonaut.Encode as Argonaut.Codecs
-import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Codec.Argonaut as CA
 import Data.Foldable (traverse_)
 import Data.Map as Map
 import Data.String.NonEmpty as NonEmptyString
 import Data.Time.Duration (Milliseconds(..))
 import Foreign.FastGlob as FastGlob
-import Foreign.GitHub (IssueNumber(..))
 import Foreign.Node.FS as FS.Extra
 import Foreign.Purs (CompilerFailure(..))
 import Foreign.Purs as Purs
@@ -24,12 +21,9 @@ import Registry.App.API as API
 import Registry.App.Json as Json
 import Registry.Legacy.Manifest (Bowerfile(..))
 import Registry.Legacy.Manifest as Legacy.Manifest
-import Registry.Operation (PackageOperation(..), PackageSetOperation(..))
-import Registry.Operation as Operation
 import Registry.PackageName as PackageName
 import Registry.Version as Version
 import Safe.Coerce (coerce)
-import Test.Assert as Assert
 import Test.Fixture.Manifest as Fixture
 import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
@@ -44,6 +38,8 @@ import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (defaultConfig, runSpec')
+import Test.Utils as Utils
+import Test.Utils.Assert as Assert
 
 main :: Effect Unit
 main = launchAff_ do
@@ -53,7 +49,6 @@ main = launchAff_ do
   runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
     Spec.describe "API" do
       Spec.describe "Checks" do
-        Spec.describe "Decode GitHub event to Operation" decodeEventsToOps
         Spec.describe "Authenticated operations" Auth.spec
       Spec.describe "Tarball" do
         copySourceFiles
@@ -218,75 +213,6 @@ copySourceFiles = RegistrySpec.toSpec $ Spec.before runBefore do
 
     pure { source: tmp, destination: destTmp, writeDirectories, writeFiles }
 
-mkUnsafePackage :: String -> PackageName
-mkUnsafePackage = unsafeFromRight <<< PackageName.parse
-
-mkUnsafeVersion :: String -> Version
-mkUnsafeVersion = unsafeFromRight <<< Version.parse
-
-decodeEventsToOps :: Spec.Spec Unit
-decodeEventsToOps = do
-  Spec.it "decodes an Update operation" do
-    let
-      issueNumber = IssueNumber 43
-      username = "Codertocat"
-      operation = Publish
-        { name: mkUnsafePackage "something"
-        , ref: "v1.2.3"
-        , compiler: mkUnsafeVersion "0.15.0"
-        , resolutions: Just $ Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
-        , location: Nothing
-        }
-
-    res <- API.readOperation "test/fixtures/update_issue_comment.json"
-    res `Assert.shouldEqual` API.DecodedOperation issueNumber username (Right operation)
-
-  Spec.it "decodes an Addition operation" do
-    let
-      issueNumber = IssueNumber 149
-      username = "Codertocat"
-      operation = Publish
-        { name: mkUnsafePackage "prelude"
-        , ref: "v5.0.0"
-        , location: Just $ GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
-        , compiler: mkUnsafeVersion "0.15.0"
-        , resolutions: Just $ Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
-        }
-
-    res <- API.readOperation "test/fixtures/addition_issue_created.json"
-    res `Assert.shouldEqual` API.DecodedOperation issueNumber username (Right operation)
-
-  Spec.it "decodes a Package Set Update operation" do
-    let
-      issueNumber = IssueNumber 149
-      username = "Codertocat"
-      operation = PackageSetUpdate
-        { compiler: Nothing
-        , packages: Map.fromFoldable
-            [ mkUnsafePackage "aff" /\ Just (mkUnsafeVersion "7.0.0")
-            , mkUnsafePackage "argonaut" /\ Nothing
-            ]
-        }
-
-    res <- API.readOperation "test/fixtures/package-set-update_issue_created.json"
-    res `Assert.shouldEqual` API.DecodedOperation issueNumber username (Left operation)
-
-  Spec.it "decodes lenient JSON" do
-    let
-      operation = Publish
-        { name: mkUnsafePackage "prelude"
-        , ref: "v5.0.0"
-        , location: Just $ GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
-        , compiler: mkUnsafeVersion "0.15.0"
-        , resolutions: Nothing
-        }
-
-      rawOperation = preludeAdditionString
-
-      parseJson = bimap CA.printJsonDecodeError Publish <<< CA.decode Operation.publishCodec <=< Argonaut.Parser.jsonParser
-
-    parseJson (API.firstObject rawOperation) `Assert.shouldEqual` (Right operation)
-
 goodBowerfiles :: Spec.Spec Unit
 goodBowerfiles = do
   let
@@ -392,33 +318,33 @@ checkDependencyResolution = do
   Spec.it "Handles build plan with resolution missing package" do
     Assert.shouldEqual (API.getUnresolvedDependencies manifest buildPlanMissingPackage) [ Left (packageTwoName /\ packageTwoRange) ]
   Spec.it "Handles build plan with resolution having package at wrong version" do
-    Assert.shouldEqual (API.getUnresolvedDependencies manifest buildPlanWrongVersion) [ Right (packageTwoName /\ packageTwoRange /\ mkUnsafeVersion "7.0.0") ]
+    Assert.shouldEqual (API.getUnresolvedDependencies manifest buildPlanWrongVersion) [ Right (packageTwoName /\ packageTwoRange /\ Utils.unsafeVersion "7.0.0") ]
   where
   manifest@(Manifest { dependencies }) =
     Fixture.setDependencies [ Tuple "package-one" "2.0.0", Tuple "package-two" "3.0.0" ] Fixture.fixture
 
-  packageTwoName = mkUnsafePackage "package-two"
-  packageTwoRange = unsafeFromJust $ Map.lookup packageTwoName dependencies
+  packageTwoName = Utils.unsafePackageName "package-two"
+  packageTwoRange = Utils.fromJust "packageTwoName" $ Map.lookup packageTwoName dependencies
 
   exactBuildPlan = Map.fromFoldable
-    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-    , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
+    [ Tuple (Utils.unsafePackageName "package-one") (Utils.unsafeVersion "2.0.0")
+    , Tuple (Utils.unsafePackageName "package-two") (Utils.unsafeVersion "3.0.0")
     ]
 
   extraBuildPlan = Map.fromFoldable
-    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-    , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
-    , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
+    [ Tuple (Utils.unsafePackageName "package-one") (Utils.unsafeVersion "2.0.0")
+    , Tuple (Utils.unsafePackageName "package-two") (Utils.unsafeVersion "3.0.0")
+    , Tuple (Utils.unsafePackageName "package-three") (Utils.unsafeVersion "7.0.0")
     ]
 
   buildPlanMissingPackage = Map.fromFoldable
-    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-    , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
+    [ Tuple (Utils.unsafePackageName "package-one") (Utils.unsafeVersion "2.0.0")
+    , Tuple (Utils.unsafePackageName "package-three") (Utils.unsafeVersion "7.0.0")
     ]
 
   buildPlanWrongVersion = Map.fromFoldable
-    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-    , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "7.0.0")
+    [ Tuple (Utils.unsafePackageName "package-one") (Utils.unsafeVersion "2.0.0")
+    , Tuple (Utils.unsafePackageName "package-two") (Utils.unsafeVersion "7.0.0")
     ]
 
 checkBuildPlanToResolutions :: Spec.Spec Unit
@@ -429,9 +355,9 @@ checkBuildPlanToResolutions = do
   dependenciesDir = "testDir"
 
   resolutions = Map.fromFoldable
-    [ Tuple (mkUnsafePackage "prelude") (mkUnsafeVersion "1.0.0")
-    , Tuple (mkUnsafePackage "bifunctors") (mkUnsafeVersion "2.0.0")
-    , Tuple (mkUnsafePackage "ordered-collections") (mkUnsafeVersion "3.0.0")
+    [ Tuple (Utils.unsafePackageName "prelude") (Utils.unsafeVersion "1.0.0")
+    , Tuple (Utils.unsafePackageName "bifunctors") (Utils.unsafeVersion "2.0.0")
+    , Tuple (Utils.unsafePackageName "ordered-collections") (Utils.unsafeVersion "3.0.0")
     ]
 
   generatedResolutions =
@@ -471,23 +397,3 @@ compilerVersions = do
       case result of
         Left MissingCompiler -> pure unit
         _ -> Assert.fail "Should have failed with MissingCompiler"
-
-preludeAdditionString :: String
-preludeAdditionString =
-  """
-  Here's my new package!
-
-  ```json
-  {
-    "name": "prelude",
-    "ref": "v5.0.0",
-    "location": {
-      "githubOwner": "purescript",
-      "githubRepo": "purescript-prelude"
-    },
-    "compiler": "0.15.0"
-  }
-  ```
-
-  Thanks!
-  """

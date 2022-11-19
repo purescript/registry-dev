@@ -5,3 +5,7 @@ package:
   dependencies:
     - registry-app
     - registry-lib
+  test:
+    main: Test.Scripts
+    dependencies:
+      - spec

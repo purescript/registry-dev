@@ -22,9 +22,9 @@ import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
 import Registry.Sha256 as Sha256
 import Registry.Version as Version
-import Test.Assert as Assert
 import Test.Fixture.Manifest (fixture, setDependencies, setName, setVersion)
 import Test.Spec as Spec
+import Test.Utils.Assert as Assert
 
 spec :: Spec.Spec Unit
 spec = do

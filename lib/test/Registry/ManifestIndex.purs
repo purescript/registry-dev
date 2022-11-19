@@ -34,11 +34,11 @@ import Registry.PackageName as PackageName
 import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.Version as Version
-import Test.Assert as Assert
 import Test.Spec (Spec)
 import Test.Spec as Spec
 import Test.Utils (unsafeManifest)
 import Test.Utils as Utils
+import Test.Utils.Assert as Assert
 
 spec :: Spec Unit
 spec = do

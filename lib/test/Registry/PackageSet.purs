@@ -3,9 +3,9 @@ module Test.Registry.PackageSet (spec) where
 import Prelude
 
 import Registry.PackageSet as PackageSet
-import Test.Assert as Assert
 import Test.Spec (Spec)
 import Test.Spec as Spec
+import Test.Utils.Assert as Assert
 
 spec :: Spec Unit
 spec = do

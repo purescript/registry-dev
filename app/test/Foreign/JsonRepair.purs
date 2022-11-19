@@ -7,8 +7,8 @@ import Data.Either as Either
 import Foreign.JsonRepair as JsonRepair
 import Registry.App.Json (Json, JsonCodec)
 import Registry.App.Json as Json
-import Test.Assert as Assert
 import Test.Spec as Spec
+import Test.Utils.Assert as Assert
 
 type Spec = Spec.SpecT Aff Unit Identity Unit
 

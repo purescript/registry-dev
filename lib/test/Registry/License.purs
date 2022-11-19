@@ -5,9 +5,9 @@ import Prelude
 import Data.Array as Array
 import Data.String as String
 import Registry.License as License
-import Test.Assert as Assert
 import Test.Spec as Spec
 import Test.Utils as Utils
+import Test.Utils.Assert as Assert
 
 spec :: Spec.Spec Unit
 spec = do
