@@ -82,6 +82,7 @@ isNotUnpublished :: Manifest -> Metadata -> Maybe UnpublishedMetadata
 isNotUnpublished (Manifest { version }) (Metadata { unpublished }) =
   Map.lookup version unpublished
 
+-- | Verifies that the manifest dependencies are solvable by the registry solver.
 validateDependenciesSolve :: Manifest -> ManifestIndex -> Either (NonEmptyArray Solver.SolverError) (Map PackageName Version)
 validateDependenciesSolve manifest manifestIndex = do
   let getDependencies = _.dependencies <<< un Manifest
@@ -109,6 +110,7 @@ getUnresolvedDependencies (Manifest { dependencies }) resolutions =
 
 data TarballSizeResult = ExceedsMaximum Number | Warn
 
+-- | Verifies that the Tarball size is under the registry maximum, and warns if it is close to that maximum.
 validateTarballSize :: Number -> Maybe TarballSizeResult
 validateTarballSize size =
   if size > maxPackageBytes then
@@ -135,6 +137,9 @@ data UnpublishError
   | InternalError
   | PastTimeLimit Int
 
+-- | Verifies that a package version is eligible for unpublishing.
+-- | The version must have been published before, must not have been unpublished before, and unpublishing
+-- | must happen within the 48 hours following publishing.
 validateUnpublish :: DateTime -> Version -> Metadata -> Either UnpublishError PublishedMetadata
 validateUnpublish now version (Metadata metadata) = do
   let
