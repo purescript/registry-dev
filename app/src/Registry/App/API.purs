@@ -43,7 +43,9 @@ import Foreign.FastGlob as FastGlob
 import Foreign.Git as Git
 import Foreign.GitHub (GitHubToken(..), IssueNumber, PackageURL(..))
 import Foreign.GitHub as GitHub
+import Foreign.JsonRepair as JsonRepair
 import Foreign.Node.FS as FS.Extra
+import Foreign.Object as Object
 import Foreign.Purs (CompilerFailure(..))
 import Foreign.Purs as Purs
 import Foreign.Tar as Tar
@@ -171,12 +173,20 @@ readOperation eventPath = do
     -- in the future only parse out package set operations. The others should be
     -- handled via a HTTP API.
     decodeOperation :: Json -> Either CA.JsonDecodeError (Either PackageSetOperation PackageOperation)
-    decodeOperation json =
-      map (Left <<< PackageSetUpdate) (CA.decode Operation.packageSetUpdateCodec json)
-        <|> map (Right <<< Publish) (CA.decode Operation.publishCodec json)
-        <|> map (Right <<< Authenticated) (CA.decode Operation.authenticatedCodec json)
+    decodeOperation json = do
+      object <- CA.decode CA.jobject json
+      let keys = Object.keys object
+      let hasKeys = all (flip Array.elem keys)
+      if hasKeys [ "packages" ] then
+        map (Left <<< PackageSetUpdate) (CA.decode Operation.packageSetUpdateCodec json)
+      else if hasKeys [ "name", "ref", "compiler" ] then
+        map (Right <<< Publish) (CA.decode Operation.publishCodec json)
+      else if hasKeys [ "payload", "signature", "email" ] then
+        map (Right <<< Authenticated) (CA.decode Operation.authenticatedCodec json)
+      else
+        Left $ CA.TypeMismatch "Operation: Expected a valid registry operation, but provided object did not match any operation decoder."
 
-  case Argonaut.Parser.jsonParser (firstObject body) of
+  case Argonaut.Parser.jsonParser (JsonRepair.tryRepair (firstObject body)) of
     Left err -> do
       log "Not JSON."
       logShow { err, body }
