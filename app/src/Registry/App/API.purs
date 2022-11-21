@@ -20,7 +20,6 @@ import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
 import Data.DateTime (DateTime)
-import Data.DateTime as DateTime
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.HTTP.Method as Method
@@ -32,7 +31,6 @@ import Data.Set as Set
 import Data.String as String
 import Data.String.Base64 as Base64
 import Data.String.NonEmpty as NonEmptyString
-import Data.Time.Duration (Hours(..))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Exception (throw)
@@ -246,7 +244,7 @@ runOperation source operation = case operation of
           , PackageName.print name
           , "because no 'location' field was provided."
           ]
-        Just packageLocation | not (locationIsUnique packageLocation packagesMetadata) -> throwWithComment $ String.joinWith " "
+        Just packageLocation | not (Operation.Validation.locationIsUnique packageLocation packagesMetadata) -> throwWithComment $ String.joinWith " "
           [ "Cannot register"
           , PackageName.print name
           , "at the location"
@@ -369,27 +367,23 @@ runOperation source operation = case operation of
     Unpublish { name, version, reason } -> do
       username <- asks _.username
       Metadata metadata <- readMetadata name { noMetadata: "No metadata found for your package. Only published packages can be unpublished." }
-
-      let
-        inPublished = Map.lookup version metadata.published
-        inUnpublished = Map.lookup version metadata.unpublished
-
-      publishedMetadata <- case inPublished, inUnpublished of
-        Nothing, Nothing ->
+      now <- liftEffect nowUTC
+      publishedMetadata <- case Operation.Validation.validateUnpublish now version (Metadata metadata) of
+        Left Operation.Validation.NotPublished ->
           throwWithComment $ "Cannot unpublish " <> Version.print version <> " because it is not a published version."
-        Just published, Nothing ->
-          -- We only pass through the case where the user is unpublishing a
-          -- package that has been published and not yet unpublished.
-          pure published
-        Nothing, Just _ ->
+        Left Operation.Validation.AlreadyUnpublished ->
           throwWithComment $ "Cannot unpublish " <> Version.print version <> " because it has already been unpublished."
-        Just _, Just _ ->
+        Left Operation.Validation.InternalError ->
           throwWithComment $ String.joinWith "\n"
             [ "Cannot unpublish " <> Version.print version <> "."
             , ""
             , "This version is listed both as published and unpublished. This is an internal error."
             , "cc @purescript/packaging"
             ]
+        Left (Operation.Validation.PastTimeLimit hourLimit) ->
+          throwWithComment $ "Packages can only be unpublished within " <> Int.toStringAs Int.decimal hourLimit <> " hours."
+        Right published ->
+          pure published
 
       Tuple auth maybeOwners <- acceptTrustees username submittedAuth metadata.owners
 
@@ -406,12 +400,6 @@ runOperation source operation = case operation of
             , err
             ]
           Right _ -> do
-            now <- liftEffect nowUTC
-            let hourLimit = 48
-            let diff = DateTime.diff now publishedMetadata.publishedTime
-            when (diff > Hours (Int.toNumber hourLimit)) do
-              throwWithComment $ "Packages can only be unpublished within " <> Int.toStringAs Int.decimal hourLimit <> " hours."
-
             deletePackage { name, version }
 
             let
@@ -455,7 +443,7 @@ runOperation source operation = case operation of
 
       packagesMetadata <- readPackagesMetadata
       let
-        isUniqueLocation = locationIsUnique newLocation packagesMetadata
+        isUniqueLocation = Operation.Validation.locationIsUnique newLocation packagesMetadata
         notUniqueError = String.joinWith " "
           [ "Cannot transfer"
           , PackageName.print name
@@ -1063,9 +1051,6 @@ isPackageVersionInMetadata packageName version metadata =
 
 packageNameIsUnique :: PackageName -> Map PackageName Metadata -> Boolean
 packageNameIsUnique name = isNothing <<< Map.lookup name
-
-locationIsUnique :: Location -> Map PackageName Metadata -> Boolean
-locationIsUnique location = Map.isEmpty <<< Map.filter (eq location <<< _.location <<< un Metadata)
 
 -- | Fetch the latest from the given repository. Will perform a fresh clone if
 -- | a checkout of the repository does not exist at the given path, and will

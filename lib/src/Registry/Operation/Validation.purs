@@ -4,13 +4,17 @@ import Prelude
 
 import Data.Array as Array
 import Data.Array.NonEmpty.Internal (NonEmptyArray)
+import Data.DateTime (DateTime)
+import Data.DateTime as DateTime
 import Data.Either (Either(..))
+import Data.Int as Int
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), isJust)
 import Data.Newtype (un)
 import Data.String as String
 import Data.String.Pattern (Pattern(..))
+import Data.Time.Duration (Hours(..))
 import Data.Traversable (traverse)
 import Data.Tuple (uncurry)
 import Data.Tuple.Nested ((/\), type (/\))
@@ -18,6 +22,7 @@ import Effect.Aff (Aff)
 import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as Stats
 import Node.Path (FilePath)
+import Registry.Location (Location)
 import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)
@@ -120,3 +125,36 @@ validateTarballSize size =
   -- | The number of bytes over which we flag a package for review
   warnPackageBytes :: Number
   warnPackageBytes = 200_000.0
+
+locationIsUnique :: Location -> Map PackageName Metadata -> Boolean
+locationIsUnique location = Map.isEmpty <<< Map.filter (eq location <<< _.location <<< un Metadata)
+
+data UnpublishError
+  = NotPublished
+  | AlreadyUnpublished
+  | InternalError
+  | PastTimeLimit Int
+
+validateUnpublish :: DateTime -> Version -> Metadata -> Either UnpublishError PublishedMetadata
+validateUnpublish now version (Metadata metadata) = do
+  let
+    inPublished = Map.lookup version metadata.published
+    inUnpublished = Map.lookup version metadata.unpublished
+
+  case inPublished, inUnpublished of
+    Nothing, Nothing ->
+      Left NotPublished
+    Just published, Nothing -> do
+      -- We only pass through the case where the user is unpublishing a
+      -- package that has been published and not yet unpublished.
+      let diff = DateTime.diff now published.publishedTime
+      if (diff > Hours (Int.toNumber hourLimit)) then
+        Left $ PastTimeLimit hourLimit
+      else
+        Right published
+    Nothing, Just _ ->
+      Left AlreadyUnpublished
+    Just _, Just _ ->
+      Left InternalError
+  where
+  hourLimit = 48
