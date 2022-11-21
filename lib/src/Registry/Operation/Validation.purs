@@ -108,7 +108,9 @@ getUnresolvedDependencies (Manifest { dependencies }) resolutions =
         | not (Range.includes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
         | otherwise -> Nothing
 
-data TarballSizeResult = ExceedsMaximum Number | Warn
+data TarballSizeResult
+  = ExceedsMaximum Number
+  | WarnPackageSize Number
 
 -- | Verifies that the Tarball size is under the registry maximum, and warns if it is close to that maximum.
 validateTarballSize :: Number -> Maybe TarballSizeResult
@@ -116,7 +118,7 @@ validateTarballSize size =
   if size > maxPackageBytes then
     Just (ExceedsMaximum maxPackageBytes)
   else if size > warnPackageBytes then
-    Just Warn
+    Just (WarnPackageSize warnPackageBytes)
   else
     Nothing
   where

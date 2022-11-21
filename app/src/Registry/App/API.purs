@@ -607,7 +607,7 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
   for_ (Operation.Validation.validateTarballSize bytes) case _ of
     Operation.Validation.ExceedsMaximum maxPackageBytes ->
       throwWithComment $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes.\ncc: @purescript/packaging"
-    Operation.Validation.Warn ->
+    Operation.Validation.WarnPackageSize _ ->
       log $ "WARNING: Package tarball is " <> show bytes <> ".\ncc: @purescript/packaging"
   log "Hashing the tarball..."
   hash <- liftAff $ Sha256.hashFile tarballPath
