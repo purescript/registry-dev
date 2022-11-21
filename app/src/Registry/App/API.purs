@@ -707,13 +707,12 @@ verifyManifest { metadata, manifest } = do
   log $ Argonaut.stringifyWithIndent 2 $ CA.encode Manifest.codec manifest
 
   log "Ensuring the package is not the purescript-metadata package, which cannot be published."
-  when (PackageName.print manifestFields.name == "metadata") do
+  when (Operation.Validation.isMetadataPackage manifest) do
     throwWithComment "The `metadata` package cannot be uploaded to the registry as it is a protected package."
 
   log "Check that version has not already been published"
-  case Map.lookup manifestFields.version (un Metadata metadata).published of
-    Nothing -> pure unit
-    Just info -> throwWithComment $ String.joinWith "\n"
+  for_ (Operation.Validation.isNotPublished manifest metadata) \info -> do
+    throwWithComment $ String.joinWith "\n"
       [ "You tried to upload a version that already exists: " <> Version.print manifestFields.version
       , "Its metadata is:"
       , "```"
@@ -722,9 +721,8 @@ verifyManifest { metadata, manifest } = do
       ]
 
   log "Check that version has not been unpublished"
-  case Map.lookup manifestFields.version (un Metadata metadata).unpublished of
-    Nothing -> pure unit
-    Just info -> throwWithComment $ String.joinWith "\n"
+  for_ (Operation.Validation.isNotUnpublished manifest metadata) \info -> do
+    throwWithComment $ String.joinWith "\n"
       [ "You tried to upload a version that has been unpublished: " <> Version.print manifestFields.version
       , "Details:"
       , "```"
@@ -786,7 +784,7 @@ verifyResolutions { source, resolutions, manifest } = Except.runExceptT do
 
 validateResolutions :: Manifest -> Map PackageName Version -> RegistryM (Either String Unit)
 validateResolutions manifest resolutions = Except.runExceptT do
-  let unresolvedDependencies = getUnresolvedDependencies manifest resolutions
+  let unresolvedDependencies = Operation.Validation.getUnresolvedDependencies manifest resolutions
   unless (Array.null unresolvedDependencies) do
     let
       { fail: missingPackages, success: incorrectVersions } = partitionEithers unresolvedDependencies
@@ -828,26 +826,6 @@ validateResolutions manifest resolutions = Except.runExceptT do
       , missingPackagesError
       , incorrectVersionsError
       ]
-
--- | Verifies that all dependencies in the manifest are present in the build
--- | plan, and the version listed in the build plan is within the range provided
--- | in the manifest. Note: this only checks dependencies listed in the manifest
--- | and will ignore transitive dependecies.
-getUnresolvedDependencies :: Manifest -> Map PackageName Version -> Array (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
-getUnresolvedDependencies (Manifest { dependencies }) resolutions =
-  Array.mapMaybe (uncurry dependencyUnresolved) (Map.toUnfoldable dependencies)
-  where
-  dependencyUnresolved :: PackageName -> Range -> Maybe (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
-  dependencyUnresolved dependencyName dependencyRange =
-    case Map.lookup dependencyName resolutions of
-      -- If the package is missing from the build plan then the plan is incorrect.
-      Nothing -> Just $ Left $ dependencyName /\ dependencyRange
-      -- If the package exists, but the version is not in the manifest range
-      -- then the build plan is incorrect. Otherwise, this part of the build
-      -- plan is correct.
-      Just version
-        | not (Range.includes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
-        | otherwise -> Nothing
 
 type CompilePackage =
   { packageSourceDir :: FilePath

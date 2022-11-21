@@ -3,7 +3,8 @@ module Registry.Operation.Validation where
 import Prelude
 
 import Data.Array as Array
-import Data.Maybe (isJust)
+import Data.Map as Map
+import Data.Maybe (Maybe(..), isJust)
 import Data.String as String
 import Data.String.Pattern (Pattern(..))
 import Data.Traversable (traverse)
@@ -11,9 +12,11 @@ import Effect.Aff (Aff)
 import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as Stats
 import Node.Path (FilePath)
-import Registry.Metadata (Metadata(..))
+import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
 import Registry.Manifest (Manifest(..))
+import Registry.ManifestIndex (ManifestIndex)
 import Registry.Operation (PublishData)
+import Registry.PackageName as PackageName
 
 -- This module exports utilities for writing validation for `Registry Operations`.
 -- See https://github.com/purescript/registry-dev/blob/master/SPEC.md#5-registry-operations
@@ -46,3 +49,19 @@ nameMatches (Manifest manifestFields) { name } =
 locationMatches :: Manifest -> Metadata -> Boolean
 locationMatches (Manifest manifestFields) (Metadata metadataFields) =
   manifestFields.location == metadataFields.location
+
+isMetadataPackage :: Manifest -> Boolean
+isMetadataPackage (Manifest { name }) = PackageName.print name == "metadata"
+
+-- | Checks that the Manifest version has not been published before, according to the metadata file.
+-- | If the Manifest version has been published before, returns previous info.
+isNotPublished :: Manifest -> Metadata -> Maybe PublishedMetadata
+isNotPublished (Manifest { version }) (Metadata { published }) =
+  Map.lookup version published
+
+-- | Checks that the Manifest version has not been unpublished before, according to the metadata file.
+-- | If the Manifest version has been unpublished before, returns previous info.
+isNotUnpublished :: Manifest -> Metadata -> Maybe UnpublishedMetadata
+isNotUnpublished (Manifest { version }) (Metadata { unpublished }) =
+  Map.lookup version unpublished
+
