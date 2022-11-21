@@ -76,6 +76,7 @@ import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata as Metadata
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageOperation(..), PackageSetOperation(..), PublishData)
 import Registry.Operation as Operation
+import Registry.Operation.Validation as Operation.Validation
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
 import Registry.Range as Range
@@ -532,7 +533,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
   log $ "Package available in " <> packageDirectory
 
   log "Verifying that the package contains a `src` directory"
-  whenM (liftAff $ map (Array.null <<< _.succeeded) $ FastGlob.match packageDirectory [ "src/**/*.purs" ]) do
+  whenM (liftAff $ Operation.Validation.containsPursFile (Path.concat [ packageDirectory, "src" ])) do
     throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
