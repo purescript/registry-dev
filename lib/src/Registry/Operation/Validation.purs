@@ -102,4 +102,21 @@ getUnresolvedDependencies (Manifest { dependencies }) resolutions =
         | not (Range.includes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
         | otherwise -> Nothing
 
+data TarballSizeResult = ExceedsMaximum Number | Warn
 
+validateTarballSize :: Number -> Maybe TarballSizeResult
+validateTarballSize size =
+  if size > maxPackageBytes then
+    Just (ExceedsMaximum maxPackageBytes)
+  else if size > warnPackageBytes then
+    Just Warn
+  else
+    Nothing
+  where
+  -- | The absolute maximum bytes allowed in a package
+  maxPackageBytes :: Number
+  maxPackageBytes = 2_000_000.0
+
+  -- | The number of bytes over which we flag a package for review
+  warnPackageBytes :: Number
+  warnPackageBytes = 200_000.0

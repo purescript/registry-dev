@@ -616,10 +616,10 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname }
   log "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.Aff.stat tarballPath
-  when (not isLegacyImport && bytes > warnPackageBytes) do
-    if bytes > maxPackageBytes then
+  for_ (Operation.Validation.validateTarballSize bytes) case _ of
+    Operation.Validation.ExceedsMaximum maxPackageBytes ->
       throwWithComment $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes.\ncc: @purescript/packaging"
-    else
+    Operation.Validation.Warn ->
       log $ "WARNING: Package tarball is " <> show bytes <> ".\ncc: @purescript/packaging"
   log "Hashing the tarball..."
   hash <- liftAff $ Sha256.hashFile tarballPath
@@ -1188,14 +1188,6 @@ pacchettiBottiPushToRegistryPackageSets version commitMessage registryDir = Exce
   let upstreamRepo = Constants.registry.owner <> "/" <> Constants.registry.repo
   let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
   void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryDir)
-
--- | The absolute maximum bytes allowed in a package
-maxPackageBytes :: Number
-maxPackageBytes = 2_000_000.0
-
--- | The number of bytes over which we flag a package for review
-warnPackageBytes :: Number
-warnPackageBytes = 200_000.0
 
 -- | Copy files from the package source directory to the destination directory
 -- | for the tarball. This will copy all always-included files as well as files
