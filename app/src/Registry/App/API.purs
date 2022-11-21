@@ -522,7 +522,7 @@ jsonToDhallManifest jsonStr = do
     _ -> Left result.stderr
 
 publish :: Source -> PublishData -> Metadata -> RegistryM Unit
-publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = do
+publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputMetadata) = do
   tmpDir <- liftEffect $ Tmp.mkTmpDir
 
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
@@ -578,7 +578,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
   -- We trust the manifest for any changes to the 'owners' field, but for all
   -- other fields we trust the registry metadata.
   let metadata = inputMetadata { owners = manifestFields.owners }
-  when (not isLegacyImport && manifestFields.name /= name) do
+  when (not isLegacyImport && not (Operation.Validation.nameMatches manifest publishData)) do
     throwWithComment $ Array.fold
       [ "The manifest file specifies a package name ("
       , PackageName.print manifestFields.name
@@ -587,7 +587,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
       , "). The manifest and API request must match."
       ]
 
-  when (manifestFields.location /= metadata.location) do
+  unless (Operation.Validation.locationMatches manifest (Metadata metadata)) do
     throwWithComment $ Array.fold
       [ "The manifest file specifies a location ("
       , Json.stringifyJson Location.codec manifestFields.location
