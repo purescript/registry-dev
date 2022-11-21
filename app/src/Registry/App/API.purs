@@ -33,8 +33,6 @@ import Data.String as String
 import Data.String.Base64 as Base64
 import Data.String.NonEmpty as NonEmptyString
 import Data.Time.Duration (Hours(..))
-import Data.Tuple (uncurry)
-import Data.Tuple.Nested (type (/\))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Exception (throw)
@@ -750,30 +748,26 @@ verifyResolutions :: { source :: Source, resolutions :: Maybe (Map PackageName V
 verifyResolutions { source, resolutions, manifest } = Except.runExceptT do
   log "Check the submitted build plan matches the manifest"
   -- We don't verify packages provided via the mass import.
+  registryIndex <- lift PackageIndex.readManifestIndexFromDisk
   case resolutions of
-    Nothing -> do
-      registryIndex <- lift PackageIndex.readManifestIndexFromDisk
-      let getDependencies = _.dependencies <<< un Manifest
-      case Solver.solve (map (map getDependencies) (ManifestIndex.toMap registryIndex)) (getDependencies manifest) of
-        Left errors -> do
-          let
-            printedError = String.joinWith "\n"
-              [ "Could not produce valid dependencies for manifest."
-              , ""
-              , errors # foldMapWithIndex \index error -> String.joinWith "\n"
-                  [ "[Error " <> show (index + 1) <> "]"
-                  , Solver.printSolverError error
-                  ]
-              ]
-          case source of
-            Importer -> do
-              log $ "Could not solve manifest:\n" <> printedError <> "\n...but continuing because this is a legacy import."
-              pure Map.empty
-            API ->
-              throwError printedError
-        Right solution ->
-          pure solution
-
+    Nothing -> case Operation.Validation.validateDependenciesSolve manifest registryIndex of
+      Left errors -> do
+        let
+          printedError = String.joinWith "\n"
+            [ "Could not produce valid dependencies for manifest."
+            , ""
+            , errors # foldMapWithIndex \index error -> String.joinWith "\n"
+                [ "[Error " <> show (index + 1) <> "]"
+                , Solver.printSolverError error
+                ]
+            ]
+        case source of
+          Importer -> do
+            log $ "Could not solve manifest:\n" <> printedError <> "\n...but continuing because this is a legacy import."
+            pure Map.empty
+          API ->
+            throwError printedError
+      Right solved -> pure solved
     Just provided -> do
       case source of
         Importer ->

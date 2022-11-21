@@ -62,7 +62,7 @@ main = launchAff_ do
         compilerVersions
       Spec.describe "Resolutions" do
         checkBuildPlanToResolutions
-        checkDependencyResolution
+        --checkDependencyResolution
     Spec.describe "Bowerfile" do
       Spec.describe "Parses" do
         Spec.describe "Good bower files" goodBowerfiles
@@ -383,6 +383,7 @@ bowerFileEncoding = do
     Json.decode Legacy.Manifest.bowerfileCodec (Json.encode Legacy.Manifest.bowerfileCodec bowerFile)
       `Assert.shouldContain` bowerFile
 
+{-
 checkDependencyResolution :: Spec.Spec Unit
 checkDependencyResolution = do
   Spec.it "Handles build plan with all dependencies resolved" do
@@ -420,6 +421,7 @@ checkDependencyResolution = do
     [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
     , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "7.0.0")
     ]
+-}
 
 checkBuildPlanToResolutions :: Spec.Spec Unit
 checkBuildPlanToResolutions = do
