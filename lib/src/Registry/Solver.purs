@@ -66,37 +66,42 @@ loadAndSolve loader required =
 -- Public API to semi-public API
 --------------------------------------------------------------------------------
 
-loadIndex :: forall m. Monad m =>
-  Loader m ->
-  Map PackageName Range ->
-  m DependencyIndex
+loadIndex
+  :: forall m
+   . Monad m
+  => Loader m
+  -> Map PackageName Range
+  -> m DependencyIndex
 loadIndex loader required = map _.known <$> go Map.empty (need required)
   where
   need = SemigroupMap <<< map pure
   loadNew package (_ :: Unit) =
     { found: Set.empty, known: _ } <$> loader package
-  go ::
-    -- Packages we have downloaded, and versions whose transitive dependencies
-    -- we have already added to `needed` so we never re-scan them
-    Map PackageName { known :: Map Version (Map PackageName Range), found :: Set Version } ->
+
+  go
+    ::
+       -- Packages we have downloaded, and versions whose transitive dependencies
+       -- we have already added to `needed` so we never re-scan them
+       Map PackageName { known :: Map Version (Map PackageName Range), found :: Set Version }
+    ->
     -- Requirements may be disjoint, so we have `Array Range` instead of `Loose`
-    SemigroupMap PackageName (Array Range) ->
-    m (Map PackageName { known :: Map Version (Map PackageName Range), found :: Set Version })
+    SemigroupMap PackageName (Array Range)
+    -> m (Map PackageName { known :: Map Version (Map PackageName Range), found :: Set Version })
   go acc (SemigroupMap needed)
-    | Just { key: package, value: ranges } <- Map.findMin needed
-    = do
-      loaded <- maybe' (loadNew package) pure $ Map.lookup package acc
-      let
-        needed' = SemigroupMap (Map.delete package needed)
-        { needed: neededMore, found: foundMore } = needMore loaded ranges
-        loaded' = loaded { found = loaded.found <> foundMore }
-        acc' = Map.insert package loaded' acc
-      go acc' (needed' <> neededMore)
+    | Just { key: package, value: ranges } <- Map.findMin needed = do
+        loaded <- maybe' (loadNew package) pure $ Map.lookup package acc
+        let
+          needed' = SemigroupMap (Map.delete package needed)
+          { needed: neededMore, found: foundMore } = needMore loaded ranges
+          loaded' = loaded { found = loaded.found <> foundMore }
+          acc' = Map.insert package loaded' acc
+        go acc' (needed' <> neededMore)
   go acc _ = pure acc
-  needMore ::
-    { known :: Map Version (Map PackageName Range), found :: Set Version } ->
-    Array Range ->
-    { needed :: SemigroupMap PackageName (Array Range), found :: Set Version }
+
+  needMore
+    :: { known :: Map Version (Map PackageName Range), found :: Set Version }
+    -> Array Range
+    -> { needed :: SemigroupMap PackageName (Array Range), found :: Set Version }
   needMore { known, found } needed =
     let
       isNeeded k = needed # Array.any
