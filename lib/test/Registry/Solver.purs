@@ -16,7 +16,6 @@ import Data.Set as Set
 import Data.Set.NonEmpty as NES
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
-import Effect.Class.Console (log)
 import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Solver (Intersection(..), LocalSolverPosition(..), SolverError(..), SolverPosition(..), Sourced(..), printSolverError, solve)
@@ -25,7 +24,6 @@ import Registry.Version as Version
 import Test.Assert as Assert
 import Test.Spec as Spec
 import Test.Utils (fromRight)
-import Unsafe.Coerce (unsafeCoerce)
 
 spec :: Spec.Spec Unit
 spec = do
@@ -48,9 +46,6 @@ spec = do
 
         for_ combinedErrors \(Tuple expected received) -> do
           received.message `Assert.shouldEqual` expected.message
-          when (received.error /= expected.error) do
-            log $ unsafeCoerce received.error
-            log $ unsafeCoerce expected.error
           received.error `Assert.shouldEqual` expected.error
 
       Right value ->
@@ -408,20 +403,8 @@ intersection lower lowerPos upper upperPos = Intersection
   , upper: wrap $ Sourced (version upper) upperPos
   }
 
-intersection' :: Int -> SolverPosition -> Int -> SolverPosition -> Intersection
-intersection' lower lowerPos upper upperPos = Intersection
-  { lower: wrap $ Sourced (version lower) lowerPos
-  , upper: wrap $ Sourced (Version.bumpPatch (version upper)) upperPos
-  }
-
 solveRoot :: String -> SolverPosition
 solveRoot = Pos Root <<< Set.singleton <<< package
-
-committed :: String -> SolverPosition
-committed = Pos Trial <<< Set.singleton <<< package
-
-committed' :: String -> SolverPosition
-committed' = const $ Pos Trial Set.empty
 
 via :: String -> Int -> Array String -> SolverPosition
 via p v = Pos (Solving (NES.singleton { package: package p, version: version v })) <<< Set.fromFoldable <<< map package
