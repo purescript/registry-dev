@@ -37,9 +37,8 @@ spec = do
         let receivedErrorCount = NonEmptyList.length solverErrors
 
         when (expectedErrorCount /= receivedErrorCount) do
-          if expectedErrorCount == 0
-            then Assert.fail $ "Error(s): " <> intercalateMap "\n" printSolverError solverErrors
-            else Assert.fail $ "Tests expect " <> show expectedErrorCount <> " errors, but received " <> show receivedErrorCount
+          if expectedErrorCount == 0 then Assert.fail $ "Error(s): " <> intercalateMap "\n" printSolverError solverErrors
+          else Assert.fail $ "Tests expect " <> show expectedErrorCount <> " errors, but received " <> show receivedErrorCount
 
         let receivedErrors = map (\error -> { error, message: printSolverError error }) solverErrors
         let combinedErrors = Array.zip errors (Array.fromFoldable receivedErrors)
@@ -123,7 +122,7 @@ spec = do
       shouldFail
         [ package "does-not-exist" /\ range 0 4 ]
         [ { error: Conflicts $ Map.fromFoldable
-            [ package "does-not-exist" `Tuple` intersection 0 (solveRoot "does-not-exist") 4 (solveRoot "does-not-exist") ]
+              [ package "does-not-exist" `Tuple` intersection 0 (solveRoot "does-not-exist") 4 (solveRoot "does-not-exist") ]
           , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 (declared dependency)\n  <4.0.0 (declared dependency)"
           }
         ]
@@ -132,7 +131,7 @@ spec = do
       shouldFail
         [ prelude.package /\ range 20 50 ]
         [ { error: Conflicts $ Map.fromFoldable
-            [ package "prelude" `Tuple` intersection 20 (solveRoot "prelude") 50 (solveRoot "prelude") ]
+              [ package "prelude" `Tuple` intersection 20 (solveRoot "prelude") 50 (solveRoot "prelude") ]
           , message: "No versions found in the registry for prelude in range\n  >=20.0.0 (declared dependency)\n  <50.0.0 (declared dependency)"
           }
         ]
@@ -141,8 +140,8 @@ spec = do
       shouldFail
         [ brokenFixed.package /\ range 0 1 ]
         [ { error: Conflicts $ Map.fromFoldable
-            [ package "does-not-exist" `Tuple` intersection 0 (via' "broken-fixed" 0) 4 (via' "broken-fixed" 0)
-            ]
+              [ package "does-not-exist" `Tuple` intersection 0 (via' "broken-fixed" 0) 4 (via' "broken-fixed" 0)
+              ]
           , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 seen in broken-fixed@0.0.0\n  <4.0.0 seen in broken-fixed@0.0.0"
           }
         ]
@@ -151,8 +150,8 @@ spec = do
       shouldFail
         [ transitiveBroken.package /\ range 0 1 ]
         [ { error: Conflicts $ Map.fromFoldable
-            [ package "does-not-exist" `Tuple` intersection 0 (via "fixed-broken" 2 ["transitive-broken"]) 5 (via "fixed-broken" 2 ["transitive-broken"])
-            ]
+              [ package "does-not-exist" `Tuple` intersection 0 (via "fixed-broken" 2 [ "transitive-broken" ]) 5 (via "fixed-broken" 2 [ "transitive-broken" ])
+              ]
           , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 seen in fixed-broken@2.0.0 from declared dependencies transitive-broken\n  <5.0.0 seen in fixed-broken@2.0.0 from declared dependencies transitive-broken"
           }
         ]
@@ -161,8 +160,8 @@ spec = do
       shouldFail
         [ brokenBroken.package /\ range 0 2 ]
         [ { error: Conflicts $ Map.fromFoldable
-            [ package "does-not-exist" `Tuple` intersection 0 (via' "broken-broken" 0 <> via' "broken-broken" 1) 5 (via' "broken-broken" 0 <> via' "broken-broken" 1)
-            ]
+              [ package "does-not-exist" `Tuple` intersection 0 (via' "broken-broken" 0 <> via' "broken-broken" 1) 5 (via' "broken-broken" 0 <> via' "broken-broken" 1)
+              ]
           , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 seen in broken-broken@0.0.0, broken-broken@1.0.0\n  <5.0.0 seen in broken-broken@0.0.0, broken-broken@1.0.0"
           }
         ]
@@ -172,8 +171,8 @@ spec = do
       shouldFail
         [ simple.package /\ range 0 1, prelude.package /\ range 1 2 ]
         [ { error: WhileSolving (package "simple") $ Map.singleton (version 0) $ Conflicts $ Map.fromFoldable
-            [ package "prelude" `Tuple` intersection 1 (solveRoot "prelude") 1 (via "simple" 0 [])
-            ]
+              [ package "prelude" `Tuple` intersection 1 (solveRoot "prelude") 1 (via "simple" 0 [])
+              ]
           , message: "While solving simple each version could not be solved:\n- 0.0.0: \n  Conflict in version ranges for prelude:\n    >=1.0.0 (declared dependency)\n    <1.0.0 seen in simple@0.0.0"
           }
         ]
@@ -186,8 +185,8 @@ spec = do
         , prelude.package /\ range 1 2
         ]
         [ { error: WhileSolving (package "simple") $ Map.singleton (version 0) $ Conflicts $ Map.fromFoldable
-            [ package "prelude" `Tuple` intersection 1 (solveRoot "prelude") 1 (via "simple" 0 [])
-            ]
+              [ package "prelude" `Tuple` intersection 1 (solveRoot "prelude") 1 (via "simple" 0 [])
+              ]
           , message: "While solving simple each version could not be solved:\n- 0.0.0: \n  Conflict in version ranges for prelude:\n    >=1.0.0 (declared dependency)\n    <1.0.0 seen in simple@0.0.0"
           }
         ]
@@ -198,9 +197,10 @@ spec = do
         , fixedBroken.package /\ range 2 3
         ]
         [ { error: Conflicts $ Map.fromFoldable
-            [ package "does-not-exist" `Tuple` intersection 0 (via' "broken-fixed" 0 <> via' "fixed-broken" 2) 4 (via' "broken-fixed" 0)
-            ]
-          , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 seen in broken-fixed@0.0.0, fixed-broken@2.0.0\n  <4.0.0 seen in broken-fixed@0.0.0" }
+              [ package "does-not-exist" `Tuple` intersection 0 (via' "broken-fixed" 0 <> via' "fixed-broken" 2) 4 (via' "broken-fixed" 0)
+              ]
+          , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 seen in broken-fixed@0.0.0, fixed-broken@2.0.0\n  <4.0.0 seen in broken-fixed@0.0.0"
+          }
         ]
 
   Spec.describe "Reports multiple errors" do
@@ -210,14 +210,14 @@ spec = do
         , prelude.package /\ range 2 4
         ]
         [ { error: WhileSolving (package "chaotic") $ Map.fromFoldable
-            [ Tuple (version 1) $ Conflicts $ Map.fromFoldable
-              [ package "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "chaotic" 1 [])
+              [ Tuple (version 1) $ Conflicts $ Map.fromFoldable
+                  [ package "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "chaotic" 1 [])
+                  ]
+              , Tuple (version 2) $ Conflicts $ Map.fromFoldable
+                  -- TODO: why no global "chaotic" here?
+                  [ package "prelude" `Tuple` intersection 5 (via "chaotic" 2 []) 4 (solveRoot "prelude")
+                  ]
               ]
-            , Tuple (version 2) $ Conflicts $ Map.fromFoldable
-              -- TODO: why no global "chaotic" here?
-              [ package "prelude" `Tuple` intersection 5 (via "chaotic" 2 []) 4 (solveRoot "prelude")
-              ]
-            ]
           , message: "While solving chaotic each version could not be solved:\n- 1.0.0: \n  Conflict in version ranges for prelude:\n    >=2.0.0 (declared dependency)\n    <1.0.0 seen in chaotic@1.0.0\n- 2.0.0: \n  Conflict in version ranges for prelude:\n    >=5.0.0 seen in chaotic@2.0.0\n    <4.0.0 (declared dependency)"
           }
         ]
@@ -228,18 +228,18 @@ spec = do
         , prelude.package /\ range 2 4
         ]
         [ { error: WhileSolving (package "chaotic") $ Map.fromFoldable
-            [ Tuple (version 1) $ Conflicts $ Map.fromFoldable
-              [ package "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "chaotic" 1 [])
+              [ Tuple (version 1) $ Conflicts $ Map.fromFoldable
+                  [ package "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "chaotic" 1 [])
+                  ]
+              , Tuple (version 2) $ Conflicts $ Map.fromFoldable
+                  -- TODO: why no global "chaotic" here?
+                  [ package "prelude" `Tuple` intersection 5 (via "chaotic" 2 []) 4 (solveRoot "prelude")
+                  ]
+              , Tuple (version 3) $ Conflicts $ Map.fromFoldable
+                  -- TODO: why no global "chaotic" here?
+                  [ package "prelude" `Tuple` intersection 5 (via "chaotic" 3 []) 4 (solveRoot "prelude")
+                  ]
               ]
-            , Tuple (version 2) $ Conflicts $ Map.fromFoldable
-              -- TODO: why no global "chaotic" here?
-              [ package "prelude" `Tuple` intersection 5 (via "chaotic" 2 []) 4 (solveRoot "prelude")
-              ]
-            , Tuple (version 3) $ Conflicts $ Map.fromFoldable
-              -- TODO: why no global "chaotic" here?
-              [ package "prelude" `Tuple` intersection 5 (via "chaotic" 3 []) 4 (solveRoot "prelude")
-              ]
-            ]
           , message: "While solving chaotic each version could not be solved:\n- 1.0.0: \n  Conflict in version ranges for prelude:\n    >=2.0.0 (declared dependency)\n    <1.0.0 seen in chaotic@1.0.0\n- 2.0.0: \n  Conflict in version ranges for prelude:\n    >=5.0.0 seen in chaotic@2.0.0\n    <4.0.0 (declared dependency)\n- 3.0.0: \n  Conflict in version ranges for prelude:\n    >=5.0.0 seen in chaotic@3.0.0\n    <4.0.0 (declared dependency)"
           }
         ]
@@ -251,14 +251,14 @@ spec = do
         , prelude.package /\ range 2 4
         ]
         [ { error: WhileSolving (package "qaotic") $ Map.fromFoldable
-            [ Tuple (version 1) $ Conflicts $ Map.fromFoldable
-              [ package "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "qaotic" 1 [])
+              [ Tuple (version 1) $ Conflicts $ Map.fromFoldable
+                  [ package "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "qaotic" 1 [])
+                  ]
+              , Tuple (version 2) $ Conflicts $ Map.fromFoldable
+                  -- TODO: why no global "prelude" here?
+                  [ package "prelude" `Tuple` intersection 5 (via "qaotic" 2 []) 4 (solveRoot "prelude")
+                  ]
               ]
-            , Tuple (version 2) $ Conflicts $ Map.fromFoldable
-              -- TODO: why no global "prelude" here?
-              [ package "prelude" `Tuple` intersection 5 (via "qaotic" 2 []) 4 (solveRoot "prelude")
-              ]
-            ]
           , message: "While solving qaotic each version could not be solved:\n- 1.0.0: \n  Conflict in version ranges for prelude:\n    >=2.0.0 (declared dependency)\n    <1.0.0 seen in qaotic@1.0.0\n- 2.0.0: \n  Conflict in version ranges for prelude:\n    >=5.0.0 seen in qaotic@2.0.0\n    <4.0.0 (declared dependency)"
           }
         ]
