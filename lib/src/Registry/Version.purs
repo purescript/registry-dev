@@ -43,8 +43,23 @@ newtype Version = Version
   , patch :: Int
   }
 
-derive instance Eq Version
-derive instance Ord Version
+instance Eq Version where
+  eq (Version l) (Version r) =
+    case l.major == r.major of
+      true ->
+        case l.minor == r.minor of
+          true -> l.patch == r.patch
+          x -> x
+      x -> x
+
+instance Ord Version where
+  compare (Version l) (Version r) =
+    case l.major `compare` r.major of
+      EQ ->
+        case l.minor `compare` r.minor of
+          EQ -> l.patch `compare` r.patch
+          x -> x
+      x -> x
 
 -- | A codec for encoding and decoding a `Version` as a JSON string.
 codec :: JsonCodec Version
