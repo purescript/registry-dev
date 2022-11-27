@@ -2,32 +2,60 @@ module Test.Registry.Solver (spec) where
 
 import Prelude
 
-import Control.Alt ((<|>))
-import Control.Monad.Error.Class (class MonadThrow)
-import Data.Argonaut.Core as Argonaut
 import Data.Array as Array
-import Data.Array.NonEmpty as NonEmptyArray
-import Data.Codec as Codec
 import Data.Either (Either(..))
 import Data.Foldable (for_)
+import Data.FoldableWithIndex (foldMapWithIndex)
+import Data.List.NonEmpty as NonEmptyList
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
+import Data.Newtype (wrap)
+import Data.Semigroup.Foldable (intercalateMap)
 import Data.Set as Set
 import Data.Set.NonEmpty as NES
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
-import Effect.Exception (Error)
-import Registry.Internal.Codec as Internal.Codec
-import Registry.Solver (SolverError(..), SolverPosition(..), printSolverError, solve, solveAndValidate)
+import Effect.Class.Console (log)
+import Registry.PackageName as PackageName
+import Registry.Range as Range
+import Registry.Solver (Intersection(..), LocalSolverPosition(..), SolverError(..), SolverPosition(..), Sourced(..), printSolverError, solve)
 import Registry.Types (PackageName, Range, Version)
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.Spec as Spec
-import Test.Utils as Utils
+import Test.Utils (fromRight)
+import Unsafe.Coerce (unsafeCoerce)
 
 spec :: Spec.Spec Unit
 spec = do
+  let
+    shouldSucceed goals result = pure unit >>= \_ ->
+      solve solverIndex (Map.fromFoldable goals) `Assert.shouldContain` (Map.fromFoldable result)
+
+    shouldFail goals errors = pure unit >>= \_ -> case solve solverIndex (Map.fromFoldable goals) of
+      Left solverErrors -> do
+        let expectedErrorCount = Array.length errors
+        let receivedErrorCount = NonEmptyList.length solverErrors
+
+        when (expectedErrorCount /= receivedErrorCount) do
+          if expectedErrorCount == 0
+            then Assert.fail $ "Error(s): " <> intercalateMap "\n" printSolverError solverErrors
+            else Assert.fail $ "Tests expect " <> show expectedErrorCount <> " errors, but received " <> show receivedErrorCount
+
+        let receivedErrors = map (\error -> { error, message: printSolverError error }) solverErrors
+        let combinedErrors = Array.zip errors (Array.fromFoldable receivedErrors)
+
+        for_ combinedErrors \(Tuple expected received) -> do
+          received.message `Assert.shouldEqual` expected.message
+          when (received.error /= expected.error) do
+            log $ unsafeCoerce received.error
+            log $ unsafeCoerce expected.error
+          received.error `Assert.shouldEqual` expected.error
+
+      Right value ->
+        Assert.fail $ "Expected failure, but received: " <> foldMapWithIndex (\p v -> "\n" <> PackageName.print p <> ": " <> Version.print v) value
+
   Spec.describe "Valid dependency ranges" do
     Spec.it "Solves simple range" do
       shouldSucceed
@@ -99,32 +127,48 @@ spec = do
     Spec.it "No versions available for target package" do
       shouldFail
         [ package "does-not-exist" /\ range 0 4 ]
-        [ { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 4) SolveRoot
-          , message: "Package index contained no versions for does-not-exist in the range >=0.0.0 <4.0.0 (existing versions: none)"
+        [ { error: Conflicts $ Map.fromFoldable
+            [ package "does-not-exist" `Tuple` intersection 0 (solveRoot "does-not-exist") 4 (solveRoot "does-not-exist") ]
+          , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 (declared dependency)\n  <4.0.0 (declared dependency)"
           }
         ]
 
     Spec.it "Target package has versions, but none in range" do
       shouldFail
         [ prelude.package /\ range 20 50 ]
-        [ { error: NoVersionsInRange prelude.package (Set.fromFoldable [ version 0, version 1 ]) (range 20 50) SolveRoot
-          , message: "Package index contained no versions for prelude in the range >=20.0.0 <50.0.0 (existing versions: 0.0.0, 1.0.0)"
+        [ { error: Conflicts $ Map.fromFoldable
+            [ package "prelude" `Tuple` intersection 20 (solveRoot "prelude") 50 (solveRoot "prelude") ]
+          , message: "No versions found in the registry for prelude in range\n  >=20.0.0 (declared dependency)\n  <50.0.0 (declared dependency)"
           }
         ]
 
     Spec.it "Direct dependency of target package has no versions in range." do
       shouldFail
         [ brokenFixed.package /\ range 0 1 ]
-        [ { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 4) (Solving brokenFixed.package (pure (version 0)) SolveRoot)
-          , message: "Package index contained no versions for does-not-exist in the range >=0.0.0 <4.0.0 (existing versions: none) while solving broken-fixed@0.0.0"
+        [ { error: Conflicts $ Map.fromFoldable
+            [ package "does-not-exist" `Tuple` intersection 0 (via' "broken-fixed" 0) 4 (via' "broken-fixed" 0)
+            ]
+          , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 seen in broken-fixed@0.0.0\n  <4.0.0 seen in broken-fixed@0.0.0"
           }
         ]
 
     Spec.it "Nested dependency of target package has no versions in range." do
       shouldFail
         [ transitiveBroken.package /\ range 0 1 ]
-        [ { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving fixedBroken.package (pure (version 2)) (Solving transitiveBroken.package (pure (version 0)) SolveRoot))
-          , message: "Package index contained no versions for does-not-exist in the range >=0.0.0 <5.0.0 (existing versions: none) while solving fixed-broken@2.0.0 while solving transitive-broken@0.0.0"
+        [ { error: Conflicts $ Map.fromFoldable
+            [ package "does-not-exist" `Tuple` intersection 0 (via "fixed-broken" 2 ["transitive-broken"]) 5 (via "fixed-broken" 2 ["transitive-broken"])
+            ]
+          , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 seen in fixed-broken@2.0.0 from declared dependencies transitive-broken\n  <5.0.0 seen in fixed-broken@2.0.0 from declared dependencies transitive-broken"
+          }
+        ]
+
+    Spec.it "Fails when target package cannot be satisfied" do
+      shouldFail
+        [ brokenBroken.package /\ range 0 2 ]
+        [ { error: Conflicts $ Map.fromFoldable
+            [ package "does-not-exist" `Tuple` intersection 0 (via' "broken-broken" 0 <> via' "broken-broken" 1) 5 (via' "broken-broken" 0 <> via' "broken-broken" 1)
+            ]
+          , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 seen in broken-broken@0.0.0, broken-broken@1.0.0\n  <5.0.0 seen in broken-broken@0.0.0, broken-broken@1.0.0"
           }
         ]
 
@@ -132,8 +176,10 @@ spec = do
     Spec.it "Simple disjoint ranges" do
       shouldFail
         [ simple.package /\ range 0 1, prelude.package /\ range 1 2 ]
-        [ { error: VersionNotInRange prelude.package (NES.singleton (version 1)) (range 0 1) (Solving simple.package (pure (version 0)) SolveRoot)
-          , message: "Committed to prelude@1.0.0 but the range >=0.0.0 <1.0.0 was also required while solving simple@0.0.0"
+        [ { error: WhileSolving (package "simple") $ Map.singleton (version 0) $ Conflicts $ Map.fromFoldable
+            [ package "prelude" `Tuple` intersection 1 (solveRoot "prelude") 1 (via "simple" 0 [])
+            ]
+          , message: "While solving simple each version could not be solved:\n- 0.0.0: \n  Conflict in version ranges for prelude:\n    >=1.0.0 (declared dependency)\n    <1.0.0 seen in simple@0.0.0"
           }
         ]
 
@@ -144,17 +190,10 @@ spec = do
         [ onlySimple.package /\ range 0 4
         , prelude.package /\ range 1 2
         ]
-        [ { error: VersionNotInRange prelude.package (NES.singleton (version 1)) (range 0 1) (Solving simple.package (pure (version 0)) (Solving onlySimple.package (pure (version 0)) SolveRoot))
-          , message: "Committed to prelude@1.0.0 but the range >=0.0.0 <1.0.0 was also required while solving simple@0.0.0 while solving only-simple@0.0.0"
-          }
-        ]
-
-  Spec.describe "Reports multiple errors" do
-    Spec.it "Fails when target package cannot be satisfied" do
-      shouldFail
-        [ brokenBroken.package /\ range 0 2 ]
-        [ { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving brokenBroken.package (pure (version 1) <|> pure (version 0)) SolveRoot)
-          , message: "Package index contained no versions for does-not-exist in the range >=0.0.0 <5.0.0 (existing versions: none) while solving broken-broken@1.0.0, 0.0.0"
+        [ { error: WhileSolving (package "simple") $ Map.singleton (version 0) $ Conflicts $ Map.fromFoldable
+            [ package "prelude" `Tuple` intersection 1 (solveRoot "prelude") 1 (via "simple" 0 [])
+            ]
+          , message: "While solving simple each version could not be solved:\n- 0.0.0: \n  Conflict in version ranges for prelude:\n    >=1.0.0 (declared dependency)\n    <1.0.0 seen in simple@0.0.0"
           }
         ]
 
@@ -163,11 +202,69 @@ spec = do
         [ brokenFixed.package /\ range 0 1
         , fixedBroken.package /\ range 2 3
         ]
-        [ { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 4) (Solving brokenFixed.package (pure (version 0)) SolveRoot)
-          , message: "Package index contained no versions for does-not-exist in the range >=0.0.0 <4.0.0 (existing versions: none) while solving broken-fixed@0.0.0"
+        [ { error: Conflicts $ Map.fromFoldable
+            [ package "does-not-exist" `Tuple` intersection 0 (via' "broken-fixed" 0 <> via' "fixed-broken" 2) 4 (via' "broken-fixed" 0)
+            ]
+          , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 seen in broken-fixed@0.0.0, fixed-broken@2.0.0\n  <4.0.0 seen in broken-fixed@0.0.0" }
+        ]
+
+  Spec.describe "Reports multiple errors" do
+    Spec.it "Reports different errors for different versions" do
+      shouldFail
+        [ chaotic.package /\ range 1 3
+        , prelude.package /\ range 2 4
+        ]
+        [ { error: WhileSolving (package "chaotic") $ Map.fromFoldable
+            [ Tuple (version 1) $ Conflicts $ Map.fromFoldable
+              [ package "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "chaotic" 1 [])
+              ]
+            , Tuple (version 2) $ Conflicts $ Map.fromFoldable
+              -- TODO: why no global "chaotic" here?
+              [ package "prelude" `Tuple` intersection 5 (via "chaotic" 2 []) 4 (solveRoot "prelude")
+              ]
+            ]
+          , message: "While solving chaotic each version could not be solved:\n- 1.0.0: \n  Conflict in version ranges for prelude:\n    >=2.0.0 (declared dependency)\n    <1.0.0 seen in chaotic@1.0.0\n- 2.0.0: \n  Conflict in version ranges for prelude:\n    >=5.0.0 seen in chaotic@2.0.0\n    <4.0.0 (declared dependency)"
           }
-        , { error: NoVersionsInRange (package "does-not-exist") Set.empty (range 0 5) (Solving fixedBroken.package (pure (version 2)) SolveRoot)
-          , message: "Package index contained no versions for does-not-exist in the range >=0.0.0 <5.0.0 (existing versions: none) while solving fixed-broken@2.0.0"
+        ]
+
+    Spec.it "Groups same errors" do
+      shouldFail
+        [ chaotic.package /\ range 1 4
+        , prelude.package /\ range 2 4
+        ]
+        [ { error: WhileSolving (package "chaotic") $ Map.fromFoldable
+            [ Tuple (version 1) $ Conflicts $ Map.fromFoldable
+              [ package "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "chaotic" 1 [])
+              ]
+            , Tuple (version 2) $ Conflicts $ Map.fromFoldable
+              -- TODO: why no global "chaotic" here?
+              [ package "prelude" `Tuple` intersection 5 (via "chaotic" 2 []) 4 (solveRoot "prelude")
+              ]
+            , Tuple (version 3) $ Conflicts $ Map.fromFoldable
+              -- TODO: why no global "chaotic" here?
+              [ package "prelude" `Tuple` intersection 5 (via "chaotic" 3 []) 4 (solveRoot "prelude")
+              ]
+            ]
+          , message: "While solving chaotic each version could not be solved:\n- 1.0.0: \n  Conflict in version ranges for prelude:\n    >=2.0.0 (declared dependency)\n    <1.0.0 seen in chaotic@1.0.0\n- 2.0.0: \n  Conflict in version ranges for prelude:\n    >=5.0.0 seen in chaotic@2.0.0\n    <4.0.0 (declared dependency)\n- 3.0.0: \n  Conflict in version ranges for prelude:\n    >=5.0.0 seen in chaotic@3.0.0\n    <4.0.0 (declared dependency)"
+          }
+        ]
+
+    -- since we try packages in alphabetical order
+    Spec.it "Reports different errors for different versions (converse)" do
+      shouldFail
+        [ qaotic.package /\ range 1 3
+        , prelude.package /\ range 2 4
+        ]
+        [ { error: WhileSolving (package "qaotic") $ Map.fromFoldable
+            [ Tuple (version 1) $ Conflicts $ Map.fromFoldable
+              [ package "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "qaotic" 1 [])
+              ]
+            , Tuple (version 2) $ Conflicts $ Map.fromFoldable
+              -- TODO: why no global "prelude" here?
+              [ package "prelude" `Tuple` intersection 5 (via "qaotic" 2 []) 4 (solveRoot "prelude")
+              ]
+            ]
+          , message: "While solving qaotic each version could not be solved:\n- 1.0.0: \n  Conflict in version ranges for prelude:\n    >=2.0.0 (declared dependency)\n    <1.0.0 seen in qaotic@1.0.0\n- 2.0.0: \n  Conflict in version ranges for prelude:\n    >=5.0.0 seen in qaotic@2.0.0\n    <4.0.0 (declared dependency)"
           }
         ]
 
@@ -184,6 +281,9 @@ solverIndex = Map.fromFoldable $ map buildPkg
   -- packages that are broken at all versions
   , brokenBroken
   , transitiveBroken
+  -- packages with non-contiguous dependency ranges
+  , chaotic
+  , qaotic
   ]
   where
   buildPkg pkg = Tuple pkg.package (map buildVersion pkg.versions)
@@ -258,20 +358,43 @@ prelude =
   , versions: Map.fromFoldable
       [ version 0 /\ Nothing
       , version 1 /\ Nothing
+      , version 2 /\ Nothing
+      , version 3 /\ Nothing
+      , version 4 /\ Nothing
+      , version 5 /\ Nothing
+      ]
+  }
+
+chaotic :: TestPackage
+chaotic =
+  { package: package "chaotic"
+  , versions: Map.fromFoldable
+      [ version 1 /\ Just (prelude.package /\ range 0 1)
+      , version 2 /\ Just (prelude.package /\ range 5 6)
+      , version 3 /\ Just (prelude.package /\ range 5 6)
+      ]
+  }
+
+qaotic :: TestPackage
+qaotic =
+  { package: package "qaotic"
+  , versions: Map.fromFoldable
+      [ version 1 /\ Just (prelude.package /\ range 0 1)
+      , version 2 /\ Just (prelude.package /\ range 5 6)
       ]
   }
 
 package :: String -> PackageName
-package = Utils.unsafePackageName
+package = fromRight "bad package name" <<< PackageName.parse
 
 version :: Int -> Version
-version = Utils.unsafeVersion <<< (_ <> ".0.0") <<< show
+version = fromRight "bad version" <<< Version.parse <<< (_ <> ".0.0") <<< show
 
 -- For all these tests, we work with major versions only because we do not
 -- need to exercise the intricacies of the range relations, just the solver,
 -- which does not care about what versions are, just how they relate
 range :: Int -> Int -> Range
-range lower upper = Utils.unsafeRange $ Array.fold
+range lower upper = fromRight "bad range" $ Range.parse $ Array.fold
   [ ">="
   , show lower
   , ".0.0 <"
@@ -279,39 +402,29 @@ range lower upper = Utils.unsafeRange $ Array.fold
   , ".0.0"
   ]
 
-shouldSucceed
-  :: forall m
-   . MonadThrow Error m
-  => Array (Tuple PackageName Range)
-  -> Array (Tuple PackageName Version)
-  -> m Unit
-shouldSucceed goals result =
-  solveAndValidate solverIndex (Map.fromFoldable goals) `Assert.shouldContain` Map.fromFoldable result
+intersection :: Int -> SolverPosition -> Int -> SolverPosition -> Intersection
+intersection lower lowerPos upper upperPos = Intersection
+  { lower: wrap $ Sourced (version lower) lowerPos
+  , upper: wrap $ Sourced (version upper) upperPos
+  }
 
-shouldFail
-  :: forall m
-   . MonadThrow Error m
-  => Array (Tuple PackageName Range)
-  -> Array { error :: SolverError, message :: String }
-  -> m Unit
-shouldFail goals errors = case solve solverIndex (Map.fromFoldable goals) of
-  Left solverErrors -> do
-    let expectedErrorCount = Array.length errors
-    let receivedErrorCount = NonEmptyArray.length solverErrors
+intersection' :: Int -> SolverPosition -> Int -> SolverPosition -> Intersection
+intersection' lower lowerPos upper upperPos = Intersection
+  { lower: wrap $ Sourced (version lower) lowerPos
+  , upper: wrap $ Sourced (Version.bumpPatch (version upper)) upperPos
+  }
 
-    when (expectedErrorCount /= receivedErrorCount) do
-      Assert.fail $ "Tests expect " <> show expectedErrorCount <> " errors, but received " <> show receivedErrorCount
+solveRoot :: String -> SolverPosition
+solveRoot = Pos Root <<< Set.singleton <<< package
 
-    let receivedErrors = map (\error -> { error, message: printSolverError error }) solverErrors
-    let combinedErrors = Array.zip errors (NonEmptyArray.toArray receivedErrors)
+committed :: String -> SolverPosition
+committed = Pos Trial <<< Set.singleton <<< package
 
-    for_ combinedErrors \(Tuple expected received) -> do
-      received.error `Assert.shouldEqual` expected.error
-      received.message `Assert.shouldEqual` expected.message
+committed' :: String -> SolverPosition
+committed' = const $ Pos Trial Set.empty
 
-  Right value ->
-    Assert.fail $ Array.fold
-      [ "Expected failure, but received: "
-      , Argonaut.stringifyWithIndent 2 $ Codec.encode (Internal.Codec.packageMap Version.codec) value
-      ]
+via :: String -> Int -> Array String -> SolverPosition
+via p v = Pos (Solving (NES.singleton { package: package p, version: version v })) <<< Set.fromFoldable <<< map package
 
+via' :: String -> Int -> SolverPosition
+via' p v = Pos (Solving (NES.singleton { package: package p, version: version v })) (Set.singleton (package p))
