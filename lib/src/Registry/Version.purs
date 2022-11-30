@@ -25,7 +25,6 @@ import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Either (Either)
 import Data.Either as Either
-import Data.Function (on)
 import Data.Int as Int
 import Data.Maybe (maybe)
 import Data.String as String
@@ -45,10 +44,22 @@ newtype Version = Version
   }
 
 instance Eq Version where
-  eq = eq `on` (\(Version v) -> [ v.major, v.minor, v.patch ])
+  eq (Version l) (Version r) =
+    case l.major == r.major of
+      true ->
+        case l.minor == r.minor of
+          true -> l.patch == r.patch
+          x -> x
+      x -> x
 
 instance Ord Version where
-  compare = comparing (\(Version v) -> [ v.major, v.minor, v.patch ])
+  compare (Version l) (Version r) =
+    case l.major `compare` r.major of
+      EQ ->
+        case l.minor `compare` r.minor of
+          EQ -> l.patch `compare` r.patch
+          x -> x
+      x -> x
 
 -- | A codec for encoding and decoding a `Version` as a JSON string.
 codec :: JsonCodec Version
