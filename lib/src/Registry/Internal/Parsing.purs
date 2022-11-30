@@ -20,20 +20,20 @@ import Parsing.String.Basic as Parsing.String.Basic
 
 -- | INTERNAL
 -- |
--- | Parse as many BMP chars as possible
+-- | Parse as many Basic Multilingual Plane chars as possible
 chars :: Parser String (Array Char)
 chars = Array.many Parsing.String.anyChar
 
 -- | INTERNAL
 -- |
--- | Parse as many BMP chars as possible until some terminator. Consumes the
+-- | Parse as many Basic Multilingual Plane chars as possible until some terminator. Consumes the
 -- | terminator and returns the chars parsed.
 charsUntil :: forall a. Parser String a -> Parser String (Array Char)
 charsUntil = map Tuple.fst <<< Parsing.Combinators.Array.manyTill_ Parsing.String.anyChar
 
 -- | INTERNAL
 -- |
--- | Parse as many BMP chars as possible until a space. Consumes the space and
+-- | Parse as many Basic Multilingual Plane chars as possible until a space. Consumes the space and
 -- | returns the chars parsed.
 charsUntilSpace :: Parser String (Array Char)
 charsUntilSpace = charsUntil (Parsing.String.char ' ')
