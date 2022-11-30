@@ -119,3 +119,63 @@ spec = do
         [ "Some malformed ISO8601 date times were parsed:"
         , Array.foldMap (append "\n  - ") success
         ]
+
+  Spec.it "Parses registry-compliant Git urls" do
+    let
+      parse str = case Parsing.runParser str Internal.Parsing.gitUrl of
+        Left err -> Left (Tuple str (Parsing.parseErrorMessage err))
+        Right _ -> Right unit
+    let { fail } = Utils.partitionEithers $ map parse validGitUrl
+    unless (Array.null fail) do
+      Assert.fail $ String.joinWith "\n"
+        [ "Some well-formed git urls were not parsed correctly:"
+        , Array.foldMap (\(Tuple str err) -> "\n  - " <> str <> ": " <> err) fail
+        ]
+
+    let { success } = Utils.partitionEithers $ map (flip Parsing.runParser Internal.Parsing.gitUrl) invalidGitUrl
+    unless (Array.null success) do
+      Assert.fail $ String.joinWith "\n"
+        [ "Some malformed git urls were parsed:"
+        , Array.foldMap (append "\n  - ") success
+        ]
+
+validGitUrl :: Array String
+validGitUrl =
+  [ "https://github.com/user/project"
+  , "https://github.com/user/project.git"
+  , "http://github.com/user/project.git"
+  , "https://192.168.101.127/user/project.git"
+  , "http://192.168.101.127/user/project.git"
+  , "git://host.xz/path/to/repo.git/"
+  , "git://host.xz/~user/path/to/repo.git/"
+  , "http://host.xz/path/to/repo.git/"
+  , "https://host.xz/path/to/repo.git/"
+  ]
+
+invalidGitUrl :: Array String
+invalidGitUrl =
+  [ "git@github.com:user/project.git"
+  , "git@192.168.101.127:user/project.git"
+  , "ssh://user@host.xz:port/path/to/repo.git/"
+  , "ssh://user@host.xz/path/to/repo.git/"
+  , "ssh://host.xz:port/path/to/repo.git/"
+  , "ssh://host.xz/path/to/repo.git/"
+  , "ssh://user@host.xz/path/to/repo.git/"
+  , "ssh://host.xz/path/to/repo.git/"
+  , "ssh://user@host.xz/~user/path/to/repo.git/"
+  , "ssh://host.xz/~user/path/to/repo.git/"
+  , "ssh://user@host.xz/~/path/to/repo.git"
+  , "ssh://host.xz/~/path/to/repo.git"
+  , "/path/to/repo.git/"
+  , "path/to/repo.git/"
+  , "~/path/to/repo.git"
+  , "file:///path/to/repo.git/"
+  , "file://~/path/to/repo.git/"
+  , "user@host.xz:/path/to/repo.git/"
+  , "host.xz:/path/to/repo.git/"
+  , "user@host.xz:~user/path/to/repo.git/"
+  , "host.xz:~user/path/to/repo.git/"
+  , "user@host.xz:path/to/repo.git"
+  , "host.xz:path/to/repo.git"
+  , "rsync://host.xz/path/to/repo.git/"
+  ]

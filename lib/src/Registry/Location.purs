@@ -21,6 +21,8 @@ import Data.Codec.Argonaut.Record as CA.Record
 import Data.Maybe (Maybe)
 import Data.Profunctor as Profunctor
 import Node.Path (FilePath)
+import Registry.Internal.Codec as Internal.Codec
+import Registry.Internal.Parsing as Internal.Parsing
 
 -- | The location of a package; the registry uses this data type to decide how
 -- | to fetch source code when publishing a new package version.
@@ -75,7 +77,7 @@ type GitData =
 -- | type uses 'gitUrl' but in PureScript we use 'url' for convenience.
 gitCodec :: JsonCodec GitData
 gitCodec = Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Git"
-  { gitUrl: CA.string
+  { gitUrl: Internal.Codec.parsedString "GitUrl" Internal.Parsing.gitUrl
   , subdir: CA.Record.optional CA.string
   }
   where

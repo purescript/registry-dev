@@ -3,6 +3,7 @@ module Registry.Internal.Codec
   , iso8601DateTime
   , limitedString
   , packageMap
+  , parsedString
   , versionMap
   , strMap
   ) where
@@ -30,6 +31,8 @@ import Data.Traversable (for)
 import Data.Tuple (Tuple(..))
 import Foreign.Object as Object
 import Foreign.Object.ST as Object.ST
+import Parsing (Parser)
+import Parsing as Parsing
 import Registry.Internal.Format as Internal.Format
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -97,6 +100,23 @@ limitedString limit = Codec.codec' decode encode
       Left $ CA.TypeMismatch $ "LimitedString: Exceeds limit of " <> Int.toStringAs Int.decimal limit <> " characters."
     else
       Right string
+
+-- | INTERNAL
+-- |
+-- | A codec for `String` values that can be parsed into a `String`, failing
+-- | with the parse error message if invalid.
+parsedString :: String -> Parser String String -> JsonCodec String
+parsedString label parser = Codec.codec' decode encode
+  where
+  encode :: String -> Json
+  encode = Codec.encode CA.string
+
+  decode :: Json -> Either CA.JsonDecodeError String
+  decode json = do
+    string <- Codec.decode CA.string json
+    case Parsing.runParser string parser of
+      Left error -> Left $ CA.TypeMismatch $ label <> ": " <> Parsing.parseErrorMessage error
+      Right value -> pure value
 
 -- | INTERNAL
 -- |
