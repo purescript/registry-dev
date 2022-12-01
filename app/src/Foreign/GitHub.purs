@@ -59,6 +59,7 @@ import Data.String.CodeUnits as String.CodeUnits
 import Data.Time.Duration as Duration
 import Data.Variant as Variant
 import Effect.Aff as Aff
+import Effect.Class.Console as Console
 import Effect.Exception as Exception
 import Effect.Now as Now
 import Effect.Uncurried (EffectFn1, EffectFn6, runEffectFn1, runEffectFn6)
@@ -256,7 +257,7 @@ getRateLimit octokit = do
 printRateLimit :: RateLimit -> Aff Unit
 printRateLimit { limit, remaining, resetTime } = do
   offset <- liftEffect Now.getTimezoneOffset
-  log $ Array.fold
+  Console.log $ Array.fold
     [ "----------\n"
     , "RATE LIMIT: ("
     , show remaining
@@ -359,7 +360,7 @@ cachedRequest runRequest requestArgs@{ route: Route route } { cache, checkGitHub
   now <- liftEffect nowUTC
   ExceptT $ case entry of
     Left _ -> do
-      log $ "CACHE MISS: Malformed or no entry for " <> route
+      Console.log $ "CACHE MISS: Malformed or no entry for " <> route
       result <- Except.runExceptT $ runRequest requestArgs
       liftEffect $ Cache.writeJsonEntry codec route result cache
       pure result
@@ -371,8 +372,8 @@ cachedRequest runRequest requestArgs@{ route: Route route } { cache, checkGitHub
         -- Otherwise, if we have an error in cache, we retry the request; we
         -- don't have anything usable we could return.
         | otherwise -> do
-            log $ "CACHE ERROR: Deleting non-404 error entry and retrying " <> route
-            logShow err
+            Console.log $ "CACHE ERROR: Deleting non-404 error entry and retrying " <> route
+            Console.log $ show err
             liftEffect $ cache.remove route
             Except.runExceptT $ cachedRequest runRequest requestArgs { cache, checkGitHub }
 
@@ -389,7 +390,7 @@ cachedRequest runRequest requestArgs@{ route: Route route } { cache, checkGitHub
       -- TODO: Remove DateTime.diff when GitHub honors requests again.
       Right payload
         | checkGitHub, DateTime.diff now cached.modified >= Duration.Hours 1.0 -> do
-            log $ "CACHE EXPIRED: " <> route
+            Console.log $ "CACHE EXPIRED: " <> route
             let _gitHubTime = Formatter.DateTime.format formatRFC1123 cached.modified
             result <- Except.runExceptT $ runRequest $ requestArgs
             {- TODO: Re-enable when GitHub honors requests again.

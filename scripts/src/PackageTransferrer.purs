@@ -8,6 +8,7 @@ import Data.Array as Array
 import Data.Codec as Codec
 import Data.Map as Map
 import Data.String as String
+import Effect.Class.Console as Console
 import Effect.Exception as Exception
 import Effect.Ref as Ref
 import Effect.Unsafe as Effect.Unsafe
@@ -21,12 +22,15 @@ import Registry.App.API (LegacyRegistryFile(..), Source(..))
 import Registry.App.API as API
 import Registry.App.Cache as Cache
 import Registry.App.LenientVersion as LenientVersion
-import Registry.App.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
+import Registry.App.RegistryM (RegistryEffects, RegistryM)
 import Registry.App.RegistryM as RegistryM
+import Registry.Effect.Log as Log
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
 import Registry.Scripts.LegacyImporter as LegacyImporter
+import Run (Run)
+import Run as Run
 
 main :: Effect Unit
 main = launchAff_ do
@@ -44,8 +48,7 @@ main = launchAff_ do
   let
     env :: RegistryM.Env
     env =
-      { comment: \comment -> log ("[COMMENT] " <> comment)
-      , closeIssue: log "Running locally, not closing issue..."
+      { closeIssue: Console.log "Running locally, not closing issue..."
       , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
       , commitIndexFile: \_ _ -> unsafeCrashWith "Should not push to registry index in transfer."
       , commitPackageSetFile: \_ _ -> unsafeCrashWith "Should not modify package set in transfer."
@@ -59,24 +62,30 @@ main = launchAff_ do
       , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
       }
 
-  RegistryM.runRegistryM env do
+    effects :: Run RegistryEffects ~> Aff
+    effects =
+      Log.runLogExcept
+        >>> Run.interpret (Run.on Log._log (Log.handleLogFile (Path.concat [ API.scratchDir, "package-transferrer-logfile.txt" ])) Run.send)
+        >>> Run.runBaseAff'
+
+  RegistryM.runRegistryM env effects do
     API.fetchRegistry
     API.fillMetadataRef
     for_ [ BowerPackages, NewPackages ] processLegacyRegistry
-    log "Done!"
+    RegistryM.info "Done!"
 
 processLegacyRegistry :: LegacyRegistryFile -> RegistryM Unit
 processLegacyRegistry legacyFile = do
-  log $ Array.fold [ "Reading legacy registry file (", API.legacyRegistryFilePath legacyFile, ")" ]
+  RegistryM.debug $ Array.fold [ "Reading legacy registry file (", API.legacyRegistryFilePath legacyFile, ")" ]
   packages <- LegacyImporter.readLegacyRegistryFile legacyFile
-  log "Reading latest locations..."
+  RegistryM.debug "Reading latest locations..."
   locations <- latestLocations packages
   let needsTransfer = Map.catMaybes locations
   case Map.size needsTransfer of
-    0 -> log "No packages require transferring."
-    n -> log $ Array.fold [ show n, " packages need transferring." ]
+    0 -> RegistryM.debug "No packages require transferring."
+    n -> RegistryM.debug $ Array.fold [ show n, " packages need transferring." ]
   _ <- transferAll packages needsTransfer
-  log "Completed transfers!"
+  RegistryM.debug "Completed transfers!"
 
 transferAll :: Map String GitHub.PackageURL -> Map String PackageLocations -> RegistryM (Map String GitHub.PackageURL)
 transferAll packages packageLocations = do
@@ -91,7 +100,7 @@ transferAll packages packageLocations = do
 transferPackage :: String -> Location -> RegistryM Unit
 transferPackage rawPackageName newLocation = do
   name <- case PackageName.parse (stripPureScriptPrefix rawPackageName) of
-    Left _ -> throwWithComment $ "Unexpected package name parsing failure for " <> rawPackageName
+    Left _ -> RegistryM.die $ "Unexpected package name parsing failure for " <> rawPackageName
     Right value -> pure value
 
   let
@@ -117,12 +126,12 @@ latestLocations packages = forWithIndex packages \package location -> do
     Left _ -> pure Nothing
     Right packageResult | Array.null packageResult.tags -> pure Nothing
     Right packageResult -> do
-      packagesMetadata <- readPackagesMetadata
+      packagesMetadata <- RegistryM.readPackagesMetadata
       case Map.lookup packageResult.name packagesMetadata of
-        Nothing -> throwWithComment $ "No metadata exists for package " <> package
+        Nothing -> RegistryM.die $ "No metadata exists for package " <> package
         Just metadata -> do
           Except.runExceptT (latestPackageLocations packageResult metadata) >>= case _ of
-            Left err -> log err *> pure Nothing
+            Left err -> RegistryM.debug err *> pure Nothing
             Right locations
               | locationsMatch locations.metadataLocation locations.tagLocation -> pure Nothing
               | otherwise -> pure $ Just locations

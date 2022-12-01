@@ -104,7 +104,7 @@
             registry-importer = ''
               cd $(git rev-parse --show-toplevel)
               if [ -z "$1" ]; then
-                echo "No arguments supplied. Expected one of: generate, update"
+                echo "No arguments supplied. Expected one of: dry-run, generate, update"
                 exit 1
               fi
 

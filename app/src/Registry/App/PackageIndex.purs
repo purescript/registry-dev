@@ -11,7 +11,8 @@ import Data.String as String
 import Foreign.FastGlob (Include(..))
 import Foreign.FastGlob as FastGlob
 import Node.Path as Path
-import Registry.App.RegistryM (RegistryM, commitIndexFile, throwWithComment)
+import Registry.App.RegistryM (RegistryM)
+import Registry.App.RegistryM as RegistryM
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Range as Range
@@ -28,7 +29,7 @@ readManifestIndexFromDisk = do
   let { fail, success } = partitionEithers entries
   case fail of
     [] -> case ManifestIndex.fromSet $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray success of
-      Left errors -> throwWithComment $ append "Invalid ManifestIndex (some packages are not satisfiable):\n" $ String.joinWith "\n" do
+      Left errors -> RegistryM.die $ append "Invalid ManifestIndex (some packages are not satisfiable):\n" $ String.joinWith "\n" do
         Tuple name versions <- Map.toUnfoldable errors
         Tuple version dependency <- Map.toUnfoldable versions
         let
@@ -41,7 +42,7 @@ readManifestIndexFromDisk = do
         pure index
 
     errors ->
-      throwWithComment $ append "Invalid ManifestIndex (some package entries cannot be decoded):\n" $ String.joinWith "\n" errors
+      RegistryM.die $ append "Invalid ManifestIndex (some package entries cannot be decoded):\n" $ String.joinWith "\n" errors
 
 -- | Attempt to insert a manifest into the registry manifest index, committing
 -- | the result.
@@ -50,7 +51,7 @@ writeInsertIndex manifest@(Manifest { name }) = do
   registryIndexDir <- asks _.registryIndex
   liftAff (ManifestIndex.insertIntoEntryFile registryIndexDir manifest) >>= case _ of
     Left error -> pure (Left error)
-    Right _ -> commitIndexFile name
+    Right _ -> RegistryM.commitIndexFile name
 
 -- | Attempt to delete a manifest from the registry manifest index, committing
 -- | the result.
@@ -59,4 +60,4 @@ writeDeleteIndex name version = do
   registryIndexDir <- asks _.registryIndex
   liftAff (ManifestIndex.removeFromEntryFile registryIndexDir name version) >>= case _ of
     Left error -> pure (Left error)
-    Right _ -> commitIndexFile name
+    Right _ -> RegistryM.commitIndexFile name

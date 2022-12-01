@@ -29,6 +29,7 @@ import Data.Set as Set
 import Data.String as String
 import Data.Tuple (uncurry)
 import Effect.Aff as Aff
+import Effect.Class.Console as Console
 import Effect.Ref as Ref
 import Foreign.Node.FS as FS.Extra
 import Foreign.Purs (CompilerFailure(..))
@@ -39,7 +40,8 @@ import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Registry.App.Json as Json
-import Registry.App.RegistryM (RegistryM, throwWithComment)
+import Registry.App.RegistryM (RegistryM)
+import Registry.App.RegistryM as RegistryM
 import Registry.Constants as Constants
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
@@ -69,11 +71,11 @@ readLatestPackageSet = do
       hush $ Version.parse versionString
 
   case Array.last (Array.sort packageSetVersions) of
-    Nothing -> throwWithComment "No existing package set."
+    Nothing -> RegistryM.die "No existing package set."
     Just version -> do
       path <- getPackageSetPath version
       liftAff (Json.readJsonFile PackageSet.codec path) >>= case _ of
-        Left err -> throwWithComment $ "Could not decode latest package set: " <> err
+        Left err -> RegistryM.die $ "Could not decode latest package set: " <> err
         Right set -> pure set
 
 type Paths =
@@ -120,7 +122,7 @@ processBatchAtomic workDir index prevSet@(PackageSet { compiler: prevCompiler, p
   buildInitialSet >>= case _ of
     Left compilerError -> do
       handleCompilerError compilerVersion compilerError
-      throwWithComment "Starting package set must compile in order to process a batch."
+      RegistryM.die "Starting package set must compile in order to process a batch."
     Right _ -> pure unit
 
   runWithPaths workDir (tryBatch compilerVersion prevSet batch) >>= case _ of
@@ -173,7 +175,7 @@ processBatchSequential workDir registryIndex prevSet@(PackageSet { compiler: pre
           -- the failures map to record that it could not be processed..
           Left packageCompilerError -> do
             liftEffect $ Ref.modify_ (Map.insert name maybeVersion) failRef
-            log $ case maybeVersion of
+            Console.log $ case maybeVersion of
               Nothing -> "Could not remove " <> PackageName.print name
               Just version -> "Could not add or update " <> formatPackage name version
             handleCompilerError compilerVersion packageCompilerError
@@ -184,7 +186,7 @@ processBatchSequential workDir registryIndex prevSet@(PackageSet { compiler: pre
           Right newSet -> do
             liftEffect $ Ref.modify_ (Map.insert name maybeVersion) successRef
             liftEffect $ Ref.write newSet packageSetRef
-            log $ case maybeVersion of
+            Console.log $ case maybeVersion of
               Nothing -> "Removed " <> PackageName.print name
               Just version -> "Added or updated " <> formatPackage name version
 
@@ -205,12 +207,12 @@ updatePackageSetMetadata { previous, pending: PackageSet pending } changed = do
 handleCompilerError :: Version -> Purs.CompilerFailure -> RegistryM Unit
 handleCompilerError compilerVersion = case _ of
   MissingCompiler ->
-    throwWithComment $ "Missing compiler version " <> Version.print compilerVersion
+    RegistryM.die $ "Missing compiler version " <> Version.print compilerVersion
   UnknownError err ->
-    throwWithComment $ "Unknown error: " <> err
+    RegistryM.die $ "Unknown error: " <> err
   CompilationError errs -> do
-    log "Compilation failed:\n"
-    log $ Purs.printCompilerErrors errs <> "\n"
+    Console.log "Compilation failed:\n"
+    Console.log $ Purs.printCompilerErrors errs <> "\n"
 
 -- | Attempt to add, update, or delete a collection of packages in the package
 -- | set. This will be rolled back if the operation fails.
@@ -258,7 +260,7 @@ tryPackage (PackageSet set) package maybeNewVersion = do
   for_ maybeNewVersion (installPackage package)
   compileInstalledPackages set.compiler >>= case _ of
     Left err -> do
-      log $ case maybeNewVersion of
+      Console.log $ case maybeNewVersion of
         Nothing -> "Failed to build set without " <> PackageName.print package
         Just version -> "Failed to build set with " <> formatPackage package version
       liftAff do
@@ -278,7 +280,7 @@ tryPackage (PackageSet set) package maybeNewVersion = do
 compileInstalledPackages :: Version -> ReaderT Paths Aff (Either CompilerFailure String)
 compileInstalledPackages compilerVersion = do
   paths <- ReaderT.ask
-  log "Compiling installed packages..."
+  Console.log "Compiling installed packages..."
   let command = Purs.Compile { globs: [ Path.concat [ Path.basename paths.packagesDirectory, "**/*.purs" ] ] }
   let version = Version.print compilerVersion
   liftAff $ Purs.callCompiler { command, version, cwd: Just paths.workDirectory }
@@ -292,7 +294,7 @@ removePackage :: PackageName -> Version -> ReaderT Paths Aff Unit
 removePackage name version = do
   paths <- ReaderT.ask
   let formattedPackage = formatPackage name version
-  log $ "Uninstalling " <> formattedPackage
+  Console.log $ "Uninstalling " <> formattedPackage
   liftAff $ FS.Extra.remove $ Path.concat [ paths.packagesDirectory, formattedPackage ]
 
 -- | Install all packages in a package set into a temporary directory, returning
@@ -302,7 +304,7 @@ removePackage name version = do
 installPackages :: Map PackageName Version -> ReaderT Paths Aff Unit
 installPackages packages = do
   paths <- ReaderT.ask
-  log "Installing packages..."
+  Console.log "Installing packages..."
   liftAff $ FS.Extra.ensureDirectory paths.packagesDirectory
   forWithIndex_ packages installPackage
 
@@ -320,7 +322,7 @@ installPackage name version = do
     extractedPath = Path.concat [ paths.packagesDirectory, extractedName ]
     installPath = Path.concat [ paths.packagesDirectory, formattedPackage ]
   unlessM (liftEffect (FS.Sync.exists installPath)) $ liftAff do
-    log $ "Installing " <> formattedPackage
+    Console.log $ "Installing " <> formattedPackage
     _ <- Wget.wget registryUrl tarballPath >>= ltraverse (Aff.error >>> throwError)
     liftEffect $ Tar.extract { cwd: paths.packagesDirectory, archive: extractedName <> ".tar.gz" }
     FS.Extra.remove tarballPath
@@ -445,7 +447,7 @@ validatePackageSet index (PackageSet set) = do
         , Version.print package.version
         ]
 
-    throwWithComment $ String.joinWith "\n"
+    RegistryM.die $ String.joinWith "\n"
       [ errorPrefix
       , "Some package versions in the package set are not registered:"
       , String.joinWith "\n" failedMessages
@@ -476,7 +478,7 @@ validatePackageSet index (PackageSet set) = do
         , ")."
         ]
 
-    throwWithComment $ String.joinWith "\n"
+    RegistryM.die $ String.joinWith "\n"
       [ errorPrefix
       , "Some package versions in the set have unsatisfied dependencies:"
       , String.joinWith "\n" failedMessages

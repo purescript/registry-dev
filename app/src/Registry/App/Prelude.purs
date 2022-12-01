@@ -60,7 +60,6 @@ import Effect.Aff (Aff, launchAff_, try) as Extra
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff) as Extra
 import Effect.Class (class MonadEffect, liftEffect) as Extra
-import Effect.Class.Console (error, info, log, logShow) as Extra
 import Effect.Now as Now
 import Effect.Ref (Ref) as Extra
 import Foreign.Object (Object) as Extra
@@ -70,6 +69,7 @@ import Node.Path (FilePath) as Extra
 import Partial.Unsafe (unsafeCrashWith) as Extra
 import Registry.App.Types (RawPackageName(..), RawVersion(..), RawVersionRange(..), rawPackageNameCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionMapCodec, rawVersionRangeCodec)
 import Registry.Types (License, Location(..), Manifest(..), ManifestIndex, Metadata(..), Owner(..), PackageName, PackageSet(..), PublishedMetadata, Range, Sha256, UnpublishedMetadata, Version)
+import Type.Row (type (+)) as Extra
 
 -- | Partition an array of `Either` values into failure and success  values
 partitionEithers :: forall e a. Array (Either.Either e a) -> { fail :: Array e, success :: Array a }
@@ -149,7 +149,6 @@ withBackoff { delay: Aff.Milliseconds timeout, action, shouldCancel, shouldRetry
       _ <- Aff.delay (Aff.Milliseconds (Int.toNumber ms))
       shouldCancel attempt >>=
         if _ then do
-          Extra.log $ "Cancelled after " <> show ms <> " milliseconds, retrying (attempt " <> show attempt <> ")..."
           pure Maybe.Nothing
         else runTimeout attempt (ms * 2)
 

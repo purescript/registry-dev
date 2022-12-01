@@ -8,6 +8,7 @@ import Data.DateTime (DateTime)
 import Data.JSDate as JSDate
 import Data.String as String
 import Effect.Aff as Aff
+import Effect.Class.Console as Console
 import Effect.Exception as Exception
 import Foreign.GitHub as GitHub
 import Node.ChildProcess as NodeProcess
@@ -24,10 +25,8 @@ runGit args cwd = ExceptT do
   let stderr = String.trim result.stderr
   case result.exit of
     NodeProcess.Normally 0 -> do
-      unless (String.null stdout) (info stdout)
       pure $ Right stdout
     _ -> do
-      unless (String.null stderr) (error stderr)
       pure $ Left stderr
 
 runGitSilent :: Array String -> Maybe FilePath -> ExceptT String Aff String
@@ -46,7 +45,7 @@ cloneGitTag url ref targetDir = do
   withBackoff' (Except.runExceptT (runGit args (Just targetDir))) >>= case _ of
     Nothing -> Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> url <> " " <> ref
     Just (Left err) -> Aff.throwError $ Aff.error err
-    Just (Right _) -> log "Successfully cloned package."
+    Just (Right _) -> Console.log "Successfully cloned package."
 
 -- | Read the published time of the checked-out commit.
 gitGetRefTime :: String -> FilePath -> ExceptT String Aff DateTime

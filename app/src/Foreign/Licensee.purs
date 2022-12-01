@@ -6,6 +6,7 @@ import Control.Parallel as Parallel
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
+import Effect.Class.Console as Console
 import Foreign.Tmp as Tmp
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
@@ -42,10 +43,10 @@ detect directory = do
 
       case parse result.stdout of
         Left error -> do
-          log "Licensee failed to decode output: "
-          log error
-          log "arising from the result: "
-          log result.stdout
+          Console.log "Licensee failed to decode output: "
+          Console.log error
+          Console.log "arising from the result: "
+          Console.log result.stdout
           pure $ Left error
         Right out -> do
           -- A NOASSERTION result means that a LICENSE file could not be parsed.
@@ -53,5 +54,5 @@ detect directory = do
           -- we retrieve the license via the package manifest(s) as well.
           pure $ Right $ Array.filter (_ /= "NOASSERTION") out
     _ -> do
-      log $ "Licensee process exited unexpectedly: " <> result.stderr
+      Console.log $ "Licensee process exited unexpectedly: " <> result.stderr
       pure $ Left result.stderr

@@ -29,6 +29,7 @@ import Data.Profunctor as Profunctor
 import Data.Set as Set
 import Data.String as String
 import Data.Variant as Variant
+import Effect.Class.Console as Console
 import Effect.Exception as Exception
 import Effect.Ref as Ref
 import Foreign.GitHub (GitHubToken(..))
@@ -46,7 +47,9 @@ import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageStorage as PackageStorage
-import Registry.App.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
+import Registry.App.RegistryM (RegistryEffects, RegistryM)
+import Registry.App.RegistryM as RegistryM
+import Registry.Effect.Log as Log
 import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError, LegacyPackageSetEntries)
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Location as Location
@@ -56,6 +59,8 @@ import Registry.Metadata as Metadata
 import Registry.Operation (PackageOperation(..))
 import Registry.PackageName as PackageName
 import Registry.Version as Version
+import Run (Run)
+import Run as Run
 import Type.Proxy (Proxy(..))
 
 data ImportMode = DryRun | GenerateRegistry | UpdateRegistry
@@ -64,12 +69,12 @@ derive instance Eq ImportMode
 
 main :: Effect Unit
 main = launchAff_ do
-  log "Reading .env file..."
+  Console.log "Reading .env file..."
   _ <- API.loadEnv
 
   FS.Extra.ensureDirectory API.scratchDir
 
-  log "Parsing CLI args..."
+  Console.log "Parsing CLI args..."
   mode <- liftEffect do
     let expected = "Expected 'dry-run', 'generate', or 'update'"
     args <- Array.drop 2 <$> Node.Process.argv
@@ -98,19 +103,18 @@ main = launchAff_ do
   let
     env = case mode of
       DryRun ->
-        { comment: \err -> error err
-        , closeIssue: log "Skipping GitHub issue closing, this is a dry run..."
+        { closeIssue: Console.log "Skipping GitHub issue closing, this is a dry run..."
         , commitMetadataFile: \_ _ -> do
-            log "Skipping committing to registry metadata, this is a dry run..."
+            Console.log "Skipping committing to registry metadata, this is a dry run..."
             pure (Right unit)
         , commitIndexFile: \_ _ -> do
-            log "Skipping committing to registry index, this is a dry run..."
+            Console.log "Skipping committing to registry index, this is a dry run..."
             pure (Right unit)
         , commitPackageSetFile: \_ _ _ -> do
-            log "Skipping committing to registry package sets, this is a dry run..."
+            Console.log "Skipping committing to registry package sets, this is a dry run..."
             pure (Right unit)
-        , uploadPackage: \_ _ -> log "Skipping upload, this is a dry run..."
-        , deletePackage: \_ -> log "Skipping delete, this is a dry run..."
+        , uploadPackage: \_ _ -> Console.log "Skipping upload, this is a dry run..."
+        , deletePackage: \_ -> Console.log "Skipping delete, this is a dry run..."
         , octokit
         , cache
         , username: "NO USERNAME"
@@ -119,11 +123,10 @@ main = launchAff_ do
         , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
         }
       UpdateRegistry ->
-        { comment: \comment -> log ("[COMMENT] " <> comment)
-        , closeIssue: log "Running locally, not closing issue..."
+        { closeIssue: Console.log "Running locally, not closing issue..."
         , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
         , commitIndexFile: API.pacchettiBottiPushToRegistryIndex
-        , commitPackageSetFile: \_ _ _ -> log "Not committing package set in legacy import." $> Right unit
+        , commitPackageSetFile: \_ _ _ -> Console.log "Not committing package set in legacy import." $> Right unit
         , uploadPackage: PackageStorage.upload
         , deletePackage: PackageStorage.delete
         , packagesMetadata: metadataRef
@@ -134,16 +137,15 @@ main = launchAff_ do
         , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
         }
       GenerateRegistry ->
-        { comment: \err -> error err
-        , closeIssue: log "Skipping GitHub issue closing, we're running locally.."
+        { closeIssue: Console.log "Skipping GitHub issue closing, we're running locally.."
         , commitMetadataFile: \_ _ -> do
-            log "Skipping committing to registry metadata..."
+            Console.log "Skipping committing to registry metadata..."
             pure (Right unit)
         , commitIndexFile: \_ _ -> do
-            log "Skipping committing to registry index..."
+            Console.log "Skipping committing to registry index..."
             pure (Right unit)
         , commitPackageSetFile: \_ _ _ -> do
-            log "Skipping committing to registry package sets..."
+            Console.log "Skipping committing to registry package sets..."
             pure (Right unit)
         , uploadPackage: PackageStorage.upload
         , deletePackage: PackageStorage.delete
@@ -155,7 +157,24 @@ main = launchAff_ do
         , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
         }
 
-  runRegistryM env do
+    effects :: Run RegistryEffects ~> Aff
+    effects = case mode of
+      DryRun ->
+        Log.runLogExcept
+          >>> Run.interpret (Run.on Log._log (Log.handleLogFile (Path.concat [ API.scratchDir, "legacy-importer-logfile.txt" ])) Run.send)
+          >>> Run.runBaseAff'
+
+      UpdateRegistry ->
+        Log.runLogExcept
+          >>> Run.interpret (Run.on Log._log (Log.handleLogFile (Path.concat [ API.scratchDir, "legacy-importer-logfile.txt" ])) Run.send)
+          >>> Run.runBaseAff'
+
+      GenerateRegistry ->
+        Log.runLogExcept
+          >>> Run.interpret (Run.on Log._log (Log.handleLogFile (Path.concat [ API.scratchDir, "legacy-importer-logfile.txt" ])) Run.send)
+          >>> Run.runBaseAff'
+
+  RegistryM.runRegistryM env effects do
     API.fetchRegistry
     API.fetchRegistryIndex
     API.fillMetadataRef
@@ -163,7 +182,7 @@ main = launchAff_ do
     registryIndexPath <- asks _.registryIndex
     registryPath <- asks _.registry
 
-    log "Reading existing registry index..."
+    RegistryM.debug "Reading existing registry index..."
     existingRegistry <- do
       registry <- PackageIndex.readManifestIndexFromDisk
       -- To ensure the metadata and registry index are always in sync, we remove
@@ -179,20 +198,20 @@ main = launchAff_ do
             ManifestIndex.removeFromEntryFile registryIndexPath package version
         PackageIndex.readManifestIndexFromDisk
 
-    log "Reading legacy registry..."
+    RegistryM.debug "Reading legacy registry..."
     legacyRegistry <- readLegacyRegistryFiles
 
-    log "Importing legacy registry packages..."
+    RegistryM.debug "Importing legacy registry packages..."
     importedIndex <- importLegacyRegistry existingRegistry legacyRegistry
 
-    liftAff do
-      logImportStats legacyRegistry importedIndex
+    logImportStats legacyRegistry importedIndex
+    RegistryM.debug "Writing package and version failures..."
 
-      log "Writing package and version failures..."
+    liftAff do
       writePackageFailures importedIndex.failedPackages
       writeVersionFailures importedIndex.failedVersions
 
-    log "Writing metadata for legacy packages that can't be registered..."
+    RegistryM.debug "Writing metadata for legacy packages that can't be registered..."
     void $ forWithIndex importedIndex.reservedPackages \package location -> do
       metadataMap <- liftEffect $ Ref.read metadataRef
       case Map.lookup package metadataMap of
@@ -200,14 +219,14 @@ main = launchAff_ do
           let metadata = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
           liftAff $ Json.writeJsonFile Metadata.codec (API.metadataFile registryPath package) metadata
           liftEffect $ Ref.modify_ (Map.insert package metadata) metadataRef
-          commitMetadataFile package >>= case _ of
-            Left err -> throwWithComment err
+          RegistryM.commitMetadataFile package >>= case _ of
+            Left err -> RegistryM.die err
             Right _ -> pure unit
         Just _ -> pure unit
 
-    log "Sorting packages for upload..."
+    RegistryM.debug "Sorting packages for upload..."
     let indexPackages = ManifestIndex.toSortedArray importedIndex.registryIndex
-    metadataMap <- readPackagesMetadata
+    metadataMap <- RegistryM.readPackagesMetadata
 
     let
       isPublished { name, version } =
@@ -231,13 +250,15 @@ main = launchAff_ do
               }
 
     case notPublished of
-      [] -> log "No packages to publish."
+      [] -> RegistryM.debug "No packages to publish."
       manifests -> do
         let printPackage (Manifest { name, version }) = PackageName.print name <> "@" <> Version.print version
-        log "\n----------"
-        log "AVAILABLE TO PUBLISH"
-        log "----------"
-        log $ "  " <> String.joinWith "\n  " (map printPackage manifests)
+        RegistryM.info $ Array.foldMap (append "\n")
+          [ "----------"
+          , "AVAILABLE TO PUBLISH"
+          , "----------"
+          , "  " <> String.joinWith "\n  " (map printPackage manifests)
+          ]
 
         let
           source = case mode of
@@ -246,24 +267,26 @@ main = launchAff_ do
             GenerateRegistry -> Importer
 
         void $ for notPublished \(Manifest manifest) -> do
-          log "\n----------"
-          log "UPLOADING"
-          log $ PackageName.print manifest.name <> "@" <> Version.print manifest.version
-          log $ Json.stringifyJson Location.codec manifest.location
-          log "----------"
+          RegistryM.info $ Array.foldMap (append "\n")
+            [ "----------"
+            , "UPLOADING"
+            , PackageName.print manifest.name <> "@" <> Version.print manifest.version
+            , Json.stringifyJson Location.codec manifest.location
+            , "----------"
+            ]
           API.runOperation source (Right (mkOperation (Manifest manifest)))
 
     when (mode == GenerateRegistry || mode == DryRun) do
-      log "Regenerating registry metadata..."
-      metadataResult <- readPackagesMetadata
+      RegistryM.debug "Regenerating registry metadata..."
+      metadataResult <- RegistryM.readPackagesMetadata
       void $ forWithIndex metadataResult \name metadata -> do
         dir <- asks _.registry
         liftAff (Json.writeJsonFile Metadata.codec (API.metadataFile dir name) metadata)
 
-      log "Regenerating registry index..."
+      RegistryM.debug "Regenerating registry index..."
       void $ for indexPackages (liftAff <<< ManifestIndex.insertIntoEntryFile registryIndexPath)
 
-    log "Done!"
+    RegistryM.info "Done!"
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
@@ -277,8 +300,8 @@ writeVersionFailures =
   Json.writeJsonFile (rawPackageNameMapCodec (rawVersionMapCodec jsonValidationErrorCodec)) (Path.concat [ API.scratchDir, "version-failures.json" ])
     <<< map (map formatVersionValidationError)
 
-logImportStats :: LegacyRegistry -> ImportedIndex -> Aff Unit
-logImportStats legacy = log <<< formatImportStats <<< calculateImportStats legacy
+logImportStats :: LegacyRegistry -> ImportedIndex -> RegistryM Unit
+logImportStats legacy = RegistryM.info <<< formatImportStats <<< calculateImportStats legacy
 
 type ImportedIndex =
   { failedPackages :: Map RawPackageName PackageValidationError
@@ -407,7 +430,7 @@ buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl
           let codec = CA.Common.either (Json.object "Error" { error: versionErrorCodec, reason: CA.string }) Manifest.codec
           liftEffect (Cache.readJsonEntry codec key cache) >>= case _ of
             Left _ -> ExceptT do
-              log $ "CACHE MISS: Building manifest for " <> PackageName.print package.name <> "@" <> tag.name
+              RegistryM.debug $ "CACHE MISS: Building manifest for " <> PackageName.print package.name <> "@" <> tag.name
               manifest <- Except.runExceptT buildManifest
               liftEffect $ Cache.writeJsonEntry codec key manifest cache
               pure manifest
@@ -652,7 +675,7 @@ readLegacyRegistryFile sourceFile = do
   legacyPackages <- liftAff $ Json.readJsonFile API.legacyRegistryCodec path
   case legacyPackages of
     Left err -> do
-      throwWithComment $ String.joinWith "\n"
+      RegistryM.die $ String.joinWith "\n"
         [ "Decoding registry file from " <> path <> "failed:"
         , err
         ]

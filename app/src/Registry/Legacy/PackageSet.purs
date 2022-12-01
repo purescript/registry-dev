@@ -266,17 +266,17 @@ mirrorLegacySet { tag, packageSet, upstream } = do
   packageSetsTags <- liftAff (Except.runExceptT (GitHub.listTags octokit cache legacyPackageSetsRepo)) >>= case _ of
     Left error -> do
       let formatted = GitHub.printGitHubError error
-      RegistryM.throwWithComment $ "Could not fetch tags for the package-sets repo: " <> formatted
+      RegistryM.die $ "Could not fetch tags for the package-sets repo: " <> formatted
     Right tags -> pure $ Set.fromFoldable $ map _.name tags
 
   let printedTag = printPscTag tag
 
   when (Set.member printedTag packageSetsTags) do
-    RegistryM.throwWithComment $ "Package set tag " <> printedTag <> " already exists, aborting..."
+    RegistryM.die $ "Package set tag " <> printedTag <> " already exists, aborting..."
 
   let packageSetsUrl = "https://github.com/" <> legacyPackageSetsRepo.owner <> "/" <> legacyPackageSetsRepo.repo <> ".git"
   liftAff (Except.runExceptT (Git.runGit [ "clone", packageSetsUrl, "--depth", "1" ] (Just tmp))) >>= case _ of
-    Left error -> RegistryM.throwWithComment error
+    Left error -> RegistryM.die error
     Right _ -> pure unit
 
   -- We need to write three files to the package sets repository:
@@ -294,12 +294,12 @@ mirrorLegacySet { tag, packageSet, upstream } = do
   let latestSetsPath = Path.concat [ packageSetsPath, "latest-compatible-sets.json" ]
   latestCompatibleSets <- do
     latestSets <- liftAff (Json.readJsonFile latestCompatibleSetsCodec latestSetsPath) >>= case _ of
-      Left err -> RegistryM.throwWithComment $ "Failed to read latest-compatible-sets: " <> err
+      Left err -> RegistryM.die $ "Failed to read latest-compatible-sets: " <> err
       Right parsed -> pure parsed
     let key = (un PscTag tag).compiler
     case Map.lookup key latestSets of
       Just existingTag | existingTag >= tag -> do
-        RegistryM.comment "Not updating latest-compatible sets because this tag (or a higher one) already exists."
+        RegistryM.info "Not updating latest-compatible sets because this tag (or a higher one) already exists."
         pure latestSets
       _ ->
         pure $ Map.insert key tag latestSets
@@ -336,7 +336,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
       Git.runGit_ [ "push", origin, pushTag ] (Just packageSetsPath)
 
   case result of
-    Left error -> RegistryM.throwWithComment $ "Package set mirroring failed: " <> error
+    Left error -> RegistryM.die $ "Package set mirroring failed: " <> error
     Right _ -> pure unit
 
 filterLegacyPackageSets :: Array GitHub.Tag -> Array String

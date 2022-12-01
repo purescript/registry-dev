@@ -30,7 +30,8 @@ import Registry.App.Cache as Cache
 import Registry.App.Json as Json
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
-import Registry.App.RegistryM (RegistryM, throwWithComment)
+import Registry.App.RegistryM (RegistryM)
+import Registry.App.RegistryM as RegistryM
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry, legacyPackageSetCodec)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
@@ -199,8 +200,8 @@ detectLicenses address ref = do
   licenseFile <- getFile "LICENSE"
   let packageJsonInput = { name: "package.json", contents: _ } <$> hush packageJsonFile
   let licenseInput = { name: "LICENSE", contents: _ } <$> hush licenseFile
-  liftAff $ Licensee.detectFiles (Array.catMaybes [ packageJsonInput, licenseInput ]) >>= case _ of
-    Left err -> log ("Licensee decoding error, ignoring: " <> err) $> []
+  liftAff (Licensee.detectFiles (Array.catMaybes [ packageJsonInput, licenseInput ])) >>= case _ of
+    Left err -> RegistryM.debug ("Licensee decoding error, ignoring: " <> err) $> []
     Right licenses -> pure $ Array.mapMaybe NonEmptyString.fromString licenses
 
 validateLicense :: Array NonEmptyString -> Either LegacyManifestValidationError License
@@ -355,7 +356,7 @@ fetchLegacyPackageSets = do
   { octokit, cache } <- ask
   result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache Legacy.PackageSet.legacyPackageSetsRepo
   tags <- case result of
-    Left err -> throwWithComment (GitHub.printGitHubError err)
+    Left err -> RegistryM.die (GitHub.printGitHubError err)
     Right tags -> pure $ Legacy.PackageSet.filterLegacyPackageSets tags
 
   let
@@ -384,14 +385,14 @@ fetchLegacyPackageSets = do
     -- all into memory and fold over them.
     liftEffect (Cache.readJsonEntry legacyPackageSetEntriesCodec tagKey cache) >>= case _ of
       Left _ -> do
-        log $ "CACHE MISS: Building legacy package sets..."
+        RegistryM.debug $ "CACHE MISS: Building legacy package sets..."
         entries <- for tags \ref -> do
           let setKey = "legacy-package-set__" <> ref
           -- We persist API errors if received.
           let setCodec = CA.Common.either GitHub.githubErrorCodec legacyPackageSetEntriesCodec
           setEntries <- liftEffect (Cache.readJsonEntry setCodec setKey cache) >>= case _ of
             Left _ -> do
-              log $ "CACHE MISS: Building legacy package set for " <> ref
+              RegistryM.debug $ "CACHE MISS: Building legacy package set for " <> ref
               converted <- Except.runExceptT do
                 packagesJson <- Except.mapExceptT liftAff $ GitHub.getContent octokit cache Legacy.PackageSet.legacyPackageSetsRepo ref "packages.json"
                 parsed <- Except.except $ case Json.parseJson legacyPackageSetCodec packagesJson of
@@ -404,7 +405,7 @@ fetchLegacyPackageSets = do
               pure contents.value
           case setEntries of
             Left err -> do
-              log $ "Failed to retrieve " <> ref <> " package set:\n" <> GitHub.printGitHubError err
+              RegistryM.debug $ "Failed to retrieve " <> ref <> " package set:\n" <> GitHub.printGitHubError err
               pure Map.empty
             Right value -> pure value
 

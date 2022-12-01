@@ -16,6 +16,7 @@ import Data.DateTime (DateTime)
 import Data.Map as Map
 import Data.Maybe (maybe')
 import Data.String as String
+import Effect.Class.Console as Console
 import Effect.Exception as Aff
 import Effect.Ref as Ref
 import Foreign.Node.FS as FSE
@@ -80,7 +81,7 @@ useCache cacheDir = do
       contents <- Json.readJsonFile cacheEntryCodec (entryPath cacheDir (CacheKey file))
       case contents of
         Left err -> do
-          log $ "Failed to decode entry (" <> file <> "): " <> err
+          Console.log $ "Failed to decode entry (" <> file <> "): " <> err
           pure Nothing
         Right result ->
           pure $ Just $ Tuple (CacheKey file) result

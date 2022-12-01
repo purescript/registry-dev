@@ -18,9 +18,11 @@ import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.Cache as Cache
 import Registry.App.Json as Json
-import Registry.App.RegistryM (Env, runRegistryM, throwWithComment)
+import Registry.App.RegistryM (Env)
+import Registry.App.RegistryM as RegistryM
 import Registry.Manifest as Manifest
 import Registry.Version as Version
+import Test.RegistrySpec (defaultTestEffectHandler)
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -36,8 +38,7 @@ main = launchAff_ $ do
   let
     env :: Env
     env =
-      { comment: mempty
-      , closeIssue: mempty
+      { closeIssue: mempty
       , commitMetadataFile: \_ _ -> pure (Right unit)
       , commitIndexFile: \_ _ -> pure (Right unit)
       , commitPackageSetFile: \_ _ _ -> pure (Right unit)
@@ -51,7 +52,7 @@ main = launchAff_ $ do
       , registryIndex: Path.concat [ "..", "scratch", "registry-index" ]
       }
 
-  runRegistryM env do
+  RegistryM.runRegistryM env defaultTestEffectHandler do
     tmp <- liftEffect Tmp.mkTmpDir
     API.fetchRegistryIndex
     liftAff $ Git.cloneGitTag ("https://github.com/thomashoneyman/purescript-slug") "v3.0.6" tmp
@@ -63,20 +64,20 @@ main = launchAff_ $ do
 
     case eitherManifest of
       Left err ->
-        throwWithComment err
+        RegistryM.die err
       Right manifest -> do
         liftAff $ Json.writeJsonFile Manifest.codec (Path.concat [ packageSourceDir, "purs.json" ]) manifest
         API.verifyResolutions { source: API, resolutions: Nothing, manifest } >>= case _ of
-          Left err -> throwWithComment err
+          Left err -> RegistryM.die err
           Right verified -> do
             API.compilePackage { packageSourceDir, resolutions: verified, compiler } >>= case _ of
-              Left err -> throwWithComment err
+              Left err -> RegistryM.die err
               Right dependenciesDir -> do
                 files <- liftAff $ FS.readdir packageSourceDir
-                logShow files
+                RegistryM.debug $ show files
                 deps <- liftAff $ FS.readdir dependenciesDir
-                logShow deps
+                RegistryM.debug $ show deps
                 result <- API.publishToPursuit { packageSourceDir, compiler, resolutions: verified, dependenciesDir }
                 case result of
-                  Left error -> throwWithComment error
-                  Right message -> log message
+                  Left error -> RegistryM.die error
+                  Right message -> RegistryM.debug message

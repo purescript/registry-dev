@@ -47,7 +47,7 @@ spec env = Spec.hoistSpec identity (\_ m -> Reader.runReaderT m env) testRegistr
 
 runTestRegistryM :: forall m a. MonadAff m => FilePath -> RegistryM a -> m a
 runTestRegistryM index =
-  liftAff <<< RegistryM.runRegistryM (RegistrySpec.defaultTestEnv { registryIndex = index })
+  liftAff <<< RegistryM.runRegistryM (RegistrySpec.defaultTestEnv { registryIndex = index }) RegistrySpec.defaultTestEffectHandler
 
 testRegistryIndex :: Spec.SpecT (Reader.ReaderT TestIndexEnv Aff) Unit Identity Unit
 testRegistryIndex = Spec.before runBefore do

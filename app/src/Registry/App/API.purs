@@ -37,11 +37,12 @@ import Data.Tuple (uncurry)
 import Data.Tuple.Nested (type (/\))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
+import Effect.Class.Console as Console
 import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Foreign.FastGlob as FastGlob
 import Foreign.Git as Git
-import Foreign.GitHub (GitHubToken(..), IssueNumber, PackageURL(..))
+import Foreign.GitHub (GitHubToken(..), IssueNumber, Octokit, PackageURL(..))
 import Foreign.GitHub as GitHub
 import Foreign.JsonRepair as JsonRepair
 import Foreign.Node.FS as FS.Extra
@@ -65,9 +66,11 @@ import Registry.App.LenientVersion as LenientVersion
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
 import Registry.App.PackageStorage as PackageStorage
-import Registry.App.RegistryM (Env, RegistryM, closeIssue, comment, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, runRegistryM, throwWithComment, updatePackagesMetadata, uploadPackage)
+import Registry.App.RegistryM (Env, RegistryEffects, RegistryM)
+import Registry.App.RegistryM as RegistryM
 import Registry.Constants (GitHubRepo)
 import Registry.Constants as Constants
+import Registry.Effect.Log as Log
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.Location as Location
@@ -82,7 +85,15 @@ import Registry.Range as Range
 import Registry.Sha256 as Sha256
 import Registry.Solver as Solver
 import Registry.Version as Version
+import Run (Run)
+import Run as Run
 import Sunde as Process
+
+effectHandler :: Octokit -> IssueNumber -> Run RegistryEffects ~> Aff
+effectHandler octokit issue =
+  Log.runLogExcept
+    >>> Run.interpret (Run.on Log._log (Log.handleLogGitHub octokit issue) Run.send)
+    >>> Run.runBaseAff'
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -105,7 +116,7 @@ main = launchAff_ $ do
 
     MalformedJson issue err -> do
       let
-        comment = Array.fold
+        commentBody = Array.fold
           [ "The JSON input for this package update is malformed:"
           , newlines 2
           , "```" <> err <> "```"
@@ -113,7 +124,7 @@ main = launchAff_ $ do
           , "You can try again by commenting on this issue with a corrected payload."
           ]
 
-      Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
+      Except.runExceptT (GitHub.createComment octokit issue commentBody) >>= case _ of
         Left githubError -> throwError $ Aff.error $ GitHub.printGitHubError githubError
         Right _ -> pure unit
 
@@ -121,8 +132,8 @@ main = launchAff_ $ do
       FS.Extra.ensureDirectory scratchDir
       cache <- Cache.useCache cacheDir
       packagesMetadata <- liftEffect $ Ref.new Map.empty
-      runRegistryM (mkEnv octokit cache packagesMetadata issue username) do
-        comment $ case operation of
+      RegistryM.runRegistryM (mkEnv octokit cache packagesMetadata issue username) (effectHandler octokit issue) do
+        RegistryM.info $ case operation of
           Left packageSetOperation -> case packageSetOperation of
             PackageSetUpdate _ ->
               "Processing package set update."
@@ -188,14 +199,13 @@ readOperation eventPath = do
 
   case Argonaut.Parser.jsonParser (JsonRepair.tryRepair (firstObject body)) of
     Left err -> do
-      log "Not JSON."
-      logShow { err, body }
+      Console.log $ "Not JSON: " <> err <> "\n" <> body
       pure NotJson
     Right json -> case decodeOperation json of
       Left jsonError -> do
         let printedError = CA.printJsonDecodeError jsonError
-        log $ "Malformed JSON:\n" <> printedError
-        log $ "Received body:\n" <> body
+        Console.log $ "Malformed JSON:\n" <> printedError
+        Console.log $ "Received body:\n" <> body
         pure $ MalformedJson issueNumber printedError
       Right operation ->
         pure $ DecodedOperation issueNumber username operation
@@ -216,7 +226,7 @@ firstObject input = fromMaybe input do
 runOperation :: Source -> Either PackageSetOperation PackageOperation -> RegistryM Unit
 runOperation source operation = case operation of
   Right (Publish fields@{ name, location }) -> do
-    packagesMetadata <- readPackagesMetadata
+    packagesMetadata <- RegistryM.readPackagesMetadata
     case Map.lookup name packagesMetadata of
       Just metadata ->
         case location of
@@ -230,7 +240,7 @@ runOperation source operation = case operation of
           -- Otherwise, if they attempted to re-register the package under a new
           -- location, then they either did not know the package already existed or
           -- they are attempting a transfer.
-          Just _ -> throwWithComment $ String.joinWith " "
+          Just _ -> RegistryM.die $ String.joinWith " "
             [ "Cannot register"
             , PackageName.print name
             , "because it has already been registered.\nIf you are attempting to"
@@ -242,12 +252,12 @@ runOperation source operation = case operation of
       -- If this is a brand-new package, then we can allow them to register it
       -- so long as they aren't publishing an existing location under a new name
       Nothing -> case location of
-        Nothing -> throwWithComment $ String.joinWith " "
+        Nothing -> RegistryM.die $ String.joinWith " "
           [ "Cannot register"
           , PackageName.print name
           , "because no 'location' field was provided."
           ]
-        Just packageLocation | not (locationIsUnique packageLocation packagesMetadata) -> throwWithComment $ String.joinWith " "
+        Just packageLocation | not (locationIsUnique packageLocation packagesMetadata) -> RegistryM.die $ String.joinWith " "
           [ "Cannot register"
           , PackageName.print name
           , "at the location"
@@ -274,7 +284,7 @@ runOperation source operation = case operation of
       -- We always throw if we couldn't verify the user who opened or commented
       -- is a member of the packaging team.
       liftAff (Except.runExceptT (GitHub.listTeamMembers octokit cache packagingTeam)) >>= case _ of
-        Left githubError -> throwWithComment $ Array.fold
+        Left githubError -> RegistryM.die $ Array.fold
           [ "This package set update changes the compiler version or removes a "
           , "package from the package set. Only members of the "
           , "@purescript/packaging team can take these actions, but we were "
@@ -283,7 +293,7 @@ runOperation source operation = case operation of
           ]
         Right members -> do
           unless (Array.elem username (map _.username members)) do
-            throwWithComment $ String.joinWith " "
+            RegistryM.die $ String.joinWith " "
               [ "This package set update changes the compiler version or"
               , "removes a package from the package set. Only members of the"
               , "@purescript/packaging team can take these actions, but your"
@@ -292,7 +302,7 @@ runOperation source operation = case operation of
 
     -- The compiler version cannot be downgraded.
     for_ compiler \version -> when (version < prevCompiler) do
-      throwWithComment $ String.joinWith " "
+      RegistryM.die $ String.joinWith " "
         [ "You are downgrading the compiler used in the package set from"
         , "the current version (" <> Version.print prevCompiler <> ")"
         , "to the lower version (" <> Version.print version <> ")."
@@ -322,7 +332,7 @@ runOperation source operation = case operation of
           , Version.print new
           ]
 
-      throwWithComment $ Array.fold
+      RegistryM.die $ Array.fold
         [ "You are attempting to downgrade one or more package versions from "
         , "their version in the previous set. Affected packages:\n\n"
         , String.joinWith "\n" $ map formatPackage downgradedPackages
@@ -338,13 +348,13 @@ runOperation source operation = case operation of
     let candidates = App.PackageSets.validatePackageSetCandidates registryIndex latestPackageSet packages
 
     unless (Map.isEmpty candidates.rejected) do
-      throwWithComment $ String.joinWith "\n"
+      RegistryM.die $ String.joinWith "\n"
         [ "One or more packages in the suggested batch cannot be processed.\n"
         , App.PackageSets.printRejections candidates.rejected
         ]
 
     if Map.isEmpty candidates.accepted then do
-      throwWithComment "No packages in the suggested batch can be processed; all failed validation checks."
+      RegistryM.die "No packages in the suggested batch can be processed; all failed validation checks."
     else do
       workDir <- liftEffect Tmp.mkTmpDir
       App.PackageSets.processBatchAtomic workDir registryIndex latestPackageSet compiler candidates.accepted >>= case _ of
@@ -352,19 +362,19 @@ runOperation source operation = case operation of
           newPath <- App.PackageSets.getPackageSetPath (un PackageSet packageSet).version
           liftAff $ Json.writeJsonFile PackageSet.codec newPath packageSet
           let commitMessage = App.PackageSets.commitMessage latestPackageSet success (un PackageSet packageSet).version
-          commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
-            Left err -> throwWithComment $ "Failed to commit package set file (cc: @purescript/packaging): " <> err
+          RegistryM.commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
+            Left err -> RegistryM.die $ "Failed to commit package set file (cc: @purescript/packaging): " <> err
             Right _ -> do
-              comment "Built and released a new package set! Now mirroring to the package-sets repo..."
-              metadata <- readPackagesMetadata
+              RegistryM.info "Built and released a new package set! Now mirroring to the package-sets repo..."
+              metadata <- RegistryM.readPackagesMetadata
               case Legacy.PackageSet.fromPackageSet registryIndex metadata packageSet of
-                Left err -> throwWithComment $ "Failed to convert to legacy package set (cc: @purescript/packaging): " <> err
+                Left err -> RegistryM.die $ "Failed to convert to legacy package set (cc: @purescript/packaging): " <> err
                 Right legacyPackageSet -> do
                   Legacy.PackageSet.mirrorLegacySet legacyPackageSet
-                  comment "Mirrored a new legacy package set."
-                  closeIssue
+                  RegistryM.info "Mirrored a new legacy package set."
+                  RegistryM.closeIssue
         _ -> do
-          throwWithComment "The package set produced from this suggested update does not compile."
+          RegistryM.die "The package set produced from this suggested update does not compile."
 
   Right (Authenticated submittedAuth@{ payload }) -> case payload of
     Unpublish { name, version, reason } -> do
@@ -377,15 +387,15 @@ runOperation source operation = case operation of
 
       publishedMetadata <- case inPublished, inUnpublished of
         Nothing, Nothing ->
-          throwWithComment $ "Cannot unpublish " <> Version.print version <> " because it is not a published version."
+          RegistryM.die $ "Cannot unpublish " <> Version.print version <> " because it is not a published version."
         Just published, Nothing ->
           -- We only pass through the case where the user is unpublishing a
           -- package that has been published and not yet unpublished.
           pure published
         Nothing, Just _ ->
-          throwWithComment $ "Cannot unpublish " <> Version.print version <> " because it has already been unpublished."
+          RegistryM.die $ "Cannot unpublish " <> Version.print version <> " because it has already been unpublished."
         Just _, Just _ ->
-          throwWithComment $ String.joinWith "\n"
+          RegistryM.die $ String.joinWith "\n"
             [ "Cannot unpublish " <> Version.print version <> "."
             , ""
             , "This version is listed both as published and unpublished. This is an internal error."
@@ -396,13 +406,13 @@ runOperation source operation = case operation of
 
       case maybeOwners of
         Nothing ->
-          throwWithComment $ String.joinWith " "
+          RegistryM.die $ String.joinWith " "
             [ "Cannot verify package ownership because no owners are listed in the package metadata."
             , "Please publish a package version with your SSH public key in the owners field."
             , "You can then retry unpublishing this version by authenticating with your private key."
             ]
         Just owners -> liftAff (Auth.verifyPayload owners auth) >>= case _ of
-          Left err -> throwWithComment $ String.joinWith "\n"
+          Left err -> RegistryM.die $ String.joinWith "\n"
             [ "Failed to verify package ownership:"
             , err
             ]
@@ -411,9 +421,9 @@ runOperation source operation = case operation of
             let hourLimit = 48
             let diff = DateTime.diff now publishedMetadata.publishedTime
             when (diff > Hours (Int.toNumber hourLimit)) do
-              throwWithComment $ "Packages can only be unpublished within " <> Int.toStringAs Int.decimal hourLimit <> " hours."
+              RegistryM.die $ "Packages can only be unpublished within " <> Int.toStringAs Int.decimal hourLimit <> " hours."
 
-            deletePackage { name, version }
+            RegistryM.deletePackage { name, version }
 
             let
               unpublishedMetadata =
@@ -425,7 +435,7 @@ runOperation source operation = case operation of
               updatedMetadata = unpublishVersionInMetadata version unpublishedMetadata (Metadata metadata)
 
             writeMetadata name updatedMetadata >>= case _ of
-              Left err -> throwWithComment $ String.joinWith "\n"
+              Left err -> RegistryM.die $ String.joinWith "\n"
                 [ "Unpublish succeeded, but committing metadata failed."
                 , err
                 , "cc @purescript/packaging"
@@ -433,16 +443,16 @@ runOperation source operation = case operation of
               Right _ -> pure unit
 
             PackageIndex.writeDeleteIndex name version >>= case _ of
-              Left err -> throwWithComment $ String.joinWith "\n"
+              Left err -> RegistryM.die $ String.joinWith "\n"
                 [ "Unpublish succeeded, but committing to the registry index failed."
                 , err
                 , "cc: @purescript/packaging"
                 ]
               Right _ -> pure unit
 
-            comment "Successfully unpublished!"
+            RegistryM.info "Successfully unpublished!"
 
-      closeIssue
+      RegistryM.closeIssue
 
     Transfer { name, newLocation } -> do
       username <- asks _.username
@@ -454,7 +464,7 @@ runOperation source operation = case operation of
             ]
         }
 
-      packagesMetadata <- readPackagesMetadata
+      packagesMetadata <- RegistryM.readPackagesMetadata
       let
         isUniqueLocation = locationIsUnique newLocation packagesMetadata
         notUniqueError = String.joinWith " "
@@ -467,15 +477,15 @@ runOperation source operation = case operation of
 
       case source of
         Importer | not isUniqueLocation ->
-          comment notUniqueError
+          RegistryM.debug notUniqueError
         API | not isUniqueLocation ->
-          throwWithComment notUniqueError
+          RegistryM.die notUniqueError
         _ -> do
           Tuple auth maybeOwners <- acceptTrustees username submittedAuth metadata.owners
 
           case maybeOwners of
             Nothing ->
-              throwWithComment $ String.joinWith " "
+              RegistryM.die $ String.joinWith " "
                 [ "Cannot verify package ownership because no owners are listed in the package metadata."
                 , "Please publish a package version with your SSH public key in the owners field."
                 , "You can then retry transferring this package by authenticating with your private key."
@@ -483,23 +493,23 @@ runOperation source operation = case operation of
             Just owners ->
               liftAff (Auth.verifyPayload owners auth) >>= case _ of
                 Left err ->
-                  throwWithComment $ String.joinWith "\n"
+                  RegistryM.die $ String.joinWith "\n"
                     [ "Failed to verify package ownership:"
                     , "  " <> err
                     ]
                 Right _ -> do
                   let updatedMetadata = metadata { location = newLocation }
                   writeMetadata name (Metadata updatedMetadata) >>= case _ of
-                    Left err -> throwWithComment $ String.joinWith "\n"
+                    Left err -> RegistryM.die $ String.joinWith "\n"
                       [ "Transferred package location, but failed to commit metadata."
                       , err
                       , "cc: @purescript/packaging"
                       ]
                     Right _ -> do
-                      comment "Successfully transferred your package!"
+                      RegistryM.info "Successfully transferred your package!"
                       syncLegacyRegistry name newLocation
 
-          closeIssue
+          RegistryM.closeIssue
 
 registryMetadataPath :: FilePath -> FilePath
 registryMetadataPath registryPath = Path.concat [ registryPath, Constants.packageMetadataDirectory ]
@@ -529,21 +539,21 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
 
   let manifestPath = Path.concat [ packageDirectory, "purs.json" ]
 
-  log $ "Package available in " <> packageDirectory
+  RegistryM.debug $ "Package available in " <> packageDirectory
 
-  log "Verifying that the package contains a `src` directory"
+  RegistryM.debug "Verifying that the package contains a `src` directory"
   whenM (liftAff $ map (Array.null <<< _.succeeded) $ FastGlob.match packageDirectory [ "src/**/*.purs" ]) do
-    throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
+    RegistryM.die "This package has no .purs files in the src directory. All package sources must be in the src directory."
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
   isLegacyImport <- liftEffect $ map not $ FS.Sync.exists manifestPath
   when isLegacyImport do
     address <- case inputMetadata.location of
-      Git _ -> throwWithComment "Legacy packages can only come from GitHub. Aborting."
+      Git _ -> RegistryM.die "Legacy packages can only come from GitHub. Aborting."
       GitHub { owner, repo } -> pure { owner, repo }
 
     version <- case LenientVersion.parse ref of
-      Left _ -> throwWithComment $ "Not a valid registry version: " <> ref
+      Left _ -> RegistryM.die $ "Not a valid registry version: " <> ref
       Right result -> pure $ LenientVersion.version result
 
     legacyPackageSets <- Legacy.Manifest.fetchLegacyPackageSets
@@ -557,7 +567,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
     Except.runExceptT (Legacy.Manifest.fetchLegacyManifest packageSetDeps address (RawVersion ref)) >>= case _ of
       Left manifestError -> do
         let formatError { error, reason } = reason <> " " <> Legacy.Manifest.printLegacyManifestError error
-        throwWithComment $ String.joinWith "\n"
+        RegistryM.die $ String.joinWith "\n"
           [ "There were problems with the legacy manifest file:"
           , formatError manifestError
           ]
@@ -567,18 +577,18 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
 
   -- Try to read the manifest, typechecking it
   manifest@(Manifest manifestFields) <- liftAff (try $ FS.Aff.readTextFile UTF8 manifestPath) >>= case _ of
-    Left _err -> throwWithComment $ "Manifest not found at " <> manifestPath
+    Left _err -> RegistryM.die $ "Manifest not found at " <> manifestPath
     Right manifestStr -> liftAff (jsonToDhallManifest manifestStr) >>= case _ of
-      Left err -> throwWithComment $ "Could not typecheck manifest: " <> err
+      Left err -> RegistryM.die $ "Could not typecheck manifest: " <> err
       Right _ -> case Json.parseJson Manifest.codec manifestStr of
-        Left err -> throwWithComment $ "Could not parse manifest as JSON: " <> err
+        Left err -> RegistryM.die $ "Could not parse manifest as JSON: " <> err
         Right res -> pure res
 
   -- We trust the manifest for any changes to the 'owners' field, but for all
   -- other fields we trust the registry metadata.
   let metadata = inputMetadata { owners = manifestFields.owners }
   when (not isLegacyImport && manifestFields.name /= name) do
-    throwWithComment $ Array.fold
+    RegistryM.die $ Array.fold
       [ "The manifest file specifies a package name ("
       , PackageName.print manifestFields.name
       , ") that differs from the package name submitted to the API ("
@@ -587,7 +597,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
       ]
 
   when (manifestFields.location /= metadata.location) do
-    throwWithComment $ Array.fold
+    RegistryM.die $ Array.fold
       [ "The manifest file specifies a location ("
       , Json.stringifyJson Location.codec manifestFields.location
       , ") that differs from the location in the registry metadata ("
@@ -602,7 +612,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
   eitherVerifiedResolutions <- verifyResolutions { source, resolutions, manifest }
 
   -- After we pass all the checks it's time to do side effects and register the package
-  log "Packaging the tarball to upload..."
+  RegistryM.debug "Packaging the tarball to upload..."
   -- We need the version number to upload the package
   let newVersion = manifestFields.version
   let newDirname = PackageName.print name <> "-" <> Version.print newVersion
@@ -615,16 +625,16 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
   liftAff $ removeIgnoredTarballFiles packageSourceDir
   let tarballPath = packageSourceDir <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname }
-  log "Checking the tarball size..."
+  RegistryM.debug "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.Aff.stat tarballPath
   when (not isLegacyImport && bytes > warnPackageBytes) do
     if bytes > maxPackageBytes then
-      throwWithComment $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes.\ncc: @purescript/packaging"
+      RegistryM.die $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes.\ncc: @purescript/packaging"
     else
-      log $ "WARNING: Package tarball is " <> show bytes <> ".\ncc: @purescript/packaging"
-  log "Hashing the tarball..."
+      RegistryM.debug $ "WARNING: Package tarball is " <> show bytes <> ".\ncc: @purescript/packaging"
+  RegistryM.debug "Hashing the tarball..."
   hash <- liftAff $ Sha256.hashFile tarballPath
-  log $ "Hash: " <> Sha256.print hash
+  RegistryM.debug $ "Hash: " <> Sha256.print hash
 
   -- Now that we have the package source contents we can verify we can compile
   -- the package. We skip failures when the package is a legacy package.
@@ -633,39 +643,39 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
     Left error | source == Importer || (source == API && isLegacyImport) ->
       pure (Left error)
     Left error ->
-      throwWithComment error
+      RegistryM.die error
     Right verified ->
       compilePackage { packageSourceDir: packageDirectory, compiler, resolutions: verified }
 
   case compilationResult of
     Left error
       | source == Importer -> do
-          log error
-          log "Failed to compile, but continuing because the API source was the importer."
+          RegistryM.debug error
+          RegistryM.debug "Failed to compile, but continuing because the API source was the importer."
       | source == API && isLegacyImport -> do
-          log error
-          log "Failed to compile, but continuing because this is a legacy package."
+          RegistryM.debug error
+          RegistryM.debug "Failed to compile, but continuing because this is a legacy package."
       | otherwise ->
-          throwWithComment error
+          RegistryM.die error
     Right _ ->
       pure unit
 
-  log "Uploading package to the storage backend..."
+  RegistryM.debug "Uploading package to the storage backend..."
   let uploadPackageInfo = { name, version: newVersion }
-  uploadPackage uploadPackageInfo tarballPath
-  log $ "Adding the new version " <> Version.print newVersion <> " to the package metadata file (hashes, etc)"
-  log $ "Hash for ref " <> ref <> " was " <> Sha256.print hash
+  RegistryM.uploadPackage uploadPackageInfo tarballPath
+  RegistryM.debug $ "Adding the new version " <> Version.print newVersion <> " to the package metadata file (hashes, etc)"
+  RegistryM.debug $ "Hash for ref " <> ref <> " was " <> Sha256.print hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref, publishedTime, bytes } (Metadata metadata)
   writeMetadata name newMetadata >>= case _ of
-    Left err -> throwWithComment $ String.joinWith "\n"
+    Left err -> RegistryM.die $ String.joinWith "\n"
       [ "Package uploaded, but committing metadata failed."
       , err
       , "cc: @purescript/packaging"
       ]
     Right _ ->
-      comment "Successfully uploaded package to the registry! 🎉 🚀"
+      RegistryM.info "Successfully uploaded package to the registry! 🎉 🚀"
 
-  closeIssue
+  RegistryM.closeIssue
 
   -- After a package has been uploaded we add it to the registry index, we
   -- upload its documentation to Pursuit, and we can now process it for package
@@ -674,7 +684,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
   -- We write to the registry index if possible. If this fails, the packaging
   -- team should manually insert the entry.
   PackageIndex.writeInsertIndex manifest >>= case _ of
-    Left err -> comment $ String.joinWith "\n"
+    Left err -> RegistryM.info $ String.joinWith "\n"
       [ "Package uploaded, but committing to the registry failed."
       , err
       , "cc: @purescript/packaging"
@@ -683,15 +693,15 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
 
   when (source == API) $ case compilationResult of
     Left error ->
-      comment $ Array.fold [ "Skipping Pursuit publishing because this package failed to compile:\n\n", error ]
+      RegistryM.info $ Array.fold [ "Skipping Pursuit publishing because this package failed to compile:\n\n", error ]
     Right dependenciesDir -> do
-      log "Uploading to Pursuit"
+      RegistryM.debug "Uploading to Pursuit"
       for_ eitherVerifiedResolutions \verified -> do
         publishToPursuit { packageSourceDir: packageDirectory, compiler, resolutions: verified, dependenciesDir } >>= case _ of
           Left error ->
-            comment $ "Pursuit publishing failed: " <> error
+            RegistryM.info $ "Pursuit publishing failed: " <> error
           Right message ->
-            comment message
+            RegistryM.info message
 
   syncLegacyRegistry name (un Metadata newMetadata).location
 
@@ -702,17 +712,17 @@ verifyManifest { metadata, manifest } = do
   -- TODO: collect all errors and return them at once. Note: some of the checks
   -- are going to fail while parsing from JSON, so we should move them here if we
   -- want to handle everything together
-  log "Running checks for the following manifest:"
-  log $ Argonaut.stringifyWithIndent 2 $ CA.encode Manifest.codec manifest
+  RegistryM.debug "Running checks for the following manifest:"
+  RegistryM.debug $ Argonaut.stringifyWithIndent 2 $ CA.encode Manifest.codec manifest
 
-  log "Ensuring the package is not the purescript-metadata package, which cannot be published."
+  RegistryM.debug "Ensuring the package is not the purescript-metadata package, which cannot be published."
   when (PackageName.print manifestFields.name == "metadata") do
-    throwWithComment "The `metadata` package cannot be uploaded to the registry as it is a protected package."
+    RegistryM.die "The `metadata` package cannot be uploaded to the registry as it is a protected package."
 
-  log "Check that version has not already been published"
+  RegistryM.debug "Check that version has not already been published"
   case Map.lookup manifestFields.version (un Metadata metadata).published of
     Nothing -> pure unit
-    Just info -> throwWithComment $ String.joinWith "\n"
+    Just info -> RegistryM.die $ String.joinWith "\n"
       [ "You tried to upload a version that already exists: " <> Version.print manifestFields.version
       , "Its metadata is:"
       , "```"
@@ -720,10 +730,10 @@ verifyManifest { metadata, manifest } = do
       , "```"
       ]
 
-  log "Check that version has not been unpublished"
+  RegistryM.debug "Check that version has not been unpublished"
   case Map.lookup manifestFields.version (un Metadata metadata).unpublished of
     Nothing -> pure unit
-    Just info -> throwWithComment $ String.joinWith "\n"
+    Just info -> RegistryM.die $ String.joinWith "\n"
       [ "You tried to upload a version that has been unpublished: " <> Version.print manifestFields.version
       , "Details:"
       , "```"
@@ -731,8 +741,8 @@ verifyManifest { metadata, manifest } = do
       , "```"
       ]
 
-  log "Check that all dependencies are contained in the registry"
-  packages <- readPackagesMetadata
+  RegistryM.debug "Check that all dependencies are contained in the registry"
+  packages <- RegistryM.readPackagesMetadata
 
   let
     pkgNotInRegistry name = case Map.lookup name packages of
@@ -742,14 +752,14 @@ verifyManifest { metadata, manifest } = do
       Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifestFields.dependencies
 
   unless (Array.null pkgsNotInRegistry) do
-    throwWithComment $ "Some dependencies of your package were not found in the Registry: " <> String.joinWith ", " (map PackageName.print pkgsNotInRegistry)
+    RegistryM.die $ "Some dependencies of your package were not found in the Registry: " <> String.joinWith ", " (map PackageName.print pkgsNotInRegistry)
 
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the
 -- | manifest. If not, we solve their manifest to produce a build plan.
 verifyResolutions :: { source :: Source, resolutions :: Maybe (Map PackageName Version), manifest :: Manifest } -> RegistryM (Either String (Map PackageName Version))
 verifyResolutions { source, resolutions, manifest } = Except.runExceptT do
-  log "Check the submitted build plan matches the manifest"
+  lift $ RegistryM.debug "Check the submitted build plan matches the manifest"
   -- We don't verify packages provided via the mass import.
   case resolutions of
     Nothing -> do
@@ -768,7 +778,7 @@ verifyResolutions { source, resolutions, manifest } = Except.runExceptT do
               ]
           case source of
             Importer -> do
-              log $ "Could not solve manifest:\n" <> printedError <> "\n...but continuing because this is a legacy import."
+              lift $ RegistryM.debug $ "Could not solve manifest:\n" <> printedError <> "\n...but continuing because this is a legacy import."
               pure Map.empty
             API ->
               throwError printedError
@@ -868,7 +878,7 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
         , Path.concat [ dependenciesDir, "*/src/**/*.purs" ]
         ]
   forWithIndex_ resolutions (installPackage dependenciesDir)
-  log "Compiling..."
+  RegistryM.debug "Compiling..."
   compilerOutput <- liftAff $ Purs.callCompiler
     { command: Purs.Compile { globs }
     , version: Version.print compiler
@@ -886,13 +896,13 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
       filepath = Path.concat [ dir, filename ]
 
     liftAff (withBackoff' (Wget.wget (Constants.packageStorageUrl <> "/" <> PackageName.print packageName <> "/" <> Version.print version <> ".tar.gz") filepath)) >>= case _ of
-      Nothing -> throwWithComment "Could not fetch tarball."
-      Just (Left err) -> throwWithComment $ "Error while fetching tarball: " <> err
+      Nothing -> RegistryM.die "Could not fetch tarball."
+      Just (Left err) -> RegistryM.die $ "Error while fetching tarball: " <> err
       Just (Right _) -> pure unit
 
     liftEffect $ Tar.extract { cwd: dir, archive: filename }
     liftAff $ FS.Aff.unlink filepath
-    log $ "Installed " <> PackageName.print packageName <> "@" <> Version.print version
+    RegistryM.debug $ "Installed " <> PackageName.print packageName <> "@" <> Version.print version
 
   handleCompiler tmp = case _ of
     Right _ ->
@@ -928,7 +938,7 @@ type PublishToPursuit =
 -- | packages where the `purescript-` prefix is still present.
 publishToPursuit :: PublishToPursuit -> RegistryM (Either String String)
 publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = Except.runExceptT do
-  log "Generating a resolutions file"
+  lift $ RegistryM.debug "Generating a resolutions file"
   tmp <- liftEffect Tmp.mkTmpDir
 
   let
@@ -983,12 +993,13 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
 
   authToken <- liftEffect (Node.Process.lookupEnv "PACCHETTIBOTTI_TOKEN") >>= case _ of
     Nothing -> do
-      logShow =<< liftEffect Node.Process.getEnv
+      env <- liftEffect Node.Process.getEnv
+      lift $ RegistryM.debug $ show env
       throwError "Publishing failed because there is no available auth token. cc: @purescript/packaging"
     Just token ->
       pure token
 
-  log "Pushing to Pursuit"
+  lift $ RegistryM.debug "Pushing to Pursuit"
   result <- liftAff $ Http.request
     { content: Just $ RequestBody.json publishJson
     , headers:
@@ -1037,10 +1048,7 @@ formatPursuitResolutions { resolutions, dependenciesDir } =
 
 mkEnv :: GitHub.Octokit -> Cache -> Ref (Map PackageName Metadata) -> IssueNumber -> String -> Env
 mkEnv octokit cache metadataRef issue username =
-  { comment: \comment -> Except.runExceptT (GitHub.createComment octokit issue comment) >>= case _ of
-      Left _ -> throwError $ Aff.error "Unable to create comment!"
-      Right _ -> pure unit
-  , closeIssue: Except.runExceptT (GitHub.closeIssue octokit issue) >>= case _ of
+  { closeIssue: Except.runExceptT (GitHub.closeIssue octokit issue) >>= case _ of
       Left _ -> throwError $ Aff.error "Unable to close issue!"
       Right _ -> pure unit
   , commitMetadataFile: pacchettiBottiPushToRegistryMetadata
@@ -1060,22 +1068,20 @@ fillMetadataRef :: RegistryM Unit
 fillMetadataRef = do
   registryDir <- asks _.registry
   let metadataDir = registryMetadataPath registryDir
-  packages <- liftAff do
-    FS.Extra.ensureDirectory metadataDir
-    packageList <- try (FS.Aff.readdir metadataDir) >>= case _ of
+  packages <- do
+    liftAff $ FS.Extra.ensureDirectory metadataDir
+    packageList <- liftAff (try (FS.Aff.readdir metadataDir)) >>= case _ of
       Right list -> pure $ Array.mapMaybe (String.stripSuffix $ String.Pattern ".json") list
       Left err -> do
-        error $ show err
+        RegistryM.debug $ Aff.message err
         pure []
     packagesArray <- for packageList \rawPackageName -> do
       packageName <- case PackageName.parse rawPackageName of
+        Left err -> RegistryM.die $ "Encountered error while parsing package name " <> rawPackageName <> ": " <> err
         Right p -> pure p
-        Left err -> do
-          log $ "Encountered error while parsing package name! It was: " <> rawPackageName
-          Aff.throwError $ Aff.error err
       let metadataPath = metadataFile registryDir packageName
-      metadata <- Json.readJsonFile Metadata.codec metadataPath >>= case _ of
-        Left err -> Aff.throwError $ Aff.error $ "Error parsing metadata file located at " <> metadataPath <> ": " <> err
+      metadata <- liftAff (Json.readJsonFile Metadata.codec metadataPath) >>= case _ of
+        Left err -> RegistryM.die $ "Error parsing metadata file located at " <> metadataPath <> ": " <> err
         Right val -> pure val
       pure $ packageName /\ metadata
     pure $ Map.fromFoldable packagesArray
@@ -1097,11 +1103,11 @@ locationIsUnique location = Map.isEmpty <<< Map.filter (eq location <<< _.locati
 -- | Fetch the latest from the given repository. Will perform a fresh clone if
 -- | a checkout of the repository does not exist at the given path, and will
 -- | pull otherwise.
-fetchRepo :: GitHubRepo -> FilePath -> Aff Unit
+fetchRepo :: GitHubRepo -> FilePath -> RegistryM Unit
 fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
   true -> do
-    log $ "Found the " <> address.repo <> " repo locally, pulling..."
-    result <- Except.runExceptT do
+    RegistryM.debug $ "Found the " <> address.repo <> " repo locally, pulling..."
+    result <- liftAff $ Except.runExceptT do
       branch <- Git.runGitSilent [ "rev-parse", "--abbrev-ref", "HEAD" ] (Just path)
       unless (branch == "main" || branch == "master") do
         throwError $ Array.fold
@@ -1110,25 +1116,25 @@ fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
           ]
       Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just path)
     case result of
-      Left err -> Aff.throwError $ Aff.error err
+      Left err -> RegistryM.die err
       Right _ -> pure unit
   _ -> do
-    log $ "Didn't find the " <> address.repo <> " repo, cloning..."
-    Except.runExceptT (Git.runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
-      Left err -> Aff.throwError $ Aff.error err
+    RegistryM.debug $ "Didn't find the " <> address.repo <> " repo, cloning..."
+    liftAff (Except.runExceptT (Git.runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing)) >>= case _ of
+      Left err -> RegistryM.die err
       Right _ -> pure unit
 
 fetchRegistryIndex :: RegistryM Unit
 fetchRegistryIndex = do
   registryIndexPath <- asks _.registryIndex
-  log "Fetching the most recent registry index..."
-  liftAff $ fetchRepo Constants.packageIndex registryIndexPath
+  RegistryM.debug "Fetching the most recent registry index..."
+  fetchRepo Constants.packageIndex registryIndexPath
 
 fetchRegistry :: RegistryM Unit
 fetchRegistry = do
   registryPath <- asks _.registry
-  log "Fetching the most recent registry ..."
-  liftAff $ fetchRepo Constants.registry registryPath
+  RegistryM.debug "Fetching the most recent registry ..."
+  fetchRepo Constants.registry registryPath
 
 data PursPublishMethod = LegacyPursPublish | PursPublish
 
@@ -1144,20 +1150,23 @@ fetchPackageSource
 fetchPackageSource { tmpDir, ref, location } = case location of
   Git _ -> do
     -- TODO: Support non-GitHub packages. Remember subdir when doing so. (See #15)
-    throwWithComment "Packages are only allowed to come from GitHub for now. See #15"
+    RegistryM.die "Packages are only allowed to come from GitHub for now. See #15"
 
   GitHub { owner, repo, subdir } -> do
     -- TODO: Support subdir. In the meantime, we verify subdir is not present. (See #16)
-    when (isJust subdir) $ throwWithComment "`subdir` is not supported for now. See #16"
+    when (isJust subdir) $ RegistryM.die "`subdir` is not supported for now. See #16"
 
     case pursPublishMethod of
-      LegacyPursPublish -> liftAff do
-        log $ "Cloning repo at tag: " <> show { owner, repo, ref }
-        Git.cloneGitTag (Array.fold [ "https://github.com/", owner, "/", repo ]) ref tmpDir
-        log $ "Getting published time..."
+      LegacyPursPublish -> do
+        RegistryM.debug $ "Cloning repo at tag: " <> show { owner, repo, ref }
+        let address = Array.fold [ "https://github.com/", owner, "/", repo ]
+        liftAff (try (Git.cloneGitTag address ref tmpDir)) >>= case _ of
+          Left error -> RegistryM.die $ "Could not clone " <> address <> " at ref " <> ref <> " due to a git error: " <> Aff.message error
+          Right _ -> pure unit
+        RegistryM.debug $ "Getting published time..."
         -- Cloning will result in the `repo` name as the directory name
-        publishedTime <- Except.runExceptT (Git.gitGetRefTime ref (Path.concat [ tmpDir, repo ])) >>= case _ of
-          Left error -> Aff.throwError $ Aff.error $ "Failed to get published time: " <> error
+        publishedTime <- liftAff (Except.runExceptT (Git.gitGetRefTime ref (Path.concat [ tmpDir, repo ]))) >>= case _ of
+          Left error -> RegistryM.die $ "Could not get published time for ref " <> ref <> " due to a git error: " <> error
           Right value -> pure value
         pure { packageDirectory: Path.concat [ tmpDir, repo ], publishedTime }
 
@@ -1168,21 +1177,21 @@ fetchPackageSource { tmpDir, ref, location } = case location of
             commit <- GitHub.getRefCommit octokit cache { owner, repo } ref
             GitHub.getCommitDate octokit cache { owner, repo } commit
           case result of
-            Left githubError -> throwWithComment $ "Unable to get published time for commit:\n" <> GitHub.printGitHubError githubError
+            Left githubError -> RegistryM.die $ "Unable to get published time for commit:\n" <> GitHub.printGitHubError githubError
             Right a -> pure a
         let tarballName = ref <> ".tar.gz"
         let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
         let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
-        log $ "Fetching tarball from GitHub: " <> archiveUrl
+        RegistryM.debug $ "Fetching tarball from GitHub: " <> archiveUrl
         liftAff (Wget.wget archiveUrl absoluteTarballPath) >>= case _ of
-          Left err -> throwWithComment $ "Error while fetching tarball: " <> err
+          Left err -> RegistryM.die $ "Error while fetching tarball: " <> err
           Right _ -> pure unit
-        log $ "Tarball downloaded in " <> absoluteTarballPath
+        RegistryM.debug $ "Tarball downloaded in " <> absoluteTarballPath
         liftEffect (Tar.getToplevelDir absoluteTarballPath) >>= case _ of
           Nothing ->
-            throwWithComment "Could not find a toplevel dir in the tarball!"
+            RegistryM.die "Could not find a toplevel dir in the tarball!"
           Just dir -> do
-            log "Extracting the tarball..."
+            RegistryM.debug "Extracting the tarball..."
             liftEffect $ Tar.extract { cwd: tmpDir, archive: tarballName }
             pure { packageDirectory: dir, publishedTime: commitDate }
 
@@ -1236,7 +1245,7 @@ copyPackageSourceFiles files { source, destination } = do
       { succeeded, failed } <- liftAff $ FastGlob.match source globs
 
       unless (Array.null failed) do
-        throwWithComment $ String.joinWith " "
+        RegistryM.die $ String.joinWith " "
           [ "Some paths matched by globs in the 'files' key are outside your package directory."
           , "Please ensure globs only match within your package directory, including symlinks."
           ]
@@ -1320,19 +1329,19 @@ readMetadata packageName { noMetadata } = do
   registryDir <- asks _.registry
   let metadataFilePath = metadataFile registryDir packageName
   liftEffect (FS.Sync.exists metadataFilePath) >>= case _ of
-    false -> throwWithComment noMetadata
+    false -> RegistryM.die noMetadata
     _ -> pure unit
 
-  readPackagesMetadata >>= \packages -> case Map.lookup packageName packages of
-    Nothing -> throwWithComment "Couldn't read metadata file for your package.\ncc @purescript/packaging"
+  RegistryM.readPackagesMetadata >>= \packages -> case Map.lookup packageName packages of
+    Nothing -> RegistryM.die "Couldn't read metadata file for your package.\ncc @purescript/packaging"
     Just m -> pure m
 
 writeMetadata :: PackageName -> Metadata -> RegistryM (Either String Unit)
 writeMetadata packageName metadata = do
   registryDir <- asks _.registry
   liftAff $ Json.writeJsonFile Metadata.codec (metadataFile registryDir packageName) metadata
-  updatePackagesMetadata packageName metadata
-  commitMetadataFile packageName
+  RegistryM.updatePackagesMetadata packageName metadata
+  RegistryM.commitMetadataFile packageName
 
 -- | Re-sign a payload as pacchettibotti if the authenticated operation was
 -- | submitted by a registry trustee.
@@ -1354,7 +1363,7 @@ acceptTrustees username authenticated maybeOwners = do
     pure (Tuple authenticated maybeOwners)
   else do
     liftAff (Except.runExceptT (GitHub.listTeamMembers octokit cache packagingTeam)) >>= case _ of
-      Left githubError -> throwWithComment $ Array.fold
+      Left githubError -> RegistryM.die $ Array.fold
         [ "This authenticated operation was opened using the pacchettibotti "
         , "email address, but we were unable to authenticate that you are a "
         , "member of the @purescript/packaging team:\n\n"
@@ -1362,7 +1371,7 @@ acceptTrustees username authenticated maybeOwners = do
         ]
       Right members -> do
         unless (Array.elem username (map _.username members)) do
-          throwWithComment $ Array.fold
+          RegistryM.die $ Array.fold
             [ "This authenticated operation was opened using the pacchettibotti "
             , "email address, but your username is not a member of the "
             , "@purescript/packaging team."
@@ -1371,7 +1380,7 @@ acceptTrustees username authenticated maybeOwners = do
         { publicKey, privateKey } <- readPacchettiBottiKeys
 
         signature <- liftAff (Auth.signPayload { publicKey, privateKey, rawPayload: authenticated.rawPayload }) >>= case _ of
-          Left _ -> throwWithComment "Error signing transfer. cc: @purescript/packaging"
+          Left _ -> RegistryM.die "Error signing transfer. cc: @purescript/packaging"
           Right signature -> pure signature
 
         let
@@ -1405,17 +1414,17 @@ acceptTrustees username authenticated maybeOwners = do
 readPacchettiBottiKeys :: RegistryM { publicKey :: String, privateKey :: String }
 readPacchettiBottiKeys = do
   publicKey <- liftEffect (Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519_PUB") >>= case _ of
-    Nothing -> throwWithComment "PACCHETTIBOTTI_ED25519_PUB not defined in the environment."
+    Nothing -> RegistryM.die "PACCHETTIBOTTI_ED25519_PUB not defined in the environment."
     Just b64Key -> case Base64.decode b64Key of
-      Left b64Error -> throwWithComment $ "Failed to decode base64-encoded public key: " <> Aff.message b64Error
+      Left b64Error -> RegistryM.die $ "Failed to decode base64-encoded public key: " <> Aff.message b64Error
       Right decoded -> case verifyPublicKey (String.trim decoded) of
-        Left error -> throwWithComment $ "Public key is malformed: " <> error
+        Left error -> RegistryM.die $ "Public key is malformed: " <> error
         Right key -> pure key
 
   privateKey <- liftEffect (Node.Process.lookupEnv "PACCHETTIBOTTI_ED25519") >>= case _ of
-    Nothing -> throwWithComment "PACCHETTIBOTTI_ED25519 not defined in the environment."
+    Nothing -> RegistryM.die "PACCHETTIBOTTI_ED25519 not defined in the environment."
     Just b64Key -> case Base64.decode b64Key of
-      Left _ -> throwWithComment $ "Failed to decode base64-encoded private key."
+      Left _ -> RegistryM.die $ "Failed to decode base64-encoded private key."
       Right key -> pure (String.trim key)
 
   pure { publicKey, privateKey }
@@ -1459,7 +1468,7 @@ loadEnv :: Aff Dotenv.Settings
 loadEnv = do
   contents <- Aff.try $ FS.Aff.readTextFile UTF8 envFilePath
   case contents of
-    Left _ -> log ("Not loading .env file because none was found at path: " <> envFilePath) $> []
+    Left _ -> Console.log ("Not loading .env file because none was found at path: " <> envFilePath) $> []
     Right string -> Dotenv.loadContents (String.trim string)
 
 data LegacyRegistryFile = BowerPackages | NewPackages
@@ -1482,13 +1491,13 @@ syncLegacyRegistry package location = do
 
   packageUrl <- case location of
     GitHub { owner, repo } -> pure $ GitHub.PackageURL $ Array.fold [ "https://github.com/", owner, "/", repo, ".git" ]
-    _ -> throwWithComment "Could not sync package with legacy registry: packages must come from GitHub. (cc: @purescript/packaging)"
+    _ -> RegistryM.die "Could not sync package with legacy registry: packages must come from GitHub. (cc: @purescript/packaging)"
 
   let
     readLegacyFile file = do
       let path = Path.concat [ registryDir, legacyRegistryFilePath file ]
       liftAff (Json.readJsonFile legacyRegistryCodec path) >>= case _ of
-        Left err -> throwWithComment $ "Could not sync package with legacy registry (could not read " <> path <> "(cc: @purescript/packaging): " <> err
+        Left err -> RegistryM.die $ "Could not sync package with legacy registry (could not read " <> path <> "(cc: @purescript/packaging): " <> err
         Right packages -> pure packages
 
   newPackages <- readLegacyFile NewPackages
@@ -1527,8 +1536,8 @@ syncLegacyRegistry package location = do
       let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
       void $ Git.runGit_ [ "push", origin, "main" ] (Just registryDir)
     case result of
-      Left err -> throwWithComment err
-      Right _ -> comment "Synced new package with legacy registry files."
+      Left err -> RegistryM.die err
+      Right _ -> RegistryM.info "Synced new package with legacy registry files."
 
 mkNewMetadata :: Location -> Metadata
 mkNewMetadata location = Metadata
