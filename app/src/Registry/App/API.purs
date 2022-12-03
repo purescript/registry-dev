@@ -63,14 +63,13 @@ import Registry.App.Cache (Cache)
 import Registry.App.Cache as Cache
 import Registry.App.Json as Json
 import Registry.App.LenientVersion as LenientVersion
+import Registry.App.Monad (class MonadRegistry, GitHubEnv, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, updatePackagesMetadata, uploadPackage)
+import Registry.App.Monad as App
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
 import Registry.App.PackageStorage as PackageStorage
-import Registry.App.RegistryM (GitHubEnv)
-import Registry.App.RegistryM as RegistryM
 import Registry.Constants (GitHubRepo)
 import Registry.Constants as Constants
-import Registry.Effect.Class (class MonadRegistry, commitMetadataFile, commitPackageSetFile, deletePackage, readPackagesMetadata, updatePackagesMetadata, uploadPackage)
 import Registry.Effect.Log as Log
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Legacy.PackageSet as Legacy.PackageSet
@@ -125,7 +124,7 @@ main = launchAff_ $ do
       FS.Extra.ensureDirectory scratchDir
       cache <- Cache.useCache cacheDir
       packagesMetadata <- liftEffect $ Ref.new Map.empty
-      RegistryM.runGitHubM (mkGitHubEnv octokit cache packagesMetadata issue username) do
+      App.runGitHubM (mkGitHubEnv octokit cache packagesMetadata issue username) do
         Log.info $ case operation of
           Left packageSetOperation -> case packageSetOperation of
             PackageSetUpdate _ ->
@@ -365,7 +364,7 @@ runOperation source operation = case operation of
                 Right legacyPackageSet -> do
                   Legacy.PackageSet.mirrorLegacySet legacyPackageSet
                   Log.info "Mirrored a new legacy package set."
-                  RegistryM.closeIssue
+                  App.closeIssue
         _ -> do
           Log.die "The package set produced from this suggested update does not compile."
 
@@ -445,7 +444,7 @@ runOperation source operation = case operation of
 
             Log.info "Successfully unpublished!"
 
-      RegistryM.closeIssue
+      App.closeIssue
 
     Transfer { name, newLocation } -> do
       username <- asks _.username
@@ -502,7 +501,7 @@ runOperation source operation = case operation of
                       Log.info "Successfully transferred your package!"
                       syncLegacyRegistry name newLocation
 
-          RegistryM.closeIssue
+          App.closeIssue
 
 registryMetadataPath :: FilePath -> FilePath
 registryMetadataPath registryPath = Path.concat [ registryPath, Constants.packageMetadataDirectory ]
@@ -668,7 +667,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
     Right _ ->
       Log.info "Successfully uploaded package to the registry! 🎉 🚀"
 
-  RegistryM.closeIssue
+  App.closeIssue
 
   -- After a package has been uploaded we add it to the registry index, we
   -- upload its documentation to Pursuit, and we can now process it for package

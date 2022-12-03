@@ -50,8 +50,7 @@ import Parsing as Parsing
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Registry.App.Json as Json
-import Registry.App.RegistryM (GitHubEnv)
-import Registry.Effect.Class (class MonadRegistry)
+import Registry.App.Monad (class MonadRegistry, GitHubEnv)
 import Registry.Effect.Log as Log
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format

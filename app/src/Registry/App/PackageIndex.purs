@@ -11,9 +11,8 @@ import Data.String as String
 import Foreign.FastGlob (Include(..))
 import Foreign.FastGlob as FastGlob
 import Node.Path as Path
-import Registry.App.RegistryM (GitHubEnv)
-import Registry.Effect.Class (class MonadRegistry)
-import Registry.Effect.Class as Registry
+import Registry.App.Monad (class MonadRegistry, GitHubEnv)
+import Registry.App.Monad as App
 import Registry.Effect.Log as Log
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
@@ -53,7 +52,7 @@ writeInsertIndex manifest@(Manifest { name }) = do
   registryIndexDir <- asks _.registryIndex
   ManifestIndex.insertIntoEntryFile registryIndexDir manifest >>= case _ of
     Left error -> pure (Left error)
-    Right _ -> Registry.commitIndexFile name
+    Right _ -> App.commitIndexFile name
 
 -- | Attempt to delete a manifest from the registry manifest index, committing
 -- | the result.
@@ -62,4 +61,4 @@ writeDeleteIndex name version = do
   registryIndexDir <- asks _.registryIndex
   ManifestIndex.removeFromEntryFile registryIndexDir name version >>= case _ of
     Left error -> pure (Left error)
-    Right _ -> Registry.commitIndexFile name
+    Right _ -> App.commitIndexFile name

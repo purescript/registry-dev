@@ -23,9 +23,8 @@ import Registry.App.API (LegacyRegistryFile(..), Source(..))
 import Registry.App.API as API
 import Registry.App.Cache as Cache
 import Registry.App.LenientVersion as LenientVersion
-import Registry.App.RegistryM (GitHubEnv, LocalEnv)
-import Registry.App.RegistryM as RegistryM
-import Registry.Effect.Class (class MonadRegistry, readPackagesMetadata)
+import Registry.App.Monad (class MonadRegistry, GitHubEnv, LocalEnv, readPackagesMetadata)
+import Registry.App.Monad as App
 import Registry.Effect.Log as Log
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))
 import Registry.Operation as Operation
@@ -64,7 +63,7 @@ main = launchAff_ do
       , logfile: Path.concat [ API.scratchDir, "package-transferrer-logs.txt" ]
       }
 
-  RegistryM.runLocalM env do
+  App.runLocalM env do
     API.fetchRegistry
     API.fillMetadataRef
     for_ [ BowerPackages, NewPackages ] processLegacyRegistry

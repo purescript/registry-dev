@@ -40,9 +40,8 @@ import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Registry.App.Json as Json
-import Registry.App.RegistryM (GitHubEnv)
+import Registry.App.Monad (class MonadRegistry, GitHubEnv)
 import Registry.Constants as Constants
-import Registry.Effect.Class (class MonadRegistry)
 import Registry.Effect.Log as Log
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName

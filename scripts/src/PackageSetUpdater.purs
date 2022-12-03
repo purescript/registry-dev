@@ -19,11 +19,10 @@ import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.App.API as API
 import Registry.App.Json as Json
+import Registry.App.Monad (class MonadRegistry, LocalEnv, commitPackageSetFile, readPackagesMetadata)
+import Registry.App.Monad as App
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
-import Registry.App.RegistryM (LocalEnv)
-import Registry.App.RegistryM as RegistryM
-import Registry.Effect.Class (class MonadRegistry, commitPackageSetFile, readPackagesMetadata)
 import Registry.Effect.Log as Log
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName as PackageName
@@ -83,7 +82,7 @@ main = Aff.launchAff_ do
       , logfile: Path.concat [ API.scratchDir, "package-set-updater-logs.txt" ]
       }
 
-  RegistryM.runLocalM env do
+  App.runLocalM env do
     API.fetchRegistryIndex
     API.fetchRegistry
     API.fillMetadataRef

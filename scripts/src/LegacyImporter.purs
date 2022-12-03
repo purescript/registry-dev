@@ -45,11 +45,10 @@ import Registry.App.Json (JsonCodec)
 import Registry.App.Json as Json
 import Registry.App.LenientVersion (LenientVersion)
 import Registry.App.LenientVersion as LenientVersion
+import Registry.App.Monad (class MonadRegistry, GitHubEnv, commitMetadataFile, readPackagesMetadata)
+import Registry.App.Monad as App
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageStorage as PackageStorage
-import Registry.App.RegistryM (GitHubEnv)
-import Registry.App.RegistryM as RegistryM
-import Registry.Effect.Class (class MonadRegistry, commitMetadataFile, readPackagesMetadata)
 import Registry.Effect.Log as Log
 import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError, LegacyPackageSetEntries)
 import Registry.Legacy.Manifest as Legacy.Manifest
@@ -162,7 +161,7 @@ main = launchAff_ do
         , logfile: Path.concat [ API.scratchDir, "legacy-importer-logs.txt " ]
         }
 
-  RegistryM.runLocalM env do
+  App.runLocalM env do
     API.fetchRegistry
     API.fetchRegistryIndex
     API.fillMetadataRef

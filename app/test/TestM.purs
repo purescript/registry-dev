@@ -9,9 +9,8 @@ import Effect.Exception (Error)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import Foreign.GitHub (GitHubToken(..), IssueNumber(..), mkOctokit)
-import Registry.App.RegistryM (GitHubEnv)
-import Registry.Effect.Class (class MonadRegistry)
-import Registry.Effect.Class as Registry
+import Registry.App.Monad (class MonadRegistry, GitHubEnv)
+import Registry.App.Monad as App
 import Registry.Effect.Log (class MonadLog, runLogConsole)
 
 -- TODO: Once we have actually separated out the effects, this doesn't need any
@@ -36,13 +35,13 @@ instance MonadLog TestM where
   log = runLogConsole
 
 instance MonadRegistry TestM where
-  commitMetadataFile = Registry.handleCommitMetadataFile
-  commitIndexFile = Registry.handleCommitIndexFile
-  commitPackageSetFile = Registry.handleCommitPackageSetFile
-  uploadPackage = Registry.handleUploadPackage
-  deletePackage = Registry.handleDeletePackage
-  updatePackagesMetadata = Registry.handleUpdatePackagesMetadata
-  readPackagesMetadata = Registry.handleReadPackagesMetadata
+  commitMetadataFile = App.handleCommitMetadataFile
+  commitIndexFile = App.handleCommitIndexFile
+  commitPackageSetFile = App.handleCommitPackageSetFile
+  uploadPackage = App.handleUploadPackage
+  deletePackage = App.handleDeletePackage
+  updatePackagesMetadata = App.handleUpdatePackagesMetadata
+  readPackagesMetadata = App.handleReadPackagesMetadata
 
 runTestM :: TestEnv -> TestM ~> Aff
 runTestM env (TestM m) = runReaderT m env
