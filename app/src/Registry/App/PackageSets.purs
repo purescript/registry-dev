@@ -15,7 +15,7 @@ import Registry.App.Prelude
 
 import Affjax as Http
 import Control.Alternative (guard)
-import Control.Monad.Reader (ReaderT, asks)
+import Control.Monad.Reader (class MonadAsk, ReaderT, asks)
 import Control.Monad.Reader as ReaderT
 import Data.Array as Array
 import Data.Bitraversable (ltraverse)
@@ -40,26 +40,27 @@ import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Registry.App.Json as Json
-import Registry.App.RegistryM (RegistryM)
-import Registry.App.RegistryM as RegistryM
+import Registry.App.RegistryM (GitHubEnv)
 import Registry.Constants as Constants
+import Registry.Effect.Class (class MonadRegistry)
+import Registry.Effect.Log as Log
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
 import Registry.Version as Version
 
-getPackageSetsPath :: RegistryM FilePath
+getPackageSetsPath :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => m FilePath
 getPackageSetsPath = do
   registryPath <- asks _.registry
   pure $ Path.concat [ registryPath, Constants.packageSetsDirectory ]
 
-getPackageSetPath :: Version -> RegistryM FilePath
+getPackageSetPath :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => Version -> m FilePath
 getPackageSetPath version = do
   packageSets <- getPackageSetsPath
   pure $ Path.concat [ packageSets, Version.print version <> ".json" ]
 
 -- | Read the most recent package set release
-readLatestPackageSet :: RegistryM PackageSet
+readLatestPackageSet :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => m PackageSet
 readLatestPackageSet = do
   packageSetsPath <- getPackageSetsPath
   packageSetFiles <- liftAff $ FS.Aff.readdir packageSetsPath
@@ -71,11 +72,11 @@ readLatestPackageSet = do
       hush $ Version.parse versionString
 
   case Array.last (Array.sort packageSetVersions) of
-    Nothing -> RegistryM.die "No existing package set."
+    Nothing -> Log.die "No existing package set."
     Just version -> do
       path <- getPackageSetPath version
       liftAff (Json.readJsonFile PackageSet.codec path) >>= case _ of
-        Left err -> RegistryM.die $ "Could not decode latest package set: " <> err
+        Left err -> Log.die $ "Could not decode latest package set: " <> err
         Right set -> pure set
 
 type Paths =
@@ -104,7 +105,7 @@ type PackageSetBatchResult =
 -- | Attempt to produce a new package set from the given package set by adding
 -- | or removing the provided packages. Fails if the batch is not usable as a
 -- | whole. To fall back to sequential processing, use `processBatchSequential`.
-processBatchAtomic :: FilePath -> ManifestIndex -> PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> RegistryM (Maybe PackageSetBatchResult)
+processBatchAtomic :: forall m. MonadRegistry m => FilePath -> ManifestIndex -> PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> m (Maybe PackageSetBatchResult)
 processBatchAtomic workDir index prevSet@(PackageSet { compiler: prevCompiler, packages }) newCompiler batch = do
   let
     compilerVersion = fromMaybe prevCompiler newCompiler
@@ -122,7 +123,7 @@ processBatchAtomic workDir index prevSet@(PackageSet { compiler: prevCompiler, p
   buildInitialSet >>= case _ of
     Left compilerError -> do
       handleCompilerError compilerVersion compilerError
-      RegistryM.die "Starting package set must compile in order to process a batch."
+      Log.die "Starting package set must compile in order to process a batch."
     Right _ -> pure unit
 
   runWithPaths workDir (tryBatch compilerVersion prevSet batch) >>= case _ of
@@ -137,7 +138,7 @@ processBatchAtomic workDir index prevSet@(PackageSet { compiler: prevCompiler, p
 -- | Attempt to produce a new package set from the given package set by adding
 -- | or removing the provided packages. Attempts the entire batch first, and
 -- | then falls sequential processing if that fails.
-processBatchSequential :: FilePath -> ManifestIndex -> PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> RegistryM (Maybe PackageSetBatchResult)
+processBatchSequential :: forall m. MonadRegistry m => FilePath -> ManifestIndex -> PackageSet -> Maybe Version -> Map PackageName (Maybe Version) -> m (Maybe PackageSetBatchResult)
 processBatchSequential workDir registryIndex prevSet@(PackageSet { compiler: prevCompiler, packages }) newCompiler batch = do
   processBatchAtomic workDir registryIndex prevSet newCompiler batch >>= case _ of
     Just batchResult ->
@@ -204,12 +205,12 @@ updatePackageSetMetadata { previous, pending: PackageSet pending } changed = do
   let version = computeVersion previous changed
   pure $ PackageSet (pending { version = version, published = DateTime.date now })
 
-handleCompilerError :: Version -> Purs.CompilerFailure -> RegistryM Unit
+handleCompilerError :: forall m. MonadRegistry m => Version -> Purs.CompilerFailure -> m Unit
 handleCompilerError compilerVersion = case _ of
   MissingCompiler ->
-    RegistryM.die $ "Missing compiler version " <> Version.print compilerVersion
+    Log.die $ "Missing compiler version " <> Version.print compilerVersion
   UnknownError err ->
-    RegistryM.die $ "Unknown error: " <> err
+    Log.die $ "Unknown error: " <> err
   CompilationError errs -> do
     Console.log "Compilation failed:\n"
     Console.log $ Purs.printCompilerErrors errs <> "\n"
@@ -418,7 +419,7 @@ type ValidatedCandidates =
   }
 
 -- | Validate a package set is self-contained, ignoring version bounds.
-validatePackageSet :: ManifestIndex -> PackageSet -> RegistryM Unit
+validatePackageSet :: forall m. MonadRegistry m => ManifestIndex -> PackageSet -> m Unit
 validatePackageSet index (PackageSet set) = do
   let
     errorPrefix = "Package set " <> Version.print set.version <> " is invalid!\n"
@@ -447,7 +448,7 @@ validatePackageSet index (PackageSet set) = do
         , Version.print package.version
         ]
 
-    RegistryM.die $ String.joinWith "\n"
+    Log.die $ String.joinWith "\n"
       [ errorPrefix
       , "Some package versions in the package set are not registered:"
       , String.joinWith "\n" failedMessages
@@ -478,7 +479,7 @@ validatePackageSet index (PackageSet set) = do
         , ")."
         ]
 
-    RegistryM.die $ String.joinWith "\n"
+    Log.die $ String.joinWith "\n"
       [ errorPrefix
       , "Some package versions in the set have unsatisfied dependencies:"
       , String.joinWith "\n" failedMessages

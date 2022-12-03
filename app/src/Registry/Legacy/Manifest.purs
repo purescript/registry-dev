@@ -3,7 +3,7 @@ module Registry.Legacy.Manifest where
 import Registry.App.Prelude
 
 import Control.Monad.Except as Except
-import Control.Monad.Reader (ask)
+import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Array as Array
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
@@ -30,8 +30,9 @@ import Registry.App.Cache as Cache
 import Registry.App.Json as Json
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
-import Registry.App.RegistryM (RegistryM)
-import Registry.App.RegistryM as RegistryM
+import Registry.App.RegistryM (GitHubEnv)
+import Registry.Effect.Class (class MonadRegistry)
+import Registry.Effect.Log as Log
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry, legacyPackageSetCodec)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
@@ -55,7 +56,7 @@ toManifest name version location { license, description, dependencies } = do
   let owners = Nothing
   Manifest { name, version, location, license, description, dependencies, files, owners }
 
-fetchLegacyManifest :: Maybe (Map PackageName RawVersion) -> GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError RegistryM LegacyManifest
+fetchLegacyManifest :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => Maybe (Map PackageName RawVersion) -> GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError m LegacyManifest
 fetchLegacyManifest packageSetsDeps address ref = do
   manifests <- fetchLegacyManifestFiles address ref
 
@@ -182,7 +183,7 @@ printLegacyManifestError = case _ of
   where
   printDepError { name, range, error } = "[{ " <> name <> ": " <> range <> "}, " <> error <> "]"
 
-fetchLegacyManifestFiles :: GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError RegistryM (These Bowerfile SpagoDhallJson)
+fetchLegacyManifestFiles :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError m (These Bowerfile SpagoDhallJson)
 fetchLegacyManifestFiles address ref = ExceptT do
   eitherBower <- Except.runExceptT $ fetchBowerfile address ref
   eitherSpago <- Except.runExceptT $ fetchSpagoDhallJson address ref
@@ -192,7 +193,7 @@ fetchLegacyManifestFiles address ref = ExceptT do
     Left _, Right spago -> Right $ That spago
     Right bower, Right spago -> Right $ Both bower spago
 
-detectLicenses :: GitHub.Address -> RawVersion -> RegistryM (Array NonEmptyString)
+detectLicenses :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => GitHub.Address -> RawVersion -> m (Array NonEmptyString)
 detectLicenses address ref = do
   { octokit, cache } <- ask
   let getFile = liftAff <<< Except.runExceptT <<< GitHub.getContent octokit cache address (un RawVersion ref)
@@ -201,7 +202,7 @@ detectLicenses address ref = do
   let packageJsonInput = { name: "package.json", contents: _ } <$> hush packageJsonFile
   let licenseInput = { name: "LICENSE", contents: _ } <$> hush licenseFile
   liftAff (Licensee.detectFiles (Array.catMaybes [ packageJsonInput, licenseInput ])) >>= case _ of
-    Left err -> RegistryM.debug ("Licensee decoding error, ignoring: " <> err) $> []
+    Left err -> Log.debug ("Licensee decoding error, ignoring: " <> err) $> []
     Right licenses -> pure $ Array.mapMaybe NonEmptyString.fromString licenses
 
 validateLicense :: Array NonEmptyString -> Either LegacyManifestValidationError License
@@ -281,7 +282,7 @@ spagoDhallJsonCodec = Profunctor.dimap toRep fromRep $ Json.object "SpagoDhallJs
 
 -- | Attempt to construct a SpagoDhallJson file from a spago.dhall and
 -- | packages.dhall file located in a remote repository at the given ref.
-fetchSpagoDhallJson :: GitHub.Address -> RawVersion -> ExceptT GitHub.GitHubError RegistryM SpagoDhallJson
+fetchSpagoDhallJson :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => GitHub.Address -> RawVersion -> ExceptT GitHub.GitHubError m SpagoDhallJson
 fetchSpagoDhallJson address (RawVersion ref) = do
   { octokit, cache } <- ask
   let getFile = Except.mapExceptT liftAff <<< GitHub.getContent octokit cache address ref
@@ -338,7 +339,7 @@ bowerfileCodec = Profunctor.dimap toRep fromRep $ Json.object "Bowerfile"
 
 -- | Attempt to construct a Bowerfile from a bower.json file located in a
 -- | remote repository at the given ref.
-fetchBowerfile :: GitHub.Address -> RawVersion -> ExceptT GitHub.GitHubError RegistryM Bowerfile
+fetchBowerfile :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => GitHub.Address -> RawVersion -> ExceptT GitHub.GitHubError m Bowerfile
 fetchBowerfile address (RawVersion ref) = do
   { octokit, cache } <- ask
   bowerfile <- Except.mapExceptT liftAff $ GitHub.getContent octokit cache address ref "bower.json"
@@ -351,12 +352,12 @@ type LegacyPackageSetEntries = Map PackageName (Map RawVersion (Map PackageName 
 legacyPackageSetEntriesCodec :: JsonCodec LegacyPackageSetEntries
 legacyPackageSetEntriesCodec = Internal.Codec.packageMap $ rawVersionMapCodec $ Internal.Codec.packageMap rawVersionCodec
 
-fetchLegacyPackageSets :: RegistryM LegacyPackageSetEntries
+fetchLegacyPackageSets :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => m LegacyPackageSetEntries
 fetchLegacyPackageSets = do
   { octokit, cache } <- ask
   result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache Legacy.PackageSet.legacyPackageSetsRepo
   tags <- case result of
-    Left err -> RegistryM.die (GitHub.printGitHubError err)
+    Left err -> Log.die (GitHub.printGitHubError err)
     Right tags -> pure $ Legacy.PackageSet.filterLegacyPackageSets tags
 
   let
@@ -385,14 +386,14 @@ fetchLegacyPackageSets = do
     -- all into memory and fold over them.
     liftEffect (Cache.readJsonEntry legacyPackageSetEntriesCodec tagKey cache) >>= case _ of
       Left _ -> do
-        RegistryM.debug $ "CACHE MISS: Building legacy package sets..."
+        Log.debug $ "CACHE MISS: Building legacy package sets..."
         entries <- for tags \ref -> do
           let setKey = "legacy-package-set__" <> ref
           -- We persist API errors if received.
           let setCodec = CA.Common.either GitHub.githubErrorCodec legacyPackageSetEntriesCodec
           setEntries <- liftEffect (Cache.readJsonEntry setCodec setKey cache) >>= case _ of
             Left _ -> do
-              RegistryM.debug $ "CACHE MISS: Building legacy package set for " <> ref
+              Log.debug $ "CACHE MISS: Building legacy package set for " <> ref
               converted <- Except.runExceptT do
                 packagesJson <- Except.mapExceptT liftAff $ GitHub.getContent octokit cache Legacy.PackageSet.legacyPackageSetsRepo ref "packages.json"
                 parsed <- Except.except $ case Json.parseJson legacyPackageSetCodec packagesJson of
@@ -405,7 +406,7 @@ fetchLegacyPackageSets = do
               pure contents.value
           case setEntries of
             Left err -> do
-              RegistryM.debug $ "Failed to retrieve " <> ref <> " package set:\n" <> GitHub.printGitHubError err
+              Log.debug $ "Failed to retrieve " <> ref <> " package set:\n" <> GitHub.printGitHubError err
               pure Map.empty
             Right value -> pure value
 

@@ -3,6 +3,7 @@ module Registry.Scripts.PackageTransferrer where
 import Registry.App.Prelude
 
 import Control.Monad.Except as Except
+import Control.Monad.Reader (class MonadAsk)
 import Data.Argonaut.Core as Argonaut
 import Data.Array as Array
 import Data.Codec as Codec
@@ -13,7 +14,7 @@ import Effect.Exception as Exception
 import Effect.Ref as Ref
 import Effect.Unsafe as Effect.Unsafe
 import Foreign.Git as Git
-import Foreign.GitHub (GitHubToken(..))
+import Foreign.GitHub (GitHubToken(..), IssueNumber(..))
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
@@ -22,15 +23,14 @@ import Registry.App.API (LegacyRegistryFile(..), Source(..))
 import Registry.App.API as API
 import Registry.App.Cache as Cache
 import Registry.App.LenientVersion as LenientVersion
-import Registry.App.RegistryM (RegistryEffects, RegistryM)
+import Registry.App.RegistryM (GitHubEnv, LocalEnv)
 import Registry.App.RegistryM as RegistryM
+import Registry.Effect.Class (class MonadRegistry, readPackagesMetadata)
 import Registry.Effect.Log as Log
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
 import Registry.Scripts.LegacyImporter as LegacyImporter
-import Run (Run)
-import Run as Run
 
 main :: Effect Unit
 main = launchAff_ do
@@ -46,7 +46,7 @@ main = launchAff_ do
   cache <- Cache.useCache API.cacheDir
 
   let
-    env :: RegistryM.Env
+    env :: LocalEnv
     env =
       { closeIssue: Console.log "Running locally, not closing issue..."
       , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
@@ -57,37 +57,33 @@ main = launchAff_ do
       , packagesMetadata: Effect.Unsafe.unsafePerformEffect (Ref.new Map.empty)
       , cache
       , octokit
+      , issue: IssueNumber 0
       , username: "pacchettibotti"
       , registry: Path.concat [ API.scratchDir, "registry" ]
       , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
+      , logfile: Path.concat [ API.scratchDir, "package-transferrer-logs.txt" ]
       }
 
-    effects :: Run RegistryEffects ~> Aff
-    effects =
-      Log.runLogExcept
-        >>> Run.interpret (Run.on Log._log (Log.handleLogFile (Path.concat [ API.scratchDir, "package-transferrer-logfile.txt" ])) Run.send)
-        >>> Run.runBaseAff'
-
-  RegistryM.runRegistryM env effects do
+  RegistryM.runLocalM env do
     API.fetchRegistry
     API.fillMetadataRef
     for_ [ BowerPackages, NewPackages ] processLegacyRegistry
-    RegistryM.info "Done!"
+    Log.info "Done!"
 
-processLegacyRegistry :: LegacyRegistryFile -> RegistryM Unit
+processLegacyRegistry :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => LegacyRegistryFile -> m Unit
 processLegacyRegistry legacyFile = do
-  RegistryM.debug $ Array.fold [ "Reading legacy registry file (", API.legacyRegistryFilePath legacyFile, ")" ]
+  Log.debug $ Array.fold [ "Reading legacy registry file (", API.legacyRegistryFilePath legacyFile, ")" ]
   packages <- LegacyImporter.readLegacyRegistryFile legacyFile
-  RegistryM.debug "Reading latest locations..."
+  Log.debug "Reading latest locations..."
   locations <- latestLocations packages
   let needsTransfer = Map.catMaybes locations
   case Map.size needsTransfer of
-    0 -> RegistryM.debug "No packages require transferring."
-    n -> RegistryM.debug $ Array.fold [ show n, " packages need transferring." ]
+    0 -> Log.debug "No packages require transferring."
+    n -> Log.debug $ Array.fold [ show n, " packages need transferring." ]
   _ <- transferAll packages needsTransfer
-  RegistryM.debug "Completed transfers!"
+  Log.debug "Completed transfers!"
 
-transferAll :: Map String GitHub.PackageURL -> Map String PackageLocations -> RegistryM (Map String GitHub.PackageURL)
+transferAll :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => Map String GitHub.PackageURL -> Map String PackageLocations -> m (Map String GitHub.PackageURL)
 transferAll packages packageLocations = do
   packagesRef <- liftEffect (Ref.new packages)
   forWithIndex_ packageLocations \package locations -> do
@@ -97,10 +93,10 @@ transferAll packages packageLocations = do
     liftEffect $ Ref.modify_ (Map.insert package url) packagesRef
   liftEffect $ Ref.read packagesRef
 
-transferPackage :: String -> Location -> RegistryM Unit
+transferPackage :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => String -> Location -> m Unit
 transferPackage rawPackageName newLocation = do
   name <- case PackageName.parse (stripPureScriptPrefix rawPackageName) of
-    Left _ -> RegistryM.die $ "Unexpected package name parsing failure for " <> rawPackageName
+    Left _ -> Log.die $ "Unexpected package name parsing failure for " <> rawPackageName
     Right value -> pure value
 
   let
@@ -119,19 +115,19 @@ type PackageLocations =
   , tagLocation :: Location
   }
 
-latestLocations :: Map String GitHub.PackageURL -> RegistryM (Map String (Maybe PackageLocations))
+latestLocations :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => Map String GitHub.PackageURL -> m (Map String (Maybe PackageLocations))
 latestLocations packages = forWithIndex packages \package location -> do
   let rawName = RawPackageName (stripPureScriptPrefix package)
   Except.runExceptT (LegacyImporter.validatePackage rawName location) >>= case _ of
     Left _ -> pure Nothing
     Right packageResult | Array.null packageResult.tags -> pure Nothing
     Right packageResult -> do
-      packagesMetadata <- RegistryM.readPackagesMetadata
+      packagesMetadata <- readPackagesMetadata
       case Map.lookup packageResult.name packagesMetadata of
-        Nothing -> RegistryM.die $ "No metadata exists for package " <> package
+        Nothing -> Log.die $ "No metadata exists for package " <> package
         Just metadata -> do
           Except.runExceptT (latestPackageLocations packageResult metadata) >>= case _ of
-            Left err -> RegistryM.debug err *> pure Nothing
+            Left err -> Log.debug err *> pure Nothing
             Right locations
               | locationsMatch locations.metadataLocation locations.tagLocation -> pure Nothing
               | otherwise -> pure $ Just locations
@@ -144,7 +140,7 @@ latestLocations packages = forWithIndex packages \package location -> do
   locationsMatch _ _ =
     unsafeCrashWith "Only GitHub locations can be considered in legacy registries."
 
-latestPackageLocations :: LegacyImporter.PackageResult -> Metadata -> ExceptT String RegistryM PackageLocations
+latestPackageLocations :: forall m. MonadRegistry m => LegacyImporter.PackageResult -> Metadata -> ExceptT String m PackageLocations
 latestPackageLocations package (Metadata { location, published }) = do
   let
     isMatchingTag :: Version -> GitHub.Tag -> Boolean

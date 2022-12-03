@@ -17,8 +17,6 @@ import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.PackageIndex as PackageIndex
-import Registry.App.RegistryM (RegistryM)
-import Registry.App.RegistryM as RegistryM
 import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
 import Registry.Manifest as Manifest
@@ -28,8 +26,9 @@ import Registry.Range as Range
 import Registry.Version as Version
 import Test.Assert as Assert
 import Test.Fixture.Manifest as Fixture
-import Test.RegistrySpec as RegistrySpec
 import Test.Spec as Spec
+import Test.TestM (TestM)
+import Test.TestM as TestM
 
 type TestIndexEnv =
   { tmp :: FilePath
@@ -45,9 +44,8 @@ mkTestIndexEnv = liftEffect do
 spec :: TestIndexEnv -> Spec.Spec Unit
 spec env = Spec.hoistSpec identity (\_ m -> Reader.runReaderT m env) testRegistryIndex
 
-runTestRegistryM :: forall m a. MonadAff m => FilePath -> RegistryM a -> m a
-runTestRegistryM index =
-  liftAff <<< RegistryM.runRegistryM (RegistrySpec.defaultTestEnv { registryIndex = index }) RegistrySpec.defaultTestEffectHandler
+runTestRegistryM :: forall m a. MonadAff m => FilePath -> TestM a -> m a
+runTestRegistryM index = liftAff <<< TestM.runTestM (TestM.defaultTestEnv { registryIndex = index })
 
 testRegistryIndex :: Spec.SpecT (Reader.ReaderT TestIndexEnv Aff) Unit Identity Unit
 testRegistryIndex = Spec.before runBefore do

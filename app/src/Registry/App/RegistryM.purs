@@ -2,113 +2,87 @@ module Registry.App.RegistryM where
 
 import Registry.App.Prelude
 
-import Control.Monad.Error.Class (class MonadThrow)
 import Control.Monad.Reader (class MonadAsk, ReaderT, ask, asks, runReaderT)
-import Data.Map as Map
-import Effect.Exception (Error)
-import Effect.Ref as Ref
-import Foreign.GitHub (Octokit)
+import Foreign.GitHub (IssueNumber, Octokit)
 import Registry.App.Cache (Cache)
-import Registry.App.PackageStorage as PackageStorage
-import Registry.Effect.Log (LOG, LOG_EXCEPT)
-import Registry.Effect.Log as Log
-import Run (AFF, EFFECT, Run)
+import Registry.Effect.Class (class MonadRegistry, HandlersEnv, MetadataEnv, RepoEnv)
+import Registry.Effect.Class as Registry
+import Registry.Effect.Log (class MonadLog, runLogFile, runLogGitHub)
 
-type Env =
+type GitHubEnv r =
   { closeIssue :: Aff Unit
-  , commitMetadataFile :: PackageName -> FilePath -> Aff (Either String Unit)
-  , commitIndexFile :: PackageName -> FilePath -> Aff (Either String Unit)
-  , commitPackageSetFile :: Version -> String -> FilePath -> Aff (Either String Unit)
-  , uploadPackage :: PackageStorage.PackageInfo -> FilePath -> Aff Unit
-  , deletePackage :: PackageStorage.PackageInfo -> Aff Unit
   , octokit :: Octokit
   , username :: String
-  , packagesMetadata :: Ref (Map PackageName Metadata)
+  , issue :: IssueNumber
   , cache :: Cache
-  , registry :: FilePath
-  , registryIndex :: FilePath
+  | HandlersEnv + MetadataEnv + RepoEnv r
   }
 
-newtype RegistryM a = RegistryM (ReaderT Env (Run RegistryEffects) a)
-
-derive instance Newtype (RegistryM a) _
-
-derive newtype instance Functor RegistryM
-derive newtype instance Apply RegistryM
-derive newtype instance Applicative RegistryM
-derive newtype instance Bind RegistryM
-derive newtype instance Monad RegistryM
-derive newtype instance MonadEffect RegistryM
-derive newtype instance MonadAff RegistryM
-derive newtype instance MonadAsk Env RegistryM
-
-instance MonadThrow Error RegistryM where
-  throwError = liftAff <<< throwError
-
-runRegistryM :: forall a. Env -> (Run RegistryEffects ~> Aff) -> RegistryM a -> Aff a
-runRegistryM env handler (RegistryM m) = handler (runReaderT m env)
-
 -- | Close the issue for the current pipeline
-closeIssue :: RegistryM Unit
+closeIssue :: forall m r. MonadAsk { closeIssue :: Aff Unit | r } m => MonadRegistry m => m Unit
 closeIssue = asks _.closeIssue >>= liftAff
 
-commitMetadataFile :: PackageName -> RegistryM (Either String Unit)
-commitMetadataFile packageName = do
-  env <- ask
-  liftAff $ env.commitMetadataFile packageName env.registry
+-- | A monad for running `MonadRegistry` in the GitHub environment.
+newtype GitHubM a = GitHubM (ReaderT (GitHubEnv ()) Aff a)
 
-commitIndexFile :: PackageName -> RegistryM (Either String Unit)
-commitIndexFile packageName = do
-  env <- ask
-  liftAff $ env.commitIndexFile packageName env.registryIndex
+derive instance Newtype (GitHubM a) _
 
-commitPackageSetFile :: Version -> String -> RegistryM (Either String Unit)
-commitPackageSetFile version commitMessage = do
-  env <- ask
-  liftAff $ env.commitPackageSetFile version commitMessage env.registry
+derive newtype instance Functor GitHubM
+derive newtype instance Apply GitHubM
+derive newtype instance Applicative GitHubM
+derive newtype instance Bind GitHubM
+derive newtype instance Monad GitHubM
+derive newtype instance MonadEffect GitHubM
+derive newtype instance MonadAff GitHubM
+derive newtype instance MonadAsk (GitHubEnv ()) GitHubM
 
--- | Upload a package to the backend storage provider
-uploadPackage :: PackageStorage.PackageInfo -> FilePath -> RegistryM Unit
-uploadPackage pkg path = do
-  f <- asks _.uploadPackage
-  liftAff $ f pkg path
+instance MonadLog GitHubM where
+  log level message = do
+    { octokit, issue } <- ask
+    runLogGitHub octokit issue level message
 
--- | Delete a package from the backend storage provider
-deletePackage :: PackageStorage.PackageInfo -> RegistryM Unit
-deletePackage pkg = do
-  f <- asks _.deletePackage
-  liftAff $ f pkg
+instance MonadRegistry GitHubM where
+  commitMetadataFile = Registry.handleCommitMetadataFile
+  commitIndexFile = Registry.handleCommitIndexFile
+  commitPackageSetFile = Registry.handleCommitPackageSetFile
+  uploadPackage = Registry.handleUploadPackage
+  deletePackage = Registry.handleDeletePackage
+  readPackagesMetadata = Registry.handleReadPackagesMetadata
+  updatePackagesMetadata = Registry.handleUpdatePackagesMetadata
 
--- TODO: right now we write this to file separately, but maybe it'd be better
--- to do everything here so we don't risk to forget this?
-updatePackagesMetadata :: PackageName -> Metadata -> RegistryM Unit
-updatePackagesMetadata pkg metadata = do
-  packagesMetadata <- asks _.packagesMetadata
-  liftEffect $ Ref.modify_ (Map.insert pkg metadata) packagesMetadata
+runGitHubM :: forall a. GitHubEnv () -> GitHubM a -> Aff a
+runGitHubM env (GitHubM m) = runReaderT m env
 
-readPackagesMetadata :: RegistryM (Map PackageName Metadata)
-readPackagesMetadata = liftEffect <<< Ref.read =<< asks _.packagesMetadata
+-- Until we can separate out the GitHub effects, we have to include them even
+-- though they should never be used in the local run.
+type LocalEnv = GitHubEnv (logfile :: FilePath)
 
--- EFFECTS
+-- | A monad for running `MonadRegistry` locally, without access to a GitHub
+-- | issue or event.
+newtype LocalM a = LocalM (ReaderT LocalEnv Aff a)
 
-type RegistryEffects = (LOG + LOG_EXCEPT + AFF + EFFECT ())
+derive instance Newtype (LocalM a) _
 
-liftRun :: forall a. Run RegistryEffects a -> RegistryM a
-liftRun act = RegistryM (lift act)
+derive newtype instance Functor LocalM
+derive newtype instance Apply LocalM
+derive newtype instance Applicative LocalM
+derive newtype instance Bind LocalM
+derive newtype instance Monad LocalM
+derive newtype instance MonadEffect LocalM
+derive newtype instance MonadAff LocalM
+derive newtype instance MonadAsk LocalEnv LocalM
 
--- LOG effect
+instance MonadLog LocalM where
+  log level message = ask >>= \{ logfile } -> runLogFile logfile level message
 
-debug :: String -> RegistryM Unit
-debug = liftRun <<< Log.debug
+instance MonadRegistry LocalM where
+  commitMetadataFile = Registry.handleCommitMetadataFile
+  commitIndexFile = Registry.handleCommitIndexFile
+  commitPackageSetFile = Registry.handleCommitPackageSetFile
+  uploadPackage = Registry.handleUploadPackage
+  deletePackage = Registry.handleDeletePackage
+  readPackagesMetadata = Registry.handleReadPackagesMetadata
+  updatePackagesMetadata = Registry.handleUpdatePackagesMetadata
 
-info :: String -> RegistryM Unit
-info = liftRun <<< Log.info
-
-warn :: String -> RegistryM Unit
-warn = liftRun <<< Log.warn
-
-error :: String -> RegistryM Unit
-error = liftRun <<< Log.error
-
-die :: forall a. String -> RegistryM a
-die = liftRun <<< Log.die
+runLocalM :: forall a. LocalEnv -> LocalM a -> Aff a
+runLocalM env (LocalM m) = runReaderT m env
