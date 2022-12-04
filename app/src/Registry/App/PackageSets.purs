@@ -29,7 +29,6 @@ import Data.Set as Set
 import Data.String as String
 import Data.Tuple (uncurry)
 import Effect.Aff as Aff
-import Effect.Class.Console as Console
 import Effect.Ref as Ref
 import Foreign.Node.FS as FS.Extra
 import Foreign.Purs (CompilerFailure(..))
@@ -42,6 +41,8 @@ import Node.Path as Path
 import Registry.App.Json as Json
 import Registry.App.Monad (class MonadRegistry, GitHubEnv)
 import Registry.Constants as Constants
+import Registry.Effect.Log (class MonadLog)
+import Registry.Effect.Log as Log
 import Registry.Effect.Notify as Notify
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
@@ -85,8 +86,8 @@ type Paths =
   , outputBackupDirectory :: FilePath
   }
 
-runWithPaths :: forall m a. MonadAff m => FilePath -> ReaderT Paths Aff a -> m a
-runWithPaths workDir k = liftAff $ ReaderT.runReaderT k do
+runWithPaths :: forall m a. MonadRegistry m => FilePath -> ReaderT Paths m a -> m a
+runWithPaths workDir k = ReaderT.runReaderT k do
   { workDirectory: workDir
   , packagesDirectory: Path.concat [ workDir, "packages" ]
   , outputDirectory: Path.concat [ workDir, "output" ]
@@ -175,7 +176,7 @@ processBatchSequential workDir registryIndex prevSet@(PackageSet { compiler: pre
           -- the failures map to record that it could not be processed..
           Left packageCompilerError -> do
             liftEffect $ Ref.modify_ (Map.insert name maybeVersion) failRef
-            Console.log $ case maybeVersion of
+            Log.info $ case maybeVersion of
               Nothing -> "Could not remove " <> PackageName.print name
               Just version -> "Could not add or update " <> formatPackage name version
             handleCompilerError compilerVersion packageCompilerError
@@ -186,7 +187,7 @@ processBatchSequential workDir registryIndex prevSet@(PackageSet { compiler: pre
           Right newSet -> do
             liftEffect $ Ref.modify_ (Map.insert name maybeVersion) successRef
             liftEffect $ Ref.write newSet packageSetRef
-            Console.log $ case maybeVersion of
+            Log.info $ case maybeVersion of
               Nothing -> "Removed " <> PackageName.print name
               Just version -> "Added or updated " <> formatPackage name version
 
@@ -211,14 +212,14 @@ handleCompilerError compilerVersion = case _ of
   UnknownError err ->
     Notify.die $ "Unknown error: " <> err
   CompilationError errs -> do
-    Console.log "Compilation failed:\n"
-    Console.log $ Purs.printCompilerErrors errs <> "\n"
+    Log.info "Compilation failed:\n"
+    Log.info $ Purs.printCompilerErrors errs <> "\n"
 
 -- | Attempt to add, update, or delete a collection of packages in the package
 -- | set. This will be rolled back if the operation fails.
 -- |
 -- | NOTE: You must have previously built a package set.
-tryBatch :: Version -> PackageSet -> Map PackageName (Maybe Version) -> ReaderT Paths Aff (Either CompilerFailure PackageSet)
+tryBatch :: forall m. MonadRegistry m => Version -> PackageSet -> Map PackageName (Maybe Version) -> ReaderT Paths m (Either CompilerFailure PackageSet)
 tryBatch compilerVersion (PackageSet set) batch = do
   paths <- ReaderT.ask
   liftAff $ FS.Extra.copy { from: paths.outputDirectory, to: paths.outputBackupDirectory, preserveTimestamps: true }
@@ -251,7 +252,7 @@ tryBatch compilerVersion (PackageSet set) batch = do
 -- | operation will be rolled back if the addition fails.
 -- |
 -- | NOTE: You must have previously built a package set.
-tryPackage :: PackageSet -> PackageName -> Maybe Version -> ReaderT Paths Aff (Either CompilerFailure PackageSet)
+tryPackage :: forall m. MonadRegistry m => PackageSet -> PackageName -> Maybe Version -> ReaderT Paths m (Either CompilerFailure PackageSet)
 tryPackage (PackageSet set) package maybeNewVersion = do
   paths <- ReaderT.ask
   liftAff $ FS.Extra.copy { from: paths.outputDirectory, to: paths.outputBackupDirectory, preserveTimestamps: true }
@@ -260,7 +261,7 @@ tryPackage (PackageSet set) package maybeNewVersion = do
   for_ maybeNewVersion (installPackage package)
   compileInstalledPackages set.compiler >>= case _ of
     Left err -> do
-      Console.log $ case maybeNewVersion of
+      lift $ Log.info $ case maybeNewVersion of
         Nothing -> "Failed to build set without " <> PackageName.print package
         Just version -> "Failed to build set with " <> formatPackage package version
       liftAff do
@@ -277,34 +278,34 @@ tryPackage (PackageSet set) package maybeNewVersion = do
 
 -- | Compile all PureScript files in the given directory. Expects all packages
 -- | to be installed in a subdirectory "packages".
-compileInstalledPackages :: Version -> ReaderT Paths Aff (Either CompilerFailure String)
+compileInstalledPackages :: forall m. MonadRegistry m => Version -> ReaderT Paths m (Either CompilerFailure String)
 compileInstalledPackages compilerVersion = do
   paths <- ReaderT.ask
-  Console.log "Compiling installed packages..."
+  lift $ Log.info "Compiling installed packages..."
   let command = Purs.Compile { globs: [ Path.concat [ Path.basename paths.packagesDirectory, "**/*.purs" ] ] }
   let version = Version.print compilerVersion
   liftAff $ Purs.callCompiler { command, version, cwd: Just paths.workDirectory }
 
 -- | Delete package source directories in the given installation directory.
-removePackages :: Map PackageName Version -> ReaderT Paths Aff Unit
+removePackages :: forall m. MonadLog m => MonadAff m => Map PackageName Version -> ReaderT Paths m Unit
 removePackages = traverseWithIndex_ removePackage
 
 -- | Delete a package source directory in the given installation directory.
-removePackage :: PackageName -> Version -> ReaderT Paths Aff Unit
+removePackage :: forall m. MonadLog m => MonadAff m => PackageName -> Version -> ReaderT Paths m Unit
 removePackage name version = do
   paths <- ReaderT.ask
   let formattedPackage = formatPackage name version
-  Console.log $ "Uninstalling " <> formattedPackage
+  lift $ Log.debug $ "Uninstalling " <> formattedPackage
   liftAff $ FS.Extra.remove $ Path.concat [ paths.packagesDirectory, formattedPackage ]
 
 -- | Install all packages in a package set into a temporary directory, returning
 -- | the reference to the installation directory. Installed packages have the
 -- | form: "package-name-major.minor.patch" and are stored in the "packages"
 -- | directory.
-installPackages :: Map PackageName Version -> ReaderT Paths Aff Unit
+installPackages :: forall m. MonadLog m => MonadAff m => Map PackageName Version -> ReaderT Paths m Unit
 installPackages packages = do
   paths <- ReaderT.ask
-  Console.log "Installing packages..."
+  lift $ Log.info "Installing packages..."
   liftAff $ FS.Extra.ensureDirectory paths.packagesDirectory
   forWithIndex_ packages installPackage
 
@@ -312,7 +313,7 @@ installPackages packages = do
 -- | existing installation if there is on. Package sources are stored in the
 -- | "packages" subdirectory of the given directory using their package name
 -- | ie. 'aff'.
-installPackage :: PackageName -> Version -> ReaderT Paths Aff Unit
+installPackage :: forall m. MonadLog m => MonadAff m => PackageName -> Version -> ReaderT Paths m Unit
 installPackage name version = do
   paths <- ReaderT.ask
   let
@@ -321,12 +322,12 @@ installPackage name version = do
     tarballPath = Path.concat [ paths.packagesDirectory, extractedName <> ".tar.gz" ]
     extractedPath = Path.concat [ paths.packagesDirectory, extractedName ]
     installPath = Path.concat [ paths.packagesDirectory, formattedPackage ]
-  unlessM (liftEffect (FS.Sync.exists installPath)) $ liftAff do
-    Console.log $ "Installing " <> formattedPackage
-    _ <- Wget.wget registryUrl tarballPath >>= ltraverse (Aff.error >>> throwError)
+  unlessM (liftEffect (FS.Sync.exists installPath)) do
+    lift $ Log.debug $ "Installing " <> formattedPackage
+    _ <- liftAff $ Wget.wget registryUrl tarballPath >>= ltraverse (Aff.error >>> throwError)
     liftEffect $ Tar.extract { cwd: paths.packagesDirectory, archive: extractedName <> ".tar.gz" }
-    FS.Extra.remove tarballPath
-    FS.Aff.rename extractedPath installPath
+    liftAff $ FS.Extra.remove tarballPath
+    liftAff $ FS.Aff.rename extractedPath installPath
   where
   registryUrl :: Http.URL
   registryUrl = Array.fold
