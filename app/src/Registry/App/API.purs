@@ -893,7 +893,7 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
       filename = PackageName.print packageName <> "-" <> Version.print version <> ".tar.gz"
       filepath = Path.concat [ dir, filename ]
 
-    liftAff (withBackoff' (Wget.wget (Constants.packageStorageUrl <> "/" <> PackageName.print packageName <> "/" <> Version.print version <> ".tar.gz") filepath)) >>= case _ of
+    liftAff (Wget.wget (Constants.packageStorageUrl <> "/" <> PackageName.print packageName <> "/" <> Version.print version <> ".tar.gz") filepath) >>= case _ of
       Nothing -> Notify.die "Could not fetch tarball."
       Just (Left err) -> Notify.die $ "Error while fetching tarball: " <> err
       Just (Right _) -> pure unit
