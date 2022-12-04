@@ -894,9 +894,8 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
       filepath = Path.concat [ dir, filename ]
 
     liftAff (Wget.wget (Constants.packageStorageUrl <> "/" <> PackageName.print packageName <> "/" <> Version.print version <> ".tar.gz") filepath) >>= case _ of
-      Nothing -> Notify.die "Could not fetch tarball."
-      Just (Left err) -> Notify.die $ "Error while fetching tarball: " <> err
-      Just (Right _) -> pure unit
+      Left err -> Notify.die $ "Error while fetching tarball: " <> err
+      Right _ -> pure unit
 
     liftEffect $ Tar.extract { cwd: dir, archive: filename }
     liftAff $ FS.Aff.unlink filepath
