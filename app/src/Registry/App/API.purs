@@ -126,7 +126,7 @@ main = launchAff_ $ do
       cache <- Cache.useCache cacheDir
       packagesMetadata <- liftEffect $ Ref.new Map.empty
       App.runGitHubM (mkGitHubEnv octokit cache packagesMetadata issue username) do
-        Log.info $ case operation of
+        Notify.notify $ case operation of
           Left packageSetOperation -> case packageSetOperation of
             PackageSetUpdate _ ->
               "Processing package set update."
@@ -358,13 +358,13 @@ runOperation source operation = case operation of
           commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
             Left err -> Notify.die $ "Failed to commit package set file (cc: @purescript/packaging): " <> err
             Right _ -> do
-              Log.info "Built and released a new package set! Now mirroring to the package-sets repo..."
+              Notify.notify "Built and released a new package set! Now mirroring to the package-sets repo..."
               metadata <- readPackagesMetadata
               case Legacy.PackageSet.fromPackageSet registryIndex metadata packageSet of
                 Left err -> Notify.die $ "Failed to convert to legacy package set (cc: @purescript/packaging): " <> err
                 Right legacyPackageSet -> do
                   Legacy.PackageSet.mirrorLegacySet legacyPackageSet
-                  Log.info "Mirrored a new legacy package set."
+                  Notify.notify "Mirrored a new legacy package set."
                   App.closeIssue
         _ -> do
           Notify.die "The package set produced from this suggested update does not compile."
@@ -443,7 +443,7 @@ runOperation source operation = case operation of
                 ]
               Right _ -> pure unit
 
-            Log.info "Successfully unpublished!"
+            Notify.notify "Successfully unpublished!"
 
       App.closeIssue
 
@@ -499,7 +499,7 @@ runOperation source operation = case operation of
                       , "cc: @purescript/packaging"
                       ]
                     Right _ -> do
-                      Log.info "Successfully transferred your package!"
+                      Notify.notify "Successfully transferred your package!"
                       syncLegacyRegistry name newLocation
 
           App.closeIssue
@@ -666,7 +666,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
       , "cc: @purescript/packaging"
       ]
     Right _ ->
-      Log.info "Successfully uploaded package to the registry! 🎉 🚀"
+      Notify.notify "Successfully uploaded package to the registry! 🎉 🚀"
 
   App.closeIssue
 
@@ -677,7 +677,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
   -- We write to the registry index if possible. If this fails, the packaging
   -- team should manually insert the entry.
   PackageIndex.writeInsertIndex manifest >>= case _ of
-    Left err -> Log.info $ String.joinWith "\n"
+    Left err -> Notify.notify $ String.joinWith "\n"
       [ "Package uploaded, but committing to the registry failed."
       , err
       , "cc: @purescript/packaging"
@@ -686,15 +686,15 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
 
   when (source == API) $ case compilationResult of
     Left error ->
-      Log.info $ Array.fold [ "Skipping Pursuit publishing because this package failed to compile:\n\n", error ]
+      Notify.notify $ Array.fold [ "Skipping Pursuit publishing because this package failed to compile:\n\n", error ]
     Right dependenciesDir -> do
       Log.debug "Uploading to Pursuit"
       for_ eitherVerifiedResolutions \verified -> do
         publishToPursuit { packageSourceDir: packageDirectory, compiler, resolutions: verified, dependenciesDir } >>= case _ of
           Left error ->
-            Log.info $ "Pursuit publishing failed: " <> error
+            Notify.notify $ "Pursuit publishing failed: " <> error
           Right message ->
-            Log.info message
+            Notify.notify message
 
   syncLegacyRegistry name (un Metadata newMetadata).location
 
@@ -1543,7 +1543,7 @@ syncLegacyRegistry package location = do
       void $ Git.runGit_ [ "push", origin, "main" ] (Just registryDir)
     case result of
       Left err -> Notify.die err
-      Right _ -> Log.info "Synced new package with legacy registry files."
+      Right _ -> Notify.notify "Synced new package with legacy registry files."
 
 mkNewMetadata :: Location -> Metadata
 mkNewMetadata location = Metadata

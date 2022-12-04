@@ -51,7 +51,6 @@ import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Registry.App.Json as Json
 import Registry.App.Monad (class MonadRegistry, GitHubEnv)
-import Registry.Effect.Log as Log
 import Registry.Effect.Notify as Notify
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
@@ -300,7 +299,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
     let key = (un PscTag tag).compiler
     case Map.lookup key latestSets of
       Just existingTag | existingTag >= tag -> do
-        Log.info "Not updating latest-compatible sets because this tag (or a higher one) already exists."
+        Notify.notify "Not updating latest-compatible sets because this tag (or a higher one) already exists."
         pure latestSets
       _ ->
         pure $ Map.insert key tag latestSets
