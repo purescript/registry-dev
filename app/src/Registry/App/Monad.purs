@@ -1,12 +1,13 @@
 module Registry.App.Monad where
 
+import Registry.App.Prelude
+
 import Control.Monad.Reader (class MonadAsk, ReaderT, ask, asks, runReaderT)
 import Data.Map as Map
 import Effect.Ref as Ref
 import Foreign.GitHub (IssueNumber, Octokit)
 import Registry.App.Cache (Cache)
 import Registry.App.PackageStorage (PackageInfo)
-import Registry.App.Prelude (class Applicative, class Apply, class Bind, class Functor, class Monad, class MonadAff, class MonadEffect, class Newtype, type (+), Aff, Either, FilePath, Map, Metadata, PackageName, Ref, Unit, Version, bind, liftAff, liftEffect, pure, unit, ($), (<<<), (=<<), (>>=))
 import Registry.Effect.Log (class MonadLog, LogVerbosity(..))
 import Registry.Effect.Log as Log
 import Registry.Effect.Notify (class MonadNotify)
