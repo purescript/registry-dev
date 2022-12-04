@@ -42,7 +42,7 @@ import Node.Path as Path
 import Registry.App.Json as Json
 import Registry.App.Monad (class MonadRegistry, GitHubEnv)
 import Registry.Constants as Constants
-import Registry.Effect.Log as Log
+import Registry.Effect.Notify as Notify
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
@@ -71,11 +71,11 @@ readLatestPackageSet = do
       hush $ Version.parse versionString
 
   case Array.last (Array.sort packageSetVersions) of
-    Nothing -> Log.die "No existing package set."
+    Nothing -> Notify.die "No existing package set."
     Just version -> do
       path <- getPackageSetPath version
       liftAff (Json.readJsonFile PackageSet.codec path) >>= case _ of
-        Left err -> Log.die $ "Could not decode latest package set: " <> err
+        Left err -> Notify.die $ "Could not decode latest package set: " <> err
         Right set -> pure set
 
 type Paths =
@@ -122,7 +122,7 @@ processBatchAtomic workDir index prevSet@(PackageSet { compiler: prevCompiler, p
   buildInitialSet >>= case _ of
     Left compilerError -> do
       handleCompilerError compilerVersion compilerError
-      Log.die "Starting package set must compile in order to process a batch."
+      Notify.die "Starting package set must compile in order to process a batch."
     Right _ -> pure unit
 
   runWithPaths workDir (tryBatch compilerVersion prevSet batch) >>= case _ of
@@ -207,9 +207,9 @@ updatePackageSetMetadata { previous, pending: PackageSet pending } changed = do
 handleCompilerError :: forall m. MonadRegistry m => Version -> Purs.CompilerFailure -> m Unit
 handleCompilerError compilerVersion = case _ of
   MissingCompiler ->
-    Log.die $ "Missing compiler version " <> Version.print compilerVersion
+    Notify.die $ "Missing compiler version " <> Version.print compilerVersion
   UnknownError err ->
-    Log.die $ "Unknown error: " <> err
+    Notify.die $ "Unknown error: " <> err
   CompilationError errs -> do
     Console.log "Compilation failed:\n"
     Console.log $ Purs.printCompilerErrors errs <> "\n"
@@ -447,7 +447,7 @@ validatePackageSet index (PackageSet set) = do
         , Version.print package.version
         ]
 
-    Log.die $ String.joinWith "\n"
+    Notify.die $ String.joinWith "\n"
       [ errorPrefix
       , "Some package versions in the package set are not registered:"
       , String.joinWith "\n" failedMessages
@@ -478,7 +478,7 @@ validatePackageSet index (PackageSet set) = do
         , ")."
         ]
 
-    Log.die $ String.joinWith "\n"
+    Notify.die $ String.joinWith "\n"
       [ errorPrefix
       , "Some package versions in the set have unsatisfied dependencies:"
       , String.joinWith "\n" failedMessages

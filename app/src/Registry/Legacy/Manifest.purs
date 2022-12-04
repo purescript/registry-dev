@@ -32,6 +32,7 @@ import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.Monad (class MonadRegistry, GitHubEnv)
 import Registry.Effect.Log as Log
+import Registry.Effect.Notify as Notify
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry, legacyPackageSetCodec)
 import Registry.Legacy.PackageSet as Legacy.PackageSet
@@ -356,7 +357,7 @@ fetchLegacyPackageSets = do
   { octokit, cache } <- ask
   result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache Legacy.PackageSet.legacyPackageSetsRepo
   tags <- case result of
-    Left err -> Log.die (GitHub.printGitHubError err)
+    Left err -> Notify.die (GitHub.printGitHubError err)
     Right tags -> pure $ Legacy.PackageSet.filterLegacyPackageSets tags
 
   let

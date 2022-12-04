@@ -11,7 +11,9 @@ import Effect.Unsafe (unsafePerformEffect)
 import Foreign.GitHub (GitHubToken(..), IssueNumber(..), mkOctokit)
 import Registry.App.Monad (class MonadRegistry, GitHubEnv)
 import Registry.App.Monad as App
-import Registry.Effect.Log (class MonadLog, runLogConsole)
+import Registry.Effect.Log (class MonadLog, LogVerbosity(..))
+import Registry.Effect.Log as Log
+import Registry.Effect.Notify (class MonadNotify)
 
 -- TODO: Once we have actually separated out the effects, this doesn't need any
 -- of the GitHub stuff.
@@ -32,7 +34,10 @@ derive newtype instance MonadAsk TestEnv TestM
 derive newtype instance MonadThrow Error TestM
 
 instance MonadLog TestM where
-  log = runLogConsole
+  log = Log.runLogTerminal { verbosity: Normal }
+
+instance MonadNotify TestM where
+  notify _ = pure unit
 
 instance MonadRegistry TestM where
   commitMetadataFile = App.handleCommitMetadataFile

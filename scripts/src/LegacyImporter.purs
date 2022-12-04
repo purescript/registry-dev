@@ -49,7 +49,9 @@ import Registry.App.Monad (class MonadRegistry, GitHubEnv, commitMetadataFile, r
 import Registry.App.Monad as App
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageStorage as PackageStorage
+import Registry.Effect.Log (LogVerbosity(..))
 import Registry.Effect.Log as Log
+import Registry.Effect.Notify as Notify
 import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError, LegacyPackageSetEntries)
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Location as Location
@@ -121,6 +123,7 @@ main = launchAff_ do
         , registry: Path.concat [ API.scratchDir, "registry" ]
         , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
         , logfile: Path.concat [ API.scratchDir, "legacy-importer-logs.txt " ]
+        , verbosity: Verbose
         }
       UpdateRegistry ->
         { closeIssue: Console.log "Running locally, not closing issue..."
@@ -137,6 +140,7 @@ main = launchAff_ do
         , registry: Path.concat [ API.scratchDir, "registry" ]
         , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
         , logfile: Path.concat [ API.scratchDir, "legacy-importer-logs.txt " ]
+        , verbosity: Verbose
         }
       GenerateRegistry ->
         { closeIssue: Console.log "Skipping GitHub issue closing, we're running locally.."
@@ -159,6 +163,7 @@ main = launchAff_ do
         , registry: Path.concat [ API.scratchDir, "registry" ]
         , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
         , logfile: Path.concat [ API.scratchDir, "legacy-importer-logs.txt " ]
+        , verbosity: Verbose
         }
 
   App.runLocalM env do
@@ -207,7 +212,7 @@ main = launchAff_ do
           liftAff $ Json.writeJsonFile Metadata.codec (API.metadataFile registryPath package) metadata
           liftEffect $ Ref.modify_ (Map.insert package metadata) metadataRef
           commitMetadataFile package >>= case _ of
-            Left err -> Log.die err
+            Left err -> Notify.die err
             Right _ -> pure unit
         Just _ -> pure unit
 
@@ -665,7 +670,7 @@ readLegacyRegistryFile sourceFile = do
   legacyPackages <- liftAff $ Json.readJsonFile API.legacyRegistryCodec path
   case legacyPackages of
     Left err -> do
-      Log.die $ String.joinWith "\n"
+      Notify.die $ String.joinWith "\n"
         [ "Decoding registry file from " <> path <> "failed:"
         , err
         ]

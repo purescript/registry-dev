@@ -23,7 +23,9 @@ import Registry.App.Monad (class MonadRegistry, LocalEnv, commitPackageSetFile, 
 import Registry.App.Monad as App
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
+import Registry.Effect.Log (LogVerbosity(..))
 import Registry.Effect.Log as Log
+import Registry.Effect.Notify as Notify
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
@@ -80,6 +82,7 @@ main = Aff.launchAff_ do
       , registry: Path.concat [ API.scratchDir, "registry" ]
       , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
       , logfile: Path.concat [ API.scratchDir, "package-set-updater-logs.txt" ]
+      , verbosity: Verbose
       }
 
   App.runLocalM env do
@@ -104,7 +107,7 @@ main = Aff.launchAff_ do
         logPackage name maybeVersion = case maybeVersion of
           -- There are no removals in the automated package sets. This should be
           -- an unreachable case.
-          Nothing -> Log.die "Package removals are not accepted in automatic package sets."
+          Nothing -> Notify.die "Package removals are not accepted in automatic package sets."
           Just version -> Log.debug (PackageName.print name <> "@" <> Version.print version)
 
       Log.info "Found the following package versions eligible for inclusion in package set:"
@@ -127,10 +130,10 @@ main = Aff.launchAff_ do
             CommitPackageSet -> do
               let commitMessage = App.PackageSets.commitMessage prevPackageSet success (un PackageSet packageSet).version
               commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
-                Left err -> Log.die $ "Failed to commit package set file: " <> err
+                Left err -> Notify.die $ "Failed to commit package set file: " <> err
                 Right _ -> do
                   case Legacy.PackageSet.fromPackageSet registryIndex metadata packageSet of
-                    Left err -> Log.die err
+                    Left err -> Notify.die err
                     Right converted -> Legacy.PackageSet.mirrorLegacySet converted
 
 findRecentUploads :: forall m. MonadRegistry m => Map PackageName Metadata -> Hours -> m { accepted :: Map PackageName Version, rejected :: Map PackageName (NonEmptyArray Version) }

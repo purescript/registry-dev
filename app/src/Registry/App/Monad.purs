@@ -1,14 +1,16 @@
 module Registry.App.Monad where
 
-import Registry.App.Prelude
-
 import Control.Monad.Reader (class MonadAsk, ReaderT, ask, asks, runReaderT)
 import Data.Map as Map
 import Effect.Ref as Ref
 import Foreign.GitHub (IssueNumber, Octokit)
 import Registry.App.Cache (Cache)
 import Registry.App.PackageStorage (PackageInfo)
-import Registry.Effect.Log (class MonadLog, runLogFile, runLogGitHub)
+import Registry.App.Prelude (class Applicative, class Apply, class Bind, class Functor, class Monad, class MonadAff, class MonadEffect, class Newtype, type (+), Aff, Either, FilePath, Map, Metadata, PackageName, Ref, Unit, Version, bind, liftAff, liftEffect, pure, unit, ($), (<<<), (=<<), (>>=))
+import Registry.Effect.Log (class MonadLog, LogVerbosity(..))
+import Registry.Effect.Log as Log
+import Registry.Effect.Notify (class MonadNotify)
+import Registry.Effect.Notify as Notify
 
 type GitHubEnv r =
   { closeIssue :: Aff Unit
@@ -38,9 +40,12 @@ derive newtype instance MonadAff GitHubM
 derive newtype instance MonadAsk (GitHubEnv ()) GitHubM
 
 instance MonadLog GitHubM where
-  log level message = do
+  log level message = Log.runLogTerminal { verbosity: Verbose } level message
+
+instance MonadNotify GitHubM where
+  notify message = do
     { octokit, issue } <- ask
-    runLogGitHub octokit issue level message
+    Notify.runNotifyGitHub { octokit, issue } message
 
 instance MonadRegistry GitHubM where
   commitMetadataFile = handleCommitMetadataFile
@@ -56,7 +61,7 @@ runGitHubM env (GitHubM m) = runReaderT m env
 
 -- Until we can separate out the GitHub effects, we have to include them even
 -- though they should never be used in the local run.
-type LocalEnv = GitHubEnv (logfile :: FilePath)
+type LocalEnv = GitHubEnv (logfile :: FilePath, verbosity :: LogVerbosity)
 
 -- | A monad for running `MonadRegistry` locally, without access to a GitHub
 -- | issue or event.
@@ -74,7 +79,12 @@ derive newtype instance MonadAff LocalM
 derive newtype instance MonadAsk LocalEnv LocalM
 
 instance MonadLog LocalM where
-  log level message = ask >>= \{ logfile } -> runLogFile logfile level message
+  log level message = do
+    { logfile, verbosity } <- ask
+    Log.runLogFs { logfile, verbosity } level message
+
+instance MonadNotify LocalM where
+  notify _ = pure unit
 
 instance MonadRegistry LocalM where
   commitMetadataFile = handleCommitMetadataFile
@@ -91,7 +101,7 @@ runLocalM env (LocalM m) = runReaderT m env
 -- This is a temporary measure: the members of this class should be implemented
 -- as their own effects later and there's no need for this class other than the
 -- convenience of not having to write out the specific effects you're using.
-class (MonadLog m, MonadAff m) <= MonadRegistry m where
+class (MonadNotify m, MonadLog m, MonadAff m) <= MonadRegistry m where
   commitMetadataFile :: PackageName -> m (Either String Unit)
   commitIndexFile :: PackageName -> m (Either String Unit)
   commitPackageSetFile :: Version -> String -> m (Either String Unit)

@@ -13,7 +13,7 @@ import Foreign.FastGlob as FastGlob
 import Node.Path as Path
 import Registry.App.Monad (class MonadRegistry, GitHubEnv)
 import Registry.App.Monad as App
-import Registry.Effect.Log as Log
+import Registry.Effect.Notify as Notify
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Range as Range
@@ -30,7 +30,7 @@ readManifestIndexFromDisk = do
   let { fail, success } = partitionEithers entries
   case fail of
     [] -> case ManifestIndex.fromSet $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray success of
-      Left errors -> Log.die $ append "Invalid ManifestIndex (some packages are not satisfiable):\n" $ String.joinWith "\n" do
+      Left errors -> Notify.die $ append "Invalid ManifestIndex (some packages are not satisfiable):\n" $ String.joinWith "\n" do
         Tuple name versions <- Map.toUnfoldable errors
         Tuple version dependency <- Map.toUnfoldable versions
         let
@@ -43,7 +43,7 @@ readManifestIndexFromDisk = do
         pure index
 
     errors ->
-      Log.die $ append "Invalid ManifestIndex (some package entries cannot be decoded):\n" $ String.joinWith "\n" errors
+      Notify.die $ append "Invalid ManifestIndex (some package entries cannot be decoded):\n" $ String.joinWith "\n" errors
 
 -- | Attempt to insert a manifest into the registry manifest index, committing
 -- | the result.

@@ -25,7 +25,9 @@ import Registry.App.Cache as Cache
 import Registry.App.LenientVersion as LenientVersion
 import Registry.App.Monad (class MonadRegistry, GitHubEnv, LocalEnv, readPackagesMetadata)
 import Registry.App.Monad as App
+import Registry.Effect.Log (LogVerbosity(..))
 import Registry.Effect.Log as Log
+import Registry.Effect.Notify as Notify
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
@@ -61,6 +63,7 @@ main = launchAff_ do
       , registry: Path.concat [ API.scratchDir, "registry" ]
       , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
       , logfile: Path.concat [ API.scratchDir, "package-transferrer-logs.txt" ]
+      , verbosity: Verbose
       }
 
   App.runLocalM env do
@@ -95,7 +98,7 @@ transferAll packages packageLocations = do
 transferPackage :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => String -> Location -> m Unit
 transferPackage rawPackageName newLocation = do
   name <- case PackageName.parse (stripPureScriptPrefix rawPackageName) of
-    Left _ -> Log.die $ "Unexpected package name parsing failure for " <> rawPackageName
+    Left _ -> Notify.die $ "Unexpected package name parsing failure for " <> rawPackageName
     Right value -> pure value
 
   let
@@ -123,7 +126,7 @@ latestLocations packages = forWithIndex packages \package location -> do
     Right packageResult -> do
       packagesMetadata <- readPackagesMetadata
       case Map.lookup packageResult.name packagesMetadata of
-        Nothing -> Log.die $ "No metadata exists for package " <> package
+        Nothing -> Notify.die $ "No metadata exists for package " <> package
         Just metadata -> do
           Except.runExceptT (latestPackageLocations packageResult metadata) >>= case _ of
             Left err -> Log.debug err *> pure Nothing
