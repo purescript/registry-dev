@@ -19,6 +19,7 @@ import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
+import Node.Process as Process
 import Registry.App.API (LegacyRegistryFile(..), Source(..))
 import Registry.App.API as API
 import Registry.App.Cache as Cache
@@ -27,7 +28,6 @@ import Registry.App.Monad (class MonadRegistry, GitHubEnv, LocalEnv, readPackage
 import Registry.App.Monad as App
 import Registry.Effect.Log (LogVerbosity(..))
 import Registry.Effect.Log as Log
-import Registry.Effect.Notify as Notify
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
@@ -98,7 +98,9 @@ transferAll packages packageLocations = do
 transferPackage :: forall m r. MonadRegistry m => MonadAsk (GitHubEnv r) m => String -> Location -> m Unit
 transferPackage rawPackageName newLocation = do
   name <- case PackageName.parse (stripPureScriptPrefix rawPackageName) of
-    Left _ -> Notify.die $ "Unexpected package name parsing failure for " <> rawPackageName
+    Left _ -> do
+      Log.error $ "Unexpected package name parsing failure for " <> rawPackageName
+      liftEffect (Process.exit 1)
     Right value -> pure value
 
   let
@@ -126,7 +128,7 @@ latestLocations packages = forWithIndex packages \package location -> do
     Right packageResult -> do
       packagesMetadata <- readPackagesMetadata
       case Map.lookup packageResult.name packagesMetadata of
-        Nothing -> Notify.die $ "No metadata exists for package " <> package
+        Nothing -> do Log.error ("No metadata exists for package " <> package) *> pure Nothing
         Just metadata -> do
           Except.runExceptT (latestPackageLocations packageResult metadata) >>= case _ of
             Left err -> Log.debug err *> pure Nothing
