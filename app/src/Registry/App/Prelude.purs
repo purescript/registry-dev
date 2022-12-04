@@ -60,6 +60,7 @@ import Effect.Aff (Aff, launchAff_, try) as Extra
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff) as Extra
 import Effect.Class (class MonadEffect, liftEffect) as Extra
+import Effect.Class.Console as Console
 import Effect.Now as Now
 import Effect.Ref (Ref) as Extra
 import Foreign.Object (Object) as Extra
@@ -149,6 +150,8 @@ withBackoff { delay: Aff.Milliseconds timeout, action, shouldCancel, shouldRetry
       _ <- Aff.delay (Aff.Milliseconds (Int.toNumber ms))
       shouldCancel attempt >>=
         if _ then do
+          -- TODO: Remove by moving to MonadRegistry
+          Console.log $ "Cancelled after " <> show ms <> " milliseconds, retrying (attempt " <> show attempt <> ")..."
           pure Maybe.Nothing
         else runTimeout attempt (ms * 2)
 
