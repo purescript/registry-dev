@@ -23,7 +23,6 @@ import Data.DateTime (DateTime)
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.HTTP.Method as Method
-import Data.Int as Int
 import Data.Map as Map
 import Data.MediaType.Common as MediaType
 import Data.Newtype (unwrap)

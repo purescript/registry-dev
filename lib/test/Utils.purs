@@ -52,19 +52,19 @@ partitionEithers = Array.foldMap case _ of
 
 -- | Unsafely parse a license from a string
 unsafeNonEmptyArray :: forall a. Array a -> NonEmptyArray.NonEmptyArray a
-unsafeNonEmptyArray = fromJust "Failed to produce NonEmptyArray" <<< NonEmptyArray.fromArray
+unsafeNonEmptyArray arr = fromJust ("Failed to produce NonEmptyArray: " <> unsafeStringify arr) (NonEmptyArray.fromArray arr)
 
 -- | Unsafely parse a sri-prefixed sha256 hash from a string
 unsafeSha256 :: String -> Sha256.Sha256
-unsafeSha256 = fromRight "Failed to parse Sha256" <<< Sha256.parse
+unsafeSha256 str = fromRight ("Failed to parse Sha256: " <> str) (Sha256.parse str)
 
 -- | Unsafely parse a package name from a string
 unsafePackageName :: String -> PackageName.PackageName
-unsafePackageName = fromRight "Failed to parse PackageName" <<< PackageName.parse
+unsafePackageName str = fromRight ("Failed to parse PackageName: " <> str) (PackageName.parse str)
 
 -- | Unsafely parse a version from a string
 unsafeVersion :: String -> Version.Version
-unsafeVersion = fromRight "Failed to parse Version" <<< Version.parse
+unsafeVersion str = fromRight ("Failed to parse Version: " <> str) (Version.parse str)
 
 -- | Unsafely parse a range from a string
 unsafeRange :: String -> Range.Range
@@ -72,7 +72,7 @@ unsafeRange str = fromRight ("Failed to parse Range: " <> str) (Range.parse str)
 
 -- | Unsafely parse a license from a string
 unsafeLicense :: String -> License.License
-unsafeLicense = fromRight "Failed to parse License" <<< License.parse
+unsafeLicense str = fromRight ("Failed to parse License: " <> str) (License.parse str)
 
 -- | Unsafely parse a DateTime from an ISO8601 string
 unsafeDateTime :: String -> DateTime.DateTime
