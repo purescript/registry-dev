@@ -21,7 +21,7 @@ spec = do
   Spec.describe "Dependency Resolution Checking" do
     checkDependencyResolution
   Spec.describe "Unpublish Validation" do
-    let 
+    let
       now = unsafeDateTime "2022-12-12T12:00:00.000Z"
       outOfRange = unsafeDateTime "2022-12-10T11:00:00.000Z"
       inRange = unsafeDateTime "2022-12-11T12:00:00.000Z"

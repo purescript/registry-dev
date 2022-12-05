@@ -17,7 +17,7 @@ import Data.String.Pattern (Pattern(..))
 import Data.Time.Duration (Hours(..))
 import Data.Traversable (traverse)
 import Data.Tuple (uncurry)
-import Data.Tuple.Nested ((/\), type (/\))
+import Data.Tuple.Nested (type (/\), (/\))
 import Effect.Aff (Aff)
 import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as Stats
@@ -43,14 +43,14 @@ containsPursFile :: FilePath -> Aff Boolean
 containsPursFile parent = flip catchError (\_ -> pure false) do
   children <- FS.Aff.readdir parent
   stats <- traverse (\path -> { path, stats: _ } <$> FS.Aff.stat path) children
-  let 
+  let
     files = Array.filter (_.stats >>> Stats.isFile) stats
     directories = Array.filter (_.stats >>> Stats.isDirectory) stats
 
   if Array.any (\{ path } -> isJust (String.stripSuffix (Pattern ".purs") path)) files then
     pure true
   else do
-    results <- traverse (_.path >>> containsPursFile) directories 
+    results <- traverse (_.path >>> containsPursFile) directories
     pure $ Array.any (eq true) results
 
 -- | Checks that the manifest package name and the PublishData payload package name match.
