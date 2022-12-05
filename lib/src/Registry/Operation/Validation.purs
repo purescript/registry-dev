@@ -4,10 +4,10 @@ import Prelude
 
 import Control.Monad.Error.Class (catchError)
 import Data.Array as Array
-import Data.Array.NonEmpty.Internal (NonEmptyArray)
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Either (Either(..))
+import Data.List.NonEmpty (NonEmptyList)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), isJust)
@@ -79,7 +79,7 @@ isNotUnpublished (Manifest { version }) (Metadata { unpublished }) =
   Map.lookup version unpublished
 
 -- | Verifies that the manifest dependencies are solvable by the registry solver.
-validateDependenciesSolve :: Manifest -> ManifestIndex -> Either (NonEmptyArray Solver.SolverError) (Map PackageName Version)
+validateDependenciesSolve :: Manifest -> ManifestIndex -> Either (NonEmptyList Solver.SolverError) (Map PackageName Version)
 validateDependenciesSolve manifest manifestIndex = do
   let getDependencies = _.dependencies <<< un Manifest
   Solver.solve (map (map getDependencies) (ManifestIndex.toMap manifestIndex)) (getDependencies manifest)
