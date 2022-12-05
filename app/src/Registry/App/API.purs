@@ -26,6 +26,8 @@ import Data.HTTP.Method as Method
 import Data.Int as Int
 import Data.Map as Map
 import Data.MediaType.Common as MediaType
+import Data.Newtype (unwrap)
+import Data.Number.Format as Number.Format
 import Data.Profunctor as Profunctor
 import Data.Set as Set
 import Data.String as String
@@ -380,8 +382,8 @@ runOperation source operation = case operation of
             , "This version is listed both as published and unpublished. This is an internal error."
             , "cc @purescript/packaging"
             ]
-        Left (Operation.Validation.PastTimeLimit hourLimit) ->
-          throwWithComment $ "Packages can only be unpublished within " <> Int.toStringAs Int.decimal hourLimit <> " hours."
+        Left (Operation.Validation.PastTimeLimit { limit }) ->
+          throwWithComment $ "Packages can only be unpublished within " <> Number.Format.toString (unwrap limit) <> " hours."
         Right published ->
           pure published
 

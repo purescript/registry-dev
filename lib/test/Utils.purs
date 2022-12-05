@@ -6,19 +6,23 @@ import Data.Argonaut.Core as Argonaut
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bifunctor (bimap)
+import Data.DateTime as DateTime
 import Data.Either (Either(..))
 import Data.Either as Either
+import Data.Formatter.DateTime as DateTime.Formatters
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple)
 import Partial.Unsafe (unsafeCrashWith)
 import Partial.Unsafe as Partial
+import Registry.Internal.Format as Internal.Format
 import Registry.License as License
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range as Range
+import Registry.Sha256 (Sha256)
 import Registry.Sha256 as Sha256
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -64,11 +68,15 @@ unsafeVersion = fromRight "Failed to parse Version" <<< Version.parse
 
 -- | Unsafely parse a range from a string
 unsafeRange :: String -> Range.Range
-unsafeRange = fromRight "Failed to parse Range" <<< Range.parse
+unsafeRange str = fromRight ("Failed to parse Range: " <> str) (Range.parse str)
 
 -- | Unsafely parse a license from a string
 unsafeLicense :: String -> License.License
 unsafeLicense = fromRight "Failed to parse License" <<< License.parse
+
+-- | Unsafely parse a DateTime from an ISO8601 string
+unsafeDateTime :: String -> DateTime.DateTime
+unsafeDateTime str = fromRight ("Failed to parse DateTime: " <> str) (DateTime.Formatters.unformat Internal.Format.iso8601DateTime str)
 
 -- | Unsafely create a manifest from a name, version, and array of dependencies
 -- | where keys are package names and values are ranges.
@@ -90,3 +98,11 @@ unsafeManifest name version dependencies = Manifest
 -- | Format a package version as a string in the form 'name@X.Y.Z'
 formatPackageVersion :: PackageName -> Version -> String
 formatPackageVersion name version = PackageName.print name <> "@" <> Version.print version
+
+-- | A Location for use within tests.
+defaultLocation :: Location
+defaultLocation = GitHub { owner: "purescript", repo: "registry-dev", subdir: Nothing }
+
+-- | A Sha256 for use within tests.
+defaultHash :: Sha256
+defaultHash = fromRight "Failed to parse Sha256" $ Sha256.parse "sha256-fN9RUAzN21ZY4Y0UwqUSxwUPVz1g7/pcqoDvbJZoT04="

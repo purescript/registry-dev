@@ -9,6 +9,7 @@ import Test.Registry.Manifest as Test.Manifest
 import Test.Registry.ManifestIndex as Test.ManifestIndex
 import Test.Registry.Metadata as Test.Metadata
 import Test.Registry.Operation as Test.Operation
+import Test.Registry.Operation.Validation as Test.Operation.Validation
 import Test.Registry.PackageName as Test.PackageName
 import Test.Registry.PackageSet as Test.PackageSet
 import Test.Registry.Range as Test.Range
@@ -34,6 +35,8 @@ main = Aff.launchAff_ $ Spec.Runner.runSpec [ Spec.Reporter.consoleReporter ] do
     Spec.describe "Package Set" Test.PackageSet.spec
     Spec.describe "Operation" Test.Operation.spec
 
-  Spec.describe "Structures" do
-    Spec.describe "ManifestIndex" Test.ManifestIndex.spec
-    Spec.describe "Solver" Test.Solver.spec
+  Spec.describe "ManifestIndex" Test.ManifestIndex.spec
+  Spec.describe "Solver" Test.Solver.spec
+
+  Spec.describe "Operation Validation" do
+    Test.Operation.Validation.spec

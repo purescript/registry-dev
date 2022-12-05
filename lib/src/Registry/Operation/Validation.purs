@@ -2,6 +2,7 @@ module Registry.Operation.Validation where
 
 import Prelude
 
+import Control.Monad.Error.Class (catchError)
 import Data.Array as Array
 import Data.Array.NonEmpty.Internal (NonEmptyArray)
 import Data.DateTime (DateTime)
@@ -23,10 +24,10 @@ import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as Stats
 import Node.Path (FilePath)
 import Registry.Location (Location)
-import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
+import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
 import Registry.Operation (PublishData)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
@@ -38,13 +39,9 @@ import Registry.Version (Version)
 -- This module exports utilities for writing validation for `Registry Operations`.
 -- See https://github.com/purescript/registry-dev/blob/master/SPEC.md#5-registry-operations
 
--- publish ::
--- transfer ::
-
 -- | Checks that there is at least one purs file within the `src` directory.
--- TODO: What is `src` directory doesn't exist?
 containsPursFile :: FilePath -> Aff Boolean
-containsPursFile parent = do
+containsPursFile parent = flip catchError (\_ -> pure false) do
   children <- FS.Aff.readdir parent
   stats <- traverse (\path -> { path, stats: _ } <$> FS.Aff.stat path) children
   let 
@@ -137,7 +134,9 @@ data UnpublishError
   = NotPublished
   | AlreadyUnpublished
   | InternalError
-  | PastTimeLimit Int
+  | PastTimeLimit { limit :: Hours, difference :: Hours }
+
+derive instance Eq UnpublishError
 
 -- | Verifies that a package version is eligible for unpublishing.
 -- | The version must have been published before, must not have been unpublished before, and unpublishing
@@ -155,8 +154,8 @@ validateUnpublish now version (Metadata metadata) = do
       -- We only pass through the case where the user is unpublishing a
       -- package that has been published and not yet unpublished.
       let diff = DateTime.diff now published.publishedTime
-      if (diff > Hours (Int.toNumber hourLimit)) then
-        Left $ PastTimeLimit hourLimit
+      if (diff > hourLimit) then
+        Left $ PastTimeLimit { limit: hourLimit, difference: diff }
       else
         Right published
     Nothing, Just _ ->
@@ -164,4 +163,4 @@ validateUnpublish now version (Metadata metadata) = do
     Just _, Just _ ->
       Left InternalError
   where
-  hourLimit = 48
+  hourLimit = Hours 48.0
