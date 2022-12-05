@@ -8,7 +8,6 @@ import Data.Array.NonEmpty.Internal (NonEmptyArray)
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Either (Either(..))
-import Data.Int as Int
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), isJust)
