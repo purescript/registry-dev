@@ -1,0 +1,83 @@
+module Test.Registry.Operation.Validation where
+
+import Prelude
+
+import Data.Either (Either(..))
+import Data.Map as Map
+import Data.Maybe (Maybe(..))
+import Data.Time.Duration (Hours(..))
+import Data.Tuple (Tuple(..))
+import Data.Tuple.Nested ((/\))
+import Registry.Manifest (Manifest(..))
+import Registry.Metadata (Metadata(..))
+import Registry.Operation.Validation (UnpublishError(..), getUnresolvedDependencies, validateUnpublish)
+import Test.Assert as Assert
+import Test.Spec (Spec)
+import Test.Spec as Spec
+import Test.Utils (defaultHash, defaultLocation, fromJust, unsafeDateTime, unsafeManifest, unsafePackageName, unsafeVersion)
+
+spec :: Spec Unit
+spec = do
+  Spec.describe "Dependency Resolution Checking" do
+    checkDependencyResolution
+  Spec.describe "Unpublish Validation" do
+    let
+      now = unsafeDateTime "2022-12-12T12:00:00.000Z"
+      outOfRange = unsafeDateTime "2022-12-10T11:00:00.000Z"
+      inRange = unsafeDateTime "2022-12-11T12:00:00.000Z"
+
+      publishedMetadata = { bytes: 100.0, hash: defaultHash, publishedTime: outOfRange, ref: "" }
+
+      metadata = Metadata
+        { location: defaultLocation
+        , owners: Nothing
+        , published: Map.fromFoldable [ Tuple (unsafeVersion "1.0.0") publishedMetadata ]
+        , unpublished: Map.fromFoldable [ Tuple (unsafeVersion "2.0.0") { publishedTime: outOfRange, unpublishedTime: inRange, reason: "" } ]
+        }
+
+    Spec.it "Rejects when not yet published" do
+      Assert.shouldEqual (validateUnpublish now (unsafeVersion "3.0.0") metadata) (Left NotPublished)
+    Spec.it "Rejects when already unpublished" do
+      Assert.shouldEqual (validateUnpublish now (unsafeVersion "2.0.0") metadata) (Left AlreadyUnpublished)
+    Spec.it "Rejects when time limit is passed" do
+      Assert.shouldEqual (validateUnpublish now (unsafeVersion "1.0.0") metadata) (Left (PastTimeLimit { limit: Hours 48.0, difference: Hours 49.0 }))
+    Spec.it "Accepts valid input" do
+      Assert.shouldEqual (validateUnpublish inRange (unsafeVersion "1.0.0") metadata) (Right publishedMetadata)
+
+checkDependencyResolution :: Spec.Spec Unit
+checkDependencyResolution = do
+  Spec.it "Handles build plan with all dependencies resolved" do
+    Assert.shouldEqual (getUnresolvedDependencies manifest exactBuildPlan) []
+  Spec.it "Handles build plan with all dependencies resolved + extra" do
+    Assert.shouldEqual (getUnresolvedDependencies manifest extraBuildPlan) []
+  Spec.it "Handles build plan with resolution missing package" do
+    Assert.shouldEqual (getUnresolvedDependencies manifest buildPlanMissingPackage) [ Left (packageTwoName /\ packageTwoRange) ]
+  Spec.it "Handles build plan with resolution having package at wrong version" do
+    Assert.shouldEqual (getUnresolvedDependencies manifest buildPlanWrongVersion) [ Right (packageTwoName /\ packageTwoRange /\ unsafeVersion "7.0.0") ]
+  where
+  manifest@(Manifest { dependencies }) =
+    unsafeManifest "package" "1.0.0" [ Tuple "package-one" ">=2.0.0 <3.0.0", Tuple "package-two" ">=3.0.0 <4.0.0" ]
+
+  packageTwoName = unsafePackageName "package-two"
+  packageTwoRange = fromJust "Unable to lookup package name" $ Map.lookup packageTwoName dependencies
+
+  exactBuildPlan = Map.fromFoldable
+    [ Tuple (unsafePackageName "package-one") (unsafeVersion "2.0.0")
+    , Tuple (unsafePackageName "package-two") (unsafeVersion "3.0.0")
+    ]
+
+  extraBuildPlan = Map.fromFoldable
+    [ Tuple (unsafePackageName "package-one") (unsafeVersion "2.0.0")
+    , Tuple (unsafePackageName "package-two") (unsafeVersion "3.0.0")
+    , Tuple (unsafePackageName "package-three") (unsafeVersion "7.0.0")
+    ]
+
+  buildPlanMissingPackage = Map.fromFoldable
+    [ Tuple (unsafePackageName "package-one") (unsafeVersion "2.0.0")
+    , Tuple (unsafePackageName "package-three") (unsafeVersion "7.0.0")
+    ]
+
+  buildPlanWrongVersion = Map.fromFoldable
+    [ Tuple (unsafePackageName "package-one") (unsafeVersion "2.0.0")
+    , Tuple (unsafePackageName "package-two") (unsafeVersion "7.0.0")
+    ]
