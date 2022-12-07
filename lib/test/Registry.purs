@@ -37,6 +37,4 @@ main = Aff.launchAff_ $ Spec.Runner.runSpec [ Spec.Reporter.consoleReporter ] do
 
   Spec.describe "ManifestIndex" Test.ManifestIndex.spec
   Spec.describe "Solver" Test.Solver.spec
-
-  Spec.describe "Operation Validation" do
-    Test.Operation.Validation.spec
+  Spec.describe "Operation Validation" Test.Operation.Validation.spec
