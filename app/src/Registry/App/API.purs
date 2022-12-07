@@ -381,8 +381,8 @@ runOperation source operation = case operation of
             , "This version is listed both as published and unpublished. This is an internal error."
             , "cc @purescript/packaging"
             ]
-        Left (Operation.Validation.PastTimeLimit { limit }) ->
-          throwWithComment $ "Packages can only be unpublished within " <> Number.Format.toString (unwrap limit) <> " hours."
+        Left (Operation.Validation.PastTimeLimit { difference, limit }) ->
+          throwWithComment $ "Packages can only be unpublished within " <> Number.Format.toString (unwrap limit) <> " hours. Package was published " <> Number.Format.toString (unwrap difference) <> " hours ago."
         Right published ->
           pure published
 
