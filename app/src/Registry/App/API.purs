@@ -521,7 +521,7 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
 
   log "Verifying that the package contains a `src` directory"
   whenM (liftAff $ Operation.Validation.containsPursFile (Path.concat [ packageDirectory, "src" ])) do
-    throwWithComment "This package has no .purs files in the src directory. All package sources must be in the `src` directory, with any additional sources indicated by the `files` key in your manifest." 
+    throwWithComment "This package has no .purs files in the src directory. All package sources must be in the `src` directory, with any additional sources indicated by the `files` key in your manifest."
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
   isLegacyImport <- liftEffect $ map not $ FS.Sync.exists manifestPath

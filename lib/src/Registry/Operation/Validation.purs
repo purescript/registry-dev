@@ -58,7 +58,7 @@ nameMatches :: Manifest -> PublishData -> Boolean
 nameMatches (Manifest manifestFields) { name } =
   manifestFields.name == name
 
--- | Checks that the manifest location and JSON payload location match.
+-- | Checks that the manifest location and metadata location match.
 locationMatches :: Manifest -> Metadata -> Boolean
 locationMatches (Manifest manifestFields) (Metadata metadataFields) =
   manifestFields.location == metadataFields.location
