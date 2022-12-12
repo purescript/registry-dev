@@ -4,7 +4,6 @@ import Registry.App.Prelude
 
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
-import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader (ask, asks)
 import Data.Array as Array
 import Data.Codec.Argonaut (JsonCodec)
@@ -21,7 +20,6 @@ import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Process
-import Registry.App.API (writeMetadata)
 import Registry.App.API as API
 import Registry.App.Cache as Cache
 import Registry.App.Json as Json
