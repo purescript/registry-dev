@@ -9,6 +9,8 @@ module Registry.Scripts.LegacyImporter where
 import Registry.App.Prelude
 
 import Affjax as Http
+import ArgParse.Basic (ArgParser)
+import ArgParse.Basic as Arg
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
@@ -36,6 +38,7 @@ import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
+import Node.Process as Process
 import Parsing as Parsing
 import Registry.App.API (LegacyRegistryFile(..), Source(..))
 import Registry.App.API as API
@@ -62,28 +65,31 @@ data ImportMode = DryRun | GenerateRegistry | UpdateRegistry
 
 derive instance Eq ImportMode
 
+parser :: ArgParser ImportMode
+parser = Arg.choose "command"
+  [ Arg.argument [ "dry-run" ]
+      "Run the registry importer without uploading packages or committing files."
+      $> DryRun
+  , Arg.argument [ "generate-registry" ]
+      "Run the registry importer, uploading packages but not committing to metadata or the index."
+      $> GenerateRegistry
+  , Arg.argument [ "update-registry" ]
+      "Run the registry importer, uploading packages and committing to metadata and the index."
+      $> UpdateRegistry
+  ]
+
 main :: Effect Unit
 main = launchAff_ do
+  args <- Array.drop 2 <$> liftEffect Node.Process.argv
+  let description = "A script for uploading legacy registry packages."
+  mode <- case Arg.parseArgs "legacy-importer" description parser args of
+    Left err -> log (Arg.printArgError err) *> liftEffect (Process.exit 1)
+    Right command -> pure command
+
   log "Reading .env file..."
   _ <- API.loadEnv
 
   FS.Extra.ensureDirectory API.scratchDir
-
-  log "Parsing CLI args..."
-  mode <- liftEffect do
-    let expected = "Expected 'dry-run', 'generate', or 'update'"
-    args <- Array.drop 2 <$> Node.Process.argv
-    case Array.uncons args of
-      Nothing -> Exception.throw $ expected <> ", but received no arguments."
-      Just { head, tail: [] } -> case head of
-        "dry-run" -> pure DryRun
-        "generate" -> pure GenerateRegistry
-        "update" -> pure UpdateRegistry
-        other -> Exception.throw $ expected <> ", but received: " <> other
-      Just _ -> Exception.throw $ String.joinWith "\n"
-        [ expected <> ", but received multiple arguments:"
-        , String.joinWith " " args
-        ]
 
   octokit <- liftEffect do
     token <- do

@@ -103,27 +103,22 @@
 
             registry-importer = ''
               cd $(git rev-parse --show-toplevel)
-              if [ -z "$1" ]; then
-                echo "No arguments supplied. Expected one of: generate, update"
-                exit 1
-              fi
-
-              spago run -p registry-scripts -m Registry.Scripts.LegacyImporter -- $1
+              spago run -p registry-scripts -m Registry.Scripts.LegacyImporter -- $@
             '';
 
             registry-package-set-updater = ''
               cd $(git rev-parse --show-toplevel)
-              if [ -z "$1" ]; then
-                echo "No arguments supplied. Expected one of: generate, commit"
-                exit 1
-              fi
-
-              spago run -p registry-scripts -m Registry.Scripts.PackageSetUpdater -- $1
+              spago run -p registry-scripts -m Registry.Scripts.PackageSetUpdater -- $@
             '';
 
             registry-package-transferrer = ''
               cd $(git rev-parse --show-toplevel)
-              spago run -p registry-scripts -m Registry.Scripts.PackageTransferrer -- $1
+              spago run -p registry-scripts -m Registry.Scripts.PackageTransferrer -- $@
+            '';
+
+            registry-package-deleter = ''
+              cd $(git rev-parse --show-toplevel)
+              spago run -p registry-scripts -m Registry.Scripts.PackageDeleter -- $@
             '';
 
             # This script verifies that

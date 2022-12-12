@@ -3,5 +3,6 @@ package:
   publish:
     license: BSD-3-Clause
   dependencies:
+    - argparse-basic
     - registry-app
     - registry-lib
