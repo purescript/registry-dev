@@ -117,6 +117,7 @@ main = launchAff_ do
 
     { registry, registryIndex } <- ask
 
+    Console.log $ "\n-----\nDELETING PACKAGE VERSIONS\n-----\n"
     Console.log $ "Writing metadata changes to " <> registry
     Console.log $ "Writing manifest index changes to " <> registryIndex
 
