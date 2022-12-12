@@ -24,7 +24,7 @@ import Registry.App.API as API
 import Registry.App.Cache as Cache
 import Registry.App.Json as Json
 import Registry.App.PackageStorage as PackageStorage
-import Registry.App.RegistryM (Env, RegistryM, readPackagesMetadata, runRegistryM)
+import Registry.App.RegistryM (Env, RegistryM, commitIndexFile, commitMetadataFile, readPackagesMetadata, runRegistryM)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata as Metadata
@@ -121,20 +121,28 @@ main = launchAff_ do
     Console.log $ "Writing manifest index changes to " <> registryIndex
 
     forWithIndex_ packages \name versions -> do
-      Console.log $ "Deleting versions for package " <> PackageName.print name
+      Console.log $ "Processing versions for " <> PackageName.print name
 
       for_ versions \version -> do
         result <- deleteVersion name version
         let printed = Version.print version
         case result of
           Left (FailedDelete err) -> do
-            Console.log $ "Failed to delete " <> printed <> ": " <> err
+            Console.log $ "[ERROR] Failed to delete " <> printed <> ": " <> err
           Left (FailedUpdateMetadata err) -> do
-            Console.log $ "Failed to update metadata file for " <> printed <> ": " <> err
+            Console.log $ "[ERROR] Failed to update metadata file for " <> printed <> ": " <> err
           Left (FailedUpdateIndex err) -> do
-            Console.log $ "Failed to update index file for " <> printed <> ": " <> err
+            Console.log $ "[ERROR] Failed to update index file for " <> printed <> ": " <> err
           Right _ ->
-            pure unit
+            Console.log $ "Successfully removed " <> printed
+
+      commitMetadataFile name >>= case _ of
+        Left err -> Console.log $ "Failed to commit metadata file for " <> PackageName.print name <> ": " <> err
+        Right _ -> pure unit
+
+      commitIndexFile name >>= case _ of
+        Left err -> Console.log $ "Failed to commit registry index file for " <> PackageName.print name <> ": " <> err
+        Right _ -> pure unit
 
 data DeleteError
   = FailedDelete String
