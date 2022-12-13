@@ -4,6 +4,7 @@ import Registry.App.Prelude
 
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
+import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
 import Data.Array as Array
 import Data.Codec.Argonaut (JsonCodec)
@@ -15,6 +16,7 @@ import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Effect.Exception as Exception
 import Effect.Ref as Ref
+import Foreign.Git as Git
 import Foreign.GitHub (GitHubToken(..))
 import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
@@ -24,7 +26,8 @@ import Registry.App.API as API
 import Registry.App.Cache as Cache
 import Registry.App.Json as Json
 import Registry.App.PackageStorage as PackageStorage
-import Registry.App.RegistryM (Env, RegistryM, commitIndexFile, commitMetadataFile, readPackagesMetadata, runRegistryM)
+import Registry.App.RegistryM (Env, RegistryM, readPackagesMetadata, runRegistryM)
+import Registry.Constants as Constants
 import Registry.Internal.Codec as Internal.Codec
 import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata as Metadata
@@ -91,9 +94,9 @@ main = launchAff_ do
     env =
       { comment: \comment -> Console.log ("[COMMENT] " <> comment)
       , closeIssue: Console.log "Running locally, not closing issue..."
-      , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
-      , commitIndexFile: API.pacchettiBottiPushToRegistryIndex
-      , commitPackageSetFile: \_ _ _ -> log "Not committing package sets in package deleter." $> Right unit
+      , commitMetadataFile: \_ _ -> Console.log "Not using RegistryM to commit files." $> Right unit
+      , commitIndexFile: \_ _ -> Console.log "Not using RegistryM to commit files." $> Right unit
+      , commitPackageSetFile: \_ _ _ -> Console.log "Not committing package sets in package deleter." $> Right unit
       , uploadPackage: \_ _ -> Console.log $ "Not uploading packages in package deleter."
       , deletePackage: \_ -> Console.log $ "Not using registry delete package function."
       , packagesMetadata: metadataRef
@@ -137,13 +140,35 @@ main = launchAff_ do
           Right _ ->
             Console.log $ "Successfully removed " <> printed
 
-      commitMetadataFile name >>= case _ of
-        Left err -> Console.log $ "Failed to commit metadata file for " <> PackageName.print name <> ": " <> err
-        Right _ -> pure unit
+    registryDir <- asks _.registry
+    commitMetadata <- liftAff $ Except.runExceptT do
+      GitHubToken token <- Git.configurePacchettiBotti (Just registryDir)
+      Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
+      Git.runGit_ [ "add", "*.json" ] (Just registryDir)
+      Git.runGit_ [ "commit", "-m", "Remove some package versions from metadata." ] (Just registryDir)
+      let upstreamRepo = Constants.registry.owner <> "/" <> Constants.registry.repo
+      let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
+      void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryDir)
 
-      commitIndexFile name >>= case _ of
-        Left err -> Console.log $ "Failed to commit registry index file for " <> PackageName.print name <> ": " <> err
-        Right _ -> pure unit
+    case commitMetadata of
+      Left err -> Console.log $ "Failed to commit metadata!\n" <> err
+      Right _ -> pure unit
+
+    registryIndexDir <- asks _.registryIndex
+    commitIndex <- liftAff $ Except.runExceptT do
+      GitHubToken token <- Git.configurePacchettiBotti (Just registryIndexDir)
+      Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryIndexDir)
+      Git.runGit_ [ "add", "." ] (Just registryIndexDir)
+      Git.runGit_ [ "commit", "-m", "Remove some package versions from index." ] (Just registryIndexDir)
+      let upstreamRepo = Constants.packageIndex.owner <> "/" <> Constants.packageIndex.repo
+      let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
+      void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
+
+    case commitIndex of
+      Left err -> Console.log $ "Failed to commit index!\n" <> err
+      Right _ -> pure unit
+
+    Console.log "Finished."
 
 data DeleteError
   = FailedDelete String
