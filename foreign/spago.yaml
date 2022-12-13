@@ -4,3 +4,7 @@ package:
     license: BSD-3-Clause
   dependencies:
     - registry-lib
+  test:
+    main: Test.Foreign
+    dependencies:
+      - spec
