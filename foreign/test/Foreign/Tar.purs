@@ -1,4 +1,4 @@
-module Test.Foreign.Tar where
+module Test.Registry.Foreign.Tar (spec) where
 
 import Registry.App.Prelude
 
@@ -14,18 +14,17 @@ import Registry.Sha256 as Sha256
 import Test.Assert as Assert
 import Test.Spec as Spec
 
-tar :: Spec.Spec Unit
-tar = do
-  Spec.describe "Tar" do
-    Spec.it "Successfully produces tarball from directory" do
-      { bytes } <- createTarball
-      bytes `Assert.shouldSatisfy` (_ > 30.0)
+spec :: Spec.Spec Unit
+spec = do
+  Spec.it "Successfully produces tarball from directory" do
+    { bytes } <- createTarball
+    bytes `Assert.shouldSatisfy` (_ > 30.0)
 
-    Spec.it "Tarballs are identical if contents are identical" do
-      tarball1 <- createTarball
-      Aff.delay (Aff.Milliseconds 1010.0)
-      tarball2 <- createTarball
-      tarball1 `Assert.shouldEqual` tarball2
+  Spec.it "Tarballs are identical if contents are identical" do
+    tarball1 <- createTarball
+    Aff.delay (Aff.Milliseconds 1010.0)
+    tarball2 <- createTarball
+    tarball1 `Assert.shouldEqual` tarball2
   where
   createTarball = do
     packageTmp <- liftEffect Tmp.mkTmpDir

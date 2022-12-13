@@ -1,4 +1,4 @@
-module Test.Foreign.SPDX (spec) where
+module Test.Registry.Foreign.SPDX (spec) where
 
 import Registry.App.Prelude
 
