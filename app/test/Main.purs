@@ -10,10 +10,8 @@ import Data.Foldable (traverse_)
 import Data.Map as Map
 import Data.String.NonEmpty as NonEmptyString
 import Data.Time.Duration (Milliseconds(..))
-import Node.FS as FS
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
-import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
@@ -30,13 +28,11 @@ import Registry.PackageName as PackageName
 import Registry.Version as Version
 import Safe.Coerce (coerce)
 import Test.Assert as Assert
-import Test.Foreign.JsonRepair as Foreign.JsonRepair
-import Test.Foreign.Licensee (licensee)
-import Test.Foreign.SPDX as Foreign.SPDX
-import Test.Foreign.Tar as Foreign.Tar
 import Test.Registry.App.Auth as Auth
-import Test.Registry.App.LenientRange as Test.LenientRange
-import Test.Registry.App.LenientVersion as Test.LenientVersion
+import Test.Registry.App.CLI.Licensee as Test.Licensee
+import Test.Registry.App.CLI.Tar as Test.Tar
+import Test.Registry.App.Legacy.LenientRange as Test.LenientRange
+import Test.Registry.App.Legacy.LenientVersion as Test.LenientVersion
 import Test.Registry.App.PackageIndex as Test.PackageIndex
 import Test.Registry.App.PackageSets as Test.PackageSets
 import Test.RegistrySpec as RegistrySpec
@@ -67,56 +63,18 @@ main = launchAff_ do
       Spec.describe "Does not parse" do
         Spec.describe "Bad bower files" badBowerfiles
       Spec.describe "Encoding" bowerFileEncoding
-    Spec.describe "Licensee" licensee
     Spec.describe "Package Index" do
       Test.PackageIndex.spec registryEnv
-    Spec.describe "Tar" do
-      Foreign.Tar.tar
-    Spec.describe "Json Repair" do
-      Foreign.JsonRepair.testJsonRepair
-    Spec.describe "Glob" do
-      safeGlob
     Spec.describe "Package Set" do
       Test.PackageSets.spec
-    Spec.describe "SPDX Fuzzy Match" do
-      Foreign.SPDX.spec
 
-    Spec.describe "Lenient Version"
-      Test.LenientVersion.spec
-    Spec.describe "Lenient Range"
-      Test.LenientRange.spec
+    Spec.describe "CLI" do
+      Spec.describe "Licensee" Test.Licensee.spec
+      Spec.describe "Tar" Test.Tar.spec
 
-safeGlob :: Spec.Spec Unit
-safeGlob = do
-  Spec.describe "Prevents directory traversals" do
-    Spec.it "Directory traversal" do
-      tmp <- liftEffect Tmp.mkTmpDir
-      let outerFile = Path.concat [ tmp, "flake.nix" ]
-      FS.Aff.writeTextFile UTF8 outerFile "<contents>"
-      let innerDirectory = Path.concat [ tmp, "inner" ]
-      FS.Extra.ensureDirectory innerDirectory
-      { succeeded, failed } <- FastGlob.match innerDirectory [ "../flake.nix" ]
-      succeeded `Assert.shouldEqual` []
-      failed `Assert.shouldEqual` [ "../flake.nix" ]
-
-    Spec.it "Symlink traversal" do
-      tmp <- liftEffect Tmp.mkTmpDir
-      let outerFile = Path.concat [ tmp, "shell.nix" ]
-      FS.Aff.writeTextFile UTF8 outerFile "<contents>"
-      let innerDirectory = Path.concat [ tmp, "inner" ]
-      FS.Extra.ensureDirectory innerDirectory
-      FS.Aff.symlink outerFile (Path.concat [ innerDirectory, "shell.nix" ]) FS.FileLink
-      { succeeded, failed } <- FastGlob.match innerDirectory [ "./shell.nix" ]
-      succeeded `Assert.shouldEqual` []
-      failed `Assert.shouldEqual` [ "./shell.nix" ]
-
-    -- A glob that is technically a directory traversal but which doesn't
-    -- actually match any files won't throw an error since there are no results.
-    Spec.it "Traversal to a non-existing file" do
-      cwd <- liftEffect Process.cwd
-      result <- FastGlob.match cwd [ "/var/www/root/shell.nix" ]
-      unless (result == mempty) do
-        Assert.fail $ "Expected no results, but received " <> show result
+    Spec.describe "Legacy" do
+      Spec.describe "Lenient Version" Test.LenientVersion.spec
+      Spec.describe "Lenient Range" Test.LenientRange.spec
 
 removeIgnoredTarballFiles :: Spec.Spec Unit
 removeIgnoredTarballFiles = Spec.before runBefore do
@@ -236,7 +194,7 @@ decodeEventsToOps = do
         , location: Nothing
         }
 
-    res <- API.readOperation "test/fixtures/update_issue_comment.json"
+    res <- API.readOperation "test/_fixtures/update_issue_comment.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber username (Right operation)
 
   Spec.it "decodes an Addition operation" do
@@ -251,7 +209,7 @@ decodeEventsToOps = do
         , resolutions: Just $ Map.fromFoldable [ mkUnsafePackage "prelude" /\ mkUnsafeVersion "1.0.0" ]
         }
 
-    res <- API.readOperation "test/fixtures/addition_issue_created.json"
+    res <- API.readOperation "test/_fixtures/addition_issue_created.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber username (Right operation)
 
   Spec.it "decodes a Package Set Update operation" do
@@ -266,7 +224,7 @@ decodeEventsToOps = do
             ]
         }
 
-    res <- API.readOperation "test/fixtures/package-set-update_issue_created.json"
+    res <- API.readOperation "test/_fixtures/package-set-update_issue_created.json"
     res `Assert.shouldEqual` API.DecodedOperation issueNumber username (Left operation)
 
   Spec.it "decodes lenient JSON" do

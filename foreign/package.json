@@ -9,6 +9,7 @@
     "aws-sdk": "^2.1050.0",
     "fast-glob": "^3.2.11",
     "fs-extra": "^10.0.0",
+    "fuse.js": "^6.6.2",
     "jsonrepair": "^2.2.1",
     "registry-lib": "file:../lib",
     "semver": "^7.3.5",

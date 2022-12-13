@@ -1,4 +1,4 @@
-module Test.Registry.App.LenientRange (spec) where
+module Test.Registry.App.Legacy.LenientRange (spec) where
 
 import Registry.App.Prelude
 

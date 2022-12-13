@@ -1,4 +1,4 @@
-module Test.Registry.App.LenientVersion (spec) where
+module Test.Registry.App.Legacy.LenientVersion (spec) where
 
 import Registry.App.Prelude
 

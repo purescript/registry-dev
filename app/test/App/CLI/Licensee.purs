@@ -1,4 +1,4 @@
-module Test.Foreign.Licensee (spec) where
+module Test.Registry.App.CLI.Licensee (spec) where
 
 import Registry.App.Prelude
 

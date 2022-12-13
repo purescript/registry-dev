@@ -1,10 +1,13 @@
 module Test.Registry.Foreign.SPDX (spec) where
 
-import Registry.App.Prelude
+import Prelude
 
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
+import Data.Foldable (for_)
+import Data.Maybe (Maybe(..))
 import Data.String as String
+import Data.Tuple (Tuple(..))
 import Registry.Foreign.SPDX as SPDX
 import Registry.License as License
 import Test.Assert as Assert
@@ -13,7 +16,7 @@ import Test.Spec as Spec
 spec :: Spec.Spec Unit
 spec = do
   Spec.it "Suggests replacements for fixable malformed licenses" do
-    for_ fixable \(input /\ output) ->
+    for_ fixable \(Tuple input output) ->
       case SPDX.fuzzyMatchLicense input of
         Nothing ->
           Assert.fail $ Array.fold [ input, " had no matches, but should have matched ", output ]
@@ -33,10 +36,10 @@ spec = do
 
 fixable :: Array (Tuple String String)
 fixable =
-  [ "Apache" /\ "Apache-1.0"
-  , "Apache-2" /\ "Apache-2.0"
-  , "Apache 2" /\ "Apache-2.0"
-  , "BSD-3" /\ "BSD-3-Clause"
+  [ Tuple "Apache" "Apache-1.0"
+  , Tuple "Apache-2" "Apache-2.0"
+  , Tuple "Apache 2" "Apache-2.0"
+  , Tuple "BSD-3" "BSD-3-Clause"
   ]
 
 unfixable :: Array String

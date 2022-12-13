@@ -3,6 +3,12 @@ package:
   publish:
     license: BSD-3-Clause
   dependencies:
+    - aff-promise
+    - b64
+    - convertable-options
+    - filterable
+    - http-methods
+    - node-process
     - registry-lib
   test:
     main: Test.Foreign
