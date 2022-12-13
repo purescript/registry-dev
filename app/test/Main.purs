@@ -10,18 +10,18 @@ import Data.Foldable (traverse_)
 import Data.Map as Map
 import Data.String.NonEmpty as NonEmptyString
 import Data.Time.Duration (Milliseconds(..))
-import Foreign.FastGlob as FastGlob
-import Foreign.GitHub (IssueNumber(..))
-import Foreign.Node.FS as FS.Extra
-import Foreign.Purs (CompilerFailure(..))
-import Foreign.Purs as Purs
-import Foreign.Tmp as Tmp
 import Node.FS as FS
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
+import Registry.App.CLI.Purs (CompilerFailure(..))
+import Registry.App.CLI.Purs as Purs
+import Registry.App.GitHub (IssueNumber(..))
 import Registry.App.Json as Json
+import Registry.Foreign.FSExtra as FS.Extra
+import Registry.Foreign.FastGlob as FastGlob
+import Registry.Foreign.Tmp as Tmp
 import Registry.Legacy.Manifest (Bowerfile(..))
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Operation (PackageOperation(..), PackageSetOperation(..))

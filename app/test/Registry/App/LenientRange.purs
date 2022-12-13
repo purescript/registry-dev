@@ -3,7 +3,7 @@ module Test.Registry.App.LenientRange (spec) where
 import Registry.App.Prelude
 
 import Data.Either as Either
-import Registry.App.LenientRange as LenientRange
+import Registry.App.Legacy.LenientRange as LenientRange
 import Test.Assert as Assert
 import Test.Spec as Spec
 

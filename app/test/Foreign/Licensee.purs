@@ -2,8 +2,8 @@ module Test.Foreign.Licensee where
 
 import Registry.App.Prelude
 
-import Foreign.Licensee as Licensee
 import Node.Path as Path
+import Registry.App.CLI.Licensee as Licensee
 import Test.Assert as Assert
 import Test.Spec as Spec
 import Test.Support.ManifestFiles as ManifestFiles

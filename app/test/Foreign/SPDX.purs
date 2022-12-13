@@ -5,7 +5,7 @@ import Registry.App.Prelude
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.String as String
-import Foreign.SPDX as SPDX
+import Registry.Foreign.SPDX as SPDX
 import Registry.License as License
 import Test.Assert as Assert
 import Test.Spec as Spec

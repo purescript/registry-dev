@@ -7,18 +7,17 @@ import Data.Map as Map
 import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
-import Foreign.Git as Git
-import Foreign.GitHub (GitHubToken(..))
-import Foreign.GitHub as GitHub
-import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API (Source(..))
 import Registry.App.API as API
+import Registry.App.CLI.Git as Git
 import Registry.App.Cache as Cache
+import Registry.App.GitHub as GitHub
 import Registry.App.Json as Json
 import Registry.App.RegistryM (Env, runRegistryM, throwWithComment)
+import Registry.Foreign.Tmp as Tmp
 import Registry.Manifest as Manifest
 import Registry.Version as Version
 
@@ -28,9 +27,9 @@ main = launchAff_ $ do
 
   githubToken <- liftEffect do
     Process.lookupEnv "GITHUB_TOKEN"
-      >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
+      >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHub.GitHubToken)
 
-  octokit <- liftEffect $ GitHub.mkOctokit githubToken
+  octokit <- liftEffect $ GitHub.newOctokit githubToken
   cache <- Cache.useCache API.cacheDir
 
   let

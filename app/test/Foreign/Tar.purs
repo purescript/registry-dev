@@ -3,13 +3,13 @@ module Test.Foreign.Tar where
 import Registry.App.Prelude
 
 import Effect.Aff as Aff
-import Foreign.Node.FS as FSE
-import Foreign.Tar as Tar
-import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS
 import Node.FS.Aff as FSA
 import Node.FS.Stats as FS.Stats
 import Node.Path as Path
+import Registry.App.CLI.Tar as Tar
+import Registry.Foreign.FSExtra as FSE
+import Registry.Foreign.Tmp as Tmp
 import Registry.Sha256 as Sha256
 import Test.Assert as Assert
 import Test.Spec as Spec

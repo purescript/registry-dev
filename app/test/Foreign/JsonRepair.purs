@@ -4,9 +4,9 @@ import Registry.App.Prelude
 
 import Data.Codec.Argonaut as CA
 import Data.Either as Either
-import Foreign.JsonRepair as JsonRepair
 import Registry.App.Json (Json, JsonCodec)
 import Registry.App.Json as Json
+import Registry.Foreign.JsonRepair as JsonRepair
 import Test.Assert as Assert
 import Test.Spec as Spec
 

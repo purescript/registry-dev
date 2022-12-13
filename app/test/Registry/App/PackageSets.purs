@@ -11,8 +11,8 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.Set as Set
 import Registry.App.Json as Json
-import Registry.App.LenientVersion (LenientVersion)
-import Registry.App.LenientVersion as LenientVersion
+import Registry.App.Legacy.LenientVersion (LenientVersion)
+import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.PackageSets as App.PackageSets
 import Registry.Internal.Format as Internal.Format
 import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, latestCompatibleSetsCodec, legacyPackageSetCodec, parsePscTag, printPscTag)

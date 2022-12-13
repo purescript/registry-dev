@@ -5,10 +5,10 @@ import Registry.App.Prelude
 import Data.Map as Map
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
-import Foreign.GitHub (GitHubToken(..))
-import Foreign.GitHub as Octokit
 import Registry.App.RegistryM (Env, RegistryM)
 import Registry.App.RegistryM as RegistryM
+import Registry.Foreign.GitHub (GitHubToken(..))
+import Registry.Foreign.GitHub as Octokit
 import Test.Spec as Spec
 import Test.Spec.Reporter as Reporter
 import Test.Spec.Runner as Runner
@@ -25,7 +25,7 @@ defaultTestEnv =
   , deletePackage: mempty
   , uploadPackage: mempty
   , packagesMetadata: unsafePerformEffect (Ref.new Map.empty)
-  , octokit: unsafePerformEffect (Octokit.mkOctokit (GitHubToken ""))
+  , octokit: unsafePerformEffect (Octokit.newOctokit (GitHubToken ""))
   , cache:
       { read: \_ -> pure (Left "")
       , write: mempty

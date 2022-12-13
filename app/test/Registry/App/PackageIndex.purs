@@ -10,15 +10,15 @@ import Data.Foldable (sequence_)
 import Data.Map as Map
 import Data.Set as Set
 import Effect.Ref as Ref
-import Foreign.FastGlob (Include(..))
-import Foreign.FastGlob as FastGlob
-import Foreign.Node.FS as FS.Extra
-import Foreign.Tmp as Tmp
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.RegistryM (RegistryM)
 import Registry.App.RegistryM as RegistryM
+import Registry.Foreign.FSExtra as FS.Extra
+import Registry.Foreign.FastGlob (Include(..))
+import Registry.Foreign.FastGlob as FastGlob
+import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
 import Registry.Manifest as Manifest

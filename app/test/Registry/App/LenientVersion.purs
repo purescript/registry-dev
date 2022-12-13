@@ -3,7 +3,7 @@ module Test.Registry.App.LenientVersion (spec) where
 import Registry.App.Prelude
 
 import Data.Either as Either
-import Registry.App.LenientVersion as LenientVersion
+import Registry.App.Legacy.LenientVersion as LenientVersion
 import Test.Assert as Assert
 import Test.Spec as Spec
 
