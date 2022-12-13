@@ -20,21 +20,18 @@ import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
 import Data.DateTime (DateTime)
-import Data.DateTime as DateTime
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.HTTP.Method as Method
-import Data.Int as Int
 import Data.Map as Map
 import Data.MediaType.Common as MediaType
+import Data.Newtype (unwrap)
+import Data.Number.Format as Number.Format
 import Data.Profunctor as Profunctor
 import Data.Set as Set
 import Data.String as String
 import Data.String.Base64 as Base64
 import Data.String.NonEmpty as NonEmptyString
-import Data.Time.Duration (Hours(..))
-import Data.Tuple (uncurry)
-import Data.Tuple.Nested (type (/\))
 import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Exception (throw)
@@ -76,6 +73,7 @@ import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata as Metadata
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageOperation(..), PackageSetOperation(..), PublishData)
 import Registry.Operation as Operation
+import Registry.Operation.Validation as Operation.Validation
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
 import Registry.Range as Range
@@ -247,7 +245,7 @@ runOperation source operation = case operation of
           , PackageName.print name
           , "because no 'location' field was provided."
           ]
-        Just packageLocation | not (locationIsUnique packageLocation packagesMetadata) -> throwWithComment $ String.joinWith " "
+        Just packageLocation | not (Operation.Validation.locationIsUnique packageLocation packagesMetadata) -> throwWithComment $ String.joinWith " "
           [ "Cannot register"
           , PackageName.print name
           , "at the location"
@@ -370,27 +368,23 @@ runOperation source operation = case operation of
     Unpublish { name, version, reason } -> do
       username <- asks _.username
       Metadata metadata <- readMetadata name { noMetadata: "No metadata found for your package. Only published packages can be unpublished." }
-
-      let
-        inPublished = Map.lookup version metadata.published
-        inUnpublished = Map.lookup version metadata.unpublished
-
-      publishedMetadata <- case inPublished, inUnpublished of
-        Nothing, Nothing ->
+      now <- liftEffect nowUTC
+      publishedMetadata <- case Operation.Validation.validateUnpublish now version (Metadata metadata) of
+        Left Operation.Validation.NotPublished ->
           throwWithComment $ "Cannot unpublish " <> Version.print version <> " because it is not a published version."
-        Just published, Nothing ->
-          -- We only pass through the case where the user is unpublishing a
-          -- package that has been published and not yet unpublished.
-          pure published
-        Nothing, Just _ ->
+        Left Operation.Validation.AlreadyUnpublished ->
           throwWithComment $ "Cannot unpublish " <> Version.print version <> " because it has already been unpublished."
-        Just _, Just _ ->
+        Left Operation.Validation.InternalError ->
           throwWithComment $ String.joinWith "\n"
             [ "Cannot unpublish " <> Version.print version <> "."
             , ""
             , "This version is listed both as published and unpublished. This is an internal error."
             , "cc @purescript/packaging"
             ]
+        Left (Operation.Validation.PastTimeLimit { difference, limit }) ->
+          throwWithComment $ "Packages can only be unpublished within " <> Number.Format.toString (unwrap limit) <> " hours. Package was published " <> Number.Format.toString (unwrap difference) <> " hours ago."
+        Right published ->
+          pure published
 
       Tuple auth maybeOwners <- acceptTrustees username submittedAuth metadata.owners
 
@@ -407,12 +401,6 @@ runOperation source operation = case operation of
             , err
             ]
           Right _ -> do
-            now <- liftEffect nowUTC
-            let hourLimit = 48
-            let diff = DateTime.diff now publishedMetadata.publishedTime
-            when (diff > Hours (Int.toNumber hourLimit)) do
-              throwWithComment $ "Packages can only be unpublished within " <> Int.toStringAs Int.decimal hourLimit <> " hours."
-
             deletePackage { name, version }
 
             let
@@ -456,7 +444,7 @@ runOperation source operation = case operation of
 
       packagesMetadata <- readPackagesMetadata
       let
-        isUniqueLocation = locationIsUnique newLocation packagesMetadata
+        isUniqueLocation = Operation.Validation.locationIsUnique newLocation packagesMetadata
         notUniqueError = String.joinWith " "
           [ "Cannot transfer"
           , PackageName.print name
@@ -521,7 +509,7 @@ jsonToDhallManifest jsonStr = do
     _ -> Left result.stderr
 
 publish :: Source -> PublishData -> Metadata -> RegistryM Unit
-publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = do
+publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputMetadata) = do
   tmpDir <- liftEffect $ Tmp.mkTmpDir
 
   -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
@@ -532,8 +520,8 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
   log $ "Package available in " <> packageDirectory
 
   log "Verifying that the package contains a `src` directory"
-  whenM (liftAff $ map (Array.null <<< _.succeeded) $ FastGlob.match packageDirectory [ "src/**/*.purs" ]) do
-    throwWithComment "This package has no .purs files in the src directory. All package sources must be in the src directory."
+  whenM (liftAff $ Operation.Validation.containsPursFile (Path.concat [ packageDirectory, "src" ])) do
+    throwWithComment "This package has no .purs files in the src directory. All package sources must be in the `src` directory, with any additional sources indicated by the `files` key in your manifest."
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
   isLegacyImport <- liftEffect $ map not $ FS.Sync.exists manifestPath
@@ -577,7 +565,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
   -- We trust the manifest for any changes to the 'owners' field, but for all
   -- other fields we trust the registry metadata.
   let metadata = inputMetadata { owners = manifestFields.owners }
-  when (not isLegacyImport && manifestFields.name /= name) do
+  when (not isLegacyImport && not (Operation.Validation.nameMatches manifest publishData)) do
     throwWithComment $ Array.fold
       [ "The manifest file specifies a package name ("
       , PackageName.print manifestFields.name
@@ -586,7 +574,7 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
       , "). The manifest and API request must match."
       ]
 
-  when (manifestFields.location /= metadata.location) do
+  unless (Operation.Validation.locationMatches manifest (Metadata metadata)) do
     throwWithComment $ Array.fold
       [ "The manifest file specifies a location ("
       , Json.stringifyJson Location.codec manifestFields.location
@@ -617,11 +605,11 @@ publish source { name, ref, compiler, resolutions } (Metadata inputMetadata) = d
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname }
   log "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.Aff.stat tarballPath
-  when (not isLegacyImport && bytes > warnPackageBytes) do
-    if bytes > maxPackageBytes then
+  for_ (Operation.Validation.validateTarballSize bytes) case _ of
+    Operation.Validation.ExceedsMaximum maxPackageBytes ->
       throwWithComment $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes.\ncc: @purescript/packaging"
-    else
-      log $ "WARNING: Package tarball is " <> show bytes <> ".\ncc: @purescript/packaging"
+    Operation.Validation.WarnPackageSize maxWarnBytes ->
+      comment $ "WARNING: Package tarball is " <> show bytes <> "bytes, which exceeds the warning threshold of " <> show maxWarnBytes <> " bytes.\ncc: @purescript/packaging"
   log "Hashing the tarball..."
   hash <- liftAff $ Sha256.hashFile tarballPath
   log $ "Hash: " <> Sha256.print hash
@@ -706,13 +694,12 @@ verifyManifest { metadata, manifest } = do
   log $ Argonaut.stringifyWithIndent 2 $ CA.encode Manifest.codec manifest
 
   log "Ensuring the package is not the purescript-metadata package, which cannot be published."
-  when (PackageName.print manifestFields.name == "metadata") do
+  when (Operation.Validation.isMetadataPackage manifest) do
     throwWithComment "The `metadata` package cannot be uploaded to the registry as it is a protected package."
 
   log "Check that version has not already been published"
-  case Map.lookup manifestFields.version (un Metadata metadata).published of
-    Nothing -> pure unit
-    Just info -> throwWithComment $ String.joinWith "\n"
+  for_ (Operation.Validation.isNotPublished manifest metadata) \info -> do
+    throwWithComment $ String.joinWith "\n"
       [ "You tried to upload a version that already exists: " <> Version.print manifestFields.version
       , "Its metadata is:"
       , "```"
@@ -721,9 +708,8 @@ verifyManifest { metadata, manifest } = do
       ]
 
   log "Check that version has not been unpublished"
-  case Map.lookup manifestFields.version (un Metadata metadata).unpublished of
-    Nothing -> pure unit
-    Just info -> throwWithComment $ String.joinWith "\n"
+  for_ (Operation.Validation.isNotUnpublished manifest metadata) \info -> do
+    throwWithComment $ String.joinWith "\n"
       [ "You tried to upload a version that has been unpublished: " <> Version.print manifestFields.version
       , "Details:"
       , "```"
@@ -751,30 +737,26 @@ verifyResolutions :: { source :: Source, resolutions :: Maybe (Map PackageName V
 verifyResolutions { source, resolutions, manifest } = Except.runExceptT do
   log "Check the submitted build plan matches the manifest"
   -- We don't verify packages provided via the mass import.
+  registryIndex <- lift PackageIndex.readManifestIndexFromDisk
   case resolutions of
-    Nothing -> do
-      registryIndex <- lift PackageIndex.readManifestIndexFromDisk
-      let getDependencies = _.dependencies <<< un Manifest
-      case Solver.solve (map (map getDependencies) (ManifestIndex.toMap registryIndex)) (getDependencies manifest) of
-        Left errors -> do
-          let
-            printedError = String.joinWith "\n"
-              [ "Could not produce valid dependencies for manifest."
-              , ""
-              , errors # foldMapWithIndex \index error -> String.joinWith "\n"
-                  [ "[Error " <> show (index + 1) <> "]"
-                  , Solver.printSolverError error
-                  ]
-              ]
-          case source of
-            Importer -> do
-              log $ "Could not solve manifest:\n" <> printedError <> "\n...but continuing because this is a legacy import."
-              pure Map.empty
-            API ->
-              throwError printedError
-        Right solution ->
-          pure solution
-
+    Nothing -> case Operation.Validation.validateDependenciesSolve manifest registryIndex of
+      Left errors -> do
+        let
+          printedError = String.joinWith "\n"
+            [ "Could not produce valid dependencies for manifest."
+            , ""
+            , errors # foldMapWithIndex \index error -> String.joinWith "\n"
+                [ "[Error " <> show (index + 1) <> "]"
+                , Solver.printSolverError error
+                ]
+            ]
+        case source of
+          Importer -> do
+            log $ "Could not solve manifest:\n" <> printedError <> "\n...but continuing because this is a legacy import."
+            pure Map.empty
+          API ->
+            throwError printedError
+      Right solved -> pure solved
     Just provided -> do
       case source of
         Importer ->
@@ -785,7 +767,7 @@ verifyResolutions { source, resolutions, manifest } = Except.runExceptT do
 
 validateResolutions :: Manifest -> Map PackageName Version -> RegistryM (Either String Unit)
 validateResolutions manifest resolutions = Except.runExceptT do
-  let unresolvedDependencies = getUnresolvedDependencies manifest resolutions
+  let unresolvedDependencies = Operation.Validation.getUnresolvedDependencies manifest resolutions
   unless (Array.null unresolvedDependencies) do
     let
       { fail: missingPackages, success: incorrectVersions } = partitionEithers unresolvedDependencies
@@ -827,26 +809,6 @@ validateResolutions manifest resolutions = Except.runExceptT do
       , missingPackagesError
       , incorrectVersionsError
       ]
-
--- | Verifies that all dependencies in the manifest are present in the build
--- | plan, and the version listed in the build plan is within the range provided
--- | in the manifest. Note: this only checks dependencies listed in the manifest
--- | and will ignore transitive dependecies.
-getUnresolvedDependencies :: Manifest -> Map PackageName Version -> Array (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
-getUnresolvedDependencies (Manifest { dependencies }) resolutions =
-  Array.mapMaybe (uncurry dependencyUnresolved) (Map.toUnfoldable dependencies)
-  where
-  dependencyUnresolved :: PackageName -> Range -> Maybe (Either (PackageName /\ Range) (PackageName /\ Range /\ Version))
-  dependencyUnresolved dependencyName dependencyRange =
-    case Map.lookup dependencyName resolutions of
-      -- If the package is missing from the build plan then the plan is incorrect.
-      Nothing -> Just $ Left $ dependencyName /\ dependencyRange
-      -- If the package exists, but the version is not in the manifest range
-      -- then the build plan is incorrect. Otherwise, this part of the build
-      -- plan is correct.
-      Just version
-        | not (Range.includes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
-        | otherwise -> Nothing
 
 type CompilePackage =
   { packageSourceDir :: FilePath
@@ -1091,9 +1053,6 @@ isPackageVersionInMetadata packageName version metadata =
 packageNameIsUnique :: PackageName -> Map PackageName Metadata -> Boolean
 packageNameIsUnique name = isNothing <<< Map.lookup name
 
-locationIsUnique :: Location -> Map PackageName Metadata -> Boolean
-locationIsUnique location = Map.isEmpty <<< Map.filter (eq location <<< _.location <<< un Metadata)
-
 -- | Fetch the latest from the given repository. Will perform a fresh clone if
 -- | a checkout of the repository does not exist at the given path, and will
 -- | pull otherwise.
@@ -1215,14 +1174,6 @@ pacchettiBottiPushToRegistryPackageSets version commitMessage registryDir = Exce
   let upstreamRepo = Constants.registry.owner <> "/" <> Constants.registry.repo
   let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
   void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryDir)
-
--- | The absolute maximum bytes allowed in a package
-maxPackageBytes :: Number
-maxPackageBytes = 2_000_000.0
-
--- | The number of bytes over which we flag a package for review
-warnPackageBytes :: Number
-warnPackageBytes = 200_000.0
 
 -- | Copy files from the package source directory to the destination directory
 -- | for the tarball. This will copy all always-included files as well as files

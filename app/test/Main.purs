@@ -30,7 +30,6 @@ import Registry.PackageName as PackageName
 import Registry.Version as Version
 import Safe.Coerce (coerce)
 import Test.Assert as Assert
-import Test.Fixture.Manifest as Fixture
 import Test.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Foreign.Licensee (licensee)
 import Test.Foreign.SPDX as Foreign.SPDX
@@ -62,7 +61,6 @@ main = launchAff_ do
         compilerVersions
       Spec.describe "Resolutions" do
         checkBuildPlanToResolutions
-        checkDependencyResolution
     Spec.describe "Bowerfile" do
       Spec.describe "Parses" do
         Spec.describe "Good bower files" goodBowerfiles
@@ -382,44 +380,6 @@ bowerFileEncoding = do
 
     Json.decode Legacy.Manifest.bowerfileCodec (Json.encode Legacy.Manifest.bowerfileCodec bowerFile)
       `Assert.shouldContain` bowerFile
-
-checkDependencyResolution :: Spec.Spec Unit
-checkDependencyResolution = do
-  Spec.it "Handles build plan with all dependencies resolved" do
-    Assert.shouldEqual (API.getUnresolvedDependencies manifest exactBuildPlan) []
-  Spec.it "Handles build plan with all dependencies resolved + extra" do
-    Assert.shouldEqual (API.getUnresolvedDependencies manifest extraBuildPlan) []
-  Spec.it "Handles build plan with resolution missing package" do
-    Assert.shouldEqual (API.getUnresolvedDependencies manifest buildPlanMissingPackage) [ Left (packageTwoName /\ packageTwoRange) ]
-  Spec.it "Handles build plan with resolution having package at wrong version" do
-    Assert.shouldEqual (API.getUnresolvedDependencies manifest buildPlanWrongVersion) [ Right (packageTwoName /\ packageTwoRange /\ mkUnsafeVersion "7.0.0") ]
-  where
-  manifest@(Manifest { dependencies }) =
-    Fixture.setDependencies [ Tuple "package-one" "2.0.0", Tuple "package-two" "3.0.0" ] Fixture.fixture
-
-  packageTwoName = mkUnsafePackage "package-two"
-  packageTwoRange = unsafeFromJust $ Map.lookup packageTwoName dependencies
-
-  exactBuildPlan = Map.fromFoldable
-    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-    , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
-    ]
-
-  extraBuildPlan = Map.fromFoldable
-    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-    , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "3.0.0")
-    , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
-    ]
-
-  buildPlanMissingPackage = Map.fromFoldable
-    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-    , Tuple (mkUnsafePackage "package-three") (mkUnsafeVersion "7.0.0")
-    ]
-
-  buildPlanWrongVersion = Map.fromFoldable
-    [ Tuple (mkUnsafePackage "package-one") (mkUnsafeVersion "2.0.0")
-    , Tuple (mkUnsafePackage "package-two") (mkUnsafeVersion "7.0.0")
-    ]
 
 checkBuildPlanToResolutions :: Spec.Spec Unit
 checkBuildPlanToResolutions = do
