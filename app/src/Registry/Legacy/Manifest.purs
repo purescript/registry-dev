@@ -408,7 +408,7 @@ fetchLegacyPackageSets = do
               pure Map.empty
             Right value -> pure value
 
-        let merged = Array.foldl (\m set -> Map.unionWith Map.union set m) Map.empty entries
+        let merged = Array.foldr (Map.unionWith Map.union) Map.empty entries
         liftEffect $ Cache.writeJsonEntry legacyPackageSetEntriesCodec tagKey merged cache
         pure merged
 
