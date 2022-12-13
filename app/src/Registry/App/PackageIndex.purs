@@ -30,7 +30,7 @@ readManifestIndexFromDisk = do
   let { fail, success } = partitionEithers entries
   case fail of
     [] -> case ManifestIndex.fromSet $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray success of
-      Left errors -> Notify.die $ append "Invalid ManifestIndex (some packages are not satisfiable):\n" $ String.joinWith "\n" do
+      Left errors -> Notify.exit $ append "Invalid ManifestIndex (some packages are not satisfiable):\n" $ String.joinWith "\n" do
         Tuple name versions <- Map.toUnfoldable errors
         Tuple version dependency <- Map.toUnfoldable versions
         let
@@ -43,7 +43,7 @@ readManifestIndexFromDisk = do
         pure index
 
     errors ->
-      Notify.die $ append "Invalid ManifestIndex (some package entries cannot be decoded):\n" $ String.joinWith "\n" errors
+      Notify.exit $ append "Invalid ManifestIndex (some package entries cannot be decoded):\n" $ String.joinWith "\n" errors
 
 -- | Attempt to insert a manifest into the registry manifest index, committing
 -- | the result.

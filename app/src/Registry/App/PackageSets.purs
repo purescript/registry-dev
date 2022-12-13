@@ -72,11 +72,11 @@ readLatestPackageSet = do
       hush $ Version.parse versionString
 
   case Array.last (Array.sort packageSetVersions) of
-    Nothing -> Notify.die "No existing package set."
+    Nothing -> Notify.exit "No existing package set."
     Just version -> do
       path <- getPackageSetPath version
       liftAff (Json.readJsonFile PackageSet.codec path) >>= case _ of
-        Left err -> Notify.die $ "Could not decode latest package set: " <> err
+        Left err -> Notify.exit $ "Could not decode latest package set: " <> err
         Right set -> pure set
 
 type Paths =
@@ -123,7 +123,7 @@ processBatchAtomic workDir index prevSet@(PackageSet { compiler: prevCompiler, p
   buildInitialSet >>= case _ of
     Left compilerError -> do
       handleCompilerError compilerVersion compilerError
-      Notify.die "Starting package set must compile in order to process a batch."
+      Notify.exit "Starting package set must compile in order to process a batch."
     Right _ -> pure unit
 
   runWithPaths workDir (tryBatch compilerVersion prevSet batch) >>= case _ of
@@ -208,9 +208,9 @@ updatePackageSetMetadata { previous, pending: PackageSet pending } changed = do
 handleCompilerError :: forall m. MonadRegistry m => Version -> Purs.CompilerFailure -> m Unit
 handleCompilerError compilerVersion = case _ of
   MissingCompiler ->
-    Notify.die $ "Missing compiler version " <> Version.print compilerVersion
+    Notify.exit $ "Missing compiler version " <> Version.print compilerVersion
   UnknownError err ->
-    Notify.die $ "Unknown error: " <> err
+    Notify.exit $ "Unknown error: " <> err
   CompilationError errs -> do
     Log.info "Compilation failed:\n"
     Log.info $ Purs.printCompilerErrors errs <> "\n"
@@ -448,7 +448,7 @@ validatePackageSet index (PackageSet set) = do
         , Version.print package.version
         ]
 
-    Notify.die $ String.joinWith "\n"
+    Notify.exit $ String.joinWith "\n"
       [ errorPrefix
       , "Some package versions in the package set are not registered:"
       , String.joinWith "\n" failedMessages
@@ -479,7 +479,7 @@ validatePackageSet index (PackageSet set) = do
         , ")."
         ]
 
-    Notify.die $ String.joinWith "\n"
+    Notify.exit $ String.joinWith "\n"
       [ errorPrefix
       , "Some package versions in the set have unsatisfied dependencies:"
       , String.joinWith "\n" failedMessages

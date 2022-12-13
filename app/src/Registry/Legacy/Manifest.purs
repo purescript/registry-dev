@@ -357,7 +357,7 @@ fetchLegacyPackageSets = do
   { octokit, cache } <- ask
   result <- liftAff $ Except.runExceptT $ GitHub.listTags octokit cache Legacy.PackageSet.legacyPackageSetsRepo
   tags <- case result of
-    Left err -> Notify.die (GitHub.printGitHubError err)
+    Left err -> Notify.exit (GitHub.printGitHubError err)
     Right tags -> pure $ Legacy.PackageSet.filterLegacyPackageSets tags
 
   let

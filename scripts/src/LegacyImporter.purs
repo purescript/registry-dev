@@ -212,7 +212,7 @@ main = launchAff_ do
           liftAff $ Json.writeJsonFile Metadata.codec (API.metadataFile registryPath package) metadata
           liftEffect $ Ref.modify_ (Map.insert package metadata) metadataRef
           commitMetadataFile package >>= case _ of
-            Left err -> Notify.die err
+            Left err -> Notify.exit err
             Right _ -> pure unit
         Just _ -> pure unit
 
@@ -670,7 +670,7 @@ readLegacyRegistryFile sourceFile = do
   legacyPackages <- liftAff $ Json.readJsonFile API.legacyRegistryCodec path
   case legacyPackages of
     Left err -> do
-      Notify.die $ String.joinWith "\n"
+      Notify.exit $ String.joinWith "\n"
         [ "Decoding registry file from " <> path <> "failed:"
         , err
         ]

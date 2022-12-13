@@ -57,14 +57,14 @@ main = launchAff_ $ do
 
     case eitherManifest of
       Left err ->
-        Notify.die err
+        Notify.exit err
       Right manifest -> do
         liftAff $ Json.writeJsonFile Manifest.codec (Path.concat [ packageSourceDir, "purs.json" ]) manifest
         API.verifyResolutions { source: API, resolutions: Nothing, manifest } >>= case _ of
-          Left err -> Notify.die err
+          Left err -> Notify.exit err
           Right verified -> do
             API.compilePackage { packageSourceDir, resolutions: verified, compiler } >>= case _ of
-              Left err -> Notify.die err
+              Left err -> Notify.exit err
               Right dependenciesDir -> do
                 files <- liftAff $ FS.readdir packageSourceDir
                 Log.debug $ show files
@@ -72,5 +72,5 @@ main = launchAff_ $ do
                 Log.debug $ show deps
                 result <- API.publishToPursuit { packageSourceDir, compiler, resolutions: verified, dependenciesDir }
                 case result of
-                  Left error -> Notify.die error
+                  Left error -> Notify.exit error
                   Right message -> Log.debug message

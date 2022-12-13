@@ -2,8 +2,10 @@ module Registry.App.Monad where
 
 import Registry.App.Prelude
 
+import Control.Monad.Error.Class (class MonadThrow)
 import Control.Monad.Reader (class MonadAsk, ReaderT, ask, asks, runReaderT)
 import Data.Map as Map
+import Effect.Exception as Exception
 import Effect.Ref as Ref
 import Foreign.GitHub (IssueNumber, Octokit)
 import Registry.App.Cache (Cache)
@@ -48,6 +50,10 @@ instance MonadNotify GitHubM where
     { octokit, issue } <- ask
     Notify.runNotifyGitHub { octokit, issue } message
 
+  exit message = do
+    { octokit, issue } <- ask
+    Notify.runExitGitHub { octokit, issue } message
+
 instance MonadRegistry GitHubM where
   commitMetadataFile = handleCommitMetadataFile
   commitIndexFile = handleCommitIndexFile
@@ -79,6 +85,9 @@ derive newtype instance MonadEffect LocalM
 derive newtype instance MonadAff LocalM
 derive newtype instance MonadAsk LocalEnv LocalM
 
+instance MonadThrow String LocalM where
+  throwError = liftEffect <<< Exception.throw
+
 instance MonadLog LocalM where
   log level message = do
     { logfile, verbosity } <- ask
@@ -86,6 +95,7 @@ instance MonadLog LocalM where
 
 instance MonadNotify LocalM where
   notify _ = pure unit
+  exit message = throwError (?a message)
 
 instance MonadRegistry LocalM where
   commitMetadataFile = handleCommitMetadataFile

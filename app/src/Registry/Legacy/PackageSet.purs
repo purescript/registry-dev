@@ -266,17 +266,17 @@ mirrorLegacySet { tag, packageSet, upstream } = do
   packageSetsTags <- liftAff (Except.runExceptT (GitHub.listTags octokit cache legacyPackageSetsRepo)) >>= case _ of
     Left error -> do
       let formatted = GitHub.printGitHubError error
-      Notify.die $ "Could not fetch tags for the package-sets repo: " <> formatted
+      Notify.exit $ "Could not fetch tags for the package-sets repo: " <> formatted
     Right tags -> pure $ Set.fromFoldable $ map _.name tags
 
   let printedTag = printPscTag tag
 
   when (Set.member printedTag packageSetsTags) do
-    Notify.die $ "Package set tag " <> printedTag <> " already exists, aborting..."
+    Notify.exit $ "Package set tag " <> printedTag <> " already exists, aborting..."
 
   let packageSetsUrl = "https://github.com/" <> legacyPackageSetsRepo.owner <> "/" <> legacyPackageSetsRepo.repo <> ".git"
   liftAff (Except.runExceptT (Git.runGit [ "clone", packageSetsUrl, "--depth", "1" ] (Just tmp))) >>= case _ of
-    Left error -> Notify.die error
+    Left error -> Notify.exit error
     Right _ -> pure unit
 
   -- We need to write three files to the package sets repository:
@@ -294,7 +294,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
   let latestSetsPath = Path.concat [ packageSetsPath, "latest-compatible-sets.json" ]
   latestCompatibleSets <- do
     latestSets <- liftAff (Json.readJsonFile latestCompatibleSetsCodec latestSetsPath) >>= case _ of
-      Left err -> Notify.die $ "Failed to read latest-compatible-sets: " <> err
+      Left err -> Notify.exit $ "Failed to read latest-compatible-sets: " <> err
       Right parsed -> pure parsed
     let key = (un PscTag tag).compiler
     case Map.lookup key latestSets of
@@ -336,7 +336,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
       Git.runGit_ [ "push", origin, pushTag ] (Just packageSetsPath)
 
   case result of
-    Left error -> Notify.die $ "Package set mirroring failed: " <> error
+    Left error -> Notify.exit $ "Package set mirroring failed: " <> error
     Right _ -> pure unit
 
 filterLegacyPackageSets :: Array GitHub.Tag -> Array String

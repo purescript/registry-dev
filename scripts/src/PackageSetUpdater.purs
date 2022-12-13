@@ -107,7 +107,7 @@ main = Aff.launchAff_ do
         logPackage name maybeVersion = case maybeVersion of
           -- There are no removals in the automated package sets. This should be
           -- an unreachable case.
-          Nothing -> Notify.die "Package removals are not accepted in automatic package sets."
+          Nothing -> Notify.exit "Package removals are not accepted in automatic package sets."
           Just version -> Log.debug (PackageName.print name <> "@" <> Version.print version)
 
       Log.info "Found the following package versions eligible for inclusion in package set:"
@@ -130,10 +130,10 @@ main = Aff.launchAff_ do
             CommitPackageSet -> do
               let commitMessage = App.PackageSets.commitMessage prevPackageSet success (un PackageSet packageSet).version
               commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
-                Left err -> Notify.die $ "Failed to commit package set file: " <> err
+                Left err -> Notify.exit $ "Failed to commit package set file: " <> err
                 Right _ -> do
                   case Legacy.PackageSet.fromPackageSet registryIndex metadata packageSet of
-                    Left err -> Notify.die err
+                    Left err -> Notify.exit err
                     Right converted -> Legacy.PackageSet.mirrorLegacySet converted
 
 findRecentUploads :: forall m. MonadRegistry m => Map PackageName Metadata -> Hours -> m { accepted :: Map PackageName Version, rejected :: Map PackageName (NonEmptyArray Version) }

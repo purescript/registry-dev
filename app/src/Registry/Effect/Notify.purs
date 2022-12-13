@@ -13,12 +13,7 @@ import Registry.Effect.Log as Log
 
 class MonadNotify m where
   notify :: forall a. Loggable a => a -> m Unit
-
-die :: forall m b a. Loggable b => MonadNotify m => MonadLog m => MonadEffect m => b -> m a
-die message = do
-  Log.error message
-  notify message
-  liftEffect (Process.exit 1)
+  exit :: forall a void. Loggable a => a -> m void
 
 type GitHubEnv =
   { octokit :: Octokit
@@ -38,3 +33,8 @@ runNotifyGitHub env message = do
       liftEffect $ Process.exit 1
     Right _ ->
       Log.debug $ "Created GitHub comment on issue " <> issue
+
+runExitGitHub :: forall m a void. Loggable a => MonadLog m => MonadAff m => GitHubEnv -> a -> m void
+runExitGitHub env message = do
+  runNotifyGitHub env message
+  liftEffect $ Process.exit 1
