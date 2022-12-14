@@ -29,8 +29,8 @@ import Registry.App.Json as Json
 import Registry.App.Legacy.LenientRange as LenientRange
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.RegistryM (RegistryM, throwWithComment)
-import Registry.Foreign.GitHub as Foreign.GitHub
 import Registry.Foreign.JsonRepair as JsonRepair
+import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry, legacyPackageSetCodec)
@@ -389,7 +389,7 @@ fetchLegacyPackageSets = do
         entries <- for tags \ref -> do
           let setKey = "legacy-package-set__" <> ref
           -- We persist API errors if received.
-          let setCodec = CA.Common.either Foreign.GitHub.githubErrorCodec legacyPackageSetEntriesCodec
+          let setCodec = CA.Common.either Octokit.githubErrorCodec legacyPackageSetEntriesCodec
           setEntries <- liftEffect (Cache.readJsonEntry setCodec setKey cache) >>= case _ of
             Left _ -> do
               log $ "CACHE MISS: Building legacy package set for " <> ref

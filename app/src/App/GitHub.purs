@@ -34,9 +34,9 @@ import Effect.Class.Console as Console
 import Foreign.Object as Object
 import Registry.App.Cache (Cache)
 import Registry.App.Cache as Cache
-import Registry.Foreign.GitHub (Base64Content(..), GitHubError(..), GitHubRoute(..), Octokit, Request)
-import Registry.Foreign.GitHub (GitHubError(..), GitHubToken(..), Octokit, newOctokit, printGitHubError) as Exports
-import Registry.Foreign.GitHub as Foreign.GitHub
+import Registry.Foreign.Octokit (Base64Content(..), GitHubError(..), GitHubRoute(..), Octokit, Request)
+import Registry.Foreign.Octokit (GitHubError(..), GitHubToken(..), Octokit, newOctokit, printGitHubError) as Exports
+import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Codec as Internal.Codec
 
 -- | The address of a GitHub repository as a owner/repo pair.
@@ -62,7 +62,7 @@ listTeamMembers :: Octokit -> Cache -> Team -> Aff (Either GitHubError (Array Te
 listTeamMembers octokit cache team = request octokit cache
   { route: GitHubRoute GET [ "orgs", team.org, "teams", team.team, "members" ] Map.empty
   , headers: Object.empty
-  , args: Foreign.GitHub.noArgs
+  , args: Octokit.noArgs
   , paginate: true
   , codec: CA.array $ CA.Record.object "TeamMember" { login: CA.string, id: CA.int }
   }
@@ -75,7 +75,7 @@ listTags :: Octokit -> Cache -> Address -> Aff (Either GitHubError (Array Tag))
 listTags octokit cache address = request octokit cache
   { route: GitHubRoute GET [ "repos", address.owner, address.repo, "tags" ] Map.empty
   , headers: Object.empty
-  , args: Foreign.GitHub.noArgs
+  , args: Octokit.noArgs
   , paginate: true
   , codec: CA.array $ Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Tag"
       { name: CA.string
@@ -94,7 +94,7 @@ getContent octokit cache address ref path = do
   result <- request octokit cache
     { route: GitHubRoute GET [ "repos", address.owner, address.repo, "contents", path ] (Map.singleton "ref" ref)
     , headers: Object.empty
-    , args: Foreign.GitHub.noArgs
+    , args: Octokit.noArgs
     , paginate: false
     , codec: Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Content"
         { data: CA.Record.object "Content.data"
@@ -104,7 +104,7 @@ getContent octokit cache address ref path = do
             }
         }
     }
-  pure (bind result (lmap DecodeError <<< Foreign.GitHub.decodeBase64Content))
+  pure (bind result (lmap DecodeError <<< Octokit.decodeBase64Content))
   where
   value :: String -> JsonCodec String
   value expected = CA.codec'
@@ -120,7 +120,7 @@ getRefCommit :: Octokit -> Cache -> Address -> String -> Aff (Either GitHubError
 getRefCommit octokit cache address ref = request octokit cache
   { route: GitHubRoute GET [ "repos", address.owner, address.repo, "git", "ref", ref ] Map.empty
   , headers: Object.empty
-  , args: Foreign.GitHub.noArgs
+  , args: Octokit.noArgs
   , paginate: false
   , codec: Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Ref" { object: CA.Record.object "Ref.object" { sha: CA.string } }
   }
@@ -134,7 +134,7 @@ getCommitDate :: Octokit -> Cache -> Address -> String -> Aff (Either GitHubErro
 getCommitDate octokit cache address commitSha = request octokit cache
   { route: GitHubRoute GET [ "repos", address.owner, address.repo, "git", "commits", commitSha ] Map.empty
   , headers: Object.empty
-  , args: Foreign.GitHub.noArgs
+  , args: Octokit.noArgs
   , paginate: false
   , codec: Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Commit"
       { committer: CA.Record.object "Commit.committer" { date: Internal.Codec.iso8601DateTime } }
@@ -149,7 +149,7 @@ createComment :: Octokit -> Address -> IssueNumber -> String -> Aff (Either GitH
 createComment octokit address (IssueNumber issue) body = requestWithBackoff octokit
   { route: GitHubRoute POST [ "repos", address.owner, address.repo, "issues", Int.toStringAs Int.decimal issue, "comments" ] Map.empty
   , headers: Object.empty
-  , args: Foreign.GitHub.unsafeToJSArgs { body }
+  , args: Octokit.unsafeToJSArgs { body }
   , paginate: false
   , codec: CA.codec' (\_ -> pure unit) (CA.encode CA.null)
   }
@@ -160,7 +160,7 @@ closeIssue :: Octokit -> Address -> IssueNumber -> Aff (Either GitHubError Unit)
 closeIssue octokit address (IssueNumber issue) = requestWithBackoff octokit
   { route: GitHubRoute PATCH [ "repos", address.owner, address.repo, "issues", Int.toStringAs Int.decimal issue ] Map.empty
   , headers: Object.empty
-  , args: Foreign.GitHub.unsafeToJSArgs { state: "closed" }
+  , args: Octokit.unsafeToJSArgs { state: "closed" }
   , paginate: false
   , codec: CA.codec' (\_ -> pure unit) (CA.encode CA.null)
   }
@@ -174,9 +174,9 @@ request :: forall a. Octokit -> Cache -> Request a -> Aff (Either GitHubError a)
 request octokit cache githubRequest@{ route: route@(GitHubRoute method _ _), codec } = do
   -- We cache GET requests, other than requests to fetch the current rate limit.
   case method of
-    GET | route /= Foreign.GitHub.rateLimitRequest.route -> do
-      let entryCodec = CA.Common.either Foreign.GitHub.githubErrorCodec CA.Common.json
-      let entryKey = Foreign.GitHub.printGitHubRoute route
+    GET | route /= Octokit.rateLimitRequest.route -> do
+      let entryCodec = CA.Common.either Octokit.githubErrorCodec CA.Common.json
+      let entryKey = Octokit.printGitHubRoute route
       entry <- liftEffect (Cache.readJsonEntry entryCodec entryKey cache)
       now <- liftEffect nowUTC
       case entry of
@@ -187,15 +187,15 @@ request octokit cache githubRequest@{ route: route@(GitHubRoute method _ _), cod
           pure result
 
         Right cached -> case cached.value of
-          Left (Foreign.GitHub.APIError err)
+          Left (Octokit.APIError err)
             -- We don't retry 404 errors because they indicate a missing resource.
             | err.statusCode == 404 -> do
                 Console.debug "Cached entry is a 404 error, not retrying..."
-                pure $ Left $ Foreign.GitHub.APIError err
+                pure $ Left $ Octokit.APIError err
             -- Otherwise, if we have an error in cache, we retry the request; we
             -- don't have anything usable we could return.
             | otherwise -> do
-                Console.debug $ "Retrying route " <> Foreign.GitHub.printGitHubRoute route <> " because cache contains non-404 error: " <> show err
+                Console.debug $ "Retrying route " <> Octokit.printGitHubRoute route <> " because cache contains non-404 error: " <> show err
                 liftEffect $ cache.remove entryKey
                 request octokit cache githubRequest
 
@@ -217,11 +217,11 @@ request octokit cache githubRequest@{ route: route@(GitHubRoute method _ _), cod
           Right _ | DateTime.diff now cached.modified >= Duration.Hours 1.0 -> do
             Console.debug $ "Cache entry expired for route " <> entryKey <> ", requesting..."
             -- This is how we *would* modify the request, once GitHub works.
-            let _githubTime = Formatter.DateTime.format Foreign.GitHub.rfc1123Format cached.modified
+            let _githubTime = Formatter.DateTime.format Octokit.rfc1123Format cached.modified
             let _modifiedRequest = githubRequest { headers = Object.insert "If-Modified-Since" _githubTime githubRequest.headers }
             result <- requestWithBackoff octokit githubRequest
             case result of
-              Left (Foreign.GitHub.APIError err) | err.statusCode == 304 -> do
+              Left (Octokit.APIError err) | err.statusCode == 304 -> do
                 Console.debug $ "Received confirmation of cache validity response from GitHub, reading cache value..."
                 pure result
               _ -> do
@@ -231,26 +231,26 @@ request octokit cache githubRequest@{ route: route@(GitHubRoute method _ _), cod
           Right value -> case CA.decode codec value of
             Left error -> do
               Console.debug $ "Unable to decode cache entry, returning error..."
-              pure $ Left $ Foreign.GitHub.DecodeError $ CA.printJsonDecodeError error
+              pure $ Left $ Octokit.DecodeError $ CA.printJsonDecodeError error
             Right accepted ->
               pure $ Right accepted
 
     _ -> do
-      Console.debug $ "Not a cacheable route: " <> Foreign.GitHub.printGitHubRoute route <> ", requesting..."
+      Console.debug $ "Not a cacheable route: " <> Octokit.printGitHubRoute route <> ", requesting..."
       requestWithBackoff octokit githubRequest
 
 requestWithBackoff :: forall a. Octokit -> Request a -> Aff (Either GitHubError a)
 requestWithBackoff octokit githubRequest = do
-  Console.log $ "Making request to " <> Foreign.GitHub.printGitHubRoute githubRequest.route
-  let action = Foreign.GitHub.request octokit githubRequest
+  Console.log $ "Making request to " <> Octokit.printGitHubRoute githubRequest.route
+  let action = Octokit.request octokit githubRequest
   result <- withBackoff
     { delay: Duration.Milliseconds 5_000.0
     , action
-    , shouldCancel: \_ -> Foreign.GitHub.request octokit Foreign.GitHub.rateLimitRequest >>= case _ of
+    , shouldCancel: \_ -> Octokit.request octokit Octokit.rateLimitRequest >>= case _ of
         Right { remaining } | remaining == 0 -> pure false
         _ -> pure true
     , shouldRetry: \attempt -> if attempt <= 3 then pure (Just action) else pure Nothing
     }
   case result of
-    Nothing -> pure $ Left $ Foreign.GitHub.APIError { statusCode: 400, message: "Unable to reach GitHub servers." }
+    Nothing -> pure $ Left $ Octokit.APIError { statusCode: 400, message: "Unable to reach GitHub servers." }
     Just accepted -> pure accepted

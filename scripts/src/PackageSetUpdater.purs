@@ -16,12 +16,12 @@ import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
 import Registry.App.API as API
+import Registry.App.GitHub as GitHub
 import Registry.App.Json as Json
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
 import Registry.App.RegistryM (Env, RegistryM, commitPackageSetFile, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Foreign.FSExtra as FS.Extra
-import Registry.Foreign.GitHub as GitHub
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet

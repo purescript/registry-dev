@@ -4,7 +4,7 @@
 -- | app-specific requests, but the modules are kept separate because this low-
 -- | level code is required to implement both the app-specific requests and the
 -- | logging effect that those requests rely on.
-module Registry.Foreign.GitHub
+module Registry.Foreign.Octokit
   ( Base64Content(..)
   , GitHubAPIError
   , GitHubError(..)

@@ -10,7 +10,7 @@ import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Registry.App.Cache (Cache)
 import Registry.App.PackageStorage as PackageStorage
-import Registry.Foreign.GitHub (Octokit)
+import Registry.Foreign.Octokit (Octokit)
 
 type Env =
   { comment :: String -> Aff Unit
