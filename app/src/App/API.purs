@@ -33,6 +33,7 @@ import Data.String.Base64 as Base64
 import Data.String.NonEmpty as NonEmptyString
 import Dotenv as Dotenv
 import Effect.Aff as Aff
+import Effect.Class.Console as Console
 import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Foreign.Object as Object
@@ -186,14 +187,14 @@ readOperation eventPath = do
 
   case Argonaut.Parser.jsonParser (JsonRepair.tryRepair (firstObject body)) of
     Left err -> do
-      log "Not JSON."
-      logShow { err, body }
+      Console.log "Not JSON."
+      Console.logShow { err, body }
       pure NotJson
     Right json -> case decodeOperation json of
       Left jsonError -> do
         let printedError = CA.printJsonDecodeError jsonError
-        log $ "Malformed JSON:\n" <> printedError
-        log $ "Received body:\n" <> body
+        Console.log $ "Malformed JSON:\n" <> printedError
+        Console.log $ "Received body:\n" <> body
         pure $ MalformedJson issueNumber printedError
       Right operation ->
         pure $ DecodedOperation issueNumber username operation
@@ -517,9 +518,9 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
 
   let manifestPath = Path.concat [ packageDirectory, "purs.json" ]
 
-  log $ "Package available in " <> packageDirectory
+  Console.log $ "Package available in " <> packageDirectory
 
-  log "Verifying that the package contains a `src` directory"
+  Console.log "Verifying that the package contains a `src` directory"
   whenM (liftAff $ Operation.Validation.containsPursFile (Path.concat [ packageDirectory, "src" ])) do
     throwWithComment "This package has no .purs files in the src directory. All package sources must be in the `src` directory, with any additional sources indicated by the `files` key in your manifest."
 
@@ -594,7 +595,7 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
       pure result
 
   -- After we pass all the checks it's time to do side effects and register the package
-  log "Packaging the tarball to upload..."
+  Console.log "Packaging the tarball to upload..."
   -- We need the version number to upload the package
   let newVersion = manifestFields.version
   let newDirname = PackageName.print name <> "-" <> Version.print newVersion
@@ -607,16 +608,16 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
   liftAff $ removeIgnoredTarballFiles packageSourceDir
   let tarballPath = packageSourceDir <> ".tar.gz"
   liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname }
-  log "Checking the tarball size..."
+  Console.log "Checking the tarball size..."
   FS.Stats.Stats { size: bytes } <- liftAff $ FS.Aff.stat tarballPath
   for_ (Operation.Validation.validateTarballSize bytes) case _ of
     Operation.Validation.ExceedsMaximum maxPackageBytes ->
       throwWithComment $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes.\ncc: @purescript/packaging"
     Operation.Validation.WarnPackageSize maxWarnBytes ->
       comment $ "WARNING: Package tarball is " <> show bytes <> "bytes, which exceeds the warning threshold of " <> show maxWarnBytes <> " bytes.\ncc: @purescript/packaging"
-  log "Hashing the tarball..."
+  Console.log "Hashing the tarball..."
   hash <- liftAff $ Sha256.hashFile tarballPath
-  log $ "Hash: " <> Sha256.print hash
+  Console.log $ "Hash: " <> Sha256.print hash
 
   -- Now that we have the package source contents we can verify we can compile
   -- the package. We skip failures when the package is a legacy package.
@@ -627,18 +628,18 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
       -- We allow bulk-uploaded legacy packages to fail compilation because we
       -- do not necessarily know what compiler to use with them.
       | source == Importer -> do
-          log error
-          log "Failed to compile, but continuing because the API source was the importer."
+          Console.log error
+          Console.log "Failed to compile, but continuing because the API source was the importer."
       | otherwise ->
           throwWithComment error
     Right _ ->
       pure unit
 
-  log "Uploading package to the storage backend..."
+  Console.log "Uploading package to the storage backend..."
   let uploadPackageInfo = { name, version: newVersion }
   uploadPackage uploadPackageInfo tarballPath
-  log $ "Adding the new version " <> Version.print newVersion <> " to the package metadata file (hashes, etc)"
-  log $ "Hash for ref " <> ref <> " was " <> Sha256.print hash
+  Console.log $ "Adding the new version " <> Version.print newVersion <> " to the package metadata file (hashes, etc)"
+  Console.log $ "Hash for ref " <> ref <> " was " <> Sha256.print hash
   let newMetadata = addVersionToMetadata newVersion { hash, ref, publishedTime, bytes } (Metadata metadata)
   writeMetadata name newMetadata >>= case _ of
     Left err -> throwWithComment $ String.joinWith "\n"
@@ -669,7 +670,7 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
     Left error ->
       comment $ Array.fold [ "Skipping Pursuit publishing because this package failed to compile:\n\n", error ]
     Right dependenciesDir -> do
-      log "Uploading to Pursuit"
+      Console.log "Uploading to Pursuit"
       publishToPursuit { packageSourceDir: packageDirectory, compiler, resolutions: verifiedResolutions, dependenciesDir } >>= case _ of
         Left error ->
           comment $ "Pursuit publishing failed: " <> error
@@ -685,14 +686,14 @@ verifyManifest { metadata, manifest } = do
   -- TODO: collect all errors and return them at once. Note: some of the checks
   -- are going to fail while parsing from JSON, so we should move them here if we
   -- want to handle everything together
-  log "Running checks for the following manifest:"
-  log $ Argonaut.stringifyWithIndent 2 $ CA.encode Manifest.codec manifest
+  Console.log "Running checks for the following manifest:"
+  Console.log $ Argonaut.stringifyWithIndent 2 $ CA.encode Manifest.codec manifest
 
-  log "Ensuring the package is not the purescript-metadata package, which cannot be published."
+  Console.log "Ensuring the package is not the purescript-metadata package, which cannot be published."
   when (Operation.Validation.isMetadataPackage manifest) do
     throwWithComment "The `metadata` package cannot be uploaded to the registry as it is a protected package."
 
-  log "Check that version has not already been published"
+  Console.log "Check that version has not already been published"
   for_ (Operation.Validation.isNotPublished manifest metadata) \info -> do
     throwWithComment $ String.joinWith "\n"
       [ "You tried to upload a version that already exists: " <> Version.print manifestFields.version
@@ -702,7 +703,7 @@ verifyManifest { metadata, manifest } = do
       , "```"
       ]
 
-  log "Check that version has not been unpublished"
+  Console.log "Check that version has not been unpublished"
   for_ (Operation.Validation.isNotUnpublished manifest metadata) \info -> do
     throwWithComment $ String.joinWith "\n"
       [ "You tried to upload a version that has been unpublished: " <> Version.print manifestFields.version
@@ -712,7 +713,7 @@ verifyManifest { metadata, manifest } = do
       , "```"
       ]
 
-  log "Check that all dependencies are contained in the registry"
+  Console.log "Check that all dependencies are contained in the registry"
   packages <- readPackagesMetadata
 
   let
@@ -730,7 +731,7 @@ verifyManifest { metadata, manifest } = do
 -- | manifest. If not, we solve their manifest to produce a build plan.
 verifyResolutions :: { resolutions :: Maybe (Map PackageName Version), manifest :: Manifest } -> RegistryM (Either String (Map PackageName Version))
 verifyResolutions { resolutions, manifest } = Except.runExceptT do
-  log "Check the submitted build plan matches the manifest"
+  Console.log "Check the submitted build plan matches the manifest"
   -- We don't verify packages provided via the mass import.
   registryIndex <- lift PackageIndex.readManifestIndexFromDisk
   case resolutions of
@@ -816,7 +817,7 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
         , Path.concat [ dependenciesDir, "*/src/**/*.purs" ]
         ]
   forWithIndex_ resolutions (installPackage dependenciesDir)
-  log "Compiling..."
+  Console.log "Compiling..."
   compilerOutput <- liftAff $ Purs.callCompiler
     { command: Purs.Compile { globs }
     , version: Version.print compiler
@@ -840,7 +841,7 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
 
     liftEffect $ Tar.extract { cwd: dir, archive: filename }
     liftAff $ FS.Aff.unlink filepath
-    log $ "Installed " <> PackageName.print packageName <> "@" <> Version.print version
+    Console.log $ "Installed " <> PackageName.print packageName <> "@" <> Version.print version
 
   handleCompiler tmp = case _ of
     Right _ ->
@@ -876,7 +877,7 @@ type PublishToPursuit =
 -- | packages where the `purescript-` prefix is still present.
 publishToPursuit :: PublishToPursuit -> RegistryM (Either String String)
 publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = Except.runExceptT do
-  log "Generating a resolutions file"
+  Console.log "Generating a resolutions file"
   tmp <- liftEffect Tmp.mkTmpDir
 
   let
@@ -931,12 +932,12 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
 
   authToken <- liftEffect (Node.Process.lookupEnv "PACCHETTIBOTTI_TOKEN") >>= case _ of
     Nothing -> do
-      logShow =<< liftEffect Node.Process.getEnv
+      Console.logShow =<< liftEffect Node.Process.getEnv
       throwError "Publishing failed because there is no available auth token. cc: @purescript/packaging"
     Just token ->
       pure token
 
-  log "Pushing to Pursuit"
+  Console.log "Pushing to Pursuit"
   result <- liftAff $ Http.request
     { content: Just $ RequestBody.json publishJson
     , headers:
@@ -1013,13 +1014,13 @@ fillMetadataRef = do
     packageList <- try (FS.Aff.readdir metadataDir) >>= case _ of
       Right list -> pure $ Array.mapMaybe (String.stripSuffix $ String.Pattern ".json") list
       Left err -> do
-        error $ show err
+        Console.error $ show err
         pure []
     packagesArray <- for packageList \rawPackageName -> do
       packageName <- case PackageName.parse rawPackageName of
         Right p -> pure p
         Left err -> do
-          log $ "Encountered error while parsing package name! It was: " <> rawPackageName
+          Console.log $ "Encountered error while parsing package name! It was: " <> rawPackageName
           Aff.throwError $ Aff.error err
       let metadataPath = metadataFile registryDir packageName
       metadata <- Json.readJsonFile Metadata.codec metadataPath >>= case _ of
@@ -1045,7 +1046,7 @@ packageNameIsUnique name = isNothing <<< Map.lookup name
 fetchRepo :: GitHubRepo -> FilePath -> Aff Unit
 fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
   true -> do
-    log $ "Found the " <> address.repo <> " repo locally, pulling..."
+    Console.log $ "Found the " <> address.repo <> " repo locally, pulling..."
     result <- Except.runExceptT do
       branch <- Git.runGitSilent [ "rev-parse", "--abbrev-ref", "HEAD" ] (Just path)
       unless (branch == "main" || branch == "master") do
@@ -1058,7 +1059,7 @@ fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> pure unit
   _ -> do
-    log $ "Didn't find the " <> address.repo <> " repo, cloning..."
+    Console.log $ "Didn't find the " <> address.repo <> " repo, cloning..."
     Except.runExceptT (Git.runGit [ "clone", "https://github.com/" <> address.owner <> "/" <> address.repo <> ".git", path ] Nothing) >>= case _ of
       Left err -> Aff.throwError $ Aff.error err
       Right _ -> pure unit
@@ -1066,13 +1067,13 @@ fetchRepo address path = liftEffect (FS.Sync.exists path) >>= case _ of
 fetchRegistryIndex :: RegistryM Unit
 fetchRegistryIndex = do
   registryIndexPath <- asks _.registryIndex
-  log "Fetching the most recent registry index..."
+  Console.log "Fetching the most recent registry index..."
   liftAff $ fetchRepo Constants.packageIndex registryIndexPath
 
 fetchRegistry :: RegistryM Unit
 fetchRegistry = do
   registryPath <- asks _.registry
-  log "Fetching the most recent registry ..."
+  Console.log "Fetching the most recent registry ..."
   liftAff $ fetchRepo Constants.registry registryPath
 
 data PursPublishMethod = LegacyPursPublish | PursPublish
@@ -1097,9 +1098,9 @@ fetchPackageSource { tmpDir, ref, location } = case location of
 
     case pursPublishMethod of
       LegacyPursPublish -> liftAff do
-        log $ "Cloning repo at tag: " <> show { owner, repo, ref }
+        Console.log $ "Cloning repo at tag: " <> show { owner, repo, ref }
         Git.cloneGitTag (Array.fold [ "https://github.com/", owner, "/", repo ]) ref tmpDir
-        log $ "Getting published time..."
+        Console.log $ "Getting published time..."
         -- Cloning will result in the `repo` name as the directory name
         publishedTime <- Except.runExceptT (Git.gitGetRefTime ref (Path.concat [ tmpDir, repo ])) >>= case _ of
           Left error -> Aff.throwError $ Aff.error $ "Failed to get published time: " <> error
@@ -1118,16 +1119,16 @@ fetchPackageSource { tmpDir, ref, location } = case location of
         let tarballName = ref <> ".tar.gz"
         let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
         let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
-        log $ "Fetching tarball from GitHub: " <> archiveUrl
+        Console.log $ "Fetching tarball from GitHub: " <> archiveUrl
         liftAff (Wget.wget archiveUrl absoluteTarballPath) >>= case _ of
           Left err -> throwWithComment $ "Error while fetching tarball: " <> err
           Right _ -> pure unit
-        log $ "Tarball downloaded in " <> absoluteTarballPath
+        Console.log $ "Tarball downloaded in " <> absoluteTarballPath
         liftEffect (Foreign.Tar.getToplevelDir absoluteTarballPath) >>= case _ of
           Nothing ->
             throwWithComment "Could not find a toplevel dir in the tarball!"
           Just dir -> do
-            log "Extracting the tarball..."
+            Console.log "Extracting the tarball..."
             liftEffect $ Tar.extract { cwd: tmpDir, archive: tarballName }
             pure { packageDirectory: dir, publishedTime: commitDate }
 
@@ -1396,7 +1397,7 @@ loadEnv :: Aff Dotenv.Settings
 loadEnv = do
   contents <- Aff.try $ FS.Aff.readTextFile UTF8 envFilePath
   case contents of
-    Left _ -> log ("Not loading .env file because none was found at path: " <> envFilePath) $> []
+    Left _ -> Console.log ("Not loading .env file because none was found at path: " <> envFilePath) $> []
     Right string -> Dotenv.loadContents (String.trim string)
 
 data LegacyRegistryFile = BowerPackages | NewPackages

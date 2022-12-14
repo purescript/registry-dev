@@ -8,6 +8,7 @@ import Data.Array as Array
 import Data.Codec as Codec
 import Data.Map as Map
 import Data.String as String
+import Effect.Class.Console as Console
 import Effect.Exception as Exception
 import Effect.Ref as Ref
 import Effect.Unsafe as Effect.Unsafe
@@ -43,8 +44,8 @@ main = launchAff_ do
   let
     env :: RegistryM.Env
     env =
-      { comment: \comment -> log ("[COMMENT] " <> comment)
-      , closeIssue: log "Running locally, not closing issue..."
+      { comment: \comment -> Console.log ("[COMMENT] " <> comment)
+      , closeIssue: Console.log "Running locally, not closing issue..."
       , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
       , commitIndexFile: \_ _ -> unsafeCrashWith "Should not push to registry index in transfer."
       , commitPackageSetFile: \_ _ -> unsafeCrashWith "Should not modify package set in transfer."
@@ -62,20 +63,20 @@ main = launchAff_ do
     API.fetchRegistry
     API.fillMetadataRef
     for_ [ BowerPackages, NewPackages ] processLegacyRegistry
-    log "Done!"
+    Console.log "Done!"
 
 processLegacyRegistry :: LegacyRegistryFile -> RegistryM Unit
 processLegacyRegistry legacyFile = do
-  log $ Array.fold [ "Reading legacy registry file (", API.legacyRegistryFilePath legacyFile, ")" ]
+  Console.log $ Array.fold [ "Reading legacy registry file (", API.legacyRegistryFilePath legacyFile, ")" ]
   packages <- LegacyImporter.readLegacyRegistryFile legacyFile
-  log "Reading latest locations..."
+  Console.log "Reading latest locations..."
   locations <- latestLocations packages
   let needsTransfer = Map.catMaybes locations
   case Map.size needsTransfer of
-    0 -> log "No packages require transferring."
-    n -> log $ Array.fold [ show n, " packages need transferring." ]
+    0 -> Console.log "No packages require transferring."
+    n -> Console.log $ Array.fold [ show n, " packages need transferring." ]
   _ <- transferAll packages needsTransfer
-  log "Completed transfers!"
+  Console.log "Completed transfers!"
 
 transferAll :: Map String String -> Map String PackageLocations -> RegistryM (Map String String)
 transferAll packages packageLocations = do
@@ -121,7 +122,7 @@ latestLocations packages = forWithIndex packages \package location -> do
         Nothing -> throwWithComment $ "No metadata exists for package " <> package
         Just metadata -> do
           Except.runExceptT (latestPackageLocations packageResult metadata) >>= case _ of
-            Left err -> log err *> pure Nothing
+            Left err -> Console.log err *> pure Nothing
             Right locations
               | locationsMatch locations.metadataLocation locations.tagLocation -> pure Nothing
               | otherwise -> pure $ Just locations

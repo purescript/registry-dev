@@ -33,7 +33,6 @@ import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata as Metadata
 import Registry.PackageName as PackageName
 import Registry.Version as Version
-import Test.Utils (formatPackageVersion)
 
 data DeleteMode = File FilePath | Package PackageName Version
 

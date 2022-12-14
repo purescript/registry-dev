@@ -19,6 +19,7 @@ import Data.String.NonEmpty as NonEmptyString
 import Data.These (These(..))
 import Data.These as These
 import Data.Variant as Variant
+import Effect.Class.Console as Console
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FSA
 import Node.Path as Path
@@ -201,7 +202,7 @@ detectLicenses address ref = do
   let packageJsonInput = { name: "package.json", contents: _ } <$> hush packageJsonFile
   let licenseInput = { name: "LICENSE", contents: _ } <$> hush licenseFile
   liftAff $ Licensee.detectFiles (Array.catMaybes [ packageJsonInput, licenseInput ]) >>= case _ of
-    Left err -> log ("Licensee decoding error, ignoring: " <> err) $> []
+    Left err -> Console.log ("Licensee decoding error, ignoring: " <> err) $> []
     Right licenses -> pure $ Array.mapMaybe NonEmptyString.fromString licenses
 
 validateLicense :: Array NonEmptyString -> Either LegacyManifestValidationError License
@@ -385,14 +386,14 @@ fetchLegacyPackageSets = do
     -- all into memory and fold over them.
     liftEffect (Cache.readJsonEntry legacyPackageSetEntriesCodec tagKey cache) >>= case _ of
       Left _ -> do
-        log $ "CACHE MISS: Building legacy package sets..."
+        Console.log $ "CACHE MISS: Building legacy package sets..."
         entries <- for tags \ref -> do
           let setKey = "legacy-package-set__" <> ref
           -- We persist API errors if received.
           let setCodec = CA.Common.either Octokit.githubErrorCodec legacyPackageSetEntriesCodec
           setEntries <- liftEffect (Cache.readJsonEntry setCodec setKey cache) >>= case _ of
             Left _ -> do
-              log $ "CACHE MISS: Building legacy package set for " <> ref
+              Console.log $ "CACHE MISS: Building legacy package set for " <> ref
               converted <- Except.runExceptT do
                 packagesJson <- ExceptT $ liftAff $ GitHub.getContent octokit cache Legacy.PackageSet.legacyPackageSetsRepo ref "packages.json"
                 parsed <- Except.except $ case Json.parseJson legacyPackageSetCodec packagesJson of
@@ -405,7 +406,7 @@ fetchLegacyPackageSets = do
               pure contents.value
           case setEntries of
             Left err -> do
-              log $ "Failed to retrieve " <> ref <> " package set:\n" <> GitHub.printGitHubError err
+              Console.log $ "Failed to retrieve " <> ref <> " package set:\n" <> GitHub.printGitHubError err
               pure Map.empty
             Right value -> pure value
 

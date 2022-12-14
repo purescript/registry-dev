@@ -54,5 +54,5 @@ detect directory = do
           -- we retrieve the license via the package manifest(s) as well.
           pure $ Right $ Array.filter (_ /= "NOASSERTION") out
     _ -> do
-      log $ "Licensee process exited unexpectedly: " <> result.stderr
+      Console.log $ "Licensee process exited unexpectedly: " <> result.stderr
       pure $ Left result.stderr

@@ -4,6 +4,7 @@ module Test.Scripts.PublishPursuit where
 import Registry.App.Prelude
 
 import Data.Map as Map
+import Effect.Class.Console as Console
 import Effect.Exception (throw)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
@@ -71,10 +72,10 @@ main = launchAff_ $ do
               Left err -> throwWithComment err
               Right dependenciesDir -> do
                 files <- liftAff $ FS.readdir packageSourceDir
-                logShow files
+                Console.logShow files
                 deps <- liftAff $ FS.readdir dependenciesDir
-                logShow deps
+                Console.logShow deps
                 result <- API.publishToPursuit { packageSourceDir, compiler, resolutions: verified, dependenciesDir }
                 case result of
                   Left error -> throwWithComment error
-                  Right message -> log message
+                  Right message -> Console.log message
