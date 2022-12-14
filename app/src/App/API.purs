@@ -158,7 +158,7 @@ readOperation :: FilePath -> Aff OperationDecoding
 readOperation eventPath = do
   fileContents <- FS.Aff.readTextFile UTF8 eventPath
 
-  WorkflowEvent { issueNumber, body, username } <- case Json.jsonParser fileContents >>= decodeWorkflowEvent of
+  IssueEvent { issueNumber, body, username } <- case Json.jsonParser fileContents >>= decodeIssueEvent of
     Left err ->
       -- If we don't receive a valid event path or the contents can't be decoded
       -- then this is a catastrophic error and we exit the workflow.
@@ -1506,16 +1506,19 @@ isVersionInMetadata version (Metadata metadata) = versionPublished || versionUnp
   versionPublished = isJust $ Map.lookup version metadata.published
   versionUnpublished = isJust $ Map.lookup version metadata.unpublished
 
-newtype WorkflowEvent = WorkflowEvent
+-- | An event triggered by a GitHub workflow, specifically via an issue comment
+-- | or issue creation.
+-- | https://docs.github.com/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#issue_comment
+newtype IssueEvent = IssueEvent
   { issueNumber :: IssueNumber
   , body :: String
   , username :: String
   }
 
-derive instance Newtype WorkflowEvent _
+derive instance Newtype IssueEvent _
 
-decodeWorkflowEvent :: Json -> Either String WorkflowEvent
-decodeWorkflowEvent json = do
+decodeIssueEvent :: Json -> Either String IssueEvent
+decodeIssueEvent json = do
   object <- Json.decodeJson CA.jobject json
   username <- Json.atKey "login" CA.string =<< Json.atKey "sender" CA.jobject object
 
@@ -1527,4 +1530,4 @@ decodeWorkflowEvent json = do
   -- reason we first try to parse the comment and fall back to the issue if
   -- that fails.
   body <- Json.atKey "body" CA.string =<< Json.atKey "comment" CA.jobject object <|> pure issueObject
-  pure $ WorkflowEvent { body, username, issueNumber: IssueNumber issueNumber }
+  pure $ IssueEvent { body, username, issueNumber: IssueNumber issueNumber }
