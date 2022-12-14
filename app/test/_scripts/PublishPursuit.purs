@@ -10,7 +10,6 @@ import Effect.Unsafe (unsafePerformEffect)
 import Node.FS.Aff as FS
 import Node.Path as Path
 import Node.Process as Process
-import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Cache as Cache
@@ -65,7 +64,7 @@ main = launchAff_ $ do
         throwWithComment err
       Right manifest -> do
         liftAff $ Json.writeJsonFile Manifest.codec (Path.concat [ packageSourceDir, "purs.json" ]) manifest
-        API.verifyResolutions { source: API, resolutions: Nothing, manifest } >>= case _ of
+        API.verifyResolutions { resolutions: Nothing, manifest } >>= case _ of
           Left err -> throwWithComment err
           Right verified -> do
             API.compilePackage { packageSourceDir, resolutions: verified, compiler } >>= case _ of
