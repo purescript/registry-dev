@@ -587,7 +587,7 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
   -- Then, we can run verification checks on the manifest and either verify the
   -- provided build plan or produce a new one.
   verifyManifest { metadata: Metadata metadata, manifest }
-  eitherVerifiedResolutions <- verifyResolutions { source, resolutions, manifest }
+  eitherVerifiedResolutions <- verifyResolutions { resolutions, manifest }
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
@@ -617,8 +617,8 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
   -- Now that we have the package source contents we can verify we can compile
   -- the package. We skip failures when the package is a legacy package.
   compilationResult <- case eitherVerifiedResolutions of
-    -- We do not throw an exception if we're bulk-uploading legacy packages
-    Left error | source == Importer || (source == API && isLegacyImport) ->
+    -- We do not throw an exception if we're bulk-uploading legacy packages.
+    Left error | source == Importer ->
       pure (Left error)
     Left error ->
       throwWithComment error
@@ -630,9 +630,6 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
       | source == Importer -> do
           log error
           log "Failed to compile, but continuing because the API source was the importer."
-      | source == API && isLegacyImport -> do
-          log error
-          log "Failed to compile, but continuing because this is a legacy package."
       | otherwise ->
           throwWithComment error
     Right _ ->
@@ -733,8 +730,8 @@ verifyManifest { metadata, manifest } = do
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the
 -- | manifest. If not, we solve their manifest to produce a build plan.
-verifyResolutions :: { source :: Source, resolutions :: Maybe (Map PackageName Version), manifest :: Manifest } -> RegistryM (Either String (Map PackageName Version))
-verifyResolutions { source, resolutions, manifest } = Except.runExceptT do
+verifyResolutions :: { resolutions :: Maybe (Map PackageName Version), manifest :: Manifest } -> RegistryM (Either String (Map PackageName Version))
+verifyResolutions { resolutions, manifest } = Except.runExceptT do
   log "Check the submitted build plan matches the manifest"
   -- We don't verify packages provided via the mass import.
   registryIndex <- lift PackageIndex.readManifestIndexFromDisk
@@ -750,20 +747,11 @@ verifyResolutions { source, resolutions, manifest } = Except.runExceptT do
                 , Solver.printSolverError error
                 ]
             ]
-        case source of
-          Importer -> do
-            log $ "Could not solve manifest:\n" <> printedError <> "\n...but continuing because this is a legacy import."
-            pure Map.empty
-          API ->
-            throwError printedError
+        throwError printedError
       Right solved -> pure solved
     Just provided -> do
-      case source of
-        Importer ->
-          pure provided
-        API -> do
-          Except.ExceptT $ validateResolutions manifest provided
-          pure provided
+      Except.ExceptT $ validateResolutions manifest provided
+      pure provided
 
 validateResolutions :: Manifest -> Map PackageName Version -> RegistryM (Either String Unit)
 validateResolutions manifest resolutions = Except.runExceptT do
