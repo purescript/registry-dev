@@ -126,6 +126,11 @@
               spago run -p registry-scripts -m Registry.Scripts.PackageTransferrer -- $1
             '';
 
+            registry-solver = ''
+              cd $(git rev-parse --show-toplevel)
+              spago run -p registry-scripts -m Registry.Scripts.Solver -- $1
+            '';
+
             # This script verifies that
             # - all the dhall we have in the repo actually compiles
             # - all the example manifests actually typecheck as Manifests
