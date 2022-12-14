@@ -11,18 +11,17 @@ import Data.String as String
 import Effect.Exception as Exception
 import Effect.Ref as Ref
 import Effect.Unsafe as Effect.Unsafe
-import Foreign.Git as Git
-import Foreign.GitHub (GitHubToken(..))
-import Foreign.GitHub as GitHub
-import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
 import Registry.App.API (LegacyRegistryFile(..), Source(..))
 import Registry.App.API as API
+import Registry.App.CLI.Git as Git
 import Registry.App.Cache as Cache
-import Registry.App.LenientVersion as LenientVersion
+import Registry.App.GitHub as GitHub
+import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
 import Registry.App.RegistryM as RegistryM
+import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
@@ -36,8 +35,8 @@ main = launchAff_ do
 
   octokit <- liftEffect do
     mbToken <- Node.Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
-    token <- maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHubToken) mbToken
-    GitHub.mkOctokit token
+    token <- maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHub.GitHubToken) mbToken
+    GitHub.newOctokit token
 
   cache <- Cache.useCache API.cacheDir
 
@@ -78,7 +77,7 @@ processLegacyRegistry legacyFile = do
   _ <- transferAll packages needsTransfer
   log "Completed transfers!"
 
-transferAll :: Map String GitHub.PackageURL -> Map String PackageLocations -> RegistryM (Map String GitHub.PackageURL)
+transferAll :: Map String String -> Map String PackageLocations -> RegistryM (Map String String)
 transferAll packages packageLocations = do
   packagesRef <- liftEffect (Ref.new packages)
   forWithIndex_ packageLocations \package locations -> do
@@ -110,7 +109,7 @@ type PackageLocations =
   , tagLocation :: Location
   }
 
-latestLocations :: Map String GitHub.PackageURL -> RegistryM (Map String (Maybe PackageLocations))
+latestLocations :: Map String String -> RegistryM (Map String (Maybe PackageLocations))
 latestLocations packages = forWithIndex packages \package location -> do
   let rawName = RawPackageName (stripPureScriptPrefix package)
   Except.runExceptT (LegacyImporter.validatePackage rawName location) >>= case _ of
@@ -164,9 +163,9 @@ latestPackageLocations package (Metadata { location, published }) = do
     Right locations ->
       pure locations
 
-locationToPackageUrl :: Location -> GitHub.PackageURL
+locationToPackageUrl :: Location -> String
 locationToPackageUrl = case _ of
   GitHub { owner, repo } ->
-    GitHub.PackageURL $ Array.fold [ "https://github.com/", owner, "/", repo, ".git" ]
+    Array.fold [ "https://github.com/", owner, "/", repo, ".git" ]
   Git _ ->
     unsafeCrashWith "Git urls cannot be registered."
