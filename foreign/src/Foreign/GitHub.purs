@@ -1,3 +1,9 @@
+-- | Low-level bindings to Octokit and its request functions.
+-- |
+-- | There is a GitHub module in the registry application as well, containing
+-- | app-specific requests, but the modules are kept separate because this low-
+-- | level code is required to implement both the app-specific requests and the
+-- | logging effect that those requests rely on.
 module Registry.Foreign.GitHub
   ( Base64Content(..)
   , GitHubAPIError
