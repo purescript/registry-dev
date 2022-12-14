@@ -8,7 +8,8 @@ module Registry.Scripts.LegacyImporter where
 
 import Registry.App.Prelude
 
-import Affjax as Http
+import ArgParse.Basic (ArgParser)
+import ArgParse.Basic as Arg
 import Control.Alternative (guard)
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
@@ -28,25 +29,31 @@ import Data.Ordering (invert)
 import Data.Profunctor as Profunctor
 import Data.Set as Set
 import Data.String as String
+import Data.String.CodeUnits as String.CodeUnits
 import Data.Variant as Variant
 import Effect.Exception as Exception
 import Effect.Ref as Ref
-import Foreign.GitHub (GitHubToken(..))
-import Foreign.GitHub as GitHub
-import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
-import Node.Process as Node.Process
+import Node.Process as Process
+import Parsing (Parser)
 import Parsing as Parsing
+import Parsing.Combinators as Parsing.Combinators
+import Parsing.Combinators.Array as Parsing.Combinators.Array
+import Parsing.String as Parsing.String
+import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API (LegacyRegistryFile(..), Source(..))
 import Registry.App.API as API
 import Registry.App.Cache as Cache
+import Registry.App.GitHub (GitHubToken(..))
+import Registry.App.GitHub as GitHub
 import Registry.App.Json (JsonCodec)
 import Registry.App.Json as Json
-import Registry.App.LenientVersion (LenientVersion)
-import Registry.App.LenientVersion as LenientVersion
+import Registry.App.Legacy.LenientVersion (LenientVersion)
+import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageStorage as PackageStorage
 import Registry.App.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
+import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError, LegacyPackageSetEntries)
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Location as Location
@@ -62,34 +69,37 @@ data ImportMode = DryRun | GenerateRegistry | UpdateRegistry
 
 derive instance Eq ImportMode
 
+parser :: ArgParser ImportMode
+parser = Arg.choose "command"
+  [ Arg.argument [ "dry-run" ]
+      "Run the registry importer without uploading packages or committing files."
+      $> DryRun
+  , Arg.argument [ "generate-registry" ]
+      "Run the registry importer, uploading packages but not committing to metadata or the index."
+      $> GenerateRegistry
+  , Arg.argument [ "update-registry" ]
+      "Run the registry importer, uploading packages and committing to metadata and the index."
+      $> UpdateRegistry
+  ]
+
 main :: Effect Unit
 main = launchAff_ do
+  args <- Array.drop 2 <$> liftEffect Process.argv
+  let description = "A script for uploading legacy registry packages."
+  mode <- case Arg.parseArgs "legacy-importer" description parser args of
+    Left err -> log (Arg.printArgError err) *> liftEffect (Process.exit 1)
+    Right command -> pure command
+
   log "Reading .env file..."
   _ <- API.loadEnv
 
   FS.Extra.ensureDirectory API.scratchDir
 
-  log "Parsing CLI args..."
-  mode <- liftEffect do
-    let expected = "Expected 'dry-run', 'generate', or 'update'"
-    args <- Array.drop 2 <$> Node.Process.argv
-    case Array.uncons args of
-      Nothing -> Exception.throw $ expected <> ", but received no arguments."
-      Just { head, tail: [] } -> case head of
-        "dry-run" -> pure DryRun
-        "generate" -> pure GenerateRegistry
-        "update" -> pure UpdateRegistry
-        other -> Exception.throw $ expected <> ", but received: " <> other
-      Just _ -> Exception.throw $ String.joinWith "\n"
-        [ expected <> ", but received multiple arguments:"
-        , String.joinWith " " args
-        ]
-
   octokit <- liftEffect do
     token <- do
-      result <- Node.Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
+      result <- Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
       maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHubToken) result
-    GitHub.mkOctokit token
+    GitHub.newOctokit token
 
   cache <- Cache.useCache API.cacheDir
 
@@ -334,7 +344,7 @@ importLegacyRegistry existingRegistry legacyRegistry = do
       reserved (Tuple (RawPackageName name) address) = do
         packageName <- hush $ PackageName.parse name
         guard $ isNothing $ Map.lookup packageName $ ManifestIndex.toMap validIndex
-        { owner, repo } <- hush $ GitHub.parseRepo address
+        { owner, repo } <- hush $ Parsing.runParser address legacyRepoParser
         pure (Tuple packageName (GitHub { owner, repo, subdir: Nothing }))
 
     -- The list of all packages that could not be included because of an error
@@ -376,7 +386,7 @@ buildLegacyPackageManifests
   :: ManifestIndex
   -> LegacyPackageSetEntries
   -> RawPackageName
-  -> GitHub.PackageURL
+  -> String
   -> ExceptT PackageValidationError RegistryM (Map RawVersion (Either VersionValidationError Manifest))
 buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl = do
   { cache } <- ask
@@ -437,7 +447,11 @@ data VersionError
 
 versionErrorCodec :: JsonCodec VersionError
 versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
-  { invalidTag: Right GitHub.tagCodec
+  { invalidTag: Right $ Json.object "Tag"
+      { name: CA.string
+      , sha: CA.string
+      , url: CA.string
+      }
   , disabledVersion: Left unit
   , invalidManifest: Right $ Json.object "LegacyManifestValidationError"
       { error: Legacy.Manifest.legacyManifestErrorCodec
@@ -488,7 +502,7 @@ type PackageValidationError = { error :: PackageError, reason :: String }
 -- | An error that affects an entire package
 data PackageError
   = InvalidPackageName
-  | InvalidPackageURL GitHub.PackageURL
+  | InvalidPackageURL String
   | PackageURLRedirects { registered :: GitHub.Address, received :: GitHub.Address }
   | CannotAccessRepo GitHub.Address
   | DisabledPackage
@@ -501,7 +515,7 @@ type PackageResult =
   , tags :: Array GitHub.Tag
   }
 
-validatePackage :: RawPackageName -> GitHub.PackageURL -> ExceptT PackageValidationError RegistryM PackageResult
+validatePackage :: RawPackageName -> String -> ExceptT PackageValidationError RegistryM PackageResult
 validatePackage rawPackage rawUrl = do
   name <- Except.except $ validatePackageName rawPackage
   Except.except $ validatePackageDisabled name
@@ -513,7 +527,7 @@ validatePackage rawPackage rawUrl = do
     Nothing -> pure { name, address, tags }
     Just tag -> do
       tagAddress <- Except.except case tagUrlToRepoUrl tag.url of
-        Nothing -> Left { error: InvalidPackageURL (GitHub.PackageURL tag.url), reason: "Failed to format redirected " <> tag.url <> " as a GitHub.Address." }
+        Nothing -> Left { error: InvalidPackageURL tag.url, reason: "Failed to format redirected " <> tag.url <> " as a GitHub.Address." }
         Just formatted -> Right formatted
       Except.except $ validatePackageLocation { registered: address, received: tagAddress }
       pure { name, address, tags }
@@ -521,7 +535,7 @@ validatePackage rawPackage rawUrl = do
 fetchPackageTags :: GitHub.Address -> ExceptT PackageValidationError RegistryM (Array GitHub.Tag)
 fetchPackageTags address = do
   { octokit, cache } <- ask
-  result <- Except.runExceptT $ Except.mapExceptT liftAff $ GitHub.listTags octokit cache address
+  result <- liftAff $ GitHub.listTags octokit cache address
   case result of
     Left err -> case err of
       GitHub.APIError apiError | apiError.statusCode >= 400 -> do
@@ -547,16 +561,16 @@ validatePackageLocation addresses = do
   else
     Right unit
 
-validatePackageAddress :: GitHub.PackageURL -> Either PackageValidationError GitHub.Address
+validatePackageAddress :: String -> Either PackageValidationError GitHub.Address
 validatePackageAddress packageUrl =
-  GitHub.parseRepo packageUrl # lmap \parserError ->
+  Parsing.runParser packageUrl legacyRepoParser # lmap \parserError ->
     { error: InvalidPackageURL packageUrl
     , reason: Parsing.parseErrorMessage parserError
     }
 
 -- Example tag url:
 -- https://api.github.com/repos/octocat/Hello-World/commits/c5b97d5ae6c19d5c5df71a34c7fbeeda2479ccbc
-tagUrlToRepoUrl :: Http.URL -> Maybe GitHub.Address
+tagUrlToRepoUrl :: String -> Maybe GitHub.Address
 tagUrlToRepoUrl url = do
   noPrefix <- String.stripPrefix (String.Pattern "https://api.github.com/repos/") url
   let getOwnerRepoArray = Array.take 2 <<< String.split (String.Pattern "/")
@@ -611,7 +625,7 @@ formatPackageValidationError :: PackageValidationError -> JsonValidationError
 formatPackageValidationError { error, reason } = case error of
   InvalidPackageName ->
     { tag: "InvalidPackageName", value: Nothing, reason }
-  InvalidPackageURL (GitHub.PackageURL url) ->
+  InvalidPackageURL url ->
     { tag: "InvalidPackageURL", value: Just url, reason }
   PackageURLRedirects { registered } ->
     { tag: "PackageURLRedirects", value: Just (registered.owner <> "/" <> registered.repo), reason }
@@ -633,7 +647,7 @@ formatVersionValidationError { error, reason } = case error of
     let errorValue = String.joinWith ", " $ map PackageName.print names
     { tag: "UnregisteredDependencies", value: Just errorValue, reason }
 
-type LegacyRegistry = Map RawPackageName GitHub.PackageURL
+type LegacyRegistry = Map RawPackageName String
 
 -- | Read the legacy registry files stored in the root of the registry repo.
 -- | Package names have their 'purescript-' prefix trimmed.
@@ -645,7 +659,7 @@ readLegacyRegistryFiles = do
   let fixupNames = mapKeys (RawPackageName <<< stripPureScriptPrefix)
   pure $ fixupNames allPackages
 
-readLegacyRegistryFile :: LegacyRegistryFile -> RegistryM (Map String GitHub.PackageURL)
+readLegacyRegistryFile :: LegacyRegistryFile -> RegistryM (Map String String)
 readLegacyRegistryFile sourceFile = do
   { registry } <- ask
   let path = Path.concat [ registry, API.legacyRegistryFilePath sourceFile ]
@@ -767,3 +781,25 @@ calculateImportStats legacyRegistry imported = do
   , packageErrors
   , versionErrors
   }
+
+legacyRepoParser :: Parser String GitHub.Address
+legacyRepoParser = do
+  _ <- Parsing.Combinators.choice
+    [ Parsing.String.string "https://github.com/"
+    , Parsing.String.string "git://github.com/"
+    , Parsing.String.string "git@github.com/"
+    ]
+
+  owner <- do
+    let
+      ownerChoice = Parsing.Combinators.choice
+        [ Parsing.String.Basic.alphaNum
+        , Parsing.String.char '-'
+        ]
+    Tuple chars _ <- Parsing.Combinators.Array.manyTill_ ownerChoice (Parsing.String.char '/')
+    pure $ String.CodeUnits.fromCharArray chars
+
+  repoWithSuffix <- String.CodeUnits.fromCharArray <$> Array.many Parsing.String.anyChar
+  let repo = fromMaybe repoWithSuffix (String.stripSuffix (String.Pattern ".git") repoWithSuffix)
+
+  pure { owner, repo }

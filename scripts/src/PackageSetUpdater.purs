@@ -2,25 +2,26 @@ module Registry.Scripts.PackageSetUpdater where
 
 import Registry.App.Prelude
 
+import ArgParse.Basic (ArgParser)
+import ArgParse.Basic as Arg
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
 import Data.Map as Map
-import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Effect.Ref as Ref
-import Foreign.GitHub (GitHubToken(..))
-import Foreign.GitHub as GitHub
-import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
+import Node.Process as Process
 import Registry.App.API as API
+import Registry.App.GitHub as GitHub
 import Registry.App.Json as Json
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
 import Registry.App.RegistryM (Env, RegistryM, commitPackageSetFile, readPackagesMetadata, runRegistryM, throwWithComment)
+import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
@@ -30,6 +31,16 @@ data PublishMode = GeneratePackageSet | CommitPackageSet
 
 derive instance Eq PublishMode
 
+parser :: ArgParser PublishMode
+parser = Arg.choose "command"
+  [ Arg.argument [ "generate" ]
+      "Generate a new package set without committing the results."
+      $> GeneratePackageSet
+  , Arg.argument [ "commit" ]
+      "Generate a new package set and commit the results."
+      $> CommitPackageSet
+  ]
+
 main :: Effect Unit
 main = Aff.launchAff_ do
   log "Loading env..."
@@ -37,27 +48,19 @@ main = Aff.launchAff_ do
 
   FS.Extra.ensureDirectory API.scratchDir
 
-  log "Parsing CLI args..."
-  mode <- liftEffect do
-    args <- Array.drop 2 <$> Node.Process.argv
-    case Array.uncons args of
-      Nothing -> Exception.throw "Expected 'generate' or 'commit', but received no arguments."
-      Just { head, tail: [] } -> case head of
-        "generate" -> pure GeneratePackageSet
-        "commit" -> pure CommitPackageSet
-        other -> Exception.throw $ "Expected 'generate' or 'commit' but received: " <> other
-      Just _ -> Exception.throw $ String.joinWith "\n"
-        [ "Expected 'generate' or 'commit', but received multiple arguments:"
-        , String.joinWith " " args
-        ]
+  args <- Array.drop 2 <$> liftEffect Node.Process.argv
+  let description = "A script for updating the package sets."
+  mode <- case Arg.parseArgs "package-set-updater" description parser args of
+    Left err -> log (Arg.printArgError err) *> liftEffect (Process.exit 1)
+    Right command -> pure command
 
   log "Starting package set publishing..."
 
   githubToken <- liftEffect do
     Node.Process.lookupEnv "GITHUB_TOKEN"
-      >>= maybe (Exception.throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
+      >>= maybe (Exception.throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHub.GitHubToken)
 
-  octokit <- liftEffect $ GitHub.mkOctokit githubToken
+  octokit <- liftEffect $ GitHub.newOctokit githubToken
   metadataRef <- liftEffect $ Ref.new Map.empty
 
   let
