@@ -18,12 +18,15 @@ import Foreign.GitHub as GitHub
 import Foreign.Node.FS as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
+import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.Cache as Cache
+import Registry.App.Json as Json
 import Registry.App.PackageIndex (readManifestIndexFromDisk)
 import Registry.App.RegistryM (runRegistryM)
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
+import Registry.Scripts.PackageDeleter (deletePackagesCodec)
 import Registry.Solver as Solver
 import Registry.Version as Version
 
@@ -32,22 +35,39 @@ main = launchAff_ do
   args <- liftEffect $ Array.drop 2 <$> Node.Process.argv
   let
     getAction = case args of
+      ["--file", path] -> do
+        packageversions <- liftAff (Json.readJsonFile deletePackagesCodec path) >>= case _ of
+          Left err -> log err *> liftEffect (Process.exit 1)
+          Right values -> pure values
+        pure \registry -> do
+          forWithIndex_ packageversions \package versionsofpackage -> do
+            for_ versionsofpackage \version -> do
+              let
+                deps =
+                  case Map.lookup package registry of
+                    Nothing -> unsafeCrashWith $ "Missing package: " <> PackageName.print package
+                    Just versions ->
+                      case Map.lookup version versions of
+                        Nothing -> unsafeCrashWith $ "Missing version: " <> PackageName.print package <> "@" <> Version.print version
+                        Just d -> d
+              test registry package version deps
       ["--all"] -> pure \registry -> do
         forWithIndex_ registry \package versions -> do
           forWithIndex_ versions \version deps -> do
             test registry package version deps
-      [package_versionS] | [packageS,versionS] <- String.split (String.Pattern "@") package_versionS -> pure \registry -> do
+      [package_versionS] | [packageS,versionS] <- String.split (String.Pattern "@") package_versionS ->
         let
           package = unsafeFromRight $ PackageName.parse packageS
           version = unsafeFromRight $ Version.parse versionS
-        let versions = unsafeFromJust $ Map.lookup package registry
-        let deps = unsafeFromJust $ Map.lookup version versions
-        test registry package version deps
+        in pure \registry -> do
+          let versions = unsafeFromJust $ Map.lookup package registry
+          let deps = unsafeFromJust $ Map.lookup version versions
+          test registry package version deps
       _ -> do
         log "Either use --all or package@version"
         liftEffect $ throw $ "Invalid arguments: " <> show args
 
-  let scratchDir = const "tmp" API.scratchDir
+  let scratchDir = API.scratchDir
 
   action <- getAction
 
@@ -62,6 +82,7 @@ main = launchAff_ do
 
   FS.Extra.ensureDirectory scratchDir
 
+  log $ "Loading cache " <> API.cacheDir <> " …"
   cache <- Cache.useCache API.cacheDir
 
   metadataRef <- liftEffect $ Ref.new Map.empty
@@ -90,9 +111,14 @@ main = launchAff_ do
       , registryIndex: Path.concat [ scratchDir, "registry-index" ]
       }
 
-  index <- runRegistryM env readManifestIndexFromDisk
+  log $ "Reading registry index1 from " <> env.registryIndex <> " …"
+  index1 <- runRegistryM env readManifestIndexFromDisk
 
-  let registry = map (unwrap >>> _.dependencies) <$> ManifestIndex.toMap index
+  -- log $ "Reading registry index2 from tmp/registry-index …"
+  -- index2 <- runRegistryM (env { registryIndex = Path.concat [ "tmp", "registry-index" ] }) readManifestIndexFromDisk
+
+  --let registry = map (unwrap >>> _.dependencies) <$> Map.unionWith Map.union (ManifestIndex.toMap index1) (ManifestIndex.toMap index2)
+  let registry = map (unwrap >>> _.dependencies) <$> ManifestIndex.toMap index1
 
   action registry
   where

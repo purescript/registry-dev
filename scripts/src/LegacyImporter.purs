@@ -26,6 +26,7 @@ import Data.Foldable as Foldable
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.List as List
 import Data.Map as Map
+import Data.Newtype (unwrap)
 import Data.Ordering (invert)
 import Data.Profunctor as Profunctor
 import Data.Set as Set
@@ -67,13 +68,13 @@ derive instance Eq ImportMode
 
 parser :: ArgParser ImportMode
 parser = Arg.choose "command"
-  [ Arg.argument [ "dry-run" ]
+  [ Arg.flag [ "dry-run" ]
       "Run the registry importer without uploading packages or committing files."
       $> DryRun
-  , Arg.argument [ "generate-registry" ]
+  , Arg.flag [ "generate-registry" ]
       "Run the registry importer, uploading packages but not committing to metadata or the index."
       $> GenerateRegistry
-  , Arg.argument [ "update-registry" ]
+  , Arg.flag [ "update-registry" ]
       "Run the registry importer, uploading packages and committing to metadata and the index."
       $> UpdateRegistry
   ]
@@ -299,6 +300,8 @@ type ImportedIndex =
 -- | packages and package versions and reports packages that are present in the
 -- | legacy registry but not in the resulting registry.
 importLegacyRegistry :: ManifestIndex -> LegacyRegistry -> RegistryM ImportedIndex
+-- existingRegistry from PackageIndex.readManifestIndexFromDisk minus missing of metadataRef = env.packagesMetadata
+-- legacyRegistry from readLegacyRegistryFiles, i.e. registry/{bower,new}-packages.json
 importLegacyRegistry existingRegistry legacyRegistry = do
   legacyPackageSets <- Legacy.Manifest.fetchLegacyPackageSets
   manifests <- forWithIndex legacyRegistry \name address ->
@@ -384,6 +387,8 @@ buildLegacyPackageManifests
   -> RawPackageName
   -> GitHub.PackageURL
   -> ExceptT PackageValidationError RegistryM (Map RawVersion (Either VersionValidationError Manifest))
+-- existingRegistry from PackageIndex.readManifestIndexFromDisk minus missing of metadataRef = env.packagesMetadata
+-- legacyPackageSets from Legacy.Manifest.fetchLegacyPackageSets
 buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl = do
   { cache } <- ask
 
@@ -400,9 +405,10 @@ buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl
       let
         buildManifest = do
           Except.except $ validateVersionDisabled package.name version
-          let packageSetDeps = Map.lookup (RawVersion tag.name) =<< Map.lookup package.name legacyPackageSets
+          let packageSetDeps = Map.lookup (RawVersion tag.name) <<< unwrap =<< Map.lookup package.name (unwrap legacyPackageSets)
           let manifestError err = { error: InvalidManifest err, reason: "Legacy manifest could not be parsed." }
           Except.withExceptT manifestError do
+            -- packageSetDeps from legacyPackageSets
             legacyManifest <- Legacy.Manifest.fetchLegacyManifest packageSetDeps package.address (RawVersion tag.name)
             pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
 

@@ -34,10 +34,10 @@ derive instance Eq PublishMode
 
 parser :: ArgParser PublishMode
 parser = Arg.choose "command"
-  [ Arg.argument [ "generate" ]
+  [ Arg.flag [ "generate" ]
       "Generate a new package set without committing the results."
       $> GeneratePackageSet
-  , Arg.argument [ "commit" ]
+  , Arg.flag [ "commit" ]
       "Generate a new package set and commit the results."
       $> CommitPackageSet
   ]

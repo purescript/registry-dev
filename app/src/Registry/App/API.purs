@@ -538,8 +538,8 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
 
     let
       packageSetDeps = do
-        versions <- Map.lookup name legacyPackageSets
-        deps <- Map.lookup (RawVersion ref) versions
+        versions <- Map.lookup name (unwrap legacyPackageSets)
+        deps <- Map.lookup (RawVersion ref) (unwrap versions)
         pure deps
 
     Except.runExceptT (Legacy.Manifest.fetchLegacyManifest packageSetDeps address (RawVersion ref)) >>= case _ of

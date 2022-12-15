@@ -9,10 +9,16 @@ import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec.Argonaut.Record as Codec
 import Data.Codec.Argonaut.Variant as CA.Variant
 import Data.Either as Either
 import Data.FunctorWithIndex (mapWithIndex)
+import Data.Map (SemigroupMap(..))
 import Data.Map as Map
+import Data.Newtype (unwrap)
+import Data.Ord.Max (Max(..))
+import Data.Ord.Min (Min(..))
+import Data.Profunctor (dimap)
 import Data.Profunctor as Profunctor
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
@@ -39,6 +45,7 @@ import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
 import Registry.Version as Version
+import Safe.Coerce (coerce)
 import Sunde as Process
 import Type.Proxy (Proxy(..))
 
@@ -54,7 +61,7 @@ toManifest name version location { license, description, dependencies } = do
   let owners = Nothing
   Manifest { name, version, location, license, description, dependencies, files, owners }
 
-fetchLegacyManifest :: Maybe (Map PackageName RawVersion) -> GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError RegistryM LegacyManifest
+fetchLegacyManifest :: Maybe (SemigroupMap PackageName { min :: Min RawVersion, max :: Max RawVersion }) -> GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError RegistryM LegacyManifest
 fetchLegacyManifest packageSetsDeps address ref = do
   manifests <- fetchLegacyManifestFiles address ref
 
@@ -71,12 +78,17 @@ fetchLegacyManifest packageSetsDeps address ref = do
         let printRange version = Array.fold [ ">=", fixed, " <", bump version ]
         RawVersionRange $ Either.either (const fixed) (printRange <<< LenientVersion.version) parsedVersion
 
+      minMaxToRange { min: Min smallest, max: Max highest } =
+        { min: fixedToRange smallest, max: fixedToRange highest }
+
       validatePackageSetDeps = case packageSetsDeps of
         Nothing ->
           Left { error: InvalidDependencies [], reason: "No package sets dependencies." }
         Just deps -> do
-          let converted = mapKeys (RawPackageName <<< PackageName.print) $ map fixedToRange deps
-          validateDependencies converted
+          let converted = mapKeys (RawPackageName <<< PackageName.print) $ unwrap $ map minMaxToRange deps
+          let smallerBounds = validateDependencies (converted <#> _.min)
+          let higherBounds = validateDependencies (converted <#> _.max)
+          Map.unionWith Range.union <$> smallerBounds <*> higherBounds
 
       convertSpagoDeps packages = Array.foldl foldFn Map.empty
         where
@@ -345,10 +357,16 @@ fetchBowerfile address (RawVersion ref) = do
     Left err -> Left $ GitHub.DecodeError err
     Right value -> pure value
 
-type LegacyPackageSetEntries = Map PackageName (Map RawVersion (Map PackageName RawVersion))
+type LegacyPackageSetEntries = SemigroupMap PackageName (SemigroupMap RawVersion (SemigroupMap PackageName { min :: Min RawVersion, max :: Max RawVersion }))
 
 legacyPackageSetEntriesCodec :: JsonCodec LegacyPackageSetEntries
-legacyPackageSetEntriesCodec = Internal.Codec.packageMap $ rawVersionMapCodec $ Internal.Codec.packageMap rawVersionCodec
+legacyPackageSetEntriesCodec = dimap coerce coerce $ Internal.Codec.packageMap $ rawVersionMapCodec $ Internal.Codec.packageMap minMax
+
+minMax :: JsonCodec { min :: Min RawVersion, max :: Max RawVersion }
+minMax = Codec.object "Bounds"
+  { min: dimap unwrap Min rawVersionCodec :: JsonCodec (Min RawVersion)
+  , max: dimap unwrap Max rawVersionCodec :: JsonCodec (Max RawVersion)
+  }
 
 fetchLegacyPackageSets :: RegistryM LegacyPackageSetEntries
 fetchLegacyPackageSets = do
@@ -361,18 +379,19 @@ fetchLegacyPackageSets = do
   let
     convertPackageSet :: LegacyPackageSet -> LegacyPackageSetEntries
     convertPackageSet (LegacyPackageSet packages) =
-      map (convertEntry packages) packages
+      SemigroupMap (map (convertEntry packages) packages)
 
-    convertEntry :: Map PackageName LegacyPackageSetEntry -> LegacyPackageSetEntry -> Map RawVersion (Map PackageName RawVersion)
+    convertEntry :: Map PackageName LegacyPackageSetEntry -> LegacyPackageSetEntry -> SemigroupMap RawVersion (SemigroupMap PackageName { min :: Min RawVersion, max :: Max RawVersion })
     convertEntry entries { dependencies, version } = do
       let
         -- Package sets are only valid if all packages in the set have dependencies that are also in
         -- the set, so this (should) be safe.
         resolveDependencyVersion dep =
-          unsafeFromJust (_.version <$> Map.lookup dep entries)
+          let v = unsafeFromJust (_.version <$> Map.lookup dep entries)
+          in { min: Min v, max: Max v }
         resolveDependencyVersions =
           Array.foldl (\m name -> Map.insert name (resolveDependencyVersion name) m) Map.empty
-      Map.singleton version (resolveDependencyVersions dependencies)
+      SemigroupMap $ Map.singleton version (SemigroupMap $ resolveDependencyVersions dependencies)
 
   legacySets <- do
     tagKey <- liftEffect do
@@ -405,14 +424,16 @@ fetchLegacyPackageSets = do
           case setEntries of
             Left err -> do
               log $ "Failed to retrieve " <> ref <> " package set:\n" <> GitHub.printGitHubError err
-              pure Map.empty
+              pure mempty
             Right value -> pure value
 
-        let merged = Array.foldr (Map.unionWith Map.union) Map.empty entries
+        let merged = fold entries
         liftEffect $ Cache.writeJsonEntry legacyPackageSetEntriesCodec tagKey merged cache
         pure merged
 
       Right contents ->
         pure contents.value
+
+  liftAff $ writeJsonFile legacyPackageSetEntriesCodec "tmp/packagesets_minmax.json" legacySets
 
   pure legacySets
