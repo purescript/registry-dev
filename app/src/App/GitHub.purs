@@ -1,10 +1,5 @@
 module Registry.App.GitHub
-  ( Address
-  , IssueNumber(..)
-  , Tag
-  , Team
-  , TeamMember
-  , closeIssue
+  ( closeIssue
   , createComment
   , getCommitDate
   , getContent
@@ -12,166 +7,63 @@ module Registry.App.GitHub
   , listTags
   , listTeamMembers
   , module Exports
-  , request
-  , requestWithBackoff
   ) where
 
 import Registry.App.Prelude
 
-import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
-import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.HTTP.Method (Method(..))
-import Data.Int as Int
-import Data.Map as Map
-import Data.Profunctor as Profunctor
 import Data.Time.Duration as Duration
 import Effect.Class.Console as Console
 import Foreign.Object as Object
 import Registry.App.Cache (Cache)
 import Registry.App.Cache as Cache
-import Registry.Foreign.Octokit (Base64Content(..), GitHubError(..), GitHubRoute(..), Octokit, Request)
-import Registry.Foreign.Octokit (GitHubError(..), GitHubToken(..), Octokit, newOctokit, printGitHubError) as Exports
+import Registry.Foreign.Octokit (Address, GitHubAPIError, GitHubError(..), GitHubRoute(..), GitHubToken(..), IssueNumber(..), Octokit, Tag, Team, TeamMember, githubApiErrorCodec, githubErrorCodec, newOctokit, printGitHubError, printGitHubRoute) as Exports
 import Registry.Foreign.Octokit as Octokit
-import Registry.Internal.Codec as Internal.Codec
 
--- | The address of a GitHub repository as a owner/repo pair.
-type Address = { owner :: String, repo :: String }
+closeIssue :: Octokit.Octokit -> Octokit.Address -> Octokit.IssueNumber -> Aff (Either Octokit.GitHubError Unit)
+closeIssue octokit address issue = do
+  let request = Octokit.closeIssueRequest { address, issue }
+  requestWithBackoff octokit request
 
--- | The numeric ID of an issue on GitHub. Should be paired with an Address to
--- | fully identify the location of the issue.
-newtype IssueNumber = IssueNumber Int
+createComment :: Octokit.Octokit -> Octokit.Address -> Octokit.IssueNumber -> String -> Aff (Either Octokit.GitHubError Unit)
+createComment octokit address issue body = do
+  let request = Octokit.createCommentRequest { address, issue, body }
+  requestWithBackoff octokit request
 
-instance Newtype IssueNumber Int
-derive newtype instance Eq IssueNumber
+getCommitDate :: Octokit.Octokit -> Cache -> Octokit.Address -> String -> Aff (Either Octokit.GitHubError DateTime)
+getCommitDate octokit cache address commitSha = do
+  let request = Octokit.getCommitDateRequest { address, commitSha }
+  requestWithCache octokit cache request
 
--- | A team within a GitHub organization
-type Team = { org :: String, team :: String }
-
--- | A member of a GitHub organization as a pair of their username (login) and
--- | their unique identifier.
-type TeamMember = { login :: String, id :: Int }
-
--- | List members of the given team.
--- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/teams/listMembersInOrg.md
-listTeamMembers :: Octokit -> Cache -> Team -> Aff (Either GitHubError (Array TeamMember))
-listTeamMembers octokit cache team = request octokit cache
-  { route: GitHubRoute GET [ "orgs", team.org, "teams", team.team, "members" ] Map.empty
-  , headers: Object.empty
-  , args: Octokit.noArgs
-  , paginate: true
-  , codec: CA.array $ CA.Record.object "TeamMember" { login: CA.string, id: CA.int }
-  }
-
-type Tag = { name :: String, sha :: String, url :: String }
-
--- | List repository tags
--- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/listTags.md
-listTags :: Octokit -> Cache -> Address -> Aff (Either GitHubError (Array Tag))
-listTags octokit cache address = request octokit cache
-  { route: GitHubRoute GET [ "repos", address.owner, address.repo, "tags" ] Map.empty
-  , headers: Object.empty
-  , args: Octokit.noArgs
-  , paginate: true
-  , codec: CA.array $ Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Tag"
-      { name: CA.string
-      , commit: CA.Record.object "Tag.Commit" { sha: CA.string, url: CA.string }
-      }
-  }
-  where
-  toJsonRep { name, sha, url } = { name, commit: { sha, url } }
-  fromJsonRep { name, commit } = { name, sha: commit.sha, url: commit.url }
-
--- | Fetch a specific file  from the provided repository at the given ref and
--- | filepath. Filepaths should lead to a single file from the root of the repo.
--- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/getContent.md
-getContent :: Octokit -> Cache -> Address -> String -> FilePath -> Aff (Either GitHubError String)
+getContent :: Octokit.Octokit -> Cache -> Octokit.Address -> String -> FilePath -> Aff (Either Octokit.GitHubError String)
 getContent octokit cache address ref path = do
-  result <- request octokit cache
-    { route: GitHubRoute GET [ "repos", address.owner, address.repo, "contents", path ] (Map.singleton "ref" ref)
-    , headers: Object.empty
-    , args: Octokit.noArgs
-    , paginate: false
-    , codec: Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Content"
-        { data: CA.Record.object "Content.data"
-            { type: value "file"
-            , encoding: value "base64"
-            , content: CA.string
-            }
-        }
-    }
-  pure (bind result (lmap DecodeError <<< Octokit.decodeBase64Content))
-  where
-  value :: String -> JsonCodec String
-  value expected = CA.codec'
-    (\json -> CA.decode CA.string json >>= \decoded -> if decoded == expected then pure expected else Left (CA.UnexpectedValue json))
-    (\_ -> CA.encode CA.string expected)
+  let request = Octokit.getContentRequest { address, ref, path }
+  result <- requestWithCache octokit cache request
+  pure (bind result (lmap Octokit.DecodeError <<< Octokit.decodeBase64Content))
 
-  toJsonRep (Base64Content str) = { data: { type: "file", encoding: "base64", content: str } }
-  fromJsonRep { data: { content } } = Base64Content content
+getRefCommit :: Octokit.Octokit -> Cache -> Octokit.Address -> String -> Aff (Either Octokit.GitHubError String)
+getRefCommit octokit cache address ref = do
+  let request = Octokit.getRefCommitRequest { address, ref }
+  requestWithCache octokit cache request
 
--- | Fetch the commit SHA for a given ref on a GitHub repository
--- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getRef.md
-getRefCommit :: Octokit -> Cache -> Address -> String -> Aff (Either GitHubError String)
-getRefCommit octokit cache address ref = request octokit cache
-  { route: GitHubRoute GET [ "repos", address.owner, address.repo, "git", "ref", ref ] Map.empty
-  , headers: Object.empty
-  , args: Octokit.noArgs
-  , paginate: false
-  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Ref" { object: CA.Record.object "Ref.object" { sha: CA.string } }
-  }
-  where
-  toJsonRep sha = { object: { sha } }
-  fromJsonRep = _.object.sha
+listTags :: Octokit.Octokit -> Cache -> Octokit.Address -> Aff (Either Octokit.GitHubError (Array Octokit.Tag))
+listTags octokit cache = requestWithCache octokit cache <<< Octokit.listTagsRequest
 
--- | Fetch the date associated with a given commit, in the RFC3339String format.
--- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getCommit.md
-getCommitDate :: Octokit -> Cache -> Address -> String -> Aff (Either GitHubError DateTime)
-getCommitDate octokit cache address commitSha = request octokit cache
-  { route: GitHubRoute GET [ "repos", address.owner, address.repo, "git", "commits", commitSha ] Map.empty
-  , headers: Object.empty
-  , args: Octokit.noArgs
-  , paginate: false
-  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Commit"
-      { committer: CA.Record.object "Commit.committer" { date: Internal.Codec.iso8601DateTime } }
-  }
-  where
-  toJsonRep date = { committer: { date } }
-  fromJsonRep = _.committer.date
-
--- | Create a comment on an issue. Requires authentication.
--- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/issues/createComment.md
-createComment :: Octokit -> Address -> IssueNumber -> String -> Aff (Either GitHubError Unit)
-createComment octokit address (IssueNumber issue) body = requestWithBackoff octokit
-  { route: GitHubRoute POST [ "repos", address.owner, address.repo, "issues", Int.toStringAs Int.decimal issue, "comments" ] Map.empty
-  , headers: Object.empty
-  , args: Octokit.unsafeToJSArgs { body }
-  , paginate: false
-  , codec: CA.codec' (\_ -> pure unit) (CA.encode CA.null)
-  }
-
--- | Close an issue. Requires authentication.
--- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/issues/update.md
-closeIssue :: Octokit -> Address -> IssueNumber -> Aff (Either GitHubError Unit)
-closeIssue octokit address (IssueNumber issue) = requestWithBackoff octokit
-  { route: GitHubRoute PATCH [ "repos", address.owner, address.repo, "issues", Int.toStringAs Int.decimal issue ] Map.empty
-  , headers: Object.empty
-  , args: Octokit.unsafeToJSArgs { state: "closed" }
-  , paginate: false
-  , codec: CA.codec' (\_ -> pure unit) (CA.encode CA.null)
-  }
+listTeamMembers :: Octokit.Octokit -> Cache -> Octokit.Team -> Aff (Either Octokit.GitHubError (Array Octokit.TeamMember))
+listTeamMembers octokit cache = requestWithCache octokit cache <<< Octokit.listTeamMembersRequest
 
 -- | Apply exponential backoff to requests that hang, but without cancelling
 -- | requests if we have reached our rate limit and have been throttled.
 -- | A helper function for implementing GET requests to the GitHub API that
 -- | relies on the GitHub API to report whether there is any new data, and falls
 -- | back to the cache if there is not.
-request :: forall a. Octokit -> Cache -> Request a -> Aff (Either GitHubError a)
-request octokit cache githubRequest@{ route: route@(GitHubRoute method _ _), codec } = do
+requestWithCache :: forall a. Octokit.Octokit -> Cache -> Octokit.Request a -> Aff (Either Octokit.GitHubError a)
+requestWithCache octokit cache githubRequest@{ route: route@(Octokit.GitHubRoute method _ _), codec } = do
   -- We cache GET requests, other than requests to fetch the current rate limit.
   case method of
     GET | route /= Octokit.rateLimitRequest.route -> do
@@ -197,7 +89,7 @@ request octokit cache githubRequest@{ route: route@(GitHubRoute method _ _), cod
             | otherwise -> do
                 Console.debug $ "Retrying route " <> Octokit.printGitHubRoute route <> " because cache contains non-404 error: " <> show err
                 liftEffect $ cache.remove entryKey
-                request octokit cache githubRequest
+                requestWithCache octokit cache githubRequest
 
           Left otherError -> do
             Console.debug "Cached entry is an unknown or decode error, not retrying..."
@@ -239,7 +131,7 @@ request octokit cache githubRequest@{ route: route@(GitHubRoute method _ _), cod
       Console.debug $ "Not a cacheable route: " <> Octokit.printGitHubRoute route <> ", requesting..."
       requestWithBackoff octokit githubRequest
 
-requestWithBackoff :: forall a. Octokit -> Request a -> Aff (Either GitHubError a)
+requestWithBackoff :: forall a. Octokit.Octokit -> Octokit.Request a -> Aff (Either Octokit.GitHubError a)
 requestWithBackoff octokit githubRequest = do
   Console.log $ "Making request to " <> Octokit.printGitHubRoute githubRequest.route
   let action = Octokit.request octokit githubRequest
