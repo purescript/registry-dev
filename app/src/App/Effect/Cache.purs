@@ -240,8 +240,14 @@ type JsonEncoded z b = Exists (JsonEncodedBox z b)
 
 -- | Run a cache backed by the file system. The cache will try to minimize
 -- | writes and reads to the file system by storing data in memory when possible.
--- | Takes the label of the cache effect in question to namespace caches in the
--- | file system.
+--
+-- TODO: This could be much improved, but it's not urgent. Some ideas:
+--   - Accept a fetching function to produce the cached value, and call it if
+--     the cache has no entry? This makes the cache more transparent vs. get/put.
+--   - Separate the in-memory and filesystem handlers such that they can be
+--     combined? ie. try in-memory, fall back to file system, fall back to fetcher.
+--   - Push more cache behavior into the key handler, such that a key can specify
+--     how it should be cached (memory only, file system only?)
 handleCacheFs :: forall key a r. JsonKeyHandler key -> Cache key a -> Run (LOG + AFF + r) a
 handleCacheFs handler = runWithMap <<< case _ of
   -- TODO: Expire entries after they've not been fetched for N seconds?
@@ -268,7 +274,7 @@ handleCacheFs handler = runWithMap <<< case _ of
                   pure $ reply $ Just decoded
 
       Just json -> do
-        Log.debug $ "Found " <> id <> " in memory cache!"
+        Log.debug $ "Found " <> id <> " in memory cache."
         case CA.decode (cacheEntryCodec codec) json of
           Left error -> do
             Log.debug $ "Failed to decode JSON for " <> id <> ":\n" <> Argonaut.Core.stringify json <> ").\nParsing failed with error: " <> CA.printJsonDecodeError error <> "\nRemoving from cache!"

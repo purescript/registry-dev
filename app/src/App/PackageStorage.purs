@@ -14,7 +14,7 @@ connect :: Aff S3.Space
 connect = do
   let bucket = "purescript-registry"
   Console.log $ "Connecting to the bucket " <> show bucket
-  withBackoff' (S3.connect "ams3.digitaloceanspaces.com" bucket) >>= case _ of
+  withBackoff' (S3.connect { key: "", secret: "" } "ams3.digitaloceanspaces.com" bucket) >>= case _ of
     Nothing -> Aff.throwError $ Aff.error "Timed out when attempting to connect to S3"
     Just connection -> pure connection
 
