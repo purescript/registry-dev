@@ -2,6 +2,7 @@ module Registry.Effect.PackageSets where
 
 import Registry.App.Prelude
 
+import Control.Alternative (guard)
 import Data.Array as Array
 import Data.DateTime as DateTime
 import Data.Filterable as Filterable
@@ -13,6 +14,7 @@ import Data.Set as Set
 import Data.String as String
 import Data.Tuple (uncurry)
 import Effect.Aff as Aff
+import Effect.Ref as Ref
 import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
@@ -58,7 +60,7 @@ data PackageSets a
   = ReadAll (Map Version PackageSet -> a)
   | ReadLatest (Maybe PackageSet -> a)
   | UpgradeAtomic PackageSet Version ChangeSet (Maybe PackageSet -> a)
-  | UpgradeSequential PackageSet Version ChangeSet (SequentialUpgradeResult -> a)
+  | UpgradeSequential PackageSet Version ChangeSet (Maybe SequentialUpgradeResult -> a)
 
 derive instance Functor PackageSets
 
@@ -85,8 +87,11 @@ upgradeAtomic oldSet compiler changes = Run.lift _packageSets (UpgradeAtomic old
 -- | Upgrade the given package set using the provided compiler version and set
 -- | of changes. Any successful change is applied, and any unsuccessful changes
 -- | are returned along with the new package set.
-upgradeSequential :: forall r. PackageSet -> Version -> ChangeSet -> Run (PACKAGE_SETS + r) SequentialUpgradeResult
-upgradeSequential oldSet compiler changes = Run.lift _packageSets (UpgradeSequential oldSet compiler changes identity)
+upgradeSequential :: forall r. PackageSet -> Version -> ChangeSet -> Run (PACKAGE_SETS + r) (Maybe SequentialUpgradeResult)
+upgradeSequential oldSet compiler changes = do
+  upgradeAtomic oldSet compiler changes >>= case _ of
+    Just result -> pure $ Just { failed: Map.empty, succeeded: changes, result }
+    Nothing -> Run.lift _packageSets (UpgradeSequential oldSet compiler changes identity)
 
 type PackageSetsEnv =
   { registry :: FilePath
@@ -127,7 +132,7 @@ handlePackageSetsAff env = case _ of
         Log.warn $ "Some package sets could not be read and were skipped: " <> Array.foldMap format xs
         pure $ reply $ Map.fromFoldable results.success
 
-  UpgradeAtomic oldSet@(PackageSet prev) compiler changes reply -> do
+  UpgradeAtomic oldSet@(PackageSet { packages }) compiler changes reply -> do
     -- It is possible to reuse a workdir when processing package set batches, so
     -- we need to clean up before doing work.
     for_ [ packagesWorkDir, outputWorkDir, backupWorkDir ] \dir -> do
@@ -136,7 +141,7 @@ handlePackageSetsAff env = case _ of
         Log.debug $ "Removing existing working directory " <> dir
         Run.liftAff (FS.Extra.remove dir)
 
-    installPackages prev.packages
+    installPackages packages
     compileInstalledPackages compiler >>= case _ of
       Left compilerError -> do
         handleCompilerError compiler compilerError
@@ -152,8 +157,61 @@ handlePackageSetsAff env = case _ of
         validatePackageSet newSet
         pure (reply (Just newSet))
 
-  UpgradeSequential oldSet _compiler changes reply ->
-    pure $ reply { failed: changes, succeeded: changes, result: oldSet }
+  UpgradeSequential oldSet@(PackageSet { packages }) compiler changes reply -> do
+    index <- Index.readManifestIndex
+
+    let
+      sortedPackages = ManifestIndex.toSortedArray index
+      sortedBatch = sortedPackages # Array.mapMaybe \(Manifest { name, version }) -> do
+        update <- Map.lookup name changes
+        case update of
+          Remove -> do
+            prevVersion <- Map.lookup name packages
+            guard (version == prevVersion)
+            pure (Tuple name Remove)
+          Update updateVersion -> do
+            guard (version == updateVersion)
+            pure (Tuple name (Update version))
+
+    failRef <- Run.liftEffect $ Ref.new Map.empty
+    successRef <- Run.liftEffect $ Ref.new Map.empty
+    packageSetRef <- Run.liftEffect $ Ref.new oldSet
+
+    for_ sortedBatch \(Tuple name change) -> do
+      currentSet <- Run.liftEffect $ Ref.read packageSetRef
+      attemptPackage compiler currentSet name change >>= case _ of
+        -- If the package could not be processed, then the state of the
+        -- filesystem is rolled back by attemptPackage. We just need to insert
+        -- the package into the failures map.
+        Left error -> do
+          Run.liftEffect $ Ref.modify_ (Map.insert name change) failRef
+          Log.warn $ case change of
+            Remove -> "Could not remove " <> PackageName.print name
+            Update version -> "Could not add or update " <> formatPackageVersion name version
+          handleCompilerError compiler error
+
+        -- If the package could be processed, then the state of the filesystem
+        -- is stepped and we need to record the success of this package and
+        -- step the package set in memory for the next package.
+        Right newSet -> do
+          Log.debug "Writing successful result and new package set to refs."
+          Run.liftEffect do
+            Ref.modify_ (Map.insert name change) successRef
+            Ref.write newSet packageSetRef
+          Log.info $ case change of
+            Remove -> "Removed " <> PackageName.print name
+            Update version -> "Added or updated " <> formatPackageVersion name version
+
+    failed <- Run.liftEffect $ Ref.read failRef
+    succeeded <- Run.liftEffect $ Ref.read successRef
+    pending <- Run.liftEffect $ Ref.read packageSetRef
+
+    case Map.size succeeded of
+      0 -> pure $ reply Nothing
+      _ -> do
+        newSet <- updatePackageSetMetadata compiler { previous: oldSet, pending } changes
+        validatePackageSet newSet
+        pure $ reply $ Just { failed, succeeded, result: newSet }
 
   where
   packageSetsDir :: FilePath
