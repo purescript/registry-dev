@@ -21,13 +21,13 @@ import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Cache as Cache
-import Registry.App.GitHub (GitHubToken(..))
-import Registry.App.GitHub as GitHub
 import Registry.App.Json as Json
 import Registry.App.PackageStorage as PackageStorage
 import Registry.App.RegistryM (Env, RegistryM, readPackagesMetadata, runRegistryM)
 import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
+import Registry.Foreign.Octokit (GitHubToken(..))
+import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Codec as Internal.Codec
 import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata as Metadata
@@ -83,7 +83,7 @@ main = launchAff_ do
     token <- do
       result <- Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
       maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHubToken) result
-    GitHub.newOctokit token
+    Octokit.newOctokit token
 
   cache <- Cache.useCache API.cacheDir
   metadataRef <- liftEffect $ Ref.new Map.empty

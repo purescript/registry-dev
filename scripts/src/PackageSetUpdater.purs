@@ -17,12 +17,13 @@ import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
 import Registry.App.API as API
-import Registry.App.GitHub as GitHub
 import Registry.App.Json as Json
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
 import Registry.App.RegistryM (Env, RegistryM, commitPackageSetFile, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Foreign.FSExtra as FS.Extra
+import Registry.Foreign.Octokit (GitHubToken(..))
+import Registry.Foreign.Octokit as Octokit
 import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
@@ -59,9 +60,9 @@ main = Aff.launchAff_ do
 
   githubToken <- liftEffect do
     Node.Process.lookupEnv "GITHUB_TOKEN"
-      >>= maybe (Exception.throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHub.GitHubToken)
+      >>= maybe (Exception.throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
-  octokit <- liftEffect $ GitHub.newOctokit githubToken
+  octokit <- liftEffect $ Octokit.newOctokit githubToken
   metadataRef <- liftEffect $ Ref.new Map.empty
 
   let

@@ -51,7 +51,6 @@ import Registry.App.CLI.Tar as Tar
 import Registry.App.CLI.Wget as Wget
 import Registry.App.Cache (Cache)
 import Registry.App.Cache as Cache
-import Registry.App.GitHub (GitHubToken(..), IssueNumber(..), Octokit)
 import Registry.App.GitHub as GitHub
 import Registry.App.Json as Json
 import Registry.App.Legacy.LenientVersion as LenientVersion
@@ -64,6 +63,8 @@ import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.JsonRepair as JsonRepair
+import Registry.Foreign.Octokit (GitHubToken(..), IssueNumber(..), Octokit)
+import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tar as Foreign.Tar
 import Registry.Foreign.Tmp as Tmp
 import Registry.Legacy.Manifest as Legacy.Manifest
@@ -93,7 +94,7 @@ main = launchAff_ $ do
     Node.Process.lookupEnv "GITHUB_TOKEN"
       >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
-  octokit <- liftEffect $ GitHub.newOctokit githubToken
+  octokit <- liftEffect $ Octokit.newOctokit githubToken
 
   readOperation eventPath >>= case _ of
     -- If the issue body is not just a JSON string, then we don't consider it

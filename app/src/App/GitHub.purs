@@ -22,7 +22,7 @@ import Effect.Class.Console as Console
 import Foreign.Object as Object
 import Registry.App.Cache (Cache)
 import Registry.App.Cache as Cache
-import Registry.Foreign.Octokit (Address, GitHubAPIError, GitHubError(..), GitHubRoute(..), GitHubToken(..), IssueNumber(..), Octokit, Tag, Team, TeamMember, githubApiErrorCodec, githubErrorCodec, newOctokit, printGitHubError, printGitHubRoute) as Exports
+import Registry.Foreign.Octokit (Address, GitHubError(..), Tag, Team, printGitHubError) as Exports
 import Registry.Foreign.Octokit as Octokit
 
 closeIssue :: Octokit.Octokit -> Octokit.Address -> Octokit.IssueNumber -> Aff (Either Octokit.GitHubError Unit)

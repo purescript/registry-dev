@@ -15,10 +15,10 @@ import Node.Path as Path
 import Registry.App.API as API
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
-import Registry.App.GitHub (IssueNumber(..))
 import Registry.App.Json as Json
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
+import Registry.Foreign.Octokit (IssueNumber(..))
 import Registry.Foreign.Tmp as Tmp
 import Registry.Legacy.Manifest (Bowerfile(..))
 import Registry.Legacy.Manifest as Legacy.Manifest

@@ -51,6 +51,7 @@ import Registry.App.GitHub as GitHub
 import Registry.App.Json as Json
 import Registry.App.RegistryM (RegistryM)
 import Registry.App.RegistryM as RegistryM
+import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
@@ -323,7 +324,7 @@ mirrorLegacySet { tag, packageSet, upstream } = do
       ]
 
   result <- liftAff $ Except.runExceptT do
-    GitHub.GitHubToken token <- Git.configurePacchettiBotti (Just packageSetsPath)
+    Octokit.GitHubToken token <- Git.configurePacchettiBotti (Just packageSetsPath)
     for_ commitFiles \(Tuple path contents) -> do
       liftAff $ FS.Aff.writeTextFile UTF8 path (contents <> "\n")
       Git.runGit_ [ "add", path ] (Just packageSetsPath)

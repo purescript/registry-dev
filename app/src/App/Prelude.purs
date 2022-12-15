@@ -55,7 +55,6 @@ import Data.Traversable (for, for_, sequence, traverse) as Extra
 import Data.TraversableWithIndex (forWithIndex) as Extra
 import Data.Tuple (Tuple(..), fst, snd) as Extra
 import Data.Tuple.Nested ((/\)) as Extra
-import Effect (Effect)
 import Effect (Effect) as Extra
 import Effect.Aff (Aff, launchAff_, try) as Extra
 import Effect.Aff as Aff
@@ -72,6 +71,7 @@ import Registry.App.Types (RawPackageName(..), RawVersion(..), RawVersionRange(.
 import Registry.PackageName as PackageName
 import Registry.Types (License, Location(..), Manifest(..), ManifestIndex, Metadata(..), Owner(..), PackageName, PackageSet(..), PublishedMetadata, Range, Sha256, UnpublishedMetadata, Version)
 import Registry.Version as Version
+import Type.Proxy (Proxy(..)) as Extra
 import Type.Row (type (+)) as Extra
 
 -- | Partition an array of `Either` values into failure and success  values
@@ -170,8 +170,8 @@ withBackoff { delay: Aff.Milliseconds timeout, action, shouldCancel, shouldRetry
 
 -- | Get the current time, standardizing on the UTC timezone to avoid ambiguity
 -- | when running on different machines.
-nowUTC :: Effect DateTime
-nowUTC = do
+nowUTC :: forall m. Extra.MonadEffect m => m DateTime
+nowUTC = Extra.liftEffect do
   offset <- Newtype.over Duration.Minutes negate <$> Now.getTimezoneOffset
   now <- Now.nowDateTime
   pure $ Maybe.fromMaybe now $ DateTime.adjust (offset :: Duration.Minutes) now

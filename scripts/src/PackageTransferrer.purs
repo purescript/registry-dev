@@ -23,6 +23,8 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
 import Registry.App.RegistryM as RegistryM
 import Registry.Foreign.FSExtra as FS.Extra
+import Registry.Foreign.Octokit (GitHubToken(..))
+import Registry.Foreign.Octokit as Octokit
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
@@ -36,8 +38,8 @@ main = launchAff_ do
 
   octokit <- liftEffect do
     mbToken <- Node.Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
-    token <- maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHub.GitHubToken) mbToken
-    GitHub.newOctokit token
+    token <- maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHubToken) mbToken
+    Octokit.newOctokit token
 
   cache <- Cache.useCache API.cacheDir
 

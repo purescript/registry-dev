@@ -14,9 +14,10 @@ import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Cache as Cache
-import Registry.App.GitHub as GitHub
 import Registry.App.Json as Json
 import Registry.App.RegistryM (Env, runRegistryM, throwWithComment)
+import Registry.Foreign.Octokit (GitHubToken(..))
+import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
 import Registry.Manifest as Manifest
 import Registry.Version as Version
@@ -27,9 +28,9 @@ main = launchAff_ $ do
 
   githubToken <- liftEffect do
     Process.lookupEnv "GITHUB_TOKEN"
-      >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHub.GitHubToken)
+      >>= maybe (throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
-  octokit <- liftEffect $ GitHub.newOctokit githubToken
+  octokit <- liftEffect $ Octokit.newOctokit githubToken
   cache <- Cache.useCache API.cacheDir
 
   let

@@ -45,7 +45,6 @@ import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API (LegacyRegistryFile(..), Source(..))
 import Registry.App.API as API
 import Registry.App.Cache as Cache
-import Registry.App.GitHub (GitHubToken(..))
 import Registry.App.GitHub as GitHub
 import Registry.App.Json (JsonCodec)
 import Registry.App.Json as Json
@@ -55,6 +54,8 @@ import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageStorage as PackageStorage
 import Registry.App.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Foreign.FSExtra as FS.Extra
+import Registry.Foreign.Octokit (GitHubToken(..))
+import Registry.Foreign.Octokit as Octokit
 import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError, LegacyPackageSetEntries)
 import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Location as Location
@@ -100,7 +101,7 @@ main = launchAff_ do
     token <- do
       result <- Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
       maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHubToken) result
-    GitHub.newOctokit token
+    Octokit.newOctokit token
 
   cache <- Cache.useCache API.cacheDir
 
