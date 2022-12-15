@@ -13,9 +13,9 @@ import Effect.Exception (throw)
 import Effect.Exception as Exception
 import Effect.Now (now)
 import Effect.Ref as Ref
-import Foreign.GitHub (GitHubToken(..))
-import Foreign.GitHub as GitHub
-import Foreign.Node.FS as FS.Extra
+import Registry.Foreign.Octokit (GitHubToken(..))
+import Registry.Foreign.Octokit as GitHub
+import Registry.Foreign.FSExtra as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
@@ -78,7 +78,7 @@ main = launchAff_ do
     token <- do
       result <- Node.Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
       maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHubToken) result
-    GitHub.mkOctokit token
+    GitHub.newOctokit token
 
   FS.Extra.ensureDirectory scratchDir
 
