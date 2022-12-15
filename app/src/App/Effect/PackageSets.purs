@@ -21,8 +21,6 @@ import Node.Path as Path
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.Tar as Tar
-import Registry.App.Effect.Cache (CACHE)
-import Registry.App.Effect.GitHub (WRITE_GITHUB)
 import Registry.App.Effect.Index (INDEX)
 import Registry.App.Effect.Index as Index
 import Registry.App.Effect.Log (LOG)
@@ -98,9 +96,9 @@ type PackageSetsEnv =
   , workdir :: FilePath
   }
 
--- | A handler for the PACKAGE_SETS effect which attempts to compile the package
--- | sets and commit the results.
-handlePackageSetsAff :: forall r a. PackageSetsEnv -> PackageSets a -> Run (WRITE_GITHUB + INDEX + STORAGE + CACHE + NOTIFY + LOG + FAIL + AFF + EFFECT + r) a
+-- | A handler for the PACKAGE_SETS effect which compiles the package sets and
+-- | returns the results.
+handlePackageSetsAff :: forall r a. PackageSetsEnv -> PackageSets a -> Run (INDEX + STORAGE + NOTIFY + LOG + FAIL + AFF + EFFECT + r) a
 handlePackageSetsAff env = case _ of
   ReadLatest reply -> do
     Log.debug "Reading latest package set..."

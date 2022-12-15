@@ -16,7 +16,6 @@ module Registry.App.Effect.GitHub
   , getRefCommit
   , handleReadGitHubOctokit
   , handleWriteGitHubOctokit
-  , handleWriteGitHubPure
   , listTags
   , listTeamMembers
   ) where
@@ -165,24 +164,6 @@ commitManifest name version = Run.lift _writeGitHub (CommitManifest name version
 -- | repository.
 commitPackageSet :: forall r. Version -> String -> Run (WRITE_GITHUB + r) Unit
 commitPackageSet version message = Run.lift _writeGitHub (CommitPackageSet version message unit)
-
--- | A pure handler for registry repo actions, which are side-effecting and
--- | should be no-ops in a pure environment. Suitable for testing and dry-run
--- | environments.
-handleWriteGitHubPure :: forall r a. WriteGitHub a -> Run (LOG + r) a
-handleWriteGitHubPure = case _ of
-  CloseIssue next -> do
-    Log.debug "Not closing issue..."
-    pure next
-  CommitMetadata name next -> do
-    Log.debug $ "Not committing metadata for " <> PackageName.print name <> "..."
-    pure next
-  CommitManifest name version next -> do
-    Log.debug $ "Not committing manifest for " <> formatPackageVersion name version <> "..."
-    pure next
-  CommitPackageSet version message next -> do
-    Log.debug $ "Not committing package set " <> Version.print version <> " with message " <> message
-    pure next
 
 type RegistryGitHubEnv =
   { octokit :: Octokit
