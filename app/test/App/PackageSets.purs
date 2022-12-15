@@ -13,10 +13,11 @@ import Data.Set as Set
 import Registry.App.Json as Json
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
+import Registry.App.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, latestCompatibleSetsCodec, parsePscTag, printPscTag)
+import Registry.App.Legacy.PackageSet as Legacy.PackageSet
+import Registry.App.Legacy.Types (legacyPackageSetCodec)
 import Registry.App.PackageSets as App.PackageSets
 import Registry.Internal.Format as Internal.Format
-import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, latestCompatibleSetsCodec, legacyPackageSetCodec, parsePscTag, printPscTag)
-import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet

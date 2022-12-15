@@ -7,7 +7,6 @@ module Registry.App.Prelude
   , module Extra
   , module Maybe
   , module Prelude
-  , module Registry.App.Types
   , module Registry.Types
   , newlines
   , nowUTC
@@ -67,7 +66,6 @@ import Node.Buffer (Buffer) as Extra
 import Node.Encoding (Encoding(..)) as Extra
 import Node.Path (FilePath) as Extra
 import Partial.Unsafe (unsafeCrashWith) as Extra
-import Registry.App.Types (RawPackageName(..), RawVersion(..), RawVersionRange(..), rawPackageNameCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionMapCodec, rawVersionRangeCodec)
 import Registry.PackageName as PackageName
 import Registry.Types (License, Location(..), Manifest(..), ManifestIndex, Metadata(..), Owner(..), PackageName, PackageSet(..), PublishedMetadata, Range, Sha256, UnpublishedMetadata, Version)
 import Registry.Version as Version

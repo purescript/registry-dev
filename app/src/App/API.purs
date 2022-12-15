@@ -54,6 +54,9 @@ import Registry.App.Cache as Cache
 import Registry.App.GitHub as GitHub
 import Registry.App.Json as Json
 import Registry.App.Legacy.LenientVersion as LenientVersion
+import Registry.App.Legacy.Manifest as Legacy.Manifest
+import Registry.App.Legacy.PackageSet as Legacy.PackageSet
+import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec)
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageSets as App.PackageSets
 import Registry.App.PackageStorage as PackageStorage
@@ -67,8 +70,6 @@ import Registry.Foreign.Octokit (GitHubToken(..), IssueNumber(..), Octokit)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tar as Foreign.Tar
 import Registry.Foreign.Tmp as Tmp
-import Registry.Legacy.Manifest as Legacy.Manifest
-import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex

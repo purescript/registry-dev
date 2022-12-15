@@ -50,14 +50,15 @@ import Registry.App.Json (JsonCodec)
 import Registry.App.Json as Json
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
+import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
+import Registry.App.Legacy.Manifest as Legacy.Manifest
+import Registry.App.Legacy.Types (LegacyPackageSetUnion, RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
 import Registry.App.PackageIndex as PackageIndex
 import Registry.App.PackageStorage as PackageStorage
 import Registry.App.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubToken(..))
 import Registry.Foreign.Octokit as Octokit
-import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError, LegacyPackageSetEntries)
-import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
@@ -386,7 +387,7 @@ importLegacyRegistry existingRegistry legacyRegistry = do
 -- | versions that don't produce valid manifests, and manifests for all that do.
 buildLegacyPackageManifests
   :: ManifestIndex
-  -> LegacyPackageSetEntries
+  -> LegacyPackageSetUnion
   -> RawPackageName
   -> String
   -> ExceptT PackageValidationError RegistryM (Map RawVersion (Either VersionValidationError Manifest))

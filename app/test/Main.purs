@@ -16,12 +16,13 @@ import Registry.App.API as API
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
 import Registry.App.Json as Json
+import Registry.App.Legacy.Manifest (Bowerfile(..))
+import Registry.App.Legacy.Manifest as Legacy.Manifest
+import Registry.App.Legacy.Types (RawPackageName(..), RawVersionRange(..))
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (IssueNumber(..))
 import Registry.Foreign.Tmp as Tmp
-import Registry.Legacy.Manifest (Bowerfile(..))
-import Registry.Legacy.Manifest as Legacy.Manifest
 import Registry.Operation (PackageOperation(..), PackageSetOperation(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName

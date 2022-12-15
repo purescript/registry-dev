@@ -1,8 +1,6 @@
-module Registry.Legacy.PackageSet
+module Registry.App.Legacy.PackageSet
   ( ConvertedLegacyPackageSet
   , LatestCompatibleSets
-  , LegacyPackageSet(..)
-  , LegacyPackageSetEntry
   , PscTag(..)
   , filterLegacyPackageSets
   , fromPackageSet
@@ -11,8 +9,6 @@ module Registry.Legacy.PackageSet
   , parsePscTag
   , printDhall
   , printPscTag
-  , legacyPackageSetCodec
-  , legacyPackageSetEntryCodec
   , pscTagCodec
   , latestCompatibleSetsCodec
   ) where
@@ -35,7 +31,6 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.List (List(..), (:))
 import Data.Map as Map
-import Data.Profunctor as Profunctor
 import Data.Set as Set
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
@@ -49,6 +44,7 @@ import Parsing.String as Parsing.String
 import Registry.App.CLI.Git as Git
 import Registry.App.GitHub as GitHub
 import Registry.App.Json as Json
+import Registry.App.Legacy.Types (LegacyPackageSet(..), LegacyPackageSetEntry, RawVersion(..), legacyPackageSetCodec)
 import Registry.App.RegistryM (RegistryM)
 import Registry.App.RegistryM as RegistryM
 import Registry.Foreign.Octokit as Octokit
@@ -61,32 +57,6 @@ import Registry.Version as Version
 
 legacyPackageSetsRepo :: GitHub.Address
 legacyPackageSetsRepo = { owner: "purescript", repo: "package-sets" }
-
--- | The format of a legacy packages.json package set file
-newtype LegacyPackageSet = LegacyPackageSet (Map PackageName LegacyPackageSetEntry)
-
-derive instance Newtype LegacyPackageSet _
-derive newtype instance Eq LegacyPackageSet
-
-legacyPackageSetCodec :: JsonCodec LegacyPackageSet
-legacyPackageSetCodec =
-  Profunctor.wrapIso LegacyPackageSet
-    $ Internal.Codec.packageMap legacyPackageSetEntryCodec
-
--- | The format of a legacy packages.json package set entry for an individual
--- | package.
-type LegacyPackageSetEntry =
-  { dependencies :: Array PackageName
-  , repo :: String
-  , version :: RawVersion
-  }
-
-legacyPackageSetEntryCodec :: JsonCodec LegacyPackageSetEntry
-legacyPackageSetEntryCodec = Json.object "LegacyPackageSetEntry"
-  { dependencies: CA.array PackageName.codec
-  , repo: CA.string
-  , version: Profunctor.wrapIso RawVersion CA.string
-  }
 
 type ConvertedLegacyPackageSet =
   { tag :: PscTag

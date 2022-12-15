@@ -1,4 +1,4 @@
-module Registry.Legacy.Manifest where
+module Registry.App.Legacy.Manifest where
 
 import Registry.App.Prelude
 
@@ -29,13 +29,12 @@ import Registry.App.GitHub as GitHub
 import Registry.App.Json as Json
 import Registry.App.Legacy.LenientRange as LenientRange
 import Registry.App.Legacy.LenientVersion as LenientVersion
+import Registry.App.Legacy.PackageSet as Legacy.PackageSet
+import Registry.App.Legacy.Types (LegacyPackageSet(..), LegacyPackageSetEntry, LegacyPackageSetUnion, RawPackageName(..), RawVersion(..), RawVersionRange(..), legacyPackageSetCodec, legacyPackageSetUnionCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionRangeCodec)
 import Registry.App.RegistryM (RegistryM, throwWithComment)
 import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
-import Registry.Internal.Codec as Internal.Codec
-import Registry.Legacy.PackageSet (LegacyPackageSet(..), LegacyPackageSetEntry, legacyPackageSetCodec)
-import Registry.Legacy.PackageSet as Legacy.PackageSet
 import Registry.License as License
 import Registry.PackageName as PackageName
 import Registry.Range as Range
@@ -347,12 +346,7 @@ fetchBowerfile address (RawVersion ref) = do
     Left err -> Left $ GitHub.DecodeError err
     Right value -> pure value
 
-type LegacyPackageSetEntries = Map PackageName (Map RawVersion (Map PackageName RawVersion))
-
-legacyPackageSetEntriesCodec :: JsonCodec LegacyPackageSetEntries
-legacyPackageSetEntriesCodec = Internal.Codec.packageMap $ rawVersionMapCodec $ Internal.Codec.packageMap rawVersionCodec
-
-fetchLegacyPackageSets :: RegistryM LegacyPackageSetEntries
+fetchLegacyPackageSets :: RegistryM LegacyPackageSetUnion
 fetchLegacyPackageSets = do
   { octokit, cache } <- ask
   result <- liftAff $ GitHub.listTags octokit cache Legacy.PackageSet.legacyPackageSetsRepo
@@ -361,7 +355,7 @@ fetchLegacyPackageSets = do
     Right tags -> pure $ Legacy.PackageSet.filterLegacyPackageSets tags
 
   let
-    convertPackageSet :: LegacyPackageSet -> LegacyPackageSetEntries
+    convertPackageSet :: LegacyPackageSet -> LegacyPackageSetUnion
     convertPackageSet (LegacyPackageSet packages) =
       map (convertEntry packages) packages
 
@@ -384,13 +378,13 @@ fetchLegacyPackageSets = do
     -- It's important that we cache the end result of unioning all package sets
     -- because the package sets are quite large and it's expensive to read them
     -- all into memory and fold over them.
-    liftEffect (Cache.readJsonEntry legacyPackageSetEntriesCodec tagKey cache) >>= case _ of
+    liftEffect (Cache.readJsonEntry legacyPackageSetUnionCodec tagKey cache) >>= case _ of
       Left _ -> do
         Console.log $ "CACHE MISS: Building legacy package sets..."
         entries <- for tags \ref -> do
           let setKey = "legacy-package-set__" <> ref
           -- We persist API errors if received.
-          let setCodec = CA.Common.either Octokit.githubErrorCodec legacyPackageSetEntriesCodec
+          let setCodec = CA.Common.either Octokit.githubErrorCodec legacyPackageSetUnionCodec
           setEntries <- liftEffect (Cache.readJsonEntry setCodec setKey cache) >>= case _ of
             Left _ -> do
               Console.log $ "CACHE MISS: Building legacy package set for " <> ref
@@ -411,7 +405,7 @@ fetchLegacyPackageSets = do
             Right value -> pure value
 
         let merged = Array.foldl (\m set -> Map.unionWith Map.union set m) Map.empty entries
-        liftEffect $ Cache.writeJsonEntry legacyPackageSetEntriesCodec tagKey merged cache
+        liftEffect $ Cache.writeJsonEntry legacyPackageSetUnionCodec tagKey merged cache
         pure merged
 
       Right contents ->

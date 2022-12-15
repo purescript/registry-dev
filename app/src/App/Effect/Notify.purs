@@ -13,8 +13,8 @@ import Registry.Foreign.Octokit (IssueNumber(..), Octokit)
 import Registry.Foreign.Octokit as Octokit
 import Run (AFF, Run)
 import Run as Run
-import Run.Except (EXCEPT)
-import Run.Except as Run.Except
+import Run.Except (FAIL)
+import Run.Except as Except
 
 data Notify a = Notify (Doc GraphicsParam) a
 
@@ -30,10 +30,13 @@ notify :: forall a r. Log.Loggable a => a -> Run (NOTIFY + r) Unit
 notify message = Run.lift _notify (Notify (Log.toLog message) unit)
 
 -- | Throw an exception after notifying consumers of an error.
-exit :: forall a r void. Log.Loggable a => a -> Run (NOTIFY + EXCEPT Unit + r) void
-exit message = notify message *> Run.Except.throw unit
+exit :: forall a r void. Log.Loggable a => a -> Run (NOTIFY + LOG + FAIL + r) void
+exit message = do
+  notify message
+  Log.error message
+  Except.fail
 
-handleNotifyGitHub :: forall a r. Octokit -> IssueNumber -> Notify a -> Run (LOG + EXCEPT Unit + AFF + r) a
+handleNotifyGitHub :: forall a r. Octokit -> IssueNumber -> Notify a -> Run (LOG + FAIL + AFF + r) a
 handleNotifyGitHub octokit issue = case _ of
   Notify message next -> do
     let issueNumber = Int.toStringAs Int.decimal $ un IssueNumber issue
@@ -45,7 +48,7 @@ handleNotifyGitHub octokit issue = case _ of
       Left error -> do
         Log.error $ "Could not send comment to GitHub due to an unexpected error."
         Log.debug $ Octokit.printGitHubError error
-        Run.Except.throw unit
+        Except.fail
       Right _ ->
         Log.debug $ "Created GitHub comment on issue " <> issueNumber
     pure next
