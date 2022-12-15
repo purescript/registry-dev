@@ -23,6 +23,7 @@ module Registry.ManifestIndex
   , toSortedArray
   , topologicalSort
   , writeEntryFile
+  , unsafeIndex
   ) where
 
 import Prelude
@@ -147,6 +148,14 @@ maximalIndex manifests = do
       Right newIndex -> Tuple failed newIndex
 
   Array.foldl insertManifest (Tuple Map.empty empty) (topologicalSort manifests)
+
+unsafeIndex :: Set Manifest -> ManifestIndex
+unsafeIndex manifests = do
+  let
+    insertManifest (ManifestIndex index) manifest@(Manifest { name, version }) =
+      ManifestIndex $ Map.insertWith (flip Map.union) name (Map.singleton version manifest) index
+
+  Array.foldl insertManifest empty (topologicalSort manifests)
 
 -- | Topologically sort a set of manifests so that each manifest in the array
 -- | depends only on package versions that have already been encountered.

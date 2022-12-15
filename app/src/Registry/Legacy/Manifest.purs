@@ -33,6 +33,7 @@ import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FSA
 import Node.Path as Path
 import Registry.App.Cache as Cache
+import Registry.App.Json (writeJsonFile)
 import Registry.App.Json as Json
 import Registry.App.LenientRange as LenientRange
 import Registry.App.LenientVersion as LenientVersion

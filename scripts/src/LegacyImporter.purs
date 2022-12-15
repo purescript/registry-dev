@@ -258,6 +258,9 @@ main = launchAff_ do
           log $ PackageName.print manifest.name <> "@" <> Version.print manifest.version
           log $ Json.stringifyJson Location.codec manifest.location
           log "----------"
+          log "DEBUG"
+          log $ Json.stringifyWithIndent 2 (Json.encode Manifest.codec (Manifest manifest))
+          log "----------"
           API.runOperation source (Right (mkOperation (Manifest manifest)))
 
     when (mode == GenerateRegistry || mode == DryRun) do
@@ -267,8 +270,9 @@ main = launchAff_ do
         dir <- asks _.registry
         liftAff (Json.writeJsonFile Metadata.codec (API.metadataFile dir name) metadata)
 
-      log "Regenerating registry index..."
-      void $ for indexPackages (liftAff <<< ManifestIndex.insertIntoEntryFile registryIndexPath)
+      log "Skipping regenerating registry index"
+      -- log "Regenerating registry index..."
+      -- void $ for indexPackages (liftAff <<< ManifestIndex.insertIntoEntryFile registryIndexPath)
 
     log "Done!"
 

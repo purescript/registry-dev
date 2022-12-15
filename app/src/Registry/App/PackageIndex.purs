@@ -27,7 +27,7 @@ readManifestIndexFromDisk = do
   entries <- for packages (ManifestIndex.readEntryFile registryIndex)
   let { fail, success } = partitionEithers entries
   case fail of
-    [] -> case ManifestIndex.fromSet $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray success of
+    [] -> case pure $ ManifestIndex.unsafeIndex $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray success of
       Left errors -> throwWithComment $ append "Invalid ManifestIndex (some packages are not satisfiable):\n" $ String.joinWith "\n" do
         Tuple name versions <- Map.toUnfoldable errors
         Tuple version dependency <- Map.toUnfoldable versions

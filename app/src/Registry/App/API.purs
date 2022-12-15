@@ -587,7 +587,6 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
   -- Then, we can run verification checks on the manifest and either verify the
   -- provided build plan or produce a new one.
   verifyManifest { metadata: Metadata metadata, manifest }
-  eitherVerifiedResolutions <- verifyResolutions { source, resolutions, manifest }
 
   -- After we pass all the checks it's time to do side effects and register the package
   log "Packaging the tarball to upload..."
@@ -613,30 +612,6 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
   log "Hashing the tarball..."
   hash <- liftAff $ Sha256.hashFile tarballPath
   log $ "Hash: " <> Sha256.print hash
-
-  -- Now that we have the package source contents we can verify we can compile
-  -- the package. We skip failures when the package is a legacy package.
-  compilationResult <- case eitherVerifiedResolutions of
-    -- We do not throw an exception if we're bulk-uploading legacy packages
-    Left error | source == Importer || (source == API && isLegacyImport) ->
-      pure (Left error)
-    Left error ->
-      throwWithComment error
-    Right verified ->
-      compilePackage { packageSourceDir: packageDirectory, compiler, resolutions: verified }
-
-  case compilationResult of
-    Left error
-      | source == Importer -> do
-          log error
-          log "Failed to compile, but continuing because the API source was the importer."
-      | source == API && isLegacyImport -> do
-          log error
-          log "Failed to compile, but continuing because this is a legacy package."
-      | otherwise ->
-          throwWithComment error
-    Right _ ->
-      pure unit
 
   log "Uploading package to the storage backend..."
   let uploadPackageInfo = { name, version: newVersion }
@@ -668,18 +643,6 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
       , "cc: @purescript/packaging"
       ]
     Right _ -> pure unit
-
-  when (source == API) $ case compilationResult of
-    Left error ->
-      comment $ Array.fold [ "Skipping Pursuit publishing because this package failed to compile:\n\n", error ]
-    Right dependenciesDir -> do
-      log "Uploading to Pursuit"
-      for_ eitherVerifiedResolutions \verified -> do
-        publishToPursuit { packageSourceDir: packageDirectory, compiler, resolutions: verified, dependenciesDir } >>= case _ of
-          Left error ->
-            comment $ "Pursuit publishing failed: " <> error
-          Right message ->
-            comment message
 
   syncLegacyRegistry name (un Metadata newMetadata).location
 

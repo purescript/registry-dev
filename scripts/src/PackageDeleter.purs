@@ -140,34 +140,6 @@ main = launchAff_ do
           Right _ ->
             Console.log $ "Successfully removed " <> printed
 
-    registryDir <- asks _.registry
-    commitMetadata <- liftAff $ Except.runExceptT do
-      GitHubToken token <- Git.configurePacchettiBotti (Just registryDir)
-      Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
-      Git.runGit_ [ "add", "*.json" ] (Just registryDir)
-      Git.runGit_ [ "commit", "-m", "Remove some package versions from metadata." ] (Just registryDir)
-      let upstreamRepo = Constants.registry.owner <> "/" <> Constants.registry.repo
-      let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
-      void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryDir)
-
-    case commitMetadata of
-      Left err -> Console.log $ "Failed to commit metadata!\n" <> err
-      Right _ -> pure unit
-
-    registryIndexDir <- asks _.registryIndex
-    commitIndex <- liftAff $ Except.runExceptT do
-      GitHubToken token <- Git.configurePacchettiBotti (Just registryIndexDir)
-      Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryIndexDir)
-      Git.runGit_ [ "add", "." ] (Just registryIndexDir)
-      Git.runGit_ [ "commit", "-m", "Remove some package versions from index." ] (Just registryIndexDir)
-      let upstreamRepo = Constants.packageIndex.owner <> "/" <> Constants.packageIndex.repo
-      let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
-      void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
-
-    case commitIndex of
-      Left err -> Console.log $ "Failed to commit index!\n" <> err
-      Right _ -> pure unit
-
     Console.log "Finished."
 
 data DeleteError
@@ -178,26 +150,22 @@ data DeleteError
 deleteVersion :: PackageName -> Version -> RegistryM (Either DeleteError Unit)
 deleteVersion name version = do
   let formatted = formatPackageVersion name version
-  Console.log $ "Deleting " <> formatted
-  liftAff (Aff.attempt (PackageStorage.delete { name, version })) >>= case _ of
-    Left err -> pure $ Left $ FailedDelete $ Aff.message err
-    Right _ -> do
-      Console.log $ "Updating metadata for " <> formatted
-      allMetadata <- readPackagesMetadata
-      case Map.lookup name allMetadata of
-        Nothing -> pure $ Left $ FailedUpdateMetadata "No existing metadata found."
-        Just (Metadata oldMetadata) -> do
-          let
-            newMetadata = Metadata $ oldMetadata
-              { published = Map.delete version oldMetadata.published
-              , unpublished = Map.delete version oldMetadata.unpublished
-              }
-          registryDir <- asks _.registry
-          liftAff (Aff.attempt (Json.writeJsonFile Metadata.codec (API.metadataFile registryDir name) newMetadata)) >>= case _ of
-            Left err -> pure $ Left $ FailedUpdateMetadata $ Aff.message err
-            Right _ -> do
-              Console.log $ "Updating manifest index for " <> formatted
-              registryIndexDir <- asks _.registryIndex
-              liftAff (ManifestIndex.removeFromEntryFile registryIndexDir name version) >>= case _ of
-                Left err -> pure $ Left $ FailedUpdateIndex err
-                Right _ -> pure $ Right unit
+  Console.log $ "Updating metadata for " <> formatted
+  allMetadata <- readPackagesMetadata
+  case Map.lookup name allMetadata of
+    Nothing -> pure $ Left $ FailedUpdateMetadata "No existing metadata found."
+    Just (Metadata oldMetadata) -> do
+      let
+        newMetadata = Metadata $ oldMetadata
+          { published = Map.delete version oldMetadata.published
+          , unpublished = Map.delete version oldMetadata.unpublished
+          }
+      registryDir <- asks _.registry
+      liftAff (Aff.attempt (Json.writeJsonFile Metadata.codec (API.metadataFile registryDir name) newMetadata)) >>= case _ of
+        Left err -> pure $ Left $ FailedUpdateMetadata $ Aff.message err
+        Right _ -> do
+          Console.log $ "Updating manifest index for " <> formatted
+          registryIndexDir <- asks _.registryIndex
+          liftAff (ManifestIndex.removeFromEntryFile registryIndexDir name version) >>= case _ of
+            Left err -> pure $ Left $ FailedUpdateIndex err
+            Right _ -> pure $ Right unit
