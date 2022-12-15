@@ -82,12 +82,10 @@ handleLogTerminal verbosity = case _ of
       Verbose -> Console.log printed
     pure next
 
--- | Write logs to the terminal and to the specified logfile.
+-- | Write logs to the specified logfile.
 handleLogFs :: forall a r. LogVerbosity -> FilePath -> Log a -> Run (AFF + r) a
 handleLogFs verbosity logfile action = case action of
   Log level message next -> do
-    _ <- handleLogTerminal verbosity action
-
     let
       attemptWrite = Run.liftAff do
         now <- nowUTC
