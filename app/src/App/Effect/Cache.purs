@@ -18,7 +18,6 @@ import Data.Maybe (maybe')
 import Data.String as String
 import Effect.Aff as Aff
 import Effect.Ref as Ref
-import Effect.Unsafe (unsafePerformEffect)
 import JSURI as JSURI
 import Node.FS.Aff as FS.Aff
 import Registry.App.Effect.Log (LOG)
@@ -31,10 +30,8 @@ import Registry.Manifest as Manifest
 import Registry.PackageName as PackageName
 import Registry.Sha256 as Sha256
 import Registry.Version as Version
-import Run (AFF, Run)
+import Run (AFF, EFFECT, Run)
 import Run as Run
-import Run.Reader as Run.Reader
-import Type.Row (type (+))
 
 -- | A typed key for the standard app cache. Caches using this key should
 -- | use the 'get', 'put', and 'delete' functions from this module.
@@ -97,8 +94,8 @@ delete :: forall a r. CacheKey AppCache a -> Run (CACHE + r) Unit
 delete key = Run.lift _appCache (deleteCache key)
 
 -- | Handle the application cache using the file system
-handleAppCacheFs :: forall a r. Cache AppCache a -> Run (LOG + AFF + r) a
-handleAppCacheFs = handleCacheFs jsonKeyHandler
+handleAppCacheFs :: forall a r. Ref (Map String Json) -> Cache AppCache a -> Run (LOG + AFF + EFFECT + r) a
+handleAppCacheFs ref = handleCacheFs ref jsonKeyHandler
 
 -- INTERNAL
 --
@@ -248,8 +245,8 @@ type JsonEncoded z b = Exists (JsonEncodedBox z b)
 --     combined? ie. try in-memory, fall back to file system, fall back to fetcher.
 --   - Push more cache behavior into the key handler, such that a key can specify
 --     how it should be cached (memory only, file system only?)
-handleCacheFs :: forall key a r. JsonKeyHandler key -> Cache key a -> Run (LOG + AFF + r) a
-handleCacheFs handler = runWithMap <<< case _ of
+handleCacheFs :: forall key a r. Ref (Map String Json) -> JsonKeyHandler key -> Cache key a -> Run (LOG + AFF + EFFECT + r) a
+handleCacheFs cacheRef handler = case _ of
   -- TODO: Expire entries after they've not been fetched for N seconds?
   Get key -> handler key # Exists.runExists \(JsonKey { id, codec } (Reply reply)) -> do
     readMemory >>= Map.lookup id >>> case _ of
@@ -303,16 +300,9 @@ handleCacheFs handler = runWithMap <<< case _ of
     pure next
 
   where
-  runWithMap =
-    Run.Reader.runReader (unsafePerformEffect (Ref.new Map.empty))
+  readMemory = Run.liftEffect $ Ref.read cacheRef
 
-  readMemory = do
-    memoryRef <- Run.Reader.ask
-    Run.liftAff $ liftEffect $ Ref.read memoryRef
-
-  modifyMemory k = do
-    memoryRef <- Run.Reader.ask
-    Run.liftAff $ liftEffect $ Ref.modify_ k memoryRef
+  modifyMemory k = Run.liftEffect $ Ref.modify_ k cacheRef
 
   deleteMemoryAndDisk id = do
     modifyMemory (Map.delete id)
