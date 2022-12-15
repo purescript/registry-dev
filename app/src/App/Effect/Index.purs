@@ -72,14 +72,16 @@ deleteManifest :: forall r. PackageName -> Version -> Run (INDEX + r) Unit
 deleteManifest name version = Run.lift _index (DeleteManifest name version unit)
 
 type IndexEnv =
-  { registryPath :: FilePath
-  , registryIndexPath :: FilePath
+  { registry :: FilePath
+  , registryIndex :: FilePath
   }
 
+-- TODO: This makes minimal, if any, use of the cache, and should be updated to
+-- do a much better job of that.
 handleIndexGitHub :: forall r a. IndexEnv -> Index a -> Run (WRITE_GITHUB + CACHE + NOTIFY + LOG + FAIL + AFF + r) a
-handleIndexGitHub { registryPath, registryIndexPath } = case _ of
+handleIndexGitHub { registry, registryIndex } = case _ of
   ReadMetadataIndex reply -> do
-    let metadataDir = Path.concat [ registryPath, Constants.packageMetadataDirectory ]
+    let metadataDir = Path.concat [ registry, Constants.packageMetadataDirectory ]
 
     files <- Run.liftAff (Aff.attempt (FS.Aff.readdir metadataDir)) >>= case _ of
       Left err -> do
@@ -94,7 +96,7 @@ handleIndexGitHub { registryPath, registryIndexPath } = case _ of
       Notify.exit $ "Some entries in the metadata directory are not valid package names:" <> Array.foldMap (append "\n  - ") packages.fail
 
     entries <- Run.liftAff $ map partitionEithers $ for packages.success \name -> do
-      result <- Json.readJsonFile Metadata.codec (Path.concat [ registryPath, Constants.packageMetadataDirectory, PackageName.print name <> ".json" ])
+      result <- Json.readJsonFile Metadata.codec (Path.concat [ registry, Constants.packageMetadataDirectory, PackageName.print name <> ".json" ])
       pure $ map (Tuple name) result
     unless (Array.null entries.fail) do
       Notify.exit $ append "The metadata directory is invalid (some package metadata cannot be decoded):" $ Array.foldMap (append "\n  - ") entries.fail
@@ -104,7 +106,7 @@ handleIndexGitHub { registryPath, registryIndexPath } = case _ of
 
   ReadMetadata name reply -> do
     Log.debug $ "Reading metadata for " <> PackageName.print name
-    let path = Path.concat [ registryPath, Constants.packageMetadataDirectory, PackageName.print name <> ".json" ]
+    let path = Path.concat [ registry, Constants.packageMetadataDirectory, PackageName.print name <> ".json" ]
     Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 path)) >>= case _ of
       Left fsError -> do
         Log.debug $ "Could not find metadata file: " <> Aff.message fsError
@@ -119,18 +121,18 @@ handleIndexGitHub { registryPath, registryIndexPath } = case _ of
 
   WriteMetadata name metadata next -> do
     Log.debug $ "Writing metadata for " <> PackageName.print name
-    let path = Path.concat [ registryPath, Constants.packageMetadataDirectory, PackageName.print name <> ".json" ]
+    let path = Path.concat [ registry, Constants.packageMetadataDirectory, PackageName.print name <> ".json" ]
     Run.liftAff (Aff.attempt (Json.writeJsonFile Metadata.codec path metadata)) >>= case _ of
       Left fsError -> Notify.exit $ "Could not write metadata file to " <> path <> " due to an fs error: " <> Aff.message fsError
       Right _ -> GitHub.commitMetadata name
     pure next
 
   ReadManifestIndex reply -> do
-    Log.debug $ "Reading manifest index from " <> registryIndexPath
-    paths <- Run.liftAff $ FastGlob.match' registryIndexPath [ "**/*" ] { include: FastGlob.FilesOnly, ignore: [ "config.json" ] }
+    Log.debug $ "Reading manifest index from " <> registryIndex
+    paths <- Run.liftAff $ FastGlob.match' registryIndex [ "**/*" ] { include: FastGlob.FilesOnly, ignore: [ "config.json" ] }
     let packages = partitionEithers $ map (PackageName.parse <<< Path.basename) paths.succeeded
     Log.warn $ "Some entries in the manifest index are not valid package names: " <> Array.foldMap (append "\n  - ") packages.fail
-    entries <- Run.liftAff $ map partitionEithers $ for packages.success (ManifestIndex.readEntryFile registryIndexPath)
+    entries <- Run.liftAff $ map partitionEithers $ for packages.success (ManifestIndex.readEntryFile registryIndex)
     case entries.fail of
       [] -> case ManifestIndex.fromSet $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray entries.success of
         Left errors -> Notify.exit $ append "Unable to read manifest index (some packages are not satisfiable): " $ Array.foldMap (append "\n  - ") do
@@ -152,7 +154,7 @@ handleIndexGitHub { registryPath, registryIndexPath } = case _ of
     Log.debug $ "Reading manifest for " <> formatPackageVersion name version <> "..."
     Cache.get (Cache.Manifest name version) >>= case _ of
       Nothing -> do
-        Run.liftAff (ManifestIndex.readEntryFile registryIndexPath name) >>= case _ of
+        Run.liftAff (ManifestIndex.readEntryFile registryIndex name) >>= case _ of
           Left error -> do
             Log.warn $ "Could not read manifest index entry for package " <> PackageName.print name <> " because no entries were found: " <> error
             pure $ reply Nothing
@@ -170,7 +172,7 @@ handleIndexGitHub { registryPath, registryIndexPath } = case _ of
   WriteManifest manifest@(Manifest { name, version }) next -> do
     let formatted = formatPackageVersion name version
     Log.debug $ "Writing manifest for " <> formatted <> ":\n" <> Json.printJson Manifest.codec manifest
-    Run.liftAff (ManifestIndex.insertIntoEntryFile registryIndexPath manifest) >>= case _ of
+    Run.liftAff (ManifestIndex.insertIntoEntryFile registryIndex manifest) >>= case _ of
       Left error -> Notify.exit $ "Could not insert manifest for " <> formatted <> " into its entry file due to an error: " <> error
       Right _ -> do
         Cache.put (Cache.Manifest name version) manifest
@@ -180,7 +182,7 @@ handleIndexGitHub { registryPath, registryIndexPath } = case _ of
   DeleteManifest name version next -> do
     let formatted = formatPackageVersion name version
     Log.debug $ "Deleting manifest for " <> formatted
-    Run.liftAff (ManifestIndex.removeFromEntryFile registryIndexPath name version) >>= case _ of
+    Run.liftAff (ManifestIndex.removeFromEntryFile registryIndex name version) >>= case _ of
       Left error -> Notify.exit $ "Could not remove manifest for " <> formatted <> " from its entry file due to an error: " <> error
       Right _ -> do
         Cache.delete (Cache.Manifest name version)
