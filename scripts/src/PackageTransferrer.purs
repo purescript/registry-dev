@@ -17,12 +17,8 @@ import Node.Process as Node.Process
 import Registry.App.API (LegacyRegistryFile(..), Source(..))
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
-import Registry.App.Cache as Cache
-import Registry.App.GitHub as GitHub
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Types (RawPackageName(..))
-import Registry.App.RegistryM (RegistryM, readPackagesMetadata, throwWithComment)
-import Registry.App.RegistryM as RegistryM
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubToken(..))
 import Registry.Foreign.Octokit as Octokit

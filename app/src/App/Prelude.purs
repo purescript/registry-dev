@@ -22,13 +22,13 @@ module Registry.App.Prelude
   , withBackoff
   , withBackoff'
   , writeJsonFile
+  , pacchettiBottiEmail
   ) where
 
 import Prelude
 
 import Control.Alt ((<|>)) as Extra
 import Control.Alternative (class Alternative, empty)
-import Control.Monad.Error.Class (throwError) as Extra
 import Control.Monad.Except (ExceptT(..)) as Extra
 import Control.Monad.Trans.Class (lift) as Extra
 import Control.Parallel.Class as Parallel
@@ -82,6 +82,10 @@ import Registry.Types (License, Location(..), Manifest(..), ManifestIndex, Metad
 import Registry.Version as Version
 import Type.Proxy (Proxy(..)) as Extra
 import Type.Row (type (+)) as Extra
+
+-- | The email address of the @pacchettibotti account
+pacchettiBottiEmail :: String
+pacchettiBottiEmail = "pacchettibotti@purescript.org"
 
 -- | Print a type as a formatted JSON string
 printJson :: forall a. Extra.JsonCodec a -> a -> String
@@ -192,8 +196,8 @@ withBackoff { delay: Aff.Milliseconds timeout, action, shouldCancel, shouldRetry
 
 -- | Get the current time, standardizing on the UTC timezone to avoid ambiguity
 -- | when running on different machines.
-nowUTC :: forall m. Extra.MonadEffect m => m DateTime
-nowUTC = Extra.liftEffect do
+nowUTC :: Extra.Effect DateTime
+nowUTC = do
   offset <- Newtype.over Duration.Minutes negate <$> Now.getTimezoneOffset
   now <- Now.nowDateTime
   pure $ Maybe.fromMaybe now $ DateTime.adjust (offset :: Duration.Minutes) now

@@ -19,9 +19,6 @@ import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
-import Registry.App.Cache as Cache
-import Registry.App.PackageStorage as PackageStorage
-import Registry.App.RegistryM (Env, RegistryM, readPackagesMetadata, runRegistryM)
 import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubToken(..))
@@ -157,7 +154,7 @@ main = launchAff_ do
       Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryIndexDir)
       Git.runGit_ [ "add", "." ] (Just registryIndexDir)
       Git.runGit_ [ "commit", "-m", "Remove some package versions from index." ] (Just registryIndexDir)
-      let upstreamRepo = Constants.packageIndex.owner <> "/" <> Constants.packageIndex.repo
+      let upstreamRepo = Constants.manifestIndex.owner <> "/" <> Constants.manifestIndex.repo
       let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
       void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
 

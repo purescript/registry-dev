@@ -23,9 +23,9 @@ import Node.Path as Path
 import Registry.App.CLI.Licensee as Licensee
 import Registry.App.Effect.Cache (CACHE)
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.GitHub (READ_GITHUB)
+import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG)
+import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
 import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.LenientRange as LenientRange
 import Registry.App.Legacy.LenientVersion as LenientVersion
@@ -62,13 +62,18 @@ toManifest name version location { license, description, dependencies } = do
 -- | have a spago.dhall or bower.json manifest.
 fetchLegacyManifest
   :: forall r
-   . LegacyPackageSetUnion
-  -> PackageName
+   . PackageName
   -> Address
   -> RawVersion
-  -> Run (READ_GITHUB + LOG + AFF + EFFECT + r) (Either LegacyManifestValidationError LegacyManifest)
-fetchLegacyManifest legacyPackageSets name address ref = Run.Except.runExceptAt _legacyManifestError do
-  manifests <- fetchLegacyManifestFiles address ref >>= Run.Except.rethrowAt _legacyManifestError
+  -> Run (GITHUB + CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) (Either LegacyManifestValidationError LegacyManifest)
+fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestError do
+  legacyPackageSets <- fetchLegacyPackageSets >>= case _ of
+    Left error -> do
+      Log.error $ "Failed error when to fetch legacy package sets: " <> Octokit.printGitHubError error
+      Log.exit "Could not retrieve legacy package sets; aborting to avoid producing incorrect legacy manifest depedency bounds."
+    Right union -> pure union
+
+  manifests <- Run.Except.rethrowAt _legacyManifestError =<< fetchLegacyManifestFiles address ref
 
   dependencies <- do
     let
@@ -204,7 +209,7 @@ fetchLegacyManifestFiles
   :: forall r
    . Address
   -> RawVersion
-  -> Run (READ_GITHUB + LOG + AFF + EFFECT + r) (Either LegacyManifestValidationError (These Bowerfile SpagoDhallJson))
+  -> Run (GITHUB + LOG + AFF + EFFECT + r) (Either LegacyManifestValidationError (These Bowerfile SpagoDhallJson))
 fetchLegacyManifestFiles address ref = do
   eitherBower <- fetchBowerfile address ref
   eitherSpago <- fetchSpagoDhallJson address ref
@@ -218,7 +223,7 @@ detectLicenses
   :: forall r
    . Address
   -> RawVersion
-  -> Run (READ_GITHUB + LOG + AFF + r) (Array NonEmptyString)
+  -> Run (GITHUB + LOG + AFF + r) (Array NonEmptyString)
 detectLicenses address ref = do
   packageJsonFile <- GitHub.getContent address ref "package.json"
   licenseFile <- GitHub.getContent address ref "LICENSE"
@@ -309,7 +314,7 @@ fetchSpagoDhallJson
   :: forall r
    . Address
   -> RawVersion
-  -> Run (READ_GITHUB + LOG + AFF + EFFECT + r) (Either GitHubError SpagoDhallJson)
+  -> Run (GITHUB + LOG + AFF + EFFECT + r) (Either GitHubError SpagoDhallJson)
 fetchSpagoDhallJson address ref = Run.Except.runExceptAt _spagoDhallError do
   let getContent file = GitHub.getContent address ref file >>= Run.Except.rethrowAt _spagoDhallError
   spagoDhall <- getContent "spago.dhall"
@@ -373,13 +378,13 @@ bowerfileCodec = Profunctor.dimap toRep fromRep $ CA.Record.object "Bowerfile"
 
 -- | Attempt to construct a Bowerfile from a bower.json file located in a
 -- | remote repository at the given ref.
-fetchBowerfile :: forall r. Address -> RawVersion -> Run (READ_GITHUB + r) (Either GitHubError Bowerfile)
+fetchBowerfile :: forall r. Address -> RawVersion -> Run (GITHUB + r) (Either GitHubError Bowerfile)
 fetchBowerfile address ref = GitHub.getJsonFile address ref bowerfileCodec "bower.json"
 
 -- | Attempt to fetch all package sets from the package-sets repo and union them
 -- | into a map, where keys are packages in the sets and values are a map of
 -- | the package version to its dependencies in the set at that version.
-fetchLegacyPackageSets :: forall r. Run (READ_GITHUB + CACHE + LOG + EFFECT + r) (Either GitHubError LegacyPackageSetUnion)
+fetchLegacyPackageSets :: forall r. Run (GITHUB + CACHE + LOG + EFFECT + r) (Either GitHubError LegacyPackageSetUnion)
 fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
   allTags <- do
     tagsResult <- GitHub.listTags Legacy.PackageSet.legacyPackageSetsRepo

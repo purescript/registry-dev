@@ -44,16 +44,11 @@ import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API (LegacyRegistryFile(..), Source(..))
 import Registry.App.API as API
-import Registry.App.Cache as Cache
-import Registry.App.GitHub as GitHub
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (LegacyPackageSetUnion, RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
-import Registry.App.PackageIndex as PackageIndex
-import Registry.App.PackageStorage as PackageStorage
-import Registry.App.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubToken(..))
 import Registry.Foreign.Octokit as Octokit

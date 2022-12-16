@@ -1,4 +1,7 @@
-module Registry.Effect.PackageSets where
+-- | An effect for upgrading package sets, either in batch mode (all suggested
+-- | changes must go in together) or in sequential mode (as many changes as
+-- | possible will be added, and changes that would break the set are recorded.)
+module Registry.App.Effect.PackageSets where
 
 import Registry.App.Prelude
 
@@ -13,7 +16,6 @@ import Data.Monoid as Monoid
 import Data.Set as Set
 import Data.String as String
 import Data.Tuple (uncurry)
-import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
@@ -21,24 +23,18 @@ import Node.Path as Path
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.Tar as Tar
-import Registry.App.Effect.Index (INDEX)
-import Registry.App.Effect.Index as Index
-import Registry.App.Effect.Log (LOG)
+import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify (NOTIFY)
-import Registry.App.Effect.Notify as Notify
+import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
-import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
-import Registry.PackageSet as PackageSet
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
-import Run.Except (FAIL)
-import Run.Except as Exn
 import Type.Proxy (Proxy(..))
 
 data Change = Update Version | Remove
@@ -54,9 +50,7 @@ type SequentialUpgradeResult =
   }
 
 data PackageSets a
-  = ReadAll (Map Version PackageSet -> a)
-  | ReadLatest (Maybe PackageSet -> a)
-  | UpgradeAtomic PackageSet Version ChangeSet (Maybe PackageSet -> a)
+  = UpgradeAtomic PackageSet Version ChangeSet (Maybe PackageSet -> a)
   | UpgradeSequential PackageSet Version ChangeSet (Maybe SequentialUpgradeResult -> a)
 
 derive instance Functor PackageSets
@@ -66,14 +60,6 @@ type PACKAGE_SETS r = (packageSets :: PackageSets | r)
 
 _packageSets :: Proxy "packageSets"
 _packageSets = Proxy
-
--- | Read all package sets published by the registry.
-readAll :: forall r. Run (PACKAGE_SETS + r) (Map Version PackageSet)
-readAll = Run.lift _packageSets (ReadAll identity)
-
--- | Read the latest package set published by the registry.
-readLatest :: forall r. Run (PACKAGE_SETS + r) (Maybe PackageSet)
-readLatest = Run.lift _packageSets (ReadLatest identity)
 
 -- | Upgrade the given package set using the provided compiler version and set
 -- | of changes. If any change fails, then the upgrade is aborted and the
@@ -91,44 +77,13 @@ upgradeSequential oldSet compiler changes = do
     Nothing -> Run.lift _packageSets (UpgradeSequential oldSet compiler changes identity)
 
 type PackageSetsEnv =
-  { registry :: FilePath
-  , workdir :: FilePath
+  { workdir :: FilePath
   }
 
 -- | A handler for the PACKAGE_SETS effect which compiles the package sets and
 -- | returns the results.
-handlePackageSetsAff :: forall r a. PackageSetsEnv -> PackageSets a -> Run (INDEX + STORAGE + NOTIFY + LOG + FAIL + AFF + EFFECT + r) a
+handlePackageSetsAff :: forall r a. PackageSetsEnv -> PackageSets a -> Run (REGISTRY + STORAGE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
 handlePackageSetsAff env = case _ of
-  ReadLatest reply -> do
-    Log.debug "Reading latest package set..."
-    versions <- listPackageSetVersions
-    case Array.last (Array.sort versions) of
-      Nothing -> do
-        Log.error ("No package sets exist in directory " <> Constants.packageSetsDirectory)
-        Exn.fail
-      Just version -> do
-        readPackageSetVersion version >>= case _ of
-          Left err -> do
-            Log.error $ "Found package set " <> Version.print version <> " but could not decode its contents: " <> err
-            Exn.fail
-          Right set -> do
-            Log.debug $ "Successfully read package set version " <> Version.print version
-            pure $ reply $ Just set
-
-  ReadAll reply -> do
-    Log.debug "Reading all package sets..."
-    versions <- listPackageSetVersions
-    decoded <- for versions \version -> map (bimap (Tuple version) (Tuple version)) (readPackageSetVersion version)
-    let results = partitionEithers decoded
-    case results.fail of
-      [] -> do
-        Log.debug "Successfully read all package sets."
-        pure $ reply $ Map.fromFoldable results.success
-      xs -> do
-        let format (Tuple v err) = "\n  - " <> Version.print v <> ": " <> err
-        Log.warn $ "Some package sets could not be read and were skipped: " <> Array.foldMap format xs
-        pure $ reply $ Map.fromFoldable results.success
-
   UpgradeAtomic oldSet@(PackageSet { packages }) compiler changes reply -> do
     -- It is possible to reuse a workdir when processing package set batches, so
     -- we need to clean up before doing work.
@@ -141,13 +96,13 @@ handlePackageSetsAff env = case _ of
     installPackages packages
     compileInstalledPackages compiler >>= case _ of
       Left compilerError -> do
-        handleCompilerError compiler compilerError
-        Notify.exit "Compilation failed, but the starting package set must compile in order to process a batch."
+        logCompilerError compiler compilerError
+        Log.exit "Compilation failed, but the starting package set must compile in order to process a batch."
       Right _ -> pure unit
 
     attemptChanges compiler oldSet changes >>= case _ of
       Left error -> do
-        handleCompilerError compiler error
+        logCompilerError compiler error
         pure (reply Nothing)
       Right pending -> do
         newSet <- updatePackageSetMetadata compiler { previous: oldSet, pending } changes
@@ -155,7 +110,7 @@ handlePackageSetsAff env = case _ of
         pure (reply (Just newSet))
 
   UpgradeSequential oldSet@(PackageSet { packages }) compiler changes reply -> do
-    index <- Index.readManifestIndex
+    index <- Registry.readAllManifests
 
     let
       sortedPackages = ManifestIndex.toSortedArray index
@@ -185,7 +140,7 @@ handlePackageSetsAff env = case _ of
           Log.warn $ case change of
             Remove -> "Could not remove " <> PackageName.print name
             Update version -> "Could not add or update " <> formatPackageVersion name version
-          handleCompilerError compiler error
+          logCompilerError compiler error
 
         -- If the package could be processed, then the state of the filesystem
         -- is stepped and we need to record the success of this package and
@@ -211,12 +166,6 @@ handlePackageSetsAff env = case _ of
         pure $ reply $ Just { failed, succeeded, result: newSet }
 
   where
-  packageSetsDir :: FilePath
-  packageSetsDir = Path.concat [ env.registry, Constants.packageSetsDirectory ]
-
-  packageSetPath :: Version -> FilePath
-  packageSetPath version = Path.concat [ packageSetsDir, Version.print version <> ".json" ]
-
   packagesWorkDir :: FilePath
   packagesWorkDir = Path.concat [ env.workdir, "packages" ]
 
@@ -225,37 +174,6 @@ handlePackageSetsAff env = case _ of
 
   backupWorkDir :: FilePath
   backupWorkDir = Path.concat [ env.workdir, "output-backup" ]
-
-  -- List all package set versions found in the package sets directory by reading
-  -- each package set filename.
-  listPackageSetVersions :: Run _ (Array Version)
-  listPackageSetVersions = do
-    Log.debug "Reading package set versions..."
-    files <- Run.liftAff (Aff.attempt (FS.Aff.readdir packageSetsDir)) >>= case _ of
-      Left fsError -> do
-        Log.error $ "Failed to read package set directory at path " <> packageSetsDir <> " due to an fs error: " <> Aff.message fsError
-        Exn.fail
-      Right paths ->
-        pure paths
-
-    let
-      versions :: { fail :: Array String, success :: Array Version }
-      versions = partitionEithers $ files <#> \file -> do
-        name <- note "File has no .json suffix" $ String.stripSuffix (String.Pattern ".json") file
-        Version.parse name
-
-    case versions.fail of
-      [] -> pure versions.success
-      xs -> do
-        Log.warn $ "Some package sets have invalid names and have been skipped: " <> String.joinWith ", " xs
-        pure versions.success
-
-  -- Read the package set at the specified version, failing if it does not exist
-  -- or cannot be decoded.
-  readPackageSetVersion :: Version -> Run _ (Either _ PackageSet)
-  readPackageSetVersion version = do
-    let path = packageSetPath version
-    Run.liftAff (readJsonFile PackageSet.codec path)
 
   -- Install all packages in a package set into a temporary directory, returning
   -- the reference to the installation directory. Installed packages have the
@@ -369,7 +287,7 @@ handlePackageSetsAff env = case _ of
 
 -- | Computes commit mesage for new package set publication.
 -- | Note: The `PackageSet` argument is the old package set.
-commitMessage :: PackageSet -> Map PackageName (Maybe Version) -> Version -> String
+commitMessage :: PackageSet -> ChangeSet -> Version -> String
 commitMessage (PackageSet set) accepted newVersion = String.joinWith "\n" $ fold
   [ [ "Release " <> Version.print newVersion <> " package set.\n" ]
   , guardA (not (Array.null added)) $> (addedLines <> "\n")
@@ -378,8 +296,10 @@ commitMessage (PackageSet set) accepted newVersion = String.joinWith "\n" $ fold
   ]
   where
   added = do
-    Tuple packageName maybeVersion <- Map.toUnfoldable accepted
-    version <- maybe [] pure maybeVersion
+    Tuple packageName change <- Map.toUnfoldable accepted
+    version <- case change of
+      Remove -> []
+      Update version -> [ version ]
     guardA (not (Map.member packageName set.packages))
     pure $ Tuple packageName version
 
@@ -388,8 +308,10 @@ commitMessage (PackageSet set) accepted newVersion = String.joinWith "\n" $ fold
     pure $ Array.fold [ "  - ", formatPackageVersion packageName version ]
 
   updated = do
-    Tuple packageName maybeVersion <- Map.toUnfoldable accepted
-    version <- maybe [] pure maybeVersion
+    Tuple packageName change <- Map.toUnfoldable accepted
+    version <- case change of
+      Remove -> []
+      Update version -> [ version ]
     previousVersion <- maybe [] pure (Map.lookup packageName set.packages)
     pure $ Tuple packageName { version, previousVersion }
 
@@ -398,8 +320,8 @@ commitMessage (PackageSet set) accepted newVersion = String.joinWith "\n" $ fold
     pure $ Array.fold [ "  - ", formatPackageVersion packageName previousVersion, " -> ", Version.print version ]
 
   removed = do
-    Tuple packageName maybeVersion <- Map.toUnfoldable accepted
-    guardA (isNothing maybeVersion)
+    Tuple packageName change <- Map.toUnfoldable accepted
+    guardA (change == Remove)
     version <- maybe [] pure (Map.lookup packageName set.packages)
     pure $ Tuple packageName version
 
@@ -409,8 +331,8 @@ commitMessage (PackageSet set) accepted newVersion = String.joinWith "\n" $ fold
 
 -- | Computes new package set version from old package set and version information of successfully added/updated packages.
 -- | Note: this must be called with the old `PackageSet` that has not had updates applied.
-computeVersion :: Version -> PackageSet -> ChangeSet -> Version
-computeVersion compiler (PackageSet set) changes = do
+computeNewVersion :: Version -> PackageSet -> ChangeSet -> Version
+computeNewVersion compiler (PackageSet set) changes = do
   let
     updates = changes # Map.mapMaybe case _ of
       Remove -> Nothing
@@ -452,13 +374,13 @@ type ValidatedCandidates =
   }
 
 -- | Validate a package set is self-contained, ignoring version bounds.
-validatePackageSet :: forall r. PackageSet -> Run (INDEX + NOTIFY + LOG + FAIL + r) Unit
+validatePackageSet :: forall r. PackageSet -> Run (REGISTRY + LOG + LOG_EXCEPT + r) Unit
 validatePackageSet (PackageSet set) = do
   Log.debug $ "Validating package set version " <> Version.print set.version
-  index <- Index.readManifestIndex
+  index <- Registry.readAllManifests
 
   let
-    errorPrefix = "Package set " <> Version.print set.version <> " is invalid!\n"
+    printedVersion = Version.print set.version
 
     -- First, we need to associate manifests with each package in the set so
     -- we can verify their dependencies.
@@ -476,19 +398,11 @@ validatePackageSet (PackageSet set) = do
   -- If we failed to look up one or more manifests then the package versions are
   -- unregistered according to the index, and therefore the set is invalid.
   when (not (Array.null fail)) do
-    let
-      failedMessages = fail <#> \package -> Array.fold
-        [ "  - "
-        , PackageName.print package.name
-        , "@"
-        , Version.print package.version
-        ]
-
-    Notify.exit $ String.joinWith "\n"
-      [ errorPrefix
-      , "Some package versions in the package set are not registered:"
-      , String.joinWith "\n" failedMessages
+    Log.error $ Array.fold
+      [ "Package set " <> printedVersion <> " is invalid because some package versions are not registered in the manifest index:"
+      , Array.foldMap (\package -> "\n  - " <> formatPackageVersion package.name package.version) fail
       ]
+    Log.exit $ "Package set " <> printedVersion <> " is invalid because it includes unregistered package versions."
 
   let
     -- We can now attempt to produce a self-contained manifest index from the
@@ -505,21 +419,18 @@ validatePackageSet (PackageSet set) = do
         Tuple version dependencies <- Map.toUnfoldable versions
         [ { name, version, dependencies } ]
 
-      failedMessages = failures <#> \package -> Array.fold
-        [ "  - "
-        , PackageName.print package.name
-        , "@"
-        , Version.print package.version
-        , " ("
-        , String.joinWith ", " (map PackageName.print (Array.fromFoldable (Map.keys package.dependencies)))
-        , ")."
-        ]
-
-    Notify.exit $ String.joinWith "\n"
-      [ errorPrefix
-      , "Some package versions in the set have unsatisfied dependencies:"
-      , String.joinWith "\n" failedMessages
+    Log.error $ Array.fold
+      [ "Package set " <> printedVersion <> " is invalid because some package versions have unsatisfied dependencies:"
+      , failures # Array.foldMap \package -> Array.fold
+          [ "\n  - "
+          , formatPackageVersion package.name package.version
+          , "("
+          , String.joinWith ", " (map PackageName.print (Array.fromFoldable (Map.keys package.dependencies)))
+          , ")"
+          ]
       ]
+
+    Log.exit $ "Package set " <> printedVersion <> " is invalid because some package versions have unsatisfied dependencies."
 
 -- | Validate a provided set of package set candidates. Should be used before
 -- | attempting to process a batch of packages for a package set.
@@ -632,17 +543,19 @@ printRejections rejections = do
   printRemoval name reason =
     PackageName.print name <> ": " <> reason
 
-handleCompilerError :: forall r. Version -> Purs.CompilerFailure -> Run (NOTIFY + LOG + FAIL + r) Unit
-handleCompilerError compilerVersion = case _ of
-  MissingCompiler ->
-    Notify.exit $ "Missing compiler version " <> Version.print compilerVersion
-  UnknownError err ->
-    Notify.exit $ "Unknown error: " <> err
-  CompilationError errs -> do
-    Log.info $ "Compilation failed:\n" <> Purs.printCompilerErrors errs
+logCompilerError :: forall r. Version -> Purs.CompilerFailure -> Run (LOG + LOG_EXCEPT + r) Unit
+logCompilerError version = case _ of
+  MissingCompiler -> do
+    Log.error $ "Compilation failed because compiler " <> Version.print version <> " is missing."
+    Log.exit "Could not run compiler."
+  UnknownError error -> do
+    Log.error $ "Compilation failed because of an unknown error: " <> error
+    Log.exit "Could not run compiler."
+  CompilationError errors -> do
+    Log.info $ "Compilation failed with errors:\n" <> Purs.printCompilerErrors errors
 
 updatePackageSetMetadata :: forall r. Version -> { previous :: PackageSet, pending :: PackageSet } -> ChangeSet -> Run (EFFECT + r) PackageSet
 updatePackageSetMetadata compiler { previous, pending: PackageSet pending } changes = do
   now <- Run.liftEffect nowUTC
-  let version = computeVersion compiler previous changes
+  let version = computeNewVersion compiler previous changes
   pure $ PackageSet (pending { compiler = compiler, version = version, published = DateTime.date now })

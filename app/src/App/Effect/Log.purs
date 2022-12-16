@@ -1,3 +1,6 @@
+-- | A general logging effect suitable for recording events as they happen in
+-- | the application, including debugging logs. Should not be used to report
+-- | important events to registry users; for that, use the Notify effect.
 module Registry.App.Effect.Log where
 
 import Registry.App.Prelude
@@ -14,8 +17,10 @@ import Registry.Internal.Format as Internal.Format
 import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Version as Version
-import Run (AFF, Run)
+import Run (AFF, EFFECT, Run)
 import Run as Run
+import Run.Except (Except)
+import Run.Except as Run.Except
 import Type.Proxy (Proxy(..))
 
 data LogLevel = Debug | Info | Warn | Error
@@ -83,18 +88,16 @@ handleLogTerminal verbosity = case _ of
     pure next
 
 -- | Write logs to the specified logfile.
-handleLogFs :: forall a r. LogVerbosity -> FilePath -> Log a -> Run (AFF + r) a
+handleLogFs :: forall a r. LogVerbosity -> FilePath -> Log a -> Run (AFF + EFFECT + r) a
 handleLogFs verbosity logfile action = case action of
   Log level message next -> do
     let
-      attemptWrite = Run.liftAff do
-        now <- nowUTC
+      attemptWrite = do
+        now <- Run.liftEffect nowUTC
         let time = Formatters.DateTime.format Internal.Format.iso8601DateTime now
         let formatted = Dodo.print Dodo.plainText Dodo.twoSpaces (Dodo.text time <> Dodo.space <> message)
-        Aff.attempt (FS.Aff.appendTextFile UTF8 logfile formatted) >>= case _ of
-          Left err -> do
-            Console.debug $ "Failed to write to file " <> logfile <> ": " <> Aff.message err
-            Aff.throwError err
+        Run.liftAff (Aff.attempt (FS.Aff.appendTextFile UTF8 logfile formatted)) >>= case _ of
+          Left err -> Console.error $ "LOG ERROR: Failed to write to file " <> logfile <> ": " <> Aff.message err
           Right _ -> pure unit
 
     case verbosity of
@@ -103,3 +106,13 @@ handleLogFs verbosity logfile action = case action of
       Verbose -> attemptWrite
 
     pure next
+
+type LOG_EXCEPT :: Row (Type -> Type) -> Row (Type -> Type)
+type LOG_EXCEPT r = (logExcept :: Except (Doc GraphicsParam) | r)
+
+_logExcept :: Proxy "logExcept"
+_logExcept = Proxy
+
+-- | Terminate a computation with a formatted error suitable for display.
+exit :: forall a r void. Loggable a => a -> Run (LOG_EXCEPT + r) void
+exit message = Run.Except.throwAt _logExcept (toLog message)

@@ -1,6 +1,11 @@
+-- | A generic, extensible, typed cache effect suitable for retaining data that
+-- | is slow or expensive to compute. Multiple caches can be created so long as
+-- | they use different keys, and caches can be interpreted with different
+-- | strategies, such as in-memory only, or backed by the file system, or by a
+-- | database like SQLite.
 module Registry.App.Effect.Cache where
 
-import Registry.App.Prelude hiding (Manifest(..))
+import Registry.App.Prelude hiding (Manifest(..), Metadata(..))
 
 import Data.Argonaut.Core as Argonaut
 import Data.Argonaut.Parser as Argonaut.Parser
@@ -26,6 +31,7 @@ import Registry.Foreign.Octokit (GitHubError, GitHubRoute)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Manifest as Manifest
+import Registry.Metadata as Metadata
 import Registry.PackageName as PackageName
 import Registry.Sha256 as Sha256
 import Registry.Version as Version
@@ -36,6 +42,7 @@ import Run as Run
 -- | use the 'get', 'put', and 'delete' functions from this module.
 data AppCache (c :: Type -> Type -> Type) a
   = Manifest PackageName Version (c Manifest.Manifest a)
+  | Metadata PackageName (c Metadata.Metadata a)
   | Request GitHubRoute (c (Either GitHubError Json) a)
   | LegacyPackageSet RawVersion (c (Either GitHubError Types.LegacyPackageSet) a)
   | LegacyPackageSetUnion Sha256 (c Types.LegacyPackageSetUnion a)
@@ -47,6 +54,7 @@ data AppCache (c :: Type -> Type -> Type) a
 instance Functor2 c => Functor (AppCache c) where
   map k = case _ of
     Manifest name version a -> Manifest name version (map2 k a)
+    Metadata name a -> Metadata name (map2 k a)
     Request route a -> Request route (map2 k a)
     LegacyPackageSet ref a -> LegacyPackageSet ref (map2 k a)
     LegacyPackageSetUnion tagsHash a -> LegacyPackageSetUnion tagsHash (map2 k a)
@@ -65,6 +73,10 @@ jsonKeyHandler = case _ of
   Manifest name version next -> Exists.mkExists $ flip JsonKey next
     { id: "AppCache__ManifestFile__" <> PackageName.print name <> "__" <> Version.print version
     , codec: Manifest.codec
+    }
+  Metadata name next -> Exists.mkExists $ flip JsonKey next
+    { id: "AppCache__MetadataFile__" <> PackageName.print name
+    , codec: Metadata.codec
     }
   Request route next -> Exists.mkExists $ flip JsonKey next
     { id: "AppCache__GitHubRequest__" <> Octokit.printGitHubRoute route
@@ -237,6 +249,9 @@ type JsonEncoded z b = Exists (JsonEncodedBox z b)
 -- | Run a cache backed by the file system. The cache will try to minimize
 -- | writes and reads to the file system by storing data in memory when possible.
 --
+-- TODO: Add an in-memory-only cache.
+-- TODO: Add an fs-only cache, no JSON. Get modification time from file stats?
+--
 -- TODO: This could be much improved, but it's not urgent. Some ideas:
 --   - Accept a fetching function to produce the cached value, and call it if
 --     the cache has no entry? This makes the cache more transparent vs. get/put.
@@ -281,7 +296,7 @@ handleCacheFs cacheRef handler = case _ of
 
   Put key next -> handler key # Exists.runExists \(JsonKey { id, codec } (Const value)) -> do
     Log.debug $ "Putting " <> id <> " in cache..."
-    now <- Run.liftAff $ liftEffect nowUTC
+    now <- Run.liftEffect nowUTC
     let encoded = CA.encode (cacheEntryCodec codec) { modified: now, value }
     readMemory >>= Map.lookup id >>> case _ of
       Just previous | encoded == previous -> do

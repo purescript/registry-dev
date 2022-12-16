@@ -18,9 +18,6 @@ import Node.Process as Node.Process
 import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
-import Registry.App.PackageIndex as PackageIndex
-import Registry.App.PackageSets as App.PackageSets
-import Registry.App.RegistryM (Env, RegistryM, commitPackageSetFile, readPackagesMetadata, runRegistryM, throwWithComment)
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubToken(..))
 import Registry.Foreign.Octokit as Octokit

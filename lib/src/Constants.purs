@@ -13,17 +13,17 @@ packageSetsDirectory :: FilePath
 packageSetsDirectory = "package-sets"
 
 -- | The file path to the package metadata within the registry GitHub repository
-packageMetadataDirectory :: FilePath
-packageMetadataDirectory = "metadata"
+metadataDirectory :: FilePath
+metadataDirectory = "metadata"
 
 -- | The location of the package index GitHub repository
-packageIndex :: GitHubRepo
-packageIndex = { owner: "purescript", repo: "registry-index" }
+manifestIndex :: GitHubRepo
+manifestIndex = { owner: "purescript", repo: "registry-index" }
 
 -- | The URL of the package storage backend
-packageStorageUrl :: String
-packageStorageUrl = "https://packages.registry.purescript.org"
+storageUrl :: String
+storageUrl = "https://packages.registry.purescript.org"
 
 -- | The URL of the package operation API
-packageApiUrl :: String
-packageApiUrl = "https://registry.purescript.org/api"
+apiUrl :: String
+apiUrl = "https://registry.purescript.org/api"

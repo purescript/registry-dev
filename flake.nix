@@ -155,7 +155,6 @@
               nixfmt
               openssh
               git
-              wget
               bash
               nodejs
               jq

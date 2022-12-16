@@ -7,10 +7,7 @@ import Data.DateTime (DateTime)
 import Data.JSDate as JSDate
 import Data.String as String
 import Effect.Aff as Aff
-import Effect.Exception as Exception
 import Node.ChildProcess as NodeProcess
-import Node.Process as Env
-import Registry.Foreign.Octokit (GitHubToken(..))
 import Sunde as Process
 
 runGit_ :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
@@ -50,15 +47,3 @@ gitGetRefTime ref repoDir = do
   jsDate <- liftEffect $ JSDate.parse timestamp
   dateTime <- Except.except $ note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
   pure dateTime
-
-configurePacchettiBotti :: Maybe FilePath -> ExceptT String Aff GitHubToken
-configurePacchettiBotti cwd = do
-  pacchettiBotti <- liftEffect do
-    Env.lookupEnv "PACCHETTIBOTTI_TOKEN"
-      >>= maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment") pure
-  runGit_ [ "config", "user.name", "PacchettiBotti" ] cwd
-  runGit_ [ "config", "user.email", "<" <> pacchettiBottiEmail <> ">" ] cwd
-  pure (GitHubToken pacchettiBotti)
-
-pacchettiBottiEmail :: String
-pacchettiBottiEmail = "pacchettibotti@purescript.org"

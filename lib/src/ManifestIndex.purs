@@ -53,7 +53,7 @@ import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
-import Effect.Aff.Class (class MonadAff, liftAff)
+import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
 import Effect.Exception as Exception
 import Node.Encoding (Encoding(..))
@@ -241,17 +241,17 @@ printEntry =
 -- | Given the root of a manifest index on the file system and a package name,
 -- | retrieve the manifests associated with that package, in sorted order from
 -- | lowest to highest version.
-readEntryFile :: forall m. MonadAff m => FilePath -> PackageName -> m (Either String (NonEmptyArray Manifest))
+readEntryFile :: FilePath -> PackageName -> Aff (Either String (NonEmptyArray Manifest))
 readEntryFile indexPath package = do
   let entryPath = Path.concat [ indexPath, packageEntryFilePath package ]
-  liftAff (Error.try (FS.Aff.readTextFile UTF8 entryPath)) >>= case _ of
+  Error.try (FS.Aff.readTextFile UTF8 entryPath) >>= case _ of
     Left error -> pure $ Left $ "Failed to read entry: " <> Exception.message error
     Right contents -> pure $ parseEntry contents
 
 -- | Given the root of a manifest index on the file system, encode the provided
 -- | list of manifests as a package entry in the JSON Lines format. This will
 -- | fail if the manifests do not all share the same package name.
-writeEntryFile :: forall m. MonadAff m => FilePath -> NonEmptySet Manifest -> m (Either String Unit)
+writeEntryFile :: FilePath -> NonEmptySet Manifest -> Aff (Either String Unit)
 writeEntryFile indexPath manifests = do
   let names = NonEmptySet.map (_.name <<< un Manifest) manifests
   case NonEmptySet.size names of
@@ -260,9 +260,9 @@ writeEntryFile indexPath manifests = do
       let entryDirectory = Path.concat [ indexPath, packageEntryDirectory name ]
       let entryPath = Path.concat [ indexPath, packageEntryFilePath name ]
       unlessM (liftEffect (FS.Sync.exists entryDirectory)) do
-        liftAff $ FS.Aff.mkdir' entryDirectory { recursive: true, mode: FS.Perms.mkPerms FS.Perms.all FS.Perms.all FS.Perms.all }
+        FS.Aff.mkdir' entryDirectory { recursive: true, mode: FS.Perms.mkPerms FS.Perms.all FS.Perms.all FS.Perms.all }
       let entry = printEntry manifests
-      liftAff (Error.try (FS.Aff.writeTextFile UTF8 entryPath entry)) >>= case _ of
+      Error.try (FS.Aff.writeTextFile UTF8 entryPath entry) >>= case _ of
         Left error -> pure $ Left $ Exception.message error
         Right _ -> pure $ Right unit
 
@@ -276,7 +276,7 @@ writeEntryFile indexPath manifests = do
 -- | Given the root of a manifest index on the file system, insert the specified
 -- | manifest into the package entry. This will create the package entry if it
 -- | does not yet exist.
-insertIntoEntryFile :: forall m. MonadAff m => FilePath -> Manifest -> m (Either String Unit)
+insertIntoEntryFile :: FilePath -> Manifest -> Aff (Either String Unit)
 insertIntoEntryFile indexPath manifest@(Manifest { name }) = do
   entry <- readEntryFile indexPath name
 
@@ -297,7 +297,7 @@ insertIntoEntryFile indexPath manifest@(Manifest { name }) = do
 
 -- | Given the root of a manifest index on the file system, remove the specified
 -- | package version from the package entry.
-removeFromEntryFile :: forall m. MonadAff m => FilePath -> PackageName -> Version -> m (Either String Unit)
+removeFromEntryFile :: FilePath -> PackageName -> Version -> Aff (Either String Unit)
 removeFromEntryFile indexPath name version = do
   readEntryFile indexPath name >>= case _ of
     Left error ->
@@ -306,7 +306,7 @@ removeFromEntryFile indexPath name version = do
       let entryPath = Path.concat [ indexPath, packageEntryFilePath name ]
       case NonEmptySet.fromFoldable $ NonEmptyArray.filter (\(Manifest m) -> m.version /= version) contents of
         Nothing ->
-          liftAff (Error.try (FS.Aff.unlink entryPath)) >>= case _ of
+          Error.try (FS.Aff.unlink entryPath) >>= case _ of
             Left error -> pure $ Left $ "Failed to delete entry:" <> Exception.message error
             Right _ -> pure $ Right unit
         Just modified ->
