@@ -19,11 +19,11 @@
     "easy-purescript-nix": {
       "flake": false,
       "locked": {
-        "lastModified": 1671225494,
-        "narHash": "sha256-pJJrH9S0lUmb5PZcDCzZdTGTK3FGW1HZliK/fZUH+bg=",
+        "lastModified": 1671226981,
+        "narHash": "sha256-Nli22oZzP3bJYKyMCphjiJy12pug9iyqMF8cWhPpkzI=",
         "owner": "f-f",
         "repo": "easy-purescript-nix",
-        "rev": "96aa4a4c4e58a09ca5ae1483722c95502377b8b5",
+        "rev": "df0818700ed1f358abd21adbcfb1b9849d77d4a3",
         "type": "github"
       },
       "original": {
