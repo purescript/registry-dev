@@ -12,20 +12,10 @@ export const newOctokitImpl = (authToken) => {
     },
     throttle: {
       onRateLimit: (retryAfter, options) => {
-        octokit.log.warn(
-          `Request quota exhausted for request ${options.method} ${options.url}`
-        );
-
         // Retry twice after hitting a rate limit error, then give up
         if (options.request.retryCount <= 2) {
-          console.log(`Retrying after ${retryAfter} seconds!`);
           return true;
         }
-      },
-      onAbuseLimit: (_, options) => {
-        octokit.log.error(
-          `Abuse detected for request ${options.method} ${options.url}`
-        );
       },
     },
   });

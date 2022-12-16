@@ -6,7 +6,6 @@ import Control.Parallel as Parallel
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
-import Effect.Class.Console as Console
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
 import Node.Path as Path
@@ -43,16 +42,12 @@ detect directory = do
       case parse result.stdout of
         Left error -> do
           let printedError = CA.printJsonDecodeError error
-          Console.log "Licensee failed to decode output: "
-          Console.log $ printedError
-          Console.log "arising from the result: "
-          Console.log result.stdout
           pure $ Left printedError
         Right out -> do
           -- A NOASSERTION result means that a LICENSE file could not be parsed.
           -- For the purposes of the registry we disregard this result, since
           -- we retrieve the license via the package manifest(s) as well.
           pure $ Right $ Array.filter (_ /= "NOASSERTION") out
-    _ -> do
-      Console.log $ "Licensee process exited unexpectedly: " <> result.stderr
+
+    _ ->
       pure $ Left result.stderr

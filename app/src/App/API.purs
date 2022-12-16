@@ -2,7 +2,7 @@ module Registry.App.API where
 
 import Registry.App.Prelude
 
-import Affjax.Node as Http
+import Affjax.Node as Affjax.Node
 import Affjax.RequestBody as RequestBody
 import Affjax.RequestHeader as RequestHeader
 import Affjax.ResponseFormat as ResponseFormat
@@ -936,7 +936,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
       pure token
 
   Console.log "Pushing to Pursuit"
-  result <- liftAff $ Http.request
+  result <- liftAff $ Affjax.Node.request
     { content: Just $ RequestBody.json publishJson
     , headers:
         [ RequestHeader.Accept MediaType.applicationJSON
@@ -961,7 +961,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
         , "```" <> body <> "```"
         ]
     Left err -> do
-      let printedErr = Http.printError err
+      let printedErr = Affjax.Node.printError err
       throwError $ String.joinWith "\n" [ "Received a failed response from Pursuit (cc: @purescript/packaging): ", "```" <> printedErr <> "```" ]
 
 type PursuitResolutions = Map RawPackageName { version :: Version, path :: FilePath }

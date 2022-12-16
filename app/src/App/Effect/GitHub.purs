@@ -40,6 +40,7 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify (NOTIFY)
 import Registry.App.Effect.Notify as Notify
+import Registry.App.Legacy.Types (RawVersion(..))
 import Registry.Constants as Constants
 import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit (Address, GitHubError(..), GitHubRoute(..), GitHubToken(..), IssueNumber(..), Octokit, Request, Tag, Team)
@@ -75,10 +76,10 @@ listTags address = Run.lift _readGitHub (ListTags address identity)
 listTeamMembers :: forall r. Team -> Run (READ_GITHUB + r) (Either GitHubError (Array String))
 listTeamMembers team = Run.lift _readGitHub (ListTeamMembers team identity)
 
-getContent :: forall r. Address -> String -> FilePath -> Run (READ_GITHUB + r) (Either GitHubError String)
-getContent address ref path = Run.lift _readGitHub (GetContent address ref path identity)
+getContent :: forall r. Address -> RawVersion -> FilePath -> Run (READ_GITHUB + r) (Either GitHubError String)
+getContent address (RawVersion ref) path = Run.lift _readGitHub (GetContent address ref path identity)
 
-getJsonFile :: forall r a. Address -> String -> JsonCodec a -> FilePath -> Run (READ_GITHUB + r) (Either GitHubError a)
+getJsonFile :: forall r a. Address -> RawVersion -> JsonCodec a -> FilePath -> Run (READ_GITHUB + r) (Either GitHubError a)
 getJsonFile address ref codec path = do
   content <- getContent address ref path
   let
@@ -89,11 +90,11 @@ getJsonFile address ref codec path = do
         Right decoded -> Right decoded
   pure $ attemptDecode =<< content
 
-getRefCommit :: forall r. Address -> String -> Run (READ_GITHUB + r) (Either GitHubError String)
-getRefCommit address ref = Run.lift _readGitHub (GetRefCommit address ref identity)
+getRefCommit :: forall r. Address -> RawVersion -> Run (READ_GITHUB + r) (Either GitHubError String)
+getRefCommit address (RawVersion ref) = Run.lift _readGitHub (GetRefCommit address ref identity)
 
-getCommitDate :: forall r. Address -> String -> Run (READ_GITHUB + r) (Either GitHubError DateTime)
-getCommitDate address ref = Run.lift _readGitHub (GetCommitDate address ref identity)
+getCommitDate :: forall r. Address -> RawVersion -> Run (READ_GITHUB + r) (Either GitHubError DateTime)
+getCommitDate address (RawVersion ref) = Run.lift _readGitHub (GetCommitDate address ref identity)
 
 -- | An effectful handler for the READ_GITHUB effect which makes calls to GitHub
 -- | using Octokit.

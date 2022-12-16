@@ -7,7 +7,6 @@ import Data.DateTime (DateTime)
 import Data.JSDate as JSDate
 import Data.String as String
 import Effect.Aff as Aff
-import Effect.Class.Console as Console
 import Effect.Exception as Exception
 import Node.ChildProcess as NodeProcess
 import Node.Process as Env
@@ -22,13 +21,9 @@ runGit args cwd = ExceptT do
   result <- Process.spawn { cmd: "git", args, stdin: Nothing } (NodeProcess.defaultSpawnOptions { cwd = cwd })
   let stdout = String.trim result.stdout
   let stderr = String.trim result.stderr
-  case result.exit of
-    NodeProcess.Normally 0 -> do
-      unless (String.null stdout) (Console.info stdout)
-      pure $ Right stdout
-    _ -> do
-      unless (String.null stderr) (Console.error stderr)
-      pure $ Left stderr
+  pure $ case result.exit of
+    NodeProcess.Normally 0 -> Right stdout
+    _ -> Left stderr
 
 runGitSilent :: Array String -> Maybe FilePath -> ExceptT String Aff String
 runGitSilent args cwd = ExceptT do
@@ -46,7 +41,7 @@ cloneGitTag url ref targetDir = do
   withBackoff' (Except.runExceptT (runGit args (Just targetDir))) >>= case _ of
     Nothing -> Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> url <> " " <> ref
     Just (Left err) -> Aff.throwError $ Aff.error err
-    Just (Right _) -> Console.log "Successfully cloned package."
+    Just (Right _) -> pure unit
 
 -- | Read the published time of the checked-out commit.
 gitGetRefTime :: String -> FilePath -> ExceptT String Aff DateTime

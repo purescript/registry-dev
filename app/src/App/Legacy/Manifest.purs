@@ -2,8 +2,6 @@ module Registry.App.Legacy.Manifest where
 
 import Registry.App.Prelude
 
-import Control.Monad.Except as Except
-import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
@@ -18,19 +16,22 @@ import Data.String.NonEmpty as NonEmptyString
 import Data.These (These(..))
 import Data.These as These
 import Data.Variant as Variant
-import Effect.Class.Console as Console
+import Effect.Aff as Aff
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.CLI.Licensee as Licensee
-import Registry.App.Cache as Cache
-import Registry.App.GitHub as GitHub
+import Registry.App.Effect.Cache (CACHE)
+import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.GitHub (READ_GITHUB)
+import Registry.App.Effect.GitHub as GitHub
+import Registry.App.Effect.Log (LOG)
+import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.LenientRange as LenientRange
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
-import Registry.App.Legacy.Types (LegacyPackageSet(..), LegacyPackageSetEntry, LegacyPackageSetUnion, RawPackageName(..), RawVersion(..), RawVersionRange(..), legacyPackageSetCodec, legacyPackageSetUnionCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionRangeCodec)
-import Registry.App.RegistryM (RegistryM, throwWithComment)
-import Registry.Foreign.JsonRepair as JsonRepair
+import Registry.App.Legacy.Types (LegacyPackageSet(..), LegacyPackageSetEntry, LegacyPackageSetUnion, RawPackageName(..), RawVersion(..), RawVersionRange(..), legacyPackageSetCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionRangeCodec)
+import Registry.Foreign.Octokit (Address, GitHubError)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
 import Registry.License as License
@@ -38,6 +39,9 @@ import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
 import Registry.Version as Version
+import Run (AFF, EFFECT, Run)
+import Run as Run
+import Run.Except as Run.Except
 import Sunde as Process
 import Type.Proxy (Proxy(..))
 
@@ -53,9 +57,18 @@ toManifest name version location { license, description, dependencies } = do
   let owners = Nothing
   Manifest { name, version, location, license, description, dependencies, files, owners }
 
-fetchLegacyManifest :: Maybe (Map PackageName RawVersion) -> GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError RegistryM LegacyManifest
-fetchLegacyManifest packageSetsDeps address ref = do
-  manifests <- fetchLegacyManifestFiles address ref
+-- | Attempt to retrieve a license, description, and set of dependencies from a
+-- | PureScript repo that does not have a Registry-supported manifest, but does
+-- | have a spago.dhall or bower.json manifest.
+fetchLegacyManifest
+  :: forall r
+   . LegacyPackageSetUnion
+  -> PackageName
+  -> Address
+  -> RawVersion
+  -> Run (READ_GITHUB + LOG + AFF + EFFECT + r) (Either LegacyManifestValidationError LegacyManifest)
+fetchLegacyManifest legacyPackageSets name address ref = Run.Except.runExceptAt _legacyManifestError do
+  manifests <- fetchLegacyManifestFiles address ref >>= Run.Except.rethrowAt _legacyManifestError
 
   dependencies <- do
     let
@@ -64,35 +77,39 @@ fetchLegacyManifest packageSetsDeps address ref = do
       -- "strings: >=4.1.2 <4.1.3", which while technically correct is almost
       -- certainly not what the user wants. We instead treat these ranges as
       -- caret ranges, so "strings: 4.1.2" becomes "strings: >=4.1.2 <5.0.0".
+      fixedToRange :: RawVersion -> RawVersionRange
       fixedToRange (RawVersion fixed) = do
         let parsedVersion = LenientVersion.parse fixed
         let bump version = Version.print (Version.bumpHighest version)
         let printRange version = Array.fold [ ">=", fixed, " <", bump version ]
         RawVersionRange $ Either.either (const fixed) (printRange <<< LenientVersion.version) parsedVersion
 
-      validatePackageSetDeps = case packageSetsDeps of
-        Nothing ->
-          Left { error: InvalidDependencies [], reason: "No package sets dependencies." }
-        Just deps -> do
+      maybePackageSetDeps :: Maybe (Map PackageName Range)
+      maybePackageSetDeps =
+        Map.lookup name legacyPackageSets >>= Map.lookup ref >>= \deps -> do
           let converted = mapKeys (RawPackageName <<< PackageName.print) $ map fixedToRange deps
-          validateDependencies converted
+          hush $ validateDependencies converted
 
-      convertSpagoDeps packages = Array.foldl foldFn Map.empty
-        where
-        foldFn deps name = maybe deps (\{ version } -> Map.insert name (fixedToRange version) deps) (findPackage name)
-        findPackage name = Map.lookup name packages
-
+      validateSpagoDeps :: SpagoDhallJson -> Either LegacyManifestValidationError (Map PackageName Range)
       validateSpagoDeps (SpagoDhallJson { dependencies, packages }) = do
-        validateDependencies (convertSpagoDeps packages dependencies)
+        let
+          convert = do
+            let findPackage p = Map.lookup p packages
+            let foldFn deps p = maybe deps (\{ version } -> Map.insert p (fixedToRange version) deps) (findPackage p)
+            Array.foldl foldFn Map.empty
 
-      -- We remove dependencies that don't begin with 'purescript-', as these
-      -- indicate JavaScript dependencies.
-      convertBowerDeps = Map.mapMaybeWithKey \(RawPackageName name) range -> do
-        _ <- String.stripPrefix (String.Pattern "purescript-") name
-        pure range
+        validateDependencies (convert dependencies)
 
-      validateBowerDeps (Bowerfile { dependencies }) =
-        validateDependencies (convertBowerDeps dependencies)
+      validateBowerDeps :: Bowerfile -> Either LegacyManifestValidationError (Map PackageName Range)
+      validateBowerDeps (Bowerfile { dependencies }) = do
+        let
+          -- We remove dependencies that don't begin with 'purescript-', as these
+          -- indicate JavaScript dependencies.
+          convert = Map.mapMaybeWithKey \(RawPackageName p) range -> do
+            _ <- String.stripPrefix (String.Pattern "purescript-") p
+            pure range
+
+        validateDependencies (convert dependencies)
 
       unionManifests = do
         case manifests of
@@ -109,25 +126,25 @@ fetchLegacyManifest packageSetsDeps address ref = do
                     Nothing -> range
                     Just spagoRange -> Range.union range spagoRange
 
-      unionPackageSets = case validatePackageSetDeps, unionManifests of
-        Left _, Left manifestError -> Left manifestError
-        Left _, Right manifestDeps -> Right manifestDeps
-        Right packageSetDeps, Left _ -> Right packageSetDeps
-        Right packageSetDeps, Right manifestDeps -> Right do
+      unionPackageSets = case maybePackageSetDeps, unionManifests of
+        Nothing, Left manifestError -> Left manifestError
+        Nothing, Right manifestDeps -> Right manifestDeps
+        Just packageSetDeps, Left _ -> Right packageSetDeps
+        Just packageSetDeps, Right manifestDeps -> Right do
           packageSetDeps # mapWithIndex \package range ->
             case Map.lookup package manifestDeps of
               Nothing -> range
               Just manifestRange -> Range.union range manifestRange
 
-    Except.except unionPackageSets
+    Run.Except.rethrowAt _legacyManifestError unionPackageSets
 
   license <- do
     let unBower (Bowerfile { license }) = Array.mapMaybe NonEmptyString.fromString license
     let unSpago (SpagoDhallJson { license }) = Array.catMaybes [ license ]
     let manifestLicenses = These.these unBower unSpago (\bower spago -> unBower bower <> unSpago spago) manifests
-    detectedLicenses <- lift $ detectLicenses address ref
+    detectedLicenses <- detectLicenses address ref
     let licenses = Array.nub $ Array.concat [ detectedLicenses, manifestLicenses ]
-    Except.except $ validateLicense licenses
+    Run.Except.rethrowAt _legacyManifestError $ validateLicense licenses
 
   let
     description = do
@@ -135,6 +152,9 @@ fetchLegacyManifest packageSetsDeps address ref = do
       fields.description
 
   pure { license, dependencies, description }
+  where
+  _legacyManifestError :: Proxy "legacyManifestError"
+  _legacyManifestError = Proxy
 
 type LegacyManifestValidationError = { error :: LegacyManifestError, reason :: String }
 
@@ -180,26 +200,32 @@ printLegacyManifestError = case _ of
   where
   printDepError { name, range, error } = "[{ " <> name <> ": " <> range <> "}, " <> error <> "]"
 
-fetchLegacyManifestFiles :: GitHub.Address -> RawVersion -> ExceptT LegacyManifestValidationError RegistryM (These Bowerfile SpagoDhallJson)
-fetchLegacyManifestFiles address ref = ExceptT do
-  eitherBower <- Except.runExceptT $ fetchBowerfile address ref
-  eitherSpago <- Except.runExceptT $ fetchSpagoDhallJson address ref
+fetchLegacyManifestFiles
+  :: forall r
+   . Address
+  -> RawVersion
+  -> Run (READ_GITHUB + LOG + AFF + EFFECT + r) (Either LegacyManifestValidationError (These Bowerfile SpagoDhallJson))
+fetchLegacyManifestFiles address ref = do
+  eitherBower <- fetchBowerfile address ref
+  eitherSpago <- fetchSpagoDhallJson address ref
   pure $ case eitherBower, eitherSpago of
     Left _, Left _ -> Left { error: NoManifests, reason: "No bower.json or spago.dhall files available." }
     Right bower, Left _ -> Right $ This bower
     Left _, Right spago -> Right $ That spago
     Right bower, Right spago -> Right $ Both bower spago
 
-detectLicenses :: GitHub.Address -> RawVersion -> RegistryM (Array NonEmptyString)
+detectLicenses
+  :: forall r
+   . Address
+  -> RawVersion
+  -> Run (READ_GITHUB + LOG + AFF + r) (Array NonEmptyString)
 detectLicenses address ref = do
-  { octokit, cache } <- ask
-  let getFile = liftAff <<< GitHub.getContent octokit cache address (un RawVersion ref)
-  packageJsonFile <- getFile "package.json"
-  licenseFile <- getFile "LICENSE"
+  packageJsonFile <- GitHub.getContent address ref "package.json"
+  licenseFile <- GitHub.getContent address ref "LICENSE"
   let packageJsonInput = { name: "package.json", contents: _ } <$> hush packageJsonFile
   let licenseInput = { name: "LICENSE", contents: _ } <$> hush licenseFile
-  liftAff $ Licensee.detectFiles (Array.catMaybes [ packageJsonInput, licenseInput ]) >>= case _ of
-    Left err -> Console.log ("Licensee decoding error, ignoring: " <> err) $> []
+  Run.liftAff (Licensee.detectFiles (Array.catMaybes [ packageJsonInput, licenseInput ])) >>= case _ of
+    Left err -> Log.warn ("Licensee decoding error, ignoring: " <> err) $> []
     Right licenses -> pure $ Array.mapMaybe NonEmptyString.fromString licenses
 
 validateLicense :: Array NonEmptyString -> Either LegacyManifestValidationError License
@@ -279,21 +305,32 @@ spagoDhallJsonCodec = Profunctor.dimap toRep fromRep $ CA.Record.object "SpagoDh
 
 -- | Attempt to construct a SpagoDhallJson file from a spago.dhall and
 -- | packages.dhall file located in a remote repository at the given ref.
-fetchSpagoDhallJson :: GitHub.Address -> RawVersion -> ExceptT GitHub.GitHubError RegistryM SpagoDhallJson
-fetchSpagoDhallJson address (RawVersion ref) = do
-  { octokit, cache } <- ask
-  let getFile = ExceptT <<< liftAff <<< GitHub.getContent octokit cache address ref
-  spagoDhall <- getFile "spago.dhall"
-  packagesDhall <- getFile "packages.dhall"
-  tmp <- liftEffect Tmp.mkTmpDir
-  liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, "packages.dhall" ]) packagesDhall
-  dhallJson <- liftAff $ dhallToJson { dhall: spagoDhall, cwd: Just tmp }
-  Except.except $ case dhallJson of
-    Left err -> Left $ GitHub.DecodeError err
+fetchSpagoDhallJson
+  :: forall r
+   . Address
+  -> RawVersion
+  -> Run (READ_GITHUB + LOG + AFF + EFFECT + r) (Either GitHubError SpagoDhallJson)
+fetchSpagoDhallJson address ref = Run.Except.runExceptAt _spagoDhallError do
+  let getContent file = GitHub.getContent address ref file >>= Run.Except.rethrowAt _spagoDhallError
+  spagoDhall <- getContent "spago.dhall"
+  packagesDhall <- getContent "packages.dhall"
+  tmp <- Run.liftEffect Tmp.mkTmpDir
+  Run.liftAff (Aff.attempt (FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, "packages.dhall" ]) packagesDhall)) >>= case _ of
+    Left error -> do
+      Log.error $ "Failed to write packages.dhall file to tmp: " <> Aff.message error
+      Run.Except.throwAt _spagoDhallError $ Octokit.UnexpectedError "Could not write packages.dhall file."
+    Right _ -> pure unit
+  Log.debug "Converting spago.dhall and packages.dhall to json."
+  dhallJson <- Run.liftAff $ dhallToJson { dhall: spagoDhall, cwd: Just tmp }
+  Run.Except.rethrowAt _spagoDhallError $ case dhallJson of
+    Left err -> Left $ Octokit.DecodeError err
     Right json -> case CA.decode spagoDhallJsonCodec json of
-      Left err -> Left $ GitHub.DecodeError $ CA.printJsonDecodeError err
+      Left err -> Left $ Octokit.DecodeError $ CA.printJsonDecodeError err
       Right value -> pure value
   where
+  _spagoDhallError :: Proxy "spagoDhallError"
+  _spagoDhallError = Proxy
+
   -- | Convert a string representing a Dhall expression into JSON using the
   -- | `dhall-to-json` CLI.
   dhallToJson :: { dhall :: String, cwd :: Maybe FilePath } -> Aff (Either String Json)
@@ -336,26 +373,24 @@ bowerfileCodec = Profunctor.dimap toRep fromRep $ CA.Record.object "Bowerfile"
 
 -- | Attempt to construct a Bowerfile from a bower.json file located in a
 -- | remote repository at the given ref.
-fetchBowerfile :: GitHub.Address -> RawVersion -> ExceptT GitHub.GitHubError RegistryM Bowerfile
-fetchBowerfile address (RawVersion ref) = do
-  { octokit, cache } <- ask
-  bowerfile <- ExceptT $ liftAff $ GitHub.getContent octokit cache address ref "bower.json"
-  Except.except $ case parseJson bowerfileCodec (JsonRepair.tryRepair bowerfile) of
-    Left err -> Left $ GitHub.DecodeError $ CA.printJsonDecodeError err
-    Right value -> pure value
+fetchBowerfile :: forall r. Address -> RawVersion -> Run (READ_GITHUB + r) (Either GitHubError Bowerfile)
+fetchBowerfile address ref = GitHub.getJsonFile address ref bowerfileCodec "bower.json"
 
-fetchLegacyPackageSets :: RegistryM LegacyPackageSetUnion
-fetchLegacyPackageSets = do
-  { octokit, cache } <- ask
-  result <- liftAff $ GitHub.listTags octokit cache Legacy.PackageSet.legacyPackageSetsRepo
-  tags <- case result of
-    Left err -> throwWithComment (GitHub.printGitHubError err)
-    Right tags -> pure $ Legacy.PackageSet.filterLegacyPackageSets tags
+-- | Attempt to fetch all package sets from the package-sets repo and union them
+-- | into a map, where keys are packages in the sets and values are a map of
+-- | the package version to its dependencies in the set at that version.
+fetchLegacyPackageSets :: forall r. Run (READ_GITHUB + CACHE + LOG + EFFECT + r) (Either GitHubError LegacyPackageSetUnion)
+fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
+  allTags <- do
+    tagsResult <- GitHub.listTags Legacy.PackageSet.legacyPackageSetsRepo
+    Run.Except.rethrowAt _legacyPackageSetsError tagsResult
 
   let
+    tags :: Array String
+    tags = Legacy.PackageSet.filterLegacyPackageSets allTags
+
     convertPackageSet :: LegacyPackageSet -> LegacyPackageSetUnion
-    convertPackageSet (LegacyPackageSet packages) =
-      map (convertEntry packages) packages
+    convertPackageSet (LegacyPackageSet packages) = map (convertEntry packages) packages
 
     convertEntry :: Map PackageName LegacyPackageSetEntry -> LegacyPackageSetEntry -> Map RawVersion (Map PackageName RawVersion)
     convertEntry entries { dependencies, version } = do
@@ -368,45 +403,46 @@ fetchLegacyPackageSets = do
           Array.foldl (\m name -> Map.insert name (resolveDependencyVersion name) m) Map.empty
       Map.singleton version (resolveDependencyVersions dependencies)
 
-  legacySets <- do
-    tagKey <- liftEffect do
-      tagsSha <- Sha256.hashString (String.joinWith " " tags)
-      pure ("package-sets-" <> Sha256.print tagsSha)
+  Log.debug "Merging legacy package sets into a union."
+  tagKey <- Run.liftEffect $ Sha256.hashString (String.joinWith " " tags)
 
-    -- It's important that we cache the end result of unioning all package sets
-    -- because the package sets are quite large and it's expensive to read them
-    -- all into memory and fold over them.
-    liftEffect (Cache.readJsonEntry legacyPackageSetUnionCodec tagKey cache) >>= case _ of
-      Left _ -> do
-        Console.log $ "CACHE MISS: Building legacy package sets..."
-        entries <- for tags \ref -> do
-          let setKey = "legacy-package-set__" <> ref
-          -- We persist API errors if received.
-          let setCodec = CA.Common.either Octokit.githubErrorCodec legacyPackageSetUnionCodec
-          setEntries <- liftEffect (Cache.readJsonEntry setCodec setKey cache) >>= case _ of
-            Left _ -> do
-              Console.log $ "CACHE MISS: Building legacy package set for " <> ref
-              converted <- Except.runExceptT do
-                packagesJson <- ExceptT $ liftAff $ GitHub.getContent octokit cache Legacy.PackageSet.legacyPackageSetsRepo ref "packages.json"
-                parsed <- Except.except $ case parseJson legacyPackageSetCodec packagesJson of
-                  Left decodeError -> throwError $ GitHub.DecodeError $ CA.printJsonDecodeError decodeError
-                  Right legacySet -> pure legacySet
-                pure $ convertPackageSet parsed
-              liftEffect $ Cache.writeJsonEntry setCodec setKey converted cache
-              pure converted
-            Right contents ->
-              pure contents.value
-          case setEntries of
-            Left err -> do
-              Console.log $ "Failed to retrieve " <> ref <> " package set:\n" <> GitHub.printGitHubError err
-              pure Map.empty
-            Right value -> pure value
+  -- It's important that we cache the end result of unioning all package sets
+  -- because the package sets are quite large and it's expensive to read them
+  -- all into memory and fold over them.
+  Cache.get (Cache.LegacyPackageSetUnion tagKey) >>= case _ of
+    Nothing -> do
+      Log.debug $ "Cache miss for legacy package set union, rebuilding..."
 
-        let merged = Array.foldl (\m set -> Map.unionWith Map.union set m) Map.empty entries
-        liftEffect $ Cache.writeJsonEntry legacyPackageSetUnionCodec tagKey merged cache
-        pure merged
+      legacySetResults <- for tags \refStr -> do
+        let ref = RawVersion refStr
+        cached <- Cache.get (Cache.LegacyPackageSet ref) >>= case _ of
+          Nothing -> do
+            Log.debug $ "Cache miss for legacy package set " <> refStr <> ", refetching..."
+            result <- GitHub.getJsonFile Legacy.PackageSet.legacyPackageSetsRepo ref legacyPackageSetCodec "packages.json"
+            Cache.put (Cache.LegacyPackageSet ref) result
+            pure result
+          Just { value } ->
+            pure value
+        pure $ lmap (Tuple ref) cached
 
-      Right contents ->
-        pure contents.value
+      let results = partitionEithers legacySetResults
+      when (not (Array.null results.fail)) do
+        Log.warn $ "Failed to retrieve package sets for some tags: " <> String.joinWith ", " (map (fst >>> un RawVersion) results.fail)
 
-  pure legacySets
+      let
+        convertedSets :: Array LegacyPackageSetUnion
+        convertedSets = map convertPackageSet results.success
+
+        -- TODO: As we've discovered, this union is backwards and needs to be fixed. But that's for
+        -- another PR to take care of.
+        merged :: LegacyPackageSetUnion
+        merged = Array.foldl (\m set -> Map.unionWith Map.union set m) Map.empty convertedSets
+
+      Cache.put (Cache.LegacyPackageSetUnion tagKey) merged
+      pure merged
+
+    Just { value } ->
+      pure value
+  where
+  _legacyPackageSetsError :: Proxy "legacyPackageSetsError"
+  _legacyPackageSetsError = Proxy

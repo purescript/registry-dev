@@ -20,6 +20,7 @@ import JSURI as JSURI
 import Node.FS.Aff as FS.Aff
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
+import Registry.App.Legacy.Types (RawVersion(..))
 import Registry.App.Legacy.Types as Types
 import Registry.Foreign.Octokit (GitHubError, GitHubRoute)
 import Registry.Foreign.Octokit as Octokit
@@ -36,7 +37,7 @@ import Run as Run
 data AppCache (c :: Type -> Type -> Type) a
   = Manifest PackageName Version (c Manifest.Manifest a)
   | Request GitHubRoute (c (Either GitHubError Json) a)
-  | LegacyPackageSet String (c (Either GitHubError Types.LegacyPackageSet) a)
+  | LegacyPackageSet RawVersion (c (Either GitHubError Types.LegacyPackageSet) a)
   | LegacyPackageSetUnion Sha256 (c Types.LegacyPackageSetUnion a)
 
 -- Ideally, with quantified constraints, this could be written as:
@@ -69,7 +70,7 @@ jsonKeyHandler = case _ of
     { id: "AppCache__GitHubRequest__" <> Octokit.printGitHubRoute route
     , codec: CA.Common.either Octokit.githubErrorCodec CA.Common.json
     }
-  LegacyPackageSet ref next -> Exists.mkExists $ flip JsonKey next
+  LegacyPackageSet (RawVersion ref) next -> Exists.mkExists $ flip JsonKey next
     { id: "AppCache__LegacyPackageSet__" <> ref
     , codec: CA.Common.either Octokit.githubErrorCodec Types.legacyPackageSetCodec
     }
