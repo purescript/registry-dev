@@ -10,15 +10,13 @@ import Affjax.StatusCode (StatusCode(..))
 import Control.Alternative as Alternative
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
-import Data.Argonaut.Core (Json)
 import Data.Argonaut.Core as Argonaut
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Codec as Codec
-import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
+import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
@@ -52,7 +50,6 @@ import Registry.App.CLI.Wget as Wget
 import Registry.App.Cache (Cache)
 import Registry.App.Cache as Cache
 import Registry.App.GitHub as GitHub
-import Registry.App.Json as Json
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
@@ -108,9 +105,9 @@ main = launchAff_ $ do
       let
         comment = Array.fold
           [ "The JSON input for this package update is malformed:"
-          , newlines 2
+          , "\n\n"
           , "```" <> err <> "```"
-          , newlines 2
+          , "\n\n"
           , "You can try again by commenting on this issue with a corrected payload."
           ]
 
@@ -161,7 +158,7 @@ readOperation :: FilePath -> Aff OperationDecoding
 readOperation eventPath = do
   fileContents <- FS.Aff.readTextFile UTF8 eventPath
 
-  IssueEvent { issueNumber, body, username } <- case Json.jsonParser fileContents >>= decodeIssueEvent of
+  IssueEvent { issueNumber, body, username } <- case Argonaut.Parser.jsonParser fileContents >>= decodeIssueEvent of
     Left err ->
       -- If we don't receive a valid event path or the contents can't be decoded
       -- then this is a catastrophic error and we exit the workflow.
@@ -173,7 +170,7 @@ readOperation eventPath = do
     -- TODO: Right now we parse all operations from GitHub issues, but we should
     -- in the future only parse out package set operations. The others should be
     -- handled via a HTTP API.
-    decodeOperation :: Json -> Either CA.JsonDecodeError (Either PackageSetOperation PackageOperation)
+    decodeOperation :: Json -> Either JsonDecodeError (Either PackageSetOperation PackageOperation)
     decodeOperation json = do
       object <- CA.decode CA.jobject json
       let keys = Object.keys object
@@ -252,7 +249,7 @@ runOperation source operation = case operation of
           [ "Cannot register"
           , PackageName.print name
           , "at the location"
-          , Json.stringifyJson Location.codec packageLocation
+          , stringifyJson Location.codec packageLocation
           , "because that location is already in use to publish another package."
           ]
         Just packageLocation ->
@@ -351,7 +348,7 @@ runOperation source operation = case operation of
       App.PackageSets.processBatchAtomic workDir registryIndex latestPackageSet compiler candidates.accepted >>= case _ of
         Just { fail, packageSet, success } | Map.isEmpty fail -> do
           newPath <- App.PackageSets.getPackageSetPath (un PackageSet packageSet).version
-          liftAff $ Json.writeJsonFile PackageSet.codec newPath packageSet
+          liftAff $ writeJsonFile PackageSet.codec newPath packageSet
           let commitMessage = App.PackageSets.commitMessage latestPackageSet success (un PackageSet packageSet).version
           commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
             Left err -> throwWithComment $ "Failed to commit package set file (cc: @purescript/packaging): " <> err
@@ -452,7 +449,7 @@ runOperation source operation = case operation of
           [ "Cannot transfer"
           , PackageName.print name
           , " to "
-          , Json.stringifyJson Location.codec newLocation
+          , stringifyJson Location.codec newLocation
           , "because another package is already registered at that location."
           ]
 
@@ -554,15 +551,15 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
           ]
       Right legacyManifest -> do
         let manifest = Legacy.Manifest.toManifest name version inputMetadata.location legacyManifest
-        liftAff $ Json.writeJsonFile Manifest.codec manifestPath manifest
+        liftAff $ writeJsonFile Manifest.codec manifestPath manifest
 
   -- Try to read the manifest, typechecking it
   manifest@(Manifest manifestFields) <- liftAff (try $ FS.Aff.readTextFile UTF8 manifestPath) >>= case _ of
     Left _err -> throwWithComment $ "Manifest not found at " <> manifestPath
     Right manifestStr -> liftAff (jsonToDhallManifest manifestStr) >>= case _ of
       Left err -> throwWithComment $ "Could not typecheck manifest: " <> err
-      Right _ -> case Json.parseJson Manifest.codec manifestStr of
-        Left err -> throwWithComment $ "Could not parse manifest as JSON: " <> err
+      Right _ -> case parseJson Manifest.codec manifestStr of
+        Left err -> throwWithComment $ "Could not parse manifest as JSON: " <> CA.printJsonDecodeError err
         Right res -> pure res
 
   -- We trust the manifest for any changes to the 'owners' field, but for all
@@ -580,9 +577,9 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
   unless (Operation.Validation.locationMatches manifest (Metadata metadata)) do
     throwWithComment $ Array.fold
       [ "The manifest file specifies a location ("
-      , Json.stringifyJson Location.codec manifestFields.location
+      , stringifyJson Location.codec manifestFields.location
       , ") that differs from the location in the registry metadata ("
-      , Json.stringifyJson Location.codec metadata.location
+      , stringifyJson Location.codec metadata.location
       , "). If you would like to change the location of your package you should "
       , "submit a Transfer operation."
       ]
@@ -701,7 +698,7 @@ verifyManifest { metadata, manifest } = do
       [ "You tried to upload a version that already exists: " <> Version.print manifestFields.version
       , "Its metadata is:"
       , "```"
-      , Argonaut.stringifyWithIndent 2 $ Codec.encode Metadata.publishedMetadataCodec info
+      , Argonaut.stringifyWithIndent 2 $ CA.encode Metadata.publishedMetadataCodec info
       , "```"
       ]
 
@@ -711,7 +708,7 @@ verifyManifest { metadata, manifest } = do
       [ "You tried to upload a version that has been unpublished: " <> Version.print manifestFields.version
       , "Details:"
       , "```"
-      , Argonaut.stringifyWithIndent 2 $ Codec.encode Metadata.unpublishedMetadataCodec info
+      , Argonaut.stringifyWithIndent 2 $ CA.encode Metadata.unpublishedMetadataCodec info
       , "```"
       ]
 
@@ -885,7 +882,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
     resolvedPaths = formatPursuitResolutions { resolutions, dependenciesDir }
     resolutionsFilePath = Path.concat [ tmp, "resolutions.json" ]
 
-  liftAff $ Json.writeJsonFile pursuitResolutionsCodec resolutionsFilePath resolvedPaths
+  liftAff $ writeJsonFile pursuitResolutionsCodec resolutionsFilePath resolvedPaths
 
   -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
   -- package name in the manifest file:
@@ -970,7 +967,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
 type PursuitResolutions = Map RawPackageName { version :: Version, path :: FilePath }
 
 pursuitResolutionsCodec :: JsonCodec PursuitResolutions
-pursuitResolutionsCodec = rawPackageNameMapCodec $ Json.object "Resolution" { version: Version.codec, path: CA.string }
+pursuitResolutionsCodec = rawPackageNameMapCodec $ CA.Record.object "Resolution" { version: Version.codec, path: CA.string }
 
 -- Resolutions format: https://github.com/purescript/purescript/pull/3565
 --
@@ -1024,7 +1021,7 @@ fillMetadataRef = do
           Console.log $ "Encountered error while parsing package name! It was: " <> rawPackageName
           Aff.throwError $ Aff.error err
       let metadataPath = metadataFile registryDir packageName
-      metadata <- Json.readJsonFile Metadata.codec metadataPath >>= case _ of
+      metadata <- readJsonFile Metadata.codec metadataPath >>= case _ of
         Left err -> Aff.throwError $ Aff.error $ "Error parsing metadata file located at " <> metadataPath <> ": " <> err
         Right val -> pure val
       pure $ packageName /\ metadata
@@ -1269,7 +1266,7 @@ readMetadata packageName { noMetadata } = do
 writeMetadata :: PackageName -> Metadata -> RegistryM (Either String Unit)
 writeMetadata packageName metadata = do
   registryDir <- asks _.registry
-  liftAff $ Json.writeJsonFile Metadata.codec (metadataFile registryDir packageName) metadata
+  liftAff $ writeJsonFile Metadata.codec (metadataFile registryDir packageName) metadata
   updatePackagesMetadata packageName metadata
   commitMetadataFile packageName
 
@@ -1426,7 +1423,7 @@ syncLegacyRegistry package location = do
   let
     readLegacyFile file = do
       let path = Path.concat [ registryDir, legacyRegistryFilePath file ]
-      liftAff (Json.readJsonFile legacyRegistryCodec path) >>= case _ of
+      liftAff (readJsonFile legacyRegistryCodec path) >>= case _ of
         Left err -> throwWithComment $ "Could not sync package with legacy registry (could not read " <> path <> "(cc: @purescript/packaging): " <> err
         Right packages -> pure packages
 
@@ -1456,7 +1453,7 @@ syncLegacyRegistry package location = do
     let sourceFile = legacyRegistryFilePath target
     let packages = Map.insert rawPackageName packageUrl sourcePackages
     result <- liftAff $ Except.runExceptT do
-      liftAff $ Json.writeJsonFile legacyRegistryCodec (Path.concat [ registryDir, sourceFile ]) packages
+      liftAff $ writeJsonFile legacyRegistryCodec (Path.concat [ registryDir, sourceFile ]) packages
       GitHubToken token <- Git.configurePacchettiBotti (Just registryDir)
       Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
       Git.runGit_ [ "add", sourceFile ] (Just registryDir)
@@ -1506,16 +1503,23 @@ newtype IssueEvent = IssueEvent
 derive instance Newtype IssueEvent _
 
 decodeIssueEvent :: Json -> Either String IssueEvent
-decodeIssueEvent json = do
-  object <- Json.decodeJson CA.jobject json
-  username <- Json.atKey "login" CA.string =<< Json.atKey "sender" CA.jobject object
+decodeIssueEvent json = lmap CA.printJsonDecodeError do
+  object <- CA.decode CA.jobject json
+  username <- atKey "login" CA.string =<< atKey "sender" CA.jobject object
 
-  issueObject <- Json.atKey "issue" CA.jobject object
-  issueNumber <- Json.atKey "number" CA.int issueObject
+  issueObject <- atKey "issue" CA.jobject object
+  issueNumber <- atKey "number" CA.int issueObject
 
   -- We accept issue creation and issue comment events, but both contain an
   -- 'issue' field. However, only comments contain a 'comment' field. For that
   -- reason we first try to parse the comment and fall back to the issue if
   -- that fails.
-  body <- Json.atKey "body" CA.string =<< Json.atKey "comment" CA.jobject object <|> pure issueObject
+  body <- atKey "body" CA.string =<< atKey "comment" CA.jobject object <|> pure issueObject
   pure $ IssueEvent { body, username, issueNumber: IssueNumber issueNumber }
+  where
+  atKey :: forall a. String -> JsonCodec a -> Object Json -> Either JsonDecodeError a
+  atKey key codec object =
+    maybe
+      (Left $ CA.AtKey key CA.MissingValue)
+      (lmap (CA.AtKey key) <<< CA.decode codec)
+      (Object.lookup key object)

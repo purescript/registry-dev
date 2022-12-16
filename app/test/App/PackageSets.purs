@@ -1,6 +1,4 @@
-module Test.Registry.App.PackageSets
-  ( spec
-  ) where
+module Test.Registry.App.PackageSets (spec) where
 
 import Registry.App.Prelude
 
@@ -10,7 +8,6 @@ import Data.Either as Either
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.Set as Set
-import Registry.App.Json as Json
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, latestCompatibleSetsCodec, parsePscTag, printPscTag)
@@ -30,10 +27,10 @@ import Test.Spec as Spec
 spec :: Spec.Spec Unit
 spec = do
   Spec.it "Decodes package set" do
-    Json.parseJson PackageSet.codec packageSetJson `Assert.shouldContain` packageSet
+    parseJson PackageSet.codec packageSetJson `Assert.shouldContain` packageSet
 
   Spec.it "Encodes package set" do
-    Json.printJson PackageSet.codec packageSet `Assert.shouldEqual` packageSetJson
+    printJson PackageSet.codec packageSet `Assert.shouldEqual` packageSetJson
 
   Spec.it "Parses legacy package set tags" do
     let valid = "psc-0.12.18-20220102"
@@ -45,18 +42,18 @@ spec = do
   Spec.it "Parses legacy 'latest compatible set' files" do
     let
       parsed :: Either _ LatestCompatibleSets
-      parsed = Json.parseJson latestCompatibleSetsCodec latestCompatibleSets
+      parsed = parseJson latestCompatibleSetsCodec latestCompatibleSets
 
-    map (Json.printJson latestCompatibleSetsCodec) parsed `Assert.shouldContain` latestCompatibleSets
+    map (printJson latestCompatibleSetsCodec) parsed `Assert.shouldContain` latestCompatibleSets
 
   Spec.it "Produces correct legacy package set name" do
     printPscTag convertedPackageSet.tag `Assert.shouldEqual` "psc-0.15.2-20220725"
 
   Spec.it "Decodes legacy package set" do
-    Json.parseJson legacyPackageSetCodec legacyPackageSetJson `Assert.shouldContain` convertedPackageSet.packageSet
+    parseJson legacyPackageSetCodec legacyPackageSetJson `Assert.shouldContain` convertedPackageSet.packageSet
 
   Spec.it "Encodes legacy package set as JSON" do
-    Json.printJson legacyPackageSetCodec convertedPackageSet.packageSet `Assert.shouldEqual` legacyPackageSetJson
+    printJson legacyPackageSetCodec convertedPackageSet.packageSet `Assert.shouldEqual` legacyPackageSetJson
 
   Spec.it "Encodes legacy package set as Dhall" do
     Legacy.PackageSet.printDhall convertedPackageSet.packageSet `Assert.shouldEqual` legacyPackageSetDhall

@@ -2,7 +2,6 @@ module Test.Main (main) where
 
 import Registry.App.Prelude
 
-import Data.Argonaut.Encode as Argonaut.Codecs
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.Argonaut as CA
@@ -15,10 +14,7 @@ import Node.Path as Path
 import Registry.App.API as API
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
-import Registry.App.Json as Json
-import Registry.App.Legacy.Manifest (Bowerfile(..))
-import Registry.App.Legacy.Manifest as Legacy.Manifest
-import Registry.App.Legacy.Types (RawPackageName(..), RawVersionRange(..))
+import Registry.App.Legacy.Types (RawPackageName(..))
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (IssueNumber(..))
@@ -27,13 +23,13 @@ import Registry.Operation (PackageOperation(..), PackageSetOperation(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
 import Registry.Version as Version
-import Safe.Coerce (coerce)
 import Test.Assert as Assert
 import Test.Registry.App.Auth as Auth
-import Test.Registry.App.CLI.Licensee as Test.Licensee
-import Test.Registry.App.CLI.Tar as Test.Tar
-import Test.Registry.App.Legacy.LenientRange as Test.LenientRange
-import Test.Registry.App.Legacy.LenientVersion as Test.LenientVersion
+import Test.Registry.App.CLI.Licensee as Test.CLI.Licensee
+import Test.Registry.App.CLI.Tar as Test.CLI.Tar
+import Test.Registry.App.Legacy.LenientRange as Test.Legacy.LenientRange
+import Test.Registry.App.Legacy.LenientVersion as Test.Legacy.LenientVersion
+import Test.Registry.App.Legacy.Manifest as Test.Legacy.Manifest
 import Test.Registry.App.PackageIndex as Test.PackageIndex
 import Test.Registry.App.PackageSets as Test.PackageSets
 import Test.RegistrySpec as RegistrySpec
@@ -58,24 +54,19 @@ main = launchAff_ do
         compilerVersions
       Spec.describe "Resolutions" do
         checkBuildPlanToResolutions
-    Spec.describe "Bowerfile" do
-      Spec.describe "Parses" do
-        Spec.describe "Good bower files" goodBowerfiles
-      Spec.describe "Does not parse" do
-        Spec.describe "Bad bower files" badBowerfiles
-      Spec.describe "Encoding" bowerFileEncoding
     Spec.describe "Package Index" do
       Test.PackageIndex.spec registryEnv
     Spec.describe "Package Set" do
       Test.PackageSets.spec
 
     Spec.describe "CLI" do
-      Spec.describe "Licensee" Test.Licensee.spec
-      Spec.describe "Tar" Test.Tar.spec
+      Spec.describe "Licensee" Test.CLI.Licensee.spec
+      Spec.describe "Tar" Test.CLI.Tar.spec
 
     Spec.describe "Legacy" do
-      Spec.describe "Lenient Version" Test.LenientVersion.spec
-      Spec.describe "Lenient Range" Test.LenientRange.spec
+      Spec.describe "Lenient Version" Test.Legacy.LenientVersion.spec
+      Spec.describe "Lenient Range" Test.Legacy.LenientRange.spec
+      Spec.describe "Legacy Manifest" Test.Legacy.Manifest.spec
 
 removeIgnoredTarballFiles :: Spec.Spec Unit
 removeIgnoredTarballFiles = Spec.before runBefore do
@@ -243,102 +234,6 @@ decodeEventsToOps = do
       parseJson = bimap CA.printJsonDecodeError Publish <<< CA.decode Operation.publishCodec <=< Argonaut.Parser.jsonParser
 
     parseJson (API.firstObject rawOperation) `Assert.shouldEqual` (Right operation)
-
-goodBowerfiles :: Spec.Spec Unit
-goodBowerfiles = do
-  let
-    parse :: String -> Either String Bowerfile
-    parse = Json.parseJson Legacy.Manifest.bowerfileCodec
-
-    parseBowerfile' str = Spec.it str do
-      parse str `Assert.shouldSatisfy` isRight
-
-    parseBowerfile = parseBowerfile' <<< Json.stringify
-
-    simpleFile =
-      Argonaut.Codecs.encodeJson
-        { version: "v1.0.0"
-        , license: "MIT"
-        }
-
-    goodBowerfile =
-      Argonaut.Codecs.encodeJson
-        { version: "v1.0.0"
-        , license: ""
-        , dependencies: {}
-        }
-
-    extraPropsBowerfile =
-      Argonaut.Codecs.encodeJson
-        { extra: "value"
-        , license: "not a license"
-        , version: "v1.1.1"
-        }
-
-    nonSemverBowerfile =
-      Argonaut.Codecs.encodeJson
-        { version: "notsemver"
-        , license: ""
-        , dependencies: { also: "not semver" }
-        , devDependencies: { lastly: "🍝" }
-        }
-
-    completeBowerfile =
-      Argonaut.Codecs.encodeJson
-        { version: "v1.0.1"
-        , license: [ "license" ]
-        , dependencies:
-            { "other-package": "v0.0.1"
-            , "another-package": "v10.0.1-rc1"
-            }
-        , devDependencies:
-            { "dev-dep": "v2.0.0" }
-        }
-
-  parseBowerfile goodBowerfile
-  parseBowerfile simpleFile
-  parseBowerfile extraPropsBowerfile
-  parseBowerfile nonSemverBowerfile
-  parseBowerfile completeBowerfile
-
-badBowerfiles :: Spec.Spec Unit
-badBowerfiles = do
-  let
-    parse :: String -> Either String Bowerfile
-    parse = Json.parseJson Legacy.Manifest.bowerfileCodec
-
-    failParseBowerfile' str = Spec.it str do
-      parse str `Assert.shouldNotSatisfy` isRight
-
-    failParseBowerfile = failParseBowerfile' <<< Json.stringify
-
-    wrongLicenseFormat =
-      Argonaut.Codecs.encodeJson { version: "", license: true }
-
-    wrongDependenciesFormat =
-      Argonaut.Codecs.encodeJson { version: "", license: "", dependencies: ([] :: Array Int) }
-
-  failParseBowerfile wrongLicenseFormat
-  failParseBowerfile wrongDependenciesFormat
-
-bowerFileEncoding :: Spec.Spec Unit
-bowerFileEncoding = do
-  Spec.it "Can be decoded" do
-    let
-      dependencies =
-        Map.fromFoldable $ map coerce
-          [ Tuple "dependency-first" "v1.0.0"
-          , Tuple "dependency-second" "v2.0.0"
-          ]
-      description = Nothing
-      bowerFile = Bowerfile
-        { license: [ "MIT" ]
-        , dependencies
-        , description
-        }
-
-    Json.decode Legacy.Manifest.bowerfileCodec (Json.encode Legacy.Manifest.bowerfileCodec bowerFile)
-      `Assert.shouldContain` bowerFile
 
 checkBuildPlanToResolutions :: Spec.Spec Unit
 checkBuildPlanToResolutions = do

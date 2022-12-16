@@ -5,7 +5,6 @@ import Registry.App.Prelude
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask)
 import Data.Array as Array
-import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
@@ -21,12 +20,11 @@ import Data.These as These
 import Data.Variant as Variant
 import Effect.Class.Console as Console
 import Node.ChildProcess as NodeProcess
-import Node.FS.Aff as FSA
+import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.CLI.Licensee as Licensee
 import Registry.App.Cache as Cache
 import Registry.App.GitHub as GitHub
-import Registry.App.Json as Json
 import Registry.App.Legacy.LenientRange as LenientRange
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
@@ -154,7 +152,7 @@ legacyManifestErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.v
   , invalidDependencies: Right (CA.array dependencyCodec)
   }
   where
-  dependencyCodec = Json.object "Dependency"
+  dependencyCodec = CA.Record.object "Dependency"
     { name: CA.string
     , range: CA.string
     , error: CA.string
@@ -260,14 +258,14 @@ newtype SpagoDhallJson = SpagoDhallJson
 derive instance Newtype SpagoDhallJson _
 
 spagoDhallJsonCodec :: JsonCodec SpagoDhallJson
-spagoDhallJsonCodec = Profunctor.dimap toRep fromRep $ Json.object "SpagoDhallJson"
+spagoDhallJsonCodec = Profunctor.dimap toRep fromRep $ CA.Record.object "SpagoDhallJson"
   { license: CA.Record.optional CA.Common.nonEmptyString
   , dependencies: CA.Record.optional (CA.array (Profunctor.wrapIso RawPackageName CA.string))
   , packages: CA.Record.optional packageVersionMapCodec
   }
   where
   packageVersionMapCodec :: JsonCodec (Map RawPackageName { version :: RawVersion })
-  packageVersionMapCodec = rawPackageNameMapCodec $ Json.object "VersionObject" { version: rawVersionCodec }
+  packageVersionMapCodec = rawPackageNameMapCodec $ CA.Record.object "VersionObject" { version: rawVersionCodec }
 
   toRep (SpagoDhallJson fields) = fields
     { dependencies = if Array.null fields.dependencies then Nothing else Just fields.dependencies
@@ -288,24 +286,24 @@ fetchSpagoDhallJson address (RawVersion ref) = do
   spagoDhall <- getFile "spago.dhall"
   packagesDhall <- getFile "packages.dhall"
   tmp <- liftEffect Tmp.mkTmpDir
-  liftAff $ FSA.writeTextFile UTF8 (Path.concat [ tmp, "packages.dhall" ]) packagesDhall
+  liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, "packages.dhall" ]) packagesDhall
   dhallJson <- liftAff $ dhallToJson { dhall: spagoDhall, cwd: Just tmp }
   Except.except $ case dhallJson of
     Left err -> Left $ GitHub.DecodeError err
-    Right json -> case Json.decodeJson spagoDhallJsonCodec json of
-      Left err -> Left $ GitHub.DecodeError err
+    Right json -> case CA.decode spagoDhallJsonCodec json of
+      Left err -> Left $ GitHub.DecodeError $ CA.printJsonDecodeError err
       Right value -> pure value
   where
   -- | Convert a string representing a Dhall expression into JSON using the
   -- | `dhall-to-json` CLI.
-  dhallToJson :: { dhall :: String, cwd :: Maybe FilePath } -> Aff (Either String Json.Json)
+  dhallToJson :: { dhall :: String, cwd :: Maybe FilePath } -> Aff (Either String Json)
   dhallToJson { dhall, cwd } = do
     let cmd = "dhall-to-json"
     let stdin = Just dhall
     let args = []
     result <- Process.spawn { cmd, stdin, args } (NodeProcess.defaultSpawnOptions { cwd = cwd })
     pure $ case result.exit of
-      NodeProcess.Normally 0 -> Json.parseJson CA.json result.stdout
+      NodeProcess.Normally 0 -> lmap CA.printJsonDecodeError $ parseJson CA.json result.stdout
       _ -> Left result.stderr
 
 newtype Bowerfile = Bowerfile
@@ -318,7 +316,7 @@ derive instance Newtype Bowerfile _
 derive newtype instance Eq Bowerfile
 
 bowerfileCodec :: JsonCodec Bowerfile
-bowerfileCodec = Profunctor.dimap toRep fromRep $ Json.object "Bowerfile"
+bowerfileCodec = Profunctor.dimap toRep fromRep $ CA.Record.object "Bowerfile"
   { description: CA.Record.optional CA.string
   , dependencies: CA.Record.optional dependenciesCodec
   , license: licenseCodec
@@ -342,8 +340,8 @@ fetchBowerfile :: GitHub.Address -> RawVersion -> ExceptT GitHub.GitHubError Reg
 fetchBowerfile address (RawVersion ref) = do
   { octokit, cache } <- ask
   bowerfile <- ExceptT $ liftAff $ GitHub.getContent octokit cache address ref "bower.json"
-  Except.except $ case Json.parseJson bowerfileCodec (JsonRepair.tryRepair bowerfile) of
-    Left err -> Left $ GitHub.DecodeError err
+  Except.except $ case parseJson bowerfileCodec (JsonRepair.tryRepair bowerfile) of
+    Left err -> Left $ GitHub.DecodeError $ CA.printJsonDecodeError err
     Right value -> pure value
 
 fetchLegacyPackageSets :: RegistryM LegacyPackageSetUnion
@@ -390,8 +388,8 @@ fetchLegacyPackageSets = do
               Console.log $ "CACHE MISS: Building legacy package set for " <> ref
               converted <- Except.runExceptT do
                 packagesJson <- ExceptT $ liftAff $ GitHub.getContent octokit cache Legacy.PackageSet.legacyPackageSetsRepo ref "packages.json"
-                parsed <- Except.except $ case Json.parseJson legacyPackageSetCodec packagesJson of
-                  Left decodeError -> throwError $ GitHub.DecodeError decodeError
+                parsed <- Except.except $ case parseJson legacyPackageSetCodec packagesJson of
+                  Left decodeError -> throwError $ GitHub.DecodeError $ CA.printJsonDecodeError decodeError
                   Right legacySet -> pure legacySet
                 pure $ convertPackageSet parsed
               liftEffect $ Cache.writeJsonEntry setCodec setKey converted cache

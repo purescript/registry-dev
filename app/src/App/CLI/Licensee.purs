@@ -10,7 +10,6 @@ import Effect.Class.Console as Console
 import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
 import Node.Path as Path
-import Registry.App.Json as Json
 import Registry.Foreign.Tmp as Tmp
 import Sunde as Process
 
@@ -35,19 +34,20 @@ detect directory = do
     -- but we consider this valid Licensee output.
     NodeProcess.Normally n | n == 0 || n == 1 -> do
       let
-        parse :: String -> Either String (Array String)
-        parse str = map (map _.spdx_id <<< _.licenses) $ flip Json.parseJson str $ CA.Record.object "Licenses"
+        parse :: String -> Either JsonDecodeError (Array String)
+        parse str = map (map _.spdx_id <<< _.licenses) $ flip parseJson str $ CA.Record.object "Licenses"
           { licenses: CA.array $ CA.Record.object "SPDXIds"
               { spdx_id: CA.string }
           }
 
       case parse result.stdout of
         Left error -> do
+          let printedError = CA.printJsonDecodeError error
           Console.log "Licensee failed to decode output: "
-          Console.log error
+          Console.log $ printedError
           Console.log "arising from the result: "
           Console.log result.stdout
-          pure $ Left error
+          pure $ Left printedError
         Right out -> do
           -- A NOASSERTION result means that a LICENSE file could not be parsed.
           -- For the purposes of the registry we disregard this result, since

@@ -23,8 +23,7 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bifunctor (lmap)
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
-import Data.Either (Either)
-import Data.Either as Either
+import Data.Either (Either, hush)
 import Data.Int as Int
 import Data.Maybe (maybe)
 import Data.String as String
@@ -63,7 +62,7 @@ instance Ord Version where
 
 -- | A codec for encoding and decoding a `Version` as a JSON string.
 codec :: JsonCodec Version
-codec = CA.prismaticCodec "Version" (Either.hush <<< parse) print CA.string
+codec = CA.prismaticCodec "Version" (hush <<< parse) print CA.string
 
 -- | Print a `Version` as a string of the form "X.Y.Z"
 print :: Version -> String

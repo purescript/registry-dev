@@ -19,8 +19,7 @@ import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
-import Data.Either (Either)
-import Data.Either as Either
+import Data.Either (Either, hush)
 import Data.List.Lazy as List.Lazy
 import Data.String.CodeUnits as String.CodeUnits
 import Effect (Effect)
@@ -29,7 +28,7 @@ import Effect.Class (liftEffect)
 import Node.Buffer (Buffer)
 import Node.Buffer as Buffer
 import Node.Encoding (Encoding(..))
-import Node.FS.Aff as FS
+import Node.FS.Aff as FS.Aff
 import Node.Path (FilePath)
 import Parsing (Parser)
 import Parsing as Parsing
@@ -43,7 +42,7 @@ derive instance Eq Sha256
 
 -- | A codec for encoding and decoding a `Sha256` as a JSON string
 codec :: JsonCodec Sha256
-codec = CA.prismaticCodec "Sha256" (Either.hush <<< parse) print CA.string
+codec = CA.prismaticCodec "Sha256" (hush <<< parse) print CA.string
 
 -- | Print a Sha256 as a subresource integrity hash using sha256
 print :: Sha256 -> String
@@ -68,7 +67,7 @@ parser = do
 -- | Create the sha256 SRI hash for a file
 hashFile :: FilePath -> Aff Sha256
 hashFile path = do
-  fileBuffer <- FS.readFile path
+  fileBuffer <- FS.Aff.readFile path
   liftEffect $ hashBuffer fileBuffer
 
 -- | Create the sha256 SRI hash for a string

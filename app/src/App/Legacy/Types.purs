@@ -2,7 +2,6 @@ module Registry.App.Legacy.Types where
 
 import Registry.App.Prelude
 
-import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.Profunctor as Profunctor

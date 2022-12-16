@@ -29,7 +29,6 @@ import Registry.App.Effect.Notify (NOTIFY)
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
-import Registry.App.Json as Json
 import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.ManifestIndex as ManifestIndex
@@ -256,7 +255,7 @@ handlePackageSetsAff env = case _ of
   readPackageSetVersion :: Version -> Run _ (Either _ PackageSet)
   readPackageSetVersion version = do
     let path = packageSetPath version
-    Run.liftAff (Json.readJsonFile PackageSet.codec path)
+    Run.liftAff (readJsonFile PackageSet.codec path)
 
   -- Install all packages in a package set into a temporary directory, returning
   -- the reference to the installation directory. Installed packages have the

@@ -21,7 +21,8 @@ import Prelude
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut.Common as CA
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as CA.Common
 import Data.Map (Map)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
@@ -77,7 +78,7 @@ codec = Profunctor.wrapIso Manifest $ CA.object "Manifest"
   $ CA.recordProp (Proxy :: _ "license") License.codec
   $ CA.recordPropOptional (Proxy :: _ "description") (Internal.Codec.limitedString 300)
   $ CA.recordProp (Proxy :: _ "location") Location.codec
-  $ CA.recordPropOptional (Proxy :: _ "owners") (CA.nonEmptyArray Owner.codec)
-  $ CA.recordPropOptional (Proxy :: _ "files") (CA.nonEmptyArray CA.nonEmptyString)
+  $ CA.recordPropOptional (Proxy :: _ "owners") (CA.Common.nonEmptyArray Owner.codec)
+  $ CA.recordPropOptional (Proxy :: _ "files") (CA.Common.nonEmptyArray CA.Common.nonEmptyString)
   $ CA.recordProp (Proxy :: _ "dependencies") (Internal.Codec.packageMap Range.codec)
   $ CA.record

@@ -3,7 +3,6 @@ module Registry.App.CLI.Purs where
 import Registry.App.Prelude
 
 import Data.Array as Array
-import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Compat as CA.Compat
 import Data.Codec.Argonaut.Record as CA.Record
@@ -11,7 +10,6 @@ import Data.Foldable (foldMap)
 import Data.String as String
 import Effect.Exception as Exception
 import Node.ChildProcess as NodeProcess
-import Registry.App.Json as Json
 import Sunde as Process
 
 -- | Call a specific version of the PureScript compiler
@@ -124,8 +122,8 @@ callCompiler compilerArgs = do
         | otherwise -> UnknownError errorMessage
     Right { exit: NodeProcess.Normally 0, stdout } -> Right $ String.trim stdout
     Right { stdout, stderr } -> Left do
-      case Json.parseJson errorsCodec (String.trim stdout) of
-        Left err -> UnknownError $ String.joinWith "\n" [ stdout, stderr, err ]
+      case parseJson errorsCodec (String.trim stdout) of
+        Left err -> UnknownError $ String.joinWith "\n" [ stdout, stderr, CA.printJsonDecodeError err ]
         Right ({ errors } :: { errors :: Array CompilerError })
           | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
           | otherwise -> CompilationError errors

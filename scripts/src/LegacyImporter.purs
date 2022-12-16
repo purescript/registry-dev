@@ -46,8 +46,6 @@ import Registry.App.API (LegacyRegistryFile(..), Source(..))
 import Registry.App.API as API
 import Registry.App.Cache as Cache
 import Registry.App.GitHub as GitHub
-import Registry.App.Json (JsonCodec)
-import Registry.App.Json as Json
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
@@ -211,7 +209,7 @@ main = launchAff_ do
       case Map.lookup package metadataMap of
         Nothing -> do
           let metadata = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
-          liftAff $ Json.writeJsonFile Metadata.codec (API.metadataFile registryPath package) metadata
+          liftAff $ writeJsonFile Metadata.codec (API.metadataFile registryPath package) metadata
           liftEffect $ Ref.modify_ (Map.insert package metadata) metadataRef
           commitMetadataFile package >>= case _ of
             Left err -> throwWithComment err
@@ -262,7 +260,7 @@ main = launchAff_ do
           Console.log "\n----------"
           Console.log "UPLOADING"
           Console.log $ PackageName.print manifest.name <> "@" <> Version.print manifest.version
-          Console.log $ Json.stringifyJson Location.codec manifest.location
+          Console.log $ stringifyJson Location.codec manifest.location
           Console.log "----------"
           API.runOperation source (Right (mkOperation (Manifest manifest)))
 
@@ -271,7 +269,7 @@ main = launchAff_ do
       metadataResult <- readPackagesMetadata
       void $ forWithIndex metadataResult \name metadata -> do
         dir <- asks _.registry
-        liftAff (Json.writeJsonFile Metadata.codec (API.metadataFile dir name) metadata)
+        liftAff (writeJsonFile Metadata.codec (API.metadataFile dir name) metadata)
 
       Console.log "Regenerating registry index..."
       void $ for indexPackages (liftAff <<< ManifestIndex.insertIntoEntryFile registryIndexPath)
@@ -281,13 +279,13 @@ main = launchAff_ do
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
 writePackageFailures =
-  Json.writeJsonFile (rawPackageNameMapCodec jsonValidationErrorCodec) (Path.concat [ API.scratchDir, "package-failures.json" ])
+  writeJsonFile (rawPackageNameMapCodec jsonValidationErrorCodec) (Path.concat [ API.scratchDir, "package-failures.json" ])
     <<< map formatPackageValidationError
 
 -- | Record all version failures to the 'version-failures.json' file.
 writeVersionFailures :: Map RawPackageName (Map RawVersion VersionValidationError) -> Aff Unit
 writeVersionFailures =
-  Json.writeJsonFile (rawPackageNameMapCodec (rawVersionMapCodec jsonValidationErrorCodec)) (Path.concat [ API.scratchDir, "version-failures.json" ])
+  writeJsonFile (rawPackageNameMapCodec (rawVersionMapCodec jsonValidationErrorCodec)) (Path.concat [ API.scratchDir, "version-failures.json" ])
     <<< map (map formatVersionValidationError)
 
 logImportStats :: LegacyRegistry -> ImportedIndex -> Aff Unit
@@ -417,7 +415,7 @@ buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl
         Just manifest -> pure manifest
         _ -> do
           let key = "manifest__" <> PackageName.print package.name <> "--" <> tag.name
-          let codec = CA.Common.either (Json.object "Error" { error: versionErrorCodec, reason: CA.string }) Manifest.codec
+          let codec = CA.Common.either (CA.Record.object "Error" { error: versionErrorCodec, reason: CA.string }) Manifest.codec
           liftEffect (Cache.readJsonEntry codec key cache) >>= case _ of
             Left _ -> ExceptT do
               Console.log $ "CACHE MISS: Building manifest for " <> PackageName.print package.name <> "@" <> tag.name
@@ -436,7 +434,7 @@ buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl
 type VersionValidationError = { error :: VersionError, reason :: String }
 
 versionValidationErrorCodec :: JsonCodec VersionValidationError
-versionValidationErrorCodec = Json.object "VersionValidationError"
+versionValidationErrorCodec = CA.Record.object "VersionValidationError"
   { error: versionErrorCodec
   , reason: CA.string
   }
@@ -450,13 +448,13 @@ data VersionError
 
 versionErrorCodec :: JsonCodec VersionError
 versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
-  { invalidTag: Right $ Json.object "Tag"
+  { invalidTag: Right $ CA.Record.object "Tag"
       { name: CA.string
       , sha: CA.string
       , url: CA.string
       }
   , disabledVersion: Left unit
-  , invalidManifest: Right $ Json.object "LegacyManifestValidationError"
+  , invalidManifest: Right $ CA.Record.object "LegacyManifestValidationError"
       { error: Legacy.Manifest.legacyManifestErrorCodec
       , reason: CA.string
       }
@@ -618,7 +616,7 @@ type JsonValidationError =
   }
 
 jsonValidationErrorCodec :: JsonCodec JsonValidationError
-jsonValidationErrorCodec = Json.object "JsonValidationError"
+jsonValidationErrorCodec = CA.Record.object "JsonValidationError"
   { tag: CA.string
   , value: CA.Record.optional CA.string
   , reason: CA.string
@@ -666,7 +664,7 @@ readLegacyRegistryFile :: LegacyRegistryFile -> RegistryM (Map String String)
 readLegacyRegistryFile sourceFile = do
   { registry } <- ask
   let path = Path.concat [ registry, API.legacyRegistryFilePath sourceFile ]
-  legacyPackages <- liftAff $ Json.readJsonFile API.legacyRegistryCodec path
+  legacyPackages <- liftAff $ readJsonFile API.legacyRegistryCodec path
   case legacyPackages of
     Left err -> do
       throwWithComment $ String.joinWith "\n"

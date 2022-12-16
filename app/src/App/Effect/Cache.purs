@@ -2,10 +2,8 @@ module Registry.App.Effect.Cache where
 
 import Registry.App.Prelude hiding (Manifest(..))
 
-import Data.Argonaut.Core (Json)
-import Data.Argonaut.Core as Argonaut.Core
+import Data.Argonaut.Core as Argonaut
 import Data.Argonaut.Parser as Argonaut.Parser
-import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
@@ -274,7 +272,7 @@ handleCacheFs cacheRef handler = case _ of
         Log.debug $ "Found " <> id <> " in memory cache."
         case CA.decode (cacheEntryCodec codec) json of
           Left error -> do
-            Log.debug $ "Failed to decode JSON for " <> id <> ":\n" <> Argonaut.Core.stringify json <> ").\nParsing failed with error: " <> CA.printJsonDecodeError error <> "\nRemoving from cache!"
+            Log.debug $ "Failed to decode JSON for " <> id <> ":\n" <> Argonaut.stringify json <> ").\nParsing failed with error: " <> CA.printJsonDecodeError error <> "\nRemoving from cache!"
             deleteMemoryAndDisk id
             pure $ reply Nothing
           Right decoded ->
@@ -290,7 +288,7 @@ handleCacheFs cacheRef handler = case _ of
         pure next
       _ -> do
         modifyMemory (Map.insert id encoded)
-        Run.liftAff (Aff.attempt (FS.Aff.writeTextFile UTF8 (safePath id) (Argonaut.Core.stringify encoded))) >>= case _ of
+        Run.liftAff (Aff.attempt (FS.Aff.writeTextFile UTF8 (safePath id) (Argonaut.stringify encoded))) >>= case _ of
           Left error -> Log.debug $ "Unable to write cache entry to file system: " <> Aff.message error
           Right _ -> Log.debug "Wrote cache entry!"
         pure next

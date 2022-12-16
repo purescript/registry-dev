@@ -23,6 +23,8 @@ module Registry.App.Effect.GitHub
 import Registry.App.Prelude
 
 import Control.Monad.Except as Except
+import Data.Argonaut.Parser as Argonaut.Parser
+import Data.Codec.Argonaut as CA
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Formatter.DateTime as Formatter.DateTime
@@ -38,8 +40,6 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify (NOTIFY)
 import Registry.App.Effect.Notify as Notify
-import Registry.App.Json (JsonCodec)
-import Registry.App.Json as Json
 import Registry.Constants as Constants
 import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit (Address, GitHubError(..), GitHubRoute(..), GitHubToken(..), IssueNumber(..), Octokit, Request, Tag, Team)
@@ -82,10 +82,10 @@ getJsonFile :: forall r a. Address -> String -> JsonCodec a -> FilePath -> Run (
 getJsonFile address ref codec path = do
   content <- getContent address ref path
   let
-    attemptDecode inner = case Json.jsonParser (JsonRepair.tryRepair inner) of
+    attemptDecode inner = case Argonaut.Parser.jsonParser (JsonRepair.tryRepair inner) of
       Left jsonError -> Left $ Octokit.DecodeError $ "Not Json: " <> jsonError
-      Right json -> case Json.decode codec json of
-        Left decodeError -> Left $ Octokit.DecodeError $ Json.printJsonDecodeError decodeError
+      Right json -> case CA.decode codec json of
+        Left decodeError -> Left $ Octokit.DecodeError $ CA.printJsonDecodeError decodeError
         Right decoded -> Right decoded
   pure $ attemptDecode =<< content
 
@@ -261,7 +261,7 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
         Nothing -> do
           Log.debug $ "No cache entry for route " <> Octokit.printGitHubRoute route
           result <- requestWithBackoff octokit githubRequest
-          Cache.put (Cache.Request route) (map (Json.encode codec) result)
+          Cache.put (Cache.Request route) (map (CA.encode codec) result)
           pure result
 
         Just cached -> case cached.value of
@@ -311,16 +311,16 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
                     Log.error $ "Failed to request " <> printed <> " due to an API error with status " <> show err.statusCode <> ". Writing it to cache: " <> err.message
                   DecodeError err -> do
                     Log.error $ "Failed to decode response to request " <> printed <> ". Writing decoding error to cache: " <> err
-                Cache.put (Cache.Request route) (map (Json.encode codec) result)
+                Cache.put (Cache.Request route) (map (CA.encode codec) result)
                 pure result
               Right valid -> do
-                Cache.put (Cache.Request route) (Right (Json.encode codec valid))
+                Cache.put (Cache.Request route) (Right (CA.encode codec valid))
                 pure result
 
-          Right value -> case Json.decode codec value of
+          Right value -> case CA.decode codec value of
             Left error -> do
               Log.debug $ "Unable to decode cache entry, returning error..."
-              pure $ Left $ DecodeError $ Json.printJsonDecodeError error
+              pure $ Left $ DecodeError $ CA.printJsonDecodeError error
             Right accepted ->
               pure $ Right accepted
 

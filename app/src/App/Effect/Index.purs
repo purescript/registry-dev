@@ -2,8 +2,10 @@ module Registry.App.Effect.Index where
 
 import Registry.App.Prelude
 
+import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
+import Data.Codec.Argonaut as CA
 import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
@@ -18,7 +20,6 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify (NOTIFY)
 import Registry.App.Effect.Notify as Notify
-import Registry.App.Json as Json
 import Registry.Constants as Constants
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Manifest as Manifest
@@ -96,7 +97,7 @@ handleIndexGitHub { registry, registryIndex } = case _ of
       Notify.exit $ "Some entries in the metadata directory are not valid package names:" <> Array.foldMap (append "\n  - ") packages.fail
 
     entries <- Run.liftAff $ map partitionEithers $ for packages.success \name -> do
-      result <- Json.readJsonFile Metadata.codec (Path.concat [ registry, Constants.packageMetadataDirectory, PackageName.print name <> ".json" ])
+      result <- readJsonFile Metadata.codec (Path.concat [ registry, Constants.packageMetadataDirectory, PackageName.print name <> ".json" ])
       pure $ map (Tuple name) result
     unless (Array.null entries.fail) do
       Notify.exit $ append "The metadata directory is invalid (some package metadata cannot be decoded):" $ Array.foldMap (append "\n  - ") entries.fail
@@ -111,10 +112,10 @@ handleIndexGitHub { registry, registryIndex } = case _ of
       Left fsError -> do
         Log.debug $ "Could not find metadata file: " <> Aff.message fsError
         pure $ reply Nothing
-      Right contents -> case Json.jsonParser contents of
+      Right contents -> case Argonaut.Parser.jsonParser contents of
         Left jsonError -> Notify.exit $ "Metadata file at path " <> path <> " is not valid JSON: " <> jsonError
-        Right parsed -> case Json.decode Metadata.codec parsed of
-          Left decodeError -> Notify.exit $ "Metadata file at path " <> path <> " could not be parsed: " <> Json.printJsonDecodeError decodeError
+        Right parsed -> case CA.decode Metadata.codec parsed of
+          Left decodeError -> Notify.exit $ "Metadata file at path " <> path <> " could not be parsed: " <> CA.printJsonDecodeError decodeError
           Right metadata -> do
             Log.debug $ "Successfully read metadata for " <> PackageName.print name
             pure $ reply $ Just metadata
@@ -122,7 +123,7 @@ handleIndexGitHub { registry, registryIndex } = case _ of
   WriteMetadata name metadata next -> do
     Log.debug $ "Writing metadata for " <> PackageName.print name
     let path = Path.concat [ registry, Constants.packageMetadataDirectory, PackageName.print name <> ".json" ]
-    Run.liftAff (Aff.attempt (Json.writeJsonFile Metadata.codec path metadata)) >>= case _ of
+    Run.liftAff (Aff.attempt (writeJsonFile Metadata.codec path metadata)) >>= case _ of
       Left fsError -> Notify.exit $ "Could not write metadata file to " <> path <> " due to an fs error: " <> Aff.message fsError
       Right _ -> GitHub.commitMetadata name
     pure next
@@ -171,7 +172,7 @@ handleIndexGitHub { registry, registryIndex } = case _ of
 
   WriteManifest manifest@(Manifest { name, version }) next -> do
     let formatted = formatPackageVersion name version
-    Log.debug $ "Writing manifest for " <> formatted <> ":\n" <> Json.printJson Manifest.codec manifest
+    Log.debug $ "Writing manifest for " <> formatted <> ":\n" <> printJson Manifest.codec manifest
     Run.liftAff (ManifestIndex.insertIntoEntryFile registryIndex manifest) >>= case _ of
       Left error -> Notify.exit $ "Could not insert manifest for " <> formatted <> " into its entry file due to an error: " <> error
       Right _ -> do

@@ -7,7 +7,6 @@ import ArgParse.Basic as Arg
 import Control.Monad.Except as Except
 import Control.Monad.Reader (ask, asks)
 import Data.Array as Array
-import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Map as Map
 import Data.String as String
@@ -21,7 +20,6 @@ import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Cache as Cache
-import Registry.App.Json as Json
 import Registry.App.PackageStorage as PackageStorage
 import Registry.App.RegistryM (Env, RegistryM, readPackagesMetadata, runRegistryM)
 import Registry.Constants as Constants
@@ -113,7 +111,7 @@ main = launchAff_ do
 
     packages <- case mode of
       Package name version -> pure $ Map.singleton name [ version ]
-      File path -> liftAff (Json.readJsonFile deletePackagesCodec path) >>= case _ of
+      File path -> liftAff (readJsonFile deletePackagesCodec path) >>= case _ of
         Left err -> Console.log err *> liftEffect (Process.exit 1)
         Right values -> pure values
 
@@ -192,7 +190,7 @@ deleteVersion name version = do
               , unpublished = Map.delete version oldMetadata.unpublished
               }
           registryDir <- asks _.registry
-          liftAff (Aff.attempt (Json.writeJsonFile Metadata.codec (API.metadataFile registryDir name) newMetadata)) >>= case _ of
+          liftAff (Aff.attempt (writeJsonFile Metadata.codec (API.metadataFile registryDir name) newMetadata)) >>= case _ of
             Left err -> pure $ Left $ FailedUpdateMetadata $ Aff.message err
             Right _ -> do
               Console.log $ "Updating manifest index for " <> formatted

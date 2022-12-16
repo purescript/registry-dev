@@ -12,7 +12,6 @@ import Prelude
 
 import Data.Argonaut.Core (Json)
 import Data.Bifunctor (lmap)
-import Data.Codec as Codec
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.DateTime (Date, DateTime)
@@ -50,16 +49,16 @@ import Registry.Version as Version
 -- | using the RFC3339String format). The string will be modified if you read
 -- | and then write.
 iso8601DateTime :: JsonCodec DateTime
-iso8601DateTime = Codec.codec' decode encode
+iso8601DateTime = CA.codec' decode encode
   where
   encode :: DateTime -> Json
   encode =
     Formatter.DateTime.format Internal.Format.iso8601DateTime
-      >>> Codec.encode CA.string
+      >>> CA.encode CA.string
 
   decode :: Json -> Either CA.JsonDecodeError DateTime
   decode json = do
-    string <- Codec.decode CA.string json
+    string <- CA.decode CA.string json
     case Internal.Format.rfc3339ToISO8601 string of
       Left err -> Left $ CA.TypeMismatch $ "Unable to parse input as ISO8601: " <> err
       Right fixed ->
@@ -70,17 +69,17 @@ iso8601DateTime = Codec.codec' decode encode
 -- | A codec for date times that encode as JSON strings in the ISO8601 date
 -- | format, ie. YYYY-MM-DD
 iso8601Date :: JsonCodec Date
-iso8601Date = Codec.codec' decode encode
+iso8601Date = CA.codec' decode encode
   where
   encode :: Date -> Json
   encode =
     flip DateTime.DateTime bottom
       >>> Formatter.DateTime.format Internal.Format.iso8601Date
-      >>> Codec.encode CA.string
+      >>> CA.encode CA.string
 
   decode :: Json -> Either CA.JsonDecodeError Date
   decode json = do
-    string <- Codec.decode CA.string json
+    string <- CA.decode CA.string json
     dateTime <- lmap (CA.TypeMismatch <<< append "YYYY-MM-DD: ") (Formatter.DateTime.unformat Internal.Format.iso8601Date string)
     pure $ DateTime.date dateTime
 
@@ -88,14 +87,14 @@ iso8601Date = Codec.codec' decode encode
 -- |
 -- | A codec for `String` values with an explicit limited length.
 limitedString :: Int -> JsonCodec String
-limitedString limit = Codec.codec' decode encode
+limitedString limit = CA.codec' decode encode
   where
   encode :: String -> Json
-  encode = Codec.encode CA.string
+  encode = CA.encode CA.string
 
   decode :: Json -> Either CA.JsonDecodeError String
   decode json = do
-    string <- Codec.decode CA.string json
+    string <- CA.decode CA.string json
     if String.length string > limit then
       Left $ CA.TypeMismatch $ "LimitedString: Exceeds limit of " <> Int.toStringAs Int.decimal limit <> " characters."
     else
@@ -106,14 +105,14 @@ limitedString limit = Codec.codec' decode encode
 -- | A codec for `String` values that can be parsed into a `String`, failing
 -- | with the parse error message if invalid.
 parsedString :: String -> Parser String String -> JsonCodec String
-parsedString label parser = Codec.codec' decode encode
+parsedString label parser = CA.codec' decode encode
   where
   encode :: String -> Json
-  encode = Codec.encode CA.string
+  encode = CA.encode CA.string
 
   decode :: Json -> Either CA.JsonDecodeError String
   decode json = do
-    string <- Codec.decode CA.string json
+    string <- CA.decode CA.string json
     case Parsing.runParser string parser of
       Left error -> Left $ CA.TypeMismatch $ label <> ": " <> Parsing.parseErrorMessage error
       Right value -> pure value
@@ -137,19 +136,19 @@ versionMap = strMap "Version" (Either.hush <<< Version.parse) Version.print
 -- | A codec for `Map` structures that have keys that can be encoded as strings.
 -- | Represented as an object in JSON.
 strMap :: forall k a. Ord k => String -> (String -> Maybe k) -> (k -> String) -> JsonCodec a -> JsonCodec (Map k a)
-strMap type_ parse print valueCodec = Codec.codec' decode encode
+strMap type_ parse print valueCodec = CA.codec' decode encode
   where
   encode :: Map k a -> Json
-  encode m = Codec.encode CA.jobject $ Object.runST do
+  encode m = CA.encode CA.jobject $ Object.runST do
     obj <- Object.ST.new
-    forWithIndex_ m \k v -> Object.ST.poke (print k) (Codec.encode valueCodec v) obj
+    forWithIndex_ m \k v -> Object.ST.poke (print k) (CA.encode valueCodec v) obj
     pure obj
 
   decode :: Json -> Either CA.JsonDecodeError (Map k a)
   decode json = do
-    array :: Array _ <- Object.toUnfoldable <$> Codec.decode CA.jobject json
+    array :: Array _ <- Object.toUnfoldable <$> CA.decode CA.jobject json
     parsed <- for array \(Tuple k v) -> do
       key <- Either.note (CA.AtKey k (CA.TypeMismatch type_)) (parse k)
-      val <- lmap (CA.AtKey k) (Codec.decode valueCodec v)
+      val <- lmap (CA.AtKey k) (CA.decode valueCodec v)
       pure $ Tuple key val
     pure $ Map.fromFoldable parsed

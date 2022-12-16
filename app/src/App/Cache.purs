@@ -9,7 +9,6 @@ module Registry.App.Cache
 import Registry.App.Prelude
 
 import Data.Array as Array
-import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
@@ -23,7 +22,6 @@ import JSURI (encodeURIComponent)
 import Node.FS.Aff as FSA
 import Node.FS.Sync as FS
 import Node.Path as Path
-import Registry.App.Json as Json
 import Registry.Foreign.FSExtra as FSE
 import Registry.Internal.Codec as Internal.Codec
 
@@ -65,11 +63,11 @@ readJsonEntry codec key { read } =
   read key >>= case _ of
     Left err -> pure (Left err)
     Right { modified, value } -> pure do
-      parsedValue <- Json.parseJson codec value
+      parsedValue <- lmap CA.printJsonDecodeError $ parseJson codec value
       Right { modified, value: parsedValue }
 
 writeJsonEntry :: forall a. JsonCodec a -> String -> a -> Cache -> Effect Unit
-writeJsonEntry codec key value { write } = write key (Json.stringifyJson codec value)
+writeJsonEntry codec key value { write } = write key (stringifyJson codec value)
 
 useCache :: FilePath -> Aff Cache
 useCache cacheDir = do
@@ -78,7 +76,7 @@ useCache cacheDir = do
   entries <- do
     files <- FSA.readdir cacheDir
     for files \file -> do
-      contents <- Json.readJsonFile cacheEntryCodec (entryPath cacheDir (CacheKey file))
+      contents <- readJsonFile cacheEntryCodec (entryPath cacheDir (CacheKey file))
       case contents of
         Left err -> do
           Console.debug $ "Failed to decode entry (" <> file <> "): " <> err
@@ -93,7 +91,7 @@ useCache cacheDir = do
     write key value = do
       utcTime <- nowUTC
       let entry = { modified: utcTime, value }
-      FS.writeTextFile UTF8 (entryPath cacheDir key) (Json.stringifyJson cacheEntryCodec entry)
+      FS.writeTextFile UTF8 (entryPath cacheDir key) (stringifyJson cacheEntryCodec entry)
       Ref.modify_ (Map.insert key entry) cacheRef
 
     read :: CacheKey -> Effect (Either String CacheEntry)
@@ -103,9 +101,9 @@ useCache cacheDir = do
         Nothing -> do
           try (FS.readTextFile UTF8 (entryPath cacheDir key)) >>= case _ of
             Left err -> pure $ Left $ Aff.message err
-            Right contents -> case Json.parseJson cacheEntryCodec contents of
+            Right contents -> case parseJson cacheEntryCodec contents of
               Left err ->
-                remove key $> Left err
+                remove key $> Left (CA.printJsonDecodeError err)
               Right entry ->
                 pure $ Right entry
         Just entry -> do

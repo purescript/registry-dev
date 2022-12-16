@@ -18,7 +18,6 @@ import Control.Alternative (guard)
 import Control.Monad.Reader (ReaderT, asks)
 import Control.Monad.Reader as ReaderT
 import Data.Array as Array
-import Data.Bitraversable (ltraverse)
 import Data.DateTime as DateTime
 import Data.Filterable (partitionMap)
 import Data.Foldable (foldl)
@@ -38,7 +37,6 @@ import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.Tar as Tar
 import Registry.App.CLI.Wget as Wget
-import Registry.App.Json as Json
 import Registry.App.RegistryM (RegistryM, throwWithComment)
 import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
@@ -73,7 +71,7 @@ readLatestPackageSet = do
     Nothing -> throwWithComment "No existing package set."
     Just version -> do
       path <- getPackageSetPath version
-      liftAff (Json.readJsonFile PackageSet.codec path) >>= case _ of
+      liftAff (readJsonFile PackageSet.codec path) >>= case _ of
         Left err -> throwWithComment $ "Could not decode latest package set: " <> err
         Right set -> pure set
 
