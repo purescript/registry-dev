@@ -334,11 +334,11 @@ bowerfileCodec :: JsonCodec Bowerfile
 bowerfileCodec = Profunctor.dimap toRep fromRep $ Json.object "Bowerfile"
   { description: CA.Record.optional CA.string
   , dependencies: CA.Record.optional dependenciesCodec
-  , license: licenseCodec
+  , license: CA.Record.optional licenseCodec
   }
   where
-  toRep (Bowerfile fields) = fields { dependencies = Just fields.dependencies }
-  fromRep fields = Bowerfile $ fields { dependencies = fromMaybe Map.empty fields.dependencies }
+  toRep (Bowerfile fields) = fields { dependencies = Just fields.dependencies, license = Just fields.license }
+  fromRep fields = Bowerfile $ fields { dependencies = fromMaybe Map.empty fields.dependencies, license = fromMaybe [] fields.license }
 
   dependenciesCodec :: JsonCodec (Map RawPackageName RawVersionRange)
   dependenciesCodec = rawPackageNameMapCodec rawVersionRangeCodec
