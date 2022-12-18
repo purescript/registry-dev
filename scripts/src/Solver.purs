@@ -3,19 +3,19 @@ module Registry.Scripts.Solver where
 import Registry.App.Prelude
 
 import Data.Array as Array
+import Data.Codec.Argonaut as J
+import Data.Codec.Argonaut.Compat as JC
 import Data.DateTime.Instant as Instant
 import Data.Foldable (foldMap)
 import Data.Map as Map
 import Data.Newtype (unwrap)
 import Data.String as String
+import Data.These (These(..), these)
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Exception (throw)
 import Effect.Exception as Exception
 import Effect.Now (now)
 import Effect.Ref as Ref
-import Registry.Foreign.Octokit (GitHubToken(..))
-import Registry.Foreign.Octokit as GitHub
-import Registry.Foreign.FSExtra as FS.Extra
 import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
@@ -24,11 +24,56 @@ import Registry.App.Cache as Cache
 import Registry.App.Json as Json
 import Registry.App.PackageIndex (readManifestIndexFromDisk)
 import Registry.App.RegistryM (runRegistryM)
+import Registry.Internal.Codec as Codec
+import Registry.Foreign.FSExtra as FS.Extra
+import Registry.Foreign.Octokit (GitHubToken(..))
+import Registry.Foreign.Octokit as GitHub
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
+import Registry.Range as Range
 import Registry.Scripts.PackageDeleter (deletePackagesCodec)
 import Registry.Solver as Solver
 import Registry.Version as Version
+
+unionWithMapThese :: forall k a b c. Ord k =>
+  (k -> These a b -> Maybe c) ->
+  Map k a -> Map k b -> Map k c
+unionWithMapThese f ma mb =
+  let
+    combine = case _, _ of
+      This a, That b -> Both a b
+      That b, This a -> Both a b
+      Both a b, _ -> Both a b
+      This a, Both _ b -> Both a b
+      That b, Both a _ -> Both a b
+      That b, That _ -> That b
+      This a, This _ -> This a
+  in Map.mapMaybeWithKey f $ Map.unionWith combine (This <$> ma) (That <$> mb)
+
+diff ::
+  Map PackageName (Map Version (Map PackageName Range)) ->
+  Map PackageName (Map Version (Map PackageName Range)) ->
+  Map PackageName (Map Version (Map PackageName (These Range Range)))
+diff = unionWithMapThese \_ -> filtered <<< these
+  do map (map This)
+  do map (map That)
+  do
+    unionWithMapThese \_ -> filtered <<< these
+      do map This
+      do map That
+      do
+        unionWithMapThese \_ -> these
+          do Just <<< This
+          do Just <<< That
+          \l r ->
+            if l == r then Nothing else Just (Both l r)
+  where
+  filtered :: forall k v. Ord k => Map k v -> Maybe (Map k v)
+  filtered v | Map.isEmpty v = Nothing
+  filtered v = Just v
+
+fromThese :: forall a. These a a -> Array (Maybe a)
+fromThese = these (\l -> [Just l, Nothing]) (\r -> [Nothing, Just r]) (\l r -> [Just l, Just r])
 
 main :: Effect Unit
 main = launchAff_ do
@@ -114,11 +159,14 @@ main = launchAff_ do
   log $ "Reading registry index1 from " <> env.registryIndex <> " …"
   index1 <- runRegistryM env readManifestIndexFromDisk
 
-  -- log $ "Reading registry index2 from tmp/registry-index …"
-  -- index2 <- runRegistryM (env { registryIndex = Path.concat [ "tmp", "registry-index" ] }) readManifestIndexFromDisk
+  log $ "Reading registry index2 from tmp/registry-index …"
+  index2 <- runRegistryM (env { registryIndex = Path.concat [ "tmp", "registry-index" ] }) readManifestIndexFromDisk
 
-  --let registry = map (unwrap >>> _.dependencies) <$> Map.unionWith Map.union (ManifestIndex.toMap index1) (ManifestIndex.toMap index2)
-  let registry = map (unwrap >>> _.dependencies) <$> ManifestIndex.toMap index1
+  let reg i = map (unwrap >>> _.dependencies) <$> i
+  let index3 = Map.unionWith Map.union (ManifestIndex.toMap index1) (ManifestIndex.toMap index2)
+  let registry = reg $ ManifestIndex.toMap index1
+
+  Json.writeJsonFile (Codec.packageMap (Codec.versionMap (Codec.packageMap (J.array (JC.maybe Range.codec))))) "tmp/registry_index_diff.json" (map map map fromThese <$> diff (reg $ ManifestIndex.toMap index2) (reg index3))
 
   action registry
   where
