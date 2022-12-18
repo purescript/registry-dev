@@ -156,6 +156,12 @@ deleteVersion name version = do
     Nothing -> pure $ Left $ FailedUpdateMetadata "No existing metadata found."
     Just (Metadata oldMetadata) -> do
       let
+        publishment = case Map.lookup version oldMetadata.published, Map.lookup version oldMetadata.unpublished of
+          Just _, Just _ -> unsafeCrashWith $ "Package version was both published and unpublished: " <> formatted
+          Just published, Nothing -> Just (Right published)
+          Nothing, Just unpublished -> Just (Left unpublished)
+          Nothing, Nothing -> Nothing
+      let
         newMetadata = Metadata $ oldMetadata
           { published = Map.delete version oldMetadata.published
           , unpublished = Map.delete version oldMetadata.unpublished
@@ -168,4 +174,14 @@ deleteVersion name version = do
           registryIndexDir <- asks _.registryIndex
           liftAff (ManifestIndex.removeFromEntryFile registryIndexDir name version) >>= case _ of
             Left err -> pure $ Left $ FailedUpdateIndex err
-            Right _ -> pure $ Right unit
+            Right _ -> Right unit <$ case publishment of
+              Nothing -> Console.log "Why were you deleting a never published package version?"
+              Just (Left _) -> Console.log "Why were you deleting an unpublished package version?"
+              Just (Right manifest) -> do
+                API.publish API.Importer
+                  { location: Just oldMetadata.location
+                  , name: name
+                  , ref: manifest.ref
+                  , compiler: unsafeFromRight $ Version.parse "0.15.4"
+                  , resolutions: Nothing
+                  } newMetadata
