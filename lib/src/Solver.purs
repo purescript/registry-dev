@@ -191,7 +191,7 @@ printErrorAt indent = case _ of
           , indent
           , "- "
           , Version.print version
-          , ": "
+          , ":"
           , "\n"
           , indent <> "  "
           , printErrorAt (indent <> "  ") nested
