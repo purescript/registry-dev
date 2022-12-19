@@ -65,8 +65,8 @@ initializeGitHub = do
   pacchettibottiKeys <- readPacchettiBottiKeys
 
   token <- liftEffect do
-    Process.lookupEnv "GITHUB_TOKEN"
-      >>= maybe (Exception.throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
+    Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
+      >>= maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment") (pure <<< GitHubToken)
 
   octokit <- liftEffect $ Octokit.newOctokit token
 

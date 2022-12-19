@@ -1,7 +1,7 @@
 package:
   name: registry-app
   run:
-    main: Registry.Main
+    main: Registry.App.Main
   publish:
     version: 0.0.1
     license: BSD-3-Clause
