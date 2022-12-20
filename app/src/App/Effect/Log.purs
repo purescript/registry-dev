@@ -80,11 +80,18 @@ error = log Error <<< toLog
 handleLogTerminal :: forall a r. LogVerbosity -> Log a -> Run (AFF + r) a
 handleLogTerminal verbosity = case _ of
   Log level message next -> do
-    let printed = Dodo.print Ansi.ansiGraphics Dodo.twoSpaces message
+    let
+      printed = Dodo.print Ansi.ansiGraphics Dodo.twoSpaces $ case level of
+        Debug -> Ansi.foreground Ansi.Blue message
+        Info -> message
+        Warn -> Ansi.foreground Ansi.Yellow (Dodo.text "[WARNING] ") <> message
+        Error -> Ansi.foreground Ansi.Red (Dodo.text "[ERROR] ") <> message
+
     Run.liftAff case verbosity of
       Quiet -> pure unit
       Normal -> when (level /= Debug) (Console.log printed)
       Verbose -> Console.log printed
+
     pure next
 
 -- | Write logs to the specified logfile.

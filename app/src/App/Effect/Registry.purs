@@ -133,6 +133,7 @@ type RegistryEnv =
   , legacyPackageSets :: FilePath
   , writeStrategy :: WriteStrategy
   , pullMode :: PullMode
+  -- TODO: Replace with a time-limited cache.
   , timer :: Ref (Maybe DateTime)
   }
 
@@ -296,7 +297,7 @@ handleRegistryGit env = case _ of
     ifElapsed env.timer (Minutes 5.0) do
       Log.debug "Timer expired on repo fetch."
       fetchGitHubRepo Constants.registry env.pullMode env.registry
-    allMetadata <- readAllMetadataFromDisk env.registry
+    allMetadata <- readAllMetadataFromDisk metadataDir
     pure $ reply allMetadata
 
   ReadLatestPackageSet reply -> do
@@ -450,7 +451,9 @@ handleRegistryGit env = case _ of
         ]
 
     case env.writeStrategy of
-      Write -> pure next
+      Write -> do
+        Log.info $ "Created a legacy package set, but not committing because write mode was set to Write"
+        pure next
       WriteCommit token -> Run.liftAff (commitLegacyPackageSets { token, files, tags, message, push: false }) >>= case _ of
         Left error -> do
           Log.error $ "Could not commit legacy package set " <> name <> " due to a git error: " <> error
@@ -463,7 +466,7 @@ handleRegistryGit env = case _ of
           Log.error $ "Could not commit and mirror legacy package set " <> name <> " due to a git error: " <> error
           Log.exit $ "Could not mirror legacy package set."
         Right _ -> do
-          Log.debug $ "Successfully committed and pushed package set " <> name
+          Log.info $ "Successfully committed and pushed package set " <> name
           pure next
 
   ReadLegacyRegistry reply -> do
@@ -525,19 +528,20 @@ handleRegistryGit env = case _ of
       let couldNotSyncError = "Could not sync " <> PackageName.print name <> " with the legacy registry files."
       Run.liftAff $ writeJsonFile (CA.Common.strMap CA.string) path packages
       case env.writeStrategy of
-        Write -> pure unit
+        Write ->
+          Log.info $ "Created legacy registry file, but did not commit because write mode was set to Write"
         WriteCommit token -> Run.liftAff (commitRegistry { token, path, message, push: false }) >>= case _ of
           Left error -> do
             Log.error $ "Could not commit legacy registry file " <> file <> " due to a git error: " <> error
             Log.exit couldNotSyncError
           Right _ -> do
-            Log.debug $ "Successfully committed legacy registry file " <> file <> " (did not push)"
+            Log.info $ "Successfully committed legacy registry file " <> file <> " (did not push)"
         WriteCommitPush token -> Run.liftAff (commitRegistry { token, path, message, push: true }) >>= case _ of
           Left error -> do
             Log.error $ "Could not commit and push legacy registry file " <> file <> " due to a git error: " <> error
             Log.exit couldNotSyncError
           Right _ -> do
-            Log.debug $ "Successfully committed and pushed legacy registry file " <> file
+            Log.info $ "Successfully committed and pushed legacy registry file " <> file
 
     pure next
   where
@@ -651,7 +655,8 @@ fetchGitHubRepo address mode path = Run.liftEffect (FS.Sync.exists path) >>= cas
           Right _ -> pure unit
 
       ForceClean -> do
-        Log.debug $ "Cleaning local checkout of " <> prettyRepo <> " because force-clean mode was specified."
+        unless isClean do
+          Log.info $ "Cleaning local checkout of " <> prettyRepo <> " because force-clean mode was specified."
 
         let
           cleanLocal = do
@@ -676,9 +681,19 @@ fetchGitHubRepo address mode path = Run.liftEffect (FS.Sync.exists path) >>= cas
 -- | Given the file path of a local manifest index on disk, read its contents.
 readManifestIndexFromDisk :: forall r. FilePath -> Run (LOG + LOG_EXCEPT + AFF + r) ManifestIndex
 readManifestIndexFromDisk root = do
-  paths <- Run.liftAff $ FastGlob.match' root [ "**/*" ] { include: FastGlob.FilesOnly, ignore: [ "config.json" ] }
-  let packages = partitionEithers $ map (PackageName.parse <<< Path.basename) paths.succeeded
-  Log.warn $ "Some entries in the manifest index are not valid package names: " <> Array.foldMap (append "\n  - ") packages.fail
+  paths <- Run.liftAff $ FastGlob.match' root [ "**/*" ] { include: FastGlob.FilesOnly, ignore: [ "config.json", "README.md" ] }
+
+  let
+    packages = do
+      let parsePath = Path.basename >>> \path -> lmap (Tuple path) (PackageName.parse path)
+      partitionEithers $ map parsePath paths.succeeded
+
+  unless (Array.null packages.fail) do
+    Log.warn $ Array.fold
+      [ "Some entries in the manifest index are not valid package names: "
+      , Array.foldMap (\(Tuple path err) -> "\n  - " <> path <> ": " <> err) packages.fail
+      ]
+
   entries <- Run.liftAff $ map partitionEithers $ for packages.success (ManifestIndex.readEntryFile root)
   case entries.fail of
     [] -> case ManifestIndex.fromSet $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray entries.success of
@@ -704,7 +719,7 @@ readManifestIndexFromDisk root = do
 -- | Given the file path of a directory of metadata on disk, read its contents.
 readAllMetadataFromDisk :: forall r. FilePath -> Run (LOG + LOG_EXCEPT + AFF + r) (Map PackageName Metadata)
 readAllMetadataFromDisk metadataDir = do
-  let exitMessage = "Could not read metadata for all packages"
+  let exitMessage = "Could not read metadata for all packages."
   files <- Run.liftAff (Aff.attempt (FS.Aff.readdir metadataDir)) >>= case _ of
     Left err -> do
       Log.error $ "Could not read the metadata directory at path " <> metadataDir <> " due to an fs error: " <> Aff.message err
@@ -712,10 +727,18 @@ readAllMetadataFromDisk metadataDir = do
     Right paths ->
       pure paths
 
-  let stripSuffix = note "No .json suffix" <<< String.stripSuffix (String.Pattern ".json")
-  let packages = partitionEithers (map (PackageName.parse <=< stripSuffix) files)
+  let
+    parsePath path = lmap (Tuple path) do
+      base <- note "No .json suffix" $ String.stripSuffix (String.Pattern ".json") path
+      name <- PackageName.parse base
+      pure name
+
+  let packages = partitionEithers (map parsePath files)
   unless (Array.null packages.fail) do
-    Log.error $ "Some entries in the metadata directory are not valid package names:" <> Array.foldMap (append "\n  - ") packages.fail
+    Log.error $ Array.fold
+      [ "Some entries in the metadata directory are not valid package names:"
+      , Array.foldMap (\(Tuple path err) -> "\n  - " <> path <> ": " <> err) packages.fail
+      ]
     Log.exit exitMessage
 
   entries <- Run.liftAff $ map partitionEithers $ for packages.success \name -> do

@@ -65,9 +65,8 @@ main = launchAff_ do
       { legacyPackageSets: Path.concat [ scratchDir, "package-sets" ]
       , registry: Path.concat [ scratchDir, "registry" ]
       , registryIndex: Path.concat [ scratchDir, "registry-index" ]
-      , pullMode: Autostash
-      -- Use Write if you do not want this to actually commit and push.
-      , writeStrategy: Write -- CommitPush token
+      , pullMode: ForceClean
+      , writeStrategy: WriteCommitPush token
       , timer: unsafePerformEffect (Ref.new Nothing)
       }
 

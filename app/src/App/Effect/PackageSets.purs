@@ -85,6 +85,8 @@ type PackageSetsEnv =
 handlePackageSetsAff :: forall r a. PackageSetsEnv -> PackageSets a -> Run (REGISTRY + STORAGE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
 handlePackageSetsAff env = case _ of
   UpgradeAtomic oldSet@(PackageSet { packages }) compiler changes reply -> do
+    Log.info $ "Performing atomic upgrade of package set " <> Version.print (un PackageSet oldSet).version
+
     -- It is possible to reuse a workdir when processing package set batches, so
     -- we need to clean up before doing work.
     for_ [ packagesWorkDir, outputWorkDir, backupWorkDir ] \dir -> do
@@ -110,6 +112,7 @@ handlePackageSetsAff env = case _ of
         pure (reply (Just newSet))
 
   UpgradeSequential oldSet@(PackageSet { packages }) compiler changes reply -> do
+    Log.info $ "Performing sequential upgrade of package set " <> Version.print (un PackageSet oldSet).version
     index <- Registry.readAllManifests
 
     let
@@ -528,13 +531,13 @@ printRejections rejections = do
   let { left, right } = Filterable.partitionMap sift rejections
   Array.fold
     [ Monoid.guard (not Map.isEmpty left) do
-        let init = "Cannot be removed:\n"
+        let init = "Cannot be removed:"
         left # flip foldlWithIndex init \name acc reason ->
-          acc <> "  - " <> printRemoval name reason <> "\n"
+          acc <> "\n  - " <> printRemoval name reason
     , Monoid.guard (not Map.isEmpty right) do
-        let init = "Cannot be added or updated:\n"
+        let init = "Cannot be added or updated:"
         right # flip foldlWithIndex init \name acc val ->
-          acc <> "  - " <> printUpdate name val <> "\n"
+          acc <> "\n  - " <> printUpdate name val
     ]
   where
   printUpdate name { version, reason } =

@@ -7,13 +7,33 @@ import ArgParse.Basic as Arg
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
+import Data.FoldableWithIndex (foldMapWithIndex)
+import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
-import Data.Time.Duration (Hours)
+import Data.String as String
+import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
-import Registry.App.Effect.Registry (REGISTRY)
+import Effect.Class.Console as Console
+import Effect.Ref as Ref
+import Effect.Unsafe (unsafePerformEffect)
+import Node.Path as Path
+import Node.Process as Process
+import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Env as Env
+import Registry.App.Effect.GitHub as GitHub
+import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
+import Registry.App.Effect.Log as Log
+import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
+import Registry.App.Effect.PackageSets as PackageSets
+import Registry.App.Effect.Registry (PullMode(..), REGISTRY, RegistryEnv, WriteStrategy(..))
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Storage as Storage
+import Registry.Foreign.FSExtra as FS.Extra
+import Registry.Foreign.Octokit as Octokit
+import Registry.Internal.Format as Internal.Format
 import Run (EFFECT, Run)
 import Run as Run
+import Run.Except as Run.Except
 
 data PublishMode = GeneratePackageSet | CommitPackageSet
 
@@ -31,14 +51,12 @@ parser = Arg.choose "command"
 
 main :: Effect Unit
 main = Aff.launchAff_ do
+  _ <- Env.loadEnvFile ".env"
+  env <- liftEffect Env.readEnvVars
 
-  {-
-  Console.log "Loading env..."
-  _ <- API.loadEnv
+  FS.Extra.ensureDirectory scratchDir
 
-  FS.Extra.ensureDirectory API.scratchDir
-
-  args <- Array.drop 2 <$> liftEffect Node.Process.argv
+  args <- Array.drop 2 <$> liftEffect Process.argv
   let description = "A script for updating the package sets."
   mode <- case Arg.parseArgs "package-set-updater" description parser args of
     Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
@@ -46,83 +64,93 @@ main = Aff.launchAff_ do
 
   Console.log "Starting package set publishing..."
 
-  githubToken <- liftEffect do
-    Node.Process.lookupEnv "GITHUB_TOKEN"
-      >>= maybe (Exception.throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHubToken)
+  { octokit, writeStrategy } <- case mode of
+    GeneratePackageSet -> do
+      token <- case env.githubToken of
+        Nothing -> Aff.throwError $ Aff.error "GITHUB_TOKEN not defined in the environment."
+        Just token -> pure token
+      octokit <- liftEffect $ Octokit.newOctokit token
+      pure { writeStrategy: Write, octokit }
 
-  octokit <- liftEffect $ Octokit.newOctokit githubToken
-  metadataRef <- liftEffect $ Ref.new Map.empty
+    CommitPackageSet -> do
+      token <- case env.pacchettibottiToken of
+        Nothing -> Aff.throwError $ Aff.error "PACCHETTIBOTTI_TOKEN not defined in the environment."
+        Just token -> pure token
+      octokit <- liftEffect $ Octokit.newOctokit token
+      pure { writeStrategy: WriteCommitPush token, octokit }
 
   let
-    env :: Env
-    env =
-      { comment: \comment -> Console.log ("[COMMENT] " <> comment)
-      , closeIssue: mempty
-      , commitMetadataFile: \_ _ -> pure (Right unit)
-      , commitIndexFile: \_ _ -> pure (Right unit)
-      , commitPackageSetFile: API.pacchettiBottiPushToRegistryPackageSets
-      , uploadPackage: mempty
-      , deletePackage: mempty
-      , octokit
-      , cache: { write: mempty, read: \_ -> pure (Left mempty), remove: mempty }
-      , username: mempty
-      , packagesMetadata: metadataRef
-      , registry: Path.concat [ API.scratchDir, "registry" ]
-      , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
+    registryEnv :: RegistryEnv
+    registryEnv =
+      { legacyPackageSets: Path.concat [ scratchDir, "package-sets" ]
+      , registry: Path.concat [ scratchDir, "registry" ]
+      , registryIndex: Path.concat [ scratchDir, "registry-index" ]
+      , pullMode: ForceClean
+      , writeStrategy
+      , timer: unsafePerformEffect (Ref.new Nothing)
       }
 
-  runRegistryM env do
-    API.fetchRegistryIndex
-    API.fetchRegistry
-    API.fillMetadataRef
+  let logDir = Path.concat [ scratchDir, "logs" ]
+  FS.Extra.ensureDirectory logDir
 
-    registryIndex <- PackageIndex.readManifestIndexFromDisk
-    prevPackageSet <- App.PackageSets.readLatestPackageSet
-    App.PackageSets.validatePackageSet registryIndex prevPackageSet
+  now <- liftEffect nowUTC
+  let logFile = "package-set-updater-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
+  let logPath = Path.concat [ logDir, logFile ]
 
-    metadata <- readPackagesMetadata
-    recentUploads <- findRecentUploads metadata (Hours 24.0)
+  let cacheDir = Path.concat [ scratchDir, ".cache" ]
+  FS.Extra.ensureDirectory cacheDir
+  cacheRef <- liftEffect $ Ref.new Map.empty
 
-    let candidates = App.PackageSets.validatePackageSetCandidates registryIndex prevPackageSet (map Just recentUploads.accepted)
-    Console.log $ App.PackageSets.printRejections candidates.rejected
+  let packageSetsWorkDir = Path.concat [ scratchDir, "package-set-build" ]
 
-    if Map.isEmpty candidates.accepted then do
-      Console.log "No eligible additions, updates, or removals to produce a new package set."
-    else do
-      let
-        logPackage name maybeVersion = case maybeVersion of
-          -- There are no removals in the automated package sets. This should be
-          -- an unreachable case.
-          Nothing -> throwWithComment "Package removals are not accepted in automatic package sets."
-          Just version -> Console.log (PackageName.print name <> "@" <> Version.print version)
+  updater
+    # Run.interpret (Run.on PackageSets._packageSets (PackageSets.handlePackageSetsAff { workdir: packageSetsWorkDir }) Run.send)
+    # Run.interpret (Run.on Storage._storage Storage.handleStorageReadOnly Run.send)
+    # Run.interpret (Run.on Registry._registry (Registry.handleRegistryGit registryEnv) Run.send)
+    # Run.interpret (Run.on GitHub._github (GitHub.handleGitHubOctokit octokit) Run.send)
+    # Run.interpret (Run.on Cache._appCache (Cache.handleAppCacheFs cacheDir cacheRef) Run.send)
+    # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Run.interpret (Run.on Log._log (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log) Run.send)
+    # Run.runBaseAff'
 
-      Console.log "Found the following package versions eligible for inclusion in package set:"
-      forWithIndex_ candidates.accepted logPackage
-      let workDir = Path.concat [ API.scratchDir, "package-set-build" ]
-      App.PackageSets.processBatchSequential workDir registryIndex prevPackageSet Nothing candidates.accepted >>= case _ of
-        Nothing -> do
-          Console.log "\n----------\nNo packages could be added to the set. All packages failed:"
-          forWithIndex_ candidates.accepted logPackage
-        Just { success, fail, packageSet } -> do
-          unless (Map.isEmpty fail) do
-            Console.log "\n----------\nSome packages could not be added to the set:"
-            forWithIndex_ fail logPackage
-          Console.log "\n----------\nNew packages were added to the set!"
-          forWithIndex_ success logPackage
-          newPath <- App.PackageSets.getPackageSetPath (un PackageSet packageSet).version
-          liftAff $ writeJsonFile PackageSet.codec newPath packageSet
-          case mode of
-            GeneratePackageSet -> pure unit
-            CommitPackageSet -> do
-              let commitMessage = App.PackageSets.commitMessage prevPackageSet success (un PackageSet packageSet).version
-              commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
-                Left err -> throwWithComment $ "Failed to commit package set file: " <> err
-                Right _ -> do
-                  case Legacy.PackageSet.fromPackageSet registryIndex metadata packageSet of
-                    Left err -> throwWithComment err
-                    Right converted -> Legacy.PackageSet.mirrorLegacySet converted
--}
-  pure unit
+updater :: forall r. Run (REGISTRY + PACKAGE_SETS + LOG + LOG_EXCEPT + EFFECT + r) Unit
+updater = do
+  prevPackageSet <- Registry.readLatestPackageSet >>= case _ of
+    Nothing -> Log.exit "No previous package set found, cannot continue."
+    Just set -> pure set
+
+  PackageSets.validatePackageSet prevPackageSet
+
+  recentUploads <- findRecentUploads (Hours 24.0)
+
+  manifestIndex <- Registry.readAllManifests
+  let candidates = PackageSets.validatePackageSetCandidates manifestIndex prevPackageSet (map Just recentUploads.eligible)
+  Log.info $ PackageSets.printRejections candidates.rejected
+
+  if Map.isEmpty candidates.accepted then do
+    Log.info "No eligible additions, updates, or removals to produce a new package set."
+  else do
+    -- You can't remove packages via the automatic updater.
+    let eligible = Map.catMaybes candidates.accepted
+    let listPackages = foldMapWithIndex \name version -> [ formatPackageVersion name version ]
+    Log.info $ "Found package versions eligible for inclusion in package set: " <> Array.foldMap (append "\n  - ") (listPackages eligible)
+    PackageSets.upgradeSequential prevPackageSet (un PackageSet prevPackageSet).compiler (map (maybe Remove Update) candidates.accepted) >>= case _ of
+      Nothing -> do
+        Log.info "No packages could be added to the set. All packages failed."
+      Just { failed, succeeded, result } -> do
+        let
+          listChanges = foldMapWithIndex \name -> case _ of
+            Remove -> []
+            Update version -> [ formatPackageVersion name version ]
+        unless (Map.isEmpty failed) do
+          Log.info $ "Some packages could not be added to the set: " <> Array.foldMap (append "\n  - ") (listChanges failed)
+        Log.info $ "New packages were added to the set: " <> Array.foldMap (append "\n  - ") (listChanges succeeded)
+        -- We only include the successful changes in the commit message.
+        let commitMessage = PackageSets.commitMessage prevPackageSet succeeded (un PackageSet result).version
+        Registry.writePackageSet result commitMessage
+        Log.info "Built and released a new package set! Now mirroring to the package-sets repo..."
+        Registry.mirrorPackageSet result
+        Log.info "Mirrored a new legacy package set."
 
 type RecentUploads =
   { eligible :: Map PackageName Version

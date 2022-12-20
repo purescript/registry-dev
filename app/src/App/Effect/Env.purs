@@ -8,7 +8,6 @@ import Data.String as String
 import Data.String.Base64 as Base64
 import Dotenv as Dotenv
 import Effect.Aff as Aff
-import Effect.Class.Console as Console
 import Effect.Exception as Exn
 import Node.FS.Aff as FS.Aff
 import Node.Process as Process
@@ -58,12 +57,12 @@ type EnvVars =
   , pacchettibottiED25519 :: Maybe String
   }
 
--- | Loads the environment, using a `.env` file when suitable.
+-- | Loads the environment from a .env file, if one exists.
 loadEnvFile :: FilePath -> Aff Unit
 loadEnvFile dotenv = do
   contents <- Aff.attempt $ FS.Aff.readTextFile UTF8 dotenv
   case contents of
-    Left _ -> Aff.throwError $ Aff.error $ "No .env file found at path " <> dotenv
+    Left _ -> pure unit
     Right string -> void $ Dotenv.loadContents (String.trim string)
 
 readEnvVars :: Effect EnvVars

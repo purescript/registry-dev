@@ -55,7 +55,7 @@ import Registry.Foreign.Octokit (Address, Tag)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Location as Location
 import Registry.ManifestIndex as ManifestIndex
-import Registry.Operation (PackageOperation(..), PublishData)
+import Registry.Operation (PublishData)
 import Registry.PackageName as PackageName
 import Registry.Version as Version
 import Run (Run)
@@ -86,7 +86,7 @@ main = launchAff_ do
   args <- Array.drop 2 <$> liftEffect Process.argv
 
   let description = "A script for uploading legacy registry packages."
-  mode <- case Arg.parseArgs "legacy-importer" description parser args of
+  _mode <- case Arg.parseArgs "legacy-importer" description parser args of
     Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
     Right command -> pure command
 
@@ -177,7 +177,7 @@ let
 -- TODO
 -- runLegacyImport # Run.interpret ?a Run.runBaseAff'
 
-runLegacyImport :: ImportMode -> Run _ Unit
+runLegacyImport :: forall r. ImportMode -> Run (API.PublishEffects + r) Unit
 runLegacyImport mode = do
   Log.info "Ensuring the registry is well-formed..."
 
@@ -404,6 +404,10 @@ buildLegacyPackageManifests rawPackage rawUrl = do
               Right result -> pure result
           pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
 
+      -- TODO: This will use the manifest for the package version from the
+      -- registry, without trying to produce a legacy manifest. However,  we may
+      -- want to always produce a legacy manifest and then compare it to the
+      -- existing entry, possibly failing so we can diagnose the difference.
       Registry.readManifest package.name (LenientVersion.version version) >>= case _ of
         Just manifest -> pure manifest
         _ -> do
