@@ -5,6 +5,7 @@ import Registry.App.Prelude
 import Data.Array as Array
 import Data.Map as Map
 import Data.String as String
+import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Registry.App.API (AppEffects, Source(..))
 import Registry.App.API as API
@@ -16,7 +17,9 @@ import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Types (RawPackageName(..))
+import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (Tag)
+import Registry.Foreign.Octokit as Octokit
 import Registry.Operation (AuthenticatedPackageOperation(..), PackageOperation(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
@@ -26,53 +29,25 @@ import Run.Except as Run.Except
 
 main :: Effect Unit
 main = launchAff_ do
-  {-
-  envContents <- Env.loadEnvFile ".env"
+  _ <- Env.loadEnvFile ".env"
+  env <- liftEffect Env.readEnvVars
 
   FS.Extra.ensureDirectory API.scratchDir
 
-  token <- case Map.lookup "PACCHETTIBOTTI_TOKEN" envContents of
+  token <- case env.pacchettibottiToken of
     Nothing -> Aff.throwError $ Aff.error "PACCHETTIBOTTI_TOKEN not defined in the .env file."
-    Just str -> pure (GitHubToken str)
+    Just token -> pure token
 
   octokit <- liftEffect $ Octokit.newOctokit token
 
-  let app = for_ [ "bower-packages.json", "new-packages.json" ] processLegacyRegistry
-
-  app # Run.interpret
+  transfer # Run.interpret
     ( Run.case_
         # Run.on ?a ?b Run.send
     )
     Run.runBaseAff'
 
--- let
---   env :: RegistryM.Env
---   env =
---     { comment: \comment -> Console.log ("[COMMENT] " <> comment)
---     , closeIssue: Console.log "Running locally, not closing issue..."
---     , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
---     , commitIndexFile: \_ _ -> unsafeCrashWith "Should not push to registry index in transfer."
---     , commitPackageSetFile: \_ _ -> unsafeCrashWith "Should not modify package set in transfer."
---     , uploadPackage: \_ -> unsafeCrashWith "Should not upload anything in transfer."
---     , deletePackage: \_ -> unsafeCrashWith "Should not delete anything in transfer."
---     , packagesMetadata: Effect.Unsafe.unsafePerformEffect (Ref.new Map.empty)
---     , cache
---     , octokit
---     , username: "pacchettibotti"
---     , registry: Path.concat [ API.scratchDir, "registry" ]
---     , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
---     }
-
--- RegistryM.runRegistryM env do
---   API.fetchRegistry
---   API.fillMetadataRef
---   for_ [ BowerPackages, NewPackages ] processLegacyRegistry
---   Console.log "Done!"
--}
-  pure unit
-
-processLegacyRegistry :: Run AppEffects Unit
-processLegacyRegistry = do
+transfer :: Run AppEffects Unit
+transfer = do
   Log.info "Processing legacy registry..."
   { bower, new } <- Registry.readLegacyRegistry
   let packages = Map.union bower new

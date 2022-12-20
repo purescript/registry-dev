@@ -1,5 +1,6 @@
 module Registry.App.API where
 
+import Prelude
 import Registry.App.Prelude
 
 import Affjax.Node as Affjax.Node
@@ -12,23 +13,27 @@ import Control.Alternative as Alternative
 import Control.Monad.Except as Except
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
+import Data.Array.NonEmpty as NEA
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
+import Data.FunctorWithIndex (mapWithIndex)
 import Data.HTTP.Method (Method(..))
 import Data.HTTP.Method as Method
 import Data.Map as Map
 import Data.MediaType.Common as MediaType
-import Data.Newtype (unwrap)
+import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
 import Data.Set as Set
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
 import Dodo (Doc)
 import Effect.Aff as Aff
+import Effect.Ref as Ref
 import Node.Buffer as Buffer
 import Node.ChildProcess as ChildProcess
 import Node.FS.Aff as FS.Aff
@@ -60,16 +65,21 @@ import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec)
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
-import Registry.Foreign.Octokit (GitHubToken(..), Team)
+import Registry.Foreign.Octokit (GitHubToken(..), IssueNumber(..), Team)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tar as Foreign.Tar
 import Registry.Foreign.Tmp as Tmp
+import Registry.Internal.Codec as Internal.Codec
 import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.Metadata as Metadata
-import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageOperation(..), PackageSetOperation(..), PublishData)
+import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageOperation(..), PackageSetOperation(..), PackageSetUpdateData, PublishData, UnpublishData)
+import Registry.Operation as Operation
+import Registry.Operation.Validation (UnpublishError(..))
 import Registry.Operation.Validation as Operation.Validation
+import Registry.Owner as Owner
 import Registry.PackageName as PackageName
+import Registry.PackageSet as PackageSet
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
 import Registry.Solver as Solver
@@ -79,411 +89,444 @@ import Run as Run
 import Run.Except as Run.Except
 import Sunde as Sunde
 
--- | Operations are exercised via the API and the legacy importer. If the
--- | importer is used then we don't compile or publish docs for the package.
--- | If the API is used for a 'legacy' package (ie. a Spago-based project), then
--- | we attempt to compile the package and warn if compilation fails. If the API
--- | is used for a normal package then failed compilation fails the pipeline.
-data Source = API | Importer
+-- | Operations can be exercised for old, pre-registry packages, or for packages
+-- | which are on the 0.15 compiler series. If a true legacy package is uploaded
+-- | then we do not require compilation to succeed and we don't publish docs.
+data Source = Legacy | Current
 
 derive instance Eq Source
 
-type AppEffects = (REGISTRY + PACKAGE_SETS + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + NOTIFY + CACHE + LOG + LOG_EXCEPT + AFF + EFFECT ())
+printSource :: Source -> String
+printSource = case _ of
+  Legacy -> "legacy"
+  Current -> "current"
 
--- TODO: This has been converted to use effects, but it's still essentially
--- hardcoded to a GitHub event (such as referring to usernames), and needs to
--- be reworked in the future to support the HTTP API.
-runOperation :: Source -> Either PackageSetOperation PackageOperation -> Run AppEffects Unit
-runOperation source operation = case operation of
-  Right (Publish fields@{ name, location }) -> do
-    allMetadata <- Registry.readAllMetadata
-    case Map.lookup name allMetadata of
-      Just metadata ->
-        case location of
-          -- The user can add a new version of their package if it comes from
-          -- the same location listed in the metadata OR if they do not provide
-          -- a location.
-          Nothing ->
-            publish source fields metadata
-          Just packageLocation | (un Metadata metadata).location == packageLocation ->
-            publish source fields metadata
-          -- Otherwise, if they attempted to re-register the package under a new
-          -- location, then they either did not know the package already existed or
-          -- they are attempting a transfer.
-          Just _ -> do
-            Log.error $ PackageName.print name <> " is already registered, aborting."
-            Log.exit $ String.joinWith " "
-              [ "Cannot register"
-              , PackageName.print name
-              , "because it has already been registered.\nIf you are attempting to"
-              , "register your package, please choose a different package name."
-              , "If you are attempting to transfer this package to a new location,"
-              , "please submit a transfer instead."
-              ]
+-- | Process a package set update. Package set updates are only processed via
+-- | GitHub and not the HTTP API.
+packageSetUpdate :: PackageSetUpdateData -> Run _ Unit
+packageSetUpdate payload = do
+  { issue, username } <- Env.askGitHubEvent
 
-      -- If this is a brand-new package, then we can allow them to register it
-      -- so long as they aren't publishing an existing location under a new name
-      Nothing -> case location of
-        Nothing -> do
-          Log.error "No location field provided, aborting."
-          Log.exit $ String.joinWith " "
-            [ "Cannot register"
-            , PackageName.print name
-            , "because no 'location' field was provided."
-            ]
-        Just packageLocation | not (Operation.Validation.locationIsUnique packageLocation allMetadata) -> do
-          Log.error "Location already in use, aborting."
-          Log.exit $ String.joinWith " "
-            [ "Cannot register"
-            , PackageName.print name
-            , "at the location"
-            , stringifyJson Location.codec packageLocation
-            , "because that location is already in use to publish another package."
-            ]
-        Just packageLocation ->
-          publish source fields (mkNewMetadata packageLocation)
+  Log.debug $ Array.fold
+    [ "Package set update created from issue " <> show (un IssueNumber issue) <> " by user " <> username
+    , " with payload:\n" <> stringifyJson Operation.packageSetUpdateCodec payload
+    ]
 
-  Left (PackageSetUpdate { compiler, packages }) -> do
-    { username } <- Env.askGitHubEvent
+  latestPackageSet <- Registry.readLatestPackageSet >>= case _ of
+    Nothing -> do
+      Log.error "Could not read latest package set, but there must be an initial package set to process an update."
+      Log.exit "There is no latest package set."
+    Just set -> pure set
 
-    latestPackageSet <- Registry.readLatestPackageSet >>= case _ of
-      Nothing -> Log.exit "There is no latest package set."
-      Just set -> pure set
+  Log.debug $ "Most recent package set was " <> stringifyJson PackageSet.codec latestPackageSet
+  let prevCompiler = (un PackageSet latestPackageSet).compiler
+  let prevPackages = (un PackageSet latestPackageSet).packages
 
-    let prevCompiler = (un PackageSet latestPackageSet).compiler
-    let prevPackages = (un PackageSet latestPackageSet).packages
+  Log.debug "Determining whether authentication is required (the compiler changed or packages were removed)..."
+  let didChangeCompiler = maybe false (not <<< eq prevCompiler) payload.compiler
+  let didRemovePackages = any isNothing payload.packages
 
-    let didChangeCompiler = maybe false (not <<< eq prevCompiler) compiler
-    let didRemovePackages = any isNothing packages
-
-    -- Changing the compiler version or removing packages are both restricted
-    -- to only the packaging team. We throw here if this is an authenticated
-    -- operation and we can't verify they are a member of the packaging team.
-    when (didChangeCompiler || didRemovePackages) do
-      -- We always throw if we couldn't verify the user who opened or commented
-      -- is a member of the packaging team.
-      GitHub.listTeamMembers packagingTeam >>= case _ of
-        Left githubError -> Log.exit $ Array.fold
+  -- Changing the compiler version or removing packages are both restricted
+  -- to only the packaging team. We throw here if this is an authenticated
+  -- operation and we can't verify they are a member of the packaging team.
+  when (didChangeCompiler || didRemovePackages) do
+    Log.debug "Authentication is required. Verifying the user can take authenticated actions..."
+    GitHub.listTeamMembers packagingTeam >>= case _ of
+      Left githubError -> do
+        Log.error $ "Failed to retrieve the members of the packaging team from GitHub: " <> Octokit.printGitHubError githubError
+        Log.exit $ Array.fold
           [ "This package set update changes the compiler version or removes a "
           , "package from the package set. Only members of the "
           , "@purescript/packaging team can take these actions, but we were "
-          , "unable to authenticate your account:\n"
-          , Octokit.printGitHubError githubError
+          , "unable to authenticate your account."
           ]
-        Right members -> do
-          unless (Array.elem username members) do
-            Log.exit $ String.joinWith " "
-              [ "This package set update changes the compiler version or"
-              , "removes a package from the package set. Only members of the"
-              , "@purescript/packaging team can take these actions, but your"
-              , "username is not a member of the packaging team."
-              ]
-
-    -- The compiler version cannot be downgraded.
-    for_ compiler \version -> when (version < prevCompiler) do
-      Log.exit $ String.joinWith " "
-        [ "You are downgrading the compiler used in the package set from"
-        , "the current version (" <> Version.print prevCompiler <> ")"
-        , "to the lower version (" <> Version.print version <> ")."
-        , "The package set compiler version cannot be downgraded."
-        ]
-
-    -- Package versions cannot be downgraded.
-    let
-      downgradedPackages = Array.catMaybes do
-        Tuple packageName packageVersion <- Map.toUnfoldable packages
-        pure do
-          newVersion <- packageVersion
-          prevVersion <- Map.lookup packageName prevPackages
-          -- We want to fail if the existing version is greater than the
-          -- new proposed version.
-          Alternative.guard (prevVersion > newVersion)
-          pure (Tuple packageName { old: prevVersion, new: newVersion })
-
-    when (not (Array.null downgradedPackages)) do
-      let
-        formatPackage (Tuple name { old, new }) = Array.fold
-          [ "  - "
-          , PackageName.print name
-          , " from "
-          , Version.print old
-          , " to "
-          , Version.print new
-          ]
-
-      Log.exit $ Array.fold
-        [ "You are attempting to downgrade one or more package versions from "
-        , "their version in the previous set. Affected packages:\n\n"
-        , String.joinWith "\n" $ map formatPackage downgradedPackages
-        ]
-
-    -- With these conditions met, we can attempt to process the batch with the
-    -- new packages and/or compiler version. Note: if the compiler is updated to
-    -- a version that isn't supported by the registry then an 'unsupported
-    -- compiler' error will be thrown.
-    manifestIndex <- Registry.readAllManifests
-
-    -- TODO: The candidates really ought to be a ChangeSet, and the validation
-    -- function should probably be in Run and only fetch the manifests it needs
-    -- on-demand instead of requiring the entire index.
-    PackageSets.validatePackageSet latestPackageSet
-    let candidates = PackageSets.validatePackageSetCandidates manifestIndex latestPackageSet packages
-
-    unless (Map.isEmpty candidates.rejected) do
-      Log.exit $ String.joinWith "\n"
-        [ "One or more packages in the suggested batch cannot be processed.\n"
-        , PackageSets.printRejections candidates.rejected
-        ]
-
-    if Map.isEmpty candidates.accepted then do
-      Log.exit "No packages in the suggested batch can be processed; all failed validation checks."
-    else do
-      let changeSet = candidates.accepted <#> maybe Remove Update
-      Notify.notify "Attempting to build package set update."
-      PackageSets.upgradeAtomic latestPackageSet (fromMaybe (un PackageSet latestPackageSet).compiler compiler) changeSet >>= case _ of
-        Just packageSet -> do
-          let commitMessage = PackageSets.commitMessage latestPackageSet changeSet (un PackageSet packageSet).version
-          Registry.writePackageSet packageSet commitMessage
-          Notify.notify "Built and released a new package set! Now mirroring to the package-sets repo..."
-          Registry.mirrorPackageSet packageSet
-          Notify.notify "Mirrored a new legacy package set."
-        _ -> do
-          Log.exit "The package set produced from this suggested update does not compile."
-
-  Right (Authenticated submittedAuth@{ payload }) -> case payload of
-    Unpublish { name, version, reason } -> do
-      Metadata metadata <- Registry.readMetadata name >>= case _ of
-        Nothing -> Log.exit "No metadata found for your package. Only published packages can be unpublished."
-        Just content -> pure content
-
-      now <- Run.liftEffect nowUTC
-      publishedMetadata <- case Operation.Validation.validateUnpublish now version (Metadata metadata) of
-        Left Operation.Validation.NotPublished ->
-          Log.exit $ "Cannot unpublish " <> Version.print version <> " because it is not a published version."
-        Left Operation.Validation.AlreadyUnpublished ->
-          Log.exit $ "Cannot unpublish " <> Version.print version <> " because it has already been unpublished."
-        Left Operation.Validation.InternalError ->
-          Log.exit $ String.joinWith "\n"
-            [ "Cannot unpublish " <> Version.print version <> "."
-            , ""
-            , "This version is listed both as published and unpublished. This is an internal error."
-            , "cc @purescript/packaging"
+      Right members -> do
+        unless (Array.elem username members) do
+          Log.error $ "Username " <> username <> " is not a member of the packaging team, aborting..."
+          Log.exit $ Array.fold
+            [ "This package set update changes the compiler version or "
+            , "removes a package from the package set. Only members of the "
+            , "@purescript/packaging team can take these actions, but your "
+            , "username is not a member of the packaging team."
             ]
-        Left (Operation.Validation.PastTimeLimit { difference, limit }) ->
-          Log.exit $ "Packages can only be unpublished within " <> Number.Format.toString (unwrap limit) <> " hours. Package was published " <> Number.Format.toString (unwrap difference) <> " hours ago."
-        Right published ->
-          pure published
+        Log.debug $ "Authentication verified for package set update by user " <> username
 
-      Tuple auth maybeOwners <- acceptTrustees submittedAuth metadata.owners
+  -- The compiler version cannot be downgraded.
+  for_ payload.compiler \version -> when (version < prevCompiler) do
+    Log.error $ "New compiler version " <> Version.print version <> " is lower than the previous package set compiler " <> Version.print prevCompiler
+    Log.exit $ Array.fold
+      [ "You are downgrading the compiler used in the package set from "
+      , "the current version (" <> Version.print prevCompiler <> ") "
+      , "to a lower version (" <> Version.print version <> "). "
+      , "The package set compiler version cannot be downgraded."
+      ]
 
-      case maybeOwners of
-        Nothing ->
-          Log.exit $ String.joinWith " "
-            [ "Cannot verify package ownership because no owners are listed in the package metadata."
-            , "Please publish a package version with your SSH public key in the owners field."
-            , "You can then retry unpublishing this version by authenticating with your private key."
-            ]
-        Just owners -> Run.liftAff (Auth.verifyPayload owners auth) >>= case _ of
-          Left err -> Log.exit $ String.joinWith "\n"
-            [ "Failed to verify package ownership:"
-            , err
-            ]
-          Right _ -> do
-            let unpublishedMetadata = { reason, publishedTime: publishedMetadata.publishedTime, unpublishedTime: now }
-            let updatedMetadata = unpublishVersionInMetadata version unpublishedMetadata (Metadata metadata)
-            Storage.deleteTarball name version
-            Registry.writeMetadata name updatedMetadata
-            Registry.deleteManifest name version
-            Notify.notify $ "Unpublished package " <> formatPackageVersion name version
+  -- Package versions cannot be downgraded, either.
+  let
+    downgradedPackages = Array.catMaybes do
+      Tuple name version <- Map.toUnfoldable payload.packages
+      pure do
+        newVersion <- version
+        prevVersion <- Map.lookup name prevPackages
+        -- We want to fail if the existing version is greater than the
+        -- new proposed version.
+        Alternative.guard (prevVersion > newVersion)
+        pure (Tuple name { old: prevVersion, new: newVersion })
 
-    Transfer { name, newLocation } -> do
-      Metadata metadata <- Registry.readMetadata name >>= case _ of
-        Nothing -> Log.exit $ String.joinWith " "
-          [ "No metadata found for your package."
-          , "You can only transfer packages that have already been published."
-          , "Did you mean to publish your package?"
+  when (not (Array.null downgradedPackages)) do
+    Log.exit $ Array.fold
+      [ "You are attempting to downgrade one or more package versions from "
+      , "their version in the previous set, but this is not allowed in the "
+      , " package sets. Affected packages:\n\n"
+      , String.joinWith "\n" $ downgradedPackages <#> \(Tuple name { old, new }) ->
+          "  - " <> PackageName.print name <> " from " <> Version.print old <> " to " <> Version.print new
+      ]
+
+  -- With these conditions met, we can attempt to process the batch with the
+  -- new packages and/or compiler version. Note: if the compiler is updated to
+  -- a version that isn't supported by the registry then an 'unsupported
+  -- compiler' error will be thrown.
+
+  -- TODO: The candidates really ought to be a ChangeSet, and the validation
+  -- function should probably be in Run and only fetch the manifests it needs
+  -- on-demand instead of requiring the entire index.
+  manifestIndex <- Registry.readAllManifests
+  PackageSets.validatePackageSet latestPackageSet
+  let candidates = PackageSets.validatePackageSetCandidates manifestIndex latestPackageSet payload.packages
+
+  unless (Map.isEmpty candidates.rejected) do
+    Log.exit $ String.joinWith "\n"
+      [ "One or more packages in the suggested batch cannot be processed.\n"
+      , PackageSets.printRejections candidates.rejected
+      ]
+
+  if Map.isEmpty candidates.accepted then do
+    Log.exit "No packages in the suggested batch can be processed; all failed validation checks."
+  else do
+    let changeSet = candidates.accepted <#> maybe Remove Update
+    Notify.notify "Attempting to build package set update."
+    PackageSets.upgradeAtomic latestPackageSet (fromMaybe prevCompiler payload.compiler) changeSet >>= case _ of
+      Nothing ->
+        Log.exit "The package set produced from this suggested update does not compile."
+      Just packageSet -> do
+        let commitMessage = PackageSets.commitMessage latestPackageSet changeSet (un PackageSet packageSet).version
+        Registry.writePackageSet packageSet commitMessage
+        Notify.notify "Built and released a new package set! Now mirroring to the package-sets repo..."
+        Registry.mirrorPackageSet packageSet
+        Notify.notify "Mirrored a new legacy package set."
+
+-- | Run an authenticated package operation, ie. an unpublish or a transfer.
+authenticated :: AuthenticatedData -> Run _ Unit
+authenticated auth = case auth.payload of
+  Unpublish payload -> do
+    Log.debug $ "Processing authorized unpublish operation with payload: " <> stringifyJson Operation.authenticatedCodec auth
+    let formatted = formatPackageVersion payload.name payload.version
+    metadata <- Registry.readMetadata payload.name >>= case _ of
+      Nothing -> do
+        Log.error $ "No metadata found for package " <> PackageName.print payload.name
+        Log.exit $ "This package cannot be unpublished because it has not been published before (no metadata was found)."
+      Just value -> pure value
+
+    now <- Run.liftEffect nowUTC
+    published <- case Operation.Validation.validateUnpublish now payload.version metadata of
+      Left NotPublished ->
+        Log.exit $ "Cannot unpublish " <> formatted <> " because this version has not been published."
+      Left AlreadyUnpublished ->
+        Log.exit $ "Cannot unpublish " <> formatted <> " because it has already been unpublished."
+      Left InternalError -> do
+        Log.error $ formatted <> " is listed as both published and unpublished, which should be impossible!"
+        Log.exit $ "Cannot unpublish " <> formatted <> " due to an internal error."
+      Left (PastTimeLimit { difference, limit }) ->
+        Log.exit $ Array.fold
+          [ "Cannot unpublish " <> formatted <> " because it was published " <> Number.Format.toString (unwrap difference) <> " hours ago. "
+          , "Packages can only be unpublished for " <> Number.Format.toString (unwrap limit) <> " hours after publication."
           ]
-        Just content -> pure content
+      Right published -> do
+        Log.debug $ formatted <> " is an unpublishable version, continuing..."
+        pure published
 
-      allMetadata <- Registry.readAllMetadata
+    Log.debug "Ensuring the trustees can process unpublish operations by adding them to the owners..."
+    Tuple newAuth maybeOwners <- acceptTrustees auth (un Metadata metadata).owners
 
-      let
-        isUniqueLocation = Operation.Validation.locationIsUnique newLocation allMetadata
-        notUniqueError = String.joinWith " "
-          [ "Cannot transfer"
-          , PackageName.print name
-          , " to "
-          , stringifyJson Location.codec newLocation
-          , "because another package is already registered at that location."
+    case maybeOwners of
+      Nothing -> do
+        Log.error $ "Unpublishing is an authenticated operation, but no owners were listed in the metadata: " <> stringifyJson Metadata.codec metadata
+        Log.exit $ String.joinWith " "
+          [ "Cannot verify package ownership because no owners are listed in the package metadata."
+          , "Please publish a package version with your SSH public key in the owners field."
+          , "You can then retry unpublishing this version by authenticating with your private key."
+          ]
+      Just owners -> Run.liftAff (Auth.verifyPayload owners newAuth) >>= case _ of
+        Left error -> do
+          Log.error $ Array.fold
+            [ "Failed to verify signed payload against owners with error:\n\n" <> error
+            , "\n\nusing owners\n"
+            , String.joinWith "\n" $ map (stringifyJson Owner.codec) $ NEA.toArray owners
+            ]
+          Log.exit $ "Could not unpublish " <> formatted <> " because we could not authenticate ownership of the package."
+        Right _ -> do
+          Log.debug $ "Successfully authenticated ownership of " <> formatted <> ", unpublishing..."
+          let
+            unpublished = { reason: payload.reason, publishedTime: published.publishedTime, unpublishedTime: now }
+            updated = metadata # over Metadata \prev -> prev
+              { published = Map.delete payload.version prev.published
+              , unpublished = Map.insert payload.version unpublished prev.unpublished
+              }
+          Storage.deleteTarball payload.name payload.version
+          Registry.writeMetadata payload.name updated
+          Registry.deleteManifest payload.name payload.version
+          Notify.notify $ "Unpublished " <> formatted <> "!"
+
+  Transfer payload -> do
+    Log.debug $ "Processing authorized transfer operation with payload: " <> stringifyJson Operation.authenticatedCodec auth
+    metadata <- Registry.readMetadata payload.name >>= case _ of
+      Nothing -> do
+        Log.error $ "No metadata found for package " <> PackageName.print payload.name
+        Log.exit $ "This package cannot be transferred because it has not been published before (no metadata was found)."
+      Just value -> pure value
+
+    Log.debug "Ensuring the trustees can process transfer operations by adding them to the owners..."
+    Tuple newAuth maybeOwners <- acceptTrustees auth (un Metadata metadata).owners
+
+    case maybeOwners of
+      Nothing -> do
+        Log.error $ "Transferring is an authenticated operation, but no owners were listed in the metadata: " <> stringifyJson Metadata.codec metadata
+        Log.exit $ String.joinWith " "
+          [ "Cannot verify package ownership because no owners are listed in the package metadata."
+          , "Please publish a package version with your SSH public key in the owners field."
+          , "You can then retry transferring this version by authenticating with your private key."
+          ]
+      Just owners -> Run.liftAff (Auth.verifyPayload owners newAuth) >>= case _ of
+        Left error -> do
+          Log.error $ Array.fold
+            [ "Failed to verify signed payload against owners with error:\n\n" <> error
+            , "\n\nusing owners\n"
+            , String.joinWith "\n" $ map (stringifyJson Owner.codec) $ NEA.toArray owners
+            ]
+          Log.exit $ "Could not transfer your package because we could not authenticate your ownership."
+        Right _ -> do
+          Log.debug $ "Successfully authenticated ownership, transferring..."
+          let updated = metadata # over Metadata _ { location = payload.newLocation }
+          Registry.writeMetadata payload.name updated
+          Notify.notify "Successfully transferred your package!"
+          Registry.mirrorLegacyRegistry payload.name payload.newLocation
+          Notify.notify "Mirrored location change to the legacy registry."
+
+-- | Publish a package via the 'publish' operation. If the package has not been
+-- | published before then it will be registered and the given version will be
+-- | upload. If it has been published before then the existing metadata will be
+-- | updated with the new version.
+publish :: Source -> PublishData -> Run _ Unit
+publish source payload = do
+  let printedName = PackageName.print payload.name
+
+  Log.debug $ "Publishing " <> printSource source <> " package " <> printedName <> " with payload:\n" <> stringifyJson Operation.publishCodec payload
+
+  Log.debug $ "Verifying metadata..."
+  Metadata existingMetadata <- Registry.readMetadata payload.name >>= case _ of
+    Nothing -> case payload.location of
+      Nothing -> do
+        Log.error $ "No existing metadata for " <> printedName <> " and no location provided in payload, cannot publish."
+        Log.exit $ "Cannot register " <> printedName <> " because the payload did not include a 'location' field."
+      Just location ->
+        pure $ Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
+
+    Just metadata -> case payload.location of
+      -- The user can add a new version of their package if it comes from
+      -- the same location listed in the metadata OR if they do not provide
+      -- a location.
+      Nothing -> pure metadata
+      Just location | (un Metadata metadata).location == location -> pure metadata
+      -- Otherwise, if they attempted to re-register the package under a new
+      -- location, then they either did not know the package already existed or
+      -- they are attempting a transfer. We do not accept transfers over the
+      -- unauthenticated API.
+      Just location -> do
+        Log.error $ Array.fold
+          [ "Metadata found for package "
+          , printedName
+          , " but the location in the payload ("
+          , stringifyJson Location.codec location
+          , ") is different from the location in the metadata ("
+          , stringifyJson Location.codec (un Metadata metadata).location
+          , "), which would indicate a package transfer and is therefore disallowed."
           ]
 
-      case source of
-        Importer | not isUniqueLocation ->
-          Log.warn notUniqueError
-        API | not isUniqueLocation ->
-          Log.exit notUniqueError
-        _ -> do
-          Tuple auth maybeOwners <- acceptTrustees submittedAuth metadata.owners
+        Log.exit $ Array.fold
+          [ "Cannot register " <> printedName <> " because it has already been registered."
+          , " If you want to register your package, please choose a different package name."
+          , " If you want to transfer your package to a new location, please submit a transfer operation instead."
+          , " Transferring a package is an authenticated operation; make sure you have set the 'owners' key in your manifest."
+          ]
 
-          case maybeOwners of
-            Nothing ->
-              Log.exit $ String.joinWith " "
-                [ "Cannot verify package ownership because no owners are listed in the package metadata."
-                , "Please publish a package version with your SSH public key in the owners field."
-                , "You can then retry transferring this package by authenticating with your private key."
-                ]
-            Just owners ->
-              Run.liftAff (Auth.verifyPayload owners auth) >>= case _ of
-                Left err ->
-                  Log.exit $ String.joinWith "\n"
-                    [ "Failed to verify package ownership:"
-                    , "  " <> err
-                    ]
-                Right _ -> do
-                  let updatedMetadata = metadata { location = newLocation }
-                  Registry.writeMetadata name (Metadata updatedMetadata)
-                  Notify.notify "Successfully transferred your package!"
-                  Registry.mirrorLegacyRegistry name newLocation
-                  Notify.notify "Mirrored location change to the legacy registry."
+  -- We fetch the repo into the temporary directory, returning the full path to
+  -- the package directory along with its detected publish time.
+  Log.debug "Metadata validated. Fetching package source code..."
+  tmp <- Run.liftEffect Tmp.mkTmpDir
+  { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir: tmp, ref: payload.ref, location: existingMetadata.location }
 
-jsonToDhallManifest :: String -> Aff (Either String String)
-jsonToDhallManifest jsonStr = do
-  let cmd = "json-to-dhall"
-  let stdin = Just jsonStr
-  let args = [ "--records-loose", "--unions-strict", "." <> Path.sep <> Path.concat [ "types", "v1", "Manifest.dhall" ] ]
-  result <- Sunde.spawn { cmd, stdin, args } ChildProcess.defaultSpawnOptions
-  pure $ case result.exit of
-    ChildProcess.Normally 0 -> Right jsonStr
-    _ -> Left result.stderr
-
-publish
-  :: forall r
-   . Source
-  -> PublishData
-  -> Metadata
-  -> Run (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + CACHE + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r) Unit
-publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputMetadata) = do
-  tmpDir <- liftEffect $ Tmp.mkTmpDir
-
-  -- fetch the repo and put it in the tempdir, returning the name of its toplevel dir
-  { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir, ref, location: inputMetadata.location }
-
-  let manifestPath = Path.concat [ packageDirectory, "purs.json" ]
-
-  Log.debug $ "Package available in " <> packageDirectory
-
-  Log.debug "Verifying that the package contains a `src` directory"
-  whenM (liftAff $ Operation.Validation.containsPursFile (Path.concat [ packageDirectory, "src" ])) do
-    Log.exit "This package has no .purs files in the src directory. All package sources must be in the `src` directory, with any additional sources indicated by the `files` key in your manifest."
+  Log.debug $ "Package downloaded to " <> packageDirectory <> ", verifying it contains a src directory..."
+  unlessM (Run.liftAff (Operation.Validation.containsPursFile (Path.concat [ packageDirectory, "src" ]))) do
+    Log.exit $ Array.fold
+      [ "This package has no .purs files in the src directory. "
+      , "All package sources must be in the `src` directory, with any additional "
+      , " sources indicated by the `files` key in your manifest."
+      ]
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
-  isLegacyImport <- liftEffect $ map not $ FS.Sync.exists manifestPath
-  when isLegacyImport do
+  let packagePursJson = Path.concat [ packageDirectory, "purs.json" ]
+  hadPursJson <- Run.liftEffect $ FS.Sync.exists packagePursJson
+  unless hadPursJson do
     Notify.notify $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
-    address <- case inputMetadata.location of
-      Git _ -> Log.exit "Legacy packages can only come from GitHub. Aborting."
+    address <- case existingMetadata.location of
+      Git _ -> Log.exit "Legacy packages can only come from GitHub."
+      GitHub { subdir: Just subdir } -> Log.exit "Legacy packages cannot use the 'subdir' key."
       GitHub { owner, repo } -> pure { owner, repo }
 
-    version <- case LenientVersion.parse ref of
-      Left _ -> Log.exit $ "Not a valid registry version: " <> ref
+    version <- case LenientVersion.parse payload.ref of
+      Left _ -> Log.exit $ "The provided ref " <> payload.ref <> " is not a version of the form X.Y.Z or vX.Y.Z, so it cannot be used."
       Right result -> pure $ LenientVersion.version result
 
-    Legacy.Manifest.fetchLegacyManifest name address (RawVersion ref) >>= case _ of
+    Legacy.Manifest.fetchLegacyManifest payload.name address (RawVersion payload.ref) >>= case _ of
       Left manifestError -> do
         let formatError { error, reason } = reason <> " " <> Legacy.Manifest.printLegacyManifestError error
         Log.exit $ String.joinWith "\n"
-          [ "There were problems with the legacy manifest file:"
+          [ "Could not publish your package because there were issues converting its spago.dhall and/or bower.json files into a purs.json manifest:"
           , formatError manifestError
           ]
       Right legacyManifest -> do
-        let manifest = Legacy.Manifest.toManifest name version inputMetadata.location legacyManifest
-        liftAff $ writeJsonFile Manifest.codec manifestPath manifest
+        Log.debug $ "Successfully produced a legacy manifest from the package source. Writing it to the package source..."
+        let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location legacyManifest
+        Run.liftAff $ writeJsonFile Manifest.codec packagePursJson manifest
 
-  -- Try to read the manifest, typechecking it
-  manifest@(Manifest manifestFields) <- liftAff (try $ FS.Aff.readTextFile UTF8 manifestPath) >>= case _ of
-    Left _err -> Log.exit $ "Manifest not found at " <> manifestPath
-    Right manifestStr -> liftAff (jsonToDhallManifest manifestStr) >>= case _ of
-      Left err -> Log.exit $ "Could not typecheck manifest: " <> err
-      Right _ -> case parseJson Manifest.codec manifestStr of
-        Left err -> Log.exit $ "Could not parse manifest as JSON: " <> CA.printJsonDecodeError err
-        Right res -> pure res
+  Log.debug "A valid purs.json is available in the package source."
+
+  Manifest manifest <- Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 packagePursJson)) >>= case _ of
+    Left error -> do
+      Log.error $ "Could not read purs.json from path " <> packagePursJson <> ": " <> Aff.message error
+      Log.exit $ "Could not find a purs.json file in the package source."
+    Right string -> Run.liftAff (jsonToDhallManifest string) >>= case _ of
+      Left error -> do
+        Log.error $ "Manifest does not typecheck: " <> error
+        Log.exit $ "Found a valid purs.json file in the package source, but it does not typecheck."
+      Right _ -> case parseJson Manifest.codec string of
+        Left err -> do
+          Log.error $ "Failed to parse manifest: " <> CA.printJsonDecodeError err
+          Log.exit $ "Found a purs.json file in the package source, but it could not be decoded."
+        Right manifest -> do
+          Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec manifest
+          pure manifest
 
   Notify.notify "Verifying package..."
 
   -- We trust the manifest for any changes to the 'owners' field, but for all
   -- other fields we trust the registry metadata.
-  let metadata = inputMetadata { owners = manifestFields.owners }
-  when (not isLegacyImport && not (Operation.Validation.nameMatches manifest publishData)) do
+  let metadata = existingMetadata { owners = manifest.owners }
+  unless (Operation.Validation.nameMatches (Manifest manifest) payload) do
     Log.exit $ Array.fold
       [ "The manifest file specifies a package name ("
-      , PackageName.print manifestFields.name
+      , PackageName.print manifest.name
       , ") that differs from the package name submitted to the API ("
-      , PackageName.print name
+      , PackageName.print payload.name
       , "). The manifest and API request must match."
       ]
 
-  unless (Operation.Validation.locationMatches manifest (Metadata metadata)) do
+  unless (Operation.Validation.locationMatches (Manifest manifest) (Metadata metadata)) do
     Log.exit $ Array.fold
       [ "The manifest file specifies a location ("
-      , stringifyJson Location.codec manifestFields.location
+      , stringifyJson Location.codec manifest.location
       , ") that differs from the location in the registry metadata ("
       , stringifyJson Location.codec metadata.location
       , "). If you would like to change the location of your package you should "
-      , "submit a Transfer operation."
+      , "submit a transfer operation."
       ]
 
-  -- Then, we can run verification checks on the manifest and either verify the
-  -- provided build plan or produce a new one.
-  verifyManifest { metadata: Metadata metadata, manifest }
-  verifiedResolutions <- verifyResolutions { resolutions, manifest }
+  when (Operation.Validation.isMetadataPackage (Manifest manifest)) do
+    Log.exit "The `metadata` package cannot be uploaded to the registry because it is a protected package."
 
-  -- After we pass all the checks it's time to do side effects and register the package
-  Log.info "Packaging the tarball to upload..."
-  -- We need the version number to upload the package
-  let newVersion = manifestFields.version
-  let newDirname = PackageName.print name <> "-" <> Version.print newVersion
-  let packageSourceDir = Path.concat [ tmpDir, newDirname ]
+  for_ (Operation.Validation.isNotPublished (Manifest manifest) (Metadata metadata)) \info -> do
+    Log.exit $ String.joinWith "\n"
+      [ "You tried to upload a version that already exists: " <> Version.print manifest.version
+      , "Its metadata is:"
+      , "```json"
+      , printJson Metadata.publishedMetadataCodec info
+      , "```"
+      ]
+
+  for_ (Operation.Validation.isNotUnpublished (Manifest manifest) (Metadata metadata)) \info -> do
+    Log.exit $ String.joinWith "\n"
+      [ "You tried to upload a version that has been unpublished: " <> Version.print manifest.version
+      , ""
+      , "```json"
+      , printJson Metadata.unpublishedMetadataCodec info
+      , "```"
+      ]
+
+  Log.debug "Verifying the package build plan..."
+  verifiedResolutions <- verifyResolutions (Manifest manifest) payload.resolutions
+
+  Log.debug "Verifying that the package dependencies are all registered..."
+  unregisteredRef <- Run.liftEffect $ Ref.new Map.empty
+  forWithIndex_ verifiedResolutions \name version -> do
+    Registry.readMetadata name >>= case _ of
+      Nothing -> Run.liftEffect $ Ref.modify_ (Map.insert name version) unregisteredRef
+      Just (Metadata { published }) -> case Map.lookup version published of
+        Nothing -> Run.liftEffect $ Ref.modify_ (Map.insert name version) unregisteredRef
+        Just _ -> pure unit
+  unregistered <- Run.liftEffect $ Ref.read unregisteredRef
+  _ <- Log.exit $ Array.fold
+    [ "Cannot register this package because it has unregistered dependencies: "
+    , Array.foldMap (\(Tuple name version) -> "\n  - " <> formatPackageVersion name version) (Map.toUnfoldable unregistered)
+    ]
+
+  Log.info "Packaging tarball for upload..."
+  let newDir = PackageName.print manifest.name <> "-" <> Version.print manifest.version
+  let packageSourceDir = Path.concat [ tmp, newDir ]
   Run.liftAff $ FS.Extra.ensureDirectory packageSourceDir
   -- We copy over all files that are always included (ie. src dir, purs.json file),
   -- and any files the user asked for via the 'files' key, and remove all files
   -- that should never be included (even if the user asked for them).
-  copyPackageSourceFiles manifestFields.files { source: packageDirectory, destination: packageSourceDir }
+  copyPackageSourceFiles manifest.files { source: packageDirectory, destination: packageSourceDir }
   Run.liftAff $ removeIgnoredTarballFiles packageSourceDir
   let tarballPath = packageSourceDir <> ".tar.gz"
-  Run.liftEffect $ Tar.create { cwd: tmpDir, folderName: newDirname }
-  Log.debug "Checking the tarball size..."
-  FS.Stats.Stats { size: bytes } <- liftAff $ FS.Aff.stat tarballPath
+  Run.liftEffect $ Tar.create { cwd: tmp, folderName: newDir }
+
+  Log.debug "Tarball created. Verifying its size..."
+  FS.Stats.Stats { size: bytes } <- Run.liftAff $ FS.Aff.stat tarballPath
   for_ (Operation.Validation.validateTarballSize bytes) case _ of
     Operation.Validation.ExceedsMaximum maxPackageBytes ->
-      Log.exit $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes.\ncc: @purescript/packaging"
+      Log.exit $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
     Operation.Validation.WarnPackageSize maxWarnBytes ->
-      Notify.notify $ "WARNING: Package tarball is " <> show bytes <> "bytes, which exceeds the warning threshold of " <> show maxWarnBytes <> " bytes.\ncc: @purescript/packaging"
+      Notify.notify $ "WARNING: Package tarball is " <> show bytes <> "bytes, which exceeds the warning threshold of " <> show maxWarnBytes <> " bytes."
 
-  Log.debug "Hashing the tarball..."
   hash <- Run.liftAff $ Sha256.hashFile tarballPath
-  Log.debug $ "Hash: " <> Sha256.print hash
+  Log.debug $ "Tarball size of " <> show bytes <> " is acceptable. Hash: " <> Sha256.print hash
 
   -- Now that we have the package source contents we can verify we can compile
   -- the package. We skip failures when the package is a legacy package.
-  compilationResult <- compilePackage { packageSourceDir: packageDirectory, compiler, resolutions: verifiedResolutions }
+  compilationResult <- compilePackage
+    { packageSourceDir: packageDirectory
+    , compiler: payload.compiler
+    , resolutions: verifiedResolutions
+    }
 
   case compilationResult of
     Left error
-      -- We allow bulk-uploaded legacy packages to fail compilation because we
-      -- do not necessarily know what compiler to use with them.
-      | source == Importer -> do
+      -- We allow legacy packages to fail compilation because we do not
+      -- necessarily know what compiler to use with them.
+      | source == Legacy -> do
           Log.debug error
-          Log.warn "Failed to compile, but continuing because this package is coming from the importer"
+          Log.warn "Failed to compile, but continuing because this package is a legacy package."
       | otherwise ->
           Log.exit error
     Right _ ->
       pure unit
 
-  Notify.notify "Uploading package to the storage backend..."
-  Storage.uploadTarball name newVersion tarballPath
-  Log.debug $ "Adding the new version " <> Version.print newVersion <> " to the package metadata file."
-  let newMetadata = addVersionToMetadata newVersion { hash, ref, publishedTime, bytes } (Metadata metadata)
-  Registry.writeMetadata name newMetadata
+  Notify.notify "Package is verified! Uploading it to the storage backend..."
+  Storage.uploadTarball manifest.name manifest.version tarballPath
+  Log.debug $ "Adding the new version " <> Version.print manifest.version <> " to the package metadata file."
+  let newMetadata = metadata { published = Map.insert manifest.version { hash, ref: payload.ref, publishedTime, bytes } metadata.published }
+  Registry.writeMetadata manifest.name (Metadata newMetadata)
   Notify.notify "Successfully uploaded package to the registry! 🎉 🚀"
 
   -- After a package has been uploaded we add it to the registry index, we
@@ -492,74 +535,26 @@ publish source publishData@{ name, ref, compiler, resolutions } (Metadata inputM
 
   -- We write to the registry index if possible. If this fails, the packaging
   -- team should manually insert the entry.
-  Registry.writeManifest manifest
+  Registry.writeManifest (Manifest manifest)
 
-  when (source == API) $ case compilationResult of
-    Left error ->
-      Notify.notify $ Array.fold [ "Skipping Pursuit publishing because this package failed to compile:\n", error ]
+  when (source == Current) $ case compilationResult of
+    Left error -> do
+      Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
+      Log.exit "Cannot publish to Pursuit because this package failed to compile."
     Right dependenciesDir -> do
       Log.debug "Uploading to Pursuit"
-      publishToPursuit { packageSourceDir: packageDirectory, compiler, resolutions: verifiedResolutions, dependenciesDir } >>= case _ of
+      publishToPursuit { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, dependenciesDir } >>= case _ of
         Left message -> Notify.notify message
         Right _ -> Notify.notify "Successfully published docs to pursuit!"
 
-  Registry.mirrorLegacyRegistry name (un Metadata newMetadata).location
+  Registry.mirrorLegacyRegistry payload.name newMetadata.location
   Notify.notify "Mirrored location change to the legacy registry."
-
-verifyManifest :: forall r. { metadata :: Metadata, manifest :: Manifest } -> Run (REGISTRY + LOG + LOG_EXCEPT + r) Unit
-verifyManifest { metadata, manifest } = do
-  let Manifest manifestFields = manifest
-
-  -- TODO: collect all errors and return them at once. Note: some of the checks
-  -- are going to fail while parsing from JSON, so we should move them here if we
-  -- want to handle everything together
-  Log.debug $ "Running checks for the following manifest:\n" <> printJson Manifest.codec manifest
-
-  Log.debug "Ensuring the package is not the purescript-metadata package, which cannot be published."
-  when (Operation.Validation.isMetadataPackage manifest) do
-    Log.exit "The `metadata` package cannot be uploaded to the registry as it is a protected package."
-
-  Log.debug "Check that version has not already been published"
-  for_ (Operation.Validation.isNotPublished manifest metadata) \info -> do
-    Log.exit $ String.joinWith "\n"
-      [ "You tried to upload a version that already exists: " <> Version.print manifestFields.version
-      , "Its metadata is:"
-      , "```json"
-      , printJson Metadata.publishedMetadataCodec info
-      , "```"
-      ]
-
-  Log.debug "Check that version has not been unpublished"
-  for_ (Operation.Validation.isNotUnpublished manifest metadata) \info -> do
-    Log.exit $ String.joinWith "\n"
-      [ "You tried to upload a version that has been unpublished: " <> Version.print manifestFields.version
-      , ""
-      , "```json"
-      , printJson Metadata.unpublishedMetadataCodec info
-      , "```"
-      ]
-
-  Log.debug "Check that all dependencies are contained in the registry"
-  allMetadata <- Registry.readAllMetadata
-
-  let
-    pkgNotInRegistry name = case Map.lookup name allMetadata of
-      Nothing -> Just name
-      Just _p -> Nothing
-    pkgsNotInRegistry =
-      Array.mapMaybe pkgNotInRegistry $ Set.toUnfoldable $ Map.keys manifestFields.dependencies
-
-  unless (Array.null pkgsNotInRegistry) do
-    Log.exit $ "Some dependencies of your package were not found in the Registry: " <> String.joinWith ", " (map PackageName.print pkgsNotInRegistry)
 
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the
 -- | manifest. If not, we solve their manifest to produce a build plan.
-verifyResolutions
-  :: forall r
-   . { resolutions :: Maybe (Map PackageName Version), manifest :: Manifest }
-  -> Run (REGISTRY + LOG + LOG_EXCEPT + r) (Map PackageName Version)
-verifyResolutions { resolutions, manifest } = do
+verifyResolutions :: forall r. Manifest -> Maybe (Map PackageName Version) -> Run (REGISTRY + LOG + LOG_EXCEPT + r) (Map PackageName Version)
+verifyResolutions manifest resolutions = do
   Log.debug "Check the submitted build plan matches the manifest"
   -- We don't verify packages provided via the mass import.
   manifestIndex <- Registry.readAllManifests
@@ -820,12 +815,6 @@ formatPursuitResolutions { resolutions, dependenciesDir } =
       packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.print version ]
     [ Tuple bowerPackageName { path: packagePath, version } ]
 
-isPackageVersionInMetadata :: PackageName -> Version -> Map PackageName Metadata -> Boolean
-isPackageVersionInMetadata packageName version metadata =
-  case Map.lookup packageName metadata of
-    Nothing -> false
-    Just packageMetadata -> isVersionInMetadata version packageMetadata
-
 packageNameIsUnique :: PackageName -> Map PackageName Metadata -> Boolean
 packageNameIsUnique name = isNothing <<< Map.lookup name
 
@@ -1083,27 +1072,12 @@ scratchDir = "scratch"
 cacheDir :: FilePath
 cacheDir = ".cache"
 
-mkNewMetadata :: Location -> Metadata
-mkNewMetadata location = Metadata
-  { location
-  , owners: Nothing
-  , published: Map.empty
-  , unpublished: Map.empty
-  }
-
-addVersionToMetadata :: Version -> PublishedMetadata -> Metadata -> Metadata
-addVersionToMetadata version versionMeta (Metadata metadata) = do
-  let published = Map.insert version versionMeta metadata.published
-  Metadata (metadata { published = published })
-
-unpublishVersionInMetadata :: Version -> UnpublishedMetadata -> Metadata -> Metadata
-unpublishVersionInMetadata version versionMeta (Metadata metadata) = do
-  let published = Map.delete version metadata.published
-  let unpublished = Map.insert version versionMeta metadata.unpublished
-  Metadata (metadata { published = published, unpublished = unpublished })
-
-isVersionInMetadata :: Version -> Metadata -> Boolean
-isVersionInMetadata version (Metadata metadata) = versionPublished || versionUnpublished
-  where
-  versionPublished = isJust $ Map.lookup version metadata.published
-  versionUnpublished = isJust $ Map.lookup version metadata.unpublished
+jsonToDhallManifest :: String -> Aff (Either String String)
+jsonToDhallManifest jsonStr = do
+  let cmd = "json-to-dhall"
+  let stdin = Just jsonStr
+  let args = [ "--records-loose", "--unions-strict", "." <> Path.sep <> Path.concat [ "types", "v1", "Manifest.dhall" ] ]
+  result <- Sunde.spawn { cmd, stdin, args } ChildProcess.defaultSpawnOptions
+  pure $ case result.exit of
+    ChildProcess.Normally 0 -> Right jsonStr
+    _ -> Left result.stderr
