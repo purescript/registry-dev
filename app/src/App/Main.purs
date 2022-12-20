@@ -5,20 +5,20 @@ import Registry.App.Prelude
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
+import Data.Foldable (traverse_)
 import Data.String as String
-import Data.String.Base64 as Base64
-import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Effect.Exception as Exception
 import Foreign.Object as Object
 import Node.FS.Aff as FS.Aff
 import Node.Process as Process
-import Registry.App.API as API
+import Registry.App.Effect.Env as Env
 import Registry.Constants as Constants
 import Registry.Foreign.JsonRepair as JsonRepair
-import Registry.Foreign.Octokit (GitHubToken(..), IssueNumber(..), Octokit)
+import Registry.Foreign.Octokit (GitHubToken, IssueNumber(..), Octokit)
 import Registry.Foreign.Octokit as Octokit
+import Registry.Foreign.S3 (SpaceKey)
 import Registry.Operation (PackageOperation(..), PackageSetOperation(..))
 import Registry.Operation as Operation
 
@@ -26,26 +26,14 @@ main :: Effect Unit
 main = launchAff_ $ do
   -- For now we only support GitHub events, and no formal API, so we'll jump
   -- straight into the GitHub event workflow.
-  maybeEnv <- initializeGitHub
-  for_ maybeEnv \env -> do
+  initializeGitHub >>= traverse_ \env -> do
     -- TODO: Set up run.
     -- runOperation API operation
 
-    -- TODO: After the run, close the issue, assuming that it will stay open if
-    -- an exception was thrown.
+    -- After the run, close the issue. If an exception was thrown then the issue
+    -- will remain open.
     _ <- Octokit.request env.octokit (Octokit.closeIssueRequest { address: Constants.registry, issue: env.issue })
     pure unit
-
--- | Loads the `.env` file into the environment.
-loadEnv :: Aff Dotenv.Settings
-loadEnv = do
-  contents <- Aff.try $ FS.Aff.readTextFile UTF8 envFilePath
-  case contents of
-    Left _ -> Console.log ("Not loading .env file because none was found at path: " <> envFilePath) $> []
-    Right string -> Dotenv.loadContents (String.trim string)
-
-envFilePath :: FilePath
-envFilePath = ".env"
 
 type GitHubEventEnv =
   { octokit :: Octokit
@@ -53,20 +41,37 @@ type GitHubEventEnv =
   , issue :: IssueNumber
   , username :: String
   , operation :: Either PackageSetOperation PackageOperation
+  , spacesConfig :: SpaceKey
   , pacchettibottiKeys :: { publicKey :: String, privateKey :: String }
   }
 
 initializeGitHub :: Aff (Maybe GitHubEventEnv)
 initializeGitHub = do
-  eventPath <- liftEffect do
-    Process.lookupEnv "GITHUB_EVENT_PATH"
-      >>= maybe (Exception.throw "GITHUB_EVENT_PATH not defined in the environment") pure
+  envVars <- liftEffect Env.readEnvVars
 
-  pacchettibottiKeys <- readPacchettiBottiKeys
+  token <- liftEffect $ case envVars.pacchettibottiToken of
+    Nothing -> Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment."
+    Just token -> pure token
 
-  token <- liftEffect do
-    Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
-      >>= maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment") (pure <<< GitHubToken)
+  publicKey <- liftEffect $ case envVars.pacchettibottiED25519Pub of
+    Nothing -> Exception.throw "PACCHETTIBOTTI_ED25519_PUB not defined in the environment."
+    Just key -> pure key
+
+  privateKey <- liftEffect $ case envVars.pacchettibottiED25519 of
+    Nothing -> Exception.throw "PACCHETTIBOTTI_ED25519 not defined in the environment."
+    Just key -> pure key
+
+  spacesKey <- liftEffect $ case envVars.spacesKey of
+    Nothing -> Exception.throw "SPACES_KEY not defined in the environment."
+    Just key -> pure key
+
+  spacesSecret <- liftEffect $ case envVars.spacesSecret of
+    Nothing -> Exception.throw "SPACES_SECRET not defined in the environment."
+    Just key -> pure key
+
+  eventPath <- liftEffect $ Process.lookupEnv "GITHUB_EVENT_PATH" >>= case _ of
+    Nothing -> Exception.throw "GITHUB_EVENT_PATH not defined in the environment."
+    Just path -> pure path
 
   octokit <- liftEffect $ Octokit.newOctokit token
 
@@ -92,7 +97,15 @@ initializeGitHub = do
         Right _ -> pure Nothing
 
     DecodedOperation issue username operation -> do
-      pure $ Just { octokit, token, issue, username, operation, pacchettibottiKeys }
+      pure $ Just
+        { octokit
+        , token
+        , issue
+        , username
+        , operation
+        , spacesConfig: { key: spacesKey, secret: spacesSecret }
+        , pacchettibottiKeys: { publicKey, privateKey }
+        }
 
 data OperationDecoding
   = NotJson
@@ -188,51 +201,3 @@ decodeIssueEvent json = lmap CA.printJsonDecodeError do
       (Left $ CA.AtKey key CA.MissingValue)
       (lmap (CA.AtKey key) <<< CA.decode codec)
       (Object.lookup key object)
-
--- | Read the PacchettiBotti SSH keypair from the environment.
---
--- PacchettiBotti's keys are stored in base64-encoded strings in the
--- environment. To regenerate SSH keys for pacchettibotti:
---
--- 1. Generate the keypair
--- $ ssh-keygen -t ed25519 -C "pacchettibotti@purescript.org"
---
--- 2. Encode the keypair (run this for both public and private):
--- $ cat id_ed25519 | base64 | tr -d \\n
--- $ cat id_ed25519.pub | base64 | tr -d \\n
---
--- 3. Store the results in 1Password and in GitHub secrets storage.
-readPacchettiBottiKeys :: Aff { publicKey :: String, privateKey :: String }
-readPacchettiBottiKeys = do
-  publicKey <- liftEffect (Process.lookupEnv "PACCHETTIBOTTI_ED25519_PUB") >>= case _ of
-    Nothing -> Aff.throwError $ Aff.error "PACCHETTIBOTTI_ED25519_PUB not defined in the environment."
-    Just b64Key -> case Base64.decode b64Key of
-      Left b64Error -> Aff.throwError $ Aff.error $ "Failed to decode base64-encoded public key: " <> Aff.message b64Error
-      Right decoded -> case verifyPublicKey (String.trim decoded) of
-        Left error -> Aff.throwError $ Aff.error $ "Public key is malformed: " <> error
-        Right key -> pure key
-
-  privateKey <- liftEffect (Process.lookupEnv "PACCHETTIBOTTI_ED25519") >>= case _ of
-    Nothing -> Aff.throwError $ Aff.error "PACCHETTIBOTTI_ED25519 not defined in the environment."
-    Just b64Key -> case Base64.decode b64Key of
-      Left _ -> Aff.throwError $ Aff.error $ "Failed to decode base64-encoded private key."
-      Right key -> pure (String.trim key)
-
-  pure { publicKey, privateKey }
-  where
-  verifyPublicKey :: String -> Either String String
-  verifyPublicKey decodedKey = do
-    let split = String.split (String.Pattern " ") decodedKey
-
-    keyFields <- note "Key must be of the form 'keytype key email'" do
-      keyType <- Array.index split 0
-      key <- Array.index split 1
-      email <- Array.index split 2
-      pure { keyType, key, email }
-
-    if keyFields.keyType /= API.pacchettiBottiKeyType then
-      Left $ Array.fold [ "Key type must be ", API.pacchettiBottiKeyType, " but received ", keyFields.keyType, " instead." ]
-    else if keyFields.email /= API.pacchettiBottiEmail then
-      Left $ Array.fold [ "Email must be ", API.pacchettiBottiEmail, " but received: ", keyFields.email, " instead." ]
-    else
-      pure keyFields.key

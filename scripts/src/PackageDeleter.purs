@@ -4,30 +4,23 @@ import Registry.App.Prelude
 
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
-import Control.Monad.Except as Except
-import Control.Monad.Reader (ask, asks)
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Data.Map as Map
 import Data.String as String
 import Data.Tuple (uncurry)
-import Effect.Aff as Aff
 import Effect.Class.Console as Console
-import Effect.Exception as Exception
-import Effect.Ref as Ref
-import Node.Path as Path
 import Node.Process as Process
-import Registry.App.API as API
-import Registry.App.CLI.Git as Git
-import Registry.Constants as Constants
-import Registry.Foreign.FSExtra as FS.Extra
-import Registry.Foreign.Octokit (GitHubToken(..))
-import Registry.Foreign.Octokit as Octokit
+import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
+import Registry.App.Effect.Log as Log
+import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Storage (STORAGE)
+import Registry.App.Effect.Storage as Storage
 import Registry.Internal.Codec as Internal.Codec
-import Registry.ManifestIndex as ManifestIndex
-import Registry.Metadata as Metadata
 import Registry.PackageName as PackageName
 import Registry.Version as Version
+import Run (Run)
 
 data DeleteMode = File FilePath | Package PackageName Version
 
@@ -70,7 +63,9 @@ main = launchAff_ do
   mode <- case Arg.parseArgs "package-deleter" description parser args of
     Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
     Right command -> pure command
+  pure unit
 
+{-
   _ <- API.loadEnv
   FS.Extra.ensureDirectory API.scratchDir
 
@@ -163,35 +158,18 @@ main = launchAff_ do
       Right _ -> pure unit
 
     Console.log "Finished."
+-}
 
-data DeleteError
-  = FailedDelete String
-  | FailedUpdateMetadata String
-  | FailedUpdateIndex String
-
-deleteVersion :: PackageName -> Version -> RegistryM (Either DeleteError Unit)
+-- todo: interpret this, making sure to do a batch thing
+deleteVersion :: PackageName -> Version -> Run (REGISTRY + STORAGE + LOG + LOG_EXCEPT ()) Unit
 deleteVersion name version = do
   let formatted = formatPackageVersion name version
-  Console.log $ "Deleting " <> formatted
-  liftAff (Aff.attempt (PackageStorage.delete { name, version })) >>= case _ of
-    Left err -> pure $ Left $ FailedDelete $ Aff.message err
-    Right _ -> do
-      Console.log $ "Updating metadata for " <> formatted
-      allMetadata <- readPackagesMetadata
-      case Map.lookup name allMetadata of
-        Nothing -> pure $ Left $ FailedUpdateMetadata "No existing metadata found."
-        Just (Metadata oldMetadata) -> do
-          let
-            newMetadata = Metadata $ oldMetadata
-              { published = Map.delete version oldMetadata.published
-              , unpublished = Map.delete version oldMetadata.unpublished
-              }
-          registryDir <- asks _.registry
-          liftAff (Aff.attempt (writeJsonFile Metadata.codec (API.metadataFile registryDir name) newMetadata)) >>= case _ of
-            Left err -> pure $ Left $ FailedUpdateMetadata $ Aff.message err
-            Right _ -> do
-              Console.log $ "Updating manifest index for " <> formatted
-              registryIndexDir <- asks _.registryIndex
-              liftAff (ManifestIndex.removeFromEntryFile registryIndexDir name version) >>= case _ of
-                Left err -> pure $ Left $ FailedUpdateIndex err
-                Right _ -> pure $ Right unit
+  Log.info $ "Deleting " <> formatted
+  Storage.deleteTarball name version
+  Log.info $ "Updating metadata for " <> formatted
+  Registry.readMetadata name >>= case _ of
+    Nothing -> Log.exit $ "Could not update metadata for " <> formatted <> " becaues no existing metadata was found."
+    Just (Metadata old) -> do
+      let new = Metadata $ old { published = Map.delete version old.published, unpublished = Map.delete version old.unpublished }
+      Registry.writeMetadata name new
+      Registry.deleteManifest name version

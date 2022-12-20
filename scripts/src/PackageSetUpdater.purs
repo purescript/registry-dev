@@ -8,22 +8,12 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
 import Data.Map as Map
-import Data.Time.Duration (Hours(..))
+import Data.Time.Duration (Hours)
 import Effect.Aff as Aff
-import Effect.Class.Console as Console
-import Effect.Exception as Exception
-import Effect.Ref as Ref
-import Node.Path as Path
-import Node.Process as Node.Process
-import Node.Process as Process
-import Registry.App.API as API
-import Registry.App.Legacy.PackageSet as Legacy.PackageSet
-import Registry.Foreign.FSExtra as FS.Extra
-import Registry.Foreign.Octokit (GitHubToken(..))
-import Registry.Foreign.Octokit as Octokit
-import Registry.PackageName as PackageName
-import Registry.PackageSet as PackageSet
-import Registry.Version as Version
+import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry as Registry
+import Run (EFFECT, Run)
+import Run as Run
 
 data PublishMode = GeneratePackageSet | CommitPackageSet
 
@@ -41,6 +31,8 @@ parser = Arg.choose "command"
 
 main :: Effect Unit
 main = Aff.launchAff_ do
+
+  {-
   Console.log "Loading env..."
   _ <- API.loadEnv
 
@@ -129,25 +121,33 @@ main = Aff.launchAff_ do
                   case Legacy.PackageSet.fromPackageSet registryIndex metadata packageSet of
                     Left err -> throwWithComment err
                     Right converted -> Legacy.PackageSet.mirrorLegacySet converted
+-}
+  pure unit
 
-findRecentUploads :: Map PackageName Metadata -> Hours -> RegistryM { accepted :: Map PackageName Version, rejected :: Map PackageName (NonEmptyArray Version) }
-findRecentUploads metadata limit = do
-  now <- liftEffect nowUTC
+type RecentUploads =
+  { eligible :: Map PackageName Version
+  , ineligible :: Map PackageName (NonEmptyArray Version)
+  }
+
+findRecentUploads :: forall r. Hours -> Run (REGISTRY + EFFECT + r) RecentUploads
+findRecentUploads limit = do
+  allMetadata <- Registry.readAllMetadata
+  now <- Run.liftEffect nowUTC
 
   let
-    packageUploads = Map.fromFoldable do
-      Tuple packageName (Metadata packageMetadata) <- Map.toUnfoldable metadata
+    uploads = Map.fromFoldable do
+      Tuple name (Metadata metadata) <- Map.toUnfoldable allMetadata
       versions <- Array.fromFoldable $ NonEmptyArray.fromArray do
-        Tuple version { publishedTime } <- Map.toUnfoldable packageMetadata.published
+        Tuple version { publishedTime } <- Map.toUnfoldable metadata.published
         let diff = DateTime.diff now publishedTime
         guardA (diff <= limit)
         pure version
-      pure (Tuple packageName versions)
+      pure (Tuple name versions)
 
-    deduplicated = packageUploads # flip foldlWithIndex { rejected: Map.empty, accepted: Map.empty } \name acc versions -> do
+    deduplicated = uploads # flip foldlWithIndex { ineligible: Map.empty, eligible: Map.empty } \name acc versions -> do
       let { init, last } = NonEmptyArray.unsnoc versions
       case NonEmptyArray.fromArray init of
-        Nothing -> acc { accepted = Map.insert name last acc.accepted }
-        Just entries -> acc { accepted = Map.insert name last acc.accepted, rejected = Map.insert name entries acc.rejected }
+        Nothing -> acc { eligible = Map.insert name last acc.eligible }
+        Just entries -> acc { eligible = Map.insert name last acc.eligible, ineligible = Map.insert name entries acc.ineligible }
 
   pure deduplicated

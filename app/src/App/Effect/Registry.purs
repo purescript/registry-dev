@@ -53,6 +53,7 @@ data Registry a
   | ReadAllPackageSets (Map Version PackageSet -> a)
   -- Legacy operations
   | MirrorPackageSet PackageSet a
+  | ReadLegacyRegistry ({ bower :: Map String String, new :: Map String String } -> a)
   | MirrorLegacyRegistry PackageName Location a
 
 derive instance Functor Registry
@@ -105,6 +106,10 @@ readAllPackageSets = Run.lift _registry (ReadAllPackageSets identity)
 -- | Mirror a package set to the legacy package-sets repo
 mirrorPackageSet :: forall r. PackageSet -> Run (REGISTRY + r) Unit
 mirrorPackageSet set = Run.lift _registry (MirrorPackageSet set unit)
+
+-- | Read the contents of the legacy registry.
+readLegacyRegistry :: forall r. Run (REGISTRY + r) { bower :: Map String String, new :: Map String String }
+readLegacyRegistry = Run.lift _registry (ReadLegacyRegistry identity)
 
 -- | Mirror a package name and location to the legacy registry files.
 mirrorLegacyRegistry :: forall r. PackageName -> Location -> Run (REGISTRY + r) Unit
@@ -444,6 +449,21 @@ handleRegistryGit env = case _ of
           Log.debug $ "Successfully committed and pushed package set " <> name
           pure next
 
+  ReadLegacyRegistry reply -> do
+    fetchGitHubRepo Constants.registry ForceClean env.registry
+
+    let readRegistryFile path = readJsonFile (CA.Common.strMap CA.string) (Path.concat [ env.registry, path ])
+
+    bower <- Run.liftAff (readRegistryFile "bower-packages.json") >>= case _ of
+      Left _ -> Log.exit "Failed to read bower-packages.json file."
+      Right packages -> pure packages
+
+    new <- Run.liftAff (readRegistryFile "new-packages.json") >>= case _ of
+      Left _ -> Log.exit "Failed to read new-packages.json file."
+      Right packages -> pure packages
+
+    pure $ reply $ { bower, new }
+
   MirrorLegacyRegistry name location next -> do
     url <- case location of
       GitHub { owner, repo, subdir: Nothing } ->
@@ -455,18 +475,9 @@ handleRegistryGit env = case _ of
         Log.error $ "Cannot mirror location " <> url <> " because it is a Git location, and only GitHub is supported in the legacy registry."
         Log.exit "Could not sync package with the legacy registry because only GitHub packages are supported."
 
-    fetchGitHubRepo Constants.registry ForceClean env.registry
+    { bower, new } <- handleRegistryGit env $ ReadLegacyRegistry identity
 
     let rawPackageName = "purescript-" <> PackageName.print name
-    let readFile path = readJsonFile (CA.Common.strMap CA.string) (Path.concat [ env.registry, path ])
-
-    bowerPackages <- Run.liftAff (readFile "bower-packages.json") >>= case _ of
-      Left _ -> Log.exit "Failed to read bower-packages.json file."
-      Right packages -> pure packages
-
-    newPackages <- Run.liftAff (readFile "new-packages.json") >>= case _ of
-      Left _ -> Log.exit "Failed to read new-packages.json file."
-      Right packages -> pure packages
 
     let
       -- Here we determine which, if any, legacy registry file should be updated with this package.
@@ -475,7 +486,7 @@ handleRegistryGit env = case _ of
       -- of the package in the registry file is different from its one in the registry metadata, then we
       -- update the package in that registry file. If the package exists at the proper location already
       -- then we do nothing.
-      targetFile = case Map.lookup rawPackageName newPackages, Map.lookup rawPackageName bowerPackages of
+      targetFile = case Map.lookup rawPackageName new, Map.lookup rawPackageName bower of
         Nothing, Nothing -> Just "new-packages.json"
         Just existingUrl, _
           | existingUrl /= url -> Just "new-packages.json"
@@ -485,7 +496,7 @@ handleRegistryGit env = case _ of
           | otherwise -> Nothing
 
     for_ targetFile \file -> do
-      let sourcePackages = if file == "new-packages.json" then newPackages else bowerPackages
+      let sourcePackages = if file == "new-packages.json" then new else bower
       let packages = Map.insert rawPackageName url sourcePackages
       let path = Path.concat [ env.registry, file ]
       let message = "Sync " <> PackageName.print name <> " with legacy registry."

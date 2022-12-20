@@ -1061,8 +1061,8 @@ acceptTrustees authenticated maybeOwners = do
           newAuthenticated = authenticated { signature = signature }
 
           pacchettiBottiOwner = Owner
-            { email: pacchettiBottiEmail
-            , keytype: pacchettiBottiKeyType
+            { email: Env.pacchettibottiEmail
+            , keytype: Env.pacchettibottiKeyType
             , public: publicKey
             }
 
@@ -1074,12 +1074,6 @@ acceptTrustees authenticated maybeOwners = do
 
 packagingTeam :: Team
 packagingTeam = { org: "purescript", team: "packaging" }
-
-pacchettiBottiKeyType :: String
-pacchettiBottiKeyType = "ssh-ed25519"
-
-pacchettiBottiEmail :: String
-pacchettiBottiEmail = "pacchettibotti@purescript.org"
 
 -- | An ignored directory suitable for storing results when running the API or
 -- | scripts.
