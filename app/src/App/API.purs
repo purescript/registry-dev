@@ -96,12 +96,11 @@ printSource = case _ of
   Legacy -> "legacy"
   Current -> "current"
 
+type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + NOTIFY + LOG + LOG_EXCEPT + r)
+
 -- | Process a package set update. Package set updates are only processed via
 -- | GitHub and not the HTTP API.
-packageSetUpdate
-  :: forall r
-   . PackageSetUpdateData
-  -> Run (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + NOTIFY + LOG + LOG_EXCEPT + r) Unit
+packageSetUpdate :: forall r. PackageSetUpdateData -> Run (PackageSetUpdateEffects + r) Unit
 packageSetUpdate payload = do
   { issue, username } <- Env.askGitHubEvent
 
@@ -213,11 +212,14 @@ packageSetUpdate payload = do
         Registry.mirrorPackageSet packageSet
         Notify.notify "Mirrored a new legacy package set."
 
+type AuthenticatedEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r)
+
 -- | Run an authenticated package operation, ie. an unpublish or a transfer.
-authenticated
-  :: forall r
-   . AuthenticatedData
-  -> Run (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r) Unit
+--
+-- TODO: This currently requires a GitHub envent environment, but this should be
+-- changed; this operation will be available via the API and we will not be able
+-- to tell what "username" was used to produce the operation.
+authenticated :: forall r. AuthenticatedData -> Run (AuthenticatedEffects + r) Unit
 authenticated auth = case auth.payload of
   Unpublish payload -> do
     Log.debug $ "Processing authorized unpublish operation with payload: " <> stringifyJson Operation.authenticatedCodec auth
@@ -313,15 +315,13 @@ authenticated auth = case auth.payload of
           Registry.mirrorLegacyRegistry payload.name payload.newLocation
           Notify.notify "Mirrored location change to the legacy registry."
 
+type PublishEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + CACHE + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r)
+
 -- | Publish a package via the 'publish' operation. If the package has not been
 -- | published before then it will be registered and the given version will be
 -- | upload. If it has been published before then the existing metadata will be
 -- | updated with the new version.
-publish
-  :: forall r
-   . Source
-  -> PublishData
-  -> Run (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + CACHE + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r) Unit
+publish :: forall r. Source -> PublishData -> Run (PublishEffects + r) Unit
 publish source payload = do
   let printedName = PackageName.print payload.name
 

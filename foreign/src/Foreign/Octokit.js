@@ -17,6 +17,7 @@ export const newOctokitImpl = (authToken) => {
           return true;
         }
       },
+      onSecondaryRateLimit: (retryAfter, options) => {},
     },
   });
   return octokit;

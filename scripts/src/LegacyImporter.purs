@@ -37,7 +37,7 @@ import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
-import Registry.App.API (AppEffects, Source(..))
+import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -55,7 +55,7 @@ import Registry.Foreign.Octokit (Address, Tag)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Location as Location
 import Registry.ManifestIndex as ManifestIndex
-import Registry.Operation (PackageOperation(..))
+import Registry.Operation (PackageOperation(..), PublishData)
 import Registry.PackageName as PackageName
 import Registry.Version as Version
 import Run (Run)
@@ -70,13 +70,13 @@ derive instance Eq ImportMode
 
 parser :: ArgParser ImportMode
 parser = Arg.choose "command"
-  [ Arg.argument [ "dry-run" ]
+  [ Arg.flag [ "dry-run" ]
       "Run the registry importer without uploading packages or committing files."
       $> DryRun
-  , Arg.argument [ "generate-registry" ]
+  , Arg.flag [ "generate-registry" ]
       "Run the registry importer, uploading packages but not committing to metadata or the index."
       $> GenerateRegistry
-  , Arg.argument [ "update-registry" ]
+  , Arg.flag [ "update-registry" ]
       "Run the registry importer, uploading packages and committing to metadata and the index."
       $> UpdateRegistry
   ]
@@ -90,7 +90,7 @@ main = launchAff_ do
     Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
     Right command -> pure command
 
-  FS.Extra.ensureDirectory API.scratchDir
+  FS.Extra.ensureDirectory scratchDir
 
 {-
 Console.log "Reading .env file..."
@@ -177,9 +177,14 @@ let
 -- TODO
 -- runLegacyImport # Run.interpret ?a Run.runBaseAff'
 
-runLegacyImport :: ImportMode -> Run AppEffects Unit
+runLegacyImport :: ImportMode -> Run _ Unit
 runLegacyImport mode = do
   Log.info "Ensuring the registry is well-formed..."
+
+  let
+    hasMetadata allMetadata package version = case Map.lookup package allMetadata of
+      Nothing -> false
+      Just (Metadata m) -> isJust (Map.lookup version m.published) || isJust (Map.lookup version m.unpublished)
 
   Log.info "Removing entries from the manifest index that don't have accompanying metadata..."
   _ <- do
@@ -187,8 +192,7 @@ runLegacyImport mode = do
     allMetadata <- Registry.readAllMetadata
     -- To ensure the metadata and registry index are always in sync, we remove
     -- any entries from the registry index that don't have accompanying metadata
-    let hasMetadata package version = API.isPackageVersionInMetadata package version allMetadata
-    let mismatched = mapWithIndex (Map.filterKeys <<< not <<< hasMetadata) $ ManifestIndex.toMap allManifests
+    let mismatched = mapWithIndex (Map.filterKeys <<< not <<< hasMetadata allMetadata) $ ManifestIndex.toMap allManifests
     forWithIndex mismatched \package versions ->
       forWithIndex versions \version _ -> do
         Log.debug $ "Found mismatch: " <> formatPackageVersion package version
@@ -224,10 +228,10 @@ runLegacyImport mode = do
   allMetadata <- Registry.readAllMetadata
 
   let
-    isPublished { name, version } = API.isPackageVersionInMetadata name version allMetadata
+    isPublished { name, version } = hasMetadata allMetadata name version
     notPublished = indexPackages # Array.filter \(Manifest manifest) -> not (isPublished manifest)
 
-    mkOperation :: Manifest -> Run _ PackageOperation
+    mkOperation :: Manifest -> Run _ PublishData
     mkOperation (Manifest manifest) =
       case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
         Nothing -> do
@@ -235,7 +239,7 @@ runLegacyImport mode = do
           Log.error $ "Unable to recover package ref for " <> formatted
           Log.exit $ "Failed to create publish operation for " <> formatted
         Just ref ->
-          pure $ Publish
+          pure
             { location: Just manifest.location
             , name: manifest.name
             , ref: un RawVersion ref
@@ -256,9 +260,9 @@ runLegacyImport mode = do
 
       let
         source = case mode of
-          DryRun -> Importer
-          GenerateRegistry -> Importer
-          UpdateRegistry -> API
+          DryRun -> Current
+          GenerateRegistry -> Legacy
+          UpdateRegistry -> Current
 
       void $ for notPublished \(Manifest manifest) -> do
         Log.info $ Array.foldMap (append "\n")
@@ -268,18 +272,18 @@ runLegacyImport mode = do
           , "----------"
           ]
         operation <- mkOperation (Manifest manifest)
-        API.runOperation source (Right operation)
+        API.publish source operation
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
 writePackageFailures =
-  writeJsonFile (rawPackageNameMapCodec jsonValidationErrorCodec) (Path.concat [ API.scratchDir, "package-failures.json" ])
+  writeJsonFile (rawPackageNameMapCodec jsonValidationErrorCodec) (Path.concat [ scratchDir, "package-failures.json" ])
     <<< map formatPackageValidationError
 
 -- | Record all version failures to the 'version-failures.json' file.
 writeVersionFailures :: Map RawPackageName (Map RawVersion VersionValidationError) -> Aff Unit
 writeVersionFailures =
-  writeJsonFile (rawPackageNameMapCodec (rawVersionMapCodec jsonValidationErrorCodec)) (Path.concat [ API.scratchDir, "version-failures.json" ])
+  writeJsonFile (rawPackageNameMapCodec (rawVersionMapCodec jsonValidationErrorCodec)) (Path.concat [ scratchDir, "version-failures.json" ])
     <<< map (map formatVersionValidationError)
 
 type LegacyRegistry = Map RawPackageName String

@@ -23,6 +23,7 @@ import Effect.Aff as Aff
 import Effect.Ref as Ref
 import JSURI as JSURI
 import Node.FS.Aff as FS.Aff
+import Node.Path as Path
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.Types (RawVersion(..))
@@ -105,8 +106,8 @@ delete :: forall a r. CacheKey AppCache a -> Run (CACHE + r) Unit
 delete key = Run.lift _appCache (deleteCache key)
 
 -- | Handle the application cache using the file system
-handleAppCacheFs :: forall a r. Ref (Map String Json) -> Cache AppCache a -> Run (LOG + AFF + EFFECT + r) a
-handleAppCacheFs ref = handleCacheFs ref jsonKeyHandler
+handleAppCacheFs :: forall a r. FilePath -> Ref (Map String Json) -> Cache AppCache a -> Run (LOG + AFF + EFFECT + r) a
+handleAppCacheFs path ref = handleCacheFs path ref jsonKeyHandler
 
 -- INTERNAL
 --
@@ -259,13 +260,14 @@ type JsonEncoded z b = Exists (JsonEncodedBox z b)
 --     combined? ie. try in-memory, fall back to file system, fall back to fetcher.
 --   - Push more cache behavior into the key handler, such that a key can specify
 --     how it should be cached (memory only, file system only?)
-handleCacheFs :: forall key a r. Ref (Map String Json) -> JsonKeyHandler key -> Cache key a -> Run (LOG + AFF + EFFECT + r) a
-handleCacheFs cacheRef handler = case _ of
+handleCacheFs :: forall key a r. FilePath -> Ref (Map String Json) -> JsonKeyHandler key -> Cache key a -> Run (LOG + AFF + EFFECT + r) a
+handleCacheFs cachePath cacheRef handler = case _ of
   -- TODO: Expire entries after they've not been fetched for N seconds?
   Get key -> handler key # Exists.runExists \(JsonKey { id, codec } (Reply reply)) -> do
     readMemory >>= Map.lookup id >>> case _ of
       Nothing -> do
-        Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 (safePath id))) >>= case _ of
+        let path = Path.concat [ cachePath, safePath id ]
+        Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 path)) >>= case _ of
           Left error -> do
             Log.debug $ "Did not find " <> id <> " in memory or file system cache: " <> Aff.message error
             pure $ reply Nothing
@@ -303,8 +305,9 @@ handleCacheFs cacheRef handler = case _ of
         Log.debug "Put value matches old value, skipping update."
         pure next
       _ -> do
+        let path = Path.concat [ cachePath, safePath id ]
         modifyMemory (Map.insert id encoded)
-        Run.liftAff (Aff.attempt (FS.Aff.writeTextFile UTF8 (safePath id) (Argonaut.stringify encoded))) >>= case _ of
+        Run.liftAff (Aff.attempt (FS.Aff.writeTextFile UTF8 path (Argonaut.stringify encoded))) >>= case _ of
           Left error -> Log.debug $ "Unable to write cache entry to file system: " <> Aff.message error
           Right _ -> Log.debug "Wrote cache entry!"
         pure next
@@ -319,7 +322,8 @@ handleCacheFs cacheRef handler = case _ of
   modifyMemory k = Run.liftEffect $ Ref.modify_ k cacheRef
 
   deleteMemoryAndDisk id = do
+    let path = Path.concat [ cachePath, safePath id ]
     modifyMemory (Map.delete id)
-    Run.liftAff (Aff.attempt (FS.Aff.rm (safePath id))) >>= case _ of
+    Run.liftAff (Aff.attempt (FS.Aff.rm path)) >>= case _ of
       Left fsError -> Log.debug $ "Could not delete file system entry: " <> Aff.message fsError
       Right _ -> pure unit

@@ -6,6 +6,7 @@ module Registry.App.Effect.Storage
   , deleteTarball
   , downloadTarball
   , formatPackageUrl
+  , handleStorageReadOnly
   , handleStorageS3
   , uploadTarball
   ) where
@@ -86,6 +87,10 @@ connectS3 key = do
 -- TODO: Implement caching that keeps downloads on the file system
 handleStorageS3 :: forall r a. S3.SpaceKey -> Storage a -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) a
 handleStorageS3 key = case _ of
+  Download name version path next -> do
+    downloadAff name version path
+    pure next
+
   Upload name version path next -> do
     let
       package = formatPackageVersion name version
@@ -121,42 +126,6 @@ handleStorageS3 key = case _ of
           Log.info $ "Uploaded " <> package <> " to the bucket at path " <> packageUrl
           pure next
 
-  Download name version path next -> do
-    let
-      package = formatPackageVersion name version
-      packageUrl = formatPackageUrl name version
-
-    Log.debug $ "Downloading " <> package <> " from " <> packageUrl
-    response <- Run.liftAff $ withBackoff' $ Affjax.Node.request $ Affjax.Node.defaultRequest
-      { method = Left GET
-      , responseFormat = ResponseFormat.arrayBuffer
-      , url = packageUrl
-      }
-
-    -- TODO: Rely on the metadata to check the size and hash? Or do we not care
-    -- for registry-internal operations?
-    case response of
-      Nothing -> do
-        Log.error $ "Failed to download " <> package <> " from " <> packageUrl <> " because of a connection timeout."
-        Log.exit $ "Failed to download " <> package <> " from the storage backend."
-      Just (Left error) -> do
-        Log.error $ "Failed to download " <> package <> " from " <> packageUrl <> " because of an HTTP error: " <> Affjax.Node.printError error
-        Log.exit $ "Could not download " <> package <> " from the storage backend."
-      Just (Right { status, body }) | status /= StatusCode 200 -> do
-        buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
-        bodyString <- Run.liftEffect $ Buffer.toString UTF8 (buffer :: Buffer)
-        Log.error $ "Failed to download " <> package <> " from " <> packageUrl <> " because of a non-200 status code (" <> show status <> ") with body " <> bodyString
-        Log.exit $ "Could not download " <> package <> " from the storage backend."
-      Just (Right { body }) -> do
-        Log.debug $ "Successfully downloaded " <> package <> " into a buffer."
-        buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
-        Run.liftAff (Aff.attempt (FS.Aff.writeFile path buffer)) >>= case _ of
-          Left error -> do
-            Log.error $ "Downloaded " <> package <> " but failed to write it to the file at path " <> path <> ":\n" <> Aff.message error
-            Log.exit $ "Could not save downloaded package " <> package <> " due to an internal error."
-          Right _ -> pure unit
-        pure next
-
   Delete name version next -> do
     let
       package = formatPackageVersion name version
@@ -184,3 +153,55 @@ handleStorageS3 key = case _ of
     else do
       Log.error $ packageUrl <> " does not exist on S3 (available: " <> String.joinWith ", " published <> ")"
       Log.exit $ "Could not delete " <> package <> " because it does not exist in the storage backend."
+
+-- | A storage effect that reads from the registry but does not write to it.
+handleStorageReadOnly :: forall r a. Storage a -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) a
+handleStorageReadOnly = case _ of
+  Upload name version _ next -> do
+    Log.warn $ "Requested upload of " <> formatPackageVersion name version <> " to url " <> formatPackageUrl name version <> " but this interpreter is read-only."
+    pure next
+
+  Delete name version next -> do
+    Log.warn $ "Requested deletion of " <> formatPackageVersion name version <> " from url " <> formatPackageUrl name version <> " but this interpreter is read-only."
+    pure next
+
+  Download name version path next -> do
+    downloadAff name version path
+    pure next
+
+-- | An implementation for downloading packages from the registry using `Aff` requests.
+downloadAff :: forall r. PackageName -> Version -> FilePath -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) Unit
+downloadAff name version path = do
+  let
+    package = formatPackageVersion name version
+    packageUrl = formatPackageUrl name version
+
+  Log.debug $ "Downloading " <> package <> " from " <> packageUrl
+  response <- Run.liftAff $ withBackoff' $ Affjax.Node.request $ Affjax.Node.defaultRequest
+    { method = Left GET
+    , responseFormat = ResponseFormat.arrayBuffer
+    , url = packageUrl
+    }
+
+  -- TODO: Rely on the metadata to check the size and hash? Or do we not care
+  -- for registry-internal operations?
+  case response of
+    Nothing -> do
+      Log.error $ "Failed to download " <> package <> " from " <> packageUrl <> " because of a connection timeout."
+      Log.exit $ "Failed to download " <> package <> " from the storage backend."
+    Just (Left error) -> do
+      Log.error $ "Failed to download " <> package <> " from " <> packageUrl <> " because of an HTTP error: " <> Affjax.Node.printError error
+      Log.exit $ "Could not download " <> package <> " from the storage backend."
+    Just (Right { status, body }) | status /= StatusCode 200 -> do
+      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
+      bodyString <- Run.liftEffect $ Buffer.toString UTF8 (buffer :: Buffer)
+      Log.error $ "Failed to download " <> package <> " from " <> packageUrl <> " because of a non-200 status code (" <> show status <> ") with body " <> bodyString
+      Log.exit $ "Could not download " <> package <> " from the storage backend."
+    Just (Right { body }) -> do
+      Log.debug $ "Successfully downloaded " <> package <> " into a buffer."
+      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
+      Run.liftAff (Aff.attempt (FS.Aff.writeFile path buffer)) >>= case _ of
+        Left error -> do
+          Log.error $ "Downloaded " <> package <> " but failed to write it to the file at path " <> path <> ":\n" <> Aff.message error
+          Log.exit $ "Could not save downloaded package " <> package <> " due to an internal error."
+        Right _ -> pure unit

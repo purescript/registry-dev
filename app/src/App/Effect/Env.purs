@@ -8,6 +8,7 @@ import Data.String as String
 import Data.String.Base64 as Base64
 import Dotenv as Dotenv
 import Effect.Aff as Aff
+import Effect.Class.Console as Console
 import Effect.Exception as Exn
 import Node.FS.Aff as FS.Aff
 import Node.Process as Process
@@ -67,12 +68,21 @@ loadEnvFile dotenv = do
 
 readEnvVars :: Effect EnvVars
 readEnvVars = do
-  spacesKey <- Process.lookupEnv "SPACES_KEY"
-  spacesSecret <- Process.lookupEnv "SPACES_SECRET"
+  let
+    lookup :: String -> Effect (Maybe String)
+    lookup key = do
+      val <- Process.lookupEnv key
+      case val of
+        Nothing -> pure Nothing
+        Just "" -> pure Nothing
+        Just str -> pure (Just str)
+
+  spacesKey <- lookup "SPACES_KEY"
+  spacesSecret <- lookup "SPACES_SECRET"
 
   let
     lookupToken key = do
-      mbToken <- Process.lookupEnv key
+      mbToken <- lookup key
       for mbToken \token -> case String.stripPrefix (String.Pattern "ghp_") token of
         Nothing -> Exn.throw $ "GitHub tokens begin with ghp_, but value found for env var " <> key <> " does not: " <> token
         Just _ -> pure $ GitHubToken token
@@ -82,9 +92,9 @@ readEnvVars = do
 
   let
     lookupBase64Key key = do
-      mbB64Key <- Process.lookupEnv key
+      mbB64Key <- lookup key
       for mbB64Key \b64Key -> case Base64.decode b64Key of
-        Left b64Error -> Exn.throw $ "Failed to decode base64-encoded key: " <> Aff.message b64Error
+        Left b64Error -> Exn.throw $ "Failed to decode base64-encoded key when reading " <> key <> ": " <> Aff.message b64Error
         Right decoded -> pure (String.trim decoded)
 
   -- PacchettiBotti's keys are stored in base64-encoded strings in the
@@ -102,7 +112,9 @@ readEnvVars = do
   pacchettibottiED25519Pub <- do
     mbKey <- lookupBase64Key "PACCHETTIBOTTI_ED25519_PUB"
     for mbKey \key -> case verifyPacchettiBottiPublicKey key of
-      Left error -> Exn.throw error
+      Left error -> do
+        val <- lookup "PACCHETTIBOTTI_ED25519_PUB"
+        Exn.throw $ "Could not verify pacchettibotti public key " <> show val <> ": " <> error
       Right verified -> pure verified
 
   pure

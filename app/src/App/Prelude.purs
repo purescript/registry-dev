@@ -10,10 +10,12 @@ module Registry.App.Prelude
   , module Prelude
   , module Registry.Types
   , nowUTC
+  , pacchettiBottiEmail
   , parseJson
   , partitionEithers
   , printJson
   , readJsonFile
+  , scratchDir
   , stringifyJson
   , stripPureScriptPrefix
   , traverseKeys
@@ -22,7 +24,6 @@ module Registry.App.Prelude
   , withBackoff
   , withBackoff'
   , writeJsonFile
-  , pacchettiBottiEmail
   ) where
 
 import Prelude
@@ -82,6 +83,10 @@ import Registry.Types (License, Location(..), Manifest(..), ManifestIndex, Metad
 import Registry.Version as Version
 import Type.Proxy (Proxy(..)) as Extra
 import Type.Row (type (+)) as Extra
+
+-- | The location of the .gitignored scratch directory
+scratchDir :: Extra.FilePath
+scratchDir = "scratch"
 
 -- | The email address of the @pacchettibotti account
 pacchettiBottiEmail :: String

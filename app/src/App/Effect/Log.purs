@@ -95,7 +95,7 @@ handleLogFs verbosity logfile action = case action of
       attemptWrite = do
         now <- Run.liftEffect nowUTC
         let time = Formatters.DateTime.format Internal.Format.iso8601DateTime now
-        let formatted = Dodo.print Dodo.plainText Dodo.twoSpaces (Dodo.text time <> Dodo.space <> message)
+        let formatted = Dodo.print Dodo.plainText Dodo.twoSpaces (Dodo.text "[" <> Dodo.text time <> Dodo.text "]" <> Dodo.space <> message <> Dodo.break)
         Run.liftAff (Aff.attempt (FS.Aff.appendTextFile UTF8 logfile formatted)) >>= case _ of
           Left err -> Console.error $ "LOG ERROR: Failed to write to file " <> logfile <> ": " <> Aff.message err
           Right _ -> pure unit
