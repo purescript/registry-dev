@@ -8,6 +8,7 @@ import Data.Map as Map
 import Data.String as String
 import Effect.Aff as Aff
 import Effect.Ref as Ref
+import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
@@ -67,6 +68,7 @@ main = launchAff_ do
       , pullMode: Autostash
       -- Use Write if you do not want this to actually commit and push.
       , writeStrategy: Write -- CommitPush token
+      , timer: unsafePerformEffect (Ref.new Nothing)
       }
 
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
