@@ -41,6 +41,7 @@ import Registry.App.CLI.Git as Git
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.Tar as Tar
+import Registry.App.Effect.Cache (CACHE)
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
@@ -49,7 +50,7 @@ import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify (NOTIFY)
 import Registry.App.Effect.Notify as Notify
-import Registry.App.Effect.PackageSets (Change(..))
+import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
@@ -97,7 +98,10 @@ printSource = case _ of
 
 -- | Process a package set update. Package set updates are only processed via
 -- | GitHub and not the HTTP API.
-packageSetUpdate :: PackageSetUpdateData -> Run _ Unit
+packageSetUpdate
+  :: forall r
+   . PackageSetUpdateData
+  -> Run (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + NOTIFY + LOG + LOG_EXCEPT + r) Unit
 packageSetUpdate payload = do
   { issue, username } <- Env.askGitHubEvent
 
@@ -210,7 +214,10 @@ packageSetUpdate payload = do
         Notify.notify "Mirrored a new legacy package set."
 
 -- | Run an authenticated package operation, ie. an unpublish or a transfer.
-authenticated :: AuthenticatedData -> Run _ Unit
+authenticated
+  :: forall r
+   . AuthenticatedData
+  -> Run (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r) Unit
 authenticated auth = case auth.payload of
   Unpublish payload -> do
     Log.debug $ "Processing authorized unpublish operation with payload: " <> stringifyJson Operation.authenticatedCodec auth
@@ -310,7 +317,11 @@ authenticated auth = case auth.payload of
 -- | published before then it will be registered and the given version will be
 -- | upload. If it has been published before then the existing metadata will be
 -- | updated with the new version.
-publish :: Source -> PublishData -> Run _ Unit
+publish
+  :: forall r
+   . Source
+  -> PublishData
+  -> Run (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + CACHE + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r) Unit
 publish source payload = do
   let printedName = PackageName.print payload.name
 
@@ -550,7 +561,6 @@ publish source payload = do
 verifyResolutions :: forall r. Manifest -> Maybe (Map PackageName Version) -> Run (REGISTRY + LOG + LOG_EXCEPT + r) (Map PackageName Version)
 verifyResolutions manifest resolutions = do
   Log.debug "Check the submitted build plan matches the manifest"
-  -- We don't verify packages provided via the mass import.
   manifestIndex <- Registry.readAllManifests
   case resolutions of
     Nothing -> case Operation.Validation.validateDependenciesSolve manifest manifestIndex of
@@ -809,9 +819,6 @@ formatPursuitResolutions { resolutions, dependenciesDir } =
       packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.print version ]
     [ Tuple bowerPackageName { path: packagePath, version } ]
 
-packageNameIsUnique :: PackageName -> Map PackageName Metadata -> Boolean
-packageNameIsUnique name = isNothing <<< Map.lookup name
-
 data PursPublishMethod = LegacyPursPublish | PursPublish
 
 -- | A temporary flag that records whether we are using legacy purs publish
@@ -1057,14 +1064,6 @@ acceptTrustees auth maybeOwners = do
 
 packagingTeam :: Team
 packagingTeam = { org: "purescript", team: "packaging" }
-
--- | An ignored directory suitable for storing results when running the API or
--- | scripts.
-scratchDir :: FilePath
-scratchDir = "scratch"
-
-cacheDir :: FilePath
-cacheDir = ".cache"
 
 jsonToDhallManifest :: String -> Aff (Either String String)
 jsonToDhallManifest jsonStr = do
