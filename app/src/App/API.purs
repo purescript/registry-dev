@@ -1,6 +1,5 @@
 module Registry.App.API where
 
-import Prelude
 import Registry.App.Prelude
 
 import Affjax.Node as Affjax.Node
@@ -16,19 +15,16 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
-import Data.FunctorWithIndex (mapWithIndex)
 import Data.HTTP.Method (Method(..))
 import Data.HTTP.Method as Method
 import Data.Map as Map
 import Data.MediaType.Common as MediaType
 import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
-import Data.Set as Set
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
 import Dodo (Doc)
@@ -45,7 +41,6 @@ import Registry.App.CLI.Git as Git
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.Tar as Tar
-import Registry.App.Effect.Cache (CACHE)
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
@@ -54,7 +49,7 @@ import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify (NOTIFY)
 import Registry.App.Effect.Notify as Notify
-import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
+import Registry.App.Effect.PackageSets (Change(..))
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
@@ -69,11 +64,10 @@ import Registry.Foreign.Octokit (GitHubToken(..), IssueNumber(..), Team)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tar as Foreign.Tar
 import Registry.Foreign.Tmp as Tmp
-import Registry.Internal.Codec as Internal.Codec
 import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.Metadata as Metadata
-import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageOperation(..), PackageSetOperation(..), PackageSetUpdateData, PublishData, UnpublishData)
+import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageSetUpdateData, PublishData)
 import Registry.Operation as Operation
 import Registry.Operation.Validation (UnpublishError(..))
 import Registry.Operation.Validation as Operation.Validation
@@ -380,7 +374,7 @@ publish source payload = do
     Notify.notify $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
     address <- case existingMetadata.location of
       Git _ -> Log.exit "Legacy packages can only come from GitHub."
-      GitHub { subdir: Just subdir } -> Log.exit "Legacy packages cannot use the 'subdir' key."
+      GitHub { subdir: Just subdir } -> Log.exit $ "Legacy packages cannot use the 'subdir' key, but this package specifies a " <> subdir <> " subdir."
       GitHub { owner, repo } -> pure { owner, repo }
 
     version <- case LenientVersion.parse payload.ref of
@@ -1020,12 +1014,12 @@ acceptTrustees
    . AuthenticatedData
   -> Maybe (NonEmptyArray Owner)
   -> Run (GITHUB + LOG_EXCEPT + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + AFF + r) (Tuple AuthenticatedData (Maybe (NonEmptyArray Owner)))
-acceptTrustees authenticated maybeOwners = do
+acceptTrustees auth maybeOwners = do
   { username } <- Env.askGitHubEvent
   { publicKey, privateKey } <- Env.askPacchettiBotti
 
-  if authenticated.email /= pacchettiBottiEmail then
-    pure (Tuple authenticated maybeOwners)
+  if auth.email /= pacchettiBottiEmail then
+    pure (Tuple auth maybeOwners)
   else do
     GitHub.listTeamMembers packagingTeam >>= case _ of
       Left githubError -> Log.exit $ Array.fold
@@ -1042,12 +1036,12 @@ acceptTrustees authenticated maybeOwners = do
             , "@purescript/packaging team."
             ]
 
-        signature <- Run.liftAff (Auth.signPayload { publicKey, privateKey, rawPayload: authenticated.rawPayload }) >>= case _ of
+        signature <- Run.liftAff (Auth.signPayload { publicKey, privateKey, rawPayload: auth.rawPayload }) >>= case _ of
           Left _ -> Log.exit "Error signing transfer. cc: @purescript/packaging"
           Right signature -> pure signature
 
         let
-          newAuthenticated = authenticated { signature = signature }
+          newAuth = auth { signature = signature }
 
           pacchettiBottiOwner = Owner
             { email: Env.pacchettibottiEmail
@@ -1059,7 +1053,7 @@ acceptTrustees authenticated maybeOwners = do
             Nothing -> NonEmptyArray.singleton pacchettiBottiOwner
             Just owners -> NonEmptyArray.cons pacchettiBottiOwner owners
 
-        pure (Tuple newAuthenticated (Just ownersWithPacchettiBotti))
+        pure (Tuple newAuth (Just ownersWithPacchettiBotti))
 
 packagingTeam :: Team
 packagingTeam = { org: "purescript", team: "packaging" }
