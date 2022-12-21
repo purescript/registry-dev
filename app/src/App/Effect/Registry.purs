@@ -20,6 +20,7 @@ import Effect.Ref as Ref
 import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
+import Registry.App.CLI.Git (CommitMode(..))
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -176,22 +177,27 @@ handleRegistryGit env = case _ of
       Right _ -> do
         let message = "Update manifest for " <> formatted
         let path = Path.concat [ env.registryIndex, ManifestIndex.packageEntryFilePath name ]
+        let commitArgs token mode = { token, paths: String.Pattern path, message, mode }
         case env.writeStrategy of
-          Write -> pure next
-          WriteCommit token -> Run.liftAff (commitRegistryIndex { token, path, message, push: false }) >>= case _ of
-            Left error -> do
-              Log.error $ "Could not commit manifest in WriteCommit for " <> formatted <> " due to a Git error: " <> error
-              Log.exit exitMessage
-            Right _ -> do
-              Log.debug $ "Successfully committed manifest for " <> formatted <> " (did not push)"
-              pure next
-          WriteCommitPush token -> Run.liftAff (commitRegistryIndex { token, path, message, push: true }) >>= case _ of
-            Left error -> do
-              Log.error $ "Could not commit and push manifest in WriteCommitPush for " <> formatted <> " due to a Git error: " <> error
-              Log.exit exitMessage
-            Right _ -> do
-              Log.debug $ "Successfully committed and pushed manifest for " <> formatted
-              pure next
+          Write -> do
+            Log.info $ "Wrote manifest for " <> formatted <> " but not committing because write strategy is Write."
+            pure next
+          WriteCommit token ->
+            Run.liftAff (Except.runExceptT (Git.pacchettiBottiCommitRegistryIndex env.registryIndex (commitArgs token CommitOnly))) >>= case _ of
+              Left error -> do
+                Log.error $ "Could not commit manifest in WriteCommit for " <> formatted <> " due to a Git error: " <> error
+                Log.exit exitMessage
+              Right _ -> do
+                Log.debug $ "Successfully committed manifest for " <> formatted <> " (did not push)"
+                pure next
+          WriteCommitPush token ->
+            Run.liftAff (Except.runExceptT (Git.pacchettiBottiCommitRegistryIndex env.registryIndex (commitArgs token CommitAndPush))) >>= case _ of
+              Left error -> do
+                Log.error $ "Could not commit and push manifest in WriteCommitPush for " <> formatted <> " due to a Git error: " <> error
+                Log.exit exitMessage
+              Right _ -> do
+                Log.debug $ "Successfully committed and pushed manifest for " <> formatted
+                pure next
 
   DeleteManifest name version next -> do
     let formatted = formatPackageVersion name version
@@ -205,22 +211,27 @@ handleRegistryGit env = case _ of
       Right _ -> do
         let message = "Update manifest for " <> formatted
         let path = Path.concat [ env.registryIndex, ManifestIndex.packageEntryFilePath name ]
+        let commitArgs token mode = { token, mode, paths: String.Pattern path, message }
         case env.writeStrategy of
-          Write -> pure next
-          WriteCommit token -> Run.liftAff (commitRegistryIndex { token, path, message, push: false }) >>= case _ of
-            Left error -> do
-              Log.error $ "Could not commit manifest deletion in WriteCommit for " <> formatted <> " due to a Git error: " <> error
-              Log.exit exitMessage
-            Right _ -> do
-              Log.debug $ "Successfully committed manifest deletion for " <> formatted <> " (did not push)"
-              pure next
-          WriteCommitPush token -> Run.liftAff (commitRegistryIndex { token, path, message, push: true }) >>= case _ of
-            Left error -> do
-              Log.error $ "Could not commit manifest deletion and push in WriteCommitPush for " <> formatted <> " due to a Git error: " <> error
-              Log.exit exitMessage
-            Right _ -> do
-              Log.debug $ "Successfully committend and pushed manifest deletion for " <> formatted
-              pure next
+          Write -> do
+            Log.info "Deleted manifest, but not committing because write strategy is Write."
+            pure next
+          WriteCommit token ->
+            Run.liftAff (Except.runExceptT (Git.pacchettiBottiCommitRegistryIndex env.registryIndex (commitArgs token CommitOnly))) >>= case _ of
+              Left error -> do
+                Log.error $ "Could not commit manifest deletion in WriteCommit for " <> formatted <> " due to a Git error: " <> error
+                Log.exit exitMessage
+              Right _ -> do
+                Log.debug $ "Successfully committed manifest deletion for " <> formatted <> " (did not push)"
+                pure next
+          WriteCommitPush token ->
+            Run.liftAff (Except.runExceptT (Git.pacchettiBottiCommitRegistryIndex env.registryIndex (commitArgs token CommitAndPush))) >>= case _ of
+              Left error -> do
+                Log.error $ "Could not commit manifest deletion and push in WriteCommitPush for " <> formatted <> " due to a Git error: " <> error
+                Log.exit exitMessage
+              Right _ -> do
+                Log.debug $ "Successfully committend and pushed manifest deletion for " <> formatted
+                pure next
 
   ReadAllManifests reply -> do
     Log.info $ "Reading manifest index from " <> env.registryIndex
@@ -274,22 +285,27 @@ handleRegistryGit env = case _ of
         Log.exit couldNotWriteError
       Right _ -> do
         let message = "Update metadata for " <> printedName
+        let commitArgs token mode = { token, mode, paths: String.Pattern path, message }
         case env.writeStrategy of
-          Write -> pure next
-          WriteCommit token -> Run.liftAff (commitRegistry { token, path, message, push: false }) >>= case _ of
-            Left error -> do
-              Log.error $ "Could not commit updated metadata in WriteCommit for " <> printedName <> " due to a git error: " <> error
-              Log.exit couldNotWriteError
-            Right _ -> do
-              Log.debug $ "Successfully committed updated metadata for " <> printedName <> " (did not push)"
-              pure next
-          WriteCommitPush token -> Run.liftAff (commitRegistry { token, path, message, push: true }) >>= case _ of
-            Left error -> do
-              Log.error $ "Could not commit and push updated metadata WriteCommitPush for " <> printedName <> " due to a git error: " <> error
-              Log.exit couldNotWriteError
-            Right _ -> do
-              Log.debug $ "Successfully committend and pushed updated metadata for " <> printedName
-              pure next
+          Write -> do
+            Log.info $ "Wrote metadata for " <> printedName <> " but not committing because write strategy is Write."
+            pure next
+          WriteCommit token ->
+            Run.liftAff (Except.runExceptT (Git.pacchettiBottiCommitRegistry env.registry (commitArgs token CommitOnly))) >>= case _ of
+              Left error -> do
+                Log.error $ "Could not commit updated metadata in WriteCommit for " <> printedName <> " due to a git error: " <> error
+                Log.exit couldNotWriteError
+              Right _ -> do
+                Log.debug $ "Successfully committed updated metadata for " <> printedName <> " (did not push)"
+                pure next
+          WriteCommitPush token ->
+            Run.liftAff (Except.runExceptT (Git.pacchettiBottiCommitRegistry env.registry (commitArgs token CommitAndPush))) >>= case _ of
+              Left error -> do
+                Log.error $ "Could not commit and push updated metadata WriteCommitPush for " <> printedName <> " due to a git error: " <> error
+                Log.exit couldNotWriteError
+              Right _ -> do
+                Log.debug $ "Successfully committend and pushed updated metadata for " <> printedName
+                pure next
 
   ReadAllMetadata reply -> do
     let metadataDir = Path.concat [ env.registry, Constants.metadataDirectory ]
@@ -328,26 +344,31 @@ handleRegistryGit env = case _ of
     Log.info $ "Writing package set to " <> path
     fetchGitHubRepo Constants.registry env.pullMode env.registry
     let couldNotWriteError = "Could not write package set " <> name
+    let commitArgs token mode = { token, mode, paths: String.Pattern path, message }
     Run.liftAff (Aff.attempt (writeJsonFile PackageSet.codec path set)) >>= case _ of
       Left fsError -> do
         Log.error $ "Failed to write package set " <> name <> " to path " <> path <> " do to an fs error: " <> Aff.message fsError
         Log.exit couldNotWriteError
       Right _ -> case env.writeStrategy of
-        Write -> pure next
-        WriteCommit token -> Run.liftAff (commitRegistry { token, path, message, push: false }) >>= case _ of
-          Left error -> do
-            Log.error $ "Could not commit package set " <> name <> " in WriteCommit due to a git error: " <> error
-            Log.exit couldNotWriteError
-          Right _ -> do
-            Log.debug $ "Successfully committed package set " <> name <> " (did not push)"
-            pure next
-        WriteCommitPush token -> Run.liftAff (commitRegistry { token, path, message, push: true }) >>= case _ of
-          Left error -> do
-            Log.error $ "Could not commit and push package set " <> name <> " in WriteCommitPush due to a git error: " <> error
-            Log.exit couldNotWriteError
-          Right _ -> do
-            Log.debug $ "Successfully committed and pushed package set " <> name
-            pure next
+        Write -> do
+          Log.info $ "Wrote packages set " <> name <> " but not committing because write strategy is Write."
+          pure next
+        WriteCommit token ->
+          Run.liftAff (Except.runExceptT (Git.pacchettiBottiCommitRegistry env.registry (commitArgs token CommitOnly))) >>= case _ of
+            Left error -> do
+              Log.error $ "Could not commit package set " <> name <> " in WriteCommit due to a git error: " <> error
+              Log.exit couldNotWriteError
+            Right _ -> do
+              Log.debug $ "Successfully committed package set " <> name <> " (did not push)"
+              pure next
+        WriteCommitPush token ->
+          Run.liftAff (Except.runExceptT (Git.pacchettiBottiCommitRegistry env.registry (commitArgs token CommitAndPush))) >>= case _ of
+            Left error -> do
+              Log.error $ "Could not commit and push package set " <> name <> " in WriteCommitPush due to a git error: " <> error
+              Log.exit couldNotWriteError
+            Right _ -> do
+              Log.debug $ "Successfully committed and pushed package set " <> name
+              pure next
 
   ReadAllPackageSets reply -> do
     let packageSetsDir = Path.concat [ env.registry, Constants.packageSetsDirectory ]
@@ -525,25 +546,28 @@ handleRegistryGit env = case _ of
       let packages = Map.insert rawPackageName url sourcePackages
       let path = Path.concat [ env.registry, file ]
       let message = "Sync " <> PackageName.print name <> " with legacy registry."
+      let commitArgs token mode = { token, mode, paths: String.Pattern path, message }
       let couldNotSyncError = "Could not sync " <> PackageName.print name <> " with the legacy registry files."
       Run.liftAff $ writeJsonFile (CA.Common.strMap CA.string) path packages
       case env.writeStrategy of
         Write ->
           Log.info $ "Created legacy registry file, but did not commit because write mode was set to Write"
-        WriteCommit token -> Run.liftAff (commitRegistry { token, path, message, push: false }) >>= case _ of
-          Left error -> do
-            Log.error $ "Could not commit legacy registry file " <> file <> " due to a git error: " <> error
-            Log.exit couldNotSyncError
-          Right _ -> do
-            Log.info $ "Successfully committed legacy registry file " <> file <> " (did not push)"
-        WriteCommitPush token -> Run.liftAff (commitRegistry { token, path, message, push: true }) >>= case _ of
-          Left error -> do
-            Log.error $ "Could not commit and push legacy registry file " <> file <> " due to a git error: " <> error
-            Log.exit couldNotSyncError
-          Right _ -> do
-            Log.info $ "Successfully committed and pushed legacy registry file " <> file
-
+        WriteCommit token ->
+          Run.liftAff (Except.runExceptT (Git.pacchettiBottiCommitRegistry env.registry (commitArgs token CommitOnly))) >>= case _ of
+            Left error -> do
+              Log.error $ "Could not commit legacy registry file " <> file <> " due to a git error: " <> error
+              Log.exit couldNotSyncError
+            Right _ -> do
+              Log.info $ "Successfully committed legacy registry file " <> file <> " (did not push)"
+        WriteCommitPush token ->
+          Run.liftAff (Except.runExceptT (Git.pacchettiBottiCommitRegistry env.registry (commitArgs token CommitAndPush))) >>= case _ of
+            Left error -> do
+              Log.error $ "Could not commit and push legacy registry file " <> file <> " due to a git error: " <> error
+              Log.exit couldNotSyncError
+            Right _ -> do
+              Log.info $ "Successfully committed and pushed legacy registry file " <> file
     pure next
+
   where
   ifElapsed :: Ref (Maybe DateTime) -> Minutes -> Run _ Unit -> Run _ Unit
   ifElapsed timer minutes k = do
@@ -551,28 +575,6 @@ handleRegistryGit env = case _ of
     Run.liftEffect (Ref.read timer) >>= case _ of
       Just prev | diff now prev < minutes -> pure unit
       _ -> Run.liftEffect (Ref.write (Just now) timer) *> k
-
-  commitRegistry :: { token :: GitHubToken, path :: FilePath, message :: String, push :: Boolean } -> Aff (Either String Unit)
-  commitRegistry { token, path, message, push } = Except.runExceptT do
-    let upstream = Constants.registry.owner <> "/" <> Constants.registry.repo
-    let origin = "https://pacchettibotti:" <> un GitHubToken token <> "@github.com/" <> upstream <> ".git"
-    Git.runGit_ [ "config", "user.name", "PacchettiBotti" ] (Just env.registry)
-    Git.runGit_ [ "config", "user.email", "<" <> pacchettiBottiEmail <> ">" ] (Just env.registry)
-    Git.runGit_ [ "add", path ] (Just env.registry)
-    Git.runGit_ [ "commit", "-m", message ] (Just env.registry)
-    when push do
-      Git.runGit_ [ "push", origin, "main" ] (Just env.registry)
-
-  commitRegistryIndex :: { token :: GitHubToken, path :: FilePath, message :: String, push :: Boolean } -> Aff (Either String Unit)
-  commitRegistryIndex { token, path, message, push } = Except.runExceptT do
-    let upstream = Constants.manifestIndex.owner <> "/" <> Constants.manifestIndex.repo
-    let origin = "https://pacchettibotti:" <> un GitHubToken token <> "@github.com/" <> upstream <> ".git"
-    Git.runGit_ [ "config", "user.name", "PacchettiBotti" ] (Just env.registryIndex)
-    Git.runGit_ [ "config", "user.email", "<" <> pacchettiBottiEmail <> ">" ] (Just env.registryIndex)
-    Git.runGit_ [ "add", path ] (Just env.registryIndex)
-    Git.runGit_ [ "commit", "-m", message ] (Just env.registryIndex)
-    when push do
-      Git.runGit_ [ "push", origin, "master" ] (Just env.registryIndex)
 
   commitLegacyPackageSets :: { token :: GitHubToken, tags :: Array String, files :: Array FilePath, message :: String, push :: Boolean } -> Aff (Either String Unit)
   commitLegacyPackageSets { token, tags, files, message, push } = Except.runExceptT do

@@ -8,6 +8,8 @@ import Data.JSDate as JSDate
 import Data.String as String
 import Effect.Aff as Aff
 import Node.ChildProcess as NodeProcess
+import Registry.Constants as Constants
+import Registry.Foreign.Octokit (GitHubToken(..))
 import Sunde as Process
 
 runGit_ :: Array String -> Maybe FilePath -> ExceptT String Aff Unit
@@ -47,3 +49,36 @@ gitGetRefTime ref repoDir = do
   jsDate <- liftEffect $ JSDate.parse timestamp
   dateTime <- Except.except $ note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
   pure dateTime
+
+data CommitMode = CommitOnly | CommitAndPush
+
+derive instance Eq CommitMode
+
+type PacchettiBottiCommit =
+  { token :: GitHubToken
+  , mode :: CommitMode
+  , paths :: String.Pattern
+  , message :: String
+  }
+
+pacchettiBottiCommitRegistry :: FilePath -> PacchettiBottiCommit -> ExceptT String Aff Unit
+pacchettiBottiCommitRegistry registry { token, mode, paths: String.Pattern paths, message } = do
+  let upstream = Constants.registry.owner <> "/" <> Constants.registry.repo
+  let origin = "https://pacchettibotti:" <> un GitHubToken token <> "@github.com/" <> upstream <> ".git"
+  runGit_ [ "config", "user.name", "PacchettiBotti" ] (Just registry)
+  runGit_ [ "config", "user.email", "<" <> pacchettiBottiEmail <> ">" ] (Just registry)
+  runGit_ [ "add", paths ] (Just registry)
+  runGit_ [ "commit", "-m", message ] (Just registry)
+  when (mode == CommitAndPush) do
+    runGit_ [ "push", origin, "main" ] (Just registry)
+
+pacchettiBottiCommitRegistryIndex :: FilePath -> PacchettiBottiCommit -> ExceptT String Aff Unit
+pacchettiBottiCommitRegistryIndex registryIndex { token, mode, paths: String.Pattern paths, message } = do
+  let upstream = Constants.manifestIndex.owner <> "/" <> Constants.manifestIndex.repo
+  let origin = "https://pacchettibotti:" <> un GitHubToken token <> "@github.com/" <> upstream <> ".git"
+  runGit_ [ "config", "user.name", "PacchettiBotti" ] (Just registryIndex)
+  runGit_ [ "config", "user.email", "<" <> pacchettiBottiEmail <> ">" ] (Just registryIndex)
+  runGit_ [ "add", paths ] (Just registryIndex)
+  runGit_ [ "commit", "-m", message ] (Just registryIndex)
+  when (mode == CommitAndPush) do
+    runGit_ [ "push", origin, "master" ] (Just registryIndex)

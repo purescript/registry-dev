@@ -39,7 +39,7 @@ import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
 
--- | A typed key for the standard app cache. Caches using this key should
+-- | A typed key for the standard app cache. This cache is suitable for data Caches using this key should
 -- | use the 'get', 'put', and 'delete' functions from this module.
 data AppCache (c :: Type -> Type -> Type) a
   = Manifest PackageName Version (c Manifest.Manifest a)

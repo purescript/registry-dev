@@ -5,7 +5,6 @@ module Registry.App.Effect.Storage
   , _storage
   , deleteTarball
   , downloadTarball
-  , formatPackageUrl
   , handleStorageReadOnly
   , handleStorageS3
   , uploadTarball
@@ -56,15 +55,16 @@ downloadTarball name version file = Run.lift _storage (Download name version fil
 deleteTarball :: forall r. PackageName -> Version -> Run (STORAGE + r) Unit
 deleteTarball name version = Run.lift _storage (Delete name version unit)
 
-formatPackageUrl :: PackageName -> Version -> Affjax.Node.URL
-formatPackageUrl name version = Array.fold
-  [ Constants.storageUrl
-  , "/"
-  , PackageName.print name
+formatPackagePath :: PackageName -> Version -> String
+formatPackagePath name version = Array.fold
+  [ PackageName.print name
   , "/"
   , Version.print version
   , ".tar.gz"
   ]
+
+formatPackageUrl :: PackageName -> Version -> Affjax.Node.URL
+formatPackageUrl name version = Constants.storageUrl <> "/" <> formatPackagePath name version
 
 connectS3 :: forall r. S3.SpaceKey -> Run (LOG + LOG_EXCEPT + AFF + r) S3.Space
 connectS3 key = do
@@ -94,7 +94,7 @@ handleStorageS3 key = case _ of
   Upload name version path next -> do
     let
       package = formatPackageVersion name version
-      packageUrl = formatPackageUrl name version
+      packagePath = formatPackagePath name version
 
     buffer <- Run.liftAff (Aff.attempt (FS.Aff.readFile path)) >>= case _ of
       Left error -> do
@@ -103,7 +103,7 @@ handleStorageS3 key = case _ of
       Right buf ->
         pure buf
 
-    Log.debug $ "Read file for " <> package <> ", now uploading to " <> packageUrl <> "..."
+    Log.debug $ "Read file for " <> package <> ", now uploading to " <> packagePath <> "..."
     s3 <- connectS3 key
     published <- Run.liftAff (withBackoff' (S3.listObjects s3 { prefix: PackageName.print name <> "/" })) >>= case _ of
       Nothing -> do
@@ -112,46 +112,46 @@ handleStorageS3 key = case _ of
       Just objects ->
         pure $ map _.key objects
 
-    if Array.elem packageUrl published then do
-      Log.error $ packageUrl <> " already exists on S3."
-      Log.exit $ "Could not upload " <> package <> " because a package at " <> packageUrl <> " already exists."
+    if Array.elem packagePath published then do
+      Log.error $ packagePath <> " already exists on S3."
+      Log.exit $ "Could not upload " <> package <> " because a package at " <> formatPackageUrl name version <> " already exists."
     else do
-      Log.debug $ "Uploading release to the bucket at path " <> packageUrl
-      let putParams = { key: packageUrl, body: buffer, acl: S3.PublicRead }
+      Log.debug $ "Uploading release to the bucket at path " <> packagePath
+      let putParams = { key: packagePath, body: buffer, acl: S3.PublicRead }
       Run.liftAff (withBackoff' (S3.putObject s3 putParams)) >>= case _ of
         Nothing -> do
           Log.error "Failed to put object to S3 because the process timed out."
           Log.exit $ "Could not upload package " <> package <> " due to an error connecting to the storage backend."
         Just _ -> do
-          Log.info $ "Uploaded " <> package <> " to the bucket at path " <> packageUrl
+          Log.info $ "Uploaded " <> package <> " to the bucket at path " <> packagePath
           pure next
 
   Delete name version next -> do
     let
       package = formatPackageVersion name version
-      packageUrl = formatPackageUrl name version
+      packagePath = formatPackagePath name version
 
     Log.debug $ "Deleting " <> package
     s3 <- connectS3 key
     published <- Run.liftAff (withBackoff' (S3.listObjects s3 { prefix: PackageName.print name <> "/" })) >>= case _ of
       Nothing -> do
-        Log.error $ "Failed to delete " <> package <> " because the process timed out when attempting to list objects at " <> packageUrl <> " from S3."
+        Log.error $ "Failed to delete " <> package <> " because the process timed out when attempting to list objects at " <> packagePath <> " from S3."
         Log.exit $ "Could not delete " <> package <> " from the storage backend."
       Just objects ->
         pure $ map _.key objects
 
-    if Array.elem packageUrl published then do
-      Log.debug $ "Deleting release from the bucket at path " <> packageUrl
-      let deleteParams = { key: packageUrl }
+    if Array.elem packagePath published then do
+      Log.debug $ "Deleting release from the bucket at path " <> packagePath
+      let deleteParams = { key: packagePath }
       Run.liftAff (withBackoff' (S3.deleteObject s3 deleteParams)) >>= case _ of
         Nothing -> do
-          Log.error $ "Timed out when attempting to delete the release of " <> package <> " from S3 at the path " <> packageUrl
+          Log.error $ "Timed out when attempting to delete the release of " <> package <> " from S3 at the path " <> packagePath
           Log.exit $ "Could not delete " <> package <> " from the storage backend."
         Just _ -> do
-          Log.debug $ "Deleted release of " <> package <> " from S3 at the path " <> packageUrl
+          Log.debug $ "Deleted release of " <> package <> " from S3 at the path " <> packagePath
           pure next
     else do
-      Log.error $ packageUrl <> " does not exist on S3 (available: " <> String.joinWith ", " published <> ")"
+      Log.error $ packagePath <> " does not exist on S3 (available: " <> String.joinWith ", " published <> ")"
       Log.exit $ "Could not delete " <> package <> " because it does not exist in the storage backend."
 
 -- | A storage effect that reads from the registry but does not write to it.
