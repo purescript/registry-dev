@@ -2,6 +2,7 @@ module Registry.App.Effect.Cache where
 
 import Registry.App.Prelude
 
+import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
@@ -216,16 +217,11 @@ type FsCacheEnv k =
 -- | should use JSON.
 data FsCacheEncoding k
   = Buffer { encode :: k -> Buffer, decode :: Buffer -> k }
-  | String { encode :: k -> String, decode :: String -> Either String k }
   | Json (JsonCodec k)
 
 -- | A default encoding for caching `Buffer` values.
 buffer :: FsCacheEncoding Buffer
 buffer = Buffer { encode: identity, decode: identity }
-
--- | A default encoding for caching `String` values.
-string :: FsCacheEncoding String
-string = String { encode: identity, decode: pure }
 
 json :: FsCacheEncoding Json
 json = Json CA.json
@@ -246,55 +242,35 @@ handleCacheFs env = case _ of
       Buffer { decode } -> do
         Run.liftAff (Aff.attempt (FS.Aff.stat path)) >>= case _ of
           Left _ -> do
-            Log.debug $ "No cache entry found for " <> id <> " at path " <> path
+            Log.debug $ "No cache file found for " <> id <> " at path " <> path
             pure $ reply Nothing
           Right (FS.Stats { mtime }) -> case JSDate.toDateTime mtime of
             Nothing -> do
               Log.error $ "Found cache file for " <> id <> " at path " <> path <> " but could not read modification time as a DateTime: " <> show mtime
-              removeEntry
-              pure $ reply Nothing
+              removeEntry *> pure (reply Nothing)
             Just modified -> Run.liftAff (Aff.attempt (FS.Aff.readFile path)) >>= case _ of
               Left fsError -> do
                 Log.error $ "Found cache file for " <> id <> " at path " <> path <> " but could not read it: " <> Aff.message fsError
-                removeEntry
-                pure $ reply Nothing
+                removeEntry *> pure (reply Nothing)
               Right buf ->
                 pure $ reply $ Just { modified, value: decode buf }
 
-      String { decode } -> do
-        Run.liftAff (Aff.attempt (readJsonFile (cacheEntryCodec CA.string) path)) >>= case _ of
-          Left fsError -> do
-            Log.debug $ "No cache file at path " <> path <> ": " <> Aff.message fsError
-            pure $ reply Nothing
-          Right (Left jsonError) -> do
-            Log.error $ "Failed to decode CacheEntry for value at key " <> id <> ": " <> jsonError
-            removeEntry
-            pure $ reply Nothing
-          Right (Right entry) -> case decode entry.value of
-            Left error -> do
-              Log.error $ "Failed to decode cached value at key " <> id <> ": " <> error
-              removeEntry
-              pure $ reply Nothing
-            Right value ->
-              pure $ reply $ Just { modified: entry.modified, value }
-
       Json codec -> do
-        Run.liftAff (Aff.attempt (readJsonFile (cacheEntryCodec CA.json) path)) >>= case _ of
+        Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 path)) >>= case _ of
           Left _ -> do
-            Log.debug $ "No cache entry for " <> id <> " at path " <> path
+            Log.debug $ "No cache file found for " <> id <> " at path " <> path
             pure $ reply Nothing
-          Right (Left jsonError) -> do
-            Log.error $ "Failed to parse entry file for " <> id <> ": " <> jsonError
-            removeEntry
-            pure $ reply Nothing
-          Right (Right entry) -> case CA.decode codec entry.value of
-            Left decodeError -> do
-              let error = CA.printJsonDecodeError decodeError
-              Log.error $ "Failed to decode value at key " <> id <> " using its provided codec: " <> error
-              removeEntry
-              pure $ reply Nothing
-            Right value ->
-              pure $ reply $ Just { modified: entry.modified, value }
+          Right content -> case Argonaut.Parser.jsonParser content of
+            Left parseError -> do
+              Log.error $ "Found cache file for " <> id <> " at path " <> path <> " but its contents are not valid JSON: " <> parseError
+              removeEntry *> pure (reply Nothing)
+            Right jsonContent -> case CA.decode (cacheEntryCodec codec) jsonContent of
+              Left decodeError -> do
+                let error = CA.printJsonDecodeError decodeError
+                Log.error $ "Found cache file for " <> id <> " at path " <> path <> " but its contents could not be decoded with the provided codec:\n" <> error
+                removeEntry *> pure (reply Nothing)
+              Right entry ->
+                pure $ reply $ Just entry
 
   Put cacheId@(CacheId id) value next -> do
     let path = safePath cacheId
@@ -304,15 +280,6 @@ handleCacheFs env = case _ of
         Run.liftAff (Aff.attempt (FS.Aff.writeFile path (encode value))) >>= case _ of
           Left fsError -> do
             Log.warn $ "Failed to write cache entry for " <> id <> " at path " <> path <> " as a buffer: " <> Aff.message fsError
-            pure next
-          Right _ -> pure next
-
-      String { encode } -> do
-        modified <- Run.liftEffect nowUTC
-        let entry = { modified, value: encode value }
-        Run.liftAff (Aff.attempt (writeJsonFile (cacheEntryCodec CA.string) path entry)) >>= case _ of
-          Left fsError -> do
-            Log.warn $ "Failed to write cache entry for " <> id <> " at path " <> path <> " as a string: " <> Aff.message fsError
             pure next
           Right _ -> pure next
 

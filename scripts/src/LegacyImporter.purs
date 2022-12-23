@@ -13,6 +13,7 @@ import ArgParse.Basic as Arg
 import Control.Alternative (guard)
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.Codec.Argonaut.Variant as CA.Variant
 import Data.Compactable (separate)
@@ -29,8 +30,8 @@ import Data.Set as Set
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
 import Data.Variant as Variant
+import Dodo as Dodo
 import Effect.Class.Console as Console
-import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
 import Node.Process as Process
 import Parsing (Parser)
@@ -41,6 +42,7 @@ import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API (Source(..))
 import Registry.App.API as API
+import Registry.App.Effect.Cache (Cache, CacheId(..), CacheRef, Expiry(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
@@ -49,7 +51,7 @@ import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Pursuit as Pursuit
-import Registry.App.Effect.Registry (PullMode(..), REGISTRY, WriteStrategy(..))
+import Registry.App.Effect.Registry (PullMode(..), WriteStrategy(..))
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.LenientVersion (LenientVersion)
@@ -62,11 +64,12 @@ import Registry.Foreign.Octokit (Address, Tag)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Format as Internal.Format
 import Registry.Location as Location
+import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
 import Registry.Operation (PublishData)
 import Registry.PackageName as PackageName
 import Registry.Version as Version
-import Run (Run)
+import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (Except)
 import Run.Except as Run.Except
@@ -100,68 +103,66 @@ main = launchAff_ do
 
   Env.loadEnvFile ".env"
 
-  let
-    legacyPackageSets :: FilePath
-    legacyPackageSets = Path.concat [ scratchDir, "package-sets" ]
-
-    registry :: FilePath
-    registry = Path.concat [ scratchDir, "registry" ]
-
-    registryIndex :: FilePath
-    registryIndex = Path.concat [ scratchDir, "registry-index" ]
-
-    timers :: Registry.Timers
-    timers = unsafePerformEffect Registry.newTimers
-
   -- Set up interpreters according to the import mode. In dry-run mode we don't
   -- allow anyting to be committed or pushed, but data is still written to the
   -- local repository checkouts on disk. In generate-registry mode, tarballs are
   -- uploaded, but nothing is committed. In update-registry mode, tarballs are
   -- uploaded and manifests and metadata are written, committed, and pushed.
-  runAppEffects <- case mode of
-    DryRun -> do
-      token <- Env.lookupRequired Env.githubToken
-      octokit <- liftEffect $ Octokit.newOctokit token
-      let registryEnv = { legacyPackageSets, registry, registryIndex, timers, pullMode: Autostash, writeStrategy: Write }
-      pure do
-        Registry.runRegistry (Registry.handleRegistryGit registryEnv)
-          >>> Storage.runStorage Storage.handleStorageReadOnly
-          >>> Pursuit.runPursuit Pursuit.handlePursuitNoOp
-          >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+  runAppEffects <- do
+    timers <- Registry.newTimers
 
-    GenerateRegistry -> do
-      token <- Env.lookupRequired Env.githubToken
-      spacesKey <- Env.lookupRequired Env.spacesKey
-      spacesSecret <- Env.lookupRequired Env.spacesSecret
-      octokit <- liftEffect $ Octokit.newOctokit token
-      let registryEnv = { legacyPackageSets, registry, registryIndex, timers, pullMode: Autostash, writeStrategy: Write }
-      pure do
-        Registry.runRegistry (Registry.handleRegistryGit registryEnv)
-          >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
-          >>> Pursuit.runPursuit Pursuit.handlePursuitNoOp
-          >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+    let
+      legacyPackageSets = Path.concat [ scratchDir, "package-sets" ]
+      registry = Path.concat [ scratchDir, "registry" ]
+      registryIndex = Path.concat [ scratchDir, "registry-index" ]
+      mkRegistryEnv { pullMode, writeStrategy } = { legacyPackageSets, registry, registryIndex, timers, pullMode, writeStrategy }
 
-    UpdateRegistry -> do
-      token <- Env.lookupRequired Env.pacchettibottiToken
-      spacesKey <- Env.lookupRequired Env.spacesKey
-      spacesSecret <- Env.lookupRequired Env.spacesSecret
-      octokit <- liftEffect $ Octokit.newOctokit token
-      let registryEnv = { legacyPackageSets, registry, registryIndex, timers, pullMode: OnlyClean, writeStrategy: WriteCommitPush token }
-      pure do
-        Registry.runRegistry (Registry.handleRegistryGit registryEnv)
-          >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
-          >>> Pursuit.runPursuit (Pursuit.handlePursuitHttp token)
-          >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+    case mode of
+      DryRun -> do
+        token <- Env.lookupRequired Env.githubToken
+        octokit <- liftEffect $ Octokit.newOctokit token
+        let registryEnv = mkRegistryEnv { pullMode: Autostash, writeStrategy: Write }
+        pure do
+          Registry.runRegistry (Registry.handleRegistryGit registryEnv)
+            >>> Storage.runStorage Storage.handleStorageReadOnly
+            >>> Pursuit.runPursuit Pursuit.handlePursuitNoOp
+            >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+
+      GenerateRegistry -> do
+        token <- Env.lookupRequired Env.githubToken
+        spacesKey <- Env.lookupRequired Env.spacesKey
+        spacesSecret <- Env.lookupRequired Env.spacesSecret
+        octokit <- liftEffect $ Octokit.newOctokit token
+        let registryEnv = mkRegistryEnv { pullMode: Autostash, writeStrategy: Write }
+        pure do
+          Registry.runRegistry (Registry.handleRegistryGit registryEnv)
+            >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
+            >>> Pursuit.runPursuit Pursuit.handlePursuitNoOp
+            >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+
+      UpdateRegistry -> do
+        token <- Env.lookupRequired Env.pacchettibottiToken
+        spacesKey <- Env.lookupRequired Env.spacesKey
+        spacesSecret <- Env.lookupRequired Env.spacesSecret
+        octokit <- liftEffect $ Octokit.newOctokit token
+        let registryEnv = mkRegistryEnv { pullMode: OnlyClean, writeStrategy: WriteCommitPush token }
+        pure do
+          Registry.runRegistry (Registry.handleRegistryGit registryEnv)
+            >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
+            >>> Pursuit.runPursuit (Pursuit.handlePursuitHttp token)
+            >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
 
   -- Caching setup
   runCacheEffects <- do
     githubCacheRef <- Cache.newCacheRef
     legacyCacheRef <- Cache.newCacheRef
+    legacyImportCacheRef <- Cache.newCacheRef
     let cacheDir = Path.concat [ scratchDir, ".cache" ]
     pure do
       Storage.runStorageCacheFs cacheDir
         >>> GitHub.runGitHubCacheMemoryFs githubCacheRef cacheDir
         >>> Legacy.Manifest.runLegacyCacheMemoryFs legacyCacheRef cacheDir
+        >>> runLegacyImportCacheMemoryFs legacyImportCacheRef cacheDir
 
   -- Logging setup
   runLogEffects <- do
@@ -181,7 +182,27 @@ main = launchAff_ do
     # runLogEffects
     # Run.runBaseAff'
 
-runLegacyImport :: forall r. ImportMode -> Run (API.PublishEffects + r) Unit
+-- | A cache for legacy manifest data
+type LEGACY_IMPORT_CACHE r = (legacyImportCache :: Cache Json | r)
+
+_legacyImportCache :: Proxy "legacyImportCache"
+_legacyImportCache = Proxy
+
+-- | Interpret the LEGACY_IMPORT_CACHE effect using an in-memory cache backed by the
+-- | file system.
+runLegacyImportCacheMemoryFs
+  :: forall r a
+   . CacheRef Json
+  -> FilePath
+  -> Run (LEGACY_IMPORT_CACHE + LOG + AFF + EFFECT + r) a
+  -> Run (LOG + AFF + EFFECT + r) a
+runLegacyImportCacheMemoryFs cacheRef cacheDir = Cache.runCacheAt _legacyImportCache
+  ( Cache.handleCacheMemoryFs
+      { cacheRef, expiry: Never }
+      { cacheDir, encoding: Cache.json }
+  )
+
+runLegacyImport :: forall r. ImportMode -> Run (API.PublishEffects + LEGACY_IMPORT_CACHE + r) Unit
 runLegacyImport mode = do
   Log.info "Ensuring the registry is well-formed..."
 
@@ -202,7 +223,6 @@ runLegacyImport mode = do
         Log.debug $ "Found mismatch: " <> formatPackageVersion package version
         Registry.deleteManifest package version
 
-  Log.info "Reading legacy registry files..."
   legacyRegistry <- do
     { bower, new } <- Registry.readLegacyRegistry
     let allPackages = Map.union bower new
@@ -269,14 +289,26 @@ runLegacyImport mode = do
           UpdateRegistry -> Current
 
       void $ for notPublished \(Manifest manifest) -> do
+        let formatted = formatPackageVersion manifest.name manifest.version
         Log.info $ Array.foldMap (append "\n")
           [ "----------"
-          , "PUBLISHING: " <> formatPackageVersion manifest.name manifest.version
+          , "PUBLISHING: " <> formatted
           , stringifyJson Location.codec manifest.location
           , "----------"
           ]
         operation <- mkOperation (Manifest manifest)
-        API.publish source operation
+        result <- Run.Except.runExceptAt Log._logExcept $ API.publish source operation
+        -- TODO: Some packages will fail because the legacy importer does not
+        -- perform all the same validation checks that the publishing flow does.
+        -- What should we do when a package has a valid manifest but fails for
+        -- other reasons? Should they be added to the package validation
+        -- failures and we defer writing the package failures until the import
+        -- has completed?
+        case result of
+          Left error -> do
+            Log.error $ Dodo.text (Array.fold [ "Failed to publish ", formatted, ": " ]) <> error
+          Right _ ->
+            Log.info $ "Published " <> formatted
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
@@ -304,10 +336,9 @@ type ImportedIndex =
 -- | the legacy registry files. This function also collects import errors for
 -- | packages and package versions and reports packages that are present in the
 -- | legacy registry but not in the resulting registry.
-importLegacyRegistry :: forall r. LegacyRegistry -> Run (REGISTRY + GITHUB + LOG + LOG_EXCEPT + r) ImportedIndex
+importLegacyRegistry :: forall r. LegacyRegistry -> Run (API.PublishEffects + LEGACY_IMPORT_CACHE + r) ImportedIndex
 importLegacyRegistry legacyRegistry = do
-  manifests <- forWithIndex legacyRegistry \name address ->
-    Run.Except.runExceptAt _exceptPackage (buildLegacyPackageManifests name address)
+  manifests <- forWithIndex legacyRegistry buildLegacyPackageManifests
 
   let
     separatedPackages :: { left :: Map RawPackageName PackageValidationError, right :: Map RawPackageName (Map RawVersion _) }
@@ -387,8 +418,8 @@ buildLegacyPackageManifests
   :: forall r
    . RawPackageName
   -> String
-  -> Run (EXCEPT_PACKAGE + REGISTRY + GITHUB + LOG + LOG_EXCEPT + r) (Map RawVersion (Either VersionValidationError Manifest))
-buildLegacyPackageManifests rawPackage rawUrl = do
+  -> Run (API.PublishEffects + LEGACY_IMPORT_CACHE + r) (Either PackageValidationError (Map RawVersion (Either VersionValidationError Manifest)))
+buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPackage do
   package <- validatePackage rawPackage rawUrl
 
   let
@@ -399,36 +430,34 @@ buildLegacyPackageManifests rawPackage rawUrl = do
     buildManifestForVersion tag = Run.Except.runExceptAt _exceptVersion do
       version <- exceptVersion $ validateVersion tag
 
-      let
-        buildManifest = do
-          exceptVersion $ validateVersionDisabled package.name version
-          legacyManifest <- do
-            Legacy.Manifest.fetchLegacyManifest package.name package.address (RawVersion tag.name) >>= case _ of
-              Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
-              Right result -> pure result
-          pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
-
       -- TODO: This will use the manifest for the package version from the
-      -- registry, without trying to produce a legacy manifest. However,  we may
-      -- want to always produce a legacy manifest and then compare it to the
-      -- existing entry, possibly failing so we can diagnose the difference.
+      -- registry, without trying to produce a legacy manifest. However, we may
+      -- want to always attempt to produce a legacy manifest. If we can produce
+      -- one we compare it to the existing entry, failing if there is a
+      -- difference; if we can't, we warn and fall back to the existing entry.
       Registry.readManifest package.name (LenientVersion.version version) >>= case _ of
-        Just manifest -> pure manifest
-        _ -> do
-          -- TODO: How should possibly-failing manifests be cached?
-          Log.debug $ "Building manifest in legacy import because it was not found in the registry: " <> formatPackageVersion package.name (LenientVersion.version version)
-          -- let codec = CA.Common.either (CA.Record.object "Error" { error: versionErrorCodec, reason: CA.string }) Manifest.codec
-          -- Cache.get
-          -- liftEffect (Cache.readJsonEntry codec key cache) >>= case _ of
-          --   Left _ -> ExceptT do
-          --     Console.log $ "CACHE MISS: Building manifest for " <> PackageName.print package.name <> "@" <> tag.name
-          --     manifest <- Except.runExceptT buildManifest
-          --     liftEffect $ Cache.writeJsonEntry codec key manifest cache
-          --     pure manifest
-          --   Right contents ->
-          --     Except.except contents.value
-          -- TODO TODO TODO
-          unsafeCrashWith "unimplemented"
+        Nothing -> do
+          let
+            cacheId = CacheId ((un RawPackageName rawPackage) <> "__" <> rawUrl)
+            cacheCodec = CA.Common.either versionValidationErrorCodec Manifest.codec
+
+          Cache.getJson _legacyImportCache cacheId cacheCodec >>= case _ of
+            Nothing -> do
+              Log.debug $ "Building manifest in legacy import because it was not found in cache: " <> formatPackageVersion package.name (LenientVersion.version version)
+              manifest <- Run.Except.runExceptAt _exceptVersion do
+                exceptVersion $ validateVersionDisabled package.name version
+                legacyManifest <- do
+                  Legacy.Manifest.fetchLegacyManifest package.name package.address (RawVersion tag.name) >>= case _ of
+                    Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
+                    Right result -> pure result
+                pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
+              Cache.put _legacyImportCache cacheId (CA.encode cacheCodec manifest)
+              exceptVersion manifest
+            Just cached ->
+              exceptVersion cached.value
+
+        Just manifest ->
+          exceptVersion $ Right manifest
 
   manifests <- for package.tags \tag -> do
     manifest <- buildManifestForVersion tag

@@ -482,7 +482,7 @@ handleRegistryGit env = case _ of
           pure next
 
   ReadLegacyRegistry reply -> do
-    Log.info "Reading legacy registry."
+    Log.info "Reading legacy registry..."
 
     fetchIfNeeded Constants.registry env.registry
 

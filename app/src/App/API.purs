@@ -367,12 +367,15 @@ publish source payload = do
   { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir: tmp, ref: payload.ref, location: existingMetadata.location }
 
   Log.debug $ "Package downloaded to " <> packageDirectory <> ", verifying it contains a src directory..."
-  unlessM (Run.liftAff (Operation.Validation.containsPursFile (Path.concat [ packageDirectory, "src" ]))) do
-    Log.exit $ Array.fold
-      [ "This package has no .purs files in the src directory. "
-      , "All package sources must be in the `src` directory, with any additional "
-      , " sources indicated by the `files` key in your manifest."
-      ]
+  Run.liftAff (Operation.Validation.containsPursFile (Path.concat [ packageDirectory, "src" ])) >>= case _ of
+    true ->
+      Log.debug "Package contains .purs files in its src directory."
+    _ ->
+      Log.exit $ Array.fold
+        [ "This package has no .purs files in the src directory. "
+        , "All package sources must be in the `src` directory, with any additional "
+        , "sources indicated by the `files` key in your manifest."
+        ]
 
   -- If this is a legacy import, then we need to construct a `Manifest` for it.
   let packagePursJson = Path.concat [ packageDirectory, "purs.json" ]
