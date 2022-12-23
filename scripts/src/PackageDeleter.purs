@@ -110,7 +110,7 @@ main = launchAff_ do
 
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
-  cacheRef <- liftEffect $ Ref.new Map.empty
+  cacheRef <- Cache.newCacheRef
 
   let registry = Path.concat [ scratchDir, "registry" ]
   let registryIndex = Path.concat [ scratchDir, "registry-index" ]
@@ -135,10 +135,13 @@ main = launchAff_ do
       Right values -> pure values
 
   deleter { registry, registryIndex, token, mode: CommitAndPush } deletions
-    # Run.interpret (Run.on Storage._storage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret }) Run.send)
     # Run.interpret (Run.on Registry._registry (Registry.handleRegistryGit registryEnv) Run.send)
-    # Run.interpret (Run.on GitHub._github (GitHub.handleGitHubOctokit octokit) Run.send)
-    # Run.interpret (Run.on Cache._appCache (Cache.handleAppCacheFs cacheDir cacheRef) Run.send)
+    # Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
+    # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+    -- Caching
+    # Storage.runStorageCacheFs cacheDir
+    # GitHub.runGitHubCacheMemoryFs cacheRef cacheDir
+    -- Logging
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Run.interpret (Run.on Log._log (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log) Run.send)
     # Run.runBaseAff'

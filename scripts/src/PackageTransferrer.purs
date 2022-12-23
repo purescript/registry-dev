@@ -12,7 +12,6 @@ import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
-import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -89,9 +88,12 @@ main = launchAff_ do
     # Run.Reader.runReaderAt Env._githubEventEnv { issue: IssueNumber (-1), username: "" }
     # Run.Reader.runReaderAt Env._pacchettiBottiEnv { token, privateKey, publicKey }
     # Run.interpret (Run.on Registry._registry (Registry.handleRegistryGit registryEnv) Run.send)
-    # Run.interpret (Run.on Storage._storage Storage.handleStorageReadOnly Run.send)
-    # Run.interpret (Run.on GitHub._github (GitHub.handleGitHubOctokit octokit) Run.send)
-    # Run.interpret (Run.on Cache._appCache (Cache.handleAppCacheFs cacheDir cacheRef) Run.send)
+    # Storage.runStorage Storage.handleStorageReadOnly
+    # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+    -- Caching
+    # Storage.runStorageCacheFs cacheDir
+    # GitHub.runGitHubCacheMemoryFs cacheRef cacheDir
+    -- Logging
     # Run.interpret (Run.on Notify._notify (\(Notify msg next) -> Log.info msg *> pure next) Run.send)
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Run.interpret (Run.on Log._log (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log) Run.send)

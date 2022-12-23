@@ -1,145 +1,83 @@
--- | A generic, extensible, typed cache effect suitable for retaining data that
--- | is slow or expensive to compute. Multiple caches can be created so long as
--- | they use different keys, and caches can be interpreted with different
--- | strategies, such as in-memory only, or backed by the file system, or by a
--- | database like SQLite.
 module Registry.App.Effect.Cache where
 
-import Registry.App.Prelude hiding (Manifest(..), Metadata(..))
+import Registry.App.Prelude
 
-import Data.Argonaut.Core as Argonaut
-import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
-import Data.Const (Const(..))
 import Data.DateTime (DateTime)
-import Data.Exists (Exists)
-import Data.Exists as Exists
+import Data.JSDate as JSDate
 import Data.Map as Map
-import Data.Maybe (maybe')
+import Data.Maybe as Maybe
 import Data.String as String
+import Data.Symbol (class IsSymbol)
+import Data.Time.Duration (Minutes)
+import Data.Time.Duration as Duration
+import Effect.Aff (Fiber)
 import Effect.Aff as Aff
 import Effect.Ref as Ref
 import JSURI as JSURI
 import Node.FS.Aff as FS.Aff
+import Node.FS.Stats as FS
+import Prim.Row as Row
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Legacy.Types (RawVersion(..))
-import Registry.App.Legacy.Types as Types
-import Registry.Foreign.Octokit (GitHubError, GitHubRoute)
-import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Codec as Internal.Codec
-import Registry.Manifest as Manifest
-import Registry.Metadata as Metadata
-import Registry.PackageName as PackageName
-import Registry.Sha256 as Sha256
-import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
 
--- | A typed key for the standard app cache. Caches using this key should
--- | use the 'get', 'put', and 'delete' functions from this module.
-data AppCache (c :: Type -> Type -> Type) a
-  = Manifest PackageName Version (c Manifest.Manifest a)
-  | Metadata PackageName (c Metadata.Metadata a)
-  | Request GitHubRoute (c (Either GitHubError Json) a)
-  | LegacyPackageSet RawVersion (c (Either GitHubError Types.LegacyPackageSet) a)
-  | LegacyPackageSetUnion Sha256 (c Types.LegacyPackageSetUnion a)
+data Cache k a
+  = Get CacheId (Maybe (CacheEntry k) -> a)
+  | Put CacheId k a
+  | Delete CacheId a
 
--- Ideally, with quantified constraints, this could be written as:
---   (forall x. Functor (c x)) => Functor (AppCache c)
--- but since PureScript doesn't have them, we lean on a 'Functor2' class and
--- a manual instance.
-instance Functor2 c => Functor (AppCache c) where
-  map k = case _ of
-    Manifest name version a -> Manifest name version (map2 k a)
-    Metadata name a -> Metadata name (map2 k a)
-    Request route a -> Request route (map2 k a)
-    LegacyPackageSet ref a -> LegacyPackageSet ref (map2 k a)
-    LegacyPackageSetUnion tagsHash a -> LegacyPackageSetUnion tagsHash (map2 k a)
+derive instance Functor (Cache k)
 
--- | A cache covering the common types used in the registry. Can be combined
--- | with other caches so long as they use different labels.
-type CACHE r = (appCache :: Cache AppCache | r)
+newtype CacheId = CacheId String
 
-_appCache :: Proxy "appCache"
-_appCache = Proxy
+derive newtype instance Eq CacheId
+derive newtype instance Ord CacheId
 
--- | A handler for the AppCache key for JSON caches. Can be used to
--- | implement interpreters for the CACHE effect.
-jsonKeyHandler :: JsonKeyHandler AppCache
-jsonKeyHandler = case _ of
-  Manifest name version next -> Exists.mkExists $ flip JsonKey next
-    { id: "AppCache__ManifestFile__" <> PackageName.print name <> "__" <> Version.print version
-    , codec: Manifest.codec
-    }
-  Metadata name next -> Exists.mkExists $ flip JsonKey next
-    { id: "AppCache__MetadataFile__" <> PackageName.print name
-    , codec: Metadata.codec
-    }
-  Request route next -> Exists.mkExists $ flip JsonKey next
-    { id: "AppCache__GitHubRequest__" <> Octokit.printGitHubRoute route
-    , codec: CA.Common.either Octokit.githubErrorCodec CA.Common.json
-    }
-  LegacyPackageSet (RawVersion ref) next -> Exists.mkExists $ flip JsonKey next
-    { id: "AppCache__LegacyPackageSet__" <> ref
-    , codec: CA.Common.either Octokit.githubErrorCodec Types.legacyPackageSetCodec
-    }
-  LegacyPackageSetUnion tagsHash next -> Exists.mkExists $ flip JsonKey next
-    { id: "AppCache__LegacyPackageSetUnion__" <> Sha256.print tagsHash
-    , codec: Types.legacyPackageSetUnionCodec
-    }
+-- | Get an item from the specified cache.
+get :: forall s k t r. IsSymbol s => Row.Cons s (Cache k) t r => Proxy s -> CacheId -> Run r (Maybe (CacheEntry k))
+get sym key = Run.lift sym (Get key identity)
 
--- | Get an item from the app cache.
-get :: forall a r. CacheKey AppCache a -> Run (CACHE + r) (Maybe (CacheEntry a))
-get key = Run.lift _appCache (getCache key)
+-- | Put an item in the specified cache.
+put :: forall s k t r. IsSymbol s => Row.Cons s (Cache k) t r => Proxy s -> CacheId -> k -> Run r Unit
+put sym key val = Run.lift sym (Put key val unit)
 
--- | Put an item to the app cache.
--- | ```
-put :: forall a r. CacheKey AppCache a -> a -> Run (CACHE + r) Unit
-put key val = Run.lift _appCache (putCache key val)
+-- | Delete an item from the specified cache.
+delete :: forall s k t r. IsSymbol s => Row.Cons s (Cache k) t r => Proxy s -> CacheId -> Run r Unit
+delete sym key = Run.lift sym (Delete key unit)
 
--- | Delete an item from the app cache.
-delete :: forall a r. CacheKey AppCache a -> Run (CACHE + r) Unit
-delete key = Run.lift _appCache (deleteCache key)
+getJson
+  :: forall s t r a
+   . IsSymbol s
+  => Row.Cons s (Cache Json) t (LOG + r)
+  => Proxy s
+  -> CacheId
+  -> JsonCodec a
+  -> Run (LOG + r) (Maybe (CacheEntry a))
+getJson sym key@(CacheId id) codec =
+  get sym key >>= case _ of
+    Nothing -> pure Nothing
+    Just entry -> case CA.decode codec entry.value of
+      Left decodeError -> do
+        Log.error $ "Failed to decode cached value for " <> id <> ": " <> CA.printJsonDecodeError decodeError
+        delete sym key
+        pure Nothing
+      Right decoded -> do
+        pure $ Just $ entry { value = decoded }
 
--- | Handle the application cache using the file system
-handleAppCacheFs :: forall a r. Ref (Map String Json) -> Cache AppCache a -> Run (LOG + AFF + EFFECT + r) a
-handleAppCacheFs ref = handleCacheFs ref jsonKeyHandler
-
--- INTERNAL
---
--- The code below is used to implement arbitrary caches such as the app cache
--- above. You can use it to implement independent caches that can be handled
--- differently, or to extend the cache with new keys in downstream modules such
--- as the scripts.
-
-class Functor2 (c :: Type -> Type -> Type) where
-  map2 :: forall a b z. (a -> b) -> c z a -> c z b
-
-newtype Reply a b = Reply (Maybe (CacheEntry a) -> b)
-
-instance Functor2 Reply where
-  map2 k (Reply f) = Reply (map k f)
-
-newtype Ignore :: forall k. k -> Type -> Type
-newtype Ignore a b = Ignore b
-
-instance Functor2 Ignore where
-  map2 k (Ignore b) = Ignore (k b)
-
--- | An effect for caching values with an extensible key to support multiple
--- | independent caches.
-data Cache key a
-  = Get (key Reply a)
-  | Put (forall void. key Const void) a
-  | Delete (key Ignore a)
-
-derive instance (Functor (k Reply), Functor (k Ignore)) => Functor (Cache k)
-
-type CacheKey :: ((Type -> Type -> Type) -> Type -> Type) -> Type -> Type
-type CacheKey k a = forall c b. c a b -> k c b
+runCacheAt
+  :: forall s k a r t
+   . IsSymbol s
+  => Row.Cons s (Cache k) t r
+  => Proxy s
+  -> (Cache k ~> Run t)
+  -> Run r a
+  -> Run t a
+runCacheAt sym handler =
+  Run.interpret (Run.on sym handler Run.send)
 
 -- | An entry in the cache, including its last-modified time.
 type CacheEntry a =
@@ -153,173 +91,253 @@ cacheEntryCodec codec = CA.Record.object "CacheEntry"
   , value: codec
   }
 
--- | Get a value from the cache, given an appropriate cache key. This function
--- | is useful for defining a concrete 'get' for a user-defined key type:
--- |
--- | ```purs
--- | import Registry.Effect.Cache
--- |
--- | data MyCache c a = ManifestFile PackageName Version (c Manifest a)
--- |
--- | type MY_CACHE r = (myCache :: Cache MyCache r)
--- | _myCache = Proxy :: Proxy "myCache"
--- |
--- | get :: forall a r. CacheKey MyCache a -> Run (MY_CACHE + r) (Maybe (CacheEntry a))
--- | get key = Run.lift _myCache (getCache key)
--- | ```
-getCache :: forall k a. CacheKey k a -> Cache k (Maybe (CacheEntry a))
-getCache key = Get (key (Reply identity))
-
--- | Put a value in the cache, given an appropriate cache key. This function
--- | is useful for defining a concrete 'put' for a user-defined key type:
--- |
--- | ```purs
--- | import Registry.Effect.Cache
--- |
--- | data MyCache c a = ManifestFile PackageName Version (c Manifest a)
--- |
--- | type MY_CACHE r = (myCache :: Cache MyCache r)
--- | _myCache = Proxy :: Proxy "myCache"
--- |
--- | put :: forall a r. CacheKey MyCache a -> Run (MY_CACHE + r) (Maybe a)
--- | put key = Run.lift _myCache (putCache key)
--- | ```
-putCache :: forall k a. CacheKey k a -> a -> Cache k Unit
-putCache key value = Put (key (Const value)) unit
-
--- | Delete a key from the cache, given an appropriate cache key. This function
--- | is useful for defining a concrete 'delete' for a user-defined key type:
--- |
--- | ```purs
--- | import Registry.Effect.Cache
--- |
--- | data MyCache c a = ManifestFile PackageName Version (c Manifest a)
--- |
--- | type MY_CACHE r = (myCache :: Cache MyCache r)
--- | _myCache = Proxy :: Proxy "myCache"
--- |
--- | delete :: forall a r. CacheKey MyCache a -> Run (MY_CACHE + r) (Maybe a)
--- | delete key = Run.lift _myCache (deleteCache key)
--- | ```
-deleteCache :: forall k a. CacheKey k a -> Cache k Unit
-deleteCache key = Delete (key (Ignore unit))
-
--- | Given some type `a` to be stored in the cache, provides a unique identifier
--- | for a value of that type and a codec for encoding and decoding it as JSON.
-type JsonKey a =
-  { id :: String
-  , codec :: JsonCodec a
-  }
-
--- | Convert a cache identifier into a safe file path.
-safePath :: String -> FilePath
-safePath id =
-  maybe' (\_ -> unsafeCrashWith ("Unable to encode " <> id <> " as a safe file path.")) identity
-    $ JSURI.encodeURIComponent
-    $ String.replaceAll (String.Pattern "@") (String.Replacement "$")
-    $ String.replaceAll (String.Pattern "/") (String.Replacement "_")
-    $ String.replaceAll (String.Pattern " ") (String.Replacement "__") id
-
--- | A mapping of key types to a unique cache identifier and codec for encoding
--- | and decoding the value as JSON. This uses an existential encoding, so you
--- | must use `Exists.mkExists` to hide the value's type.
--- |
--- | ```purs
--- | import Data.Exists as Exists
--- | import Registry.Effect.Cache as Cache
--- | import Registry.Manifest as Manifest
--- |
--- | data Key c a = ManifestFile PackageName Version (c Manifest.Manifest a)
--- |
--- | keyHandler :: Cache.JsonKeyHandler Key
--- | keyHandler = case _ of
--- |   ManifestFile name version k -> do
--- |     let id = "ManifestFile" <> print name <> print version
--- |     Exists.mkExists $ Cache.JsonKey { id, codec: Manifest.codec } next
--- | ```
-type JsonKeyHandler key = forall b z. key z b -> JsonEncoded z b
-
--- | A box that can be used with `Exists` to hide the value associated with a
--- | particular key constructor.
-data JsonEncodedBox :: (Type -> Type -> Type) -> Type -> Type -> Type
-data JsonEncodedBox z b a = JsonKey (JsonKey a) (z a b)
-
-type JsonEncoded z b = Exists (JsonEncodedBox z b)
-
--- | Run a cache backed by the file system. The cache will try to minimize
--- | writes and reads to the file system by storing data in memory when possible.
---
--- TODO: Add an in-memory-only cache.
--- TODO: Add an fs-only cache, no JSON. Get modification time from file stats?
---
--- TODO: This could be much improved, but it's not urgent. Some ideas:
---   - Accept a fetching function to produce the cached value, and call it if
---     the cache has no entry? This makes the cache more transparent vs. get/put.
---   - Separate the in-memory and filesystem handlers such that they can be
---     combined? ie. try in-memory, fall back to file system, fall back to fetcher.
---   - Push more cache behavior into the key handler, such that a key can specify
---     how it should be cached (memory only, file system only?)
-handleCacheFs :: forall key a r. Ref (Map String Json) -> JsonKeyHandler key -> Cache key a -> Run (LOG + AFF + EFFECT + r) a
-handleCacheFs cacheRef handler = case _ of
-  -- TODO: Expire entries after they've not been fetched for N seconds?
-  Get key -> handler key # Exists.runExists \(JsonKey { id, codec } (Reply reply)) -> do
-    readMemory >>= Map.lookup id >>> case _ of
+-- | Handle the Cache effect using an in-memory cache that falls back to the
+-- | file system on cache misses.
+handleCacheMemoryFs
+  :: forall k r a
+   . MemoryCacheEnv k
+  -> FsCacheEnv k
+  -> Cache k a
+  -> Run (LOG + AFF + EFFECT + r) a
+handleCacheMemoryFs memoryCacheEnv fsCacheEnv = case _ of
+  Get cacheId reply -> do
+    memory <- handleCacheMemory memoryCacheEnv (Get cacheId identity)
+    case memory of
       Nothing -> do
-        Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 (safePath id))) >>= case _ of
-          Left error -> do
-            Log.debug $ "Did not find " <> id <> " in memory or file system cache: " <> Aff.message error
-            pure $ reply Nothing
-          Right value -> do
-            Log.debug $ "Found " <> id <> " in file system cache, writing to memory..."
-            case Argonaut.Parser.jsonParser value of
-              Left error -> do
-                Log.debug $ "Invalid JSON for " <> id <> ":\n" <> value <> ").\nParsing failed with error: " <> error <> "\nRemoving from cache!"
-                deleteMemoryAndDisk id
-                pure $ reply Nothing
-              Right json -> case CA.decode (cacheEntryCodec codec) json of
-                Left error -> do
-                  Log.debug $ "Failed to decode JSON for " <> id <> ":\n" <> value <> ").\nParsing failed with error: " <> CA.printJsonDecodeError error <> "\nRemoving from cache!"
-                  deleteMemoryAndDisk id
-                  pure $ reply Nothing
-                Right decoded ->
-                  pure $ reply $ Just decoded
+        fs <- handleCacheFs fsCacheEnv (Get cacheId identity)
+        case fs of
+          Nothing -> pure $ reply Nothing
+          Just entry -> do
+            handleCacheMemory memoryCacheEnv (Put cacheId entry.value unit)
+            pure $ reply $ Just entry
+      Just cached ->
+        pure $ reply $ Just cached
 
-      Just json -> do
-        Log.debug $ "Found " <> id <> " in memory cache."
-        case CA.decode (cacheEntryCodec codec) json of
-          Left error -> do
-            Log.debug $ "Failed to decode JSON for " <> id <> ":\n" <> Argonaut.stringify json <> ").\nParsing failed with error: " <> CA.printJsonDecodeError error <> "\nRemoving from cache!"
-            deleteMemoryAndDisk id
-            pure $ reply Nothing
-          Right decoded ->
-            pure $ reply $ Just decoded
-
-  Put key next -> handler key # Exists.runExists \(JsonKey { id, codec } (Const value)) -> do
-    Log.debug $ "Putting " <> id <> " in cache..."
-    now <- Run.liftEffect nowUTC
-    let encoded = CA.encode (cacheEntryCodec codec) { modified: now, value }
-    readMemory >>= Map.lookup id >>> case _ of
-      Just previous | encoded == previous -> do
-        Log.debug "Put value matches old value, skipping update."
-        pure next
-      _ -> do
-        modifyMemory (Map.insert id encoded)
-        Run.liftAff (Aff.attempt (FS.Aff.writeTextFile UTF8 (safePath id) (Argonaut.stringify encoded))) >>= case _ of
-          Left error -> Log.debug $ "Unable to write cache entry to file system: " <> Aff.message error
-          Right _ -> Log.debug "Wrote cache entry!"
-        pure next
-
-  Delete key -> handler key # Exists.runExists \(JsonKey { id } (Ignore next)) -> do
-    deleteMemoryAndDisk id
+  Put cacheId value next -> do
+    handleCacheMemory memoryCacheEnv (Put cacheId value unit)
+    handleCacheFs fsCacheEnv (Put cacheId value unit)
     pure next
 
+  Delete cacheId next -> do
+    handleCacheMemory memoryCacheEnv (Delete cacheId unit)
+    handleCacheFs fsCacheEnv (Delete cacheId unit)
+    pure next
+
+type CacheRef k = Ref (Map CacheId { entry :: CacheEntry k, kill :: Maybe (Fiber Unit) })
+
+newCacheRef :: forall k m. MonadEffect m => m (CacheRef k)
+newCacheRef = liftEffect (Ref.new Map.empty)
+
+-- | An environment for the in-memory cache handler for the Cache effect.
+type MemoryCacheEnv k =
+  { cacheRef :: CacheRef k
+  , expiry :: Expiry
+  }
+
+-- | Controls how values are expired from the in-memory cache.
+data Expiry
+  = Never
+  | After Minutes
+  | ById (CacheId -> Maybe Minutes)
+
+-- | A handler for the Cache effect which stores cached values in memory. You can
+-- | optionally specify an expiration time after which the data will be purged.
+handleCacheMemory :: forall k r a. MemoryCacheEnv k -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
+handleCacheMemory { cacheRef, expiry } = case _ of
+  Get cacheId@(CacheId id) reply -> do
+    Log.debug $ "Reading cache entry for " <> id <> " from memory."
+    cache <- Run.liftEffect $ Ref.read cacheRef
+    case Map.lookup cacheId cache of
+      Nothing -> do
+        Log.debug $ "No cache entry found for " <> id
+        pure $ reply Nothing
+      Just { entry, kill } -> do
+        let
+          -- We've accessed the cached value, so first we terminate the timer to
+          -- prevent expiration. Then we create a new expiry timer, which will
+          -- delete the cache value after the given duration, unless it is killed.
+          resetExpiration duration = do
+            for_ kill \fiber -> Run.liftAff do
+              Aff.killFiber (Aff.error "Reset timer") fiber
+            fiber <- Run.liftAff $ Aff.forkAff do
+              Aff.delay (Duration.fromDuration duration)
+              liftEffect (Ref.modify_ (Map.delete cacheId) cacheRef)
+            let update old = old { kill = Just fiber }
+            Run.liftEffect $ Ref.modify_ (Map.update (Just <<< update) cacheId) cacheRef
+
+        case expiry of
+          Never -> pure unit
+          After duration -> resetExpiration duration
+          ById k -> for_ (k cacheId) resetExpiration
+
+        pure $ reply $ Just entry
+
+  Put cacheId@(CacheId id) value next -> do
+    Log.debug $ "Writing cache entry for " <> id <> " to memory."
+    modified <- Run.liftEffect nowUTC
+    let
+      entry = { modified, value }
+      insertWithExpiration duration = do
+        cache <- Run.liftEffect $ Ref.read cacheRef
+        for_ (Map.lookup cacheId cache) \{ kill } ->
+          for_ kill \fiber -> Run.liftAff do
+            Aff.killFiber (Aff.error "Reset timer") fiber
+        fiber <- Run.liftAff $ Aff.forkAff do
+          Aff.delay (Duration.fromDuration duration)
+          liftEffect (Ref.modify_ (Map.delete cacheId) cacheRef)
+        Run.liftEffect $ Ref.modify_ (Map.insert cacheId { entry, kill: Just fiber }) cacheRef
+
+    case expiry of
+      Never ->
+        Run.liftEffect $ Ref.modify_ (Map.insert cacheId { entry, kill: Nothing }) cacheRef
+      After duration ->
+        insertWithExpiration duration
+      ById k -> case (k cacheId) of
+        Nothing ->
+          Run.liftEffect $ Ref.modify_ (Map.insert cacheId { entry, kill: Nothing }) cacheRef
+        Just duration ->
+          insertWithExpiration duration
+
+    pure next
+
+  Delete cacheId@(CacheId id) next -> do
+    Log.debug $ "Removing cache entry for " <> id <> " from memory."
+    Run.liftEffect $ Ref.modify_ (Map.delete cacheId) cacheRef
+    pure next
+
+-- | The environment for a filesystem-backed cache implementation.
+type FsCacheEnv k =
+  { encoding :: FsCacheEncoding k
+  , cacheDir :: FilePath
+  }
+
+-- | How to encode values of type `k` on the filesystem. Most well-typed data
+-- | should use JSON.
+data FsCacheEncoding k
+  = Buffer { encode :: k -> Buffer, decode :: Buffer -> k }
+  | String { encode :: k -> String, decode :: String -> Either String k }
+  | Json (JsonCodec k)
+
+-- | A default encoding for caching `Buffer` values.
+buffer :: FsCacheEncoding Buffer
+buffer = Buffer { encode: identity, decode: identity }
+
+-- | A default encoding for caching `String` values.
+string :: FsCacheEncoding String
+string = String { encode: identity, decode: pure }
+
+json :: FsCacheEncoding Json
+json = Json CA.json
+
+-- | Handle the Cache effect by caching values on the file system, given a
+-- | file encoding to use.
+handleCacheFs :: forall k r a. FsCacheEnv k -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
+handleCacheFs env = case _ of
+  Get cacheId@(CacheId id) reply -> do
+    let path = safePath cacheId
+    Log.debug $ "Reading cache entry for " <> id <> " at path " <> path
+    let removeEntry = handleCacheFs env (Delete cacheId unit)
+    case env.encoding of
+      Buffer { decode } -> do
+        Run.liftAff (Aff.attempt (FS.Aff.stat path)) >>= case _ of
+          Left _ -> do
+            Log.debug $ "No cache entry found for " <> id <> " at path " <> path
+            pure $ reply Nothing
+          -- TODO: Is mtime the right one? Is there a way to see the last time
+          -- the file was accessed vs. the last time it was modified? So I can
+          -- implement expiry here too?
+          Right (FS.Stats { mtime }) -> case JSDate.toDateTime mtime of
+            Nothing -> do
+              Log.error $ "Found cache file for " <> id <> " at path " <> path <> " but could not read modification time as a DateTime: " <> show mtime
+              removeEntry
+              pure $ reply Nothing
+            Just modified -> Run.liftAff (Aff.attempt (FS.Aff.readFile path)) >>= case _ of
+              Left fsError -> do
+                Log.error $ "Found cache file for " <> id <> " at path " <> path <> " but could not read it: " <> Aff.message fsError
+                removeEntry
+                pure $ reply Nothing
+              Right buf ->
+                pure $ reply $ Just { modified, value: decode buf }
+
+      String { decode } -> do
+        Run.liftAff (Aff.attempt (readJsonFile (cacheEntryCodec CA.string) path)) >>= case _ of
+          Left fsError -> do
+            Log.debug $ "No cache file at path " <> path <> ": " <> Aff.message fsError
+            pure $ reply Nothing
+          Right (Left jsonError) -> do
+            Log.error $ "Failed to decode CacheEntry for value at key " <> id <> ": " <> jsonError
+            removeEntry
+            pure $ reply Nothing
+          Right (Right entry) -> case decode entry.value of
+            Left error -> do
+              Log.error $ "Failed to decode cached value at key " <> id <> ": " <> error
+              removeEntry
+              pure $ reply Nothing
+            Right value ->
+              pure $ reply $ Just { modified: entry.modified, value }
+
+      Json codec -> do
+        Run.liftAff (Aff.attempt (readJsonFile (cacheEntryCodec CA.json) path)) >>= case _ of
+          Left _ -> do
+            Log.debug $ "No cache entry for " <> id <> " at path " <> path
+            pure $ reply Nothing
+          Right (Left jsonError) -> do
+            Log.error $ "Failed to parse entry file for " <> id <> ": " <> jsonError
+            removeEntry
+            pure $ reply Nothing
+          Right (Right entry) -> case CA.decode codec entry.value of
+            Left decodeError -> do
+              let error = CA.printJsonDecodeError decodeError
+              Log.error $ "Failed to decode value at key " <> id <> " using its provided codec: " <> error
+              removeEntry
+              pure $ reply Nothing
+            Right value ->
+              pure $ reply $ Just { modified: entry.modified, value }
+
+  Put cacheId@(CacheId id) value next -> do
+    let path = safePath cacheId
+    Log.debug $ "Writing cache entry for " <> id <> " at path " <> path
+    case env.encoding of
+      Buffer { encode } ->
+        Run.liftAff (Aff.attempt (FS.Aff.writeFile path (encode value))) >>= case _ of
+          Left fsError -> do
+            Log.warn $ "Failed to write cache entry for " <> id <> " at path " <> path <> " as a buffer: " <> Aff.message fsError
+            pure next
+          Right _ -> pure next
+
+      String { encode } -> do
+        modified <- Run.liftEffect nowUTC
+        let entry = { modified, value: encode value }
+        Run.liftAff (Aff.attempt (writeJsonFile (cacheEntryCodec CA.string) path entry)) >>= case _ of
+          Left fsError -> do
+            Log.warn $ "Failed to write cache entry for " <> id <> " at path " <> path <> " as a string: " <> Aff.message fsError
+            pure next
+          Right _ -> pure next
+
+      Json codec -> do
+        modified <- Run.liftEffect nowUTC
+        let entry = { modified, value }
+        Run.liftAff (Aff.attempt (writeJsonFile (cacheEntryCodec codec) path entry)) >>= case _ of
+          Left fsError -> do
+            Log.warn $ "Failed to write cache entry for " <> id <> " at path " <> path <> " as JSON: " <> Aff.message fsError
+            pure next
+          Right _ -> pure next
+
+  Delete cacheId@(CacheId id) next -> do
+    let path = safePath cacheId
+    Log.debug $ "Deleting cache entry for " <> id <> " at path " <> path
+    Run.liftAff (Aff.attempt (FS.Aff.unlink path)) >>= case _ of
+      Left fsError -> do
+        Log.warn $ "Failed to delete cache entry for " <> id <> " at path " <> path <> ": " <> Aff.message fsError
+        pure next
+      Right _ ->
+        pure next
+
   where
-  readMemory = Run.liftEffect $ Ref.read cacheRef
-
-  modifyMemory k = Run.liftEffect $ Ref.modify_ k cacheRef
-
-  deleteMemoryAndDisk id = do
-    modifyMemory (Map.delete id)
-    Run.liftAff (Aff.attempt (FS.Aff.rm (safePath id))) >>= case _ of
-      Left fsError -> Log.debug $ "Could not delete file system entry: " <> Aff.message fsError
-      Right _ -> pure unit
+  safePath :: CacheId -> FilePath
+  safePath (CacheId id) =
+    Maybe.maybe' (\_ -> unsafeCrashWith ("Unable to encode " <> id <> " as a safe file path.")) identity
+      $ JSURI.encodeURIComponent
+      $ String.replaceAll (String.Pattern "@") (String.Replacement "$")
+      $ String.replaceAll (String.Pattern "/") (String.Replacement "_")
+      $ String.replaceAll (String.Pattern " ") (String.Replacement "__") id

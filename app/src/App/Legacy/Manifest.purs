@@ -21,7 +21,7 @@ import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.CLI.Licensee as Licensee
-import Registry.App.Effect.Cache (CACHE)
+import Registry.App.Effect.Cache (Cache, CacheId(..), CacheRef, Expiry(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -30,7 +30,7 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.LenientRange as LenientRange
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
-import Registry.App.Legacy.Types (LegacyPackageSet(..), LegacyPackageSetEntry, LegacyPackageSetUnion, RawPackageName(..), RawVersion(..), RawVersionRange(..), legacyPackageSetCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionRangeCodec)
+import Registry.App.Legacy.Types (LegacyPackageSet(..), LegacyPackageSetEntry, LegacyPackageSetUnion, RawPackageName(..), RawVersion(..), RawVersionRange(..), legacyPackageSetCodec, legacyPackageSetUnionCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionRangeCodec)
 import Registry.Foreign.Octokit (Address, GitHubError)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
@@ -44,6 +44,26 @@ import Run as Run
 import Run.Except as Run.Except
 import Sunde as Process
 import Type.Proxy (Proxy(..))
+
+-- | A cache for legacy manifest data
+type LEGACY_CACHE r = (legacyCache :: Cache Json | r)
+
+_legacyCache :: Proxy "legacyCache"
+_legacyCache = Proxy
+
+-- | Interpret the LEGACY_CACHE effect using an in-memory cache backed by the
+-- | file system.
+runLegacyCacheMemoryFs
+  :: forall r a
+   . CacheRef Json
+  -> FilePath
+  -> Run (LEGACY_CACHE + LOG + AFF + EFFECT + r) a
+  -> Run (LOG + AFF + EFFECT + r) a
+runLegacyCacheMemoryFs cacheRef cacheDir = Cache.runCacheAt _legacyCache
+  ( Cache.handleCacheMemoryFs
+      { cacheRef, expiry: Never }
+      { cacheDir, encoding: Cache.json }
+  )
 
 type LegacyManifest =
   { license :: License
@@ -65,7 +85,7 @@ fetchLegacyManifest
    . PackageName
   -> Address
   -> RawVersion
-  -> Run (GITHUB + CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) (Either LegacyManifestValidationError LegacyManifest)
+  -> Run (GITHUB + LEGACY_CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) (Either LegacyManifestValidationError LegacyManifest)
 fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestError do
   legacyPackageSets <- fetchLegacyPackageSets >>= case _ of
     Left error -> do
@@ -384,7 +404,7 @@ fetchBowerfile address ref = GitHub.getJsonFile address ref bowerfileCodec "bowe
 -- | Attempt to fetch all package sets from the package-sets repo and union them
 -- | into a map, where keys are packages in the sets and values are a map of
 -- | the package version to its dependencies in the set at that version.
-fetchLegacyPackageSets :: forall r. Run (GITHUB + CACHE + LOG + EFFECT + r) (Either GitHubError LegacyPackageSetUnion)
+fetchLegacyPackageSets :: forall r. Run (GITHUB + LEGACY_CACHE + LOG + EFFECT + r) (Either GitHubError LegacyPackageSetUnion)
 fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
   allTags <- do
     tagsResult <- GitHub.listTags Legacy.PackageSet.legacyPackageSetsRepo
@@ -410,21 +430,25 @@ fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
 
   Log.debug "Merging legacy package sets into a union."
   tagKey <- Run.liftEffect $ Sha256.hashString (String.joinWith " " tags)
+  let unionCacheId = CacheId $ Sha256.print tagKey
+  let unionCacheCodec = legacyPackageSetUnionCodec
 
   -- It's important that we cache the end result of unioning all package sets
   -- because the package sets are quite large and it's expensive to read them
   -- all into memory and fold over them.
-  Cache.get (Cache.LegacyPackageSetUnion tagKey) >>= case _ of
+  Cache.getJson _legacyCache unionCacheId unionCacheCodec >>= case _ of
     Nothing -> do
       Log.debug $ "Cache miss for legacy package set union, rebuilding..."
 
       legacySetResults <- for tags \refStr -> do
         let ref = RawVersion refStr
-        cached <- Cache.get (Cache.LegacyPackageSet ref) >>= case _ of
+        let legacySetCacheId = CacheId refStr
+        let legacySetCodec = CA.Common.either Octokit.githubErrorCodec legacyPackageSetCodec
+        cached <- Cache.getJson _legacyCache legacySetCacheId legacySetCodec >>= case _ of
           Nothing -> do
             Log.debug $ "Cache miss for legacy package set " <> refStr <> ", refetching..."
             result <- GitHub.getJsonFile Legacy.PackageSet.legacyPackageSetsRepo ref legacyPackageSetCodec "packages.json"
-            Cache.put (Cache.LegacyPackageSet ref) result
+            Cache.put _legacyCache legacySetCacheId (CA.encode legacySetCodec result)
             pure result
           Just { value } ->
             pure value
@@ -443,7 +467,7 @@ fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
         merged :: LegacyPackageSetUnion
         merged = Array.foldl (\m set -> Map.unionWith Map.union set m) Map.empty convertedSets
 
-      Cache.put (Cache.LegacyPackageSetUnion tagKey) merged
+      Cache.put _legacyCache unionCacheId (CA.encode unionCacheCodec merged)
       pure merged
 
     Just { value } ->

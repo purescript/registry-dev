@@ -41,7 +41,6 @@ import Registry.App.CLI.Git as Git
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.Tar as Tar
-import Registry.App.Effect.Cache (CACHE)
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
@@ -57,6 +56,7 @@ import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.LenientVersion as LenientVersion
+import Registry.App.Legacy.Manifest (LEGACY_CACHE)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec)
 import Registry.Foreign.FSExtra as FS.Extra
@@ -315,7 +315,7 @@ authenticated auth = case auth.payload of
           Registry.mirrorLegacyRegistry payload.name payload.newLocation
           Notify.notify "Mirrored location change to the legacy registry."
 
-type PublishEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + CACHE + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r)
+type PublishEffects r = (REGISTRY + STORAGE + GITHUB + LEGACY_CACHE + PACCHETTIBOTTI_ENV + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r)
 
 -- | Publish a package via the 'publish' operation. If the package has not been
 -- | published before then it will be registered and the given version will be
@@ -866,7 +866,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
               Log.error $ "Failed to fetch " <> destination <> " at ref " <> ref <> ": " <> Octokit.printGitHubError githubError
               Log.exit $ "Failed to fetch commit data associated with " <> destination <> " at ref " <> ref
             Right result -> pure result
-          GitHub.getCommitDate { owner, repo } (RawVersion commit) >>= case _ of
+          GitHub.getCommitDate { owner, repo } commit >>= case _ of
             Left githubError -> do
               Log.error $ "Failed to fetch " <> destination <> " at commit " <> commit <> ": " <> Octokit.printGitHubError githubError
               Log.exit $ "Unable to get published time for commit " <> commit <> " associated with the given ref " <> ref

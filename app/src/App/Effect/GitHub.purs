@@ -1,6 +1,7 @@
 -- | An effect for making requests to GitHub for various resources.
 module Registry.App.Effect.GitHub
   ( GITHUB
+  , GITHUB_CACHE
   , GitHub(..)
   , _github
   , getCommitDate
@@ -10,19 +11,22 @@ module Registry.App.Effect.GitHub
   , handleGitHubOctokit
   , listTags
   , listTeamMembers
+  , runGitHub
+  , runGitHubCacheMemoryFs
   ) where
 
 import Registry.App.Prelude
 
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as CA.Common
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.HTTP.Method (Method(..))
 import Data.Time.Duration as Duration
 import Foreign.Object as Object
-import Registry.App.Effect.Cache (CACHE)
+import Registry.App.Effect.Cache (Cache, CacheId(..), CacheRef, Expiry(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
@@ -33,6 +37,26 @@ import Registry.Foreign.Octokit as Octokit
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Type.Proxy (Proxy(..))
+
+-- | A cache for the GITHUB effect, which stores the JSON content of requests.
+type GITHUB_CACHE r = (githubCache :: Cache Json | r)
+
+_githubCache :: Proxy "githubCache"
+_githubCache = Proxy
+
+-- | Interpret the GITHUB_CACHE effect using an in-memory cache backed by the
+-- | file system
+runGitHubCacheMemoryFs
+  :: forall r a
+   . CacheRef Json
+  -> FilePath
+  -> Run (GITHUB_CACHE + LOG + AFF + EFFECT + r) a
+  -> Run (LOG + AFF + EFFECT + r) a
+runGitHubCacheMemoryFs cacheRef cacheDir = Cache.runCacheAt _githubCache
+  ( Cache.handleCacheMemoryFs
+      { cacheRef, expiry: Never }
+      { cacheDir, encoding: Cache.json }
+  )
 
 data GitHub a
   = ListTags Address (Either GitHubError (Array Tag) -> a)
@@ -49,6 +73,7 @@ type GITHUB r = (github :: GitHub | r)
 _github :: Proxy "github"
 _github = Proxy
 
+-- | List all tags published to the provided repo.
 listTags :: forall r. Address -> Run (GITHUB + r) (Either GitHubError (Array Tag))
 listTags address = Run.lift _github (ListTags address identity)
 
@@ -57,9 +82,11 @@ listTags address = Run.lift _github (ListTags address identity)
 listTeamMembers :: forall r. Team -> Run (GITHUB + r) (Either GitHubError (Array String))
 listTeamMembers team = Run.lift _github (ListTeamMembers team identity)
 
+-- | Read the content of a file in the provided repo.
 getContent :: forall r. Address -> RawVersion -> FilePath -> Run (GITHUB + r) (Either GitHubError String)
 getContent address (RawVersion ref) path = Run.lift _github (GetContent address ref path identity)
 
+-- | Read the content of a JSON file in the provided repo, decoding its contents.
 getJsonFile :: forall r a. Address -> RawVersion -> JsonCodec a -> FilePath -> Run (GITHUB + r) (Either GitHubError a)
 getJsonFile address ref codec path = do
   content <- getContent address ref path
@@ -71,15 +98,21 @@ getJsonFile address ref codec path = do
         Right decoded -> Right decoded
   pure $ attemptDecode =<< content
 
+-- | Get the commit SHA associated with a ref on the provided repo.
 getRefCommit :: forall r. Address -> RawVersion -> Run (GITHUB + r) (Either GitHubError String)
 getRefCommit address (RawVersion ref) = Run.lift _github (GetRefCommit address ref identity)
 
-getCommitDate :: forall r. Address -> RawVersion -> Run (GITHUB + r) (Either GitHubError DateTime)
-getCommitDate address (RawVersion ref) = Run.lift _github (GetCommitDate address ref identity)
+-- | Get the published date of a commit SHA
+getCommitDate :: forall r. Address -> String -> Run (GITHUB + r) (Either GitHubError DateTime)
+getCommitDate address commitSha = Run.lift _github (GetCommitDate address commitSha identity)
+
+-- | Interpret the GITHUB effect, given a handler.
+runGitHub :: forall r a. (GitHub ~> Run r) -> Run (GITHUB + r) a -> Run r a
+runGitHub handler = Run.interpret (Run.on _github handler Run.send)
 
 -- | An effectful handler for the GITHUB effect which makes calls to GitHub
 -- | using Octokit.
-handleGitHubOctokit :: forall r a. Octokit -> GitHub a -> Run (CACHE + LOG + AFF + EFFECT + r) a
+handleGitHubOctokit :: forall r a. Octokit -> GitHub a -> Run (GITHUB_CACHE + LOG + AFF + EFFECT + r) a
 handleGitHubOctokit octokit = case _ of
   ListTags address reply -> do
     Log.debug $ "Listing tags for " <> address.owner <> "/" <> address.repo
@@ -115,18 +148,20 @@ handleGitHubOctokit octokit = case _ of
 -- | A helper function for implementing GET requests to the GitHub API that
 -- | relies on the GitHub API to report whether there is any new data, and falls
 -- | back to the cache if there is not.
-request :: forall r a. Octokit -> Request a -> Run (CACHE + LOG + AFF + EFFECT + r) (Either GitHubError a)
+request :: forall r a. Octokit -> Request a -> Run (GITHUB_CACHE + LOG + AFF + EFFECT + r) (Either GitHubError a)
 request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } = do
+  let printedRoute = Octokit.printGitHubRoute route
+  let cacheId = CacheId printedRoute
+  let cacheCodec = CA.Common.either Octokit.githubErrorCodec codec
   -- We cache GET requests, other than requests to fetch the current rate limit.
   case method of
     GET | route /= Octokit.rateLimitRequest.route -> do
-      entry <- Cache.get (Cache.Request route)
+      entry <- Cache.getJson _githubCache cacheId cacheCodec
       now <- Run.liftEffect nowUTC
       case entry of
         Nothing -> do
-          Log.debug $ "No cache entry for route " <> Octokit.printGitHubRoute route
           result <- requestWithBackoff octokit githubRequest
-          Cache.put (Cache.Request route) (map (CA.encode codec) result)
+          Cache.put _githubCache cacheId (CA.encode cacheCodec result)
           pure result
 
         Just cached -> case cached.value of
@@ -138,8 +173,8 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
             -- Otherwise, if we have an error in cache, we retry the request; we
             -- don't have anything usable we could return.
             | otherwise -> do
-                Log.debug $ "Retrying route " <> Octokit.printGitHubRoute route <> " because cache contains non-404 error: " <> show err
-                Cache.delete (Cache.Request route)
+                Log.debug $ "Retrying route " <> printedRoute <> " because cache contains non-404 error: " <> show err
+                Cache.delete _githubCache cacheId
                 request octokit githubRequest
 
           Left otherError -> do
@@ -158,8 +193,7 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
           --
           -- TODO: Remove DateTime.diff when GitHub honors requests again.
           Right _ | DateTime.diff now cached.modified >= Duration.Hours 1.0 -> do
-            let printed = Octokit.printGitHubRoute route
-            Log.debug $ "Cache entry expired for route " <> printed <> ", requesting..."
+            Log.debug $ "Cache entry expired for route " <> printedRoute <> ", requesting..."
             -- This is how we *would* modify the request, once GitHub works.
             let _githubTime = Formatter.DateTime.format Octokit.rfc1123Format cached.modified
             let _modifiedRequest = githubRequest { headers = Object.insert "If-Modified-Since" _githubTime githubRequest.headers }
@@ -171,26 +205,22 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
               Left otherError -> do
                 case otherError of
                   UnexpectedError err -> do
-                    Log.error $ "Failed to request " <> printed <> " due to an unexpected error. Writing it to cache: " <> err
+                    Log.error $ "Failed to request " <> printedRoute <> " due to an unexpected error. Writing it to cache: " <> err
                   APIError err -> do
-                    Log.error $ "Failed to request " <> printed <> " due to an API error with status " <> show err.statusCode <> ". Writing it to cache: " <> err.message
+                    Log.error $ "Failed to request " <> printedRoute <> " due to an API error with status " <> show err.statusCode <> ". Writing it to cache: " <> err.message
                   DecodeError err -> do
-                    Log.error $ "Failed to decode response to request " <> printed <> ". Writing decoding error to cache: " <> err
-                Cache.put (Cache.Request route) (map (CA.encode codec) result)
+                    Log.error $ "Failed to decode response to request " <> printedRoute <> ". Writing decoding error to cache: " <> err
+                Cache.put _githubCache cacheId (CA.encode cacheCodec result)
                 pure result
               Right valid -> do
-                Cache.put (Cache.Request route) (Right (CA.encode codec valid))
+                Cache.put _githubCache cacheId (CA.encode cacheCodec (Right valid))
                 pure result
 
-          Right value -> case CA.decode codec value of
-            Left error -> do
-              Log.debug $ "Unable to decode cache entry, returning error..."
-              pure $ Left $ DecodeError $ CA.printJsonDecodeError error
-            Right accepted ->
-              pure $ Right accepted
+          Right value ->
+            pure $ Right value
 
     _ -> do
-      Log.debug $ "Not a cacheable route: " <> Octokit.printGitHubRoute route <> ", requesting without the cache..."
+      Log.debug $ "Not a cacheable route: " <> printedRoute <> ", requesting without the cache..."
       requestWithBackoff octokit githubRequest
 
 -- | Apply exponential backoff to requests that hang, but without cancelling

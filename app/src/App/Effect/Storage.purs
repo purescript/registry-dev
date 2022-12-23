@@ -1,12 +1,15 @@
 -- | An effect for reading and writing to the registry storage backend.
 module Registry.App.Effect.Storage
   ( STORAGE
+  , STORAGE_CACHE
   , Storage
   , _storage
   , deleteTarball
   , downloadTarball
   , handleStorageReadOnly
   , handleStorageS3
+  , runStorage
+  , runStorageCacheFs
   , uploadTarball
   ) where
 
@@ -21,6 +24,8 @@ import Data.String as String
 import Effect.Aff as Aff
 import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
+import Registry.App.Effect.Cache (Cache, CacheId(..))
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
 import Registry.App.Effect.Log as Log
 import Registry.Constants as Constants
@@ -30,6 +35,14 @@ import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Type.Proxy (Proxy(..))
+
+type STORAGE_CACHE r = (storageCache :: Cache Buffer | r)
+
+_storageCache :: Proxy "storageCache"
+_storageCache = Proxy
+
+runStorageCacheFs :: forall r a. FilePath -> Run (STORAGE_CACHE + LOG + AFF + EFFECT + r) a -> Run (LOG + AFF + EFFECT + r) a
+runStorageCacheFs cacheDir = Cache.runCacheAt _storageCache (Cache.handleCacheFs { cacheDir, encoding: Cache.buffer })
 
 data Storage a
   = Upload PackageName Version FilePath a
@@ -82,14 +95,28 @@ connectS3 key = do
       Log.debug "Connected to S3!"
       pure connection
 
+-- | Interpret the STORAGE effect, given a handler.
+runStorage :: forall r a. (Storage ~> Run r) -> Run (STORAGE + r) a -> Run r a
+runStorage handler = Run.interpret (Run.on _storage handler Run.send)
+
 -- | Handle package storage using a remote S3 bucket.
---
--- TODO: Implement caching that keeps downloads on the file system
-handleStorageS3 :: forall r a. S3.SpaceKey -> Storage a -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) a
+handleStorageS3 :: forall r a. S3.SpaceKey -> Storage a -> Run (STORAGE_CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
 handleStorageS3 key = case _ of
   Download name version path next -> do
-    downloadAff name version path
-    pure next
+    let package = formatPackageVersion name version
+    let cacheId = CacheId package
+    buffer <- Cache.get _storageCache cacheId >>= case _ of
+      Nothing -> do
+        buffer <- downloadS3 name version
+        Cache.put _storageCache cacheId buffer
+        pure buffer
+      Just cached ->
+        pure cached.value
+    Run.liftAff (Aff.attempt (FS.Aff.writeFile path buffer)) >>= case _ of
+      Left error -> do
+        Log.error $ "Downloaded " <> package <> " but failed to write it to the file at path " <> path <> ":\n" <> Aff.message error
+        Log.exit $ "Could not save downloaded package " <> package <> " due to an internal error."
+      Right _ -> pure next
 
   Upload name version path next -> do
     let
@@ -155,7 +182,7 @@ handleStorageS3 key = case _ of
       Log.exit $ "Could not delete " <> package <> " because it does not exist in the storage backend."
 
 -- | A storage effect that reads from the registry but does not write to it.
-handleStorageReadOnly :: forall r a. Storage a -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) a
+handleStorageReadOnly :: forall r a. Storage a -> Run (STORAGE_CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
 handleStorageReadOnly = case _ of
   Upload name version _ next -> do
     Log.warn $ "Requested upload of " <> formatPackageVersion name version <> " to url " <> formatPackageUrl name version <> " but this interpreter is read-only."
@@ -166,12 +193,24 @@ handleStorageReadOnly = case _ of
     pure next
 
   Download name version path next -> do
-    downloadAff name version path
-    pure next
+    let package = formatPackageVersion name version
+    let cacheId = CacheId package
+    buffer <- Cache.get _storageCache cacheId >>= case _ of
+      Nothing -> do
+        buffer <- downloadS3 name version
+        Cache.put _storageCache cacheId buffer
+        pure buffer
+      Just cached ->
+        pure cached.value
+    Run.liftAff (Aff.attempt (FS.Aff.writeFile path buffer)) >>= case _ of
+      Left error -> do
+        Log.error $ "Downloaded " <> package <> " but failed to write it to the file at path " <> path <> ":\n" <> Aff.message error
+        Log.exit $ "Could not save downloaded package " <> package <> " due to an internal error."
+      Right _ -> pure next
 
 -- | An implementation for downloading packages from the registry using `Aff` requests.
-downloadAff :: forall r. PackageName -> Version -> FilePath -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) Unit
-downloadAff name version path = do
+downloadS3 :: forall r. PackageName -> Version -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) Buffer
+downloadS3 name version = do
   let
     package = formatPackageVersion name version
     packageUrl = formatPackageUrl name version
@@ -199,9 +238,5 @@ downloadAff name version path = do
       Log.exit $ "Could not download " <> package <> " from the storage backend."
     Just (Right { body }) -> do
       Log.debug $ "Successfully downloaded " <> package <> " into a buffer."
-      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
-      Run.liftAff (Aff.attempt (FS.Aff.writeFile path buffer)) >>= case _ of
-        Left error -> do
-          Log.error $ "Downloaded " <> package <> " but failed to write it to the file at path " <> path <> ":\n" <> Aff.message error
-          Log.exit $ "Could not save downloaded package " <> package <> " due to an internal error."
-        Right _ -> pure unit
+      buffer :: Buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
+      pure buffer

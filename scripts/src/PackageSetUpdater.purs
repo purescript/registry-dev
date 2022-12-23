@@ -18,7 +18,6 @@ import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
 import Node.Process as Process
-import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
@@ -105,10 +104,13 @@ main = Aff.launchAff_ do
 
   updater
     # Run.interpret (Run.on PackageSets._packageSets (PackageSets.handlePackageSetsAff { workdir: packageSetsWorkDir }) Run.send)
-    # Run.interpret (Run.on Storage._storage Storage.handleStorageReadOnly Run.send)
     # Run.interpret (Run.on Registry._registry (Registry.handleRegistryGit registryEnv) Run.send)
-    # Run.interpret (Run.on GitHub._github (GitHub.handleGitHubOctokit octokit) Run.send)
-    # Run.interpret (Run.on Cache._appCache (Cache.handleAppCacheFs cacheDir cacheRef) Run.send)
+    # Storage.runStorage Storage.handleStorageReadOnly
+    # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+    -- Caches
+    # Storage.runStorageCacheFs cacheDir
+    # GitHub.runGitHubCacheMemoryFs cacheRef cacheDir
+    -- Logging
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Run.interpret (Run.on Log._log (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log) Run.send)
     # Run.runBaseAff'
