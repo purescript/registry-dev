@@ -83,16 +83,16 @@ main = launchAff_ do
     -- Environment
     # Env.runPacchettiBottiEnv { token, privateKey, publicKey }
     -- App effects
-    # Run.interpret (Run.on Registry._registry (Registry.handleRegistryGit registryEnv) Run.send)
+    # Registry.runRegistry (Registry.handleRegistryGit registryEnv)
     # Storage.runStorage Storage.handleStorageReadOnly
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caching
     # Storage.runStorageCacheFs cacheDir
     # GitHub.runGitHubCacheMemoryFs cacheRef cacheDir
     -- Logging
-    # Run.interpret (Run.on Notify._notify (\(Notify msg next) -> Log.info msg *> pure next) Run.send)
+    # Notify.runNotify Notify.handleNotifyLog
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-    # Run.interpret (Run.on Log._log (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log) Run.send)
+    # Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
     # Run.runBaseAff'
 
 transfer :: forall r. Run (API.AuthenticatedEffects + r) Unit

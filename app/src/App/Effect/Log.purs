@@ -76,6 +76,9 @@ warn = log Warn <<< toLog
 error :: forall a r. Loggable a => a -> Run (LOG + r) Unit
 error = log Error <<< toLog
 
+runLog :: forall a r. (Log ~> Run r) -> Run (LOG + r) a -> Run r a
+runLog handler = Run.interpret (Run.on _log handler Run.send)
+
 -- | Write logs to the terminal only.
 handleLogTerminal :: forall a r. LogVerbosity -> Log a -> Run (AFF + r) a
 handleLogTerminal verbosity = case _ of

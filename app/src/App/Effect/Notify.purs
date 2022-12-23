@@ -34,6 +34,9 @@ _notify = Proxy
 notify :: forall a r. Log.Loggable a => a -> Run (NOTIFY + r) Unit
 notify message = Run.lift _notify (Notify (Log.toLog message) unit)
 
+runNotify :: forall r a. (Notify ~> Run r) -> Run (NOTIFY + r) a -> Run r a
+runNotify handler = Run.interpret (Run.on _notify handler Run.send)
+
 handleNotifyGitHub :: forall a r. Octokit -> IssueNumber -> Notify a -> Run (LOG + AFF + r) a
 handleNotifyGitHub octokit issue = case _ of
   Notify message next -> do
@@ -48,4 +51,11 @@ handleNotifyGitHub octokit issue = case _ of
         Log.debug $ Octokit.printGitHubError error
       Right _ ->
         Log.debug $ "Created GitHub comment on issue " <> issueNumber
+    pure next
+
+handleNotifyLog :: forall a r. Notify a -> Run (LOG + r) a
+handleNotifyLog = case _ of
+  Notify message next -> do
+    Log.debug "Notifying via logs..."
+    Log.info message
     pure next

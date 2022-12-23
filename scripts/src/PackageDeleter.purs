@@ -136,7 +136,7 @@ main = launchAff_ do
 
   deleter { registry, registryIndex, token, mode: CommitAndPush } deletions
     -- App effects
-    # Run.interpret (Run.on Registry._registry (Registry.handleRegistryGit registryEnv) Run.send)
+    # Registry.runRegistry (Registry.handleRegistryGit registryEnv)
     # Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caching
@@ -144,7 +144,7 @@ main = launchAff_ do
     # GitHub.runGitHubCacheMemoryFs cacheRef cacheDir
     -- Logging
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-    # Run.interpret (Run.on Log._log (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log) Run.send)
+    # Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
     # Run.runBaseAff'
 
 type DeleterArgs =

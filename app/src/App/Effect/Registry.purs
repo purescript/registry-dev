@@ -120,6 +120,9 @@ readLegacyRegistry = Run.lift _registry (ReadLegacyRegistry identity)
 mirrorLegacyRegistry :: forall r. PackageName -> Location -> Run (REGISTRY + r) Unit
 mirrorLegacyRegistry name location = Run.lift _registry (MirrorLegacyRegistry name location unit)
 
+runRegistry :: forall r a. (Registry ~> Run r) -> Run (REGISTRY + r) a -> Run r a
+runRegistry handler = Run.interpret (Run.on _registry handler Run.send)
+
 -- | How to persist on write. Write will persist the change, but will not commit
 -- | the data. CommitNoPush will write and commit the data, but not push the
 -- | result to an upstream repository. CommitPush will write the data, commit,

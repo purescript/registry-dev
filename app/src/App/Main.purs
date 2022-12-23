@@ -10,19 +10,30 @@ import Data.String as String
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Effect.Exception as Exception
+import Effect.Ref as Ref
+import Effect.Unsafe (unsafePerformEffect)
 import Foreign.Object as Object
 import Node.FS.Aff as FS.Aff
+import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.Auth as Auth
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG_EXCEPT)
+import Registry.App.Effect.Log (LOG_EXCEPT, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.Notify as Notify
+import Registry.App.Effect.PackageSets as PackageSets
+import Registry.App.Effect.Registry (PullMode(..), RegistryEnv, WriteStrategy(..))
+import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Storage as Storage
+import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Constants as Constants
+import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit (GitHubToken, IssueNumber(..), Octokit)
 import Registry.Foreign.Octokit as Octokit
@@ -31,6 +42,7 @@ import Registry.Operation (AuthenticatedData, PackageOperation(..), PackageSetOp
 import Registry.Operation as Operation
 import Run (AFF, Run)
 import Run as Run
+import Run.Except as Run.Except
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -38,19 +50,58 @@ main = launchAff_ $ do
   -- straight into the GitHub event workflow.
   initializeGitHub >>= traverse_ \env -> do
     let
-      _app = case env.operation of
+      run = case env.operation of
         Left packageSetOperation -> case packageSetOperation of
-          PackageSetUpdate updateData ->
-            API.packageSetUpdate updateData
+          PackageSetUpdate payload ->
+            API.packageSetUpdate payload
+
         Right packageOperation -> case packageOperation of
-          Publish publishData ->
-            API.publish Current publishData
-          Authenticated authData -> do
+          Publish payload ->
+            API.publish Current payload
+          Authenticated payload -> do
             -- If we receive an authenticated operation via GitHub, then we
             -- re-sign it with pacchettibotti credentials if and only if the
             -- operation was opened by a trustee.
-            signed <- signPacchettiBottiIfTrustee authData
+            signed <- signPacchettiBottiIfTrustee payload
             API.authenticated signed
+
+    FS.Extra.ensureDirectory scratchDir
+
+    githubCacheRef <- Cache.newCacheRef
+    legacyCacheRef <- Cache.newCacheRef
+    let cacheDir = Path.concat [ scratchDir, ".cache" ]
+    let workdir = Path.concat [ scratchDir, "package-sets-work" ]
+
+    let
+      registryEnv :: RegistryEnv
+      registryEnv =
+        { legacyPackageSets: Path.concat [ scratchDir, "package-sets" ]
+        , registry: Path.concat [ scratchDir, "registry" ]
+        , registryIndex: Path.concat [ scratchDir, "registry-index" ]
+        , timer: unsafePerformEffect $ Ref.new Nothing
+        , writeStrategy: WriteCommitPush env.token
+        , pullMode: ForceClean
+        }
+
+    run
+      -- Environment
+      # Env.runGitHubEventEnv { username: env.username, issue: env.issue }
+      # Env.runPacchettiBottiEnv { publicKey: env.publicKey, privateKey: env.privateKey, token: env.token }
+      -- App effects
+      # PackageSets.runPackageSets (PackageSets.handlePackageSetsAff { workdir })
+      # Registry.runRegistry (Registry.handleRegistryGit registryEnv)
+      # Storage.runStorage (Storage.handleStorageS3 env.spacesConfig)
+      # GitHub.runGitHub (GitHub.handleGitHubOctokit env.octokit)
+      -- Caching
+      # Storage.runStorageCacheFs cacheDir
+      # GitHub.runGitHubCacheMemoryFs githubCacheRef cacheDir
+      # Legacy.Manifest.runLegacyCacheMemoryFs legacyCacheRef cacheDir
+      -- Logging
+      # Notify.runNotify Notify.handleNotifyLog
+      # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+      # Log.runLog (Log.handleLogTerminal Normal)
+      -- Base effects
+      # Run.runBaseAff'
 
     -- After the run, close the issue. If an exception was thrown then the issue
     -- will remain open.
@@ -64,7 +115,8 @@ type GitHubEventEnv =
   , username :: String
   , operation :: Either PackageSetOperation PackageOperation
   , spacesConfig :: SpaceKey
-  , pacchettibottiKeys :: { publicKey :: String, privateKey :: String }
+  , publicKey :: String
+  , privateKey :: String
   }
 
 initializeGitHub :: Aff (Maybe GitHubEventEnv)
@@ -126,7 +178,8 @@ initializeGitHub = do
         , username
         , operation
         , spacesConfig: { key: spacesKey, secret: spacesSecret }
-        , pacchettibottiKeys: { publicKey, privateKey }
+        , publicKey
+        , privateKey
         }
 
 data OperationDecoding
@@ -263,4 +316,3 @@ signPacchettiBottiIfTrustee auth = do
           Right signature -> pure signature
 
         pure $ auth { signature = signature }
-

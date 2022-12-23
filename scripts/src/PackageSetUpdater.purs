@@ -104,8 +104,8 @@ main = Aff.launchAff_ do
 
   updater
     -- App effects
-    # Run.interpret (Run.on PackageSets._packageSets (PackageSets.handlePackageSetsAff { workdir: packageSetsWorkDir }) Run.send)
-    # Run.interpret (Run.on Registry._registry (Registry.handleRegistryGit registryEnv) Run.send)
+    # PackageSets.runPackageSets (PackageSets.handlePackageSetsAff { workdir: packageSetsWorkDir })
+    # Registry.runRegistry (Registry.handleRegistryGit registryEnv)
     # Storage.runStorage Storage.handleStorageReadOnly
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caches
@@ -113,7 +113,7 @@ main = Aff.launchAff_ do
     # GitHub.runGitHubCacheMemoryFs cacheRef cacheDir
     -- Logging
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-    # Run.interpret (Run.on Log._log (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log) Run.send)
+    # Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
     # Run.runBaseAff'
 
 updater :: forall r. Run (REGISTRY + PACKAGE_SETS + LOG + LOG_EXCEPT + EFFECT + r) Unit

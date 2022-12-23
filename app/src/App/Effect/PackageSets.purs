@@ -76,6 +76,9 @@ upgradeSequential oldSet compiler changes = do
     Just result -> pure $ Just { failed: Map.empty, succeeded: changes, result }
     Nothing -> Run.lift _packageSets (UpgradeSequential oldSet compiler changes identity)
 
+runPackageSets :: forall r a. (PackageSets ~> Run r) -> Run (PACKAGE_SETS + r) a -> Run r a
+runPackageSets handler = Run.interpret (Run.on _packageSets handler Run.send)
+
 type PackageSetsEnv =
   { workdir :: FilePath
   }
