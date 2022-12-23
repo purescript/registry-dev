@@ -22,6 +22,8 @@ import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Registry.App.CLI.Git (CommitMode(..))
 import Registry.App.CLI.Git as Git
+import Registry.App.Effect.Cache (Cache, CacheId(..), CacheRef, Expiry(..))
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
@@ -44,6 +46,11 @@ import Registry.Range as Range
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
+
+type REGISTRY_CACHE r = (registryCache :: Cache Json | r)
+
+_registryCache :: Proxy "registryCache"
+_registryCache = Proxy
 
 data Registry a
   = ReadManifest PackageName Version (Maybe Manifest -> a)
@@ -145,11 +152,36 @@ type RegistryEnv =
   , timers :: Ref (Map FilePath (Maybe DateTime))
   }
 
+-- | Interpret the REGISTRY effect along with a REGISTRY_CACHE designed to work
+-- | with local Git repositories.
+runRegistryGitCached
+  :: forall r a
+   . CacheRef Json
+  -> RegistryEnv
+  -> Run (REGISTRY_CACHE + REGISTRY + GITHUB + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
+  -> Run (GITHUB + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
+runRegistryGitCached cacheRef env = do
+  let
+    -- We keep individual manifests, metadata, and package sets around for a
+    -- short time because they are also contained in the indices, which get
+    -- refreshed in cache any time we pull the Git repo from GitHub.
+    expiry = ById \(CacheId id) ->
+      if isJust (String.stripPrefix (String.Pattern "Manifest__") id) then
+        Just (Minutes 1.0)
+      else if isJust (String.stripPrefix (String.Pattern "Metadata__") id) then
+        Just (Minutes 1.0)
+      else Nothing
+
+  runRegistry (handleRegistryGit env)
+    >>> Cache.runCacheAt _registryCache (Cache.handleCacheMemory { cacheRef, expiry })
+
 -- | Handle the REGISTRY effect by downloading the registry and registry-index
 -- | repositories locally and reading and writing their contents from disk.
 -- | Writes can optionally commit and push to the uptsream Git repository.
 handleRegistryGit :: forall r a. RegistryEnv -> Registry a -> Run (GITHUB + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
 handleRegistryGit env = case _ of
+  -- TODO: Try reading from the cache, fall back to a cache of the manifest index,
+  -- and then fall back to the file system.
   ReadManifest name version reply -> do
     let formatted = formatPackageVersion name version
     Log.info $ "Reading manifest for " <> formatted <> "..."
@@ -169,7 +201,7 @@ handleRegistryGit env = case _ of
   WriteManifest manifest@(Manifest { name, version }) next -> do
     let formatted = formatPackageVersion name version
     Log.info $ "Writing manifest for " <> formatted <> ":\n" <> printJson Manifest.codec manifest
-    fetchGitHubRepo Constants.manifestIndex env.pullMode env.registryIndex
+    _ <- fetchGitHubRepo Constants.manifestIndex env.pullMode env.registryIndex
     let exitMessage = "Failed to write manifest for " <> formatted <> " to the manifest index."
     Run.liftAff (ManifestIndex.insertIntoEntryFile env.registryIndex manifest) >>= case _ of
       Left error -> do
@@ -177,8 +209,7 @@ handleRegistryGit env = case _ of
         Log.exit exitMessage
       Right _ -> do
         let message = "Update manifest for " <> formatted
-        let path = Path.concat [ env.registryIndex, ManifestIndex.packageEntryFilePath name ]
-        let commitArgs token mode = { token, paths: String.Pattern path, message, mode }
+        let commitArgs token mode = { token, paths: String.Pattern (ManifestIndex.packageEntryFilePath name), message, mode }
         case env.writeStrategy of
           Write -> do
             Log.info $ "Wrote manifest for " <> formatted <> " but not committing because write strategy is Write."
@@ -203,7 +234,7 @@ handleRegistryGit env = case _ of
   DeleteManifest name version next -> do
     let formatted = formatPackageVersion name version
     Log.info $ "Deleting manifest for " <> formatted
-    fetchGitHubRepo Constants.manifestIndex env.pullMode env.registryIndex
+    _ <- fetchGitHubRepo Constants.manifestIndex env.pullMode env.registryIndex
     let exitMessage = "Failed to delete manifest for " <> formatted <> " from the manifest index."
     Run.liftAff (ManifestIndex.removeFromEntryFile env.registryIndex name version) >>= case _ of
       Left error -> do
@@ -211,8 +242,7 @@ handleRegistryGit env = case _ of
         Log.exit exitMessage
       Right _ -> do
         let message = "Update manifest for " <> formatted
-        let path = Path.concat [ env.registryIndex, ManifestIndex.packageEntryFilePath name ]
-        let commitArgs token mode = { token, mode, paths: String.Pattern path, message }
+        let commitArgs token mode = { token, mode, paths: String.Pattern (ManifestIndex.packageEntryFilePath name), message }
         case env.writeStrategy of
           Write -> do
             Log.info "Deleted manifest, but not committing because write strategy is Write."
@@ -234,12 +264,15 @@ handleRegistryGit env = case _ of
                 Log.debug $ "Successfully committend and pushed manifest deletion for " <> formatted
                 pure next
 
+  -- TODO: Try reading from the cache, fall back to the git repo.
   ReadAllManifests reply -> do
     Log.info $ "Reading manifest index from " <> env.registryIndex
     fetchIfNeeded Constants.manifestIndex env.registryIndex
     index <- readManifestIndexFromDisk env.registryIndex
     pure $ reply index
 
+  -- TODO: Try reading from the cache, fall back to all metadata cache, fall
+  -- back to the git repo.
   ReadMetadata name reply -> do
     let printedName = PackageName.print name
     let path = Path.concat [ env.registry, Constants.metadataDirectory, printedName <> ".json" ]
@@ -273,7 +306,7 @@ handleRegistryGit env = case _ of
   WriteMetadata name metadata next -> do
     let printedName = PackageName.print name
     Log.info $ "Writing metadata for " <> printedName <> ":\n" <> printJson Metadata.codec metadata
-    fetchGitHubRepo Constants.registry env.pullMode env.registry
+    _ <- fetchGitHubRepo Constants.registry env.pullMode env.registry
     let path = Path.concat [ env.registry, Constants.metadataDirectory, printedName <> ".json" ]
     let couldNotWriteError = "Could not write metadata for " <> printedName
     Run.liftAff (Aff.attempt (writeJsonFile Metadata.codec path metadata)) >>= case _ of
@@ -282,7 +315,8 @@ handleRegistryGit env = case _ of
         Log.exit couldNotWriteError
       Right _ -> do
         let message = "Update metadata for " <> printedName
-        let commitArgs token mode = { token, mode, paths: String.Pattern path, message }
+        let relativePath = Path.concat [ Constants.metadataDirectory, printedName <> ".json" ]
+        let commitArgs token mode = { token, mode, paths: String.Pattern relativePath, message }
         case env.writeStrategy of
           Write -> do
             Log.info $ "Wrote metadata for " <> printedName <> " but not committing because write strategy is Write."
@@ -304,6 +338,7 @@ handleRegistryGit env = case _ of
                 Log.debug $ "Successfully committend and pushed updated metadata for " <> printedName
                 pure next
 
+  -- TODO: Try reading from the cache, fall back to the git repo
   ReadAllMetadata reply -> do
     let metadataDir = Path.concat [ env.registry, Constants.metadataDirectory ]
     Log.info $ "Reading metadata for all packages from directory " <> metadataDir
@@ -335,9 +370,10 @@ handleRegistryGit env = case _ of
     let name = Version.print version
     let path = Path.concat [ env.registry, Constants.packageSetsDirectory, name <> ".json" ]
     Log.info $ "Writing package set to " <> path
-    fetchGitHubRepo Constants.registry env.pullMode env.registry
+    _ <- fetchGitHubRepo Constants.registry env.pullMode env.registry
     let couldNotWriteError = "Could not write package set " <> name
-    let commitArgs token mode = { token, mode, paths: String.Pattern path, message }
+    let relativePath = Path.concat [ Constants.packageSetsDirectory, name <> ".json" ]
+    let commitArgs token mode = { token, mode, paths: String.Pattern relativePath, message }
     Run.liftAff (Aff.attempt (writeJsonFile PackageSet.codec path set)) >>= case _ of
       Left fsError -> do
         Log.error $ "Failed to write package set " <> name <> " to path " <> path <> " do to an fs error: " <> Aff.message fsError
@@ -419,7 +455,7 @@ handleRegistryGit env = case _ of
     -- * src/packages.dhall
     --   stores the Dhall representation of the latest package set
 
-    fetchGitHubRepo Legacy.PackageSet.legacyPackageSetsRepo ForceClean env.legacyPackageSets
+    _ <- fetchGitHubRepo Legacy.PackageSet.legacyPackageSetsRepo ForceClean env.legacyPackageSets
     let latestSetsPath = Path.concat [ env.legacyPackageSets, "latest-compatible-sets.json" ]
     let compilerKey = (un PscTag converted.tag).compiler
     latestCompatibleSets <- do
@@ -558,6 +594,13 @@ handleRegistryGit env = case _ of
     pure next
 
   where
+  -- TODO: This should be reimplemented as essentially the opposite of expiration: start a timer, and
+  -- when the timer runs out, re-fetch the repository. When it is accessed, delay the timer.
+  --
+  -- When a registry repo is fetched _and_ has had changes, we should cache the
+  -- aggregate contents (manifest index, all metadata).
+  --
+  -- We don't care about the legacy package sets repo, it can be ignored.
   fetchIfNeeded :: Address -> FilePath -> _
   fetchIfNeeded address path = do
     now <- Run.liftEffect nowUTC
@@ -566,7 +609,8 @@ handleRegistryGit env = case _ of
       Just (Just prev) | diff now prev < (Minutes 3.0) -> pure unit
       _ -> do
         Run.liftEffect (Ref.modify_ (Map.insert path (Just now)) env.timers)
-        fetchGitHubRepo address env.pullMode path
+        _ <- fetchGitHubRepo address env.pullMode path
+        pure unit
 
   commitLegacyPackageSets :: { token :: GitHubToken, tags :: Array String, files :: Array FilePath, message :: String, push :: Boolean } -> Aff (Either String Unit)
   commitLegacyPackageSets { token, tags, files, message, push } = Except.runExceptT do
@@ -589,9 +633,14 @@ data PullMode = Autostash | OnlyClean | ForceClean
 
 derive instance Eq PullMode
 
+-- | The result of pulling from a remote GitHub repository.
+data PullResult = NotChanged | Changed
+
+derive instance Eq PullResult
+
 -- | Attempt to fetch a repository to the given file path; if it already exists
 -- | there, use the provided pull mode to resolve changes.
-fetchGitHubRepo :: forall r. Address -> PullMode -> FilePath -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) Unit
+fetchGitHubRepo :: forall r. Address -> PullMode -> FilePath -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) PullResult
 fetchGitHubRepo address mode path = Run.liftEffect (FS.Sync.exists path) >>= case _ of
   -- When the repository doesn't exist at the given file path, we can ignore the
   -- mode and go straight to the checkout.
@@ -603,7 +652,7 @@ fetchGitHubRepo address mode path = Run.liftEffect (FS.Sync.exists path) >>= cas
       Left err -> do
         Log.error $ "Failed to git clone repo " <> clonePath <> " due to a git error: " <> err
         Log.exit $ "Could not read the repository at " <> prettyRepo
-      Right _ -> pure unit
+      Right _ -> pure Changed
 
   true -> do
     let prettyRepo = address.owner <> "/" <> address.repo
@@ -626,6 +675,14 @@ fetchGitHubRepo address mode path = Run.liftEffect (FS.Sync.exists path) >>= cas
       Right files -> do
         Log.warn $ "Local checkout of " <> prettyRepo <> " contains untracked or dirty files, and may not be safe to fetch:\n" <> files
         pure false
+
+    prevCommit <- Run.liftAff (Except.runExceptT (Git.runGit [ "rev-parse", "HEAD" ] (Just path))) >>= case _ of
+      Left error -> do
+        Log.error $ "Failed to check the previous commit in use for " <> prettyRepo <> " due to a git error: " <> error
+        Log.exit $ "Could not read the commit in use in the local checkout of " <> prettyRepo
+      Right commit -> do
+        Log.debug $ "Local checkout of " <> prettyRepo <> " is at commit " <> commit
+        pure commit
 
     case mode of
       Autostash -> do
@@ -671,6 +728,19 @@ fetchGitHubRepo address mode path = Run.liftEffect (FS.Sync.exists path) >>= cas
             Log.error $ "Failed to pull the latest changes for " <> prettyRepo <> " due to a git error: " <> error
             Log.exit $ "Could not fetch the latest changes for " <> prettyRepo
           Right _ -> pure unit
+
+    newCommit <- Run.liftAff (Except.runExceptT (Git.runGit [ "rev-parse", "HEAD" ] (Just path))) >>= case _ of
+      Left error -> do
+        Log.error $ "Failed to check the newly-fetched commit in use for " <> prettyRepo <> " due to a git error: " <> error
+        Log.exit $ "Could not read the commit in use in the local checkout of " <> prettyRepo
+      Right commit -> do
+        Log.debug $ "Local checkout of " <> prettyRepo <> " is now at commit " <> commit
+        pure commit
+
+    if prevCommit == newCommit then do
+      pure NotChanged
+    else
+      pure Changed
 
 -- | Given the file path of a local manifest index on disk, read its contents.
 readManifestIndexFromDisk :: forall r. FilePath -> Run (LOG + LOG_EXCEPT + AFF + r) ManifestIndex

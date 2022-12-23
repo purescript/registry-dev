@@ -22,7 +22,7 @@ runGit args cwd = ExceptT do
   let stderr = String.trim result.stderr
   pure $ case result.exit of
     NodeProcess.Normally 0 -> Right stdout
-    _ -> Left stderr
+    _ -> Left (stdout <> stderr)
 
 runGitSilent :: Array String -> Maybe FilePath -> ExceptT String Aff String
 runGitSilent args cwd = ExceptT do
@@ -81,4 +81,4 @@ pacchettiBottiCommitRegistryIndex registryIndex { token, mode, paths: String.Pat
   runGit_ [ "add", paths ] (Just registryIndex)
   runGit_ [ "commit", "-m", message ] (Just registryIndex)
   when (mode == CommitAndPush) do
-    runGit_ [ "push", origin, "master" ] (Just registryIndex)
+    runGit_ [ "push", origin, "main" ] (Just registryIndex)

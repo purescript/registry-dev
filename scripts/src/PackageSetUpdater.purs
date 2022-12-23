@@ -90,6 +90,7 @@ main = Aff.launchAff_ do
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
   githubCacheRef <- Cache.newCacheRef
+  registryCacheRef <- Cache.newCacheRef
 
   -- Logging
   now <- liftEffect nowUTC
@@ -101,7 +102,7 @@ main = Aff.launchAff_ do
   updater
     -- App effects
     # PackageSets.runPackageSets (PackageSets.handlePackageSetsAff packageSetsEnv)
-    # Registry.runRegistry (Registry.handleRegistryGit registryEnv)
+    # Registry.runRegistryGitCached registryCacheRef registryEnv
     # Storage.runStorage Storage.handleStorageReadOnly
     -- Requests
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)

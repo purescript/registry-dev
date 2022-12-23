@@ -78,6 +78,7 @@ main = launchAff_ $ do
     -- Caching
     githubCacheRef <- Cache.newCacheRef
     legacyCacheRef <- Cache.newCacheRef
+    registryCacheRef <- Cache.newCacheRef
     let cacheDir = Path.concat [ scratchDir, ".cache" ]
     let workdir = Path.concat [ scratchDir, "package-sets-work" ]
 
@@ -87,7 +88,7 @@ main = launchAff_ $ do
       # Env.runPacchettiBottiEnv { publicKey: env.publicKey, privateKey: env.privateKey }
       -- App effects
       # PackageSets.runPackageSets (PackageSets.handlePackageSetsAff { workdir })
-      # Registry.runRegistry (Registry.handleRegistryGit registryEnv)
+      # Registry.runRegistryGitCached registryCacheRef registryEnv
       # Storage.runStorage (Storage.handleStorageS3 env.spacesConfig)
       -- Requests
       # Pursuit.runPursuit (Pursuit.handlePursuitHttp env.token)

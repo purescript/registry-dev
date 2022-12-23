@@ -110,6 +110,7 @@ main = launchAff_ do
   -- uploaded and manifests and metadata are written, committed, and pushed.
   runAppEffects <- do
     timers <- Registry.newTimers
+    registryCacheRef <- Cache.newCacheRef
 
     let
       legacyPackageSets = Path.concat [ scratchDir, "package-sets" ]
@@ -123,7 +124,7 @@ main = launchAff_ do
         octokit <- liftEffect $ Octokit.newOctokit token
         let registryEnv = mkRegistryEnv { pullMode: Autostash, writeStrategy: Write }
         pure do
-          Registry.runRegistry (Registry.handleRegistryGit registryEnv)
+          Registry.runRegistryGitCached registryCacheRef registryEnv
             >>> Storage.runStorage Storage.handleStorageReadOnly
             >>> Pursuit.runPursuit Pursuit.handlePursuitNoOp
             >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
@@ -135,7 +136,7 @@ main = launchAff_ do
         octokit <- liftEffect $ Octokit.newOctokit token
         let registryEnv = mkRegistryEnv { pullMode: Autostash, writeStrategy: Write }
         pure do
-          Registry.runRegistry (Registry.handleRegistryGit registryEnv)
+          Registry.runRegistryGitCached registryCacheRef registryEnv
             >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
             >>> Pursuit.runPursuit Pursuit.handlePursuitNoOp
             >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
@@ -147,7 +148,7 @@ main = launchAff_ do
         octokit <- liftEffect $ Octokit.newOctokit token
         let registryEnv = mkRegistryEnv { pullMode: OnlyClean, writeStrategy: WriteCommitPush token }
         pure do
-          Registry.runRegistry (Registry.handleRegistryGit registryEnv)
+          Registry.runRegistryGitCached registryCacheRef registryEnv
             >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
             >>> Pursuit.runPursuit (Pursuit.handlePursuitHttp token)
             >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)

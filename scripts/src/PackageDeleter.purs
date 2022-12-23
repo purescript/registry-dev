@@ -27,7 +27,6 @@ import Registry.App.Effect.Registry (PullMode(..), REGISTRY, WriteStrategy(..))
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
-import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubToken)
 import Registry.Foreign.Octokit as Octokit
@@ -97,7 +96,9 @@ main = launchAff_ do
       , registry
       , registryIndex
       , pullMode: OnlyClean
-      , writeStrategy: WriteCommitPush token
+      -- We only write because we'll bulk-commit the changes as part of the
+      -- deleter itself instead of committing one-by-one.
+      , writeStrategy: Write
       , timers: unsafePerformEffect Registry.newTimers
       }
 
@@ -108,6 +109,7 @@ main = launchAff_ do
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
   githubCacheRef <- Cache.newCacheRef
+  registryCacheRef <- Cache.newCacheRef
 
   -- Logging
   now <- liftEffect nowUTC
@@ -122,9 +124,9 @@ main = launchAff_ do
       Left err -> Console.log err *> liftEffect (Process.exit 1)
       Right values -> pure values
 
-  deleter { registry, registryIndex, token, mode: CommitAndPush } deletions
+  deleter { registry, registryIndex, token, mode: CommitOnly } deletions
     -- App effects
-    # Registry.runRegistry (Registry.handleRegistryGit registryEnv)
+    # Registry.runRegistryGitCached registryCacheRef registryEnv
     # Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caching
@@ -152,9 +154,6 @@ deleter env deletions = do
         foldMapWithIndex foldFn deletions
     ]
 
-  Registry.fetchGitHubRepo Constants.registry OnlyClean env.registry
-  Registry.fetchGitHubRepo Constants.manifestIndex OnlyClean env.registryIndex
-
   forWithIndex_ deletions \name versions ->
     for_ versions \version -> do
       result <- Run.Except.runExcept $ deleteVersion name version
@@ -171,7 +170,7 @@ deleter env deletions = do
     Git.pacchettiBottiCommitRegistry env.registry { token: env.token, mode: env.mode, paths, message }
 
   case commitMetadata of
-    Left err -> Log.error $ "Failed to commit metadata!\n" <> err
+    Left err -> Log.error $ "Failed to commit metadata: " <> err
     Right _ -> pure unit
 
   commitIndex <- Run.liftAff $ Except.runExceptT do
@@ -180,7 +179,7 @@ deleter env deletions = do
     Git.pacchettiBottiCommitRegistryIndex env.registryIndex { token: env.token, mode: env.mode, paths, message }
 
   case commitIndex of
-    Left err -> Log.error $ "Failed to commit manifest index!\n" <> err
+    Left err -> Log.error $ "Failed to commit manifest index: " <> err
     Right _ -> pure unit
 
   Log.info "Finished."

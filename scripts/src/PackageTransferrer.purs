@@ -63,6 +63,7 @@ main = launchAff_ do
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
   githubCacheRef <- Cache.newCacheRef
+  registryCacheRef <- Cache.newCacheRef
 
   -- Logging
   now <- liftEffect nowUTC
@@ -75,7 +76,7 @@ main = launchAff_ do
     -- Environment
     # Env.runPacchettiBottiEnv { privateKey, publicKey }
     -- App effects
-    # Registry.runRegistry (Registry.handleRegistryGit registryEnv)
+    # Registry.runRegistryGitCached registryCacheRef registryEnv
     # Storage.runStorage Storage.handleStorageReadOnly
     -- Requests
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
