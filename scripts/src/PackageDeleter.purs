@@ -12,7 +12,6 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.String as String
 import Data.Tuple (uncurry)
-import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
@@ -24,7 +23,7 @@ import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Registry (PullMode(..), REGISTRY, RegistryEnv, WriteStrategy(..))
+import Registry.App.Effect.Registry (PullMode(..), REGISTRY, WriteStrategy(..))
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
@@ -83,39 +82,16 @@ main = launchAff_ do
     Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
     Right command -> pure command
 
+  -- Environment
   _ <- Env.loadEnvFile ".env"
-  env <- liftEffect Env.readEnvVars
+  token <- Env.lookupRequired Env.pacchettibottiToken
+  spacesKey <- Env.lookupRequired Env.spacesKey
+  spacesSecret <- Env.lookupRequired Env.spacesSecret
 
-  FS.Extra.ensureDirectory scratchDir
-
-  token <- case env.pacchettibottiToken of
-    Nothing -> Aff.throwError $ Aff.error "PACCHETTIBOTTI_TOKEN not defined in the environment."
-    Just token -> pure token
-
-  spacesKey <- case env.spacesKey of
-    Nothing -> Aff.throwError $ Aff.error "SPACES_KEY not defined in the environment."
-    Just key -> pure key
-
-  spacesSecret <- case env.spacesSecret of
-    Nothing -> Aff.throwError $ Aff.error "SPACES_SECRET not defined in the environment."
-    Just secret -> pure secret
-
-  let logDir = Path.concat [ scratchDir, "logs" ]
-  FS.Extra.ensureDirectory logDir
-
-  now <- liftEffect nowUTC
-  let logFile = "package-set-deleter-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
-  let logPath = Path.concat [ logDir, logFile ]
-
-  let cacheDir = Path.concat [ scratchDir, ".cache" ]
-  FS.Extra.ensureDirectory cacheDir
-  githubCacheRef <- Cache.newCacheRef
-
-  let registry = Path.concat [ scratchDir, "registry" ]
-  let registryIndex = Path.concat [ scratchDir, "registry-index" ]
-
+  -- Registry
   let
-    registryEnv :: RegistryEnv
+    registry = Path.concat [ scratchDir, "registry" ]
+    registryIndex = Path.concat [ scratchDir, "registry-index" ]
     registryEnv =
       { legacyPackageSets: Path.concat [ scratchDir, "package-sets" ]
       , registry
@@ -125,7 +101,20 @@ main = launchAff_ do
       , timers: unsafePerformEffect Registry.newTimers
       }
 
+  -- GitHub
   octokit <- liftEffect $ Octokit.newOctokit token
+
+  -- Caching
+  let cacheDir = Path.concat [ scratchDir, ".cache" ]
+  FS.Extra.ensureDirectory cacheDir
+  githubCacheRef <- Cache.newCacheRef
+
+  -- Logging
+  now <- liftEffect nowUTC
+  let logDir = Path.concat [ scratchDir, "logs" ]
+  FS.Extra.ensureDirectory logDir
+  let logFile = "package-set-deleter-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
+  let logPath = Path.concat [ logDir, logFile ]
 
   deletions <- case mode of
     Package name version -> pure $ Map.singleton name [ version ]
@@ -144,6 +133,7 @@ main = launchAff_ do
     -- Logging
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
+    -- Base effects
     # Run.runBaseAff'
 
 type DeleterArgs =

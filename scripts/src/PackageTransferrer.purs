@@ -6,7 +6,6 @@ import Data.Array as Array
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.String as String
-import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
@@ -38,25 +37,14 @@ import Run.Except as Run.Except
 
 main :: Effect Unit
 main = launchAff_ do
+
+  -- Environment
   _ <- Env.loadEnvFile ".env"
-  env <- liftEffect Env.readEnvVars
+  token <- Env.lookupRequired Env.pacchettibottiToken
+  publicKey <- Env.lookupRequired Env.pacchettibottiED25519Pub
+  privateKey <- Env.lookupRequired Env.pacchettibottiED25519
 
-  FS.Extra.ensureDirectory scratchDir
-
-  token <- case env.pacchettibottiToken of
-    Nothing -> Aff.throwError $ Aff.error "PACCHETTIBOTTI_TOKEN not defined in the environment."
-    Just token -> pure token
-
-  publicKey <- case env.pacchettibottiED25519Pub of
-    Nothing -> Aff.throwError $ Aff.error "PACCHETTIBOTTI_ED25519_PUB not defined in the environment."
-    Just key -> pure key
-
-  privateKey <- case env.pacchettibottiED25519 of
-    Nothing -> Aff.throwError $ Aff.error "PACCHETTIBOTTI_ED25519 not defined in the environment."
-    Just key -> pure key
-
-  octokit <- liftEffect $ Octokit.newOctokit token
-
+  -- Registry
   let
     registryEnv :: RegistryEnv
     registryEnv =
@@ -68,14 +56,18 @@ main = launchAff_ do
       , timers: unsafePerformEffect Registry.newTimers
       }
 
+  -- GitHub
+  octokit <- liftEffect $ Octokit.newOctokit token
+
+  -- Caching
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
   githubCacheRef <- Cache.newCacheRef
 
+  -- Logging
+  now <- liftEffect nowUTC
   let logDir = Path.concat [ scratchDir, "logs" ]
   FS.Extra.ensureDirectory logDir
-
-  now <- liftEffect nowUTC
   let logFile = "package-transferrer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
   let logPath = Path.concat [ logDir, logFile ]
 
@@ -93,6 +85,7 @@ main = launchAff_ do
     # Notify.runNotify Notify.handleNotifyLog
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
+    -- Base effects
     # Run.runBaseAff'
 
 transfer :: forall r. Run (API.AuthenticatedEffects + r) Unit

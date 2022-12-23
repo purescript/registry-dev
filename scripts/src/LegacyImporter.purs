@@ -19,6 +19,7 @@ import Data.Compactable (separate)
 import Data.Filterable (partition)
 import Data.Foldable (foldMap)
 import Data.Foldable as Foldable
+import Data.Formatter.DateTime as Formatter.DateTime
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.List as List
 import Data.Map as Map
@@ -29,6 +30,7 @@ import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
 import Data.Variant as Variant
 import Effect.Class.Console as Console
+import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
 import Node.Process as Process
 import Parsing (Parser)
@@ -39,12 +41,17 @@ import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API (Source(..))
 import Registry.App.API as API
+import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
+import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Notify as Notify
+import Registry.App.Effect.PackageSets as PackageSets
+import Registry.App.Effect.Registry (PullMode(..), REGISTRY, RegistryEnv, WriteStrategy(..))
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
@@ -53,6 +60,7 @@ import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackage
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (Address, Tag)
 import Registry.Foreign.Octokit as Octokit
+import Registry.Internal.Format as Internal.Format
 import Registry.Location as Location
 import Registry.ManifestIndex as ManifestIndex
 import Registry.Operation (PublishData)
@@ -86,96 +94,84 @@ main = launchAff_ do
   args <- Array.drop 2 <$> liftEffect Process.argv
 
   let description = "A script for uploading legacy registry packages."
-  _mode <- case Arg.parseArgs "legacy-importer" description parser args of
+  mode <- case Arg.parseArgs "legacy-importer" description parser args of
     Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
     Right command -> pure command
 
   FS.Extra.ensureDirectory scratchDir
 
-{-
-Console.log "Reading .env file..."
-_ <- API.loadEnv
+  -- Set up interpreters according to the import mode. In dry-run mode we don't
+  -- allow anyting to be committed or pushed, but data is still written to the
+  -- local repository checkouts on disk. In generate-registry mode, tarballs are
+  -- uploaded, but nothing is committed. In update-registry mode, tarballs are
+  -- uploaded and manifests and metadata are written, committed, and pushed.
 
-FS.Extra.ensureDirectory API.scratchDir
+  -- TODO TODO TODO
+  -- Well, shit, I guess we need to bump 'publishPursuit' into its own effect
+  -- too, or else everything requires pacchettibotti tokens now. Annoying.
+  -- case mode of
+  --   DryRun ->
 
-octokit <- liftEffect do
-  token <- do
-    case mode of
-      UpdateRegistry -> do
-        result <- Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
-        maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHubToken) result
-      _ -> do
-        result <- Process.lookupEnv "GITHUB_TOKEN"
-        maybe (Exception.throw "GITHUB_TOKEN not defined in the environment.") (pure <<< GitHubToken) result
-  Octokit.newOctokit token
+  -- Environment setup
+  Env.loadEnvFile ".env"
+  token <- Env.lookupRequired Env.pacchettibottiToken
+  publicKey <- Env.lookupRequired Env.pacchettibottiED25519Pub
+  privateKey <- Env.lookupRequired Env.pacchettibottiED25519
+  spacesKey <- Env.lookupRequired Env.spacesKey
+  spacesSecret <- Env.lookupRequired Env.spacesSecret
+  let pacchettibottiEnv = { publicKey, privateKey, token }
 
-cache <- Cache.useCache API.cacheDir
-
-metadataRef <- liftEffect $ Ref.new Map.empty
-
-let
-  env = case mode of
-    DryRun ->
-      { comment: \err -> Console.error err
-      , closeIssue: Console.log "Skipping GitHub issue closing, this is a dry run..."
-      , commitMetadataFile: \_ _ -> do
-          Console.log "Skipping committing to registry metadata, this is a dry run..."
-          pure (Right unit)
-      , commitIndexFile: \_ _ -> do
-          Console.log "Skipping committing to registry index, this is a dry run..."
-          pure (Right unit)
-      , commitPackageSetFile: \_ _ _ -> do
-          Console.log "Skipping committing to registry package sets, this is a dry run..."
-          pure (Right unit)
-      , uploadPackage: \_ _ -> Console.log "Skipping upload, this is a dry run..."
-      , deletePackage: \_ -> Console.log "Skipping delete, this is a dry run..."
-      , octokit
-      , cache
-      , username: "NO USERNAME"
-      , packagesMetadata: metadataRef
-      , registry: Path.concat [ API.scratchDir, "registry" ]
-      , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
+  -- Registry setup
+  let
+    registryEnv :: RegistryEnv
+    registryEnv =
+      { legacyPackageSets: Path.concat [ scratchDir, "package-sets" ]
+      , registry: Path.concat [ scratchDir, "registry" ]
+      , registryIndex: Path.concat [ scratchDir, "registry-index" ]
+      , timers: unsafePerformEffect Registry.newTimers
+      , writeStrategy: WriteCommitPush token
+      , pullMode: ForceClean
       }
-    UpdateRegistry ->
-      { comment: \comment -> Console.log ("[COMMENT] " <> comment)
-      , closeIssue: Console.log "Running locally, not closing issue..."
-      , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
-      , commitIndexFile: API.pacchettiBottiPushToRegistryIndex
-      , commitPackageSetFile: \_ _ _ -> Console.log "Not committing package set in legacy import." $> Right unit
-      , uploadPackage: PackageStorage.upload
-      , deletePackage: PackageStorage.delete
-      , packagesMetadata: metadataRef
-      , cache
-      , octokit
-      , username: mempty
-      , registry: Path.concat [ API.scratchDir, "registry" ]
-      , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
-      }
-    GenerateRegistry ->
-      { comment: \err -> Console.error err
-      , closeIssue: Console.log "Skipping GitHub issue closing, we're running locally.."
-      , commitMetadataFile: \_ _ -> do
-          Console.log "Skipping committing to registry metadata..."
-          pure (Right unit)
-      , commitIndexFile: \_ _ -> do
-          Console.log "Skipping committing to registry index..."
-          pure (Right unit)
-      , commitPackageSetFile: \_ _ _ -> do
-          Console.log "Skipping committing to registry package sets..."
-          pure (Right unit)
-      , uploadPackage: PackageStorage.upload
-      , deletePackage: PackageStorage.delete
-      , octokit
-      , cache
-      , username: ""
-      , packagesMetadata: metadataRef
-      , registry: Path.concat [ API.scratchDir, "registry" ]
-      , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
-      }
--}
 
--- TODO
--- runLegacyImport # Run.interpret ?a Run.runBaseAff'
+  -- Storage setup
+  let storageEnv = { key: spacesKey, secret: spacesSecret }
+
+  -- Package sets setup
+  let packageSetsEnv = { workdir: Path.concat [ scratchDir, "package-sets-work" ] }
+
+  -- GitHub setup
+  octokit <- liftEffect $ Octokit.newOctokit token
+
+  -- Caching setup
+  githubCacheRef <- Cache.newCacheRef
+  legacyCacheRef <- Cache.newCacheRef
+  let cacheDir = Path.concat [ scratchDir, ".cache" ]
+
+  -- Logging setup
+  let logDir = Path.concat [ scratchDir, "logs" ]
+  FS.Extra.ensureDirectory logDir
+  now <- liftEffect nowUTC
+  let logFile = "legacy-importer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
+  let logPath = Path.concat [ logDir, logFile ]
+
+  runLegacyImport mode
+    -- Environment
+    # Env.runPacchettiBottiEnv pacchettibottiEnv
+    -- App effects
+    # PackageSets.runPackageSets (PackageSets.handlePackageSetsAff packageSetsEnv)
+    # Registry.runRegistry (Registry.handleRegistryGit registryEnv)
+    # Storage.runStorage (Storage.handleStorageS3 storageEnv)
+    # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+    -- Caching
+    # Storage.runStorageCacheFs cacheDir
+    # GitHub.runGitHubCacheMemoryFs githubCacheRef cacheDir
+    # Legacy.Manifest.runLegacyCacheMemoryFs legacyCacheRef cacheDir
+    -- Logging
+    # Notify.runNotify Notify.handleNotifyLog
+    # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
+    -- Base effects
+    # Run.runBaseAff'
 
 runLegacyImport :: forall r. ImportMode -> Run (API.PublishEffects + r) Unit
 runLegacyImport mode = do

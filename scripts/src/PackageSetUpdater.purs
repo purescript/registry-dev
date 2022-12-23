@@ -51,34 +51,27 @@ parser = Arg.choose "command"
 
 main :: Effect Unit
 main = Aff.launchAff_ do
-  _ <- Env.loadEnvFile ".env"
-  env <- liftEffect Env.readEnvVars
-
-  FS.Extra.ensureDirectory scratchDir
-
   args <- Array.drop 2 <$> liftEffect Process.argv
   let description = "A script for updating the package sets."
   mode <- case Arg.parseArgs "package-set-updater" description parser args of
     Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
     Right command -> pure command
 
-  Console.log "Starting package set publishing..."
+  -- Environment
+  _ <- Env.loadEnvFile ".env"
 
   { octokit, writeStrategy } <- case mode of
     GeneratePackageSet -> do
-      token <- case env.githubToken of
-        Nothing -> Aff.throwError $ Aff.error "GITHUB_TOKEN not defined in the environment."
-        Just token -> pure token
+      token <- Env.lookupRequired Env.githubToken
       octokit <- liftEffect $ Octokit.newOctokit token
       pure { writeStrategy: Write, octokit }
 
     CommitPackageSet -> do
-      token <- case env.pacchettibottiToken of
-        Nothing -> Aff.throwError $ Aff.error "PACCHETTIBOTTI_TOKEN not defined in the environment."
-        Just token -> pure token
+      token <- Env.lookupRequired Env.pacchettibottiToken
       octokit <- liftEffect $ Octokit.newOctokit token
       pure { writeStrategy: WriteCommitPush token, octokit }
 
+  -- Registry
   let
     registryEnv :: RegistryEnv
     registryEnv =
@@ -90,31 +83,34 @@ main = Aff.launchAff_ do
       , timers: unsafePerformEffect Registry.newTimers
       }
 
-  let logDir = Path.concat [ scratchDir, "logs" ]
-  FS.Extra.ensureDirectory logDir
+  -- Package sets
+  let packageSetsEnv = { workdir: Path.concat [ scratchDir, "package-set-build" ] }
 
-  now <- liftEffect nowUTC
-  let logFile = "package-set-updater-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
-  let logPath = Path.concat [ logDir, logFile ]
-
+  -- Caching
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
   githubCacheRef <- Cache.newCacheRef
 
-  let packageSetsWorkDir = Path.concat [ scratchDir, "package-set-build" ]
+  -- Logging
+  now <- liftEffect nowUTC
+  let logDir = Path.concat [ scratchDir, "logs" ]
+  FS.Extra.ensureDirectory logDir
+  let logFile = "package-set-updater-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
+  let logPath = Path.concat [ logDir, logFile ]
 
   updater
     -- App effects
-    # PackageSets.runPackageSets (PackageSets.handlePackageSetsAff { workdir: packageSetsWorkDir })
+    # PackageSets.runPackageSets (PackageSets.handlePackageSetsAff packageSetsEnv)
     # Registry.runRegistry (Registry.handleRegistryGit registryEnv)
     # Storage.runStorage Storage.handleStorageReadOnly
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
-    -- Caches
+    -- Caching
     # Storage.runStorageCacheFs cacheDir
     # GitHub.runGitHubCacheMemoryFs githubCacheRef cacheDir
     -- Logging
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
+    -- Base effects
     # Run.runBaseAff'
 
 updater :: forall r. Run (REGISTRY + PACKAGE_SETS + LOG + LOG_EXCEPT + EFFECT + r) Unit

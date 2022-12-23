@@ -232,6 +232,10 @@ json = Json CA.json
 
 -- | Handle the Cache effect by caching values on the file system, given a
 -- | file encoding to use.
+--
+-- TODO: Expiration
+-- Note: This doesn't currently support expiration. But we could support it by
+-- looking at the 'atime' for the file to determine when it was last accessed.
 handleCacheFs :: forall k r a. FsCacheEnv k -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
 handleCacheFs env = case _ of
   Get cacheId@(CacheId id) reply -> do
@@ -244,9 +248,6 @@ handleCacheFs env = case _ of
           Left _ -> do
             Log.debug $ "No cache entry found for " <> id <> " at path " <> path
             pure $ reply Nothing
-          -- TODO: Is mtime the right one? Is there a way to see the last time
-          -- the file was accessed vs. the last time it was modified? So I can
-          -- implement expiry here too?
           Right (FS.Stats { mtime }) -> case JSDate.toDateTime mtime of
             Nothing -> do
               Log.error $ "Found cache file for " <> id <> " at path " <> path <> " but could not read modification time as a DateTime: " <> show mtime

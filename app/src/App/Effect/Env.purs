@@ -8,7 +8,7 @@ import Data.String as String
 import Data.String.Base64 as Base64
 import Dotenv as Dotenv
 import Effect.Aff as Aff
-import Effect.Exception as Exn
+import Effect.Exception as Exception
 import Node.FS.Aff as FS.Aff
 import Node.Process as Process
 import Registry.Foreign.Octokit (GitHubToken(..), IssueNumber)
@@ -36,6 +36,18 @@ runGitHubEventEnv = Run.Reader.runReaderAt _githubEventEnv
 
 -- | Environment fields available when the process provides @pacchettibotti
 -- | credentials for sensitive authorized actions.
+--
+-- PacchettiBotti's keys are stored in base64-encoded strings in the
+-- environment. To regenerate SSH keys for pacchettibotti:
+--
+-- 1. Generate the keypair
+-- $ ssh-keygen -t ed25519 -C "pacchettibotti@purescript.org"
+--
+-- 2. Encode the keypair (run this for both public and private):
+-- $ cat id_ed25519 | base64 | tr -d \\n
+-- $ cat id_ed25519.pub | base64 | tr -d \\n
+--
+-- 3. Store the results in 1Password and in GitHub secrets storage.
 type PacchettiBottiEnv =
   { publicKey :: String
   , privateKey :: String
@@ -53,15 +65,7 @@ askPacchettiBotti = Run.Reader.askAt _pacchettiBottiEnv
 runPacchettiBottiEnv :: forall r a. PacchettiBottiEnv -> Run (PACCHETTIBOTTI_ENV + r) a -> Run r a
 runPacchettiBottiEnv = Run.Reader.runReaderAt _pacchettiBottiEnv
 
--- | Variables that can be set in the environment.
-type EnvVars =
-  { githubToken :: Maybe GitHubToken
-  , spacesKey :: Maybe String
-  , spacesSecret :: Maybe String
-  , pacchettibottiToken :: Maybe GitHubToken
-  , pacchettibottiED25519Pub :: Maybe String
-  , pacchettibottiED25519 :: Maybe String
-  }
+-- ENV VARS
 
 -- | Loads the environment from a .env file, if one exists.
 loadEnvFile :: FilePath -> Aff Unit
@@ -71,82 +75,85 @@ loadEnvFile dotenv = do
     Left _ -> pure unit
     Right string -> void $ Dotenv.loadContents (String.trim string)
 
-readEnvVars :: Effect EnvVars
-readEnvVars = do
-  let
-    lookup :: String -> Effect (Maybe String)
-    lookup key = do
-      val <- Process.lookupEnv key
-      case val of
-        Nothing -> pure Nothing
-        Just "" -> pure Nothing
-        Just str -> pure (Just str)
+-- | An environment key the registry is aware of.
+newtype EnvKey a = EnvKey { key :: String, decode :: String -> Either String a }
 
-  spacesKey <- lookup "SPACES_KEY"
-  spacesSecret <- lookup "SPACES_SECRET"
+printEnvKey :: forall a. EnvKey a -> String
+printEnvKey (EnvKey { key }) = key
 
-  let
-    lookupToken key = do
-      mbToken <- lookup key
-      for mbToken \token -> case String.stripPrefix (String.Pattern "ghp_") token of
-        Nothing -> Exn.throw $ "GitHub tokens begin with ghp_, but value found for env var " <> key <> " does not: " <> token
-        Just _ -> pure $ GitHubToken token
+-- | Look up an optional environment variable, throwing an exception if it is
+-- | present but cannot be decoded. Empty strings are considered missing values.
+lookupOptional :: forall m a. MonadEffect m => EnvKey a -> m (Maybe a)
+lookupOptional (EnvKey { key, decode }) = liftEffect $ Process.lookupEnv key >>= case _ of
+  Nothing -> pure Nothing
+  Just "" -> pure Nothing
+  Just value -> case decode value of
+    Left error -> Exception.throw $ "Found " <> key <> " in the environment with value " <> value <> ", but it could not be decoded: " <> error
+    Right decoded -> pure $ Just decoded
 
-  githubToken <- lookupToken "GITHUB_TOKEN"
-  pacchettibottiToken <- lookupToken "PACCHETTIBOTTI_TOKEN"
+-- | Look up a required environment variable, throwing an exception if it is
+-- | missing, an empty string, or present but cannot be decoded.
+lookupRequired :: forall m a. MonadEffect m => EnvKey a -> m a
+lookupRequired (EnvKey { key, decode }) = liftEffect $ Process.lookupEnv key >>= case _ of
+  Nothing -> Exception.throw $ key <> " is not present in the environment."
+  Just "" -> Exception.throw $ "Found " <> key <> " in the environment, but its value was an empty string."
+  Just value -> case decode value of
+    Left error -> Exception.throw $ "Found " <> key <> " in the environment with value " <> value <> ", but it could not be decoded: " <> error
+    Right decoded -> pure decoded
 
-  let
-    lookupBase64Key key = do
-      mbB64Key <- lookup key
-      for mbB64Key \b64Key -> case Base64.decode b64Key of
-        Left b64Error -> Exn.throw $ "Failed to decode base64-encoded key when reading " <> key <> ": " <> Aff.message b64Error
-        Right decoded -> pure (String.trim decoded)
+-- | A user GitHub token at the GITHUB_TOKEN key.
+githubToken :: EnvKey GitHubToken
+githubToken = EnvKey { key: "GITHUB_TOKEN", decode: decodeGitHubToken }
 
-  -- PacchettiBotti's keys are stored in base64-encoded strings in the
-  -- environment. To regenerate SSH keys for pacchettibotti:
-  --
-  -- 1. Generate the keypair
-  -- $ ssh-keygen -t ed25519 -C "pacchettibotti@purescript.org"
-  --
-  -- 2. Encode the keypair (run this for both public and private):
-  -- $ cat id_ed25519 | base64 | tr -d \\n
-  -- $ cat id_ed25519.pub | base64 | tr -d \\n
-  --
-  -- 3. Store the results in 1Password and in GitHub secrets storage.
-  pacchettibottiED25519 <- lookupBase64Key "PACCHETTIBOTTI_ED25519"
-  pacchettibottiED25519Pub <- do
-    mbKey <- lookupBase64Key "PACCHETTIBOTTI_ED25519_PUB"
-    for mbKey \key -> case verifyPacchettiBottiPublicKey key of
-      Left error -> do
-        val <- lookup "PACCHETTIBOTTI_ED25519_PUB"
-        Exn.throw $ "Could not verify pacchettibotti public key " <> show val <> ": " <> error
-      Right verified -> pure verified
+-- | A public key for the S3 account at the SPACES_KEY key.
+spacesKey :: EnvKey String
+spacesKey = EnvKey { key: "SPACES_KEY", decode: pure }
 
-  pure
-    { githubToken
-    , spacesKey
-    , spacesSecret
-    , pacchettibottiToken
-    , pacchettibottiED25519Pub
-    , pacchettibottiED25519
-    }
-  where
-  verifyPacchettiBottiPublicKey :: String -> Either String String
-  verifyPacchettiBottiPublicKey decodedKey = do
-    let split = String.split (String.Pattern " ") decodedKey
+-- | A secret key for the S3 account at the SPACES_SECRET key.
+spacesSecret :: EnvKey String
+spacesSecret = EnvKey { key: "SPACES_SECRET", decode: pure }
 
-    keyFields <- note "Key must be of the form 'keytype key email'" do
-      keyType <- Array.index split 0
-      key <- Array.index split 1
-      email <- Array.index split 2
-      pure { keyType, key, email }
+-- | A GitHub token for the @pacchettibotti user at the PACCHETTIBOTTI_TOKEN key.
+pacchettibottiToken :: EnvKey GitHubToken
+pacchettibottiToken = EnvKey { key: "PACCHETTIBOTTI_TOKEN", decode: decodeGitHubToken }
 
-    if keyFields.keyType /= pacchettibottiKeyType then
-      Left $ Array.fold [ "Key type must be ", pacchettibottiKeyType, " but received ", keyFields.keyType, " instead." ]
-    else if keyFields.email /= pacchettibottiEmail then
-      Left $ Array.fold [ "Email must be ", pacchettibottiEmail, " but received: ", keyFields.email, " instead." ]
-    else
-      pure keyFields.key
+-- | A base64-encoded ED25519 SSH private key for the @pacchettibotti user at the
+-- | PACCHETTIBOTTI_ED25519 key.
+pacchettibottiED25519 :: EnvKey String
+pacchettibottiED25519 = EnvKey { key: "PACCHETTIBOTTI_ED25519", decode: decodeBase64Key }
+
+-- | A base64-encoded ED25519 SSH public key for the @pacchettibotti user at the
+-- | PACCHETTIBOTTI_ED25519_PUB key.
+pacchettibottiED25519Pub :: EnvKey String
+pacchettibottiED25519Pub = EnvKey
+  { key: "PACCHETTIBOTTI_ED25519_PUB"
+  , decode: \input -> do
+      decoded <- decodeBase64Key input
+      let split = String.split (String.Pattern " ") decoded
+
+      keyFields <- note "Key must be of the form 'keytype key email'" do
+        keyType <- Array.index split 0
+        key <- Array.index split 1
+        email <- Array.index split 2
+        pure { keyType, key, email }
+
+      if keyFields.keyType /= pacchettibottiKeyType then
+        Left $ Array.fold [ "Key type must be ", pacchettibottiKeyType, " but received ", keyFields.keyType, " instead." ]
+      else if keyFields.email /= pacchettibottiEmail then
+        Left $ Array.fold [ "Email must be ", pacchettibottiEmail, " but received: ", keyFields.email, " instead." ]
+      else
+        pure keyFields.key
+  }
+
+decodeGitHubToken :: String -> Either String GitHubToken
+decodeGitHubToken input = case String.stripPrefix (String.Pattern "ghp_") input of
+  Nothing -> Left $ "GitHub tokens begin with ghp_, but the input does not: " <> input
+  Just _ -> pure $ GitHubToken input
+
+decodeBase64Key :: String -> Either String String
+decodeBase64Key b64Key = case Base64.decode b64Key of
+  Left b64Error -> Left $ "Failed to decode base64-encoded key " <> b64Key <> " with error: " <> Aff.message b64Error
+  Right decoded -> Right $ String.trim decoded
 
 pacchettibottiKeyType :: String
 pacchettibottiKeyType = "ssh-ed25519"
