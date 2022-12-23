@@ -73,10 +73,11 @@ main = launchAff_ do
 
   transfer
     -- Environment
-    # Env.runPacchettiBottiEnv { token, privateKey, publicKey }
+    # Env.runPacchettiBottiEnv { privateKey, publicKey }
     -- App effects
     # Registry.runRegistry (Registry.handleRegistryGit registryEnv)
     # Storage.runStorage Storage.handleStorageReadOnly
+    -- Requests
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caching
     # Storage.runStorageCacheFs cacheDir

@@ -103,6 +103,7 @@ main = Aff.launchAff_ do
     # PackageSets.runPackageSets (PackageSets.handlePackageSetsAff packageSetsEnv)
     # Registry.runRegistry (Registry.handleRegistryGit registryEnv)
     # Storage.runStorage Storage.handleStorageReadOnly
+    -- Requests
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caching
     # Storage.runStorageCacheFs cacheDir

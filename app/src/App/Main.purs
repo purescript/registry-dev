@@ -9,7 +9,6 @@ import Data.Foldable (traverse_)
 import Data.String as String
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
-import Effect.Exception as Exception
 import Effect.Unsafe (unsafePerformEffect)
 import Foreign.Object as Object
 import Node.FS.Aff as FS.Aff
@@ -27,12 +26,12 @@ import Registry.App.Effect.Log (LOG_EXCEPT, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.PackageSets as PackageSets
+import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (PullMode(..), RegistryEnv, WriteStrategy(..))
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Constants as Constants
-import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit (GitHubToken, IssueNumber(..), Octokit)
 import Registry.Foreign.Octokit as Octokit
@@ -64,13 +63,7 @@ main = launchAff_ $ do
             signed <- signPacchettiBottiIfTrustee payload
             API.authenticated signed
 
-    FS.Extra.ensureDirectory scratchDir
-
-    githubCacheRef <- Cache.newCacheRef
-    legacyCacheRef <- Cache.newCacheRef
-    let cacheDir = Path.concat [ scratchDir, ".cache" ]
-    let workdir = Path.concat [ scratchDir, "package-sets-work" ]
-
+    -- Registry env
     let
       registryEnv :: RegistryEnv
       registryEnv =
@@ -82,14 +75,22 @@ main = launchAff_ $ do
         , pullMode: ForceClean
         }
 
+    -- Caching
+    githubCacheRef <- Cache.newCacheRef
+    legacyCacheRef <- Cache.newCacheRef
+    let cacheDir = Path.concat [ scratchDir, ".cache" ]
+    let workdir = Path.concat [ scratchDir, "package-sets-work" ]
+
     run
       -- Environment
       # Env.runGitHubEventEnv { username: env.username, issue: env.issue }
-      # Env.runPacchettiBottiEnv { publicKey: env.publicKey, privateKey: env.privateKey, token: env.token }
+      # Env.runPacchettiBottiEnv { publicKey: env.publicKey, privateKey: env.privateKey }
       -- App effects
       # PackageSets.runPackageSets (PackageSets.handlePackageSetsAff { workdir })
       # Registry.runRegistry (Registry.handleRegistryGit registryEnv)
       # Storage.runStorage (Storage.handleStorageS3 env.spacesConfig)
+      -- Requests
+      # Pursuit.runPursuit (Pursuit.handlePursuitHttp env.token)
       # GitHub.runGitHub (GitHub.handleGitHubOctokit env.octokit)
       -- Caching
       # Storage.runStorageCacheFs cacheDir
@@ -98,7 +99,7 @@ main = launchAff_ $ do
       -- Logging
       # Notify.runNotify Notify.handleNotifyLog
       # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-      # Log.runLog (Log.handleLogTerminal Normal)
+      # Log.runLog (Log.handleLogTerminal Verbose)
       -- Base effects
       # Run.runBaseAff'
 
@@ -120,31 +121,12 @@ type GitHubEventEnv =
 
 initializeGitHub :: Aff (Maybe GitHubEventEnv)
 initializeGitHub = do
-  envVars <- liftEffect Env.readEnvVars
-
-  token <- liftEffect $ case envVars.pacchettibottiToken of
-    Nothing -> Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment."
-    Just token -> pure token
-
-  publicKey <- liftEffect $ case envVars.pacchettibottiED25519Pub of
-    Nothing -> Exception.throw "PACCHETTIBOTTI_ED25519_PUB not defined in the environment."
-    Just key -> pure key
-
-  privateKey <- liftEffect $ case envVars.pacchettibottiED25519 of
-    Nothing -> Exception.throw "PACCHETTIBOTTI_ED25519 not defined in the environment."
-    Just key -> pure key
-
-  spacesKey <- liftEffect $ case envVars.spacesKey of
-    Nothing -> Exception.throw "SPACES_KEY not defined in the environment."
-    Just key -> pure key
-
-  spacesSecret <- liftEffect $ case envVars.spacesSecret of
-    Nothing -> Exception.throw "SPACES_SECRET not defined in the environment."
-    Just key -> pure key
-
-  eventPath <- liftEffect $ Process.lookupEnv "GITHUB_EVENT_PATH" >>= case _ of
-    Nothing -> Exception.throw "GITHUB_EVENT_PATH not defined in the environment."
-    Just path -> pure path
+  token <- Env.lookupRequired Env.pacchettibottiToken
+  publicKey <- Env.lookupRequired Env.pacchettibottiED25519Pub
+  privateKey <- Env.lookupRequired Env.pacchettibottiED25519
+  spacesKey <- Env.lookupRequired Env.spacesKey
+  spacesSecret <- Env.lookupRequired Env.spacesSecret
+  eventPath <- Env.lookupRequired Env.githubEventPath
 
   octokit <- liftEffect $ Octokit.newOctokit token
 

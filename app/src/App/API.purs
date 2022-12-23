@@ -3,8 +3,6 @@ module Registry.App.API where
 import Registry.App.Prelude
 
 import Affjax.Node as Affjax.Node
-import Affjax.RequestBody as RequestBody
-import Affjax.RequestHeader as RequestHeader
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
 import Ansi.Codes (GraphicsParam)
@@ -20,9 +18,7 @@ import Data.DateTime (DateTime)
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.HTTP.Method (Method(..))
-import Data.HTTP.Method as Method
 import Data.Map as Map
-import Data.MediaType.Common as MediaType
 import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
 import Data.String as String
@@ -51,6 +47,8 @@ import Registry.App.Effect.Notify (NOTIFY)
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
 import Registry.App.Effect.PackageSets as PackageSets
+import Registry.App.Effect.Pursuit (PURSUIT)
+import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
@@ -61,7 +59,7 @@ import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec)
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
-import Registry.Foreign.Octokit (GitHubToken(..), IssueNumber(..), Team)
+import Registry.Foreign.Octokit (IssueNumber(..), Team)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tar as Foreign.Tar
 import Registry.Foreign.Tmp as Tmp
@@ -313,7 +311,7 @@ authenticated auth = case auth.payload of
             Registry.mirrorLegacyRegistry payload.name payload.newLocation
             Notify.notify "Mirrored location change to the legacy registry."
 
-type PublishEffects r = (REGISTRY + STORAGE + GITHUB + LEGACY_CACHE + PACCHETTIBOTTI_ENV + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r)
+type PublishEffects r = (PURSUIT + REGISTRY + STORAGE + GITHUB + LEGACY_CACHE + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r)
 
 -- | Publish a package via the 'publish' operation. If the package has not been
 -- | published before then it will be registered and the given version will be
@@ -704,10 +702,8 @@ type PublishToPursuit =
 publishToPursuit
   :: forall r
    . PublishToPursuit
-  -> Run (PACCHETTIBOTTI_ENV + LOG + NOTIFY + AFF + EFFECT + r) (Either (Doc GraphicsParam) Unit)
+  -> Run (PURSUIT + LOG + NOTIFY + AFF + EFFECT + r) (Either (Doc GraphicsParam) Unit)
 publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = Run.Except.runExceptAt Log._logExcept do
-  { token } <- Env.askPacchettiBotti
-
   Log.debug "Generating a resolutions file"
   tmp <- Run.liftEffect Tmp.mkTmpDir
 
@@ -763,41 +759,12 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
           Right json ->
             pure json
 
-  Log.debug "Pushing to Pursuit..."
-  result <- Run.liftAff $ Affjax.Node.request
-    { content: Just $ RequestBody.json publishJson
-    , headers:
-        [ RequestHeader.Accept MediaType.applicationJSON
-        , RequestHeader.RequestHeader "Authorization" ("token " <> un GitHubToken token)
-        ]
-    , method: Left Method.POST
-    , username: Nothing
-    , withCredentials: false
-    , password: Nothing
-    , responseFormat: ResponseFormat.string
-    , timeout: Nothing
-    , url: "https://pursuit.purescript.org/packages"
-    }
-
+  result <- Pursuit.publish publishJson
   case result of
-    Right { status } | status == StatusCode 201 ->
+    Left error ->
+      Log.exit $ "Could not publish your package to Pursuit because an error was encountered (cc: @purescript/packaging): " <> error
+    Right _ ->
       Notify.notify "Successfully uploaded package docs to Pursuit! 🎉 🚀"
-    Right { body, status: StatusCode status } ->
-      Log.exit $ String.joinWith "\n"
-        [ "Expected a 201 response from Pursuit, but received " <> show status <> " instead (cc: @purescript/packaging)."
-        , ""
-        , "```"
-        , body
-        , "```"
-        ]
-    Left err -> do
-      let printedErr = Affjax.Node.printError err
-      Log.exit $ String.joinWith "\n"
-        [ "Received a failed response from Pursuit (cc: @purescript/packaging): "
-        , "```"
-        , printedErr
-        , "```"
-        ]
 
 type PursuitResolutions = Map RawPackageName { version :: Version, path :: FilePath }
 

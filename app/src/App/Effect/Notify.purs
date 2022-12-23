@@ -13,6 +13,7 @@ import Ansi.Codes (GraphicsParam)
 import Data.Int as Int
 import Dodo (Doc)
 import Dodo as Dodo
+import Dodo.Ansi as Ansi
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.Constants as Constants
@@ -37,12 +38,20 @@ notify message = Run.lift _notify (Notify (Log.toLog message) unit)
 runNotify :: forall r a. (Notify ~> Run r) -> Run (NOTIFY + r) a -> Run r a
 runNotify handler = Run.interpret (Run.on _notify handler Run.send)
 
+-- | Handle a notification by logging it to the console.
+handleNotifyLog :: forall a r. Notify a -> Run (LOG + r) a
+handleNotifyLog = case _ of
+  Notify message next -> do
+    Log.info $ Ansi.foreground Ansi.BrightBlue (Dodo.text "[NOTIFY] ") <> message
+    pure next
+
+-- | Handle a notification by commenting on the relevant GitHub issue.
 handleNotifyGitHub :: forall a r. Octokit -> IssueNumber -> Notify a -> Run (LOG + AFF + r) a
 handleNotifyGitHub octokit issue = case _ of
   Notify message next -> do
     let issueNumber = Int.toStringAs Int.decimal $ un IssueNumber issue
     Log.debug $ "Notifying via a GitHub comment on issue " <> issueNumber
-    Log.info message
+    handleNotifyLog (Notify message unit)
     let comment = Dodo.print Dodo.plainText Dodo.twoSpaces (Log.toLog message)
     let request = Octokit.createCommentRequest { address: Constants.registry, issue, body: comment }
     Run.liftAff (Octokit.request octokit request) >>= case _ of
@@ -51,11 +60,4 @@ handleNotifyGitHub octokit issue = case _ of
         Log.debug $ Octokit.printGitHubError error
       Right _ ->
         Log.debug $ "Created GitHub comment on issue " <> issueNumber
-    pure next
-
-handleNotifyLog :: forall a r. Notify a -> Run (LOG + r) a
-handleNotifyLog = case _ of
-  Notify message next -> do
-    Log.debug "Notifying via logs..."
-    Log.info message
     pure next

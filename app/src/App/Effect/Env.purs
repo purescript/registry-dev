@@ -51,7 +51,6 @@ runGitHubEventEnv = Run.Reader.runReaderAt _githubEventEnv
 type PacchettiBottiEnv =
   { publicKey :: String
   , privateKey :: String
-  , token :: GitHubToken
   }
 
 type PACCHETTIBOTTI_ENV r = (pacchettiBottiEnv :: Reader PacchettiBottiEnv | r)
@@ -144,6 +143,10 @@ pacchettibottiED25519Pub = EnvKey
       else
         pure keyFields.key
   }
+
+-- | A file path to the JSON payload describing the triggered GitHub event.
+githubEventPath :: EnvKey FilePath
+githubEventPath = EnvKey { key: "GITHUB_EVENT_PATH", decode: pure }
 
 decodeGitHubToken :: String -> Either String GitHubToken
 decodeGitHubToken input = case String.stripPrefix (String.Pattern "ghp_") input of
