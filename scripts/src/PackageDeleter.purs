@@ -14,7 +14,6 @@ import Data.String as String
 import Data.Tuple (uncurry)
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
-import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
 import Node.Process as Process
@@ -110,7 +109,7 @@ main = launchAff_ do
 
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
-  cacheRef <- Cache.newCacheRef
+  githubCacheRef <- Cache.newCacheRef
 
   let registry = Path.concat [ scratchDir, "registry" ]
   let registryIndex = Path.concat [ scratchDir, "registry-index" ]
@@ -123,7 +122,7 @@ main = launchAff_ do
       , registryIndex
       , pullMode: OnlyClean
       , writeStrategy: WriteCommitPush token
-      , timer: unsafePerformEffect (Ref.new Nothing)
+      , timers: unsafePerformEffect Registry.newTimers
       }
 
   octokit <- liftEffect $ Octokit.newOctokit token
@@ -141,7 +140,7 @@ main = launchAff_ do
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caching
     # Storage.runStorageCacheFs cacheDir
-    # GitHub.runGitHubCacheMemoryFs cacheRef cacheDir
+    # GitHub.runGitHubCacheMemoryFs githubCacheRef cacheDir
     -- Logging
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)

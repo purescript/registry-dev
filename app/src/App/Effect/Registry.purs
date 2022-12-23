@@ -131,31 +131,29 @@ data WriteStrategy = Write | WriteCommit GitHubToken | WriteCommitPush GitHubTok
 
 derive instance Eq WriteStrategy
 
+type Timers = Ref (Map FilePath (Maybe DateTime))
+
+newTimers :: forall m. MonadEffect m => m Timers
+newTimers = liftEffect $ Ref.new Map.empty
+
 type RegistryEnv =
   { registry :: FilePath
   , registryIndex :: FilePath
   , legacyPackageSets :: FilePath
   , writeStrategy :: WriteStrategy
   , pullMode :: PullMode
-  -- TODO: Replace with a time-limited cache.
-  , timer :: Ref (Maybe DateTime)
+  , timers :: Ref (Map FilePath (Maybe DateTime))
   }
 
 -- | Handle the REGISTRY effect by downloading the registry and registry-index
 -- | repositories locally and reading and writing their contents from disk.
--- | Writes can optionally commit and push to the uptsream Git repository. This
--- | implementation uses an in-memory, short-duration cache to avoid excessive
--- | reads from disk.
---
--- TODO: Implement caching!
+-- | Writes can optionally commit and push to the uptsream Git repository.
 handleRegistryGit :: forall r a. RegistryEnv -> Registry a -> Run (GITHUB + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
 handleRegistryGit env = case _ of
   ReadManifest name version reply -> do
     let formatted = formatPackageVersion name version
     Log.info $ "Reading manifest for " <> formatted <> "..."
-    ifElapsed env.timer (Minutes 5.0) do
-      Log.debug "Timer expired on repo fetch."
-      fetchGitHubRepo Constants.manifestIndex env.pullMode env.registryIndex
+    fetchIfNeeded Constants.manifestIndex env.registryIndex
     Run.liftAff (ManifestIndex.readEntryFile env.registryIndex name) >>= case _ of
       Left error -> do
         Log.warn $ "Could not read manifest index entry for package " <> PackageName.print name <> ": " <> error
@@ -238,9 +236,7 @@ handleRegistryGit env = case _ of
 
   ReadAllManifests reply -> do
     Log.info $ "Reading manifest index from " <> env.registryIndex
-    ifElapsed env.timer (Minutes 5.0) do
-      Log.debug "Timer expired on repo fetch."
-      fetchGitHubRepo Constants.manifestIndex env.pullMode env.registryIndex
+    fetchIfNeeded Constants.manifestIndex env.registryIndex
     index <- readManifestIndexFromDisk env.registryIndex
     pure $ reply index
 
@@ -248,9 +244,7 @@ handleRegistryGit env = case _ of
     let printedName = PackageName.print name
     let path = Path.concat [ env.registry, Constants.metadataDirectory, printedName <> ".json" ]
     Log.info $ "Reading metadata for " <> printedName <> " from path " <> path
-    ifElapsed env.timer (Minutes 5.0) do
-      Log.debug "Timer expired on repo fetch."
-      fetchGitHubRepo Constants.registry env.pullMode env.registry
+    fetchIfNeeded Constants.registry env.registry
     let exitMessage = "Found metadata for " <> printedName <> ", but it could not be read."
     Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 path)) >>= case _ of
       Left fsError -> do
@@ -313,18 +307,14 @@ handleRegistryGit env = case _ of
   ReadAllMetadata reply -> do
     let metadataDir = Path.concat [ env.registry, Constants.metadataDirectory ]
     Log.info $ "Reading metadata for all packages from directory " <> metadataDir
-    ifElapsed env.timer (Minutes 5.0) do
-      Log.debug "Timer expired on repo fetch."
-      fetchGitHubRepo Constants.registry env.pullMode env.registry
+    fetchIfNeeded Constants.registry env.registry
     allMetadata <- readAllMetadataFromDisk metadataDir
     pure $ reply allMetadata
 
   ReadLatestPackageSet reply -> do
     let packageSetsDir = Path.concat [ env.registry, Constants.packageSetsDirectory ]
     Log.info $ "Reading latest package set from directory " <> packageSetsDir
-    ifElapsed env.timer (Minutes 5.0) do
-      Log.debug "Timer expired on repo fetch."
-      fetchGitHubRepo Constants.registry env.pullMode env.registry
+    fetchIfNeeded Constants.registry env.registry
     versions <- listPackageSetVersions packageSetsDir
     case Array.last (Array.sort versions) of
       Nothing -> do
@@ -376,9 +366,7 @@ handleRegistryGit env = case _ of
   ReadAllPackageSets reply -> do
     let packageSetsDir = Path.concat [ env.registry, Constants.packageSetsDirectory ]
     Log.info $ "Reading all package sets from directory " <> packageSetsDir
-    ifElapsed env.timer (Minutes 5.0) do
-      Log.debug "Timer expired on repo fetch."
-      fetchGitHubRepo Constants.registry env.pullMode env.registry
+    fetchIfNeeded Constants.registry env.registry
     versions <- listPackageSetVersions packageSetsDir
     decoded <- for versions \version -> do
       let printed = Version.print version
@@ -496,9 +484,7 @@ handleRegistryGit env = case _ of
   ReadLegacyRegistry reply -> do
     Log.info "Reading legacy registry."
 
-    ifElapsed env.timer (Minutes 5.0) do
-      Log.debug "Timer expired on repo fetch."
-      fetchGitHubRepo Constants.registry ForceClean env.registry
+    fetchIfNeeded Constants.registry env.registry
 
     let readRegistryFile path = readJsonFile (CA.Common.strMap CA.string) (Path.concat [ env.registry, path ])
 
@@ -572,12 +558,15 @@ handleRegistryGit env = case _ of
     pure next
 
   where
-  ifElapsed :: Ref (Maybe DateTime) -> Minutes -> Run _ Unit -> Run _ Unit
-  ifElapsed timer minutes k = do
+  fetchIfNeeded :: Address -> FilePath -> _
+  fetchIfNeeded address path = do
     now <- Run.liftEffect nowUTC
-    Run.liftEffect (Ref.read timer) >>= case _ of
-      Just prev | diff now prev < minutes -> pure unit
-      _ -> Run.liftEffect (Ref.write (Just now) timer) *> k
+    timers <- Run.liftEffect (Ref.read env.timers)
+    case Map.lookup path timers of
+      Just (Just prev) | diff now prev < (Minutes 3.0) -> pure unit
+      _ -> do
+        Run.liftEffect (Ref.modify_ (Map.insert path (Just now)) env.timers)
+        fetchGitHubRepo address env.pullMode path
 
   commitLegacyPackageSets :: { token :: GitHubToken, tags :: Array String, files :: Array FilePath, message :: String, push :: Boolean } -> Aff (Either String Unit)
   commitLegacyPackageSets { token, tags, files, message, push } = Except.runExceptT do

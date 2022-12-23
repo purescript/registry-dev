@@ -10,14 +10,15 @@ import Data.DateTime as DateTime
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
+import Data.Number.Format as Number.Format
 import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
-import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
 import Node.Process as Process
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
@@ -86,7 +87,7 @@ main = Aff.launchAff_ do
       , registryIndex: Path.concat [ scratchDir, "registry-index" ]
       , pullMode: ForceClean
       , writeStrategy
-      , timer: unsafePerformEffect (Ref.new Nothing)
+      , timers: unsafePerformEffect Registry.newTimers
       }
 
   let logDir = Path.concat [ scratchDir, "logs" ]
@@ -98,7 +99,7 @@ main = Aff.launchAff_ do
 
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
-  cacheRef <- liftEffect $ Ref.new Map.empty
+  githubCacheRef <- Cache.newCacheRef
 
   let packageSetsWorkDir = Path.concat [ scratchDir, "package-set-build" ]
 
@@ -110,7 +111,7 @@ main = Aff.launchAff_ do
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caches
     # Storage.runStorageCacheFs cacheDir
-    # GitHub.runGitHubCacheMemoryFs cacheRef cacheDir
+    # GitHub.runGitHubCacheMemoryFs githubCacheRef cacheDir
     -- Logging
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
@@ -124,11 +125,14 @@ updater = do
 
   PackageSets.validatePackageSet prevPackageSet
 
-  recentUploads <- findRecentUploads (Hours 24.0)
+  let uploadHours = 24.0
+  recentUploads <- findRecentUploads (Hours uploadHours)
 
   manifestIndex <- Registry.readAllManifests
   let candidates = PackageSets.validatePackageSetCandidates manifestIndex prevPackageSet (map Just recentUploads.eligible)
-  Log.info $ PackageSets.printRejections candidates.rejected
+  unless (Map.isEmpty candidates.rejected) do
+    Log.info $ "Some packages uploaded in the last " <> Number.Format.toString uploadHours <> " hours are not eligible for the automated package sets."
+    Log.info $ PackageSets.printRejections candidates.rejected
 
   if Map.isEmpty candidates.accepted then do
     Log.info "No eligible additions, updates, or removals to produce a new package set."

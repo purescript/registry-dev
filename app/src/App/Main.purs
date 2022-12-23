@@ -10,7 +10,6 @@ import Data.String as String
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Effect.Exception as Exception
-import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import Foreign.Object as Object
 import Node.FS.Aff as FS.Aff
@@ -78,7 +77,7 @@ main = launchAff_ $ do
         { legacyPackageSets: Path.concat [ scratchDir, "package-sets" ]
         , registry: Path.concat [ scratchDir, "registry" ]
         , registryIndex: Path.concat [ scratchDir, "registry-index" ]
-        , timer: unsafePerformEffect $ Ref.new Nothing
+        , timers: unsafePerformEffect Registry.newTimers
         , writeStrategy: WriteCommitPush env.token
         , pullMode: ForceClean
         }

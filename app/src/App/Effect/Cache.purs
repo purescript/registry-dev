@@ -18,6 +18,7 @@ import Effect.Ref as Ref
 import JSURI as JSURI
 import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as FS
+import Node.Path as Path
 import Prim.Row as Row
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
@@ -335,9 +336,13 @@ handleCacheFs env = case _ of
 
   where
   safePath :: CacheId -> FilePath
-  safePath (CacheId id) =
-    Maybe.maybe' (\_ -> unsafeCrashWith ("Unable to encode " <> id <> " as a safe file path.")) identity
-      $ JSURI.encodeURIComponent
-      $ String.replaceAll (String.Pattern "@") (String.Replacement "$")
-      $ String.replaceAll (String.Pattern "/") (String.Replacement "_")
-      $ String.replaceAll (String.Pattern " ") (String.Replacement "__") id
+  safePath (CacheId id) = do
+    let
+      encoded =
+        Maybe.maybe' (\_ -> unsafeCrashWith ("Unable to encode " <> id <> " as a safe file path.")) identity
+          $ JSURI.encodeURIComponent
+          $ String.replaceAll (String.Pattern "@") (String.Replacement "$")
+          $ String.replaceAll (String.Pattern "/") (String.Replacement "_")
+          $ String.replaceAll (String.Pattern " ") (String.Replacement "__") id
+
+    Path.concat [ env.cacheDir, encoded ]

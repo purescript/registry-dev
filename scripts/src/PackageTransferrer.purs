@@ -12,12 +12,12 @@ import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify (Notify(..))
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Registry (PullMode(..), REGISTRY, RegistryEnv, WriteStrategy(..))
 import Registry.App.Effect.Registry as Registry
@@ -65,12 +65,12 @@ main = launchAff_ do
       , registryIndex: Path.concat [ scratchDir, "registry-index" ]
       , pullMode: ForceClean
       , writeStrategy: WriteCommitPush token
-      , timer: unsafePerformEffect (Ref.new Nothing)
+      , timers: unsafePerformEffect Registry.newTimers
       }
 
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
-  cacheRef <- liftEffect $ Ref.new Map.empty
+  githubCacheRef <- Cache.newCacheRef
 
   let logDir = Path.concat [ scratchDir, "logs" ]
   FS.Extra.ensureDirectory logDir
@@ -88,7 +88,7 @@ main = launchAff_ do
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caching
     # Storage.runStorageCacheFs cacheDir
-    # GitHub.runGitHubCacheMemoryFs cacheRef cacheDir
+    # GitHub.runGitHubCacheMemoryFs githubCacheRef cacheDir
     -- Logging
     # Notify.runNotify Notify.handleNotifyLog
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
