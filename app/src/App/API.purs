@@ -99,7 +99,7 @@ printSource = case _ of
 type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + NOTIFY + LOG + LOG_EXCEPT + r)
 
 -- | Process a package set update. Package set updates are only processed via
--- | GitHub and not the HTTP API.
+-- | GitHub and not the HTTP API, so they require access to the GitHub env.
 packageSetUpdate :: forall r. PackageSetUpdateData -> Run (PackageSetUpdateEffects + r) Unit
 packageSetUpdate payload = do
   { issue, username } <- Env.askGitHubEvent
@@ -212,7 +212,7 @@ packageSetUpdate payload = do
         Registry.mirrorPackageSet packageSet
         Notify.notify "Mirrored a new legacy package set."
 
-type AuthenticatedEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r)
+type AuthenticatedEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r)
 
 -- | Run an authenticated package operation, ie. an unpublish or a transfer.
 --
@@ -248,10 +248,7 @@ authenticated auth = case auth.payload of
         Log.debug $ formatted <> " is an unpublishable version, continuing..."
         pure published
 
-    Log.debug "Ensuring the trustees can process unpublish operations by adding them to the owners..."
-    Tuple newAuth maybeOwners <- acceptTrustees auth (un Metadata metadata).owners
-
-    case maybeOwners of
+    case (un Metadata metadata).owners of
       Nothing -> do
         Log.error $ "Unpublishing is an authenticated operation, but no owners were listed in the metadata: " <> stringifyJson Metadata.codec metadata
         Log.exit $ String.joinWith " "
@@ -259,26 +256,28 @@ authenticated auth = case auth.payload of
           , "Please publish a package version with your SSH public key in the owners field."
           , "You can then retry unpublishing this version by authenticating with your private key."
           ]
-      Just owners -> Run.liftAff (Auth.verifyPayload owners newAuth) >>= case _ of
-        Left error -> do
-          Log.error $ Array.fold
-            [ "Failed to verify signed payload against owners with error:\n\n" <> error
-            , "\n\nusing owners\n"
-            , String.joinWith "\n" $ map (stringifyJson Owner.codec) $ NEA.toArray owners
-            ]
-          Log.exit $ "Could not unpublish " <> formatted <> " because we could not authenticate ownership of the package."
-        Right _ -> do
-          Log.debug $ "Successfully authenticated ownership of " <> formatted <> ", unpublishing..."
-          let
-            unpublished = { reason: payload.reason, publishedTime: published.publishedTime, unpublishedTime: now }
-            updated = metadata # over Metadata \prev -> prev
-              { published = Map.delete payload.version prev.published
-              , unpublished = Map.insert payload.version unpublished prev.unpublished
-              }
-          Storage.deleteTarball payload.name payload.version
-          Registry.writeMetadata payload.name updated
-          Registry.deleteManifest payload.name payload.version
-          Notify.notify $ "Unpublished " <> formatted <> "!"
+      Just owners -> do
+        pacchettiBotti <- getPacchettiBotti
+        Run.liftAff (Auth.verifyPayload pacchettiBotti owners auth) >>= case _ of
+          Left error -> do
+            Log.error $ Array.fold
+              [ "Failed to verify signed payload against owners with error:\n\n" <> error
+              , "\n\nusing owners\n"
+              , String.joinWith "\n" $ map (stringifyJson Owner.codec) $ NEA.toArray owners
+              ]
+            Log.exit $ "Could not unpublish " <> formatted <> " because we could not authenticate ownership of the package."
+          Right _ -> do
+            Log.debug $ "Successfully authenticated ownership of " <> formatted <> ", unpublishing..."
+            let
+              unpublished = { reason: payload.reason, publishedTime: published.publishedTime, unpublishedTime: now }
+              updated = metadata # over Metadata \prev -> prev
+                { published = Map.delete payload.version prev.published
+                , unpublished = Map.insert payload.version unpublished prev.unpublished
+                }
+            Storage.deleteTarball payload.name payload.version
+            Registry.writeMetadata payload.name updated
+            Registry.deleteManifest payload.name payload.version
+            Notify.notify $ "Unpublished " <> formatted <> "!"
 
   Transfer payload -> do
     Log.debug $ "Processing authorized transfer operation with payload: " <> stringifyJson Operation.authenticatedCodec auth
@@ -288,10 +287,7 @@ authenticated auth = case auth.payload of
         Log.exit $ "This package cannot be transferred because it has not been published before (no metadata was found)."
       Just value -> pure value
 
-    Log.debug "Ensuring the trustees can process transfer operations by adding them to the owners..."
-    Tuple newAuth maybeOwners <- acceptTrustees auth (un Metadata metadata).owners
-
-    case maybeOwners of
+    case (un Metadata metadata).owners of
       Nothing -> do
         Log.error $ "Transferring is an authenticated operation, but no owners were listed in the metadata: " <> stringifyJson Metadata.codec metadata
         Log.exit $ String.joinWith " "
@@ -299,21 +295,23 @@ authenticated auth = case auth.payload of
           , "Please publish a package version with your SSH public key in the owners field."
           , "You can then retry transferring this version by authenticating with your private key."
           ]
-      Just owners -> Run.liftAff (Auth.verifyPayload owners newAuth) >>= case _ of
-        Left error -> do
-          Log.error $ Array.fold
-            [ "Failed to verify signed payload against owners with error:\n\n" <> error
-            , "\n\nusing owners\n"
-            , String.joinWith "\n" $ map (stringifyJson Owner.codec) $ NEA.toArray owners
-            ]
-          Log.exit $ "Could not transfer your package because we could not authenticate your ownership."
-        Right _ -> do
-          Log.debug $ "Successfully authenticated ownership, transferring..."
-          let updated = metadata # over Metadata _ { location = payload.newLocation }
-          Registry.writeMetadata payload.name updated
-          Notify.notify "Successfully transferred your package!"
-          Registry.mirrorLegacyRegistry payload.name payload.newLocation
-          Notify.notify "Mirrored location change to the legacy registry."
+      Just owners -> do
+        pacchettiBotti <- getPacchettiBotti
+        Run.liftAff (Auth.verifyPayload pacchettiBotti owners auth) >>= case _ of
+          Left error -> do
+            Log.error $ Array.fold
+              [ "Failed to verify signed payload against owners with error:\n\n" <> error
+              , "\n\nusing owners\n"
+              , String.joinWith "\n" $ map (stringifyJson Owner.codec) $ NEA.toArray owners
+              ]
+            Log.exit $ "Could not transfer your package because we could not authenticate your ownership."
+          Right _ -> do
+            Log.debug $ "Successfully authenticated ownership, transferring..."
+            let updated = metadata # over Metadata _ { location = payload.newLocation }
+            Registry.writeMetadata payload.name updated
+            Notify.notify "Successfully transferred your package!"
+            Registry.mirrorLegacyRegistry payload.name payload.newLocation
+            Notify.notify "Mirrored location change to the legacy registry."
 
 type PublishEffects r = (REGISTRY + STORAGE + GITHUB + LEGACY_CACHE + PACCHETTIBOTTI_ENV + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r)
 
@@ -1007,64 +1005,6 @@ ignoredGlobs =
   , "**/.DS_Store"
   ]
 
--- | Re-sign a payload as pacchettibotti if the authenticated operation was
--- | submitted by a registry trustee.
---
--- @pacchettibotti is considered an 'owner' of all packages for authenticated
--- operations. Registry trustees can ask pacchettibotti to perform an action on
--- behalf of a package by submitting a payload with the @pacchettibotti email
--- address. If the payload was submitted by a trustee (ie. a member of the
--- packaging team) then pacchettibotti will re-sign it and add itself as an
--- owner before continuing with the authenticated operation.
-acceptTrustees
-  :: forall r
-   . AuthenticatedData
-  -> Maybe (NonEmptyArray Owner)
-  -> Run (GITHUB + LOG_EXCEPT + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + AFF + r) (Tuple AuthenticatedData (Maybe (NonEmptyArray Owner)))
-acceptTrustees auth maybeOwners = do
-  { username } <- Env.askGitHubEvent
-  { publicKey, privateKey } <- Env.askPacchettiBotti
-
-  if auth.email /= pacchettiBottiEmail then
-    pure (Tuple auth maybeOwners)
-  else do
-    GitHub.listTeamMembers packagingTeam >>= case _ of
-      Left githubError -> Log.exit $ Array.fold
-        [ "This authenticated operation was opened using the pacchettibotti "
-        , "email address, but we were unable to authenticate that you are a "
-        , "member of the @purescript/packaging team:\n\n"
-        , Octokit.printGitHubError githubError
-        ]
-      Right members -> do
-        unless (Array.elem username members) do
-          Log.exit $ Array.fold
-            [ "This authenticated operation was opened using the pacchettibotti "
-            , "email address, but your username is not a member of the "
-            , "@purescript/packaging team."
-            ]
-
-        signature <- Run.liftAff (Auth.signPayload { publicKey, privateKey, rawPayload: auth.rawPayload }) >>= case _ of
-          Left _ -> Log.exit "Error signing transfer. cc: @purescript/packaging"
-          Right signature -> pure signature
-
-        let
-          newAuth = auth { signature = signature }
-
-          pacchettiBottiOwner = Owner
-            { email: Env.pacchettibottiEmail
-            , keytype: Env.pacchettibottiKeyType
-            , public: publicKey
-            }
-
-          ownersWithPacchettiBotti = case maybeOwners of
-            Nothing -> NonEmptyArray.singleton pacchettiBottiOwner
-            Just owners -> NonEmptyArray.cons pacchettiBottiOwner owners
-
-        pure (Tuple newAuth (Just ownersWithPacchettiBotti))
-
-packagingTeam :: Team
-packagingTeam = { org: "purescript", team: "packaging" }
-
 jsonToDhallManifest :: String -> Aff (Either String String)
 jsonToDhallManifest jsonStr = do
   let cmd = "json-to-dhall"
@@ -1074,3 +1014,15 @@ jsonToDhallManifest jsonStr = do
   pure $ case result.exit of
     ChildProcess.Normally 0 -> Right jsonStr
     _ -> Left result.stderr
+
+getPacchettiBotti :: forall r. Run (PACCHETTIBOTTI_ENV + r) Owner
+getPacchettiBotti = do
+  { publicKey } <- Env.askPacchettiBotti
+  pure $ Owner
+    { email: Env.pacchettibottiEmail
+    , keytype: Env.pacchettibottiKeyType
+    , public: publicKey
+    }
+
+packagingTeam :: Team
+packagingTeam = { org: "purescript", team: "packaging" }

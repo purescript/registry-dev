@@ -31,6 +31,9 @@ _githubEventEnv = Proxy
 askGitHubEvent :: forall r. Run (GITHUB_EVENT_ENV + r) GitHubEventEnv
 askGitHubEvent = Run.Reader.askAt _githubEventEnv
 
+runGitHubEventEnv :: forall r a. GitHubEventEnv -> Run (GITHUB_EVENT_ENV + r) a -> Run r a
+runGitHubEventEnv = Run.Reader.runReaderAt _githubEventEnv
+
 -- | Environment fields available when the process provides @pacchettibotti
 -- | credentials for sensitive authorized actions.
 type PacchettiBottiEnv =
@@ -46,6 +49,9 @@ _pacchettiBottiEnv = Proxy
 
 askPacchettiBotti :: forall r. Run (PACCHETTIBOTTI_ENV + r) PacchettiBottiEnv
 askPacchettiBotti = Run.Reader.askAt _pacchettiBottiEnv
+
+runPacchettiBottiEnv :: forall r a. PacchettiBottiEnv -> Run (PACCHETTIBOTTI_ENV + r) a -> Run r a
+runPacchettiBottiEnv = Run.Reader.runReaderAt _pacchettiBottiEnv
 
 -- | Variables that can be set in the environment.
 type EnvVars =

@@ -25,7 +25,7 @@ import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Types (RawPackageName(..))
 import Registry.Foreign.FSExtra as FS.Extra
-import Registry.Foreign.Octokit (IssueNumber(..), Tag)
+import Registry.Foreign.Octokit (Tag)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Format as Internal.Format
 import Registry.Operation (AuthenticatedPackageOperation(..))
@@ -35,7 +35,6 @@ import Registry.Scripts.LegacyImporter as LegacyImporter
 import Run (Run)
 import Run as Run
 import Run.Except as Run.Except
-import Run.Reader as Run.Reader
 
 main :: Effect Unit
 main = launchAff_ do
@@ -81,12 +80,9 @@ main = launchAff_ do
   let logPath = Path.concat [ logDir, logFile ]
 
   transfer
-    -- TODO: This environment is currently required for authenticated
-    -- operations because we check whether the username is on the packaging
-    -- team. However, that requirement should be dropped, and we can then
-    -- remove this environment altogether.
-    # Run.Reader.runReaderAt Env._githubEventEnv { issue: IssueNumber (-1), username: "" }
-    # Run.Reader.runReaderAt Env._pacchettiBottiEnv { token, privateKey, publicKey }
+    -- Environment
+    # Env.runPacchettiBottiEnv { token, privateKey, publicKey }
+    -- App effects
     # Run.interpret (Run.on Registry._registry (Registry.handleRegistryGit registryEnv) Run.send)
     # Storage.runStorage Storage.handleStorageReadOnly
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)

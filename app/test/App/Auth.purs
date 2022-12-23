@@ -15,13 +15,13 @@ import Test.Spec as Spec
 spec :: Spec.Spec Unit
 spec = do
   Spec.it "Verifies correct payloads" do
-    Auth.verifyPayload (NonEmptyArray.singleton validOwner) validPayload >>= case _ of
+    Auth.verifyPayload pacchettibotti (NonEmptyArray.singleton validOwner) validPayload >>= case _ of
       Left err -> Assert.fail err
       Right _ -> mempty
 
   Spec.it "Fails to verify when public key is incorrect" do
     let badPublicKey = over Owner (_ { public = "" }) validOwner
-    Auth.verifyPayload (NonEmptyArray.singleton badPublicKey) validPayload >>= case _ of
+    Auth.verifyPayload pacchettibotti (NonEmptyArray.singleton badPublicKey) validPayload >>= case _ of
       Left err -> verifyError err "allowed_signers:1: invalid key"
       Right _ -> Assert.fail "Verified an invalid public key."
 
@@ -38,25 +38,25 @@ spec = do
 
       badSignatureData = validPayload { signature = badSignature }
 
-    Auth.verifyPayload (NonEmptyArray.singleton validOwner) badSignatureData >>= case _ of
+    Auth.verifyPayload pacchettibotti (NonEmptyArray.singleton validOwner) badSignatureData >>= case _ of
       Left err -> verifyError err "Signature verification failed: incorrect signature"
       Right _ -> Assert.fail "Verified an incorrect SSH signature for the payload."
 
   Spec.it "Fails to verify when email is incorrect in authenticated data" do
     let badEmailData = validPayload { email = "test@bar" }
-    Auth.verifyPayload (NonEmptyArray.singleton validOwner) badEmailData >>= case _ of
+    Auth.verifyPayload pacchettibotti (NonEmptyArray.singleton validOwner) badEmailData >>= case _ of
       Left err -> verifyError err ""
       Right _ -> Assert.fail "Verified with an incorrect email address."
 
   Spec.it "Fails to verify when email is incorrect in owner field" do
     let badEmailOwner = over Owner (_ { email = "test@bar" }) validOwner
-    Auth.verifyPayload (NonEmptyArray.singleton badEmailOwner) validPayload >>= case _ of
+    Auth.verifyPayload pacchettibotti (NonEmptyArray.singleton badEmailOwner) validPayload >>= case _ of
       Left err -> verifyError err ""
       Right _ -> Assert.fail "Verified with an incorrect email address."
 
   Spec.it "Fails to verify when payload is incorrect" do
     let badRawPayload = validPayload { rawPayload = "{}" }
-    Auth.verifyPayload (NonEmptyArray.singleton validOwner) badRawPayload >>= case _ of
+    Auth.verifyPayload pacchettibotti (NonEmptyArray.singleton validOwner) badRawPayload >>= case _ of
       Left err -> verifyError err "Signature verification failed: incorrect signature"
       Right _ -> Assert.fail "Verified with a modified payload."
 
@@ -73,6 +73,9 @@ spec = do
         , "  but expected error message:"
         , "  " <> intended
         ]
+
+pacchettibotti :: Owner
+pacchettibotti = Owner { email: "", keytype: "", public: "" }
 
 validOwner :: Owner
 validOwner = Owner

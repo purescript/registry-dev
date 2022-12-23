@@ -27,11 +27,16 @@ sshKeyPath = "id_ed25519"
 
 -- Payload verification is based on this description:
 -- https://www.agwa.name/blog/post/ssh_signatures
-verifyPayload :: NonEmptyArray Owner -> AuthenticatedData -> Aff (Either String String)
-verifyPayload owners { email, signature, rawPayload } = do
+--
+-- We take pacchettibotti as an extra owner because pacchettibotti can always
+-- sign authenticated transfers. This is not sufficient to blanket authorize
+-- things, as someone still needs to use the pacchettibotti credentials to
+-- actually sign the payload.
+verifyPayload :: Owner -> NonEmptyArray Owner -> AuthenticatedData -> Aff (Either String String)
+verifyPayload pacchettiBotti owners { email, signature, rawPayload } = do
   tmp <- liftEffect Tmp.mkTmpDir
   let joinWithNewlines = String.joinWith "\n"
-  let signers = joinWithNewlines $ NonEmptyArray.toArray $ map formatOwner owners
+  let signers = joinWithNewlines $ NonEmptyArray.toArray $ map formatOwner (NonEmptyArray.cons pacchettiBotti owners)
   FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, allowedSignersPath ]) signers
   FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, payloadSignaturePath ]) (joinWithNewlines signature)
   -- The 'ssh-keygen' command will only exit normally if the signature verifies,

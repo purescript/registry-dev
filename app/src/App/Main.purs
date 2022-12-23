@@ -13,22 +13,44 @@ import Effect.Exception as Exception
 import Foreign.Object as Object
 import Node.FS.Aff as FS.Aff
 import Node.Process as Process
+import Registry.App.API (Source(..))
+import Registry.App.API as API
+import Registry.App.Auth as Auth
+import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
+import Registry.App.Effect.GitHub (GITHUB)
+import Registry.App.Effect.GitHub as GitHub
+import Registry.App.Effect.Log (LOG_EXCEPT)
+import Registry.App.Effect.Log as Log
 import Registry.Constants as Constants
 import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit (GitHubToken, IssueNumber(..), Octokit)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.S3 (SpaceKey)
-import Registry.Operation (PackageOperation(..), PackageSetOperation(..))
+import Registry.Operation (AuthenticatedData, PackageOperation(..), PackageSetOperation(..))
 import Registry.Operation as Operation
+import Run (AFF, Run)
+import Run as Run
 
 main :: Effect Unit
 main = launchAff_ $ do
   -- For now we only support GitHub events, and no formal API, so we'll jump
   -- straight into the GitHub event workflow.
   initializeGitHub >>= traverse_ \env -> do
-    -- TODO: Set up run.
-    -- runOperation API operation
+    let
+      _app = case env.operation of
+        Left packageSetOperation -> case packageSetOperation of
+          PackageSetUpdate updateData ->
+            API.packageSetUpdate updateData
+        Right packageOperation -> case packageOperation of
+          Publish publishData ->
+            API.publish Current publishData
+          Authenticated authData -> do
+            -- If we receive an authenticated operation via GitHub, then we
+            -- re-sign it with pacchettibotti credentials if and only if the
+            -- operation was opened by a trustee.
+            signed <- signPacchettiBottiIfTrustee authData
+            API.authenticated signed
 
     -- After the run, close the issue. If an exception was thrown then the issue
     -- will remain open.
@@ -201,3 +223,44 @@ decodeIssueEvent json = lmap CA.printJsonDecodeError do
       (Left $ CA.AtKey key CA.MissingValue)
       (lmap (CA.AtKey key) <<< CA.decode codec)
       (Object.lookup key object)
+
+-- | Re-sign a payload as pacchettibotti if the authenticated operation was
+-- | submitted by a registry trustee.
+--
+-- @pacchettibotti is considered an 'owner' of all packages for authenticated
+-- operations. Registry trustees can ask pacchettibotti to perform an action on
+-- behalf of a package by submitting a payload with the @pacchettibotti email
+-- address. If the payload was submitted by a trustee (ie. a member of the
+-- packaging team) then pacchettibotti will re-sign it and add itself as an
+-- owner before continuing with the authenticated operation.
+signPacchettiBottiIfTrustee
+  :: forall r
+   . AuthenticatedData
+  -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + LOG_EXCEPT + AFF + r) AuthenticatedData
+signPacchettiBottiIfTrustee auth = do
+  if auth.email /= pacchettiBottiEmail then
+    pure auth
+  else do
+    GitHub.listTeamMembers API.packagingTeam >>= case _ of
+      Left githubError -> Log.exit $ Array.fold
+        [ "This authenticated operation was opened using the pacchettibotti "
+        , "email address, but we were unable to authenticate that you are a "
+        , "member of the @purescript/packaging team:\n\n"
+        , Octokit.printGitHubError githubError
+        ]
+      Right members -> do
+        { username } <- Env.askGitHubEvent
+        unless (Array.elem username members) do
+          Log.exit $ Array.fold
+            [ "This authenticated operation was opened using the pacchettibotti "
+            , "email address, but your username is not a member of the "
+            , "@purescript/packaging team."
+            ]
+
+        { publicKey, privateKey } <- Env.askPacchettiBotti
+        signature <- Run.liftAff (Auth.signPayload { publicKey, privateKey, rawPayload: auth.rawPayload }) >>= case _ of
+          Left _ -> Log.exit "Error signing transfer. cc: @purescript/packaging"
+          Right signature -> pure signature
+
+        pure $ auth { signature = signature }
+

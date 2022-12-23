@@ -103,6 +103,7 @@ main = Aff.launchAff_ do
   let packageSetsWorkDir = Path.concat [ scratchDir, "package-set-build" ]
 
   updater
+    -- App effects
     # Run.interpret (Run.on PackageSets._packageSets (PackageSets.handlePackageSetsAff { workdir: packageSetsWorkDir }) Run.send)
     # Run.interpret (Run.on Registry._registry (Registry.handleRegistryGit registryEnv) Run.send)
     # Storage.runStorage Storage.handleStorageReadOnly

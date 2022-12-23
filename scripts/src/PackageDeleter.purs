@@ -135,6 +135,7 @@ main = launchAff_ do
       Right values -> pure values
 
   deleter { registry, registryIndex, token, mode: CommitAndPush } deletions
+    -- App effects
     # Run.interpret (Run.on Registry._registry (Registry.handleRegistryGit registryEnv) Run.send)
     # Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
