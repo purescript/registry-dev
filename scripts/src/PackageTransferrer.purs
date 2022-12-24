@@ -10,6 +10,7 @@ import Effect.Ref as Ref
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
+import Registry.App.Auth as Auth
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (GitEnv, PullMode(..))
@@ -124,11 +125,17 @@ transferPackage rawPackageName newLocation = do
     payload = { name, newLocation }
     rawPayload = stringifyJson Operation.transferCodec payload
 
+  { publicKey, privateKey } <- Env.askPacchettiBotti
+
+  signature <- Run.liftAff (Auth.signPayload { publicKey, privateKey, rawPayload }) >>= case _ of
+    Left _ -> Log.exit "Error signing transfer."
+    Right signature -> pure signature
+
   API.authenticated
     { email: pacchettibottiEmail
     , payload: Transfer payload
     , rawPayload
-    , signature: [] -- The API will re-sign using @pacchettibotti credentials.
+    , signature
     }
 
 type PackageLocations =
