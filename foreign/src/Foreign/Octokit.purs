@@ -298,20 +298,30 @@ type Request a =
   , codec :: JsonCodec a
   }
 
-foreign import requestImpl :: forall r. EffectFn6 Octokit String (Object String) JSArgs (Object Json -> r) (Json -> r) (Promise r)
-foreign import paginateImpl :: forall r. EffectFn6 Octokit String (Object String) JSArgs (Object Json -> r) (Json -> r) (Promise r)
+type Response a =
+  { etag :: String
+  , response :: a
+  }
+
+type JSResponse =
+  { data :: Json
+  , etag :: String
+  }
+
+foreign import requestImpl :: forall r. EffectFn6 Octokit String (Object String) JSArgs (Object Json -> r) (JSResponse -> r) (Promise r)
+foreign import paginateImpl :: forall r. EffectFn6 Octokit String (Object String) JSArgs (Object Json -> r) (JSResponse -> r) (Promise r)
 
 -- | Make a request to the GitHub API.
-request :: forall a. Octokit -> Request a -> Aff (Either GitHubError a)
+request :: forall a. Octokit -> Request a -> Aff (Either GitHubError (Response a))
 request octokit { route, headers, args, paginate, codec } = do
   result <- Promise.toAffE $ runEffectFn6 (if paginate then paginateImpl else requestImpl) octokit (printGitHubRoute route) headers args Left Right
   pure $ case result of
     Left githubError -> case decodeGitHubAPIError githubError of
       Left decodeError -> Left $ UnexpectedError decodeError
       Right decoded -> Left $ APIError decoded
-    Right json -> case CA.decode codec json of
+    Right response -> case CA.decode codec response.data of
       Left decodeError -> Left $ DecodeError $ CA.printJsonDecodeError decodeError
-      Right parsed -> Right parsed
+      Right parsed -> Right { etag: response.etag, response: parsed }
   where
   decodeGitHubAPIError :: Object Json -> Either String GitHubAPIError
   decodeGitHubAPIError object = lmap CA.printJsonDecodeError do
