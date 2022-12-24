@@ -157,9 +157,3 @@ decodeBase64Key :: String -> Either String String
 decodeBase64Key b64Key = case Base64.decode b64Key of
   Left b64Error -> Left $ "Failed to decode base64-encoded key " <> b64Key <> " with error: " <> Aff.message b64Error
   Right decoded -> Right $ String.trim decoded
-
-pacchettibottiKeyType :: String
-pacchettibottiKeyType = "ssh-ed25519"
-
-pacchettibottiEmail :: String
-pacchettibottiEmail = "pacchettibotti@purescript.org"

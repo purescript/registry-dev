@@ -9,7 +9,6 @@ import Data.Foldable (traverse_)
 import Data.String as String
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
-import Effect.Unsafe (unsafePerformEffect)
 import Foreign.Object as Object
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
@@ -20,6 +19,8 @@ import Registry.App.Auth as Auth
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
+import Registry.App.Effect.Git (GitEnv, PullMode(..))
+import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG_EXCEPT, LogVerbosity(..))
@@ -27,7 +28,6 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit as Pursuit
-import Registry.App.Effect.Registry (PullMode(..), RegistryEnv, WriteStrategy(..))
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest as Legacy.Manifest
@@ -63,22 +63,19 @@ main = launchAff_ $ do
             signed <- signPacchettiBottiIfTrustee payload
             API.authenticated signed
 
-    -- Registry env
+    -- Git env
     let
-      registryEnv :: RegistryEnv
-      registryEnv =
-        { legacyPackageSets: Path.concat [ scratchDir, "package-sets" ]
-        , registry: Path.concat [ scratchDir, "registry" ]
-        , registryIndex: Path.concat [ scratchDir, "registry-index" ]
-        , timers: unsafePerformEffect Registry.newTimers
-        , writeStrategy: WriteCommitPush env.token
+      gitEnv :: GitEnv
+      gitEnv =
+        { repos: Git.defaultRepos
         , pullMode: ForceClean
+        , committer: Git.pacchettibottiCommitter env.token
+        , workdir: scratchDir
         }
 
     -- Caching
     githubCacheRef <- Cache.newCacheRef
     legacyCacheRef <- Cache.newCacheRef
-    registryCacheRef <- Cache.newCacheRef
     let cacheDir = Path.concat [ scratchDir, ".cache" ]
     let workdir = Path.concat [ scratchDir, "package-sets-work" ]
 
@@ -88,8 +85,9 @@ main = launchAff_ $ do
       # Env.runPacchettiBottiEnv { publicKey: env.publicKey, privateKey: env.privateKey }
       -- App effects
       # PackageSets.runPackageSets (PackageSets.handlePackageSetsAff { workdir })
-      # Registry.runRegistryGitCached registryCacheRef registryEnv
+      # Registry.runRegistry Registry.handleRegistryGit
       # Storage.runStorage (Storage.handleStorageS3 env.spacesConfig)
+      # Git.runGit (Git.handleGitAff gitEnv)
       -- Requests
       # Pursuit.runPursuit (Pursuit.handlePursuitHttp env.token)
       # GitHub.runGitHub (GitHub.handleGitHubOctokit env.octokit)
@@ -273,7 +271,7 @@ signPacchettiBottiIfTrustee
    . AuthenticatedData
   -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + LOG_EXCEPT + AFF + r) AuthenticatedData
 signPacchettiBottiIfTrustee auth = do
-  if auth.email /= pacchettiBottiEmail then
+  if auth.email /= pacchettibottiEmail then
     pure auth
   else do
     GitHub.listTeamMembers API.packagingTeam >>= case _ of

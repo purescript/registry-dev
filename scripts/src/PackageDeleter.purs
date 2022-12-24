@@ -4,7 +4,6 @@ import Registry.App.Prelude
 
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
-import Control.Monad.Except as Except
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Data.FoldableWithIndex (foldMapWithIndex)
@@ -13,28 +12,26 @@ import Data.Map as Map
 import Data.String as String
 import Data.Tuple (uncurry)
 import Effect.Class.Console as Console
-import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
 import Node.Process as Process
-import Registry.App.CLI.Git (CommitMode(..))
-import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
+import Registry.App.Effect.Git (GitEnv, PullMode(..))
+import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
+import Registry.App.Effect.Log (LOG, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Registry (PullMode(..), REGISTRY, WriteStrategy(..))
+import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
-import Registry.Foreign.Octokit (GitHubToken)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
 import Registry.PackageName as PackageName
 import Registry.Version as Version
-import Run (AFF, EFFECT, Run)
+import Run (Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Run.Except
@@ -87,19 +84,14 @@ main = launchAff_ do
   spacesKey <- Env.lookupRequired Env.spacesKey
   spacesSecret <- Env.lookupRequired Env.spacesSecret
 
-  -- Registry
+  -- Git
   let
-    registry = Path.concat [ scratchDir, "registry" ]
-    registryIndex = Path.concat [ scratchDir, "registry-index" ]
-    registryEnv =
-      { legacyPackageSets: Path.concat [ scratchDir, "package-sets" ]
-      , registry
-      , registryIndex
+    gitEnv :: GitEnv
+    gitEnv =
+      { committer: Git.pacchettibottiCommitter token
       , pullMode: OnlyClean
-      -- We only write because we'll bulk-commit the changes as part of the
-      -- deleter itself instead of committing one-by-one.
-      , writeStrategy: Write
-      , timers: unsafePerformEffect Registry.newTimers
+      , repos: Git.defaultRepos
+      , workdir: scratchDir
       }
 
   -- GitHub
@@ -109,7 +101,6 @@ main = launchAff_ do
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
   githubCacheRef <- Cache.newCacheRef
-  registryCacheRef <- Cache.newCacheRef
 
   -- Logging
   now <- liftEffect nowUTC
@@ -124,65 +115,53 @@ main = launchAff_ do
       Left err -> Console.log err *> liftEffect (Process.exit 1)
       Right values -> pure values
 
-  deleter { registry, registryIndex, token, mode: CommitOnly } deletions
-    -- App effects
-    # Registry.runRegistryGitCached registryCacheRef registryEnv
-    # Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
-    # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
-    -- Caching
-    # Storage.runStorageCacheFs cacheDir
-    # GitHub.runGitHubCacheMemoryFs githubCacheRef cacheDir
-    -- Logging
-    # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-    # Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
-    -- Base effects
-    # Run.runBaseAff'
+  let
+    interpret runGit =
+      -- App effects
+      Registry.runRegistry Registry.handleRegistryGit
+        >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
+        >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+        >>> runGit
+        -- Caching
+        >>> Storage.runStorageCacheFs cacheDir
+        >>> GitHub.runGitHubCacheMemoryFs githubCacheRef cacheDir
+        -- Logging
+        >>> Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+        >>> Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
+        -- Base effects
+        >>> Run.runBaseAff'
 
-type DeleterArgs =
-  { registry :: FilePath
-  , registryIndex :: FilePath
-  , token :: GitHubToken
-  , mode :: CommitMode
-  }
+  -- We run deletions *without* committing, because we'll do it in bulk later.
+  -- TODO TODO TODO Read-only git handler
+  interpret (Git.runGit (\_ -> unsafeCrashWith "unimplemented read-only handler")) do
+    Log.info $ Array.fold
+      [ "Deleting package versions:"
+      , do
+          let foldFn name versions = "\n  - " <> PackageName.print name <> " " <> String.joinWith ", " (map Version.print versions)
+          foldMapWithIndex foldFn deletions
+      ]
 
-deleter :: forall r. DeleterArgs -> Map PackageName (Array Version) -> Run (REGISTRY + STORAGE + LOG + LOG_EXCEPT + AFF + EFFECT + r) Unit
-deleter env deletions = do
-  Log.info $ Array.fold
-    [ "Deleting package versions:"
-    , do
-        let foldFn name versions = "\n  - " <> PackageName.print name <> " " <> String.joinWith ", " (map Version.print versions)
-        foldMapWithIndex foldFn deletions
-    ]
+    forWithIndex_ deletions \name versions ->
+      for_ versions \version -> do
+        result <- Run.Except.runExcept $ deleteVersion name version
+        let printed = Version.print version
+        case result of
+          Left err -> do
+            Log.error $ "Failed to delete " <> printed <> ": " <> err
+          Right _ ->
+            Log.info $ "Successfully removed " <> printed
 
-  forWithIndex_ deletions \name versions ->
-    for_ versions \version -> do
-      result <- Run.Except.runExcept $ deleteVersion name version
-      let printed = Version.print version
-      case result of
-        Left err -> do
-          Log.error $ "Failed to delete " <> printed <> ": " <> err
-        Right _ ->
-          Log.info $ "Successfully removed " <> printed
+    Log.info "Finished."
 
-  commitMetadata <- Run.liftAff $ Except.runExceptT do
-    let message = "Remove some package versions from metadata."
-    let paths = String.Pattern "*.json"
-    Git.pacchettiBottiCommitRegistry env.registry { token: env.token, mode: env.mode, paths, message }
+  -- Then we add our commits with committing enabled.
+  interpret (Git.runGit (Git.handleGitAff gitEnv)) do
+    Git.commit Git.CommitMetadataIndex "Remove some package versions from metadata." >>= case _ of
+      Left error -> Log.error $ "Failed to commit metadata: " <> error
+      Right _ -> pure unit
 
-  case commitMetadata of
-    Left err -> Log.error $ "Failed to commit metadata: " <> err
-    Right _ -> pure unit
-
-  commitIndex <- Run.liftAff $ Except.runExceptT do
-    let message = "Remove some package versions from manifest index."
-    let paths = String.Pattern "."
-    Git.pacchettiBottiCommitRegistryIndex env.registryIndex { token: env.token, mode: env.mode, paths, message }
-
-  case commitIndex of
-    Left err -> Log.error $ "Failed to commit manifest index: " <> err
-    Right _ -> pure unit
-
-  Log.info "Finished."
+    Git.commit Git.CommitManifestIndex "Remove some package versions from manifest index." >>= case _ of
+      Left error -> Log.error $ "Failed to commit manifest index: " <> error
+      Right _ -> pure unit
 
 deleteVersion :: forall r. PackageName -> Version -> Run (REGISTRY + STORAGE + LOG + EXCEPT String + r) Unit
 deleteVersion name version = do

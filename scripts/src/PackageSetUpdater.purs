@@ -15,17 +15,18 @@ import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
-import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
+import Registry.App.Effect.Git (GitEnv, PullMode(..))
+import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
 import Registry.App.Effect.PackageSets as PackageSets
-import Registry.App.Effect.Registry (PullMode(..), REGISTRY, RegistryEnv, WriteStrategy(..))
+import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
@@ -60,37 +61,35 @@ main = Aff.launchAff_ do
   -- Environment
   _ <- Env.loadEnvFile ".env"
 
-  { octokit, writeStrategy } <- case mode of
+  token <- case mode of
     GeneratePackageSet -> do
-      token <- Env.lookupRequired Env.githubToken
-      octokit <- liftEffect $ Octokit.newOctokit token
-      pure { writeStrategy: Write, octokit }
+      Env.lookupOptional Env.githubToken >>= case _ of
+        Nothing -> Env.lookupRequired Env.pacchettibottiToken
+        Just token -> pure token
+    CommitPackageSet ->
+      Env.lookupRequired Env.pacchettibottiToken
 
-    CommitPackageSet -> do
-      token <- Env.lookupRequired Env.pacchettibottiToken
-      octokit <- liftEffect $ Octokit.newOctokit token
-      pure { writeStrategy: WriteCommitPush token, octokit }
-
-  -- Registry
+  -- Git
   let
-    registryEnv :: RegistryEnv
-    registryEnv =
-      { legacyPackageSets: Path.concat [ scratchDir, "package-sets" ]
-      , registry: Path.concat [ scratchDir, "registry" ]
-      , registryIndex: Path.concat [ scratchDir, "registry-index" ]
+    -- TODO TODO TODO This should be read-only for generate-package-set
+    gitEnv :: GitEnv
+    gitEnv =
+      { committer: Git.pacchettibottiCommitter token
       , pullMode: ForceClean
-      , writeStrategy
-      , timers: unsafePerformEffect Registry.newTimers
+      , repos: Git.defaultRepos
+      , workdir: scratchDir
       }
 
   -- Package sets
   let packageSetsEnv = { workdir: Path.concat [ scratchDir, "package-set-build" ] }
 
+  -- GitHub
+  octokit <- liftEffect $ Octokit.newOctokit token
+
   -- Caching
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
   githubCacheRef <- Cache.newCacheRef
-  registryCacheRef <- Cache.newCacheRef
 
   -- Logging
   now <- liftEffect nowUTC
@@ -102,8 +101,9 @@ main = Aff.launchAff_ do
   updater
     -- App effects
     # PackageSets.runPackageSets (PackageSets.handlePackageSetsAff packageSetsEnv)
-    # Registry.runRegistryGitCached registryCacheRef registryEnv
+    # Registry.runRegistry Registry.handleRegistryGit
     # Storage.runStorage Storage.handleStorageReadOnly
+    # Git.runGit (Git.handleGitAff gitEnv)
     -- Requests
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caching

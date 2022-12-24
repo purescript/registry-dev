@@ -7,18 +7,19 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.String as String
 import Effect.Ref as Ref
-import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
+import Registry.App.Effect.Git (GitEnv, PullMode(..))
+import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify as Notify
-import Registry.App.Effect.Registry (PullMode(..), REGISTRY, RegistryEnv, WriteStrategy(..))
+import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.LenientVersion as LenientVersion
@@ -44,16 +45,14 @@ main = launchAff_ do
   publicKey <- Env.lookupRequired Env.pacchettibottiED25519Pub
   privateKey <- Env.lookupRequired Env.pacchettibottiED25519
 
-  -- Registry
+  -- Git
   let
-    registryEnv :: RegistryEnv
-    registryEnv =
-      { legacyPackageSets: Path.concat [ scratchDir, "package-sets" ]
-      , registry: Path.concat [ scratchDir, "registry" ]
-      , registryIndex: Path.concat [ scratchDir, "registry-index" ]
+    gitEnv :: GitEnv
+    gitEnv =
+      { repos: Git.defaultRepos
       , pullMode: ForceClean
-      , writeStrategy: WriteCommitPush token
-      , timers: unsafePerformEffect Registry.newTimers
+      , committer: Git.pacchettibottiCommitter token
+      , workdir: scratchDir
       }
 
   -- GitHub
@@ -63,7 +62,6 @@ main = launchAff_ do
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
   githubCacheRef <- Cache.newCacheRef
-  registryCacheRef <- Cache.newCacheRef
 
   -- Logging
   now <- liftEffect nowUTC
@@ -76,8 +74,9 @@ main = launchAff_ do
     -- Environment
     # Env.runPacchettiBottiEnv { privateKey, publicKey }
     -- App effects
-    # Registry.runRegistryGitCached registryCacheRef registryEnv
+    # Registry.runRegistry Registry.handleRegistryGit
     # Storage.runStorage Storage.handleStorageReadOnly
+    # Git.runGit (Git.handleGitAff gitEnv)
     -- Requests
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caching
@@ -126,7 +125,7 @@ transferPackage rawPackageName newLocation = do
     rawPayload = stringifyJson Operation.transferCodec payload
 
   API.authenticated
-    { email: Env.pacchettibottiEmail
+    { email: pacchettibottiEmail
     , payload: Transfer payload
     , rawPayload
     , signature: [] -- The API will re-sign using @pacchettibotti credentials.

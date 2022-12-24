@@ -45,13 +45,14 @@ import Registry.App.API as API
 import Registry.App.Effect.Cache (Cache, CacheId(..), CacheRef, Expiry(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
+import Registry.App.Effect.Git (PullMode(..))
+import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Pursuit as Pursuit
-import Registry.App.Effect.Registry (PullMode(..), WriteStrategy(..))
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.LenientVersion (LenientVersion)
@@ -108,50 +109,51 @@ main = launchAff_ do
   -- local repository checkouts on disk. In generate-registry mode, tarballs are
   -- uploaded, but nothing is committed. In update-registry mode, tarballs are
   -- uploaded and manifests and metadata are written, committed, and pushed.
+  --
+  -- TODO TODO TODO  This should support git read-only mode
   runAppEffects <- do
-    timers <- Registry.newTimers
-    registryCacheRef <- Cache.newCacheRef
-
     let
-      legacyPackageSets = Path.concat [ scratchDir, "package-sets" ]
-      registry = Path.concat [ scratchDir, "registry" ]
-      registryIndex = Path.concat [ scratchDir, "registry-index" ]
-      mkRegistryEnv { pullMode, writeStrategy } = { legacyPackageSets, registry, registryIndex, timers, pullMode, writeStrategy }
+      gitEnv token pullMode =
+        { repos: Git.defaultRepos
+        , pullMode
+        , committer: Git.pacchettibottiCommitter token
+        , workdir: scratchDir
+        }
 
     case mode of
       DryRun -> do
         token <- Env.lookupRequired Env.githubToken
         octokit <- liftEffect $ Octokit.newOctokit token
-        let registryEnv = mkRegistryEnv { pullMode: Autostash, writeStrategy: Write }
         pure do
-          Registry.runRegistryGitCached registryCacheRef registryEnv
+          Registry.runRegistry Registry.handleRegistryGit
             >>> Storage.runStorage Storage.handleStorageReadOnly
             >>> Pursuit.runPursuit Pursuit.handlePursuitNoOp
             >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+            >>> Git.runGit (Git.handleGitAff (gitEnv token Autostash))
 
       GenerateRegistry -> do
         token <- Env.lookupRequired Env.githubToken
         spacesKey <- Env.lookupRequired Env.spacesKey
         spacesSecret <- Env.lookupRequired Env.spacesSecret
         octokit <- liftEffect $ Octokit.newOctokit token
-        let registryEnv = mkRegistryEnv { pullMode: Autostash, writeStrategy: Write }
         pure do
-          Registry.runRegistryGitCached registryCacheRef registryEnv
+          Registry.runRegistry Registry.handleRegistryGit
             >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
             >>> Pursuit.runPursuit Pursuit.handlePursuitNoOp
             >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+            >>> Git.runGit (Git.handleGitAff (gitEnv token Autostash))
 
       UpdateRegistry -> do
         token <- Env.lookupRequired Env.pacchettibottiToken
         spacesKey <- Env.lookupRequired Env.spacesKey
         spacesSecret <- Env.lookupRequired Env.spacesSecret
         octokit <- liftEffect $ Octokit.newOctokit token
-        let registryEnv = mkRegistryEnv { pullMode: OnlyClean, writeStrategy: WriteCommitPush token }
         pure do
-          Registry.runRegistryGitCached registryCacheRef registryEnv
+          Registry.runRegistry Registry.handleRegistryGit
             >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
             >>> Pursuit.runPursuit (Pursuit.handlePursuitHttp token)
             >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+            >>> Git.runGit (Git.handleGitAff (gitEnv token OnlyClean))
 
   -- Caching setup
   runCacheEffects <- do

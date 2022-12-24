@@ -18,6 +18,7 @@ import Data.DateTime (DateTime)
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.HTTP.Method (Method(..))
+import Data.JSDate as JSDate
 import Data.Map as Map
 import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
@@ -33,12 +34,12 @@ import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Registry.App.Auth as Auth
-import Registry.App.CLI.Git as Git
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
+import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
@@ -809,22 +810,51 @@ fetchPackageSource { tmpDir, ref, location } = case location of
     when (isJust subdir) $ Log.exit "`subdir` is not supported for now. See #16"
 
     case pursPublishMethod of
+      -- This needs to be removed so that we can support non-GitHub packages (#15)
+      -- and monorepo packages (#16).
+      --
+      -- However, the PureScript compiler requires packages to be a Git repo
+      -- with a tag checked out. Until we can replace using the compiler's
+      -- 'publish' command for docs we have to use this hacky checkout.
       LegacyPursPublish -> do
         Log.debug $ "Using legacy Git clone to fetch package source at tag: " <> show { owner, repo, ref }
-        Run.liftAff (Aff.attempt (Git.cloneGitTag (Array.fold [ "https://github.com/", owner, "/", repo ]) ref tmpDir)) >>= case _ of
+
+        let
+          clonePackageAtTag = do
+            let url = Array.fold [ "https://github.com", owner, "/", repo ]
+            let args = [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false" ]
+            withBackoff' (Git.gitCLI args (Just tmpDir)) >>= case _ of
+              Nothing -> Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> url <> " " <> ref
+              Just (Left err) -> Aff.throwError $ Aff.error err
+              Just (Right _) -> pure unit
+
+        Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
           Left error -> do
             Log.error $ "Failed to clone git tag: " <> Aff.message error
             Log.exit $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
           Right _ -> Log.debug "Cloned package source."
+
         Log.debug $ "Getting published time..."
+
+        let
+          getRefTime = Except.runExceptT do
+            let repoDir = Path.concat [ tmpDir, repo ]
+            timestamp <- ExceptT $ Git.gitCLI [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir)
+            jsDate <- liftEffect $ JSDate.parse timestamp
+            dateTime <- Except.except $ note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
+            pure dateTime
+
         -- Cloning will result in the `repo` name as the directory name
-        publishedTime <- Run.liftAff (Except.runExceptT (Git.gitGetRefTime ref (Path.concat [ tmpDir, repo ]))) >>= case _ of
+        publishedTime <- Run.liftAff getRefTime >>= case _ of
           Left error -> do
             Log.error $ "Failed to get published time: " <> error
             Log.exit $ "Cloned repository " <> owner <> "/" <> repo <> " at ref " <> ref <> ", but could not read the published time from the ref."
           Right value -> pure value
         pure { packageDirectory: Path.concat [ tmpDir, repo ], publishedTime }
 
+      -- This method is not currently used (see the comment on LegacyPursPublish),
+      -- but it's implemented here to demonstrate what we should do once we no
+      -- longer have to check out the repository.
       PursPublish -> do
         Log.debug $ "Using GitHub API to fetch package source at tag " <> show { owner, repo, ref }
         commitDate <- do
@@ -989,8 +1019,8 @@ getPacchettiBotti :: forall r. Run (PACCHETTIBOTTI_ENV + r) Owner
 getPacchettiBotti = do
   { publicKey } <- Env.askPacchettiBotti
   pure $ Owner
-    { email: Env.pacchettibottiEmail
-    , keytype: Env.pacchettibottiKeyType
+    { email: pacchettibottiEmail
+    , keytype: pacchettibottiKeyType
     , public: publicKey
     }
 

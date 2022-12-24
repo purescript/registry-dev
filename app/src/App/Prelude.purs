@@ -10,7 +10,8 @@ module Registry.App.Prelude
   , module Prelude
   , module Registry.Types
   , nowUTC
-  , pacchettiBottiEmail
+  , pacchettibottiEmail
+  , pacchettibottiKeyType
   , parseJson
   , partitionEithers
   , printJson
@@ -89,8 +90,12 @@ scratchDir :: Extra.FilePath
 scratchDir = "scratch"
 
 -- | The email address of the @pacchettibotti account
-pacchettiBottiEmail :: String
-pacchettiBottiEmail = "pacchettibotti@purescript.org"
+pacchettibottiEmail :: String
+pacchettibottiEmail = "pacchettibotti@purescript.org"
+
+-- | The public key type of the @pacchettibotti account
+pacchettibottiKeyType :: String
+pacchettibottiKeyType = "ssh-ed25519"
 
 -- | Print a type as a formatted JSON string
 printJson :: forall a. Extra.JsonCodec a -> a -> String
