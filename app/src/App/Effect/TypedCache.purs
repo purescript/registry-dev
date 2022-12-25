@@ -8,7 +8,29 @@
 -- | significant benefits: first, you know what type you will receive when
 -- | reading from the cache, and second, you can store types directly to
 -- | in-memory caches, without the overhead of serialization and deserialization.
-module Registry.App.Effect.TypedCache where
+module Registry.App.Effect.TypedCache
+  ( Reply(..)
+  , Ignore(..)
+  , CacheKey(..)
+  , getCache
+  , putCache
+  , deleteCache
+  , runCacheAt
+  , MemoryFsCacheEnv(..)
+  , handleCacheMemoryFs
+  , MemoryCacheEnv(..)
+  , CacheValue
+  , CacheRef(..)
+  , newCacheRef
+  , MemoryEncoder(..)
+  , MemoryEncoding(..)
+  , handleCacheMemory
+  , FsCacheEnv(..)
+  , FsEncoder(..)
+  , FsEncoding(..)
+  , handleCacheFs
+  , TypedCache(..)
+  ) where
 
 import Registry.App.Prelude hiding (Manifest(..), Metadata(..))
 

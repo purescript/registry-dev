@@ -56,7 +56,7 @@ data CommitKey
   | CommitLegacyPackageSets (Array FilePath)
 
 data Git a
-  = FetchRepo RepoKey (Either String GitResult -> a)
+  = Pull RepoKey (Either String GitResult -> a)
   | Commit CommitKey String (Either String GitResult -> a)
   | Push RepoKey (Either String GitResult -> a)
   | Tag RepoKey String (Either String GitResult -> a)
@@ -73,8 +73,8 @@ _git = Proxy
 
 -- | Get the repository at the given key, recording whether the pull or clone
 -- | had any effect (ie. if the repo was already up-to-date).
-fetchRepo :: forall r. RepoKey -> Run (GIT + r) (Either String GitResult)
-fetchRepo key = Run.lift _git (FetchRepo key identity)
+pull :: forall r. RepoKey -> Run (GIT + r) (Either String GitResult)
+pull key = Run.lift _git (Pull key identity)
 
 -- | Commit the file(s) indicated by the commit key with a commit message.
 commit :: forall r. CommitKey -> String -> Run (GIT + r) (Either String GitResult)
@@ -108,7 +108,7 @@ getAddress key = Run.lift _git (GetAddress key identity)
 writeCommitPush :: forall r. CommitKey -> (FilePath -> Run (GIT + r) (Maybe String)) -> Run (GIT + r) (Either String GitResult)
 writeCommitPush commitKey write = do
   let repoKey = commitKeyToRepoKey commitKey
-  fetchRepo repoKey >>= case _ of
+  pull repoKey >>= case _ of
     Left error -> pure (Left error)
     Right _ -> do
       repoPath <- getPath repoKey
@@ -178,7 +178,10 @@ pacchettibottiCommitter token =
 
 -- | A handler for the Git effect which clones repos to the given file path
 --
--- TODO: A read-only mode for when we don't want things to be pushed.
+-- Note: This assumes that 'Pull' will be called before tagging, committing,
+-- pushing, etc. but that's not necessarily true. In practice we always use
+-- 'writeCommitPush', so this isn't an issue, but it would be nice to ensure
+-- an initial pull.
 handleGitAff :: forall r a. GitEnv -> Git a -> Run (LOG + AFF + r) a
 handleGitAff env = case _ of
   GetPath key reply -> do
@@ -187,7 +190,7 @@ handleGitAff env = case _ of
   GetAddress key reply -> do
     pure $ reply $ address key
 
-  FetchRepo key reply -> do
+  Pull key reply -> do
     let path = filepath key
     Log.debug $ "Fetching repo at path " <> path
     -- First, we need to verify whether we should clone or pull.
