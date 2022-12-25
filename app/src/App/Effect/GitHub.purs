@@ -2,8 +2,10 @@
 module Registry.App.Effect.GitHub
   ( GITHUB
   , GITHUB_CACHE
+  , GitHubCache
   , GitHub(..)
   , _github
+  , _githubCache
   , getCommitDate
   , getContent
   , getJsonFile
@@ -12,6 +14,8 @@ module Registry.App.Effect.GitHub
   , listTags
   , listTeamMembers
   , runGitHub
+  , githubFsEncoder
+  , githubMemoryEncoder
   , runGitHubCacheMemoryFs
   ) where
 
@@ -20,43 +24,25 @@ import Registry.App.Prelude
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
+import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
-import Data.Formatter.DateTime as Formatter.DateTime
+import Data.Exists as Exists
 import Data.HTTP.Method (Method(..))
 import Data.Time.Duration as Duration
 import Foreign.Object as Object
-import Registry.App.Effect.Cache (Cache, CacheId(..), CacheRef, Expiry(..))
-import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.TypedCache (CacheKey, CacheRef, FsEncoder, FsEncoding(..), MemoryEncoder, MemoryEncoding(..), TypedCache)
+import Registry.App.Effect.TypedCache as TypedCache
 import Registry.App.Legacy.Types (RawVersion(..))
 import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit (Address, GitHubError(..), GitHubRoute(..), Octokit, Request, Tag, Team)
 import Registry.Foreign.Octokit as Octokit
+import Registry.Internal.Codec as Internal.Codec
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Type.Proxy (Proxy(..))
-
--- | A cache for the GITHUB effect, which stores the JSON content of requests.
-type GITHUB_CACHE r = (githubCache :: Cache Json | r)
-
-_githubCache :: Proxy "githubCache"
-_githubCache = Proxy
-
--- | Interpret the GITHUB_CACHE effect using an in-memory cache backed by the
--- | file system
-runGitHubCacheMemoryFs
-  :: forall r a
-   . CacheRef Json
-  -> FilePath
-  -> Run (GITHUB_CACHE + LOG + AFF + EFFECT + r) a
-  -> Run (LOG + AFF + EFFECT + r) a
-runGitHubCacheMemoryFs cacheRef cacheDir = Cache.runCacheAt _githubCache
-  ( Cache.handleCacheMemoryFs
-      { cacheRef, expiry: Never }
-      { cacheDir, encoding: Cache.json }
-  )
 
 data GitHub a
   = ListTags Address (Either GitHubError (Array Tag) -> a)
@@ -151,73 +137,81 @@ handleGitHubOctokit octokit = case _ of
 request :: forall r a. Octokit -> Request a -> Run (GITHUB_CACHE + LOG + AFF + EFFECT + r) (Either GitHubError a)
 request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } = do
   let printedRoute = Octokit.printGitHubRoute route
-  let cacheId = CacheId printedRoute
-  let cacheCodec = CA.Common.either Octokit.githubErrorCodec codec
   -- We cache GET requests, other than requests to fetch the current rate limit.
   case method of
     GET | route /= Octokit.rateLimitRequest.route -> do
-      entry <- Cache.getJson _githubCache cacheId cacheCodec
       now <- Run.liftEffect nowUTC
+      entry <- getGitHubCache (Request route)
       case entry of
         Nothing -> do
           result <- requestWithBackoff octokit githubRequest
-          Cache.put _githubCache cacheId (CA.encode cacheCodec result)
+          putGitHubCache (Request route) (result <#> \response -> { modified: now, etag: Nothing, response: CA.encode codec response })
           pure result
 
-        Just cached -> case cached.value of
+        Just cached -> case cached of
           Left (APIError err)
             -- We don't retry 404 errors because they indicate a missing resource.
             | err.statusCode == 404 -> do
                 Log.debug "Cached entry is a 404 error, not retrying..."
                 pure $ Left $ APIError err
-            -- Otherwise, if we have an error in cache, we retry the request; we
-            -- don't have anything usable we could return.
-            | otherwise -> do
-                Log.debug $ "Retrying route " <> printedRoute <> " because cache contains non-404 error: " <> show err
-                Cache.delete _githubCache cacheId
-                request octokit githubRequest
 
+          -- Otherwise, if we have an error in cache, we retry the request; we
+          -- don't have anything usable we could return.
           Left otherError -> do
-            Log.debug "Cached entry is an unknown or decode error, not retrying..."
-            pure (Left otherError)
+            Log.warn $ "Retrying route " <> printedRoute <> " because cache contains non-404 error:\n" <> Octokit.printGitHubError otherError
+            deleteGitHubCache (Request route)
+            request octokit githubRequest
 
-          -- If we do have a usable cache value, then we will defer to GitHub's
-          -- judgment on whether to use it or not. We do that by making a request
-          -- with the 'If-Not-Modified' header. A 304 response means the resource
-          -- has not changed, and GitHub promises not to consume a request if so.
-          --
-          -- Unfortunately, GitHub is not currently (2022-07-01) honoring this
-          -- promise, so we (temporarily) only retry after N hours have passed. Once
-          -- they start honoring the promise again we can remove the modified time
-          -- guard below.
-          --
-          -- TODO: Remove DateTime.diff when GitHub honors requests again.
-          Right _ | DateTime.diff now cached.modified >= Duration.Hours 1.0 -> do
-            Log.debug $ "Cache entry expired for route " <> printedRoute <> ", requesting..."
-            -- This is how we *would* modify the request, once GitHub works.
-            let _githubTime = Formatter.DateTime.format Octokit.rfc1123Format cached.modified
-            let _modifiedRequest = githubRequest { headers = Object.insert "If-Modified-Since" _githubTime githubRequest.headers }
-            result <- requestWithBackoff octokit githubRequest
-            case result of
-              Left (APIError err) | err.statusCode == 304 -> do
-                Log.debug $ "Received confirmation of cache validity response from GitHub, reading cache value..."
-                pure result
-              Left otherError -> do
-                case otherError of
-                  UnexpectedError err -> do
-                    Log.error $ "Failed to request " <> printedRoute <> " due to an unexpected error. Writing it to cache: " <> err
-                  APIError err -> do
-                    Log.error $ "Failed to request " <> printedRoute <> " due to an API error with status " <> show err.statusCode <> ". Writing it to cache: " <> err.message
-                  DecodeError err -> do
-                    Log.error $ "Failed to decode response to request " <> printedRoute <> ". Writing decoding error to cache: " <> err
-                Cache.put _githubCache cacheId (CA.encode cacheCodec result)
-                pure result
-              Right valid -> do
-                Cache.put _githubCache cacheId (CA.encode cacheCodec (Right valid))
-                pure result
+          Right prevResponse -> case CA.decode codec prevResponse.response of
+            Left err -> do
+              Log.debug $ "Could not decode previous response data using the provided codec: " <> CA.printJsonDecodeError err
+              Log.debug $ "This indicates an out-of-date cache entry. Clearing cache for route " <> printedRoute
+              deleteGitHubCache (Request route)
+              Log.debug "Retrying request..."
+              request octokit githubRequest
 
-          Right value ->
-            pure $ Right value
+            -- If we do have a usable cache value, then we will defer to GitHub's
+            -- judgment on whether to use it or not. We do that by making a request
+            -- with the 'If-None-Match' header. A 304 response means the resource
+            -- has not changed, and GitHub promises not to consume a request if so.
+            --
+            -- TODO: This is not yet implemented because we don't retrieve etags
+            -- from the API. This branch will never be hit.
+            Right decoded | Just etag <- prevResponse.etag -> do
+              Log.debug $ "Found valid cache entry with etags for " <> printedRoute
+              let headers = Object.insert "If-None-Match" etag githubRequest.headers
+              Log.debug $ "Verifying cached status with headers: " <> stringifyJson (CA.Common.foreignObject CA.string) headers
+              let modifiedRequest = githubRequest { headers = headers }
+              conditionalResponse <- requestWithBackoff octokit modifiedRequest
+              case conditionalResponse of
+                Left (APIError err) | err.statusCode == 304 -> do
+                  Log.debug $ "Received confirmation of cache validity response from GitHub, returning cached value..."
+                  pure $ Right decoded
+                Left otherError -> do
+                  case otherError of
+                    UnexpectedError err -> do
+                      Log.error $ "Failed to request " <> printedRoute <> " due to an unexpected error. Writing it to cache: " <> err
+                    APIError err -> do
+                      Log.error $ "Failed to request " <> printedRoute <> " due to an API error with status " <> show err.statusCode <> ". Writing it to cache: " <> err.message
+                    DecodeError err -> do
+                      Log.error $ "Failed to decode response to request " <> printedRoute <> ". Writing decoding error to cache: " <> err
+                  putGitHubCache (Request route) (Left otherError)
+                  pure (Left otherError)
+                Right valid -> do
+                  putGitHubCache (Request route) (Right { response: CA.encode codec valid, modified: now, etag: Nothing })
+                  pure $ Right valid
+
+            -- Since we don't have support for conditional requests via etags, we'll instead
+            -- auto-expire cache entries after an hour.
+            -- TODO: Remove DateTime.diff when GitHub honors requests again.
+            Right _ | DateTime.diff now prevResponse.modified >= Duration.Hours 1.0 -> do
+              result <- requestWithBackoff octokit githubRequest
+              putGitHubCache (Request route) (result <#> \resp -> { response: CA.encode codec resp, modified: now, etag: Nothing })
+              pure result
+
+            Right decoded -> do
+              Log.debug $ "Found valid cache entry without etags for " <> printedRoute <> ", and within 1 hour time limit, returning value..."
+              pure $ Right decoded
 
     _ -> do
       Log.debug $ "Not a cacheable route: " <> printedRoute <> ", requesting without the cache..."
@@ -240,3 +234,70 @@ requestWithBackoff octokit githubRequest = do
   case result of
     Nothing -> pure $ Left $ APIError { statusCode: 400, message: "Unable to reach GitHub servers." }
     Just accepted -> pure accepted
+
+type RequestResult =
+  { modified :: DateTime
+  , etag :: Maybe String
+  , response :: Json
+  }
+
+requestResultCodec :: JsonCodec RequestResult
+requestResultCodec = CA.Record.object "RequestResult"
+  { etag: CA.Common.maybe CA.string
+  , modified: Internal.Codec.iso8601DateTime
+  , response: CA.json
+  }
+
+-- | A key type for the GitHub cache, which stores responses from the GitHub
+-- | API as JSON.
+--
+-- NOTE: We could also store typed responses to individual requests, but since
+-- the request data types already carry around their codec it's easiest to just
+-- have the single key.
+data GitHubCache (c :: Type -> Type -> Type) a = Request GitHubRoute (c (Either GitHubError RequestResult) a)
+
+instance Functor2 c => Functor (GitHubCache c) where
+  map k (Request route a) = Request route (map2 k a)
+
+-- | A cache for the GITHUB effect, which stores the JSON content of requests.
+type GITHUB_CACHE r = (githubCache :: TypedCache GitHubCache | r)
+
+_githubCache :: Proxy "githubCache"
+_githubCache = Proxy
+
+-- | Get an item from the GitHub cache according to a GitHubCache key.
+getGitHubCache :: forall r a. CacheKey GitHubCache a -> Run (GITHUB_CACHE + r) (Maybe a)
+getGitHubCache key = Run.lift _githubCache (TypedCache.getCache key)
+
+-- | Write an item to the GitHub cache using a GitHubCache key.
+putGitHubCache :: forall r a. CacheKey GitHubCache a -> a -> Run (GITHUB_CACHE + r) Unit
+putGitHubCache key value = Run.lift _githubCache (TypedCache.putCache key value)
+
+-- | Remove an item from the GitHub cache using a GitHubCache key.
+deleteGitHubCache :: forall r a. CacheKey GitHubCache a -> Run (GITHUB_CACHE + r) Unit
+deleteGitHubCache key = Run.lift _githubCache (TypedCache.deleteCache key)
+
+githubMemoryEncoder :: MemoryEncoder GitHubCache
+githubMemoryEncoder = case _ of
+  Request route next -> Exists.mkExists $ Key (Octokit.printGitHubRoute route) next
+
+githubFsEncoder :: FsEncoder GitHubCache
+githubFsEncoder = case _ of
+  Request route next -> do
+    let codec = CA.Common.either Octokit.githubErrorCodec requestResultCodec
+    Exists.mkExists $ AsJson ("Request__" <> Octokit.printGitHubRoute route) codec next
+
+runGitHubCacheMemoryFs
+  :: forall r a
+   . { ref :: CacheRef, cacheDir :: FilePath }
+  -> Run (GITHUB_CACHE + LOG + AFF + EFFECT + r) a
+  -> Run (LOG + AFF + EFFECT + r) a
+runGitHubCacheMemoryFs { ref, cacheDir } =
+  TypedCache.runCacheAt _githubCache
+    ( TypedCache.handleCacheMemoryFs
+        { ref
+        , cacheDir
+        , fs: githubFsEncoder
+        , memory: githubMemoryEncoder
+        }
+    )

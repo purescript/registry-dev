@@ -17,6 +17,7 @@ import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.Codec.Argonaut.Variant as CA.Variant
 import Data.Compactable (separate)
+import Data.Exists as Exists
 import Data.Filterable (partition)
 import Data.Foldable (foldMap)
 import Data.Foldable as Foldable
@@ -42,8 +43,6 @@ import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API (Source(..))
 import Registry.App.API as API
-import Registry.App.Effect.Cache (Cache, CacheId(..), CacheRef, Expiry(..))
-import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (PullMode(..))
 import Registry.App.Effect.Git as Git
@@ -55,11 +54,14 @@ import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
+import Registry.App.Effect.TypedCache (CacheKey, CacheRef, FsEncoder, FsEncoding(..), MemoryEncoder, MemoryEncoding(..), TypedCache)
+import Registry.App.Effect.TypedCache as TypedCache
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
+import Registry.Foreign.FSExtra as FS.Aff
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (Address, Tag)
 import Registry.Foreign.Octokit as Octokit
@@ -157,15 +159,16 @@ main = launchAff_ do
 
   -- Caching setup
   runCacheEffects <- do
-    githubCacheRef <- Cache.newCacheRef
-    legacyCacheRef <- Cache.newCacheRef
-    legacyImportCacheRef <- Cache.newCacheRef
+    githubCacheRef <- TypedCache.newCacheRef
+    legacyCacheRef <- TypedCache.newCacheRef
+    importCacheRef <- TypedCache.newCacheRef
     let cacheDir = Path.concat [ scratchDir, ".cache" ]
+    FS.Aff.ensureDirectory cacheDir
     pure do
-      Storage.runStorageCacheFs cacheDir
-        >>> GitHub.runGitHubCacheMemoryFs githubCacheRef cacheDir
-        >>> Legacy.Manifest.runLegacyCacheMemoryFs legacyCacheRef cacheDir
-        >>> runLegacyImportCacheMemoryFs legacyImportCacheRef cacheDir
+      Storage.runStorageCacheFs { cacheDir }
+        >>> GitHub.runGitHubCacheMemoryFs { cacheDir, ref: githubCacheRef }
+        >>> Legacy.Manifest.runLegacyCacheMemoryFs { cacheDir, ref: legacyCacheRef }
+        >>> runImportCacheMemoryFs { cacheDir, ref: importCacheRef }
 
   -- Logging setup
   runLogEffects <- do
@@ -185,27 +188,7 @@ main = launchAff_ do
     # runLogEffects
     # Run.runBaseAff'
 
--- | A cache for legacy manifest data
-type LEGACY_IMPORT_CACHE r = (legacyImportCache :: Cache Json | r)
-
-_legacyImportCache :: Proxy "legacyImportCache"
-_legacyImportCache = Proxy
-
--- | Interpret the LEGACY_IMPORT_CACHE effect using an in-memory cache backed by the
--- | file system.
-runLegacyImportCacheMemoryFs
-  :: forall r a
-   . CacheRef Json
-  -> FilePath
-  -> Run (LEGACY_IMPORT_CACHE + LOG + AFF + EFFECT + r) a
-  -> Run (LOG + AFF + EFFECT + r) a
-runLegacyImportCacheMemoryFs cacheRef cacheDir = Cache.runCacheAt _legacyImportCache
-  ( Cache.handleCacheMemoryFs
-      { cacheRef, expiry: Never }
-      { cacheDir, encoding: Cache.json }
-  )
-
-runLegacyImport :: forall r. ImportMode -> Run (API.PublishEffects + LEGACY_IMPORT_CACHE + r) Unit
+runLegacyImport :: forall r. ImportMode -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit
 runLegacyImport mode = do
   Log.info "Ensuring the registry is well-formed..."
 
@@ -339,7 +322,7 @@ type ImportedIndex =
 -- | the legacy registry files. This function also collects import errors for
 -- | packages and package versions and reports packages that are present in the
 -- | legacy registry but not in the resulting registry.
-importLegacyRegistry :: forall r. LegacyRegistry -> Run (API.PublishEffects + LEGACY_IMPORT_CACHE + r) ImportedIndex
+importLegacyRegistry :: forall r. LegacyRegistry -> Run (API.PublishEffects + IMPORT_CACHE + r) ImportedIndex
 importLegacyRegistry legacyRegistry = do
   manifests <- forWithIndex legacyRegistry buildLegacyPackageManifests
 
@@ -421,7 +404,7 @@ buildLegacyPackageManifests
   :: forall r
    . RawPackageName
   -> String
-  -> Run (API.PublishEffects + LEGACY_IMPORT_CACHE + r) (Either PackageValidationError (Map RawVersion (Either VersionValidationError Manifest)))
+  -> Run (API.PublishEffects + IMPORT_CACHE + r) (Either PackageValidationError (Map RawVersion (Either VersionValidationError Manifest)))
 buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPackage do
   package <- validatePackage rawPackage rawUrl
 
@@ -440,11 +423,7 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
       -- difference; if we can't, we warn and fall back to the existing entry.
       Registry.readManifest package.name (LenientVersion.version version) >>= case _ of
         Nothing -> do
-          let
-            cacheId = CacheId ((un RawPackageName rawPackage) <> "__" <> rawUrl)
-            cacheCodec = CA.Common.either versionValidationErrorCodec Manifest.codec
-
-          Cache.getJson _legacyImportCache cacheId cacheCodec >>= case _ of
+          getImportCache (ImportManifest package.name (RawVersion tag.name)) >>= case _ of
             Nothing -> do
               Log.debug $ "Building manifest in legacy import because it was not found in cache: " <> formatPackageVersion package.name (LenientVersion.version version)
               manifest <- Run.Except.runExceptAt _exceptVersion do
@@ -454,10 +433,10 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
                     Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
                     Right result -> pure result
                 pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
-              Cache.put _legacyImportCache cacheId (CA.encode cacheCodec manifest)
+              putImportCache (ImportManifest package.name (RawVersion tag.name)) manifest
               exceptVersion manifest
             Just cached ->
-              exceptVersion cached.value
+              exceptVersion cached
 
         Just manifest ->
           exceptVersion $ Right manifest
@@ -835,3 +814,44 @@ legacyRepoParser = do
   let repo = fromMaybe repoWithSuffix (String.stripSuffix (String.Pattern ".git") repoWithSuffix)
 
   pure { owner, repo }
+
+-- | A key type for the storage cache. Only supports packages identified by
+-- | their name and version.
+data ImportCache :: (Type -> Type -> Type) -> Type -> Type
+data ImportCache c a = ImportManifest PackageName RawVersion (c (Either VersionValidationError Manifest) a)
+
+instance Functor2 c => Functor (ImportCache c) where
+  map k (ImportManifest name version a) = ImportManifest name version (map2 k a)
+
+type IMPORT_CACHE r = (importCache :: TypedCache ImportCache | r)
+
+_importCache :: Proxy "importCache"
+_importCache = Proxy
+
+-- | Get an item from the storage cache according to a ImportCache key.
+getImportCache :: forall r a. CacheKey ImportCache a -> Run (IMPORT_CACHE + r) (Maybe a)
+getImportCache key = Run.lift _importCache (TypedCache.getCache key)
+
+-- | Write an item to the storage cache using a ImportCache key.
+putImportCache :: forall r a. CacheKey ImportCache a -> a -> Run (IMPORT_CACHE + r) Unit
+putImportCache key value = Run.lift _importCache (TypedCache.putCache key value)
+
+importMemoryEncoder :: MemoryEncoder ImportCache
+importMemoryEncoder = case _ of
+  ImportManifest name (RawVersion version) next ->
+    Exists.mkExists $ Key ("ImportManifest__" <> PackageName.print name <> "__" <> version) next
+
+importFsEncoder :: FsEncoder ImportCache
+importFsEncoder = case _ of
+  ImportManifest name (RawVersion version) next -> do
+    let codec = CA.Common.either versionValidationErrorCodec Manifest.codec
+    Exists.mkExists $ AsJson ("ImportManifest__" <> PackageName.print name <> "__" <> version) codec next
+
+runImportCacheMemoryFs
+  :: forall r a
+   . { ref :: CacheRef, cacheDir :: FilePath }
+  -> Run (IMPORT_CACHE + LOG + AFF + EFFECT + r) a
+  -> Run (LOG + AFF + EFFECT + r) a
+runImportCacheMemoryFs { ref, cacheDir } =
+  TypedCache.runCacheAt _importCache
+    (TypedCache.handleCacheMemoryFs { ref, cacheDir, fs: importFsEncoder, memory: importMemoryEncoder })

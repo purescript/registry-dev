@@ -27,10 +27,7 @@ export function requestImpl(octokit, route, headers, args, onError, onSuccess) {
   args["headers"] = headers;
   return octokit
     .request(route, args)
-    .then((data) => {
-      console.log(data);
-      return onSuccess(data);
-    })
+    .then((data) => onSuccess(data))
     .catch((err) => onError(err));
 }
 
@@ -44,12 +41,7 @@ export function paginateImpl(
 ) {
   args["headers"] = headers;
   return octokit
-    .paginate(route, args, (response) => {
-      return { etag: response.headers.etag, data: response.data };
-    })
-    .then((data) => {
-      console.log(data);
-      return onSuccess(data);
-    })
+    .paginate(route, args)
+    .then((data) => onSuccess(data))
     .catch((err) => onError(err));
 }

@@ -16,7 +16,6 @@ import Node.Process as Process
 import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.Auth as Auth
-import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (GitEnv, PullMode(..))
@@ -30,8 +29,10 @@ import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
+import Registry.App.Effect.TypedCache as TypedCache
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Constants as Constants
+import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit (GitHubToken, IssueNumber(..), Octokit)
 import Registry.Foreign.Octokit as Octokit
@@ -74,10 +75,12 @@ main = launchAff_ $ do
         }
 
     -- Caching
-    githubCacheRef <- Cache.newCacheRef
-    legacyCacheRef <- Cache.newCacheRef
+    githubCacheRef <- TypedCache.newCacheRef
+    legacyCacheRef <- TypedCache.newCacheRef
     let cacheDir = Path.concat [ scratchDir, ".cache" ]
+    FS.Extra.ensureDirectory cacheDir
     let workdir = Path.concat [ scratchDir, "package-sets-work" ]
+    FS.Extra.ensureDirectory workdir
 
     run
       -- Environment
@@ -92,9 +95,9 @@ main = launchAff_ $ do
       # Pursuit.runPursuit (Pursuit.handlePursuitHttp env.token)
       # GitHub.runGitHub (GitHub.handleGitHubOctokit env.octokit)
       -- Caching
-      # Storage.runStorageCacheFs cacheDir
-      # GitHub.runGitHubCacheMemoryFs githubCacheRef cacheDir
-      # Legacy.Manifest.runLegacyCacheMemoryFs legacyCacheRef cacheDir
+      # Storage.runStorageCacheFs { cacheDir }
+      # GitHub.runGitHubCacheMemoryFs { cacheDir, ref: githubCacheRef }
+      # Legacy.Manifest.runLegacyCacheMemoryFs { cacheDir, ref: legacyCacheRef }
       -- Logging
       # Notify.runNotify Notify.handleNotifyLog
       # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))

@@ -15,7 +15,6 @@ import Data.String as String
 import Effect.Aff as Aff
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
-import Registry.App.Effect.Cache (Cache)
 import Registry.App.Effect.Git (GIT, GitResult(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
@@ -39,11 +38,6 @@ import Registry.Range as Range
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
-
-type REGISTRY_CACHE r = (registryCache :: Cache Json | r)
-
-_registryCache :: Proxy "registryCache"
-_registryCache = Proxy
 
 data Registry a
   = ReadManifest PackageName Version (Maybe Manifest -> a)

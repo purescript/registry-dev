@@ -11,7 +11,6 @@ import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.Auth as Auth
-import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (GitEnv, PullMode(..))
 import Registry.App.Effect.Git as Git
@@ -23,6 +22,7 @@ import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
+import Registry.App.Effect.TypedCache as TypedCache
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Types (RawPackageName(..))
 import Registry.Foreign.FSExtra as FS.Extra
@@ -62,7 +62,7 @@ main = launchAff_ do
   -- Caching
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
-  githubCacheRef <- Cache.newCacheRef
+  githubCacheRef <- TypedCache.newCacheRef
 
   -- Logging
   now <- liftEffect nowUTC
@@ -81,8 +81,8 @@ main = launchAff_ do
     -- Requests
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caching
-    # Storage.runStorageCacheFs cacheDir
-    # GitHub.runGitHubCacheMemoryFs githubCacheRef cacheDir
+    # Storage.runStorageCacheFs { cacheDir }
+    # GitHub.runGitHubCacheMemoryFs { cacheDir, ref: githubCacheRef }
     -- Logging
     # Notify.runNotify Notify.handleNotifyLog
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))

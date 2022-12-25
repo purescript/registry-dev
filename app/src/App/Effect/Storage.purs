@@ -3,14 +3,17 @@ module Registry.App.Effect.Storage
   ( STORAGE
   , STORAGE_CACHE
   , Storage
+  , StorageCache
   , _storage
+  , _storageCache
   , deleteTarball
   , downloadTarball
   , handleStorageReadOnly
   , handleStorageS3
   , runStorage
-  , runStorageCacheFs
   , uploadTarball
+  , storageFsEncoder
+  , runStorageCacheFs
   ) where
 
 import Registry.App.Prelude
@@ -19,15 +22,16 @@ import Affjax.Node as Affjax.Node
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
 import Data.Array as Array
+import Data.Exists as Exists
 import Data.HTTP.Method (Method(..))
 import Data.String as String
 import Effect.Aff as Aff
 import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
-import Registry.App.Effect.Cache (Cache, CacheId(..))
-import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.TypedCache (CacheKey, FsEncoder, FsEncoding(..), TypedCache)
+import Registry.App.Effect.TypedCache as TypedCache
 import Registry.Constants as Constants
 import Registry.Foreign.S3 as S3
 import Registry.PackageName as PackageName
@@ -36,14 +40,8 @@ import Run (AFF, EFFECT, Run)
 import Run as Run
 import Type.Proxy (Proxy(..))
 
-type STORAGE_CACHE r = (storageCache :: Cache Buffer | r)
-
-_storageCache :: Proxy "storageCache"
-_storageCache = Proxy
-
-runStorageCacheFs :: forall r a. FilePath -> Run (STORAGE_CACHE + LOG + AFF + EFFECT + r) a -> Run (LOG + AFF + EFFECT + r) a
-runStorageCacheFs cacheDir = Cache.runCacheAt _storageCache (Cache.handleCacheFs { cacheDir, encoding: Cache.buffer })
-
+-- | The Storage effect, which describes uploading, downloading, and deleting
+-- | tarballs from the registry storage backend.
 data Storage a
   = Upload PackageName Version FilePath a
   | Download PackageName Version FilePath a
@@ -67,6 +65,10 @@ downloadTarball name version file = Run.lift _storage (Download name version fil
 -- | Delete a package tarball from the storage backend.
 deleteTarball :: forall r. PackageName -> Version -> Run (STORAGE + r) Unit
 deleteTarball name version = Run.lift _storage (Delete name version unit)
+
+-- | Interpret the STORAGE effect, given a handler.
+runStorage :: forall r a. (Storage ~> Run r) -> Run (STORAGE + r) a -> Run r a
+runStorage handler = Run.interpret (Run.on _storage handler Run.send)
 
 formatPackagePath :: PackageName -> Version -> String
 formatPackagePath name version = Array.fold
@@ -95,23 +97,18 @@ connectS3 key = do
       Log.debug "Connected to S3!"
       pure connection
 
--- | Interpret the STORAGE effect, given a handler.
-runStorage :: forall r a. (Storage ~> Run r) -> Run (STORAGE + r) a -> Run r a
-runStorage handler = Run.interpret (Run.on _storage handler Run.send)
-
 -- | Handle package storage using a remote S3 bucket.
 handleStorageS3 :: forall r a. S3.SpaceKey -> Storage a -> Run (STORAGE_CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
 handleStorageS3 key = case _ of
   Download name version path next -> do
     let package = formatPackageVersion name version
-    let cacheId = CacheId package
-    buffer <- Cache.get _storageCache cacheId >>= case _ of
+    buffer <- getStorageCache (Package name version) >>= case _ of
       Nothing -> do
         buffer <- downloadS3 name version
-        Cache.put _storageCache cacheId buffer
+        putStorageCache (Package name version) buffer
         pure buffer
       Just cached ->
-        pure cached.value
+        pure cached
     Run.liftAff (Aff.attempt (FS.Aff.writeFile path buffer)) >>= case _ of
       Left error -> do
         Log.error $ "Downloaded " <> package <> " but failed to write it to the file at path " <> path <> ":\n" <> Aff.message error
@@ -194,14 +191,13 @@ handleStorageReadOnly = case _ of
 
   Download name version path next -> do
     let package = formatPackageVersion name version
-    let cacheId = CacheId package
-    buffer <- Cache.get _storageCache cacheId >>= case _ of
+    buffer <- getStorageCache (Package name version) >>= case _ of
       Nothing -> do
         buffer <- downloadS3 name version
-        Cache.put _storageCache cacheId buffer
+        putStorageCache (Package name version) buffer
         pure buffer
       Just cached ->
-        pure cached.value
+        pure cached
     Run.liftAff (Aff.attempt (FS.Aff.writeFile path buffer)) >>= case _ of
       Left error -> do
         Log.error $ "Downloaded " <> package <> " but failed to write it to the file at path " <> path <> ":\n" <> Aff.message error
@@ -240,3 +236,36 @@ downloadS3 name version = do
       Log.debug $ "Successfully downloaded " <> package <> " into a buffer."
       buffer :: Buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
       pure buffer
+
+-- | A key type for the storage cache. Only supports packages identified by
+-- | their name and version.
+data StorageCache (c :: Type -> Type -> Type) a = Package PackageName Version (c Buffer a)
+
+instance Functor2 c => Functor (StorageCache c) where
+  map k (Package name version a) = Package name version (map2 k a)
+
+type STORAGE_CACHE r = (storageCache :: TypedCache StorageCache | r)
+
+_storageCache :: Proxy "storageCache"
+_storageCache = Proxy
+
+-- | Get an item from the storage cache according to a StorageCache key.
+getStorageCache :: forall r a. CacheKey StorageCache a -> Run (STORAGE_CACHE + r) (Maybe a)
+getStorageCache key = Run.lift _storageCache (TypedCache.getCache key)
+
+-- | Write an item to the storage cache using a StorageCache key.
+putStorageCache :: forall r a. CacheKey StorageCache a -> a -> Run (STORAGE_CACHE + r) Unit
+putStorageCache key value = Run.lift _storageCache (TypedCache.putCache key value)
+
+storageFsEncoder :: FsEncoder StorageCache
+storageFsEncoder = case _ of
+  Package name version next ->
+    Exists.mkExists $ AsBuffer (PackageName.print name <> "-" <> Version.print version) next
+
+runStorageCacheFs
+  :: forall r a
+   . { cacheDir :: FilePath }
+  -> Run (STORAGE_CACHE + LOG + AFF + EFFECT + r) a
+  -> Run (LOG + AFF + EFFECT + r) a
+runStorageCacheFs { cacheDir } =
+  TypedCache.runCacheAt _storageCache (TypedCache.handleCacheFs { cacheDir, encoder: storageFsEncoder })

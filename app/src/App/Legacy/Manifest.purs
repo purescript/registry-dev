@@ -8,6 +8,7 @@ import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.Codec.Argonaut.Variant as CA.Variant
 import Data.Either as Either
+import Data.Exists as Exists
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.Profunctor as Profunctor
@@ -21,12 +22,12 @@ import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.CLI.Licensee as Licensee
-import Registry.App.Effect.Cache (Cache, CacheId(..), CacheRef, Expiry(..))
-import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.TypedCache (CacheKey, CacheRef, FsEncoder, FsEncoding(..), MemoryEncoder, MemoryEncoding(..), TypedCache)
+import Registry.App.Effect.TypedCache as TypedCache
 import Registry.App.Legacy.LenientRange as LenientRange
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
@@ -44,26 +45,6 @@ import Run as Run
 import Run.Except as Run.Except
 import Sunde as Process
 import Type.Proxy (Proxy(..))
-
--- | A cache for legacy manifest data
-type LEGACY_CACHE r = (legacyCache :: Cache Json | r)
-
-_legacyCache :: Proxy "legacyCache"
-_legacyCache = Proxy
-
--- | Interpret the LEGACY_CACHE effect using an in-memory cache backed by the
--- | file system.
-runLegacyCacheMemoryFs
-  :: forall r a
-   . CacheRef Json
-  -> FilePath
-  -> Run (LEGACY_CACHE + LOG + AFF + EFFECT + r) a
-  -> Run (LOG + AFF + EFFECT + r) a
-runLegacyCacheMemoryFs cacheRef cacheDir = Cache.runCacheAt _legacyCache
-  ( Cache.handleCacheMemoryFs
-      { cacheRef, expiry: Never }
-      { cacheDir, encoding: Cache.json }
-  )
 
 type LegacyManifest =
   { license :: License
@@ -429,28 +410,24 @@ fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
       Map.singleton version (resolveDependencyVersions dependencies)
 
   Log.debug "Merging legacy package sets into a union."
-  tagKey <- Run.liftEffect $ Sha256.hashString (String.joinWith " " tags)
-  let unionCacheId = CacheId $ Sha256.print tagKey
-  let unionCacheCodec = legacyPackageSetUnionCodec
+  tagsHash <- Run.liftEffect $ Sha256.hashString (String.joinWith " " tags)
 
   -- It's important that we cache the end result of unioning all package sets
   -- because the package sets are quite large and it's expensive to read them
   -- all into memory and fold over them.
-  Cache.getJson _legacyCache unionCacheId unionCacheCodec >>= case _ of
+  getLegacyCache (LegacyUnion tagsHash) >>= case _ of
     Nothing -> do
       Log.debug $ "Cache miss for legacy package set union, rebuilding..."
 
       legacySetResults <- for tags \refStr -> do
         let ref = RawVersion refStr
-        let legacySetCacheId = CacheId refStr
-        let legacySetCodec = CA.Common.either Octokit.githubErrorCodec legacyPackageSetCodec
-        cached <- Cache.getJson _legacyCache legacySetCacheId legacySetCodec >>= case _ of
+        cached <- getLegacyCache (LegacySet ref) >>= case _ of
           Nothing -> do
             Log.debug $ "Cache miss for legacy package set " <> refStr <> ", refetching..."
             result <- GitHub.getJsonFile Legacy.PackageSet.legacyPackageSetsRepo ref legacyPackageSetCodec "packages.json"
-            Cache.put _legacyCache legacySetCacheId (CA.encode legacySetCodec result)
+            putLegacyCache (LegacySet ref) result
             pure result
-          Just { value } ->
+          Just value ->
             pure value
         pure $ lmap (Tuple ref) cached
 
@@ -467,11 +444,63 @@ fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
         merged :: LegacyPackageSetUnion
         merged = Array.foldl (\m set -> Map.unionWith Map.union set m) Map.empty convertedSets
 
-      Cache.put _legacyCache unionCacheId (CA.encode unionCacheCodec merged)
+      putLegacyCache (LegacyUnion tagsHash) merged
       pure merged
 
-    Just { value } ->
+    Just value ->
       pure value
   where
   _legacyPackageSetsError :: Proxy "legacyPackageSetsError"
   _legacyPackageSetsError = Proxy
+
+-- | A key type for the legacy cache.
+data LegacyCache (c :: Type -> Type -> Type) a
+  = LegacySet RawVersion (c (Either GitHubError LegacyPackageSet) a)
+  | LegacyUnion Sha256 (c LegacyPackageSetUnion a)
+
+instance Functor2 c => Functor (LegacyCache c) where
+  map k = case _ of
+    LegacySet ref a -> LegacySet ref (map2 k a)
+    LegacyUnion tagsHash a -> LegacyUnion tagsHash (map2 k a)
+
+type LEGACY_CACHE r = (legacyCache :: TypedCache LegacyCache | r)
+
+_legacyCache :: Proxy "legacyCache"
+_legacyCache = Proxy
+
+-- | Get an item from the legacy cache according to a LegacyCache key.
+getLegacyCache :: forall r a. CacheKey LegacyCache a -> Run (LEGACY_CACHE + r) (Maybe a)
+getLegacyCache key = Run.lift _legacyCache (TypedCache.getCache key)
+
+-- | Write an item to the legacy cache using a LegacyCache key.
+putLegacyCache :: forall r a. CacheKey LegacyCache a -> a -> Run (LEGACY_CACHE + r) Unit
+putLegacyCache key value = Run.lift _legacyCache (TypedCache.putCache key value)
+
+legacyMemoryEncoder :: MemoryEncoder LegacyCache
+legacyMemoryEncoder = case _ of
+  LegacySet (RawVersion ref) next ->
+    Exists.mkExists $ Key ("LegacySet__" <> ref) next
+  LegacyUnion hash next ->
+    Exists.mkExists $ Key ("LegacyUnion__" <> Sha256.print hash) next
+
+legacyFsEncoder :: FsEncoder LegacyCache
+legacyFsEncoder = case _ of
+  LegacySet (RawVersion ref) next ->
+    Exists.mkExists $ AsJson ("LegacySet__" <> ref) (CA.Common.either Octokit.githubErrorCodec legacyPackageSetCodec) next
+  LegacyUnion hash next ->
+    Exists.mkExists $ AsJson ("LegacyUnion" <> Sha256.print hash) legacyPackageSetUnionCodec next
+
+runLegacyCacheMemoryFs
+  :: forall r a
+   . { ref :: CacheRef, cacheDir :: FilePath }
+  -> Run (LEGACY_CACHE + LOG + AFF + EFFECT + r) a
+  -> Run (LOG + AFF + EFFECT + r) a
+runLegacyCacheMemoryFs { ref, cacheDir } =
+  TypedCache.runCacheAt _legacyCache
+    ( TypedCache.handleCacheMemoryFs
+        { ref
+        , cacheDir
+        , fs: legacyFsEncoder
+        , memory: legacyMemoryEncoder
+        }
+    )

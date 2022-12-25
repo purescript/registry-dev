@@ -14,7 +14,6 @@ import Data.Tuple (uncurry)
 import Effect.Class.Console as Console
 import Node.Path as Path
 import Node.Process as Process
-import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (GitEnv, PullMode(..))
 import Registry.App.Effect.Git as Git
@@ -25,6 +24,7 @@ import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
+import Registry.App.Effect.TypedCache as TypedCache
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Codec as Internal.Codec
@@ -100,7 +100,7 @@ main = launchAff_ do
   -- Caching
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
-  githubCacheRef <- Cache.newCacheRef
+  githubCacheRef <- TypedCache.newCacheRef
 
   -- Logging
   now <- liftEffect nowUTC
@@ -123,8 +123,8 @@ main = launchAff_ do
         >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
         >>> runGit
         -- Caching
-        >>> Storage.runStorageCacheFs cacheDir
-        >>> GitHub.runGitHubCacheMemoryFs githubCacheRef cacheDir
+        >>> Storage.runStorageCacheFs { cacheDir }
+        >>> GitHub.runGitHubCacheMemoryFs { cacheDir, ref: githubCacheRef }
         -- Logging
         >>> Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
         >>> Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)

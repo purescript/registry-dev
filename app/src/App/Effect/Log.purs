@@ -6,6 +6,7 @@ module Registry.App.Effect.Log where
 import Registry.App.Prelude
 
 import Ansi.Codes (GraphicsParam)
+import Data.Array as Array
 import Data.Formatter.DateTime as Formatters.DateTime
 import Dodo (Doc)
 import Dodo as Dodo
@@ -104,8 +105,28 @@ handleLogFs verbosity logfile action = case action of
     let
       attemptWrite = do
         now <- Run.liftEffect nowUTC
-        let time = Formatters.DateTime.format Internal.Format.iso8601DateTime now
-        let formatted = Dodo.print Dodo.plainText Dodo.twoSpaces (Dodo.text "[" <> Dodo.text time <> Dodo.text "]" <> Dodo.space <> message <> Dodo.break)
+        let
+          time = Formatters.DateTime.format Internal.Format.iso8601DateTime now
+
+          level' = case level of
+            Debug -> "DEBUG"
+            Info -> "INFO"
+            Warn -> "WARN"
+            Error -> "ERROR"
+
+          formatted = Dodo.print Dodo.plainText Dodo.twoSpaces
+            ( Array.fold
+                [ Dodo.text "["
+                , Dodo.text time
+                , Dodo.space
+                , Dodo.text level'
+                , Dodo.text "]"
+                , Dodo.space
+                , message
+                , Dodo.break
+                ]
+            )
+
         Run.liftAff (Aff.attempt (FS.Aff.appendTextFile UTF8 logfile formatted)) >>= case _ of
           Left err -> Console.error $ "LOG ERROR: Failed to write to file " <> logfile <> ": " <> Aff.message err
           Right _ -> pure unit

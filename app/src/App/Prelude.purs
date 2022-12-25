@@ -1,5 +1,7 @@
 module Registry.App.Prelude
   ( Backoff
+  , class Functor2
+  , map2
   , formatPackageVersion
   , fromJust'
   , guardA
@@ -84,6 +86,9 @@ import Registry.Types (License, Location(..), Manifest(..), ManifestIndex, Metad
 import Registry.Version as Version
 import Type.Proxy (Proxy(..)) as Extra
 import Type.Row (type (+)) as Extra
+
+class Functor2 (c :: Type -> Type -> Type) where
+  map2 :: forall a b z. (a -> b) -> c z a -> c z b
 
 -- | The location of the .gitignored scratch directory
 scratchDir :: Extra.FilePath

@@ -821,7 +821,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
 
         let
           clonePackageAtTag = do
-            let url = Array.fold [ "https://github.com", owner, "/", repo ]
+            let url = Array.fold [ "https://github.com/", owner, "/", repo ]
             let args = [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false" ]
             withBackoff' (Git.gitCLI args (Just tmpDir)) >>= case _ of
               Nothing -> Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> url <> " " <> ref

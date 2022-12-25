@@ -16,6 +16,7 @@ import Registry.Foreign.Octokit (GitHubToken(..))
 import Run (AFF, Run)
 import Run as Run
 
+-- | An effect for interacting with Pursuit
 data Pursuit a = Publish Json (Either String Unit -> a)
 
 derive instance Functor Pursuit
