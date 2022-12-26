@@ -6,6 +6,8 @@
 -- | you just want to iteratively pick up new releases.
 module Registry.Scripts.LegacyImporter where
 
+import Registry.App.Prelude
+
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Control.Alternative (guard)
@@ -59,7 +61,6 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
-import Registry.App.Prelude (class Eq, class Functor, class Functor2, type (+), Aff, Effect, Either(..), FilePath, JsonCodec, Location(..), Manifest(..), ManifestIndex, Map, Maybe(..), Metadata(..), PackageName, Set, Tuple(..), Unit, Version, append, bind, compare, discard, flip, foldlWithIndex, for, forWithIndex, formatPackageVersion, fromMaybe, hush, isJust, isNothing, launchAff_, liftEffect, lmap, map, map2, mapKeys, not, nowUTC, pure, scratchDir, show, snd, stringifyJson, stripPureScriptPrefix, un, unit, unless, unsafeFromJust, unsafeFromRight, void, writeJsonFile, (#), ($), ($>), (*>), (+), (-), (/=), (<$>), (<<<), (<>), (=<<), (>=), (>>=), (>>>), (||))
 import Registry.Foreign.FSExtra as FS.Aff
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (Address, Tag)
