@@ -214,10 +214,6 @@ packageSetUpdate payload = do
 type AuthenticatedEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r)
 
 -- | Run an authenticated package operation, ie. an unpublish or a transfer.
---
--- TODO: This currently requires a GitHub envent environment, but this should be
--- changed; this operation will be available via the API and we will not be able
--- to tell what "username" was used to produce the operation.
 authenticated :: forall r. AuthenticatedData -> Run (AuthenticatedEffects + r) Unit
 authenticated auth = case auth.payload of
   Unpublish payload -> do
