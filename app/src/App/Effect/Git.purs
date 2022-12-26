@@ -6,9 +6,14 @@ import Affjax (URL)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Array.NonEmpty as NonEmptyArry
+import Data.DateTime (DateTime)
+import Data.DateTime as DateTime
+import Data.Map as Map
 import Data.String as String
 import Data.String.CodeUnits as CodeUnits
+import Data.Time.Duration (Minutes(..))
 import Effect.Aff as Aff
+import Effect.Ref as Ref
 import Node.ChildProcess as ChildProcess
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
@@ -24,7 +29,7 @@ import Registry.Foreign.Octokit (Address, GitHubToken(..))
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Version as Version
-import Run (AFF, Run)
+import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except as Run.Except
 import Sunde as Sunde
@@ -141,12 +146,22 @@ data PullMode = Autostash | OnlyClean | ForceClean
 
 derive instance Eq PullMode
 
+data WriteMode = ReadOnly | CommitAs Committer
+
+derive instance Eq WriteMode
+
 type GitEnv =
   { repos :: Repos
   , workdir :: FilePath
-  , committer :: Committer
-  , pullMode :: PullMode
+  , pull :: PullMode
+  , write :: WriteMode
+  , debouncer :: Debouncer
   }
+
+type Debouncer = Ref (Map FilePath DateTime)
+
+newDebouncer :: forall m. MonadEffect m => m Debouncer
+newDebouncer = liftEffect $ Ref.new Map.empty
 
 type Repos =
   { registry :: Address
@@ -182,7 +197,7 @@ pacchettibottiCommitter token =
 -- pushing, etc. but that's not necessarily true. In practice we always use
 -- 'writeCommitPush', so this isn't an issue, but it would be nice to ensure
 -- an initial pull.
-handleGitAff :: forall r a. GitEnv -> Git a -> Run (LOG + AFF + r) a
+handleGitAff :: forall r a. GitEnv -> Git a -> Run (LOG + AFF + EFFECT + r) a
 handleGitAff env = case _ of
   GetPath key reply -> do
     pure $ reply $ filepath key
@@ -191,59 +206,105 @@ handleGitAff env = case _ of
     pure $ reply $ address key
 
   Pull key reply -> do
-    let path = filepath key
-    Log.debug $ "Fetching repo at path " <> path
-    -- First, we need to verify whether we should clone or pull.
-    Run.liftAff (Aff.attempt (FS.Aff.stat path)) >>= case _ of
-      -- When the repository doesn't exist at the given file path we can go
-      -- straight to a clone.
-      Left _ -> do
-        let { owner, repo } = address key
-        let formatted = owner <> "/" <> repo
-        let url = "https://github.com/" <> formatted <> ".git"
-        Log.debug $ "Didn't find " <> formatted <> " locally, cloning..."
-        Run.liftAff (gitCLI [ "clone", url, path ] Nothing) >>= case _ of
-          Left err -> do
-            Log.error $ "Failed to git clone repo " <> url <> " due to a git error: " <> err
-            pure $ reply $ Left $ "Could not read the repository at " <> formatted
-          Right _ ->
-            pure $ reply $ Right Changed
+    let
+      path = filepath key
 
-      -- If it does, then we should pull.
-      Right _ -> do
-        Log.debug $ "Found repo at path " <> path <> ", pulling latest."
-        result <- gitPull key
+      fetchLatest = do
+        Log.debug $ "Fetching repo at path " <> path
+        -- First, we need to verify whether we should clone or pull.
+        Run.liftAff (Aff.attempt (FS.Aff.stat path)) >>= case _ of
+          -- When the repository doesn't exist at the given file path we can go
+          -- straight to a clone.
+          Left _ -> do
+            let { owner, repo } = address key
+            let formatted = owner <> "/" <> repo
+            let url = "https://github.com/" <> formatted <> ".git"
+            Log.debug $ "Didn't find " <> formatted <> " locally, cloning..."
+            Run.liftAff (gitCLI [ "clone", url, path ] Nothing) >>= case _ of
+              Left err -> do
+                Log.error $ "Failed to git clone repo " <> url <> " due to a git error: " <> err
+                pure $ Left $ "Could not read the repository at " <> formatted
+              Right _ ->
+                pure $ Right Changed
+
+          -- If it does, then we should pull.
+          Right _ -> do
+            Log.debug $ "Found repo at path " <> path <> ", pulling latest."
+            result <- gitPull key
+            pure result
+
+    now <- Run.liftEffect nowUTC
+    debouncers <- Run.liftEffect $ Ref.read env.debouncer
+    case Map.lookup path debouncers of
+      -- We will be behind the upstream by at most this amount of time.
+      Just prev | DateTime.diff now prev <= Minutes 1.0 ->
+        pure $ reply $ Right NoChange
+      -- If we didn't debounce, then we should fetch the upstream.
+      _ -> do
+        result <- fetchLatest
+        Run.liftEffect $ Ref.modify_ (Map.insert path now) env.debouncer
         pure $ reply result
 
-  Commit key message reply -> do
-    result <- gitCommit (commitKeyToRepoKey key) key message
-    pure $ reply result
+  Commit commitKey message reply -> do
+    let repoKey = commitKeyToRepoKey commitKey
+    let { owner, repo } = address repoKey
+    case env.write of
+      ReadOnly -> do
+        Log.info $ "Skipping commit to repo " <> owner <> "/" <> repo <> " because write mode is 'ReadOnly'."
+        pure $ reply $ Right NoChange
+      CommitAs committer -> do
+        result <- gitCommit committer repoKey commitKey message
+        pure $ reply result
 
-  Push key reply -> do
-    result <- gitPush key
-    pure $ reply result
+  Push repoKey reply -> do
+    let { owner, repo } = address repoKey
+    case env.write of
+      ReadOnly -> do
+        Log.info $ "Skipping push to repo " <> owner <> "/" <> repo <> " because write mode is 'ReadOnly'."
+        pure $ reply $ Right NoChange
+      CommitAs committer -> do
+        result <- gitPush committer repoKey
+        pure $ reply result
 
-  Tag key ref reply -> do
-    result <- Run.Except.runExceptAt _gitException do
-      let cwd = filepath key
-      existingTags <- execGit cwd [ "tag", "--list" ] \error ->
-        "Failed to list tags in local checkout " <> cwd <> ": " <> error
-      if Array.elem ref $ String.split (String.Pattern "\n") existingTags then do
-        Log.warn $ "Tag " <> ref <> " already exists."
-        pure NoChange
-      else do
-        _ <- execGit cwd [ "tag", ref ] \error ->
-          "Failed to create new tag " <> ref <> " in local checkout " <> cwd <> ": " <> error
-        pure Changed
-    pure $ reply result
+  Tag repoKey ref reply -> do
+    let { owner, repo } = address repoKey
+    case env.write of
+      ReadOnly -> do
+        Log.info $ "Skipping push to repo " <> owner <> "/" <> repo <> " because write mode is 'ReadOnly'."
+        pure $ reply $ Right NoChange
+      CommitAs committer -> do
+        result <- Run.Except.runExceptAt _gitException do
+          let cwd = filepath repoKey
+          existingTags <- execGit cwd [ "tag", "--list" ] \error ->
+            "Failed to list tags in local checkout " <> cwd <> ": " <> error
+          if Array.elem ref $ String.split (String.Pattern "\n") existingTags then do
+            Log.warn $ "Tag " <> ref <> " already exists."
+            pure NoChange
+          else do
+            _ <- execGit cwd [ "config", "user.name", committer.name ] \error ->
+              "Failed to configure git user name as " <> committer.name <> " in " <> cwd <> ": " <> error
+            _ <- execGit cwd [ "config", "user.email", "<" <> committer.email <> ">" ] \error ->
+              "Failed to configure git user email as " <> committer.email <> " in " <> cwd <> ": " <> error
+            _ <- execGit cwd [ "tag", ref ] \error ->
+              "Failed to create new tag " <> ref <> " in local checkout " <> cwd <> ": " <> error
+            pure Changed
+        pure $ reply result
 
-  PushTags key reply -> do
-    result <- Run.Except.runExceptAt _gitException do
-      let cwd = filepath key
-      output <- execGit cwd [ "push", "--tags" ] \error ->
-        "Failed to push tags in local checkout " <> cwd <> ": " <> error
-      if String.contains (String.Pattern "Everything up-to-date") output then pure NoChange else pure Changed
-    pure $ reply result
+  PushTags repoKey reply -> do
+    let { owner, repo } = address repoKey
+    case env.write of
+      ReadOnly -> do
+        Log.info $ "Skipping push to repo " <> owner <> "/" <> repo <> " because write mode is 'ReadOnly'."
+        pure $ reply $ Right NoChange
+      CommitAs committer -> do
+        result <- Run.Except.runExceptAt _gitException do
+          let cwd = filepath repoKey
+          let upstream = address repoKey
+          let origin = authOrigin upstream committer
+          output <- execGit cwd [ "push", "--tags", origin ] \error ->
+            "Failed to push tags in local checkout " <> cwd <> ": " <> error
+          if String.contains (String.Pattern "Everything up-to-date") output then pure NoChange else pure Changed
+        pure $ reply result
   where
   address :: RepoKey -> Address
   address = case _ of
@@ -256,6 +317,19 @@ handleGitAff env = case _ of
     RegistryRepo -> registryPath
     ManifestIndexRepo -> manifestIndexPath
     LegacyPackageSetsRepo -> legacyPackageSetsPath
+
+  authOrigin :: Address -> Committer -> URL
+  authOrigin upstream committer = Array.fold
+    [ "https://"
+    , String.toLower committer.name
+    , ":"
+    , un GitHubToken committer.token
+    , "@github.com/"
+    , upstream.owner
+    , "/"
+    , upstream.repo
+    , ".git"
+    ]
 
   registryPath :: FilePath
   registryPath = Path.concat [ env.workdir, "registry" ]
@@ -323,7 +397,7 @@ handleGitAff env = case _ of
 
       Behind n -> do
         Log.debug $ "Local checkout of " <> formatted <> " is behind " <> status.origin <> " by " <> show n <> " commits, pulling..."
-        case env.pullMode of
+        case env.pull of
           Autostash -> do
             Log.debug $ "Pulling " <> formatted <> " in autostash mode, which preserves local changes."
             _ <- exec [ "pull", "--rebase", "--autostash" ] \error ->
@@ -359,8 +433,8 @@ handleGitAff env = case _ of
         pure Changed
 
   -- | Commit file(s) at the given commit key to the given repository.
-  gitCommit :: RepoKey -> CommitKey -> String -> Run _ (Either String GitResult)
-  gitCommit repoKey commitKey message = Run.Except.runExceptAt _gitException do
+  gitCommit :: Committer -> RepoKey -> CommitKey -> String -> Run _ (Either String GitResult)
+  gitCommit committer repoKey commitKey message = Run.Except.runExceptAt _gitException do
     let { owner, repo } = address repoKey
     let formatted = owner <> "/" <> repo
     let cwd = filepath repoKey
@@ -382,10 +456,10 @@ handleGitAff env = case _ of
         "Behind of origin by " <> show n <> " commits in local checkout of " <> cwd <> ", committing would cause issues."
 
     -- Then we ensure the commit metadata will match the expected committer
-    _ <- exec [ "config", "user.name", env.committer.name ] \error ->
-      "Failed to configure git user name as " <> env.committer.name <> inRepoErr error
-    _ <- exec [ "config", "user.email", "<" <> env.committer.email <> ">" ] \error ->
-      "Failed to configure git user email as " <> env.committer.email <> inRepoErr error
+    _ <- exec [ "config", "user.name", committer.name ] \error ->
+      "Failed to configure git user name as " <> committer.name <> inRepoErr error
+    _ <- exec [ "config", "user.email", "<" <> committer.email <> ">" ] \error ->
+      "Failed to configure git user email as " <> committer.email <> inRepoErr error
 
     -- Then we attempt to stage changes associated with the given commit paths
     let commitPath = un String.Pattern (commitRelativePath commitKey)
@@ -411,8 +485,8 @@ handleGitAff env = case _ of
       pure Changed
 
   -- | Push to the indicated repository
-  gitPush :: RepoKey -> Run _ (Either String GitResult)
-  gitPush repoKey = Run.Except.runExceptAt _gitException do
+  gitPush :: Committer -> RepoKey -> Run _ (Either String GitResult)
+  gitPush committer repoKey = Run.Except.runExceptAt _gitException do
     let cwd = filepath repoKey
 
     -- First we fetch the origin to make sure we're up-to-date.
@@ -444,9 +518,9 @@ handleGitAff env = case _ of
           origin :: URL
           origin = Array.fold
             [ "https://"
-            , String.toLower env.committer.name
+            , String.toLower committer.name
             , ":"
-            , un GitHubToken env.committer.token
+            , un GitHubToken committer.token
             , "@github.com/"
             , upstream.owner
             , "/"

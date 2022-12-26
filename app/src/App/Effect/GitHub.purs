@@ -176,7 +176,10 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
             -- has not changed, and GitHub promises not to consume a request if so.
             --
             -- TODO: This is not yet implemented because we don't retrieve etags
-            -- from the API. This branch will never be hit.
+            -- from the API. This branch will never be hit. We really ought to
+            -- do this, but Octokit makes it difficult to retrieve etags for
+            -- the 'request' function, and 'paginate' isn't much better. Someone
+            -- should do it, though!
             Right decoded | Just etag <- prevResponse.etag -> do
               Log.debug $ "Found valid cache entry with etags for " <> printedRoute
               let headers = Object.insert "If-None-Match" etag githubRequest.headers
@@ -202,9 +205,11 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
                   pure $ Right valid
 
             -- Since we don't have support for conditional requests via etags, we'll instead
-            -- auto-expire cache entries after an hour.
-            -- TODO: Remove DateTime.diff when GitHub honors requests again.
-            Right _ | DateTime.diff now prevResponse.modified >= Duration.Hours 1.0 -> do
+            -- auto-expire cache entries. We will be behind GitHub at most this amount per repo.
+            --
+            -- TODO: This 'diff' check should be removed once we have conditional requests.
+            Right _ | DateTime.diff now prevResponse.modified >= Duration.Hours 4.0 -> do
+              Log.debug $ "Found cache entry but it was modified more than 4 hours ago, refetching " <> printedRoute
               result <- requestWithBackoff octokit githubRequest
               putGitHubCache (Request route) (result <#> \resp -> { response: CA.encode codec resp, modified: now, etag: Nothing })
               pure result

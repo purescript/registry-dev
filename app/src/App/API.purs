@@ -479,24 +479,29 @@ publish source payload = do
         Nothing -> Run.liftEffect $ Ref.modify_ (Map.insert name version) unregisteredRef
         Just _ -> pure unit
   unregistered <- Run.liftEffect $ Ref.read unregisteredRef
-  _ <- Log.exit $ Array.fold
-    [ "Cannot register this package because it has unregistered dependencies: "
-    , Array.foldMap (\(Tuple name version) -> "\n  - " <> formatPackageVersion name version) (Map.toUnfoldable unregistered)
-    ]
+  unless (Map.isEmpty unregistered) do
+    Log.exit $ Array.fold
+      [ "Cannot register this package because it has unregistered dependencies: "
+      , Array.foldMap (\(Tuple name version) -> "\n  - " <> formatPackageVersion name version) (Map.toUnfoldable unregistered)
+      ]
 
   Log.info "Packaging tarball for upload..."
   let newDir = PackageName.print manifest.name <> "-" <> Version.print manifest.version
   let packageSourceDir = Path.concat [ tmp, newDir ]
+  Log.debug $ "Creating packaging directory at " <> packageSourceDir
   Run.liftAff $ FS.Extra.ensureDirectory packageSourceDir
   -- We copy over all files that are always included (ie. src dir, purs.json file),
   -- and any files the user asked for via the 'files' key, and remove all files
   -- that should never be included (even if the user asked for them).
   copyPackageSourceFiles manifest.files { source: packageDirectory, destination: packageSourceDir }
+  Log.debug "Removing always-ignored files from the packaging directory."
   Run.liftAff $ removeIgnoredTarballFiles packageSourceDir
-  let tarballPath = packageSourceDir <> ".tar.gz"
+
+  let tarballName = newDir <> ".tar.gz"
+  let tarballPath = Path.concat [ tmp, tarballName ]
   Run.liftEffect $ Tar.create { cwd: tmp, folderName: newDir }
 
-  Log.debug "Tarball created. Verifying its size..."
+  Log.info "Tarball created. Verifying its size..."
   FS.Stats.Stats { size: bytes } <- Run.liftAff $ FS.Aff.stat tarballPath
   for_ (Operation.Validation.validateTarballSize bytes) case _ of
     Operation.Validation.ExceedsMaximum maxPackageBytes ->
@@ -504,11 +509,19 @@ publish source payload = do
     Operation.Validation.WarnPackageSize maxWarnBytes ->
       Notify.notify $ "WARNING: Package tarball is " <> show bytes <> "bytes, which exceeds the warning threshold of " <> show maxWarnBytes <> " bytes."
 
+  -- If a package has under ~30 bytes it's about guaranteed that packaging the
+  -- tarball failed. This can happen if the system running the API has a non-
+  -- GNU tar installed, for example.
+  let minBytes = 30.0
+  when (bytes < minBytes) do
+    Log.exit $ "Package tarball is only " <> Number.Format.toString bytes <> " bytes, which indicates the source was not correctly packaged."
+
   hash <- Run.liftAff $ Sha256.hashFile tarballPath
-  Log.debug $ "Tarball size of " <> show bytes <> " is acceptable. Hash: " <> Sha256.print hash
+  Log.info $ "Tarball size of " <> show bytes <> " is acceptable. Hash: " <> Sha256.print hash
 
   -- Now that we have the package source contents we can verify we can compile
   -- the package. We skip failures when the package is a legacy package.
+  Log.info "Verifying package compiles (this may take a while)..."
   compilationResult <- compilePackage
     { packageSourceDir: packageDirectory
     , compiler: payload.compiler
@@ -667,7 +680,7 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
 
     Storage.downloadTarball name version filepath
 
-    Run.liftEffect $ Tar.extract { cwd: dir, archive: filename }
+    _ <- Run.liftEffect $ Tar.extract { cwd: dir, archive: filename }
     Run.liftAff $ FS.Aff.unlink filepath
     Log.debug $ "Installed " <> formatPackageVersion name version
 
@@ -820,10 +833,12 @@ fetchPackageSource { tmpDir, ref, location } = case location of
         Log.debug $ "Using legacy Git clone to fetch package source at tag: " <> show { owner, repo, ref }
 
         let
+          repoDir = Path.concat [ tmpDir, repo ]
+
           clonePackageAtTag = do
             let url = Array.fold [ "https://github.com/", owner, "/", repo ]
-            let args = [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false" ]
-            withBackoff' (Git.gitCLI args (Just tmpDir)) >>= case _ of
+            let args = [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false", repoDir ]
+            withBackoff' (Git.gitCLI args Nothing) >>= case _ of
               Nothing -> Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> url <> " " <> ref
               Just (Left err) -> Aff.throwError $ Aff.error err
               Just (Right _) -> pure unit
@@ -832,13 +847,12 @@ fetchPackageSource { tmpDir, ref, location } = case location of
           Left error -> do
             Log.error $ "Failed to clone git tag: " <> Aff.message error
             Log.exit $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
-          Right _ -> Log.debug "Cloned package source."
+          Right _ -> Log.debug $ "Cloned package source to " <> Path.concat [ tmpDir, repo ]
 
         Log.debug $ "Getting published time..."
 
         let
           getRefTime = Except.runExceptT do
-            let repoDir = Path.concat [ tmpDir, repo ]
             timestamp <- ExceptT $ Git.gitCLI [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir)
             jsDate <- liftEffect $ JSDate.parse timestamp
             dateTime <- Except.except $ note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
@@ -850,7 +864,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
             Log.error $ "Failed to get published time: " <> error
             Log.exit $ "Cloned repository " <> owner <> "/" <> repo <> " at ref " <> ref <> ", but could not read the published time from the ref."
           Right value -> pure value
-        pure { packageDirectory: Path.concat [ tmpDir, repo ], publishedTime }
+        pure { packageDirectory: repoDir, publishedTime }
 
       -- This method is not currently used (see the comment on LegacyPursPublish),
       -- but it's implemented here to demonstrate what we should do once we no
@@ -907,7 +921,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
             Log.exit "Downloaded tarball from GitHub has no top-level directory."
           Just dir -> do
             Log.debug "Extracting the tarball..."
-            Run.liftEffect $ Tar.extract { cwd: tmpDir, archive: tarballName }
+            _ <- Run.liftEffect $ Tar.extract { cwd: tmpDir, archive: tarballName }
             pure { packageDirectory: dir, publishedTime: commitDate }
 
 -- | Copy files from the package source directory to the destination directory
@@ -917,8 +931,9 @@ copyPackageSourceFiles
   :: forall r
    . Maybe (NonEmptyArray NonEmptyString)
   -> { source :: FilePath, destination :: FilePath }
-  -> Run (LOG_EXCEPT + AFF + EFFECT + r) Unit
+  -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) Unit
 copyPackageSourceFiles files { source, destination } = do
+  Log.debug $ "Copying package source files from " <> source <> " to " <> destination
   userFiles <- case files of
     Nothing -> pure []
     Just nonEmptyGlobs -> do
@@ -940,7 +955,14 @@ copyPackageSourceFiles files { source, destination } = do
     copyFiles = userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded
     makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ], preserveTimestamps: true }
 
-  Run.liftAff $ traverse_ (makePaths >>> FS.Extra.copy) copyFiles
+  case map makePaths copyFiles of
+    [] -> Log.warn "No files found in copyPackageSourceFiles to copy to the packaging directory."
+    xs -> do
+      Log.debug $ Array.fold
+        [ "Found files to copy:"
+        , Array.foldMap (\{ from, to } -> "\n  - " <> from <> " to " <> to) xs
+        ]
+      Run.liftAff $ traverse_ FS.Extra.copy xs
 
 -- | We always include some files and directories when packaging a tarball, in
 -- | addition to files users opt-in to with the 'files' key.

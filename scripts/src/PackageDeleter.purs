@@ -15,7 +15,7 @@ import Effect.Class.Console as Console
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (GitEnv, PullMode(..))
+import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LogVerbosity(..))
@@ -85,13 +85,15 @@ main = launchAff_ do
   spacesSecret <- Env.lookupRequired Env.spacesSecret
 
   -- Git
+  debouncer <- Git.newDebouncer
   let
     gitEnv :: GitEnv
     gitEnv =
-      { committer: Git.pacchettibottiCommitter token
-      , pullMode: OnlyClean
+      { write: CommitAs (Git.pacchettibottiCommitter token)
+      , pull: OnlyClean
       , repos: Git.defaultRepos
       , workdir: scratchDir
+      , debouncer
       }
 
   -- GitHub
@@ -101,6 +103,7 @@ main = launchAff_ do
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
   githubCacheRef <- TypedCache.newCacheRef
+  registryCacheRef <- TypedCache.newCacheRef
 
   -- Logging
   now <- liftEffect nowUTC
@@ -123,6 +126,7 @@ main = launchAff_ do
         >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
         >>> runGit
         -- Caching
+        >>> Registry.runRegistryCacheMemory { ref: registryCacheRef }
         >>> Storage.runStorageCacheFs { cacheDir }
         >>> GitHub.runGitHubCacheMemoryFs { cacheDir, ref: githubCacheRef }
         -- Logging
@@ -132,8 +136,7 @@ main = launchAff_ do
         >>> Run.runBaseAff'
 
   -- We run deletions *without* committing, because we'll do it in bulk later.
-  -- TODO TODO TODO Read-only git handler
-  interpret (Git.runGit (\_ -> unsafeCrashWith "unimplemented read-only handler")) do
+  interpret (Git.runGit (Git.handleGitAff (gitEnv { write = ReadOnly }))) do
     Log.info $ Array.fold
       [ "Deleting package versions:"
       , do

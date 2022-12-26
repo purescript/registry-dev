@@ -11,6 +11,7 @@ module Registry.ManifestIndex
   , fromSet
   , insert
   , insertIntoEntryFile
+  , delete
   , lookup
   , maximalIndex
   , packageEntryDirectory
@@ -129,6 +130,23 @@ insert manifest@(Manifest { name, version, dependencies }) (ManifestIndex index)
     Right $ ManifestIndex $ Map.insertWith (flip Map.union) name (Map.singleton version manifest) index
   else
     Left unsatisfied
+
+-- | Delete a package version from the manifest index, failing if it produces an
+-- | invalid manifest index. Since we only verify unsatisfied dependencies wrt
+-- | package names (and not package versions), it is always acceptable to delete
+-- | a package version so long as it has at least 2 versions. However, removing
+-- | a package altogether incurs a full validation check.
+delete :: PackageName -> Version -> ManifestIndex -> Either (Map PackageName (Map Version (Map PackageName Range))) ManifestIndex
+delete name version (ManifestIndex index) = do
+  case Map.lookup name index of
+    Nothing -> pure (ManifestIndex index)
+    Just versionsMap | Map.size versionsMap == 1 ->
+      fromSet $ Set.fromFoldable do
+        Tuple _ versions <- Map.toUnfoldableUnordered (Map.delete name index)
+        Tuple _ manifest <- Map.toUnfoldableUnordered versions
+        [ manifest ]
+    Just _ -> do
+      pure (ManifestIndex (Map.update (Just <<< Map.delete version) name index))
 
 -- | Convert a set of manifests into a `ManifestIndex`. Reports all failures
 -- | encountered rather than short-circuiting.

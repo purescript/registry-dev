@@ -12,7 +12,7 @@ import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.Auth as Auth
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (GitEnv, PullMode(..))
+import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -47,13 +47,15 @@ main = launchAff_ do
   privateKey <- Env.lookupRequired Env.pacchettibottiED25519
 
   -- Git
+  debouncer <- Git.newDebouncer
   let
     gitEnv :: GitEnv
     gitEnv =
-      { repos: Git.defaultRepos
-      , pullMode: ForceClean
-      , committer: Git.pacchettibottiCommitter token
+      { write: CommitAs (Git.pacchettibottiCommitter token)
+      , pull: ForceClean
+      , repos: Git.defaultRepos
       , workdir: scratchDir
+      , debouncer
       }
 
   -- GitHub
@@ -63,6 +65,7 @@ main = launchAff_ do
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
   githubCacheRef <- TypedCache.newCacheRef
+  registryCacheRef <- TypedCache.newCacheRef
 
   -- Logging
   now <- liftEffect nowUTC
@@ -81,6 +84,7 @@ main = launchAff_ do
     -- Requests
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caching
+    # Registry.runRegistryCacheMemory { ref: registryCacheRef }
     # Storage.runStorageCacheFs { cacheDir }
     # GitHub.runGitHubCacheMemoryFs { cacheDir, ref: githubCacheRef }
     -- Logging

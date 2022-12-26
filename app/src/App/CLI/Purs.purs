@@ -57,6 +57,7 @@ sourcePositionCodec = CA.Record.object "SourcePosition"
   , endColumn: CA.int
   }
 
+-- TODO: This would be better handled with dodo-printer.
 printCompilerErrors :: Array CompilerError -> String
 printCompilerErrors errors = do
   let
@@ -66,6 +67,7 @@ printCompilerErrors errors = do
         [ "Error " <> show (n + 1) <> " of " <> show total
         , ""
         , printCompilerError error
+        , ""
         ]
 
   String.joinWith "\n" printed

@@ -68,6 +68,10 @@ instance Functor2 Ignore where
 
 -- | An effect for caching values with an extensible key to support multiple
 -- | independent caches.
+--
+-- Note: We could also formulate this as a pair of Get / Alter, where Alter is
+-- of type (Maybe a -> Maybe a) and allows you to insert, modify, or delete in
+-- one operation.
 data TypedCache key a
   = Get (key Reply a)
   | Put (forall void. key Const void) a

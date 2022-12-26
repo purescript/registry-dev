@@ -22,7 +22,7 @@ spec = do
   Spec.it "Fails to verify when public key is incorrect" do
     let badPublicKey = over Owner (_ { public = "" }) validOwner
     Auth.verifyPayload pacchettibotti (NonEmptyArray.singleton badPublicKey) validPayload >>= case _ of
-      Left err -> verifyError err "allowed_signers:1: invalid key"
+      Left err -> verifyError err "allowed_signers:2: invalid key"
       Right _ -> Assert.fail "Verified an invalid public key."
 
   Spec.it "Fails to verify when signature is incorrect" do

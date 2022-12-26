@@ -6,8 +6,6 @@
 -- | you just want to iteratively pick up new releases.
 module Registry.Scripts.LegacyImporter where
 
-import Registry.App.Prelude
-
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Control.Alternative (guard)
@@ -44,7 +42,7 @@ import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (PullMode(..))
+import Registry.App.Effect.Git (PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -61,6 +59,7 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
+import Registry.App.Prelude (class Eq, class Functor, class Functor2, type (+), Aff, Effect, Either(..), FilePath, JsonCodec, Location(..), Manifest(..), ManifestIndex, Map, Maybe(..), Metadata(..), PackageName, Set, Tuple(..), Unit, Version, append, bind, compare, discard, flip, foldlWithIndex, for, forWithIndex, formatPackageVersion, fromMaybe, hush, isJust, isNothing, launchAff_, liftEffect, lmap, map, map2, mapKeys, not, nowUTC, pure, scratchDir, show, snd, stringifyJson, stripPureScriptPrefix, un, unit, unless, unsafeFromJust, unsafeFromRight, void, writeJsonFile, (#), ($), ($>), (*>), (+), (-), (/=), (<$>), (<<<), (<>), (=<<), (>=), (>>=), (>>>), (||))
 import Registry.Foreign.FSExtra as FS.Aff
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (Address, Tag)
@@ -111,17 +110,9 @@ main = launchAff_ do
   -- local repository checkouts on disk. In generate-registry mode, tarballs are
   -- uploaded, but nothing is committed. In update-registry mode, tarballs are
   -- uploaded and manifests and metadata are written, committed, and pushed.
-  --
-  -- TODO TODO TODO  This should support git read-only mode
   runAppEffects <- do
-    let
-      gitEnv token pullMode =
-        { repos: Git.defaultRepos
-        , pullMode
-        , committer: Git.pacchettibottiCommitter token
-        , workdir: scratchDir
-        }
-
+    debouncer <- Git.newDebouncer
+    let gitEnv pull write = { pull, write, repos: Git.defaultRepos, workdir: scratchDir, debouncer }
     case mode of
       DryRun -> do
         token <- Env.lookupRequired Env.githubToken
@@ -131,7 +122,7 @@ main = launchAff_ do
             >>> Storage.runStorage Storage.handleStorageReadOnly
             >>> Pursuit.runPursuit Pursuit.handlePursuitNoOp
             >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
-            >>> Git.runGit (Git.handleGitAff (gitEnv token Autostash))
+            >>> Git.runGit (Git.handleGitAff (gitEnv Autostash ReadOnly))
 
       GenerateRegistry -> do
         token <- Env.lookupRequired Env.githubToken
@@ -143,7 +134,7 @@ main = launchAff_ do
             >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
             >>> Pursuit.runPursuit Pursuit.handlePursuitNoOp
             >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
-            >>> Git.runGit (Git.handleGitAff (gitEnv token Autostash))
+            >>> Git.runGit (Git.handleGitAff (gitEnv Autostash (CommitAs (Git.pacchettibottiCommitter token))))
 
       UpdateRegistry -> do
         token <- Env.lookupRequired Env.pacchettibottiToken
@@ -155,41 +146,46 @@ main = launchAff_ do
             >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
             >>> Pursuit.runPursuit (Pursuit.handlePursuitHttp token)
             >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
-            >>> Git.runGit (Git.handleGitAff (gitEnv token OnlyClean))
+            >>> Git.runGit (Git.handleGitAff (gitEnv OnlyClean (CommitAs (Git.pacchettibottiCommitter token))))
 
   -- Caching setup
   runCacheEffects <- do
     githubCacheRef <- TypedCache.newCacheRef
     legacyCacheRef <- TypedCache.newCacheRef
+    registryCacheRef <- TypedCache.newCacheRef
     importCacheRef <- TypedCache.newCacheRef
     let cacheDir = Path.concat [ scratchDir, ".cache" ]
     FS.Aff.ensureDirectory cacheDir
     pure do
-      Storage.runStorageCacheFs { cacheDir }
+      Registry.runRegistryCacheMemory { ref: registryCacheRef }
+        >>> Storage.runStorageCacheFs { cacheDir }
         >>> GitHub.runGitHubCacheMemoryFs { cacheDir, ref: githubCacheRef }
         >>> Legacy.Manifest.runLegacyCacheMemoryFs { cacheDir, ref: legacyCacheRef }
         >>> runImportCacheMemoryFs { cacheDir, ref: importCacheRef }
 
   -- Logging setup
+  let logDir = Path.concat [ scratchDir, "logs" ]
+  FS.Extra.ensureDirectory logDir
+  now <- liftEffect nowUTC
+  let logFile = "legacy-importer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
+  let logPath = Path.concat [ logDir, logFile ]
   runLogEffects <- do
-    let logDir = Path.concat [ scratchDir, "logs" ]
-    FS.Extra.ensureDirectory logDir
-    now <- liftEffect nowUTC
-    let logFile = "legacy-importer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
-    let logPath = Path.concat [ logDir, logFile ]
     pure do
       Notify.runNotify Notify.handleNotifyLog
         >>> Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
         >>> Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
 
-  runLegacyImport mode
+  runLegacyImport mode logPath
     # runAppEffects
     # runCacheEffects
     # runLogEffects
     # Run.runBaseAff'
 
-runLegacyImport :: forall r. ImportMode -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit
-runLegacyImport mode = do
+runLegacyImport :: forall r. ImportMode -> FilePath -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit
+runLegacyImport mode logs = do
+  Log.info "Starting legacy import!"
+  Log.info $ "Logs available at " <> logs
+
   Log.info "Ensuring the registry is well-formed..."
 
   let
@@ -197,28 +193,28 @@ runLegacyImport mode = do
       Nothing -> false
       Just (Metadata m) -> isJust (Map.lookup version m.published) || isJust (Map.lookup version m.unpublished)
 
-  Log.info "Removing entries from the manifest index that don't have accompanying metadata..."
   _ <- do
     allManifests <- Registry.readAllManifests
     allMetadata <- Registry.readAllMetadata
     -- To ensure the metadata and registry index are always in sync, we remove
     -- any entries from the registry index that don't have accompanying metadata
     let mismatched = mapWithIndex (Map.filterKeys <<< not <<< hasMetadata allMetadata) $ ManifestIndex.toMap allManifests
-    forWithIndex mismatched \package versions ->
-      forWithIndex versions \version _ -> do
-        Log.debug $ "Found mismatch: " <> formatPackageVersion package version
-        Registry.deleteManifest package version
+    unless (Map.isEmpty mismatched) do
+      Log.info "Removing entries from the manifest index that don't have accompanying metadata..."
+      void $ forWithIndex mismatched \package versions ->
+        forWithIndex versions \version _ -> do
+          Log.debug $ "Found mismatch: " <> formatPackageVersion package version
+          Registry.deleteManifest package version
 
+  Log.info "Reading legacy registry..."
   legacyRegistry <- do
     { bower, new } <- Registry.readLegacyRegistry
     let allPackages = Map.union bower new
     let fixupNames = mapKeys (RawPackageName <<< stripPureScriptPrefix)
     pure $ fixupNames allPackages
 
-  Log.info "Importing packages from the legacy registry that have not already been uploaded..."
+  Log.info $ "Read " <> show (Set.size (Map.keys legacyRegistry)) <> " package names from the legacy registry."
   importedIndex <- importLegacyRegistry legacyRegistry
-
-  Log.info $ formatImportStats $ calculateImportStats legacyRegistry importedIndex
 
   Log.info "Writing package and version failures to disk..."
   Run.liftAff $ writePackageFailures importedIndex.failedPackages
@@ -231,6 +227,10 @@ runLegacyImport mode = do
         let metadata = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
         Registry.writeMetadata package metadata
       Just _ -> pure unit
+
+  Log.info "Ready for upload!"
+
+  Log.info $ formatImportStats $ calculateImportStats legacyRegistry importedIndex
 
   Log.info "Sorting packages for upload..."
   let indexPackages = ManifestIndex.toSortedArray importedIndex.registryIndex
@@ -324,6 +324,7 @@ type ImportedIndex =
 -- | legacy registry but not in the resulting registry.
 importLegacyRegistry :: forall r. LegacyRegistry -> Run (API.PublishEffects + IMPORT_CACHE + r) ImportedIndex
 importLegacyRegistry legacyRegistry = do
+  Log.info "Importing legacy registry manifests (this will take a while if you do not have a cache)"
   manifests <- forWithIndex legacyRegistry buildLegacyPackageManifests
 
   let
@@ -406,6 +407,7 @@ buildLegacyPackageManifests
   -> String
   -> Run (API.PublishEffects + IMPORT_CACHE + r) (Either PackageValidationError (Map RawVersion (Either VersionValidationError Manifest)))
 buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPackage do
+  Log.info $ un RawPackageName rawPackage
   package <- validatePackage rawPackage rawUrl
 
   let

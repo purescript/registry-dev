@@ -204,7 +204,7 @@ handlePackageSetsAff env = case _ of
     unlessM (Run.liftEffect (FS.Sync.exists installPath)) $ do
       Log.debug $ "Installing " <> formattedName
       Storage.downloadTarball name version tarballPath
-      Run.liftEffect $ Tar.extract { cwd: packagesWorkDir, archive: tarballName }
+      _ <- Run.liftEffect $ Tar.extract { cwd: packagesWorkDir, archive: tarballName }
       Run.liftAff do
         FS.Extra.remove tarballPath
         FS.Aff.rename extractedPath installPath

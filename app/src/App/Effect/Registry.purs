@@ -9,6 +9,7 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
+import Data.Exists as Exists
 import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
@@ -21,6 +22,8 @@ import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.TypedCache (CacheKey, CacheRef, MemoryEncoder, MemoryEncoding(..), TypedCache)
+import Registry.App.Effect.TypedCache as TypedCache
 import Registry.App.Legacy.PackageSet (PscTag(..))
 import Registry.App.Legacy.PackageSet as Legacy.Manifest
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
@@ -28,6 +31,7 @@ import Registry.App.Legacy.Types (legacyPackageSetCodec)
 import Registry.Constants as Constants
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit as Octokit
+import Registry.Internal.Codec as Internal.Codec
 import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
@@ -120,94 +124,171 @@ runRegistry handler = Run.interpret (Run.on _registry handler Run.send)
 -- | Handle the REGISTRY effect by downloading the registry and registry-index
 -- | repositories locally and reading and writing their contents from disk.
 -- | Writes can optionally commit and push to the uptsream Git repository.
-handleRegistryGit :: forall r a. Registry a -> Run (GITHUB + GIT + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
+handleRegistryGit :: forall r a. Registry a -> Run (REGISTRY_CACHE + GITHUB + GIT + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
 handleRegistryGit = case _ of
-  -- TODO: Try reading from the cache, fall back to a cache of the manifest index,
-  -- and then fall back to the file system.
   ReadManifest name version reply -> do
     let formatted = formatPackageVersion name version
-    Log.info $ "Reading manifest for " <> formatted <> "..."
-    indexPath <- Git.getPath Git.ManifestIndexRepo
-    Run.liftAff (ManifestIndex.readEntryFile indexPath name) >>= case _ of
-      Left error -> do
-        Log.warn $ "Could not read manifest index entry for package " <> PackageName.print name <> ": " <> error
+    Log.debug $ "Reading manifest for " <> formatted
+    index <- handleRegistryGit (ReadAllManifests identity)
+    case ManifestIndex.lookup name version index of
+      Nothing -> do
+        Log.debug $ "Did not find manifest for " <> formatted <> " in memory cache or local registry repo checkout."
         pure $ reply Nothing
-      Right entries -> case NonEmptyArray.find (\(Manifest m) -> m.name == name && m.version == version) entries of
-        Nothing -> do
-          Log.warn $ "Found manifest index entry for package " <> PackageName.print name <> " but none for version " <> Version.print version
-          pure $ reply Nothing
-        Just entry -> do
-          Log.debug $ "Found manifest index entry for " <> formatted
-          pure $ reply $ Just entry
+      Just manifest -> do
+        Log.debug $ "Read manifest for " <> formatted <> " from refreshed index."
+        pure $ reply $ Just manifest
 
   WriteManifest manifest@(Manifest { name, version }) next -> do
     let formatted = formatPackageVersion name version
     Log.info $ "Writing manifest for " <> formatted <> ":\n" <> printJson Manifest.codec manifest
     let exitMessage = "Failed to write manifest for " <> formatted <> " to the manifest index."
-    commitResult <- Git.writeCommitPush (Git.CommitManifestEntry name) \indexPath -> do
-      Run.liftAff (ManifestIndex.insertIntoEntryFile indexPath manifest) >>= case _ of
-        Left error -> do
-          Log.error $ "Could not insert manifest for " <> formatted <> " into its entry file in WriteManifest: " <> error
-          Log.exit exitMessage
-        Right _ -> pure $ Just $ "Update manifest for " <> formatted
-    case commitResult of
-      Left error -> Log.exit $ "Failed to write and commit manifest: " <> error
-      Right NoChange -> Log.info "Did not commit manifest because it did not change." *> pure next
-      Right Changed -> Log.info "Wrote and committed manifest." *> pure next
+    index <- handleRegistryGit (ReadAllManifests identity)
+    case ManifestIndex.insert manifest index of
+      Left error ->
+        Log.exit $ Array.fold
+          [ "Can't insert " <> formatted <> " into manifest index because it has unsatisfied dependencies:"
+          , printJson (Internal.Codec.packageMap Range.codec) error
+          ]
+      Right updated -> do
+        result <- Git.writeCommitPush (Git.CommitManifestEntry name) \indexPath -> do
+          Run.liftAff (ManifestIndex.insertIntoEntryFile indexPath manifest) >>= case _ of
+            Left error -> do
+              Log.error $ "Could not insert manifest for " <> formatted <> " into its entry file in WriteManifest: " <> error
+              Log.exit exitMessage
+            Right _ -> pure $ Just $ "Update manifest for " <> formatted
+        case result of
+          Left error -> Log.exit $ "Failed to write and commit manifest: " <> error
+          Right NoChange -> Log.info "Did not commit manifest because it did not change." *> pure next
+          Right Changed -> do
+            Log.info "Wrote and committed manifest."
+            putRegistryCache AllManifests updated
+            pure next
 
   DeleteManifest name version next -> do
     let formatted = formatPackageVersion name version
     Log.info $ "Deleting manifest for " <> formatted
     let exitMessage = "Failed to delete manifest for " <> formatted <> " from the manifest index."
-    commitResult <- Git.writeCommitPush (Git.CommitManifestEntry name) \indexPath -> do
-      Run.liftAff (ManifestIndex.removeFromEntryFile indexPath name version) >>= case _ of
-        Left error -> do
-          Log.error $ "Could not remove manifest for " <> formatted <> " from its entry file in DeleteManifest: " <> error
-          Log.exit exitMessage
-        Right _ -> pure $ Just $ "Remove manifest entry for " <> formatted
-    case commitResult of
-      Left error -> Log.exit $ "Failed to delete and commit manifest: " <> error
-      Right NoChange -> Log.info "Did not commit manifest because it already didn't exist." *> pure next
-      Right Changed -> Log.info "Deleted and committed manifest." *> pure next
+    index <- handleRegistryGit (ReadAllManifests identity)
+    case ManifestIndex.delete name version index of
+      Left error ->
+        Log.exit $ Array.fold
+          [ "Can't delete " <> formatted <> " from manifest index because it would produce unsatisfied dependencies:"
+          , printJson (Internal.Codec.packageMap (Internal.Codec.versionMap (Internal.Codec.packageMap Range.codec))) error
+          ]
+      Right updated -> do
+        commitResult <- Git.writeCommitPush (Git.CommitManifestEntry name) \indexPath -> do
+          Run.liftAff (ManifestIndex.removeFromEntryFile indexPath name version) >>= case _ of
+            Left error -> do
+              Log.error $ "Could not remove manifest for " <> formatted <> " from its entry file in DeleteManifest: " <> error
+              Log.exit exitMessage
+            Right _ -> pure $ Just $ "Remove manifest entry for " <> formatted
+        case commitResult of
+          Left error -> Log.exit $ "Failed to delete and commit manifest: " <> error
+          Right NoChange -> Log.info "Did not commit manifest because it already didn't exist." *> pure next
+          Right Changed -> do
+            Log.info "Wrote and committed manifest."
+            putRegistryCache AllManifests updated
+            pure next
 
-  -- TODO: Try reading from the cache, fall back to the git repo.
   ReadAllManifests reply -> do
-    indexPath <- Git.getPath Git.ManifestIndexRepo
-    Log.info $ "Reading manifest index from " <> indexPath
-    index <- readManifestIndexFromDisk indexPath
-    pure $ reply index
+    let
+      refreshIndex = do
+        indexPath <- Git.getPath Git.ManifestIndexRepo
+        index <- readManifestIndexFromDisk indexPath
+        putRegistryCache AllManifests index
+        pure $ reply index
 
-  -- TODO: Try reading from the cache, fall back to all metadata cache, fall
-  -- back to the git repo.
+    Git.pull Git.ManifestIndexRepo >>= case _ of
+      Left error ->
+        Log.exit $ "Could not read manifests because the manifest index repo could not be checked: " <> error
+      Right NoChange -> do
+        Log.debug "Manifest index repo up to date, reading from cache..."
+        cache <- getRegistryCache AllManifests
+        case cache of
+          Nothing -> do
+            Log.info "No cached manifest index, reading from disk..."
+            refreshIndex
+          Just cached -> pure $ reply cached
+      Right Changed -> do
+        Log.info "Manifest index has changed, replacing cache..."
+        refreshIndex
+
   ReadMetadata name reply -> do
     let printedName = PackageName.print name
+    Log.debug $ "Reading metadata for " <> printedName
     registryPath <- Git.getPath Git.RegistryRepo
-    let path = Path.concat [ registryPath, Constants.metadataDirectory, printedName <> ".json" ]
-    Log.info $ "Reading metadata for " <> printedName <> " from path " <> path
-    let exitMessage = "Found metadata for " <> printedName <> ", but it could not be read."
-    Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 path)) >>= case _ of
-      Left fsError -> do
-        Log.warn $ "Could not find metadata file for package " <> printedName <> ": " <> Aff.message fsError
-        pure $ reply Nothing
-      Right contents -> case Argonaut.Parser.jsonParser contents of
-        Left jsonError -> do
-          Log.error $ Array.fold
-            [ "Found metadata file for " <> printedName <> " at path " <> path
-            , ", but the file is not valid JSON: " <> jsonError
-            , "\narising from contents:\n" <> contents
-            ]
-          Log.exit exitMessage
-        Right parsed -> case CA.decode Metadata.codec parsed of
-          Left decodeError -> do
-            Log.error $ Array.fold
-              [ "Found metadata file for " <> printedName <> " at path " <> path
-              , ", but could not decode the JSON" <> CA.printJsonDecodeError decodeError
-              , "\narising from contents:\n" <> contents
-              ]
-            Log.exit exitMessage
-          Right metadata -> do
-            Log.debug $ "Successfully read metadata for " <> printedName
-            pure $ reply $ Just metadata
+
+    let
+      path = Path.concat [ registryPath, Constants.metadataDirectory, printedName <> ".json" ]
+
+      -- Attempt to read and decode the metadata file from the local checkout.
+      readMetadataFromDisk = do
+        Log.debug $ "Reading metadata for " <> printedName <> " from disk because it is not available in cache."
+        let exitMessage = "Found metadata for " <> printedName <> ", but it could not be read."
+        Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 path)) >>= case _ of
+          Left fsError -> do
+            Log.debug $ "Could not find metadata file for package " <> printedName <> ": " <> Aff.message fsError
+            pure Nothing
+          Right contents -> case Argonaut.Parser.jsonParser contents of
+            Left jsonError -> do
+              Log.error $ Array.fold
+                [ "Found metadata file for " <> printedName <> " at path " <> path
+                , ", but the file is not valid JSON: " <> jsonError
+                , "\narising from contents:\n" <> contents
+                ]
+              Log.exit exitMessage
+            Right parsed -> case CA.decode Metadata.codec parsed of
+              Left decodeError -> do
+                Log.error $ Array.fold
+                  [ "Found metadata file for " <> printedName <> " at path " <> path
+                  , ", but could not decode the JSON" <> CA.printJsonDecodeError decodeError
+                  , "\narising from contents:\n" <> contents
+                  ]
+                Log.exit exitMessage
+              Right metadata -> do
+                Log.debug $ "Successfully read metadata for " <> printedName <> " from path " <> path
+                pure (Just metadata)
+
+      -- Should be used when the cache may not be valid. Reads the metadata from
+      -- disk and replaces the cache with it.
+      resetFromDisk = readMetadataFromDisk >>= case _ of
+        Nothing -> do
+          Log.debug $ "Did not find " <> printedName <> " in memory cache or local registry repo checkout."
+          pure $ reply Nothing
+
+        Just metadata -> do
+          Log.debug $ "Successfully read metadata for " <> printedName <> " from path " <> path
+          Log.debug $ "Setting metadata cache to singleton entry (as cache was previosuly empty)."
+          putRegistryCache AllMetadata (Map.singleton name metadata)
+          pure $ reply $ Just metadata
+
+    Git.pull Git.RegistryRepo >>= case _ of
+      Left error ->
+        Log.exit $ "Could not read metadata because the registry repo could not be checked: " <> error
+
+      Right NoChange -> do
+        Log.debug "Registry repo up to date, reading from cache..."
+        getRegistryCache AllMetadata >>= case _ of
+          Nothing -> resetFromDisk
+          Just allMetadata -> case Map.lookup name allMetadata of
+            Nothing -> do
+              Log.debug $ "Did not find " <> printedName <> " in memory cache, trying local registry checkout..."
+              readMetadataFromDisk >>= case _ of
+                Nothing -> do
+                  Log.debug $ "Did not find " <> printedName <> " in memory cache or local registry repo checkout."
+                  pure $ reply Nothing
+                Just metadata -> do
+                  Log.debug $ "Read metadata for " <> printedName <> " from path " <> path
+                  Log.debug $ "Updating metadata cache to insert entry."
+                  putRegistryCache AllMetadata (Map.insert name metadata allMetadata)
+                  pure $ reply $ Just metadata
+
+            Just cached ->
+              pure $ reply $ Just cached
+
+      Right Changed -> do
+        Log.info "Registry repo has changed, clearing metadata cache..."
+        resetFromDisk
 
   WriteMetadata name metadata next -> do
     let printedName = PackageName.print name
@@ -224,15 +305,37 @@ handleRegistryGit = case _ of
     case commitResult of
       Left error -> Log.exit $ "Failed to write and commit metadata: " <> error
       Right NoChange -> Log.info "Did not commit metadata because it was unchanged." *> pure next
-      Right Changed -> Log.info "Wrote and committed metadata." *> pure next
+      Right Changed -> do
+        Log.info "Wrote and committed metadata."
+        cache <- getRegistryCache AllMetadata
+        for_ cache \cached ->
+          putRegistryCache AllMetadata (Map.insert name metadata cached)
+        pure next
 
-  -- TODO: Try reading from the cache, fall back to the git repo
   ReadAllMetadata reply -> do
-    registryPath <- Git.getPath Git.RegistryRepo
-    let metadataDir = Path.concat [ registryPath, Constants.metadataDirectory ]
-    Log.info $ "Reading metadata for all packages from directory " <> metadataDir
-    allMetadata <- readAllMetadataFromDisk metadataDir
-    pure $ reply allMetadata
+    let
+      refreshMetadata = do
+        registryPath <- Git.getPath Git.RegistryRepo
+        let metadataDir = Path.concat [ registryPath, Constants.metadataDirectory ]
+        Log.info $ "Reading metadata for all packages from directory " <> metadataDir
+        allMetadata <- readAllMetadataFromDisk metadataDir
+        putRegistryCache AllMetadata allMetadata
+        pure $ reply allMetadata
+
+    Git.pull Git.RegistryRepo >>= case _ of
+      Left error ->
+        Log.exit $ "Could not read metadata because the registry repo could not be checked: " <> error
+      Right NoChange -> do
+        Log.debug "Registry repo up to date, reading from cache..."
+        getRegistryCache AllMetadata >>= case _ of
+          Nothing -> do
+            Log.info "No cached metadata map, reading from disk..."
+            refreshMetadata
+          Just cached ->
+            pure $ reply cached
+      Right Changed -> do
+        Log.info "Registry repo has changed, replacing metadata cache..."
+        refreshMetadata
 
   ReadLatestPackageSet reply -> do
     registryPath <- Git.getPath Git.RegistryRepo
@@ -554,3 +657,35 @@ listPackageSetVersions packageSetsDir = do
     xs -> do
       Log.warn $ "Some package sets have invalid names and have been skipped: " <> String.joinWith ", " xs
       pure versions.success
+
+data RegistryCache (c :: Type -> Type -> Type) a
+  = AllManifests (c ManifestIndex a)
+  | AllMetadata (c (Map PackageName Metadata) a)
+
+instance Functor2 c => Functor (RegistryCache c) where
+  map k (AllManifests a) = AllManifests (map2 k a)
+  map k (AllMetadata a) = AllMetadata (map2 k a)
+
+type REGISTRY_CACHE r = (registryCache :: TypedCache RegistryCache | r)
+
+_registryCache :: Proxy "registryCache"
+_registryCache = Proxy
+
+getRegistryCache :: forall r a. CacheKey RegistryCache a -> Run (REGISTRY_CACHE + r) (Maybe a)
+getRegistryCache key = Run.lift _registryCache (TypedCache.getCache key)
+
+putRegistryCache :: forall r a. CacheKey RegistryCache a -> a -> Run (REGISTRY_CACHE + r) Unit
+putRegistryCache key value = Run.lift _registryCache (TypedCache.putCache key value)
+
+registryMemoryEncoder :: MemoryEncoder RegistryCache
+registryMemoryEncoder = case _ of
+  AllManifests next -> Exists.mkExists $ Key "ManifestIndex" next
+  AllMetadata next -> Exists.mkExists $ Key "AllMetadata" next
+
+runRegistryCacheMemory
+  :: forall r a
+   . { ref :: CacheRef }
+  -> Run (REGISTRY_CACHE + LOG + AFF + EFFECT + r) a
+  -> Run (LOG + AFF + EFFECT + r) a
+runRegistryCacheMemory { ref } =
+  TypedCache.runCacheAt _registryCache (TypedCache.handleCacheMemory { ref, encoder: registryMemoryEncoder })

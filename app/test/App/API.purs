@@ -97,7 +97,7 @@ removeIgnoredTarballFiles = Spec.before runBefore do
     pure { tmp, writeDirectories, writeFiles }
 
 copySourceFiles :: Spec.Spec Unit
-copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runLogExcept >>> Assert.Run.runBaseTest) $ Spec.before runBefore do
+copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.before runBefore do
   let
     goodDirectories = [ "src" ]
     goodFiles = [ "purs.json", "README.md", "LICENSE", Path.concat [ "src", "Main.purs" ], Path.concat [ "src", "Main.js" ] ]

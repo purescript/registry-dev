@@ -18,7 +18,7 @@ import Effect.Class.Console as Console
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (GitEnv, PullMode(..))
+import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
@@ -61,23 +61,28 @@ main = Aff.launchAff_ do
   -- Environment
   _ <- Env.loadEnvFile ".env"
 
-  token <- case mode of
+  { token, write } <- case mode of
     GeneratePackageSet -> do
       Env.lookupOptional Env.githubToken >>= case _ of
-        Nothing -> Env.lookupRequired Env.pacchettibottiToken
-        Just token -> pure token
-    CommitPackageSet ->
-      Env.lookupRequired Env.pacchettibottiToken
+        Nothing -> do
+          token <- Env.lookupRequired Env.pacchettibottiToken
+          pure { token, write: ReadOnly }
+        Just token ->
+          pure { token, write: ReadOnly }
+    CommitPackageSet -> do
+      token <- Env.lookupRequired Env.pacchettibottiToken
+      pure { token, write: CommitAs (Git.pacchettibottiCommitter token) }
 
   -- Git
+  debouncer <- Git.newDebouncer
   let
-    -- TODO TODO TODO This should be read-only for generate-package-set
     gitEnv :: GitEnv
     gitEnv =
-      { committer: Git.pacchettibottiCommitter token
-      , pullMode: ForceClean
+      { write
+      , pull: ForceClean
       , repos: Git.defaultRepos
       , workdir: scratchDir
+      , debouncer
       }
 
   -- Package sets
@@ -90,6 +95,7 @@ main = Aff.launchAff_ do
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
   githubCacheRef <- TypedCache.newCacheRef
+  registryCacheRef <- TypedCache.newCacheRef
 
   -- Logging
   now <- liftEffect nowUTC
@@ -107,6 +113,7 @@ main = Aff.launchAff_ do
     -- Requests
     # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
     -- Caching
+    # Registry.runRegistryCacheMemory { ref: registryCacheRef }
     # Storage.runStorageCacheFs { cacheDir }
     # GitHub.runGitHubCacheMemoryFs { cacheDir, ref: githubCacheRef }
     -- Logging
@@ -123,7 +130,7 @@ updater = do
 
   PackageSets.validatePackageSet prevPackageSet
 
-  let uploadHours = 24.0
+  let uploadHours = 240.0
   recentUploads <- findRecentUploads (Hours uploadHours)
 
   manifestIndex <- Registry.readAllManifests

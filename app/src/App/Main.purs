@@ -18,7 +18,7 @@ import Registry.App.API as API
 import Registry.App.Auth as Auth
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (GitEnv, PullMode(..))
+import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -65,20 +65,25 @@ main = launchAff_ $ do
             API.authenticated signed
 
     -- Git env
+    debouncer <- Git.newDebouncer
     let
       gitEnv :: GitEnv
       gitEnv =
         { repos: Git.defaultRepos
-        , pullMode: ForceClean
-        , committer: Git.pacchettibottiCommitter env.token
+        , pull: ForceClean
+        , write: CommitAs (Git.pacchettibottiCommitter env.token)
         , workdir: scratchDir
+        , debouncer
         }
 
     -- Caching
-    githubCacheRef <- TypedCache.newCacheRef
-    legacyCacheRef <- TypedCache.newCacheRef
     let cacheDir = Path.concat [ scratchDir, ".cache" ]
     FS.Extra.ensureDirectory cacheDir
+    githubCacheRef <- TypedCache.newCacheRef
+    legacyCacheRef <- TypedCache.newCacheRef
+    registryCacheRef <- TypedCache.newCacheRef
+
+    --  Package sets
     let workdir = Path.concat [ scratchDir, "package-sets-work" ]
     FS.Extra.ensureDirectory workdir
 
@@ -95,6 +100,7 @@ main = launchAff_ $ do
       # Pursuit.runPursuit (Pursuit.handlePursuitHttp env.token)
       # GitHub.runGitHub (GitHub.handleGitHubOctokit env.octokit)
       -- Caching
+      # Registry.runRegistryCacheMemory { ref: registryCacheRef }
       # Storage.runStorageCacheFs { cacheDir }
       # GitHub.runGitHubCacheMemoryFs { cacheDir, ref: githubCacheRef }
       # Legacy.Manifest.runLegacyCacheMemoryFs { cacheDir, ref: legacyCacheRef }
