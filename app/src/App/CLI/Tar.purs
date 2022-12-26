@@ -14,7 +14,7 @@ type ExtractArgs = { cwd :: String, archive :: FilePath }
 -- | directory name will be the archive name minus '.tar.gz'.
 extract :: ExtractArgs -> Effect Unit
 extract { cwd, archive } = do
-  let cmd = "tar -xvzf " <> archive
+  let cmd = "tar -xzf " <> archive
   void $ ChildProcess.execSync cmd (ChildProcess.defaultExecSyncOptions { cwd = Just cwd })
 
 type CreateArgs = { cwd :: String, folderName :: String }
@@ -35,7 +35,7 @@ create { cwd, folderName } = do
       , "--group=0"
       , "--numeric-owner"
       , "--pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime"
-      , "-vcf"
+      , "-cf"
       , "-"
       , folderName
       ]
