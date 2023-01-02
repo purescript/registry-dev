@@ -43,4 +43,4 @@ shouldContain container elem =
 shouldNotContain :: forall f a r. Eq a => Foldable f => f a -> a -> Run (EXCEPT String + r) Unit
 shouldNotContain container elem =
   unless (elem `Foldable.notElem` container) do
-    Run.Except.throw (Utils.unsafeStringify elem <> "\n\nshould be a member of\n\n" <> Utils.unsafeStringify container)
+    Run.Except.throw (Utils.unsafeStringify elem <> "\n\nis, but should not be, a member of\n\n" <> Utils.unsafeStringify container)

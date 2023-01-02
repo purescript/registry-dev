@@ -184,7 +184,9 @@ toCacheValue = unsafeCoerce
 
 type MemoryEncoder key = forall b z. key z b -> Exists (MemoryEncoding z b)
 
--- An encoding for keys so they can be stored in a map.
+-- | An encoding for keys so they can be stored in a map (we don't have an Ord
+-- | instance for key types, but they can generally be mapped to a String, which
+-- | does have one).
 data MemoryEncoding :: (Type -> Type -> Type) -> Type -> Type -> Type
 data MemoryEncoding z b a = Key String (z a b)
 
@@ -249,7 +251,9 @@ type FsCacheEnv k =
 type FsEncoder key = forall b z. key z b -> Exists (FsEncoding z b)
 
 -- | A box used with `Exists` to capture the encoding associated with values
--- | of a particular key.
+-- | of a particular key. Essentially, these are serialization formats:
+-- | sometimes we want a cache backed by JSON, sometimes backed by a raw buffer.
+-- | We can add more if we ever need them.
 data FsEncoding :: (Type -> Type -> Type) -> Type -> Type -> Type
 data FsEncoding z b a
   = AsJson String (JsonCodec a) (z a b)
