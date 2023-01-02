@@ -147,11 +147,11 @@ initializeGitHub = do
 
     MalformedJson issue err -> do
       let
-        comment = Array.fold
+        comment = String.joinWith "\n"
           [ "The JSON input for this package update is malformed:"
-          , "\n"
-          , "```" <> err <> "```"
-          , "\n"
+          , "```"
+          , err
+          , "```"
           , "You can try again by commenting on this issue with a corrected payload."
           ]
 
