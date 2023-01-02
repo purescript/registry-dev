@@ -15,7 +15,7 @@ import Sunde as Process
 -- | Attempt to detect the license associated with a set of provided files
 detectFiles :: Array { name :: FilePath, contents :: String } -> Aff (Either String (Array String))
 detectFiles files = do
-  tmp <- liftEffect Tmp.mkTmpDir
+  tmp <- Tmp.mkTmpDir
   files # Parallel.parTraverse_ \{ name, contents } ->
     FS.writeTextFile UTF8 (Path.concat [ tmp, name ]) contents
   detect tmp

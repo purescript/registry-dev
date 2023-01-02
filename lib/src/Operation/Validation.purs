@@ -18,7 +18,7 @@ import Data.Time.Duration (Hours(..))
 import Data.Traversable (for, traverse)
 import Data.Tuple (uncurry)
 import Data.Tuple.Nested (type (/\), (/\))
-import Effect.Aff (Aff)
+import Effect.Aff.Class (class MonadAff, liftAff)
 import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as Stats
 import Node.Path (FilePath)
@@ -40,8 +40,8 @@ import Registry.Version (Version)
 -- See https://github.com/purescript/registry-dev/blob/master/SPEC.md#5-registry-operations
 
 -- | Checks that there is at least one purs file within the `src` directory.
-containsPursFile :: FilePath -> Aff Boolean
-containsPursFile parent = flip catchError (\_ -> pure false) do
+containsPursFile :: forall m. MonadAff m => FilePath -> m Boolean
+containsPursFile parent = liftAff $ flip catchError (\_ -> pure false) do
   children <- FS.Aff.readdir parent
 
   stats <- for children \relpath -> do

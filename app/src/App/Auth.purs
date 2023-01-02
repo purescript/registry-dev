@@ -34,7 +34,7 @@ sshKeyPath = "id_ed25519"
 -- actually sign the payload.
 verifyPayload :: Owner -> NonEmptyArray Owner -> AuthenticatedData -> Aff (Either String String)
 verifyPayload pacchettiBotti owners { email, signature, rawPayload } = do
-  tmp <- liftEffect Tmp.mkTmpDir
+  tmp <- Tmp.mkTmpDir
   let joinWithNewlines = String.joinWith "\n"
   let signers = joinWithNewlines $ NonEmptyArray.toArray $ map formatOwner (NonEmptyArray.cons pacchettiBotti owners)
   FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, allowedSignersPath ]) signers
@@ -63,7 +63,7 @@ type SignAuthenticated =
 
 signPayload :: SignAuthenticated -> Aff (Either String (Array String))
 signPayload { publicKey, privateKey, rawPayload } = do
-  tmp <- liftEffect Tmp.mkTmpDir
+  tmp <- Tmp.mkTmpDir
   let publicKeyPath = Path.concat [ tmp, sshKeyPath <> ".pub" ]
   let privateKeyPath = Path.concat [ tmp, sshKeyPath ]
   -- Key files must have a single trailing newline.

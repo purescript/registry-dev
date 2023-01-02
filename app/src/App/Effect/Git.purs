@@ -233,7 +233,7 @@ handleGitAff env = case _ of
             result <- gitPull key
             pure result
 
-    now <- Run.liftEffect nowUTC
+    now <- nowUTC
     debouncers <- Run.liftEffect $ Ref.read env.debouncer
     case Map.lookup path debouncers of
       -- We will be behind the upstream by at most this amount of time.

@@ -59,7 +59,7 @@ main = launchAff_ do
       }
 
   -- GitHub
-  octokit <- liftEffect $ Octokit.newOctokit token
+  octokit <- Octokit.newOctokit token
 
   -- Caching
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
@@ -68,7 +68,7 @@ main = launchAff_ do
   registryCacheRef <- TypedCache.newCacheRef
 
   -- Logging
-  now <- liftEffect nowUTC
+  now <- nowUTC
   let logDir = Path.concat [ scratchDir, "logs" ]
   FS.Extra.ensureDirectory logDir
   let logFile = "package-transferrer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"

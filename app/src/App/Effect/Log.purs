@@ -104,7 +104,7 @@ handleLogFs verbosity logfile action = case action of
   Log level message next -> do
     let
       attemptWrite = do
-        now <- Run.liftEffect nowUTC
+        now <- nowUTC
         let
           time = Formatters.DateTime.format Internal.Format.iso8601DateTime now
 

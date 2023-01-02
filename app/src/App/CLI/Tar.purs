@@ -12,8 +12,8 @@ type ExtractArgs = { cwd :: String, archive :: FilePath }
 
 -- | Extracts the tarball at the given relative file path into cwd. Resulting
 -- | directory name will be the archive name minus '.tar.gz'.
-extract :: ExtractArgs -> Effect Unit
-extract { cwd, archive } = do
+extract :: forall m. MonadEffect m => ExtractArgs -> m Unit
+extract { cwd, archive } = liftEffect do
   let cmd = "tar -xzf " <> archive
   void $ ChildProcess.execSync cmd (ChildProcess.defaultExecSyncOptions { cwd = Just cwd })
 
@@ -21,8 +21,8 @@ type CreateArgs = { cwd :: String, folderName :: String }
 
 -- | Create a tarball in cwd given a relative path to a folder in that
 -- | directory, writing logs to stdout.
-create :: CreateArgs -> Effect Unit
-create { cwd, folderName } = do
+create :: forall m. MonadEffect m => CreateArgs -> m Unit
+create { cwd, folderName } = liftEffect do
   let
     cmd = String.joinWith " | " [ tarCmd, gzipCmd ]
     gzipCmd = "gzip " <> String.joinWith " " [ "--name", ">", folderName <> ".tar.gz" ]

@@ -140,7 +140,7 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
   -- We cache GET requests, other than requests to fetch the current rate limit.
   case method of
     GET | route /= Octokit.rateLimitRequest.route -> do
-      now <- Run.liftEffect nowUTC
+      now <- nowUTC
       entry <- getGitHubCache (Request route)
       case entry of
         Nothing -> do

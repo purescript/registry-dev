@@ -211,8 +211,8 @@ withBackoff { delay: Aff.Milliseconds timeout, action, shouldCancel, shouldRetry
 
 -- | Get the current time, standardizing on the UTC timezone to avoid ambiguity
 -- | when running on different machines.
-nowUTC :: Extra.Effect DateTime
-nowUTC = do
+nowUTC :: forall m. Extra.MonadEffect m => m DateTime
+nowUTC = Extra.liftEffect do
   offset <- Newtype.over Duration.Minutes negate <$> Now.getTimezoneOffset
   now <- Now.nowDateTime
   pure $ Maybe.fromMaybe now $ DateTime.adjust (offset :: Duration.Minutes) now

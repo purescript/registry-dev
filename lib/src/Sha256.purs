@@ -23,8 +23,8 @@ import Data.Either (Either, hush)
 import Data.List.Lazy as List.Lazy
 import Data.String.CodeUnits as String.CodeUnits
 import Effect (Effect)
-import Effect.Aff (Aff)
-import Effect.Class (liftEffect)
+import Effect.Aff.Class (class MonadAff, liftAff)
+import Effect.Class (class MonadEffect, liftEffect)
 import Node.Buffer (Buffer)
 import Node.Buffer as Buffer
 import Node.Encoding (Encoding(..))
@@ -65,20 +65,20 @@ parser = do
   pure $ Sha256 { sri: prefix, hash: fromCharList hash <> String.CodeUnits.singleton suffix }
 
 -- | Create the sha256 SRI hash for a file
-hashFile :: FilePath -> Aff Sha256
-hashFile path = do
+hashFile :: forall m. MonadAff m => FilePath -> m Sha256
+hashFile path = liftAff do
   fileBuffer <- FS.Aff.readFile path
   liftEffect $ hashBuffer fileBuffer
 
 -- | Create the sha256 SRI hash for a string
-hashString :: String -> Effect Sha256
-hashString string = do
+hashString :: forall m. MonadEffect m => String -> m Sha256
+hashString string = liftEffect do
   buffer <- Buffer.fromString string UTF8
   hashBuffer buffer
 
 -- | Create the sha256 SRI hash for a buffer
-hashBuffer :: Buffer -> Effect Sha256
-hashBuffer buffer = do
+hashBuffer :: forall m. MonadEffect m => Buffer -> m Sha256
+hashBuffer buffer = liftEffect do
   newHash <- createHash "sha256"
   hash <- updateHash buffer newHash
   digest <- digestHash hash

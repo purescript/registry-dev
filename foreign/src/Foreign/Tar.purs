@@ -8,10 +8,11 @@ import Data.Array as Array
 import Data.Function.Uncurried (Fn1, runFn1)
 import Data.Maybe (Maybe)
 import Effect (Effect)
+import Effect.Class (class MonadEffect, liftEffect)
 
 foreign import getToplevelDirImpl :: Fn1 String (Effect (Array String))
 
-getToplevelDir :: String -> Effect (Maybe String)
+getToplevelDir :: forall m. MonadEffect m => String -> m (Maybe String)
 getToplevelDir filename = do
-  paths <- runFn1 getToplevelDirImpl filename
+  paths <- liftEffect $ runFn1 getToplevelDirImpl filename
   pure $ Array.head paths

@@ -61,7 +61,6 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
-import Registry.Foreign.FSExtra as FS.Aff
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (Address, Tag)
 import Registry.Foreign.Octokit as Octokit
@@ -117,7 +116,7 @@ main = launchAff_ do
     case mode of
       DryRun -> do
         token <- Env.lookupRequired Env.githubToken
-        octokit <- liftEffect $ Octokit.newOctokit token
+        octokit <- Octokit.newOctokit token
         pure do
           Registry.runRegistry Registry.handleRegistryGit
             >>> Storage.runStorage Storage.handleStorageReadOnly
@@ -129,7 +128,7 @@ main = launchAff_ do
         token <- Env.lookupRequired Env.githubToken
         spacesKey <- Env.lookupRequired Env.spacesKey
         spacesSecret <- Env.lookupRequired Env.spacesSecret
-        octokit <- liftEffect $ Octokit.newOctokit token
+        octokit <- Octokit.newOctokit token
         pure do
           Registry.runRegistry Registry.handleRegistryGit
             >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
@@ -141,7 +140,7 @@ main = launchAff_ do
         token <- Env.lookupRequired Env.pacchettibottiToken
         spacesKey <- Env.lookupRequired Env.spacesKey
         spacesSecret <- Env.lookupRequired Env.spacesSecret
-        octokit <- liftEffect $ Octokit.newOctokit token
+        octokit <- Octokit.newOctokit token
         pure do
           Registry.runRegistry Registry.handleRegistryGit
             >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
@@ -156,7 +155,7 @@ main = launchAff_ do
     registryCacheRef <- TypedCache.newCacheRef
     importCacheRef <- TypedCache.newCacheRef
     let cacheDir = Path.concat [ scratchDir, ".cache" ]
-    FS.Aff.ensureDirectory cacheDir
+    FS.Extra.ensureDirectory cacheDir
     pure do
       Registry.runRegistryCacheMemory { ref: registryCacheRef }
         >>> Storage.runStorageCacheFs { cacheDir }
@@ -167,7 +166,7 @@ main = launchAff_ do
   -- Logging setup
   let logDir = Path.concat [ scratchDir, "logs" ]
   FS.Extra.ensureDirectory logDir
-  now <- liftEffect nowUTC
+  now <- nowUTC
   let logFile = "legacy-importer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
   let logPath = Path.concat [ logDir, logFile ]
   runLogEffects <- do

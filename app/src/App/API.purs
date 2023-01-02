@@ -225,7 +225,7 @@ authenticated auth = case auth.payload of
         Log.exit $ "This package cannot be unpublished because it has not been published before (no metadata was found)."
       Just value -> pure value
 
-    now <- Run.liftEffect nowUTC
+    now <- nowUTC
     published <- case Operation.Validation.validateUnpublish now payload.version metadata of
       Left NotPublished ->
         Log.exit $ "Cannot unpublish " <> formatted <> " because this version has not been published."
@@ -360,11 +360,11 @@ publish source payload = do
   -- We fetch the repo into the temporary directory, returning the full path to
   -- the package directory along with its detected publish time.
   Log.debug "Metadata validated. Fetching package source code..."
-  tmp <- Run.liftEffect Tmp.mkTmpDir
+  tmp <- Tmp.mkTmpDir
   { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir: tmp, ref: payload.ref, location: existingMetadata.location }
 
   Log.debug $ "Package downloaded to " <> packageDirectory <> ", verifying it contains a src directory..."
-  Run.liftAff (Operation.Validation.containsPursFile (Path.concat [ packageDirectory, "src" ])) >>= case _ of
+  Operation.Validation.containsPursFile (Path.concat [ packageDirectory, "src" ]) >>= case _ of
     true ->
       Log.debug "Package contains .purs files in its src directory."
     _ ->
@@ -485,17 +485,17 @@ publish source payload = do
   let newDir = PackageName.print manifest.name <> "-" <> Version.print manifest.version
   let packageSourceDir = Path.concat [ tmp, newDir ]
   Log.debug $ "Creating packaging directory at " <> packageSourceDir
-  Run.liftAff $ FS.Extra.ensureDirectory packageSourceDir
+  FS.Extra.ensureDirectory packageSourceDir
   -- We copy over all files that are always included (ie. src dir, purs.json file),
   -- and any files the user asked for via the 'files' key, and remove all files
   -- that should never be included (even if the user asked for them).
   copyPackageSourceFiles manifest.files { source: packageDirectory, destination: packageSourceDir }
   Log.debug "Removing always-ignored files from the packaging directory."
-  Run.liftAff $ removeIgnoredTarballFiles packageSourceDir
+  removeIgnoredTarballFiles packageSourceDir
 
   let tarballName = newDir <> ".tar.gz"
   let tarballPath = Path.concat [ tmp, tarballName ]
-  Run.liftEffect $ Tar.create { cwd: tmp, folderName: newDir }
+  Tar.create { cwd: tmp, folderName: newDir }
 
   Log.info "Tarball created. Verifying its size..."
   FS.Stats.Stats { size: bytes } <- Run.liftAff $ FS.Aff.stat tarballPath
@@ -512,7 +512,7 @@ publish source payload = do
   when (bytes < minBytes) do
     Log.exit $ "Package tarball is only " <> Number.Format.toString bytes <> " bytes, which indicates the source was not correctly packaged."
 
-  hash <- Run.liftAff $ Sha256.hashFile tarballPath
+  hash <- Sha256.hashFile tarballPath
   Log.info $ "Tarball size of " <> show bytes <> " is acceptable. Hash: " <> Sha256.print hash
 
   -- Now that we have the package source contents we can verify we can compile
@@ -645,9 +645,9 @@ compilePackage
    . CompilePackage
   -> Run (STORAGE + LOG + AFF + EFFECT + r) (Either String FilePath)
 compilePackage { packageSourceDir, compiler, resolutions } = do
-  tmp <- Run.liftEffect $ Tmp.mkTmpDir
+  tmp <- Tmp.mkTmpDir
   let dependenciesDir = Path.concat [ tmp, ".registry" ]
-  Run.liftAff $ FS.Extra.ensureDirectory dependenciesDir
+  FS.Extra.ensureDirectory dependenciesDir
   let
     globs =
       if Map.isEmpty resolutions then
@@ -676,7 +676,7 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
 
     Storage.downloadTarball name version filepath
 
-    _ <- Run.liftEffect $ Tar.extract { cwd: dir, archive: filename }
+    Tar.extract { cwd: dir, archive: filename }
     Run.liftAff $ FS.Aff.unlink filepath
     Log.debug $ "Installed " <> formatPackageVersion name version
 
@@ -718,7 +718,7 @@ publishToPursuit
   -> Run (PURSUIT + LOG + NOTIFY + AFF + EFFECT + r) (Either (Doc GraphicsParam) Unit)
 publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = Run.Except.runExceptAt Log._logExcept do
   Log.debug "Generating a resolutions file"
-  tmp <- Run.liftEffect Tmp.mkTmpDir
+  tmp <- Tmp.mkTmpDir
 
   let
     resolvedPaths = formatPursuitResolutions { resolutions, dependenciesDir }
@@ -912,12 +912,12 @@ fetchPackageSource { tmpDir, ref, location } = case location of
                 Log.debug $ "Tarball downloaded to " <> absoluteTarballPath
 
         Log.debug "Verifying tarball..."
-        Run.liftEffect (Foreign.Tar.getToplevelDir absoluteTarballPath) >>= case _ of
+        Foreign.Tar.getToplevelDir absoluteTarballPath >>= case _ of
           Nothing ->
             Log.exit "Downloaded tarball from GitHub has no top-level directory."
           Just dir -> do
             Log.debug "Extracting the tarball..."
-            _ <- Run.liftEffect $ Tar.extract { cwd: tmpDir, archive: tarballName }
+            Tar.extract { cwd: tmpDir, archive: tarballName }
             pure { packageDirectory: dir, publishedTime: commitDate }
 
 -- | Copy files from the package source directory to the destination directory
@@ -934,7 +934,7 @@ copyPackageSourceFiles files { source, destination } = do
     Nothing -> pure []
     Just nonEmptyGlobs -> do
       let globs = map NonEmptyString.toString $ NonEmptyArray.toArray nonEmptyGlobs
-      { succeeded, failed } <- liftAff $ FastGlob.match source globs
+      { succeeded, failed } <- FastGlob.match source globs
 
       unless (Array.null failed) do
         Log.exit $ String.joinWith " "
@@ -944,8 +944,8 @@ copyPackageSourceFiles files { source, destination } = do
 
       pure succeeded
 
-  includedFiles <- Run.liftAff $ FastGlob.match source includedGlobs
-  includedInsensitiveFiles <- Run.liftAff $ FastGlob.match' source includedInsensitiveGlobs { caseSensitive: false }
+  includedFiles <- FastGlob.match source includedGlobs
+  includedInsensitiveFiles <- FastGlob.match' source includedInsensitiveGlobs { caseSensitive: false }
 
   let
     copyFiles = userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded
@@ -958,7 +958,7 @@ copyPackageSourceFiles files { source, destination } = do
         [ "Found files to copy:"
         , Array.foldMap (\{ from, to } -> "\n  - " <> from <> " to " <> to) xs
         ]
-      Run.liftAff $ traverse_ FS.Extra.copy xs
+      traverse_ FS.Extra.copy xs
 
 -- | We always include some files and directories when packaging a tarball, in
 -- | addition to files users opt-in to with the 'files' key.
@@ -988,7 +988,7 @@ includedInsensitiveGlobs =
 -- |
 -- | See also:
 -- | https://docs.npmjs.com/cli/v8/configuring-npm/package-json#files
-removeIgnoredTarballFiles :: FilePath -> Aff Unit
+removeIgnoredTarballFiles :: forall m. MonadAff m => FilePath -> m Unit
 removeIgnoredTarballFiles path = do
   globMatches <- FastGlob.match' path ignoredGlobs { caseSensitive: false }
   for_ (ignoredDirectories <> ignoredFiles <> globMatches.succeeded) \match ->

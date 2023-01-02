@@ -82,7 +82,7 @@ removeIgnoredTarballFiles = Spec.before runBefore do
       paths.succeeded `Assert.shouldContain` path
   where
   runBefore = do
-    tmp <- liftEffect Tmp.mkTmpDir
+    tmp <- Tmp.mkTmpDir
 
     let
       inTmp :: FilePath -> FilePath
@@ -108,7 +108,7 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
 
     API.copyPackageSourceFiles Nothing { source, destination }
 
-    paths <- Run.liftAff $ FastGlob.match destination [ "**/*" ]
+    paths <- FastGlob.match destination [ "**/*" ]
 
     let
       acceptedPaths = goodDirectories <> goodFiles
@@ -131,7 +131,7 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
 
     API.copyPackageSourceFiles userFiles { source, destination }
 
-    paths <- liftAff $ FastGlob.match destination [ "**/*" ]
+    paths <- FastGlob.match destination [ "**/*" ]
 
     let acceptedPaths = goodDirectories <> goodFiles <> testDir <> testFiles
 
@@ -141,15 +141,15 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
   where
   runBefore :: forall r. Run (EFFECT + r) _
   runBefore = do
-    tmp <- Run.liftEffect Tmp.mkTmpDir
-    destTmp <- Run.liftEffect Tmp.mkTmpDir
+    tmp <- Tmp.mkTmpDir
+    destTmp <- Tmp.mkTmpDir
 
     let
       inTmp :: FilePath -> FilePath
       inTmp path = Path.concat [ tmp, path ]
 
       writeDirectories :: Array FilePath -> _
-      writeDirectories = Run.liftAff <<< traverse_ (FS.Extra.ensureDirectory <<< inTmp)
+      writeDirectories = traverse_ (FS.Extra.ensureDirectory <<< inTmp)
 
       writeFiles :: Array FilePath -> _
       writeFiles = Run.liftAff <<< traverse_ (\path -> FS.Aff.writeTextFile UTF8 (inTmp path) "<test>")

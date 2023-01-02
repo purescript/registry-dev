@@ -18,7 +18,7 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.Foreign.Octokit (Address, IssueNumber(..), Octokit)
 import Registry.Foreign.Octokit as Octokit
-import Run (AFF, Run)
+import Run (AFF, EFFECT, Run)
 import Run as Run
 
 data Notify a = Notify (Doc GraphicsParam) a
@@ -51,7 +51,7 @@ type NotifyGitHubEnv =
   }
 
 -- | Handle a notification by commenting on the relevant GitHub issue.
-handleNotifyGitHub :: forall a r. NotifyGitHubEnv -> Notify a -> Run (LOG + AFF + r) a
+handleNotifyGitHub :: forall a r. NotifyGitHubEnv -> Notify a -> Run (LOG + AFF + EFFECT + r) a
 handleNotifyGitHub env = case _ of
   Notify message next -> do
     let issueNumber = Int.toStringAs Int.decimal $ un IssueNumber env.issue
@@ -59,7 +59,7 @@ handleNotifyGitHub env = case _ of
     handleNotifyLog (Notify message unit)
     let comment = Dodo.print Dodo.plainText Dodo.twoSpaces (Log.toLog message)
     let request = Octokit.createCommentRequest { address: env.registry, issue: env.issue, body: comment }
-    Run.liftAff (Octokit.request env.octokit request) >>= case _ of
+    Octokit.request env.octokit request >>= case _ of
       Left error -> do
         Log.error $ "Could not send comment to GitHub due to an unexpected error."
         Log.debug $ Octokit.printGitHubError error

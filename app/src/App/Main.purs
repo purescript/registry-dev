@@ -136,7 +136,7 @@ initializeGitHub = do
   spacesSecret <- Env.lookupRequired Env.spacesSecret
   eventPath <- Env.lookupRequired Env.githubEventPath
 
-  octokit <- liftEffect $ Octokit.newOctokit token
+  octokit <- Octokit.newOctokit token
 
   readOperation eventPath >>= case _ of
     -- If the issue body is not just a JSON string, then we don't consider it

@@ -96,7 +96,7 @@ handlePackageSetsAff env = case _ of
       exists <- Run.liftEffect $ FS.Sync.exists dir
       when exists do
         Log.debug $ "Removing existing working directory " <> dir
-        Run.liftAff (FS.Extra.remove dir)
+        FS.Extra.remove dir
 
     installPackages packages
     compileInstalledPackages compiler >>= case _ of
@@ -188,7 +188,7 @@ handlePackageSetsAff env = case _ of
   installPackages :: Map PackageName Version -> Run _ Unit
   installPackages packages = do
     Log.debug "Installing package set packages..."
-    Run.liftAff (FS.Extra.ensureDirectory packagesWorkDir)
+    FS.Extra.ensureDirectory packagesWorkDir
     forWithIndex_ packages installPackage
 
   -- Install a package into the packages directory, skipping installation if a
@@ -204,10 +204,9 @@ handlePackageSetsAff env = case _ of
     unlessM (Run.liftEffect (FS.Sync.exists installPath)) $ do
       Log.debug $ "Installing " <> formattedName
       Storage.downloadTarball name version tarballPath
-      _ <- Run.liftEffect $ Tar.extract { cwd: packagesWorkDir, archive: tarballName }
-      Run.liftAff do
-        FS.Extra.remove tarballPath
-        FS.Aff.rename extractedPath installPath
+      Tar.extract { cwd: packagesWorkDir, archive: tarballName }
+      FS.Extra.remove tarballPath
+      Run.liftAff $ FS.Aff.rename extractedPath installPath
 
   -- Delete packages from the packages directory
   removePackages :: Map PackageName Version -> Run _ Unit
@@ -218,7 +217,7 @@ handlePackageSetsAff env = case _ of
   removePackage name version = do
     let formatted = formatPackageVersion name version
     Log.debug $ "Uninstalling " <> formatted
-    Run.liftAff $ FS.Extra.remove $ Path.concat [ packagesWorkDir, formatted ]
+    FS.Extra.remove $ Path.concat [ packagesWorkDir, formatted ]
 
   -- | Compile all PureScript files in the given directory. Expects all packages
   -- | to be installed in a subdirectory "packages".
@@ -232,7 +231,7 @@ handlePackageSetsAff env = case _ of
   attemptChanges :: Version -> PackageSet -> ChangeSet -> Run _ (Either CompilerFailure PackageSet)
   attemptChanges compiler (PackageSet set) changes = do
     Log.debug "Attempting batch of changes..."
-    Run.liftAff $ FS.Extra.copy { from: outputWorkDir, to: backupWorkDir, preserveTimestamps: true }
+    FS.Extra.copy { from: outputWorkDir, to: backupWorkDir, preserveTimestamps: true }
     let
       additions = changes # Map.mapMaybe case _ of
         Remove -> Nothing
@@ -246,13 +245,13 @@ handlePackageSetsAff env = case _ of
     installPackages additions
     compileInstalledPackages compiler >>= case _ of
       Left err -> do
-        Run.liftAff $ FS.Extra.remove outputWorkDir
-        Run.liftAff $ FS.Extra.copy { from: backupWorkDir, to: outputWorkDir, preserveTimestamps: true }
+        FS.Extra.remove outputWorkDir
+        FS.Extra.copy { from: backupWorkDir, to: outputWorkDir, preserveTimestamps: true }
         removePackages additions
         installPackages oldVersions
         pure $ Left err
       Right _ -> do
-        Run.liftAff $ FS.Extra.remove backupWorkDir
+        FS.Extra.remove backupWorkDir
         let
           foldFn name existingSet = case _ of
             Remove -> Map.delete name existingSet
@@ -266,7 +265,7 @@ handlePackageSetsAff env = case _ of
   -- NOTE: You must have previously built a package set.
   attemptPackage :: Version -> PackageSet -> PackageName -> Change -> Run _ (Either CompilerFailure PackageSet)
   attemptPackage compiler (PackageSet set) package change = do
-    Run.liftAff $ FS.Extra.copy { from: outputWorkDir, to: backupWorkDir, preserveTimestamps: true }
+    FS.Extra.copy { from: outputWorkDir, to: backupWorkDir, preserveTimestamps: true }
     let maybeOldVersion = Map.lookup package set.packages
     for_ maybeOldVersion (removePackage package)
     case change of
@@ -277,16 +276,15 @@ handlePackageSetsAff env = case _ of
         Log.info $ case change of
           Remove -> "Failed to build set without " <> PackageName.print package
           Update version -> "Failed to build set with " <> formatPackageVersion package version
-        Run.liftAff do
-          FS.Extra.remove outputWorkDir
-          FS.Extra.copy { from: backupWorkDir, to: outputWorkDir, preserveTimestamps: true }
+        FS.Extra.remove outputWorkDir
+        FS.Extra.copy { from: backupWorkDir, to: outputWorkDir, preserveTimestamps: true }
         case change of
           Remove -> pure unit
           Update version -> removePackage package version
         for_ maybeOldVersion (installPackage package)
         pure $ Left err
       Right _ -> do
-        Run.liftAff $ FS.Extra.remove backupWorkDir
+        FS.Extra.remove backupWorkDir
         pure $ Right $ PackageSet $ case change of
           Remove -> set { packages = Map.delete package set.packages }
           Update version -> set { packages = Map.insert package version set.packages }
@@ -562,6 +560,6 @@ logCompilerError version = case _ of
 
 updatePackageSetMetadata :: forall r. Version -> { previous :: PackageSet, pending :: PackageSet } -> ChangeSet -> Run (EFFECT + r) PackageSet
 updatePackageSetMetadata compiler { previous, pending: PackageSet pending } changes = do
-  now <- Run.liftEffect nowUTC
+  now <- nowUTC
   let version = computeNewVersion compiler previous changes
   pure $ PackageSet (pending { compiler = compiler, version = version, published = DateTime.date now })

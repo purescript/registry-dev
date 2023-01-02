@@ -9,22 +9,22 @@ import Prelude
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import Effect (Effect)
-import Effect.Aff (Aff)
+import Effect.Aff.Class (class MonadAff, liftAff)
 import Node.Path (FilePath)
 
 foreign import ensureDirectoryImpl :: String -> Effect (Promise Unit)
 
 -- | Ensures that the directory exists. If the directory structure does not
 -- | exist, it is created.
-ensureDirectory :: FilePath -> Aff Unit
-ensureDirectory = ensureDirectoryImpl >>> Promise.toAffE
+ensureDirectory :: forall m. MonadAff m => FilePath -> m Unit
+ensureDirectory = ensureDirectoryImpl >>> Promise.toAffE >>> liftAff
 
 foreign import removeImpl :: String -> Effect (Promise Unit)
 
 -- | Removes a file or directory. The directory can have contents. If the
 -- | path does not exist, silently does nothing.
-remove :: FilePath -> Aff Unit
-remove = removeImpl >>> Promise.toAffE
+remove :: forall m. MonadAff m => FilePath -> m Unit
+remove = removeImpl >>> Promise.toAffE >>> liftAff
 
 type JSCopyOptions =
   { preserveTimestamps :: Boolean
@@ -45,5 +45,5 @@ type CopyArgs =
 -- |
 -- | When `from` is a directory then `to` must be a directory; only directory
 -- | contents are copied, not the directory itself.
-copy :: CopyArgs -> Aff Unit
-copy { from, to, preserveTimestamps } = Promise.toAffE $ copyImpl from to { preserveTimestamps }
+copy :: forall m. MonadAff m => CopyArgs -> m Unit
+copy { from, to, preserveTimestamps } = liftAff $ Promise.toAffE $ copyImpl from to { preserveTimestamps }

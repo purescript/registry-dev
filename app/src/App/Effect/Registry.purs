@@ -151,7 +151,7 @@ handleRegistryGit = case _ of
           ]
       Right updated -> do
         result <- Git.writeCommitPush (Git.CommitManifestEntry name) \indexPath -> do
-          Run.liftAff (ManifestIndex.insertIntoEntryFile indexPath manifest) >>= case _ of
+          ManifestIndex.insertIntoEntryFile indexPath manifest >>= case _ of
             Left error -> do
               Log.error $ "Could not insert manifest for " <> formatted <> " into its entry file in WriteManifest: " <> error
               Log.exit exitMessage
@@ -177,7 +177,7 @@ handleRegistryGit = case _ of
           ]
       Right updated -> do
         commitResult <- Git.writeCommitPush (Git.CommitManifestEntry name) \indexPath -> do
-          Run.liftAff (ManifestIndex.removeFromEntryFile indexPath name version) >>= case _ of
+          ManifestIndex.removeFromEntryFile indexPath name version >>= case _ of
             Left error -> do
               Log.error $ "Could not remove manifest for " <> formatted <> " from its entry file in DeleteManifest: " <> error
               Log.exit exitMessage
@@ -561,9 +561,9 @@ handleRegistryGit = case _ of
         pure next
 
 -- | Given the file path of a local manifest index on disk, read its contents.
-readManifestIndexFromDisk :: forall r. FilePath -> Run (LOG + LOG_EXCEPT + AFF + r) ManifestIndex
+readManifestIndexFromDisk :: forall r. FilePath -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) ManifestIndex
 readManifestIndexFromDisk root = do
-  paths <- Run.liftAff $ FastGlob.match' root [ "**/*" ] { include: FastGlob.FilesOnly, ignore: [ "config.json", "README.md" ] }
+  paths <- FastGlob.match' root [ "**/*" ] { include: FastGlob.FilesOnly, ignore: [ "config.json", "README.md" ] }
 
   let
     packages = do
@@ -576,7 +576,7 @@ readManifestIndexFromDisk root = do
       , Array.foldMap (\(Tuple path err) -> "\n  - " <> path <> ": " <> err) packages.fail
       ]
 
-  entries <- Run.liftAff $ map partitionEithers $ for packages.success (ManifestIndex.readEntryFile root)
+  entries <- map partitionEithers $ for packages.success (ManifestIndex.readEntryFile root)
   case entries.fail of
     [] -> case ManifestIndex.fromSet $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray entries.success of
       Left errors -> do

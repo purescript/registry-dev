@@ -66,9 +66,9 @@ import Data.String.Base64 as Base64
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Data.Variant as Variant
-import Effect (Effect)
-import Effect.Aff (Aff)
 import Effect.Aff as Aff
+import Effect.Aff.Class (class MonadAff, liftAff)
+import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Uncurried (EffectFn1, EffectFn6, runEffectFn1, runEffectFn6)
 import Foreign.Object (Object)
 import Foreign.Object as Object
@@ -89,8 +89,8 @@ foreign import data Octokit :: Type
 
 foreign import newOctokitImpl :: EffectFn1 GitHubToken Octokit
 
-newOctokit :: GitHubToken -> Effect Octokit
-newOctokit = runEffectFn1 newOctokitImpl
+newOctokit :: forall m. MonadEffect m => GitHubToken -> m Octokit
+newOctokit = liftEffect <<< runEffectFn1 newOctokitImpl
 
 -- | A newline-delimited base64-encoded file retrieved from the GitHub API
 newtype Base64Content = Base64Content String
@@ -302,9 +302,9 @@ foreign import paginateImpl :: forall r. EffectFn6 Octokit String (Object String
 --
 -- TODO: We ought to pull off the 'etag' from the response headers, because we
 -- can then send it with a 'If-None-Match' header for conditional requests.
-request :: forall a. Octokit -> Request a -> Aff (Either GitHubError a)
+request :: forall m a. MonadAff m => Octokit -> Request a -> m (Either GitHubError a)
 request octokit { route, headers, args, paginate, codec } = do
-  result <- Promise.toAffE $ runEffectFn6 (if paginate then paginateImpl else requestImpl) octokit (printGitHubRoute route) headers args Left Right
+  result <- liftAff $ Promise.toAffE $ runEffectFn6 (if paginate then paginateImpl else requestImpl) octokit (printGitHubRoute route) headers args Left Right
   pure $ case result of
     Left githubError -> case decodeGitHubAPIError githubError of
       Left decodeError -> Left $ UnexpectedError decodeError

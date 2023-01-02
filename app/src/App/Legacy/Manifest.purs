@@ -320,7 +320,7 @@ fetchSpagoDhallJson address ref = Run.Except.runExceptAt _spagoDhallError do
   let getContent file = GitHub.getContent address ref file >>= Run.Except.rethrowAt _spagoDhallError
   spagoDhall <- getContent "spago.dhall"
   packagesDhall <- getContent "packages.dhall"
-  tmp <- Run.liftEffect Tmp.mkTmpDir
+  tmp <- Tmp.mkTmpDir
   Run.liftAff (Aff.attempt (FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, "packages.dhall" ]) packagesDhall)) >>= case _ of
     Left error -> do
       Log.error $ "Failed to write packages.dhall file to tmp: " <> Aff.message error
@@ -410,7 +410,7 @@ fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
       Map.singleton version (resolveDependencyVersions dependencies)
 
   Log.debug "Merging legacy package sets into a union."
-  tagsHash <- Run.liftEffect $ Sha256.hashString (String.joinWith " " tags)
+  tagsHash <- Sha256.hashString (String.joinWith " " tags)
 
   -- It's important that we cache the end result of unioning all package sets
   -- because the package sets are quite large and it's expensive to read them
