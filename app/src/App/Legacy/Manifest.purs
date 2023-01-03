@@ -2,6 +2,7 @@ module Registry.App.Legacy.Manifest where
 
 import Registry.App.Prelude
 
+import Control.Monad.Except as Except
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
@@ -22,16 +23,16 @@ import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.CLI.Licensee as Licensee
-import Registry.App.Effect.GitHub (GITHUB)
-import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
-import Registry.App.Effect.Log as Log
-import Registry.App.Effect.TypedCache (CacheKey, CacheRef, FsEncoder, FsEncoding(..), MemoryEncoder, MemoryEncoding(..), TypedCache)
-import Registry.App.Effect.TypedCache as TypedCache
 import Registry.App.Legacy.LenientRange as LenientRange
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
 import Registry.App.Legacy.Types (LegacyPackageSet(..), LegacyPackageSetEntry, LegacyPackageSetUnion, RawPackageName(..), RawVersion(..), RawVersionRange(..), legacyPackageSetCodec, legacyPackageSetUnionCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionRangeCodec)
+import Registry.App.Monad.Cache (class FsEncodable, class MemoryEncodable, class MonadCache, FsEncoding(..), MemoryEncoding(..))
+import Registry.App.Monad.Cache as Cache
+import Registry.App.Monad.GitHub (class MonadGitHub)
+import Registry.App.Monad.GitHub as GitHub
+import Registry.App.Monad.Log (class MonadLog)
+import Registry.App.Monad.Log as Log
 import Registry.Foreign.Octokit (Address, GitHubError)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
@@ -40,11 +41,27 @@ import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
 import Registry.Version as Version
-import Run (AFF, EFFECT, Run)
-import Run as Run
-import Run.Except as Run.Except
 import Sunde as Process
 import Type.Proxy (Proxy(..))
+
+-- | A key type for the legacy cache.
+data LegacyCache (c :: Type -> Type -> Type) a
+  = LegacySet RawVersion (c (Either GitHubError LegacyPackageSet) a)
+  | LegacyUnion Sha256 (c LegacyPackageSetUnion a)
+
+instance MemoryEncodable LegacyCache where
+  encodeMemory = case _ of
+    LegacySet (RawVersion ref) k ->
+      Exists.mkExists $ Key ("LegacySet__" <> ref) k
+    LegacyUnion hash k ->
+      Exists.mkExists $ Key ("LegacyUnion__" <> Sha256.print hash) k
+
+instance FsEncodable LegacyCache where
+  encodeFs = case _ of
+    LegacySet (RawVersion ref) next ->
+      Exists.mkExists $ AsJson ("LegacySet__" <> ref) (CA.Common.either Octokit.githubErrorCodec legacyPackageSetCodec) next
+    LegacyUnion hash next ->
+      Exists.mkExists $ AsJson ("LegacyUnion" <> Sha256.print hash) legacyPackageSetUnionCodec next
 
 type LegacyManifest =
   { license :: License
@@ -58,23 +75,31 @@ toManifest name version location { license, description, dependencies } = do
   let owners = Nothing
   Manifest { name, version, location, license, description, dependencies, files, owners }
 
+data ManifestFetchError = Failed String | Invalid LegacyManifestValidationError
+
 -- | Attempt to retrieve a license, description, and set of dependencies from a
 -- | PureScript repo that does not have a Registry-supported manifest, but does
 -- | have a spago.dhall or bower.json manifest.
 fetchLegacyManifest
-  :: forall r
-   . PackageName
+  :: forall m
+   . MonadGitHub m
+  => MonadCache LegacyCache m
+  => MonadLog m
+  => MonadAff m
+  => PackageName
   -> Address
   -> RawVersion
-  -> Run (GITHUB + LEGACY_CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) (Either LegacyManifestValidationError LegacyManifest)
-fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestError do
+  -> m (Either ManifestFetchError LegacyManifest)
+fetchLegacyManifest name address ref = Except.runExceptT do
   legacyPackageSets <- fetchLegacyPackageSets >>= case _ of
     Left error -> do
       Log.error $ "Failed error when to fetch legacy package sets: " <> Octokit.printGitHubError error
-      Log.exit "Could not retrieve legacy package sets; aborting to avoid producing incorrect legacy manifest depedency bounds."
+      Except.throwError $ Failed "Could not retrieve legacy package sets; aborting to avoid producing incorrect legacy manifest depedency bounds."
     Right union -> pure union
 
-  manifests <- Run.Except.rethrowAt _legacyManifestError =<< fetchLegacyManifestFiles address ref
+  manifests <- fetchLegacyManifestFiles address ref >>= case _ of
+    Left error -> Except.throwError $ Invalid error
+    Right manifests -> pure manifests
 
   dependencies <- do
     let
@@ -142,7 +167,7 @@ fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestErr
               Nothing -> range
               Just manifestRange -> Range.union range manifestRange
 
-    Run.Except.rethrowAt _legacyManifestError unionPackageSets
+    Except.except $ lmap Invalid unionPackageSets
 
   license <- do
     let unBower (Bowerfile { license }) = Array.mapMaybe NonEmptyString.fromString license
@@ -150,7 +175,7 @@ fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestErr
     let manifestLicenses = These.these unBower unSpago (\bower spago -> unBower bower <> unSpago spago) manifests
     detectedLicenses <- detectLicenses address ref
     let licenses = Array.nub $ Array.concat [ detectedLicenses, manifestLicenses ]
-    Run.Except.rethrowAt _legacyManifestError $ validateLicense licenses
+    Except.except $ lmap Invalid $ validateLicense licenses
 
   let
     description = do
@@ -158,9 +183,6 @@ fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestErr
       fields.description
 
   pure { license, dependencies, description }
-  where
-  _legacyManifestError :: Proxy "legacyManifestError"
-  _legacyManifestError = Proxy
 
 type LegacyManifestValidationError = { error :: LegacyManifestError, reason :: String }
 
@@ -207,12 +229,15 @@ printLegacyManifestError = case _ of
   printDepError { name, range, error } = "[{ " <> name <> ": " <> range <> "}, " <> error <> "]"
 
 fetchLegacyManifestFiles
-  :: forall r
-   . Address
+  :: forall m
+   . MonadGitHub m
+  => MonadLog m
+  => MonadAff m
+  => Address
   -> RawVersion
-  -> Run (GITHUB + LOG + AFF + EFFECT + r) (Either LegacyManifestValidationError (These Bowerfile SpagoDhallJson))
+  -> m (Either LegacyManifestValidationError (These Bowerfile SpagoDhallJson))
 fetchLegacyManifestFiles address ref = do
-  eitherBower <- fetchBowerfile address ref
+  eitherBower <- GitHub.getJsonFile address ref bowerfileCodec "bower.json"
   eitherSpago <- fetchSpagoDhallJson address ref
   pure $ case eitherBower, eitherSpago of
     Left _, Left _ -> Left { error: NoManifests, reason: "No bower.json or spago.dhall files available." }
@@ -221,16 +246,19 @@ fetchLegacyManifestFiles address ref = do
     Right bower, Right spago -> Right $ Both bower spago
 
 detectLicenses
-  :: forall r
-   . Address
+  :: forall m
+   . MonadGitHub m
+  => MonadLog m
+  => MonadAff m
+  => Address
   -> RawVersion
-  -> Run (GITHUB + LOG + AFF + r) (Array NonEmptyString)
+  -> m (Array NonEmptyString)
 detectLicenses address ref = do
   packageJsonFile <- GitHub.getContent address ref "package.json"
   licenseFile <- GitHub.getContent address ref "LICENSE"
   let packageJsonInput = { name: "package.json", contents: _ } <$> hush packageJsonFile
   let licenseInput = { name: "LICENSE", contents: _ } <$> hush licenseFile
-  Run.liftAff (Licensee.detectFiles (Array.catMaybes [ packageJsonInput, licenseInput ])) >>= case _ of
+  liftAff (Licensee.detectFiles (Array.catMaybes [ packageJsonInput, licenseInput ])) >>= case _ of
     Left err -> Log.warn ("Licensee decoding error, ignoring: " <> err) $> []
     Right licenses -> pure $ Array.mapMaybe NonEmptyString.fromString licenses
 
@@ -312,31 +340,31 @@ spagoDhallJsonCodec = Profunctor.dimap toRep fromRep $ CA.Record.object "SpagoDh
 -- | Attempt to construct a SpagoDhallJson file from a spago.dhall and
 -- | packages.dhall file located in a remote repository at the given ref.
 fetchSpagoDhallJson
-  :: forall r
-   . Address
+  :: forall m
+   . MonadGitHub m
+  => MonadLog m
+  => MonadAff m
+  => Address
   -> RawVersion
-  -> Run (GITHUB + LOG + AFF + EFFECT + r) (Either GitHubError SpagoDhallJson)
-fetchSpagoDhallJson address ref = Run.Except.runExceptAt _spagoDhallError do
-  let getContent file = GitHub.getContent address ref file >>= Run.Except.rethrowAt _spagoDhallError
+  -> m (Either GitHubError SpagoDhallJson)
+fetchSpagoDhallJson address ref = Except.runExceptT do
+  let getContent = Except.ExceptT <<< GitHub.getContent address ref
   spagoDhall <- getContent "spago.dhall"
   packagesDhall <- getContent "packages.dhall"
   tmp <- Tmp.mkTmpDir
-  Run.liftAff (Aff.attempt (FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, "packages.dhall" ]) packagesDhall)) >>= case _ of
+  liftAff (Aff.attempt (FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, "packages.dhall" ]) packagesDhall)) >>= case _ of
     Left error -> do
       Log.error $ "Failed to write packages.dhall file to tmp: " <> Aff.message error
-      Run.Except.throwAt _spagoDhallError $ Octokit.UnexpectedError "Could not write packages.dhall file."
+      Except.throwError $ Octokit.UnexpectedError "Could not write packages.dhall file."
     Right _ -> pure unit
   Log.debug "Converting spago.dhall and packages.dhall to json."
-  dhallJson <- Run.liftAff $ dhallToJson { dhall: spagoDhall, cwd: Just tmp }
-  Run.Except.rethrowAt _spagoDhallError $ case dhallJson of
+  dhallJson <- liftAff $ dhallToJson { dhall: spagoDhall, cwd: Just tmp }
+  Except.except $ case dhallJson of
     Left err -> Left $ Octokit.DecodeError err
     Right json -> case CA.decode spagoDhallJsonCodec json of
       Left err -> Left $ Octokit.DecodeError $ CA.printJsonDecodeError err
       Right value -> pure value
   where
-  _spagoDhallError :: Proxy "spagoDhallError"
-  _spagoDhallError = Proxy
-
   -- | Convert a string representing a Dhall expression into JSON using the
   -- | `dhall-to-json` CLI.
   dhallToJson :: { dhall :: String, cwd :: Maybe FilePath } -> Aff (Either String Json)
@@ -377,19 +405,18 @@ bowerfileCodec = Profunctor.dimap toRep fromRep $ CA.Record.object "Bowerfile"
     decode json = CA.decode (CA.array CA.string) json <|> map Array.singleton (CA.decode CA.string json)
     encode = CA.encode (CA.array CA.string)
 
--- | Attempt to construct a Bowerfile from a bower.json file located in a
--- | remote repository at the given ref.
-fetchBowerfile :: forall r. Address -> RawVersion -> Run (GITHUB + r) (Either GitHubError Bowerfile)
-fetchBowerfile address ref = GitHub.getJsonFile address ref bowerfileCodec "bower.json"
-
 -- | Attempt to fetch all package sets from the package-sets repo and union them
 -- | into a map, where keys are packages in the sets and values are a map of
 -- | the package version to its dependencies in the set at that version.
-fetchLegacyPackageSets :: forall r. Run (GITHUB + LEGACY_CACHE + LOG + EFFECT + r) (Either GitHubError LegacyPackageSetUnion)
-fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
-  allTags <- do
-    tagsResult <- GitHub.listTags Legacy.PackageSet.legacyPackageSetsRepo
-    Run.Except.rethrowAt _legacyPackageSetsError tagsResult
+fetchLegacyPackageSets
+  :: forall m
+   . MonadGitHub m
+  => MonadCache LegacyCache m
+  => MonadLog m
+  => MonadEffect m
+  => m (Either GitHubError LegacyPackageSetUnion)
+fetchLegacyPackageSets = Except.runExceptT do
+  allTags <- Except.ExceptT $ GitHub.listTags Legacy.PackageSet.legacyPackageSetsRepo
 
   let
     tags :: Array String
@@ -415,17 +442,17 @@ fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
   -- It's important that we cache the end result of unioning all package sets
   -- because the package sets are quite large and it's expensive to read them
   -- all into memory and fold over them.
-  getLegacyCache (LegacyUnion tagsHash) >>= case _ of
+  Cache.get (LegacyUnion tagsHash) >>= case _ of
     Nothing -> do
       Log.debug $ "Cache miss for legacy package set union, rebuilding..."
 
       legacySetResults <- for tags \refStr -> do
         let ref = RawVersion refStr
-        cached <- getLegacyCache (LegacySet ref) >>= case _ of
+        cached <- Cache.get (LegacySet ref) >>= case _ of
           Nothing -> do
             Log.debug $ "Cache miss for legacy package set " <> refStr <> ", refetching..."
             result <- GitHub.getJsonFile Legacy.PackageSet.legacyPackageSetsRepo ref legacyPackageSetCodec "packages.json"
-            putLegacyCache (LegacySet ref) result
+            Cache.put (LegacySet ref) result
             pure result
           Just value ->
             pure value
@@ -444,63 +471,8 @@ fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
         merged :: LegacyPackageSetUnion
         merged = Array.foldl (\m set -> Map.unionWith Map.union set m) Map.empty convertedSets
 
-      putLegacyCache (LegacyUnion tagsHash) merged
+      Cache.put (LegacyUnion tagsHash) merged
       pure merged
 
     Just value ->
       pure value
-  where
-  _legacyPackageSetsError :: Proxy "legacyPackageSetsError"
-  _legacyPackageSetsError = Proxy
-
--- | A key type for the legacy cache.
-data LegacyCache (c :: Type -> Type -> Type) a
-  = LegacySet RawVersion (c (Either GitHubError LegacyPackageSet) a)
-  | LegacyUnion Sha256 (c LegacyPackageSetUnion a)
-
-instance Functor2 c => Functor (LegacyCache c) where
-  map k = case _ of
-    LegacySet ref a -> LegacySet ref (map2 k a)
-    LegacyUnion tagsHash a -> LegacyUnion tagsHash (map2 k a)
-
-type LEGACY_CACHE r = (legacyCache :: TypedCache LegacyCache | r)
-
-_legacyCache :: Proxy "legacyCache"
-_legacyCache = Proxy
-
--- | Get an item from the legacy cache according to a LegacyCache key.
-getLegacyCache :: forall r a. CacheKey LegacyCache a -> Run (LEGACY_CACHE + r) (Maybe a)
-getLegacyCache key = Run.lift _legacyCache (TypedCache.getCache key)
-
--- | Write an item to the legacy cache using a LegacyCache key.
-putLegacyCache :: forall r a. CacheKey LegacyCache a -> a -> Run (LEGACY_CACHE + r) Unit
-putLegacyCache key value = Run.lift _legacyCache (TypedCache.putCache key value)
-
-legacyMemoryEncoder :: MemoryEncoder LegacyCache
-legacyMemoryEncoder = case _ of
-  LegacySet (RawVersion ref) next ->
-    Exists.mkExists $ Key ("LegacySet__" <> ref) next
-  LegacyUnion hash next ->
-    Exists.mkExists $ Key ("LegacyUnion__" <> Sha256.print hash) next
-
-legacyFsEncoder :: FsEncoder LegacyCache
-legacyFsEncoder = case _ of
-  LegacySet (RawVersion ref) next ->
-    Exists.mkExists $ AsJson ("LegacySet__" <> ref) (CA.Common.either Octokit.githubErrorCodec legacyPackageSetCodec) next
-  LegacyUnion hash next ->
-    Exists.mkExists $ AsJson ("LegacyUnion" <> Sha256.print hash) legacyPackageSetUnionCodec next
-
-runLegacyCacheMemoryFs
-  :: forall r a
-   . { ref :: CacheRef, cacheDir :: FilePath }
-  -> Run (LEGACY_CACHE + LOG + AFF + EFFECT + r) a
-  -> Run (LOG + AFF + EFFECT + r) a
-runLegacyCacheMemoryFs { ref, cacheDir } =
-  TypedCache.runCacheAt _legacyCache
-    ( TypedCache.handleCacheMemoryFs
-        { ref
-        , cacheDir
-        , fs: legacyFsEncoder
-        , memory: legacyMemoryEncoder
-        }
-    )

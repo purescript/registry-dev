@@ -1,5 +1,5 @@
 -- | An effect for reading common data from an environment.
-module Registry.App.Effect.Env where
+module Registry.App.Env where
 
 import Registry.App.Prelude
 
@@ -12,9 +12,6 @@ import Effect.Exception as Exception
 import Node.FS.Aff as FS.Aff
 import Node.Process as Process
 import Registry.Foreign.Octokit (GitHubToken(..), IssueNumber)
-import Run (Run)
-import Run.Reader (Reader)
-import Run.Reader as Run.Reader
 
 -- | Environment fields available in the GitHub Event environment, namely
 -- | pointers to the user who created the event and the issue associated with it.
@@ -23,16 +20,7 @@ type GitHubEventEnv =
   , issue :: IssueNumber
   }
 
-type GITHUB_EVENT_ENV r = (githubEventEnv :: Reader GitHubEventEnv | r)
-
-_githubEventEnv :: Proxy "githubEventEnv"
-_githubEventEnv = Proxy
-
-askGitHubEvent :: forall r. Run (GITHUB_EVENT_ENV + r) GitHubEventEnv
-askGitHubEvent = Run.Reader.askAt _githubEventEnv
-
-runGitHubEventEnv :: forall r a. GitHubEventEnv -> Run (GITHUB_EVENT_ENV + r) a -> Run r a
-runGitHubEventEnv = Run.Reader.runReaderAt _githubEventEnv
+type GITHUB_EVENT r = (githubEvent :: GitHubEventEnv | r)
 
 -- | Environment fields available when the process provides @pacchettibotti
 -- | credentials for sensitive authorized actions.
@@ -53,16 +41,7 @@ type PacchettiBottiEnv =
   , privateKey :: String
   }
 
-type PACCHETTIBOTTI_ENV r = (pacchettiBottiEnv :: Reader PacchettiBottiEnv | r)
-
-_pacchettiBottiEnv :: Proxy "pacchettiBottiEnv"
-_pacchettiBottiEnv = Proxy
-
-askPacchettiBotti :: forall r. Run (PACCHETTIBOTTI_ENV + r) PacchettiBottiEnv
-askPacchettiBotti = Run.Reader.askAt _pacchettiBottiEnv
-
-runPacchettiBottiEnv :: forall r a. PacchettiBottiEnv -> Run (PACCHETTIBOTTI_ENV + r) a -> Run r a
-runPacchettiBottiEnv = Run.Reader.runReaderAt _pacchettiBottiEnv
+type PACCHETTIBOTTI r = (pacchettiBotti :: PacchettiBottiEnv | r)
 
 -- ENV VARS
 

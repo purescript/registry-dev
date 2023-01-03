@@ -51,7 +51,7 @@ import Data.Either (Either(..), either, fromLeft, fromRight', hush, isRight, not
 import Data.Foldable (all, and, any, fold) as Extra
 import Data.Foldable as Foldable
 import Data.FoldableWithIndex (foldlWithIndex, forWithIndex_) as Extra
-import Data.Identity (Identity) as Extra
+import Data.Identity (Identity(..)) as Extra
 import Data.Int as Int
 import Data.List (List) as Extra
 import Data.Map (Map) as Extra

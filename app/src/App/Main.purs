@@ -2,6 +2,9 @@ module Registry.App.Main where
 
 import Registry.App.Prelude
 
+import Control.Monad.Except as Except
+import Control.Monad.Reader (class MonadAsk, ReaderT, asks)
+import Control.Monad.Reader as Reader
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
@@ -12,44 +15,148 @@ import Effect.Class.Console as Console
 import Foreign.Object as Object
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
-import Node.Process as Process
 import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.Auth as Auth
-import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
-import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
-import Registry.App.Effect.Git as Git
-import Registry.App.Effect.GitHub (GITHUB)
-import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG_EXCEPT, LogVerbosity(..))
-import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify as Notify
-import Registry.App.Effect.PackageSets as PackageSets
-import Registry.App.Effect.Pursuit as Pursuit
-import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Storage as Storage
-import Registry.App.Effect.TypedCache as TypedCache
-import Registry.App.Legacy.Manifest as Legacy.Manifest
+import Registry.App.Env (GITHUB_EVENT, GitHubEventEnv, PACCHETTIBOTTI, PacchettiBottiEnv)
+import Registry.App.Env as Env
+import Registry.App.Legacy.Manifest (LegacyCache)
+import Registry.App.Monad.Cache (class MonadCache, FsCacheEnv, MemoryEnv, MemoryFsEnv)
+import Registry.App.Monad.Cache as Cache
+import Registry.App.Monad.Git (class MonadGit, GitEnv, PullMode(..), WriteMode(..))
+import Registry.App.Monad.Git as Git
+import Registry.App.Monad.GitHub (class MonadGitHub, GitHubCache, OctokitEnv)
+import Registry.App.Monad.GitHub as GitHub
+import Registry.App.Monad.Log (class MonadLog, LogTerminalEnv, LogVerbosity(..))
+import Registry.App.Monad.Log as Log
+import Registry.App.Monad.Notify (class MonadNotify, NotifyGitHubEnv)
+import Registry.App.Monad.Notify as Notify
+import Registry.App.Monad.PackageSets (class MonadPackageSets, PackageSetsEnv)
+import Registry.App.Monad.PackageSets as PackageSets
+import Registry.App.Monad.Pursuit (class MonadPursuit, PursuitEnv)
+import Registry.App.Monad.Pursuit as Pursuit
+import Registry.App.Monad.Registry (class MonadRegistry, RegistryCache)
+import Registry.App.Monad.Registry as Registry
+import Registry.App.Monad.Storage (class MonadStorage, S3Env, StorageCache)
+import Registry.App.Monad.Storage as Storage
 import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.JsonRepair as JsonRepair
-import Registry.Foreign.Octokit (GitHubToken, IssueNumber(..), Octokit)
+import Registry.Foreign.Octokit (IssueNumber(..))
 import Registry.Foreign.Octokit as Octokit
-import Registry.Foreign.S3 (SpaceKey)
 import Registry.Operation (AuthenticatedData, PackageOperation(..), PackageSetOperation(..))
 import Registry.Operation as Operation
-import Run (AFF, Run)
-import Run as Run
-import Run.Except as Run.Except
+
+type Env =
+  { git :: GitEnv
+  , github :: OctokitEnv
+  , githubEvent :: GitHubEventEnv
+  , log :: LogTerminalEnv
+  , notify :: NotifyGitHubEnv
+  , pursuit :: PursuitEnv
+  , storage :: S3Env
+  , pacchettiBotti :: PacchettiBottiEnv
+  , packageSets :: PackageSetsEnv
+  , cache ::
+      { registry :: MemoryEnv
+      , github :: MemoryFsEnv
+      , storage :: FsCacheEnv
+      , legacy :: MemoryFsEnv
+      }
+  }
+
+newtype GitHubEventM a = GitHubEventM (ReaderT Env Aff a)
+
+derive newtype instance Functor GitHubEventM
+derive newtype instance Apply GitHubEventM
+derive newtype instance Applicative GitHubEventM
+derive newtype instance Bind GitHubEventM
+derive newtype instance Monad GitHubEventM
+derive newtype instance MonadEffect GitHubEventM
+derive newtype instance MonadAff GitHubEventM
+derive newtype instance MonadAsk Env GitHubEventM
+
+instance MonadPursuit GitHubEventM where
+  publish = Pursuit.handlePursuitHttp
+
+instance MonadRegistry GitHubEventM where
+  readManifest = Registry.handleReadManifest
+  writeManifest = Registry.handleWriteManifest
+  deleteManifest = Registry.handleDeleteManifest
+  readAllManifests = Registry.handleReadAllManifests
+  readMetadata = Registry.handleReadMetadata
+  writeMetadata = Registry.handleWriteMetadata
+  readAllMetadata = Registry.handleReadAllMetadata
+  readLatestPackageSet = Registry.handleReadLatestPackageSet
+  writePackageSet = Registry.handleWritePackageSet
+  readAllPackageSets = Registry.handleReadAllPackageSets
+  -- legacy operations
+  readLegacyRegistry = Registry.handleReadLegacyRegistry
+  mirrorPackageSet = Registry.handleMirrorPackageSet
+  mirrorLegacyRegistry = Registry.handleMirrorLegacyRegistry
+
+instance MonadGitHub GitHubEventM where
+  listTags = GitHub.handleListTags
+  listTeamMembers = GitHub.handleListTeamMembers
+  getContent = GitHub.handleGetContent
+  getRefCommit = GitHub.handleGetRefCommit
+  getCommitDate = GitHub.handleGetCommitDate
+
+instance MonadGit GitHubEventM where
+  getAddress = Git.handleGetAddress
+  getPath = Git.handleGetPath
+  pull = Git.handlePull
+  commit = Git.handleCommit
+  push = Git.handlePush
+  tag = Git.handleTag
+  pushTags = Git.handlePushTags
+
+instance MonadPackageSets GitHubEventM where
+  upgradeAtomic = PackageSets.handleUpgradeAtomic
+  upgradeSequential = PackageSets.handleUpgradeSequential
+
+instance MonadStorage GitHubEventM where
+  upload = Storage.handleUploadS3
+  download = Storage.handleDownloadS3
+  delete = Storage.handleDeleteS3
+
+instance MonadLog GitHubEventM where
+  log = Log.handleLogTerminal
+
+instance MonadNotify GitHubEventM where
+  send = Notify.handleNotifyGitHub
+
+instance MonadCache RegistryCache GitHubEventM where
+  getCache key = asks _.cache >>= \env -> Cache.handleGetMemory env.registry key
+  putCache key = asks _.cache >>= \env -> Cache.handlePutMemory env.registry key
+  deleteCache key = asks _.cache >>= \env -> Cache.handleDeleteMemory env.registry key
+
+instance MonadCache GitHubCache GitHubEventM where
+  getCache key = asks _.cache >>= \env -> Cache.handleGetMemoryFs env.github key
+  putCache key = asks _.cache >>= \env -> Cache.handlePutMemoryFs env.github key
+  deleteCache key = asks _.cache >>= \env -> Cache.handleDeleteMemoryFs env.github key
+
+instance MonadCache StorageCache GitHubEventM where
+  getCache key = asks _.cache >>= \env -> Cache.handleGetFs env.storage key
+  putCache key = asks _.cache >>= \env -> Cache.handlePutFs env.storage key
+  deleteCache key = asks _.cache >>= \env -> Cache.handleDeleteFs env.storage key
+
+instance MonadCache LegacyCache GitHubEventM where
+  getCache key = asks _.cache >>= \env -> Cache.handleGetMemoryFs env.legacy key
+  putCache key = asks _.cache >>= \env -> Cache.handlePutMemoryFs env.legacy key
+  deleteCache key = asks _.cache >>= \env -> Cache.handleDeleteMemoryFs env.legacy key
+
+runGitHubEventM :: forall a. Env -> GitHubEventM a -> Aff a
+runGitHubEventM env (GitHubEventM m) = Reader.runReaderT m env
 
 main :: Effect Unit
 main = launchAff_ $ do
   -- For now we only support GitHub events, and no formal API, so we'll jump
   -- straight into the GitHub event workflow.
-  initializeGitHub >>= traverse_ \env -> do
+  initializeGitHub >>= traverse_ \{ env, operation } -> do
     let
-      run = case env.operation of
+      program :: GitHubEventM (Either String Unit)
+      program = case operation of
         Left packageSetOperation -> case packageSetOperation of
           PackageSetUpdate payload ->
             API.packageSetUpdate payload
@@ -57,77 +164,25 @@ main = launchAff_ $ do
         Right packageOperation -> case packageOperation of
           Publish payload ->
             API.publish Current payload
-          Authenticated payload -> do
+          Authenticated payload -> Except.runExceptT do
             -- If we receive an authenticated operation via GitHub, then we
             -- re-sign it with pacchettibotti credentials if and only if the
             -- operation was opened by a trustee.
             signed <- signPacchettiBottiIfTrustee payload
-            API.authenticated signed
+            Except.ExceptT $ API.authenticated signed
 
-    -- Git env
-    debouncer <- Git.newDebouncer
-    let
-      gitEnv :: GitEnv
-      gitEnv =
-        { repos: Git.defaultRepos
-        , pull: ForceClean
-        , write: CommitAs (Git.pacchettibottiCommitter env.token)
-        , workdir: scratchDir
-        , debouncer
-        }
+    -- We'll run the program, reporting failures as issue comments.
+    runGitHubEventM env program >>= case _ of
+      Left error ->
+        Octokit.request env.github.octokit (Octokit.createCommentRequest { address: Constants.registry, issue: env.githubEvent.issue, body: error }) >>= case _ of
+          Left githubError -> Aff.throwError $ Aff.error $ Octokit.printGitHubError githubError
+          Right _ -> pure unit
+      Right _ ->
+        Octokit.request env.github.octokit (Octokit.closeIssueRequest { address: Constants.registry, issue: env.githubEvent.issue }) >>= case _ of
+          Left error -> Aff.throwError $ Aff.error $ Octokit.printGitHubError error
+          Right _ -> pure unit
 
-    -- Caching
-    let cacheDir = Path.concat [ scratchDir, ".cache" ]
-    FS.Extra.ensureDirectory cacheDir
-    githubCacheRef <- TypedCache.newCacheRef
-    legacyCacheRef <- TypedCache.newCacheRef
-    registryCacheRef <- TypedCache.newCacheRef
-
-    --  Package sets
-    let workdir = Path.concat [ scratchDir, "package-sets-work" ]
-    FS.Extra.ensureDirectory workdir
-
-    run
-      -- Environment
-      # Env.runGitHubEventEnv { username: env.username, issue: env.issue }
-      # Env.runPacchettiBottiEnv { publicKey: env.publicKey, privateKey: env.privateKey }
-      -- App effects
-      # PackageSets.runPackageSets (PackageSets.handlePackageSetsAff { workdir })
-      # Registry.runRegistry Registry.handleRegistryGit
-      # Storage.runStorage (Storage.handleStorageS3 env.spacesConfig)
-      # Git.runGit (Git.handleGitAff gitEnv)
-      -- Requests
-      # Pursuit.runPursuit (Pursuit.handlePursuitHttp env.token)
-      # GitHub.runGitHub (GitHub.handleGitHubOctokit env.octokit)
-      -- Caching
-      # Registry.runRegistryCacheMemory { ref: registryCacheRef }
-      # Storage.runStorageCacheFs { cacheDir }
-      # GitHub.runGitHubCacheMemoryFs { cacheDir, ref: githubCacheRef }
-      # Legacy.Manifest.runLegacyCacheMemoryFs { cacheDir, ref: legacyCacheRef }
-      -- Logging
-      # Notify.runNotify Notify.handleNotifyLog
-      # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-      # Log.runLog (Log.handleLogTerminal Verbose)
-      -- Base effects
-      # Run.runBaseAff'
-
-    -- After the run, close the issue. If an exception was thrown then the issue
-    -- will remain open.
-    _ <- Octokit.request env.octokit (Octokit.closeIssueRequest { address: Constants.registry, issue: env.issue })
-    pure unit
-
-type GitHubEventEnv =
-  { octokit :: Octokit
-  , token :: GitHubToken
-  , issue :: IssueNumber
-  , username :: String
-  , operation :: Either PackageSetOperation PackageOperation
-  , spacesConfig :: SpaceKey
-  , publicKey :: String
-  , privateKey :: String
-  }
-
-initializeGitHub :: Aff (Maybe GitHubEventEnv)
+initializeGitHub :: Aff (Maybe { env :: Env, operation :: Either PackageSetOperation PackageOperation })
 initializeGitHub = do
   token <- Env.lookupRequired Env.pacchettibottiToken
   publicKey <- Env.lookupRequired Env.pacchettibottiED25519Pub
@@ -160,16 +215,65 @@ initializeGitHub = do
         Right _ -> pure Nothing
 
     DecodedOperation issue username operation -> do
-      pure $ Just
-        { octokit
-        , token
-        , issue
-        , username
-        , operation
-        , spacesConfig: { key: spacesKey, secret: spacesSecret }
-        , publicKey
-        , privateKey
-        }
+      -- Caching
+      let cacheDir = Path.concat [ scratchDir, ".cache" ]
+      FS.Extra.ensureDirectory cacheDir
+      githubCacheRef <- Cache.newCacheRef
+      legacyCacheRef <- Cache.newCacheRef
+      registryCacheRef <- Cache.newCacheRef
+
+      --  Package sets
+      let workdir = Path.concat [ scratchDir, "package-sets-work" ]
+      FS.Extra.ensureDirectory workdir
+
+      debouncer <- Git.newDebouncer
+
+      let
+        git :: GitEnv
+        git =
+          { repos: Git.defaultRepos
+          , pull: ForceClean
+          , write: CommitAs (Git.pacchettibottiCommitter token)
+          , workdir: scratchDir
+          , debouncer
+          }
+
+        github :: OctokitEnv
+        github = { octokit }
+
+        githubEvent :: GitHubEventEnv
+        githubEvent = { username, issue }
+
+        log :: LogTerminalEnv
+        log = { verbosity: Verbose }
+
+        notify :: NotifyGitHubEnv
+        notify = { octokit, issue, registry: Constants.registry }
+
+        pursuit :: PursuitEnv
+        pursuit = { token }
+
+        storage :: S3Env
+        storage = { key: spacesKey, secret: spacesSecret }
+
+        pacchettiBotti :: PacchettiBottiEnv
+        pacchettiBotti = { publicKey, privateKey }
+
+        packageSets :: PackageSetsEnv
+        packageSets = { workdir }
+
+        cache :: { registry :: MemoryEnv, github :: MemoryFsEnv, storage :: FsCacheEnv, legacy :: MemoryFsEnv }
+        cache =
+          { registry: { ref: registryCacheRef }
+          , github: { ref: githubCacheRef, cacheDir }
+          , storage: { cacheDir }
+          , legacy: { ref: legacyCacheRef, cacheDir }
+          }
+
+        env :: Env
+        env = { git, github, githubEvent, log, notify, pursuit, storage, pacchettiBotti, packageSets, cache }
+
+      pure $ Just { env, operation }
 
 data OperationDecoding
   = NotJson
@@ -276,32 +380,35 @@ decodeIssueEvent json = lmap CA.printJsonDecodeError do
 -- packaging team) then pacchettibotti will re-sign it and add itself as an
 -- owner before continuing with the authenticated operation.
 signPacchettiBottiIfTrustee
-  :: forall r
-   . AuthenticatedData
-  -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + LOG_EXCEPT + AFF + r) AuthenticatedData
+  :: forall m r
+   . MonadAsk { | PACCHETTIBOTTI + GITHUB_EVENT + r } m
+  => MonadGitHub m
+  => MonadAff m
+  => AuthenticatedData
+  -> ExceptT String m AuthenticatedData
 signPacchettiBottiIfTrustee auth = do
   if auth.email /= pacchettibottiEmail then
     pure auth
   else do
     GitHub.listTeamMembers API.packagingTeam >>= case _ of
-      Left githubError -> Log.exit $ Array.fold
+      Left githubError -> Except.throwError $ Array.fold
         [ "This authenticated operation was opened using the pacchettibotti "
         , "email address, but we were unable to authenticate that you are a "
         , "member of the @purescript/packaging team:\n\n"
         , Octokit.printGitHubError githubError
         ]
       Right members -> do
-        { username } <- Env.askGitHubEvent
+        { username } <- asks _.githubEvent
         unless (Array.elem username members) do
-          Log.exit $ Array.fold
+          Except.throwError $ Array.fold
             [ "This authenticated operation was opened using the pacchettibotti "
             , "email address, but your username is not a member of the "
             , "@purescript/packaging team."
             ]
 
-        { publicKey, privateKey } <- Env.askPacchettiBotti
-        signature <- Run.liftAff (Auth.signPayload { publicKey, privateKey, rawPayload: auth.rawPayload }) >>= case _ of
-          Left _ -> Log.exit "Error signing transfer. cc: @purescript/packaging"
+        { publicKey, privateKey } <- asks _.pacchettiBotti
+        signature <- liftAff (Auth.signPayload { publicKey, privateKey, rawPayload: auth.rawPayload }) >>= case _ of
+          Left _ -> Except.throwError "Error signing transfer. cc: @purescript/packaging"
           Right signature -> pure signature
 
         pure $ auth { signature = signature }
