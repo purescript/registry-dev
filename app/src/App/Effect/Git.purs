@@ -32,6 +32,7 @@ import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except as Run.Except
+import Safe.Coerce (coerce)
 import Sunde as Sunde
 
 -- | The result of running a Git action that can have no effect. For example,
@@ -462,9 +463,9 @@ handleGitAff env = case _ of
       "Failed to configure git user email as " <> committer.email <> inRepoErr error
 
     -- Then we attempt to stage changes associated with the given commit paths
-    let commitPath = un String.Pattern (commitRelativePath commitKey)
-    _ <- exec [ "add", commitPath ] \error ->
-      "Failed to add path(s) " <> commitPath <> inRepoErr error
+    let commitPaths = coerce (commitRelativePaths commitKey)
+    _ <- exec (Array.cons "add" commitPaths) \error ->
+      "Failed to add path(s) " <> String.joinWith ", " commitPaths <> inRepoErr error
 
     -- Git will error if we try to commit without any changes actually staged,
     -- so the below command lists file paths (--name-only) that have changed
@@ -475,13 +476,13 @@ handleGitAff env = case _ of
 
     -- If there are no staged files, then we have nothing to commit.
     if String.null staged then do
-      Log.warn $ "Not committing paths " <> commitPath <> " in " <> cwd <> " because no matching files have been modified."
+      Log.warn $ "Not committing paths " <> String.joinWith ", " commitPaths <> " in " <> cwd <> " because no matching files have been modified."
       pure NoChange
     -- But if there are staged files then we can commit them and report that
     -- we indeed had changes.
     else do
       _ <- exec [ "commit", "-m", message ] \error ->
-        "Failed to commit path(s) " <> commitPath <> inRepoErr error
+        "Failed to commit path(s) " <> String.joinWith ", " commitPaths <> inRepoErr error
       pure Changed
 
   -- | Push to the indicated repository
@@ -595,22 +596,22 @@ gitStatusParser = do
 -- | Get the pattern representing the paths that should be committed for each
 -- | commit key, relative to the root of the repository. Suitable to be passed
 -- | to a git 'add' command executed in the checkout.
-commitRelativePath :: CommitKey -> String.Pattern
-commitRelativePath = String.Pattern <<< case _ of
+commitRelativePaths :: CommitKey -> Array String.Pattern
+commitRelativePaths = coerce <<< case _ of
   CommitManifestEntry name ->
-    ManifestIndex.packageEntryFilePath name
+    [ ManifestIndex.packageEntryFilePath name ]
   CommitMetadataEntry name ->
-    Path.concat [ Constants.metadataDirectory, PackageName.print name <> ".json" ]
+    [ Path.concat [ Constants.metadataDirectory, PackageName.print name <> ".json" ] ]
   CommitManifestIndex ->
-    "."
+    [ "." ]
   CommitMetadataIndex ->
-    Constants.metadataDirectory <> Path.sep <> "*.json"
+    [ Constants.metadataDirectory <> Path.sep <> "*.json" ]
   CommitPackageSet version ->
-    Path.concat [ Constants.packageSetsDirectory, Version.print version <> ".json" ]
+    [ Path.concat [ Constants.packageSetsDirectory, Version.print version <> ".json" ] ]
   CommitLegacyRegistry ->
-    String.joinWith " " [ "bower-packages.json", "new-packages.json" ]
+    [ "bower-packages.json", "new-packages.json" ]
   CommitLegacyPackageSets paths ->
-    String.joinWith " " paths
+    paths
 
 commitKeyToRepoKey :: CommitKey -> RepoKey
 commitKeyToRepoKey = case _ of
