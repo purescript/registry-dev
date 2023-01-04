@@ -28,7 +28,7 @@ import Data.Exists as Exists
 import Data.HTTP.Method (Method(..))
 import Data.Time.Duration as Duration
 import Foreign.Object as Object
-import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
+import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, CacheRef, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
@@ -120,23 +120,30 @@ getCommitDate address commitSha = Run.lift _github (GetCommitDate address commit
 interpret :: forall r a. (GitHub ~> Run r) -> Run (GITHUB + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _github handler Run.send)
 
+type GitHubEnv =
+  { ref :: CacheRef
+  , cache :: FilePath
+  , octokit :: Octokit
+  }
+
 -- | An effectful handler for the GITHUB effect which makes calls to GitHub
--- | using Octokit.
-handle :: forall r a. Octokit -> GitHub a -> Run (GITHUB_CACHE + LOG + AFF + EFFECT + r) a
-handle octokit = case _ of
+-- | using Octokit. This handler consumes a GITHUB_CACHE by caching in memory
+-- | with the filesystem as a fallback.
+handle :: forall r a. GitHubEnv -> GitHub a -> Run (LOG + AFF + EFFECT + r) a
+handle env = Cache.interpret _githubCache (Cache.handleMemoryFs { cache: env.cache, ref: env.ref }) <<< case _ of
   ListTags address reply -> do
     Log.debug $ "Listing tags for " <> address.owner <> "/" <> address.repo
-    result <- request octokit (Octokit.listTagsRequest address)
+    result <- request env.octokit (Octokit.listTagsRequest address)
     pure $ reply result
 
   ListTeamMembers team reply -> do
     Log.debug $ "Listing members of team " <> team.org <> "/" <> team.team
-    result <- request octokit (Octokit.listTeamMembersRequest team)
+    result <- request env.octokit (Octokit.listTeamMembersRequest team)
     pure $ reply $ map (map _.login) result
 
   GetContent address ref path reply -> do
     Log.debug $ "Fetching content from " <> address.owner <> "/" <> address.repo <> " at ref " <> ref <> " at path " <> path
-    request octokit (Octokit.getContentRequest { address, ref, path }) >>= case _ of
+    request env.octokit (Octokit.getContentRequest { address, ref, path }) >>= case _ of
       Left error -> pure $ reply $ Left error
       Right result -> case Octokit.decodeBase64Content result of
         Left base64Error -> do
@@ -147,12 +154,12 @@ handle octokit = case _ of
 
   GetRefCommit address ref reply -> do
     Log.debug $ "Fetching commit associated with ref " <> ref <> " on repository " <> address.owner <> "/" <> address.repo
-    result <- request octokit (Octokit.getRefCommitRequest { address, ref })
+    result <- request env.octokit (Octokit.getRefCommitRequest { address, ref })
     pure $ reply result
 
   GetCommitDate address commitSha reply -> do
     Log.debug $ "Fetching commit date associated with commit sha " <> commitSha <> " on repository " <> address.owner <> "/" <> address.repo
-    result <- request octokit (Octokit.getCommitDateRequest { address, commitSha })
+    result <- request env.octokit (Octokit.getCommitDateRequest { address, commitSha })
     pure $ reply result
 
 -- | A helper function for implementing GET requests to the GitHub API that
@@ -239,7 +246,7 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
               pure result
 
             Right decoded -> do
-              Log.debug $ "Found valid cache entry without etags for " <> printedRoute <> ", and within 1 hour time limit, returning value..."
+              Log.debug $ "Found valid cache entry without etags for " <> printedRoute <> ", and within 4 hour time limit, returning value..."
               pure $ Right decoded
 
     _ -> do

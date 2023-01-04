@@ -46,35 +46,6 @@ import Run.Except as Run.Except
 import Sunde as Process
 import Type.Proxy (Proxy(..))
 
--- | A key type for the legacy cache.
-data LegacyCache (c :: Type -> Type -> Type) a
-  = LegacySet RawVersion (c (Either GitHubError LegacyPackageSet) a)
-  | LegacyUnion Sha256 (c LegacyPackageSetUnion a)
-
-instance Functor2 c => Functor (LegacyCache c) where
-  map k = case _ of
-    LegacySet ref a -> LegacySet ref (map2 k a)
-    LegacyUnion tagsHash a -> LegacyUnion tagsHash (map2 k a)
-
-instance MemoryEncodable LegacyCache where
-  encodeMemory = case _ of
-    LegacySet (RawVersion ref) next ->
-      Exists.mkExists $ Key ("LegacySet__" <> ref) next
-    LegacyUnion hash next ->
-      Exists.mkExists $ Key ("LegacyUnion__" <> Sha256.print hash) next
-
-instance FsEncodable LegacyCache where
-  encodeFs = case _ of
-    LegacySet (RawVersion ref) next ->
-      Exists.mkExists $ AsJson ("LegacySet__" <> ref) (CA.Common.either Octokit.githubErrorCodec legacyPackageSetCodec) next
-    LegacyUnion hash next ->
-      Exists.mkExists $ AsJson ("LegacyUnion" <> Sha256.print hash) legacyPackageSetUnionCodec next
-
-type LEGACY_CACHE r = (legacyCache :: Cache LegacyCache | r)
-
-_legacyCache :: Proxy "legacyCache"
-_legacyCache = Proxy
-
 type LegacyManifest =
   { license :: License
   , description :: Maybe String
@@ -481,3 +452,32 @@ fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
   where
   _legacyPackageSetsError :: Proxy "legacyPackageSetsError"
   _legacyPackageSetsError = Proxy
+
+-- | A key type for the legacy cache.
+data LegacyCache (c :: Type -> Type -> Type) a
+  = LegacySet RawVersion (c (Either GitHubError LegacyPackageSet) a)
+  | LegacyUnion Sha256 (c LegacyPackageSetUnion a)
+
+instance Functor2 c => Functor (LegacyCache c) where
+  map k = case _ of
+    LegacySet ref a -> LegacySet ref (map2 k a)
+    LegacyUnion tagsHash a -> LegacyUnion tagsHash (map2 k a)
+
+instance MemoryEncodable LegacyCache where
+  encodeMemory = case _ of
+    LegacySet (RawVersion ref) next ->
+      Exists.mkExists $ Key ("LegacySet__" <> ref) next
+    LegacyUnion hash next ->
+      Exists.mkExists $ Key ("LegacyUnion__" <> Sha256.print hash) next
+
+instance FsEncodable LegacyCache where
+  encodeFs = case _ of
+    LegacySet (RawVersion ref) next ->
+      Exists.mkExists $ AsJson ("LegacySet__" <> ref) (CA.Common.either Octokit.githubErrorCodec legacyPackageSetCodec) next
+    LegacyUnion hash next ->
+      Exists.mkExists $ AsJson ("LegacyUnion" <> Sha256.print hash) legacyPackageSetUnionCodec next
+
+type LEGACY_CACHE r = (legacyCache :: Cache LegacyCache | r)
+
+_legacyCache :: Proxy "legacyCache"
+_legacyCache = Proxy

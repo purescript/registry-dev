@@ -75,23 +75,14 @@ main = launchAff_ do
   let logPath = Path.concat [ logDir, logFile ]
 
   transfer
-    -- Environment
     # Env.runPacchettiBottiEnv { privateKey, publicKey }
-    -- App effects
-    # Registry.interpret Registry.handle
-    # Storage.interpret Storage.handleReadOnly
+    # Registry.interpret (Registry.handle registryCacheRef)
+    # Storage.interpret (Storage.handleReadOnly cache)
     # Git.interpret (Git.handle gitEnv)
-    -- Requests
-    # GitHub.interpret (GitHub.handle octokit)
-    -- Caching
-    # Cache.interpret Registry._registryCache (Cache.handleMemory registryCacheRef)
-    # Cache.interpret Storage._storageCache (Cache.handleFs cache)
-    # Cache.interpret GitHub._githubCache (Cache.handleMemoryFs { cache, ref: githubCacheRef })
-    -- Logging
+    # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Notify.interpret Notify.handleLog
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
-    -- Base effects
     # Run.runBaseAff'
 
 transfer :: forall r. Run (API.AuthenticatedEffects + r) Unit

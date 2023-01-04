@@ -4,6 +4,7 @@ import Registry.App.Prelude
 
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
+import Control.Apply (lift2)
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Data.FoldableWithIndex (foldMapWithIndex)
@@ -81,8 +82,7 @@ main = launchAff_ do
   -- Environment
   _ <- Env.loadEnvFile ".env"
   token <- Env.lookupRequired Env.pacchettibottiToken
-  spacesKey <- Env.lookupRequired Env.spacesKey
-  spacesSecret <- Env.lookupRequired Env.spacesSecret
+  s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
 
   -- Git
   debouncer <- Git.newDebouncer
@@ -120,19 +120,12 @@ main = launchAff_ do
 
   let
     interpret interpretGit =
-      -- App effects
-      Registry.interpret Registry.handle
-        >>> Storage.interpret (Storage.handleS3 { key: spacesKey, secret: spacesSecret })
-        >>> GitHub.interpret (GitHub.handle octokit)
+      Registry.interpret (Registry.handle registryCacheRef)
+        >>> Storage.interpret (Storage.handleS3 { s3, cache })
+        >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
         >>> interpretGit
-        -- Caching
-        >>> Cache.interpret Registry._registryCache (Cache.handleMemory registryCacheRef)
-        >>> Cache.interpret Storage._storageCache (Cache.handleFs cache)
-        >>> Cache.interpret GitHub._githubCache (Cache.handleMemoryFs { cache, ref: githubCacheRef })
-        -- Logging
         >>> Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
-        -- Base effects
         >>> Run.runBaseAff'
 
   -- We run deletions *without* committing, because we'll do it in bulk later.

@@ -88,23 +88,17 @@ main = launchAff_ $ do
     FS.Extra.ensureDirectory workdir
 
     run
-      -- Environment
       # Env.runGitHubEventEnv { username: env.username, issue: env.issue }
       # Env.runPacchettiBottiEnv { publicKey: env.publicKey, privateKey: env.privateKey }
       -- App effects
       # PackageSets.interpret (PackageSets.handle { workdir })
-      # Registry.interpret Registry.handle
-      # Storage.interpret (Storage.handleS3 env.spacesConfig)
+      # Registry.interpret (Registry.handle registryCacheRef)
+      # Storage.interpret (Storage.handleS3 { s3: env.spacesConfig, cache })
       # Git.interpret (Git.handle gitEnv)
-      -- Requests
       # Pursuit.interpret (Pursuit.handleAff env.token)
-      # GitHub.interpret (GitHub.handle env.octokit)
-      -- Caching
-      # Cache.interpret Registry._registryCache (Cache.handleMemory registryCacheRef)
-      # Cache.interpret Storage._storageCache (Cache.handleFs cache)
-      # Cache.interpret GitHub._githubCache (Cache.handleMemoryFs { cache, ref: githubCacheRef })
+      # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache, ref: githubCacheRef })
+      -- Caching & logging
       # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
-      -- Logging
       # Notify.interpret (Notify.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Git.defaultRepos.registry })
       # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
       # Log.interpret (Log.handleTerminal Verbose)

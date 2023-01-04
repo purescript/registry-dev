@@ -37,23 +37,6 @@ import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
 
--- | A key type for the storage cache. Only supports packages identified by
--- | their name and version.
-data StorageCache (c :: Type -> Type -> Type) a = Package PackageName Version (c Buffer a)
-
-instance Functor2 c => Functor (StorageCache c) where
-  map k (Package name version a) = Package name version (map2 k a)
-
-instance FsEncodable StorageCache where
-  encodeFs = case _ of
-    Package name version next ->
-      Exists.mkExists $ AsBuffer (PackageName.print name <> "-" <> Version.print version) next
-
-type STORAGE_CACHE r = (storageCache :: Cache StorageCache | r)
-
-_storageCache :: Proxy "storageCache"
-_storageCache = Proxy
-
 -- | The Storage effect, which describes uploading, downloading, and deleting
 -- | tarballs from the registry storage backend.
 data Storage a
@@ -111,9 +94,14 @@ connectS3 key = do
       Log.debug "Connected to S3!"
       pure connection
 
+type S3Env =
+  { cache :: FilePath
+  , s3 :: S3.SpaceKey
+  }
+
 -- | Handle package storage using a remote S3 bucket.
-handleS3 :: forall r a. S3.SpaceKey -> Storage a -> Run (STORAGE_CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
-handleS3 key = case _ of
+handleS3 :: forall r a. S3Env -> Storage a -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) a
+handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case _ of
   Download name version path next -> do
     let package = formatPackageVersion name version
     buffer <- Cache.get _storageCache (Package name version) >>= case _ of
@@ -142,7 +130,7 @@ handleS3 key = case _ of
         pure buf
 
     Log.debug $ "Read file for " <> package <> ", now uploading to " <> packagePath <> "..."
-    s3 <- connectS3 key
+    s3 <- connectS3 env.s3
     published <- Run.liftAff (withBackoff' (S3.listObjects s3 { prefix: PackageName.print name <> "/" })) >>= case _ of
       Nothing -> do
         Log.error $ "Failed to list S3 objects for " <> PackageName.print name <> " because the process timed out."
@@ -170,7 +158,7 @@ handleS3 key = case _ of
       packagePath = formatPackagePath name version
 
     Log.debug $ "Deleting " <> package
-    s3 <- connectS3 key
+    s3 <- connectS3 env.s3
     published <- Run.liftAff (withBackoff' (S3.listObjects s3 { prefix: PackageName.print name <> "/" })) >>= case _ of
       Nothing -> do
         Log.error $ "Failed to delete " <> package <> " because the process timed out when attempting to list objects at " <> packagePath <> " from S3."
@@ -193,8 +181,8 @@ handleS3 key = case _ of
       Log.exit $ "Could not delete " <> package <> " because it does not exist in the storage backend."
 
 -- | A storage effect that reads from the registry but does not write to it.
-handleReadOnly :: forall r a. Storage a -> Run (STORAGE_CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
-handleReadOnly = case _ of
+handleReadOnly :: forall r a. FilePath -> Storage a -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) a
+handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< case _ of
   Upload name version _ next -> do
     Log.warn $ "Requested upload of " <> formatPackageVersion name version <> " to url " <> formatPackageUrl name version <> " but this interpreter is read-only."
     pure next
@@ -251,3 +239,19 @@ downloadS3 name version = do
       buffer :: Buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
       pure buffer
 
+-- | A key type for the storage cache. Only supports packages identified by
+-- | their name and version.
+data StorageCache (c :: Type -> Type -> Type) a = Package PackageName Version (c Buffer a)
+
+instance Functor2 c => Functor (StorageCache c) where
+  map k (Package name version a) = Package name version (map2 k a)
+
+instance FsEncodable StorageCache where
+  encodeFs = case _ of
+    Package name version next ->
+      Exists.mkExists $ AsBuffer (PackageName.print name <> "-" <> Version.print version) next
+
+type STORAGE_CACHE r = (storageCache :: Cache StorageCache | r)
+
+_storageCache :: Proxy "storageCache"
+_storageCache = Proxy

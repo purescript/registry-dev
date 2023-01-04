@@ -11,6 +11,7 @@ import Registry.App.Prelude
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Control.Alternative (guard)
+import Control.Apply (lift2)
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
@@ -105,6 +106,13 @@ main = launchAff_ do
 
   Env.loadEnvFile ".env"
 
+  githubCacheRef <- Cache.newCacheRef
+  legacyCacheRef <- Cache.newCacheRef
+  registryCacheRef <- Cache.newCacheRef
+  importCacheRef <- Cache.newCacheRef
+  let cache = Path.concat [ scratchDir, ".cache" ]
+  FS.Extra.ensureDirectory cache
+
   -- Set up interpreters according to the import mode. In dry-run mode we don't
   -- allow anyting to be committed or pushed, but data is still written to the
   -- local repository checkouts on disk. In generate-registry mode, tarballs are
@@ -118,67 +126,47 @@ main = launchAff_ do
         token <- Env.lookupRequired Env.githubToken
         octokit <- Octokit.newOctokit token
         pure do
-          Registry.interpret Registry.handle
-            >>> Storage.interpret Storage.handleReadOnly
+          Storage.interpret (Storage.handleReadOnly cache)
             >>> Pursuit.interpret Pursuit.handlePure
-            >>> GitHub.interpret (GitHub.handle octokit)
-            >>> Git.interpret (Git.handle (gitEnv Autostash ReadOnly))
+            >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+            >>> Git.interpret (Git.handle (gitEnv ForceClean ReadOnly))
 
       GenerateRegistry -> do
         token <- Env.lookupRequired Env.githubToken
-        spacesKey <- Env.lookupRequired Env.spacesKey
-        spacesSecret <- Env.lookupRequired Env.spacesSecret
+        s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
         octokit <- Octokit.newOctokit token
         pure do
-          Registry.interpret Registry.handle
-            >>> Storage.interpret (Storage.handleS3 { key: spacesKey, secret: spacesSecret })
+          Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret Pursuit.handlePure
-            >>> GitHub.interpret (GitHub.handle octokit)
-            >>> Git.interpret (Git.handle (gitEnv Autostash (CommitAs (Git.pacchettibottiCommitter token))))
+            >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+            >>> Git.interpret (Git.handle (gitEnv ForceClean (CommitAs (Git.pacchettibottiCommitter token))))
 
       UpdateRegistry -> do
         token <- Env.lookupRequired Env.pacchettibottiToken
-        spacesKey <- Env.lookupRequired Env.spacesKey
-        spacesSecret <- Env.lookupRequired Env.spacesSecret
+        s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
         octokit <- Octokit.newOctokit token
         pure do
-          Registry.interpret Registry.handle
-            >>> Storage.interpret (Storage.handleS3 { key: spacesKey, secret: spacesSecret })
+          Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret (Pursuit.handleAff token)
-            >>> GitHub.interpret (GitHub.handle octokit)
+            >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
             >>> Git.interpret (Git.handle (gitEnv OnlyClean (CommitAs (Git.pacchettibottiCommitter token))))
-
-  -- Caching setup
-  runCacheEffects <- do
-    githubCacheRef <- Cache.newCacheRef
-    legacyCacheRef <- Cache.newCacheRef
-    registryCacheRef <- Cache.newCacheRef
-    importCacheRef <- Cache.newCacheRef
-    let cache = Path.concat [ scratchDir, ".cache" ]
-    FS.Extra.ensureDirectory cache
-    pure do
-      Cache.interpret Registry._registryCache (Cache.handleMemory registryCacheRef)
-        >>> Cache.interpret Storage._storageCache (Cache.handleFs cache)
-        >>> Cache.interpret GitHub._githubCache (Cache.handleMemoryFs { cache, ref: githubCacheRef })
-        >>> Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
-        >>> Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
 
   -- Logging setup
   let logDir = Path.concat [ scratchDir, "logs" ]
   FS.Extra.ensureDirectory logDir
   now <- nowUTC
-  let logFile = "legacy-importer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
-  let logPath = Path.concat [ logDir, logFile ]
-  runLogEffects <- do
-    pure do
-      Notify.interpret Notify.handleLog
-        >>> Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-        >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+  let
+    logFile = "legacy-importer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
+    logPath = Path.concat [ logDir, logFile ]
 
   runLegacyImport mode logPath
+    # Registry.interpret (Registry.handle registryCacheRef)
     # runAppEffects
-    # runCacheEffects
-    # runLogEffects
+    # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
+    # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
+    # Notify.interpret Notify.handleLog
+    # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'
 
 runLegacyImport :: forall r. ImportMode -> FilePath -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit

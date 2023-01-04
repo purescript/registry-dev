@@ -16,7 +16,7 @@ import Data.String as String
 import Effect.Aff as Aff
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
-import Registry.App.Effect.Cache (class MemoryEncodable, Cache, MemoryEncoding(..))
+import Registry.App.Effect.Cache (class MemoryEncodable, Cache, CacheRef, MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Git (GIT, GitResult(..))
 import Registry.App.Effect.Git as Git
@@ -140,12 +140,16 @@ interpret handler = Run.interpret (Run.on _registry handler Run.send)
 
 -- | Handle the REGISTRY effect by downloading the registry and registry-index
 -- | repositories locally and reading and writing their contents from disk.
--- | Writes can optionally commit and push to the uptsream Git repository.
-handle :: forall r a. Registry a -> Run (REGISTRY_CACHE + GITHUB + GIT + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
-handle = case _ of
+-- | Writes can optionally commit and push to the upstream Git repository.
+-- |
+-- | This handler enforces a memory-only cache: we do not want to cache on the
+-- | file system or other storage because this handler relies on the registry
+-- | Git repositories instead.
+handle :: forall r a. CacheRef -> Registry a -> Run (GITHUB + GIT + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
+handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ of
   ReadManifest name version reply -> do
     let formatted = formatPackageVersion name version
-    index <- handle (ReadAllManifests identity)
+    index <- handle ref (ReadAllManifests identity)
     case ManifestIndex.lookup name version index of
       Nothing -> do
         Log.debug $ "Did not find manifest for " <> formatted <> " in memory cache or local registry repo checkout."
@@ -157,7 +161,7 @@ handle = case _ of
     let formatted = formatPackageVersion name version
     Log.info $ "Writing manifest for " <> formatted <> ":\n" <> printJson Manifest.codec manifest
     let exitMessage = "Failed to write manifest for " <> formatted <> " to the manifest index."
-    index <- handle (ReadAllManifests identity)
+    index <- handle ref (ReadAllManifests identity)
     case ManifestIndex.insert manifest index of
       Left error ->
         Log.exit $ Array.fold
@@ -183,7 +187,7 @@ handle = case _ of
     let formatted = formatPackageVersion name version
     Log.info $ "Deleting manifest for " <> formatted
     let exitMessage = "Failed to delete manifest for " <> formatted <> " from the manifest index."
-    index <- handle (ReadAllManifests identity)
+    index <- handle ref (ReadAllManifests identity)
     case ManifestIndex.delete name version index of
       Left error ->
         Log.exit $ Array.fold
@@ -409,8 +413,8 @@ handle = case _ of
     let name = Version.print version
     Log.info $ "Mirroring legacy package set " <> name <> " to the legacy package sets repo"
 
-    manifests <- handle (ReadAllManifests identity)
-    metadata <- handle (ReadAllMetadata identity)
+    manifests <- handle ref (ReadAllManifests identity)
+    metadata <- handle ref (ReadAllMetadata identity)
 
     Log.debug $ "Converting package set..."
     converted <- case Legacy.Manifest.convertPackageSet manifests metadata set of
@@ -533,7 +537,7 @@ handle = case _ of
         Log.error $ "Cannot mirror location " <> url <> " because it is a Git location, and only GitHub is supported in the legacy registry."
         Log.exit "Could not sync package with the legacy registry because only GitHub packages are supported."
 
-    { bower, new } <- handle $ ReadLegacyRegistry identity
+    { bower, new } <- handle ref $ ReadLegacyRegistry identity
 
     let rawPackageName = "purescript-" <> PackageName.print name
 
