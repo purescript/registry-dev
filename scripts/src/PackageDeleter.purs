@@ -14,6 +14,7 @@ import Data.Tuple (uncurry)
 import Effect.Class.Console as Console
 import Node.Path as Path
 import Node.Process as Process
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
@@ -24,7 +25,6 @@ import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
-import Registry.App.Effect.TypedCache as TypedCache
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Codec as Internal.Codec
@@ -102,8 +102,8 @@ main = launchAff_ do
   -- Caching
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
-  githubCacheRef <- TypedCache.newCacheRef
-  registryCacheRef <- TypedCache.newCacheRef
+  githubCacheRef <- Cache.newCacheRef
+  registryCacheRef <- Cache.newCacheRef
 
   -- Logging
   now <- nowUTC

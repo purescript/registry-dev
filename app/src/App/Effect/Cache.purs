@@ -8,7 +8,7 @@
 -- | significant benefits: first, you know what type you will receive when
 -- | reading from the cache, and second, you can store types directly to
 -- | in-memory caches, without the overhead of serialization and deserialization.
-module Registry.App.Effect.TypedCache
+module Registry.App.Effect.Cache
   ( Reply(..)
   , Ignore(..)
   , CacheKey(..)
@@ -29,7 +29,7 @@ module Registry.App.Effect.TypedCache
   , FsEncoder(..)
   , FsEncoding(..)
   , handleCacheFs
-  , TypedCache(..)
+  , Cache(..)
   ) where
 
 import Registry.App.Prelude hiding (Manifest(..), Metadata(..))
@@ -72,12 +72,12 @@ instance Functor2 Ignore where
 -- Note: We could also formulate this as a pair of Get / Alter, where Alter is
 -- of type (Maybe a -> Maybe a) and allows you to insert, modify, or delete in
 -- one operation.
-data TypedCache key a
+data Cache key a
   = Get (key Reply a)
   | Put (forall void. key Const void) a
   | Delete (key Ignore a)
 
-derive instance (Functor (k Reply), Functor (k Ignore)) => Functor (TypedCache k)
+derive instance (Functor (k Reply), Functor (k Ignore)) => Functor (Cache k)
 
 type CacheKey :: ((Type -> Type -> Type) -> Type -> Type) -> Type -> Type
 type CacheKey k a = forall c b. c a b -> k c b
@@ -89,7 +89,7 @@ type CacheKey k a = forall c b. c a b -> k c b
 -- | get :: forall a r. CacheKey MyCache a -> Run (MY_CACHE + r) (Maybe a)
 -- | get key = Run.lift _myCache (getCache key)
 -- | ```
-getCache :: forall k a. CacheKey k a -> TypedCache k (Maybe a)
+getCache :: forall k a. CacheKey k a -> Cache k (Maybe a)
 getCache key = Get (key (Reply identity))
 
 -- | Put a value in the cache, given an appropriate cache key. This function
@@ -99,7 +99,7 @@ getCache key = Get (key (Reply identity))
 -- | put :: forall a r. CacheKey MyCache a -> Run (MY_CACHE + r) (Maybe a)
 -- | put key = Run.lift _myCache (putCache key)
 -- | ```
-putCache :: forall k a. CacheKey k a -> a -> TypedCache k Unit
+putCache :: forall k a. CacheKey k a -> a -> Cache k Unit
 putCache key value = Put (key (Const value)) unit
 
 -- | Delete a key from the cache, given an appropriate cache key. This function
@@ -107,17 +107,17 @@ putCache key value = Put (key (Const value)) unit
 -- |
 -- | ```purs
 -- | delete :: forall a r. CacheKey MyCache a -> Run (MY_CACHE + r) (Maybe a)
--- | delete key = Run.lift _myCache (TypedCache.deleteCache key)
+-- | delete key = Run.lift _myCache (Cache.deleteCache key)
 -- | ```
-deleteCache :: forall k a. CacheKey k a -> TypedCache k Unit
+deleteCache :: forall k a. CacheKey k a -> Cache k Unit
 deleteCache key = Delete (key (Ignore unit))
 
 runCacheAt
   :: forall s k a r t
    . IsSymbol s
-  => Row.Cons s (TypedCache k) t r
+  => Row.Cons s (Cache k) t r
   => Proxy s
-  -> (TypedCache k ~> Run t)
+  -> (Cache k ~> Run t)
   -> Run r a
   -> Run t a
 runCacheAt sym handler =
@@ -131,7 +131,7 @@ type MemoryFsCacheEnv k =
   , cacheDir :: FilePath
   }
 
-handleCacheMemoryFs :: forall k r a. MemoryFsCacheEnv k -> TypedCache k a -> Run (LOG + AFF + EFFECT + r) a
+handleCacheMemoryFs :: forall k r a. MemoryFsCacheEnv k -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
 handleCacheMemoryFs env = case _ of
   Get key -> Exists.runExists get (env.memory key)
     where
@@ -197,7 +197,7 @@ data MemoryEncoding z b a = Key String (z a b)
 -- storing a fiber along with each cache value, where the fiber will delete the
 -- value after _n_ minutes. When the value is accessed the fiber is killed and
 -- a new one spawned.
-handleCacheMemory :: forall k r a. MemoryCacheEnv k -> TypedCache k a -> Run (LOG + AFF + EFFECT + r) a
+handleCacheMemory :: forall k r a. MemoryCacheEnv k -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
 handleCacheMemory env = case _ of
   Get key -> Exists.runExists (getMemoryImpl env.ref) (env.encoder key)
   Put key next -> Exists.runExists (putMemoryImpl env.ref next) (env.encoder key)
@@ -265,7 +265,7 @@ data FsEncoding z b a
 -- Note: This doesn't currently support expiration. But we could support it by
 -- looking at the 'mtime' for modification and 'atime' for access via stat and
 -- expiring entries accessed too long ago.
-handleCacheFs :: forall k r a. FsCacheEnv k -> TypedCache k a -> Run (LOG + AFF + EFFECT + r) a
+handleCacheFs :: forall k r a. FsCacheEnv k -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
 handleCacheFs env = case _ of
   Get key -> Exists.runExists (getFsImpl env.cacheDir) (env.encoder key)
   Put key next -> Exists.runExists (putFsImpl env.cacheDir next) (env.encoder key)

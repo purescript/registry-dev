@@ -28,10 +28,10 @@ import Data.String as String
 import Effect.Aff as Aff
 import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
+import Registry.App.Effect.Cache (Cache, CacheKey, FsEncoder, FsEncoding(..))
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.TypedCache (CacheKey, FsEncoder, FsEncoding(..), TypedCache)
-import Registry.App.Effect.TypedCache as TypedCache
 import Registry.Constants as Constants
 import Registry.Foreign.S3 as S3
 import Registry.PackageName as PackageName
@@ -244,18 +244,18 @@ data StorageCache (c :: Type -> Type -> Type) a = Package PackageName Version (c
 instance Functor2 c => Functor (StorageCache c) where
   map k (Package name version a) = Package name version (map2 k a)
 
-type STORAGE_CACHE r = (storageCache :: TypedCache StorageCache | r)
+type STORAGE_CACHE r = (storageCache :: Cache StorageCache | r)
 
 _storageCache :: Proxy "storageCache"
 _storageCache = Proxy
 
 -- | Get an item from the storage cache according to a StorageCache key.
 getStorageCache :: forall r a. CacheKey StorageCache a -> Run (STORAGE_CACHE + r) (Maybe a)
-getStorageCache key = Run.lift _storageCache (TypedCache.getCache key)
+getStorageCache key = Run.lift _storageCache (Cache.getCache key)
 
 -- | Write an item to the storage cache using a StorageCache key.
 putStorageCache :: forall r a. CacheKey StorageCache a -> a -> Run (STORAGE_CACHE + r) Unit
-putStorageCache key value = Run.lift _storageCache (TypedCache.putCache key value)
+putStorageCache key value = Run.lift _storageCache (Cache.putCache key value)
 
 storageFsEncoder :: FsEncoder StorageCache
 storageFsEncoder = case _ of
@@ -268,4 +268,4 @@ runStorageCacheFs
   -> Run (STORAGE_CACHE + LOG + AFF + EFFECT + r) a
   -> Run (LOG + AFF + EFFECT + r) a
 runStorageCacheFs { cacheDir } =
-  TypedCache.runCacheAt _storageCache (TypedCache.handleCacheFs { cacheDir, encoder: storageFsEncoder })
+  Cache.runCacheAt _storageCache (Cache.handleCacheFs { cacheDir, encoder: storageFsEncoder })

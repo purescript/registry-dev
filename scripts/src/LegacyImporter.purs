@@ -43,6 +43,8 @@ import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API (Source(..))
 import Registry.App.API as API
+import Registry.App.Effect.Cache (Cache, CacheKey, CacheRef, FsEncoder, FsEncoding(..), MemoryEncoder, MemoryEncoding(..))
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
@@ -54,8 +56,6 @@ import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
-import Registry.App.Effect.TypedCache (CacheKey, CacheRef, FsEncoder, FsEncoding(..), MemoryEncoder, MemoryEncoding(..), TypedCache)
-import Registry.App.Effect.TypedCache as TypedCache
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
@@ -150,10 +150,10 @@ main = launchAff_ do
 
   -- Caching setup
   runCacheEffects <- do
-    githubCacheRef <- TypedCache.newCacheRef
-    legacyCacheRef <- TypedCache.newCacheRef
-    registryCacheRef <- TypedCache.newCacheRef
-    importCacheRef <- TypedCache.newCacheRef
+    githubCacheRef <- Cache.newCacheRef
+    legacyCacheRef <- Cache.newCacheRef
+    registryCacheRef <- Cache.newCacheRef
+    importCacheRef <- Cache.newCacheRef
     let cacheDir = Path.concat [ scratchDir, ".cache" ]
     FS.Extra.ensureDirectory cacheDir
     pure do
@@ -825,18 +825,18 @@ data ImportCache c a = ImportManifest PackageName RawVersion (c (Either VersionV
 instance Functor2 c => Functor (ImportCache c) where
   map k (ImportManifest name version a) = ImportManifest name version (map2 k a)
 
-type IMPORT_CACHE r = (importCache :: TypedCache ImportCache | r)
+type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)
 
 _importCache :: Proxy "importCache"
 _importCache = Proxy
 
 -- | Get an item from the storage cache according to a ImportCache key.
 getImportCache :: forall r a. CacheKey ImportCache a -> Run (IMPORT_CACHE + r) (Maybe a)
-getImportCache key = Run.lift _importCache (TypedCache.getCache key)
+getImportCache key = Run.lift _importCache (Cache.getCache key)
 
 -- | Write an item to the storage cache using a ImportCache key.
 putImportCache :: forall r a. CacheKey ImportCache a -> a -> Run (IMPORT_CACHE + r) Unit
-putImportCache key value = Run.lift _importCache (TypedCache.putCache key value)
+putImportCache key value = Run.lift _importCache (Cache.putCache key value)
 
 importMemoryEncoder :: MemoryEncoder ImportCache
 importMemoryEncoder = case _ of
@@ -855,5 +855,5 @@ runImportCacheMemoryFs
   -> Run (IMPORT_CACHE + LOG + AFF + EFFECT + r) a
   -> Run (LOG + AFF + EFFECT + r) a
 runImportCacheMemoryFs { ref, cacheDir } =
-  TypedCache.runCacheAt _importCache
-    (TypedCache.handleCacheMemoryFs { ref, cacheDir, fs: importFsEncoder, memory: importMemoryEncoder })
+  Cache.runCacheAt _importCache
+    (Cache.handleCacheMemoryFs { ref, cacheDir, fs: importFsEncoder, memory: importMemoryEncoder })

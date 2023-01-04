@@ -16,6 +16,7 @@ import Node.Process as Process
 import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.Auth as Auth
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
@@ -29,7 +30,6 @@ import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
-import Registry.App.Effect.TypedCache as TypedCache
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
@@ -79,9 +79,9 @@ main = launchAff_ $ do
     -- Caching
     let cacheDir = Path.concat [ scratchDir, ".cache" ]
     FS.Extra.ensureDirectory cacheDir
-    githubCacheRef <- TypedCache.newCacheRef
-    legacyCacheRef <- TypedCache.newCacheRef
-    registryCacheRef <- TypedCache.newCacheRef
+    githubCacheRef <- Cache.newCacheRef
+    legacyCacheRef <- Cache.newCacheRef
+    registryCacheRef <- Cache.newCacheRef
 
     --  Package sets
     let workdir = Path.concat [ scratchDir, "package-sets-work" ]

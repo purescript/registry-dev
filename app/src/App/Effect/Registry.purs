@@ -16,14 +16,14 @@ import Data.String as String
 import Effect.Aff as Aff
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
+import Registry.App.Effect.Cache (Cache, CacheKey, CacheRef, MemoryEncoder, MemoryEncoding(..))
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Git (GIT, GitResult(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.TypedCache (CacheKey, CacheRef, MemoryEncoder, MemoryEncoding(..), TypedCache)
-import Registry.App.Effect.TypedCache as TypedCache
 import Registry.App.Legacy.PackageSet (PscTag(..))
 import Registry.App.Legacy.PackageSet as Legacy.Manifest
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
@@ -666,16 +666,16 @@ instance Functor2 c => Functor (RegistryCache c) where
   map k (AllManifests a) = AllManifests (map2 k a)
   map k (AllMetadata a) = AllMetadata (map2 k a)
 
-type REGISTRY_CACHE r = (registryCache :: TypedCache RegistryCache | r)
+type REGISTRY_CACHE r = (registryCache :: Cache RegistryCache | r)
 
 _registryCache :: Proxy "registryCache"
 _registryCache = Proxy
 
 getRegistryCache :: forall r a. CacheKey RegistryCache a -> Run (REGISTRY_CACHE + r) (Maybe a)
-getRegistryCache key = Run.lift _registryCache (TypedCache.getCache key)
+getRegistryCache key = Run.lift _registryCache (Cache.getCache key)
 
 putRegistryCache :: forall r a. CacheKey RegistryCache a -> a -> Run (REGISTRY_CACHE + r) Unit
-putRegistryCache key value = Run.lift _registryCache (TypedCache.putCache key value)
+putRegistryCache key value = Run.lift _registryCache (Cache.putCache key value)
 
 registryMemoryEncoder :: MemoryEncoder RegistryCache
 registryMemoryEncoder = case _ of
@@ -688,4 +688,4 @@ runRegistryCacheMemory
   -> Run (REGISTRY_CACHE + LOG + AFF + EFFECT + r) a
   -> Run (LOG + AFF + EFFECT + r) a
 runRegistryCacheMemory { ref } =
-  TypedCache.runCacheAt _registryCache (TypedCache.handleCacheMemory { ref, encoder: registryMemoryEncoder })
+  Cache.runCacheAt _registryCache (Cache.handleCacheMemory { ref, encoder: registryMemoryEncoder })

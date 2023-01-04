@@ -11,6 +11,7 @@ import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.Auth as Auth
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
@@ -22,7 +23,6 @@ import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
-import Registry.App.Effect.TypedCache as TypedCache
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Types (RawPackageName(..))
 import Registry.Foreign.FSExtra as FS.Extra
@@ -64,8 +64,8 @@ main = launchAff_ do
   -- Caching
   let cacheDir = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cacheDir
-  githubCacheRef <- TypedCache.newCacheRef
-  registryCacheRef <- TypedCache.newCacheRef
+  githubCacheRef <- Cache.newCacheRef
+  registryCacheRef <- Cache.newCacheRef
 
   -- Logging
   now <- nowUTC

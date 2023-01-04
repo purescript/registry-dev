@@ -22,12 +22,12 @@ import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.CLI.Licensee as Licensee
+import Registry.App.Effect.Cache (Cache, CacheKey, CacheRef, FsEncoder, FsEncoding(..), MemoryEncoder, MemoryEncoding(..))
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.TypedCache (CacheKey, CacheRef, FsEncoder, FsEncoding(..), MemoryEncoder, MemoryEncoding(..), TypedCache)
-import Registry.App.Effect.TypedCache as TypedCache
 import Registry.App.Legacy.LenientRange as LenientRange
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
@@ -463,18 +463,18 @@ instance Functor2 c => Functor (LegacyCache c) where
     LegacySet ref a -> LegacySet ref (map2 k a)
     LegacyUnion tagsHash a -> LegacyUnion tagsHash (map2 k a)
 
-type LEGACY_CACHE r = (legacyCache :: TypedCache LegacyCache | r)
+type LEGACY_CACHE r = (legacyCache :: Cache LegacyCache | r)
 
 _legacyCache :: Proxy "legacyCache"
 _legacyCache = Proxy
 
 -- | Get an item from the legacy cache according to a LegacyCache key.
 getLegacyCache :: forall r a. CacheKey LegacyCache a -> Run (LEGACY_CACHE + r) (Maybe a)
-getLegacyCache key = Run.lift _legacyCache (TypedCache.getCache key)
+getLegacyCache key = Run.lift _legacyCache (Cache.getCache key)
 
 -- | Write an item to the legacy cache using a LegacyCache key.
 putLegacyCache :: forall r a. CacheKey LegacyCache a -> a -> Run (LEGACY_CACHE + r) Unit
-putLegacyCache key value = Run.lift _legacyCache (TypedCache.putCache key value)
+putLegacyCache key value = Run.lift _legacyCache (Cache.putCache key value)
 
 legacyMemoryEncoder :: MemoryEncoder LegacyCache
 legacyMemoryEncoder = case _ of
@@ -496,8 +496,8 @@ runLegacyCacheMemoryFs
   -> Run (LEGACY_CACHE + LOG + AFF + EFFECT + r) a
   -> Run (LOG + AFF + EFFECT + r) a
 runLegacyCacheMemoryFs { ref, cacheDir } =
-  TypedCache.runCacheAt _legacyCache
-    ( TypedCache.handleCacheMemoryFs
+  Cache.runCacheAt _legacyCache
+    ( Cache.handleCacheMemoryFs
         { ref
         , cacheDir
         , fs: legacyFsEncoder

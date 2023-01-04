@@ -31,10 +31,10 @@ import Data.Exists as Exists
 import Data.HTTP.Method (Method(..))
 import Data.Time.Duration as Duration
 import Foreign.Object as Object
+import Registry.App.Effect.Cache (Cache, CacheKey, CacheRef, FsEncoder, FsEncoding(..), MemoryEncoder, MemoryEncoding(..))
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.TypedCache (CacheKey, CacheRef, FsEncoder, FsEncoding(..), MemoryEncoder, MemoryEncoding(..), TypedCache)
-import Registry.App.Effect.TypedCache as TypedCache
 import Registry.App.Legacy.Types (RawVersion(..))
 import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit (Address, GitHubError(..), GitHubRoute(..), Octokit, Request, Tag, Team)
@@ -265,22 +265,22 @@ instance Functor2 c => Functor (GitHubCache c) where
   map k (Request route a) = Request route (map2 k a)
 
 -- | A cache for the GITHUB effect, which stores the JSON content of requests.
-type GITHUB_CACHE r = (githubCache :: TypedCache GitHubCache | r)
+type GITHUB_CACHE r = (githubCache :: Cache GitHubCache | r)
 
 _githubCache :: Proxy "githubCache"
 _githubCache = Proxy
 
 -- | Get an item from the GitHub cache according to a GitHubCache key.
 getGitHubCache :: forall r a. CacheKey GitHubCache a -> Run (GITHUB_CACHE + r) (Maybe a)
-getGitHubCache key = Run.lift _githubCache (TypedCache.getCache key)
+getGitHubCache key = Run.lift _githubCache (Cache.getCache key)
 
 -- | Write an item to the GitHub cache using a GitHubCache key.
 putGitHubCache :: forall r a. CacheKey GitHubCache a -> a -> Run (GITHUB_CACHE + r) Unit
-putGitHubCache key value = Run.lift _githubCache (TypedCache.putCache key value)
+putGitHubCache key value = Run.lift _githubCache (Cache.putCache key value)
 
 -- | Remove an item from the GitHub cache using a GitHubCache key.
 deleteGitHubCache :: forall r a. CacheKey GitHubCache a -> Run (GITHUB_CACHE + r) Unit
-deleteGitHubCache key = Run.lift _githubCache (TypedCache.deleteCache key)
+deleteGitHubCache key = Run.lift _githubCache (Cache.deleteCache key)
 
 githubMemoryEncoder :: MemoryEncoder GitHubCache
 githubMemoryEncoder = case _ of
@@ -298,8 +298,8 @@ runGitHubCacheMemoryFs
   -> Run (GITHUB_CACHE + LOG + AFF + EFFECT + r) a
   -> Run (LOG + AFF + EFFECT + r) a
 runGitHubCacheMemoryFs { ref, cacheDir } =
-  TypedCache.runCacheAt _githubCache
-    ( TypedCache.handleCacheMemoryFs
+  Cache.runCacheAt _githubCache
+    ( Cache.handleCacheMemoryFs
         { ref
         , cacheDir
         , fs: githubFsEncoder
