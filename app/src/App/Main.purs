@@ -77,8 +77,8 @@ main = launchAff_ $ do
         }
 
     -- Caching
-    let cacheDir = Path.concat [ scratchDir, ".cache" ]
-    FS.Extra.ensureDirectory cacheDir
+    let cache = Path.concat [ scratchDir, ".cache" ]
+    FS.Extra.ensureDirectory cache
     githubCacheRef <- Cache.newCacheRef
     legacyCacheRef <- Cache.newCacheRef
     registryCacheRef <- Cache.newCacheRef
@@ -100,10 +100,10 @@ main = launchAff_ $ do
       # Pursuit.runPursuit (Pursuit.handlePursuitHttp env.token)
       # GitHub.runGitHub (GitHub.handleGitHubOctokit env.octokit)
       -- Caching
-      # Registry.runRegistryCacheMemory { ref: registryCacheRef }
-      # Storage.runStorageCacheFs { cacheDir }
-      # GitHub.runGitHubCacheMemoryFs { cacheDir, ref: githubCacheRef }
-      # Legacy.Manifest.runLegacyCacheMemoryFs { cacheDir, ref: legacyCacheRef }
+      # Cache.runCache Registry._registryCache (Cache.handleCacheMemory registryCacheRef)
+      # Cache.runCache Storage._storageCache (Cache.handleCacheFs cache)
+      # Cache.runCache GitHub._githubCache (Cache.handleCacheMemoryFs { cache, ref: githubCacheRef })
+      # Cache.runCache Legacy.Manifest._legacyCache (Cache.handleCacheMemoryFs { cache, ref: legacyCacheRef })
       -- Logging
       # Notify.runNotify Notify.handleNotifyLog
       # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))

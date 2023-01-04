@@ -100,8 +100,8 @@ main = launchAff_ do
   octokit <- Octokit.newOctokit token
 
   -- Caching
-  let cacheDir = Path.concat [ scratchDir, ".cache" ]
-  FS.Extra.ensureDirectory cacheDir
+  let cache = Path.concat [ scratchDir, ".cache" ]
+  FS.Extra.ensureDirectory cache
   githubCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
 
@@ -126,9 +126,9 @@ main = launchAff_ do
         >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
         >>> runGit
         -- Caching
-        >>> Registry.runRegistryCacheMemory { ref: registryCacheRef }
-        >>> Storage.runStorageCacheFs { cacheDir }
-        >>> GitHub.runGitHubCacheMemoryFs { cacheDir, ref: githubCacheRef }
+        >>> Cache.runCache Registry._registryCache (Cache.handleCacheMemory registryCacheRef)
+        >>> Cache.runCache Storage._storageCache (Cache.handleCacheFs cache)
+        >>> Cache.runCache GitHub._githubCache (Cache.handleCacheMemoryFs { cache, ref: githubCacheRef })
         -- Logging
         >>> Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
         >>> Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
@@ -170,7 +170,7 @@ deleteVersion :: forall r. PackageName -> Version -> Run (REGISTRY + STORAGE + L
 deleteVersion name version = do
   let formatted = formatPackageVersion name version
   Log.info $ "Deleting " <> formatted
-  Storage.deleteTarball name version
+  Storage.delete name version
   Log.info $ "Updating metadata for " <> formatted
   Registry.readMetadata name >>= case _ of
     Nothing -> Run.Except.throw $ "Could not update metadata for " <> formatted <> " because no existing metadata was found."

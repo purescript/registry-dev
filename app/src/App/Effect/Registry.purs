@@ -16,7 +16,7 @@ import Data.String as String
 import Effect.Aff as Aff
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
-import Registry.App.Effect.Cache (Cache, CacheKey, CacheRef, MemoryEncoder, MemoryEncoding(..))
+import Registry.App.Effect.Cache (class MemoryEncodable, Cache, MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Git (GIT, GitResult(..))
 import Registry.App.Effect.Git as Git
@@ -42,6 +42,23 @@ import Registry.Range as Range
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
+
+data RegistryCache (c :: Type -> Type -> Type) a
+  = AllManifests (c ManifestIndex a)
+  | AllMetadata (c (Map PackageName Metadata) a)
+
+instance Functor2 c => Functor (RegistryCache c) where
+  map k (AllManifests a) = AllManifests (map2 k a)
+  map k (AllMetadata a) = AllMetadata (map2 k a)
+
+instance MemoryEncodable RegistryCache where
+  encodeMemory (AllManifests next) = Exists.mkExists $ Key "ManifestIndex" next
+  encodeMemory (AllMetadata next) = Exists.mkExists $ Key "AllMetadata" next
+
+type REGISTRY_CACHE r = (registryCache :: Cache RegistryCache | r)
+
+_registryCache :: Proxy "registryCache"
+_registryCache = Proxy
 
 data Registry a
   = ReadManifest PackageName Version (Maybe Manifest -> a)
@@ -161,7 +178,7 @@ handleRegistryGit = case _ of
           Right NoChange -> Log.info "Did not commit manifest because it did not change." *> pure next
           Right Changed -> do
             Log.info "Wrote and committed manifest."
-            putRegistryCache AllManifests updated
+            Cache.put _registryCache AllManifests updated
             pure next
 
   DeleteManifest name version next -> do
@@ -187,7 +204,7 @@ handleRegistryGit = case _ of
           Right NoChange -> Log.info "Did not commit manifest because it already didn't exist." *> pure next
           Right Changed -> do
             Log.info "Wrote and committed manifest."
-            putRegistryCache AllManifests updated
+            Cache.put _registryCache AllManifests updated
             pure next
 
   ReadAllManifests reply -> do
@@ -195,7 +212,7 @@ handleRegistryGit = case _ of
       refreshIndex = do
         indexPath <- Git.getPath Git.ManifestIndexRepo
         index <- readManifestIndexFromDisk indexPath
-        putRegistryCache AllManifests index
+        Cache.put _registryCache AllManifests index
         pure $ reply index
 
     Git.pull Git.ManifestIndexRepo >>= case _ of
@@ -203,7 +220,7 @@ handleRegistryGit = case _ of
         Log.exit $ "Could not read manifests because the manifest index repo could not be checked: " <> error
       Right NoChange -> do
         Log.debug "Manifest index repo up to date, reading from cache..."
-        cache <- getRegistryCache AllManifests
+        cache <- Cache.get _registryCache AllManifests
         case cache of
           Nothing -> do
             Log.info "No cached manifest index, reading from disk..."
@@ -259,7 +276,7 @@ handleRegistryGit = case _ of
         Just metadata -> do
           Log.debug $ "Successfully read metadata for " <> printedName <> " from path " <> path
           Log.debug $ "Setting metadata cache to singleton entry (as cache was previosuly empty)."
-          putRegistryCache AllMetadata (Map.singleton name metadata)
+          Cache.put _registryCache AllMetadata (Map.singleton name metadata)
           pure $ reply $ Just metadata
 
     Git.pull Git.RegistryRepo >>= case _ of
@@ -268,7 +285,7 @@ handleRegistryGit = case _ of
 
       Right NoChange -> do
         Log.debug "Registry repo up to date, reading from cache..."
-        getRegistryCache AllMetadata >>= case _ of
+        Cache.get _registryCache AllMetadata >>= case _ of
           Nothing -> resetFromDisk
           Just allMetadata -> case Map.lookup name allMetadata of
             Nothing -> do
@@ -280,7 +297,7 @@ handleRegistryGit = case _ of
                 Just metadata -> do
                   Log.debug $ "Read metadata for " <> printedName <> " from path " <> path
                   Log.debug $ "Updating metadata cache to insert entry."
-                  putRegistryCache AllMetadata (Map.insert name metadata allMetadata)
+                  Cache.put _registryCache AllMetadata (Map.insert name metadata allMetadata)
                   pure $ reply $ Just metadata
 
             Just cached ->
@@ -307,9 +324,9 @@ handleRegistryGit = case _ of
       Right NoChange -> Log.info "Did not commit metadata because it was unchanged." *> pure next
       Right Changed -> do
         Log.info "Wrote and committed metadata."
-        cache <- getRegistryCache AllMetadata
+        cache <- Cache.get _registryCache AllMetadata
         for_ cache \cached ->
-          putRegistryCache AllMetadata (Map.insert name metadata cached)
+          Cache.put _registryCache AllMetadata (Map.insert name metadata cached)
         pure next
 
   ReadAllMetadata reply -> do
@@ -319,7 +336,7 @@ handleRegistryGit = case _ of
         let metadataDir = Path.concat [ registryPath, Constants.metadataDirectory ]
         Log.info $ "Reading metadata for all packages from directory " <> metadataDir
         allMetadata <- readAllMetadataFromDisk metadataDir
-        putRegistryCache AllMetadata allMetadata
+        Cache.put _registryCache AllMetadata allMetadata
         pure $ reply allMetadata
 
     Git.pull Git.RegistryRepo >>= case _ of
@@ -327,7 +344,7 @@ handleRegistryGit = case _ of
         Log.exit $ "Could not read metadata because the registry repo could not be checked: " <> error
       Right NoChange -> do
         Log.debug "Registry repo up to date, reading from cache..."
-        getRegistryCache AllMetadata >>= case _ of
+        Cache.get _registryCache AllMetadata >>= case _ of
           Nothing -> do
             Log.info "No cached metadata map, reading from disk..."
             refreshMetadata
@@ -657,35 +674,3 @@ listPackageSetVersions packageSetsDir = do
     xs -> do
       Log.warn $ "Some package sets have invalid names and have been skipped: " <> String.joinWith ", " xs
       pure versions.success
-
-data RegistryCache (c :: Type -> Type -> Type) a
-  = AllManifests (c ManifestIndex a)
-  | AllMetadata (c (Map PackageName Metadata) a)
-
-instance Functor2 c => Functor (RegistryCache c) where
-  map k (AllManifests a) = AllManifests (map2 k a)
-  map k (AllMetadata a) = AllMetadata (map2 k a)
-
-type REGISTRY_CACHE r = (registryCache :: Cache RegistryCache | r)
-
-_registryCache :: Proxy "registryCache"
-_registryCache = Proxy
-
-getRegistryCache :: forall r a. CacheKey RegistryCache a -> Run (REGISTRY_CACHE + r) (Maybe a)
-getRegistryCache key = Run.lift _registryCache (Cache.getCache key)
-
-putRegistryCache :: forall r a. CacheKey RegistryCache a -> a -> Run (REGISTRY_CACHE + r) Unit
-putRegistryCache key value = Run.lift _registryCache (Cache.putCache key value)
-
-registryMemoryEncoder :: MemoryEncoder RegistryCache
-registryMemoryEncoder = case _ of
-  AllManifests next -> Exists.mkExists $ Key "ManifestIndex" next
-  AllMetadata next -> Exists.mkExists $ Key "AllMetadata" next
-
-runRegistryCacheMemory
-  :: forall r a
-   . { ref :: CacheRef }
-  -> Run (REGISTRY_CACHE + LOG + AFF + EFFECT + r) a
-  -> Run (LOG + AFF + EFFECT + r) a
-runRegistryCacheMemory { ref } =
-  Cache.runCacheAt _registryCache (Cache.handleCacheMemory { ref, encoder: registryMemoryEncoder })

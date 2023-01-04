@@ -43,14 +43,14 @@ import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API (Source(..))
 import Registry.App.API as API
-import Registry.App.Effect.Cache (Cache, CacheKey, CacheRef, FsEncoder, FsEncoding(..), MemoryEncoder, MemoryEncoding(..))
+import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
+import Registry.App.Effect.Log (LOG_EXCEPT, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Pursuit as Pursuit
@@ -71,7 +71,7 @@ import Registry.ManifestIndex as ManifestIndex
 import Registry.Operation (PublishData)
 import Registry.PackageName as PackageName
 import Registry.Version as Version
-import Run (AFF, EFFECT, Run)
+import Run (Run)
 import Run as Run
 import Run.Except (Except)
 import Run.Except as Run.Except
@@ -154,14 +154,14 @@ main = launchAff_ do
     legacyCacheRef <- Cache.newCacheRef
     registryCacheRef <- Cache.newCacheRef
     importCacheRef <- Cache.newCacheRef
-    let cacheDir = Path.concat [ scratchDir, ".cache" ]
-    FS.Extra.ensureDirectory cacheDir
+    let cache = Path.concat [ scratchDir, ".cache" ]
+    FS.Extra.ensureDirectory cache
     pure do
-      Registry.runRegistryCacheMemory { ref: registryCacheRef }
-        >>> Storage.runStorageCacheFs { cacheDir }
-        >>> GitHub.runGitHubCacheMemoryFs { cacheDir, ref: githubCacheRef }
-        >>> Legacy.Manifest.runLegacyCacheMemoryFs { cacheDir, ref: legacyCacheRef }
-        >>> runImportCacheMemoryFs { cacheDir, ref: importCacheRef }
+      Cache.runCache Registry._registryCache (Cache.handleCacheMemory registryCacheRef)
+        >>> Cache.runCache Storage._storageCache (Cache.handleCacheFs cache)
+        >>> Cache.runCache GitHub._githubCache (Cache.handleCacheMemoryFs { cache, ref: githubCacheRef })
+        >>> Cache.runCache Legacy.Manifest._legacyCache (Cache.handleCacheMemoryFs { cache, ref: legacyCacheRef })
+        >>> Cache.runCache _importCache (Cache.handleCacheMemoryFs { cache, ref: importCacheRef })
 
   -- Logging setup
   let logDir = Path.concat [ scratchDir, "logs" ]
@@ -425,7 +425,7 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
       -- difference; if we can't, we warn and fall back to the existing entry.
       Registry.readManifest package.name (LenientVersion.version version) >>= case _ of
         Nothing -> do
-          getImportCache (ImportManifest package.name (RawVersion tag.name)) >>= case _ of
+          Cache.get _importCache (ImportManifest package.name (RawVersion tag.name)) >>= case _ of
             Nothing -> do
               Log.debug $ "Building manifest in legacy import because it was not found in cache: " <> formatPackageVersion package.name (LenientVersion.version version)
               manifest <- Run.Except.runExceptAt _exceptVersion do
@@ -435,7 +435,7 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
                     Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
                     Right result -> pure result
                 pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
-              putImportCache (ImportManifest package.name (RawVersion tag.name)) manifest
+              Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) manifest
               exceptVersion manifest
             Just cached ->
               exceptVersion cached
@@ -825,35 +825,18 @@ data ImportCache c a = ImportManifest PackageName RawVersion (c (Either VersionV
 instance Functor2 c => Functor (ImportCache c) where
   map k (ImportManifest name version a) = ImportManifest name version (map2 k a)
 
+instance MemoryEncodable ImportCache where
+  encodeMemory = case _ of
+    ImportManifest name (RawVersion version) next ->
+      Exists.mkExists $ Key ("ImportManifest__" <> PackageName.print name <> "__" <> version) next
+
+instance FsEncodable ImportCache where
+  encodeFs = case _ of
+    ImportManifest name (RawVersion version) next -> do
+      let codec = CA.Common.either versionValidationErrorCodec Manifest.codec
+      Exists.mkExists $ AsJson ("ImportManifest__" <> PackageName.print name <> "__" <> version) codec next
+
 type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)
 
 _importCache :: Proxy "importCache"
 _importCache = Proxy
-
--- | Get an item from the storage cache according to a ImportCache key.
-getImportCache :: forall r a. CacheKey ImportCache a -> Run (IMPORT_CACHE + r) (Maybe a)
-getImportCache key = Run.lift _importCache (Cache.getCache key)
-
--- | Write an item to the storage cache using a ImportCache key.
-putImportCache :: forall r a. CacheKey ImportCache a -> a -> Run (IMPORT_CACHE + r) Unit
-putImportCache key value = Run.lift _importCache (Cache.putCache key value)
-
-importMemoryEncoder :: MemoryEncoder ImportCache
-importMemoryEncoder = case _ of
-  ImportManifest name (RawVersion version) next ->
-    Exists.mkExists $ Key ("ImportManifest__" <> PackageName.print name <> "__" <> version) next
-
-importFsEncoder :: FsEncoder ImportCache
-importFsEncoder = case _ of
-  ImportManifest name (RawVersion version) next -> do
-    let codec = CA.Common.either versionValidationErrorCodec Manifest.codec
-    Exists.mkExists $ AsJson ("ImportManifest__" <> PackageName.print name <> "__" <> version) codec next
-
-runImportCacheMemoryFs
-  :: forall r a
-   . { ref :: CacheRef, cacheDir :: FilePath }
-  -> Run (IMPORT_CACHE + LOG + AFF + EFFECT + r) a
-  -> Run (LOG + AFF + EFFECT + r) a
-runImportCacheMemoryFs { ref, cacheDir } =
-  Cache.runCacheAt _importCache
-    (Cache.handleCacheMemoryFs { ref, cacheDir, fs: importFsEncoder, memory: importMemoryEncoder })

@@ -14,9 +14,6 @@ module Registry.App.Effect.GitHub
   , listTags
   , listTeamMembers
   , runGitHub
-  , githubFsEncoder
-  , githubMemoryEncoder
-  , runGitHubCacheMemoryFs
   ) where
 
 import Registry.App.Prelude
@@ -31,7 +28,7 @@ import Data.Exists as Exists
 import Data.HTTP.Method (Method(..))
 import Data.Time.Duration as Duration
 import Foreign.Object as Object
-import Registry.App.Effect.Cache (Cache, CacheKey, CacheRef, FsEncoder, FsEncoding(..), MemoryEncoder, MemoryEncoding(..))
+import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
@@ -43,6 +40,33 @@ import Registry.Internal.Codec as Internal.Codec
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Type.Proxy (Proxy(..))
+
+-- | A cache for the GITHUB effect, which stores the JSON content of requests.
+type GITHUB_CACHE r = (githubCache :: Cache GitHubCache | r)
+
+_githubCache :: Proxy "githubCache"
+_githubCache = Proxy
+
+-- | A key type for the GitHub cache, which stores responses from the GitHub
+-- | API as JSON.
+--
+-- NOTE: We could also store typed responses to individual requests, but since
+-- the request data types already carry around their codec it's easiest to just
+-- have the single key.
+data GitHubCache (c :: Type -> Type -> Type) a = Request GitHubRoute (c (Either GitHubError RequestResult) a)
+
+instance Functor2 c => Functor (GitHubCache c) where
+  map k (Request route a) = Request route (map2 k a)
+
+instance MemoryEncodable GitHubCache where
+  encodeMemory = case _ of
+    Request route next -> Exists.mkExists $ Key (Octokit.printGitHubRoute route) next
+
+instance FsEncodable GitHubCache where
+  encodeFs = case _ of
+    Request route next -> do
+      let codec = CA.Common.either Octokit.githubErrorCodec requestResultCodec
+      Exists.mkExists $ AsJson ("Request__" <> Octokit.printGitHubRoute route) codec next
 
 data GitHub a
   = ListTags Address (Either GitHubError (Array Tag) -> a)
@@ -141,11 +165,11 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
   case method of
     GET | route /= Octokit.rateLimitRequest.route -> do
       now <- nowUTC
-      entry <- getGitHubCache (Request route)
+      entry <- Cache.get _githubCache (Request route)
       case entry of
         Nothing -> do
           result <- requestWithBackoff octokit githubRequest
-          putGitHubCache (Request route) (result <#> \response -> { modified: now, etag: Nothing, response: CA.encode codec response })
+          Cache.put _githubCache (Request route) (result <#> \response -> { modified: now, etag: Nothing, response: CA.encode codec response })
           pure result
 
         Just cached -> case cached of
@@ -159,14 +183,14 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
           -- don't have anything usable we could return.
           Left otherError -> do
             Log.warn $ "Retrying route " <> printedRoute <> " because cache contains non-404 error:\n" <> Octokit.printGitHubError otherError
-            deleteGitHubCache (Request route)
+            Cache.delete _githubCache (Request route)
             request octokit githubRequest
 
           Right prevResponse -> case CA.decode codec prevResponse.response of
             Left err -> do
               Log.debug $ "Could not decode previous response data using the provided codec: " <> CA.printJsonDecodeError err
               Log.debug $ "This indicates an out-of-date cache entry. Clearing cache for route " <> printedRoute
-              deleteGitHubCache (Request route)
+              Cache.delete _githubCache (Request route)
               Log.debug "Retrying request..."
               request octokit githubRequest
 
@@ -198,10 +222,10 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
                       Log.error $ "Failed to request " <> printedRoute <> " due to an API error with status " <> show err.statusCode <> ". Writing it to cache: " <> err.message
                     DecodeError err -> do
                       Log.error $ "Failed to decode response to request " <> printedRoute <> ". Writing decoding error to cache: " <> err
-                  putGitHubCache (Request route) (Left otherError)
+                  Cache.put _githubCache (Request route) (Left otherError)
                   pure (Left otherError)
                 Right valid -> do
-                  putGitHubCache (Request route) (Right { response: CA.encode codec valid, modified: now, etag: Nothing })
+                  Cache.put _githubCache (Request route) (Right { response: CA.encode codec valid, modified: now, etag: Nothing })
                   pure $ Right valid
 
             -- Since we don't have support for conditional requests via etags, we'll instead
@@ -211,7 +235,7 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
             Right _ | DateTime.diff now prevResponse.modified >= Duration.Hours 4.0 -> do
               Log.debug $ "Found cache entry but it was modified more than 4 hours ago, refetching " <> printedRoute
               result <- requestWithBackoff octokit githubRequest
-              putGitHubCache (Request route) (result <#> \resp -> { response: CA.encode codec resp, modified: now, etag: Nothing })
+              Cache.put _githubCache (Request route) (result <#> \resp -> { response: CA.encode codec resp, modified: now, etag: Nothing })
               pure result
 
             Right decoded -> do
@@ -252,57 +276,3 @@ requestResultCodec = CA.Record.object "RequestResult"
   , modified: Internal.Codec.iso8601DateTime
   , response: CA.json
   }
-
--- | A key type for the GitHub cache, which stores responses from the GitHub
--- | API as JSON.
---
--- NOTE: We could also store typed responses to individual requests, but since
--- the request data types already carry around their codec it's easiest to just
--- have the single key.
-data GitHubCache (c :: Type -> Type -> Type) a = Request GitHubRoute (c (Either GitHubError RequestResult) a)
-
-instance Functor2 c => Functor (GitHubCache c) where
-  map k (Request route a) = Request route (map2 k a)
-
--- | A cache for the GITHUB effect, which stores the JSON content of requests.
-type GITHUB_CACHE r = (githubCache :: Cache GitHubCache | r)
-
-_githubCache :: Proxy "githubCache"
-_githubCache = Proxy
-
--- | Get an item from the GitHub cache according to a GitHubCache key.
-getGitHubCache :: forall r a. CacheKey GitHubCache a -> Run (GITHUB_CACHE + r) (Maybe a)
-getGitHubCache key = Run.lift _githubCache (Cache.getCache key)
-
--- | Write an item to the GitHub cache using a GitHubCache key.
-putGitHubCache :: forall r a. CacheKey GitHubCache a -> a -> Run (GITHUB_CACHE + r) Unit
-putGitHubCache key value = Run.lift _githubCache (Cache.putCache key value)
-
--- | Remove an item from the GitHub cache using a GitHubCache key.
-deleteGitHubCache :: forall r a. CacheKey GitHubCache a -> Run (GITHUB_CACHE + r) Unit
-deleteGitHubCache key = Run.lift _githubCache (Cache.deleteCache key)
-
-githubMemoryEncoder :: MemoryEncoder GitHubCache
-githubMemoryEncoder = case _ of
-  Request route next -> Exists.mkExists $ Key (Octokit.printGitHubRoute route) next
-
-githubFsEncoder :: FsEncoder GitHubCache
-githubFsEncoder = case _ of
-  Request route next -> do
-    let codec = CA.Common.either Octokit.githubErrorCodec requestResultCodec
-    Exists.mkExists $ AsJson ("Request__" <> Octokit.printGitHubRoute route) codec next
-
-runGitHubCacheMemoryFs
-  :: forall r a
-   . { ref :: CacheRef, cacheDir :: FilePath }
-  -> Run (GITHUB_CACHE + LOG + AFF + EFFECT + r) a
-  -> Run (LOG + AFF + EFFECT + r) a
-runGitHubCacheMemoryFs { ref, cacheDir } =
-  Cache.runCacheAt _githubCache
-    ( Cache.handleCacheMemoryFs
-        { ref
-        , cacheDir
-        , fs: githubFsEncoder
-        , memory: githubMemoryEncoder
-        }
-    )

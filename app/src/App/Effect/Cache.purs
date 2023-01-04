@@ -12,27 +12,27 @@ module Registry.App.Effect.Cache
   ( Reply(..)
   , Ignore(..)
   , CacheKey(..)
-  , getCache
-  , putCache
-  , deleteCache
-  , runCacheAt
-  , MemoryFsCacheEnv(..)
+  , get
+  , put
+  , delete
+  , runCache
+  , MemoryFsEnv(..)
   , handleCacheMemoryFs
-  , MemoryCacheEnv(..)
   , CacheValue
   , CacheRef(..)
   , newCacheRef
-  , MemoryEncoder(..)
+  , class MemoryEncodable
+  , encodeMemory
   , MemoryEncoding(..)
   , handleCacheMemory
-  , FsCacheEnv(..)
-  , FsEncoder(..)
+  , class FsEncodable
+  , encodeFs
   , FsEncoding(..)
   , handleCacheFs
   , Cache(..)
   ) where
 
-import Registry.App.Prelude hiding (Manifest(..), Metadata(..))
+import Registry.App.Prelude
 
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Codec.Argonaut as CA
@@ -55,13 +55,16 @@ import Run (AFF, EFFECT, Run)
 import Run as Run
 import Unsafe.Coerce (unsafeCoerce)
 
+-- | A type used with 'get' to associate the key with the return type of 'get',
+-- | providing type safety to the cache.
 newtype Reply a b = Reply (Maybe a -> b)
 
 instance Functor2 Reply where
   map2 k (Reply f) = Reply (map k f)
 
-newtype Ignore :: forall k. k -> Type -> Type
-newtype Ignore a b = Ignore b
+-- | A type used with 'delete' to ignore type information associated with a key,
+-- | as it isn't used when deleting information.
+data Ignore (a :: Type) b = Ignore b
 
 instance Functor2 Ignore where
   map2 k (Ignore b) = Ignore (k b)
@@ -77,42 +80,58 @@ data Cache key a
   | Put (forall void. key Const void) a
   | Delete (key Ignore a)
 
-derive instance (Functor (k Reply), Functor (k Ignore)) => Functor (Cache k)
+derive instance (Functor (key Reply), Functor (key Ignore)) => Functor (Cache key)
 
+-- | A synonym for a partially-applied cache key (one usable with any of Reply,
+-- | Const, or Ignore). For example:
+-- |
+-- | ```purs
+-- | data MyKey c a = Package String (c Manifest a)
+-- |
+-- | packageKey :: CacheKey MyKey
+-- | packageKey = Package "aff"
+-- | ```
 type CacheKey :: ((Type -> Type -> Type) -> Type -> Type) -> Type -> Type
 type CacheKey k a = forall c b. c a b -> k c b
 
--- | Get a value from the cache, given an appropriate cache key. This function
--- | is useful for defining a concrete 'get' for a user-defined key type:
--- |
--- | ```purs
--- | get :: forall a r. CacheKey MyCache a -> Run (MY_CACHE + r) (Maybe a)
--- | get key = Run.lift _myCache (getCache key)
--- | ```
-getCache :: forall k a. CacheKey k a -> Cache k (Maybe a)
-getCache key = Get (key (Reply identity))
+-- | Get a value from the cache
+get
+  :: forall sym q k r a
+   . Functor (k Reply)
+  => Functor (k Ignore)
+  => IsSymbol sym
+  => Row.Cons sym (Cache k) q r
+  => Proxy sym
+  -> CacheKey k a
+  -> Run r (Maybe a)
+get label key = Run.lift label (Get (key (Reply identity)))
 
--- | Put a value in the cache, given an appropriate cache key. This function
--- | is useful for defining a concrete 'put' for a user-defined key type:
--- |
--- | ```purs
--- | put :: forall a r. CacheKey MyCache a -> Run (MY_CACHE + r) (Maybe a)
--- | put key = Run.lift _myCache (putCache key)
--- | ```
-putCache :: forall k a. CacheKey k a -> a -> Cache k Unit
-putCache key value = Put (key (Const value)) unit
+-- | Put a value to the cache
+put
+  :: forall sym q k r a
+   . Functor (k Reply)
+  => Functor (k Ignore)
+  => IsSymbol sym
+  => Row.Cons sym (Cache k) q r
+  => Proxy sym
+  -> CacheKey k a
+  -> a
+  -> Run r Unit
+put label key value = Run.lift label (Put (key (Const value)) unit)
 
--- | Delete a key from the cache, given an appropriate cache key. This function
--- | is useful for defining a concrete 'delete' for a user-defined key type:
--- |
--- | ```purs
--- | delete :: forall a r. CacheKey MyCache a -> Run (MY_CACHE + r) (Maybe a)
--- | delete key = Run.lift _myCache (Cache.deleteCache key)
--- | ```
-deleteCache :: forall k a. CacheKey k a -> Cache k Unit
-deleteCache key = Delete (key (Ignore unit))
+-- | Delete a key from the cache
+delete
+  :: forall sym q k r a
+   . Functor (k Reply)
+  => Functor (k Ignore)
+  => IsSymbol sym
+  => Row.Cons sym (Cache k) q r
+  => Proxy sym
+  -> CacheKey k a
+  -> Run r Unit
+delete label key = Run.lift label (Delete (key (Ignore unit)))
 
-runCacheAt
+runCache
   :: forall s k a r t
    . IsSymbol s
   => Row.Cons s (Cache k) t r
@@ -120,75 +139,72 @@ runCacheAt
   -> (Cache k ~> Run t)
   -> Run r a
   -> Run t a
-runCacheAt sym handler =
-  Run.interpret (Run.on sym handler Run.send)
+runCache label handler = Run.interpret (Run.on label handler Run.send)
 
 -- | The environment for a combined in-memory cache backed by the file system
-type MemoryFsCacheEnv k =
+type MemoryFsEnv =
   { ref :: CacheRef
-  , fs :: FsEncoder k
-  , memory :: MemoryEncoder k
-  , cacheDir :: FilePath
+  , cache :: FilePath
   }
 
-handleCacheMemoryFs :: forall k r a. MemoryFsCacheEnv k -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
+handleCacheMemoryFs :: forall k r a. MemoryEncodable k => FsEncodable k => MemoryFsEnv -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
 handleCacheMemoryFs env = case _ of
-  Get key -> Exists.runExists get (env.memory key)
+  Get key -> Exists.runExists getImpl (encodeMemory key)
     where
-    get :: forall x. MemoryEncoding _ _ x -> Run _ a
-    get (Key memId (Reply reply)) = do
+    getImpl :: forall x. MemoryEncoding _ _ x -> Run _ a
+    getImpl (Key memory (Reply reply)) = do
       let (unCache :: CacheValue -> x) = unsafeCoerce
-      inMemory <- getMemoryImpl env.ref (Key memId (Reply identity))
+      inMemory <- getMemoryImpl env.ref (Key memory (Reply identity))
       case inMemory of
         Nothing -> do
-          inFs <- env.fs key # Exists.runExists case _ of
-            AsJson fsId codec (Reply _) -> do
-              value <- getFsImpl env.cacheDir (AsJson fsId codec (Reply identity))
+          inFs <- encodeFs key # Exists.runExists case _ of
+            AsJson fs codec (Reply _) -> do
+              value <- getFsImpl env.cache (AsJson fs codec (Reply identity))
               pure (map toCacheValue value)
-            AsBuffer fsId (Reply _) -> do
-              buffer <- getFsImpl env.cacheDir (AsBuffer fsId (Reply identity))
+            AsBuffer fs (Reply _) -> do
+              buffer <- getFsImpl env.cache (AsBuffer fs (Reply identity))
               pure (map toCacheValue buffer)
           case inFs of
             Nothing -> pure $ reply Nothing
             Just entry -> do
-              putMemoryImpl env.ref unit (Key memId (Const entry))
+              putMemoryImpl env.ref unit (Key memory (Const entry))
               pure $ reply $ Just $ unCache entry
         Just cached ->
           pure $ reply $ Just cached
 
   Put key next -> do
-    Exists.runExists (putMemoryImpl env.ref unit) (env.memory key)
-    Exists.runExists (putFsImpl env.cacheDir unit) (env.fs key)
+    Exists.runExists (putMemoryImpl env.ref unit) (encodeMemory key)
+    Exists.runExists (putFsImpl env.cache unit) (encodeFs key)
     pure next
 
   Delete key -> do
-    _ <- Exists.runExists (deleteMemoryImpl env.ref) (env.memory key)
-    Exists.runExists (deleteFsImpl env.cacheDir) (env.fs key)
+    void $ Exists.runExists (deleteMemoryImpl env.ref) (encodeMemory key)
+    Exists.runExists (deleteFsImpl env.cache) (encodeFs key)
 
--- | The environment for an in-memory cache implementation, where keys must
--- | be mappable to a type with an Ord instance.
-type MemoryCacheEnv k =
-  { ref :: CacheRef
-  , encoder :: MemoryEncoder k
-  }
-
-type CacheRef = Ref (Map String CacheValue)
-
-newCacheRef :: forall m. MonadEffect m => m (CacheRef)
-newCacheRef = liftEffect $ Ref.new Map.empty
-
-data CacheValue
-
-toCacheValue :: forall a. a -> CacheValue
-toCacheValue = unsafeCoerce
-
-type MemoryEncoder key = forall b z. key z b -> Exists (MemoryEncoding z b)
+-- | A class for encoding the values associated with a cache key in a form
+-- | suitable for the file system.
+class MemoryEncodable key where
+  encodeMemory :: forall b z. key z b -> Exists (MemoryEncoding z b)
 
 -- | An encoding for keys so they can be stored in a map (we don't have an Ord
 -- | instance for key types, but they can generally be mapped to a String, which
 -- | does have one).
 data MemoryEncoding :: (Type -> Type -> Type) -> Type -> Type -> Type
 data MemoryEncoding z b a = Key String (z a b)
+
+-- | An opaque type representing a cached value.
+data CacheValue
+
+toCacheValue :: forall a. a -> CacheValue
+toCacheValue = unsafeCoerce
+
+-- | Hide the type information associated with a value so it can be placed into
+-- | an in-memory map with heterogeneous values.
+-- | A type synonym for an in-memory cache as a mutable map.
+type CacheRef = Ref (Map String CacheValue)
+
+newCacheRef :: forall m. MonadEffect m => m (CacheRef)
+newCacheRef = liftEffect $ Ref.new Map.empty
 
 -- | Handle the Cache effect by caching values in a map in memory, given a way
 -- | to encode keys as a type with an Ord instance.
@@ -197,22 +213,21 @@ data MemoryEncoding z b a = Key String (z a b)
 -- storing a fiber along with each cache value, where the fiber will delete the
 -- value after _n_ minutes. When the value is accessed the fiber is killed and
 -- a new one spawned.
-handleCacheMemory :: forall k r a. MemoryCacheEnv k -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
-handleCacheMemory env = case _ of
-  Get key -> Exists.runExists (getMemoryImpl env.ref) (env.encoder key)
-  Put key next -> Exists.runExists (putMemoryImpl env.ref next) (env.encoder key)
-  Delete key -> Exists.runExists (deleteMemoryImpl env.ref) (env.encoder key)
+handleCacheMemory :: forall k r a. MemoryEncodable k => CacheRef -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
+handleCacheMemory ref = case _ of
+  Get key -> Exists.runExists (getMemoryImpl ref) (encodeMemory key)
+  Put key next -> Exists.runExists (putMemoryImpl ref next) (encodeMemory key)
+  Delete key -> Exists.runExists (deleteMemoryImpl ref) (encodeMemory key)
 
-getMemoryImpl :: forall x r a. CacheRef -> MemoryEncoding Reply a x -> Run (LOG + EFFECT + r) a
+getMemoryImpl :: forall a b r. CacheRef -> MemoryEncoding Reply a b -> Run (LOG + EFFECT + r) a
 getMemoryImpl ref (Key id (Reply reply)) = do
-  let (unCache :: CacheValue -> x) = unsafeCoerce
+  let (unCache :: CacheValue -> b) = unsafeCoerce
   cache <- Run.liftEffect $ Ref.read ref
   case Map.lookup id cache of
     Nothing -> do
       Log.debug $ "No cache entry found for " <> id <> " in memory."
       pure $ reply Nothing
     Just cached -> do
-      Log.debug $ "Read cache entry for " <> id <> " in memory."
       pure $ reply $ Just $ unCache cached
 
 putMemoryImpl :: forall x r a. CacheRef -> a -> MemoryEncoding Const a x -> Run (LOG + EFFECT + r) a
@@ -227,33 +242,14 @@ deleteMemoryImpl ref (Key id (Ignore next)) = do
   Run.liftEffect $ Ref.modify_ (Map.delete id) ref
   pure next
 
--- | The environment for a filesystem-backed cache implementation, where values
--- | associated with the cache keys must be serializable to the file system.
-type FsCacheEnv k =
-  { encoder :: FsEncoder k
-  , cacheDir :: FilePath
-  }
+-- | A class for encoding the values associated with a cache key in a form
+-- | suitable for the file system.
+class FsEncodable key where
+  encodeFs :: forall b z. key z b -> Exists (FsEncoding z b)
 
--- | A mapping of key types to a unique cache identifier and codec for encoding
--- | and decoding the value as JSON. This uses an existential encoding, so you
--- | must use `Exists.mkExists` to hide the value's type.
--- |
--- | ```purs
--- | data MyKey c a
--- |   = MetadataFile PackageName (c Metadata a)
--- |   | Package PackageName Version (c Buffer a)
--- |
--- | myKeyHandler :: FsKeyHandler MyKey
--- | myKeyHandler = case _ of
--- |   MetadataFile name next -> mkExists $ AsJson (PackageName.print name) Metadata.codec next
--- |   Package name version next -> mkExists $ AsBuffer (formatPackageVersion name version) next
--- | ```
-type FsEncoder key = forall b z. key z b -> Exists (FsEncoding z b)
-
--- | A box used with `Exists` to capture the encoding associated with values
--- | of a particular key. Essentially, these are serialization formats:
--- | sometimes we want a cache backed by JSON, sometimes backed by a raw buffer.
--- | We can add more if we ever need them.
+-- | Capture the file system encoding suitable for a particular key. Essentially
+-- | these are serialization formats; we can add more formats if we ever need to
+-- | cache values as something other than JSON or a raw buffer.
 data FsEncoding :: (Type -> Type -> Type) -> Type -> Type -> Type
 data FsEncoding z b a
   = AsJson String (JsonCodec a) (z a b)
@@ -265,11 +261,11 @@ data FsEncoding z b a
 -- Note: This doesn't currently support expiration. But we could support it by
 -- looking at the 'mtime' for modification and 'atime' for access via stat and
 -- expiring entries accessed too long ago.
-handleCacheFs :: forall k r a. FsCacheEnv k -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
-handleCacheFs env = case _ of
-  Get key -> Exists.runExists (getFsImpl env.cacheDir) (env.encoder key)
-  Put key next -> Exists.runExists (putFsImpl env.cacheDir next) (env.encoder key)
-  Delete key -> Exists.runExists (deleteFsImpl env.cacheDir) (env.encoder key)
+handleCacheFs :: forall k r a. FsEncodable k => FilePath -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
+handleCacheFs cacheDir = case _ of
+  Get key -> Exists.runExists (getFsImpl cacheDir) (encodeFs key)
+  Put key next -> Exists.runExists (putFsImpl cacheDir next) (encodeFs key)
+  Delete key -> Exists.runExists (deleteFsImpl cacheDir) (encodeFs key)
 
 getFsImpl :: forall a b r. FilePath -> FsEncoding Reply a b -> Run (LOG + AFF + r) a
 getFsImpl cacheDir = case _ of
@@ -280,7 +276,6 @@ getFsImpl cacheDir = case _ of
         Log.debug $ "No cache found for " <> id <> " at path " <> path
         pure $ reply Nothing
       Right buf -> do
-        Log.debug $ "Read cached buffer for " <> id
         pure $ reply $ Just buf
 
   AsJson id codec (Reply reply) -> do
@@ -299,7 +294,6 @@ getFsImpl cacheDir = case _ of
             Log.error $ "Found cache file for " <> id <> " at path " <> path <> " but its contents could not be decoded with the provided codec:\n" <> error
             deletePathById cacheDir id *> pure (reply Nothing)
           Right entry -> do
-            Log.debug $ "Read cached JSON for " <> id
             pure $ reply $ Just entry
 
 putFsImpl :: forall a b r. FilePath -> a -> FsEncoding Const a b -> Run (LOG + AFF + r) a

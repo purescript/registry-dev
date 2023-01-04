@@ -269,7 +269,7 @@ authenticated auth = case auth.payload of
                 { published = Map.delete payload.version prev.published
                 , unpublished = Map.insert payload.version unpublished prev.unpublished
                 }
-            Storage.deleteTarball payload.name payload.version
+            Storage.delete payload.name payload.version
             Registry.writeMetadata payload.name updated
             Registry.deleteManifest payload.name payload.version
             Notify.notify $ "Unpublished " <> formatted <> "!"
@@ -537,7 +537,7 @@ publish source payload = do
       pure unit
 
   Notify.notify "Package is verified! Uploading it to the storage backend..."
-  Storage.uploadTarball manifest.name manifest.version tarballPath
+  Storage.upload manifest.name manifest.version tarballPath
   Log.debug $ "Adding the new version " <> Version.print manifest.version <> " to the package metadata file."
   let newMetadata = metadata { published = Map.insert manifest.version { hash, ref: payload.ref, publishedTime, bytes } metadata.published }
   Registry.writeMetadata manifest.name (Metadata newMetadata)
@@ -674,7 +674,7 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
       filename = PackageName.print name <> "-" <> Version.print version <> ".tar.gz"
       filepath = Path.concat [ dir, filename ]
 
-    Storage.downloadTarball name version filepath
+    Storage.download name version filepath
 
     Tar.extract { cwd: dir, archive: filename }
     Run.liftAff $ FS.Aff.unlink filepath

@@ -6,14 +6,12 @@ module Registry.App.Effect.Storage
   , StorageCache
   , _storage
   , _storageCache
-  , deleteTarball
-  , downloadTarball
+  , delete
+  , download
   , handleStorageReadOnly
   , handleStorageS3
   , runStorage
-  , uploadTarball
-  , storageFsEncoder
-  , runStorageCacheFs
+  , upload
   ) where
 
 import Registry.App.Prelude
@@ -28,7 +26,7 @@ import Data.String as String
 import Effect.Aff as Aff
 import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
-import Registry.App.Effect.Cache (Cache, CacheKey, FsEncoder, FsEncoding(..))
+import Registry.App.Effect.Cache (class FsEncodable, Cache, FsEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
 import Registry.App.Effect.Log as Log
@@ -38,7 +36,23 @@ import Registry.PackageName as PackageName
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
-import Type.Proxy (Proxy(..))
+
+-- | A key type for the storage cache. Only supports packages identified by
+-- | their name and version.
+data StorageCache (c :: Type -> Type -> Type) a = Package PackageName Version (c Buffer a)
+
+instance Functor2 c => Functor (StorageCache c) where
+  map k (Package name version a) = Package name version (map2 k a)
+
+instance FsEncodable StorageCache where
+  encodeFs = case _ of
+    Package name version next ->
+      Exists.mkExists $ AsBuffer (PackageName.print name <> "-" <> Version.print version) next
+
+type STORAGE_CACHE r = (storageCache :: Cache StorageCache | r)
+
+_storageCache :: Proxy "storageCache"
+_storageCache = Proxy
 
 -- | The Storage effect, which describes uploading, downloading, and deleting
 -- | tarballs from the registry storage backend.
@@ -55,16 +69,16 @@ _storage :: Proxy "storage"
 _storage = Proxy
 
 -- | Upload a package tarball to the storage backend from the given path.
-uploadTarball :: forall r. PackageName -> Version -> FilePath -> Run (STORAGE + r) Unit
-uploadTarball name version file = Run.lift _storage (Upload name version file unit)
+upload :: forall r. PackageName -> Version -> FilePath -> Run (STORAGE + r) Unit
+upload name version file = Run.lift _storage (Upload name version file unit)
 
 -- | Download a package tarball from the storage backend to the given path.
-downloadTarball :: forall r. PackageName -> Version -> FilePath -> Run (STORAGE + r) Unit
-downloadTarball name version file = Run.lift _storage (Download name version file unit)
+download :: forall r. PackageName -> Version -> FilePath -> Run (STORAGE + r) Unit
+download name version file = Run.lift _storage (Download name version file unit)
 
 -- | Delete a package tarball from the storage backend.
-deleteTarball :: forall r. PackageName -> Version -> Run (STORAGE + r) Unit
-deleteTarball name version = Run.lift _storage (Delete name version unit)
+delete :: forall r. PackageName -> Version -> Run (STORAGE + r) Unit
+delete name version = Run.lift _storage (Delete name version unit)
 
 -- | Interpret the STORAGE effect, given a handler.
 runStorage :: forall r a. (Storage ~> Run r) -> Run (STORAGE + r) a -> Run r a
@@ -102,10 +116,10 @@ handleStorageS3 :: forall r a. S3.SpaceKey -> Storage a -> Run (STORAGE_CACHE + 
 handleStorageS3 key = case _ of
   Download name version path next -> do
     let package = formatPackageVersion name version
-    buffer <- getStorageCache (Package name version) >>= case _ of
+    buffer <- Cache.get _storageCache (Package name version) >>= case _ of
       Nothing -> do
         buffer <- downloadS3 name version
-        putStorageCache (Package name version) buffer
+        Cache.put _storageCache (Package name version) buffer
         pure buffer
       Just cached ->
         pure cached
@@ -191,10 +205,10 @@ handleStorageReadOnly = case _ of
 
   Download name version path next -> do
     let package = formatPackageVersion name version
-    buffer <- getStorageCache (Package name version) >>= case _ of
+    buffer <- Cache.get _storageCache (Package name version) >>= case _ of
       Nothing -> do
         buffer <- downloadS3 name version
-        putStorageCache (Package name version) buffer
+        Cache.put _storageCache (Package name version) buffer
         pure buffer
       Just cached ->
         pure cached
@@ -237,35 +251,3 @@ downloadS3 name version = do
       buffer :: Buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
       pure buffer
 
--- | A key type for the storage cache. Only supports packages identified by
--- | their name and version.
-data StorageCache (c :: Type -> Type -> Type) a = Package PackageName Version (c Buffer a)
-
-instance Functor2 c => Functor (StorageCache c) where
-  map k (Package name version a) = Package name version (map2 k a)
-
-type STORAGE_CACHE r = (storageCache :: Cache StorageCache | r)
-
-_storageCache :: Proxy "storageCache"
-_storageCache = Proxy
-
--- | Get an item from the storage cache according to a StorageCache key.
-getStorageCache :: forall r a. CacheKey StorageCache a -> Run (STORAGE_CACHE + r) (Maybe a)
-getStorageCache key = Run.lift _storageCache (Cache.getCache key)
-
--- | Write an item to the storage cache using a StorageCache key.
-putStorageCache :: forall r a. CacheKey StorageCache a -> a -> Run (STORAGE_CACHE + r) Unit
-putStorageCache key value = Run.lift _storageCache (Cache.putCache key value)
-
-storageFsEncoder :: FsEncoder StorageCache
-storageFsEncoder = case _ of
-  Package name version next ->
-    Exists.mkExists $ AsBuffer (PackageName.print name <> "-" <> Version.print version) next
-
-runStorageCacheFs
-  :: forall r a
-   . { cacheDir :: FilePath }
-  -> Run (STORAGE_CACHE + LOG + AFF + EFFECT + r) a
-  -> Run (LOG + AFF + EFFECT + r) a
-runStorageCacheFs { cacheDir } =
-  Cache.runCacheAt _storageCache (Cache.handleCacheFs { cacheDir, encoder: storageFsEncoder })
