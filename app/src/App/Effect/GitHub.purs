@@ -10,10 +10,10 @@ module Registry.App.Effect.GitHub
   , getContent
   , getJsonFile
   , getRefCommit
-  , handleGitHubOctokit
+  , handle
   , listTags
   , listTeamMembers
-  , runGitHub
+  , interpret
   ) where
 
 import Registry.App.Prelude
@@ -117,13 +117,13 @@ getCommitDate :: forall r. Address -> String -> Run (GITHUB + r) (Either GitHubE
 getCommitDate address commitSha = Run.lift _github (GetCommitDate address commitSha identity)
 
 -- | Interpret the GITHUB effect, given a handler.
-runGitHub :: forall r a. (GitHub ~> Run r) -> Run (GITHUB + r) a -> Run r a
-runGitHub handler = Run.interpret (Run.on _github handler Run.send)
+interpret :: forall r a. (GitHub ~> Run r) -> Run (GITHUB + r) a -> Run r a
+interpret handler = Run.interpret (Run.on _github handler Run.send)
 
 -- | An effectful handler for the GITHUB effect which makes calls to GitHub
 -- | using Octokit.
-handleGitHubOctokit :: forall r a. Octokit -> GitHub a -> Run (GITHUB_CACHE + LOG + AFF + EFFECT + r) a
-handleGitHubOctokit octokit = case _ of
+handle :: forall r a. Octokit -> GitHub a -> Run (GITHUB_CACHE + LOG + AFF + EFFECT + r) a
+handle octokit = case _ of
   ListTags address reply -> do
     Log.debug $ "Listing tags for " <> address.owner <> "/" <> address.repo
     result <- request octokit (Octokit.listTagsRequest address)

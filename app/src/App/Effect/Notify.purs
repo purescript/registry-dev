@@ -34,12 +34,12 @@ _notify = Proxy
 notify :: forall a r. Log.Loggable a => a -> Run (NOTIFY + r) Unit
 notify message = Run.lift _notify (Notify (Log.toLog message) unit)
 
-runNotify :: forall r a. (Notify ~> Run r) -> Run (NOTIFY + r) a -> Run r a
-runNotify handler = Run.interpret (Run.on _notify handler Run.send)
+interpret :: forall r a. (Notify ~> Run r) -> Run (NOTIFY + r) a -> Run r a
+interpret handler = Run.interpret (Run.on _notify handler Run.send)
 
 -- | Handle a notification by logging it to the console.
-handleNotifyLog :: forall a r. Notify a -> Run (LOG + r) a
-handleNotifyLog = case _ of
+handleLog :: forall a r. Notify a -> Run (LOG + r) a
+handleLog = case _ of
   Notify message next -> do
     Log.info $ Ansi.foreground Ansi.BrightBlue (Dodo.text "[NOTIFY] ") <> message
     pure next
@@ -51,12 +51,12 @@ type NotifyGitHubEnv =
   }
 
 -- | Handle a notification by commenting on the relevant GitHub issue.
-handleNotifyGitHub :: forall a r. NotifyGitHubEnv -> Notify a -> Run (LOG + AFF + EFFECT + r) a
-handleNotifyGitHub env = case _ of
+handleGitHub :: forall a r. NotifyGitHubEnv -> Notify a -> Run (LOG + AFF + EFFECT + r) a
+handleGitHub env = case _ of
   Notify message next -> do
     let issueNumber = Int.toStringAs Int.decimal $ un IssueNumber env.issue
     Log.debug $ "Notifying via a GitHub comment on issue " <> issueNumber
-    handleNotifyLog (Notify message unit)
+    handleLog (Notify message unit)
     let comment = Dodo.print Dodo.plainText Dodo.twoSpaces (Log.toLog message)
     let request = Octokit.createCommentRequest { address: env.registry, issue: env.issue, body: comment }
     Octokit.request env.octokit request >>= case _ of

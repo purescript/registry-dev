@@ -135,8 +135,8 @@ tagAndPush key refs = do
     Just { head } -> pure (Left head)
 
 -- | Interpret the GIT effect given a handler, eliminating it from the effects.
-runGit :: forall r a. (Git ~> Run r) -> Run (GIT + r) a -> Run r a
-runGit handler = Run.interpret (Run.on _git handler Run.send)
+interpret :: forall r a. (Git ~> Run r) -> Run (GIT + r) a -> Run r a
+interpret handler = Run.interpret (Run.on _git handler Run.send)
 
 -- | How to sync a locally-checked-out repository.
 -- |
@@ -198,8 +198,8 @@ pacchettibottiCommitter token =
 -- pushing, etc. but that's not necessarily true. In practice we always use
 -- 'writeCommitPush', so this isn't an issue, but it would be nice to ensure
 -- an initial pull.
-handleGitAff :: forall r a. GitEnv -> Git a -> Run (LOG + AFF + EFFECT + r) a
-handleGitAff env = case _ of
+handle :: forall r a. GitEnv -> Git a -> Run (LOG + AFF + EFFECT + r) a
+handle env = case _ of
   GetPath key reply -> do
     pure $ reply $ filepath key
 

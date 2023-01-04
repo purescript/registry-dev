@@ -119,24 +119,24 @@ main = launchAff_ do
       Right values -> pure values
 
   let
-    interpret runGit =
+    interpret interpretGit =
       -- App effects
-      Registry.runRegistry Registry.handleRegistryGit
-        >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
-        >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
-        >>> runGit
+      Registry.interpret Registry.handle
+        >>> Storage.interpret (Storage.handleS3 { key: spacesKey, secret: spacesSecret })
+        >>> GitHub.interpret (GitHub.handle octokit)
+        >>> interpretGit
         -- Caching
-        >>> Cache.runCache Registry._registryCache (Cache.handleCacheMemory registryCacheRef)
-        >>> Cache.runCache Storage._storageCache (Cache.handleCacheFs cache)
-        >>> Cache.runCache GitHub._githubCache (Cache.handleCacheMemoryFs { cache, ref: githubCacheRef })
+        >>> Cache.interpret Registry._registryCache (Cache.handleMemory registryCacheRef)
+        >>> Cache.interpret Storage._storageCache (Cache.handleFs cache)
+        >>> Cache.interpret GitHub._githubCache (Cache.handleMemoryFs { cache, ref: githubCacheRef })
         -- Logging
         >>> Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-        >>> Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
+        >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
         -- Base effects
         >>> Run.runBaseAff'
 
   -- We run deletions *without* committing, because we'll do it in bulk later.
-  interpret (Git.runGit (Git.handleGitAff (gitEnv { write = ReadOnly }))) do
+  interpret (Git.interpret (Git.handle (gitEnv { write = ReadOnly }))) do
     Log.info $ Array.fold
       [ "Deleting package versions:"
       , do
@@ -157,7 +157,7 @@ main = launchAff_ do
     Log.info "Finished."
 
   -- Then we add our commits with committing enabled.
-  interpret (Git.runGit (Git.handleGitAff gitEnv)) do
+  interpret (Git.interpret (Git.handle gitEnv)) do
     Git.commit Git.CommitMetadataIndex "Remove some package versions from metadata." >>= case _ of
       Left error -> Log.error $ "Failed to commit metadata: " <> error
       Right _ -> pure unit

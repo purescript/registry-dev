@@ -78,19 +78,19 @@ main = launchAff_ do
     -- Environment
     # Env.runPacchettiBottiEnv { privateKey, publicKey }
     -- App effects
-    # Registry.runRegistry Registry.handleRegistryGit
-    # Storage.runStorage Storage.handleStorageReadOnly
-    # Git.runGit (Git.handleGitAff gitEnv)
+    # Registry.interpret Registry.handle
+    # Storage.interpret Storage.handleReadOnly
+    # Git.interpret (Git.handle gitEnv)
     -- Requests
-    # GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
+    # GitHub.interpret (GitHub.handle octokit)
     -- Caching
-    # Cache.runCache Registry._registryCache (Cache.handleCacheMemory registryCacheRef)
-    # Cache.runCache Storage._storageCache (Cache.handleCacheFs cache)
-    # Cache.runCache GitHub._githubCache (Cache.handleCacheMemoryFs { cache, ref: githubCacheRef })
+    # Cache.interpret Registry._registryCache (Cache.handleMemory registryCacheRef)
+    # Cache.interpret Storage._storageCache (Cache.handleFs cache)
+    # Cache.interpret GitHub._githubCache (Cache.handleMemoryFs { cache, ref: githubCacheRef })
     -- Logging
-    # Notify.runNotify Notify.handleNotifyLog
+    # Notify.interpret Notify.handleLog
     # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-    # Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
+    # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     -- Base effects
     # Run.runBaseAff'
 

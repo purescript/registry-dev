@@ -92,22 +92,22 @@ main = launchAff_ $ do
       # Env.runGitHubEventEnv { username: env.username, issue: env.issue }
       # Env.runPacchettiBottiEnv { publicKey: env.publicKey, privateKey: env.privateKey }
       -- App effects
-      # PackageSets.runPackageSets (PackageSets.handlePackageSetsAff { workdir })
-      # Registry.runRegistry Registry.handleRegistryGit
-      # Storage.runStorage (Storage.handleStorageS3 env.spacesConfig)
-      # Git.runGit (Git.handleGitAff gitEnv)
+      # PackageSets.interpret (PackageSets.handle { workdir })
+      # Registry.interpret Registry.handle
+      # Storage.interpret (Storage.handleS3 env.spacesConfig)
+      # Git.interpret (Git.handle gitEnv)
       -- Requests
-      # Pursuit.runPursuit (Pursuit.handlePursuitHttp env.token)
-      # GitHub.runGitHub (GitHub.handleGitHubOctokit env.octokit)
+      # Pursuit.interpret (Pursuit.handleAff env.token)
+      # GitHub.interpret (GitHub.handle env.octokit)
       -- Caching
-      # Cache.runCache Registry._registryCache (Cache.handleCacheMemory registryCacheRef)
-      # Cache.runCache Storage._storageCache (Cache.handleCacheFs cache)
-      # Cache.runCache GitHub._githubCache (Cache.handleCacheMemoryFs { cache, ref: githubCacheRef })
-      # Cache.runCache Legacy.Manifest._legacyCache (Cache.handleCacheMemoryFs { cache, ref: legacyCacheRef })
+      # Cache.interpret Registry._registryCache (Cache.handleMemory registryCacheRef)
+      # Cache.interpret Storage._storageCache (Cache.handleFs cache)
+      # Cache.interpret GitHub._githubCache (Cache.handleMemoryFs { cache, ref: githubCacheRef })
+      # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
       -- Logging
-      # Notify.runNotify Notify.handleNotifyLog
+      # Notify.interpret (Notify.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Git.defaultRepos.registry })
       # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-      # Log.runLog (Log.handleLogTerminal Verbose)
+      # Log.interpret (Log.handleTerminal Verbose)
       -- Base effects
       # Run.runBaseAff'
 

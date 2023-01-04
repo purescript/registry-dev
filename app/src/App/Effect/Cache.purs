@@ -15,20 +15,20 @@ module Registry.App.Effect.Cache
   , get
   , put
   , delete
-  , runCache
+  , interpret
   , MemoryFsEnv(..)
-  , handleCacheMemoryFs
+  , handleMemoryFs
   , CacheValue
   , CacheRef(..)
   , newCacheRef
   , class MemoryEncodable
   , encodeMemory
   , MemoryEncoding(..)
-  , handleCacheMemory
+  , handleMemory
   , class FsEncodable
   , encodeFs
   , FsEncoding(..)
-  , handleCacheFs
+  , handleFs
   , Cache(..)
   ) where
 
@@ -131,7 +131,8 @@ delete
   -> Run r Unit
 delete label key = Run.lift label (Delete (key (Ignore unit)))
 
-runCache
+-- | Run the cache effect, given a handler.
+interpret
   :: forall s k a r t
    . IsSymbol s
   => Row.Cons s (Cache k) t r
@@ -139,7 +140,7 @@ runCache
   -> (Cache k ~> Run t)
   -> Run r a
   -> Run t a
-runCache label handler = Run.interpret (Run.on label handler Run.send)
+interpret label handler = Run.interpret (Run.on label handler Run.send)
 
 -- | The environment for a combined in-memory cache backed by the file system
 type MemoryFsEnv =
@@ -147,8 +148,8 @@ type MemoryFsEnv =
   , cache :: FilePath
   }
 
-handleCacheMemoryFs :: forall k r a. MemoryEncodable k => FsEncodable k => MemoryFsEnv -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
-handleCacheMemoryFs env = case _ of
+handleMemoryFs :: forall k r a. MemoryEncodable k => FsEncodable k => MemoryFsEnv -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
+handleMemoryFs env = case _ of
   Get key -> Exists.runExists getImpl (encodeMemory key)
     where
     getImpl :: forall x. MemoryEncoding _ _ x -> Run _ a
@@ -214,8 +215,8 @@ newCacheRef = liftEffect $ Ref.new Map.empty
 -- storing a fiber along with each cache value, where the fiber will delete the
 -- value after _n_ minutes. When the value is accessed the fiber is killed and
 -- a new one spawned.
-handleCacheMemory :: forall k r a. MemoryEncodable k => CacheRef -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
-handleCacheMemory ref = case _ of
+handleMemory :: forall k r a. MemoryEncodable k => CacheRef -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
+handleMemory ref = case _ of
   Get key -> Exists.runExists (getMemoryImpl ref) (encodeMemory key)
   Put key next -> Exists.runExists (putMemoryImpl ref next) (encodeMemory key)
   Delete key -> Exists.runExists (deleteMemoryImpl ref) (encodeMemory key)
@@ -262,8 +263,8 @@ data FsEncoding z b a
 -- Note: This doesn't currently support expiration. But we could support it by
 -- looking at the 'mtime' for modification and 'atime' for access via stat and
 -- expiring entries accessed too long ago.
-handleCacheFs :: forall k r a. FsEncodable k => FilePath -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
-handleCacheFs cacheDir = case _ of
+handleFs :: forall k r a. FsEncodable k => FilePath -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
+handleFs cacheDir = case _ of
   Get key -> Exists.runExists (getFsImpl cacheDir) (encodeFs key)
   Put key next -> Exists.runExists (putFsImpl cacheDir next) (encodeFs key)
   Delete key -> Exists.runExists (deleteFsImpl cacheDir) (encodeFs key)

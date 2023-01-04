@@ -76,8 +76,8 @@ upgradeSequential oldSet compiler changes = do
     Just result -> pure $ Just { failed: Map.empty, succeeded: changes, result }
     Nothing -> Run.lift _packageSets (UpgradeSequential oldSet compiler changes identity)
 
-runPackageSets :: forall r a. (PackageSets ~> Run r) -> Run (PACKAGE_SETS + r) a -> Run r a
-runPackageSets handler = Run.interpret (Run.on _packageSets handler Run.send)
+interpret :: forall r a. (PackageSets ~> Run r) -> Run (PACKAGE_SETS + r) a -> Run r a
+interpret handler = Run.interpret (Run.on _packageSets handler Run.send)
 
 type PackageSetsEnv =
   { workdir :: FilePath
@@ -85,8 +85,8 @@ type PackageSetsEnv =
 
 -- | A handler for the PACKAGE_SETS effect which compiles the package sets and
 -- | returns the results.
-handlePackageSetsAff :: forall r a. PackageSetsEnv -> PackageSets a -> Run (REGISTRY + STORAGE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
-handlePackageSetsAff env = case _ of
+handle :: forall r a. PackageSetsEnv -> PackageSets a -> Run (REGISTRY + STORAGE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
+handle env = case _ of
   UpgradeAtomic oldSet@(PackageSet { packages }) compiler changes reply -> do
     Log.info $ "Performing atomic upgrade of package set " <> Version.print (un PackageSet oldSet).version
 

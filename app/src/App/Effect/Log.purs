@@ -77,12 +77,12 @@ warn = log Warn <<< toLog
 error :: forall a r. Loggable a => a -> Run (LOG + r) Unit
 error = log Error <<< toLog
 
-runLog :: forall a r. (Log ~> Run r) -> Run (LOG + r) a -> Run r a
-runLog handler = Run.interpret (Run.on _log handler Run.send)
+interpret :: forall a r. (Log ~> Run r) -> Run (LOG + r) a -> Run r a
+interpret handler = Run.interpret (Run.on _log handler Run.send)
 
 -- | Write logs to the terminal only.
-handleLogTerminal :: forall a r. LogVerbosity -> Log a -> Run (AFF + r) a
-handleLogTerminal verbosity = case _ of
+handleTerminal :: forall a r. LogVerbosity -> Log a -> Run (AFF + r) a
+handleTerminal verbosity = case _ of
   Log level message next -> do
     let
       printed = Dodo.print Ansi.ansiGraphics Dodo.twoSpaces $ case level of
@@ -99,8 +99,8 @@ handleLogTerminal verbosity = case _ of
     pure next
 
 -- | Write logs to the specified logfile.
-handleLogFs :: forall a r. LogVerbosity -> FilePath -> Log a -> Run (AFF + EFFECT + r) a
-handleLogFs verbosity logfile action = case action of
+handleFs :: forall a r. LogVerbosity -> FilePath -> Log a -> Run (AFF + EFFECT + r) a
+handleFs verbosity logfile action = case action of
   Log level message next -> do
     let
       attemptWrite = do

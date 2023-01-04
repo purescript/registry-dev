@@ -8,9 +8,9 @@ module Registry.App.Effect.Storage
   , _storageCache
   , delete
   , download
-  , handleStorageReadOnly
-  , handleStorageS3
-  , runStorage
+  , handleReadOnly
+  , handleS3
+  , interpret
   , upload
   ) where
 
@@ -81,8 +81,8 @@ delete :: forall r. PackageName -> Version -> Run (STORAGE + r) Unit
 delete name version = Run.lift _storage (Delete name version unit)
 
 -- | Interpret the STORAGE effect, given a handler.
-runStorage :: forall r a. (Storage ~> Run r) -> Run (STORAGE + r) a -> Run r a
-runStorage handler = Run.interpret (Run.on _storage handler Run.send)
+interpret :: forall r a. (Storage ~> Run r) -> Run (STORAGE + r) a -> Run r a
+interpret handler = Run.interpret (Run.on _storage handler Run.send)
 
 formatPackagePath :: PackageName -> Version -> String
 formatPackagePath name version = Array.fold
@@ -112,8 +112,8 @@ connectS3 key = do
       pure connection
 
 -- | Handle package storage using a remote S3 bucket.
-handleStorageS3 :: forall r a. S3.SpaceKey -> Storage a -> Run (STORAGE_CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
-handleStorageS3 key = case _ of
+handleS3 :: forall r a. S3.SpaceKey -> Storage a -> Run (STORAGE_CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
+handleS3 key = case _ of
   Download name version path next -> do
     let package = formatPackageVersion name version
     buffer <- Cache.get _storageCache (Package name version) >>= case _ of
@@ -193,8 +193,8 @@ handleStorageS3 key = case _ of
       Log.exit $ "Could not delete " <> package <> " because it does not exist in the storage backend."
 
 -- | A storage effect that reads from the registry but does not write to it.
-handleStorageReadOnly :: forall r a. Storage a -> Run (STORAGE_CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
-handleStorageReadOnly = case _ of
+handleReadOnly :: forall r a. Storage a -> Run (STORAGE_CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
+handleReadOnly = case _ of
   Upload name version _ next -> do
     Log.warn $ "Requested upload of " <> formatPackageVersion name version <> " to url " <> formatPackageUrl name version <> " but this interpreter is read-only."
     pure next

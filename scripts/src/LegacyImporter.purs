@@ -118,11 +118,11 @@ main = launchAff_ do
         token <- Env.lookupRequired Env.githubToken
         octokit <- Octokit.newOctokit token
         pure do
-          Registry.runRegistry Registry.handleRegistryGit
-            >>> Storage.runStorage Storage.handleStorageReadOnly
-            >>> Pursuit.runPursuit Pursuit.handlePursuitNoOp
-            >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
-            >>> Git.runGit (Git.handleGitAff (gitEnv Autostash ReadOnly))
+          Registry.interpret Registry.handle
+            >>> Storage.interpret Storage.handleReadOnly
+            >>> Pursuit.interpret Pursuit.handlePure
+            >>> GitHub.interpret (GitHub.handle octokit)
+            >>> Git.interpret (Git.handle (gitEnv Autostash ReadOnly))
 
       GenerateRegistry -> do
         token <- Env.lookupRequired Env.githubToken
@@ -130,11 +130,11 @@ main = launchAff_ do
         spacesSecret <- Env.lookupRequired Env.spacesSecret
         octokit <- Octokit.newOctokit token
         pure do
-          Registry.runRegistry Registry.handleRegistryGit
-            >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
-            >>> Pursuit.runPursuit Pursuit.handlePursuitNoOp
-            >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
-            >>> Git.runGit (Git.handleGitAff (gitEnv Autostash (CommitAs (Git.pacchettibottiCommitter token))))
+          Registry.interpret Registry.handle
+            >>> Storage.interpret (Storage.handleS3 { key: spacesKey, secret: spacesSecret })
+            >>> Pursuit.interpret Pursuit.handlePure
+            >>> GitHub.interpret (GitHub.handle octokit)
+            >>> Git.interpret (Git.handle (gitEnv Autostash (CommitAs (Git.pacchettibottiCommitter token))))
 
       UpdateRegistry -> do
         token <- Env.lookupRequired Env.pacchettibottiToken
@@ -142,11 +142,11 @@ main = launchAff_ do
         spacesSecret <- Env.lookupRequired Env.spacesSecret
         octokit <- Octokit.newOctokit token
         pure do
-          Registry.runRegistry Registry.handleRegistryGit
-            >>> Storage.runStorage (Storage.handleStorageS3 { key: spacesKey, secret: spacesSecret })
-            >>> Pursuit.runPursuit (Pursuit.handlePursuitHttp token)
-            >>> GitHub.runGitHub (GitHub.handleGitHubOctokit octokit)
-            >>> Git.runGit (Git.handleGitAff (gitEnv OnlyClean (CommitAs (Git.pacchettibottiCommitter token))))
+          Registry.interpret Registry.handle
+            >>> Storage.interpret (Storage.handleS3 { key: spacesKey, secret: spacesSecret })
+            >>> Pursuit.interpret (Pursuit.handleAff token)
+            >>> GitHub.interpret (GitHub.handle octokit)
+            >>> Git.interpret (Git.handle (gitEnv OnlyClean (CommitAs (Git.pacchettibottiCommitter token))))
 
   -- Caching setup
   runCacheEffects <- do
@@ -157,11 +157,11 @@ main = launchAff_ do
     let cache = Path.concat [ scratchDir, ".cache" ]
     FS.Extra.ensureDirectory cache
     pure do
-      Cache.runCache Registry._registryCache (Cache.handleCacheMemory registryCacheRef)
-        >>> Cache.runCache Storage._storageCache (Cache.handleCacheFs cache)
-        >>> Cache.runCache GitHub._githubCache (Cache.handleCacheMemoryFs { cache, ref: githubCacheRef })
-        >>> Cache.runCache Legacy.Manifest._legacyCache (Cache.handleCacheMemoryFs { cache, ref: legacyCacheRef })
-        >>> Cache.runCache _importCache (Cache.handleCacheMemoryFs { cache, ref: importCacheRef })
+      Cache.interpret Registry._registryCache (Cache.handleMemory registryCacheRef)
+        >>> Cache.interpret Storage._storageCache (Cache.handleFs cache)
+        >>> Cache.interpret GitHub._githubCache (Cache.handleMemoryFs { cache, ref: githubCacheRef })
+        >>> Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
+        >>> Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
 
   -- Logging setup
   let logDir = Path.concat [ scratchDir, "logs" ]
@@ -171,9 +171,9 @@ main = launchAff_ do
   let logPath = Path.concat [ logDir, logFile ]
   runLogEffects <- do
     pure do
-      Notify.runNotify Notify.handleNotifyLog
+      Notify.interpret Notify.handleLog
         >>> Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-        >>> Log.runLog (\log -> Log.handleLogTerminal Normal log *> Log.handleLogFs Verbose logPath log)
+        >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
 
   runLegacyImport mode logPath
     # runAppEffects

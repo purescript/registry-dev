@@ -31,17 +31,17 @@ publish :: forall r. Json -> Run (PURSUIT + r) (Either String Unit)
 publish json = Run.lift _pursuit (Publish json identity)
 
 -- | Run the PURSUIT effect given a handler.
-runPursuit :: forall r a. (Pursuit ~> Run r) -> Run (PURSUIT + r) a -> Run r a
-runPursuit handler = Run.interpret (Run.on _pursuit handler Run.send)
+interpret :: forall r a. (Pursuit ~> Run r) -> Run (PURSUIT + r) a -> Run r a
+interpret handler = Run.interpret (Run.on _pursuit handler Run.send)
 
 -- | Handle Pursuit by skipping all calls.
-handlePursuitNoOp :: forall r a. Pursuit a -> Run r a
-handlePursuitNoOp = case _ of
+handlePure :: forall r a. Pursuit a -> Run r a
+handlePure = case _ of
   Publish _ reply -> pure $ reply $ Right unit
 
 -- | Handle Pursuit by executing HTTP requests using the provided auth token.
-handlePursuitHttp :: forall r a. GitHubToken -> Pursuit a -> Run (LOG + AFF + r) a
-handlePursuitHttp (GitHubToken token) = case _ of
+handleAff :: forall r a. GitHubToken -> Pursuit a -> Run (LOG + AFF + r) a
+handleAff (GitHubToken token) = case _ of
   Publish payload reply -> do
     Log.debug "Pushing to Pursuit..."
     result <- Run.liftAff $ Affjax.Node.request
