@@ -407,7 +407,7 @@ buildLegacyPackageManifests
   -> String
   -> Run (API.PublishEffects + IMPORT_CACHE + r) (Either PackageValidationError (Map RawVersion (Either VersionValidationError Manifest)))
 buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPackage do
-  Log.info $ un RawPackageName rawPackage
+  Log.info $ "Processing " <> un RawPackageName rawPackage
   package <- validatePackage rawPackage rawUrl
 
   let

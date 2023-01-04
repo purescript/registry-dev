@@ -306,7 +306,7 @@ authenticated auth = case auth.payload of
             Registry.writeMetadata payload.name updated
             Notify.notify "Successfully transferred your package!"
             Registry.mirrorLegacyRegistry payload.name payload.newLocation
-            Notify.notify "Mirrored location change to the legacy registry."
+            Notify.notify "Mirrored registry operation to the legacy registry."
 
 type PublishEffects r = (PURSUIT + REGISTRY + STORAGE + GITHUB + LEGACY_CACHE + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r)
 
@@ -562,7 +562,7 @@ publish source payload = do
         Right _ -> Notify.notify "Successfully published docs to pursuit!"
 
   Registry.mirrorLegacyRegistry payload.name newMetadata.location
-  Notify.notify "Mirrored location change to the legacy registry."
+  Notify.notify "Mirrored registry operation to the legacy registry."
 
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the

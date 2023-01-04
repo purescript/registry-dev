@@ -145,14 +145,12 @@ handleRegistryGit :: forall r a. Registry a -> Run (REGISTRY_CACHE + GITHUB + GI
 handleRegistryGit = case _ of
   ReadManifest name version reply -> do
     let formatted = formatPackageVersion name version
-    Log.debug $ "Reading manifest for " <> formatted
     index <- handleRegistryGit (ReadAllManifests identity)
     case ManifestIndex.lookup name version index of
       Nothing -> do
         Log.debug $ "Did not find manifest for " <> formatted <> " in memory cache or local registry repo checkout."
         pure $ reply Nothing
       Just manifest -> do
-        Log.debug $ "Read manifest for " <> formatted <> " from refreshed index."
         pure $ reply $ Just manifest
 
   WriteManifest manifest@(Manifest { name, version }) next -> do
@@ -219,7 +217,6 @@ handleRegistryGit = case _ of
       Left error ->
         Log.exit $ "Could not read manifests because the manifest index repo could not be checked: " <> error
       Right NoChange -> do
-        Log.debug "Manifest index repo up to date, reading from cache..."
         cache <- Cache.get _registryCache AllManifests
         case cache of
           Nothing -> do
@@ -232,7 +229,6 @@ handleRegistryGit = case _ of
 
   ReadMetadata name reply -> do
     let printedName = PackageName.print name
-    Log.debug $ "Reading metadata for " <> printedName
     registryPath <- Git.getPath Git.RegistryRepo
 
     let
@@ -284,7 +280,6 @@ handleRegistryGit = case _ of
         Log.exit $ "Could not read metadata because the registry repo could not be checked: " <> error
 
       Right NoChange -> do
-        Log.debug "Registry repo up to date, reading from cache..."
         Cache.get _registryCache AllMetadata >>= case _ of
           Nothing -> resetFromDisk
           Just allMetadata -> case Map.lookup name allMetadata of
@@ -343,7 +338,6 @@ handleRegistryGit = case _ of
       Left error ->
         Log.exit $ "Could not read metadata because the registry repo could not be checked: " <> error
       Right NoChange -> do
-        Log.debug "Registry repo up to date, reading from cache..."
         Cache.get _registryCache AllMetadata >>= case _ of
           Nothing -> do
             Log.info "No cached metadata map, reading from disk..."

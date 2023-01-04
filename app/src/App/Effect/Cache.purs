@@ -167,6 +167,7 @@ handleCacheMemoryFs env = case _ of
           case inFs of
             Nothing -> pure $ reply Nothing
             Just entry -> do
+              Log.debug $ "Fell back to on-disk entry for " <> memory
               putMemoryImpl env.ref unit (Key memory (Const entry))
               pure $ reply $ Just $ unCache entry
         Just cached ->
