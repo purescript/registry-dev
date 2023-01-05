@@ -13,7 +13,7 @@ import Node.ChildProcess as NodeProcess
 import Sunde as Process
 
 -- | Call a specific version of the PureScript compiler
-callCompiler_ :: { version :: String, command :: PursCommand, cwd :: Maybe FilePath } -> Aff Unit
+callCompiler_ :: { version :: Maybe String, command :: PursCommand, cwd :: Maybe FilePath } -> Aff Unit
 callCompiler_ = void <<< callCompiler
 
 data CompilerFailure
@@ -85,7 +85,7 @@ printCompilerErrors errors = do
       ]
 
 type CompilerArgs =
-  { version :: String
+  { version :: Maybe String
   , cwd :: Maybe FilePath
   , command :: PursCommand
   }
@@ -105,22 +105,25 @@ printCommand = case _ of
 callCompiler :: CompilerArgs -> Aff (Either CompilerFailure String)
 callCompiler compilerArgs = do
   let
-    -- Converts a string version 'v0.13.0' or '0.13.0' to the standard format for
-    -- executables 'purs-0_13_0'
-    cmd =
-      append "purs-"
-        $ String.replaceAll (String.Pattern ".") (String.Replacement "_")
-        $ fromMaybe compilerArgs.version
-        $ String.stripPrefix (String.Pattern "v") compilerArgs.version
+    -- If no version is provided, uses 'purs'. Otherwise, converts a string version 'v0.13.0' or
+    -- '0.13.0' to the standard format for executables, ie. 'purs-0_13_0'.
+    purs =
+      case compilerArgs.version of
+        Nothing -> "purs"
+        Just version ->
+          append "purs-"
+            $ String.replaceAll (String.Pattern ".") (String.Replacement "_")
+            $ fromMaybe version
+            $ String.stripPrefix (String.Pattern "v") version
 
     errorsCodec = CA.Record.object "CompilerErrors"
       { errors: CA.array compilerErrorCodec }
 
-  result <- try $ Process.spawn { cmd, stdin: Nothing, args: printCommand compilerArgs.command } (NodeProcess.defaultSpawnOptions { cwd = compilerArgs.cwd })
+  result <- try $ Process.spawn { cmd: purs, stdin: Nothing, args: printCommand compilerArgs.command } (NodeProcess.defaultSpawnOptions { cwd = compilerArgs.cwd })
   pure $ case result of
     Left exception -> Left $ case Exception.message exception of
       errorMessage
-        | errorMessage == String.joinWith " " [ "spawn", cmd, "ENOENT" ] -> MissingCompiler
+        | errorMessage == String.joinWith " " [ "spawn", purs, "ENOENT" ] -> MissingCompiler
         | otherwise -> UnknownError errorMessage
     Right { exit: NodeProcess.Normally 0, stdout } -> Right $ String.trim stdout
     Right { stdout, stderr } -> Left do

@@ -44,6 +44,7 @@ import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API (Source(..))
 import Registry.App.API as API
+import Registry.App.CLI.Purs as Purs
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
@@ -225,6 +226,18 @@ runLegacyImport mode logs = do
 
   allMetadata <- Registry.readAllMetadata
 
+  -- Just a safety check to ensure the compiler used in the pipeline is not too
+  -- low. Should be bumped from time to time to the latest compiler.
+  let minCompiler = unsafeFromRight (Version.parse "0.15.7")
+  compiler <- Run.liftAff (Purs.callCompiler { command: Purs.Version, version: Nothing, cwd: Nothing }) >>= case _ of
+    Left _ -> Log.exit "Could not determine the local compiler version."
+    Right str -> case Version.parse str of
+      Left error -> Log.exit $ "Failed to parse compiler version output (" <> str <> ") as a version: " <> error
+      Right version | version < minCompiler -> Log.exit $ "Local compiler " <> Version.print version <> " is too low (min: " <> Version.print minCompiler <> ")."
+      Right version -> do
+        Log.info $ "Using compiler " <> Version.print version
+        pure version
+
   let
     isPublished { name, version } = hasMetadata allMetadata name version
     notPublished = indexPackages # Array.filter \(Manifest manifest) -> not (isPublished manifest)
@@ -241,7 +254,7 @@ runLegacyImport mode logs = do
             { location: Just manifest.location
             , name: manifest.name
             , ref: un RawVersion ref
-            , compiler: unsafeFromRight $ Version.parse "0.15.4"
+            , compiler
             , resolutions: Nothing
             }
 
@@ -252,6 +265,9 @@ runLegacyImport mode logs = do
       Log.info $ Array.foldMap (append "\n")
         [ "----------"
         , "AVAILABLE TO PUBLISH"
+        , ""
+        , "  using purs " <> Version.print compiler
+        , ""
         , "----------"
         , Array.foldMap (append "\n  - " <<< printPackage) manifests
         ]

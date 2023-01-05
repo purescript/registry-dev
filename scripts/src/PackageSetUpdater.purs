@@ -17,6 +17,7 @@ import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Node.Path as Path
 import Node.Process as Process
+import Registry.App.CLI.Purs as Purs
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
@@ -32,7 +33,8 @@ import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Format as Internal.Format
-import Run (EFFECT, Run)
+import Registry.Version as Version
+import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except as Run.Except
 
@@ -114,13 +116,26 @@ main = Aff.launchAff_ do
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'
 
-updater :: forall r. Run (REGISTRY + PACKAGE_SETS + LOG + LOG_EXCEPT + EFFECT + r) Unit
+updater :: forall r. Run (REGISTRY + PACKAGE_SETS + LOG + LOG_EXCEPT + AFF + EFFECT + r) Unit
 updater = do
   prevPackageSet <- Registry.readLatestPackageSet >>= case _ of
     Nothing -> Log.exit "No previous package set found, cannot continue."
     Just set -> pure set
 
   PackageSets.validatePackageSet prevPackageSet
+
+  -- We use the greater of the local compiler version or the last package set
+  -- version to upgrade the package sets. This automatically bumps the purs
+  -- version when the registry upgrades to a new compiler.
+  compiler <- Run.liftAff (Purs.callCompiler { command: Purs.Version, version: Nothing, cwd: Nothing }) >>= case _ of
+    Left _ -> Log.exit "Could not determine the local compiler version."
+    Right str -> case Version.parse str of
+      Left error -> Log.exit $ "Failed to parse compiler version output (" <> str <> ") as a version: " <> error
+      Right version -> do
+        let prev = (un PackageSet prevPackageSet).compiler
+        let purs = if version > prev then version else prev
+        Log.info $ "Using compiler " <> Version.print purs
+        pure purs
 
   let uploadHours = 24.0
   recentUploads <- findRecentUploads (Hours uploadHours)
@@ -138,7 +153,7 @@ updater = do
     let eligible = Map.catMaybes candidates.accepted
     let listPackages = foldMapWithIndex \name version -> [ formatPackageVersion name version ]
     Log.info $ "Found package versions eligible for inclusion in package set: " <> Array.foldMap (append "\n  - ") (listPackages eligible)
-    PackageSets.upgradeSequential prevPackageSet (un PackageSet prevPackageSet).compiler (map (maybe Remove Update) candidates.accepted) >>= case _ of
+    PackageSets.upgradeSequential prevPackageSet compiler (map (maybe Remove Update) candidates.accepted) >>= case _ of
       Nothing -> do
         Log.info "No packages could be added to the set. All packages failed."
       Just { failed, succeeded, result } -> do

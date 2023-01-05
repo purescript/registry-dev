@@ -660,7 +660,7 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
   Log.debug "Compiling..."
   compilerOutput <- Run.liftAff $ Purs.callCompiler
     { command: Purs.Compile { globs }
-    , version: Version.print compiler
+    , version: Just (Version.print compiler)
     , cwd: Just packageSourceDir
     }
   pure (handleCompiler dependenciesDir compilerOutput)
@@ -734,7 +734,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
   -- with the format used by Pursuit in PureScript versions at least up to 0.16
   compilerOutput <- Run.liftAff $ Purs.callCompiler
     { command: Purs.Publish { resolutions: resolutionsFilePath }
-    , version: Version.print compiler
+    , version: Just (Version.print compiler)
     , cwd: Just packageSourceDir
     }
 
