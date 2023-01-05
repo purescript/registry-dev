@@ -23,7 +23,7 @@ import Node.Path as Path
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.Tar as Tar
-import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
+import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
@@ -35,6 +35,8 @@ import Registry.PackageName as PackageName
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
+import Run.Except (EXCEPT)
+import Run.Except as Except
 import Type.Proxy (Proxy(..))
 
 data Change = Update Version | Remove
@@ -85,7 +87,7 @@ type PackageSetsEnv =
 
 -- | A handler for the PACKAGE_SETS effect which compiles the package sets and
 -- | returns the results.
-handle :: forall r a. PackageSetsEnv -> PackageSets a -> Run (REGISTRY + STORAGE + LOG + LOG_EXCEPT + AFF + EFFECT + r) a
+handle :: forall r a. PackageSetsEnv -> PackageSets a -> Run (REGISTRY + STORAGE + LOG + EXCEPT String + AFF + EFFECT + r) a
 handle env = case _ of
   UpgradeAtomic oldSet@(PackageSet { packages }) compiler changes reply -> do
     Log.info $ "Performing atomic upgrade of package set " <> Version.print (un PackageSet oldSet).version
@@ -100,15 +102,21 @@ handle env = case _ of
 
     installPackages packages
     compileInstalledPackages compiler >>= case _ of
-      Left compilerError -> do
-        logCompilerError compiler compilerError
-        Log.exit "Compilation failed, but the starting package set must compile in order to process a batch."
+      Left compilerError -> case compilerError of
+        MissingCompiler -> Except.throw $ printMissingCompiler compiler
+        UnknownError error -> Except.throw $ printUnknownError error
+        CompilationError errors -> do
+          Log.error $ printCompilationError errors
+          Except.throw "Compilation failed, but the starting package set must compile in order to process a batch."
       Right _ -> pure unit
 
     attemptChanges compiler oldSet changes >>= case _ of
-      Left error -> do
-        logCompilerError compiler error
-        pure (reply Nothing)
+      Left compilerError -> case compilerError of
+        MissingCompiler -> Except.throw $ printMissingCompiler compiler
+        UnknownError error -> Except.throw $ printUnknownError error
+        CompilationError errors -> do
+          Log.info $ printCompilationError errors
+          pure (reply Nothing)
       Right pending -> do
         newSet <- updatePackageSetMetadata compiler { previous: oldSet, pending } changes
         validatePackageSet newSet
@@ -141,12 +149,15 @@ handle env = case _ of
         -- If the package could not be processed, then the state of the
         -- filesystem is rolled back by attemptPackage. We just need to insert
         -- the package into the failures map.
-        Left error -> do
+        Left compilerError -> do
           Run.liftEffect $ Ref.modify_ (Map.insert name change) failRef
           Log.warn $ case change of
             Remove -> "Could not remove " <> PackageName.print name
             Update version -> "Could not add or update " <> formatPackageVersion name version
-          logCompilerError compiler error
+          case compilerError of
+            MissingCompiler -> Except.throw $ printMissingCompiler compiler
+            UnknownError error -> Except.throw $ printUnknownError error
+            CompilationError errors -> Log.info $ printCompilationError errors
 
         -- If the package could be processed, then the state of the filesystem
         -- is stepped and we need to record the success of this package and
@@ -180,6 +191,10 @@ handle env = case _ of
 
   backupWorkDir :: FilePath
   backupWorkDir = Path.concat [ env.workdir, "output-backup" ]
+
+  printMissingCompiler version = "Compilation failed because compiler " <> Version.print version <> " is missing."
+  printUnknownError error = "Compilation failed because of an unknown error: " <> error
+  printCompilationError errors = "Compilation failed with errors:\n" <> Purs.printCompilerErrors errors
 
   -- Install all packages in a package set into a temporary directory, returning
   -- the reference to the installation directory. Installed packages have the
@@ -378,7 +393,7 @@ type ValidatedCandidates =
   }
 
 -- | Validate a package set is self-contained, ignoring version bounds.
-validatePackageSet :: forall r. PackageSet -> Run (REGISTRY + LOG + LOG_EXCEPT + r) Unit
+validatePackageSet :: forall r. PackageSet -> Run (REGISTRY + LOG + EXCEPT String + r) Unit
 validatePackageSet (PackageSet set) = do
   Log.debug $ "Validating package set version " <> Version.print set.version
   index <- Registry.readAllManifests
@@ -406,7 +421,7 @@ validatePackageSet (PackageSet set) = do
       [ "Package set " <> printedVersion <> " is invalid because some package versions are not registered in the manifest index:"
       , Array.foldMap (\package -> "\n  - " <> formatPackageVersion package.name package.version) fail
       ]
-    Log.exit $ "Package set " <> printedVersion <> " is invalid because it includes unregistered package versions."
+    Except.throw $ "Package set " <> printedVersion <> " is invalid because it includes unregistered package versions."
 
   let
     -- We can now attempt to produce a self-contained manifest index from the
@@ -434,7 +449,7 @@ validatePackageSet (PackageSet set) = do
           ]
       ]
 
-    Log.exit $ "Package set " <> printedVersion <> " is invalid because some package versions have unsatisfied dependencies."
+    Except.throw $ "Package set " <> printedVersion <> " is invalid because some package versions have unsatisfied dependencies."
 
 -- | Validate a provided set of package set candidates. Should be used before
 -- | attempting to process a batch of packages for a package set.
@@ -546,17 +561,6 @@ printRejections rejections = do
 
   printRemoval name reason =
     PackageName.print name <> ": " <> reason
-
-logCompilerError :: forall r. Version -> Purs.CompilerFailure -> Run (LOG + LOG_EXCEPT + r) Unit
-logCompilerError version = case _ of
-  MissingCompiler -> do
-    Log.error $ "Compilation failed because compiler " <> Version.print version <> " is missing."
-    Log.exit "Could not run compiler."
-  UnknownError error -> do
-    Log.error $ "Compilation failed because of an unknown error: " <> error
-    Log.exit "Could not run compiler."
-  CompilationError errors -> do
-    Log.info $ "Compilation failed with errors:\n" <> Purs.printCompilerErrors errors
 
 updatePackageSetMetadata :: forall r. Version -> { previous :: PackageSet, pending :: PackageSet } -> ChangeSet -> Run (EFFECT + r) PackageSet
 updatePackageSetMetadata compiler { previous, pending: PackageSet pending } changes = do

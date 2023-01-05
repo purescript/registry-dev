@@ -5,9 +5,7 @@ import Registry.App.Prelude
 import Affjax.Node as Affjax.Node
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
-import Ansi.Codes (GraphicsParam)
 import Control.Alternative as Alternative
-import Control.Monad.Except as Except
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
@@ -24,7 +22,6 @@ import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
-import Dodo (Doc)
 import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Node.Buffer as Buffer
@@ -42,7 +39,7 @@ import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
+import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify (NOTIFY)
 import Registry.App.Effect.Notify as Notify
@@ -80,7 +77,8 @@ import Registry.Solver as Solver
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
-import Run.Except as Run.Except
+import Run.Except (EXCEPT)
+import Run.Except as Except
 import Sunde as Sunde
 
 -- | Operations can be exercised for old, pre-registry packages, or for packages
@@ -95,7 +93,7 @@ printSource = case _ of
   Legacy -> "legacy"
   Current -> "current"
 
-type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + NOTIFY + LOG + LOG_EXCEPT + r)
+type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + NOTIFY + LOG + EXCEPT String + r)
 
 -- | Process a package set update. Package set updates are only processed via
 -- | GitHub and not the HTTP API, so they require access to the GitHub env.
@@ -111,7 +109,7 @@ packageSetUpdate payload = do
   latestPackageSet <- Registry.readLatestPackageSet >>= case _ of
     Nothing -> do
       Log.error "Could not read latest package set, but there must be an initial package set to process an update."
-      Log.exit "There is no latest package set."
+      Except.throw "There is no latest package set."
     Just set -> pure set
 
   Log.debug $ "Most recent package set was " <> stringifyJson PackageSet.codec latestPackageSet
@@ -130,7 +128,7 @@ packageSetUpdate payload = do
     GitHub.listTeamMembers packagingTeam >>= case _ of
       Left githubError -> do
         Log.error $ "Failed to retrieve the members of the packaging team from GitHub: " <> Octokit.printGitHubError githubError
-        Log.exit $ Array.fold
+        Except.throw $ Array.fold
           [ "This package set update changes the compiler version or removes a "
           , "package from the package set. Only members of the "
           , "@purescript/packaging team can take these actions, but we were "
@@ -139,7 +137,7 @@ packageSetUpdate payload = do
       Right members -> do
         unless (Array.elem username members) do
           Log.error $ "Username " <> username <> " is not a member of the packaging team, aborting..."
-          Log.exit $ Array.fold
+          Except.throw $ Array.fold
             [ "This package set update changes the compiler version or "
             , "removes a package from the package set. Only members of the "
             , "@purescript/packaging team can take these actions, but your "
@@ -150,7 +148,7 @@ packageSetUpdate payload = do
   -- The compiler version cannot be downgraded.
   for_ payload.compiler \version -> when (version < prevCompiler) do
     Log.error $ "New compiler version " <> Version.print version <> " is lower than the previous package set compiler " <> Version.print prevCompiler
-    Log.exit $ Array.fold
+    Except.throw $ Array.fold
       [ "You are downgrading the compiler used in the package set from "
       , "the current version (" <> Version.print prevCompiler <> ") "
       , "to a lower version (" <> Version.print version <> "). "
@@ -170,7 +168,7 @@ packageSetUpdate payload = do
         pure (Tuple name { old: prevVersion, new: newVersion })
 
   when (not (Array.null downgradedPackages)) do
-    Log.exit $ Array.fold
+    Except.throw $ Array.fold
       [ "You are attempting to downgrade one or more package versions from "
       , "their version in the previous set, but this is not allowed in the "
       , " package sets. Affected packages:\n\n"
@@ -191,19 +189,19 @@ packageSetUpdate payload = do
   let candidates = PackageSets.validatePackageSetCandidates manifestIndex latestPackageSet payload.packages
 
   unless (Map.isEmpty candidates.rejected) do
-    Log.exit $ String.joinWith "\n"
+    Except.throw $ String.joinWith "\n"
       [ "One or more packages in the suggested batch cannot be processed.\n"
       , PackageSets.printRejections candidates.rejected
       ]
 
   if Map.isEmpty candidates.accepted then do
-    Log.exit "No packages in the suggested batch can be processed; all failed validation checks."
+    Except.throw "No packages in the suggested batch can be processed; all failed validation checks."
   else do
     let changeSet = candidates.accepted <#> maybe Remove Update
     Notify.notify "Attempting to build package set update."
     PackageSets.upgradeAtomic latestPackageSet (fromMaybe prevCompiler payload.compiler) changeSet >>= case _ of
       Nothing ->
-        Log.exit "The package set produced from this suggested update does not compile."
+        Except.throw "The package set produced from this suggested update does not compile."
       Just packageSet -> do
         let commitMessage = PackageSets.commitMessage latestPackageSet changeSet (un PackageSet packageSet).version
         Registry.writePackageSet packageSet commitMessage
@@ -211,7 +209,7 @@ packageSetUpdate payload = do
         Registry.mirrorPackageSet packageSet
         Notify.notify "Mirrored a new legacy package set."
 
-type AuthenticatedEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r)
+type AuthenticatedEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + NOTIFY + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Run an authenticated package operation, ie. an unpublish or a transfer.
 authenticated :: forall r. AuthenticatedData -> Run (AuthenticatedEffects + r) Unit
@@ -222,20 +220,20 @@ authenticated auth = case auth.payload of
     metadata <- Registry.readMetadata payload.name >>= case _ of
       Nothing -> do
         Log.error $ "No metadata found for package " <> PackageName.print payload.name
-        Log.exit $ "This package cannot be unpublished because it has not been published before (no metadata was found)."
+        Except.throw $ "This package cannot be unpublished because it has not been published before (no metadata was found)."
       Just value -> pure value
 
     now <- nowUTC
     published <- case Operation.Validation.validateUnpublish now payload.version metadata of
       Left NotPublished ->
-        Log.exit $ "Cannot unpublish " <> formatted <> " because this version has not been published."
+        Except.throw $ "Cannot unpublish " <> formatted <> " because this version has not been published."
       Left AlreadyUnpublished ->
-        Log.exit $ "Cannot unpublish " <> formatted <> " because it has already been unpublished."
+        Except.throw $ "Cannot unpublish " <> formatted <> " because it has already been unpublished."
       Left InternalError -> do
         Log.error $ formatted <> " is listed as both published and unpublished, which should be impossible!"
-        Log.exit $ "Cannot unpublish " <> formatted <> " due to an internal error."
+        Except.throw $ "Cannot unpublish " <> formatted <> " due to an internal error."
       Left (PastTimeLimit { difference, limit }) ->
-        Log.exit $ Array.fold
+        Except.throw $ Array.fold
           [ "Cannot unpublish " <> formatted <> " because it was published " <> Number.Format.toString (unwrap difference) <> " hours ago. "
           , "Packages can only be unpublished for " <> Number.Format.toString (unwrap limit) <> " hours after publication."
           ]
@@ -246,7 +244,7 @@ authenticated auth = case auth.payload of
     case (un Metadata metadata).owners of
       Nothing -> do
         Log.error $ "Unpublishing is an authenticated operation, but no owners were listed in the metadata: " <> stringifyJson Metadata.codec metadata
-        Log.exit $ String.joinWith " "
+        Except.throw $ String.joinWith " "
           [ "Cannot verify package ownership because no owners are listed in the package metadata."
           , "Please publish a package version with your SSH public key in the owners field."
           , "You can then retry unpublishing this version by authenticating with your private key."
@@ -260,7 +258,7 @@ authenticated auth = case auth.payload of
               , "\n\nusing owners\n"
               , String.joinWith "\n" $ map (stringifyJson Owner.codec) $ NEA.toArray owners
               ]
-            Log.exit $ "Could not unpublish " <> formatted <> " because we could not authenticate ownership of the package."
+            Except.throw $ "Could not unpublish " <> formatted <> " because we could not authenticate ownership of the package."
           Right _ -> do
             Log.debug $ "Successfully authenticated ownership of " <> formatted <> ", unpublishing..."
             let
@@ -279,13 +277,13 @@ authenticated auth = case auth.payload of
     metadata <- Registry.readMetadata payload.name >>= case _ of
       Nothing -> do
         Log.error $ "No metadata found for package " <> PackageName.print payload.name
-        Log.exit $ "This package cannot be transferred because it has not been published before (no metadata was found)."
+        Except.throw $ "This package cannot be transferred because it has not been published before (no metadata was found)."
       Just value -> pure value
 
     case (un Metadata metadata).owners of
       Nothing -> do
         Log.error $ "Transferring is an authenticated operation, but no owners were listed in the metadata: " <> stringifyJson Metadata.codec metadata
-        Log.exit $ String.joinWith " "
+        Except.throw $ String.joinWith " "
           [ "Cannot verify package ownership because no owners are listed in the package metadata."
           , "Please publish a package version with your SSH public key in the owners field."
           , "You can then retry transferring this version by authenticating with your private key."
@@ -299,7 +297,7 @@ authenticated auth = case auth.payload of
               , "\n\nusing owners\n"
               , String.joinWith "\n" $ map (stringifyJson Owner.codec) $ NEA.toArray owners
               ]
-            Log.exit $ "Could not transfer your package because we could not authenticate your ownership."
+            Except.throw $ "Could not transfer your package because we could not authenticate your ownership."
           Right _ -> do
             Log.debug $ "Successfully authenticated ownership, transferring..."
             let updated = metadata # over Metadata _ { location = payload.newLocation }
@@ -308,7 +306,7 @@ authenticated auth = case auth.payload of
             Registry.mirrorLegacyRegistry payload.name payload.newLocation
             Notify.notify "Mirrored registry operation to the legacy registry."
 
-type PublishEffects r = (PURSUIT + REGISTRY + STORAGE + GITHUB + LEGACY_CACHE + NOTIFY + LOG + LOG_EXCEPT + AFF + EFFECT + r)
+type PublishEffects r = (PURSUIT + REGISTRY + STORAGE + GITHUB + LEGACY_CACHE + NOTIFY + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Publish a package via the 'publish' operation. If the package has not been
 -- | published before then it will be registered and the given version will be
@@ -325,7 +323,7 @@ publish source payload = do
     Nothing -> case payload.location of
       Nothing -> do
         Log.error $ "No existing metadata for " <> printedName <> " and no location provided in payload, cannot publish."
-        Log.exit $ "Cannot register " <> printedName <> " because the payload did not include a 'location' field."
+        Except.throw $ "Cannot register " <> printedName <> " because the payload did not include a 'location' field."
       Just location ->
         pure $ Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
 
@@ -350,7 +348,7 @@ publish source payload = do
           , "), which would indicate a package transfer and is therefore disallowed."
           ]
 
-        Log.exit $ Array.fold
+        Except.throw $ Array.fold
           [ "Cannot register " <> printedName <> " because it has already been registered."
           , " If you want to register your package, please choose a different package name."
           , " If you want to transfer your package to a new location, please submit a transfer operation instead."
@@ -368,7 +366,7 @@ publish source payload = do
     true ->
       Log.debug "Package contains .purs files in its src directory."
     _ ->
-      Log.exit $ Array.fold
+      Except.throw $ Array.fold
         [ "This package has no .purs files in the src directory. "
         , "All package sources must be in the `src` directory, with any additional "
         , "sources indicated by the `files` key in your manifest."
@@ -380,18 +378,18 @@ publish source payload = do
   unless hadPursJson do
     Notify.notify $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
     address <- case existingMetadata.location of
-      Git _ -> Log.exit "Legacy packages can only come from GitHub."
-      GitHub { subdir: Just subdir } -> Log.exit $ "Legacy packages cannot use the 'subdir' key, but this package specifies a " <> subdir <> " subdir."
+      Git _ -> Except.throw "Legacy packages can only come from GitHub."
+      GitHub { subdir: Just subdir } -> Except.throw $ "Legacy packages cannot use the 'subdir' key, but this package specifies a " <> subdir <> " subdir."
       GitHub { owner, repo } -> pure { owner, repo }
 
     version <- case LenientVersion.parse payload.ref of
-      Left _ -> Log.exit $ "The provided ref " <> payload.ref <> " is not a version of the form X.Y.Z or vX.Y.Z, so it cannot be used."
+      Left _ -> Except.throw $ "The provided ref " <> payload.ref <> " is not a version of the form X.Y.Z or vX.Y.Z, so it cannot be used."
       Right result -> pure $ LenientVersion.version result
 
     Legacy.Manifest.fetchLegacyManifest payload.name address (RawVersion payload.ref) >>= case _ of
       Left manifestError -> do
         let formatError { error, reason } = reason <> " " <> Legacy.Manifest.printLegacyManifestError error
-        Log.exit $ String.joinWith "\n"
+        Except.throw $ String.joinWith "\n"
           [ "Could not publish your package because there were issues converting its spago.dhall and/or bower.json files into a purs.json manifest:"
           , formatError manifestError
           ]
@@ -405,15 +403,15 @@ publish source payload = do
   Manifest manifest <- Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 packagePursJson)) >>= case _ of
     Left error -> do
       Log.error $ "Could not read purs.json from path " <> packagePursJson <> ": " <> Aff.message error
-      Log.exit $ "Could not find a purs.json file in the package source."
+      Except.throw $ "Could not find a purs.json file in the package source."
     Right string -> Run.liftAff (jsonToDhallManifest string) >>= case _ of
       Left error -> do
         Log.error $ "Manifest does not typecheck: " <> error
-        Log.exit $ "Found a valid purs.json file in the package source, but it does not typecheck."
+        Except.throw $ "Found a valid purs.json file in the package source, but it does not typecheck."
       Right _ -> case parseJson Manifest.codec string of
         Left err -> do
           Log.error $ "Failed to parse manifest: " <> CA.printJsonDecodeError err
-          Log.exit $ "Found a purs.json file in the package source, but it could not be decoded."
+          Except.throw $ "Found a purs.json file in the package source, but it could not be decoded."
         Right manifest -> do
           Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec manifest
           pure manifest
@@ -424,7 +422,7 @@ publish source payload = do
   -- other fields we trust the registry metadata.
   let metadata = existingMetadata { owners = manifest.owners }
   unless (Operation.Validation.nameMatches (Manifest manifest) payload) do
-    Log.exit $ Array.fold
+    Except.throw $ Array.fold
       [ "The manifest file specifies a package name ("
       , PackageName.print manifest.name
       , ") that differs from the package name submitted to the API ("
@@ -433,7 +431,7 @@ publish source payload = do
       ]
 
   unless (Operation.Validation.locationMatches (Manifest manifest) (Metadata metadata)) do
-    Log.exit $ Array.fold
+    Except.throw $ Array.fold
       [ "The manifest file specifies a location ("
       , stringifyJson Location.codec manifest.location
       , ") that differs from the location in the registry metadata ("
@@ -443,10 +441,10 @@ publish source payload = do
       ]
 
   when (Operation.Validation.isMetadataPackage (Manifest manifest)) do
-    Log.exit "The `metadata` package cannot be uploaded to the registry because it is a protected package."
+    Except.throw "The `metadata` package cannot be uploaded to the registry because it is a protected package."
 
   for_ (Operation.Validation.isNotPublished (Manifest manifest) (Metadata metadata)) \info -> do
-    Log.exit $ String.joinWith "\n"
+    Except.throw $ String.joinWith "\n"
       [ "You tried to upload a version that already exists: " <> Version.print manifest.version
       , "Its metadata is:"
       , "```json"
@@ -455,7 +453,7 @@ publish source payload = do
       ]
 
   for_ (Operation.Validation.isNotUnpublished (Manifest manifest) (Metadata metadata)) \info -> do
-    Log.exit $ String.joinWith "\n"
+    Except.throw $ String.joinWith "\n"
       [ "You tried to upload a version that has been unpublished: " <> Version.print manifest.version
       , ""
       , "```json"
@@ -476,7 +474,7 @@ publish source payload = do
         Just _ -> pure unit
   unregistered <- Run.liftEffect $ Ref.read unregisteredRef
   unless (Map.isEmpty unregistered) do
-    Log.exit $ Array.fold
+    Except.throw $ Array.fold
       [ "Cannot register this package because it has unregistered dependencies: "
       , Array.foldMap (\(Tuple name version) -> "\n  - " <> formatPackageVersion name version) (Map.toUnfoldable unregistered)
       ]
@@ -501,7 +499,7 @@ publish source payload = do
   FS.Stats.Stats { size: bytes } <- Run.liftAff $ FS.Aff.stat tarballPath
   for_ (Operation.Validation.validateTarballSize bytes) case _ of
     Operation.Validation.ExceedsMaximum maxPackageBytes ->
-      Log.exit $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
+      Except.throw $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
     Operation.Validation.WarnPackageSize maxWarnBytes ->
       Notify.notify $ "WARNING: Package tarball is " <> show bytes <> "bytes, which exceeds the warning threshold of " <> show maxWarnBytes <> " bytes."
 
@@ -510,7 +508,7 @@ publish source payload = do
   -- GNU tar installed, for example.
   let minBytes = 30.0
   when (bytes < minBytes) do
-    Log.exit $ "Package tarball is only " <> Number.Format.toString bytes <> " bytes, which indicates the source was not correctly packaged."
+    Except.throw $ "Package tarball is only " <> Number.Format.toString bytes <> " bytes, which indicates the source was not correctly packaged."
 
   hash <- Sha256.hashFile tarballPath
   Log.info $ "Tarball size of " <> show bytes <> " is acceptable. Hash: " <> Sha256.print hash
@@ -532,7 +530,7 @@ publish source payload = do
           Log.debug error
           Log.warn "Failed to compile, but continuing because this package is a legacy package."
       | otherwise ->
-          Log.exit error
+          Except.throw error
     Right _ ->
       pure unit
 
@@ -554,12 +552,10 @@ publish source payload = do
   when (source == Current) $ case compilationResult of
     Left error -> do
       Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
-      Log.exit "Cannot publish to Pursuit because this package failed to compile."
+      Except.throw "Cannot publish to Pursuit because this package failed to compile."
     Right dependenciesDir -> do
       Log.debug "Uploading to Pursuit"
-      publishToPursuit { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, dependenciesDir } >>= case _ of
-        Left message -> Notify.notify message
-        Right _ -> pure unit
+      publishToPursuit { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, dependenciesDir }
 
   Registry.mirrorLegacyRegistry payload.name newMetadata.location
   Notify.notify "Mirrored registry operation to the legacy registry."
@@ -567,7 +563,7 @@ publish source payload = do
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the
 -- | manifest. If not, we solve their manifest to produce a build plan.
-verifyResolutions :: forall r. Manifest -> Maybe (Map PackageName Version) -> Run (REGISTRY + LOG + LOG_EXCEPT + r) (Map PackageName Version)
+verifyResolutions :: forall r. Manifest -> Maybe (Map PackageName Version) -> Run (REGISTRY + LOG + EXCEPT String + r) (Map PackageName Version)
 verifyResolutions manifest resolutions = do
   Log.debug "Check the submitted build plan matches the manifest"
   manifestIndex <- Registry.readAllManifests
@@ -583,13 +579,13 @@ verifyResolutions manifest resolutions = do
                 , Solver.printSolverError error
                 ]
             ]
-        Log.exit printedError
+        Except.throw printedError
       Right solved -> pure solved
     Just provided -> do
       validateResolutions manifest provided
       pure provided
 
-validateResolutions :: forall r. Manifest -> Map PackageName Version -> Run (LOG_EXCEPT + r) Unit
+validateResolutions :: forall r. Manifest -> Map PackageName Version -> Run (EXCEPT String + r) Unit
 validateResolutions manifest resolutions = do
   let unresolvedDependencies = Operation.Validation.getUnresolvedDependencies manifest resolutions
   unless (Array.null unresolvedDependencies) do
@@ -628,7 +624,7 @@ validateResolutions manifest resolutions = do
           $ Array.cons "The build plan provides dependencies at versions outside the range listed in the manifest:"
           $ map printPackageVersion incorrectVersions
 
-    Log.exit $ String.joinWith "\n\n" $ Array.catMaybes
+    Except.throw $ String.joinWith "\n\n" $ Array.catMaybes
       [ Just "All dependencies from the manifest must be in the build plan at valid versions."
       , missingPackagesError
       , incorrectVersionsError
@@ -640,11 +636,8 @@ type CompilePackage =
   , resolutions :: Map PackageName Version
   }
 
-compilePackage
-  :: forall r
-   . CompilePackage
-  -> Run (STORAGE + LOG + AFF + EFFECT + r) (Either String FilePath)
-compilePackage { packageSourceDir, compiler, resolutions } = do
+compilePackage :: forall r. CompilePackage -> Run (STORAGE + LOG + AFF + EFFECT + r) (Either String FilePath)
+compilePackage { packageSourceDir, compiler, resolutions } = Except.runExcept do
   tmp <- Tmp.mkTmpDir
   let dependenciesDir = Path.concat [ tmp, ".registry" ]
   FS.Extra.ensureDirectory dependenciesDir
@@ -656,50 +649,46 @@ compilePackage { packageSourceDir, compiler, resolutions } = do
         [ "src/**/*.purs"
         , Path.concat [ dependenciesDir, "*/src/**/*.purs" ]
         ]
-  forWithIndex_ resolutions (installPackage dependenciesDir)
+
+  -- We fetch every dependency at its resolved version, unpack the tarball, and
+  -- store the resulting source code in a specified directory for dependencies.
+  forWithIndex_ resolutions \name version -> do
+    let
+      -- This filename uses the format the directory name will have once
+      -- unpacked, ie. package-name-major.minor.patch
+      filename = PackageName.print name <> "-" <> Version.print version <> ".tar.gz"
+      filepath = Path.concat [ dependenciesDir, filename ]
+    Storage.download name version filepath
+    Tar.extract { cwd: dependenciesDir, archive: filename }
+    Run.liftAff $ FS.Aff.unlink filepath
+    Log.debug $ "Installed " <> formatPackageVersion name version
+
   Log.debug "Compiling..."
   compilerOutput <- Run.liftAff $ Purs.callCompiler
     { command: Purs.Compile { globs }
     , version: Just (Version.print compiler)
     , cwd: Just packageSourceDir
     }
-  pure (handleCompiler dependenciesDir compilerOutput)
-  where
-  -- We fetch every dependency at its resolved version, unpack the tarball, and
-  -- store the resulting source code in a specified directory for dependencies.
-  installPackage dir name version = do
-    let
-      -- This filename uses the format the directory name will have once
-      -- unpacked, ie. package-name-major.minor.patch
-      filename = PackageName.print name <> "-" <> Version.print version <> ".tar.gz"
-      filepath = Path.concat [ dir, filename ]
 
-    Storage.download name version filepath
-
-    Tar.extract { cwd: dir, archive: filename }
-    Run.liftAff $ FS.Aff.unlink filepath
-    Log.debug $ "Installed " <> formatPackageVersion name version
-
-  handleCompiler tmp = case _ of
-    Right _ ->
-      Right tmp
-    Left MissingCompiler -> Left $ Array.fold
+  case compilerOutput of
+    Left MissingCompiler -> Except.throw $ Array.fold
       [ "Compilation failed because the build plan compiler version "
       , Version.print compiler
       , " is not supported. Please try again with a different compiler."
       ]
-    Left (CompilationError errs) -> Left $ String.joinWith "\n"
+    Left (CompilationError errs) -> Except.throw $ String.joinWith "\n"
       [ "Compilation failed because the build plan does not compile with version " <> Version.print compiler <> " of the compiler:"
       , "```"
       , Purs.printCompilerErrors errs
       , "```"
       ]
-    Left (UnknownError err) -> Left $ String.joinWith "\n"
+    Left (UnknownError err) -> Except.throw $ String.joinWith "\n"
       [ "Compilation failed for your package due to a compiler error:"
       , "```"
       , err
       , "```"
       ]
+    Right _ -> pure dependenciesDir
 
 type PublishToPursuit =
   { packageSourceDir :: FilePath
@@ -715,8 +704,8 @@ type PublishToPursuit =
 publishToPursuit
   :: forall r
    . PublishToPursuit
-  -> Run (PURSUIT + LOG + NOTIFY + AFF + EFFECT + r) (Either (Doc GraphicsParam) Unit)
-publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = Run.Except.runExceptAt Log._logExcept do
+  -> Run (PURSUIT + LOG + NOTIFY + EXCEPT String + AFF + EFFECT + r) Unit
+publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = do
   Log.debug "Generating a resolutions file"
   tmp <- Tmp.mkTmpDir
 
@@ -739,18 +728,18 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
     }
 
   publishJson <- case compilerOutput of
-    Left MissingCompiler -> Log.exit $ Array.fold
+    Left MissingCompiler -> Except.throw $ Array.fold
       [ "Publishing failed because the build plan compiler version "
       , Version.print compiler
       , " is not supported. Please try again with a different compiler."
       ]
-    Left (CompilationError errs) -> Log.exit $ String.joinWith "\n"
+    Left (CompilationError errs) -> Except.throw $ String.joinWith "\n"
       [ "Publishing failed because the build plan does not compile with version " <> Version.print compiler <> " of the compiler:"
       , "```"
       , Purs.printCompilerErrors errs
       , "```"
       ]
-    Left (UnknownError err) -> Log.exit $ String.joinWith "\n"
+    Left (UnknownError err) -> Except.throw $ String.joinWith "\n"
       [ "Publishing failed for your package due to an unknown compiler error:"
       , "```"
       , err
@@ -761,9 +750,9 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
       -- but we only want the final JSON payload.
       let lines = String.split (String.Pattern "\n") publishResult
       case Array.last lines of
-        Nothing -> Log.exit "Publishing failed because of an unexpected compiler error. cc @purescript/packaging"
+        Nothing -> Except.throw "Publishing failed because of an unexpected compiler error. cc @purescript/packaging"
         Just jsonString -> case Argonaut.Parser.jsonParser jsonString of
-          Left err -> Log.exit $ String.joinWith "\n"
+          Left err -> Except.throw $ String.joinWith "\n"
             [ "Failed to parse output of publishing. cc @purescript/packaging"
             , "```"
             , err
@@ -775,7 +764,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
   result <- Pursuit.publish publishJson
   case result of
     Left error ->
-      Log.exit $ "Could not publish your package to Pursuit because an error was encountered (cc: @purescript/packaging): " <> error
+      Except.throw $ "Could not publish your package to Pursuit because an error was encountered (cc: @purescript/packaging): " <> error
     Right _ ->
       Notify.notify "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
@@ -808,15 +797,15 @@ pursPublishMethod = LegacyPursPublish
 fetchPackageSource
   :: forall r
    . { tmpDir :: FilePath, ref :: String, location :: Location }
-  -> Run (GITHUB + LOG + LOG_EXCEPT + AFF + EFFECT + r) { packageDirectory :: FilePath, publishedTime :: DateTime }
+  -> Run (GITHUB + LOG + EXCEPT String + AFF + EFFECT + r) { packageDirectory :: FilePath, publishedTime :: DateTime }
 fetchPackageSource { tmpDir, ref, location } = case location of
   Git _ -> do
     -- TODO: Support non-GitHub packages. Remember subdir when doing so. (See #15)
-    Log.exit "Packages are only allowed to come from GitHub for now. See #15"
+    Except.throw "Packages are only allowed to come from GitHub for now. See #15"
 
   GitHub { owner, repo, subdir } -> do
     -- TODO: Support subdir. In the meantime, we verify subdir is not present. (See #16)
-    when (isJust subdir) $ Log.exit "`subdir` is not supported for now. See #16"
+    when (isJust subdir) $ Except.throw "`subdir` is not supported for now. See #16"
 
     case pursPublishMethod of
       -- This needs to be removed so that we can support non-GitHub packages (#15)
@@ -842,23 +831,23 @@ fetchPackageSource { tmpDir, ref, location } = case location of
         Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
           Left error -> do
             Log.error $ "Failed to clone git tag: " <> Aff.message error
-            Log.exit $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
+            Except.throw $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
           Right _ -> Log.debug $ "Cloned package source to " <> Path.concat [ tmpDir, repo ]
 
         Log.debug $ "Getting published time..."
 
         let
-          getRefTime = Except.runExceptT do
-            timestamp <- ExceptT $ Git.gitCLI [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir)
-            jsDate <- liftEffect $ JSDate.parse timestamp
-            dateTime <- Except.except $ note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
+          getRefTime = do
+            timestamp <- Except.rethrow =<< Git.gitCLI [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir)
+            jsDate <- Run.liftEffect $ JSDate.parse timestamp
+            dateTime <- Except.note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
             pure dateTime
 
         -- Cloning will result in the `repo` name as the directory name
-        publishedTime <- Run.liftAff getRefTime >>= case _ of
+        publishedTime <- Except.runExcept getRefTime >>= case _ of
           Left error -> do
             Log.error $ "Failed to get published time: " <> error
-            Log.exit $ "Cloned repository " <> owner <> "/" <> repo <> " at ref " <> ref <> ", but could not read the published time from the ref."
+            Except.throw $ "Cloned repository " <> owner <> "/" <> repo <> " at ref " <> ref <> ", but could not read the published time from the ref."
           Right value -> pure value
         pure { packageDirectory: repoDir, publishedTime }
 
@@ -872,12 +861,12 @@ fetchPackageSource { tmpDir, ref, location } = case location of
           commit <- GitHub.getRefCommit { owner, repo } (RawVersion ref) >>= case _ of
             Left githubError -> do
               Log.error $ "Failed to fetch " <> destination <> " at ref " <> ref <> ": " <> Octokit.printGitHubError githubError
-              Log.exit $ "Failed to fetch commit data associated with " <> destination <> " at ref " <> ref
+              Except.throw $ "Failed to fetch commit data associated with " <> destination <> " at ref " <> ref
             Right result -> pure result
           GitHub.getCommitDate { owner, repo } commit >>= case _ of
             Left githubError -> do
               Log.error $ "Failed to fetch " <> destination <> " at commit " <> commit <> ": " <> Octokit.printGitHubError githubError
-              Log.exit $ "Unable to get published time for commit " <> commit <> " associated with the given ref " <> ref
+              Except.throw $ "Unable to get published time for commit " <> commit <> " associated with the given ref " <> ref
             Right a -> pure a
 
         let tarballName = ref <> ".tar.gz"
@@ -892,29 +881,29 @@ fetchPackageSource { tmpDir, ref, location } = case location of
           }
 
         case response of
-          Nothing -> Log.exit $ "Could not download " <> archiveUrl
+          Nothing -> Except.throw $ "Could not download " <> archiveUrl
           Just (Left error) -> do
             Log.error $ "Failed to download " <> archiveUrl <> " because of an HTTP error: " <> Affjax.Node.printError error
-            Log.exit $ "Could not download " <> archiveUrl
+            Except.throw $ "Could not download " <> archiveUrl
           Just (Right { status, body }) | status /= StatusCode 200 -> do
             buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
             bodyString <- Run.liftEffect $ Buffer.toString UTF8 (buffer :: Buffer)
             Log.error $ "Failed to download " <> archiveUrl <> " because of a non-200 status code (" <> show status <> ") with body " <> bodyString
-            Log.exit $ "Could not download " <> archiveUrl
+            Except.throw $ "Could not download " <> archiveUrl
           Just (Right { body }) -> do
             Log.debug $ "Successfully downloaded " <> archiveUrl <> " into a buffer."
             buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
             Run.liftAff (Aff.attempt (FS.Aff.writeFile absoluteTarballPath buffer)) >>= case _ of
               Left error -> do
                 Log.error $ "Downloaded " <> archiveUrl <> " but failed to write it to the file at path " <> absoluteTarballPath <> ":\n" <> Aff.message error
-                Log.exit $ "Could not download " <> archiveUrl <> " due to an internal error."
+                Except.throw $ "Could not download " <> archiveUrl <> " due to an internal error."
               Right _ ->
                 Log.debug $ "Tarball downloaded to " <> absoluteTarballPath
 
         Log.debug "Verifying tarball..."
         Foreign.Tar.getToplevelDir absoluteTarballPath >>= case _ of
           Nothing ->
-            Log.exit "Downloaded tarball from GitHub has no top-level directory."
+            Except.throw "Downloaded tarball from GitHub has no top-level directory."
           Just dir -> do
             Log.debug "Extracting the tarball..."
             Tar.extract { cwd: tmpDir, archive: tarballName }
@@ -927,7 +916,7 @@ copyPackageSourceFiles
   :: forall r
    . Maybe (NonEmptyArray NonEmptyString)
   -> { source :: FilePath, destination :: FilePath }
-  -> Run (LOG + LOG_EXCEPT + AFF + EFFECT + r) Unit
+  -> Run (LOG + EXCEPT String + AFF + EFFECT + r) Unit
 copyPackageSourceFiles files { source, destination } = do
   Log.debug $ "Copying package source files from " <> source <> " to " <> destination
   userFiles <- case files of
@@ -937,7 +926,7 @@ copyPackageSourceFiles files { source, destination } = do
       { succeeded, failed } <- FastGlob.match source globs
 
       unless (Array.null failed) do
-        Log.exit $ String.joinWith " "
+        Except.throw $ String.joinWith " "
           [ "Some paths matched by globs in the 'files' key are outside your package directory."
           , "Please ensure globs only match within your package directory, including symlinks."
           ]

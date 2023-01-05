@@ -35,7 +35,7 @@ import Registry.Version as Version
 import Run (Run)
 import Run as Run
 import Run.Except (EXCEPT)
-import Run.Except as Run.Except
+import Run.Except as Except
 
 data DeleteMode = File FilePath | Package PackageName Version
 
@@ -87,9 +87,9 @@ main = launchAff_ do
   -- Git
   debouncer <- Git.newDebouncer
   let
-    gitEnv :: GitEnv
-    gitEnv =
-      { write: CommitAs (Git.pacchettibottiCommitter token)
+    gitEnv :: WriteMode -> GitEnv
+    gitEnv writeMode =
+      { write: writeMode
       , pull: OnlyClean
       , repos: Git.defaultRepos
       , workdir: scratchDir
@@ -119,17 +119,16 @@ main = launchAff_ do
       Right values -> pure values
 
   let
-    interpret interpretGit =
+    interpret gitMode =
       Registry.interpret (Registry.handle registryCacheRef)
         >>> Storage.interpret (Storage.handleS3 { s3, cache })
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-        >>> interpretGit
-        >>> Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+        >>> Git.interpret (Git.handle (gitEnv gitMode))
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
         >>> Run.runBaseAff'
 
   -- We run deletions *without* committing, because we'll do it in bulk later.
-  interpret (Git.interpret (Git.handle (gitEnv { write = ReadOnly }))) do
+  interpret ReadOnly do
     Log.info $ Array.fold
       [ "Deleting package versions:"
       , do
@@ -139,7 +138,7 @@ main = launchAff_ do
 
     forWithIndex_ deletions \name versions ->
       for_ versions \version -> do
-        result <- Run.Except.runExcept $ deleteVersion name version
+        result <- Except.runExcept $ deleteVersion name version
         let printed = Version.print version
         case result of
           Left err -> do
@@ -150,7 +149,7 @@ main = launchAff_ do
     Log.info "Finished."
 
   -- Then we add our commits with committing enabled.
-  interpret (Git.interpret (Git.handle gitEnv)) do
+  interpret (CommitAs (Git.pacchettibottiCommitter token)) do
     Git.commit Git.CommitMetadataIndex "Remove some package versions from metadata." >>= case _ of
       Left error -> Log.error $ "Failed to commit metadata: " <> error
       Right _ -> pure unit
@@ -166,7 +165,7 @@ deleteVersion name version = do
   Storage.delete name version
   Log.info $ "Updating metadata for " <> formatted
   Registry.readMetadata name >>= case _ of
-    Nothing -> Run.Except.throw $ "Could not update metadata for " <> formatted <> " because no existing metadata was found."
+    Nothing -> Except.throw $ "Could not update metadata for " <> formatted <> " because no existing metadata was found."
     Just (Metadata old) -> do
       let new = Metadata $ old { published = Map.delete version old.published, unpublished = Map.delete version old.unpublished }
       Registry.writeMetadata name new

@@ -32,7 +32,6 @@ import Data.Set as Set
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
 import Data.Variant as Variant
-import Dodo as Dodo
 import Effect.Class.Console as Console
 import Node.Path as Path
 import Node.Process as Process
@@ -52,7 +51,7 @@ import Registry.App.Effect.Git (PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG_EXCEPT, LogVerbosity(..))
+import Registry.App.Effect.Log (LogVerbosity(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Pursuit as Pursuit
@@ -75,7 +74,8 @@ import Registry.PackageName as PackageName
 import Registry.Version as Version
 import Run (Run)
 import Run as Run
-import Run.Except (Except)
+import Run.Except (EXCEPT, Except)
+import Run.Except as Except
 import Run.Except as Run.Except
 import Type.Proxy (Proxy(..))
 
@@ -166,7 +166,7 @@ main = launchAff_ do
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
     # Notify.interpret Notify.handleLog
-    # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'
 
@@ -230,10 +230,10 @@ runLegacyImport mode logs = do
   -- low. Should be bumped from time to time to the latest compiler.
   let minCompiler = unsafeFromRight (Version.parse "0.15.7")
   compiler <- Run.liftAff (Purs.callCompiler { command: Purs.Version, version: Nothing, cwd: Nothing }) >>= case _ of
-    Left _ -> Log.exit "Could not determine the local compiler version."
+    Left _ -> Except.throw "Could not determine the local compiler version."
     Right str -> case Version.parse str of
-      Left error -> Log.exit $ "Failed to parse compiler version output (" <> str <> ") as a version: " <> error
-      Right version | version < minCompiler -> Log.exit $ "Local compiler " <> Version.print version <> " is too low (min: " <> Version.print minCompiler <> ")."
+      Left error -> Except.throw $ "Failed to parse compiler version output (" <> str <> ") as a version: " <> error
+      Right version | version < minCompiler -> Except.throw $ "Local compiler " <> Version.print version <> " is too low (min: " <> Version.print minCompiler <> ")."
       Right version -> do
         Log.info $ "Using compiler " <> Version.print version
         pure version
@@ -248,7 +248,7 @@ runLegacyImport mode logs = do
         Nothing -> do
           let formatted = formatPackageVersion manifest.name manifest.version
           Log.error $ "Unable to recover package ref for " <> formatted
-          Log.exit $ "Failed to create publish operation for " <> formatted
+          Except.throw $ "Failed to create publish operation for " <> formatted
         Just ref ->
           pure
             { location: Just manifest.location
@@ -287,7 +287,7 @@ runLegacyImport mode logs = do
           , "----------"
           ]
         operation <- mkOperation (Manifest manifest)
-        result <- Run.Except.runExceptAt Log._logExcept $ API.publish source operation
+        result <- Except.runExcept $ API.publish source operation
         -- TODO: Some packages will fail because the legacy importer does not
         -- perform all the same validation checks that the publishing flow does.
         -- What should we do when a package has a valid manifest but fails for
@@ -296,7 +296,7 @@ runLegacyImport mode logs = do
         -- has completed?
         case result of
           Left error -> do
-            Log.error $ Dodo.text (Array.fold [ "Failed to publish ", formatted, ": " ]) <> error
+            Log.error $ "Failed to publish " <> formatted <> ": " <> error
           Right _ ->
             Log.info $ "Published " <> formatted
 
@@ -560,7 +560,7 @@ type PackageResult =
   , tags :: Array Tag
   }
 
-validatePackage :: forall r. RawPackageName -> String -> Run (EXCEPT_PACKAGE + GITHUB + LOG_EXCEPT + r) PackageResult
+validatePackage :: forall r. RawPackageName -> String -> Run (GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) PackageResult
 validatePackage rawPackage rawUrl = do
   name <- exceptPackage $ validatePackageName rawPackage
   exceptPackage $ validatePackageDisabled name
@@ -577,7 +577,7 @@ validatePackage rawPackage rawUrl = do
       exceptPackage $ validatePackageLocation { registered: address, received: tagAddress }
       pure { name, address, tags }
 
-fetchPackageTags :: forall r. Address -> Run (EXCEPT_PACKAGE + GITHUB + LOG_EXCEPT + r) (Array Tag)
+fetchPackageTags :: forall r. Address -> Run (GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) (Array Tag)
 fetchPackageTags address = GitHub.listTags address >>= case _ of
   Left err -> case err of
     Octokit.APIError apiError | apiError.statusCode >= 400 -> do
@@ -585,7 +585,7 @@ fetchPackageTags address = GitHub.listTags address >>= case _ of
       let reason = "GitHub API error with status code " <> show apiError.statusCode
       throwPackage { error, reason }
     _ ->
-      Log.exit $ String.joinWith "\n"
+      Except.throw $ String.joinWith "\n"
         [ "Unexpected GitHub error with a status <= 400"
         , Octokit.printGitHubError err
         ]

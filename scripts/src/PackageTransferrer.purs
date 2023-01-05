@@ -17,7 +17,7 @@ import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
+import Registry.App.Effect.Log (LOG, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Registry (REGISTRY)
@@ -35,6 +35,8 @@ import Registry.PackageName as PackageName
 import Registry.Scripts.LegacyImporter as LegacyImporter
 import Run (Run)
 import Run as Run
+import Run.Except (EXCEPT)
+import Run.Except as Except
 import Run.Except as Run.Except
 
 main :: Effect Unit
@@ -81,7 +83,7 @@ main = launchAff_ do
     # Git.interpret (Git.handle gitEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Notify.interpret Notify.handleLog
-    # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'
 
@@ -113,7 +115,7 @@ transferAll packages packageLocations = do
 transferPackage :: forall r. String -> Location -> Run (API.AuthenticatedEffects + r) Unit
 transferPackage rawPackageName newLocation = do
   name <- case PackageName.parse (stripPureScriptPrefix rawPackageName) of
-    Left _ -> Log.exit $ "Could not transfer " <> rawPackageName <> " because it is not a valid package name."
+    Left _ -> Except.throw $ "Could not transfer " <> rawPackageName <> " because it is not a valid package name."
     Right value -> pure value
 
   let
@@ -123,7 +125,7 @@ transferPackage rawPackageName newLocation = do
   { publicKey, privateKey } <- Env.askPacchettiBotti
 
   signature <- Run.liftAff (Auth.signPayload { publicKey, privateKey, rawPayload }) >>= case _ of
-    Left _ -> Log.exit "Error signing transfer."
+    Left _ -> Except.throw "Error signing transfer."
     Right signature -> pure signature
 
   API.authenticated
@@ -138,7 +140,7 @@ type PackageLocations =
   , tagLocation :: Location
   }
 
-latestLocations :: forall r. Map String String -> Run (REGISTRY + GITHUB + LOG + LOG_EXCEPT + r) (Map String (Maybe PackageLocations))
+latestLocations :: forall r. Map String String -> Run (REGISTRY + GITHUB + LOG + EXCEPT String + r) (Map String (Maybe PackageLocations))
 latestLocations packages = forWithIndex packages \package location -> do
   let rawName = RawPackageName (stripPureScriptPrefix package)
   Run.Except.runExceptAt LegacyImporter._exceptPackage (LegacyImporter.validatePackage rawName location) >>= case _ of
@@ -148,7 +150,7 @@ latestLocations packages = forWithIndex packages \package location -> do
       Registry.readMetadata packageResult.name >>= case _ of
         Nothing -> do
           Log.error $ "No metadata exists for package " <> package
-          Log.exit $ "Cannot verify location of " <> PackageName.print packageResult.name <> " because it has no metadata."
+          Except.throw $ "Cannot verify location of " <> PackageName.print packageResult.name <> " because it has no metadata."
         Just metadata -> case latestPackageLocations packageResult metadata of
           Left error -> do
             Log.warn $ "Could not verify location of " <> PackageName.print packageResult.name <> ": " <> error

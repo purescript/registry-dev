@@ -23,7 +23,7 @@ import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG_EXCEPT, LogVerbosity(..))
+import Registry.App.Effect.Log (LogVerbosity(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.PackageSets as PackageSets
@@ -41,7 +41,8 @@ import Registry.Operation (AuthenticatedData, PackageOperation(..), PackageSetOp
 import Registry.Operation as Operation
 import Run (AFF, Run)
 import Run as Run
-import Run.Except as Run.Except
+import Run.Except (EXCEPT)
+import Run.Except as Except
 
 main :: Effect Unit
 main = launchAff_ $ do
@@ -100,7 +101,7 @@ main = launchAff_ $ do
       -- Caching & logging
       # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
       # Notify.interpret (Notify.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Git.defaultRepos.registry })
-      # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+      # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
       # Log.interpret (Log.handleTerminal Verbose)
       -- Base effects
       # Run.runBaseAff'
@@ -272,13 +273,13 @@ decodeIssueEvent json = lmap CA.printJsonDecodeError do
 signPacchettiBottiIfTrustee
   :: forall r
    . AuthenticatedData
-  -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + LOG_EXCEPT + AFF + r) AuthenticatedData
+  -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + EXCEPT String + AFF + r) AuthenticatedData
 signPacchettiBottiIfTrustee auth = do
   if auth.email /= pacchettibottiEmail then
     pure auth
   else do
     GitHub.listTeamMembers API.packagingTeam >>= case _ of
-      Left githubError -> Log.exit $ Array.fold
+      Left githubError -> Except.throw $ Array.fold
         [ "This authenticated operation was opened using the pacchettibotti "
         , "email address, but we were unable to authenticate that you are a "
         , "member of the @purescript/packaging team:\n\n"
@@ -287,7 +288,7 @@ signPacchettiBottiIfTrustee auth = do
       Right members -> do
         { username } <- Env.askGitHubEvent
         unless (Array.elem username members) do
-          Log.exit $ Array.fold
+          Except.throw $ Array.fold
             [ "This authenticated operation was opened using the pacchettibotti "
             , "email address, but your username is not a member of the "
             , "@purescript/packaging team."
@@ -295,7 +296,7 @@ signPacchettiBottiIfTrustee auth = do
 
         { publicKey, privateKey } <- Env.askPacchettiBotti
         signature <- Run.liftAff (Auth.signPayload { publicKey, privateKey, rawPayload: auth.rawPayload }) >>= case _ of
-          Left _ -> Log.exit "Error signing transfer. cc: @purescript/packaging"
+          Left _ -> Except.throw "Error signing transfer. cc: @purescript/packaging"
           Right signature -> pure signature
 
         pure $ auth { signature = signature }

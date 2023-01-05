@@ -20,8 +20,6 @@ import Registry.Range as Range
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
-import Run.Except (Except)
-import Run.Except as Run.Except
 import Type.Proxy (Proxy(..))
 
 data LogLevel = Debug | Info | Warn | Error
@@ -137,13 +135,3 @@ handleFs verbosity logfile action = case action of
       Verbose -> attemptWrite
 
     pure next
-
-type LOG_EXCEPT :: Row (Type -> Type) -> Row (Type -> Type)
-type LOG_EXCEPT r = (logExcept :: Except (Doc GraphicsParam) | r)
-
-_logExcept :: Proxy "logExcept"
-_logExcept = Proxy
-
--- | Terminate a computation with a formatted error suitable for display.
-exit :: forall a r void. Loggable a => a -> Run (LOG_EXCEPT + r) void
-exit message = Run.Except.throwAt _logExcept (toLog message)

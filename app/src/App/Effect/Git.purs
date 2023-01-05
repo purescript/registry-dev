@@ -31,7 +31,7 @@ import Registry.PackageName as PackageName
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
-import Run.Except as Run.Except
+import Run.Except as Except
 import Safe.Coerce (coerce)
 import Sunde as Sunde
 
@@ -274,7 +274,7 @@ handle env = case _ of
         Log.info $ "Skipping push to repo " <> owner <> "/" <> repo <> " because write mode is 'ReadOnly'."
         pure $ reply $ Right NoChange
       CommitAs committer -> do
-        result <- Run.Except.runExceptAt _gitException do
+        result <- Except.runExcept do
           let cwd = filepath repoKey
           existingTags <- execGit cwd [ "tag", "--list" ] \error ->
             "Failed to list tags in local checkout " <> cwd <> ": " <> error
@@ -298,7 +298,7 @@ handle env = case _ of
         Log.info $ "Skipping push to repo " <> owner <> "/" <> repo <> " because write mode is 'ReadOnly'."
         pure $ reply $ Right NoChange
       CommitAs committer -> do
-        result <- Run.Except.runExceptAt _gitException do
+        result <- Except.runExcept do
           let cwd = filepath repoKey
           let upstream = address repoKey
           let origin = authOrigin upstream committer
@@ -343,16 +343,13 @@ handle env = case _ of
 
   execGit :: FilePath -> Array String -> (String -> String) -> Run _ String
   execGit cwd args onError = Run.liftAff (gitCLI args (Just cwd)) >>= case _ of
-    Left error -> Run.Except.throwAt _gitException (onError error)
+    Left error -> Except.throw (onError error)
     Right stdout -> pure stdout
-
-  _gitException :: Proxy "gitException"
-  _gitException = Proxy
 
   -- | Attempt to fetch a repository to the given file path; if it already
   -- | exists there, use the provided pull mode to resolve changes.
   gitPull :: RepoKey -> Run _ (Either String GitResult)
-  gitPull repoKey = Run.Except.runExceptAt _gitException do
+  gitPull repoKey = Except.runExcept do
     let { owner, repo } = address repoKey
     let cwd = filepath repoKey
     let exec = execGit cwd
@@ -406,7 +403,7 @@ handle env = case _ of
             Log.debug $ "Pulled the latest changes for " <> formatted
 
           OnlyClean | not isClean ->
-            Run.Except.throwAt _gitException do
+            Except.throw do
               "Not pulling changes for " <> formatted <> " because the local checkout is dirty and only-clean mode was specified."
 
           OnlyClean -> do
@@ -435,7 +432,7 @@ handle env = case _ of
 
   -- | Commit file(s) at the given commit key to the given repository.
   gitCommit :: Committer -> RepoKey -> CommitKey -> String -> Run _ (Either String GitResult)
-  gitCommit committer repoKey commitKey message = Run.Except.runExceptAt _gitException do
+  gitCommit committer repoKey commitKey message = Except.runExcept do
     let { owner, repo } = address repoKey
     let formatted = owner <> "/" <> repo
     let cwd = filepath repoKey
@@ -453,7 +450,7 @@ handle env = case _ of
       Current -> pure unit
       Ahead n -> Log.warn do
         "Ahead of origin by " <> show n <> " commits in local checkout of " <> cwd <> ", something may be wrong."
-      Behind n -> Run.Except.throwAt _gitException do
+      Behind n -> Except.throw do
         "Behind of origin by " <> show n <> " commits in local checkout of " <> cwd <> ", committing would cause issues."
 
     -- Then we ensure the commit metadata will match the expected committer
@@ -487,7 +484,7 @@ handle env = case _ of
 
   -- | Push to the indicated repository
   gitPush :: Committer -> RepoKey -> Run _ (Either String GitResult)
-  gitPush committer repoKey = Run.Except.runExceptAt _gitException do
+  gitPush committer repoKey = Except.runExcept do
     let cwd = filepath repoKey
 
     -- First we fetch the origin to make sure we're up-to-date.
@@ -552,9 +549,9 @@ handle env = case _ of
       "Failed to check status " <> inRepoErr error
 
     case Array.uncons (String.split (String.Pattern "\n") statusOutput) of
-      Nothing -> Run.Except.throwAt _gitException "Output of git status did not contain any text."
+      Nothing -> Except.throw "Output of git status did not contain any text."
       Just { head, tail } -> case Parsing.runParser head gitStatusParser of
-        Left error -> Run.Except.throwAt _gitException $ "Could not parse git status " <> head <> inRepoErr (Parsing.parseErrorMessage error)
+        Left error -> Except.throw $ "Could not parse git status " <> head <> inRepoErr (Parsing.parseErrorMessage error)
         Right { origin, branch, status } -> pure { origin, branch, status, dirty: NonEmptyArray.fromArray tail }
 
 -- | The result of a 'git status' command, which can be used to determine whether
@@ -625,9 +622,9 @@ commitKeyToRepoKey = case _ of
 
 -- | Run the `git` tool via the command line. Suitable for implementing Aff-
 -- | based interpreters.
-gitCLI :: Array String -> Maybe FilePath -> Aff (Either String String)
+gitCLI :: forall m. MonadAff m => Array String -> Maybe FilePath -> m (Either String String)
 gitCLI args cwd = do
-  result <- Sunde.spawn { cmd: "git", args, stdin: Nothing } (ChildProcess.defaultSpawnOptions { cwd = cwd })
+  result <- liftAff $ Sunde.spawn { cmd: "git", args, stdin: Nothing } (ChildProcess.defaultSpawnOptions { cwd = cwd })
   let stdout = String.trim result.stdout
   let stderr = String.trim result.stderr
   pure $ case result.exit of

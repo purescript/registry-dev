@@ -23,7 +23,7 @@ import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LOG_EXCEPT, LogVerbosity(..))
+import Registry.App.Effect.Log (LOG, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
 import Registry.App.Effect.PackageSets as PackageSets
@@ -36,7 +36,8 @@ import Registry.Internal.Format as Internal.Format
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
-import Run.Except as Run.Except
+import Run.Except (EXCEPT)
+import Run.Except as Except
 
 data PublishMode = GeneratePackageSet | CommitPackageSet
 
@@ -112,14 +113,14 @@ main = Aff.launchAff_ do
     # Storage.interpret (Storage.handleReadOnly cache)
     # Git.interpret (Git.handle gitEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-    # Run.Except.catchAt Log._logExcept (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'
 
-updater :: forall r. Run (REGISTRY + PACKAGE_SETS + LOG + LOG_EXCEPT + AFF + EFFECT + r) Unit
+updater :: forall r. Run (REGISTRY + PACKAGE_SETS + LOG + EXCEPT String + AFF + EFFECT + r) Unit
 updater = do
   prevPackageSet <- Registry.readLatestPackageSet >>= case _ of
-    Nothing -> Log.exit "No previous package set found, cannot continue."
+    Nothing -> Except.throw "No previous package set found, cannot continue."
     Just set -> pure set
 
   PackageSets.validatePackageSet prevPackageSet
@@ -128,9 +129,9 @@ updater = do
   -- version to upgrade the package sets. This automatically bumps the purs
   -- version when the registry upgrades to a new compiler.
   compiler <- Run.liftAff (Purs.callCompiler { command: Purs.Version, version: Nothing, cwd: Nothing }) >>= case _ of
-    Left _ -> Log.exit "Could not determine the local compiler version."
+    Left _ -> Except.throw "Could not determine the local compiler version."
     Right str -> case Version.parse str of
-      Left error -> Log.exit $ "Failed to parse compiler version output (" <> str <> ") as a version: " <> error
+      Left error -> Except.throw $ "Failed to parse compiler version output (" <> str <> ") as a version: " <> error
       Right version -> do
         let prev = (un PackageSet prevPackageSet).compiler
         let purs = if version > prev then version else prev
@@ -176,7 +177,7 @@ type RecentUploads =
   , ineligible :: Map PackageName (NonEmptyArray Version)
   }
 
-findRecentUploads :: forall r. Hours -> Run (REGISTRY + EFFECT + r) RecentUploads
+findRecentUploads :: forall r. Hours -> Run (REGISTRY + EXCEPT String + EFFECT + r) RecentUploads
 findRecentUploads limit = do
   allMetadata <- Registry.readAllMetadata
   now <- nowUTC

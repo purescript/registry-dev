@@ -26,7 +26,7 @@ import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cach
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LOG_EXCEPT)
+import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.LenientRange as LenientRange
 import Registry.App.Legacy.LenientVersion as LenientVersion
@@ -42,6 +42,8 @@ import Registry.Sha256 as Sha256
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
+import Run.Except (EXCEPT)
+import Run.Except as Except
 import Run.Except as Run.Except
 import Sunde as Process
 import Type.Proxy (Proxy(..))
@@ -66,12 +68,12 @@ fetchLegacyManifest
    . PackageName
   -> Address
   -> RawVersion
-  -> Run (GITHUB + LEGACY_CACHE + LOG + LOG_EXCEPT + AFF + EFFECT + r) (Either LegacyManifestValidationError LegacyManifest)
+  -> Run (GITHUB + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT + r) (Either LegacyManifestValidationError LegacyManifest)
 fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestError do
   legacyPackageSets <- fetchLegacyPackageSets >>= case _ of
     Left error -> do
       Log.error $ "Failed error when to fetch legacy package sets: " <> Octokit.printGitHubError error
-      Log.exit "Could not retrieve legacy package sets; aborting to avoid producing incorrect legacy manifest depedency bounds."
+      Except.throw "Could not retrieve legacy package sets; aborting to avoid producing incorrect legacy manifest depedency bounds."
     Right union -> pure union
 
   manifests <- Run.Except.rethrowAt _legacyManifestError =<< fetchLegacyManifestFiles address ref
@@ -158,9 +160,9 @@ fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestErr
       fields.description
 
   pure { license, dependencies, description }
-  where
-  _legacyManifestError :: Proxy "legacyManifestError"
-  _legacyManifestError = Proxy
+
+_legacyManifestError :: Proxy "legacyManifestError"
+_legacyManifestError = Proxy
 
 type LegacyManifestValidationError = { error :: LegacyManifestError, reason :: String }
 
