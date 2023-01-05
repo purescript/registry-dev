@@ -485,7 +485,7 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
       -- Next we need to write the files that will be pushed to the package-sets repo
       Log.debug $ "Writing " <> dhallPath
       let fullDhallPath = Path.concat [ legacyPath, dhallPath ]
-      Run.liftAff $ FS.Aff.writeTextFile UTF8 fullDhallPath (Legacy.PackageSet.printDhall converted.packageSet)
+      Run.liftAff $ FS.Aff.writeTextFile UTF8 fullDhallPath (Legacy.PackageSet.printDhall converted.packageSet <> "\n")
 
       Log.debug $ "Writing " <> packagesJsonPath
       let fullPackagesJsonPath = Path.concat [ legacyPath, packagesJsonPath ]
