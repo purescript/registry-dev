@@ -353,6 +353,9 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
         refreshMetadata
 
   ReadLatestPackageSet reply -> do
+    Git.pull Git.RegistryRepo >>= case _ of
+      Left error -> Log.exit $ "Could not read package sets because the registry repo could not be checked: " <> error
+      Right _ -> pure unit
     registryPath <- Git.getPath Git.RegistryRepo
     let packageSetsDir = Path.concat [ registryPath, Constants.packageSetsDirectory ]
     Log.info $ "Reading latest package set from directory " <> packageSetsDir
@@ -373,6 +376,9 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
             pure $ reply $ Just set
 
   WritePackageSet set@(PackageSet { version }) message next -> do
+    Git.pull Git.RegistryRepo >>= case _ of
+      Left error -> Log.exit $ "Could not read package sets because the registry repo could not be checked: " <> error
+      Right _ -> pure unit
     let name = Version.print version
     Log.info $ "Writing package set " <> name
     commitResult <- Git.writeCommitPush (Git.CommitPackageSet version) \registryPath -> do
@@ -389,6 +395,9 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
       Right Changed -> Log.info "Wrote and committed package set." *> pure next
 
   ReadAllPackageSets reply -> do
+    Git.pull Git.RegistryRepo >>= case _ of
+      Left error -> Log.exit $ "Could not read package sets because the registry repo could not be checked: " <> error
+      Right _ -> pure unit
     registryPath <- Git.getPath Git.RegistryRepo
     let packageSetsDir = Path.concat [ registryPath, Constants.packageSetsDirectory ]
     Log.info $ "Reading all package sets from directory " <> packageSetsDir
@@ -457,7 +466,7 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
 
     commitFilesResult <- Git.writeCommitPush (Git.CommitLegacyPackageSets files) \legacyPath -> do
       latestCompatibleSets <- do
-        latestSets <- Run.liftAff (readJsonFile Legacy.PackageSet.latestCompatibleSetsCodec latestSetsPath) >>= case _ of
+        latestSets <- Run.liftAff (readJsonFile Legacy.PackageSet.latestCompatibleSetsCodec (Path.concat [ legacyPath, latestSetsPath ])) >>= case _ of
           Left err -> do
             Log.error $ "Could not read latest-compatible-sets from " <> latestSetsPath <> " due to an error: " <> err
             Log.exit $ "Could not mirror package set because we could not read the latest-compatible-sets.json file."

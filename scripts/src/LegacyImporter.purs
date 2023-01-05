@@ -129,7 +129,7 @@ main = launchAff_ do
           Storage.interpret (Storage.handleReadOnly cache)
             >>> Pursuit.interpret Pursuit.handlePure
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-            >>> Git.interpret (Git.handle (gitEnv ForceClean ReadOnly))
+            >>> Git.interpret (Git.handle (gitEnv Autostash ReadOnly))
 
       GenerateRegistry -> do
         token <- Env.lookupRequired Env.githubToken
@@ -139,7 +139,7 @@ main = launchAff_ do
           Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret Pursuit.handlePure
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-            >>> Git.interpret (Git.handle (gitEnv ForceClean (CommitAs (Git.pacchettibottiCommitter token))))
+            >>> Git.interpret (Git.handle (gitEnv Autostash (CommitAs (Git.pacchettibottiCommitter token))))
 
       UpdateRegistry -> do
         token <- Env.lookupRequired Env.pacchettibottiToken
@@ -149,7 +149,7 @@ main = launchAff_ do
           Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret (Pursuit.handleAff token)
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-            >>> Git.interpret (Git.handle (gitEnv OnlyClean (CommitAs (Git.pacchettibottiCommitter token))))
+            >>> Git.interpret (Git.handle (gitEnv ForceClean (CommitAs (Git.pacchettibottiCommitter token))))
 
   -- Logging setup
   let logDir = Path.concat [ scratchDir, "logs" ]

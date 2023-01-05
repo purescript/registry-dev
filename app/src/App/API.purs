@@ -559,7 +559,7 @@ publish source payload = do
       Log.debug "Uploading to Pursuit"
       publishToPursuit { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, dependenciesDir } >>= case _ of
         Left message -> Notify.notify message
-        Right _ -> Notify.notify "Successfully published docs to pursuit!"
+        Right _ -> pure unit
 
   Registry.mirrorLegacyRegistry payload.name newMetadata.location
   Notify.notify "Mirrored registry operation to the legacy registry."

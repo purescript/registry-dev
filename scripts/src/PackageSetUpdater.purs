@@ -122,7 +122,7 @@ updater = do
 
   PackageSets.validatePackageSet prevPackageSet
 
-  let uploadHours = 240.0
+  let uploadHours = 24.0
   recentUploads <- findRecentUploads (Hours uploadHours)
 
   manifestIndex <- Registry.readAllManifests
