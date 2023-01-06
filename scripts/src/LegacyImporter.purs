@@ -43,7 +43,6 @@ import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API (Source(..))
 import Registry.App.API as API
-import Registry.App.CLI.Purs as Purs
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
@@ -77,6 +76,7 @@ import Run as Run
 import Run.Except (EXCEPT, Except)
 import Run.Except as Except
 import Run.Except as Run.Except
+import Spago.Generated.BuildInfo as BuildInfo
 import Type.Proxy (Proxy(..))
 
 data ImportMode = DryRun | GenerateRegistry | UpdateRegistry
@@ -226,17 +226,17 @@ runLegacyImport mode logs = do
 
   allMetadata <- Registry.readAllMetadata
 
+  -- This record comes from the build directory (.spago) and records information
+  -- from the most recent build.
+  let compiler = unsafeFromRight (Version.parse BuildInfo.buildInfo.pursVersion)
+
   -- Just a safety check to ensure the compiler used in the pipeline is not too
   -- low. Should be bumped from time to time to the latest compiler.
   let minCompiler = unsafeFromRight (Version.parse "0.15.7")
-  compiler <- Run.liftAff (Purs.callCompiler { command: Purs.Version, version: Nothing, cwd: Nothing }) >>= case _ of
-    Left _ -> Except.throw "Could not determine the local compiler version."
-    Right str -> case Version.parse str of
-      Left error -> Except.throw $ "Failed to parse compiler version output (" <> str <> ") as a version: " <> error
-      Right version | version < minCompiler -> Except.throw $ "Local compiler " <> Version.print version <> " is too low (min: " <> Version.print minCompiler <> ")."
-      Right version -> do
-        Log.info $ "Using compiler " <> Version.print version
-        pure version
+  when (compiler < minCompiler) do
+    Except.throw $ "Local compiler " <> Version.print compiler <> " is too low (min: " <> Version.print minCompiler <> ")."
+
+  Log.info $ "Using compiler " <> Version.print compiler
 
   let
     isPublished { name, version } = hasMetadata allMetadata name version

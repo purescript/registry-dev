@@ -17,7 +17,6 @@ import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Node.Path as Path
 import Node.Process as Process
-import Registry.App.CLI.Purs as Purs
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
@@ -38,6 +37,7 @@ import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
+import Spago.Generated.BuildInfo as BuildInfo
 
 data PublishMode = GeneratePackageSet | CommitPackageSet
 
@@ -125,18 +125,18 @@ updater = do
 
   PackageSets.validatePackageSet prevPackageSet
 
-  -- We use the greater of the local compiler version or the last package set
-  -- version to upgrade the package sets. This automatically bumps the purs
-  -- version when the registry upgrades to a new compiler.
-  compiler <- Run.liftAff (Purs.callCompiler { command: Purs.Version, version: Nothing, cwd: Nothing }) >>= case _ of
-    Left _ -> Except.throw "Could not determine the local compiler version."
-    Right str -> case Version.parse str of
-      Left error -> Except.throw $ "Failed to parse compiler version output (" <> str <> ") as a version: " <> error
-      Right version -> do
-        let prev = (un PackageSet prevPackageSet).compiler
-        let purs = if version > prev then version else prev
-        Log.info $ "Using compiler " <> Version.print purs
-        pure purs
+  let
+    -- This record comes from the build directory (.spago) and records information
+    -- from the most recent build.
+    localCompiler = unsafeFromRight (Version.parse BuildInfo.buildInfo.pursVersion)
+    -- We use the greater of the local compiler version or the last package set
+    -- version to upgrade the package sets. This automatically bumps the purs
+    -- version when the registry upgrades to a new compiler.
+    compiler = do
+      let prev = (un PackageSet prevPackageSet).compiler
+      if localCompiler > prev then localCompiler else prev
+
+  Log.info $ "Using compiler " <> Version.print compiler
 
   let uploadHours = 24.0
   recentUploads <- findRecentUploads (Hours uploadHours)
