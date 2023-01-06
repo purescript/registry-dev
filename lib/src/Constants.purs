@@ -27,3 +27,54 @@ storageUrl = "https://packages.registry.purescript.org"
 -- | The URL of the package operation API
 apiUrl :: String
 apiUrl = "https://registry.purescript.org/api"
+
+ignoredDirectories :: Array FilePath
+ignoredDirectories =
+  [ ".psci"
+  , ".psci_modules"
+  , ".spago"
+  , "node_modules"
+  , "bower_components"
+  -- These files and directories are ignored by the NPM CLI and we are
+  -- following their lead in ignoring them as well.
+  , ".git"
+  , "CVS"
+  , ".svn"
+  , ".hg"
+  ]
+
+ignoredFiles :: Array FilePath
+ignoredFiles =
+  [ "package-lock.json"
+  , "yarn.lock"
+  , "pnpm-lock.yaml"
+  ]
+
+ignoredGlobs :: Array String
+ignoredGlobs =
+  [ "**/*.*.swp"
+  , "**/._*"
+  , "**/.DS_Store"
+  ]
+
+-- | We always include some files and directories when packaging a tarball, in
+-- | addition to files users opt-in to with the 'files' key.
+includedGlobs :: Array String
+includedGlobs =
+  [ "src/"
+  , "purs.json"
+  , "spago.dhall"
+  , "packages.dhall"
+  , "bower.json"
+  , "package.json"
+  , "spago.yaml"
+  ]
+
+-- | These files are always included and should be globbed in case-insensitive
+-- | mode.
+includedInsensitiveGlobs :: Array String
+includedInsensitiveGlobs =
+  [ "README*"
+  , "LICENSE*"
+  , "LICENCE*"
+  ]
