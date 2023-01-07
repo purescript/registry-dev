@@ -155,7 +155,6 @@
               nixfmt
               openssh
               git
-              wget
               bash
               nodejs
               jq
@@ -167,7 +166,7 @@
               dhallPackages.dhall-json-simple
 
               # Development tooling
-              pursPackages.purs-0_15_4
+              pursPackages.purs
               pursPackages.spago-next
               pursPackages.psa
               pursPackages.purs-tidy

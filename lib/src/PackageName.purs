@@ -17,8 +17,7 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bifunctor (lmap)
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
-import Data.Either (Either)
-import Data.Either as Either
+import Data.Either (Either, hush)
 import Data.Maybe (Maybe(..), isJust)
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
@@ -38,7 +37,7 @@ derive newtype instance Ord PackageName
 
 -- | A codec for encoding and decoding a `PackageName` as a JSON string
 codec :: JsonCodec PackageName
-codec = CA.prismaticCodec "PackageName" (Either.hush <<< parse) print CA.string
+codec = CA.prismaticCodec "PackageName" (hush <<< parse) print CA.string
 
 -- | Print a package name as a string
 print :: PackageName -> String

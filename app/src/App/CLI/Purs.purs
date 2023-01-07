@@ -3,7 +3,6 @@ module Registry.App.CLI.Purs where
 import Registry.App.Prelude
 
 import Data.Array as Array
-import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Compat as CA.Compat
 import Data.Codec.Argonaut.Record as CA.Record
@@ -11,11 +10,10 @@ import Data.Foldable (foldMap)
 import Data.String as String
 import Effect.Exception as Exception
 import Node.ChildProcess as NodeProcess
-import Registry.App.Json as Json
 import Sunde as Process
 
 -- | Call a specific version of the PureScript compiler
-callCompiler_ :: { version :: String, command :: PursCommand, cwd :: Maybe FilePath } -> Aff Unit
+callCompiler_ :: { version :: Maybe String, command :: PursCommand, cwd :: Maybe FilePath } -> Aff Unit
 callCompiler_ = void <<< callCompiler
 
 data CompilerFailure
@@ -59,6 +57,7 @@ sourcePositionCodec = CA.Record.object "SourcePosition"
   , endColumn: CA.int
   }
 
+-- TODO: This would be better handled with dodo-printer.
 printCompilerErrors :: Array CompilerError -> String
 printCompilerErrors errors = do
   let
@@ -68,6 +67,7 @@ printCompilerErrors errors = do
         [ "Error " <> show (n + 1) <> " of " <> show total
         , ""
         , printCompilerError error
+        , ""
         ]
 
   String.joinWith "\n" printed
@@ -85,7 +85,7 @@ printCompilerErrors errors = do
       ]
 
 type CompilerArgs =
-  { version :: String
+  { version :: Maybe String
   , cwd :: Maybe FilePath
   , command :: PursCommand
   }
@@ -105,27 +105,30 @@ printCommand = case _ of
 callCompiler :: CompilerArgs -> Aff (Either CompilerFailure String)
 callCompiler compilerArgs = do
   let
-    -- Converts a string version 'v0.13.0' or '0.13.0' to the standard format for
-    -- executables 'purs-0_13_0'
-    cmd =
-      append "purs-"
-        $ String.replaceAll (String.Pattern ".") (String.Replacement "_")
-        $ fromMaybe compilerArgs.version
-        $ String.stripPrefix (String.Pattern "v") compilerArgs.version
+    -- If no version is provided, uses 'purs'. Otherwise, converts a string version 'v0.13.0' or
+    -- '0.13.0' to the standard format for executables, ie. 'purs-0_13_0'.
+    purs =
+      case compilerArgs.version of
+        Nothing -> "purs"
+        Just version ->
+          append "purs-"
+            $ String.replaceAll (String.Pattern ".") (String.Replacement "_")
+            $ fromMaybe version
+            $ String.stripPrefix (String.Pattern "v") version
 
     errorsCodec = CA.Record.object "CompilerErrors"
       { errors: CA.array compilerErrorCodec }
 
-  result <- try $ Process.spawn { cmd, stdin: Nothing, args: printCommand compilerArgs.command } (NodeProcess.defaultSpawnOptions { cwd = compilerArgs.cwd })
+  result <- try $ Process.spawn { cmd: purs, stdin: Nothing, args: printCommand compilerArgs.command } (NodeProcess.defaultSpawnOptions { cwd = compilerArgs.cwd })
   pure $ case result of
     Left exception -> Left $ case Exception.message exception of
       errorMessage
-        | errorMessage == String.joinWith " " [ "spawn", cmd, "ENOENT" ] -> MissingCompiler
+        | errorMessage == String.joinWith " " [ "spawn", purs, "ENOENT" ] -> MissingCompiler
         | otherwise -> UnknownError errorMessage
     Right { exit: NodeProcess.Normally 0, stdout } -> Right $ String.trim stdout
     Right { stdout, stderr } -> Left do
-      case Json.parseJson errorsCodec (String.trim stdout) of
-        Left err -> UnknownError $ String.joinWith "\n" [ stdout, stderr, err ]
+      case parseJson errorsCodec (String.trim stdout) of
+        Left err -> UnknownError $ String.joinWith "\n" [ stdout, stderr, CA.printJsonDecodeError err ]
         Right ({ errors } :: { errors :: Array CompilerError })
           | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
           | otherwise -> CompilationError errors

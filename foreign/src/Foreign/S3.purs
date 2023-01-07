@@ -1,34 +1,36 @@
 module Registry.Foreign.S3
-  ( connect
-  , listObjects
-  , putObject
-  , deleteObject
+  ( ACL(..)
   , S3
   , Space
-  , ACL(..)
+  , SpaceKey
+  , connect
+  , deleteObject
+  , listObjects
+  , putObject
   ) where
 
 import Prelude
 
 import Control.Promise (Promise)
 import Control.Promise as Promise
-import Data.Function.Uncurried (Fn1, Fn2, runFn1, runFn2)
 import Data.JSDate (JSDate)
 import Data.Traversable (for)
-import Effect (Effect)
-import Effect.Aff (Aff)
-import Effect.Class (liftEffect)
+import Effect.Aff.Class (class MonadAff, liftAff)
+import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Uncurried (EffectFn2, runEffectFn2)
 import Node.Buffer (Buffer)
 
 foreign import data S3 :: Type
 
 type Space = { conn :: S3, bucket :: String }
 
-foreign import connectImpl :: Fn1 String (Effect S3)
+type SpaceKey = { key :: String, secret :: String }
 
-connect :: String -> String -> Aff Space
-connect region bucket = do
-  conn <- liftEffect $ runFn1 connectImpl region
+foreign import connectImpl :: EffectFn2 SpaceKey String S3
+
+connect :: forall m. MonadEffect m => SpaceKey -> String -> String -> m Space
+connect key region bucket = do
+  conn <- liftEffect $ runEffectFn2 connectImpl key region
   pure { bucket, conn }
 
 -- Add more params as needed:
@@ -49,12 +51,12 @@ type JSListResponse =
 type ListParams = { prefix :: String }
 type ListResponse = { key :: String, size :: Int, eTag :: String }
 
-foreign import listObjectsImpl :: Fn2 S3 JSListParams (Effect (Promise (Array JSListResponse)))
+foreign import listObjectsImpl :: EffectFn2 S3 JSListParams (Promise (Array JSListResponse))
 
-listObjects :: Space -> ListParams -> Aff (Array ListResponse)
+listObjects :: forall m. MonadAff m => Space -> ListParams -> m (Array ListResponse)
 listObjects space params = do
   let jsParams = { "Bucket": space.bucket, "Prefix": params.prefix }
-  (jsObjs :: Array JSListResponse) <- Promise.toAffE (runFn2 listObjectsImpl space.conn jsParams)
+  jsObjs <- liftAff $ Promise.toAffE (runEffectFn2 listObjectsImpl space.conn jsParams)
   for jsObjs \obj -> pure { key: obj."Key", size: obj."Size", eTag: obj."ETag" } -- TODO: pull more props if needed
 
 -- Add more params as needed:
@@ -72,16 +74,16 @@ data ACL = Private | PublicRead
 type PutParams = { key :: String, body :: Buffer, acl :: ACL }
 type PutResponse = { eTag :: String }
 
-foreign import putObjectImpl :: Fn2 S3 JSPutParams (Effect (Promise JSPutResponse))
+foreign import putObjectImpl :: EffectFn2 S3 JSPutParams (Promise JSPutResponse)
 
-putObject :: Space -> PutParams -> Aff PutResponse
+putObject :: forall m. MonadAff m => Space -> PutParams -> m PutResponse
 putObject space params = do
   let
     jsACL = case params.acl of
       Private -> "private"
       PublicRead -> "public-read"
   let jsParams = { "Bucket": space.bucket, "Key": params.key, "Body": params.body, "ACL": jsACL }
-  res <- Promise.toAffE (runFn2 putObjectImpl space.conn jsParams)
+  res <- liftAff $ Promise.toAffE (runEffectFn2 putObjectImpl space.conn jsParams)
   pure { eTag: res."ETag" }
 
 -- https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html#deleteObject-property
@@ -96,7 +98,7 @@ type JSDeleteResponse =
   , "RequestCharged" :: String
   }
 
-foreign import deleteObjectImpl :: Fn2 S3 JSDeleteParams (Effect (Promise JSDeleteResponse))
+foreign import deleteObjectImpl :: EffectFn2 S3 JSDeleteParams (Promise JSDeleteResponse)
 
 type DeleteParams =
   { key :: String
@@ -108,10 +110,10 @@ type DeleteResponse =
   , requestCharged :: String
   }
 
-deleteObject :: Space -> DeleteParams -> Aff DeleteResponse
+deleteObject :: forall m. MonadAff m => Space -> DeleteParams -> m DeleteResponse
 deleteObject space params = do
   let jsParams = { "Bucket": space.bucket, "Key": params.key }
-  result <- Promise.toAffE (runFn2 deleteObjectImpl space.conn jsParams)
+  result <- liftAff $ Promise.toAffE (runEffectFn2 deleteObjectImpl space.conn jsParams)
   pure
     { deleteMarker: result."DeleteMarker"
     , versionId: result."VersionId"

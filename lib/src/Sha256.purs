@@ -19,17 +19,16 @@ import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
-import Data.Either (Either)
-import Data.Either as Either
+import Data.Either (Either, hush)
 import Data.List.Lazy as List.Lazy
 import Data.String.CodeUnits as String.CodeUnits
 import Effect (Effect)
-import Effect.Aff (Aff)
-import Effect.Class (liftEffect)
+import Effect.Aff.Class (class MonadAff, liftAff)
+import Effect.Class (class MonadEffect, liftEffect)
 import Node.Buffer (Buffer)
 import Node.Buffer as Buffer
 import Node.Encoding (Encoding(..))
-import Node.FS.Aff as FS
+import Node.FS.Aff as FS.Aff
 import Node.Path (FilePath)
 import Parsing (Parser)
 import Parsing as Parsing
@@ -43,7 +42,7 @@ derive instance Eq Sha256
 
 -- | A codec for encoding and decoding a `Sha256` as a JSON string
 codec :: JsonCodec Sha256
-codec = CA.prismaticCodec "Sha256" (Either.hush <<< parse) print CA.string
+codec = CA.prismaticCodec "Sha256" (hush <<< parse) print CA.string
 
 -- | Print a Sha256 as a subresource integrity hash using sha256
 print :: Sha256 -> String
@@ -66,20 +65,20 @@ parser = do
   pure $ Sha256 { sri: prefix, hash: fromCharList hash <> String.CodeUnits.singleton suffix }
 
 -- | Create the sha256 SRI hash for a file
-hashFile :: FilePath -> Aff Sha256
-hashFile path = do
-  fileBuffer <- FS.readFile path
+hashFile :: forall m. MonadAff m => FilePath -> m Sha256
+hashFile path = liftAff do
+  fileBuffer <- FS.Aff.readFile path
   liftEffect $ hashBuffer fileBuffer
 
 -- | Create the sha256 SRI hash for a string
-hashString :: String -> Effect Sha256
-hashString string = do
+hashString :: forall m. MonadEffect m => String -> m Sha256
+hashString string = liftEffect do
   buffer <- Buffer.fromString string UTF8
   hashBuffer buffer
 
 -- | Create the sha256 SRI hash for a buffer
-hashBuffer :: Buffer -> Effect Sha256
-hashBuffer buffer = do
+hashBuffer :: forall m. MonadEffect m => Buffer -> m Sha256
+hashBuffer buffer = liftEffect do
   newHash <- createHash "sha256"
   hash <- updateHash buffer newHash
   digest <- digestHash hash

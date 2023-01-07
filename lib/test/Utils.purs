@@ -6,6 +6,7 @@ import Data.Argonaut.Core as Argonaut
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bifunctor (bimap)
+import Data.DateTime as Date
 import Data.DateTime as DateTime
 import Data.Either (Either(..))
 import Data.Either as Either
@@ -74,9 +75,13 @@ unsafeRange str = fromRight ("Failed to parse Range: " <> str) (Range.parse str)
 unsafeLicense :: String -> License.License
 unsafeLicense str = fromRight ("Failed to parse License: " <> str) (License.parse str)
 
--- | Unsafely parse a DateTime from an ISO8601 string
+-- | Unsafely parse a DateTime from an ISO8601 datetime string
 unsafeDateTime :: String -> DateTime.DateTime
 unsafeDateTime str = fromRight ("Failed to parse DateTime: " <> str) (DateTime.Formatters.unformat Internal.Format.iso8601DateTime str)
+
+-- | Unsafely parse a Date from an ISO8601 string
+unsafeDate :: String -> Date.Date
+unsafeDate str = fromRight ("Failed to parse Date: " <> str) (map Date.date $ DateTime.Formatters.unformat Internal.Format.iso8601Date str)
 
 -- | Unsafely create a manifest from a name, version, and array of dependencies
 -- | where keys are package names and values are ranges.

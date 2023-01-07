@@ -27,11 +27,16 @@ sshKeyPath = "id_ed25519"
 
 -- Payload verification is based on this description:
 -- https://www.agwa.name/blog/post/ssh_signatures
-verifyPayload :: NonEmptyArray Owner -> AuthenticatedData -> Aff (Either String String)
-verifyPayload owners { email, signature, rawPayload } = do
-  tmp <- liftEffect Tmp.mkTmpDir
+--
+-- We take pacchettibotti as an extra owner because pacchettibotti can always
+-- sign authenticated transfers. This is not sufficient to blanket authorize
+-- things, as someone still needs to use the pacchettibotti credentials to
+-- actually sign the payload.
+verifyPayload :: Owner -> NonEmptyArray Owner -> AuthenticatedData -> Aff (Either String String)
+verifyPayload pacchettiBotti owners { email, signature, rawPayload } = do
+  tmp <- Tmp.mkTmpDir
   let joinWithNewlines = String.joinWith "\n"
-  let signers = joinWithNewlines $ NonEmptyArray.toArray $ map formatOwner owners
+  let signers = joinWithNewlines $ NonEmptyArray.toArray $ map formatOwner (NonEmptyArray.cons pacchettiBotti owners)
   FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, allowedSignersPath ]) signers
   FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, payloadSignaturePath ]) (joinWithNewlines signature)
   -- The 'ssh-keygen' command will only exit normally if the signature verifies,
@@ -58,7 +63,7 @@ type SignAuthenticated =
 
 signPayload :: SignAuthenticated -> Aff (Either String (Array String))
 signPayload { publicKey, privateKey, rawPayload } = do
-  tmp <- liftEffect Tmp.mkTmpDir
+  tmp <- Tmp.mkTmpDir
   let publicKeyPath = Path.concat [ tmp, sshKeyPath <> ".pub" ]
   let privateKeyPath = Path.concat [ tmp, sshKeyPath ]
   -- Key files must have a single trailing newline.

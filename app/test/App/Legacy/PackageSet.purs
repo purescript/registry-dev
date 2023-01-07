@@ -1,39 +1,26 @@
-module Test.Registry.App.PackageSets
-  ( spec
-  ) where
+module Test.Registry.App.Legacy.PackageSet (spec) where
 
 import Registry.App.Prelude
 
-import Data.DateTime (Date, DateTime)
-import Data.DateTime as DateTime
+import Data.DateTime (DateTime(..))
 import Data.Either as Either
-import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.Set as Set
-import Registry.App.Json as Json
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
-import Registry.App.PackageSets as App.PackageSets
-import Registry.Internal.Format as Internal.Format
-import Registry.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, latestCompatibleSetsCodec, legacyPackageSetCodec, parsePscTag, printPscTag)
-import Registry.Legacy.PackageSet as Legacy.PackageSet
+import Registry.App.Legacy.PackageSet (ConvertedLegacyPackageSet, LatestCompatibleSets, latestCompatibleSetsCodec, parsePscTag, printPscTag)
+import Registry.App.Legacy.PackageSet as Legacy.PackageSet
+import Registry.App.Legacy.Types (legacyPackageSetCodec)
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
-import Registry.PackageSet as PackageSet
 import Registry.Sha256 as Sha256
 import Registry.Version as Version
 import Test.Assert as Assert
-import Test.Fixture.Manifest (fixture, setDependencies, setName, setVersion)
 import Test.Spec as Spec
+import Test.Utils as Utils
 
 spec :: Spec.Spec Unit
 spec = do
-  Spec.it "Decodes package set" do
-    Json.parseJson PackageSet.codec packageSetJson `Assert.shouldContain` packageSet
-
-  Spec.it "Encodes package set" do
-    Json.printJson PackageSet.codec packageSet `Assert.shouldEqual` packageSetJson
-
   Spec.it "Parses legacy package set tags" do
     let valid = "psc-0.12.18-20220102"
     let invalid = "psc-0.14.3.1-2022-01-02"
@@ -44,65 +31,21 @@ spec = do
   Spec.it "Parses legacy 'latest compatible set' files" do
     let
       parsed :: Either _ LatestCompatibleSets
-      parsed = Json.parseJson latestCompatibleSetsCodec latestCompatibleSets
+      parsed = parseJson latestCompatibleSetsCodec latestCompatibleSets
 
-    map (Json.printJson latestCompatibleSetsCodec) parsed `Assert.shouldContain` latestCompatibleSets
+    map (printJson latestCompatibleSetsCodec) parsed `Assert.shouldContain` latestCompatibleSets
 
   Spec.it "Produces correct legacy package set name" do
     printPscTag convertedPackageSet.tag `Assert.shouldEqual` "psc-0.15.2-20220725"
 
   Spec.it "Decodes legacy package set" do
-    Json.parseJson legacyPackageSetCodec legacyPackageSetJson `Assert.shouldContain` convertedPackageSet.packageSet
+    parseJson legacyPackageSetCodec legacyPackageSetJson `Assert.shouldContain` convertedPackageSet.packageSet
 
   Spec.it "Encodes legacy package set as JSON" do
-    Json.printJson legacyPackageSetCodec convertedPackageSet.packageSet `Assert.shouldEqual` legacyPackageSetJson
+    printJson legacyPackageSetCodec convertedPackageSet.packageSet `Assert.shouldEqual` legacyPackageSetJson
 
   Spec.it "Encodes legacy package set as Dhall" do
     Legacy.PackageSet.printDhall convertedPackageSet.packageSet `Assert.shouldEqual` legacyPackageSetDhall
-
-  Spec.it "Reports package set changelog correctly" do
-    let
-      operations = Map.fromFoldable
-        [ map (const Nothing) assert
-        , map (LenientVersion.version >>> Version.bumpPatch >>> Just) effect
-        , Tuple (unsafeName "math") (Just (unsafeVersion "1.0.0"))
-        ]
-
-    App.PackageSets.commitMessage packageSet operations (unsafeVersion "2.0.0") `Assert.shouldEqual` packageSetCommitMessage
-
-  Spec.it "Reports package set changelog correctly (no updates)" do
-    let
-      operations = Map.fromFoldable
-        [ map (const Nothing) assert
-        , Tuple (unsafeName "math") (Just (unsafeVersion "1.0.0"))
-        ]
-
-    App.PackageSets.commitMessage packageSet operations (unsafeVersion "2.0.0") `Assert.shouldEqual` packageSetCommitMessageNoUpdates
-
-packageSetCommitMessage :: String
-packageSetCommitMessage =
-  """Release 2.0.0 package set.
-
-New packages:
-  - math@1.0.0
-
-Updated packages:
-  - effect@4.0.0 -> 4.0.1
-
-Removed packages:
-  - assert@6.0.0
-"""
-
-packageSetCommitMessageNoUpdates :: String
-packageSetCommitMessageNoUpdates =
-  """Release 2.0.0 package set.
-
-New packages:
-  - math@1.0.0
-
-Removed packages:
-  - assert@6.0.0
-"""
 
 latestCompatibleSets :: String
 latestCompatibleSets =
@@ -136,9 +79,9 @@ latestCompatibleSets =
 
 packageSet :: PackageSet
 packageSet = PackageSet
-  { compiler: unsafeVersion "0.15.2"
-  , published: unsafeDate "2022-07-25"
-  , version: unsafeVersion "4.2.0"
+  { compiler: Utils.unsafeVersion "0.15.2"
+  , published: Utils.unsafeDate "2022-07-25"
+  , version: Utils.unsafeVersion "4.2.0"
   , packages: map LenientVersion.version $ Map.fromFoldable do
       [ assert
       , console
@@ -147,23 +90,9 @@ packageSet = PackageSet
       ]
   }
 
-packageSetJson :: String
-packageSetJson =
-  """{
-  "version": "4.2.0",
-  "compiler": "0.15.2",
-  "published": "2022-07-25",
-  "packages": {
-    "assert": "6.0.0",
-    "console": "6.0.0",
-    "effect": "4.0.0",
-    "prelude": "6.0.0"
-  }
-}"""
-
 convertedPackageSet :: ConvertedLegacyPackageSet
 convertedPackageSet =
-  case Legacy.PackageSet.fromPackageSet index metadata packageSet of
+  case Legacy.PackageSet.convertPackageSet index metadata packageSet of
     Left err -> unsafeCrashWith err
     Right value -> value
   where
@@ -250,38 +179,27 @@ legacyPackageSetDhall =
 }"""
 
 assert :: Tuple PackageName LenientVersion
-assert = Tuple (unsafeName "assert") (unsafeLenientVersion "v6.0.0")
+assert = Tuple (Utils.unsafePackageName "assert") (unsafeLenientVersion "v6.0.0")
 
 console :: Tuple PackageName LenientVersion
-console = Tuple (unsafeName "console") (unsafeLenientVersion "v6.0.0")
+console = Tuple (Utils.unsafePackageName "console") (unsafeLenientVersion "v6.0.0")
 
 effect :: Tuple PackageName LenientVersion
-effect = Tuple (unsafeName "effect") (unsafeLenientVersion "v4.0.0")
+effect = Tuple (Utils.unsafePackageName "effect") (unsafeLenientVersion "v4.0.0")
 
 prelude :: Tuple PackageName LenientVersion
-prelude = Tuple (unsafeName "prelude") (unsafeLenientVersion "v6.0.0")
-
-unsafeName :: String -> PackageName
-unsafeName = unsafeFromRight <<< PackageName.parse
-
-unsafeVersion :: String -> Version
-unsafeVersion = unsafeFromRight <<< Version.parse
+prelude = Tuple (Utils.unsafePackageName "prelude") (unsafeLenientVersion "v6.0.0")
 
 unsafeLenientVersion :: String -> LenientVersion
 unsafeLenientVersion = unsafeFromRight <<< LenientVersion.parse
 
-unsafeDateTime :: String -> DateTime
-unsafeDateTime = unsafeFromRight <<< Formatter.DateTime.unformat Internal.Format.iso8601Date
-
-unsafeDate :: String -> Date
-unsafeDate = DateTime.date <<< unsafeDateTime
-
 mkManifest :: Tuple PackageName LenientVersion -> Array (Tuple PackageName LenientVersion) -> Manifest
 mkManifest (Tuple name version) deps = do
-  fixture
-    # setName (PackageName.print name)
-    # setVersion (LenientVersion.print version)
-    # setDependencies (map (bimap PackageName.print LenientVersion.print) deps)
+  let toRange v = ">=" <> Version.print v <> " <" <> Version.print (Version.bumpHighest v)
+  Utils.unsafeManifest
+    (PackageName.print name)
+    (LenientVersion.print version)
+    (map (bimap PackageName.print (LenientVersion.version >>> toRange)) deps)
 
 unsafeMetadataEntry :: Tuple PackageName LenientVersion -> Tuple PackageName Metadata
 unsafeMetadataEntry (Tuple name version) = do
@@ -290,7 +208,7 @@ unsafeMetadataEntry (Tuple name version) = do
       { ref: LenientVersion.raw version
       , hash: unsafeFromRight $ Sha256.parse "sha256-gb24ZRec6mgR8TFBVR2eIh5vsMdhuL+zK9VKjWP74Cw="
       , bytes: 0.0
-      , publishedTime: unsafeDateTime "2022-07-07"
+      , publishedTime: DateTime (Utils.unsafeDate "2022-07-07") bottom
       }
 
     metadata = Metadata

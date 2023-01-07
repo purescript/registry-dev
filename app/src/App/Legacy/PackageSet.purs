@@ -1,18 +1,13 @@
-module Registry.Legacy.PackageSet
+module Registry.App.Legacy.PackageSet
   ( ConvertedLegacyPackageSet
   , LatestCompatibleSets
-  , LegacyPackageSet(..)
-  , LegacyPackageSetEntry
   , PscTag(..)
   , filterLegacyPackageSets
-  , fromPackageSet
+  , convertPackageSet
   , legacyPackageSetsRepo
-  , mirrorLegacySet
   , parsePscTag
   , printDhall
   , printPscTag
-  , legacyPackageSetCodec
-  , legacyPackageSetEntryCodec
   , pscTagCodec
   , latestCompatibleSetsCodec
   ) where
@@ -20,10 +15,7 @@ module Registry.Legacy.PackageSet
 import Registry.App.Prelude
 
 import Control.Monad.Error.Class as Error
-import Control.Monad.Except as Except
-import Control.Monad.Reader (ask)
 import Data.Array as Array
-import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Compactable (separate)
 import Data.DateTime (Date, DateTime(..))
@@ -35,57 +27,23 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.List (List(..), (:))
 import Data.Map as Map
-import Data.Profunctor as Profunctor
-import Data.Set as Set
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
 import Dodo as Dodo
 import Dodo.Common as Dodo.Common
-import Node.FS.Aff as FS.Aff
-import Node.Path as Path
 import Parsing as Parsing
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
-import Registry.App.CLI.Git as Git
-import Registry.App.GitHub as GitHub
-import Registry.App.Json as Json
-import Registry.App.RegistryM (RegistryM)
-import Registry.App.RegistryM as RegistryM
-import Registry.Foreign.Tmp as Tmp
+import Registry.App.Legacy.Types (LegacyPackageSet(..), LegacyPackageSetEntry, RawVersion(..))
+import Registry.Foreign.Octokit (Address, Tag)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Version as Version
 
-legacyPackageSetsRepo :: GitHub.Address
+legacyPackageSetsRepo :: Address
 legacyPackageSetsRepo = { owner: "purescript", repo: "package-sets" }
-
--- | The format of a legacy packages.json package set file
-newtype LegacyPackageSet = LegacyPackageSet (Map PackageName LegacyPackageSetEntry)
-
-derive instance Newtype LegacyPackageSet _
-derive newtype instance Eq LegacyPackageSet
-
-legacyPackageSetCodec :: JsonCodec LegacyPackageSet
-legacyPackageSetCodec =
-  Profunctor.wrapIso LegacyPackageSet
-    $ Internal.Codec.packageMap legacyPackageSetEntryCodec
-
--- | The format of a legacy packages.json package set entry for an individual
--- | package.
-type LegacyPackageSetEntry =
-  { dependencies :: Array PackageName
-  , repo :: String
-  , version :: RawVersion
-  }
-
-legacyPackageSetEntryCodec :: JsonCodec LegacyPackageSetEntry
-legacyPackageSetEntryCodec = Json.object "LegacyPackageSetEntry"
-  { dependencies: CA.array PackageName.codec
-  , repo: CA.string
-  , version: Profunctor.wrapIso RawVersion CA.string
-  }
 
 type ConvertedLegacyPackageSet =
   { tag :: PscTag
@@ -142,8 +100,8 @@ printPscTag (PscTag { compiler, date }) =
     , Format.DateTime.format pscDateFormat (DateTime date bottom)
     ]
 
-fromPackageSet :: ManifestIndex -> Map PackageName Metadata -> PackageSet -> Either String ConvertedLegacyPackageSet
-fromPackageSet index metadataMap (PackageSet { compiler, packages, published, version }) = do
+convertPackageSet :: ManifestIndex -> Map PackageName Metadata -> PackageSet -> Either String ConvertedLegacyPackageSet
+convertPackageSet index metadataMap (PackageSet { compiler, packages, published, version }) = do
   converted <- case separate $ mapWithIndex convertPackage packages of
     { left, right } | Map.isEmpty left -> Right right
     { left } -> do
@@ -255,91 +213,9 @@ type LatestCompatibleSets = Map Version PscTag
 latestCompatibleSetsCodec :: JsonCodec LatestCompatibleSets
 latestCompatibleSetsCodec = Internal.Codec.versionMap pscTagCodec
 
--- https://github.com/purescript/package-sets/blob/psc-0.15.4-20220829/release.sh
--- https://github.com/purescript/package-sets/blob/psc-0.15.4-20220829/update-latest-compatible-sets.sh
-mirrorLegacySet :: ConvertedLegacyPackageSet -> RegistryM Unit
-mirrorLegacySet { tag, packageSet, upstream } = do
-  tmp <- liftEffect Tmp.mkTmpDir
-
-  { octokit, cache } <- ask
-
-  packageSetsTags <- liftAff (GitHub.listTags octokit cache legacyPackageSetsRepo) >>= case _ of
-    Left error -> do
-      let formatted = GitHub.printGitHubError error
-      RegistryM.throwWithComment $ "Could not fetch tags for the package-sets repo: " <> formatted
-    Right tags -> pure $ Set.fromFoldable $ map _.name tags
-
-  let printedTag = printPscTag tag
-
-  when (Set.member printedTag packageSetsTags) do
-    RegistryM.throwWithComment $ "Package set tag " <> printedTag <> " already exists, aborting..."
-
-  let packageSetsUrl = "https://github.com/" <> legacyPackageSetsRepo.owner <> "/" <> legacyPackageSetsRepo.repo <> ".git"
-  liftAff (Except.runExceptT (Git.runGit [ "clone", packageSetsUrl, "--depth", "1" ] (Just tmp))) >>= case _ of
-    Left error -> RegistryM.throwWithComment error
-    Right _ -> pure unit
-
-  -- We need to write three files to the package sets repository:
-  --
-  -- * latest-compatible-sets.json
-  --   stores a mapping of compiler versions to their highest compatible tag
-  --
-  -- * packages.json
-  --   stores the JSON representation of the latest package set
-  --
-  -- * src/packages.dhall
-  --   stores the Dhall representation of the latest package set
-
-  let packageSetsPath = Path.concat [ tmp, legacyPackageSetsRepo.repo ]
-  let latestSetsPath = Path.concat [ packageSetsPath, "latest-compatible-sets.json" ]
-  latestCompatibleSets <- do
-    latestSets <- liftAff (Json.readJsonFile latestCompatibleSetsCodec latestSetsPath) >>= case _ of
-      Left err -> RegistryM.throwWithComment $ "Failed to read latest-compatible-sets: " <> err
-      Right parsed -> pure parsed
-    let key = (un PscTag tag).compiler
-    case Map.lookup key latestSets of
-      Just existingTag | existingTag >= tag -> do
-        RegistryM.comment "Not updating latest-compatible sets because this tag (or a higher one) already exists."
-        pure latestSets
-      _ ->
-        pure $ Map.insert key tag latestSets
-
-  let
-    packagesDhallPath = Path.concat [ packageSetsPath, "src", "packages.dhall" ]
-    packagesJsonPath = Path.concat [ packageSetsPath, "packages.json" ]
-    commitFiles =
-      [ Tuple packagesDhallPath (printDhall packageSet)
-      , Tuple packagesJsonPath (Json.printJson legacyPackageSetCodec packageSet)
-      , Tuple latestSetsPath (Json.printJson latestCompatibleSetsCodec latestCompatibleSets)
-      ]
-
-  let
-    -- We push the stable tag (ie. just a compiler version) if one does not yet
-    -- exist. We always push the full tag.
-    printedCompiler = Version.print (un PscTag tag).compiler
-    tagsToPush = Array.catMaybes
-      [ if Set.member printedCompiler packageSetsTags then Nothing else Just printedCompiler
-      , Just printedTag
-      ]
-
-  result <- liftAff $ Except.runExceptT do
-    GitHub.GitHubToken token <- Git.configurePacchettiBotti (Just packageSetsPath)
-    for_ commitFiles \(Tuple path contents) -> do
-      liftAff $ FS.Aff.writeTextFile UTF8 path (contents <> "\n")
-      Git.runGit_ [ "add", path ] (Just packageSetsPath)
-    let commitMessage = "Update to the " <> Version.print upstream <> " package set."
-    Git.runGit_ [ "commit", "-m", commitMessage ] (Just packageSetsPath)
-    let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> legacyPackageSetsRepo.owner <> "/" <> legacyPackageSetsRepo.repo <> ".git"
-    Git.runGit_ [ "push", origin, "master" ] (Just packageSetsPath)
-    for_ tagsToPush \pushTag -> do
-      Git.runGit_ [ "tag", pushTag ] (Just packageSetsPath)
-      Git.runGit_ [ "push", origin, pushTag ] (Just packageSetsPath)
-
-  case result of
-    Left error -> RegistryM.throwWithComment $ "Package set mirroring failed: " <> error
-    Right _ -> pure unit
-
-filterLegacyPackageSets :: Array GitHub.Tag -> Array String
+-- | Filter the package sets to only those published before the registry was
+-- | launched.
+filterLegacyPackageSets :: Array Tag -> Array String
 filterLegacyPackageSets tags = do
   let
     -- Package sets after this date are published by the registry, and are

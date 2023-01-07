@@ -17,7 +17,7 @@ import Test.Spec as Spec
 spec :: Spec.Spec Unit
 spec = do
   Spec.it "Prevents directory traversal" do
-    tmp <- liftEffect Tmp.mkTmpDir
+    tmp <- Tmp.mkTmpDir
     let outerFile = Path.concat [ tmp, "flake.nix" ]
     FS.Aff.writeTextFile UTF8 outerFile "<contents>"
     let innerDirectory = Path.concat [ tmp, "inner" ]
@@ -27,7 +27,7 @@ spec = do
     failed `Assert.shouldEqual` [ "../flake.nix" ]
 
   Spec.it "Prevents symlink directory traversal" do
-    tmp <- liftEffect Tmp.mkTmpDir
+    tmp <- Tmp.mkTmpDir
     let outerFile = Path.concat [ tmp, "shell.nix" ]
     FS.Aff.writeTextFile UTF8 outerFile "<contents>"
     let innerDirectory = Path.concat [ tmp, "inner" ]

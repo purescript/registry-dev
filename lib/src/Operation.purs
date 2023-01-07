@@ -34,7 +34,6 @@ import Prelude
 import Control.Alt ((<|>))
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Bifunctor (lmap)
-import Data.Codec as Codec
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Compat as CA.Compat
@@ -109,7 +108,7 @@ authenticatedCodec = toPureScriptRep $ CA.Record.object "Authenticated"
   -- to preserve any quirks of formatting that could change the hash of its
   -- contents. However, we also need to decode the operation itself, and so we
   -- parse that in a second pass over the input.
-  toPureScriptRep codec = Codec.codec' decode encode
+  toPureScriptRep codec = CA.codec' decode encode
     where
     decode json = do
       rep <- CA.decode codec json
@@ -122,7 +121,7 @@ authenticatedCodec = toPureScriptRep $ CA.Record.object "Authenticated"
 
   -- The only acceptable payloads for an authenticated operation are the
   -- `AuthenticatedPackageOperation`s.
-  payloadCodec = Codec.codec' decode encode
+  payloadCodec = CA.codec' decode encode
     where
     decode json =
       lmap (const (CA.TypeMismatch "AuthenticatedPackageOperation")) do

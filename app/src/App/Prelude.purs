@@ -1,5 +1,9 @@
 module Registry.App.Prelude
-  ( fromJust'
+  ( Backoff
+  , class Functor2
+  , map2
+  , formatPackageVersion
+  , fromJust'
   , guardA
   , mapKeys
   , module Either
@@ -7,30 +11,40 @@ module Registry.App.Prelude
   , module Maybe
   , module Prelude
   , module Registry.Types
-  , module Registry.App.Types
-  , newlines
+  , nowUTC
+  , pacchettibottiEmail
+  , pacchettibottiKeyType
+  , parseJson
   , partitionEithers
+  , printJson
+  , readJsonFile
+  , scratchDir
+  , stringifyJson
   , stripPureScriptPrefix
   , traverseKeys
   , unsafeFromJust
   , unsafeFromRight
   , withBackoff
   , withBackoff'
-  , nowUTC
+  , writeJsonFile
   ) where
 
 import Prelude
 
 import Control.Alt ((<|>)) as Extra
 import Control.Alternative (class Alternative, empty)
-import Control.Monad.Error.Class (throwError) as Extra
 import Control.Monad.Except (ExceptT(..)) as Extra
 import Control.Monad.Trans.Class (lift) as Extra
 import Control.Parallel.Class as Parallel
+import Data.Argonaut.Core (Json) as Extra
+import Data.Argonaut.Core as Argonaut
+import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray) as Extra
-import Data.Bifunctor (bimap, lmap, rmap) as Extra
-import Data.Bitraversable (ltraverse)
+import Data.Bifunctor (bimap, lmap) as Extra
+import Data.Bitraversable (ltraverse) as Extra
+import Data.Codec.Argonaut (JsonCodec, JsonDecodeError) as Extra
+import Data.Codec.Argonaut as CA
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Either (Either(..), either, fromLeft, fromRight', hush, isRight, note) as Either
@@ -54,22 +68,61 @@ import Data.Traversable (for, for_, sequence, traverse) as Extra
 import Data.TraversableWithIndex (forWithIndex) as Extra
 import Data.Tuple (Tuple(..), fst, snd) as Extra
 import Data.Tuple.Nested ((/\)) as Extra
-import Effect (Effect)
 import Effect (Effect) as Extra
 import Effect.Aff (Aff, launchAff_, try) as Extra
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff) as Extra
 import Effect.Class (class MonadEffect, liftEffect) as Extra
-import Effect.Class.Console (error, info, log, logShow) as Extra
 import Effect.Now as Now
 import Effect.Ref (Ref) as Extra
 import Foreign.Object (Object) as Extra
 import Node.Buffer (Buffer) as Extra
 import Node.Encoding (Encoding(..)) as Extra
+import Node.FS.Aff as FS.Aff
 import Node.Path (FilePath) as Extra
 import Partial.Unsafe (unsafeCrashWith) as Extra
-import Registry.App.Types (RawPackageName(..), RawVersion(..), RawVersionRange(..), rawPackageNameCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionMapCodec, rawVersionRangeCodec)
+import Registry.PackageName as PackageName
 import Registry.Types (License, Location(..), Manifest(..), ManifestIndex, Metadata(..), Owner(..), PackageName, PackageSet(..), PublishedMetadata, Range, Sha256, UnpublishedMetadata, Version)
+import Registry.Version as Version
+import Type.Proxy (Proxy(..)) as Extra
+import Type.Row (type (+)) as Extra
+
+class Functor2 (c :: Type -> Type -> Type) where
+  map2 :: forall a b z. (a -> b) -> c z a -> c z b
+
+-- | The location of the .gitignored scratch directory
+scratchDir :: Extra.FilePath
+scratchDir = "scratch"
+
+-- | The email address of the @pacchettibotti account
+pacchettibottiEmail :: String
+pacchettibottiEmail = "pacchettibotti@purescript.org"
+
+-- | The public key type of the @pacchettibotti account
+pacchettibottiKeyType :: String
+pacchettibottiKeyType = "ssh-ed25519"
+
+-- | Print a type as a formatted JSON string
+printJson :: forall a. Extra.JsonCodec a -> a -> String
+printJson codec = Argonaut.stringifyWithIndent 2 <<< CA.encode codec
+
+-- | Print a type as a JSON string without formatting
+stringifyJson :: forall a. Extra.JsonCodec a -> a -> String
+stringifyJson codec = Argonaut.stringify <<< CA.encode codec
+
+-- | Parse a type from a string of JSON data.
+parseJson :: forall a. Extra.JsonCodec a -> String -> Either.Either Extra.JsonDecodeError a
+parseJson codec = CA.decode codec <=< Extra.lmap (\err -> CA.TypeMismatch ("JSON: " <> err)) <<< Argonaut.Parser.jsonParser
+
+-- | Encode data as formatted JSON and write it to the provided filepath
+writeJsonFile :: forall a. Extra.JsonCodec a -> Extra.FilePath -> a -> Extra.Aff Unit
+writeJsonFile codec path = FS.Aff.writeTextFile Extra.UTF8 path <<< (_ <> "\n") <<< printJson codec
+
+-- | Decode data from a JSON file at the provided filepath
+readJsonFile :: forall a. Extra.JsonCodec a -> Extra.FilePath -> Extra.Aff (Either.Either String a)
+readJsonFile codec path = do
+  result <- Aff.attempt $ FS.Aff.readTextFile Extra.UTF8 path
+  pure (Extra.lmap Aff.message result >>= parseJson codec >>> Extra.lmap CA.printJsonDecodeError)
 
 -- | Partition an array of `Either` values into failure and success  values
 partitionEithers :: forall e a. Array (Either.Either e a) -> { fail :: Array e, success :: Array a }
@@ -90,15 +143,6 @@ stripPureScriptPrefix :: String -> String
 stripPureScriptPrefix pkg =
   Maybe.fromMaybe pkg $ String.stripPrefix (String.Pattern "purescript-") pkg
 
--- | Create a string containing `n` newline characters.
--- |
--- | ```purs
--- | > newlines 3
--- | "\n\n\n"
--- | ```
-newlines :: Int -> String
-newlines n = Array.fold $ Array.replicate n "\n"
-
 fromJust' :: forall a. (Unit -> a) -> Maybe.Maybe a -> a
 fromJust' _ (Maybe.Just a) = a
 fromJust' failed _ = failed unit
@@ -113,7 +157,7 @@ mapKeys :: forall a b v. Ord a => Ord b => (a -> b) -> Extra.Map a v -> Extra.Ma
 mapKeys k = Map.fromFoldable <<< map (Extra.lmap k) <<< (Map.toUnfoldable :: _ -> Array _)
 
 traverseKeys :: forall a b v. Ord a => Ord b => (a -> Either.Either String b) -> Extra.Map a v -> Either.Either String (Extra.Map b v)
-traverseKeys k = map Map.fromFoldable <<< Extra.traverse (ltraverse k) <<< (Map.toUnfoldable :: _ -> Array _)
+traverseKeys k = map Map.fromFoldable <<< Extra.traverse (Extra.ltraverse k) <<< (Map.toUnfoldable :: _ -> Array _)
 
 guardA :: forall f. Alternative f => Boolean -> f Unit
 guardA = if _ then pure unit else empty
@@ -147,11 +191,7 @@ withBackoff { delay: Aff.Milliseconds timeout, action, shouldCancel, shouldRetry
 
     runTimeout attempt ms = do
       _ <- Aff.delay (Aff.Milliseconds (Int.toNumber ms))
-      shouldCancel attempt >>=
-        if _ then do
-          Extra.log $ "Cancelled after " <> show ms <> " milliseconds, retrying (attempt " <> show attempt <> ")..."
-          pure Maybe.Nothing
-        else runTimeout attempt (ms * 2)
+      shouldCancel attempt >>= if _ then pure Maybe.Nothing else runTimeout attempt (ms * 2)
 
     loop :: Int -> Maybe.Maybe a -> Extra.Aff (Maybe.Maybe a)
     loop attempt = case _ of
@@ -171,8 +211,11 @@ withBackoff { delay: Aff.Milliseconds timeout, action, shouldCancel, shouldRetry
 
 -- | Get the current time, standardizing on the UTC timezone to avoid ambiguity
 -- | when running on different machines.
-nowUTC :: Effect DateTime
-nowUTC = do
+nowUTC :: forall m. Extra.MonadEffect m => m DateTime
+nowUTC = Extra.liftEffect do
   offset <- Newtype.over Duration.Minutes negate <$> Now.getTimezoneOffset
   now <- Now.nowDateTime
   pure $ Maybe.fromMaybe now $ DateTime.adjust (offset :: Duration.Minutes) now
+
+formatPackageVersion :: PackageName -> Version -> String
+formatPackageVersion name version = PackageName.print name <> "@" <> Version.print version

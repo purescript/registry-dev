@@ -14,7 +14,7 @@ import ConvertableOptions as ConvertableOptions
 import Data.Filterable (partitionMap)
 import Data.Traversable (traverse)
 import Effect (Effect)
-import Effect.Aff (Aff)
+import Effect.Aff.Class (class MonadAff, liftAff)
 import Node.Path (FilePath)
 import Registry.Internal.Path as Internal.Path
 
@@ -66,20 +66,21 @@ foreign import matchImpl :: Array String -> JSGlobOptions -> Effect (Promise (Ar
 type SanitizedPaths = { succeeded :: Array FilePath, failed :: Array String }
 
 -- | Match the provided list of glob patterns.
-match :: FilePath -> Array String -> Aff SanitizedPaths
+match :: forall m. MonadAff m => FilePath -> Array String -> m SanitizedPaths
 match baseDir entries = match' baseDir entries {}
 
 -- | Match the provided list of glob patterns using the given glob options.
 match'
-  :: forall provided
-   . Defaults { | GlobOptions } { | provided } { | GlobOptions }
+  :: forall provided m
+   . MonadAff m
+  => Defaults { | GlobOptions } { | provided } { | GlobOptions }
   => FilePath
   -> Array String
   -> { | provided }
-  -> Aff SanitizedPaths
+  -> m SanitizedPaths
 match' baseDirectory entries opts = do
   let jsOptions = globOptionsToJSGlobOptions baseDirectory options
-  matches <- Promise.toAffE $ matchImpl entries jsOptions
+  matches <- liftAff $ Promise.toAffE $ matchImpl entries jsOptions
   results <- traverse (Internal.Path.sanitizePath baseDirectory) matches
   let { left, right } = partitionMap identity results
   pure { failed: left, succeeded: right }

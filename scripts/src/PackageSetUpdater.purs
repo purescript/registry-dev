@@ -7,25 +7,37 @@ import ArgParse.Basic as Arg
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
+import Data.FoldableWithIndex (foldMapWithIndex)
+import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
+import Data.Number.Format as Number.Format
+import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
-import Effect.Exception as Exception
-import Effect.Ref as Ref
+import Effect.Class.Console as Console
 import Node.Path as Path
-import Node.Process as Node.Process
 import Node.Process as Process
-import Registry.App.API as API
-import Registry.App.GitHub as GitHub
-import Registry.App.Json as Json
-import Registry.App.PackageIndex as PackageIndex
-import Registry.App.PackageSets as App.PackageSets
-import Registry.App.RegistryM (Env, RegistryM, commitPackageSetFile, readPackagesMetadata, runRegistryM, throwWithComment)
+import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Env as Env
+import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
+import Registry.App.Effect.Git as Git
+import Registry.App.Effect.GitHub as GitHub
+import Registry.App.Effect.Log (LOG, LogVerbosity(..))
+import Registry.App.Effect.Log as Log
+import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
+import Registry.App.Effect.PackageSets as PackageSets
+import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
-import Registry.Legacy.PackageSet as Legacy.PackageSet
-import Registry.PackageName as PackageName
-import Registry.PackageSet as PackageSet
+import Registry.Foreign.Octokit as Octokit
+import Registry.Internal.Format as Internal.Format
 import Registry.Version as Version
+import Run (AFF, EFFECT, Run)
+import Run as Run
+import Run.Except (EXCEPT)
+import Run.Except as Except
+import Spago.Generated.BuildInfo as BuildInfo
 
 data PublishMode = GeneratePackageSet | CommitPackageSet
 
@@ -33,123 +45,157 @@ derive instance Eq PublishMode
 
 parser :: ArgParser PublishMode
 parser = Arg.choose "command"
-  [ Arg.argument [ "generate" ]
+  [ Arg.flag [ "generate" ]
       "Generate a new package set without committing the results."
       $> GeneratePackageSet
-  , Arg.argument [ "commit" ]
+  , Arg.flag [ "commit" ]
       "Generate a new package set and commit the results."
       $> CommitPackageSet
   ]
 
 main :: Effect Unit
 main = Aff.launchAff_ do
-  log "Loading env..."
-  _ <- API.loadEnv
-
-  FS.Extra.ensureDirectory API.scratchDir
-
-  args <- Array.drop 2 <$> liftEffect Node.Process.argv
+  args <- Array.drop 2 <$> liftEffect Process.argv
   let description = "A script for updating the package sets."
   mode <- case Arg.parseArgs "package-set-updater" description parser args of
-    Left err -> log (Arg.printArgError err) *> liftEffect (Process.exit 1)
+    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
     Right command -> pure command
 
-  log "Starting package set publishing..."
+  -- Environment
+  _ <- Env.loadEnvFile ".env"
 
-  githubToken <- liftEffect do
-    Node.Process.lookupEnv "GITHUB_TOKEN"
-      >>= maybe (Exception.throw "GITHUB_TOKEN not defined in the environment") (pure <<< GitHub.GitHubToken)
+  { token, write } <- case mode of
+    GeneratePackageSet -> do
+      Env.lookupOptional Env.githubToken >>= case _ of
+        Nothing -> do
+          token <- Env.lookupRequired Env.pacchettibottiToken
+          pure { token, write: ReadOnly }
+        Just token ->
+          pure { token, write: ReadOnly }
+    CommitPackageSet -> do
+      token <- Env.lookupRequired Env.pacchettibottiToken
+      pure { token, write: CommitAs (Git.pacchettibottiCommitter token) }
 
-  octokit <- liftEffect $ GitHub.newOctokit githubToken
-  metadataRef <- liftEffect $ Ref.new Map.empty
-
+  -- Git
+  debouncer <- Git.newDebouncer
   let
-    env :: Env
-    env =
-      { comment: \comment -> log ("[COMMENT] " <> comment)
-      , closeIssue: mempty
-      , commitMetadataFile: \_ _ -> pure (Right unit)
-      , commitIndexFile: \_ _ -> pure (Right unit)
-      , commitPackageSetFile: API.pacchettiBottiPushToRegistryPackageSets
-      , uploadPackage: mempty
-      , deletePackage: mempty
-      , octokit
-      , cache: { write: mempty, read: \_ -> pure (Left mempty), remove: mempty }
-      , username: mempty
-      , packagesMetadata: metadataRef
-      , registry: Path.concat [ API.scratchDir, "registry" ]
-      , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
+    gitEnv :: GitEnv
+    gitEnv =
+      { write
+      , pull: ForceClean
+      , repos: Git.defaultRepos
+      , workdir: scratchDir
+      , debouncer
       }
 
-  runRegistryM env do
-    API.fetchRegistryIndex
-    API.fetchRegistry
-    API.fillMetadataRef
+  -- Package sets
+  let packageSetsEnv = { workdir: Path.concat [ scratchDir, "package-set-build" ] }
 
-    registryIndex <- PackageIndex.readManifestIndexFromDisk
-    prevPackageSet <- App.PackageSets.readLatestPackageSet
-    App.PackageSets.validatePackageSet registryIndex prevPackageSet
+  -- GitHub
+  octokit <- Octokit.newOctokit token
 
-    metadata <- readPackagesMetadata
-    recentUploads <- findRecentUploads metadata (Hours 24.0)
+  -- Caching
+  let cache = Path.concat [ scratchDir, ".cache" ]
+  FS.Extra.ensureDirectory cache
+  githubCacheRef <- Cache.newCacheRef
+  registryCacheRef <- Cache.newCacheRef
 
-    let candidates = App.PackageSets.validatePackageSetCandidates registryIndex prevPackageSet (map Just recentUploads.accepted)
-    log $ App.PackageSets.printRejections candidates.rejected
+  -- Logging
+  now <- nowUTC
+  let logDir = Path.concat [ scratchDir, "logs" ]
+  FS.Extra.ensureDirectory logDir
+  let logFile = "package-set-updater-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
+  let logPath = Path.concat [ logDir, logFile ]
 
-    if Map.isEmpty candidates.accepted then do
-      log "No eligible additions, updates, or removals to produce a new package set."
-    else do
-      let
-        logPackage name maybeVersion = case maybeVersion of
-          -- There are no removals in the automated package sets. This should be
-          -- an unreachable case.
-          Nothing -> throwWithComment "Package removals are not accepted in automatic package sets."
-          Just version -> log (PackageName.print name <> "@" <> Version.print version)
+  updater
+    # PackageSets.interpret (PackageSets.handle packageSetsEnv)
+    # Registry.interpret (Registry.handle registryCacheRef)
+    # Storage.interpret (Storage.handleReadOnly cache)
+    # Git.interpret (Git.handle gitEnv)
+    # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+    # Run.runBaseAff'
 
-      log "Found the following package versions eligible for inclusion in package set:"
-      forWithIndex_ candidates.accepted logPackage
-      let workDir = Path.concat [ API.scratchDir, "package-set-build" ]
-      App.PackageSets.processBatchSequential workDir registryIndex prevPackageSet Nothing candidates.accepted >>= case _ of
-        Nothing -> do
-          log "\n----------\nNo packages could be added to the set. All packages failed:"
-          forWithIndex_ candidates.accepted logPackage
-        Just { success, fail, packageSet } -> do
-          unless (Map.isEmpty fail) do
-            log "\n----------\nSome packages could not be added to the set:"
-            forWithIndex_ fail logPackage
-          log "\n----------\nNew packages were added to the set!"
-          forWithIndex_ success logPackage
-          newPath <- App.PackageSets.getPackageSetPath (un PackageSet packageSet).version
-          liftAff $ Json.writeJsonFile PackageSet.codec newPath packageSet
-          case mode of
-            GeneratePackageSet -> pure unit
-            CommitPackageSet -> do
-              let commitMessage = App.PackageSets.commitMessage prevPackageSet success (un PackageSet packageSet).version
-              commitPackageSetFile (un PackageSet packageSet).version commitMessage >>= case _ of
-                Left err -> throwWithComment $ "Failed to commit package set file: " <> err
-                Right _ -> do
-                  case Legacy.PackageSet.fromPackageSet registryIndex metadata packageSet of
-                    Left err -> throwWithComment err
-                    Right converted -> Legacy.PackageSet.mirrorLegacySet converted
+updater :: forall r. Run (REGISTRY + PACKAGE_SETS + LOG + EXCEPT String + AFF + EFFECT + r) Unit
+updater = do
+  prevPackageSet <- Registry.readLatestPackageSet >>= case _ of
+    Nothing -> Except.throw "No previous package set found, cannot continue."
+    Just set -> pure set
 
-findRecentUploads :: Map PackageName Metadata -> Hours -> RegistryM { accepted :: Map PackageName Version, rejected :: Map PackageName (NonEmptyArray Version) }
-findRecentUploads metadata limit = do
-  now <- liftEffect nowUTC
+  PackageSets.validatePackageSet prevPackageSet
 
   let
-    packageUploads = Map.fromFoldable do
-      Tuple packageName (Metadata packageMetadata) <- Map.toUnfoldable metadata
+    -- This record comes from the build directory (.spago) and records information
+    -- from the most recent build.
+    localCompiler = unsafeFromRight (Version.parse BuildInfo.buildInfo.pursVersion)
+    -- We use the greater of the local compiler version or the last package set
+    -- version to upgrade the package sets. This automatically bumps the purs
+    -- version when the registry upgrades to a new compiler.
+    compiler = do
+      let prev = (un PackageSet prevPackageSet).compiler
+      if localCompiler > prev then localCompiler else prev
+
+  Log.info $ "Using compiler " <> Version.print compiler
+
+  let uploadHours = 24.0
+  recentUploads <- findRecentUploads (Hours uploadHours)
+
+  manifestIndex <- Registry.readAllManifests
+  let candidates = PackageSets.validatePackageSetCandidates manifestIndex prevPackageSet (map Just recentUploads.eligible)
+  unless (Map.isEmpty candidates.rejected) do
+    Log.info $ "Some packages uploaded in the last " <> Number.Format.toString uploadHours <> " hours are not eligible for the automated package sets."
+    Log.info $ PackageSets.printRejections candidates.rejected
+
+  if Map.isEmpty candidates.accepted then do
+    Log.info "No eligible additions, updates, or removals to produce a new package set."
+  else do
+    -- You can't remove packages via the automatic updater.
+    let eligible = Map.catMaybes candidates.accepted
+    let listPackages = foldMapWithIndex \name version -> [ formatPackageVersion name version ]
+    Log.info $ "Found package versions eligible for inclusion in package set: " <> Array.foldMap (append "\n  - ") (listPackages eligible)
+    PackageSets.upgradeSequential prevPackageSet compiler (map (maybe Remove Update) candidates.accepted) >>= case _ of
+      Nothing -> do
+        Log.info "No packages could be added to the set. All packages failed."
+      Just { failed, succeeded, result } -> do
+        let
+          listChanges = foldMapWithIndex \name -> case _ of
+            Remove -> []
+            Update version -> [ formatPackageVersion name version ]
+        unless (Map.isEmpty failed) do
+          Log.info $ "Some packages could not be added to the set: " <> Array.foldMap (append "\n  - ") (listChanges failed)
+        Log.info $ "New packages were added to the set: " <> Array.foldMap (append "\n  - ") (listChanges succeeded)
+        -- We only include the successful changes in the commit message.
+        let commitMessage = PackageSets.commitMessage prevPackageSet succeeded (un PackageSet result).version
+        Registry.writePackageSet result commitMessage
+        Log.info "Built and released a new package set! Now mirroring to the package-sets repo..."
+        Registry.mirrorPackageSet result
+        Log.info "Mirrored a new legacy package set."
+
+type RecentUploads =
+  { eligible :: Map PackageName Version
+  , ineligible :: Map PackageName (NonEmptyArray Version)
+  }
+
+findRecentUploads :: forall r. Hours -> Run (REGISTRY + EXCEPT String + EFFECT + r) RecentUploads
+findRecentUploads limit = do
+  allMetadata <- Registry.readAllMetadata
+  now <- nowUTC
+
+  let
+    uploads = Map.fromFoldable do
+      Tuple name (Metadata metadata) <- Map.toUnfoldable allMetadata
       versions <- Array.fromFoldable $ NonEmptyArray.fromArray do
-        Tuple version { publishedTime } <- Map.toUnfoldable packageMetadata.published
+        Tuple version { publishedTime } <- Map.toUnfoldable metadata.published
         let diff = DateTime.diff now publishedTime
         guardA (diff <= limit)
         pure version
-      pure (Tuple packageName versions)
+      pure (Tuple name versions)
 
-    deduplicated = packageUploads # flip foldlWithIndex { rejected: Map.empty, accepted: Map.empty } \name acc versions -> do
+    deduplicated = uploads # flip foldlWithIndex { ineligible: Map.empty, eligible: Map.empty } \name acc versions -> do
       let { init, last } = NonEmptyArray.unsnoc versions
       case NonEmptyArray.fromArray init of
-        Nothing -> acc { accepted = Map.insert name last acc.accepted }
-        Just entries -> acc { accepted = Map.insert name last acc.accepted, rejected = Map.insert name entries acc.rejected }
+        Nothing -> acc { eligible = Map.insert name last acc.eligible }
+        Just entries -> acc { eligible = Map.insert name last acc.eligible, ineligible = Map.insert name entries acc.ineligible }
 
   pure deduplicated

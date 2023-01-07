@@ -8,18 +8,21 @@ import Registry.App.Prelude
 import Data.String as String
 import Node.ChildProcess as ChildProcess
 
-type ExtractArgs = { cwd :: String, archive :: String }
+type ExtractArgs = { cwd :: String, archive :: FilePath }
 
--- | Extracts the tarball at the given relative file path into cwd.
-extract :: ExtractArgs -> Effect Unit
-extract { cwd, archive } = do
+-- | Extracts the tarball at the given relative file path into cwd. Resulting
+-- | directory name will be the archive name minus '.tar.gz'.
+extract :: forall m. MonadEffect m => ExtractArgs -> m Unit
+extract { cwd, archive } = liftEffect do
   let cmd = "tar -xzf " <> archive
   void $ ChildProcess.execSync cmd (ChildProcess.defaultExecSyncOptions { cwd = Just cwd })
 
 type CreateArgs = { cwd :: String, folderName :: String }
 
-create :: CreateArgs -> Effect Unit
-create { cwd, folderName } = do
+-- | Create a tarball in cwd given a relative path to a folder in that
+-- | directory, writing logs to stdout.
+create :: forall m. MonadEffect m => CreateArgs -> m Unit
+create { cwd, folderName } = liftEffect do
   let
     cmd = String.joinWith " | " [ tarCmd, gzipCmd ]
     gzipCmd = "gzip " <> String.joinWith " " [ "--name", ">", folderName <> ".tar.gz" ]

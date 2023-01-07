@@ -15,13 +15,14 @@ import Data.Newtype (un)
 import Data.String as String
 import Data.String.Pattern (Pattern(..))
 import Data.Time.Duration (Hours(..))
-import Data.Traversable (traverse)
+import Data.Traversable (for, traverse)
 import Data.Tuple (uncurry)
 import Data.Tuple.Nested (type (/\), (/\))
-import Effect.Aff (Aff)
+import Effect.Aff.Class (class MonadAff, liftAff)
 import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as Stats
 import Node.Path (FilePath)
+import Node.Path as Path
 import Registry.Location (Location)
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)
@@ -39,13 +40,16 @@ import Registry.Version (Version)
 -- See https://github.com/purescript/registry-dev/blob/master/SPEC.md#5-registry-operations
 
 -- | Checks that there is at least one purs file within the `src` directory.
-containsPursFile :: FilePath -> Aff Boolean
-containsPursFile parent = flip catchError (\_ -> pure false) do
+containsPursFile :: forall m. MonadAff m => FilePath -> m Boolean
+containsPursFile parent = liftAff $ flip catchError (\_ -> pure false) do
   children <- FS.Aff.readdir parent
-  stats <- traverse (\path -> { path, stats: _ } <$> FS.Aff.stat path) children
-  let
-    files = Array.filter (_.stats >>> Stats.isFile) stats
-    directories = Array.filter (_.stats >>> Stats.isDirectory) stats
+
+  stats <- for children \relpath -> do
+    let path = Path.concat [ parent, relpath ]
+    stats <- FS.Aff.stat path
+    pure { path, isDirectory: Stats.isDirectory stats }
+
+  let { no: files, yes: directories } = Array.partition _.isDirectory stats
 
   if Array.any (\{ path } -> isJust (String.stripSuffix (Pattern ".purs") path)) files then
     pure true

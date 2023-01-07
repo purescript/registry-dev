@@ -11,17 +11,18 @@ import Registry.App.Prelude
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Control.Alternative (guard)
-import Control.Monad.Except as Except
-import Control.Monad.Reader (ask, asks)
+import Control.Apply (lift2)
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.Codec.Argonaut.Variant as CA.Variant
 import Data.Compactable (separate)
+import Data.Exists as Exists
 import Data.Filterable (partition)
 import Data.Foldable (foldMap)
 import Data.Foldable as Foldable
+import Data.Formatter.DateTime as Formatter.DateTime
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.List as List
 import Data.Map as Map
@@ -31,8 +32,7 @@ import Data.Set as Set
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
 import Data.Variant as Variant
-import Effect.Exception as Exception
-import Effect.Ref as Ref
+import Effect.Class.Console as Console
 import Node.Path as Path
 import Node.Process as Process
 import Parsing (Parser)
@@ -41,28 +41,42 @@ import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
-import Registry.App.API (LegacyRegistryFile(..), Source(..))
+import Registry.App.API (Source(..))
 import Registry.App.API as API
-import Registry.App.Cache as Cache
-import Registry.App.GitHub (GitHubToken(..))
-import Registry.App.GitHub as GitHub
-import Registry.App.Json (JsonCodec)
-import Registry.App.Json as Json
+import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
+import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Env as Env
+import Registry.App.Effect.Git (PullMode(..), WriteMode(..))
+import Registry.App.Effect.Git as Git
+import Registry.App.Effect.GitHub (GITHUB)
+import Registry.App.Effect.GitHub as GitHub
+import Registry.App.Effect.Log (LogVerbosity(..))
+import Registry.App.Effect.Log as Log
+import Registry.App.Effect.Notify as Notify
+import Registry.App.Effect.Pursuit as Pursuit
+import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
-import Registry.App.PackageIndex as PackageIndex
-import Registry.App.PackageStorage as PackageStorage
-import Registry.App.RegistryM (RegistryM, commitMetadataFile, readPackagesMetadata, runRegistryM, throwWithComment)
+import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
+import Registry.App.Legacy.Manifest as Legacy.Manifest
+import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
 import Registry.Foreign.FSExtra as FS.Extra
-import Registry.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError, LegacyPackageSetEntries)
-import Registry.Legacy.Manifest as Legacy.Manifest
+import Registry.Foreign.Octokit (Address, Tag)
+import Registry.Foreign.Octokit as Octokit
+import Registry.Internal.Format as Internal.Format
 import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
-import Registry.Metadata as Metadata
-import Registry.Operation (PackageOperation(..))
+import Registry.Operation (PublishData)
 import Registry.PackageName as PackageName
 import Registry.Version as Version
+import Run (Run)
+import Run as Run
+import Run.Except (EXCEPT, Except)
+import Run.Except as Except
+import Run.Except as Run.Except
+import Spago.Generated.BuildInfo as BuildInfo
 import Type.Proxy (Proxy(..))
 
 data ImportMode = DryRun | GenerateRegistry | UpdateRegistry
@@ -71,13 +85,13 @@ derive instance Eq ImportMode
 
 parser :: ArgParser ImportMode
 parser = Arg.choose "command"
-  [ Arg.argument [ "dry-run" ]
+  [ Arg.flag [ "dry-run" ]
       "Run the registry importer without uploading packages or committing files."
       $> DryRun
-  , Arg.argument [ "generate-registry" ]
+  , Arg.flag [ "generate-registry" ]
       "Run the registry importer, uploading packages but not committing to metadata or the index."
       $> GenerateRegistry
-  , Arg.argument [ "update-registry" ]
+  , Arg.flag [ "update-registry" ]
       "Run the registry importer, uploading packages and committing to metadata and the index."
       $> UpdateRegistry
   ]
@@ -85,210 +99,220 @@ parser = Arg.choose "command"
 main :: Effect Unit
 main = launchAff_ do
   args <- Array.drop 2 <$> liftEffect Process.argv
+
   let description = "A script for uploading legacy registry packages."
   mode <- case Arg.parseArgs "legacy-importer" description parser args of
-    Left err -> log (Arg.printArgError err) *> liftEffect (Process.exit 1)
+    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
     Right command -> pure command
 
-  log "Reading .env file..."
-  _ <- API.loadEnv
+  Env.loadEnvFile ".env"
 
-  FS.Extra.ensureDirectory API.scratchDir
+  githubCacheRef <- Cache.newCacheRef
+  legacyCacheRef <- Cache.newCacheRef
+  registryCacheRef <- Cache.newCacheRef
+  importCacheRef <- Cache.newCacheRef
+  let cache = Path.concat [ scratchDir, ".cache" ]
+  FS.Extra.ensureDirectory cache
 
-  octokit <- liftEffect do
-    token <- do
-      result <- Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
-      maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHubToken) result
-    GitHub.newOctokit token
+  -- Set up interpreters according to the import mode. In dry-run mode we don't
+  -- allow anyting to be committed or pushed, but data is still written to the
+  -- local repository checkouts on disk. In generate-registry mode, tarballs are
+  -- uploaded, but nothing is committed. In update-registry mode, tarballs are
+  -- uploaded and manifests and metadata are written, committed, and pushed.
+  runAppEffects <- do
+    debouncer <- Git.newDebouncer
+    let gitEnv pull write = { pull, write, repos: Git.defaultRepos, workdir: scratchDir, debouncer }
+    case mode of
+      DryRun -> do
+        token <- Env.lookupRequired Env.githubToken
+        octokit <- Octokit.newOctokit token
+        pure do
+          Storage.interpret (Storage.handleReadOnly cache)
+            >>> Pursuit.interpret Pursuit.handlePure
+            >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+            >>> Git.interpret (Git.handle (gitEnv Autostash ReadOnly))
 
-  cache <- Cache.useCache API.cacheDir
+      GenerateRegistry -> do
+        token <- Env.lookupRequired Env.githubToken
+        s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
+        octokit <- Octokit.newOctokit token
+        pure do
+          Storage.interpret (Storage.handleS3 { s3, cache })
+            >>> Pursuit.interpret Pursuit.handlePure
+            >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+            >>> Git.interpret (Git.handle (gitEnv Autostash (CommitAs (Git.pacchettibottiCommitter token))))
 
-  metadataRef <- liftEffect $ Ref.new Map.empty
+      UpdateRegistry -> do
+        token <- Env.lookupRequired Env.pacchettibottiToken
+        s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
+        octokit <- Octokit.newOctokit token
+        pure do
+          Storage.interpret (Storage.handleS3 { s3, cache })
+            >>> Pursuit.interpret (Pursuit.handleAff token)
+            >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+            >>> Git.interpret (Git.handle (gitEnv ForceClean (CommitAs (Git.pacchettibottiCommitter token))))
+
+  -- Logging setup
+  let logDir = Path.concat [ scratchDir, "logs" ]
+  FS.Extra.ensureDirectory logDir
+  now <- nowUTC
+  let
+    logFile = "legacy-importer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
+    logPath = Path.concat [ logDir, logFile ]
+
+  runLegacyImport mode logPath
+    # Registry.interpret (Registry.handle registryCacheRef)
+    # runAppEffects
+    # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
+    # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
+    # Notify.interpret Notify.handleLog
+    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+    # Run.runBaseAff'
+
+runLegacyImport :: forall r. ImportMode -> FilePath -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit
+runLegacyImport mode logs = do
+  Log.info "Starting legacy import!"
+  Log.info $ "Logs available at " <> logs
+
+  Log.info "Ensuring the registry is well-formed..."
 
   let
-    env = case mode of
-      DryRun ->
-        { comment: \err -> error err
-        , closeIssue: log "Skipping GitHub issue closing, this is a dry run..."
-        , commitMetadataFile: \_ _ -> do
-            log "Skipping committing to registry metadata, this is a dry run..."
-            pure (Right unit)
-        , commitIndexFile: \_ _ -> do
-            log "Skipping committing to registry index, this is a dry run..."
-            pure (Right unit)
-        , commitPackageSetFile: \_ _ _ -> do
-            log "Skipping committing to registry package sets, this is a dry run..."
-            pure (Right unit)
-        , uploadPackage: \_ _ -> log "Skipping upload, this is a dry run..."
-        , deletePackage: \_ -> log "Skipping delete, this is a dry run..."
-        , octokit
-        , cache
-        , username: "NO USERNAME"
-        , packagesMetadata: metadataRef
-        , registry: Path.concat [ API.scratchDir, "registry" ]
-        , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
-        }
-      UpdateRegistry ->
-        { comment: \comment -> log ("[COMMENT] " <> comment)
-        , closeIssue: log "Running locally, not closing issue..."
-        , commitMetadataFile: API.pacchettiBottiPushToRegistryMetadata
-        , commitIndexFile: API.pacchettiBottiPushToRegistryIndex
-        , commitPackageSetFile: \_ _ _ -> log "Not committing package set in legacy import." $> Right unit
-        , uploadPackage: PackageStorage.upload
-        , deletePackage: PackageStorage.delete
-        , packagesMetadata: metadataRef
-        , cache
-        , octokit
-        , username: mempty
-        , registry: Path.concat [ API.scratchDir, "registry" ]
-        , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
-        }
-      GenerateRegistry ->
-        { comment: \err -> error err
-        , closeIssue: log "Skipping GitHub issue closing, we're running locally.."
-        , commitMetadataFile: \_ _ -> do
-            log "Skipping committing to registry metadata..."
-            pure (Right unit)
-        , commitIndexFile: \_ _ -> do
-            log "Skipping committing to registry index..."
-            pure (Right unit)
-        , commitPackageSetFile: \_ _ _ -> do
-            log "Skipping committing to registry package sets..."
-            pure (Right unit)
-        , uploadPackage: PackageStorage.upload
-        , deletePackage: PackageStorage.delete
-        , octokit
-        , cache
-        , username: ""
-        , packagesMetadata: metadataRef
-        , registry: Path.concat [ API.scratchDir, "registry" ]
-        , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
-        }
+    hasMetadata allMetadata package version = case Map.lookup package allMetadata of
+      Nothing -> false
+      Just (Metadata m) -> isJust (Map.lookup version m.published) || isJust (Map.lookup version m.unpublished)
 
-  runRegistryM env do
-    API.fetchRegistry
-    API.fetchRegistryIndex
-    API.fillMetadataRef
+  _ <- do
+    allManifests <- Registry.readAllManifests
+    allMetadata <- Registry.readAllMetadata
+    -- To ensure the metadata and registry index are always in sync, we remove
+    -- any entries from the registry index that don't have accompanying metadata
+    let mismatched = mapWithIndex (Map.filterKeys <<< not <<< hasMetadata allMetadata) $ ManifestIndex.toMap allManifests
+    unless (Map.isEmpty mismatched) do
+      Log.info "Removing entries from the manifest index that don't have accompanying metadata..."
+      void $ forWithIndex mismatched \package versions ->
+        forWithIndex versions \version _ -> do
+          Log.debug $ "Found mismatch: " <> formatPackageVersion package version
+          Registry.deleteManifest package version
 
-    registryIndexPath <- asks _.registryIndex
-    registryPath <- asks _.registry
+  Log.info "Reading legacy registry..."
+  legacyRegistry <- do
+    { bower, new } <- Registry.readLegacyRegistry
+    let allPackages = Map.union bower new
+    let fixupNames = mapKeys (RawPackageName <<< stripPureScriptPrefix)
+    pure $ fixupNames allPackages
 
-    log "Reading existing registry index..."
-    existingRegistry <- do
-      registry <- PackageIndex.readManifestIndexFromDisk
-      -- To ensure the metadata and registry index are always in sync, we remove
-      -- any entries from the registry index that don't have accompanying metadata
-      metadata <- liftEffect $ Ref.read metadataRef
-      let hasMetadata package version = API.isPackageVersionInMetadata package version metadata
-      let mismatched = mapWithIndex (Map.filterKeys <<< not <<< hasMetadata) $ ManifestIndex.toMap registry
-      if Map.isEmpty mismatched then
-        pure registry
-      else do
-        void $ forWithIndex mismatched \package versions ->
-          forWithIndex versions \version _ ->
-            ManifestIndex.removeFromEntryFile registryIndexPath package version
-        PackageIndex.readManifestIndexFromDisk
+  Log.info $ "Read " <> show (Set.size (Map.keys legacyRegistry)) <> " package names from the legacy registry."
+  importedIndex <- importLegacyRegistry legacyRegistry
 
-    log "Reading legacy registry..."
-    legacyRegistry <- readLegacyRegistryFiles
+  Log.info "Writing package and version failures to disk..."
+  Run.liftAff $ writePackageFailures importedIndex.failedPackages
+  Run.liftAff $ writeVersionFailures importedIndex.failedVersions
 
-    log "Importing legacy registry packages..."
-    importedIndex <- importLegacyRegistry existingRegistry legacyRegistry
+  Log.info "Writing empty metadata files for legacy packages that can't be registered..."
+  void $ forWithIndex importedIndex.reservedPackages \package location -> do
+    Registry.readMetadata package >>= case _ of
+      Nothing -> do
+        let metadata = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
+        Registry.writeMetadata package metadata
+      Just _ -> pure unit
 
-    liftAff do
-      logImportStats legacyRegistry importedIndex
+  Log.info "Ready for upload!"
 
-      log "Writing package and version failures..."
-      writePackageFailures importedIndex.failedPackages
-      writeVersionFailures importedIndex.failedVersions
+  Log.info $ formatImportStats $ calculateImportStats legacyRegistry importedIndex
 
-    log "Writing metadata for legacy packages that can't be registered..."
-    void $ forWithIndex importedIndex.reservedPackages \package location -> do
-      metadataMap <- liftEffect $ Ref.read metadataRef
-      case Map.lookup package metadataMap of
+  Log.info "Sorting packages for upload..."
+  let indexPackages = ManifestIndex.toSortedArray importedIndex.registryIndex
+
+  allMetadata <- Registry.readAllMetadata
+
+  -- This record comes from the build directory (.spago) and records information
+  -- from the most recent build.
+  let compiler = unsafeFromRight (Version.parse BuildInfo.buildInfo.pursVersion)
+
+  -- Just a safety check to ensure the compiler used in the pipeline is not too
+  -- low. Should be bumped from time to time to the latest compiler.
+  let minCompiler = unsafeFromRight (Version.parse "0.15.7")
+  when (compiler < minCompiler) do
+    Except.throw $ "Local compiler " <> Version.print compiler <> " is too low (min: " <> Version.print minCompiler <> ")."
+
+  Log.info $ "Using compiler " <> Version.print compiler
+
+  let
+    isPublished { name, version } = hasMetadata allMetadata name version
+    notPublished = indexPackages # Array.filter \(Manifest manifest) -> not (isPublished manifest)
+
+    mkOperation :: Manifest -> Run _ PublishData
+    mkOperation (Manifest manifest) =
+      case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
         Nothing -> do
-          let metadata = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
-          liftAff $ Json.writeJsonFile Metadata.codec (API.metadataFile registryPath package) metadata
-          liftEffect $ Ref.modify_ (Map.insert package metadata) metadataRef
-          commitMetadataFile package >>= case _ of
-            Left err -> throwWithComment err
-            Right _ -> pure unit
-        Just _ -> pure unit
+          let formatted = formatPackageVersion manifest.name manifest.version
+          Log.error $ "Unable to recover package ref for " <> formatted
+          Except.throw $ "Failed to create publish operation for " <> formatted
+        Just ref ->
+          pure
+            { location: Just manifest.location
+            , name: manifest.name
+            , ref: un RawVersion ref
+            , compiler
+            , resolutions: Nothing
+            }
 
-    log "Sorting packages for upload..."
-    let indexPackages = ManifestIndex.toSortedArray importedIndex.registryIndex
-    metadataMap <- readPackagesMetadata
+  case notPublished of
+    [] -> Log.info "No packages to publish."
+    manifests -> do
+      let printPackage (Manifest { name, version }) = formatPackageVersion name version
+      Log.info $ Array.foldMap (append "\n")
+        [ "----------"
+        , "AVAILABLE TO PUBLISH"
+        , ""
+        , "  using purs " <> Version.print compiler
+        , ""
+        , "----------"
+        , Array.foldMap (append "\n  - " <<< printPackage) manifests
+        ]
 
-    let
-      isPublished { name, version } =
-        API.isPackageVersionInMetadata name version metadataMap
+      let
+        source = case mode of
+          DryRun -> Current
+          GenerateRegistry -> Legacy
+          UpdateRegistry -> Current
 
-      notPublished =
-        indexPackages # Array.filter \(Manifest manifest) -> not (isPublished manifest)
-
-      mkOperation :: Manifest -> PackageOperation
-      mkOperation (Manifest manifest) =
-        case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
-          Nothing ->
-            unsafeCrashWith $ "Unable to recover package ref for " <> PackageName.print manifest.name <> "@" <> Version.print manifest.version
-          Just ref ->
-            Publish
-              { location: Just manifest.location
-              , name: manifest.name
-              , ref: un RawVersion ref
-              , compiler: unsafeFromRight $ Version.parse "0.15.4"
-              , resolutions: Nothing
-              }
-
-    case notPublished of
-      [] -> log "No packages to publish."
-      manifests -> do
-        let printPackage (Manifest { name, version }) = PackageName.print name <> "@" <> Version.print version
-        log "\n----------"
-        log "AVAILABLE TO PUBLISH"
-        log "----------"
-        log $ "  " <> String.joinWith "\n  " (map printPackage manifests)
-
-        let
-          source = case mode of
-            DryRun -> Importer
-            UpdateRegistry -> API
-            GenerateRegistry -> Importer
-
-        void $ for notPublished \(Manifest manifest) -> do
-          log "\n----------"
-          log "UPLOADING"
-          log $ PackageName.print manifest.name <> "@" <> Version.print manifest.version
-          log $ Json.stringifyJson Location.codec manifest.location
-          log "----------"
-          API.runOperation source (Right (mkOperation (Manifest manifest)))
-
-    when (mode == GenerateRegistry || mode == DryRun) do
-      log "Regenerating registry metadata..."
-      metadataResult <- readPackagesMetadata
-      void $ forWithIndex metadataResult \name metadata -> do
-        dir <- asks _.registry
-        liftAff (Json.writeJsonFile Metadata.codec (API.metadataFile dir name) metadata)
-
-      log "Regenerating registry index..."
-      void $ for indexPackages (liftAff <<< ManifestIndex.insertIntoEntryFile registryIndexPath)
-
-    log "Done!"
+      void $ for notPublished \(Manifest manifest) -> do
+        let formatted = formatPackageVersion manifest.name manifest.version
+        Log.info $ Array.foldMap (append "\n")
+          [ "----------"
+          , "PUBLISHING: " <> formatted
+          , stringifyJson Location.codec manifest.location
+          , "----------"
+          ]
+        operation <- mkOperation (Manifest manifest)
+        result <- Except.runExcept $ API.publish source operation
+        -- TODO: Some packages will fail because the legacy importer does not
+        -- perform all the same validation checks that the publishing flow does.
+        -- What should we do when a package has a valid manifest but fails for
+        -- other reasons? Should they be added to the package validation
+        -- failures and we defer writing the package failures until the import
+        -- has completed?
+        case result of
+          Left error -> do
+            Log.error $ "Failed to publish " <> formatted <> ": " <> error
+          Right _ ->
+            Log.info $ "Published " <> formatted
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
 writePackageFailures =
-  Json.writeJsonFile (rawPackageNameMapCodec jsonValidationErrorCodec) (Path.concat [ API.scratchDir, "package-failures.json" ])
+  writeJsonFile (rawPackageNameMapCodec jsonValidationErrorCodec) (Path.concat [ scratchDir, "package-failures.json" ])
     <<< map formatPackageValidationError
 
 -- | Record all version failures to the 'version-failures.json' file.
 writeVersionFailures :: Map RawPackageName (Map RawVersion VersionValidationError) -> Aff Unit
 writeVersionFailures =
-  Json.writeJsonFile (rawPackageNameMapCodec (rawVersionMapCodec jsonValidationErrorCodec)) (Path.concat [ API.scratchDir, "version-failures.json" ])
+  writeJsonFile (rawPackageNameMapCodec (rawVersionMapCodec jsonValidationErrorCodec)) (Path.concat [ scratchDir, "version-failures.json" ])
     <<< map (map formatVersionValidationError)
 
-logImportStats :: LegacyRegistry -> ImportedIndex -> Aff Unit
-logImportStats legacy = log <<< formatImportStats <<< calculateImportStats legacy
+type LegacyRegistry = Map RawPackageName String
 
 type ImportedIndex =
   { failedPackages :: Map RawPackageName PackageValidationError
@@ -302,11 +326,10 @@ type ImportedIndex =
 -- | the legacy registry files. This function also collects import errors for
 -- | packages and package versions and reports packages that are present in the
 -- | legacy registry but not in the resulting registry.
-importLegacyRegistry :: ManifestIndex -> LegacyRegistry -> RegistryM ImportedIndex
-importLegacyRegistry existingRegistry legacyRegistry = do
-  legacyPackageSets <- Legacy.Manifest.fetchLegacyPackageSets
-  manifests <- forWithIndex legacyRegistry \name address ->
-    Except.runExceptT (buildLegacyPackageManifests existingRegistry legacyPackageSets name address)
+importLegacyRegistry :: forall r. LegacyRegistry -> Run (API.PublishEffects + IMPORT_CACHE + r) ImportedIndex
+importLegacyRegistry legacyRegistry = do
+  Log.info "Importing legacy registry manifests (this will take a while if you do not have a cache)"
+  manifests <- forWithIndex legacyRegistry buildLegacyPackageManifests
 
   let
     separatedPackages :: { left :: Map RawPackageName PackageValidationError, right :: Map RawPackageName (Map RawVersion _) }
@@ -383,77 +406,88 @@ importLegacyRegistry existingRegistry legacyRegistry = do
 -- | be fetched in the first place. Otherwise, it will produce errors for all
 -- | versions that don't produce valid manifests, and manifests for all that do.
 buildLegacyPackageManifests
-  :: ManifestIndex
-  -> LegacyPackageSetEntries
-  -> RawPackageName
+  :: forall r
+   . RawPackageName
   -> String
-  -> ExceptT PackageValidationError RegistryM (Map RawVersion (Either VersionValidationError Manifest))
-buildLegacyPackageManifests existingRegistry legacyPackageSets rawPackage rawUrl = do
-  { cache } <- ask
-
+  -> Run (API.PublishEffects + IMPORT_CACHE + r) (Either PackageValidationError (Map RawVersion (Either VersionValidationError Manifest)))
+buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPackage do
+  Log.info $ "Processing " <> un RawPackageName rawPackage
   package <- validatePackage rawPackage rawUrl
 
   let
     location :: Location
     location = GitHub { owner: package.address.owner, repo: package.address.repo, subdir: Nothing }
 
-    buildManifestForVersion :: GitHub.Tag -> ExceptT _ RegistryM Manifest
-    buildManifestForVersion tag = do
-      version <- Except.except $ validateVersion tag
+    buildManifestForVersion :: Tag -> Run _ (Either VersionValidationError Manifest)
+    buildManifestForVersion tag = Run.Except.runExceptAt _exceptVersion do
+      version <- exceptVersion $ validateVersion tag
 
-      let
-        buildManifest = do
-          Except.except $ validateVersionDisabled package.name version
-          let packageSetDeps = Map.lookup (RawVersion tag.name) =<< Map.lookup package.name legacyPackageSets
-          let manifestError err = { error: InvalidManifest err, reason: "Legacy manifest could not be parsed." }
-          Except.withExceptT manifestError do
-            legacyManifest <- Legacy.Manifest.fetchLegacyManifest packageSetDeps package.address (RawVersion tag.name)
-            pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
+      -- TODO: This will use the manifest for the package version from the
+      -- registry, without trying to produce a legacy manifest. However, we may
+      -- want to always attempt to produce a legacy manifest. If we can produce
+      -- one we compare it to the existing entry, failing if there is a
+      -- difference; if we can't, we warn and fall back to the existing entry.
+      Registry.readManifest package.name (LenientVersion.version version) >>= case _ of
+        Nothing -> do
+          Cache.get _importCache (ImportManifest package.name (RawVersion tag.name)) >>= case _ of
+            Nothing -> do
+              Log.debug $ "Building manifest in legacy import because it was not found in cache: " <> formatPackageVersion package.name (LenientVersion.version version)
+              manifest <- Run.Except.runExceptAt _exceptVersion do
+                exceptVersion $ validateVersionDisabled package.name version
+                legacyManifest <- do
+                  Legacy.Manifest.fetchLegacyManifest package.name package.address (RawVersion tag.name) >>= case _ of
+                    Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
+                    Right result -> pure result
+                pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
+              Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) manifest
+              exceptVersion manifest
+            Just cached ->
+              exceptVersion cached
 
-      case ManifestIndex.lookup package.name (LenientVersion.version version) existingRegistry of
-        Just manifest -> pure manifest
-        _ -> do
-          let key = "manifest__" <> PackageName.print package.name <> "--" <> tag.name
-          let codec = CA.Common.either (Json.object "Error" { error: versionErrorCodec, reason: CA.string }) Manifest.codec
-          liftEffect (Cache.readJsonEntry codec key cache) >>= case _ of
-            Left _ -> ExceptT do
-              log $ "CACHE MISS: Building manifest for " <> PackageName.print package.name <> "@" <> tag.name
-              manifest <- Except.runExceptT buildManifest
-              liftEffect $ Cache.writeJsonEntry codec key manifest cache
-              pure manifest
-            Right contents ->
-              Except.except contents.value
+        Just manifest ->
+          exceptVersion $ Right manifest
 
-  manifests <- lift $ for package.tags \tag -> do
-    manifest <- Except.runExceptT $ buildManifestForVersion tag
+  manifests <- for package.tags \tag -> do
+    manifest <- buildManifestForVersion tag
     pure (Tuple (RawVersion tag.name) manifest)
 
   pure $ Map.fromFoldable manifests
 
+type EXCEPT_VERSION :: Row (Type -> Type) -> Row (Type -> Type)
+type EXCEPT_VERSION r = (exceptVersion :: Except VersionValidationError | r)
+
+_exceptVersion = Proxy :: Proxy "exceptVersion"
+
+throwVersion :: forall r a. VersionValidationError -> Run (EXCEPT_VERSION + r) a
+throwVersion = Run.Except.throwAt _exceptVersion
+
+exceptVersion :: forall r a. Either VersionValidationError a -> Run (EXCEPT_VERSION + r) a
+exceptVersion = Run.Except.rethrowAt _exceptVersion
+
 type VersionValidationError = { error :: VersionError, reason :: String }
 
 versionValidationErrorCodec :: JsonCodec VersionValidationError
-versionValidationErrorCodec = Json.object "VersionValidationError"
+versionValidationErrorCodec = CA.Record.object "VersionValidationError"
   { error: versionErrorCodec
   , reason: CA.string
   }
 
 -- | An error that affects a specific package version
 data VersionError
-  = InvalidTag GitHub.Tag
+  = InvalidTag Tag
   | DisabledVersion
   | InvalidManifest LegacyManifestValidationError
   | UnregisteredDependencies (Array PackageName)
 
 versionErrorCodec :: JsonCodec VersionError
 versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
-  { invalidTag: Right $ Json.object "Tag"
+  { invalidTag: Right $ CA.Record.object "Tag"
       { name: CA.string
       , sha: CA.string
       , url: CA.string
       }
   , disabledVersion: Left unit
-  , invalidManifest: Right $ Json.object "LegacyManifestValidationError"
+  , invalidManifest: Right $ CA.Record.object "LegacyManifestValidationError"
       { error: Legacy.Manifest.legacyManifestErrorCodec
       , reason: CA.string
       }
@@ -490,12 +524,23 @@ validateVersionDisabled package version =
     noSrcDirectory = "Does not contain a 'src' directory."
     disabled name = Tuple (unsafeFromRight $ PackageName.parse name)
 
-validateVersion :: GitHub.Tag -> Either VersionValidationError LenientVersion
+validateVersion :: Tag -> Either VersionValidationError LenientVersion
 validateVersion tag =
   LenientVersion.parse tag.name # lmap \parseError ->
     { error: InvalidTag tag
     , reason: parseError
     }
+
+type EXCEPT_PACKAGE :: Row (Type -> Type) -> Row (Type -> Type)
+type EXCEPT_PACKAGE r = (exceptPackage :: Except PackageValidationError | r)
+
+_exceptPackage = Proxy :: Proxy "exceptPackage"
+
+throwPackage :: forall r a. PackageValidationError -> Run (EXCEPT_PACKAGE + r) a
+throwPackage = Run.Except.throwAt _exceptPackage
+
+exceptPackage :: forall r a. Either PackageValidationError a -> Run (EXCEPT_PACKAGE + r) a
+exceptPackage = Run.Except.rethrowAt _exceptPackage
 
 type PackageValidationError = { error :: PackageError, reason :: String }
 
@@ -503,54 +548,51 @@ type PackageValidationError = { error :: PackageError, reason :: String }
 data PackageError
   = InvalidPackageName
   | InvalidPackageURL String
-  | PackageURLRedirects { registered :: GitHub.Address, received :: GitHub.Address }
-  | CannotAccessRepo GitHub.Address
+  | PackageURLRedirects { registered :: Address, received :: Address }
+  | CannotAccessRepo Address
   | DisabledPackage
 
 derive instance Eq PackageError
 
 type PackageResult =
   { name :: PackageName
-  , address :: GitHub.Address
-  , tags :: Array GitHub.Tag
+  , address :: Address
+  , tags :: Array Tag
   }
 
-validatePackage :: RawPackageName -> String -> ExceptT PackageValidationError RegistryM PackageResult
+validatePackage :: forall r. RawPackageName -> String -> Run (GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) PackageResult
 validatePackage rawPackage rawUrl = do
-  name <- Except.except $ validatePackageName rawPackage
-  Except.except $ validatePackageDisabled name
-  address <- Except.except $ validatePackageAddress rawUrl
+  name <- exceptPackage $ validatePackageName rawPackage
+  exceptPackage $ validatePackageDisabled name
+  address <- exceptPackage $ validatePackageAddress rawUrl
   tags <- fetchPackageTags address
   -- We do not allow packages that redirect from their registered location elsewhere. The package
   -- transferrer will handle automatically transferring these packages.
   case Array.head tags of
     Nothing -> pure { name, address, tags }
     Just tag -> do
-      tagAddress <- Except.except case tagUrlToRepoUrl tag.url of
+      tagAddress <- exceptPackage case tagUrlToRepoUrl tag.url of
         Nothing -> Left { error: InvalidPackageURL tag.url, reason: "Failed to format redirected " <> tag.url <> " as a GitHub.Address." }
         Just formatted -> Right formatted
-      Except.except $ validatePackageLocation { registered: address, received: tagAddress }
+      exceptPackage $ validatePackageLocation { registered: address, received: tagAddress }
       pure { name, address, tags }
 
-fetchPackageTags :: GitHub.Address -> ExceptT PackageValidationError RegistryM (Array GitHub.Tag)
-fetchPackageTags address = do
-  { octokit, cache } <- ask
-  result <- liftAff $ GitHub.listTags octokit cache address
-  case result of
-    Left err -> case err of
-      GitHub.APIError apiError | apiError.statusCode >= 400 -> do
-        let error = CannotAccessRepo address
-        let reason = "GitHub API error with status code " <> show apiError.statusCode
-        throwError { error, reason }
-      _ ->
-        liftEffect $ Exception.throw $ String.joinWith "\n"
-          [ "Unexpected GitHub error with a status <= 400"
-          , GitHub.printGitHubError err
-          ]
-    Right tags ->
-      pure tags
+fetchPackageTags :: forall r. Address -> Run (GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) (Array Tag)
+fetchPackageTags address = GitHub.listTags address >>= case _ of
+  Left err -> case err of
+    Octokit.APIError apiError | apiError.statusCode >= 400 -> do
+      let error = CannotAccessRepo address
+      let reason = "GitHub API error with status code " <> show apiError.statusCode
+      throwPackage { error, reason }
+    _ ->
+      Except.throw $ String.joinWith "\n"
+        [ "Unexpected GitHub error with a status <= 400"
+        , Octokit.printGitHubError err
+        ]
+  Right tags ->
+    pure tags
 
-validatePackageLocation :: { registered :: GitHub.Address, received :: GitHub.Address } -> Either PackageValidationError Unit
+validatePackageLocation :: { registered :: Address, received :: Address } -> Either PackageValidationError Unit
 validatePackageLocation addresses = do
   let lower { owner, repo } = String.toLower owner <> "/" <> String.toLower repo
   if lower addresses.registered /= lower addresses.received then
@@ -561,7 +603,7 @@ validatePackageLocation addresses = do
   else
     Right unit
 
-validatePackageAddress :: String -> Either PackageValidationError GitHub.Address
+validatePackageAddress :: String -> Either PackageValidationError Address
 validatePackageAddress packageUrl =
   Parsing.runParser packageUrl legacyRepoParser # lmap \parserError ->
     { error: InvalidPackageURL packageUrl
@@ -570,7 +612,7 @@ validatePackageAddress packageUrl =
 
 -- Example tag url:
 -- https://api.github.com/repos/octocat/Hello-World/commits/c5b97d5ae6c19d5c5df71a34c7fbeeda2479ccbc
-tagUrlToRepoUrl :: String -> Maybe GitHub.Address
+tagUrlToRepoUrl :: String -> Maybe Address
 tagUrlToRepoUrl url = do
   noPrefix <- String.stripPrefix (String.Pattern "https://api.github.com/repos/") url
   let getOwnerRepoArray = Array.take 2 <<< String.split (String.Pattern "/")
@@ -615,7 +657,7 @@ type JsonValidationError =
   }
 
 jsonValidationErrorCodec :: JsonCodec JsonValidationError
-jsonValidationErrorCodec = Json.object "JsonValidationError"
+jsonValidationErrorCodec = CA.Record.object "JsonValidationError"
   { tag: CA.string
   , value: CA.Record.optional CA.string
   , reason: CA.string
@@ -646,31 +688,6 @@ formatVersionValidationError { error, reason } = case error of
   UnregisteredDependencies names -> do
     let errorValue = String.joinWith ", " $ map PackageName.print names
     { tag: "UnregisteredDependencies", value: Just errorValue, reason }
-
-type LegacyRegistry = Map RawPackageName String
-
--- | Read the legacy registry files stored in the root of the registry repo.
--- | Package names have their 'purescript-' prefix trimmed.
-readLegacyRegistryFiles :: RegistryM LegacyRegistry
-readLegacyRegistryFiles = do
-  bowerPackages <- readLegacyRegistryFile BowerPackages
-  registryPackages <- readLegacyRegistryFile NewPackages
-  let allPackages = Map.union bowerPackages registryPackages
-  let fixupNames = mapKeys (RawPackageName <<< stripPureScriptPrefix)
-  pure $ fixupNames allPackages
-
-readLegacyRegistryFile :: LegacyRegistryFile -> RegistryM (Map String String)
-readLegacyRegistryFile sourceFile = do
-  { registry } <- ask
-  let path = Path.concat [ registry, API.legacyRegistryFilePath sourceFile ]
-  legacyPackages <- liftAff $ Json.readJsonFile API.legacyRegistryCodec path
-  case legacyPackages of
-    Left err -> do
-      throwWithComment $ String.joinWith "\n"
-        [ "Decoding registry file from " <> path <> "failed:"
-        , err
-        ]
-    Right packages -> pure packages
 
 type ImportStats =
   { packagesProcessed :: Int
@@ -782,7 +799,7 @@ calculateImportStats legacyRegistry imported = do
   , versionErrors
   }
 
-legacyRepoParser :: Parser String GitHub.Address
+legacyRepoParser :: Parser String Address
 legacyRepoParser = do
   _ <- Parsing.Combinators.choice
     [ Parsing.String.string "https://github.com/"
@@ -803,3 +820,27 @@ legacyRepoParser = do
   let repo = fromMaybe repoWithSuffix (String.stripSuffix (String.Pattern ".git") repoWithSuffix)
 
   pure { owner, repo }
+
+-- | A key type for the storage cache. Only supports packages identified by
+-- | their name and version.
+data ImportCache :: (Type -> Type -> Type) -> Type -> Type
+data ImportCache c a = ImportManifest PackageName RawVersion (c (Either VersionValidationError Manifest) a)
+
+instance Functor2 c => Functor (ImportCache c) where
+  map k (ImportManifest name version a) = ImportManifest name version (map2 k a)
+
+instance MemoryEncodable ImportCache where
+  encodeMemory = case _ of
+    ImportManifest name (RawVersion version) next ->
+      Exists.mkExists $ Key ("ImportManifest__" <> PackageName.print name <> "__" <> version) next
+
+instance FsEncodable ImportCache where
+  encodeFs = case _ of
+    ImportManifest name (RawVersion version) next -> do
+      let codec = CA.Common.either versionValidationErrorCodec Manifest.codec
+      Exists.mkExists $ AsJson ("ImportManifest__" <> PackageName.print name <> "__" <> version) codec next
+
+type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)
+
+_importCache :: Proxy "importCache"
+_importCache = Proxy

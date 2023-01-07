@@ -26,16 +26,16 @@ spec = do
     tarball1 `Assert.shouldEqual` tarball2
   where
   createTarball = do
-    packageTmp <- liftEffect Tmp.mkTmpDir
+    packageTmp <- Tmp.mkTmpDir
     let packagePath = Path.concat [ packageTmp, "package" ]
     FS.Extra.ensureDirectory packagePath
     writeTmp packagePath "README.md" "# README\nThis is my package."
     writeTmp packagePath "purs.json" "{ \"name\": \"project\" }"
-    liftEffect $ Tar.create { cwd: packageTmp, folderName: "package" }
+    Tar.create { cwd: packageTmp, folderName: "package" }
     -- Before we complete the process, a quick check to verify that our tarball
     -- does indeed include the contents we expect.
     FS.Extra.remove packagePath
-    liftEffect $ Tar.extract { cwd: packageTmp, archive: "package.tar.gz" }
+    Tar.extract { cwd: packageTmp, archive: "package.tar.gz" }
     files <- FS.Aff.readdir packagePath
     if files == [ "README.md", "purs.json" ] then
       hashAndBytes (packagePath <> ".tar.gz")

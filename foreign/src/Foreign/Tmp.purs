@@ -1,9 +1,9 @@
 module Registry.Foreign.Tmp (mkTmpDir) where
 
-import Data.Function.Uncurried (Fn0, runFn0)
 import Effect (Effect)
+import Effect.Class (class MonadEffect, liftEffect)
 
-foreign import mkTmpDirImpl :: Fn0 (Effect String)
+foreign import mkTmpDirImpl :: Effect String
 
-mkTmpDir :: Effect String
-mkTmpDir = runFn0 mkTmpDirImpl
+mkTmpDir :: forall m. MonadEffect m => m String
+mkTmpDir = liftEffect mkTmpDirImpl

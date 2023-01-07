@@ -22,8 +22,7 @@ import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
-import Data.Either (Either)
-import Data.Either as Either
+import Data.Either (Either, hush)
 import Data.Function (on)
 import Data.Maybe (Maybe(..))
 import Data.String.CodeUnits as String.CodeUnits
@@ -47,7 +46,7 @@ instance Eq Range where
 -- | A codec for encoding and decoding a `Range` as JSON. Ranges are encoded as
 -- | strings of the form ">=X.Y.Z <X.Y.Z".
 codec :: JsonCodec Range
-codec = CA.prismaticCodec "Range" (Either.hush <<< parse) print CA.string
+codec = CA.prismaticCodec "Range" (hush <<< parse) print CA.string
 
 -- | Print a range in the form ">=X.Y.Z <X.Y.Z"
 print :: Range -> String

@@ -16,7 +16,6 @@ import Control.Alt ((<|>))
 import Data.Bifunctor (lmap)
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut as Codec
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.Maybe (Maybe)
 import Data.Profunctor as Profunctor
@@ -36,7 +35,7 @@ derive instance Eq Location
 -- | possible `Location` is represented, please see the relevant codec (for
 -- | example the `githubCodec` or `gitCodec` implementations).
 codec :: JsonCodec Location
-codec = Codec.codec' decode encode
+codec = CA.codec' decode encode
   where
   decode json =
     lmap (const (CA.TypeMismatch "Location")) do

@@ -4,36 +4,38 @@ import Registry.App.Prelude
 
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
-import Control.Monad.Except as Except
-import Control.Monad.Reader (ask, asks)
+import Control.Apply (lift2)
 import Data.Array as Array
-import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
+import Data.FoldableWithIndex (foldMapWithIndex)
+import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.String as String
 import Data.Tuple (uncurry)
-import Effect.Aff as Aff
 import Effect.Class.Console as Console
-import Effect.Exception as Exception
-import Effect.Ref as Ref
 import Node.Path as Path
 import Node.Process as Process
-import Registry.App.API as API
-import Registry.App.CLI.Git as Git
-import Registry.App.Cache as Cache
-import Registry.App.GitHub (GitHubToken(..))
-import Registry.App.GitHub as GitHub
-import Registry.App.Json as Json
-import Registry.App.PackageStorage as PackageStorage
-import Registry.App.RegistryM (Env, RegistryM, readPackagesMetadata, runRegistryM)
-import Registry.Constants as Constants
+import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Env as Env
+import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
+import Registry.App.Effect.Git as Git
+import Registry.App.Effect.GitHub as GitHub
+import Registry.App.Effect.Log (LOG, LogVerbosity(..))
+import Registry.App.Effect.Log as Log
+import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Storage (STORAGE)
+import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
+import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Codec as Internal.Codec
-import Registry.ManifestIndex as ManifestIndex
-import Registry.Metadata as Metadata
+import Registry.Internal.Format as Internal.Format
 import Registry.PackageName as PackageName
 import Registry.Version as Version
-import Test.Utils (formatPackageVersion)
+import Run (Run)
+import Run as Run
+import Run.Except (EXCEPT)
+import Run.Except as Except
 
 data DeleteMode = File FilePath | Package PackageName Version
 
@@ -77,127 +79,94 @@ main = launchAff_ do
     Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
     Right command -> pure command
 
-  _ <- API.loadEnv
-  FS.Extra.ensureDirectory API.scratchDir
+  -- Environment
+  _ <- Env.loadEnvFile ".env"
+  token <- Env.lookupRequired Env.pacchettibottiToken
+  s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
 
-  octokit <- liftEffect do
-    token <- do
-      result <- Process.lookupEnv "PACCHETTIBOTTI_TOKEN"
-      maybe (Exception.throw "PACCHETTIBOTTI_TOKEN not defined in the environment.") (pure <<< GitHubToken) result
-    GitHub.newOctokit token
-
-  cache <- Cache.useCache API.cacheDir
-  metadataRef <- liftEffect $ Ref.new Map.empty
-
+  -- Git
+  debouncer <- Git.newDebouncer
   let
-    env :: Env
-    env =
-      { comment: \comment -> Console.log ("[COMMENT] " <> comment)
-      , closeIssue: Console.log "Running locally, not closing issue..."
-      , commitMetadataFile: \_ _ -> Console.log "Not using RegistryM to commit files." $> Right unit
-      , commitIndexFile: \_ _ -> Console.log "Not using RegistryM to commit files." $> Right unit
-      , commitPackageSetFile: \_ _ _ -> Console.log "Not committing package sets in package deleter." $> Right unit
-      , uploadPackage: \_ _ -> Console.log $ "Not uploading packages in package deleter."
-      , deletePackage: \_ -> Console.log $ "Not using registry delete package function."
-      , packagesMetadata: metadataRef
-      , cache
-      , octokit
-      , username: mempty
-      , registry: Path.concat [ API.scratchDir, "registry" ]
-      , registryIndex: Path.concat [ API.scratchDir, "registry-index" ]
+    gitEnv :: WriteMode -> GitEnv
+    gitEnv writeMode =
+      { write: writeMode
+      , pull: OnlyClean
+      , repos: Git.defaultRepos
+      , workdir: scratchDir
+      , debouncer
       }
 
-  runRegistryM env do
-    API.fetchRegistry
-    API.fetchRegistryIndex
-    API.fillMetadataRef
+  -- GitHub
+  octokit <- Octokit.newOctokit token
 
-    packages <- case mode of
-      Package name version -> pure $ Map.singleton name [ version ]
-      File path -> liftAff (Json.readJsonFile deletePackagesCodec path) >>= case _ of
-        Left err -> Console.log err *> liftEffect (Process.exit 1)
-        Right values -> pure values
+  -- Caching
+  let cache = Path.concat [ scratchDir, ".cache" ]
+  FS.Extra.ensureDirectory cache
+  githubCacheRef <- Cache.newCacheRef
+  registryCacheRef <- Cache.newCacheRef
 
-    { registry, registryIndex } <- ask
+  -- Logging
+  now <- nowUTC
+  let logDir = Path.concat [ scratchDir, "logs" ]
+  FS.Extra.ensureDirectory logDir
+  let logFile = "package-set-deleter-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
+  let logPath = Path.concat [ logDir, logFile ]
 
-    Console.log $ "\n-----\nDELETING PACKAGE VERSIONS\n-----\n"
-    Console.log $ "Writing metadata changes to " <> registry
-    Console.log $ "Writing manifest index changes to " <> registryIndex
+  deletions <- case mode of
+    Package name version -> pure $ Map.singleton name [ version ]
+    File path -> liftAff (readJsonFile deletePackagesCodec path) >>= case _ of
+      Left err -> Console.log err *> liftEffect (Process.exit 1)
+      Right values -> pure values
 
-    forWithIndex_ packages \name versions -> do
-      Console.log $ "Processing versions for " <> PackageName.print name
+  let
+    interpret gitMode =
+      Registry.interpret (Registry.handle registryCacheRef)
+        >>> Storage.interpret (Storage.handleS3 { s3, cache })
+        >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+        >>> Git.interpret (Git.handle (gitEnv gitMode))
+        >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+        >>> Run.runBaseAff'
 
+  -- We run deletions *without* committing, because we'll do it in bulk later.
+  interpret ReadOnly do
+    Log.info $ Array.fold
+      [ "Deleting package versions:"
+      , do
+          let foldFn name versions = "\n  - " <> PackageName.print name <> " " <> String.joinWith ", " (map Version.print versions)
+          foldMapWithIndex foldFn deletions
+      ]
+
+    forWithIndex_ deletions \name versions ->
       for_ versions \version -> do
-        result <- deleteVersion name version
+        result <- Except.runExcept $ deleteVersion name version
         let printed = Version.print version
         case result of
-          Left (FailedDelete err) -> do
-            Console.log $ "[ERROR] Failed to delete " <> printed <> ": " <> err
-          Left (FailedUpdateMetadata err) -> do
-            Console.log $ "[ERROR] Failed to update metadata file for " <> printed <> ": " <> err
-          Left (FailedUpdateIndex err) -> do
-            Console.log $ "[ERROR] Failed to update index file for " <> printed <> ": " <> err
+          Left err -> do
+            Log.error $ "Failed to delete " <> printed <> ": " <> err
           Right _ ->
-            Console.log $ "Successfully removed " <> printed
+            Log.info $ "Successfully removed " <> printed
 
-    registryDir <- asks _.registry
-    commitMetadata <- liftAff $ Except.runExceptT do
-      GitHubToken token <- Git.configurePacchettiBotti (Just registryDir)
-      Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryDir)
-      Git.runGit_ [ "add", "*.json" ] (Just registryDir)
-      Git.runGit_ [ "commit", "-m", "Remove some package versions from metadata." ] (Just registryDir)
-      let upstreamRepo = Constants.registry.owner <> "/" <> Constants.registry.repo
-      let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
-      void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryDir)
+    Log.info "Finished."
 
-    case commitMetadata of
-      Left err -> Console.log $ "Failed to commit metadata!\n" <> err
+  -- Then we add our commits with committing enabled.
+  interpret (CommitAs (Git.pacchettibottiCommitter token)) do
+    Git.commit Git.CommitMetadataIndex "Remove some package versions from metadata." >>= case _ of
+      Left error -> Log.error $ "Failed to commit metadata: " <> error
       Right _ -> pure unit
 
-    registryIndexDir <- asks _.registryIndex
-    commitIndex <- liftAff $ Except.runExceptT do
-      GitHubToken token <- Git.configurePacchettiBotti (Just registryIndexDir)
-      Git.runGit_ [ "pull", "--rebase", "--autostash" ] (Just registryIndexDir)
-      Git.runGit_ [ "add", "." ] (Just registryIndexDir)
-      Git.runGit_ [ "commit", "-m", "Remove some package versions from index." ] (Just registryIndexDir)
-      let upstreamRepo = Constants.packageIndex.owner <> "/" <> Constants.packageIndex.repo
-      let origin = "https://pacchettibotti:" <> token <> "@github.com/" <> upstreamRepo <> ".git"
-      void $ Git.runGitSilent [ "push", origin, "main" ] (Just registryIndexDir)
-
-    case commitIndex of
-      Left err -> Console.log $ "Failed to commit index!\n" <> err
+    Git.commit Git.CommitManifestIndex "Remove some package versions from manifest index." >>= case _ of
+      Left error -> Log.error $ "Failed to commit manifest index: " <> error
       Right _ -> pure unit
 
-    Console.log "Finished."
-
-data DeleteError
-  = FailedDelete String
-  | FailedUpdateMetadata String
-  | FailedUpdateIndex String
-
-deleteVersion :: PackageName -> Version -> RegistryM (Either DeleteError Unit)
+deleteVersion :: forall r. PackageName -> Version -> Run (REGISTRY + STORAGE + LOG + EXCEPT String + r) Unit
 deleteVersion name version = do
   let formatted = formatPackageVersion name version
-  Console.log $ "Deleting " <> formatted
-  liftAff (Aff.attempt (PackageStorage.delete { name, version })) >>= case _ of
-    Left err -> pure $ Left $ FailedDelete $ Aff.message err
-    Right _ -> do
-      Console.log $ "Updating metadata for " <> formatted
-      allMetadata <- readPackagesMetadata
-      case Map.lookup name allMetadata of
-        Nothing -> pure $ Left $ FailedUpdateMetadata "No existing metadata found."
-        Just (Metadata oldMetadata) -> do
-          let
-            newMetadata = Metadata $ oldMetadata
-              { published = Map.delete version oldMetadata.published
-              , unpublished = Map.delete version oldMetadata.unpublished
-              }
-          registryDir <- asks _.registry
-          liftAff (Aff.attempt (Json.writeJsonFile Metadata.codec (API.metadataFile registryDir name) newMetadata)) >>= case _ of
-            Left err -> pure $ Left $ FailedUpdateMetadata $ Aff.message err
-            Right _ -> do
-              Console.log $ "Updating manifest index for " <> formatted
-              registryIndexDir <- asks _.registryIndex
-              liftAff (ManifestIndex.removeFromEntryFile registryIndexDir name version) >>= case _ of
-                Left err -> pure $ Left $ FailedUpdateIndex err
-                Right _ -> pure $ Right unit
+  Log.info $ "Deleting " <> formatted
+  Storage.delete name version
+  Log.info $ "Updating metadata for " <> formatted
+  Registry.readMetadata name >>= case _ of
+    Nothing -> Except.throw $ "Could not update metadata for " <> formatted <> " because no existing metadata was found."
+    Just (Metadata old) -> do
+      let new = Metadata $ old { published = Map.delete version old.published, unpublished = Map.delete version old.unpublished }
+      Registry.writeMetadata name new
+      Registry.deleteManifest name version

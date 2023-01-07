@@ -11,6 +11,7 @@ module Registry.ManifestIndex
   , fromSet
   , insert
   , insertIntoEntryFile
+  , delete
   , lookup
   , maximalIndex
   , packageEntryDirectory
@@ -27,7 +28,6 @@ module Registry.ManifestIndex
 
 import Prelude
 
-import Control.Monad.Error.Class as Error
 import Data.Argonaut.Core as Argonaut
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
@@ -53,9 +53,9 @@ import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
+import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (liftEffect)
-import Effect.Exception as Exception
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS.Aff
 import Node.FS.Perms as FS.Perms
@@ -129,6 +129,23 @@ insert manifest@(Manifest { name, version, dependencies }) (ManifestIndex index)
     Right $ ManifestIndex $ Map.insertWith (flip Map.union) name (Map.singleton version manifest) index
   else
     Left unsatisfied
+
+-- | Delete a package version from the manifest index, failing if it produces an
+-- | invalid manifest index. Since we only verify unsatisfied dependencies wrt
+-- | package names (and not package versions), it is always acceptable to delete
+-- | a package version so long as it has at least 2 versions. However, removing
+-- | a package altogether incurs a full validation check.
+delete :: PackageName -> Version -> ManifestIndex -> Either (Map PackageName (Map Version (Map PackageName Range))) ManifestIndex
+delete name version (ManifestIndex index) = do
+  case Map.lookup name index of
+    Nothing -> pure (ManifestIndex index)
+    Just versionsMap | Map.size versionsMap == 1 ->
+      fromSet $ Set.fromFoldable do
+        Tuple _ versions <- Map.toUnfoldableUnordered (Map.delete name index)
+        Tuple _ manifest <- Map.toUnfoldableUnordered versions
+        [ manifest ]
+    Just _ -> do
+      pure (ManifestIndex (Map.update (Just <<< Map.delete version) name index))
 
 -- | Convert a set of manifests into a `ManifestIndex`. Reports all failures
 -- | encountered rather than short-circuiting.
@@ -244,8 +261,8 @@ printEntry =
 readEntryFile :: forall m. MonadAff m => FilePath -> PackageName -> m (Either String (NonEmptyArray Manifest))
 readEntryFile indexPath package = do
   let entryPath = Path.concat [ indexPath, packageEntryFilePath package ]
-  liftAff (Error.try (FS.Aff.readTextFile UTF8 entryPath)) >>= case _ of
-    Left error -> pure $ Left $ "Failed to read entry: " <> Exception.message error
+  liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 entryPath)) >>= case _ of
+    Left error -> pure $ Left $ "Failed to read entry: " <> Aff.message error
     Right contents -> pure $ parseEntry contents
 
 -- | Given the root of a manifest index on the file system, encode the provided
@@ -262,8 +279,8 @@ writeEntryFile indexPath manifests = do
       unlessM (liftEffect (FS.Sync.exists entryDirectory)) do
         liftAff $ FS.Aff.mkdir' entryDirectory { recursive: true, mode: FS.Perms.mkPerms FS.Perms.all FS.Perms.all FS.Perms.all }
       let entry = printEntry manifests
-      liftAff (Error.try (FS.Aff.writeTextFile UTF8 entryPath entry)) >>= case _ of
-        Left error -> pure $ Left $ Exception.message error
+      liftAff (Aff.attempt (FS.Aff.writeTextFile UTF8 entryPath entry)) >>= case _ of
+        Left error -> pure $ Left $ Aff.message error
         Right _ -> pure $ Right unit
 
     n -> pure $ Left $ Array.fold
@@ -306,8 +323,8 @@ removeFromEntryFile indexPath name version = do
       let entryPath = Path.concat [ indexPath, packageEntryFilePath name ]
       case NonEmptySet.fromFoldable $ NonEmptyArray.filter (\(Manifest m) -> m.version /= version) contents of
         Nothing ->
-          liftAff (Error.try (FS.Aff.unlink entryPath)) >>= case _ of
-            Left error -> pure $ Left $ "Failed to delete entry:" <> Exception.message error
+          liftAff (Aff.attempt (FS.Aff.unlink entryPath)) >>= case _ of
+            Left error -> pure $ Left $ "Failed to delete entry:" <> Aff.message error
             Right _ -> pure $ Right unit
         Just modified ->
           writeEntryFile indexPath modified
