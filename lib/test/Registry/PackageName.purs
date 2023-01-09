@@ -9,9 +9,9 @@ import Data.String as String
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
 import Registry.PackageName as PackageName
-import Test.Assert as Assert
+import Registry.Test.Assert as Assert
+import Registry.Test.Utils as Utils
 import Test.Spec as Spec
-import Test.Utils as Utils
 
 spec :: Spec.Spec Unit
 spec = do

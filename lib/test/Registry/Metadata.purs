@@ -3,7 +3,7 @@ module Test.Registry.Metadata (spec) where
 import Prelude
 
 import Registry.Metadata as Metadata
-import Test.Assert as Assert
+import Registry.Test.Assert as Assert
 import Test.Spec (Spec)
 import Test.Spec as Spec
 

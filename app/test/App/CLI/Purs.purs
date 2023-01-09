@@ -5,7 +5,7 @@ import Registry.App.Prelude
 import Data.Foldable (traverse_)
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
-import Test.Assert as Assert
+import Registry.Test.Assert as Assert
 import Test.Spec as Spec
 
 spec :: Spec.Spec Unit

@@ -11,10 +11,10 @@ import Data.Tuple.Nested ((/\))
 import Registry.Manifest (Manifest(..))
 import Registry.Metadata (Metadata(..))
 import Registry.Operation.Validation (UnpublishError(..), getUnresolvedDependencies, validateUnpublish)
-import Test.Assert as Assert
+import Registry.Test.Assert as Assert
+import Registry.Test.Utils (defaultHash, defaultLocation, fromJust, unsafeDateTime, unsafeManifest, unsafePackageName, unsafeVersion)
 import Test.Spec (Spec)
 import Test.Spec as Spec
-import Test.Utils (defaultHash, defaultLocation, fromJust, unsafeDateTime, unsafeManifest, unsafePackageName, unsafeVersion)
 
 spec :: Spec Unit
 spec = do

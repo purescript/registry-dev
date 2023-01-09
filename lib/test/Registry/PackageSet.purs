@@ -3,7 +3,7 @@ module Test.Registry.PackageSet (spec) where
 import Prelude
 
 import Registry.PackageSet as PackageSet
-import Test.Assert as Assert
+import Registry.Test.Assert as Assert
 import Test.Spec (Spec)
 import Test.Spec as Spec
 

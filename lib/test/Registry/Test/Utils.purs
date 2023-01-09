@@ -1,4 +1,4 @@
-module Test.Utils where
+module Registry.Test.Utils where
 
 import Prelude
 

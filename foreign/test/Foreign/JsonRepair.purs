@@ -12,7 +12,7 @@ import Data.Codec.Argonaut.Record as CA.Record
 import Data.Either (Either)
 import Data.Either as Either
 import Registry.Foreign.JsonRepair as JsonRepair
-import Test.Assert as Assert
+import Registry.Test.Assert as Assert
 import Test.Spec as Spec
 
 spec :: Spec.Spec Unit

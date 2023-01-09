@@ -12,10 +12,10 @@ import Node.ChildProcess as Process
 import Node.Path (FilePath)
 import Node.Path as Path
 import Registry.Sha256 as Sha256
+import Registry.Test.Assert as Assert
+import Registry.Test.Utils as Utils
 import Sunde as Sunde
-import Test.Assert as Assert
 import Test.Spec as Spec
-import Test.Utils as Utils
 
 spec :: Spec.Spec Unit
 spec = do

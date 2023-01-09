@@ -1,4 +1,4 @@
-module Test.Assert where
+module Registry.Test.Assert where
 
 import Prelude
 
@@ -14,9 +14,9 @@ import Data.Foldable (class Foldable)
 import Data.Foldable as Foldable
 import Data.String as String
 import Effect.Exception (Error)
+import Registry.Test.Utils as Utils
 import Test.Spec.Assertions (AnyShow(..))
 import Test.Spec.Assertions as Assertions
-import Test.Utils as Utils
 
 fail :: forall m. MonadThrow Error m => String -> m Unit
 fail = Assertions.fail

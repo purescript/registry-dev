@@ -4,8 +4,8 @@ import Prelude
 
 import Data.Either as Either
 import Data.Foldable (for_)
+import Registry.Test.Assert as Assert
 import Registry.Version as Version
-import Test.Assert as Assert
 import Test.Spec as Spec
 
 spec :: Spec.Spec Unit

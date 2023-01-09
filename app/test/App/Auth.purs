@@ -8,8 +8,8 @@ import Data.String as String
 import Registry.App.Auth as Auth
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..))
 import Registry.PackageName as PackageName
+import Registry.Test.Assert as Assert
 import Registry.Version as Version
-import Test.Assert as Assert
 import Test.Spec as Spec
 
 spec :: Spec.Spec Unit

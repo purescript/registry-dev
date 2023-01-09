@@ -10,7 +10,7 @@ import Registry.App.CLI.Tar as Tar
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Tmp as Tmp
 import Registry.Sha256 as Sha256
-import Test.Assert as Assert
+import Registry.Test.Assert as Assert
 import Test.Spec as Spec
 
 spec :: Spec.Spec Unit

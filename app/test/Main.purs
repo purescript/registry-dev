@@ -10,7 +10,8 @@ import Registry.App.Main as Main
 import Registry.Foreign.Octokit (IssueNumber(..))
 import Registry.Operation (PackageOperation(..), PackageSetOperation(..))
 import Registry.Operation as Operation
-import Test.Assert as Assert
+import Registry.Test.Assert as Assert
+import Registry.Test.Utils as Utils
 import Test.Registry.App.API (spec) as API
 import Test.Registry.App.Auth as Auth
 import Test.Registry.App.CLI.Licensee as Test.CLI.Licensee
@@ -24,7 +25,6 @@ import Test.Registry.App.Legacy.PackageSet as Test.Legacy.PackageSet
 import Test.Spec as Spec
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (defaultConfig, runSpec')
-import Test.Utils as Utils
 
 main :: Effect Unit
 main = launchAff_ $ runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
