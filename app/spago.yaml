@@ -30,7 +30,7 @@ package:
     - functions
     - graphs
     - http-methods
-    - httpurple
+    - httpure
     - identity
     - integers
     - interpolate
@@ -69,4 +69,3 @@ package:
     main: Test.Registry.Main
     dependencies:
       - spec
-

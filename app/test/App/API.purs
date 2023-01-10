@@ -14,8 +14,8 @@ import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Tmp as Tmp
 import Registry.PackageName as PackageName
-import Registry.Registry.Test.Assert.Run as Assert.Run
 import Registry.Test.Assert as Assert
+import Registry.Test.Assert.Run as Assert.Run
 import Registry.Test.Utils as Utils
 import Registry.Version as Version
 import Run (EFFECT, Run)

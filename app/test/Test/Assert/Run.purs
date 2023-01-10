@@ -1,4 +1,4 @@
-module Registry.Registry.Test.Assert.Run where
+module Registry.Test.Assert.Run where
 
 import Registry.App.Prelude
 
