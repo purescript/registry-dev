@@ -21,10 +21,14 @@ legacyPackageSetCodec =
 
 -- | The union of all legacy package sets, with packages represented at all
 -- | versions they have in the package sets.
-type LegacyPackageSetUnion = Map PackageName (Map RawVersion (Map PackageName RawVersion))
+type LegacyPackageSetUnion = Map PackageName (Map RawVersion (Map PackageName { min :: RawVersion, max :: RawVersion }))
 
 legacyPackageSetUnionCodec :: JsonCodec LegacyPackageSetUnion
-legacyPackageSetUnionCodec = Internal.Codec.packageMap $ rawVersionMapCodec $ Internal.Codec.packageMap rawVersionCodec
+legacyPackageSetUnionCodec = Internal.Codec.packageMap $ rawVersionMapCodec $ Internal.Codec.packageMap $
+  CA.Record.object "LenientBounds"
+    { min: rawVersionCodec
+    , max: rawVersionCodec
+    }
 
 -- | The format of a legacy packages.json package set entry for an individual
 -- | package.
