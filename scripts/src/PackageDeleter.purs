@@ -205,12 +205,12 @@ deleteVersion arguments name version = do
   Registry.readMetadata name >>= case _ of
     Nothing -> Except.throw $ "Could not update metadata for " <> formatted <> " because no existing metadata was found."
     Just (Metadata oldMetadata) -> do
-      let
-        publishment = case Map.lookup version oldMetadata.published, Map.lookup version oldMetadata.unpublished of
-          Just _, Just _ -> unsafeCrashWith $ "Package version was both published and unpublished: " <> formatted
-          Just published, Nothing -> Just (Right published)
-          Nothing, Just unpublished -> Just (Left unpublished)
-          Nothing, Nothing -> Nothing
+      publishment <-
+        case Map.lookup version oldMetadata.published, Map.lookup version oldMetadata.unpublished of
+          Just _, Just _ -> Except.throw $ "Package version was both published and unpublished: " <> formatted
+          Just published, Nothing -> pure (Just (Right published))
+          Nothing, Just unpublished -> pure (Just (Left unpublished))
+          Nothing, Nothing -> pure Nothing
       let
         newMetadata = Metadata $ oldMetadata { published = Map.delete version oldMetadata.published, unpublished = Map.delete version oldMetadata.unpublished }
       Registry.writeMetadata name newMetadata

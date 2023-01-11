@@ -1,3 +1,12 @@
+-- | Script to run the version solver against the registry-index (in ./scratch/)
+-- | in various ways:
+-- |
+-- | - `--manifest foo.json` specifies a manifest with custom bounds
+-- |   of the form `{ "prelude": ">=1.0.0 <2.0.0", "console": "1.3.1" }`
+-- | - Other modes solve one or more existing manifests from the registry:
+-- |   - `--all` solves all manifests in the registry
+-- |   - `--file packagesversions.json` solves a map `{ "package": ["1.0.0"] }`
+-- |   - `package@version` solves a single package version from the registry
 module Registry.Scripts.Solver where
 
 import Registry.App.Prelude
@@ -108,14 +117,13 @@ main = launchAff_ do
         pure \registry -> do
           forWithIndex_ packageversions \package versionsofpackage -> do
             for_ versionsofpackage \version -> do
-              let
-                deps =
-                  case Map.lookup package registry of
-                    Nothing -> unsafeCrashWith $ "Missing package: " <> PackageName.print package
-                    Just versions ->
-                      case Map.lookup version versions of
-                        Nothing -> unsafeCrashWith $ "Missing version: " <> PackageName.print package <> "@" <> Version.print version
-                        Just d -> d
+              deps <-
+                case Map.lookup package registry of
+                  Nothing -> Except.throw $ "Missing package: " <> PackageName.print package
+                  Just versions ->
+                    case Map.lookup version versions of
+                      Nothing -> Except.throw $ "Missing version: " <> PackageName.print package <> "@" <> Version.print version
+                      Just d -> pure d
               test registry package version deps
       [ "--manifest", path ] -> do
         let
