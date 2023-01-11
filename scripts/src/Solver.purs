@@ -50,9 +50,13 @@ import Run (Run)
 import Run as Run
 import Run.Except as Except
 
-unionWithMapThese :: forall k a b c. Ord k =>
-  (k -> These a b -> Maybe c) ->
-  Map k a -> Map k b -> Map k c
+unionWithMapThese
+  :: forall k a b c
+   . Ord k
+  => (k -> These a b -> Maybe c)
+  -> Map k a
+  -> Map k b
+  -> Map k c
 unionWithMapThese f ma mb =
   let
     combine = case _, _ of
@@ -63,12 +67,13 @@ unionWithMapThese f ma mb =
       That b, Both a _ -> Both a b
       That b, That _ -> That b
       This a, This _ -> This a
-  in Map.mapMaybeWithKey f $ Map.unionWith combine (This <$> ma) (That <$> mb)
+  in
+    Map.mapMaybeWithKey f $ Map.unionWith combine (This <$> ma) (That <$> mb)
 
-diff ::
-  Map PackageName (Map Version (Map PackageName Range)) ->
-  Map PackageName (Map Version (Map PackageName Range)) ->
-  Map PackageName (Map Version (Map PackageName (These Range Range)))
+diff
+  :: Map PackageName (Map Version (Map PackageName Range))
+  -> Map PackageName (Map Version (Map PackageName Range))
+  -> Map PackageName (Map Version (Map PackageName (These Range Range)))
 diff = unionWithMapThese \_ -> filtered <<< these
   do map (map This)
   do map (map That)
@@ -88,7 +93,7 @@ diff = unionWithMapThese \_ -> filtered <<< these
   filtered v = Just v
 
 fromThese :: forall a. These a a -> Array (Maybe a)
-fromThese = these (\l -> [Just l, Nothing]) (\r -> [Nothing, Just r]) (\l r -> [Just l, Just r])
+fromThese = these (\l -> [ Just l, Nothing ]) (\r -> [ Nothing, Just r ]) (\l r -> [ Just l, Just r ])
 
 main :: Effect Unit
 main = launchAff_ do
@@ -96,7 +101,7 @@ main = launchAff_ do
   let
     getAction :: forall r. Aff (_ -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit)
     getAction = case args of
-      ["--file", path] -> do
+      [ "--file", path ] -> do
         packageversions <- liftAff (readJsonFile deletePackagesCodec path) >>= case _ of
           Left err -> Aff.log err *> liftEffect (Process.exit 1)
           Right values -> pure values
@@ -112,7 +117,7 @@ main = launchAff_ do
                         Nothing -> unsafeCrashWith $ "Missing version: " <> PackageName.print package <> "@" <> Version.print version
                         Just d -> d
               test registry package version deps
-      ["--manifest", path] -> do
+      [ "--manifest", path ] -> do
         let
           parser =
             Range.parser <|> (Version.parser <#> \v -> unsafeFromJust (Range.mk v (Version.bumpPatch v)))
@@ -124,18 +129,19 @@ main = launchAff_ do
           Left err -> Aff.log err *> liftEffect (Process.exit 1)
           Right values -> pure values
         pure \registry -> test registry package version deps
-      ["--all"] -> pure \registry -> do
+      [ "--all" ] -> pure \registry -> do
         forWithIndex_ registry \package versions -> do
           forWithIndex_ versions \version deps -> do
             test registry package version deps
-      [package_versionS] | [packageS,versionS] <- String.split (String.Pattern "@") package_versionS ->
+      [ package_versionS ] | [ packageS, versionS ] <- String.split (String.Pattern "@") package_versionS ->
         let
           package = unsafeFromRight $ PackageName.parse packageS
           version = unsafeFromRight $ Version.parse versionS
-        in pure \registry -> do
-          let versions = unsafeFromJust $ Map.lookup package registry
-          let deps = unsafeFromJust $ Map.lookup version versions
-          test registry package version deps
+        in
+          pure \registry -> do
+            let versions = unsafeFromJust $ Map.lookup package registry
+            let deps = unsafeFromJust $ Map.lookup version versions
+            test registry package version deps
       _ -> do
         Aff.log "Either use --all or package@version"
         liftEffect $ throw $ "Invalid arguments: " <> show args

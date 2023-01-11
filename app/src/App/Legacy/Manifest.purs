@@ -415,8 +415,10 @@ fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
         -- Package sets are only valid if all packages in the set have dependencies that are also in
         -- the set, so this (should) be safe.
         resolveDependencyVersion dep =
-          let v = unsafeFromJust (_.version <$> Map.lookup dep entries)
-          in { min: Min v, max: Max v }
+          let
+            v = unsafeFromJust (_.version <$> Map.lookup dep entries)
+          in
+            { min: Min v, max: Max v }
         resolveDependencyVersions =
           Array.foldl (\m name -> Map.insert name (resolveDependencyVersion name) m) Map.empty
       SemigroupMap $ Map.singleton version $ SemigroupMap $ resolveDependencyVersions dependencies

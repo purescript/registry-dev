@@ -79,8 +79,8 @@ parser = Arg.fromRecord
       , Arg.flag [ "--no-upload" ] "Do not upload changes to S3 storage" $> false
       ]
   , pullMode:
-    Arg.flag [ "--autostash" ] "Autostash when pulling, instead of requiring a clean checkout" $> Autostash
-    # Arg.default OnlyClean
+      Arg.flag [ "--autostash" ] "Autostash when pulling, instead of requiring a clean checkout" $> Autostash
+        # Arg.default OnlyClean
   }
   where
   parsePackage :: String -> Either String (Tuple PackageName Version)
