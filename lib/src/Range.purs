@@ -12,6 +12,7 @@ module Registry.Range
   , parser
   , print
   , union
+  , mk
   ) where
 
 import Prelude
@@ -128,3 +129,7 @@ intersect (Range r1) (Range r2)
       { lhs: max r1.lhs r2.lhs
       , rhs: min r1.rhs r2.rhs
       }
+
+mk :: Version -> Version -> Maybe Range
+mk lhs rhs | lhs < rhs = Just (Range { lhs, rhs })
+mk _ _ = Nothing
