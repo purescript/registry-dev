@@ -12,6 +12,7 @@ module Registry.App.Effect.Storage
   , handleS3
   , interpret
   , upload
+  , query
   ) where
 
 import Registry.App.Prelude
@@ -45,6 +46,7 @@ data Storage a
   = Upload PackageName Version FilePath (Either String Unit -> a)
   | Download PackageName Version FilePath (Either String Unit -> a)
   | Delete PackageName Version (Either String Unit -> a)
+  | Query PackageName (Either String (Array String) -> a)
 
 derive instance Functor Storage
 
@@ -68,6 +70,10 @@ delete name version = Except.rethrow =<< Run.lift _storage (Delete name version 
 -- | Interpret the STORAGE effect, given a handler.
 interpret :: forall r a. (Storage ~> Run r) -> Run (STORAGE + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _storage handler Run.send)
+
+-- | Query what tarballs exist for a package in the storage backend
+query :: forall r. PackageName -> Run (STORAGE + EXCEPT String + r) (Array String)
+query name = Except.rethrow =<< Run.lift _storage (Query name identity)
 
 formatPackagePath :: PackageName -> Version -> String
 formatPackagePath name version = Array.fold
@@ -103,6 +109,15 @@ type S3Env =
 -- | Handle package storage using a remote S3 bucket.
 handleS3 :: forall r a. S3Env -> Storage a -> Run (LOG + AFF + EFFECT + r) a
 handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case _ of
+  Query name reply -> map (map reply) Except.runExcept do
+    s3 <- connectS3 env.s3
+    Run.liftAff (withBackoff' (S3.listObjects s3 { prefix: PackageName.print name <> "/" })) >>= case _ of
+      Nothing -> do
+        Log.error $ "Failed to list S3 objects for " <> PackageName.print name <> " because the process timed out."
+        Except.throw $ "Could not upload package " <> PackageName.print name <> " due to an error connecting to the storage backend."
+      Just objects ->
+        pure $ map _.key objects
+
   Download name version path reply -> map (map reply) Except.runExcept do
     let package = formatPackageVersion name version
     buffer <- Cache.get _storageCache (Package name version) >>= case _ of
@@ -183,6 +198,9 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
 -- | A storage effect that reads from the registry but does not write to it.
 handleReadOnly :: forall r a. FilePath -> Storage a -> Run (LOG + AFF + EFFECT + r) a
 handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< case _ of
+  Query _ reply -> do
+    pure $ reply $ Left "Cannot query in read-only mode."
+
   Upload name version _ reply -> do
     Log.warn $ "Requested upload of " <> formatPackageVersion name version <> " to url " <> formatPackageUrl name version <> " but this interpreter is read-only."
     pure $ reply $ Right unit
