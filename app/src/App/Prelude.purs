@@ -20,7 +20,6 @@ module Registry.App.Prelude
   , readJsonFile
   , scratchDir
   , stringifyJson
-  , stripPureScriptPrefix
   , traverseKeys
   , unsafeFromJust
   , unsafeFromRight
@@ -81,6 +80,7 @@ import Node.Encoding (Encoding(..)) as Extra
 import Node.FS.Aff as FS.Aff
 import Node.Path (FilePath) as Extra
 import Partial.Unsafe (unsafeCrashWith) as Extra
+import Registry.PackageName (stripPureScriptPrefix) as Extra
 import Registry.PackageName as PackageName
 import Registry.Types (License, Location(..), Manifest(..), ManifestIndex, Metadata(..), Owner(..), PackageName, PackageSet(..), PublishedMetadata, Range, Sha256, UnpublishedMetadata, Version)
 import Registry.Version as Version
@@ -129,19 +129,6 @@ partitionEithers :: forall e a. Array (Either.Either e a) -> { fail :: Array e, 
 partitionEithers = Array.foldMap case _ of
   Either.Left err -> { fail: [ err ], success: [] }
   Either.Right res -> { fail: [], success: [ res ] }
-
--- | Strip the "purescript-" prefix from a package name, if present.
--- |
--- | ```purs
--- | > stripPureScriptPrefix "purescript-numbers"
--- | "numbers"
--- |
--- | > stripPureScriptPrefix "numbers"
--- | "numbers"
--- | ```
-stripPureScriptPrefix :: String -> String
-stripPureScriptPrefix pkg =
-  Maybe.fromMaybe pkg $ String.stripPrefix (String.Pattern "purescript-") pkg
 
 fromJust' :: forall a. (Unit -> a) -> Maybe.Maybe a -> a
 fromJust' _ (Maybe.Just a) = a

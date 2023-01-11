@@ -55,6 +55,7 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LEGACY_CACHE)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec)
+import Registry.Constants (ignoredDirectories, ignoredFiles, ignoredGlobs, includedGlobs, includedInsensitiveGlobs)
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (IssueNumber(..), Team)
@@ -949,28 +950,6 @@ copyPackageSourceFiles files { source, destination } = do
         ]
       traverse_ FS.Extra.copy xs
 
--- | We always include some files and directories when packaging a tarball, in
--- | addition to files users opt-in to with the 'files' key.
-includedGlobs :: Array String
-includedGlobs =
-  [ "src/"
-  , "purs.json"
-  , "spago.dhall"
-  , "packages.dhall"
-  , "bower.json"
-  , "package.json"
-  , "spago.yaml"
-  ]
-
--- | These files are always included and should be globbed in case-insensitive
--- | mode.
-includedInsensitiveGlobs :: Array String
-includedInsensitiveGlobs =
-  [ "README*"
-  , "LICENSE*"
-  , "LICENCE*"
-  ]
-
 -- | We always ignore some files and directories when packaging a tarball, such
 -- | as common version control directories, even if a user has explicitly opted
 -- | in to those files with the 'files' key.
@@ -982,35 +961,6 @@ removeIgnoredTarballFiles path = do
   globMatches <- FastGlob.match' path ignoredGlobs { caseSensitive: false }
   for_ (ignoredDirectories <> ignoredFiles <> globMatches.succeeded) \match ->
     FS.Extra.remove (Path.concat [ path, match ])
-
-ignoredDirectories :: Array FilePath
-ignoredDirectories =
-  [ ".psci"
-  , ".psci_modules"
-  , ".spago"
-  , "node_modules"
-  , "bower_components"
-  -- These files and directories are ignored by the NPM CLI and we are
-  -- following their lead in ignoring them as well.
-  , ".git"
-  , "CVS"
-  , ".svn"
-  , ".hg"
-  ]
-
-ignoredFiles :: Array FilePath
-ignoredFiles =
-  [ "package-lock.json"
-  , "yarn.lock"
-  , "pnpm-lock.yaml"
-  ]
-
-ignoredGlobs :: Array String
-ignoredGlobs =
-  [ "**/*.*.swp"
-  , "**/._*"
-  , "**/.DS_Store"
-  ]
 
 jsonToDhallManifest :: String -> Aff (Either String String)
 jsonToDhallManifest jsonStr = do
