@@ -10,6 +10,7 @@ import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.API as API
 import Registry.App.Legacy.Types (RawPackageName(..))
+import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Tmp as Tmp
@@ -64,15 +65,15 @@ removeIgnoredTarballFiles = Spec.before runBefore do
       goodDirectories = [ "src" ]
       goodFiles = [ "purs.json", "README.md", "LICENSE", Path.concat [ "src", "Main.purs" ], Path.concat [ "src", "Main.js" ] ]
 
-    writeDirectories (goodDirectories <> API.ignoredDirectories)
-    writeFiles (goodFiles <> API.ignoredFiles)
+    writeDirectories (goodDirectories <> Constants.ignoredDirectories)
+    writeFiles (goodFiles <> Constants.ignoredFiles)
 
     API.removeIgnoredTarballFiles tmp
 
     paths <- FastGlob.match tmp [ "**/*" ]
 
     let
-      ignoredPaths = API.ignoredDirectories <> API.ignoredFiles
+      ignoredPaths = Constants.ignoredDirectories <> Constants.ignoredFiles
       acceptedPaths = goodDirectories <> goodFiles
 
     for_ ignoredPaths \path ->
@@ -103,8 +104,8 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
     goodFiles = [ "purs.json", "README.md", "LICENSE", Path.concat [ "src", "Main.purs" ], Path.concat [ "src", "Main.js" ] ]
 
   Spec.it "Only copies always-included files by default" \{ source, destination, writeDirectories, writeFiles } -> do
-    writeDirectories (goodDirectories <> API.ignoredDirectories <> [ "test" ])
-    writeFiles (goodFiles <> API.ignoredFiles <> [ Path.concat [ "test", "Main.purs" ] ])
+    writeDirectories (goodDirectories <> Constants.ignoredDirectories <> [ "test" ])
+    writeFiles (goodFiles <> Constants.ignoredFiles <> [ Path.concat [ "test", "Main.purs" ] ])
 
     API.copyPackageSourceFiles Nothing { source, destination }
 
@@ -112,7 +113,7 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
 
     let
       acceptedPaths = goodDirectories <> goodFiles
-      ignoredPaths = API.ignoredDirectories <> API.ignoredFiles
+      ignoredPaths = Constants.ignoredDirectories <> Constants.ignoredFiles
 
     for_ acceptedPaths \path -> do
       paths.succeeded `Assert.Run.shouldContain` path

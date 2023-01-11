@@ -7,6 +7,7 @@ module Registry.PackageName
   , parse
   , parser
   , print
+  , stripPureScriptPrefix
   ) where
 
 import Prelude
@@ -19,6 +20,7 @@ import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Either (Either, hush)
 import Data.Maybe (Maybe(..), isJust)
+import Data.Maybe as Maybe
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
 import Data.Tuple (fst)
@@ -28,6 +30,19 @@ import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
+
+-- | Strip the "purescript-" prefix from a package name, if present.
+-- |
+-- | ```purs
+-- | > stripPureScriptPrefix "purescript-numbers"
+-- | "numbers"
+-- |
+-- | > stripPureScriptPrefix "numbers"
+-- | "numbers"
+-- | ```
+stripPureScriptPrefix :: String -> String
+stripPureScriptPrefix pkg =
+  Maybe.fromMaybe pkg $ String.stripPrefix (String.Pattern "purescript-") pkg
 
 -- | A Registry-compliant package name
 newtype PackageName = PackageName String
