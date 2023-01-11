@@ -274,7 +274,7 @@ runLegacyImport mode logs = do
 
       let
         source = case mode of
-          DryRun -> Current
+          DryRun -> Legacy
           GenerateRegistry -> Legacy
           UpdateRegistry -> Current
 
@@ -519,6 +519,8 @@ validateVersionDisabled package version =
     , Tuple (disabled "concur-react" "v0.3.9") noSrcDirectory
     , Tuple (disabled "pux-devtool" "v5.0.0") noSrcDirectory
     , Tuple (disabled "endpoints-express" "0.0.1") noSrcDirectory
+    , Tuple (disabled "argonaut-aeson-generic" "0.4.0") "Does not compile."
+    , Tuple (disabled "batteries-core" "0.3.0") "Does not solve."
     ]
     where
     noSrcDirectory = "Does not contain a 'src' directory."
