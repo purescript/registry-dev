@@ -52,8 +52,8 @@ type SequentialUpgradeResult =
   }
 
 data PackageSets a
-  = UpgradeAtomic PackageSet Version ChangeSet (Maybe PackageSet -> a)
-  | UpgradeSequential PackageSet Version ChangeSet (Maybe SequentialUpgradeResult -> a)
+  = UpgradeAtomic PackageSet Version ChangeSet (Either String (Maybe PackageSet) -> a)
+  | UpgradeSequential PackageSet Version ChangeSet (Either String (Maybe SequentialUpgradeResult) -> a)
 
 derive instance Functor PackageSets
 
@@ -66,17 +66,17 @@ _packageSets = Proxy
 -- | Upgrade the given package set using the provided compiler version and set
 -- | of changes. If any change fails, then the upgrade is aborted and the
 -- | unsuccessful changes are returned.
-upgradeAtomic :: forall r. PackageSet -> Version -> ChangeSet -> Run (PACKAGE_SETS + r) (Maybe PackageSet)
-upgradeAtomic oldSet compiler changes = Run.lift _packageSets (UpgradeAtomic oldSet compiler changes identity)
+upgradeAtomic :: forall r. PackageSet -> Version -> ChangeSet -> Run (PACKAGE_SETS + EXCEPT String + r) (Maybe PackageSet)
+upgradeAtomic oldSet compiler changes = Run.lift _packageSets (UpgradeAtomic oldSet compiler changes identity) >>= Except.rethrow
 
 -- | Upgrade the given package set using the provided compiler version and set
 -- | of changes. Any successful change is applied, and any unsuccessful changes
 -- | are returned along with the new package set.
-upgradeSequential :: forall r. PackageSet -> Version -> ChangeSet -> Run (PACKAGE_SETS + r) (Maybe SequentialUpgradeResult)
+upgradeSequential :: forall r. PackageSet -> Version -> ChangeSet -> Run (PACKAGE_SETS + EXCEPT String + r) (Maybe SequentialUpgradeResult)
 upgradeSequential oldSet compiler changes = do
   upgradeAtomic oldSet compiler changes >>= case _ of
     Just result -> pure $ Just { failed: Map.empty, succeeded: changes, result }
-    Nothing -> Run.lift _packageSets (UpgradeSequential oldSet compiler changes identity)
+    Nothing -> Run.lift _packageSets (UpgradeSequential oldSet compiler changes identity) >>= Except.rethrow
 
 interpret :: forall r a. (PackageSets ~> Run r) -> Run (PACKAGE_SETS + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _packageSets handler Run.send)
@@ -87,9 +87,9 @@ type PackageSetsEnv =
 
 -- | A handler for the PACKAGE_SETS effect which compiles the package sets and
 -- | returns the results.
-handle :: forall r a. PackageSetsEnv -> PackageSets a -> Run (REGISTRY + STORAGE + LOG + EXCEPT String + AFF + EFFECT + r) a
+handle :: forall r a. PackageSetsEnv -> PackageSets a -> Run (REGISTRY + STORAGE + LOG + AFF + EFFECT + r) a
 handle env = case _ of
-  UpgradeAtomic oldSet@(PackageSet { packages }) compiler changes reply -> do
+  UpgradeAtomic oldSet@(PackageSet { packages }) compiler changes reply -> reply <$> Except.runExcept do
     Log.info $ "Performing atomic upgrade of package set " <> Version.print (un PackageSet oldSet).version
 
     -- It is possible to reuse a workdir when processing package set batches, so
@@ -116,13 +116,13 @@ handle env = case _ of
         UnknownError error -> Except.throw $ printUnknownError error
         CompilationError errors -> do
           Log.info $ printCompilationError errors
-          pure (reply Nothing)
+          pure Nothing
       Right pending -> do
         newSet <- updatePackageSetMetadata compiler { previous: oldSet, pending } changes
         validatePackageSet newSet
-        pure (reply (Just newSet))
+        pure (Just newSet)
 
-  UpgradeSequential oldSet@(PackageSet { packages }) compiler changes reply -> do
+  UpgradeSequential oldSet@(PackageSet { packages }) compiler changes reply -> reply <$> Except.runExcept do
     Log.info $ "Performing sequential upgrade of package set " <> Version.print (un PackageSet oldSet).version
     index <- Registry.readAllManifests
 
@@ -176,11 +176,11 @@ handle env = case _ of
     pending <- Run.liftEffect $ Ref.read packageSetRef
 
     case Map.size succeeded of
-      0 -> pure $ reply Nothing
+      0 -> pure $ Nothing
       _ -> do
         newSet <- updatePackageSetMetadata compiler { previous: oldSet, pending } changes
         validatePackageSet newSet
-        pure $ reply $ Just { failed, succeeded, result: newSet }
+        pure $ Just { failed, succeeded, result: newSet }
 
   where
   packagesWorkDir :: FilePath

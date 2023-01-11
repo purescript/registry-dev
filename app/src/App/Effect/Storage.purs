@@ -181,7 +181,7 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
       Except.throw $ "Could not delete " <> package <> " because it does not exist in the storage backend."
 
 -- | A storage effect that reads from the registry but does not write to it.
-handleReadOnly :: forall r a. FilePath -> Storage a -> Run (LOG + EXCEPT String + AFF + EFFECT + r) a
+handleReadOnly :: forall r a. FilePath -> Storage a -> Run (LOG + AFF + EFFECT + r) a
 handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< case _ of
   Upload name version _ reply -> do
     Log.warn $ "Requested upload of " <> formatPackageVersion name version <> " to url " <> formatPackageUrl name version <> " but this interpreter is read-only."
