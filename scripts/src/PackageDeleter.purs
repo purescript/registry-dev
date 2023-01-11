@@ -171,12 +171,12 @@ main = launchAff_ do
     forWithIndex_ deletions \name versions ->
       for_ versions \version -> do
         result <- Except.runExcept $ deleteVersion arguments name version
-        let printed = Version.print version
+        let formatted = formatPackageVersion name version
         case result of
           Left err -> do
-            Log.error $ "Failed to delete " <> printed <> ": " <> err
+            Log.error $ "Failed to delete " <> formatted <> ": " <> err
           Right _ ->
-            Log.info $ "Successfully removed " <> printed
+            Log.info $ "Successfully removed " <> formatted
 
   -- --commit
   when arguments.commit do

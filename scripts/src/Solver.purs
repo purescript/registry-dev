@@ -14,14 +14,12 @@ import Registry.App.Prelude
 import Data.Argonaut.Core as Json
 import Data.Array as Array
 import Data.Codec.Argonaut as J
-import Data.Codec.Argonaut.Compat as JC
 import Data.DateTime.Instant as Instant
 import Data.Foldable (foldMap)
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.Newtype (unwrap)
 import Data.String as String
-import Data.These (These(..), these)
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Class.Console as Aff
 import Effect.Exception (throw)
@@ -36,7 +34,6 @@ import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LogVerbosity(..), debug, error, info, warn)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Pursuit as Pursuit
@@ -58,51 +55,6 @@ import Registry.Version as Version
 import Run (Run)
 import Run as Run
 import Run.Except as Except
-
-unionWithMapThese
-  :: forall k a b c
-   . Ord k
-  => (k -> These a b -> Maybe c)
-  -> Map k a
-  -> Map k b
-  -> Map k c
-unionWithMapThese f ma mb =
-  let
-    combine = case _, _ of
-      This a, That b -> Both a b
-      That b, This a -> Both a b
-      Both a b, _ -> Both a b
-      This a, Both _ b -> Both a b
-      That b, Both a _ -> Both a b
-      That b, That _ -> That b
-      This a, This _ -> This a
-  in
-    Map.mapMaybeWithKey f $ Map.unionWith combine (This <$> ma) (That <$> mb)
-
-diff
-  :: Map PackageName (Map Version (Map PackageName Range))
-  -> Map PackageName (Map Version (Map PackageName Range))
-  -> Map PackageName (Map Version (Map PackageName (These Range Range)))
-diff = unionWithMapThese \_ -> filtered <<< these
-  do map (map This)
-  do map (map That)
-  do
-    unionWithMapThese \_ -> filtered <<< these
-      do map This
-      do map That
-      do
-        unionWithMapThese \_ -> these
-          do Just <<< This
-          do Just <<< That
-          \l r ->
-            if l == r then Nothing else Just (Both l r)
-  where
-  filtered :: forall k v. Ord k => Map k v -> Maybe (Map k v)
-  filtered v | Map.isEmpty v = Nothing
-  filtered v = Just v
-
-fromThese :: forall a. These a a -> Array (Maybe a)
-fromThese = these (\l -> [ Just l, Nothing ]) (\r -> [ Nothing, Just r ]) (\l r -> [ Just l, Just r ])
 
 main :: Effect Unit
 main = launchAff_ do
@@ -166,7 +118,7 @@ main = launchAff_ do
   FS.Extra.ensureDirectory cache
 
   debouncer <- Git.newDebouncer
-  let gitEnv pull write = { pull, write, repos: Git.defaultRepos { manifestIndex = Git.defaultRepos.manifestIndex { owner = "monoidmusician" }, registry = Git.defaultRepos.registry { owner = "monoidmusician" } }, workdir: scratchDir, debouncer }
+  let gitEnv pull write = { pull, write, repos: Git.defaultRepos, workdir: scratchDir, debouncer }
   token <- Env.lookupRequired Env.githubToken
   octokit <- Octokit.newOctokit token
   let
@@ -178,18 +130,10 @@ main = launchAff_ do
 
   let
     doTheThing = do
-      info $ "Reading registry index1 (modified) from " <> Path.concat [ scratchDir, "registry-index" ] <> " ..."
-      index1 <- readManifestIndexFromDisk $ Path.concat [ scratchDir, "registry-index" ]
+      Log.info $ "Reading registry index from " <> Path.concat [ scratchDir, "registry-index" ] <> " ..."
+      index <- readManifestIndexFromDisk $ Path.concat [ scratchDir, "registry-index" ]
 
-      info $ "Reading registry index0 (original) from " <> "tmp/registry-index" <> " ..."
-      index0 <- readManifestIndexFromDisk $ "tmp/registry-index"
-
-      let reg i = map (unwrap >>> _.dependencies) <$> ManifestIndex.toMap i
-      let registry = reg $ index1
-
-      liftAff $ writeJsonFile (Codec.packageMap (Codec.versionMap (Codec.packageMap (J.array (JC.maybe Range.codec))))) "tmp/registry_index_diff.json" (map map map fromThese <$> diff (reg index0) (reg index1))
-
-      action registry
+      action $ map (unwrap >>> _.dependencies) <$> ManifestIndex.toMap index
 
   -- Logging setup
   let logDir = Path.concat [ scratchDir, "logs" ]
@@ -206,21 +150,21 @@ main = launchAff_ do
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
     # Notify.interpret Notify.handleLog
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-    # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+    # Log.interpret (\log -> Log.handleTerminal Log.Normal log *> Log.handleFs Log.Verbose logPath log)
     # Run.runBaseAff'
 
   where
   test :: forall r. _ -> _ -> _ -> _ -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit
   test registry package version deps = do
-    info $ "%%% Solving " <> PackageName.print package <> "@" <> Version.print version <> " %%%"
+    Log.info $ "Solving " <> PackageName.print package <> "@" <> Version.print version
     t0 <- liftEffect now
     let r = Solver.solve registry deps
     t1 <- liftEffect now
     let Milliseconds d = Instant.diff t1 t0
-    debug $ "Took: " <> show d <> "ms"
+    Log.debug $ "Took: " <> show d <> "ms"
     case r of
       Right vs ->
-        debug $ Json.stringifyWithIndent 2 (J.encode (Codec.packageMap Version.codec) vs)
+        Log.debug $ Json.stringifyWithIndent 2 (J.encode (Codec.packageMap Version.codec) vs)
       Left es -> do
-        error $ "Failed: " <> PackageName.print package <> "@" <> Version.print version
-        warn $ String.take 5000 $ foldMap Solver.printSolverError es
+        Log.error $ "Failed: " <> PackageName.print package <> "@" <> Version.print version
+        Log.warn $ String.take 5000 $ foldMap Solver.printSolverError es
