@@ -179,9 +179,10 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
             Right _ -> pure $ Just $ "Update manifest for " <> formatted
         case result of
           Left error -> Except.throw $ "Failed to write and commit manifest: " <> error
-          Right Git.NoChange -> Log.info "Did not commit manifest because it did not change."
-          Right Git.Changed -> do
-            Log.info "Wrote and committed manifest."
+          Right r -> do
+            case r of
+              Git.NoChange -> Log.info "Did not commit manifest because it did not change."
+              Git.Changed -> Log.info "Wrote and committed manifest."
             Cache.put _registryCache AllManifests updated
 
   DeleteManifest name version reply -> map (map reply) Except.runExcept do
@@ -201,9 +202,12 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
             Right _ -> pure $ Just $ "Remove manifest entry for " <> formatted
         case commitResult of
           Left error -> Except.throw $ "Failed to delete and commit manifest: " <> error
-          Right Git.NoChange -> Log.info "Did not commit manifest because it already didn't exist."
-          Right Git.Changed -> do
-            Log.info "Wrote and committed manifest."
+          Right r -> do
+            case r of
+              Git.NoChange ->
+                Log.info "Did not commit manifest because it already didn't exist."
+              Git.Changed ->
+                Log.info "Wrote and committed manifest."
             Cache.put _registryCache AllManifests updated
 
   ReadAllManifests reply -> map (map reply) Except.runExcept do
@@ -311,9 +315,12 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
         Right _ -> pure $ Just $ "Update metadata for " <> printedName
     case commitResult of
       Left error -> Except.throw $ "Failed to write and commit metadata: " <> error
-      Right Git.NoChange -> Log.info "Did not commit metadata because it was unchanged."
-      Right Git.Changed -> do
-        Log.info "Wrote and committed metadata."
+      Right r -> do
+        case r of
+          Git.NoChange ->
+            Log.info "Did not commit metadata because it was unchanged."
+          Git.Changed ->
+            Log.info "Wrote and committed metadata."
         cache <- Cache.get _registryCache AllMetadata
         for_ cache \cached ->
           Cache.put _registryCache AllMetadata (Map.insert name metadata cached)
