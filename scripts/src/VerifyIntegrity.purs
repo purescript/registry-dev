@@ -74,7 +74,7 @@ main = launchAff_ do
     gitEnv =
       { write: ReadOnly
       , pull: Autostash
-      , repos: Git.defaultRepos { manifestIndex = Git.defaultRepos.manifestIndex { owner = "monoidmusician" }, registry = Git.defaultRepos.registry { owner = "monoidmusician" } }
+      , repos: Git.defaultRepos
       , workdir: scratchDir
       , debouncer
       }
