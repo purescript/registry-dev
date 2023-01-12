@@ -94,9 +94,8 @@ parsePackagePath input = do
         <$> PackageName.parse namePart
         <*> Version.parse versionPart
     parts -> Left
-      if Array.length parts > 2
-        then "Too many parts in path: " <> input
-        else "Too few parts in path: " <> input
+      if Array.length parts > 2 then "Too many parts in path: " <> input
+      else "Too few parts in path: " <> input
 
 formatPackageUrl :: PackageName -> Version -> Affjax.Node.URL
 formatPackageUrl name version = Constants.storageUrl <> "/" <> formatPackagePath name version
@@ -132,8 +131,9 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
         Except.throw $ "Could not upload package " <> PackageName.print name <> " due to an error connecting to the storage backend."
       Just objects ->
         pure $ map _.key objects
-    pure $ Set.fromFoldable $
-      resources >>= \resource -> do
+    pure $ Set.fromFoldable
+      $ resources
+      >>= \resource -> do
         { name: parsedName, version } <- Array.fromFoldable $ parsePackagePath resource
         version <$ guardA (name == parsedName)
 
