@@ -8,6 +8,7 @@ import ArgParse.Basic as Arg
 import Control.Apply (lift2)
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
+import Data.Either (isLeft)
 import Data.Foldable (class Foldable, foldMap, intercalate)
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
@@ -107,7 +108,8 @@ main = launchAff_ do
 
   let
     interpret =
-      Registry.interpret (Registry.handle registryCacheRef)
+      Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit 1))
+        >>> Registry.interpret (Registry.handle registryCacheRef)
         >>> Storage.interpret (Storage.handleS3 { s3, cache })
         >>> Git.interpret (Git.handle gitEnv)
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
@@ -115,10 +117,8 @@ main = launchAff_ do
         >>> Run.runBaseAff'
 
   interpret do
-    let
-      sorry e = Log.error e *> liftEffect (Process.exit 1)
-    allMetadata <- Except.runExcept Registry.readAllMetadata >>= either (map absurd <<< sorry) pure
-    allManifests <- Except.runExcept Registry.readAllManifests >>= either (map absurd <<< sorry) pure
+    allMetadata <- Registry.readAllMetadata
+    allManifests <- Registry.readAllManifests
     let
       packages = case selectedPackages of
         Just ps -> ps
@@ -133,17 +133,19 @@ main = launchAff_ do
           foldMap foldFn packages
       ]
 
-    for_ packages \name -> do
+    results <- for packages \name -> do
       result <- Except.runExcept do
         published <- Storage.query name
         verifyPackage allMetadata allManifests (Set.fromFoldable published) name
-      case result of
+      result <$ case result of
         Left err -> do
           Log.error $ "Failed to verify " <> PackageName.print name <> ": " <> err
         Right _ ->
           Log.info $ "Verified " <> PackageName.print name
 
     Log.info "Finished."
+    when (any isLeft results) do
+      liftEffect $ Process.exit 1
 
 intercalateMap :: forall f a d. Monoid d => Foldable f => d -> (a -> d) -> f a -> d
 intercalateMap s f = intercalate s <<< map f <<< Array.fromFoldable
@@ -165,7 +167,17 @@ printDblDiff f names { left, right } = intercalate ", " $ join
       [ names.right <> " missing " <> setOf f left ]
   ]
 
-verifyPackage :: forall r. Map PackageName Metadata -> ManifestIndex -> Set String -> PackageName -> Run (EXCEPT String + LOG + r) Unit
+-- | Check that the metadata (from the registry repo), manifests (from
+-- | registry-index) and S3 storage all agree on what versions of the package
+-- | have been published. We have read the metadata and manifests from disk
+-- | above and queried S3 as well. We don't download and verify the hashes of
+-- | those resources match what is in the metadata and the manifests match,
+-- | but we could ...
+-- |
+-- | If there is a discrepancy, we will take the metadata to be the source of
+-- | truth, as the registry-index is just a cache of manifests that exist in
+-- | the tarballs.
+verifyPackage :: forall r. Map PackageName Metadata -> ManifestIndex -> Set Version -> PackageName -> Run (EXCEPT String + LOG + r) Unit
 verifyPackage allMetadata allManifests publishedS3 name = do
   let formatted = PackageName.print name
   Log.info $ "Checking versions for " <> formatted
@@ -180,8 +192,7 @@ verifyPackage allMetadata allManifests publishedS3 name = do
 
   for_ (dblDiff metadataVersions manifestVersions) \diff -> do
     Except.throw $ printDblDiff Version.print { left: "metadata", right: "manifests" } diff
-  let paths = Set.map \version -> PackageName.print name <> "/" <> Version.print version <> ".tar.gz"
   let versions = Set.intersection metadataVersions manifestVersions
-  for_ (dblDiff publishedS3 (paths versions)) \diff -> do
-    Except.throw $ printDblDiff identity { left: "S3", right: "manifests/metadata" } diff
+  for_ (dblDiff publishedS3 versions) \diff -> do
+    Except.throw $ printDblDiff Version.print { left: "S3", right: "manifests/metadata" } diff
   pure unit
