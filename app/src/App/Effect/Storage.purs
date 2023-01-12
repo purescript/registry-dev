@@ -12,6 +12,7 @@ module Registry.App.Effect.Storage
   , handleS3
   , interpret
   , upload
+  , query
   ) where
 
 import Registry.App.Prelude
@@ -22,6 +23,7 @@ import Affjax.StatusCode (StatusCode(..))
 import Data.Array as Array
 import Data.Exists as Exists
 import Data.HTTP.Method (Method(..))
+import Data.Set as Set
 import Data.String as String
 import Effect.Aff as Aff
 import Node.Buffer as Buffer
@@ -45,6 +47,7 @@ data Storage a
   = Upload PackageName Version FilePath (Either String Unit -> a)
   | Download PackageName Version FilePath (Either String Unit -> a)
   | Delete PackageName Version (Either String Unit -> a)
+  | Query PackageName (Either String (Set Version) -> a)
 
 derive instance Functor Storage
 
@@ -69,6 +72,10 @@ delete name version = Except.rethrow =<< Run.lift _storage (Delete name version 
 interpret :: forall r a. (Storage ~> Run r) -> Run (STORAGE + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _storage handler Run.send)
 
+-- | Query what tarballs exist for a package in the storage backend
+query :: forall r. PackageName -> Run (STORAGE + EXCEPT String + r) (Set Version)
+query name = Except.rethrow =<< Run.lift _storage (Query name identity)
+
 formatPackagePath :: PackageName -> Version -> String
 formatPackagePath name version = Array.fold
   [ PackageName.print name
@@ -76,6 +83,19 @@ formatPackagePath name version = Array.fold
   , Version.print version
   , ".tar.gz"
   ]
+
+parsePackagePath :: String -> Either String { name :: PackageName, version :: Version }
+parsePackagePath input = do
+  filePath <- String.stripSuffix (String.Pattern ".tar.gz") input
+    # note ("Missing .tar.gz suffix: " <> input)
+  case String.split (String.Pattern "/") filePath of
+    [ namePart, versionPart ] ->
+      { name: _, version: _ }
+        <$> PackageName.parse namePart
+        <*> Version.parse versionPart
+    parts -> Left
+      if Array.length parts > 2 then "Too many parts in path: " <> input
+      else "Too few parts in path: " <> input
 
 formatPackageUrl :: PackageName -> Version -> Affjax.Node.URL
 formatPackageUrl name version = Constants.storageUrl <> "/" <> formatPackagePath name version
@@ -103,6 +123,20 @@ type S3Env =
 -- | Handle package storage using a remote S3 bucket.
 handleS3 :: forall r a. S3Env -> Storage a -> Run (LOG + AFF + EFFECT + r) a
 handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case _ of
+  Query name reply -> map (map reply) Except.runExcept do
+    s3 <- connectS3 env.s3
+    resources <- Run.liftAff (withBackoff' (S3.listObjects s3 { prefix: PackageName.print name <> "/" })) >>= case _ of
+      Nothing -> do
+        Log.error $ "Failed to list S3 objects for " <> PackageName.print name <> " because the process timed out."
+        Except.throw $ "Could not upload package " <> PackageName.print name <> " due to an error connecting to the storage backend."
+      Just objects ->
+        pure $ map _.key objects
+    pure $ Set.fromFoldable
+      $ resources
+      >>= \resource -> do
+        { name: parsedName, version } <- Array.fromFoldable $ parsePackagePath resource
+        version <$ guardA (name == parsedName)
+
   Download name version path reply -> map (map reply) Except.runExcept do
     let package = formatPackageVersion name version
     buffer <- Cache.get _storageCache (Package name version) >>= case _ of
@@ -181,8 +215,12 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
       Except.throw $ "Could not delete " <> package <> " because it does not exist in the storage backend."
 
 -- | A storage effect that reads from the registry but does not write to it.
-handleReadOnly :: forall r a. FilePath -> Storage a -> Run (LOG + EXCEPT String + AFF + EFFECT + r) a
+handleReadOnly :: forall r a. FilePath -> Storage a -> Run (LOG + AFF + EFFECT + r) a
 handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< case _ of
+  -- TODO: is there a way to do this without S3 credentials?
+  Query _ reply -> do
+    pure $ reply $ Left "Cannot query in read-only mode."
+
   Upload name version _ reply -> do
     Log.warn $ "Requested upload of " <> formatPackageVersion name version <> " to url " <> formatPackageUrl name version <> " but this interpreter is read-only."
     pure $ reply $ Right unit

@@ -10,7 +10,10 @@ import Data.Codec.Argonaut.Variant as CA.Variant
 import Data.Either as Either
 import Data.Exists as Exists
 import Data.FunctorWithIndex (mapWithIndex)
+import Data.Map (SemigroupMap(..))
 import Data.Map as Map
+import Data.Ord.Max (Max(..))
+import Data.Ord.Min (Min(..))
 import Data.Profunctor as Profunctor
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
@@ -45,6 +48,7 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 import Run.Except as Run.Except
+import Safe.Coerce (coerce)
 import Sunde as Process
 import Type.Proxy (Proxy(..))
 
@@ -92,11 +96,16 @@ fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestErr
         let printRange version = Array.fold [ ">=", fixed, " <", bump version ]
         RawVersionRange $ Either.either (const fixed) (printRange <<< LenientVersion.version) parsedVersion
 
+      minMaxToRange { min: smallest, max: highest } =
+        { min: fixedToRange smallest, max: fixedToRange highest }
+
       maybePackageSetDeps :: Maybe (Map PackageName Range)
       maybePackageSetDeps =
         Map.lookup name legacyPackageSets >>= Map.lookup ref >>= \deps -> do
-          let converted = mapKeys (RawPackageName <<< PackageName.print) $ map fixedToRange deps
-          hush $ validateDependencies converted
+          let converted = mapKeys (RawPackageName <<< PackageName.print) $ map minMaxToRange deps
+          let smallerBounds = validateDependencies (converted <#> _.min)
+          let higherBounds = validateDependencies (converted <#> _.max)
+          hush $ Map.unionWith Range.union <$> smallerBounds <*> higherBounds
 
       validateSpagoDeps :: SpagoDhallJson -> Either LegacyManifestValidationError (Map PackageName Range)
       validateSpagoDeps (SpagoDhallJson { dependencies, packages }) = do
@@ -364,11 +373,11 @@ bowerfileCodec :: JsonCodec Bowerfile
 bowerfileCodec = Profunctor.dimap toRep fromRep $ CA.Record.object "Bowerfile"
   { description: CA.Record.optional CA.string
   , dependencies: CA.Record.optional dependenciesCodec
-  , license: licenseCodec
+  , license: CA.Record.optional licenseCodec
   }
   where
-  toRep (Bowerfile fields) = fields { dependencies = Just fields.dependencies }
-  fromRep fields = Bowerfile $ fields { dependencies = fromMaybe Map.empty fields.dependencies }
+  toRep (Bowerfile fields) = fields { dependencies = Just fields.dependencies, license = Just fields.license }
+  fromRep fields = Bowerfile $ fields { dependencies = fromMaybe Map.empty fields.dependencies, license = fromMaybe [] fields.license }
 
   dependenciesCodec :: JsonCodec (Map RawPackageName RawVersionRange)
   dependenciesCodec = rawPackageNameMapCodec rawVersionRangeCodec
@@ -397,19 +406,22 @@ fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
     tags :: Array String
     tags = Legacy.PackageSet.filterLegacyPackageSets allTags
 
-    convertPackageSet :: LegacyPackageSet -> LegacyPackageSetUnion
-    convertPackageSet (LegacyPackageSet packages) = map (convertEntry packages) packages
+    convertPackageSet :: LegacyPackageSet -> SemigroupMap PackageName (SemigroupMap RawVersion (SemigroupMap PackageName { min :: Min RawVersion, max :: Max RawVersion }))
+    convertPackageSet (LegacyPackageSet packages) = SemigroupMap $ map (convertEntry packages) packages
 
-    convertEntry :: Map PackageName LegacyPackageSetEntry -> LegacyPackageSetEntry -> Map RawVersion (Map PackageName RawVersion)
+    convertEntry :: Map PackageName LegacyPackageSetEntry -> LegacyPackageSetEntry -> SemigroupMap RawVersion (SemigroupMap PackageName { min :: Min RawVersion, max :: Max RawVersion })
     convertEntry entries { dependencies, version } = do
       let
         -- Package sets are only valid if all packages in the set have dependencies that are also in
         -- the set, so this (should) be safe.
         resolveDependencyVersion dep =
-          unsafeFromJust (_.version <$> Map.lookup dep entries)
+          let
+            v = unsafeFromJust (_.version <$> Map.lookup dep entries)
+          in
+            { min: Min v, max: Max v }
         resolveDependencyVersions =
           Array.foldl (\m name -> Map.insert name (resolveDependencyVersion name) m) Map.empty
-      Map.singleton version (resolveDependencyVersions dependencies)
+      SemigroupMap $ Map.singleton version $ SemigroupMap $ resolveDependencyVersions dependencies
 
   Log.debug "Merging legacy package sets into a union."
   tagsHash <- Sha256.hashString (String.joinWith " " tags)
@@ -438,13 +450,11 @@ fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
         Log.warn $ "Failed to retrieve package sets for some tags: " <> String.joinWith ", " (map (fst >>> un RawVersion) results.fail)
 
       let
-        convertedSets :: Array LegacyPackageSetUnion
+        convertedSets :: Array (SemigroupMap PackageName (SemigroupMap RawVersion (SemigroupMap PackageName { min :: Min RawVersion, max :: Max RawVersion })))
         convertedSets = map convertPackageSet results.success
 
-        -- TODO: As we've discovered, this union is backwards and needs to be fixed. But that's for
-        -- another PR to take care of.
         merged :: LegacyPackageSetUnion
-        merged = Array.foldl (\m set -> Map.unionWith Map.union set m) Map.empty convertedSets
+        merged = coerce $ fold convertedSets
 
       Cache.put _legacyCache (LegacyUnion tagsHash) merged
       pure merged
