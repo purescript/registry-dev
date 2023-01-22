@@ -3,17 +3,43 @@ package:
   publish:
     license: BSD-3-Clause
   dependencies:
+    - aff
+    - argonaut-core
+    - arrays
+    - bifunctors
     - codec-argonaut
+    - control
+    - datetime
     - effect
+    - either
+    - exceptions
+    - foldable-traversable
+    - foreign-object
     - formatters
+    - functions
+    - functors
     - graphs
+    - integers
+    - lists
+    - maybe
+    - newtype
     - node-buffer
+    - node-child-process
+    - node-fs
     - node-fs-aff
     - node-path
+    - ordered-collections
     - parsing
+    - partial
     - prelude
+    - profunctor
+    - safe-coerce
+    - spec
     - strings
-    - uncurried-transformers
+    - sunde
+    - transformers
+    - tuples
+    - unsafe-coerce
   test:
     main: Test.Registry
     dependencies:
