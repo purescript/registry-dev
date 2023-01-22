@@ -59,7 +59,6 @@ package:
     - registry-lib
     - run
     - safe-coerce
-    - spec
     - strings
     - sunde
     - these

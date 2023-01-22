@@ -24,16 +24,12 @@ package:
     - maybe
     - newtype
     - node-buffer
-    - node-fs
-    - node-fs-aff
     - node-path
-    - node-process
     - nullable
     - ordered-collections
     - prelude
     - profunctor
     - registry-lib
-    - spec
     - strings
     - tuples
     - unsafe-coerce
@@ -41,5 +37,7 @@ package:
   test:
     main: Test.Foreign
     dependencies:
+      - node-fs
+      - node-fs-aff
+      - node-process
       - spec
-

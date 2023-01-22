@@ -12,7 +12,6 @@ package:
     - datetime
     - effect
     - either
-    - exceptions
     - foldable-traversable
     - foreign-object
     - formatters
@@ -24,7 +23,6 @@ package:
     - maybe
     - newtype
     - node-buffer
-    - node-child-process
     - node-fs
     - node-fs-aff
     - node-path
@@ -34,15 +32,15 @@ package:
     - prelude
     - profunctor
     - safe-coerce
-    - spec
     - strings
-    - sunde
     - transformers
     - tuples
-    - unsafe-coerce
   test:
     main: Test.Registry
     dependencies:
       - argonaut-core
+      - exceptions
+      - node-child-process
       - spec
       - sunde
+      - unsafe-coerce
