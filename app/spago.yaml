@@ -7,32 +7,31 @@ package:
     license: BSD-3-Clause
   dependencies:
     - aff
-    - aff-promise
     - affjax
     - affjax-node
+    - ansi
     - argonaut-core
     - arrays
     - b64
     - bifunctors
+    - codec-argonaut
     - console
+    - const
     - control
-    - convertable-options
     - datetime
     - dodo-printer
     - dotenv
     - effect
     - either
     - exceptions
+    - exists
     - filterable
     - foldable-traversable
     - foreign-object
     - formatters
-    - functions
-    - graphs
     - http-methods
     - identity
     - integers
-    - interpolate
     - js-date
     - js-uri
     - lists
@@ -47,23 +46,28 @@ package:
     - node-process
     - now
     - nullable
+    - numbers
     - ordered-collections
+    - orders
     - parallel
     - parsing
     - partial
-    - precise-datetime
     - prelude
-    - record
+    - profunctor
     - refs
-    - registry-lib
     - registry-foreign
+    - registry-lib
+    - run
     - safe-coerce
     - strings
     - sunde
     - these
     - transformers
     - tuples
-    - uncurried-transformers
+    - typelevel-prelude
+    - unicode
+    - unsafe-coerce
+    - variant
   test:
     main: Test.Registry.Main
     dependencies:

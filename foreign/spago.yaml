@@ -3,14 +3,41 @@ package:
   publish:
     license: BSD-3-Clause
   dependencies:
+    - aff
     - aff-promise
+    - argonaut-core
+    - arrays
     - b64
+    - bifunctors
+    - codec-argonaut
     - convertable-options
+    - datetime
+    - effect
+    - either
     - filterable
+    - foldable-traversable
+    - foreign-object
+    - functions
     - http-methods
-    - node-process
+    - integers
+    - js-date
+    - maybe
+    - newtype
+    - node-buffer
+    - node-path
+    - nullable
+    - ordered-collections
+    - prelude
+    - profunctor
     - registry-lib
+    - strings
+    - tuples
+    - unsafe-coerce
+    - variant
   test:
     main: Test.Foreign
     dependencies:
+      - node-fs
+      - node-fs-aff
+      - node-process
       - spec
