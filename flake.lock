@@ -19,11 +19,11 @@
     "easy-purescript-nix": {
       "flake": false,
       "locked": {
-        "lastModified": 1673803668,
-        "narHash": "sha256-FhnJ8eah7i2oUM/SQZd3eb79OnqGz7rhceCXdWfZ2Fk=",
+        "lastModified": 1674505573,
+        "narHash": "sha256-TfVmBMZKE8ZHOEA3ug9s1ci4+87bon/5zH0qOJXB8g4=",
         "owner": "f-f",
         "repo": "easy-purescript-nix",
-        "rev": "1896506c29d755481117cc36410978dabace4118",
+        "rev": "07c7630002b626acd4032f6a7d3ff348e6ad74f6",
         "type": "github"
       },
       "original": {
@@ -35,11 +35,11 @@
     "flake-compat": {
       "flake": false,
       "locked": {
-        "lastModified": 1668681692,
-        "narHash": "sha256-Ht91NGdewz8IQLtWZ9LCeNXMSXHUss+9COoqu6JLmXU=",
+        "lastModified": 1673956053,
+        "narHash": "sha256-4gtG9iQuiKITOjNQQeQIpoIB6b16fm+504Ch3sNKLd8=",
         "owner": "edolstra",
         "repo": "flake-compat",
-        "rev": "009399224d5e398d03b22badca40a37ac85412a1",
+        "rev": "35bb57c0c8d8b62bbfd284272c928ceb64ddbde9",
         "type": "github"
       },
       "original": {
