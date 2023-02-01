@@ -6,7 +6,7 @@ module Registry.App.Auth
 
 import Registry.App.Prelude
 
-import Data.Array.NonEmpty as NonEmptyArray
+import Data.Array as Array
 import Data.String as String
 import Node.ChildProcess as Node.ChildProcess
 import Node.FS.Aff as FS.Aff
@@ -32,11 +32,11 @@ sshKeyPath = "id_ed25519"
 -- sign authenticated transfers. This is not sufficient to blanket authorize
 -- things, as someone still needs to use the pacchettibotti credentials to
 -- actually sign the payload.
-verifyPayload :: Owner -> NonEmptyArray Owner -> AuthenticatedData -> Aff (Either String String)
+verifyPayload :: Owner -> Array Owner -> AuthenticatedData -> Aff (Either String String)
 verifyPayload pacchettiBotti owners { email, signature, rawPayload } = do
   tmp <- Tmp.mkTmpDir
   let joinWithNewlines = String.joinWith "\n"
-  let signers = joinWithNewlines $ NonEmptyArray.toArray $ map formatOwner (NonEmptyArray.cons pacchettiBotti owners)
+  let signers = joinWithNewlines $ map formatOwner (Array.cons pacchettiBotti owners)
   FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, allowedSignersPath ]) signers
   FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, payloadSignaturePath ]) (joinWithNewlines signature)
   -- The 'ssh-keygen' command will only exit normally if the signature verifies,
