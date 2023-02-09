@@ -165,13 +165,12 @@ main = launchAff_ do
     # runAppEffects
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
-    # Cache.interpret _publishFailureCache (Cache.handleFs cache)
     # Notify.interpret Notify.handleLog
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'
 
-runLegacyImport :: forall r. ImportMode -> FilePath -> Run (API.PublishEffects + IMPORT_CACHE + PUBLISH_FAILURE_CACHE + r) Unit
+runLegacyImport :: forall r. ImportMode -> FilePath -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit
 runLegacyImport mode logs = do
   Log.info "Starting legacy import!"
   Log.info $ "Logs available at " <> logs
@@ -227,7 +226,7 @@ runLegacyImport mode logs = do
 
   Log.info "Removing packages that previously failed publish"
   indexPackages <- allIndexPackages # Array.filterA \(Manifest { name, version }) ->
-    isNothing <$> Cache.get _publishFailureCache (PublishFailure name version)
+    isNothing <$> Cache.get _importCache (PublishFailure name version)
 
   allMetadata <- Registry.readAllMetadata
 
@@ -303,7 +302,7 @@ runLegacyImport mode logs = do
         case result of
           Left error -> do
             Log.error $ "Failed to publish " <> formatted <> ": " <> error
-            Cache.put _publishFailureCache (PublishFailure manifest.name manifest.version) error
+            Cache.put _importCache (PublishFailure manifest.name manifest.version) error
           Right _ -> do
             Log.info $ "Published " <> formatted
 
@@ -833,42 +832,31 @@ legacyRepoParser = do
 -- | A key type for the storage cache. Only supports packages identified by
 -- | their name and version.
 data ImportCache :: (Type -> Type -> Type) -> Type -> Type
-data ImportCache c a = ImportManifest PackageName RawVersion (c (Either VersionValidationError Manifest) a)
+data ImportCache c a
+  = ImportManifest PackageName RawVersion (c (Either VersionValidationError Manifest) a)
+  | PublishFailure PackageName Version (c String a)
 
 instance Functor2 c => Functor (ImportCache c) where
   map k (ImportManifest name version a) = ImportManifest name version (map2 k a)
+  map k (PublishFailure name version a) = PublishFailure name version (map2 k a)
 
 instance MemoryEncodable ImportCache where
   encodeMemory = case _ of
     ImportManifest name (RawVersion version) next ->
       Exists.mkExists $ Key ("ImportManifest__" <> PackageName.print name <> "__" <> version) next
+    PublishFailure name version next -> do
+      Exists.mkExists $ Key ("PublishFailureCache__" <> PackageName.print name <> "__" <> Version.print version) next
 
 instance FsEncodable ImportCache where
   encodeFs = case _ of
     ImportManifest name (RawVersion version) next -> do
       let codec = CA.Common.either versionValidationErrorCodec Manifest.codec
       Exists.mkExists $ AsJson ("ImportManifest__" <> PackageName.print name <> "__" <> version) codec next
+    PublishFailure name version next -> do
+      let codec = CA.string
+      Exists.mkExists $ AsJson ("PublishFailureCache__" <> PackageName.print name <> "__" <> Version.print version) codec next
 
 type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)
 
 _importCache :: Proxy "importCache"
 _importCache = Proxy
-
--- | A key type for the storage cache. Only supports packages identified by
--- | their name and version.
-data PublishFailureCache :: (Type -> Type -> Type) -> Type -> Type
-data PublishFailureCache c a = PublishFailure PackageName Version (c String a)
-
-instance Functor2 c => Functor (PublishFailureCache c) where
-  map k (PublishFailure name version a) = PublishFailure name version (map2 k a)
-
-instance FsEncodable PublishFailureCache where
-  encodeFs = case _ of
-    PublishFailure name version next -> do
-      let codec = CA.string
-      Exists.mkExists $ AsJson ("PublishFailureCache__" <> PackageName.print name <> "__" <> Version.print version) codec next
-
-type PUBLISH_FAILURE_CACHE r = (publishFailureCache :: Cache PublishFailureCache | r)
-
-_publishFailureCache :: Proxy "publishFailureCache"
-_publishFailureCache = Proxy
