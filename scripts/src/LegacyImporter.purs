@@ -165,12 +165,13 @@ main = launchAff_ do
     # runAppEffects
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
+    # Cache.interpret _publishFailureCache (Cache.handleFs cache)
     # Notify.interpret Notify.handleLog
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'
 
-runLegacyImport :: forall r. ImportMode -> FilePath -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit
+runLegacyImport :: forall r. ImportMode -> FilePath -> Run (API.PublishEffects + IMPORT_CACHE + PUBLISH_FAILURE_CACHE + r) Unit
 runLegacyImport mode logs = do
   Log.info "Starting legacy import!"
   Log.info $ "Logs available at " <> logs
@@ -222,7 +223,11 @@ runLegacyImport mode logs = do
   Log.info $ formatImportStats $ calculateImportStats legacyRegistry importedIndex
 
   Log.info "Sorting packages for upload..."
-  let indexPackages = ManifestIndex.toSortedArray importedIndex.registryIndex
+  let allIndexPackages = ManifestIndex.toSortedArray importedIndex.registryIndex
+
+  Log.info "Removing packages that previously failed publish"
+  indexPackages <- allIndexPackages # Array.filterA \(Manifest { name, version }) ->
+    isNothing <$> Cache.get _publishFailureCache (PublishFailure name version)
 
   allMetadata <- Registry.readAllMetadata
 
@@ -287,6 +292,7 @@ runLegacyImport mode logs = do
           , "----------"
           ]
         operation <- mkOperation (Manifest manifest)
+
         result <- Except.runExcept $ API.publish source operation
         -- TODO: Some packages will fail because the legacy importer does not
         -- perform all the same validation checks that the publishing flow does.
@@ -297,7 +303,8 @@ runLegacyImport mode logs = do
         case result of
           Left error -> do
             Log.error $ "Failed to publish " <> formatted <> ": " <> error
-          Right _ ->
+            Cache.put _publishFailureCache (PublishFailure manifest.name manifest.version) error
+          Right _ -> do
             Log.info $ "Published " <> formatted
 
 -- | Record all package failures to the 'package-failures.json' file.
@@ -846,3 +853,22 @@ type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)
 
 _importCache :: Proxy "importCache"
 _importCache = Proxy
+
+-- | A key type for the storage cache. Only supports packages identified by
+-- | their name and version.
+data PublishFailureCache :: (Type -> Type -> Type) -> Type -> Type
+data PublishFailureCache c a = PublishFailure PackageName Version (c String a)
+
+instance Functor2 c => Functor (PublishFailureCache c) where
+  map k (PublishFailure name version a) = PublishFailure name version (map2 k a)
+
+instance FsEncodable PublishFailureCache where
+  encodeFs = case _ of
+    PublishFailure name version next -> do
+      let codec = CA.string
+      Exists.mkExists $ AsJson ("PublishFailureCache__" <> PackageName.print name <> "__" <> Version.print version) codec next
+
+type PUBLISH_FAILURE_CACHE r = (publishFailureCache :: Cache PublishFailureCache | r)
+
+_publishFailureCache :: Proxy "publishFailureCache"
+_publishFailureCache = Proxy
