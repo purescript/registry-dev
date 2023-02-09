@@ -222,7 +222,11 @@ runLegacyImport mode logs = do
   Log.info $ formatImportStats $ calculateImportStats legacyRegistry importedIndex
 
   Log.info "Sorting packages for upload..."
-  let indexPackages = ManifestIndex.toSortedArray importedIndex.registryIndex
+  let allIndexPackages = ManifestIndex.toSortedArray importedIndex.registryIndex
+
+  Log.info "Removing packages that previously failed publish"
+  indexPackages <- allIndexPackages # Array.filterA \(Manifest { name, version }) ->
+    isNothing <$> Cache.get _importCache (PublishFailure name version)
 
   allMetadata <- Registry.readAllMetadata
 
@@ -287,6 +291,7 @@ runLegacyImport mode logs = do
           , "----------"
           ]
         operation <- mkOperation (Manifest manifest)
+
         result <- Except.runExcept $ API.publish source operation
         -- TODO: Some packages will fail because the legacy importer does not
         -- perform all the same validation checks that the publishing flow does.
@@ -297,7 +302,8 @@ runLegacyImport mode logs = do
         case result of
           Left error -> do
             Log.error $ "Failed to publish " <> formatted <> ": " <> error
-          Right _ ->
+            Cache.put _importCache (PublishFailure manifest.name manifest.version) error
+          Right _ -> do
             Log.info $ "Published " <> formatted
 
 -- | Record all package failures to the 'package-failures.json' file.
@@ -826,21 +832,29 @@ legacyRepoParser = do
 -- | A key type for the storage cache. Only supports packages identified by
 -- | their name and version.
 data ImportCache :: (Type -> Type -> Type) -> Type -> Type
-data ImportCache c a = ImportManifest PackageName RawVersion (c (Either VersionValidationError Manifest) a)
+data ImportCache c a
+  = ImportManifest PackageName RawVersion (c (Either VersionValidationError Manifest) a)
+  | PublishFailure PackageName Version (c String a)
 
 instance Functor2 c => Functor (ImportCache c) where
   map k (ImportManifest name version a) = ImportManifest name version (map2 k a)
+  map k (PublishFailure name version a) = PublishFailure name version (map2 k a)
 
 instance MemoryEncodable ImportCache where
   encodeMemory = case _ of
     ImportManifest name (RawVersion version) next ->
       Exists.mkExists $ Key ("ImportManifest__" <> PackageName.print name <> "__" <> version) next
+    PublishFailure name version next -> do
+      Exists.mkExists $ Key ("PublishFailureCache__" <> PackageName.print name <> "__" <> Version.print version) next
 
 instance FsEncodable ImportCache where
   encodeFs = case _ of
     ImportManifest name (RawVersion version) next -> do
       let codec = CA.Common.either versionValidationErrorCodec Manifest.codec
       Exists.mkExists $ AsJson ("ImportManifest__" <> PackageName.print name <> "__" <> version) codec next
+    PublishFailure name version next -> do
+      let codec = CA.string
+      Exists.mkExists $ AsJson ("PublishFailureCache__" <> PackageName.print name <> "__" <> Version.print version) codec next
 
 type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)
 
