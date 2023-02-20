@@ -2,6 +2,7 @@ package:
   name: registry-scripts
   publish:
     license: BSD-3-Clause
+    version: 0.0.1
   dependencies:
     - aff
     - argonaut-core
@@ -35,4 +36,3 @@ package:
     - strings
     - tuples
     - variant
-
