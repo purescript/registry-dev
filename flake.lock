@@ -32,6 +32,22 @@
         "type": "github"
       }
     },
+    "easy-purescript-nix_2": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1671011575,
+        "narHash": "sha256-tESal32bcqqdZO+aKnBzc1GoL2mtnaDtj2y7ociCRGA=",
+        "owner": "justinwoo",
+        "repo": "easy-purescript-nix",
+        "rev": "11d3bd58ce6e32703bf69cec04dc7c38eabe14ba",
+        "type": "github"
+      },
+      "original": {
+        "owner": "justinwoo",
+        "repo": "easy-purescript-nix",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -63,6 +79,21 @@
         "type": "github"
       }
     },
+    "flake-utils_2": {
+      "locked": {
+        "lastModified": 1653893745,
+        "narHash": "sha256-0jntwV3Z8//YwuOjzhV2sgJJPt+HY6KhU7VZUL0fKZQ=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "1ed9fb1935d260de5fe1c2f7ee0ebaae17ed2fa1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1672580127,
@@ -79,13 +110,118 @@
         "type": "github"
       }
     },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1671995294,
+        "narHash": "sha256-KDeHKinlHWSLZX1JEh3FFwHZ3RXx/Jak/QcUNC00BNo=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "83d9cef1044cbccc2237d94b018fb0a2e25e97c4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_3": {
+      "locked": {
+        "lastModified": 1658371388,
+        "narHash": "sha256-ACjtJNUAqjAdR+o5EDcOGgK3aseB+IF1TSBNPVftdLg=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "af7d2aaa0d7fae44cdef463538833d536e3def1f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "purenix": {
+      "inputs": {
+        "flake-utils": "flake-utils_2",
+        "nixpkgs": "nixpkgs_3"
+      },
+      "locked": {
+        "lastModified": 1659759527,
+        "narHash": "sha256-4fKtudKLLUUN4vtu4xnPfWXD9wa0qUHLpA9iWIBwOpw=",
+        "owner": "purenix-org",
+        "repo": "purenix",
+        "rev": "5587e599a39811d6d1645e7d2cfed559506e3637",
+        "type": "github"
+      },
+      "original": {
+        "owner": "purenix-org",
+        "repo": "purenix",
+        "type": "github"
+      }
+    },
+    "purescript-registry": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1678370828,
+        "narHash": "sha256-pn42NzwEdPAI7syPKX7nAo4+V5UOcTvwYHVUNOQpbdQ=",
+        "owner": "purescript",
+        "repo": "registry",
+        "rev": "9b7d8192b62d438ac11e61cbf5725c101041bfb7",
+        "type": "github"
+      },
+      "original": {
+        "owner": "purescript",
+        "repo": "registry",
+        "type": "github"
+      }
+    },
+    "purescript-registry-index": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1678370815,
+        "narHash": "sha256-74YFO6mUcERWHFn30uDQmvVdTSnES/1lhg86Ty1+gXY=",
+        "owner": "purescript",
+        "repo": "registry-index",
+        "rev": "d728e6869873ad4284c1769974e891860edecfbc",
+        "type": "github"
+      },
+      "original": {
+        "owner": "purescript",
+        "repo": "registry-index",
+        "type": "github"
+      }
+    },
+    "purifix": {
+      "inputs": {
+        "easy-purescript-nix": "easy-purescript-nix_2",
+        "nixpkgs": "nixpkgs_2",
+        "purenix": "purenix",
+        "purescript-registry": "purescript-registry",
+        "purescript-registry-index": "purescript-registry-index"
+      },
+      "locked": {
+        "lastModified": 1678390513,
+        "narHash": "sha256-OeTNkO7ivEssZuylT8vtDR04LaBG841GS/cs3BG7n0c=",
+        "owner": "purifix",
+        "repo": "purifix",
+        "rev": "fc40b990b68fff30ba13256622bf62ec0a64f1fb",
+        "type": "github"
+      },
+      "original": {
+        "owner": "purifix",
+        "repo": "purifix",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "easy-dhall-nix": "easy-dhall-nix",
         "easy-purescript-nix": "easy-purescript-nix",
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "purifix": "purifix"
       }
     }
   },
