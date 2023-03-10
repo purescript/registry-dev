@@ -173,6 +173,7 @@
       };
 
       devShells = {
+        purifix = app.develop;
         default = pkgs.mkShell {
           name = "registry";
           packages = with pkgs; [
