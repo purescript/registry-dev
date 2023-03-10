@@ -164,10 +164,9 @@
         };
       };
 
-      app = pkgs.purifix {
+      app = (pkgs.purifix {
         src = ./.;
-        subdir = "app";
-      };
+      }).registry-app;
     in {
       packages = {
         default = app;
