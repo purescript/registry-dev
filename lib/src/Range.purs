@@ -3,6 +3,7 @@
 -- | https://github.com/purescript/registry-dev/blob/master/SPEC.md#range
 module Registry.Range
   ( Range
+  , caret
   , codec
   , greaterThanOrEq
   , includes
@@ -12,6 +13,7 @@ module Registry.Range
   , parser
   , print
   , union
+  , mk
   ) where
 
 import Prelude
@@ -128,3 +130,14 @@ intersect (Range r1) (Range r2)
       { lhs: max r1.lhs r2.lhs
       , rhs: min r1.rhs r2.rhs
       }
+
+-- | Produce a range from two versions, producing Nothing if the versions
+-- | would not produce a valid range (ie. the lhs is not less than the rhs).
+mk :: Version -> Version -> Maybe Range
+mk lhs rhs | lhs < rhs = Just (Range { lhs, rhs })
+mk _ _ = Nothing
+
+-- | Produce a "caret range" from a version.
+-- | I.e. "^0.15.6" ==> ">=0.15.6 > 0.16.0"
+caret :: Version -> Range
+caret v = Range { lhs: v, rhs: Version.bumpHighest v }

@@ -2,21 +2,46 @@ package:
   name: registry-lib
   publish:
     license: BSD-3-Clause
+    version: 0.0.1
   dependencies:
+    - aff
+    - argonaut-core
+    - arrays
+    - bifunctors
     - codec-argonaut
+    - control
+    - datetime
     - effect
+    - either
+    - foldable-traversable
+    - foreign-object
     - formatters
+    - functions
+    - functors
     - graphs
+    - integers
+    - lists
+    - maybe
+    - newtype
     - node-buffer
+    - node-fs
     - node-fs-aff
     - node-path
+    - ordered-collections
     - parsing
+    - partial
     - prelude
+    - profunctor
+    - safe-coerce
     - strings
-    - uncurried-transformers
+    - transformers
+    - tuples
   test:
     main: Test.Registry
     dependencies:
       - argonaut-core
+      - exceptions
+      - node-child-process
       - spec
       - sunde
+      - unsafe-coerce

@@ -2,7 +2,37 @@ package:
   name: registry-scripts
   publish:
     license: BSD-3-Clause
+    version: 0.0.1
   dependencies:
+    - aff
+    - argonaut-core
     - argparse-basic
+    - arrays
+    - codec-argonaut
+    - console
+    - control
+    - datetime
+    - either
+    - exceptions
+    - exists
+    - filterable
+    - foldable-traversable
+    - formatters
+    - lists
+    - newtype
+    - node-path
+    - node-process
+    - now
+    - numbers
+    - ordered-collections
+    - parsing
+    - prelude
+    - profunctor
+    - refs
     - registry-app
+    - registry-foreign
     - registry-lib
+    - run
+    - strings
+    - tuples
+    - variant

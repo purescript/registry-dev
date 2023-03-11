@@ -120,6 +120,16 @@
               spago run -p registry-scripts -m Registry.Scripts.PackageDeleter -- $@
             '';
 
+            registry-solver = ''
+              cd $(git rev-parse --show-toplevel)
+              spago run -p registry-scripts -m Registry.Scripts.Solver -- $@
+            '';
+
+            registry-verify = ''
+              cd $(git rev-parse --show-toplevel)
+              spago run -p registry-scripts -m Registry.Scripts.VerifyIntegrity -- $@
+            '';
+
             # This script verifies that
             # - all the dhall we have in the repo actually compiles
             # - all the example manifests actually typecheck as Manifests

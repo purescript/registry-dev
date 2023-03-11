@@ -9,6 +9,7 @@ import Data.Foldable (traverse_)
 import Data.String as String
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
+import Effect.Ref as Ref
 import Foreign.Object as Object
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
@@ -88,6 +89,8 @@ main = launchAff_ $ do
     let workdir = Path.concat [ scratchDir, "package-sets-work" ]
     FS.Extra.ensureDirectory workdir
 
+    thrownRef <- liftEffect $ Ref.new false
+
     run
       # Env.runGitHubEventEnv { username: env.username, issue: env.issue }
       # Env.runPacchettiBottiEnv { publicKey: env.publicKey, privateKey: env.privateKey }
@@ -100,16 +103,19 @@ main = launchAff_ $ do
       # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache, ref: githubCacheRef })
       -- Caching & logging
       # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
+      # Except.catch (\msg -> Log.error msg *> Notify.notify msg *> Run.liftEffect (Ref.write true thrownRef))
       # Notify.interpret (Notify.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Git.defaultRepos.registry })
-      # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
       # Log.interpret (Log.handleTerminal Verbose)
       -- Base effects
       # Run.runBaseAff'
 
-    -- After the run, close the issue. If an exception was thrown then the issue
-    -- will remain open.
-    _ <- Octokit.request env.octokit (Octokit.closeIssueRequest { address: Constants.registry, issue: env.issue })
-    pure unit
+    liftEffect (Ref.read thrownRef) >>= case _ of
+      true ->
+        liftEffect $ Process.exit 1
+      _ -> do
+        -- After the run, close the issue. If an exception was thrown then the issue will remain open.
+        _ <- Octokit.request env.octokit (Octokit.closeIssueRequest { address: Constants.registry, issue: env.issue })
+        pure unit
 
 type GitHubEventEnv =
   { octokit :: Octokit
