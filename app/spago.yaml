@@ -59,6 +59,7 @@ package:
     - registry-lib
     - run
     - safe-coerce
+    - spago-core
     - strings
     - sunde
     - these

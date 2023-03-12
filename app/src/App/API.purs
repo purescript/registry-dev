@@ -80,6 +80,9 @@ import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
+import Spago.Core.Config as Spago
+import Spago.Core.Prelude as Spago.Prelude
+import Spago.Log as Spago.Log
 import Sunde as Sunde
 
 -- | Operations can be exercised for old, pre-registry packages, or for packages
@@ -371,31 +374,58 @@ publish source payload = do
         , "sources indicated by the `files` key in your manifest."
         ]
 
-  -- If this is a legacy import, then we need to construct a `Manifest` for it.
+  -- If the package doesn't have a purs.json we can try to make one - possible scenarios:
+  --  - in case it has a spago.yaml then we know how to read that, and have all the info to move forward
+  --  - if it's a legacy import then we can try to infer as much info as possible to make a manifest
   let packagePursJson = Path.concat [ packageDirectory, "purs.json" ]
   hadPursJson <- Run.liftEffect $ FS.Sync.exists packagePursJson
   unless hadPursJson do
-    Notify.notify $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
-    address <- case existingMetadata.location of
-      Git _ -> Except.throw "Legacy packages can only come from GitHub."
-      GitHub { subdir: Just subdir } -> Except.throw $ "Legacy packages cannot use the 'subdir' key, but this package specifies a " <> subdir <> " subdir."
-      GitHub { owner, repo } -> pure { owner, repo }
+    let packageSpagoYaml = Path.concat [ packageDirectory, "spago.yaml" ]
+    hasSpagoYaml <- Run.liftEffect $ FS.Sync.exists packageSpagoYaml
+    case hasSpagoYaml of
+      true -> do
+        Notify.notify $ "Package source does not have a purs.json file, creating one from your spago.yaml file..."
+        -- Need to make a Spago log env first, disable the logging
+        let spagoEnv = { logOptions: { color: false, verbosity: Spago.Log.LogQuiet } }
+        maybeConfig <- Spago.Prelude.runSpago spagoEnv (Spago.readConfig packageSpagoYaml)
+        case maybeConfig of
+          Left err' -> Except.throw $ String.joinWith "\n"
+            [ "Could not publish your package - a spago.yaml was present, but it was not possible to read it:"
+            , err'
+            ]
+          Right { yaml: config } -> do
+            -- Once we have the config we are still not entirely sure it fits into a Manifest
+            -- E.g. need to make sure all the ranges are present
+            case spagoToManifest config of
+              Left err -> Except.throw $ String.joinWith "\n"
+                [ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:"
+                , err
+                ]
+              Right manifest -> do
+                Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
+                Run.liftAff $ writeJsonFile Manifest.codec packagePursJson manifest
+      false -> do
+        Notify.notify $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
+        address <- case existingMetadata.location of
+          Git _ -> Except.throw "Legacy packages can only come from GitHub."
+          GitHub { subdir: Just subdir } -> Except.throw $ "Legacy packages cannot use the 'subdir' key, but this package specifies a " <> subdir <> " subdir."
+          GitHub { owner, repo } -> pure { owner, repo }
 
-    version <- case LenientVersion.parse payload.ref of
-      Left _ -> Except.throw $ "The provided ref " <> payload.ref <> " is not a version of the form X.Y.Z or vX.Y.Z, so it cannot be used."
-      Right result -> pure $ LenientVersion.version result
+        version <- case LenientVersion.parse payload.ref of
+          Left _ -> Except.throw $ "The provided ref " <> payload.ref <> " is not a version of the form X.Y.Z or vX.Y.Z, so it cannot be used."
+          Right result -> pure $ LenientVersion.version result
 
-    Legacy.Manifest.fetchLegacyManifest payload.name address (RawVersion payload.ref) >>= case _ of
-      Left manifestError -> do
-        let formatError { error, reason } = reason <> " " <> Legacy.Manifest.printLegacyManifestError error
-        Except.throw $ String.joinWith "\n"
-          [ "Could not publish your package because there were issues converting its spago.dhall and/or bower.json files into a purs.json manifest:"
-          , formatError manifestError
-          ]
-      Right legacyManifest -> do
-        Log.debug $ "Successfully produced a legacy manifest from the package source. Writing it to the package source..."
-        let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location legacyManifest
-        Run.liftAff $ writeJsonFile Manifest.codec packagePursJson manifest
+        Legacy.Manifest.fetchLegacyManifest payload.name address (RawVersion payload.ref) >>= case _ of
+          Left manifestError -> do
+            let formatError { error, reason } = reason <> " " <> Legacy.Manifest.printLegacyManifestError error
+            Except.throw $ String.joinWith "\n"
+              [ "Could not publish your package because there were issues converting its spago.dhall and/or bower.json files into a purs.json manifest:"
+              , formatError manifestError
+              ]
+          Right legacyManifest -> do
+            Log.debug $ "Successfully produced a legacy manifest from the package source. Writing it to the package source..."
+            let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location legacyManifest
+            Run.liftAff $ writeJsonFile Manifest.codec packagePursJson manifest
 
   Log.debug "A valid purs.json is available in the package source."
 
@@ -981,3 +1011,28 @@ getPacchettiBotti = do
 
 packagingTeam :: Team
 packagingTeam = { org: "purescript", team: "packaging" }
+
+spagoToManifest :: Spago.Config -> Either String Manifest
+spagoToManifest config = do
+  package@{ name, description, dependencies: Spago.Dependencies deps } <- note "Did not find a package in the config" config.package
+  publishConfig@{ version, license } <- note "Did not find a `publish` section in the package config" package.publish
+  location <- note "Did not find a `location` field in the publish config" publishConfig.location
+  let
+    checkRange :: Tuple PackageName (Maybe Range) -> Either PackageName (Tuple PackageName Range)
+    checkRange (Tuple packageName maybeRange) = case maybeRange of
+      Nothing -> Left packageName
+      Just r -> Right (Tuple packageName r)
+  let { fail: failedPackages, success } = partitionEithers $ map checkRange (Map.toUnfoldable deps :: Array _)
+  dependencies <- case failedPackages of
+    [] -> Right (Map.fromFoldable success)
+    errs -> Left $ "The following packages did not have their ranges specified: " <> String.joinWith ", " (map PackageName.print errs)
+  pure $ Manifest
+    { version
+    , license
+    , name
+    , location
+    , description
+    , dependencies
+    , owners: Nothing -- TODO Spago still needs to add this to its config
+    , files: Nothing -- TODO Spago still needs to add this to its config
+    }

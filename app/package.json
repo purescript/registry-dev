@@ -5,6 +5,7 @@
   "dependencies": {
     "registry-foreign": "file:../foreign",
     "registry-lib": "file:../lib",
-    "xhr2": "^0.2.1"
+    "xhr2": "^0.2.1",
+    "yaml": "^2.2.1"
   }
 }

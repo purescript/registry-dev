@@ -78,10 +78,10 @@
         scripts = pkgs.symlinkJoin {
           name = "scripts";
           paths = pkgs.lib.mapAttrsToList pkgs.writeShellScriptBin {
-            registry-install = ''
+            registry-build = ''
               cd $(git rev-parse --show-toplevel)
               npm ci
-              spago install
+              spago build
             '';
 
             registry-test = ''
