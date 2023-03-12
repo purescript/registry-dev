@@ -398,11 +398,11 @@ publish source payload = do
             -- E.g. need to make sure all the ranges are present
             case spagoToManifest config of
               Left err -> Except.throw $ String.joinWith "\n"
-                [ "Could not publish your package - there was an error while converting your spago.yaml into a Registry Manifest:"
+                [ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:"
                 , err
                 ]
               Right manifest -> do
-                Log.debug "Successfully converted a spago.yaml into a Manifest"
+                Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
                 Run.liftAff $ writeJsonFile Manifest.codec packagePursJson manifest
       false -> do
         Notify.notify $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
@@ -1025,7 +1025,7 @@ spagoToManifest config = do
   let { fail: failedPackages, success } = partitionEithers $ map checkRange (Map.toUnfoldable deps :: Array _)
   dependencies <- case failedPackages of
     [] -> Right (Map.fromFoldable success)
-    errs -> Left $ "The following packages did not have their ranges specified: " <> printJson (CA.array PackageName.codec) errs
+    errs -> Left $ "The following packages did not have their ranges specified: " <> String.joinWith ", " (map PackageName.print errs)
   pure $ Manifest
     { version
     , license
