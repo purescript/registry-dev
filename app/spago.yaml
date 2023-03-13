@@ -30,7 +30,7 @@ package:
     - foreign-object
     - formatters
     - http-methods
-    - httpure
+    - httpurple
     - identity
     - integers
     - js-date
@@ -55,6 +55,7 @@ package:
     - partial
     - prelude
     - profunctor
+    - profunctor-lenses
     - refs
     - registry-foreign
     - registry-lib
