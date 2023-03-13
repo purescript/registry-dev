@@ -43,8 +43,8 @@ jobs:
       - name: "Check that all Dhall compiles, and fixtures correctly conform to a Manifest"
         run: nix develop --command 'registry-verify-dhall'
 
-      - name: "Install dependencies"
-        run: nix develop --command 'registry-install'
+      - name: "Build project"
+        run: nix develop --command 'registry-build'
 
       - name: "Run tests"
         run: nix develop --command 'registry-test'
