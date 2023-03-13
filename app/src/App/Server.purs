@@ -2,13 +2,12 @@ module Registry.App.Server where
 
 import Registry.App.Prelude hiding ((/))
 
-import Data.Codec.Argonaut as CA
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.String as String
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
-import HTTPurple (class Generic, Method(..), Request, Response, RouteDuplex', (/))
+import HTTPurple (class Generic, JsonDecoder(..), Method(..), Request, Response, RouteDuplex', (/))
 import HTTPurple as HTTPurple
 import Node.Path as Path
 import Node.Process as Process
@@ -69,45 +68,39 @@ routes = Routing.root $ Routing.prefix "api" $ Routing.prefix "v1" $ RoutingG.su
   }
 
 router :: Request Route -> Run ServerEffects Response
-router { route, method, body } = case route, method of
+router { route, method, body } = HTTPurple.usingCont case route, method of
   Publish, Post -> do
-    body' <- Run.liftAff $ HTTPurple.toString body
-    case parseJson Operation.publishCodec body' of
-      Left error -> HTTPurple.badRequest $ CA.printJsonDecodeError error
-      Right publish -> do
-        -- TODO: This should really be a launchAff_ acknowledging receipt but
-        -- not actualy processing, once we validate the operation is OK, and we
-        -- can return the job ID for polling.
-        -- So we shall:
-        -- - fork the publishing in a fiber
-        -- - stash the fiber in a ref (so we can keep track of how many things are going)
-        -- - generate a job ID
-        -- - make a log file with that job ID
-        -- - change the Notify effect to write to that log file in a structured format (so we can read it back)
-        API.publish Current publish
-        HTTPurple.ok "Completed publish operation."
+    publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
+
+    -- TODO: This should really be a launchAff_ acknowledging receipt but
+    -- not actualy processing, once we validate the operation is OK, and we
+    -- can return the job ID for polling.
+    -- So we shall:
+    -- - fork the publishing in a fiber
+    -- - stash the fiber in a ref (so we can keep track of how many things are going)
+    -- - generate a job ID
+    -- - make a log file with that job ID
+    -- - change the Notify effect to write to that log file in a structured format (so we can read it back)
+    lift $ API.publish Current publish
+    HTTPurple.ok "Completed publish operation."
 
   Unpublish, Post -> do
-    body' <- Run.liftAff $ HTTPurple.toString body
-    case parseJson Operation.authenticatedCodec body' of
-      Left error -> HTTPurple.badRequest $ CA.printJsonDecodeError error
-      Right auth -> case auth.payload of
-        Operation.Unpublish _ -> do
-          API.authenticated auth
-          HTTPurple.ok "Completed unpublish operation."
-        _ ->
-          HTTPurple.badRequest "Expected unpublish operation."
+    auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
+    case auth.payload of
+      Operation.Unpublish _ -> do
+        lift $ API.authenticated auth
+        HTTPurple.ok "Completed unpublish operation."
+      _ ->
+        HTTPurple.badRequest "Expected unpublish operation."
 
   Transfer, Post -> do
-    body' <- Run.liftAff $ HTTPurple.toString body
-    case parseJson Operation.authenticatedCodec body' of
-      Left error -> HTTPurple.badRequest $ CA.printJsonDecodeError error
-      Right auth -> case auth.payload of
-        Operation.Transfer _ -> do
-          API.authenticated auth
-          HTTPurple.ok "Completed transfer operation."
-        _ ->
-          HTTPurple.badRequest "Expected transfer operation."
+    auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
+    case auth.payload of
+      Operation.Transfer _ -> do
+        lift $ API.authenticated auth
+        HTTPurple.ok "Completed transfer operation."
+      _ ->
+        HTTPurple.badRequest "Expected transfer operation."
 
   Jobs _jobId, _ -> do
     HTTPurple.ok "TODO"
@@ -221,3 +214,6 @@ main = do
       , " │  > curl -v localhost:8080/api/v1/publish  │"
       , " └───────────────────────────────────────────┘"
       ]
+
+jsonDecoder :: forall a. JsonCodec a -> JsonDecoder JsonDecodeError a
+jsonDecoder codec = JsonDecoder (parseJson codec)
