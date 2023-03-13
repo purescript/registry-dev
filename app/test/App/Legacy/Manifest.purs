@@ -5,7 +5,7 @@ import Registry.App.Prelude
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Registry.App.Legacy.Manifest as Legacy.Manifest
-import Test.Assert as Assert
+import Registry.Test.Assert as Assert
 import Test.Spec (Spec)
 import Test.Spec as Spec
 

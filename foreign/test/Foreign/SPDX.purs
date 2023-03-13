@@ -10,7 +10,7 @@ import Data.String as String
 import Data.Tuple (Tuple(..))
 import Registry.Foreign.SPDX as SPDX
 import Registry.License as License
-import Test.Assert as Assert
+import Registry.Test.Assert as Assert
 import Test.Spec as Spec
 
 spec :: Spec.Spec Unit

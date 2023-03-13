@@ -1,6 +1,7 @@
 -- | An effect for reading and writing to the registry storage backend.
 module Registry.App.Effect.Storage
-  ( STORAGE
+  ( S3Env
+  , STORAGE
   , STORAGE_CACHE
   , Storage
   , StorageCache

@@ -14,10 +14,10 @@ import Registry.App.Legacy.Types (legacyPackageSetCodec)
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Sha256 as Sha256
+import Registry.Test.Assert as Assert
+import Registry.Test.Utils as Utils
 import Registry.Version as Version
-import Test.Assert as Assert
 import Test.Spec as Spec
-import Test.Utils as Utils
 
 spec :: Spec.Spec Unit
 spec = do

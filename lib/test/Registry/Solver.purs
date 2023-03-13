@@ -19,11 +19,11 @@ import Data.Tuple.Nested ((/\))
 import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Solver (Intersection(..), LocalSolverPosition(..), SolverError(..), SolverPosition(..), Sourced(..), printSolverError, solve)
+import Registry.Test.Assert as Assert
+import Registry.Test.Utils (fromRight)
 import Registry.Types (PackageName, Range, Version)
 import Registry.Version as Version
-import Test.Assert as Assert
 import Test.Spec as Spec
-import Test.Utils (fromRight)
 
 spec :: Spec.Spec Unit
 spec = do

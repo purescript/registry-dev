@@ -4,7 +4,7 @@ import Registry.App.Prelude
 
 import Data.Either as Either
 import Registry.App.Legacy.LenientVersion as LenientVersion
-import Test.Assert as Assert
+import Registry.Test.Assert as Assert
 import Test.Spec as Spec
 
 spec :: Spec.Spec Unit

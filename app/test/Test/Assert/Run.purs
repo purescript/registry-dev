@@ -7,11 +7,11 @@ import Data.Foldable as Foldable
 import Effect.Exception as Exception
 import Registry.App.Effect.Log (LOG, Log(..))
 import Registry.App.Effect.Log as Log
+import Registry.Test.Utils as Utils
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
-import Test.Utils as Utils
 
 runTest :: forall a. Run (LOG + EXCEPT String + AFF + EFFECT ()) a -> Aff a
 runTest =

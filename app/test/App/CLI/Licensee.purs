@@ -5,7 +5,7 @@ import Registry.App.Prelude
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.CLI.Licensee as Licensee
-import Test.Assert as Assert
+import Registry.Test.Assert as Assert
 import Test.Spec as Spec
 
 spec :: Spec.Spec Unit

@@ -5,10 +5,10 @@ import Registry.App.Prelude
 import Data.Map as Map
 import Registry.App.Effect.PackageSets (Change(..))
 import Registry.App.Effect.PackageSets as PackageSets
+import Registry.Test.Assert as Assert
+import Registry.Test.Utils as Utils
 import Registry.Version as Version
-import Test.Assert as Assert
 import Test.Spec as Spec
-import Test.Utils as Utils
 
 spec :: Spec.Spec Unit
 spec = do
