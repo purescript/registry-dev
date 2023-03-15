@@ -164,12 +164,21 @@
         };
       };
 
+      npmPackages = pkgs.callPackage ./node.nix {} {src = ./.; };
+
       app = (pkgs.purifix {
         src = ./.;
+        nodeModules = npmPackages + "/js/node_modules";
       }).registry-app;
     in {
       packages = {
         default = app;
+      };
+      apps = {
+        default = {
+          type = "app";
+          program = "${app.run}/bin/registry-app";
+        };
       };
 
       devShells = {
