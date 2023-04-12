@@ -60,7 +60,6 @@ import Data.Newtype (class Newtype, un) as Extra
 import Data.Newtype as Newtype
 import Data.Nullable (Nullable, toMaybe, toNullable) as Extra
 import Data.Set (Set) as Extra
-import Data.String as String
 import Data.String.NonEmpty (NonEmptyString) as Extra
 import Data.Time.Duration as Duration
 import Data.Traversable (for, for_, sequence, traverse) as Extra
