@@ -87,9 +87,13 @@ unsafeDateTime str = fromRight ("Failed to parse DateTime: " <> str) (DateTime.F
 unsafeDate :: String -> Date.Date
 unsafeDate str = fromRight ("Failed to parse Date: " <> str) (map Date.date $ DateTime.Formatters.unformat Internal.Format.iso8601Date str)
 
--- | Unsafely parse a SSH key from a string
-unsafeSSHKey :: String -> SSH.ParsedKey
-unsafeSSHKey str = fromRight ("Failed to parse SSH key: " <> str) (SSH.parse (unsafePerformEffect (Buffer.fromString str UTF8)))
+-- | Unsafely parse a public SSH key from a string
+unsafeSSHPublicKey :: String -> SSH.PublicKey
+unsafeSSHPublicKey str = fromRight ("Failed to parse SSH key: " <> str) (SSH.parsePublicKey (unsafePerformEffect (Buffer.fromString str UTF8)))
+
+-- | Unsafely parse a private SSH key from a string
+unsafeSSHPrivateKey :: String -> SSH.PrivateKey
+unsafeSSHPrivateKey str = fromRight ("Failed to parse SSH key: " <> str) (SSH.parsePrivateKey (unsafePerformEffect (Buffer.fromString str UTF8)))
 
 -- | Unsafely create a manifest from a name, version, and array of dependencies
 -- | where keys are package names and values are ranges.

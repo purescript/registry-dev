@@ -36,7 +36,7 @@ main = Aff.launchAff_ $ Spec.Runner.runSpec [ Spec.Reporter.consoleReporter ] do
     Spec.describe "Package Set" Test.PackageSet.spec
     Spec.describe "Operation" Test.Operation.spec
 
-  Spec.describeOnly "SSH" Test.SSH.spec
+  Spec.describe "SSH" Test.SSH.spec
   Spec.describe "ManifestIndex" Test.ManifestIndex.spec
   Spec.describe "Solver" Test.Solver.spec
   Spec.describe "Operation Validation" Test.Operation.Validation.spec
