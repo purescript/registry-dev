@@ -16,6 +16,7 @@ import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn4, runFn1, runFn2, runFn3, runF
 import Data.Nullable (Nullable, notNull, null)
 import Effect.Exception (Error)
 import Effect.Exception as Exception
+import Node.Buffer (Buffer)
 
 -- | A parsed SSH public key which can be used to verify payloads.
 newtype PublicKey = PublicKey ParsedKey
@@ -53,9 +54,9 @@ parsePublicKey buffer = case parse buffer of
   result -> map PublicKey result
 
 -- | A pair of data and a signature from the data being signed by a SSH key.
-type SignedData = { data :: String, signature :: String }
+type SignedData = { data :: String, signature :: Buffer }
 
-foreign import signImpl :: Fn2 ParsedKey String String
+foreign import signImpl :: Fn2 ParsedKey String Buffer
 
 -- | Sign a payload using a parsed SSH key. Returns the signature.
 sign :: PrivateKey -> String -> SignedData
@@ -63,7 +64,7 @@ sign (PrivateKey key) buffer = do
   let signature = runFn2 signImpl key buffer
   { data: buffer, signature }
 
-foreign import verifyImpl :: Fn3 ParsedKey String String Boolean
+foreign import verifyImpl :: Fn3 ParsedKey String Buffer Boolean
 
 -- | Verify that a payload was signed using the given key by matching the data,
 -- | signature, and public key against one another.
