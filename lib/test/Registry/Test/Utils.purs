@@ -14,9 +14,6 @@ import Data.Formatter.DateTime as DateTime.Formatters
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple)
-import Effect.Unsafe (unsafePerformEffect)
-import Node.Buffer as Buffer
-import Node.Encoding (Encoding(..))
 import Partial.Unsafe (unsafeCrashWith)
 import Partial.Unsafe as Partial
 import Registry.Internal.Format as Internal.Format
@@ -89,11 +86,11 @@ unsafeDate str = fromRight ("Failed to parse Date: " <> str) (map Date.date $ Da
 
 -- | Unsafely parse a public SSH key from a string
 unsafeSSHPublicKey :: String -> SSH.PublicKey
-unsafeSSHPublicKey str = fromRight ("Failed to parse SSH key: " <> str) (SSH.parsePublicKey (unsafePerformEffect (Buffer.fromString str UTF8)))
+unsafeSSHPublicKey str = fromRight ("Failed to parse SSH key: " <> str) (SSH.parsePublicKey str)
 
 -- | Unsafely parse a private SSH key from a string
 unsafeSSHPrivateKey :: String -> SSH.PrivateKey
-unsafeSSHPrivateKey str = fromRight ("Failed to parse SSH key: " <> str) (SSH.parsePrivateKey (unsafePerformEffect (Buffer.fromString str UTF8)))
+unsafeSSHPrivateKey str = fromRight ("Failed to parse SSH key: " <> str) (SSH.parsePrivateKey str)
 
 -- | Unsafely create a manifest from a name, version, and array of dependencies
 -- | where keys are package names and values are ranges.

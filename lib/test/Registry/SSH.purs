@@ -4,9 +4,6 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.String as String
-import Effect.Class (liftEffect)
-import Node.Buffer as Buffer
-import Node.Encoding (Encoding(..))
 import Registry.SSH as SSH
 import Registry.Test.Assert as Assert
 import Registry.Test.Utils as Utils
@@ -15,61 +12,47 @@ import Test.Spec as Spec
 spec :: Spec.Spec Unit
 spec = do
   Spec.it "Parses an ED25519 private key" do
-    privateKey <- liftEffect $ Buffer.fromString id_ed25519 UTF8
-    case SSH.parsePrivateKey privateKey of
+    case SSH.parsePrivateKey id_ed25519 of
       Left err -> Assert.fail $ "Failed to parse ed_25519 private key: " <> err
       Right _ -> pure unit
 
   Spec.it "Parses an ED25519 public key" do
-    publicKey <- liftEffect $ Buffer.fromString id_ed25519_pub UTF8
-    case SSH.parsePublicKey publicKey of
+    case SSH.parsePublicKey id_ed25519_pub of
       Left err -> Assert.fail $ "Failed to parse ed_25519 public key: " <> err
       Right _ -> pure unit
 
   Spec.it "Parses a password-protected RSA private key" do
-    privateKey <- liftEffect $ Buffer.fromString id_rsa UTF8
-    password <- liftEffect $ Buffer.fromString id_rsa_password UTF8
-    case SSH.parsePrivateKey privateKey of
+    case SSH.parsePrivateKey id_rsa of
       Left err1 -> do
         err1 `Assert.shouldEqual` "Encrypted private OpenSSH key detected, but no passphrase given"
-        case SSH.parsePrivateKeyWithPassword { key: privateKey, passphrase: password } of
+        case SSH.parsePrivateKeyWithPassword { key: id_rsa, passphrase: id_rsa_password } of
           Left err2 -> Assert.fail $ "Failed to parse id_rsa private key with password: " <> err2
           Right _ -> pure unit
       Right _ -> Assert.fail $ "Expected parse failure, but got key."
 
   Spec.it "Parses an RSA public key" do
-    publicKey <- liftEffect $ Buffer.fromString id_rsa_pub UTF8
-    case SSH.parsePublicKey publicKey of
+    case SSH.parsePublicKey id_rsa_pub of
       Left err -> Assert.fail $ "Failed to parse rsa public key: " <> err
       Right _ -> pure unit
 
   Spec.it "Does not parse public key as private key and vice versa" do
-    privateKey <- liftEffect $ Buffer.fromString id_ed25519 UTF8
-    case SSH.parsePublicKey privateKey of
+    case SSH.parsePublicKey id_ed25519 of
       Left _ -> pure unit
       Right _ -> Assert.fail "Parsed private key as a public key."
 
-    publicKey <- liftEffect $ Buffer.fromString id_ed25519_pub UTF8
-    case SSH.parsePrivateKey publicKey of
+    case SSH.parsePrivateKey id_ed25519_pub of
       Left _ -> pure unit
       Right _ -> Assert.fail "Parsed public key as a private key."
 
   Spec.it "Signs and verifies payload" do
-    let privateKey = Utils.unsafeSSHPrivateKey id_ed25519
-    let publicKey = Utils.unsafeSSHPublicKey id_ed25519_pub
-    payloadBuffer <- liftEffect $ Buffer.fromString payload UTF8
-    let signed = SSH.sign privateKey payloadBuffer
-    unless (SSH.verify publicKey signed) do
+    let signed = SSH.sign (Utils.unsafeSSHPrivateKey id_ed25519) payload
+    unless (SSH.verify (Utils.unsafeSSHPublicKey id_ed25519_pub) signed) do
       Assert.fail "Failed to verify signed payload."
 
   Spec.it "Does not falsely verify payloads" do
     let privateKey = Utils.unsafeSSHPrivateKey id_ed25519
-
-    payloadBuffer <- liftEffect $ Buffer.fromString payload UTF8
-    let signed = SSH.sign privateKey payloadBuffer
-
-    badPayloadBuffer <- liftEffect $ Buffer.fromString (String.drop 1 payload) UTF8
-    let badSigned = SSH.sign privateKey badPayloadBuffer
+    let signed = SSH.sign privateKey payload
+    let badSigned = SSH.sign privateKey (String.drop 1 payload)
 
     let publicKey = Utils.unsafeSSHPublicKey id_ed25519_pub
     let badPublicKey = Utils.unsafeSSHPublicKey id_rsa_pub
