@@ -11,6 +11,7 @@ import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Effect.Ref as Ref
 import Foreign.Object as Object
+import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
@@ -40,7 +41,7 @@ import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.S3 (SpaceKey)
 import Registry.Operation (AuthenticatedData, PackageOperation(..), PackageSetOperation(..))
 import Registry.Operation as Operation
-import Run (AFF, Run)
+import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
@@ -279,7 +280,7 @@ decodeIssueEvent json = lmap CA.printJsonDecodeError do
 signPacchettiBottiIfTrustee
   :: forall r
    . AuthenticatedData
-  -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + EXCEPT String + AFF + r) AuthenticatedData
+  -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + EXCEPT String + AFF + EFFECT + r) AuthenticatedData
 signPacchettiBottiIfTrustee auth = do
   if auth.email /= pacchettibottiEmail then
     pure auth
@@ -300,9 +301,12 @@ signPacchettiBottiIfTrustee auth = do
             , "@purescript/packaging team."
             ]
 
-        { publicKey, privateKey } <- Env.askPacchettiBotti
-        signature <- Run.liftAff (Auth.signPayload { publicKey, privateKey, rawPayload: auth.rawPayload }) >>= case _ of
+        { privateKey } <- Env.askPacchettiBotti
+
+        signature <- case Auth.signPayload { privateKey, rawPayload: auth.rawPayload } of
           Left _ -> Except.throw "Error signing transfer. cc: @purescript/packaging"
-          Right signature -> pure signature
+          Right signature -> do
+            asString <- Run.liftEffect $ Buffer.toString UTF8 signature
+            pure $ String.split (String.Pattern "\n") asString
 
         pure $ auth { signature = signature }

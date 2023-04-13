@@ -7,6 +7,7 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.String as String
 import Effect.Ref as Ref
+import Node.Buffer as Buffer
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
@@ -122,11 +123,13 @@ transferPackage rawPackageName newLocation = do
     payload = { name, newLocation }
     rawPayload = stringifyJson Operation.transferCodec payload
 
-  { publicKey, privateKey } <- Env.askPacchettiBotti
+  { privateKey } <- Env.askPacchettiBotti
 
-  signature <- Run.liftAff (Auth.signPayload { publicKey, privateKey, rawPayload }) >>= case _ of
+  signature <- case Auth.signPayload { privateKey, rawPayload } of
     Left _ -> Except.throw "Error signing transfer."
-    Right signature -> pure signature
+    Right signature -> do
+      asString <- Run.liftEffect $ Buffer.toString UTF8 signature
+      pure $ String.split (String.Pattern "\n") asString
 
   API.authenticated
     { email: pacchettibottiEmail

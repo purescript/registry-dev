@@ -4,6 +4,7 @@ import Registry.App.Prelude
 
 import Data.Newtype (over)
 import Data.String as String
+import Node.Buffer as Buffer
 import Registry.App.Auth as Auth
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..))
 import Registry.PackageName as PackageName
@@ -21,7 +22,7 @@ spec = do
   Spec.it "Fails to verify when public key is incorrect" do
     let badPublicKey = over Owner (_ { public = "" }) validOwner
     Auth.verifyPayload pacchettibotti [ badPublicKey ] validPayload >>= case _ of
-      Left err -> verifyError err "allowed_signers:2: invalid key"
+      Left err -> verifyError err ""
       Right _ -> Assert.fail "Verified an invalid public key."
 
   Spec.it "Fails to verify when signature is incorrect" do
@@ -38,7 +39,7 @@ spec = do
       badSignatureData = validPayload { signature = badSignature }
 
     Auth.verifyPayload pacchettibotti [ validOwner ] badSignatureData >>= case _ of
-      Left err -> verifyError err "Signature verification failed: incorrect signature"
+      Left err -> verifyError err "Unsupported key format"
       Right _ -> Assert.fail "Verified an incorrect SSH signature for the payload."
 
   Spec.it "Fails to verify when email is incorrect in authenticated data" do
@@ -56,13 +57,15 @@ spec = do
   Spec.it "Fails to verify when payload is incorrect" do
     let badRawPayload = validPayload { rawPayload = "{}" }
     Auth.verifyPayload pacchettibotti [ validOwner ] badRawPayload >>= case _ of
-      Left err -> verifyError err "Signature verification failed: incorrect signature"
+      Left err -> verifyError err ""
       Right _ -> Assert.fail "Verified with a modified payload."
 
   Spec.it "Signs and verifies payload" do
-    Auth.signPayload { publicKey, rawPayload, privateKey: String.joinWith "\n" privateKey } >>= case _ of
-      Left err -> Assert.fail $ "Failed to sign raw payload: " <> err
-      Right signature -> Assert.shouldEqual signature rawPayloadSignature
+    case Auth.signPayload { rawPayload, privateKey: String.joinWith "\n" privateKey } of
+      Left err -> Assert.fail err
+      Right signature -> do
+        signature' <- liftEffect $ Buffer.toString UTF8 signature
+        Assert.shouldEqual signature' (String.joinWith "\n" rawPayloadSignature)
   where
   verifyError err intended =
     unless (err == intended) do
