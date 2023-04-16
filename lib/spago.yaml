@@ -20,6 +20,7 @@ package:
     - functors
     - graphs
     - integers
+    - language-cst-parser
     - lists
     - maybe
     - newtype
