@@ -11,7 +11,6 @@ import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Effect.Ref as Ref
 import Foreign.Object as Object
-import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
@@ -305,8 +304,6 @@ signPacchettiBottiIfTrustee auth = do
 
         signature <- case Auth.signPayload { privateKey, rawPayload: auth.rawPayload } of
           Left _ -> Except.throw "Error signing transfer. cc: @purescript/packaging"
-          Right signature -> do
-            asString <- Run.liftEffect $ Buffer.toString UTF8 signature
-            pure $ String.split (String.Pattern "\n") asString
+          Right signature -> pure signature
 
         pure $ auth { signature = signature }

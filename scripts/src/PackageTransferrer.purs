@@ -7,7 +7,6 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.String as String
 import Effect.Ref as Ref
-import Node.Buffer as Buffer
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
@@ -127,9 +126,7 @@ transferPackage rawPackageName newLocation = do
 
   signature <- case Auth.signPayload { privateKey, rawPayload } of
     Left _ -> Except.throw "Error signing transfer."
-    Right signature -> do
-      asString <- Run.liftEffect $ Buffer.toString UTF8 signature
-      pure $ String.split (String.Pattern "\n") asString
+    Right signature -> pure signature
 
   API.authenticated
     { email: pacchettibottiEmail
