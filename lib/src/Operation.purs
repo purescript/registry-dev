@@ -45,6 +45,7 @@ import Registry.Location (Location)
 import Registry.Location as Location
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.SSH (Signature(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 
@@ -92,7 +93,7 @@ publishCodec = CA.Record.object "Publish"
 type AuthenticatedData =
   { payload :: AuthenticatedPackageOperation
   , rawPayload :: String
-  , signature :: Array String
+  , signature :: Signature
   , email :: String
   }
 
@@ -100,7 +101,7 @@ type AuthenticatedData =
 authenticatedCodec :: JsonCodec AuthenticatedData
 authenticatedCodec = toPureScriptRep $ CA.Record.object "Authenticated"
   { payload: CA.string
-  , signature: CA.array CA.string
+  , signature: CA.string
   , email: CA.string
   }
   where
@@ -114,9 +115,9 @@ authenticatedCodec = toPureScriptRep $ CA.Record.object "Authenticated"
       rep <- CA.decode codec json
       payloadJson <- lmap (CA.TypeMismatch <<< append "Json: ") (Argonaut.Parser.jsonParser rep.payload)
       operation <- CA.decode payloadCodec payloadJson
-      pure { payload: operation, rawPayload: rep.payload, signature: rep.signature, email: rep.email }
+      pure { payload: operation, rawPayload: rep.payload, signature: Signature rep.signature, email: rep.email }
 
-    encode { rawPayload, email, signature } =
+    encode { rawPayload, email, signature: Signature signature } =
       CA.encode codec { payload: rawPayload, email, signature }
 
   -- The only acceptable payloads for an authenticated operation are the

@@ -4,6 +4,7 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.String as String
+import Registry.SSH (Signature(..))
 import Registry.SSH as SSH
 import Registry.Test.Assert as Assert
 import Registry.Test.Utils as Utils
@@ -44,27 +45,31 @@ spec = do
       Left _ -> pure unit
       Right _ -> Assert.fail "Parsed public key as a private key."
 
-  Spec.it "Signs and verifies payload" do
-    let signed = SSH.sign (Utils.unsafeSSHPrivateKey id_ed25519) payload
-    unless (SSH.verify (Utils.unsafeSSHPublicKey id_ed25519_pub) signed) do
+  Spec.it "Signs payload" do
+    let signature = SSH.sign (Utils.unsafeSSHPrivateKey id_ed25519) payload
+    Assert.shouldEqual signature payloadHexSignature
+
+  Spec.it "Verifies signed payload" do
+    unless (SSH.verify (Utils.unsafeSSHPublicKey id_ed25519_pub) payload payloadHexSignature) do
       Assert.fail "Failed to verify signed payload."
 
   Spec.it "Does not falsely verify payloads" do
     let privateKey = Utils.unsafeSSHPrivateKey id_ed25519
-    let signed = SSH.sign privateKey payload
-    let badSigned = SSH.sign privateKey (String.drop 1 payload)
-
+    let signature = SSH.sign privateKey payload
     let publicKey = Utils.unsafeSSHPublicKey id_ed25519_pub
+
+    let badPayload = String.drop 1 payload
+    let badSignature = SSH.sign privateKey badPayload
     let badPublicKey = Utils.unsafeSSHPublicKey id_rsa_pub
 
-    when (SSH.verify badPublicKey signed) do
+    when (SSH.verify badPublicKey payload signature) do
       Assert.fail "Verified a signed payload with an incorrect key."
 
-    when (SSH.verify publicKey (signed { data = badSigned.data })) do
-      Assert.fail "Verified a signed payload with an incorrect input data payload."
-
-    when (SSH.verify publicKey (signed { signature = badSigned.signature })) do
+    when (SSH.verify publicKey payload badSignature) do
       Assert.fail "Verified a signed payload with an incorrect signature."
+
+    when (SSH.verify publicKey badPayload signature) do
+      Assert.fail "Verified a signed payload with an incorrect input data payload."
 
 -- ssh-keygen -t ed25519 -C "your_email@example.com"
 id_ed25519 :: String
@@ -152,3 +157,6 @@ id_rsa_password = "abc123"
 
 payload :: String
 payload = "{ \"name\": \"node-os\", \"newLocation\": { \"githubOwner\": \"purescript-node\", \"githubRepo\": \"purescript-node-os\" } }"
+
+payloadHexSignature :: Signature
+payloadHexSignature = Signature "1f4967eaa5de1076bb2185b818ea4fb7c18cfe83af951ab32c3bcb4a300dfe9b3795daaae1e7a6d5fb9f72c4cec8003f79a452f2dc9da9ec8cfa63b243c80503"
