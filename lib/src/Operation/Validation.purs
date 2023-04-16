@@ -2,27 +2,37 @@ module Registry.Operation.Validation where
 
 import Prelude
 
-import Control.Monad.Error.Class (catchError)
 import Data.Array as Array
+import Data.Array.NonEmpty (NonEmptyArray)
+import Data.Array.NonEmpty as NEA
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Either (Either(..))
 import Data.List.NonEmpty (NonEmptyList)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), isJust)
+import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
 import Data.String as String
-import Data.String.Pattern (Pattern(..))
+import Data.String.Regex (Regex)
+import Data.String.Regex as Regex
+import Data.String.Regex.Flags as Regex.Flags
+import Data.String.Regex.Unsafe as Regex.Unsafe
 import Data.Time.Duration (Hours(..))
-import Data.Traversable (for, traverse)
+import Data.Traversable (traverse)
 import Data.Tuple (uncurry)
 import Data.Tuple.Nested (type (/\), (/\))
+import Effect.Aff (Aff)
+import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff)
+import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS.Aff
-import Node.FS.Stats as Stats
+import Node.FS.Stats as FS.Stats
 import Node.Path (FilePath)
 import Node.Path as Path
+import PureScript.CST as CST
+import PureScript.CST.Errors as CST.Errors
+import PureScript.CST.Types as CST.Types
 import Registry.Location (Location)
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)
@@ -38,24 +48,6 @@ import Registry.Version (Version)
 
 -- This module exports utilities for writing validation for `Registry Operations`.
 -- See https://github.com/purescript/registry-dev/blob/master/SPEC.md#5-registry-operations
-
--- | Checks that there is at least one purs file within the `src` directory.
-containsPursFile :: forall m. MonadAff m => FilePath -> m Boolean
-containsPursFile parent = liftAff $ flip catchError (\_ -> pure false) do
-  children <- FS.Aff.readdir parent
-
-  stats <- for children \relpath -> do
-    let path = Path.concat [ parent, relpath ]
-    stats <- FS.Aff.stat path
-    pure { path, isDirectory: Stats.isDirectory stats }
-
-  let { no: files, yes: directories } = Array.partition _.isDirectory stats
-
-  if Array.any (\{ path } -> isJust (String.stripSuffix (Pattern ".purs") path)) files then
-    pure true
-  else do
-    results <- traverse (_.path >>> containsPursFile) directories
-    pure $ Array.any (eq true) results
 
 -- | Checks that the manifest package name and the PublishData payload package name match.
 nameMatches :: Manifest -> PublishData -> Boolean
@@ -167,3 +159,76 @@ validateUnpublish now version (Metadata metadata) = do
       Left InternalError
   where
   hourLimit = Hours 48.0
+
+-- | Validate that the given directory contains at least one PureScript module
+-- | and all PureScript modules have well-formed module headers that the
+-- | registry will accept (no forbidden names).
+validatePursModules :: forall m. MonadAff m => FilePath -> m (Either String Unit)
+validatePursModules source = do
+  mbFiles <- getPursFiles source
+  case mbFiles of
+    Nothing -> pure $ Left $ "No PureScript source files found in directory " <> source
+    Just files -> do
+      let
+        acceptedPursModule path = liftAff do
+          eitherModule <- Aff.attempt (FS.Aff.readTextFile UTF8 path)
+          pure $ case eitherModule of
+            Left err -> Left $ "Could not read PureScript module from disk at path " <> path <> ": " <> Aff.message err
+            Right moduleString -> validatePursModule moduleString
+
+      results <- traverse acceptedPursModule files
+
+      let
+        errors = (NEA.toArray results) # Array.concatMap case _ of
+          Left err -> [ err ]
+          Right _ -> []
+
+      case errors of
+        [] -> pure $ Right unit
+        _ -> pure $ Left $ "Some PureScript modules are not valid: " <> String.joinWith "\n  - " errors
+
+-- | Module names that the registry has explicitly disallowed.
+-- | https://github.com/purescript/registry-dev/issues/566
+forbiddenModules :: Array String
+forbiddenModules =
+  [ "Main"
+  , "Test.Main"
+  ]
+
+-- | Verify the given PureScript source file uses an accepted module name (some
+-- | modules are reserved, such as 'Main' or 'Test.Main', because they are so
+-- | common in user code).
+validatePursModule :: String -> Either String Unit
+validatePursModule moduleString = case CST.parsePartialModule moduleString of
+  CST.ParseFailed err ->
+    Left $ "Failed to parse PureScript module: " <> CST.Errors.printParseError err.error
+  CST.ParseSucceededWithErrors (CST.PartialModule { header }) _ ->
+    verifyHeader header
+  CST.ParseSucceeded (CST.PartialModule { header }) ->
+    verifyHeader header
+  where
+  verifyHeader :: forall e. CST.Types.ModuleHeader e -> Either String Unit
+  verifyHeader (CST.Types.ModuleHeader { name: CST.Types.Name { name: CST.Types.ModuleName name } }) =
+    if Array.notElem name forbiddenModules then
+      Right unit
+    else
+      Left $ "Module name is " <> name <> " but PureScript libraries cannot publish modules named: " <> String.joinWith ", " forbiddenModules
+
+-- | Read all .purs files in the given directory. Should typically be used on
+-- | the 'src' directory of a project.
+getPursFiles :: forall m. MonadAff m => FilePath -> m (Maybe (NonEmptyArray FilePath))
+getPursFiles = liftAff <<< map NEA.fromArray <<< go 0
+  where
+  go :: Int -> FilePath -> Aff (Array FilePath)
+  go depth root = do
+    FS.Aff.readdir root >>= Array.foldMap \file -> do
+      let path = Path.concat [ root, Path.sep, file ]
+      stats <- FS.Aff.stat path
+      if FS.Stats.isDirectory stats then
+        go (depth + 1) path
+      else if Regex.test pursRegex path then
+        pure [ path ]
+      else pure []
+
+  pursRegex :: Regex
+  pursRegex = Regex.Unsafe.unsafeRegex "\\.purs$" Regex.Flags.noFlags

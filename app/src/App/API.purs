@@ -363,15 +363,20 @@ publish source payload = do
   tmp <- Tmp.mkTmpDir
   { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir: tmp, ref: payload.ref, location: existingMetadata.location }
 
-  Log.debug $ "Package downloaded to " <> packageDirectory <> ", verifying it contains a src directory..."
-  Operation.Validation.containsPursFile (Path.concat [ packageDirectory, "src" ]) >>= case _ of
-    true ->
-      Log.debug "Package contains .purs files in its src directory."
-    _ ->
+  Log.debug $ "Package downloaded to " <> packageDirectory <> ", verifying it contains a src directory with valid modules..."
+  Operation.Validation.validatePursModules (Path.concat [ packageDirectory, "src" ]) >>= case _ of
+    Right _ ->
+      Log.debug "Package contains well-formed .purs files in its src directory."
+    Left error ->
       Except.throw $ Array.fold
-        [ "This package has no .purs files in the src directory. "
+        [ "This package has either no PureScript files or disallowed modules. "
         , "All package sources must be in the `src` directory, with any additional "
-        , "sources indicated by the `files` key in your manifest."
+        , "sources indicated by the `files` key in your manifest. Packages cannot "
+        , "use these module names: "
+        , String.joinWith ", " Operation.Validation.forbiddenModules
+        , "\n\n"
+        , "Full error: "
+        , error
         ]
 
   -- If the package doesn't have a purs.json we can try to make one - possible scenarios:
