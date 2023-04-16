@@ -14,22 +14,15 @@ import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
 import Data.String as String
-import Data.String.Regex (Regex)
-import Data.String.Regex as Regex
-import Data.String.Regex.Flags as Regex.Flags
-import Data.String.Regex.Unsafe as Regex.Unsafe
 import Data.Time.Duration (Hours(..))
-import Data.Traversable (traverse)
-import Data.Tuple (uncurry)
+import Data.Traversable (for, traverse)
+import Data.Tuple (Tuple(..), uncurry)
 import Data.Tuple.Nested (type (/\), (/\))
-import Effect.Aff (Aff)
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS.Aff
-import Node.FS.Stats as FS.Stats
 import Node.Path (FilePath)
-import Node.Path as Path
 import PureScript.CST as CST
 import PureScript.CST.Errors as CST.Errors
 import PureScript.CST.Types as CST.Types
@@ -163,29 +156,26 @@ validateUnpublish now version (Metadata metadata) = do
 -- | Validate that the given directory contains at least one PureScript module
 -- | and all PureScript modules have well-formed module headers that the
 -- | registry will accept (no forbidden names).
-validatePursModules :: forall m. MonadAff m => FilePath -> m (Either String Unit)
-validatePursModules source = do
-  mbFiles <- getPursFiles source
-  case mbFiles of
-    Nothing -> pure $ Left $ "No PureScript source files found in directory " <> source
-    Just files -> do
-      let
-        acceptedPursModule path = liftAff do
-          eitherModule <- Aff.attempt (FS.Aff.readTextFile UTF8 path)
-          pure $ case eitherModule of
-            Left err -> Left $ "Could not read PureScript module from disk at path " <> path <> ": " <> Aff.message err
-            Right moduleString -> validatePursModule moduleString
+validatePursModules :: forall m. MonadAff m => NonEmptyArray FilePath -> m (Either String Unit)
+validatePursModules files = do
+  let
+    acceptedPursModule :: FilePath -> m (Tuple FilePath (Either String Unit))
+    acceptedPursModule path = liftAff do
+      eitherModule <- Aff.attempt (FS.Aff.readTextFile UTF8 path)
+      pure $ Tuple path $ case eitherModule of
+        Left err -> Left $ "Could not read PureScript module from disk at path " <> path <> ": " <> Aff.message err
+        Right moduleString -> validatePursModule moduleString
 
-      results <- traverse acceptedPursModule files
+    convertErrors :: NonEmptyArray (Tuple FilePath (Either String Unit)) -> Array (Tuple FilePath String)
+    convertErrors = NEA.toArray >>> Array.concatMap case _ of
+      Tuple path (Left err) -> [ Tuple path err ]
+      Tuple _ (Right _) -> []
 
-      let
-        errors = (NEA.toArray results) # Array.concatMap case _ of
-          Left err -> [ err ]
-          Right _ -> []
+  results <- traverse acceptedPursModule files
 
-      case errors of
-        [] -> pure $ Right unit
-        _ -> pure $ Left $ "Some PureScript modules are not valid: " <> String.joinWith "\n  - " errors
+  case convertErrors results of
+    [] -> pure $ Right unit
+    converted -> pure $ Left $ Array.foldMap (\(Tuple path err) -> "\n  - " <> path <> ": " <> err) converted
 
 -- | Module names that the registry has explicitly disallowed.
 -- | https://github.com/purescript/registry-dev/issues/566
@@ -213,22 +203,3 @@ validatePursModule moduleString = case CST.parsePartialModule moduleString of
       Right unit
     else
       Left $ "Module name is " <> name <> " but PureScript libraries cannot publish modules named: " <> String.joinWith ", " forbiddenModules
-
--- | Read all .purs files in the given directory. Should typically be used on
--- | the 'src' directory of a project.
-getPursFiles :: forall m. MonadAff m => FilePath -> m (Maybe (NonEmptyArray FilePath))
-getPursFiles = liftAff <<< map NEA.fromArray <<< go 0
-  where
-  go :: Int -> FilePath -> Aff (Array FilePath)
-  go depth root = do
-    FS.Aff.readdir root >>= Array.foldMap \file -> do
-      let path = Path.concat [ root, Path.sep, file ]
-      stats <- FS.Aff.stat path
-      if FS.Stats.isDirectory stats then
-        go (depth + 1) path
-      else if Regex.test pursRegex path then
-        pure [ path ]
-      else pure []
-
-  pursRegex :: Regex
-  pursRegex = Regex.Unsafe.unsafeRegex "\\.purs$" Regex.Flags.noFlags

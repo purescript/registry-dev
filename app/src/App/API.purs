@@ -22,6 +22,7 @@ import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
+import Data.String.Regex as Regex
 import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Node.Buffer as Buffer
@@ -62,6 +63,7 @@ import Registry.Foreign.Octokit (IssueNumber(..), Team)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tar as Foreign.Tar
 import Registry.Foreign.Tmp as Tmp
+import Registry.Internal.Path as Internal.Path
 import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.Metadata as Metadata
@@ -364,20 +366,26 @@ publish source payload = do
   { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir: tmp, ref: payload.ref, location: existingMetadata.location }
 
   Log.debug $ "Package downloaded to " <> packageDirectory <> ", verifying it contains a src directory with valid modules..."
-  Operation.Validation.validatePursModules (Path.concat [ packageDirectory, "src" ]) >>= case _ of
-    Right _ ->
-      Log.debug "Package contains well-formed .purs files in its src directory."
-    Left error ->
+  let sourceDirectory = Path.concat [ packageDirectory, "src" ]
+  Internal.Path.readPursFiles sourceDirectory >>= case _ of
+    Nothing ->
       Except.throw $ Array.fold
-        [ "This package has either no PureScript files or disallowed modules. "
+        [ "This package has no PureScript files in its `src` directory. "
         , "All package sources must be in the `src` directory, with any additional "
-        , "sources indicated by the `files` key in your manifest. Packages cannot "
-        , "use these module names: "
-        , String.joinWith ", " Operation.Validation.forbiddenModules
-        , "\n\n"
-        , "Full error: "
-        , error
+        , "sources indicated by the `files` key in your manifest."
         ]
+    Just files -> do
+      let fullPaths = map (\path -> Path.concat [ sourceDirectory, path ]) files
+      Operation.Validation.validatePursModules fullPaths >>= case _ of
+        Left formattedError ->
+          Except.throw $ Array.fold
+            [ "This package has either malformed or disallowed PureScript module names "
+            , "in its `src` directory. All package sources must be in the `src` directory, "
+            , "with any additional sources indicated by the `files` key in your manifest."
+            , formattedError
+            ]
+        Right _ ->
+          Log.debug "Package contains well-formed .purs files in its src directory."
 
   -- If the package doesn't have a purs.json we can try to make one - possible scenarios:
   --  - in case it has a spago.yaml then we know how to read that, and have all the info to move forward
@@ -953,6 +961,7 @@ copyPackageSourceFiles
   -> Run (LOG + EXCEPT String + AFF + EFFECT + r) Unit
 copyPackageSourceFiles files { source, destination } = do
   Log.debug $ "Copying package source files from " <> source <> " to " <> destination
+
   userFiles <- case files of
     Nothing -> pure []
     Just nonEmptyGlobs -> do
@@ -965,16 +974,25 @@ copyPackageSourceFiles files { source, destination } = do
           , "Please ensure globs only match within your package directory, including symlinks."
           ]
 
+      case NonEmptyArray.fromArray (Array.filter (Regex.test Internal.Path.pursFileExtensionRegex) succeeded) of
+        Nothing -> pure unit
+        Just matches -> do
+          let fullPaths = map (\path -> Path.concat [ source, path ]) matches
+          Operation.Validation.validatePursModules fullPaths >>= case _ of
+            Left formattedError ->
+              Except.throw $ "Some PureScript modules listed in the 'files' section of your manifest contain malformed or disallowed module names." <> formattedError
+            Right _ ->
+              pure unit
+
       pure succeeded
 
   includedFiles <- FastGlob.match source includedGlobs
   includedInsensitiveFiles <- FastGlob.match' source includedInsensitiveGlobs { caseSensitive: false }
 
-  let
-    copyFiles = userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded
-    makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ], preserveTimestamps: true }
+  let filesToCopy = userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded
+  let makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ], preserveTimestamps: true }
 
-  case map makePaths copyFiles of
+  case map makePaths filesToCopy of
     [] -> Log.warn "No files found in copyPackageSourceFiles to copy to the packaging directory."
     xs -> do
       Log.debug $ Array.fold
