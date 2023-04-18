@@ -613,11 +613,12 @@ verifyResolutions manifest resolutions = do
         let
           printedError = String.joinWith "\n"
             [ "Could not produce valid dependencies for manifest."
-            , ""
+            , "```"
             , errors # foldMapWithIndex \index error -> String.joinWith "\n"
                 [ "[Error " <> show (index + 1) <> "]"
                 , Solver.printSolverError error
                 ]
+            , "```"
             ]
         Except.throw printedError
       Right solved -> pure solved
