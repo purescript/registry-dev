@@ -366,8 +366,7 @@ publish source payload = do
   { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir: tmp, ref: payload.ref, location: existingMetadata.location }
 
   Log.debug $ "Package downloaded to " <> packageDirectory <> ", verifying it contains a src directory with valid modules..."
-  let sourceDirectory = Path.concat [ packageDirectory, "src" ]
-  Internal.Path.readPursFiles sourceDirectory >>= case _ of
+  Internal.Path.readPursFiles (Path.concat [ packageDirectory, "src" ]) >>= case _ of
     Nothing ->
       Except.throw $ Array.fold
         [ "This package has no PureScript files in its `src` directory. "
@@ -375,8 +374,7 @@ publish source payload = do
         , "sources indicated by the `files` key in your manifest."
         ]
     Just files -> do
-      let fullPaths = map (\path -> Path.concat [ sourceDirectory, path ]) files
-      Operation.Validation.validatePursModules fullPaths >>= case _ of
+      Operation.Validation.validatePursModules files >>= case _ of
         Left formattedError ->
           Except.throw $ Array.fold
             [ "This package has either malformed or disallowed PureScript module names "
