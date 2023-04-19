@@ -138,7 +138,6 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
 
     for_ acceptedPaths \path -> do
       paths.succeeded `Assert.Run.shouldContain` path
-
   where
   runBefore :: forall r. Run (EFFECT + r) _
   runBefore = do
@@ -153,6 +152,6 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
       writeDirectories = traverse_ (FS.Extra.ensureDirectory <<< inTmp)
 
       writeFiles :: Array FilePath -> _
-      writeFiles = Run.liftAff <<< traverse_ (\path -> FS.Aff.writeTextFile UTF8 (inTmp path) "<test>")
+      writeFiles = Run.liftAff <<< traverse_ (\path -> FS.Aff.writeTextFile UTF8 (inTmp path) "module Module where")
 
     pure { source: tmp, destination: destTmp, writeDirectories, writeFiles }
