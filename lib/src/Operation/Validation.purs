@@ -15,7 +15,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
 import Data.String as String
 import Data.Time.Duration (Hours(..))
-import Data.Traversable (for, traverse)
+import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), uncurry)
 import Data.Tuple.Nested (type (/\), (/\))
 import Effect.Aff as Aff

@@ -70,8 +70,7 @@ validOwner = Owner
 
 validPayload :: AuthenticatedData
 validPayload =
-  { email
-  , signature: rawPayloadSignature
+  { signature: rawPayloadSignature
   , payload: Unpublish
       { name
       , version

@@ -143,17 +143,17 @@ Or, using a monorepo:
 **[Source](./lib/src/Registry/Owner.purs)**
 **[Spec](./types/v1/Owner.dhall)**
 
-The registry relies on SSH key pairs to verify package ownership for the purposes of sensitive API operations like unpublishing versions or transferring packages. An `Owner` is made up of the three components of an SSH public key in text format ([RFC4253](https://www.rfc-editor.org/rfc/rfc4253#section-6.6)). That format looks like this:
+The registry relies on SSH key pairs to verify package ownership for the purposes of sensitive API operations like unpublishing versions or transferring packages. An `Owner` is made up of the two required components of an SSH public key in text format ([RFC4253](https://www.rfc-editor.org/rfc/rfc4253#section-6.6)). That format looks like this:
 
-`[keytype] [ssh-public-key] [email]`
+`[keytype] [ssh-public-key] [comment (optional)]`
 
-Note that the email address does not have to be able to send or receive email, but it must be the email address that was associated with the private key. A JSON example:
+Note that the comment is optional. A JSON example:
 
 ```jsonc
 {
   "keytype": "ssh-ed25519",
   "public": "ABCD3FGzaC1lZDI1NTE5AAAAINq4q0EHXacxMzmcG7TNC1DJpSxpK5dhJA6uAlZ",
-  "email": "john@abc.com"
+  "comment": "john@abc"
 }
 ```
 
@@ -430,11 +430,11 @@ Being a package "owner" grants the ability to take sensitive actions on behalf o
 
 > Note: the @pacchettibotti GitHub account is controlled by the Registry Trustees and is able to act as a package "owner" for any package. If the Registry Trustees ever need to unpublish a package version or transfer a package, they must do so by signing an authenticated operation using the @pacchettibotti SSH keys.
 
-The registry relies on SSH to authenticate package owners. An `Owner` is a public SSH key, and this SSH key can be used to sign data using OpenSSH versions 8.0 and above. The registry in turn verifies the signed data using the `Owner` and OpenSSH. To submit an authenticated operation, you are required to take the following steps:
+The registry relies on SSH to authenticate package owners. An `Owner` is a public SSH key, and this SSH key can be used to sign data using the SSH library functions provided in the registry library and (most likely) exposed by your package manager. The registry in turn verifies the signed data using the `Owner`. To submit an authenticated operation, you are required to take the following steps:
 
 1. Construct the JSON payload for the operation
 2. Sign the JSON payload using an SSH key listed in the package's `owners` metadata field, where the signature is hex-encoded.
-3. Construct the JSON payload for an authenticated operation using the JSON payload from step (1), the signature from step (2), and the email associated with the SSH key used to create the SSH signature.
+3. Construct the JSON payload for an authenticated operation using the JSON payload from step (1) and the signature from step (2).
 
 For example, here's a stringified JSON payload for an `Unpublish` operation unpublishing `prelude@1.0.1` because credentials were accidentally committed:
 
@@ -445,16 +445,14 @@ For example, here's a stringified JSON payload for an `Unpublish` operation unpu
 Then, assemble this information into a JSON `object` with three fields:
 
 - `payload`: The JSON string representing the `Unpublish` or `Transfer` operation
-- `signature`: A hex-encoded SSH signature
-- `email`: The email address associated with the public key used to sign the payload (this should be in the `owners` metadata field).
+- `signature`: A hex-encoded SSH signature (you can use your package manager, such as Spago, or you can use functions from the `registry-lib` directory to sign a payload and get a hex-encoded signature back).
 
 For example, in JSON:
 
 ```json
 {
   "payload": "{ \"name\": \"prelude\", \"version\": \"1.0.1\", \"reason\": \"Accidentally committed credentials\" }",
-  "signature": "1f4967eaa5de1076bb2185b818ea4fb7c18cfe83af951ab32c3bcb4a300dfe9b3795daaae1e7a6d5fb9f72c4cec8003f79a452f2dc9da9ec8cfa63b243c80503",
-  "email": "trh@example.com"
+  "signature": "1f4967eaa5de1076bb2185b818ea4fb7c18cfe83af951ab32c3bcb4a300dfe9b3795daaae1e7a6d5fb9f72c4cec8003f79a452f2dc9da9ec8cfa63b243c80503"
 }
 ```
 
@@ -463,7 +461,7 @@ For example, in JSON:
 When the registry receives an authenticated operation it takes the following steps:
 
 1. The registry will retrieve all package owners from the package's metadata
-2. The registry will use each key listed in the package owners to attempt to verify the signature on the authenticated operation.
+2. The registry will use each key listed in the package owners to attempt to verify the signature on the authenticated operation. A pacchettibotti signature is also always considered valid; only Registry Trustees have access to this key and can submit authenticated operations as pacchettibotti.
 3. If the signature was valid and the JSON operation payload was well-formed, then the registry will execute the provided operation.
 
 #### 5.3 Unpublish a Package (Authenticated)

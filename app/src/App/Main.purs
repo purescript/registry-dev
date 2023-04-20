@@ -40,6 +40,7 @@ import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.S3 (SpaceKey)
 import Registry.Operation (AuthenticatedData, PackageOperation(..), PackageSetOperation(..))
 import Registry.Operation as Operation
+import Registry.SSH (Signature(..))
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
@@ -204,7 +205,7 @@ readOperation eventPath = do
         map (Left <<< PackageSetUpdate) (CA.decode Operation.packageSetUpdateCodec json)
       else if hasKeys [ "name", "ref", "compiler" ] then
         map (Right <<< Publish) (CA.decode Operation.publishCodec json)
-      else if hasKeys [ "payload", "signature", "email" ] then
+      else if hasKeys [ "payload", "signature" ] then
         map (Right <<< Authenticated) (CA.decode Operation.authenticatedCodec json)
       else
         Left $ CA.TypeMismatch "Operation: Expected a valid registry operation, but provided object did not match any operation decoder."
@@ -272,32 +273,32 @@ decodeIssueEvent json = lmap CA.printJsonDecodeError do
 --
 -- @pacchettibotti is considered an 'owner' of all packages for authenticated
 -- operations. Registry trustees can ask pacchettibotti to perform an action on
--- behalf of a package by submitting a payload with the @pacchettibotti email
--- address. If the payload was submitted by a trustee (ie. a member of the
--- packaging team) then pacchettibotti will re-sign it and add itself as an
--- owner before continuing with the authenticated operation.
+-- behalf of a package by submitting a payload with an empty signature. If the
+-- payload was submitted by a trustee (ie. a member of the packaging team) then
+-- pacchettibotti will re-sign it and add itself as an owner before continuing
+-- with the authenticated operation.
 signPacchettiBottiIfTrustee
   :: forall r
    . AuthenticatedData
   -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + EXCEPT String + AFF + EFFECT + r) AuthenticatedData
 signPacchettiBottiIfTrustee auth = do
-  if auth.email /= pacchettibottiEmail then
+  if auth.signature /= Signature "" then
     pure auth
   else do
     GitHub.listTeamMembers API.packagingTeam >>= case _ of
       Left githubError -> Except.throw $ Array.fold
-        [ "This authenticated operation was opened using the pacchettibotti "
-        , "email address, but we were unable to authenticate that you are a "
-        , "member of the @purescript/packaging team:\n\n"
+        [ "This authenticated operation was opened without a signature, which "
+        , "requires that you are a member of the @purescript/packaging team, but "
+        , "we are not able to authenticate you:\n\n"
         , Octokit.printGitHubError githubError
         ]
       Right members -> do
         { username } <- Env.askGitHubEvent
         unless (Array.elem username members) do
           Except.throw $ Array.fold
-            [ "This authenticated operation was opened using the pacchettibotti "
-            , "email address, but your username is not a member of the "
-            , "@purescript/packaging team."
+            [ "This authenticated operation was opened without a signature, which "
+            , "requires that you are a member of the @purescript/packaging team, but "
+            , "your username is not a member of the @purescript/packaging team."
             ]
 
         { privateKey } <- Env.askPacchettiBotti

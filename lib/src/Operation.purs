@@ -94,7 +94,6 @@ type AuthenticatedData =
   { payload :: AuthenticatedPackageOperation
   , rawPayload :: String
   , signature :: Signature
-  , email :: String
   }
 
 -- | A codec for encoding and decoding authenticated operations as JSON.
@@ -102,7 +101,6 @@ authenticatedCodec :: JsonCodec AuthenticatedData
 authenticatedCodec = toPureScriptRep $ CA.Record.object "Authenticated"
   { payload: CA.string
   , signature: CA.string
-  , email: CA.string
   }
   where
   -- We first parse the payload as a simple string to use in verification so as
@@ -115,10 +113,10 @@ authenticatedCodec = toPureScriptRep $ CA.Record.object "Authenticated"
       rep <- CA.decode codec json
       payloadJson <- lmap (CA.TypeMismatch <<< append "Json: ") (Argonaut.Parser.jsonParser rep.payload)
       operation <- CA.decode payloadCodec payloadJson
-      pure { payload: operation, rawPayload: rep.payload, signature: Signature rep.signature, email: rep.email }
+      pure { payload: operation, rawPayload: rep.payload, signature: Signature rep.signature }
 
-    encode { rawPayload, email, signature: Signature signature } =
-      CA.encode codec { payload: rawPayload, email, signature }
+    encode { rawPayload, signature: Signature signature } =
+      CA.encode codec { payload: rawPayload, signature }
 
   -- The only acceptable payloads for an authenticated operation are the
   -- `AuthenticatedPackageOperation`s.

@@ -129,8 +129,7 @@ transferPackage rawPackageName newLocation = do
     Right signature -> pure signature
 
   API.authenticated
-    { email: pacchettibottiEmail
-    , payload: Transfer payload
+    { payload: Transfer payload
     , rawPayload
     , signature
     }
