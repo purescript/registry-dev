@@ -24,7 +24,7 @@ verifyPayload pacchettiBotti owners auth = do
       Left "None of the owner keys are suitable to verify the payload."
   where
   formatOwner (Owner owner) =
-    String.joinWith " " [ owner.keytype, owner.public, owner.email ]
+    String.joinWith " " [ owner.keytype, owner.public, fromMaybe "comment" owner.comment ]
 
 type SignAuthenticated =
   { privateKey :: String

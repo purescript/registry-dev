@@ -56,14 +56,14 @@ spec = do
 
 pacchettibotti :: Owner
 pacchettibotti = Owner
-  { email: "pacchettibotti@purescript.org"
+  { comment: Just "pacchettibotti@purescript.org"
   , keytype: "ssh-rsa"
   , public: "AAAAB3NzaC1yc2EAAAADAQABAAACAQDOHWfcD2vlrcaEngneZ2TlHjnjLKoQCuy9R95F1qrfRIE0N6xH7eHMuJGFIvqeuKivSXWLUKQslf2XIA7n0PEX0vmzzM7JZNvOkIFoOinBfCKqAx1dIle7yYPAUZPrzBidyLv+4aCJ+zu819yHA5tfoZB87+N0QAZcEptYw3taWHZGTZdNpgIgcpDGEnUihuQ9eYbdePokWbDsSgBT7AMjpAPTN5Yvg27jNNm6/WdooY7O9tP4Xdheb7GUIabKeNDX4sK0hBWVcS4SVTMVV8ifflKWXboJqIhXvUHcn1Te4o193aC+VgDFyzIAhPiZjfI/Fnha9XVPOXZMotIkJ0xiH7jzFljYshExCiecEDbLnV67Z/CEzVmw7kYTYs2+fpJ6cnJGHWIfaU2cz3C+empn3kZ6So+CM/8oHVpt0UjhTuqIav29OlouAxcv8eLPHPmTINyiaZ7b+slZBsNcUgW5r54sJvsXyzx9DQN+jkfwtucxN3JQcnIhZcYvD9KSZtHRtz9iLOYLL6Pimbb4K9l98+Br4G40Mjby3ElsAwtPGOLdimyZAD2t2eyDu64kOm2zS9jS6JJ9/8uKxlSyenUBxQ+ITwn1enEd4qq1qpnUT/F7PKqv9SSn6UBoMXq+uTFa5rXevOMhl7whAZjttyFokYQsacy6kbvlLMOWcsLqMw=="
   }
 
 validOwner :: Owner
 validOwner = Owner
-  { email
+  { comment: Nothing
   , keytype
   , public: publicKey
   }
@@ -84,9 +84,6 @@ name = unsafeFromRight $ PackageName.parse "foo"
 
 version :: Version
 version = unsafeFromRight $ Version.parse "1.2.3"
-
-email :: String
-email = "test@foo"
 
 keytype :: String
 keytype = "ssh-ed25519"

@@ -130,7 +130,7 @@ pacchettibottiED25519Pub = EnvKey
       decoded <- decodeBase64Key input
       let split = String.split (String.Pattern " ") decoded
 
-      keyFields <- note "Key must be of the form 'keytype key email'" do
+      keyFields <- note "Key must be of the form 'keytype key comment'" do
         keyType <- Array.index split 0
         key <- Array.index split 1
         email <- Array.index split 2

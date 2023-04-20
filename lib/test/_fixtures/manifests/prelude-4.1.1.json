@@ -9,7 +9,6 @@
   },
   "owners": [
     {
-      "email": "admin@purescript.org",
       "keytype": "ed-25519",
       "public": "abc123"
     }

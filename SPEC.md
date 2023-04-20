@@ -157,6 +157,15 @@ Note that the comment is optional. A JSON example:
 }
 ```
 
+Alternately, this can be written without a comment:
+
+```jsonc
+{
+  "keytype": "ssh-ed25519",
+  "public": "ABCD3FGzaC1lZDI1NTE5AAAAINq4q0EHXacxMzmcG7TNC1DJpSxpK5dhJA6uAlZ"
+}
+```
+
 #### License
 
 **[Source](./lib/src/Registry/License.purs)**

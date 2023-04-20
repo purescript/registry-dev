@@ -14,12 +14,13 @@ import Prelude
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
+import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Profunctor as Profunctor
 
 -- | A public key which can be used to authenticate package operations.
 newtype Owner = Owner
-  { email :: String
+  { comment :: Maybe String
   , keytype :: String
   , public :: String
   }
@@ -31,7 +32,7 @@ derive newtype instance Eq Owner
 -- | object.
 codec :: JsonCodec Owner
 codec = Profunctor.wrapIso Owner $ CA.Record.object "Owner"
-  { email: CA.string
+  { comment: CA.Record.optional CA.string
   , keytype: CA.string
   , public: CA.string
   }
