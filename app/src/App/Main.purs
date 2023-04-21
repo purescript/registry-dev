@@ -24,7 +24,7 @@ import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LogVerbosity(..))
+import Registry.App.Effect.Log (LOG, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.PackageSets as PackageSets
@@ -40,8 +40,7 @@ import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.S3 (SpaceKey)
 import Registry.Operation (AuthenticatedData, PackageOperation(..), PackageSetOperation(..))
 import Registry.Operation as Operation
-import Registry.SSH (Signature(..))
-import Run (AFF, EFFECT, Run)
+import Run (Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
@@ -280,31 +279,24 @@ decodeIssueEvent json = lmap CA.printJsonDecodeError do
 signPacchettiBottiIfTrustee
   :: forall r
    . AuthenticatedData
-  -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + EXCEPT String + AFF + EFFECT + r) AuthenticatedData
+  -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + LOG + EXCEPT String + r) AuthenticatedData
 signPacchettiBottiIfTrustee auth = do
-  if auth.signature /= Signature "" then
-    pure auth
-  else do
-    GitHub.listTeamMembers API.packagingTeam >>= case _ of
-      Left githubError -> Except.throw $ Array.fold
-        [ "This authenticated operation was opened without a signature, which "
-        , "requires that you are a member of the @purescript/packaging team, but "
-        , "we are not able to authenticate you:\n\n"
+  GitHub.listTeamMembers API.packagingTeam >>= case _ of
+    Left githubError -> do
+      Log.warn $ Array.fold
+        [ "Unable to fetch members of packaging team, not verifying whether requestor is a member of @purescript/packaging: "
         , Octokit.printGitHubError githubError
         ]
-      Right members -> do
-        { username } <- Env.askGitHubEvent
-        unless (Array.elem username members) do
-          Except.throw $ Array.fold
-            [ "This authenticated operation was opened without a signature, which "
-            , "requires that you are a member of the @purescript/packaging team, but "
-            , "your username is not a member of the @purescript/packaging team."
-            ]
-
+      pure auth
+    Right members -> do
+      { username } <- Env.askGitHubEvent
+      if Array.elem username members then do
+        Log.info "Authenticated payload submitted by a registry trustee, re-signing with pacchettibotti keys."
         { privateKey } <- Env.askPacchettiBotti
-
         signature <- case Auth.signPayload { privateKey, rawPayload: auth.rawPayload } of
           Left _ -> Except.throw "Error signing transfer. cc: @purescript/packaging"
           Right signature -> pure signature
-
         pure $ auth { signature = signature }
+      else do
+        Log.info "Authenticated payload not submitted by a registry trustee, continuing with original signature."
+        pure auth
