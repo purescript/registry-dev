@@ -143,21 +143,21 @@ Or, using a monorepo:
 **[Source](./lib/src/Registry/Owner.purs)**
 **[Spec](./types/v1/Owner.dhall)**
 
-The registry relies on SSH key pairs to verify package ownership for the purposes of sensitive API operations like unpublishing versions or transferring packages. An `Owner` is made up of the two required components of an SSH public key in text format ([RFC4253](https://www.rfc-editor.org/rfc/rfc4253#section-6.6)). That format looks like this:
+The registry relies on SSH key pairs to verify package ownership for the purposes of sensitive API operations like unpublishing versions or transferring packages. An `Owner` is made up of the three components of an SSH public key in text format ([RFC4253](https://www.rfc-editor.org/rfc/rfc4253#section-6.6)). That format looks like this:
 
 `[keytype] [ssh-public-key] [comment (optional)]`
 
-Note that the comment is optional. A JSON example:
+Note that the comment is optional and is referred to as the "id" in the registry. A JSON example:
 
 ```jsonc
 {
   "keytype": "ssh-ed25519",
   "public": "ABCD3FGzaC1lZDI1NTE5AAAAINq4q0EHXacxMzmcG7TNC1DJpSxpK5dhJA6uAlZ",
-  "comment": "john@abc"
+  "id": "john@abc"
 }
 ```
 
-Alternately, this can be written without a comment:
+Alternately, this can be written without an id:
 
 ```jsonc
 {

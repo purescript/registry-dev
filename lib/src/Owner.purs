@@ -20,7 +20,7 @@ import Data.Profunctor as Profunctor
 
 -- | A public key which can be used to authenticate package operations.
 newtype Owner = Owner
-  { comment :: Maybe String
+  { id :: Maybe String
   , keytype :: String
   , public :: String
   }
@@ -32,7 +32,7 @@ derive newtype instance Eq Owner
 -- | object.
 codec :: JsonCodec Owner
 codec = Profunctor.wrapIso Owner $ CA.Record.object "Owner"
-  { comment: CA.Record.optional CA.string
+  { id: CA.Record.optional CA.string
   , keytype: CA.string
   , public: CA.string
   }
