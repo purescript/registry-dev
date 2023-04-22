@@ -122,15 +122,14 @@ transferPackage rawPackageName newLocation = do
     payload = { name, newLocation }
     rawPayload = stringifyJson Operation.transferCodec payload
 
-  { publicKey, privateKey } <- Env.askPacchettiBotti
+  { privateKey } <- Env.askPacchettiBotti
 
-  signature <- Run.liftAff (Auth.signPayload { publicKey, privateKey, rawPayload }) >>= case _ of
+  signature <- case Auth.signPayload { privateKey, rawPayload } of
     Left _ -> Except.throw "Error signing transfer."
     Right signature -> pure signature
 
   API.authenticated
-    { email: pacchettibottiEmail
-    , payload: Transfer payload
+    { payload: Transfer payload
     , rawPayload
     , signature
     }

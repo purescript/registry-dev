@@ -1,1 +1,1 @@
-let Owner = { email : Text, keytype : Text, public : Text } in Owner
+let Owner = { id : Optional Text, keytype : Text, public : Text } in Owner

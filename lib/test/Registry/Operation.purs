@@ -74,24 +74,14 @@ unpublish :: String
 unpublish =
   """
 {
-  "email": "pacchettibotti@purescript.org",
   "payload": "{ \"name\": \"my-package\", \"version\": \"0.15.6\", \"reason\": \"Committed credentials.\" }",
-  "signature": [
-    "abc123",
-    "abc123",
-    "abc123"
-  ]
+  "signature": "1f4967eaa5de1076bb2185b818ea4fb7c18cfe83af951ab32c3bcb4a300dfe9b3795daaae1e7a6d5fb9f72c4cec8003f79a452f2dc9da9ec8cfa63b243c80503"
 }"""
 
 transfer :: String
 transfer =
   """
 {
-  "email": "pacchettibotti@purescript.org",
   "payload": "{ \"name\": \"my-package\", \"newLocation\": { \"githubOwner\": \"purescript-deprecated\", \"githubRepo\": \"purescript-my-package\" } }",
-  "signature": [
-    "abc123",
-    "abc123",
-    "abc123"
-  ]
+  "signature": "1f4967eaa5de1076bb2185b818ea4fb7c18cfe83af951ab32c3bcb4a300dfe9b3795daaae1e7a6d5fb9f72c4cec8003f79a452f2dc9da9ec8cfa63b243c80503"
 }"""

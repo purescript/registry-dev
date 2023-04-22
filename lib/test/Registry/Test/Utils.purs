@@ -23,6 +23,7 @@ import Registry.Manifest (Manifest(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range as Range
+import Registry.SSH as SSH
 import Registry.Sha256 (Sha256)
 import Registry.Sha256 as Sha256
 import Registry.Version (Version)
@@ -82,6 +83,14 @@ unsafeDateTime str = fromRight ("Failed to parse DateTime: " <> str) (DateTime.F
 -- | Unsafely parse a Date from an ISO8601 string
 unsafeDate :: String -> Date.Date
 unsafeDate str = fromRight ("Failed to parse Date: " <> str) (map Date.date $ DateTime.Formatters.unformat Internal.Format.iso8601Date str)
+
+-- | Unsafely parse a public SSH key from a string
+unsafeSSHPublicKey :: String -> SSH.PublicKey
+unsafeSSHPublicKey str = fromRight ("Failed to parse SSH key: " <> str) (SSH.parsePublicKey str)
+
+-- | Unsafely parse a private SSH key from a string
+unsafeSSHPrivateKey :: String -> SSH.PrivateKey
+unsafeSSHPrivateKey str = fromRight ("Failed to parse SSH key: " <> str) (SSH.parsePrivateKey str)
 
 -- | Unsafely create a manifest from a name, version, and array of dependencies
 -- | where keys are package names and values are ranges.

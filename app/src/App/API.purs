@@ -1026,7 +1026,7 @@ getPacchettiBotti :: forall r. Run (PACCHETTIBOTTI_ENV + r) Owner
 getPacchettiBotti = do
   { publicKey } <- Env.askPacchettiBotti
   pure $ Owner
-    { email: pacchettibottiEmail
+    { id: Just pacchettibottiEmail
     , keytype: pacchettibottiKeyType
     , public: publicKey
     }

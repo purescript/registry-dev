@@ -145,15 +145,24 @@ Or, using a monorepo:
 
 The registry relies on SSH key pairs to verify package ownership for the purposes of sensitive API operations like unpublishing versions or transferring packages. An `Owner` is made up of the three components of an SSH public key in text format ([RFC4253](https://www.rfc-editor.org/rfc/rfc4253#section-6.6)). That format looks like this:
 
-`[keytype] [ssh-public-key] [email]`
+`[keytype] [ssh-public-key] [comment (optional)]`
 
-Note that the email address does not have to be able to send or receive email, but it must be the email address that was associated with the private key. A JSON example:
+Note that the comment is optional and is referred to as the "id" in the registry. A JSON example:
 
 ```jsonc
 {
   "keytype": "ssh-ed25519",
   "public": "ABCD3FGzaC1lZDI1NTE5AAAAINq4q0EHXacxMzmcG7TNC1DJpSxpK5dhJA6uAlZ",
-  "email": "john@abc.com"
+  "id": "john@abc"
+}
+```
+
+Alternately, this can be written without an id:
+
+```jsonc
+{
+  "keytype": "ssh-ed25519",
+  "public": "ABCD3FGzaC1lZDI1NTE5AAAAINq4q0EHXacxMzmcG7TNC1DJpSxpK5dhJA6uAlZ"
 }
 ```
 
@@ -430,11 +439,11 @@ Being a package "owner" grants the ability to take sensitive actions on behalf o
 
 > Note: the @pacchettibotti GitHub account is controlled by the Registry Trustees and is able to act as a package "owner" for any package. If the Registry Trustees ever need to unpublish a package version or transfer a package, they must do so by signing an authenticated operation using the @pacchettibotti SSH keys.
 
-The registry relies on SSH to authenticate package owners. An `Owner` is a public SSH key, and this SSH key can be used to sign data using OpenSSH versions 8.0 and above. The registry in turn verifies the signed data using the `Owner` and OpenSSH. To submit an authenticated operation, you are required to take the following steps:
+The registry relies on SSH to authenticate package owners. An `Owner` is a public SSH key, and this SSH key can be used to sign data using the SSH library functions provided in the registry library and (most likely) exposed by your package manager. The registry in turn verifies the signed data using the `Owner`. To submit an authenticated operation, you are required to take the following steps:
 
 1. Construct the JSON payload for the operation
-2. Sign the JSON payload using an SSH key listed in the package's `owners` metadata field.
-3. Construct the JSON payload for an authenticated operation using the JSON payload from step (1), the signature from step (2), and the email associated with the SSH key used to create the SSH signature.
+2. Sign the JSON payload using an SSH key listed in the package's `owners` metadata field, where the signature is hex-encoded.
+3. Construct the JSON payload for an authenticated operation using the JSON payload from step (1) and the signature from step (2).
 
 For example, here's a stringified JSON payload for an `Unpublish` operation unpublishing `prelude@1.0.1` because credentials were accidentally committed:
 
@@ -442,54 +451,26 @@ For example, here's a stringified JSON payload for an `Unpublish` operation unpu
 "{ \"name\": \"prelude\", \"version\": \"1.0.1\", \"reason\": \"Accidentally committed credentials\" }"
 ```
 
-We can sign this JSON using `ssh-keygen` as described in the post [It's Now Possible to Sign Arbitrary Data With Your SSH Keys](https://www.agwa.name/blog/post/ssh_signatures):
-
-```sh
-ssh-keygen -Y sign -f [ssh_key] -n file [file_to_sign]
-```
-
-where `[ssh_key]` is the path to your private key (such as `~/.ssh/id_ed25519`) and `[file_to_sign]` is the path to the file to be signed (such as `unpublish.json`). This will write the SSH signature to a new file named `[file_to_sign].sig` (for example, `unpublish.sig`), and it looks like this:
-
-```sig
------BEGIN SSH SIGNATURE-----
-U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAg2rirQQddpzEzOZwbtM0LUMmlLG
-krl2EkDq4CVn/Hw7sAAAAEZmlsZQAAAAAAAAAGc2hhNTEyAAAAUwAAAAtzc2gtZWQyNTUx
-OQAAAEDyjWPjmOdG8HJ8gh1CbM8WDDWoGfm+TTd8Qa8eua9Bt5Cc+43S24i/JqVWmk98qV
-YXoQmOYL4bY8t/q7cSNeMH
------END SSH SIGNATURE-----
-```
-
-You can also specify `-` for the filename, in which case the file to sign is read from stdin and the signature is written to stdout.
-
-You must then assemble this information into a JSON `object` with three fields:
+Then, assemble this information into a JSON `object` with three fields:
 
 - `payload`: The JSON string representing the `Unpublish` or `Transfer` operation
-- `signature`: An array of strings representing each line of the SSH signature
-- `email`: The email address associated with the public key used to sign the payload (this should be in the `owners` metadata field).
+- `signature`: A hex-encoded SSH signature (you can use your package manager, such as Spago, or you can use functions from the `registry-lib` directory to sign a payload and get a hex-encoded signature back).
 
 For example, in JSON:
 
 ```json
 {
   "payload": "{ \"name\": \"prelude\", \"version\": \"1.0.1\", \"reason\": \"Accidentally committed credentials\" }",
-  "signature": [
-    "-----BEGIN SSH SIGNATURE-----",
-    "ABCIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAg2rirQQddpzEzOZwbtM0LUMmlLG",
-    "kno3EkDq4CVn/Hw7sAAAAEZmlsZQAAAAAAAAAGc2hhNTEyAAAAUwAAAAtzc2gtZWQyNTUx",
-    "OQAttrDyjWPjmOdG8HJ8gh1CbM8WDDWoGfm+TTd8Qa8eua9Bt5Cc+43S24i/JqVWmk98qV",
-    "YXoQmOYL4bY8t/q7cSNeMH",
-    "-----END SSH SIGNATURE-----"
-  ],
-  "email": "trh@example.com"
+  "signature": "1f4967eaa5de1076bb2185b818ea4fb7c18cfe83af951ab32c3bcb4a300dfe9b3795daaae1e7a6d5fb9f72c4cec8003f79a452f2dc9da9ec8cfa63b243c80503"
 }
 ```
 
 **Verifying SSH Signatures**
 
-When the registry receives an authenticated operation, it takes the following steps:
+When the registry receives an authenticated operation it takes the following steps:
 
-1. The registry will create an [`allowed_signers`](https://man.openbsd.org/ssh-keygen#ALLOWED_SIGNERS) file, which will list all package owners from the package's metadata as well as the @pacchettibotti SSH keys.
-2. The registry will use `ssh-keygen` to verify the provided signature, the provided payload, and the provided email address. If the signature is valid, then `ssh-keygen` will exit with a 0 status and a message beginning with "Good 'file' signature for...". Otherwise, the command will exit with an error.
+1. The registry will retrieve all package owners from the package's metadata
+2. The registry will use each key listed in the package owners to attempt to verify the signature on the authenticated operation. A pacchettibotti signature is also always considered valid; only Registry Trustees have access to this key and can submit authenticated operations as pacchettibotti.
 3. If the signature was valid and the JSON operation payload was well-formed, then the registry will execute the provided operation.
 
 #### 5.3 Unpublish a Package (Authenticated)

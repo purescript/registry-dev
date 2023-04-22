@@ -24,7 +24,7 @@ import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LogVerbosity(..))
+import Registry.App.Effect.Log (LOG, LogVerbosity(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.PackageSets as PackageSets
@@ -40,7 +40,7 @@ import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.S3 (SpaceKey)
 import Registry.Operation (AuthenticatedData, PackageOperation(..), PackageSetOperation(..))
 import Registry.Operation as Operation
-import Run (AFF, Run)
+import Run (Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
@@ -204,7 +204,7 @@ readOperation eventPath = do
         map (Left <<< PackageSetUpdate) (CA.decode Operation.packageSetUpdateCodec json)
       else if hasKeys [ "name", "ref", "compiler" ] then
         map (Right <<< Publish) (CA.decode Operation.publishCodec json)
-      else if hasKeys [ "payload", "signature", "email" ] then
+      else if hasKeys [ "payload", "signature" ] then
         map (Right <<< Authenticated) (CA.decode Operation.authenticatedCodec json)
       else
         Left $ CA.TypeMismatch "Operation: Expected a valid registry operation, but provided object did not match any operation decoder."
@@ -272,37 +272,31 @@ decodeIssueEvent json = lmap CA.printJsonDecodeError do
 --
 -- @pacchettibotti is considered an 'owner' of all packages for authenticated
 -- operations. Registry trustees can ask pacchettibotti to perform an action on
--- behalf of a package by submitting a payload with the @pacchettibotti email
--- address. If the payload was submitted by a trustee (ie. a member of the
--- packaging team) then pacchettibotti will re-sign it and add itself as an
--- owner before continuing with the authenticated operation.
+-- behalf of a package by submitting a payload with an empty signature. If the
+-- payload was submitted by a trustee (ie. a member of the packaging team) then
+-- pacchettibotti will re-sign it and add itself as an owner before continuing
+-- with the authenticated operation.
 signPacchettiBottiIfTrustee
   :: forall r
    . AuthenticatedData
-  -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + EXCEPT String + AFF + r) AuthenticatedData
+  -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + LOG + EXCEPT String + r) AuthenticatedData
 signPacchettiBottiIfTrustee auth = do
-  if auth.email /= pacchettibottiEmail then
-    pure auth
-  else do
-    GitHub.listTeamMembers API.packagingTeam >>= case _ of
-      Left githubError -> Except.throw $ Array.fold
-        [ "This authenticated operation was opened using the pacchettibotti "
-        , "email address, but we were unable to authenticate that you are a "
-        , "member of the @purescript/packaging team:\n\n"
+  GitHub.listTeamMembers API.packagingTeam >>= case _ of
+    Left githubError -> do
+      Log.warn $ Array.fold
+        [ "Unable to fetch members of packaging team, not verifying whether requestor is a member of @purescript/packaging: "
         , Octokit.printGitHubError githubError
         ]
-      Right members -> do
-        { username } <- Env.askGitHubEvent
-        unless (Array.elem username members) do
-          Except.throw $ Array.fold
-            [ "This authenticated operation was opened using the pacchettibotti "
-            , "email address, but your username is not a member of the "
-            , "@purescript/packaging team."
-            ]
-
-        { publicKey, privateKey } <- Env.askPacchettiBotti
-        signature <- Run.liftAff (Auth.signPayload { publicKey, privateKey, rawPayload: auth.rawPayload }) >>= case _ of
+      pure auth
+    Right members -> do
+      { username } <- Env.askGitHubEvent
+      if Array.elem username members then do
+        Log.info "Authenticated payload submitted by a registry trustee, re-signing with pacchettibotti keys."
+        { privateKey } <- Env.askPacchettiBotti
+        signature <- case Auth.signPayload { privateKey, rawPayload: auth.rawPayload } of
           Left _ -> Except.throw "Error signing transfer. cc: @purescript/packaging"
           Right signature -> pure signature
-
         pure $ auth { signature = signature }
+      else do
+        Log.info "Authenticated payload not submitted by a registry trustee, continuing with original signature."
+        pure auth
