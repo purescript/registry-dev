@@ -68,17 +68,14 @@ handleAff (GitHubToken token) = case _ of
           Nothing -> do
             Log.error $ "Pursuit failed to connect after several retries."
             pure $ Left $ "Expected to receive a 201 status from Pursuit, but failed to connect after several retries."
-          Just (Right { status: StatusCode status }) | status == 201 -> do
-            Log.debug "Received 201 status, which indicates the upload was successful."
-            pure $ Right unit
-          Just (Right { body, status: StatusCode status }) | status == 502 -> do
-            if n == 0 then do
-              Log.error $ "Pursuit publishing failed with status " <> show status <> " and body\n" <> body
-              pure $ Left $ "Expected to receive a 201 status from Pursuit, but received " <> show status <> " instead."
-            else do
-              Log.debug $ "Received 502 status, retrying..."
-              Run.liftAff $ Aff.delay $ Milliseconds 1000.0
-              loop (n - 1)
+          Just (Right { status: StatusCode status })
+            | status == 201 -> do
+                Log.debug "Received 201 status, which indicates the upload was successful."
+                pure $ Right unit
+            | n > 0, status == 400 || status == 502 -> do
+                Log.debug $ "Received " <> show status <> ", retrying..."
+                Run.liftAff $ Aff.delay $ Milliseconds 1000.0
+                loop (n - 1)
           Just (Right { body, status: StatusCode status }) -> do
             Log.error $ "Pursuit publishing failed with status " <> show status <> " and body\n" <> body
             pure $ Left $ "Expected to receive a 201 status from Pursuit, but received " <> show status <> " instead."
