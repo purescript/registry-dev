@@ -10,6 +10,8 @@ import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
 import Data.HTTP.Method as Method
 import Data.MediaType.Common as MediaType
+import Effect.Aff (Milliseconds(..))
+import Effect.Aff as Aff
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.Foreign.Octokit (GitHubToken(..))
@@ -44,29 +46,42 @@ handleAff :: forall r a. GitHubToken -> Pursuit a -> Run (LOG + AFF + r) a
 handleAff (GitHubToken token) = case _ of
   Publish payload reply -> do
     Log.debug "Pushing to Pursuit..."
-    result <- Run.liftAff $ Affjax.Node.request
-      { content: Just $ RequestBody.json payload
-      , headers:
-          [ RequestHeader.Accept MediaType.applicationJSON
-          , RequestHeader.RequestHeader "Authorization" ("token " <> token)
-          ]
-      , method: Left Method.POST
-      , username: Nothing
-      , withCredentials: false
-      , password: Nothing
-      , responseFormat: ResponseFormat.string
-      , timeout: Nothing
-      , url: "https://pursuit.purescript.org/packages"
-      }
 
-    case result of
-      Right { status } | status == StatusCode 201 -> do
-        Log.debug "Received 201 status, which indicates the upload was successful."
-        pure $ reply $ Right unit
-      Right { body, status: StatusCode status } -> do
-        Log.error $ "Pursuit publishing failed with status " <> show status <> " and body\n" <> body
-        pure $ reply $ Left $ "Expected to receive a 201 status from Pursuit, but received " <> show status <> " instead."
-      Left httpError -> do
-        let printedError = Affjax.Node.printError httpError
-        Log.error $ "Pursuit publishing failed because of an HTTP error: " <> printedError
-        pure $ reply $ Left "Could not reach Pursuit due to an HTTP error."
+    let
+      loop n = do
+        result <- Run.liftAff $ withBackoff' $ Affjax.Node.request
+          { content: Just $ RequestBody.json payload
+          , headers:
+              [ RequestHeader.Accept MediaType.applicationJSON
+              , RequestHeader.RequestHeader "Authorization" ("token " <> token)
+              ]
+          , method: Left Method.POST
+          , username: Nothing
+          , withCredentials: false
+          , password: Nothing
+          , responseFormat: ResponseFormat.string
+          , timeout: Nothing
+          , url: "https://pursuit.purescript.org/packages"
+          }
+
+        case result of
+          Nothing -> do
+            Log.error $ "Pursuit failed to connect after several retries."
+            pure $ Left $ "Expected to receive a 201 status from Pursuit, but failed to connect after several retries."
+          Just (Right { status: StatusCode status })
+            | status == 201 -> do
+                Log.debug "Received 201 status, which indicates the upload was successful."
+                pure $ Right unit
+            | n > 0, status == 400 || status == 502 -> do
+                Log.debug $ "Received " <> show status <> ", retrying..."
+                Run.liftAff $ Aff.delay $ Milliseconds 1000.0
+                loop (n - 1)
+          Just (Right { body, status: StatusCode status }) -> do
+            Log.error $ "Pursuit publishing failed with status " <> show status <> " and body\n" <> body
+            pure $ Left $ "Expected to receive a 201 status from Pursuit, but received " <> show status <> " instead."
+          Just (Left httpError) -> do
+            let printedError = Affjax.Node.printError httpError
+            Log.error $ "Pursuit publishing failed because of an HTTP error: " <> printedError
+            pure $ Left "Could not reach Pursuit due to an HTTP error."
+
+    reply <$> loop 2
