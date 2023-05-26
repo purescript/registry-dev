@@ -1,4 +1,18 @@
-module Registry.App.API where
+module Registry.App.API
+  ( Source(..)
+  , PackageSetUpdateEffects
+  , packageSetUpdate
+  , PublishEffects
+  , publish
+  , AuthenticatedEffects
+  , authenticated
+  , packagingTeam
+  -- The below are exported for tests, but aren't otherwise intended for use
+  -- outside this module.
+  , formatPursuitResolutions
+  , removeIgnoredTarballFiles
+  , copyPackageSourceFiles
+  ) where
 
 import Registry.App.Prelude
 
@@ -483,15 +497,6 @@ publish source payload = do
   when (Operation.Validation.isMetadataPackage (Manifest manifest)) do
     Except.throw "The `metadata` package cannot be uploaded to the registry because it is a protected package."
 
-  for_ (Operation.Validation.isNotPublished (Manifest manifest) (Metadata metadata)) \info -> do
-    Except.throw $ String.joinWith "\n"
-      [ "You tried to upload a version that already exists: " <> Version.print manifest.version
-      , "Its metadata is:"
-      , "```json"
-      , printJson Metadata.publishedMetadataCodec info
-      , "```"
-      ]
-
   for_ (Operation.Validation.isNotUnpublished (Manifest manifest) (Metadata metadata)) \info -> do
     Except.throw $ String.joinWith "\n"
       [ "You tried to upload a version that has been unpublished: " <> Version.print manifest.version
@@ -501,6 +506,69 @@ publish source payload = do
       , "```"
       ]
 
+  for_ (Operation.Validation.isNotPublished (Manifest manifest) (Metadata metadata)) \info -> do
+    -- If the package has been published already, then we check whether the published
+    -- version has made it to Pursuit or not. If it has, then we terminate here. If
+    -- it hasn't then we skip to Pursuit publishing.
+    published <- Pursuit.getPublishedVersions manifest.name >>= case _ of
+      Left error -> Except.throw error
+      Right versions -> pure versions
+
+    case Map.lookup manifest.version published of
+      Nothing -> do
+        Notify.notify $ Array.fold
+          [ "This version has already been published to the registry, but the docs have not been "
+          , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
+          ]
+        verifiedResolutions <- verifyResolutions (Manifest manifest) payload.resolutions
+        compilationResult <- compilePackage { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions }
+        case compilationResult of
+          Left error -> do
+            Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
+            Except.throw "Cannot publish to Pursuit because this package failed to compile."
+          Right dependenciesDir -> do
+            Log.debug "Uploading to Pursuit"
+            publishToPursuit { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, dependenciesDir }
+
+      Just url -> do
+        Except.throw $ String.joinWith "\n"
+          [ "You tried to upload a version that already exists: " <> Version.print manifest.version
+          , ""
+          , "Its metadata is:"
+          , "```json"
+          , printJson Metadata.publishedMetadataCodec info
+          , "```"
+          , ""
+          , "and its documentation is available here:"
+          , url
+          ]
+
+  publishRegistry
+    { source
+    , manifest: Manifest manifest
+    , metadata: Metadata metadata
+    , payload
+    , publishedTime
+    , tmp
+    , packageDirectory
+    }
+
+type PublishRegistry =
+  { source :: Source
+  , manifest :: Manifest
+  , metadata :: Metadata
+  , payload :: PublishData
+  , publishedTime :: DateTime
+  , tmp :: FilePath
+  , packageDirectory :: FilePath
+  }
+
+-- A private helper function for publishing to the registry. Separated out of
+-- the main 'publish' function because we sometimes use the publish function to
+-- publish to Pursuit only (in the case the package has been pushed to the
+-- registry, but docs have not been uploaded).
+publishRegistry :: forall r. PublishRegistry -> Run (PublishEffects + r) Unit
+publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manifest manifest, publishedTime, tmp, packageDirectory } = do
   Log.debug "Verifying the package build plan..."
   verifiedResolutions <- verifyResolutions (Manifest manifest) payload.resolutions
 
