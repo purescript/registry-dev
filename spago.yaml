@@ -1,4 +1,5 @@
 workspace:
+  lock: true
   package_set:
     registry: 20.0.3
   extra_packages:
