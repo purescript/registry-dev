@@ -543,15 +543,15 @@ publish source payload = do
           , url
           ]
 
-    publishRegistry
-      { source
-      , manifest: Manifest manifest
-      , metadata: Metadata metadata
-      , payload
-      , publishedTime
-      , tmp
-      , packageDirectory
-      }
+  publishRegistry
+    { source
+    , manifest: Manifest manifest
+    , metadata: Metadata metadata
+    , payload
+    , publishedTime
+    , tmp
+    , packageDirectory
+    }
 
 type PublishRegistry =
   { source :: Source
