@@ -1,7 +1,7 @@
 workspace:
   packages:
     registry-app:
-      path: node_modules/registry-app
+      path: app
       dependencies:
         - aff
         - affjax
@@ -71,7 +71,7 @@ workspace:
       test_dependencies:
         - spec
     registry-foreign:
-      path: node_modules/registry-foreign
+      path: foreign
       dependencies:
         - aff
         - aff-promise
@@ -110,7 +110,7 @@ workspace:
         - node-process
         - spec
     registry-lib:
-      path: node_modules/registry-lib
+      path: lib
       dependencies:
         - aff
         - argonaut-core
