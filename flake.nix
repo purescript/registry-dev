@@ -45,6 +45,8 @@
         overlays = [registryOverlay spago-nix.overlay];
       };
 
+      npmDependencies = pkgs.callPackage ./nix/npm.nix {} {src = ./.;};
+
       # Spago workspaces present in the repository
       workspaces = pkgs.spago-nix {src = ./.;};
 
@@ -161,6 +163,7 @@
           phases = ["buildPhase" "installPhase"];
           nativeBuildInputs = [pkgs.pursPackages.purs pkgs.esbuild];
           buildPhase = ''
+            ln -s ${npmDependencies}/js/node_modules .
             set -f
             purs compile $src/src/**/*.purs ${workspaces.${name}.dependencies.globs}
             set +f
