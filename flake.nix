@@ -155,7 +155,7 @@
           '';
         };
       };
-    in {
+    in rec {
       packages = {
         default = pkgs.stdenv.mkDerivation rec {
           name = "registry-app";
@@ -173,6 +173,17 @@
             mkdir $out
             cp app.js $out
           '';
+        };
+      };
+
+      apps = {
+        default = {
+          type = "app";
+          program = "${
+            pkgs.writeShellScriptBin "run-package" ''
+              ${pkgs.nodejs}/bin/node -e 'require("${packages.default}/app.js").main()'
+            ''
+          }/bin/run-package";
         };
       };
 

@@ -211,7 +211,7 @@ main = do
       , " │ Server now up on port 8080                │"
       , " │                                           │"
       , " │ To test, run:                             │"
-      , " │  > curl -v localhost:8080/api/v1/publish  │"
+      , " │  > curl -v localhost:8080/api/v1/jobs/0   │"
       , " └───────────────────────────────────────────┘"
       ]
 
