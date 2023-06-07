@@ -33,6 +33,7 @@ valid =
   , "BSD-3-Clause"
   , "CC-BY-1.0"
   , "APACHE-2.0"
+  , "LGPL-2.1-only"
 
   -- deprecated licenses are acceptable
   , "GPL-3.0"
