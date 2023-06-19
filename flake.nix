@@ -16,11 +16,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Temporary until purs-tidy is supported by purix
-    easy-purescript-nix = {
-      url = "github:justinwoo/easy-purescript-nix";
-    };
-
     easy-dhall-nix = {
       url = "github:justinwoo/easy-dhall-nix";
       flake = false;
@@ -32,22 +27,14 @@
     nixpkgs,
     flake-utils,
     purix,
-    easy-purescript-nix,
     easy-dhall-nix,
     ...
   }: let
     supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
 
     registryOverlay = final: prev: {
-      # Annoyingly, easy-purescript-nix refers to 'nodejs_18' instead of
-      # 'nodejs-18_x', so we need to add that name and then have easy-ps-nix
-      # refer to the final result.
-      nodejs_18 = prev.nodejs-18_x;
-      pursPackages = final.callPackage easy-purescript-nix {};
-
-      dhallPackages = prev.callPackage easy-dhall-nix {};
-
       nodejs = prev.nodejs-18_x;
+      dhallPackages = prev.callPackage easy-dhall-nix {};
 
       # We don't want to force everyone to update their configs if they aren't
       # normally on flakes.
@@ -62,12 +49,13 @@
         overlays = [purix.overlays.default registryOverlay];
       };
 
-      # Produces a list of all PureScript binaries supported by easy-purescript-nix,
-      # callable using the naming convention `purs-MAJOR_MINOR_PATCH`.
+      # Produces a list of all PureScript binaries supported by purix, ie. those
+      # from 0.13 onwards, callable using the naming convention
+      # `purs-MAJOR_MINOR_PATCH`.
       #   $ purs-0_14_0 --version
       #   0.14.0
       #
-      # To add a new compiler to the list, just update easy-purescript-nix:
+      # To add a new compiler to the list, just update purix:
       #   $ nix flake update
       compilers = let
         # Only include the compiler at normal MAJOR.MINOR.PATCH versions.
@@ -193,9 +181,10 @@
             dhallPackages.dhall-json-simple
 
             # Development tooling
-            pursPackages.purs
+            purs-unstable
             spago-unstable
-            pursPackages.purs-tidy
+            purs-tidy-unstable
+            purs-backend-es-unstable
           ];
         };
       };
