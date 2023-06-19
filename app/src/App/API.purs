@@ -214,20 +214,23 @@ packageSetUpdate payload = do
       , PackageSets.printRejections candidates.rejected
       ]
 
-  if Map.isEmpty candidates.accepted then do
-    Except.throw "No packages in the suggested batch can be processed; all failed validation checks."
-  else do
-    let changeSet = candidates.accepted <#> maybe Remove Update
-    Notify.notify "Attempting to build package set update."
-    PackageSets.upgradeAtomic latestPackageSet (fromMaybe prevCompiler payload.compiler) changeSet >>= case _ of
-      Nothing ->
-        Except.throw "The package set produced from this suggested update does not compile."
-      Just packageSet -> do
-        let commitMessage = PackageSets.commitMessage latestPackageSet changeSet (un PackageSet packageSet).version
-        Registry.writePackageSet packageSet commitMessage
-        Notify.notify "Built and released a new package set! Now mirroring to the package-sets repo..."
-        Registry.mirrorPackageSet packageSet
-        Notify.notify "Mirrored a new legacy package set."
+  when (Map.isEmpty candidates.accepted) $ case payload.compiler of
+    Just compiler | compiler > prevCompiler ->
+      Log.debug $ "No packages in the suggested batch can be processed, but the compiler version " <> Version.print compiler <> " was upgraded."
+    _ ->
+      Except.throw "No packages in the suggested batch can be processed (all failed validation checks) and the compiler version was not upgraded, so there is no upgrade to perform."
+
+  let changeSet = candidates.accepted <#> maybe Remove Update
+  Notify.notify "Attempting to build package set update."
+  PackageSets.upgradeAtomic latestPackageSet (fromMaybe prevCompiler payload.compiler) changeSet >>= case _ of
+    Nothing ->
+      Except.throw "The package set produced from this suggested update does not compile."
+    Just packageSet -> do
+      let commitMessage = PackageSets.commitMessage latestPackageSet changeSet (un PackageSet packageSet).version
+      Registry.writePackageSet packageSet commitMessage
+      Notify.notify "Built and released a new package set! Now mirroring to the package-sets repo..."
+      Registry.mirrorPackageSet packageSet
+      Notify.notify "Mirrored a new legacy package set."
 
 type AuthenticatedEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + NOTIFY + LOG + EXCEPT String + AFF + EFFECT + r)
 
