@@ -71,10 +71,10 @@
       #   $ nix flake update
       compilers = let
         # Only include the compiler at normal MAJOR.MINOR.PATCH versions.
-        pursOnly =
+        stableOnly =
           pkgs.lib.filterAttrs
           (name: _: (builtins.match "^purs-[0-9]_[0-9]+_[0-9]$" name != null))
-          pkgs.pursPackages;
+          pkgs.purs-bin;
       in
         pkgs.symlinkJoin {
           name = "purs-compilers";
@@ -82,7 +82,7 @@
             pkgs.writeShellScriptBin name ''
               exec ${drv}/bin/purs "$@"
             '')
-          pursOnly;
+          stableOnly;
         };
 
       # Various scripts we would like to be able to run via a Nix shell. Once
