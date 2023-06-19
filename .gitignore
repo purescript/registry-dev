@@ -2,6 +2,8 @@
 /output
 /scratch
 
+result
+
 .psc*
 .purs*
 .psa*
@@ -10,3 +12,4 @@
 
 # Keep it secret, keep it safe.
 .env
+

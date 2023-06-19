@@ -11,7 +11,7 @@ import Test.Spec as Spec
 spec :: Spec.Spec Unit
 spec = do
   traverse_ testVersion [ "0.13.0", "0.14.0", "0.14.7", "0.15.4" ]
-  traverse_ testMissingVersion [ "0.13.1", "0.14.8" ]
+  traverse_ testMissingVersion [ "0.13.1", "0.13.7", "0.15.1", "0.12.0", "0.14.12345" ]
   where
   testVersion version =
     Spec.it ("Calls compiler version " <> version) do
