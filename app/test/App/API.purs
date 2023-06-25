@@ -138,6 +138,27 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
 
     for_ acceptedPaths \path -> do
       paths.succeeded `Assert.Run.shouldContain` path
+
+  Spec.it "Does not copy user-specified excluded files" \{ source, destination, writeDirectories, writeFiles } -> do
+    let
+      userFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/*.purs" ]
+      excludedFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/Test.purs" ]
+      testDir = [ "test" ]
+      testMain = Path.concat [ "test", "Main.purs" ]
+      testTest = Path.concat [ "test", "Test.purs" ]
+      testFiles = [ testMain, testTest ]
+
+    writeDirectories (goodDirectories <> testDir)
+    writeFiles (goodFiles <> testFiles)
+
+    API.copyPackageSourceFiles { files: userFiles, excludedFiles, source, destination }
+
+    paths <- FastGlob.match destination [ "**/*" ]
+
+    let acceptedPaths = goodDirectories <> goodFiles <> testDir <> [ testMain ]
+
+    for_ acceptedPaths \path -> do
+      paths.succeeded `Assert.Run.shouldContain` path
   where
   runBefore :: forall r. Run (EFFECT + r) _
   runBefore = do
