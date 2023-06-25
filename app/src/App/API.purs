@@ -1026,6 +1026,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
 -- | Copy files from the package source directory to the destination directory
 -- | for the tarball. This will copy all always-included files as well as files
 -- | provided by the user via the `files` key.
+-- | Finally, it removes any files specified in the globs behind the `excludeFiles` key.
 copyPackageSourceFiles
   :: forall r
    . { files :: Maybe (NonEmptyArray NonEmptyString)
@@ -1037,18 +1038,13 @@ copyPackageSourceFiles
 copyPackageSourceFiles { files, excludeFiles, source, destination } = do
   Log.debug $ "Copying package source files from " <> source <> " to " <> destination
 
-  userexcludeFiles <- case excludeFiles of
+  userExcludeFiles <- case excludeFiles of
     Nothing -> pure []
     Just nonEmptyGlobs -> do
       let globs = map NonEmptyString.toString $ NonEmptyArray.toArray nonEmptyGlobs
       { succeeded, failed } <- FastGlob.match source globs
-
-      unless (Array.null failed) do
-        Except.throw $ String.joinWith " "
-          [ "Some paths matched by globs in the 'files' key are outside your package directory."
-          , "Please ensure globs only match within your package directory, including symlinks."
-          ]
-
+      -- Since we will only subtract the excluded globs we can safely ignore the failed globs
+      Log.warn $ "The following paths matched by globs in the 'excludeFiles' key are outside your package directory: " <> String.joinWith ", " failed
       pure succeeded
 
   userFiles <- case files of
@@ -1056,7 +1052,7 @@ copyPackageSourceFiles { files, excludeFiles, source, destination } = do
     Just nonEmptyGlobs -> do
       let globs = map NonEmptyString.toString $ NonEmptyArray.toArray nonEmptyGlobs
       { succeeded, failed } <- FastGlob.match source globs
-      let succeededAndNotExcluded = succeeded Array.\\ userexcludeFiles
+      let succeededAndNotExcluded = succeeded Array.\\ userExcludeFiles
 
       unless (Array.null failed) do
         Except.throw $ String.joinWith " "
@@ -1080,7 +1076,7 @@ copyPackageSourceFiles { files, excludeFiles, source, destination } = do
   includedFiles <- FastGlob.match source includedGlobs
   includedInsensitiveFiles <- FastGlob.match' source includedInsensitiveGlobs { caseSensitive: false }
 
-  let filesToCopy = (userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded) Array.\\ userexcludeFiles
+  let filesToCopy = (userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded) Array.\\ userExcludeFiles
   let makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ], preserveTimestamps: true }
 
   case map makePaths filesToCopy of
