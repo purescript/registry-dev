@@ -53,7 +53,7 @@ newtype Manifest = Manifest
   , owners :: Maybe (NonEmptyArray Owner)
   , description :: Maybe String
   , files :: Maybe (NonEmptyArray NonEmptyString)
-  , excludedFiles :: Maybe (NonEmptyArray NonEmptyString)
+  , excludeFiles :: Maybe (NonEmptyArray NonEmptyString)
   , dependencies :: Map PackageName Range
   }
 
@@ -81,6 +81,6 @@ codec = Profunctor.wrapIso Manifest $ CA.object "Manifest"
   $ CA.recordProp (Proxy :: _ "location") Location.codec
   $ CA.recordPropOptional (Proxy :: _ "owners") (CA.Common.nonEmptyArray Owner.codec)
   $ CA.recordPropOptional (Proxy :: _ "files") (CA.Common.nonEmptyArray CA.Common.nonEmptyString)
-  $ CA.recordPropOptional (Proxy :: _ "excludedFiles") (CA.Common.nonEmptyArray CA.Common.nonEmptyString)
+  $ CA.recordPropOptional (Proxy :: _ "excludeFiles") (CA.Common.nonEmptyArray CA.Common.nonEmptyString)
   $ CA.recordProp (Proxy :: _ "dependencies") (Internal.Codec.packageMap Range.codec)
   $ CA.record

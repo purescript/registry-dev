@@ -107,7 +107,7 @@ unsafeManifest name version dependencies = Manifest
   , description: Nothing
   , owners: Nothing
   , files: Nothing
-  , excludedFiles: Nothing
+  , excludeFiles: Nothing
   }
 
 -- | Format a package version as a string in the form 'name@X.Y.Z'

@@ -600,7 +600,7 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
   -- We copy over all files that are always included (ie. src dir, purs.json file),
   -- and any files the user asked for via the 'files' key, and remove all files
   -- that should never be included (even if the user asked for them).
-  copyPackageSourceFiles { files: manifest.files, excludedFiles: manifest.excludedFiles, source: packageDirectory, destination: packageSourceDir }
+  copyPackageSourceFiles { files: manifest.files, excludeFiles: manifest.excludeFiles, source: packageDirectory, destination: packageSourceDir }
   Log.debug "Removing always-ignored files from the packaging directory."
   removeIgnoredTarballFiles packageSourceDir
 
@@ -1029,15 +1029,15 @@ fetchPackageSource { tmpDir, ref, location } = case location of
 copyPackageSourceFiles
   :: forall r
    . { files :: Maybe (NonEmptyArray NonEmptyString)
-     , excludedFiles :: Maybe (NonEmptyArray NonEmptyString)
+     , excludeFiles :: Maybe (NonEmptyArray NonEmptyString)
      , source :: FilePath
      , destination :: FilePath
      }
   -> Run (LOG + EXCEPT String + AFF + EFFECT + r) Unit
-copyPackageSourceFiles { files, excludedFiles, source, destination } = do
+copyPackageSourceFiles { files, excludeFiles, source, destination } = do
   Log.debug $ "Copying package source files from " <> source <> " to " <> destination
 
-  userExcludedFiles <- case excludedFiles of
+  userexcludeFiles <- case excludeFiles of
     Nothing -> pure []
     Just nonEmptyGlobs -> do
       let globs = map NonEmptyString.toString $ NonEmptyArray.toArray nonEmptyGlobs
@@ -1056,7 +1056,7 @@ copyPackageSourceFiles { files, excludedFiles, source, destination } = do
     Just nonEmptyGlobs -> do
       let globs = map NonEmptyString.toString $ NonEmptyArray.toArray nonEmptyGlobs
       { succeeded, failed } <- FastGlob.match source globs
-      let succeededAndNotExcluded = succeeded Array.\\ userExcludedFiles
+      let succeededAndNotExcluded = succeeded Array.\\ userexcludeFiles
 
       unless (Array.null failed) do
         Except.throw $ String.joinWith " "
@@ -1080,7 +1080,7 @@ copyPackageSourceFiles { files, excludedFiles, source, destination } = do
   includedFiles <- FastGlob.match source includedGlobs
   includedInsensitiveFiles <- FastGlob.match' source includedInsensitiveGlobs { caseSensitive: false }
 
-  let filesToCopy = (userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded) Array.\\ userExcludedFiles
+  let filesToCopy = (userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded) Array.\\ userexcludeFiles
   let makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ], preserveTimestamps: true }
 
   case map makePaths filesToCopy of
@@ -1131,7 +1131,7 @@ spagoToManifest config = do
   package@{ name, description, dependencies: Spago.Dependencies deps } <- note "Did not find a package in the config" config.package
   publishConfig@{ version, license } <- note "Did not find a `publish` section in the package config" package.publish
   let files = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.files)
-  let excludedFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.excludeFiles)
+  let excludeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.excludeFiles)
   location <- note "Did not find a `location` field in the publish config" publishConfig.location
   let
     checkRange :: Tuple PackageName (Maybe Range) -> Either PackageName (Tuple PackageName Range)
@@ -1151,5 +1151,5 @@ spagoToManifest config = do
     , dependencies
     , owners: Nothing -- TODO Spago still needs to add this to its config
     , files
-    , excludedFiles
+    , excludeFiles
     }

@@ -107,7 +107,7 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
     writeDirectories (goodDirectories <> Constants.ignoredDirectories <> [ "test" ])
     writeFiles (goodFiles <> Constants.ignoredFiles <> [ Path.concat [ "test", "Main.purs" ] ])
 
-    API.copyPackageSourceFiles { files: Nothing, excludedFiles: Nothing, source, destination }
+    API.copyPackageSourceFiles { files: Nothing, excludeFiles: Nothing, source, destination }
 
     paths <- FastGlob.match destination [ "**/*" ]
 
@@ -130,7 +130,7 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
     writeDirectories (goodDirectories <> testDir)
     writeFiles (goodFiles <> testFiles)
 
-    API.copyPackageSourceFiles { files: userFiles, excludedFiles: Nothing, source, destination }
+    API.copyPackageSourceFiles { files: userFiles, excludeFiles: Nothing, source, destination }
 
     paths <- FastGlob.match destination [ "**/*" ]
 
@@ -142,7 +142,7 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
   Spec.it "Does not copy user-specified excluded files" \{ source, destination, writeDirectories, writeFiles } -> do
     let
       userFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/*.purs" ]
-      excludedFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/Test.purs" ]
+      excludeFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/Test.purs" ]
       testDir = [ "test" ]
       testMain = Path.concat [ "test", "Main.purs" ]
       testTest = Path.concat [ "test", "Test.purs" ]
@@ -151,7 +151,7 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
     writeDirectories (goodDirectories <> testDir)
     writeFiles (goodFiles <> testFiles)
 
-    API.copyPackageSourceFiles { files: userFiles, excludedFiles, source, destination }
+    API.copyPackageSourceFiles { files: userFiles, excludeFiles, source, destination }
 
     paths <- FastGlob.match destination [ "**/*" ]
 
