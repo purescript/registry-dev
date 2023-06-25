@@ -3,6 +3,6 @@ workspace:
     registry: 20.0.3
   extra_packages:
     spago-core:
-      git: https://github.com/purescript/spago.git
-      ref: b92239d18971779966c15460e03166acbc9c042a
+      git: https://github.com/i-am-the-slime/spago.git
+      ref: 315137e5efdbf0ab36b3e36abc7e5f2e94964da7
       subdir: spaghetto/core

@@ -101,6 +101,7 @@ import Spago.Core.Prelude as Spago.Prelude
 import Spago.Log as Spago.Log
 import Sunde as Sunde
 import Data.String.NonEmpty.Internal (toString) as NonEmptyString
+import Safe.Coerce (coerce)
 
 -- | Operations can be exercised for old, pre-registry packages, or for packages
 -- | which are on the 0.15 compiler series. If a true legacy package is uploaded
@@ -1129,6 +1130,8 @@ spagoToManifest :: Spago.Config -> Either String Manifest
 spagoToManifest config = do
   package@{ name, description, dependencies: Spago.Dependencies deps } <- note "Did not find a package in the config" config.package
   publishConfig@{ version, license } <- note "Did not find a `publish` section in the package config" package.publish
+  let files = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.files)
+  let excludedFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.excludeFiles)
   location <- note "Did not find a `location` field in the publish config" publishConfig.location
   let
     checkRange :: Tuple PackageName (Maybe Range) -> Either PackageName (Tuple PackageName Range)
@@ -1147,6 +1150,6 @@ spagoToManifest config = do
     , description
     , dependencies
     , owners: Nothing -- TODO Spago still needs to add this to its config
-    , files: Nothing -- TODO Spago still needs to add this to its config
-    , excludedFiles: Nothing -- TODO Spago still needs to add this to its config
+    , files
+    , excludedFiles
     }
