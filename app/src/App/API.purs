@@ -27,7 +27,7 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
-import Data.Foldable (traverse_)
+import Data.Foldable (foldMap, traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.HTTP.Method (Method(..))
 import Data.JSDate as JSDate
@@ -100,6 +100,7 @@ import Spago.Core.Config as Spago
 import Spago.Core.Prelude as Spago.Prelude
 import Spago.Log as Spago.Log
 import Sunde as Sunde
+import Data.String.NonEmpty.Internal (toString) as NonEmptyString
 
 -- | Operations can be exercised for old, pre-registry packages, or for packages
 -- | which are on the 0.15 compiler series. If a true legacy package is uploaded
@@ -598,7 +599,7 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
   -- We copy over all files that are always included (ie. src dir, purs.json file),
   -- and any files the user asked for via the 'files' key, and remove all files
   -- that should never be included (even if the user asked for them).
-  copyPackageSourceFiles manifest.files { source: packageDirectory, destination: packageSourceDir }
+  copyPackageSourceFiles { files: manifest.files, excludedFiles: manifest.excludedFiles, source: packageDirectory, destination: packageSourceDir }
   Log.debug "Removing always-ignored files from the packaging directory."
   removeIgnoredTarballFiles packageSourceDir
 
@@ -1026,13 +1027,16 @@ fetchPackageSource { tmpDir, ref, location } = case location of
 -- | provided by the user via the `files` key.
 copyPackageSourceFiles
   :: forall r
-   . Maybe (NonEmptyArray NonEmptyString)
-  -> { source :: FilePath, destination :: FilePath }
+   . { files :: Maybe (NonEmptyArray NonEmptyString)
+     , excludedFiles :: Maybe (NonEmptyArray NonEmptyString)
+     , source :: FilePath
+     , destination :: FilePath
+     }
   -> Run (LOG + EXCEPT String + AFF + EFFECT + r) Unit
-copyPackageSourceFiles files { source, destination } = do
+copyPackageSourceFiles { files, excludedFiles, source, destination } = do
   Log.debug $ "Copying package source files from " <> source <> " to " <> destination
 
-  userFiles <- case files of
+  userExcludedFiles <- case excludedFiles of
     Nothing -> pure []
     Just nonEmptyGlobs -> do
       let globs = map NonEmptyString.toString $ NonEmptyArray.toArray nonEmptyGlobs
@@ -1044,7 +1048,22 @@ copyPackageSourceFiles files { source, destination } = do
           , "Please ensure globs only match within your package directory, including symlinks."
           ]
 
-      case NonEmptyArray.fromArray (Array.filter (Regex.test Internal.Path.pursFileExtensionRegex) succeeded) of
+      pure succeeded
+
+  userFiles <- case files of
+    Nothing -> pure []
+    Just nonEmptyGlobs -> do
+      let globs = map NonEmptyString.toString $ NonEmptyArray.toArray nonEmptyGlobs
+      { succeeded, failed } <- FastGlob.match source globs
+      let succeededAndNotExcluded = succeeded Array.\\ userExcludedFiles
+
+      unless (Array.null failed) do
+        Except.throw $ String.joinWith " "
+          [ "Some paths matched by globs in the 'files' key are outside your package directory."
+          , "Please ensure globs only match within your package directory, including symlinks."
+          ]
+
+      case NonEmptyArray.fromArray (Array.filter (Regex.test Internal.Path.pursFileExtensionRegex) succeededAndNotExcluded) of
         Nothing -> pure unit
         Just matches -> do
           let fullPaths = map (\path -> Path.concat [ source, path ]) matches
@@ -1056,10 +1075,11 @@ copyPackageSourceFiles files { source, destination } = do
 
       pure succeeded
 
+
   includedFiles <- FastGlob.match source includedGlobs
   includedInsensitiveFiles <- FastGlob.match' source includedInsensitiveGlobs { caseSensitive: false }
 
-  let filesToCopy = userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded
+  let filesToCopy = (userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded) Array.\\ userExcludedFiles
   let makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ], preserveTimestamps: true }
 
   case map makePaths filesToCopy of
@@ -1128,4 +1148,5 @@ spagoToManifest config = do
     , dependencies
     , owners: Nothing -- TODO Spago still needs to add this to its config
     , files: Nothing -- TODO Spago still needs to add this to its config
+    , excludedFiles: Nothing -- TODO Spago still needs to add this to its config
     }

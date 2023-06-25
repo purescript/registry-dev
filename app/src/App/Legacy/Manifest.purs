@@ -61,8 +61,9 @@ type LegacyManifest =
 toManifest :: PackageName -> Version -> Location -> LegacyManifest -> Manifest
 toManifest name version location { license, description, dependencies } = do
   let files = Nothing
+  let excludedFiles = Nothing
   let owners = Nothing
-  Manifest { name, version, location, license, description, dependencies, files, owners }
+  Manifest { name, version, location, license, description, dependencies, files, excludedFiles, owners }
 
 -- | Attempt to retrieve a license, description, and set of dependencies from a
 -- | PureScript repo that does not have a Registry-supported manifest, but does

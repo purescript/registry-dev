@@ -107,7 +107,7 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
     writeDirectories (goodDirectories <> Constants.ignoredDirectories <> [ "test" ])
     writeFiles (goodFiles <> Constants.ignoredFiles <> [ Path.concat [ "test", "Main.purs" ] ])
 
-    API.copyPackageSourceFiles Nothing { source, destination }
+    API.copyPackageSourceFiles { files: Nothing, excludedFiles: Nothing, source, destination }
 
     paths <- FastGlob.match destination [ "**/*" ]
 
@@ -130,7 +130,7 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
     writeDirectories (goodDirectories <> testDir)
     writeFiles (goodFiles <> testFiles)
 
-    API.copyPackageSourceFiles userFiles { source, destination }
+    API.copyPackageSourceFiles { files: userFiles, excludedFiles: Nothing, source, destination }
 
     paths <- FastGlob.match destination [ "**/*" ]
 
