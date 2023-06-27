@@ -125,16 +125,7 @@ updater = do
 
   PackageSets.validatePackageSet prevPackageSet
 
-  let
-    -- This record comes from the build directory (.spago) and records information
-    -- from the most recent build.
-    localCompiler = unsafeFromRight (Version.parse BuildInfo.buildInfo.pursVersion)
-    -- We use the greater of the local compiler version or the last package set
-    -- version to upgrade the package sets. This automatically bumps the purs
-    -- version when the registry upgrades to a new compiler.
-    compiler = do
-      let prev = (un PackageSet prevPackageSet).compiler
-      if localCompiler > prev then localCompiler else prev
+  let compiler = (un PackageSet prevPackageSet).compiler
 
   Log.info $ "Using compiler " <> Version.print compiler
 
