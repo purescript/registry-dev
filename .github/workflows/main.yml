@@ -38,7 +38,7 @@ jobs:
           github-token: ${{ env.GITHUB_TOKEN }}
 
       - name: Setup Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v1
+        uses: DeterminateSystems/magic-nix-cache-action@v2
 
       # Separates all the cache downloading time from the time required to actually run a step
       # of the workflow
