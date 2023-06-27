@@ -32,15 +32,13 @@ jobs:
           path: |
             .spago
             output
-
       - name: Install Nix
-        uses: cachix/install-nix-action@v16
+        uses: DeterminateSystems/nix-installer-action@v4
         with:
-          extra_nix_config: |
-            access-tokens = github.com=${{ env.GITHUB_TOKEN }}
+          github-token: ${{ env.GITHUB_TOKEN }}
 
       - name: Setup Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+        uses: DeterminateSystems/magic-nix-cache-action@v1
 
       # Separates all the cache downloading time from the time required to actually run a step
       # of the workflow
