@@ -42,6 +42,11 @@ jobs:
       - name: Setup Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@main
 
+      # Separates all the cache downloading time from the time required to actually run a step
+      # of the workflow
+      - name: Initialize Nix
+        run: nix develop
+
       # Checks for the Registry Draft
       - name: "Check that all Dhall compiles, and fixtures correctly conform to a Manifest"
         run: nix develop --command 'registry-verify-dhall'
