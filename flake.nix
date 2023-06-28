@@ -143,7 +143,46 @@
           '';
         };
       };
-    in {
+    in rec {
+      packages = {
+        default = let 
+          package-lock = pkgs.purix.buildPackageLock {src = ./.;};
+          spago-lock = pkgs.purix.buildSpagoLock {src = ./.; corefn = true;};
+        in pkgs.stdenv.mkDerivation {
+          name = "registry-app";
+          version = "0.0.1";
+          src = ./app;
+          phases = ["buildPhase" "installPhase"];
+          nativeBuildInputs = [pkgs.purs pkgs.purs-backend-es pkgs.esbuild];
+          buildPhase = ''
+            ln -s ${package-lock}/js/node_modules .
+            cp -r ${spago-lock.registry-app} .
+            echo "Optimizing with purs-backend-es..."
+            purs-backend-es build
+            esbuild ./output/Registry.App.Server/index.js --bundle --outfile=app.js --platform=node --minify
+          '';
+          installPhase = ''
+            mkdir $out
+            cp app.js $out
+          '';
+        };
+      };
+
+      apps = {
+        default = {
+          type = "app";
+          program = "${
+            pkgs.writeShellScriptBin "registry-server" ''
+              ${pkgs.nodejs}/bin/node -e 'require("${packages.default}/app.js").main()'
+            ''
+          }/bin/registry-server";
+        };
+      };
+
+      checks = {
+
+      };
+
       devShells = {
         default = pkgs.mkShell {
           name = "registry";

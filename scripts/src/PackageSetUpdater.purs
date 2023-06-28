@@ -37,7 +37,6 @@ import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
-import Spago.Generated.BuildInfo as BuildInfo
 
 data PublishMode = GeneratePackageSet | CommitPackageSet
 
