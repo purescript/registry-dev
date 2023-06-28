@@ -189,11 +189,11 @@ workspace:
         - variant
       test_dependencies: []
   package_set:
-    registry: 20.0.3
+    registry: 28.1.0
   extra_packages:
     spago-core:
       git: https://github.com/purescript/spago.git
-      ref: b92239d18971779966c15460e03166acbc9c042a
+      ref: 4f6dc9d6354402abcb6b5564a9768b1af219b83a
       subdir: spaghetto/core
 packages:
   aff:
@@ -303,12 +303,13 @@ packages:
     dependencies: []
   arrays:
     type: registry
-    version: 7.2.0
-    integrity: sha256-vjd5tY1VFIg3HGBUFqG9+tWXqkV3EHRqZCzE+JC2yR0=
+    version: 7.2.1
+    integrity: sha256-HCUzV3uCSt6YBI9vlt1Ott20/2JfSCUoNsd+D6ORieQ=
     dependencies:
       - bifunctors
       - control
       - foldable-traversable
+      - functions
       - maybe
       - nonempty
       - partial
@@ -864,8 +865,8 @@ packages:
       - typelevel-prelude
   language-cst-parser:
     type: registry
-    version: 0.12.3
-    integrity: sha256-0pnjIJMtW9u1ne+fKB4QbaCeqqwWIGE3fjEQOIU0+ks=
+    version: 0.13.0
+    integrity: sha256-8eeW0hs+PQR+suxqbz5tfbsrcbmonQY3o3IsWobcfi0=
     dependencies:
       - arrays
       - console
@@ -1421,7 +1422,7 @@ packages:
   spago-core:
     type: git
     url: https://github.com/purescript/spago.git
-    rev: b92239d18971779966c15460e03166acbc9c042a
+    rev: 4f6dc9d6354402abcb6b5564a9768b1af219b83a
     subdir: spaghetto/core
     dependencies:
       - aff

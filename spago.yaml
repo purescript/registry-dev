@@ -1,9 +1,9 @@
 workspace:
   lock: true
   package_set:
-    registry: 20.0.3
+    registry: 28.1.0
   extra_packages:
     spago-core:
       git: https://github.com/purescript/spago.git
-      ref: b92239d18971779966c15460e03166acbc9c042a
+      ref: 4f6dc9d6354402abcb6b5564a9768b1af219b83a
       subdir: spaghetto/core
