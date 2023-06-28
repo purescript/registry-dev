@@ -1,21 +1,5 @@
 {
   "nodes": {
-    "easy-dhall-nix": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1681943375,
-        "narHash": "sha256-gLWlMqkg0YKnRntOqU1CUcvb6by/ysvFS6IOdQh2Ipw=",
-        "owner": "justinwoo",
-        "repo": "easy-dhall-nix",
-        "rev": "7f365c1daf7f7fde3827800ace2621cffa7bed6b",
-        "type": "github"
-      },
-      "original": {
-        "owner": "justinwoo",
-        "repo": "easy-dhall-nix",
-        "type": "github"
-      }
-    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -37,11 +21,11 @@
         "systems": "systems"
       },
       "locked": {
-        "lastModified": 1687171271,
-        "narHash": "sha256-BJlq+ozK2B1sJDQXS3tzJM5a+oVZmi1q0FlBK/Xqv7M=",
+        "lastModified": 1687709756,
+        "narHash": "sha256-Y5wKlQSkgEK2weWdOu4J3riRd+kV/VCgHsqLNTTWQ/0=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "abfb11bd1aec8ced1c9bb9adfe68018230f4fb3c",
+        "rev": "dbabf0ca0c0c4bce6ea5eaf65af5cb694d2082c7",
         "type": "github"
       },
       "original": {
@@ -52,16 +36,16 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1685573264,
-        "narHash": "sha256-Zffu01pONhs/pqH07cjlF10NnMDLok8ix5Uk4rhOnZQ=",
+        "lastModified": 1687965090,
+        "narHash": "sha256-LqKKknpUxqek2XEOtVvliWAnd7n1ZHiUfiTM9iwwj6Q=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "380be19fbd2d9079f677978361792cb25e8a3635",
+        "rev": "58f9477b2c87380b2d8d30e3250e2e08e06774e7",
         "type": "github"
       },
       "original": {
         "owner": "nixos",
-        "ref": "release-22.05",
+        "ref": "release-23.05",
         "repo": "nixpkgs",
         "type": "github"
       }
@@ -73,11 +57,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1687203811,
-        "narHash": "sha256-TA4mYTlo1pSBezRqlsvUZEFX386FGXe3aj84Me+qBVU=",
+        "lastModified": 1687918068,
+        "narHash": "sha256-NEIf4mBeLxHbtJI2X/lzFRsqJgMdRM3ibanB8+bvusc=",
         "owner": "thomashoneyman",
         "repo": "purix",
-        "rev": "8840b72a182d79ad85156a308affe249eb0f7595",
+        "rev": "547316b290323070195daeb2f8e63c342418b0ac",
         "type": "github"
       },
       "original": {
@@ -88,7 +72,6 @@
     },
     "root": {
       "inputs": {
-        "easy-dhall-nix": "easy-dhall-nix",
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",

@@ -2,24 +2,14 @@
   description = "The PureScript Registry";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/release-22.05";
+    nixpkgs.url = "github:nixos/nixpkgs/release-23.05";
+    flake-utils.url = "github:numtide/flake-utils";
 
-    flake-utils = {url = "github:numtide/flake-utils";};
+    flake-compat.url = "github:edolstra/flake-compat";
+    flake-compat.flake = false;
 
-    flake-compat = {
-      url = "github:edolstra/flake-compat";
-      flake = false;
-    };
-
-    purix = {
-      url = "github:thomashoneyman/purix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    easy-dhall-nix = {
-      url = "github:justinwoo/easy-dhall-nix";
-      flake = false;
-    };
+    purix.url = "github:thomashoneyman/purix";
+    purix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = {
@@ -27,14 +17,12 @@
     nixpkgs,
     flake-utils,
     purix,
-    easy-dhall-nix,
     ...
   }: let
     supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
 
     registryOverlay = final: prev: {
       nodejs = prev.nodejs-18_x;
-      dhallPackages = prev.callPackage easy-dhall-nix {};
 
       # We don't want to force everyone to update their configs if they aren't
       # normally on flakes.
@@ -167,7 +155,6 @@
             # Project tooling
             nixFlakes
             nixfmt
-            openssh
             git
             bash
             nodejs
@@ -175,10 +162,9 @@
             licensee
             coreutils
             gzip
-            nodePackages.bower
 
-            dhallPackages.dhall-simple
-            dhallPackages.dhall-json-simple
+            dhall
+            dhall-json
 
             # Development tooling
             purs-unstable
