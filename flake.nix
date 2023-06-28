@@ -156,7 +156,7 @@
           nativeBuildInputs = [pkgs.purs pkgs.purs-backend-es pkgs.esbuild];
           buildPhase = ''
             ln -s ${package-lock}/js/node_modules .
-            cp -r ${spago-lock.registry-app} .
+            cp -r ${spago-lock.registry-app}/output .
             echo "Optimizing with purs-backend-es..."
             purs-backend-es build
             esbuild ./output/Registry.App.Server/index.js --bundle --outfile=app.js --platform=node --minify

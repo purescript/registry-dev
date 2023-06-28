@@ -57,11 +57,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1687918068,
-        "narHash": "sha256-NEIf4mBeLxHbtJI2X/lzFRsqJgMdRM3ibanB8+bvusc=",
+        "lastModified": 1687977295,
+        "narHash": "sha256-ONSgSvyxXREHVuRD1B9cK3rTh1HfPnd4hOvqG+F/Kxk=",
         "owner": "thomashoneyman",
         "repo": "purix",
-        "rev": "547316b290323070195daeb2f8e63c342418b0ac",
+        "rev": "c3f73ff5741bd65a870f1742c991c5b8cc66c65f",
         "type": "github"
       },
       "original": {
