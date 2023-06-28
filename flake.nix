@@ -153,7 +153,7 @@
           version = "0.0.1";
           src = ./app;
           phases = ["buildPhase" "installPhase"];
-          nativeBuildInputs = [pkgs.purs pkgs.purs-backend-es pkgs.esbuild];
+          nativeBuildInputs = [pkgs.purs-backend-es pkgs.esbuild];
           buildPhase = ''
             ln -s ${package-lock}/js/node_modules .
             cp -r ${spago-lock.registry-app}/output .
