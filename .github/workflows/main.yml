@@ -8,10 +8,6 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      SPACES_KEY: ${{ secrets.SPACES_KEY }}
-      SPACES_SECRET: ${{ secrets.SPACES_SECRET }}
     steps:
       # Setup
       - name: Check out source repository
@@ -19,8 +15,6 @@ jobs:
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v4
-        with:
-          github-token: ${{ env.GITHUB_TOKEN }}
 
       - name: Setup Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@v2
@@ -30,20 +24,9 @@ jobs:
       - name: Initialize Nix
         run: nix develop
 
-      # First we build the two packages that represent the build outputs of the
-      # registry for general consumers
-      - name: Build the registry server
-        run: nix build .#server
-
-      - name: Build the registry GitHub importer
-        run: nix build .#github-importer
-
-      # Then we run the flake checks, which will build all packages and scripts
-      # in the registry, and will also run tests and check formatting.
-      - name: Run flake checks
-        run: nix flake check
-
       # Unfortunately I can't run 'spago test' in a derivation because it doesn't
-      # have a mode that ignores the cache
+      # have a mode that ignores the cache. So we run it in a script instead.
+      # Once we can make this a normal derivation then we can delete this 
+      # workflow file altogether.
       - name: Run Spago tests
         run: nix develop --command run-tests-script
