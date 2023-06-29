@@ -235,7 +235,7 @@
           inherit DHALL_PRELUDE;
           packages = with pkgs; [
             # All stable PureScript compilers
-            compilers
+            registry.compilers
 
             # TODO: Hacky, remove when I can run spago test in a pure env
             run-tests-script
