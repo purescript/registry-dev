@@ -12,205 +12,159 @@
     purix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = {
-    self,
-    nixpkgs,
-    flake-utils,
-    purix,
-    ...
-  }: let
-    supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
+  outputs = { self, nixpkgs, flake-utils, purix, ... }:
+    let
+      supportedSystems =
+        [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
 
-    registryOverlay = final: prev: {
-      nodejs = prev.nodejs-18_x;
+      registryOverlay = final: prev: {
+        nodejs = prev.nodejs-18_x;
 
-      # We don't want to force everyone to update their configs if they aren't
-      # normally on flakes.
-      nixFlakes = prev.writeShellScriptBin "nixFlakes" ''
-        exec ${prev.nixFlakes}/bin/nix --experimental-features "nix-command flakes" "$@"
-      '';
-    };
-  in
-    flake-utils.lib.eachSystem supportedSystems (system: let
-      pkgs = import nixpkgs {
-        inherit system;
-        overlays = [purix.overlays.default registryOverlay];
+        # We don't want to force everyone to update their configs if they aren't
+        # normally on flakes.
+        nixFlakes = prev.writeShellScriptBin "nixFlakes" ''
+          exec ${prev.nixFlakes}/bin/nix --experimental-features "nix-command flakes" "$@"
+        '';
       };
+    in flake-utils.lib.eachSystem supportedSystems (system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ purix.overlays.default registryOverlay ];
+        };
 
-      # Produces a list of all PureScript binaries supported by purix, ie. those
-      # from 0.13 onwards, callable using the naming convention
-      # `purs-MAJOR_MINOR_PATCH`.
-      #   $ purs-0_14_0 --version
-      #   0.14.0
-      #
-      # To add a new compiler to the list, just update purix:
-      #   $ nix flake update
-      compilers = let
-        # Only include the compiler at normal MAJOR.MINOR.PATCH versions.
-        stableOnly =
-          pkgs.lib.filterAttrs
-          (name: _: (builtins.match "^purs-[0-9]_[0-9]+_[0-9]$" name != null))
-          pkgs.purs-bin;
-      in
-        pkgs.symlinkJoin {
+        # We can't run 'spago test' in our flake checks because it tries to
+        # write to a cache and I can't figure out how to disable it. Instead
+        # we supply it as a shell script.
+        #
+        # Once we can run 'spago test --offline' or something similar, then this
+        # should just be a normal derivation that links the node_modules, copies
+        # the output dir locally, and runs 'spago test'.
+        #
+        # $ nix develop --command run-tests-script
+        localNpmPackages = pkgs.purix.buildPackageLock { src = ./.; };
+        localSpagoPackages = pkgs.purix.buildSpagoLock { src = ./.; };
+        run-tests-script = pkgs.writeShellScriptBin "run-tests-script" ''
+          set -euo pipefail
+          WORKDIR=$(mktemp -d)
+          cp spago.yaml spago.lock $WORKDIR
+          cp -a app foreign lib scripts $WORKDIR
+          pushd $WORKDIR
+          ln -s ${localNpmPackages}/js/node_modules .
+          cp -r ${localSpagoPackages.registry-app} .
+          ${pkgs.spago-unstable}/bin/spago test
+          popd
+        '';
+
+        # Produces a list of all PureScript binaries supported by purix, ie. those
+        # from 0.13 onwards, callable using the naming convention
+        # `purs-MAJOR_MINOR_PATCH`.
+        #   $ purs-0_14_0 --version
+        #   0.14.0
+        #
+        # To add a new compiler to the list, just update purix:
+        #   $ nix flake update
+        compilers = let
+          # Only include the compiler at normal MAJOR.MINOR.PATCH versions.
+          stableOnly = pkgs.lib.filterAttrs
+            (name: _: (builtins.match "^purs-[0-9]_[0-9]+_[0-9]$" name != null))
+            pkgs.purs-bin;
+        in pkgs.symlinkJoin {
           name = "purs-compilers";
           paths = pkgs.lib.mapAttrsToList (name: drv:
             pkgs.writeShellScriptBin name ''
               exec ${drv}/bin/purs "$@"
-            '')
-          stableOnly;
+            '') stableOnly;
         };
 
-      # Various scripts we would like to be able to run via a Nix shell. Once
-      # in a shell via `nix develop`, these can be run, e.g.
-      #
-      #   $ registry-check-format
-      #   All files formatted.
-      #
-      scripts = pkgs.symlinkJoin {
-        name = "scripts";
-        paths = pkgs.lib.mapAttrsToList pkgs.writeShellScriptBin {
-          registry-build = ''
-            cd $(git rev-parse --show-toplevel)
-            npm ci
-            spago build
-          '';
+        registryApps = pkgs.callPackages ./app { inherit compilers; };
+        registryScripts = pkgs.callPackages ./scripts { inherit compilers; };
 
-          registry-test = ''
-            cd $(git rev-parse --show-toplevel)
-            npm ci
-            spago test
-          '';
+        mkAppOutput = drv: {
+          type = "app";
+          program = "${drv}/bin/${drv.name}";
+        };
+      in rec {
+        packages = registryApps // registryScripts;
 
-          registry-check-format = ''
-            cd $(git rev-parse --show-toplevel)
-            purs-tidy check app lib scripts
-          '';
+        apps = pkgs.lib.mapAttrs (_: drv: mkAppOutput drv) packages;
 
-          registry-api = ''
-            cd $(git rev-parse --show-toplevel)
-            spago run -p registry-app
-          '';
-
-          registry-importer = ''
-            cd $(git rev-parse --show-toplevel)
-            spago run -p registry-scripts -m Registry.Scripts.LegacyImporter -- $@
-          '';
-
-          registry-package-set-updater = ''
-            cd $(git rev-parse --show-toplevel)
-            spago run -p registry-scripts -m Registry.Scripts.PackageSetUpdater -- $@
-          '';
-
-          registry-package-transferrer = ''
-            cd $(git rev-parse --show-toplevel)
-            spago run -p registry-scripts -m Registry.Scripts.PackageTransferrer -- $@
-          '';
-
-          registry-package-deleter = ''
-            cd $(git rev-parse --show-toplevel)
-            spago run -p registry-scripts -m Registry.Scripts.PackageDeleter -- $@
-          '';
-
-          registry-solver = ''
-            cd $(git rev-parse --show-toplevel)
-            spago run -p registry-scripts -m Registry.Scripts.Solver -- $@
-          '';
-
-          registry-verify = ''
-            cd $(git rev-parse --show-toplevel)
-            spago run -p registry-scripts -m Registry.Scripts.VerifyIntegrity -- $@
-          '';
+        checks = packages // {
+          check-format = pkgs.stdenv.mkDerivation {
+            name = "check-format";
+            src = ./.;
+            buildInputs = [ pkgs.purs-tidy ];
+            buildPhase = ''
+              set -e
+              purs-tidy check app foreign lib scripts
+            '';
+            installPhase = ''
+              mkdir $out
+            '';
+          };
 
           # This script verifies that
           # - all the dhall we have in the repo actually compiles
           # - all the example manifests actually typecheck as Manifests
-          registry-verify-dhall = ''
-            cd $(git rev-parse --show-toplevel)
-            set -euo pipefail
+          verify-dhall = pkgs.stdenv.mkDerivation {
+            name = "verify-dhall";
+            src = ./.;
+            buildInputs = [ pkgs.dhall pkgs.dhall-json ];
+            buildPhase = ''
+              set -euo pipefail
 
-            for FILE in $(find ./types/v1 -iname "*.dhall")
-            do
-              echo "Typechecking ''${FILE}";
-              dhall <<< "./''${FILE}" > /dev/null
-            done
+              mkdir -p cache/dhall
+              export XDG_CACHE_HOME="$PWD/cache"
 
-            for FILE in $(find ./lib/test/_fixtures/manifests -iname "*.json")
-            do
-              echo "Conforming ''${FILE} to the Manifest type"
-              cat "''${FILE}" | json-to-dhall --records-loose --unions-strict "./types/v1/Manifest.dhall" > /dev/null
-            done
-          '';
+              for FILE in $(find ./types/v1 -iname "*.dhall")
+              do
+                echo "Typechecking ''${FILE}";
+                dhall <<< "./''${FILE}" > /dev/null
+              done
+
+              for FILE in $(find ./lib/test/_fixtures/manifests -iname "*.json")
+              do
+                echo "Conforming ''${FILE} to the Manifest type"
+                cat "''${FILE}" | json-to-dhall --records-loose --unions-strict "./types/v1/Manifest.dhall" > /dev/null
+              done
+            '';
+
+            installPhase = ''
+              mkdir $out
+            '';
+          };
         };
-      };
-    in rec {
-      packages = {
-        default = let 
-          package-lock = pkgs.purix.buildPackageLock {src = ./.;};
-          spago-lock = pkgs.purix.buildSpagoLock {src = ./.; corefn = true;};
-        in pkgs.stdenv.mkDerivation {
-          name = "registry-app";
-          version = "0.0.1";
-          src = ./app;
-          phases = ["buildPhase" "installPhase"];
-          nativeBuildInputs = [pkgs.purs-backend-es pkgs.esbuild];
-          buildPhase = ''
-            ln -s ${package-lock}/js/node_modules .
-            cp -r ${spago-lock.registry-app}/output .
-            echo "Optimizing with purs-backend-es..."
-            purs-backend-es build
-            esbuild ./output/Registry.App.Server/index.js --bundle --outfile=app.js --platform=node --minify
-          '';
-          installPhase = ''
-            mkdir $out
-            cp app.js $out
-          '';
+
+        devShells = {
+          default = pkgs.mkShell {
+            name = "registry-dev";
+            packages = with pkgs; [
+              # All stable PureScript compilers
+              compilers
+
+              # TODO: Hacky, remove when I can run spago test in a pure env
+              run-tests-script
+
+              # Project tooling
+              nixFlakes
+              nixfmt
+              git
+              bash
+              nodejs
+              jq
+              licensee
+              coreutils
+              gzip
+              dhall
+              dhall-json
+
+              # Development tooling
+              purs
+              spago-unstable
+              purs-tidy-unstable
+              purs-backend-es-unstable
+            ];
+          };
         };
-      };
-
-      apps = {
-        default = {
-          type = "app";
-          program = "${
-            pkgs.writeShellScriptBin "registry-server" ''
-              ${pkgs.nodejs}/bin/node -e 'require("${packages.default}/app.js").main()'
-            ''
-          }/bin/registry-server";
-        };
-      };
-
-      checks = {
-
-      };
-
-      devShells = {
-        default = pkgs.mkShell {
-          name = "registry";
-          packages = with pkgs; [
-            # Helpful utilities
-            scripts
-            compilers
-
-            # Project tooling
-            nixFlakes
-            nixfmt
-            git
-            bash
-            nodejs
-            jq
-            licensee
-            coreutils
-            gzip
-            dhall
-            dhall-json
-
-            # Development tooling
-            purs-unstable
-            spago-unstable
-            purs-tidy-unstable
-            purs-backend-es-unstable
-          ];
-        };
-      };
-    });
+      });
 }

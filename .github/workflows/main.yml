@@ -17,21 +17,6 @@ jobs:
       - name: Check out source repository
         uses: actions/checkout@v2
 
-      - name: Cache NPM dependencies
-        uses: actions/cache@v2
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Cache PureScript dependencies
-        uses: actions/cache@v2
-        with:
-          key: ${{ runner.os }}-spago-${{ hashFiles('**/spago.yaml') }}
-          path: |
-            .spago
-            output
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v4
         with:
@@ -45,15 +30,20 @@ jobs:
       - name: Initialize Nix
         run: nix develop
 
-      # Checks for the Registry Draft
-      - name: "Check that all Dhall compiles, and fixtures correctly conform to a Manifest"
-        run: nix develop --command 'registry-verify-dhall'
+      # First we build the two packages that represent the build outputs of the
+      # registry for general consumers
+      - name: Build the registry server
+        run: nix build .#server
 
-      - name: "Build project"
-        run: nix develop --command 'registry-build'
+      - name: Build the registry GitHub importer
+        run: nix build .#github-importer
 
-      - name: "Run tests"
-        run: nix develop --command 'registry-test'
+      # Then we run the flake checks, which will build all packages and scripts
+      # in the registry, and will also run tests and check formatting.
+      - name: Run flake checks
+        run: nix flake check
 
-      - name: "Verify CI code formats"
-        run: nix develop --command 'registry-check-format'
+      # Unfortunately I can't run 'spago test' in a derivation because it doesn't
+      # have a mode that ignores the cache
+      - name: Run Spago tests
+        run: nix develop --command run-tests-script
