@@ -49,11 +49,13 @@
         # the output dir locally, and runs 'spago test'.
         #
         # $ nix develop --command run-tests-script
+        npmDependencies = pkgs.purix.buildPackageLock { src = ./.; };
         run-tests-script = pkgs.writeShellScriptBin "run-tests-script" ''
           set -euo pipefail
           WORKDIR=$(mktemp -d)
           cp spago.yaml spago.lock $WORKDIR
           cp -a app foreign lib scripts $WORKDIR
+          ln -s ${npmDependencies}/js/node_modules $WORKDIR/node_modules
           pushd $WORKDIR
           ${pkgs.spago-unstable}/bin/spago test
           popd
