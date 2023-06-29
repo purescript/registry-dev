@@ -42,16 +42,12 @@
         # the output dir locally, and runs 'spago test'.
         #
         # $ nix develop --command run-tests-script
-        localNpmPackages = pkgs.purix.buildPackageLock { src = ./.; };
-        localSpagoPackages = pkgs.purix.buildSpagoLock { src = ./.; };
         run-tests-script = pkgs.writeShellScriptBin "run-tests-script" ''
           set -euo pipefail
           WORKDIR=$(mktemp -d)
           cp spago.yaml spago.lock $WORKDIR
           cp -a app foreign lib scripts $WORKDIR
           pushd $WORKDIR
-          ln -s ${localNpmPackages}/js/node_modules .
-          cp -r ${localSpagoPackages.registry-app} .
           ${pkgs.spago-unstable}/bin/spago test
           popd
         '';
@@ -109,6 +105,10 @@
           verify-dhall = pkgs.stdenv.mkDerivation {
             name = "verify-dhall";
             src = ./.;
+            DHALL_PRELUDE = builtins.fetchGit {
+              url = "https://github.com/dhall-lang/dhall-lang";
+              rev = "e35f69d966f205fdc0d6a5e8d0209e7b600d90b3";
+            };
             buildInputs = [ pkgs.dhall pkgs.dhall-json ];
             buildPhase = ''
               set -euo pipefail
