@@ -33,6 +33,13 @@
           overlays = [ purix.overlays.default registryOverlay ];
         };
 
+        # We can't import from remote urls in dhall when running in CI, so we
+        # fetch the repository and use the local path instead.
+        DHALL_PRELUDE = "${builtins.fetchGit {
+          url = "https://github.com/dhall-lang/dhall-lang";
+          rev = "e35f69d966f205fdc0d6a5e8d0209e7b600d90b3";
+        }}/Prelude/package.dhall";
+
         # We can't run 'spago test' in our flake checks because it tries to
         # write to a cache and I can't figure out how to disable it. Instead
         # we supply it as a shell script.
@@ -102,13 +109,10 @@
           # This script verifies that
           # - all the dhall we have in the repo actually compiles
           # - all the example manifests actually typecheck as Manifests
-          verify-dhall = pkgs.stdenv.mkDerivation {
+          verify-dhall = pkgs.stdenv.mkDerivation rec {
             name = "verify-dhall";
             src = ./.;
-            DHALL_PRELUDE = builtins.fetchGit {
-              url = "https://github.com/dhall-lang/dhall-lang";
-              rev = "e35f69d966f205fdc0d6a5e8d0209e7b600d90b3";
-            };
+            inherit DHALL_PRELUDE;
             buildInputs = [ pkgs.dhall pkgs.dhall-json ];
             buildPhase = ''
               set -euo pipefail
@@ -138,6 +142,7 @@
         devShells = {
           default = pkgs.mkShell {
             name = "registry-dev";
+            inherit DHALL_PRELUDE;
             packages = with pkgs; [
               # All stable PureScript compilers
               compilers
