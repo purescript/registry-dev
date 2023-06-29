@@ -200,8 +200,7 @@
               };
             };
           };
-          # Bit annoying that you have to use Python to write the test, but
-          # it's not a big deal.
+          # Test scripts are written in Python:
           # https://nixos.org/manual/nixos/stable/index.html#sec-nixos-tests
           #
           # Note that the python file will be linted, and the test will fail if
@@ -210,7 +209,6 @@
           testScript = ''
             # Machines are available based on their host name, or their name in
             # the "nodes" record if their host name is not set.
-            start_all()
             registry.wait_for_unit("server.service")
             expected = "TODO"
             actual = client.succeed("${pkgs.curl}/bin/curl http://registry/api/v1/jobs/0")
