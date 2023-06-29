@@ -193,9 +193,7 @@
         integration = pkgs.nixosTest {
           name = "server integration test";
           nodes = {
-            registry = {
-              imports = [base ./nix/module.nix];
-            };
+            registry = ./nix/module.nix;
             client = {
               config = {
                 virtualisation.graphics = false;
@@ -210,20 +208,12 @@
           # the script fails the lint — if you see an unexpected failure, check
           # the nix log for errors.
           testScript = ''
-            import json
-
-            # Special functions from the test script. Machines are available
-            # based on their host name, or their name in the "nodes" record if
-            # their host name is not set.
+            # Machines are available based on their host name, or their name in
+            # the "nodes" record if their host name is not set.
             start_all()
             registry.wait_for_unit("server.service")
-
             expected = "TODO"
-            request1 = client.succeed("${pkgs.curl}/bin/curl http://registry/")
-            request2 = client.succeed("${pkgs.curl}/bin/curl http://registry/api/v1/jobs/0")
-            print(request1)
-            print(request2)
-            actual = json.loads(request2)
+            actual = client.succeed("${pkgs.curl}/bin/curl http://registry/api/v1/jobs/0")
             assert expected == actual, "Unimplemented jobs endpoint returns TODO"
           '';
         };
