@@ -92,7 +92,7 @@
 
         apps = pkgs.lib.mapAttrs (_: drv: mkAppOutput drv) packages;
 
-        checks = packages // {
+        checks = {
           check-format = pkgs.stdenv.mkDerivation {
             name = "check-format";
             src = ./.;
