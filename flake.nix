@@ -209,10 +209,17 @@
           testScript = ''
             # Machines are available based on their host name, or their name in
             # the "nodes" record if their host name is not set.
+            start_all()
             registry.wait_for_unit("server.service")
-            expected = "TODO"
-            actual = client.succeed("${pkgs.curl}/bin/curl http://registry/api/v1/jobs/0")
-            assert expected == actual, "Unimplemented jobs endpoint returns TODO"
+            # We wait for the server to be ready; without this, in CI sometimes
+            # the client starts sending requests before the server is ready.
+            client.wait_until_succeeds("${pkgs.curl}/bin/curl http://registry/api/v1/jobs/0", timeout=180)
+
+            def test_endpoint(endpoint, expected):
+              actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
+              assert expected == actual, f"Endpoint {endpoint} returns {expected}"
+
+            test_endpoint("jobs/0", "TODO")
           '';
         };
       };
