@@ -308,15 +308,18 @@
                   gc.automatic = true;
                   settings.auto-optimise-store = true;
                 };
-                # We want https for the registry server
-                security.acme = {
-                  acceptTerms = true;
-                  defaults.email = "hello@thomashoneyman.com";
-                };
-                services.nginx.virtualHosts.localhost = {
-                  forceSSL = true;
-                  enableACME = true;
-                };
+
+                # We want https for the registry server, but we can't enable it
+                # until we have a domain name for it.
+
+                # security.acme = {
+                #   acceptTerms = true;
+                #   defaults.email = "hello@thomashoneyman.com";
+                # };
+                # services.nginx.virtualHosts.localhost = {
+                #   forceSSL = true;
+                #   enableACME = true;
+                # };
               }
             ];
         };
