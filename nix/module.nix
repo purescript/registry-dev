@@ -16,14 +16,6 @@ in {
     firewall.allowedTCPPorts = [22 80 443];
   };
 
-  virtualisation.forwardPorts = [
-    {
-      from = "host";
-      guest.port = 80;
-      host.port = port;
-    }
-  ];
-
   systemd.services = {
     server = {
       description = "registry server";
@@ -76,5 +68,6 @@ in {
     };
   };
 
-  system.stateVersion = "23.05";
+  # Match to the version used in the nixos.qcow on digital ocean
+  system.stateVersion = "22.05";
 }

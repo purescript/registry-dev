@@ -68,6 +68,7 @@ main = launchAff_ $ do
 
     -- Git env
     debouncer <- Git.newDebouncer
+
     let
       gitEnv :: GitEnv
       gitEnv =

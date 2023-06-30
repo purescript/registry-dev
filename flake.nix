@@ -119,7 +119,19 @@
 
       machine = nixpkgs.lib.nixosSystem {
         system = builtins.replaceStrings ["darwin"] ["linux"] system;
-        modules = [base ./nix/module.nix];
+        modules = [
+          base
+          ./nix/module.nix
+          {
+            virtualisation.forwardPorts = [
+              {
+                from = "host";
+                guest.port = 80;
+                host.port = 8080;
+              }
+            ];
+          }
+        ];
       };
 
       # Allows you to run a local VM with the registry server, mimicking the
@@ -235,6 +247,9 @@
             # TODO: Hacky, remove when I can run spago test in a pure env
             run-tests-script
 
+            # Deployment
+            colmena
+
             # Project tooling
             nixFlakes
             nixfmt
@@ -256,5 +271,50 @@
           ];
         };
       };
-    });
+    })
+    # Separated because this is not supported for all systems.
+    // {
+      # Deployment specification for the registry server
+      colmena = {
+        meta = {
+          nixpkgs = import nixpkgs {
+            system = "x86_64-linux";
+            overlays = [purix.overlays.default registryOverlay];
+          };
+        };
+        # The registry server
+        registry = {
+          lib,
+          modulesPath,
+          ...
+        } @ args: {
+          deployment.targetHost = "161.35.111.85";
+          # The build isn't that computationally expensive, and copying the whole
+          # closure over takes forever, so we build on the host. This also makes
+          # it possible to run 'colmena apply' from a darwin system.
+          deployment.buildOnTarget = true;
+          # We import the server module and also the digital ocean configuration
+          # necessary to run in a DO droplet.
+          imports =
+            lib.optional (builtins.pathExists ./do-userdata.nix) ./do-userdata.nix
+            ++ [
+              (modulesPath + "/virtualisation/digital-ocean-config.nix")
+              ./nix/module.nix
+              # Extra config for the deployed server only.
+              {
+                # Enable Digital Ocean monitoring
+                services.do-agent.enable = true;
+                nix = {
+                  gc.automatic = true;
+                  settings.auto-optimise-store = true;
+
+                  # https://garnix.io/docs/caching
+                  settings.substituters = ["https://cache.garnix.io"];
+                  settings.trusted-public-keys = ["cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g="];
+                };
+              }
+            ];
+        };
+      };
+    };
 }
