@@ -102,7 +102,7 @@
       };
 
       # Machine configurations for NixOS
-      base = {
+      vm-base = {
         lib,
         modulesPath,
         ...
@@ -111,27 +111,24 @@
         # https://github.com/utmapp/UTM/issues/2353
         networking.nameservers = lib.mkIf pkgs.stdenv.isDarwin ["8.8.8.8"];
         nixpkgs.overlays = [purix.overlays.default registryOverlay];
+        # NOTE: Use 'shutdown now' to exit the VM.
+        services.getty.autologinUser = "root";
         virtualisation = {
           graphics = false;
           host = {inherit pkgs;};
+          forwardPorts = [
+            {
+              from = "host";
+              guest.port = 80;
+              host.port = 8080;
+            }
+          ];
         };
       };
 
-      machine = nixpkgs.lib.nixosSystem {
+      vm-machine = nixpkgs.lib.nixosSystem {
         system = builtins.replaceStrings ["darwin"] ["linux"] system;
-        modules = [
-          base
-          ./nix/module.nix
-          {
-            virtualisation.forwardPorts = [
-              {
-                from = "host";
-                guest.port = 80;
-                host.port = 8080;
-              }
-            ];
-          }
-        ];
+        modules = [vm-base ./nix/module.nix];
       };
 
       # Allows you to run a local VM with the registry server, mimicking the
@@ -139,7 +136,7 @@
       run-vm = pkgs.writeShellScript "run-vm.sh" ''
         export NIX_DISK_IMAGE=$(mktemp -u -t nixos.qcow2.XXXXXXX)
         trap "rm -f $NIX_DISK_IMAGE" EXIT
-        ${machine.config.system.build.vm}/bin/run-registry-vm
+        ${vm-machine.config.system.build.vm}/bin/run-registry-vm
       '';
     in rec {
       packages = pkgs.registry.apps // pkgs.registry.scripts;
@@ -287,12 +284,14 @@
           lib,
           modulesPath,
           ...
-        } @ args: {
+        }: {
           deployment.targetHost = "161.35.111.85";
+
           # The build isn't that computationally expensive, and copying the whole
           # closure over takes forever, so we build on the host. This also makes
           # it possible to run 'colmena apply' from a darwin system.
           deployment.buildOnTarget = true;
+
           # We import the server module and also the digital ocean configuration
           # necessary to run in a DO droplet.
           imports =
@@ -300,6 +299,7 @@
             ++ [
               (modulesPath + "/virtualisation/digital-ocean-config.nix")
               ./nix/module.nix
+
               # Extra config for the deployed server only.
               {
                 # Enable Digital Ocean monitoring
@@ -307,10 +307,15 @@
                 nix = {
                   gc.automatic = true;
                   settings.auto-optimise-store = true;
-
-                  # https://garnix.io/docs/caching
-                  settings.substituters = ["https://cache.garnix.io"];
-                  settings.trusted-public-keys = ["cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g="];
+                };
+                # We want https for the registry server
+                security.acme = {
+                  acceptTerms = true;
+                  defaults.email = "hello@thomashoneyman.com";
+                };
+                services.nginx.virtualHosts.localhost = {
+                  forceSSL = true;
+                  enableACME = true;
                 };
               }
             ];

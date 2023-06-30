@@ -4,11 +4,15 @@ in {
   environment = {
     systemPackages = [
       pkgs.vim
-
       # FIXME: This should be picked up via the buildInputs, surely? It's not.
       pkgs.registry.compilers
-      pkgs.nodejs
     ];
+  };
+
+  # https://garnix.io/docs/caching
+  nix.settings = {
+    substituters = ["https://cache.garnix.io"];
+    trusted-public-keys = ["cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g="];
   };
 
   networking = {
@@ -21,6 +25,8 @@ in {
       description = "registry server";
       wantedBy = ["multi-user.target"];
       serviceConfig = {
+        # FIXME: We need to pass these in correctly instead of using dummy
+        # values. Explore Nix secrets solutions (agenix, etc.) for this.
         ExecStart = "${pkgs.writeShellScriptBin "registry-server-init" ''
           # Dummy env vars for the test server.
           export PACCHETTIBOTTI_TOKEN="ghp_XXX"
@@ -39,12 +45,25 @@ in {
     };
   };
 
+  swapDevices = [
+    {
+      device = "/var/lib/swap";
+      size = 4096;
+    }
+  ];
+
   services = {
-    # NOTE: Use 'shutdown now' to exit the VM.
-    getty.autologinUser = "root";
+    openssh.settings = {
+      PasswordAuthentication = false;
+      PermitRootLogin = "yes";
+    };
 
     nginx = {
       enable = true;
+      recommendedGzipSettings = true;
+      recommendedOptimisation = true;
+      recommendedProxySettings = true;
+      recommendedTlsSettings = true;
 
       virtualHosts.localhost = {
         locations."/" = {
