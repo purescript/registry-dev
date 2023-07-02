@@ -199,7 +199,13 @@
         # This is an integration test that will run the server and allow us to
         # test it by sending API requests. You can run only this check with:
         # nix build .#checks.${your-system}.integration
-        integration = pkgs.nixosTest {
+        integration = if pkgs.stdenv.isDarwin 
+        then pkgs.runCommand "integration-disabled" {} ''
+          mkdir $out
+          echo "Integration tests are not supported on macOS systems, skipping..."
+          exit 0
+        ''
+        else pkgs.nixosTest {
           name = "server integration test";
           nodes = {
             registry = ./nix/module.nix;
