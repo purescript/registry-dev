@@ -11,8 +11,12 @@ import Data.Either (Either(..))
 import Data.List.NonEmpty (NonEmptyList)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), maybe)
 import Data.Newtype (un)
+import Data.Set (Set)
+import Data.Set as Set
+import Data.Set.NonEmpty (NonEmptySet)
+import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Data.Traversable (traverse)
@@ -203,3 +207,24 @@ validatePursModule moduleString = case CST.parsePartialModule moduleString of
       Right unit
     else
       Left $ "Module name is " <> name <> " but PureScript libraries cannot publish modules named: " <> String.joinWith ", " forbiddenModules
+
+-- | These files are always included in the tarball, if present
+alwaysIncludedFilesIfPresent :: Set FilePath
+alwaysIncludedFilesIfPresent = Set.fromFoldable
+  [ "purs.json"
+  , "spago.yaml"
+  , "spago.dhall"
+  , "packages.dhall"
+  , "bower.json"
+  , "package.json"
+  ]
+
+-- | Validate that the given directory contains no files that are excluded by
+-- | the package's configuration.
+-- | In case of error, return the set of files that shouldn't be excluded
+validateNoExcludedObligatoryFiles :: Array FilePath -> Either (NonEmptySet FilePath) Unit
+validateNoExcludedObligatoryFiles files = do
+  let fileSet = Set.fromFoldable files
+  let removed = Set.intersection alwaysIncludedFilesIfPresent fileSet
+  let removedNonEmpty = NonEmptySet.fromSet removed
+  maybe (Right unit) Left removedNonEmpty

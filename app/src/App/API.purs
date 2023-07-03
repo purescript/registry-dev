@@ -14,6 +14,7 @@ module Registry.App.API
   , copyPackageSourceFiles
   ) where
 
+import Prelude
 import Registry.App.Prelude
 
 import Affjax.Node as Affjax.Node
@@ -27,15 +28,17 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
-import Data.Foldable (foldMap, traverse_)
+import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.HTTP.Method (Method(..))
 import Data.JSDate as JSDate
 import Data.Map as Map
 import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
+import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
-import Data.String.NonEmpty as NonEmptyString
+import Data.String.NonEmpty (fromString) as NonEmptyString
+import Data.String.NonEmpty.Internal (toString) as NonEmptyString
 import Data.String.Regex as Regex
 import Effect.Aff as Aff
 import Effect.Ref as Ref
@@ -83,7 +86,7 @@ import Registry.Manifest as Manifest
 import Registry.Metadata as Metadata
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageSetUpdateData, PublishData)
 import Registry.Operation as Operation
-import Registry.Operation.Validation (UnpublishError(..))
+import Registry.Operation.Validation (UnpublishError(..), validateNoExcludedObligatoryFiles)
 import Registry.Operation.Validation as Operation.Validation
 import Registry.Owner as Owner
 import Registry.PackageName as PackageName
@@ -100,8 +103,6 @@ import Spago.Core.Config as Spago
 import Spago.Core.Prelude as Spago.Prelude
 import Spago.Log as Spago.Log
 import Sunde as Sunde
-import Data.String.NonEmpty.Internal (toString) as NonEmptyString
-import Safe.Coerce (coerce)
 
 -- | Operations can be exercised for old, pre-registry packages, or for packages
 -- | which are on the 0.15 compiler series. If a true legacy package is uploaded
@@ -1045,7 +1046,12 @@ copyPackageSourceFiles { files, excludeFiles, source, destination } = do
       { succeeded, failed } <- FastGlob.match source globs
       -- Since we will only subtract the excluded globs we can safely ignore the failed globs
       Log.warn $ "The following paths matched by globs in the 'excludeFiles' key are outside your package directory: " <> String.joinWith ", " failed
-      pure succeeded
+      case validateNoExcludedObligatoryFiles succeeded of
+        Right _ -> pure succeeded
+        Left removedObligatoryFiles -> do
+          Log.warn $ "The following paths matched by globs in the 'excludeFiles' key will be included in the tarball and cannot be excluded: " <> String.joinWith ", " (NonEmptySet.toUnfoldable removedObligatoryFiles)
+          pure $ succeeded Array.\\ NonEmptySet.toUnfoldable removedObligatoryFiles
+
 
   userFiles <- case files of
     Nothing -> pure []

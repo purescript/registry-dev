@@ -159,6 +159,24 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runTest) $ Spec.befo
 
     for_ acceptedPaths \path -> do
       paths.succeeded `Assert.Run.shouldContain` path
+
+  Spec.it "Won't exclude always included files" \{ source, destination, writeDirectories, writeFiles } -> do
+    let
+      userFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/*.purs" ]
+      excludeFiles = Just $ NonEmptyArray.singleton (NonEmptyString.nes (Proxy :: _ "purs.json"))
+
+    writeDirectories (goodDirectories)
+    writeFiles (goodFiles)
+
+    API.copyPackageSourceFiles { files: userFiles, excludeFiles, source, destination }
+
+    paths <- FastGlob.match destination [ "**/*" ]
+
+    let acceptedPaths = goodDirectories <> goodFiles
+
+    for_ acceptedPaths \path -> do
+      paths.succeeded `Assert.Run.shouldContain` path
+
   where
   runBefore :: forall r. Run (EFFECT + r) _
   runBefore = do
