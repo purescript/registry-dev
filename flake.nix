@@ -8,15 +8,15 @@
     flake-compat.url = "github:edolstra/flake-compat";
     flake-compat.flake = false;
 
-    purix.url = "github:thomashoneyman/purix";
-    purix.inputs.nixpkgs.follows = "nixpkgs";
+    purescript-overlay.url = "github:thomashoneyman/purescript-overlay";
+    purescript-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = {
     self,
     nixpkgs,
     flake-utils,
-    purix,
+    purescript-overlay,
     ...
   }: let
     supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
@@ -32,13 +32,13 @@
 
       # Packages associated with the registry, ie. in this repository.
       registry = let
-        # Produces a list of all PureScript binaries supported by purix, ie. those
-        # from 0.13 onwards, callable using the naming convention
+        # Produces a list of all PureScript binaries supported by purescript-overlay,
+        # ie. those from 0.13 onwards, callable using the naming convention
         # `purs-MAJOR_MINOR_PATCH`.
         #   $ purs-0_14_0 --version
         #   0.14.0
         #
-        # To add a new compiler to the list, just update purix:
+        # To add a new compiler to the list, just update the flake:
         #   $ nix flake update
         compilers = let
           # Only include the compiler at normal MAJOR.MINOR.PATCH versions.
@@ -65,7 +65,7 @@
     flake-utils.lib.eachSystem supportedSystems (system: let
       pkgs = import nixpkgs {
         inherit system;
-        overlays = [purix.overlays.default registryOverlay];
+        overlays = [purescript-overlay.overlays.default registryOverlay];
       };
 
       # We can't import from remote urls in dhall when running in CI, so we
@@ -110,7 +110,7 @@
         imports = ["${modulesPath}/virtualisation/qemu-vm.nix"];
         # https://github.com/utmapp/UTM/issues/2353
         networking.nameservers = lib.mkIf pkgs.stdenv.isDarwin ["8.8.8.8"];
-        nixpkgs.overlays = [purix.overlays.default registryOverlay];
+        nixpkgs.overlays = [purescript-overlay.overlays.default registryOverlay];
         # NOTE: Use 'shutdown now' to exit the VM.
         services.getty.autologinUser = "root";
         virtualisation = {
@@ -282,7 +282,7 @@
         meta = {
           nixpkgs = import nixpkgs {
             system = "x86_64-linux";
-            overlays = [purix.overlays.default registryOverlay];
+            overlays = [purescript-overlay.overlays.default registryOverlay];
           };
         };
         # The registry server
