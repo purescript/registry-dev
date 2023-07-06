@@ -1,6 +1,6 @@
-{ stdenv, purix, esbuild, nodejs, writeText, compilers }:
+{ stdenv, purix, slimlock, esbuild, nodejs, writeText, compilers }:
 let
-  package-lock = purix.buildPackageLock { src = ../.; };
+  package-lock = slimlock.buildPackageLock { src = ../.; omit = ["dev" "peer"];};
 
   spago-lock = purix.buildSpagoLock {
     src = ../.;

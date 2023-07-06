@@ -10,6 +10,9 @@
 
     purescript-overlay.url = "github:thomashoneyman/purescript-overlay";
     purescript-overlay.inputs.nixpkgs.follows = "nixpkgs";
+
+    slimlock.url = "github:thomashoneyman/slimlock";
+    slimlock.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = {
@@ -17,6 +20,7 @@
     nixpkgs,
     flake-utils,
     purescript-overlay,
+    slimlock,
     ...
   }: let
     supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
@@ -65,7 +69,7 @@
     flake-utils.lib.eachSystem supportedSystems (system: let
       pkgs = import nixpkgs {
         inherit system;
-        overlays = [purescript-overlay.overlays.default registryOverlay];
+        overlays = [purescript-overlay.overlays.default slimlock.overlays.default registryOverlay];
       };
 
       # We can't import from remote urls in dhall when running in CI, so we
@@ -84,7 +88,7 @@
       # the output dir locally, and runs 'spago test'.
       #
       # $ nix develop --command run-tests-script
-      npmDependencies = pkgs.purix.buildPackageLock {src = ./.;};
+      npmDependencies = pkgs.slimlock.buildPackageLock {src = ./.;};
       run-tests-script = pkgs.writeShellScriptBin "run-tests-script" ''
         set -euo pipefail
         WORKDIR=$(mktemp -d)
