@@ -114,7 +114,7 @@
         imports = ["${modulesPath}/virtualisation/qemu-vm.nix"];
         # https://github.com/utmapp/UTM/issues/2353
         networking.nameservers = lib.mkIf pkgs.stdenv.isDarwin ["8.8.8.8"];
-        nixpkgs.overlays = [purescript-overlay.overlays.default registryOverlay];
+        nixpkgs.overlays = [purescript-overlay.overlays.default slimlock.overlays.default registryOverlay];
         # NOTE: Use 'shutdown now' to exit the VM.
         services.getty.autologinUser = "root";
         virtualisation = {
@@ -286,7 +286,7 @@
         meta = {
           nixpkgs = import nixpkgs {
             system = "x86_64-linux";
-            overlays = [purescript-overlay.overlays.default registryOverlay];
+            overlays = [purescript-overlay.overlays.default slimlock.overlays.default registryOverlay];
           };
         };
         # The registry server
@@ -295,7 +295,7 @@
           modulesPath,
           ...
         }: {
-          deployment.targetHost = "161.35.111.85";
+          deployment.targetHost = "registry.purescript.org";
 
           # The build isn't that computationally expensive, and copying the whole
           # closure over takes forever, so we build on the host. This also makes
@@ -321,15 +321,14 @@
 
                 # We want https for the registry server, but we can't enable it
                 # until we have a domain name for it.
-
-                # security.acme = {
-                #   acceptTerms = true;
-                #   defaults.email = "hello@thomashoneyman.com";
-                # };
-                # services.nginx.virtualHosts.localhost = {
-                #   forceSSL = true;
-                #   enableACME = true;
-                # };
+                security.acme = {
+                  acceptTerms = true;
+                  defaults.email = "hello@thomashoneyman.com";
+                };
+                services.nginx.virtualHosts."registry.purescript.org" = {
+                  forceSSL = true;
+                  enableACME = true;
+                };
               }
             ];
         };

@@ -1,4 +1,5 @@
 {pkgs, ...}: let
+  host = "registry.purescript.org";
   port = 8080;
 in {
   environment = {
@@ -65,7 +66,7 @@ in {
       recommendedProxySettings = true;
       recommendedTlsSettings = true;
 
-      virtualHosts.localhost = {
+      virtualHosts.${host} = {
         locations."/" = {
           index = "index.html";
           root = pkgs.writeTextDir "index.html" ''

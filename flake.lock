@@ -36,11 +36,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1688609058,
-        "narHash": "sha256-ehzS5vsaEdTve4ivw33PZ1orDdQJxpdLbK1VQLcRxws=",
+        "lastModified": 1688652023,
+        "narHash": "sha256-a3mdaPxDTp5L/joHAPfduOC5i5GlpnOcWBBT7Av6nEQ=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "15b5303444726346ee9d95bc890e8317c4f437b1",
+        "rev": "86f8abf1a7007b1c020c7074bd8da11383e4602a",
         "type": "github"
       },
       "original": {
@@ -54,14 +54,15 @@
       "inputs": {
         "nixpkgs": [
           "nixpkgs"
-        ]
+        ],
+        "slimlock": "slimlock"
       },
       "locked": {
-        "lastModified": 1688592456,
-        "narHash": "sha256-IQ7rXkGbI/hkgrSO44Y9j6k3hWkzhKDLW4Vg0arR81Q=",
+        "lastModified": 1688613411,
+        "narHash": "sha256-HWZNu7HqMkKtQpoc/xwtehmaBHu4gT0yzbYEIBiv60w=",
         "owner": "thomashoneyman",
         "repo": "purescript-overlay",
-        "rev": "4299370e55559677d7709dfb4071fe9ad1df6eb2",
+        "rev": "e19bca38baed52d71fb245c0d78bc5bd74e59800",
         "type": "github"
       },
       "original": {
@@ -76,21 +77,42 @@
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
         "purescript-overlay": "purescript-overlay",
-        "slimlock": "slimlock"
+        "slimlock": "slimlock_2"
       }
     },
     "slimlock": {
+      "inputs": {
+        "nixpkgs": [
+          "purescript-overlay",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1688610262,
+        "narHash": "sha256-Wg0ViDotFWGWqKIQzyYCgayeH8s4U1OZcTiWTQYdAp4=",
+        "owner": "thomashoneyman",
+        "repo": "slimlock",
+        "rev": "b5c6cdcaf636ebbebd0a1f32520929394493f1a6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "thomashoneyman",
+        "repo": "slimlock",
+        "type": "github"
+      }
+    },
+    "slimlock_2": {
       "inputs": {
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1688611877,
-        "narHash": "sha256-3XVUzJ48msqFf4Yf4aYop82Ar0pZu65Usj/9pFnP3qU=",
+        "lastModified": 1688613539,
+        "narHash": "sha256-q2ozA+1BHbtFb/NinJAQPqGx/Co3c9pEJxBJD4MCoIo=",
         "owner": "thomashoneyman",
         "repo": "slimlock",
-        "rev": "c2030196b68601550078f855ef2fbf6c0ce1ca10",
+        "rev": "1ab83da7f05b71d0f579a302195264302960ff09",
         "type": "github"
       },
       "original": {
