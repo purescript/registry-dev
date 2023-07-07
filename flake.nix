@@ -36,6 +36,22 @@
 
       # Packages associated with the registry, ie. in this repository.
       registry = let
+        spago-lock = prev.purix.buildSpagoLock {
+          src = ./.;
+          corefn = true;
+        };
+
+        package-lock =
+          (prev.slimlock.buildPackageLock {
+            src = ./.;
+            omit = ["dev" "peer"];
+          })
+          # better-sqlite3 relies on node-gyp and python3 in the build environment, so
+          # we add those to the native build inputs.
+          .overrideAttrs (finalAttrs: prevAttrs: {
+            nativeBuildInputs = prevAttrs.nativeBuildInputs or [] ++ [prev.python3 prev.nodePackages.node-gyp];
+          });
+
         # Produces a list of all PureScript binaries supported by purescript-overlay,
         # ie. those from 0.13 onwards, callable using the naming convention
         # `purs-MAJOR_MINOR_PATCH`.
@@ -60,9 +76,9 @@
             stableOnly;
           };
       in {
-        apps = prev.callPackages ./app {inherit compilers;};
-        scripts = prev.callPackages ./scripts {inherit compilers;};
-        inherit compilers;
+        apps = prev.callPackages ./app {inherit compilers package-lock spago-lock;};
+        scripts = prev.callPackages ./scripts {inherit compilers package-lock spago-lock;};
+        inherit compilers package-lock spago-lock;
       };
     };
   in
@@ -88,13 +104,12 @@
       # the output dir locally, and runs 'spago test'.
       #
       # $ nix develop --command run-tests-script
-      npmDependencies = pkgs.slimlock.buildPackageLock {src = ./.;};
       run-tests-script = pkgs.writeShellScriptBin "run-tests-script" ''
         set -euo pipefail
         WORKDIR=$(mktemp -d)
         cp spago.yaml spago.lock $WORKDIR
         cp -a app foreign lib scripts $WORKDIR
-        ln -s ${npmDependencies}/js/node_modules $WORKDIR/node_modules
+        ln -s ${pkgs.registry.package-lock}/js/node_modules $WORKDIR/node_modules
         pushd $WORKDIR
         ${pkgs.spago-unstable}/bin/spago test
         popd
@@ -272,6 +287,7 @@
             gzip
             dhall
             dhall-json
+            dbmate
 
             # Development tooling
             purs

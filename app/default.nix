@@ -1,31 +1,15 @@
 {
   stdenv,
   purix,
-  slimlock,
   purs-backend-es,
   esbuild,
   writeText,
   compilers,
-  python3,
   nodejs,
-  nodePackages,
+  # from the registry at the top level
+  spago-lock,
+  package-lock,
 }: let
-  package-lock =
-    (slimlock.buildPackageLock {
-      src = ../.;
-      omit = ["dev" "peer"];
-    })
-    # better-sqlite3 relies on node-gyp and python3 in the build environment, so
-    # we add those to the native build inputs.
-    .overrideAttrs (final: prev: {
-      nativeBuildInputs = prev.nativeBuildInputs or [] ++ [python3 nodePackages.node-gyp];
-    });
-
-  spago-lock = purix.buildSpagoLock {
-    src = ../.;
-    corefn = true;
-  };
-
   # Since both the importer and the server share the same build process, we
   # don't need to build them twice separately and can share an optimized output
   # directory.
@@ -62,7 +46,7 @@ in {
       esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node --packages=external
     '';
     installPhase = ''
-      mkdir -p $out/bin $out
+      mkdir -p $out/bin
 
       echo "Copying files..."
       cp ${name}.js $out/${name}.js
