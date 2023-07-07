@@ -35,7 +35,6 @@ import Registry.App.Effect.Git (PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (readManifestIndexFromDisk)
 import Registry.App.Effect.Registry as Registry
@@ -148,9 +147,8 @@ main = launchAff_ do
     # runAppEffects
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
-    # Notify.interpret Notify.handleLog
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-    # Log.interpret (\log -> Log.handleTerminal Log.Normal log *> Log.handleFs Log.Verbose logPath log)
+    # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'
 
   where

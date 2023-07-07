@@ -22,9 +22,7 @@ import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LogVerbosity(..))
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
@@ -155,7 +153,6 @@ main = launchAff_ do
         >>> Git.interpret (Git.handle (gitEnv gitMode))
         >>> Pursuit.interpret Pursuit.handlePure
         >>> Cache.interpret _legacyCache (Cache.handleMemoryFs { ref: legacyCacheRef, cache })
-        >>> Notify.interpret Notify.handleLog
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
         >>> Run.runBaseAff'
 

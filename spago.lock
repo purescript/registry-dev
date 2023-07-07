@@ -67,6 +67,7 @@ workspace:
         - typelevel-prelude
         - unicode
         - unsafe-coerce
+        - uuidv4
         - variant
       test_dependencies:
         - spec
@@ -1631,6 +1632,14 @@ packages:
       - psci-support
       - tuples
       - unsafe-coerce
+  uuidv4:
+    type: registry
+    version: 1.0.0
+    integrity: sha256-4uQjCFG3lntp0ukWLO6Ia1xc7pVKjyW/RwSx+dGMkM0=
+    dependencies:
+      - prelude
+      - random
+      - strings
   variant:
     type: registry
     version: 8.0.0

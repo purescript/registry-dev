@@ -56,8 +56,6 @@ import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify (NOTIFY)
-import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit (PURSUIT)
@@ -113,7 +111,7 @@ printSource = case _ of
   Legacy -> "legacy"
   Current -> "current"
 
-type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + NOTIFY + LOG + EXCEPT String + r)
+type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + LOG + EXCEPT String + r)
 
 -- | Process a package set update. Package set updates are only processed via
 -- | GitHub and not the HTTP API, so they require access to the GitHub env.
@@ -221,18 +219,18 @@ packageSetUpdate payload = do
       Except.throw "No packages in the suggested batch can be processed (all failed validation checks) and the compiler version was not upgraded, so there is no upgrade to perform."
 
   let changeSet = candidates.accepted <#> maybe Remove Update
-  Notify.notify "Attempting to build package set update."
+  Log.notify "Attempting to build package set update."
   PackageSets.upgradeAtomic latestPackageSet (fromMaybe prevCompiler payload.compiler) changeSet >>= case _ of
     Nothing ->
       Except.throw "The package set produced from this suggested update does not compile."
     Just packageSet -> do
       let commitMessage = PackageSets.commitMessage latestPackageSet changeSet (un PackageSet packageSet).version
       Registry.writePackageSet packageSet commitMessage
-      Notify.notify "Built and released a new package set! Now mirroring to the package-sets repo..."
+      Log.notify "Built and released a new package set! Now mirroring to the package-sets repo..."
       Registry.mirrorPackageSet packageSet
-      Notify.notify "Mirrored a new legacy package set."
+      Log.notify "Mirrored a new legacy package set."
 
-type AuthenticatedEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + NOTIFY + LOG + EXCEPT String + AFF + EFFECT + r)
+type AuthenticatedEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Run an authenticated package operation, ie. an unpublish or a transfer.
 authenticated :: forall r. AuthenticatedData -> Run (AuthenticatedEffects + r) Unit
@@ -292,7 +290,7 @@ authenticated auth = case auth.payload of
         Storage.delete payload.name payload.version
         Registry.writeMetadata payload.name updated
         Registry.deleteManifest payload.name payload.version
-        Notify.notify $ "Unpublished " <> formatted <> "!"
+        Log.notify $ "Unpublished " <> formatted <> "!"
 
   Transfer payload -> do
     Log.debug $ "Processing authorized transfer operation with payload: " <> stringifyJson Operation.authenticatedCodec auth
@@ -323,11 +321,11 @@ authenticated auth = case auth.payload of
         Log.debug $ "Successfully authenticated ownership of " <> PackageName.print payload.name <> ", transferring..."
         let updated = metadata # over Metadata _ { location = payload.newLocation }
         Registry.writeMetadata payload.name updated
-        Notify.notify "Successfully transferred your package!"
+        Log.notify "Successfully transferred your package!"
         Registry.mirrorLegacyRegistry payload.name payload.newLocation
-        Notify.notify "Mirrored registry operation to the legacy registry."
+        Log.notify "Mirrored registry operation to the legacy registry."
 
-type PublishEffects r = (PURSUIT + REGISTRY + STORAGE + GITHUB + LEGACY_CACHE + NOTIFY + LOG + EXCEPT String + AFF + EFFECT + r)
+type PublishEffects r = (PURSUIT + REGISTRY + STORAGE + GITHUB + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Publish a package via the 'publish' operation. If the package has not been
 -- | published before then it will be registered and the given version will be
@@ -412,7 +410,7 @@ publish source payload = do
     hasSpagoYaml <- Run.liftEffect $ FS.Sync.exists packageSpagoYaml
     case hasSpagoYaml of
       true -> do
-        Notify.notify $ "Package source does not have a purs.json file, creating one from your spago.yaml file..."
+        Log.notify $ "Package source does not have a purs.json file, creating one from your spago.yaml file..."
         -- Need to make a Spago log env first, disable the logging
         let spagoEnv = { logOptions: { color: false, verbosity: Spago.Log.LogQuiet } }
         maybeConfig <- Spago.Prelude.runSpago spagoEnv (Spago.readConfig packageSpagoYaml)
@@ -433,7 +431,7 @@ publish source payload = do
                 Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
                 Run.liftAff $ writeJsonFile Manifest.codec packagePursJson manifest
       false -> do
-        Notify.notify $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
+        Log.notify $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
         address <- case existingMetadata.location of
           Git _ -> Except.throw "Legacy packages can only come from GitHub."
           GitHub { subdir: Just subdir } -> Except.throw $ "Legacy packages cannot use the 'subdir' key, but this package specifies a " <> subdir <> " subdir."
@@ -473,7 +471,7 @@ publish source payload = do
           Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec manifest
           pure manifest
 
-  Notify.notify "Verifying package..."
+  Log.notify "Verifying package..."
 
   -- We trust the manifest for any changes to the 'owners' field, but for all
   -- other fields we trust the registry metadata.
@@ -519,7 +517,7 @@ publish source payload = do
 
     case Map.lookup manifest.version published of
       Nothing -> do
-        Notify.notify $ Array.fold
+        Log.notify $ Array.fold
           [ "This version has already been published to the registry, but the docs have not been "
           , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
           ]
@@ -612,7 +610,7 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
     Operation.Validation.ExceedsMaximum maxPackageBytes ->
       Except.throw $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
     Operation.Validation.WarnPackageSize maxWarnBytes ->
-      Notify.notify $ "WARNING: Package tarball is " <> show bytes <> "bytes, which exceeds the warning threshold of " <> show maxWarnBytes <> " bytes."
+      Log.notify $ "WARNING: Package tarball is " <> show bytes <> "bytes, which exceeds the warning threshold of " <> show maxWarnBytes <> " bytes."
 
   -- If a package has under ~30 bytes it's about guaranteed that packaging the
   -- tarball failed. This can happen if the system running the API has a non-
@@ -645,12 +643,12 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
     Right _ ->
       pure unit
 
-  Notify.notify "Package is verified! Uploading it to the storage backend..."
+  Log.notify "Package is verified! Uploading it to the storage backend..."
   Storage.upload manifest.name manifest.version tarballPath
   Log.debug $ "Adding the new version " <> Version.print manifest.version <> " to the package metadata file."
   let newMetadata = metadata { published = Map.insert manifest.version { hash, ref: payload.ref, publishedTime, bytes } metadata.published }
   Registry.writeMetadata manifest.name (Metadata newMetadata)
-  Notify.notify "Successfully uploaded package to the registry! 🎉 🚀"
+  Log.notify "Successfully uploaded package to the registry! 🎉 🚀"
 
   -- After a package has been uploaded we add it to the registry index, we
   -- upload its documentation to Pursuit, and we can now process it for package
@@ -669,7 +667,7 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
       publishToPursuit { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, dependenciesDir }
 
   Registry.mirrorLegacyRegistry payload.name newMetadata.location
-  Notify.notify "Mirrored registry operation to the legacy registry."
+  Log.notify "Mirrored registry operation to the legacy registry."
 
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the
@@ -816,7 +814,7 @@ type PublishToPursuit =
 publishToPursuit
   :: forall r
    . PublishToPursuit
-  -> Run (PURSUIT + LOG + NOTIFY + EXCEPT String + AFF + EFFECT + r) Unit
+  -> Run (PURSUIT + LOG + EXCEPT String + AFF + EFFECT + r) Unit
 publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = do
   Log.debug "Generating a resolutions file"
   tmp <- Tmp.mkTmpDir
@@ -878,7 +876,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
     Left error ->
       Except.throw $ "Could not publish your package to Pursuit because an error was encountered (cc: @purescript/packaging): " <> error
     Right _ ->
-      Notify.notify "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+      Log.notify "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
 type PursuitResolutions = Map RawPackageName { version :: Version, path :: FilePath }
 

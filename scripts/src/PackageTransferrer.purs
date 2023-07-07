@@ -17,9 +17,8 @@ import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LogVerbosity(..))
+import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
@@ -82,7 +81,6 @@ main = launchAff_ do
     # Storage.interpret (Storage.handleReadOnly cache)
     # Git.interpret (Git.handle gitEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-    # Notify.interpret Notify.handleLog
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'

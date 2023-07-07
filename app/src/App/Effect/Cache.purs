@@ -184,7 +184,7 @@ handleMemoryFs env = case _ of
     Exists.runExists (deleteFsImpl env.cache) (encodeFs key)
 
 -- | A class for encoding the values associated with a cache key in a form
--- | suitable for the file system.
+-- | suitable for storing them in memory.
 class MemoryEncodable key where
   encodeMemory :: forall b z. key z b -> Exists (MemoryEncoding z b)
 

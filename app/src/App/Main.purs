@@ -24,9 +24,8 @@ import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LogVerbosity(..))
+import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
@@ -104,9 +103,8 @@ main = launchAff_ $ do
       # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache, ref: githubCacheRef })
       -- Caching & logging
       # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
-      # Except.catch (\msg -> Log.error msg *> Notify.notify msg *> Run.liftEffect (Ref.write true thrownRef))
-      # Notify.interpret (Notify.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Git.defaultRepos.registry })
-      # Log.interpret (Log.handleTerminal Verbose)
+      # Except.catch (\msg -> Log.error msg *> Log.notify msg *> Run.liftEffect (Ref.write true thrownRef))
+      # Log.interpret (\log -> Log.handleTerminal Verbose log *> Log.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Git.defaultRepos.registry } log)
       -- Base effects
       # Run.runBaseAff'
 

@@ -2,12 +2,18 @@ module Registry.App.Server where
 
 import Registry.App.Prelude hiding ((/))
 
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Record as CA.Record
+import Data.DateTime (DateTime)
+import Data.Formatter.DateTime as DateTime
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Lens.Iso.Newtype (_Newtype)
+import Data.Newtype (unwrap)
 import Data.String as String
+import Data.UUID.Random as UUID
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
-import HTTPurple (class Generic, JsonDecoder(..), Method(..), Request, Response, RouteDuplex', (/))
+import HTTPurple (class Generic, JsonDecoder(..), JsonEncoder(..), Method(..), Request, Response, RouteDuplex', (/), (?))
 import HTTPurple as HTTPurple
 import Node.Path as Path
 import Node.Process as Process
@@ -15,16 +21,16 @@ import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Db (Db, JobId(..))
+import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (Debouncer, GIT)
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LogVerbosity(..))
+import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify (NOTIFY)
-import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Pursuit (PURSUIT)
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY)
@@ -48,46 +54,63 @@ data Route
   = Publish
   | Unpublish
   | Transfer
-  | Jobs JobID
+  | Jobs JobId
+      { logLevel :: Maybe LogLevel
+      , since :: Maybe DateTime
+      }
 
 derive instance Generic Route _
 
-newtype JobID = JobID String
+jobIdS :: RouteDuplex' JobId
+jobIdS = _Newtype Routing.segment
 
-instance Newtype JobID String
+logLevelP :: RouteDuplex' String -> RouteDuplex' LogLevel
+logLevelP = Routing.as printLogLevel parseLogLevel
 
-jobID :: RouteDuplex' JobID
-jobID = _Newtype Routing.segment
+timestampP :: RouteDuplex' String -> RouteDuplex' DateTime
+timestampP = Routing.as printTimestamp parseTimestamp
+  where
+  printTimestamp t = DateTime.format Internal.Format.iso8601DateTime t
+  parseTimestamp s = DateTime.unformat Internal.Format.iso8601DateTime s
 
 routes :: RouteDuplex' Route
 routes = Routing.root $ Routing.prefix "api" $ Routing.prefix "v1" $ RoutingG.sum
   { "Publish": "publish" / RoutingG.noArgs
   , "Unpublish": "unpublish" / RoutingG.noArgs
   , "Transfer": "transfer" / RoutingG.noArgs
-  , "Jobs": "jobs" / jobID
+  , "Jobs": "jobs" /
+      ( jobIdS ?
+          { logLevel: Routing.optional <<< logLevelP <<< Routing.string
+          , since: Routing.optional <<< timestampP <<< Routing.string
+          }
+      )
   }
 
-router :: Request Route -> Run ServerEffects Response
-router { route, method, body } = HTTPurple.usingCont case route, method of
+newJobId :: Effect JobId
+newJobId = (JobId <<< UUID.toString) <$> UUID.make
+
+type PublishResponse = { jobId :: JobId }
+
+publishResponseCodec :: JsonCodec PublishResponse
+publishResponseCodec = CA.Record.object "PublishResponse" { jobId: Db.jobIdCodec }
+
+router :: ServerEnv -> Request Route -> Run ServerEffects Response
+router env { route, method, body } = HTTPurple.usingCont case route, method of
   Publish, Post -> do
     publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
-
-    -- TODO: This should really be a launchAff_ acknowledging receipt but
-    -- not actualy processing, once we validate the operation is OK, and we
-    -- can return the job ID for polling.
-    -- So we shall:
-    -- - fork the publishing in a fiber
-    -- - stash the fiber in a ref (so we can keep track of how many things are going)
-    -- - generate a job ID
-    -- - make a log file with that job ID
-    -- - change the Notify effect to write to that log file in a structured format (so we can read it back)
-    lift $ API.publish Current publish
-    HTTPurple.ok "Completed publish operation."
+    jobId <- liftEffect $ newJobId
+    lift $ Log.info $ "Received publish request, job id: " <> unwrap jobId
+    let newEnv = env { jobId = Just jobId }
+    _fiber <- liftAff $ Aff.forkAff $ runEffects newEnv (API.publish Current publish)
+    jsonOk publishResponseCodec { jobId }
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
     case auth.payload of
       Operation.Unpublish _ -> do
+        -- TODO: fork, get a jobid, etc
+        -- TODO: we'll need a job type too!
+        -- TODO: return json
         lift $ API.authenticated auth
         HTTPurple.ok "Completed unpublish operation."
       _ ->
@@ -97,13 +120,17 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
     case auth.payload of
       Operation.Transfer _ -> do
+        -- TODO: fork, get a jobid, and so on and so on
+        -- TODO: return json
         lift $ API.authenticated auth
         HTTPurple.ok "Completed transfer operation."
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
-  Jobs _jobId, _ -> do
-    HTTPurple.ok "TODO"
+  Jobs jobId { logLevel: maybeLogLevel, since }, Get -> do
+    let logLevel = fromMaybe Notify maybeLogLevel
+    logs <- liftEffect $ Db.selectLogsByJob env.db jobId logLevel since
+    jsonOk (CA.array Db.logLineCodec) logs
 
   _, _ -> HTTPurple.notFound
 
@@ -134,6 +161,8 @@ type ServerEnv =
   , octokit :: Octokit
   , vars :: ServerEnvVars
   , debouncer :: Debouncer
+  , db :: Db
+  , jobId :: Maybe JobId
   }
 
 createServerEnv :: Aff ServerEnv
@@ -151,38 +180,26 @@ createServerEnv = do
   octokit <- Octokit.newOctokit vars.token
   debouncer <- Git.newDebouncer
 
-  pure { debouncer, githubCacheRef, legacyCacheRef, registryCacheRef, cacheDir, logsDir, vars, octokit }
+  db <- liftEffect $ Db.connect
 
-type ServerEffects = (PACCHETTIBOTTI_ENV + REGISTRY + GITHUB + GIT + STORAGE + PURSUIT + LEGACY_CACHE + NOTIFY + LOG + EXCEPT String + AFF + EFFECT ())
+  pure
+    { debouncer
+    , githubCacheRef
+    , legacyCacheRef
+    , registryCacheRef
+    , cacheDir
+    , logsDir
+    , vars
+    , octokit
+    , db
+    , jobId: Nothing
+    }
 
-runServer :: ServerEnv -> (Request Route -> Run ServerEffects Response) -> Request Route -> Aff Response
+type ServerEffects = (PACCHETTIBOTTI_ENV + REGISTRY + GITHUB + GIT + STORAGE + PURSUIT + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
+
+runServer :: ServerEnv -> (ServerEnv -> Request Route -> Run ServerEffects Response) -> Request Route -> Aff Response
 runServer env router' request = do
-  now <- nowUTC
-  let logFile = String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> "-" <> String.joinWith "__" request.path <> ".log"
-  let logPath = Path.concat [ env.logsDir, logFile ]
-
-  result <- Aff.attempt do
-    router' request
-      # Env.runPacchettiBottiEnv { publicKey: env.vars.publicKey, privateKey: env.vars.privateKey }
-      # Registry.interpret (Registry.handle env.registryCacheRef)
-      # Git.interpret
-          ( Git.handle
-              { repos: Git.defaultRepos
-              , pull: Git.ForceClean
-              , write: Git.CommitAs (Git.pacchettibottiCommitter env.vars.token)
-              , workdir: scratchDir
-              , debouncer: env.debouncer
-              }
-          )
-      # Pursuit.interpret (Pursuit.handleAff env.vars.token)
-      # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache: env.cacheDir, ref: env.githubCacheRef })
-      # Storage.interpret (Storage.handleS3 { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }, cache: env.cacheDir })
-      # Cache.interpret _legacyCache (Cache.handleMemoryFs { cache: env.cacheDir, ref: env.legacyCacheRef })
-      # Notify.interpret Notify.handleLog
-      # Except.catch (\msg -> Log.error msg *> Run.liftAff (Aff.throwError (Aff.error msg)))
-      # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
-      # Run.runBaseAff'
-
+  result <- runEffects env (router' env request)
   case result of
     Left error -> HTTPurple.badRequest (Aff.message error)
     Right response -> pure response
@@ -217,3 +234,44 @@ main = do
 
 jsonDecoder :: forall a. JsonCodec a -> JsonDecoder JsonDecodeError a
 jsonDecoder codec = JsonDecoder (parseJson codec)
+
+jsonEncoder :: forall a. JsonCodec a -> JsonEncoder a
+jsonEncoder codec = JsonEncoder (stringifyJson codec)
+
+jsonOk :: forall m a. MonadAff m => JsonCodec a -> a -> m Response
+jsonOk codec datum = HTTPurple.ok' HTTPurple.jsonHeaders $ HTTPurple.toJson (jsonEncoder codec) datum
+
+runEffects :: forall a. ServerEnv -> Run ServerEffects a -> Aff (Either Aff.Error a)
+runEffects env f = Aff.attempt do
+  now <- nowUTC
+  let logFile = String.take 10 (Formatter.DateTime.format Internal.Format.iso8601Date now) <> ".log"
+  let logPath = Path.concat [ env.logsDir, logFile ]
+  f # Env.runPacchettiBottiEnv { publicKey: env.vars.publicKey, privateKey: env.vars.privateKey }
+    # Registry.interpret (Registry.handle env.registryCacheRef)
+    # Git.interpret
+        ( Git.handle
+            { repos: Git.defaultRepos
+            , pull: Git.ForceClean
+            , write: Git.CommitAs (Git.pacchettibottiCommitter env.vars.token)
+            , workdir: scratchDir
+            , debouncer: env.debouncer
+            }
+        )
+    # Pursuit.interpret (Pursuit.handleAff env.vars.token)
+    # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache: env.cacheDir, ref: env.githubCacheRef })
+    # Storage.interpret (Storage.handleS3 { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }, cache: env.cacheDir })
+    # Cache.interpret _legacyCache (Cache.handleMemoryFs { cache: env.cacheDir, ref: env.legacyCacheRef })
+    # Except.catch (\msg -> Log.error msg *> Run.liftAff (Aff.throwError (Aff.error msg)))
+    # Log.interpret
+        ( \log -> case env.jobId of
+            Nothing -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log
+            Just jobId ->
+              Log.handleTerminal Normal log
+                *> Log.handleFs Verbose logPath log
+                *> Log.handleDb { db: env.db } jobId log
+
+        )
+    # Run.runBaseAff'
+
+-- TODO: request path in logs: (String.joinWith "__" request.path)
+

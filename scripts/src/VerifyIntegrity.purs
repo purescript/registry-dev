@@ -23,7 +23,7 @@ import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
 import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LogVerbosity(..))
+import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage

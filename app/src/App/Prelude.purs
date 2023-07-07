@@ -1,5 +1,10 @@
 module Registry.App.Prelude
   ( Backoff
+  , LogLevel(..)
+  , LogVerbosity(..)
+  , printLogLevel
+  , parseLogLevel
+  , logLevelToPriority
   , class Functor2
   , map2
   , formatPackageVersion
@@ -205,3 +210,39 @@ nowUTC = Extra.liftEffect do
 
 formatPackageVersion :: PackageName -> Version -> String
 formatPackageVersion name version = PackageName.print name <> "@" <> Version.print version
+
+data LogLevel = Debug | Info | Warn | Error | Notify
+
+derive instance Eq LogLevel
+derive instance Ord LogLevel
+
+printLogLevel :: LogLevel -> String
+printLogLevel = case _ of
+  Debug -> "DEBUG"
+  Info -> "INFO"
+  Warn -> "WARN"
+  Error -> "ERROR"
+  Notify -> "NOTIFY"
+
+-- These numbers are not consecutive so that we can insert new log levels if need be
+logLevelToPriority :: LogLevel -> Int
+logLevelToPriority = case _ of
+  Debug -> 0
+  Info -> 10
+  Warn -> 20
+  Error -> 30
+  Notify -> 40
+
+parseLogLevel :: String -> Either.Either String LogLevel
+parseLogLevel = case _ of
+  "DEBUG" -> Either.Right Debug
+  "INFO" -> Either.Right Info
+  "WARN" -> Either.Right Warn
+  "ERROR" -> Either.Right Error
+  "NOTIFY" -> Either.Right Notify
+  other -> Either.Left $ "Invalid log level: " <> other
+
+data LogVerbosity = Quiet | Normal | Verbose
+
+derive instance Eq LogVerbosity
+derive instance Ord LogVerbosity

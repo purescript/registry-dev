@@ -9,6 +9,8 @@ result
 .psa*
 .spago
 .cache
+.direnv
+*.sqlite3
 
 # Keep it secret, keep it safe.
 .env
