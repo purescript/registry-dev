@@ -3,12 +3,23 @@
   purix,
   slimlock,
   purs-backend-es,
-  esbuild,
   writeText,
   compilers,
+  python3,
   nodejs,
+  nodePackages,
 }: let
-  package-lock = slimlock.buildPackageLock {src = ../.; omit = ["dev" "peer"];};
+  package-lock =
+    (slimlock.buildPackageLock {
+      src = ../.;
+      omit = ["dev" "peer"];
+    })
+    # better-sqlite3 relies on node-gyp and python3 in the build environment, so
+    # we add those to the native build inputs.
+    .overrideAttrs (final: prev: {
+      nativeBuildInputs = prev.nativeBuildInputs or [] ++ [python3 nodePackages.node-gyp];
+    });
+
   spago-lock = purix.buildSpagoLock {
     src = ../.;
     corefn = true;
@@ -19,7 +30,7 @@
   # directory.
   shared = stdenv.mkDerivation {
     name = "registry-app-shared";
-    src = ./src;
+    src = ./.;
     phases = ["buildPhase" "installPhase"];
     nativeBuildInputs = [purs-backend-es];
     buildPhase = ''
@@ -36,54 +47,49 @@
 in {
   server = stdenv.mkDerivation rec {
     name = "registry-server";
-    src = ./src;
-    nativeBuildInputs = [esbuild];
+    src = ./.;
     buildInputs = [compilers nodejs];
     entrypoint = writeText "entrypoint.js" ''
-      import { main } from "./output/Registry.App.Server";
+      import { main } from "./output/Registry.App.Server/index.js";
       main();
-    '';
-    buildPhase = ''
-      ln -s ${package-lock}/js/node_modules .
-      cp -r ${shared}/output .
-      cp ${entrypoint} entrypoint.js
-      esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node
     '';
     installPhase = ''
       mkdir -p $out/bin
-      cp ${name}.js $out/${name}.js
+
+      echo "Copying files..."
+      cp package.json $out/package.json
+      ln -s ${package-lock}/js/node_modules $out/node_modules
+      cp -r ${shared}/output $out/output
+      cp ${entrypoint} $out/entrypoint.js
+
+      echo "Creating node script..."
       echo '#!/usr/bin/env sh' > $out/bin/${name}
-      echo 'exec ${nodejs}/bin/node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
+      echo 'exec ${nodejs}/bin/node '"$out/entrypoint.js"' "$@"' >> $out/bin/${name}
       chmod +x $out/bin/${name}
-      cp ${name}.js $out
     '';
   };
 
   github-importer = stdenv.mkDerivation rec {
     name = "registry-github-importer";
     src = ./src;
-    nativeBuildInputs = [esbuild];
     buildInputs = [compilers nodejs];
     entrypoint = writeText "entrypoint.js" ''
       import { main } from "./output/Registry.App.Main";
       main();
     '';
-    buildPhase = ''
-      ln -s ${package-lock}/js/node_modules .
-      cp -r ${shared}/output .
-      cp ${entrypoint} entrypoint.js
-      esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node
-    '';
-    checkPhase = ''
-
-    '';
     installPhase = ''
       mkdir -p $out/bin
-      cp ${name}.js $out/${name}.js
+
+      echo "Copying files..."
+      cp package.json $out/package.json
+      ln -s ${package-lock}/js/node_modules $out/node_modules
+      cp -r ${shared}/output $out/output
+      cp ${entrypoint} $out/entrypoint.js
+
+      echo "Creating node script..."
       echo '#!/usr/bin/env sh' > $out/bin/${name}
-      echo 'exec node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
+      echo 'exec ${nodejs}/bin/node '"$out/entrypoint.js"' "$@"' >> $out/bin/${name}
       chmod +x $out/bin/${name}
-      cp ${name}.js $out
     '';
   };
 }

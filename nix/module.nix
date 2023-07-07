@@ -71,11 +71,17 @@ in {
           index = "index.html";
           root = pkgs.writeTextDir "index.html" ''
             <html>
+            <head>
+              <title>PureScript Registry</title>
+              <style>
+                body {
+                  font-family: sans-serif;
+                }
+              </style>
+            </head>
             <body>
-              Welcome to the registry server. The API is located at /api. Example:
-
-                  curl localhost:${toString port}/api/v1/jobs/0
-
+              <h1>PureScript Registry</h1>
+              <p>Welcome to the registry server. The API is located at <code>/api.</code></p>
             </body>
             </html>
           '';

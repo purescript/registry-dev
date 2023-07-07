@@ -203,44 +203,47 @@
         # This is an integration test that will run the server and allow us to
         # test it by sending API requests. You can run only this check with:
         # nix build .#checks.${your-system}.integration
-        integration = if pkgs.stdenv.isDarwin 
-        then pkgs.runCommand "integration-disabled" {} ''
-          mkdir $out
-          echo "Integration tests are not supported on macOS systems, skipping..."
-          exit 0
-        ''
-        else pkgs.nixosTest {
-          name = "server integration test";
-          nodes = {
-            registry = ./nix/module.nix;
-            client = {
-              config = {
-                virtualisation.graphics = false;
+        integration =
+          if pkgs.stdenv.isDarwin
+          then
+            pkgs.runCommand "integration-disabled" {} ''
+              mkdir $out
+              echo "Integration tests are not supported on macOS systems, skipping..."
+              exit 0
+            ''
+          else
+            pkgs.nixosTest {
+              name = "server integration test";
+              nodes = {
+                registry = ./nix/module.nix;
+                client = {
+                  config = {
+                    virtualisation.graphics = false;
+                  };
+                };
               };
+              # Test scripts are written in Python:
+              # https://nixos.org/manual/nixos/stable/index.html#sec-nixos-tests
+              #
+              # Note that the python file will be linted, and the test will fail if
+              # the script fails the lint — if you see an unexpected failure, check
+              # the nix log for errors.
+              testScript = ''
+                # Machines are available based on their host name, or their name in
+                # the "nodes" record if their host name is not set.
+                start_all()
+                registry.wait_for_unit("server.service")
+                # We wait for the server to be ready; without this, in CI sometimes
+                # the client starts sending requests before the server is ready.
+                client.wait_until_succeeds("${pkgs.curl}/bin/curl http://registry/api/v1/jobs/0", timeout=180)
+
+                def test_endpoint(endpoint, expected):
+                  actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
+                  assert expected == actual, f"Endpoint {endpoint} returns {expected}"
+
+                test_endpoint("jobs/0", "TODO")
+              '';
             };
-          };
-          # Test scripts are written in Python:
-          # https://nixos.org/manual/nixos/stable/index.html#sec-nixos-tests
-          #
-          # Note that the python file will be linted, and the test will fail if
-          # the script fails the lint — if you see an unexpected failure, check
-          # the nix log for errors.
-          testScript = ''
-            # Machines are available based on their host name, or their name in
-            # the "nodes" record if their host name is not set.
-            start_all()
-            registry.wait_for_unit("server.service")
-            # We wait for the server to be ready; without this, in CI sometimes
-            # the client starts sending requests before the server is ready.
-            client.wait_until_succeeds("${pkgs.curl}/bin/curl http://registry/api/v1/jobs/0", timeout=180)
-
-            def test_endpoint(endpoint, expected):
-              actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
-              assert expected == actual, f"Endpoint {endpoint} returns {expected}"
-
-            test_endpoint("jobs/0", "TODO")
-          '';
-        };
       };
 
       devShells = {
