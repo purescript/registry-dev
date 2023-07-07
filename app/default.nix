@@ -3,6 +3,7 @@
   purix,
   slimlock,
   purs-backend-es,
+  esbuild,
   writeText,
   compilers,
   python3,
@@ -48,47 +49,57 @@ in {
   server = stdenv.mkDerivation rec {
     name = "registry-server";
     src = ./.;
+    nativeBuildInputs = [esbuild];
     buildInputs = [compilers nodejs];
     entrypoint = writeText "entrypoint.js" ''
-      import { main } from "./output/Registry.App.Server/index.js";
+      import { main } from "./output/Registry.App.Server";
       main();
     '';
+    buildPhase = ''
+      ln -s ${package-lock}/js/node_modules .
+      cp -r ${shared}/output .
+      cp ${entrypoint} entrypoint.js
+      esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node --packages=external
+    '';
     installPhase = ''
-      mkdir -p $out/bin
+      mkdir -p $out/bin $out
 
       echo "Copying files..."
-      cp package.json $out/package.json
-      ln -s ${package-lock}/js/node_modules $out/node_modules
-      cp -r ${shared}/output $out/output
-      cp ${entrypoint} $out/entrypoint.js
+      cp ${name}.js $out/${name}.js
+      ln -s ${package-lock}/js/node_modules $out
 
       echo "Creating node script..."
       echo '#!/usr/bin/env sh' > $out/bin/${name}
-      echo 'exec ${nodejs}/bin/node '"$out/entrypoint.js"' "$@"' >> $out/bin/${name}
+      echo 'exec ${nodejs}/bin/node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
       chmod +x $out/bin/${name}
     '';
   };
 
   github-importer = stdenv.mkDerivation rec {
     name = "registry-github-importer";
-    src = ./src;
+    src = ./.;
+    nativeBuildInputs = [esbuild];
     buildInputs = [compilers nodejs];
     entrypoint = writeText "entrypoint.js" ''
       import { main } from "./output/Registry.App.Main";
       main();
     '';
+    buildPhase = ''
+      ln -s ${package-lock}/js/node_modules .
+      cp -r ${shared}/output .
+      cp ${entrypoint} entrypoint.js
+      esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node --packages=external
+    '';
     installPhase = ''
-      mkdir -p $out/bin
+      mkdir -p $out/bin $out
 
       echo "Copying files..."
-      cp package.json $out/package.json
-      ln -s ${package-lock}/js/node_modules $out/node_modules
-      cp -r ${shared}/output $out/output
-      cp ${entrypoint} $out/entrypoint.js
+      cp ${name}.js $out/${name}.js
+      ln -s ${package-lock}/js/node_modules $out
 
       echo "Creating node script..."
       echo '#!/usr/bin/env sh' > $out/bin/${name}
-      echo 'exec ${nodejs}/bin/node '"$out/entrypoint.js"' "$@"' >> $out/bin/${name}
+      echo 'exec ${nodejs}/bin/node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
       chmod +x $out/bin/${name}
     '';
   };
