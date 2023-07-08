@@ -11,6 +11,8 @@ result
 .cache
 .direnv
 *.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
 
 # Keep it secret, keep it safe.
 .env

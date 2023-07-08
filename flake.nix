@@ -49,7 +49,9 @@
           # better-sqlite3 relies on node-gyp and python3 in the build environment, so
           # we add those to the native build inputs.
           .overrideAttrs (finalAttrs: prevAttrs: {
-            nativeBuildInputs = prevAttrs.nativeBuildInputs or [] ++ [prev.python3 prev.nodePackages.node-gyp];
+            nativeBuildInputs = prevAttrs.nativeBuildInputs or []
+              ++ [prev.python3 prev.nodePackages.node-gyp]
+              ++ (if prev.stdenv.isDarwin then [prev.darwin.cctools] else []);
           });
 
         # Produces a list of all PureScript binaries supported by purescript-overlay,
@@ -265,6 +267,7 @@
         default = pkgs.mkShell {
           name = "registry-dev";
           inherit DHALL_PRELUDE;
+          DATABASE_URL="sqlite:db/registry.sqlite3";
           packages = with pkgs; [
             # All stable PureScript compilers
             registry.compilers

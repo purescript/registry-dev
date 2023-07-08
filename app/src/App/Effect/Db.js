@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 
 
 export const connect = () => {
-  let db = new Database('registry.sqlite3', { fileMustExist: true });
+  let db = new Database('db/registry.sqlite3', { fileMustExist: true });
   db.pragma('journal_mode = WAL');
   return db;
 }
@@ -15,7 +15,7 @@ export const insertLogImpl = (db) => (logLine) => () => {
 
 export const selectLogsByJobImpl = (db) => (jobId) => (logLevel) => () => {
   const row = db
-    .prepare('SELECT * FROM logs WHERE jobId = ? AND level >= ? SORT BY timestamp ASC')
+    .prepare('SELECT * FROM logs WHERE jobId = ? AND level >= ? ORDER BY timestamp ASC')
     .all(jobId, logLevel);
   console.log(row);
   return row

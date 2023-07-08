@@ -5,6 +5,7 @@ module Registry.App.Prelude
   , printLogLevel
   , parseLogLevel
   , logLevelToPriority
+  , logLevelFromPriority
   , class Functor2
   , map2
   , formatPackageVersion
@@ -232,6 +233,15 @@ logLevelToPriority = case _ of
   Warn -> 20
   Error -> 30
   Notify -> 40
+
+logLevelFromPriority :: Int -> Either.Either String LogLevel
+logLevelFromPriority = case _ of
+  0 -> Either.Right Debug
+  10 -> Either.Right Info
+  20 -> Either.Right Warn
+  30 -> Either.Right Error
+  40 -> Either.Right Notify
+  other -> Either.Left $ "Invalid log level priority: " <> show other
 
 parseLogLevel :: String -> Either.Either String LogLevel
 parseLogLevel = case _ of

@@ -30,21 +30,21 @@ foreign import insertLogImpl :: Db -> LogLineJS -> Effect Unit
 foreign import selectLogsByJobImpl :: Db -> String -> Int -> Effect (Array LogLineJS)
 
 type LogLineJS =
-  { level :: String
+  { level :: Int
   , message :: String
   , timestamp :: String
   , jobId :: String
   }
 
 fromLogLineJS :: LogLineJS -> Either String LogLine
-fromLogLineJS { level: rawLevel, message, timestamp: rawTimestamp, jobId } = case parseLogLevel rawLevel, DateTime.unformat Internal.Format.iso8601DateTime rawTimestamp of
+fromLogLineJS { level: rawLevel, message, timestamp: rawTimestamp, jobId } = case logLevelFromPriority rawLevel, DateTime.unformat Internal.Format.iso8601DateTime rawTimestamp of
   Left err, _ -> Left err
   _, Left err -> Left $ "Invalid timestamp " <> show rawTimestamp <> ": " <> err
   Right level, Right timestamp -> Right { level, message, jobId: JobId jobId, timestamp }
 
 toLogLineJS :: LogLine -> LogLineJS
 toLogLineJS { level, message, timestamp, jobId: JobId jobId } =
-  { level: printLogLevel level
+  { level: logLevelToPriority level
   , message
   , timestamp: DateTime.format Internal.Format.iso8601DateTime timestamp
   , jobId
