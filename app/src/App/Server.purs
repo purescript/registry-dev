@@ -274,4 +274,3 @@ runEffects env f = Aff.attempt do
     # Run.runBaseAff'
 
 -- TODO: request path in logs: (String.joinWith "__" request.path)
-

@@ -215,7 +215,7 @@ newCacheRef = liftEffect $ Ref.new Map.empty
 -- storing a fiber along with each cache value, where the fiber will delete the
 -- value after _n_ minutes. When the value is accessed the fiber is killed and
 -- a new one spawned.
-handleMemory :: forall k r a. MemoryEncodable k => CacheRef -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
+handleMemory :: forall k r a. MemoryEncodable k => CacheRef -> Cache k a -> Run (LOG + EFFECT + r) a
 handleMemory ref = case _ of
   Get key -> Exists.runExists (getMemoryImpl ref) (encodeMemory key)
   Put key next -> Exists.runExists (putMemoryImpl ref next) (encodeMemory key)

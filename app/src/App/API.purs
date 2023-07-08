@@ -769,7 +769,12 @@ compilePackage { packageSourceDir, compiler, resolutions } = Except.runExcept do
       filename = PackageName.print name <> "-" <> Version.print version <> ".tar.gz"
       filepath = Path.concat [ dependenciesDir, filename ]
     Storage.download name version filepath
-    Tar.extract { cwd: dependenciesDir, archive: filename }
+    Run.liftAff (Aff.attempt (Tar.extract { cwd: dependenciesDir, archive: filename })) >>= case _ of
+      Left error -> do
+        Log.error $ "Failed to unpack " <> filename <> ": " <> Aff.message error
+        Except.throw "Failed to unpack dependency tarball, cannot continue."
+      Right _ ->
+        Log.debug $ "Unpacked " <> filename
     Run.liftAff $ FS.Aff.unlink filepath
     Log.debug $ "Installed " <> formatPackageVersion name version
 
@@ -930,6 +935,8 @@ fetchPackageSource { tmpDir, ref, location } = case location of
         let
           repoDir = Path.concat [ tmpDir, repo ]
 
+          -- FIXME: This should be removed / replaced so that we can test
+          -- without hitting the network.
           clonePackageAtTag = do
             let url = Array.fold [ "https://github.com/", owner, "/", repo ]
             let args = [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false", repoDir ]

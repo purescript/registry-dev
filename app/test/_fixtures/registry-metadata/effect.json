@@ -1,0 +1,15 @@
+{
+  "location": {
+    "githubOwner": "purescript",
+    "githubRepo": "purescript-effect"
+  },
+  "published": {
+    "4.0.0": {
+      "bytes": 8247,
+      "hash": "sha256-eBtZu+HZcMa5HilvI6kaDyVX3ji8p0W9MGKy2K4T6+M=",
+      "publishedTime": "2022-04-27T14:04:24.000Z",
+      "ref": "v4.0.0"
+    }
+  },
+  "unpublished": {}
+}
