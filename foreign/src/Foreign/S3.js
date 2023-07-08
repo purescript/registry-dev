@@ -1,8 +1,8 @@
-import aws from "aws-sdk";
+import { S3 } from "@aws-sdk/client-s3";
 
 export const connectImpl = ({ key, secret }, endpoint) => {
   const spacesEndpoint = new aws.Endpoint(endpoint);
-  return new aws.S3({
+  return new S3({
     endpoint: spacesEndpoint,
     accessKeyId: key,
     secretAccessKey: secret,
