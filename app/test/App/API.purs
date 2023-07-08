@@ -55,7 +55,7 @@ spec = do
         }
       liftEffect $ Process.chdir cwd
       case result of
-        Left error -> Aff.throwError $ Aff.error error
+        Left err -> Aff.throwError (Aff.error err)
         Right _ -> pure unit
 
 checkBuildPlanToResolutions :: Spec.Spec Unit

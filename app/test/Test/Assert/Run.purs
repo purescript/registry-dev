@@ -12,6 +12,7 @@ import Registry.App.Prelude
 
 import Data.Foldable (class Foldable)
 import Data.Foldable as Foldable
+import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.Set as Set
 import Effect.Aff as Aff
@@ -36,7 +37,7 @@ import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest (LEGACY_CACHE)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Foreign.FSExtra as FS.Extra
-import Registry.Foreign.Octokit (IssueNumber(..))
+import Registry.Foreign.Octokit (GitHubError(..), IssueNumber(..))
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Test.Utils as Utils
@@ -91,7 +92,7 @@ readFixtures = do
 -- FIXME: Rename to 'runTestEffects'
 runTestEffects :: forall a. TestEnv -> Run TEST_EFFECTS a -> Aff (Either String a)
 runTestEffects env =
-  Pursuit.interpret handlePursuitMock
+  Pursuit.interpret (handlePursuitMock env.metadata)
     >>> Registry.interpret (handleRegistryMock env.metadata env.index)
     >>> PackageSets.interpret handlePackageSetsMock
     >>> Storage.interpret handleStorageMock
@@ -114,13 +115,14 @@ metadataFixtures = Path.concat [ "test", "_fixtures", "registry-metadata" ]
 manifestFixtures :: FilePath
 manifestFixtures = Path.concat [ "test", "_fixtures", "registry-index" ]
 
-handlePursuitMock :: forall r a. Pursuit a -> Run r a
-handlePursuitMock = case _ of
+handlePursuitMock :: forall r a. Map PackageName Metadata -> Pursuit a -> Run r a
+handlePursuitMock metadata = case _ of
   Publish _json reply ->
     pure $ reply $ Right unit
-  GetPublishedVersions _name reply ->
-    -- FIXME: Reply with a map of versions based on the fixtures.
-    pure $ reply $ Right $ Map.empty
+  GetPublishedVersions name reply ->
+    pure $ reply $ Right $ fromMaybe Map.empty do
+      Metadata { published } <- Map.lookup name metadata
+      pure $ mapWithIndex (\version _ -> "https://pursuit.purescript.org/purescript-" <> PackageName.print name <> "/" <> Version.print version) published
 
 handleRegistryMock :: forall r a. Map PackageName Metadata -> ManifestIndex -> Registry a -> Run r a
 handleRegistryMock metadata index = case _ of
@@ -196,19 +198,20 @@ handleGitHubMock = case _ of
   ListTeamMembers _team reply ->
     -- FIXME: Respond with an actual list of team members if the team is the purescript owners (error otherwise)?
     pure $ reply $ Right []
-  GetContent _address _ref _path reply ->
-    -- FIXME: Respond with a  file for specific input paths?
-    -- Take it from fixtures?
-    pure $ reply $ Right
-      """
-      {
-        "name": "purescript-effect",
-        "license": "MIT",
-        "dependencies": {
-          "purescript-prelude": "^6.0.0"
+  GetContent address ref path reply ->
+    if address == { owner: "purescript", repo: "purescript-effect" } && ref == "v4.0.0" && path == "bower.json" then
+      pure $ reply $ Right
+        """
+        {
+          "name": "purescript-effect",
+          "license": "MIT",
+          "dependencies": {
+            "purescript-prelude": "^6.0.0"
+          }
         }
-      }
-      """
+        """
+    else
+      pure $ reply $ Left $ APIError { statusCode: 404, message: "Not Found" }
   GetRefCommit _address _ref reply ->
     -- FIXME: Respond with an actual commit for specific input paths?
     pure $ reply $ Right "Unimplemented"
