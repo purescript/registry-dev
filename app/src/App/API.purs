@@ -19,6 +19,7 @@ import Registry.App.Prelude
 import Affjax.Node as Affjax.Node
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
+import App.CLI.Git as Git
 import Control.Alternative as Alternative
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
@@ -51,7 +52,6 @@ import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
@@ -955,7 +955,7 @@ fetchPackageSource { tmpDir, ref, location } = case location of
 
         let
           getRefTime = do
-            timestamp <- Except.rethrow =<< Git.gitCLI [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir)
+            timestamp <- Except.rethrow =<< Run.liftAff (Git.gitCLI [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir))
             jsDate <- Run.liftEffect $ JSDate.parse timestamp
             dateTime <- Except.note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
             pure dateTime

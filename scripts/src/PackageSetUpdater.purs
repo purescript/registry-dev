@@ -19,8 +19,6 @@ import Node.Path as Path
 import Node.Process as Process
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
-import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
@@ -28,6 +26,8 @@ import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Registry.Repo (PullMode(..), RegistryRepoEnv, WriteMode(..))
+import Registry.App.Effect.Registry.Repo as Repo
 import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
@@ -73,16 +73,16 @@ main = Aff.launchAff_ do
           pure { token, write: ReadOnly }
     CommitPackageSet -> do
       token <- Env.lookupRequired Env.pacchettibottiToken
-      pure { token, write: CommitAs (Git.pacchettibottiCommitter token) }
+      pure { token, write: CommitAs (Repo.pacchettibottiCommitter token) }
 
   -- Git
-  debouncer <- Git.newDebouncer
+  debouncer <- Repo.newDebouncer
   let
-    gitEnv :: GitEnv
-    gitEnv =
+    repoEnv :: RegistryRepoEnv
+    repoEnv =
       { write
       , pull: ForceClean
-      , repos: Git.defaultRepos
+      , repos: Repo.defaultRepos
       , workdir: scratchDir
       , debouncer
       }
@@ -110,7 +110,7 @@ main = Aff.launchAff_ do
     # PackageSets.interpret (PackageSets.handle packageSetsEnv)
     # Registry.interpret (Registry.handle registryCacheRef)
     # Storage.interpret (Storage.handleReadOnly cache)
-    # Git.interpret (Git.handle gitEnv)
+    # Repo.interpret (Repo.handle repoEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)

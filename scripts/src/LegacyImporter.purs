@@ -46,13 +46,13 @@ import Registry.App.API as API
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (PullMode(..), WriteMode(..))
-import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Registry.Repo (PullMode(..), WriteMode(..))
+import Registry.App.Effect.Registry.Repo as Repo
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
@@ -118,8 +118,8 @@ main = launchAff_ do
   -- uploaded, but nothing is committed. In update-registry mode, tarballs are
   -- uploaded and manifests and metadata are written, committed, and pushed.
   runAppEffects <- do
-    debouncer <- Git.newDebouncer
-    let gitEnv pull write = { pull, write, repos: Git.defaultRepos, workdir: scratchDir, debouncer }
+    debouncer <- Repo.newDebouncer
+    let repoEnv pull write = { pull, write, repos: Repo.defaultRepos, workdir: scratchDir, debouncer }
     case mode of
       DryRun -> do
         token <- Env.lookupRequired Env.githubToken
@@ -128,7 +128,7 @@ main = launchAff_ do
           Storage.interpret (Storage.handleReadOnly cache)
             >>> Pursuit.interpret Pursuit.handlePure
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-            >>> Git.interpret (Git.handle (gitEnv Autostash ReadOnly))
+            >>> Repo.interpret (Repo.handle (repoEnv Autostash ReadOnly))
 
       GenerateRegistry -> do
         token <- Env.lookupRequired Env.githubToken
@@ -138,7 +138,7 @@ main = launchAff_ do
           Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret Pursuit.handlePure
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-            >>> Git.interpret (Git.handle (gitEnv Autostash (CommitAs (Git.pacchettibottiCommitter token))))
+            >>> Repo.interpret (Repo.handle (repoEnv Autostash (CommitAs (Repo.pacchettibottiCommitter token))))
 
       UpdateRegistry -> do
         token <- Env.lookupRequired Env.pacchettibottiToken
@@ -148,7 +148,7 @@ main = launchAff_ do
           Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret (Pursuit.handleAff token)
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-            >>> Git.interpret (Git.handle (gitEnv ForceClean (CommitAs (Git.pacchettibottiCommitter token))))
+            >>> Repo.interpret (Repo.handle (repoEnv ForceClean (CommitAs (Repo.pacchettibottiCommitter token))))
 
   -- Logging setup
   let logDir = Path.concat [ scratchDir, "logs" ]

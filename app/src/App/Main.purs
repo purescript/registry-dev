@@ -20,8 +20,6 @@ import Registry.App.Auth as Auth
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
-import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
@@ -29,6 +27,8 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Registry.Repo (PullMode(..), RegistryRepoEnv, WriteMode(..))
+import Registry.App.Effect.Registry.Repo as Repo
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Constants as Constants
@@ -66,14 +66,14 @@ main = launchAff_ $ do
             API.authenticated signed
 
     -- Git env
-    debouncer <- Git.newDebouncer
+    debouncer <- Repo.newDebouncer
 
     let
-      gitEnv :: GitEnv
-      gitEnv =
-        { repos: Git.defaultRepos
+      repoEnv :: RegistryRepoEnv
+      repoEnv =
+        { repos: Repo.defaultRepos
         , pull: ForceClean
-        , write: CommitAs (Git.pacchettibottiCommitter env.token)
+        , write: CommitAs (Repo.pacchettibottiCommitter env.token)
         , workdir: scratchDir
         , debouncer
         }
@@ -98,13 +98,13 @@ main = launchAff_ $ do
       # PackageSets.interpret (PackageSets.handle { workdir })
       # Registry.interpret (Registry.handle registryCacheRef)
       # Storage.interpret (Storage.handleS3 { s3: env.spacesConfig, cache })
-      # Git.interpret (Git.handle gitEnv)
+      # Repo.interpret (Repo.handle repoEnv)
       # Pursuit.interpret (Pursuit.handleAff env.token)
       # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache, ref: githubCacheRef })
       -- Caching & logging
       # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
       # Except.catch (\msg -> Log.error msg *> Log.notify msg *> Run.liftEffect (Ref.write true thrownRef))
-      # Log.interpret (\log -> Log.handleTerminal Verbose log *> Log.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Git.defaultRepos.registry } log)
+      # Log.interpret (\log -> Log.handleTerminal Verbose log *> Log.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Repo.defaultRepos.registry } log)
       -- Base effects
       # Run.runBaseAff'
 

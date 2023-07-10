@@ -25,8 +25,6 @@ import Registry.App.Effect.Db (Db, JobId(..))
 import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (Debouncer, GIT)
-import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
@@ -35,6 +33,8 @@ import Registry.App.Effect.Pursuit (PURSUIT)
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Registry.Repo (Debouncer, REGISTRY_REPO)
+import Registry.App.Effect.Registry.Repo as Repo
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest (LEGACY_CACHE, _legacyCache)
@@ -178,7 +178,7 @@ createServerEnv = do
   registryCacheRef <- Cache.newCacheRef
 
   octokit <- Octokit.newOctokit vars.token
-  debouncer <- Git.newDebouncer
+  debouncer <- Repo.newDebouncer
 
   db <- liftEffect $ Db.connect
 
@@ -195,7 +195,7 @@ createServerEnv = do
     , jobId: Nothing
     }
 
-type ServerEffects = (PACCHETTIBOTTI_ENV + REGISTRY + GITHUB + GIT + STORAGE + PURSUIT + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (PACCHETTIBOTTI_ENV + REGISTRY + REGISTRY_REPO + GITHUB + STORAGE + PURSUIT + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer :: ServerEnv -> (ServerEnv -> Request Route -> Run ServerEffects Response) -> Request Route -> Aff Response
 runServer env router' request = do
@@ -248,11 +248,11 @@ runEffects env f = Aff.attempt do
   let logPath = Path.concat [ env.logsDir, logFile ]
   f # Env.runPacchettiBottiEnv { publicKey: env.vars.publicKey, privateKey: env.vars.privateKey }
     # Registry.interpret (Registry.handle env.registryCacheRef)
-    # Git.interpret
-        ( Git.handle
-            { repos: Git.defaultRepos
-            , pull: Git.ForceClean
-            , write: Git.CommitAs (Git.pacchettibottiCommitter env.vars.token)
+    # Repo.interpret
+        ( Repo.handle
+            { repos: Repo.defaultRepos
+            , pull: Repo.ForceClean
+            , write: Repo.CommitAs (Repo.pacchettibottiCommitter env.vars.token)
             , workdir: scratchDir
             , debouncer: env.debouncer
             }
@@ -269,7 +269,6 @@ runEffects env f = Aff.attempt do
               Log.handleTerminal Normal log
                 *> Log.handleFs Verbose logPath log
                 *> Log.handleDb { db: env.db } jobId log
-
         )
     # Run.runBaseAff'
 

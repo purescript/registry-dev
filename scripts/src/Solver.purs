@@ -31,13 +31,13 @@ import Parsing as Parsing
 import Registry.App.API as API
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (PullMode(..), WriteMode(..))
-import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (readManifestIndexFromDisk)
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Registry.Repo (PullMode(..), WriteMode(..))
+import Registry.App.Effect.Registry.Repo as Repo
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Foreign.FSExtra as FS.Extra
@@ -116,8 +116,8 @@ main = launchAff_ do
   let cache = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cache
 
-  debouncer <- Git.newDebouncer
-  let gitEnv pull write = { pull, write, repos: Git.defaultRepos, workdir: scratchDir, debouncer }
+  debouncer <- Repo.newDebouncer
+  let repoEnv pull write = { pull, write, repos: Repo.defaultRepos, workdir: scratchDir, debouncer }
   token <- Env.lookupRequired Env.githubToken
   octokit <- Octokit.newOctokit token
   let
@@ -125,7 +125,7 @@ main = launchAff_ do
       Storage.interpret (Storage.handleReadOnly cache)
         >>> Pursuit.interpret Pursuit.handlePure
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-        >>> Git.interpret (Git.handle (gitEnv Autostash ReadOnly))
+        >>> Repo.interpret (Repo.handle (repoEnv Autostash ReadOnly))
 
   let
     doTheThing = do

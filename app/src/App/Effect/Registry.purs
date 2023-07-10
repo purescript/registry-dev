@@ -18,12 +18,12 @@ import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.Effect.Cache (class MemoryEncodable, Cache, CacheRef, MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Git (GIT)
-import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.Registry.Repo (REGISTRY_REPO)
+import Registry.App.Effect.Registry.Repo as Repo
 import Registry.App.Legacy.PackageSet (PscTag(..))
 import Registry.App.Legacy.PackageSet as Legacy.Manifest
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
@@ -149,7 +149,7 @@ interpret handler = Run.interpret (Run.on _registry handler Run.send)
 -- | This handler enforces a memory-only cache: we do not want to cache on the
 -- | file system or other storage because this handler relies on the registry
 -- | Git repositories instead.
-handle :: forall r a. CacheRef -> Registry a -> Run (GITHUB + GIT + LOG + AFF + EFFECT + r) a
+handle :: forall r a. CacheRef -> Registry a -> Run (GITHUB + REGISTRY_REPO + LOG + AFF + EFFECT + r) a
 handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ of
   ReadManifest name version reply -> do
     let formatted = formatPackageVersion name version
@@ -173,7 +173,7 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
           , printJson (Internal.Codec.packageMap Range.codec) error
           ]
       Right updated -> do
-        result <- Git.writeCommitPush (Git.CommitManifestEntry name) \indexPath -> do
+        result <- Repo.writeCommitPush (Repo.CommitManifestEntry name) \indexPath -> do
           ManifestIndex.insertIntoEntryFile indexPath manifest >>= case _ of
             Left error -> Except.throw $ "Could not insert manifest for " <> formatted <> " into its entry file in WriteManifest: " <> error
             Right _ -> pure $ Just $ "Update manifest for " <> formatted
@@ -181,8 +181,8 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
           Left error -> Except.throw $ "Failed to write and commit manifest: " <> error
           Right r -> do
             case r of
-              Git.NoChange -> Log.info "Did not commit manifest because it did not change."
-              Git.Changed -> Log.info "Wrote and committed manifest."
+              Repo.NoChange -> Log.info "Did not commit manifest because it did not change."
+              Repo.Changed -> Log.info "Wrote and committed manifest."
             Cache.put _registryCache AllManifests updated
 
   DeleteManifest name version reply -> map (map reply) Except.runExcept do
@@ -196,7 +196,7 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
           , printJson (Internal.Codec.packageMap (Internal.Codec.versionMap (Internal.Codec.packageMap Range.codec))) error
           ]
       Right updated -> do
-        commitResult <- Git.writeCommitPush (Git.CommitManifestEntry name) \indexPath -> do
+        commitResult <- Repo.writeCommitPush (Repo.CommitManifestEntry name) \indexPath -> do
           ManifestIndex.removeFromEntryFile indexPath name version >>= case _ of
             Left error -> Except.throw $ "Could not remove manifest for " <> formatted <> " from its entry file in DeleteManifest: " <> error
             Right _ -> pure $ Just $ "Remove manifest entry for " <> formatted
@@ -204,37 +204,37 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
           Left error -> Except.throw $ "Failed to delete and commit manifest: " <> error
           Right r -> do
             case r of
-              Git.NoChange ->
+              Repo.NoChange ->
                 Log.info "Did not commit manifest because it already didn't exist."
-              Git.Changed ->
+              Repo.Changed ->
                 Log.info "Wrote and committed manifest."
             Cache.put _registryCache AllManifests updated
 
   ReadAllManifests reply -> map (map reply) Except.runExcept do
     let
       refreshIndex = do
-        indexPath <- Git.getPath Git.ManifestIndexRepo
+        indexPath <- Repo.getPath Repo.ManifestIndexRepo
         index <- readManifestIndexFromDisk indexPath
         Cache.put _registryCache AllManifests index
         pure index
 
-    Git.pull Git.ManifestIndexRepo >>= case _ of
+    Repo.pull Repo.ManifestIndexRepo >>= case _ of
       Left error ->
         Except.throw $ "Could not read manifests because the manifest index repo could not be checked: " <> error
-      Right Git.NoChange -> do
+      Right Repo.NoChange -> do
         cache <- Cache.get _registryCache AllManifests
         case cache of
           Nothing -> do
             Log.info "No cached manifest index, reading from disk..."
             refreshIndex
           Just cached -> pure cached
-      Right Git.Changed -> do
+      Right Repo.Changed -> do
         Log.info "Manifest index has changed, replacing cache..."
         refreshIndex
 
   ReadMetadata name reply -> map (map reply) Except.runExcept do
     let printedName = PackageName.print name
-    registryPath <- Git.getPath Git.RegistryRepo
+    registryPath <- Repo.getPath Repo.RegistryRepo
 
     let
       path = Path.concat [ registryPath, Constants.metadataDirectory, printedName <> ".json" ]
@@ -277,11 +277,11 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
           Cache.put _registryCache AllMetadata (Map.singleton name metadata)
           pure $ Just metadata
 
-    Git.pull Git.RegistryRepo >>= case _ of
+    Repo.pull Repo.RegistryRepo >>= case _ of
       Left error ->
         Except.throw $ "Could not read metadata because the registry repo could not be checked: " <> error
 
-      Right Git.NoChange -> do
+      Right Repo.NoChange -> do
         Cache.get _registryCache AllMetadata >>= case _ of
           Nothing -> resetFromDisk
           Just allMetadata -> case Map.lookup name allMetadata of
@@ -300,7 +300,7 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
             Just cached ->
               pure $ Just cached
 
-      Right Git.Changed -> do
+      Right Repo.Changed -> do
         Log.info "Registry repo has changed, clearing metadata cache..."
         resetFromDisk
 
@@ -308,7 +308,7 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
     let printedName = PackageName.print name
     Log.info $ "Writing metadata for " <> printedName
     Log.debug $ printJson Metadata.codec metadata
-    commitResult <- Git.writeCommitPush (Git.CommitMetadataEntry name) \registryPath -> do
+    commitResult <- Repo.writeCommitPush (Repo.CommitMetadataEntry name) \registryPath -> do
       let path = Path.concat [ registryPath, Constants.metadataDirectory, printedName <> ".json" ]
       Run.liftAff (Aff.attempt (writeJsonFile Metadata.codec path metadata)) >>= case _ of
         Left fsError -> Except.throw $ "Failed to write metadata for " <> printedName <> " to path " <> path <> " do to an fs error: " <> Aff.message fsError
@@ -317,9 +317,9 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
       Left error -> Except.throw $ "Failed to write and commit metadata: " <> error
       Right r -> do
         case r of
-          Git.NoChange ->
+          Repo.NoChange ->
             Log.info "Did not commit metadata because it was unchanged."
-          Git.Changed ->
+          Repo.Changed ->
             Log.info "Wrote and committed metadata."
         cache <- Cache.get _registryCache AllMetadata
         for_ cache \cached ->
@@ -328,32 +328,32 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
   ReadAllMetadata reply -> map (map reply) Except.runExcept do
     let
       refreshMetadata = do
-        registryPath <- Git.getPath Git.RegistryRepo
+        registryPath <- Repo.getPath Repo.RegistryRepo
         let metadataDir = Path.concat [ registryPath, Constants.metadataDirectory ]
         Log.info $ "Reading metadata for all packages from directory " <> metadataDir
         allMetadata <- readAllMetadataFromDisk metadataDir
         Cache.put _registryCache AllMetadata allMetadata
         pure allMetadata
 
-    Git.pull Git.RegistryRepo >>= case _ of
+    Repo.pull Repo.RegistryRepo >>= case _ of
       Left error ->
         Except.throw $ "Could not read metadata because the registry repo could not be checked: " <> error
-      Right Git.NoChange -> do
+      Right Repo.NoChange -> do
         Cache.get _registryCache AllMetadata >>= case _ of
           Nothing -> do
             Log.info "No cached metadata map, reading from disk..."
             refreshMetadata
           Just cached ->
             pure cached
-      Right Git.Changed -> do
+      Right Repo.Changed -> do
         Log.info "Registry repo has changed, replacing metadata cache..."
         refreshMetadata
 
   ReadLatestPackageSet reply -> map (map reply) Except.runExcept do
-    Git.pull Git.RegistryRepo >>= case _ of
+    Repo.pull Repo.RegistryRepo >>= case _ of
       Left error -> Except.throw $ "Could not read package sets because the registry repo could not be checked: " <> error
       Right _ -> pure unit
-    registryPath <- Git.getPath Git.RegistryRepo
+    registryPath <- Repo.getPath Repo.RegistryRepo
     let packageSetsDir = Path.concat [ registryPath, Constants.packageSetsDirectory ]
     Log.info $ "Reading latest package set from directory " <> packageSetsDir
     versions <- listPackageSetVersions packageSetsDir
@@ -371,26 +371,26 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
             pure $ Just set
 
   WritePackageSet set@(PackageSet { version }) message reply -> map (map reply) Except.runExcept do
-    Git.pull Git.RegistryRepo >>= case _ of
+    Repo.pull Repo.RegistryRepo >>= case _ of
       Left error -> Except.throw $ "Could not read package sets because the registry repo could not be checked: " <> error
       Right _ -> pure unit
     let name = Version.print version
     Log.info $ "Writing package set " <> name
-    commitResult <- Git.writeCommitPush (Git.CommitPackageSet version) \registryPath -> do
+    commitResult <- Repo.writeCommitPush (Repo.CommitPackageSet version) \registryPath -> do
       let path = Path.concat [ registryPath, Constants.packageSetsDirectory, name <> ".json" ]
       Run.liftAff (Aff.attempt (writeJsonFile PackageSet.codec path set)) >>= case _ of
         Left fsError -> Except.throw $ "Failed to write package set " <> name <> " to path " <> path <> " do to an fs error: " <> Aff.message fsError
         Right _ -> pure $ Just message
     case commitResult of
       Left error -> Except.throw $ "Failed to write and commit package set: " <> error
-      Right Git.NoChange -> Log.info "Did not commit package set because it was unchanged."
-      Right Git.Changed -> Log.info "Wrote and committed package set."
+      Right Repo.NoChange -> Log.info "Did not commit package set because it was unchanged."
+      Right Repo.Changed -> Log.info "Wrote and committed package set."
 
   ReadAllPackageSets reply -> map (map reply) Except.runExcept do
-    Git.pull Git.RegistryRepo >>= case _ of
+    Repo.pull Repo.RegistryRepo >>= case _ of
       Left error -> Except.throw $ "Could not read package sets because the registry repo could not be checked: " <> error
       Right _ -> pure unit
-    registryPath <- Git.getPath Git.RegistryRepo
+    registryPath <- Repo.getPath Repo.RegistryRepo
     let packageSetsDir = Path.concat [ registryPath, Constants.packageSetsDirectory ]
     Log.info $ "Reading all package sets from directory " <> packageSetsDir
     versions <- listPackageSetVersions packageSetsDir
@@ -423,7 +423,7 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
       Right converted -> pure converted
 
     let printedTag = Legacy.PackageSet.printPscTag converted.tag
-    legacyRepo <- Git.getAddress Git.LegacyPackageSetsRepo
+    legacyRepo <- Repo.getAddress Repo.LegacyPackageSetsRepo
 
     packageSetsTags <- GitHub.listTags legacyRepo >>= case _ of
       Left githubError ->
@@ -454,7 +454,7 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
     let files = [ latestSetsPath, packagesJsonPath, dhallPath ]
     let compilerKey = (un PscTag converted.tag).compiler
 
-    commitFilesResult <- Git.writeCommitPush (Git.CommitLegacyPackageSets files) \legacyPath -> do
+    commitFilesResult <- Repo.writeCommitPush (Repo.CommitLegacyPackageSets files) \legacyPath -> do
       latestCompatibleSets <- do
         latestSets <- Run.liftAff (readJsonFile Legacy.PackageSet.latestCompatibleSetsCodec (Path.concat [ legacyPath, latestSetsPath ])) >>= case _ of
           Left err -> Except.throw $ "Could not mirror package set because reading the latest compatible sets file from " <> latestSetsPath <> " failed: " <> err
@@ -493,12 +493,12 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
 
     case commitFilesResult of
       Left error -> Except.throw $ "Failed to commit to legacy registry:" <> error
-      Right Git.NoChange -> Log.info "Did not commit legacy registry files because nothing has changed."
-      Right Git.Changed -> do
+      Right Repo.NoChange -> Log.info "Did not commit legacy registry files because nothing has changed."
+      Right Repo.Changed -> do
         Log.info "Committed legacy registry files."
         -- Now that we've written and pushed our commit, we also need to push some
         -- tags to trigger the legacy package sets release workflow.
-        tagResult <- Git.tagAndPush Git.LegacyPackageSetsRepo do
+        tagResult <- Repo.tagAndPush Repo.LegacyPackageSetsRepo do
           -- We push the stable tag (ie. just a compiler version) if one does not yet
           -- exist, and we always push the full tag.
           let stable = Version.print compilerKey
@@ -509,13 +509,13 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
         case tagResult of
           Left error ->
             Except.throw $ "Failed to push tags to legacy registry: " <> error
-          Right Git.NoChange ->
+          Right Repo.NoChange ->
             Log.warn $ "Tried to push tags to legacy registry, but there was no effect (they already existed)."
-          Right Git.Changed ->
+          Right Repo.Changed ->
             Log.info "Pushed new tags to legacy registry."
 
   ReadLegacyRegistry reply -> map (map reply) Except.runExcept do
-    registryPath <- Git.getPath Git.RegistryRepo
+    registryPath <- Repo.getPath Repo.RegistryRepo
     Log.info $ "Reading legacy registry from " <> registryPath
     let readRegistryFile path = readJsonFile (CA.Common.strMap CA.string) (Path.concat [ registryPath, path ])
     bower <- Run.liftAff (readRegistryFile "bower-packages.json") >>= case _ of
@@ -560,7 +560,7 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
           | existingUrl /= url -> Just "bower-packages.json"
           | otherwise -> Nothing
 
-    result <- Git.writeCommitPush Git.CommitLegacyRegistry \registryPath -> do
+    result <- Repo.writeCommitPush Repo.CommitLegacyRegistry \registryPath -> do
       for_ targetFile \file -> do
         let sourcePackages = if file == "new-packages.json" then new else bower
         let packages = Map.insert rawPackageName url sourcePackages
@@ -571,9 +571,9 @@ handle ref = Cache.interpret _registryCache (Cache.handleMemory ref) <<< case _ 
     case result of
       Left error ->
         Except.throw $ "Failed to commit and push legacy registry files: " <> error
-      Right Git.NoChange ->
+      Right Repo.NoChange ->
         Log.info $ "Did not commit and push legacy registry files because there was no change."
-      Right Git.Changed ->
+      Right Repo.Changed ->
         Log.info "Wrote and committed legacy registry files."
 
 -- | Given the file path of a local manifest index on disk, read its contents.

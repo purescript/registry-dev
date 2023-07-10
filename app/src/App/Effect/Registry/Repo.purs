@@ -1,8 +1,13 @@
-module Registry.App.Effect.Git where
+-- | An effect for manipulating the registry-owned repositories via Git. This
+-- | effect is primarily used by the `Registry.App.Effect.Registry` effect in
+-- | its standard interpreter; these functions are not meant to be used directly
+-- | because they represent mechanical Git operations.
+module Registry.App.Effect.Registry.Repo where
 
 import Registry.App.Prelude
 
 import Affjax (URL)
+import App.CLI.Git as Git
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Array.NonEmpty as NonEmptyArry
@@ -14,7 +19,6 @@ import Data.String.CodeUnits as CodeUnits
 import Data.Time.Duration (Minutes(..))
 import Effect.Aff as Aff
 import Effect.Ref as Ref
-import Node.ChildProcess as ChildProcess
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Parsing as Parsing
@@ -33,7 +37,6 @@ import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except as Except
 import Safe.Coerce (coerce)
-import Sunde as Sunde
 
 -- | The result of running a Git action that can have no effect. For example,
 -- | none of these will have an effect: committing an unchanged file path,
@@ -61,7 +64,7 @@ data CommitKey
   | CommitLegacyRegistry
   | CommitLegacyPackageSets (Array FilePath)
 
-data Git a
+data RegistryRepo a
   = Pull RepoKey (Either String GitResult -> a)
   | Commit CommitKey String (Either String GitResult -> a)
   | Push RepoKey (Either String GitResult -> a)
@@ -70,48 +73,48 @@ data Git a
   | GetPath RepoKey (FilePath -> a)
   | GetAddress RepoKey (Address -> a)
 
-derive instance Functor Git
+derive instance Functor RegistryRepo
 
-type GIT r = (git :: Git | r)
+type REGISTRY_REPO r = (registryRepo :: RegistryRepo | r)
 
-_git :: Proxy "git"
-_git = Proxy
+_registryRepo :: Proxy "registryRepo"
+_registryRepo = Proxy
 
 -- | Get the repository at the given key, recording whether the pull or clone
 -- | had any effect (ie. if the repo was already up-to-date).
-pull :: forall r. RepoKey -> Run (GIT + r) (Either String GitResult)
-pull key = Run.lift _git (Pull key identity)
+pull :: forall r. RepoKey -> Run (REGISTRY_REPO + r) (Either String GitResult)
+pull key = Run.lift _registryRepo (Pull key identity)
 
 -- | Commit the file(s) indicated by the commit key with a commit message.
-commit :: forall r. CommitKey -> String -> Run (GIT + r) (Either String GitResult)
-commit key message = Run.lift _git (Commit key message identity)
+commit :: forall r. CommitKey -> String -> Run (REGISTRY_REPO + r) (Either String GitResult)
+commit key message = Run.lift _registryRepo (Commit key message identity)
 
 -- | Push the repository at the given key, recording whether the push had any
 -- | effect (ie. if the repo was already up-to-date).
-push :: forall r. RepoKey -> Run (GIT + r) (Either String GitResult)
-push key = Run.lift _git (Push key identity)
+push :: forall r. RepoKey -> Run (REGISTRY_REPO + r) (Either String GitResult)
+push key = Run.lift _registryRepo (Push key identity)
 
 -- | Tag the repository at the given key at its current commit with the tag
-tag :: forall r. RepoKey -> String -> Run (GIT + r) (Either String GitResult)
-tag key ref = Run.lift _git (Tag key ref identity)
+tag :: forall r. RepoKey -> String -> Run (REGISTRY_REPO + r) (Either String GitResult)
+tag key ref = Run.lift _registryRepo (Tag key ref identity)
 
 -- | Push the repository tags at the given key to its upstream.
-pushTags :: forall r. RepoKey -> Run (GIT + r) (Either String GitResult)
-pushTags key = Run.lift _git (PushTags key identity)
+pushTags :: forall r. RepoKey -> Run (REGISTRY_REPO + r) (Either String GitResult)
+pushTags key = Run.lift _registryRepo (PushTags key identity)
 
 -- | Get the absolute file path of the repository at the given key
-getPath :: forall r. RepoKey -> Run (GIT + r) FilePath
-getPath key = Run.lift _git (GetPath key identity)
+getPath :: forall r. RepoKey -> Run (REGISTRY_REPO + r) FilePath
+getPath key = Run.lift _registryRepo (GetPath key identity)
 
 -- | Get the address of the repository at the given key
-getAddress :: forall r. RepoKey -> Run (GIT + r) Address
-getAddress key = Run.lift _git (GetAddress key identity)
+getAddress :: forall r. RepoKey -> Run (REGISTRY_REPO + r) Address
+getAddress key = Run.lift _registryRepo (GetAddress key identity)
 
 -- | Write a file to the repository associated with the commit key, given a
 -- | callback that takes the file path of the repository on disk, writes the
 -- | file(s), and returns a commit message which is used to commit to the
 -- | repository. The result is pushed upstream.
-writeCommitPush :: forall r. CommitKey -> (FilePath -> Run (GIT + r) (Maybe String)) -> Run (GIT + r) (Either String GitResult)
+writeCommitPush :: forall r. CommitKey -> (FilePath -> Run (REGISTRY_REPO + r) (Maybe String)) -> Run (REGISTRY_REPO + r) (Either String GitResult)
 writeCommitPush commitKey write = do
   let repoKey = commitKeyToRepoKey commitKey
   pull repoKey >>= case _ of
@@ -125,7 +128,7 @@ writeCommitPush commitKey write = do
           Right _ -> push repoKey
 
 -- | Tag the repository with the given tags and push the result upstream.
-tagAndPush :: forall r. RepoKey -> Array String -> Run (GIT + r) (Either String GitResult)
+tagAndPush :: forall r. RepoKey -> Array String -> Run (REGISTRY_REPO + r) (Either String GitResult)
 tagAndPush key refs = do
   results <- traverse (tag key) refs
   let partition = partitionEithers results
@@ -134,9 +137,9 @@ tagAndPush key refs = do
     Nothing -> pure (Right NoChange)
     Just { head } -> pure (Left head)
 
--- | Interpret the GIT effect given a handler, eliminating it from the effects.
-interpret :: forall r a. (Git ~> Run r) -> Run (GIT + r) a -> Run r a
-interpret handler = Run.interpret (Run.on _git handler Run.send)
+-- | Interpret the REGISTRY_REPO effect given a handler, eliminating it from the effects.
+interpret :: forall r a. (RegistryRepo ~> Run r) -> Run (REGISTRY_REPO + r) a -> Run r a
+interpret handler = Run.interpret (Run.on _registryRepo handler Run.send)
 
 -- | How to sync a locally-checked-out repository.
 -- |
@@ -151,7 +154,7 @@ data WriteMode = ReadOnly | CommitAs Committer
 
 derive instance Eq WriteMode
 
-type GitEnv =
+type RegistryRepoEnv =
   { repos :: Repos
   , workdir :: FilePath
   , pull :: PullMode
@@ -192,13 +195,13 @@ pacchettibottiCommitter token =
   , token
   }
 
--- | A handler for the Git effect which clones repos to the given file path
+-- | A handler for the RegistryRepo effect which clones repos to the given file path
 --
 -- Note: This assumes that 'Pull' will be called before tagging, committing,
 -- pushing, etc. but that's not necessarily true. In practice we always use
 -- 'writeCommitPush', so this isn't an issue, but it would be nice to ensure
 -- an initial pull.
-handle :: forall r a. GitEnv -> Git a -> Run (LOG + AFF + EFFECT + r) a
+handle :: forall r a. RegistryRepoEnv -> RegistryRepo a -> Run (LOG + AFF + EFFECT + r) a
 handle env = case _ of
   GetPath key reply -> do
     pure $ reply $ filepath key
@@ -221,7 +224,7 @@ handle env = case _ of
             let formatted = owner <> "/" <> repo
             let url = "https://github.com/" <> formatted <> ".git"
             Log.debug $ "Didn't find " <> formatted <> " locally, cloning..."
-            Run.liftAff (gitCLI [ "clone", url, path ] Nothing) >>= case _ of
+            Run.liftAff (Git.gitCLI [ "clone", url, path ] Nothing) >>= case _ of
               Left err -> do
                 Log.error $ "Failed to git clone repo " <> url <> " due to a git error: " <> err
                 pure $ Left $ "Could not read the repository at " <> formatted
@@ -342,7 +345,7 @@ handle env = case _ of
   legacyPackageSetsPath = Path.concat [ env.workdir, "package-sets" ]
 
   execGit :: FilePath -> Array String -> (String -> String) -> Run _ String
-  execGit cwd args onError = Run.liftAff (gitCLI args (Just cwd)) >>= case _ of
+  execGit cwd args onError = Run.liftAff (Git.gitCLI args (Just cwd)) >>= case _ of
     Left error -> Except.throw (onError error)
     Right stdout -> pure stdout
 
@@ -619,14 +622,3 @@ commitKeyToRepoKey = case _ of
   CommitPackageSet _ -> RegistryRepo
   CommitLegacyRegistry -> RegistryRepo
   CommitLegacyPackageSets _ -> LegacyPackageSetsRepo
-
--- | Run the `git` tool via the command line. Suitable for implementing Aff-
--- | based interpreters.
-gitCLI :: forall m. MonadAff m => Array String -> Maybe FilePath -> m (Either String String)
-gitCLI args cwd = do
-  result <- liftAff $ Sunde.spawn { cmd: "git", args, stdin: Nothing } (ChildProcess.defaultSpawnOptions { cwd = cwd })
-  let stdout = String.trim result.stdout
-  let stderr = String.trim result.stderr
-  pure $ case result.exit of
-    ChildProcess.Normally 0 -> Right stdout
-    _ -> Left (stdout <> stderr)
