@@ -17,7 +17,6 @@ import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
-import Debug (traceM)
 import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
@@ -89,6 +88,7 @@ type TestEnv =
   , metadata :: Ref (Map PackageName Metadata)
   , index :: Ref ManifestIndex
   , storage :: FilePath
+  , github :: FilePath
   , username :: String
   }
 
@@ -99,7 +99,7 @@ runTestEffects env =
     >>> Registry.interpret (handleRegistryMock { metadataRef: env.metadata, indexRef: env.index })
     >>> PackageSets.interpret handlePackageSetsMock
     >>> Storage.interpret (handleStorageMock { storage: env.storage })
-    >>> GitHub.interpret handleGitHubMock
+    >>> GitHub.interpret (handleGitHubMock { github: env.github })
     -- Environments
     >>> Env.runGitHubEventEnv { username: env.username, issue: IssueNumber 1 }
     >>> Env.runPacchettiBottiEnv { publicKey: "Unimplemented", privateKey: "Unimplemented" }
@@ -238,46 +238,58 @@ handleStorageMock env = case _ of
 
   Storage.Query name reply -> do
     paths <- Run.liftAff $ FS.Aff.readdir env.storage
-
     let
       extractVersion =
         String.stripPrefix (String.Pattern (PackageName.print name <> "-"))
           >=> String.stripSuffix (String.Pattern ".tar.gz")
-
       versions = Array.mapMaybe (Either.hush <<< Version.parse <=< extractVersion) paths
-
     pure $ reply $ Right $ Set.fromFoldable versions
 
-handleGitHubMock :: forall r a. GitHub a -> Run r a
-handleGitHubMock = case _ of
-  -- FIXME: Respond with an actual list of tags corresponding with the repo?
-  ListTags _address reply ->
-    pure $ reply $ Right []
+type GitHubMockEnv = { github :: FilePath }
 
-  -- FIXME: Respond with an actual list of team members if the team is the purescript owners (error otherwise)?
-  ListTeamMembers _team reply ->
-    pure $ reply $ Right []
+-- | We mock GitHub by placing some repositories in the fixtures on the file
+-- | system, so you can interact with the file system as if it's a remote set
+-- | of repositories.
+handleGitHubMock :: forall r a. GitHubMockEnv -> GitHub a -> Run (AFF + r) a
+handleGitHubMock env = case _ of
+  ListTags address reply -> do
+    paths <- Run.liftAff $ FS.Aff.readdir env.github
 
-  -- FIXME: Read from the local package in fixtures.
-  GetContent address ref path reply ->
-    if address == { owner: "purescript", repo: "purescript-effect" } && ref == "v4.0.0" && path == "bower.json" then
-      pure $ reply $ Right
-        """
-        {
-          "name": "purescript-effect",
-          "license": "MIT",
-          "dependencies": {
-            "purescript-prelude": "^6.0.0"
-          }
+    let
+      name = stripPureScriptPrefix address.repo
+      extractVersion = String.stripPrefix (String.Pattern (name <> "-"))
+      buildTag version = do
+        let sha = "c5b97d5ae6c19d5c5df71a34c7fbeeda2479ccbc"
+        { name: "v" <> version
+        , sha
+        , url: "https://api.github.com/repos/" <> address.owner <> "/" <> address.repo <> "/commits/" <> sha
         }
-        """
-    else
-      pure $ reply $ Left $ APIError { statusCode: 404, message: "Not Found" }
+      tags = Array.mapMaybe (map buildTag <<< extractVersion) paths
 
-  -- FIXME: Respond with an actual commit for specific input paths?
+    pure $ reply $ Right tags
+
+  ListTeamMembers team reply -> pure $ reply $ case team of
+    { org: "purescript", team: "packaging" } -> Right [ "pacchettibotti", "f-f", "thomashoneyman" ]
+    _ -> Left $ APIError { statusCode: 404, message: "No fixture provided for team " <> team.org <> "/" <> team.team }
+
+  GetContent address ref path reply -> do
+    let
+      name = stripPureScriptPrefix address.repo
+      fixedRef = fromMaybe ref $ String.stripPrefix (String.Pattern "v") ref
+      localPath = Path.concat [ env.github, name <> "-" <> fixedRef, path ]
+
+    result <- Run.liftAff $ Aff.attempt (FS.Aff.readTextFile UTF8 localPath) >>= case _ of
+      Left _ -> pure $ Left $ APIError { statusCode: 404, message: "Not Found" }
+      Right contents -> pure $ Right contents
+
+    pure $ reply result
+
+  -- FIXME: Respond with an actual commit for specific input paths? This isn't
+  -- currently used in tests.
   GetRefCommit _address _ref reply ->
-    pure $ reply $ Right "Unimplemented"
+    pure $ reply $ Left $ UnexpectedError "Unimplemented"
 
-  -- FIXME: Respond with an actual datetime for specific inputs?
+  -- FIXME: Respond with an actual datetime for specific inputs? This isn't
+  -- currently used in tests.
   GetCommitDate _address _ref reply ->
-    pure $ reply $ Right top
+    pure $ reply $ Left $ UnexpectedError "Unimplemented"

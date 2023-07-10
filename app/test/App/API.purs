@@ -39,6 +39,7 @@ type PipelineEnv =
   , metadata :: Ref (Map PackageName Metadata)
   , index :: Ref ManifestIndex
   , storageDir :: FilePath
+  , githubDir :: FilePath
   }
 
 spec :: Spec.Spec Unit
@@ -51,8 +52,8 @@ spec = do
     copySourceFiles
 
   Spec.describe "API pipelines run correctly" $ Spec.around withCleanEnv do
-    Spec.itOnly "Publish" \{ workdir, index, metadata, storageDir } -> do
-      let testEnv = { workdir, index, metadata, username: "jon", storage: storageDir }
+    Spec.it "Publish" \{ workdir, index, metadata, storageDir, githubDir } -> do
+      let testEnv = { workdir, index, metadata, username: "jon", storage: storageDir, github: githubDir }
       Assert.Run.runTestEffects testEnv do
         -- We'll publish effect@4.0.0
         let
@@ -70,15 +71,13 @@ spec = do
         -- First, we publish the package.
         API.publish API.Current publishArgs
 
-        -- Then, we can check that it did make it to "Pursuit" and "S3" as
-        -- expected.
+        -- Then, we can check that it did make it to "Pursuit" as expected
         Pursuit.getPublishedVersions name >>= case _ of
           Right versions | isJust (Map.lookup version versions) -> pure unit
           Right _ -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to be published to Pursuit."
           Left err -> Except.throw $ "Failed to get published versions: " <> err
 
-        -- Then, we can check that it did make it to "Pursuit" and "S3" as
-        -- expected.
+        -- As well as to the storage backend
         Storage.query name >>= \versions ->
           unless (Set.member version versions) do
             Except.throw $ "Expected " <> formatPackageVersion name version <> " to be published to registry storage."
@@ -87,7 +86,7 @@ spec = do
         -- since it already exists.
         Except.runExcept (API.publish API.Current publishArgs) >>= case _ of
           Left _ -> pure unit
-          Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to fail with a 'package already exists' error."
+          Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to fail."
   where
   withCleanEnv :: (PipelineEnv -> Aff Unit) -> Aff Unit
   withCleanEnv action = do
@@ -118,6 +117,7 @@ spec = do
         copyFixture "registry-index"
         copyFixture "registry-metadata"
         copyFixture "registry-storage"
+        copyFixture "github-packages"
 
       let
         readFixtures = do
@@ -133,7 +133,13 @@ spec = do
         # Run.runBaseAff'
 
       liftEffect $ Process.chdir workdir
-      pure { workdir, metadata: fixtures.metadata, index: fixtures.index, storageDir: Path.concat [ testFixtures, "registry-storage" ] }
+      pure
+        { workdir
+        , metadata: fixtures.metadata
+        , index: fixtures.index
+        , storageDir: Path.concat [ testFixtures, "registry-storage" ]
+        , githubDir: Path.concat [ testFixtures, "github-packages" ]
+        }
 
 checkBuildPlanToResolutions :: Spec.Spec Unit
 checkBuildPlanToResolutions = do
