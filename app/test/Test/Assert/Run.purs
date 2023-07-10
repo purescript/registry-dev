@@ -16,6 +16,7 @@ import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.Set as Set
 import Effect.Aff as Aff
+import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import Node.Path as Path
 import Registry.App.Effect.Cache (CacheRef)
@@ -62,8 +63,16 @@ shouldNotContain container elem =
 -- | All effects possible when testing the registry API (not all operations use
 -- | all effects, but this union is the maximum set of effects that can be used.)
 type TEST_EFFECTS =
-  ( PURSUIT + REGISTRY + PACKAGE_SETS + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + GITHUB_CACHE + LEGACY_CACHE + LOG
-      -- Run-provided effects
+  ( PURSUIT
+      + REGISTRY
+      + PACKAGE_SETS
+      + STORAGE
+      + GITHUB
+      + PACCHETTIBOTTI_ENV
+      + GITHUB_EVENT_ENV
+      + GITHUB_CACHE
+      + LEGACY_CACHE
+      + LOG
       + EXCEPT String
       + AFF
       + EFFECT
@@ -71,17 +80,21 @@ type TEST_EFFECTS =
   )
 
 type TestEnv =
-  { metadata :: Map PackageName Metadata
-  , index :: ManifestIndex
+  { metadata :: Ref (Map PackageName Metadata)
+  , index :: Ref ManifestIndex
   , username :: String
   }
 
-readFixtures :: Aff { metadata :: Map PackageName Metadata, index :: ManifestIndex }
+readFixtures :: Aff { metadata :: Ref (Map PackageName Metadata), index :: Ref ManifestIndex }
 readFixtures = do
   let
     run = do
-      metadata <- Registry.readAllMetadataFromDisk metadataFixtures
-      index <- Registry.readManifestIndexFromDisk manifestFixtures
+      initialMetadata <- Registry.readAllMetadataFromDisk metadataFixtures
+      metadata <- liftEffect $ Ref.new initialMetadata
+
+      initialIndex <- Registry.readManifestIndexFromDisk manifestFixtures
+      index <- liftEffect $ Ref.new initialIndex
+
       pure { metadata, index }
 
   run
@@ -93,7 +106,7 @@ readFixtures = do
 runTestEffects :: forall a. TestEnv -> Run TEST_EFFECTS a -> Aff (Either String a)
 runTestEffects env =
   Pursuit.interpret (handlePursuitMock env.metadata)
-    >>> Registry.interpret (handleRegistryMock env.metadata env.index)
+    >>> Registry.interpret (handleRegistryMock { metadataRef: env.metadata, indexRef: env.index })
     >>> PackageSets.interpret handlePackageSetsMock
     >>> Storage.interpret handleStorageMock
     >>> GitHub.interpret handleGitHubMock
@@ -109,51 +122,76 @@ runTestEffects env =
     >>> Except.runExcept
     >>> Run.runBaseAff'
 
+runLegacyCacheMemory :: forall r a. CacheRef -> Run (LEGACY_CACHE + LOG + EFFECT + r) a -> Run (LOG + EFFECT + r) a
+runLegacyCacheMemory = Cache.interpret Legacy.Manifest._legacyCache <<< Cache.handleMemory
+
+runGitHubCacheMemory :: forall r a. CacheRef -> Run (GITHUB_CACHE + LOG + EFFECT + r) a -> Run (LOG + EFFECT + r) a
+runGitHubCacheMemory = Cache.interpret GitHub._githubCache <<< Cache.handleMemory
+
 metadataFixtures :: FilePath
 metadataFixtures = Path.concat [ "test", "_fixtures", "registry-metadata" ]
 
 manifestFixtures :: FilePath
 manifestFixtures = Path.concat [ "test", "_fixtures", "registry-index" ]
 
-handlePursuitMock :: forall r a. Map PackageName Metadata -> Pursuit a -> Run r a
-handlePursuitMock metadata = case _ of
+handlePursuitMock :: forall r a. Ref (Map PackageName Metadata) -> Pursuit a -> Run (EFFECT + r) a
+handlePursuitMock metadataRef = case _ of
   Publish _json reply ->
     pure $ reply $ Right unit
-  GetPublishedVersions name reply ->
+  GetPublishedVersions name reply -> do
+    metadata <- Run.liftEffect (Ref.read metadataRef)
     pure $ reply $ Right $ fromMaybe Map.empty do
       Metadata { published } <- Map.lookup name metadata
       pure $ mapWithIndex (\version _ -> "https://pursuit.purescript.org/purescript-" <> PackageName.print name <> "/" <> Version.print version) published
 
-handleRegistryMock :: forall r a. Map PackageName Metadata -> ManifestIndex -> Registry a -> Run r a
-handleRegistryMock metadata index = case _ of
-  ReadManifest name version reply ->
+type RegistryMockEnv =
+  { metadataRef :: Ref (Map PackageName Metadata)
+  , indexRef :: Ref ManifestIndex
+  }
+
+handleRegistryMock :: forall r a. RegistryMockEnv -> Registry a -> Run (AFF + EFFECT + r) a
+handleRegistryMock env = case _ of
+  ReadManifest name version reply -> do
+    index <- Run.liftEffect (Ref.read env.indexRef)
     pure $ reply $ Right $ ManifestIndex.lookup name version index
-  WriteManifest _manifest reply ->
-    -- FIXME: Actually write the manifest (however the test is set up for that)
-    pure $ reply $ Right unit
-  DeleteManifest _name _version reply ->
-    -- FIXME: Actually delete the manifest (however the test is set up for that)
-    pure $ reply $ Right unit
-  ReadAllManifests reply ->
+  WriteManifest manifest reply -> do
+    index <- Run.liftEffect (Ref.read env.indexRef)
+    case ManifestIndex.insert manifest index of
+      Left err -> pure $ reply $ Left $ "Failed to insert manifest:\n" <> Utils.unsafeStringify manifest <> " due to an error:\n" <> Utils.unsafeStringify err
+      Right index' -> do
+        Run.liftEffect (Ref.write index' env.indexRef)
+        pure $ reply $ Right unit
+  DeleteManifest name version reply -> do
+    index <- Run.liftEffect (Ref.read env.indexRef)
+    case ManifestIndex.delete name version index of
+      Left err -> pure $ reply $ Left $ "Failed to delete entry for :\n" <> Utils.formatPackageVersion name version <> " due to an error:\n" <> Utils.unsafeStringify err
+      Right index' -> do
+        Run.liftEffect (Ref.write index' env.indexRef)
+        pure $ reply $ Right unit
+  ReadAllManifests reply -> do
+    index <- Run.liftEffect (Ref.read env.indexRef)
     pure $ reply $ Right index
-  ReadMetadata name reply ->
+  ReadMetadata name reply -> do
+    metadata <- Run.liftEffect (Ref.read env.metadataRef)
     pure $ reply $ Right $ Map.lookup name metadata
-  WriteMetadata _name _metadata reply ->
-    -- FIXME: Actually write the metadata
+  WriteMetadata name metadata reply -> do
+    Run.liftEffect (Ref.modify_ (Map.insert name metadata) env.metadataRef)
     pure $ reply $ Right unit
-  ReadAllMetadata reply ->
+  ReadAllMetadata reply -> do
+    metadata <- Run.liftEffect (Ref.read env.metadataRef)
     pure $ reply $ Right metadata
+
+  -- FIXME: Actually reply with a package set
   ReadLatestPackageSet reply ->
-    -- FIXME: Actually reply with a package set
     pure $ reply $ Right Nothing
+  -- FIXME: Actually write package set
   WritePackageSet _packageSet _message reply ->
-    -- FIXME: Actually write package set
     pure $ reply $ Right unit
+  -- FIXME: Actually reply with a package set
   ReadAllPackageSets reply ->
-    -- FIXME: Actually reply with a package set
     pure $ reply $ Right Map.empty
 
-  -- Legacy operations
+  -- Legacy operations; we just treat these as successful by default.
   MirrorPackageSet _packageSet reply ->
     pure $ reply $ Right unit
   ReadLegacyRegistry reply ->
@@ -163,19 +201,20 @@ handleRegistryMock metadata index = case _ of
 
 handlePackageSetsMock :: forall r a. PackageSets a -> Run r a
 handlePackageSetsMock = case _ of
+  -- FIXME: Actually reply with a package set with a pure upgrade
   UpgradeAtomic _packageSet _compilerVersion _changeSet reply -> do
-    -- FIXME: Actually reply with a package set with a pure upgrade
     pure $ reply $ Right Nothing
+  -- FIXME: Actually reply with a package sequential upgrade result
   UpgradeSequential packageSet _compilerVersion changeSet reply ->
-    -- FIXME: Actually reply with a package sequential upgrade result
     pure $ reply $ Right $ Just { failed: changeSet, succeeded: changeSet, result: packageSet }
 
 handleStorageMock :: forall r a. Storage a -> Run (AFF + r) a
 handleStorageMock = case _ of
   Storage.Upload _name _version _destinationPath reply ->
     pure $ reply $ Right unit
+
+  -- FIXME: We probably shouldn't be storing tarballs in fixtures.
   Storage.Download name version destinationPath reply ->
-    -- FIXME: We probably shouldn't be storing tarballs in fixtures.
     if name == Utils.unsafePackageName "prelude" && version == Utils.unsafeVersion "6.0.1" then do
       -- Note: When we're inside the test effects we are running from the root
       -- of the repository, so we need "app" at the start of the path.
@@ -184,20 +223,25 @@ handleStorageMock = case _ of
       pure $ reply $ Right unit
     else
       pure $ reply $ Left $ "No such fixture: " <> PackageName.print name <> " " <> Version.print version
+
   Storage.Delete _name _version reply ->
     pure $ reply $ Right unit
+
+  -- FIXME: Actually reply with a set of versions based on the fixtures.
   Storage.Query _name reply -> do
-    -- FIXME: Actually reply with a set of versions based on the fixtures.
     pure $ reply $ Right Set.empty
 
 handleGitHubMock :: forall r a. GitHub a -> Run r a
 handleGitHubMock = case _ of
+  -- FIXME: Respond with an actual list of tags corresponding with the repo?
   ListTags _address reply ->
-    -- FIXME: Respond with an actual list of tags corresponding with the repo?
     pure $ reply $ Right []
+
+  -- FIXME: Respond with an actual list of team members if the team is the purescript owners (error otherwise)?
   ListTeamMembers _team reply ->
-    -- FIXME: Respond with an actual list of team members if the team is the purescript owners (error otherwise)?
     pure $ reply $ Right []
+
+  -- FIXME: Read from the local package in fixtures.
   GetContent address ref path reply ->
     if address == { owner: "purescript", repo: "purescript-effect" } && ref == "v4.0.0" && path == "bower.json" then
       pure $ reply $ Right
@@ -212,15 +256,11 @@ handleGitHubMock = case _ of
         """
     else
       pure $ reply $ Left $ APIError { statusCode: 404, message: "Not Found" }
+
+  -- FIXME: Respond with an actual commit for specific input paths?
   GetRefCommit _address _ref reply ->
-    -- FIXME: Respond with an actual commit for specific input paths?
     pure $ reply $ Right "Unimplemented"
+
+  -- FIXME: Respond with an actual datetime for specific inputs?
   GetCommitDate _address _ref reply ->
-    -- FIXME: Respond with an actual datetime for specific inputs?
     pure $ reply $ Right top
-
-runLegacyCacheMemory :: forall r a. CacheRef -> Run (LEGACY_CACHE + LOG + EFFECT + r) a -> Run (LOG + EFFECT + r) a
-runLegacyCacheMemory = Cache.interpret Legacy.Manifest._legacyCache <<< Cache.handleMemory
-
-runGitHubCacheMemory :: forall r a. CacheRef -> Run (GITHUB_CACHE + LOG + EFFECT + r) a -> Run (LOG + EFFECT + r) a
-runGitHubCacheMemory = Cache.interpret GitHub._githubCache <<< Cache.handleMemory
