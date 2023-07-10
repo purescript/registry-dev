@@ -66,7 +66,7 @@ decodeEventsToOps = do
         , location: Nothing
         }
 
-    res <- Main.readOperation "test/_fixtures/update_issue_comment.json"
+    res <- Main.readOperation "fixtures/update_issue_comment.json"
     res `Assert.shouldEqual` Main.DecodedOperation issueNumber username (Right operation)
 
   Spec.it "decodes an Addition operation" do
@@ -81,7 +81,7 @@ decodeEventsToOps = do
         , resolutions: Just $ Map.fromFoldable [ Utils.unsafePackageName "prelude" /\ Utils.unsafeVersion "1.0.0" ]
         }
 
-    res <- Main.readOperation "test/_fixtures/addition_issue_created.json"
+    res <- Main.readOperation "fixtures/addition_issue_created.json"
     res `Assert.shouldEqual` Main.DecodedOperation issueNumber username (Right operation)
 
   Spec.it "decodes a Package Set Update operation" do
@@ -96,7 +96,7 @@ decodeEventsToOps = do
             ]
         }
 
-    res <- Main.readOperation "test/_fixtures/package-set-update_issue_created.json"
+    res <- Main.readOperation "fixtures/package-set-update_issue_created.json"
     res `Assert.shouldEqual` Main.DecodedOperation issueNumber username (Left operation)
 
   Spec.it "decodes lenient JSON" do

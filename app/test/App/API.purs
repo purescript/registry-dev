@@ -5,6 +5,7 @@ import Registry.App.Prelude
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable (traverse_)
 import Data.Map as Map
+import Data.Set as Set
 import Data.String.NonEmpty as NonEmptyString
 import Effect.Aff as Aff
 import Effect.Ref as Ref
@@ -13,7 +14,9 @@ import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Types (RawPackageName(..))
 import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
@@ -48,17 +51,43 @@ spec = do
     copySourceFiles
 
   Spec.describe "API pipelines run correctly" $ Spec.around withCleanEnv do
-    Spec.it "Publish" \{ workdir, index, metadata, storageDir } -> do
+    Spec.itOnly "Publish" \{ workdir, index, metadata, storageDir } -> do
       let testEnv = { workdir, index, metadata, username: "jon", storage: storageDir }
-      -- We want to test that the publish pipeline runs correctly, so we first
-      -- delete the effect@4.0.0 package, then we attempt to publish it.
-      Assert.Run.runTestEffects testEnv $ API.publish API.Current
-        { compiler: Utils.unsafeVersion "0.15.9"
-        , location: Just $ GitHub { owner: "purescript", repo: "purescript-effect", subdir: Nothing }
-        , name: Utils.unsafePackageName "effect"
-        , ref: "v4.0.0"
-        , resolutions: Nothing
-        }
+      Assert.Run.runTestEffects testEnv do
+        -- We'll publish effect@4.0.0
+        let
+          name = Utils.unsafePackageName "effect"
+          version = Utils.unsafeVersion "4.0.0"
+          ref = "v4.0.0"
+          publishArgs =
+            { compiler: Utils.unsafeVersion "0.15.9"
+            , location: Just $ GitHub { owner: "purescript", repo: "purescript-effect", subdir: Nothing }
+            , name
+            , ref
+            , resolutions: Nothing
+            }
+
+        -- First, we publish the package.
+        API.publish API.Current publishArgs
+
+        -- Then, we can check that it did make it to "Pursuit" and "S3" as
+        -- expected.
+        Pursuit.getPublishedVersions name >>= case _ of
+          Right versions | isJust (Map.lookup version versions) -> pure unit
+          Right _ -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to be published to Pursuit."
+          Left err -> Except.throw $ "Failed to get published versions: " <> err
+
+        -- Then, we can check that it did make it to "Pursuit" and "S3" as
+        -- expected.
+        Storage.query name >>= \versions ->
+          unless (Set.member version versions) do
+            Except.throw $ "Expected " <> formatPackageVersion name version <> " to be published to registry storage."
+
+        -- Finally, we can verify that publishing the package again should fail
+        -- since it already exists.
+        Except.runExcept (API.publish API.Current publishArgs) >>= case _ of
+          Left _ -> pure unit
+          Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to fail with a 'package already exists' error."
   where
   withCleanEnv :: (PipelineEnv -> Aff Unit) -> Aff Unit
   withCleanEnv action = do
@@ -81,9 +110,8 @@ spec = do
       -- dhall types for the registry in the current working directory.
       FS.Extra.copy { from: Path.concat [ "..", "types" ], to: Path.concat [ workdir, "types" ], preserveTimestamps: true }
 
-      let localFixtures = Path.concat [ "test", "_fixtures" ]
       testFixtures <- liftAff Tmp.mkTmpDir
-      let copyFixture path = FS.Extra.copy { from: Path.concat [ localFixtures, path ], to: Path.concat [ testFixtures, path ], preserveTimestamps: true }
+      let copyFixture path = FS.Extra.copy { from: Path.concat [ "fixtures", path ], to: Path.concat [ testFixtures, path ], preserveTimestamps: true }
 
       -- Set up a clean fixtures environment.
       liftAff do

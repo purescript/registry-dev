@@ -17,6 +17,7 @@ import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
+import Debug (traceM)
 import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
@@ -215,8 +216,12 @@ handleStorageMock :: forall r a. StorageMockEnv -> Storage a -> Run (AFF + r) a
 handleStorageMock env = case _ of
   Storage.Upload name version sourcePath reply -> do
     let destinationPath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
-    Run.liftAff $ FS.Extra.copy { from: sourcePath, to: destinationPath, preserveTimestamps: true }
-    pure $ reply $ Right unit
+    Run.liftAff (Aff.attempt (FS.Aff.stat destinationPath)) >>= case _ of
+      Left _ -> do
+        Run.liftAff $ FS.Extra.copy { from: sourcePath, to: destinationPath, preserveTimestamps: true }
+        pure $ reply $ Right unit
+      Right _ ->
+        pure $ reply $ Left $ "Cannot upload " <> formatPackageVersion name version <> " because it already exists in storage at path " <> destinationPath
 
   Storage.Download name version destinationPath reply -> do
     let sourcePath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
@@ -233,7 +238,14 @@ handleStorageMock env = case _ of
 
   Storage.Query name reply -> do
     paths <- Run.liftAff $ FS.Aff.readdir env.storage
-    let versions = Array.mapMaybe (Either.hush <<< Version.parse <=< String.stripPrefix (String.Pattern (PackageName.print name <> "-"))) paths
+
+    let
+      extractVersion =
+        String.stripPrefix (String.Pattern (PackageName.print name <> "-"))
+          >=> String.stripSuffix (String.Pattern ".tar.gz")
+
+      versions = Array.mapMaybe (Either.hush <<< Version.parse <=< extractVersion) paths
+
     pure $ reply $ Right $ Set.fromFoldable versions
 
 handleGitHubMock :: forall r a. GitHub a -> Run r a
