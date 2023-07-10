@@ -3,6 +3,7 @@ module Registry.Scripts.VerifyIntegrity where
 
 import Registry.App.Prelude
 
+import App.CLI.Git as Git
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Control.Apply (lift2)
@@ -24,8 +25,6 @@ import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Registry.Repo (PullMode(..), RegistryRepoEnv, WriteMode(..))
-import Registry.App.Effect.Registry.Repo as Repo
 import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
@@ -68,26 +67,27 @@ main = launchAff_ do
   token <- Env.lookupRequired Env.pacchettibottiToken
   s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
 
-  -- Git
-  debouncer <- Repo.newDebouncer
-  let
-    repoEnv :: RegistryRepoEnv
-    repoEnv =
-      { write: ReadOnly
-      , pull: Autostash
-      , repos: Repo.defaultRepos
-      , workdir: scratchDir
-      , debouncer
-      }
-
-  -- GitHub
-  octokit <- Octokit.newOctokit token
-
   -- Caching
   let cache = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cache
   githubCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
+
+  -- GitHub
+  octokit <- Octokit.newOctokit token
+
+  -- Registry
+  debouncer <- Registry.newDebouncer
+  let
+    registryEnv :: Registry.RegistryEnv
+    registryEnv =
+      { write: Registry.ReadOnly
+      , pull: Git.Autostash
+      , repos: Registry.defaultRepos
+      , workdir: scratchDir
+      , debouncer
+      , cacheRef: registryCacheRef
+      }
 
   -- Logging
   now <- nowUTC
@@ -109,9 +109,8 @@ main = launchAff_ do
   let
     interpret =
       Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit 1))
-        >>> Registry.interpret (Registry.handle registryCacheRef)
+        >>> Registry.interpret (Registry.handle registryEnv)
         >>> Storage.interpret (Storage.handleS3 { s3, cache })
-        >>> Repo.interpret (Repo.handle repoEnv)
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
         >>> Run.runBaseAff'

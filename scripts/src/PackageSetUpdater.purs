@@ -2,6 +2,7 @@ module Registry.Scripts.PackageSetUpdater where
 
 import Registry.App.Prelude
 
+import App.CLI.Git as Git
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Data.Array as Array
@@ -26,8 +27,6 @@ import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Registry.Repo (PullMode(..), RegistryRepoEnv, WriteMode(..))
-import Registry.App.Effect.Registry.Repo as Repo
 import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
@@ -68,24 +67,12 @@ main = Aff.launchAff_ do
       Env.lookupOptional Env.githubToken >>= case _ of
         Nothing -> do
           token <- Env.lookupRequired Env.pacchettibottiToken
-          pure { token, write: ReadOnly }
+          pure { token, write: Registry.ReadOnly }
         Just token ->
-          pure { token, write: ReadOnly }
+          pure { token, write: Registry.ReadOnly }
     CommitPackageSet -> do
       token <- Env.lookupRequired Env.pacchettibottiToken
-      pure { token, write: CommitAs (Repo.pacchettibottiCommitter token) }
-
-  -- Git
-  debouncer <- Repo.newDebouncer
-  let
-    repoEnv :: RegistryRepoEnv
-    repoEnv =
-      { write
-      , pull: ForceClean
-      , repos: Repo.defaultRepos
-      , workdir: scratchDir
-      , debouncer
-      }
+      pure { token, write: Registry.CommitAs (Git.pacchettibottiCommitter token) }
 
   -- Package sets
   let packageSetsEnv = { workdir: Path.concat [ scratchDir, "package-set-build" ] }
@@ -99,6 +86,19 @@ main = Aff.launchAff_ do
   githubCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
 
+  -- Registry
+  debouncer <- Registry.newDebouncer
+  let
+    registryEnv :: Registry.RegistryEnv
+    registryEnv =
+      { write
+      , pull: Git.ForceClean
+      , repos: Registry.defaultRepos
+      , workdir: scratchDir
+      , debouncer
+      , cacheRef: registryCacheRef
+      }
+
   -- Logging
   now <- nowUTC
   let logDir = Path.concat [ scratchDir, "logs" ]
@@ -108,9 +108,8 @@ main = Aff.launchAff_ do
 
   updater
     # PackageSets.interpret (PackageSets.handle packageSetsEnv)
-    # Registry.interpret (Registry.handle registryCacheRef)
+    # Registry.interpret (Registry.handle registryEnv)
     # Storage.interpret (Storage.handleReadOnly cache)
-    # Repo.interpret (Repo.handle repoEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)

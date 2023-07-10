@@ -2,6 +2,7 @@ module Registry.Scripts.PackageTransferrer where
 
 import Registry.App.Prelude
 
+import App.CLI.Git as Git
 import Data.Array as Array
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
@@ -19,8 +20,6 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Registry.Repo (PullMode(..), RegistryRepoEnv, WriteMode(..))
-import Registry.App.Effect.Registry.Repo as Repo
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Types (RawPackageName(..))
@@ -47,26 +46,27 @@ main = launchAff_ do
   publicKey <- Env.lookupRequired Env.pacchettibottiED25519Pub
   privateKey <- Env.lookupRequired Env.pacchettibottiED25519
 
-  -- Git
-  debouncer <- Repo.newDebouncer
-  let
-    repoEnv :: RegistryRepoEnv
-    repoEnv =
-      { write: CommitAs (Repo.pacchettibottiCommitter token)
-      , pull: ForceClean
-      , repos: Repo.defaultRepos
-      , workdir: scratchDir
-      , debouncer
-      }
-
-  -- GitHub
-  octokit <- Octokit.newOctokit token
-
   -- Caching
   let cache = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cache
   githubCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
+
+  -- GitHub
+  octokit <- Octokit.newOctokit token
+
+  -- Registry
+  debouncer <- Registry.newDebouncer
+  let
+    registryEnv :: Registry.RegistryEnv
+    registryEnv =
+      { write: Registry.CommitAs (Git.pacchettibottiCommitter token)
+      , pull: Git.ForceClean
+      , repos: Registry.defaultRepos
+      , workdir: scratchDir
+      , debouncer
+      , cacheRef: registryCacheRef
+      }
 
   -- Logging
   now <- nowUTC
@@ -77,9 +77,8 @@ main = launchAff_ do
 
   transfer
     # Env.runPacchettiBottiEnv { privateKey, publicKey }
-    # Registry.interpret (Registry.handle registryCacheRef)
+    # Registry.interpret (Registry.handle registryEnv)
     # Storage.interpret (Storage.handleReadOnly cache)
-    # Repo.interpret (Repo.handle repoEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)

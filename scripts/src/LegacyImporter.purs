@@ -8,6 +8,7 @@ module Registry.Scripts.LegacyImporter where
 
 import Registry.App.Prelude
 
+import App.CLI.Git as Git
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Control.Alternative (guard)
@@ -51,8 +52,6 @@ import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Registry.Repo (PullMode(..), WriteMode(..))
-import Registry.App.Effect.Registry.Repo as Repo
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
@@ -118,37 +117,37 @@ main = launchAff_ do
   -- uploaded, but nothing is committed. In update-registry mode, tarballs are
   -- uploaded and manifests and metadata are written, committed, and pushed.
   runAppEffects <- do
-    debouncer <- Repo.newDebouncer
-    let repoEnv pull write = { pull, write, repos: Repo.defaultRepos, workdir: scratchDir, debouncer }
+    debouncer <- Registry.newDebouncer
+    let registryEnv pull write = { pull, write, repos: Registry.defaultRepos, workdir: scratchDir, debouncer, cacheRef: registryCacheRef }
     case mode of
       DryRun -> do
         token <- Env.lookupRequired Env.githubToken
         octokit <- Octokit.newOctokit token
         pure do
-          Storage.interpret (Storage.handleReadOnly cache)
+          Registry.interpret (Registry.handle (registryEnv Git.Autostash Registry.ReadOnly))
+            >>> Storage.interpret (Storage.handleReadOnly cache)
             >>> Pursuit.interpret Pursuit.handlePure
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-            >>> Repo.interpret (Repo.handle (repoEnv Autostash ReadOnly))
 
       GenerateRegistry -> do
         token <- Env.lookupRequired Env.githubToken
         s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
         octokit <- Octokit.newOctokit token
         pure do
-          Storage.interpret (Storage.handleS3 { s3, cache })
+          Registry.interpret (Registry.handle (registryEnv Git.Autostash (Registry.CommitAs (Git.pacchettibottiCommitter token))))
+            >>> Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret Pursuit.handlePure
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-            >>> Repo.interpret (Repo.handle (repoEnv Autostash (CommitAs (Repo.pacchettibottiCommitter token))))
 
       UpdateRegistry -> do
         token <- Env.lookupRequired Env.pacchettibottiToken
         s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
         octokit <- Octokit.newOctokit token
         pure do
-          Storage.interpret (Storage.handleS3 { s3, cache })
+          Registry.interpret (Registry.handle (registryEnv Git.ForceClean (Registry.CommitAs (Git.pacchettibottiCommitter token))))
+            >>> Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret (Pursuit.handleAff token)
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-            >>> Repo.interpret (Repo.handle (repoEnv ForceClean (CommitAs (Repo.pacchettibottiCommitter token))))
 
   -- Logging setup
   let logDir = Path.concat [ scratchDir, "logs" ]
@@ -159,7 +158,6 @@ main = launchAff_ do
     logPath = Path.concat [ logDir, logFile ]
 
   runLegacyImport mode logPath
-    # Registry.interpret (Registry.handle registryCacheRef)
     # runAppEffects
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })

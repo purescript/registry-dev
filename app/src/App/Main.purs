@@ -2,6 +2,7 @@ module Registry.App.Main where
 
 import Registry.App.Prelude
 
+import App.CLI.Git as Git
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
@@ -27,8 +28,6 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Registry.Repo (PullMode(..), RegistryRepoEnv, WriteMode(..))
-import Registry.App.Effect.Registry.Repo as Repo
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Constants as Constants
@@ -65,25 +64,25 @@ main = launchAff_ $ do
             signed <- signPacchettiBottiIfTrustee payload
             API.authenticated signed
 
-    -- Git env
-    debouncer <- Repo.newDebouncer
-
-    let
-      repoEnv :: RegistryRepoEnv
-      repoEnv =
-        { repos: Repo.defaultRepos
-        , pull: ForceClean
-        , write: CommitAs (Repo.pacchettibottiCommitter env.token)
-        , workdir: scratchDir
-        , debouncer
-        }
-
     -- Caching
     let cache = Path.concat [ scratchDir, ".cache" ]
     FS.Extra.ensureDirectory cache
     githubCacheRef <- Cache.newCacheRef
     legacyCacheRef <- Cache.newCacheRef
     registryCacheRef <- Cache.newCacheRef
+
+    -- Registry env
+    debouncer <- Registry.newDebouncer
+    let
+      registryEnv :: Registry.RegistryEnv
+      registryEnv =
+        { repos: Registry.defaultRepos
+        , pull: Git.ForceClean
+        , write: Registry.CommitAs (Git.pacchettibottiCommitter env.token)
+        , workdir: scratchDir
+        , debouncer
+        , cacheRef: registryCacheRef
+        }
 
     --  Package sets
     let workdir = Path.concat [ scratchDir, "package-sets-work" ]
@@ -96,15 +95,14 @@ main = launchAff_ $ do
       # Env.runPacchettiBottiEnv { publicKey: env.publicKey, privateKey: env.privateKey }
       -- App effects
       # PackageSets.interpret (PackageSets.handle { workdir })
-      # Registry.interpret (Registry.handle registryCacheRef)
+      # Registry.interpret (Registry.handle registryEnv)
       # Storage.interpret (Storage.handleS3 { s3: env.spacesConfig, cache })
-      # Repo.interpret (Repo.handle repoEnv)
       # Pursuit.interpret (Pursuit.handleAff env.token)
       # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache, ref: githubCacheRef })
       -- Caching & logging
       # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
       # Except.catch (\msg -> Log.error msg *> Log.notify msg *> Run.liftEffect (Ref.write true thrownRef))
-      # Log.interpret (\log -> Log.handleTerminal Verbose log *> Log.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Repo.defaultRepos.registry } log)
+      # Log.interpret (\log -> Log.handleTerminal Verbose log *> Log.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Registry.defaultRepos.registry } log)
       -- Base effects
       # Run.runBaseAff'
 

@@ -2,6 +2,7 @@ module Registry.App.Server where
 
 import Registry.App.Prelude hiding ((/))
 
+import App.CLI.Git as Git
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
@@ -33,8 +34,6 @@ import Registry.App.Effect.Pursuit (PURSUIT)
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Registry.Repo (Debouncer, REGISTRY_REPO)
-import Registry.App.Effect.Registry.Repo as Repo
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest (LEGACY_CACHE, _legacyCache)
@@ -160,7 +159,7 @@ type ServerEnv =
   , registryCacheRef :: CacheRef
   , octokit :: Octokit
   , vars :: ServerEnvVars
-  , debouncer :: Debouncer
+  , debouncer :: Registry.Debouncer
   , db :: Db
   , jobId :: Maybe JobId
   }
@@ -178,7 +177,7 @@ createServerEnv = do
   registryCacheRef <- Cache.newCacheRef
 
   octokit <- Octokit.newOctokit vars.token
-  debouncer <- Repo.newDebouncer
+  debouncer <- Registry.newDebouncer
 
   db <- liftEffect $ Db.connect
 
@@ -195,7 +194,7 @@ createServerEnv = do
     , jobId: Nothing
     }
 
-type ServerEffects = (PACCHETTIBOTTI_ENV + REGISTRY + REGISTRY_REPO + GITHUB + STORAGE + PURSUIT + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (PACCHETTIBOTTI_ENV + REGISTRY + GITHUB + STORAGE + PURSUIT + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer :: ServerEnv -> (ServerEnv -> Request Route -> Run ServerEffects Response) -> Request Route -> Aff Response
 runServer env router' request = do
@@ -242,19 +241,20 @@ jsonOk :: forall m a. MonadAff m => JsonCodec a -> a -> m Response
 jsonOk codec datum = HTTPurple.ok' HTTPurple.jsonHeaders $ HTTPurple.toJson (jsonEncoder codec) datum
 
 runEffects :: forall a. ServerEnv -> Run ServerEffects a -> Aff (Either Aff.Error a)
-runEffects env f = Aff.attempt do
+runEffects env operation = Aff.attempt do
   now <- nowUTC
   let logFile = String.take 10 (Formatter.DateTime.format Internal.Format.iso8601Date now) <> ".log"
   let logPath = Path.concat [ env.logsDir, logFile ]
-  f # Env.runPacchettiBottiEnv { publicKey: env.vars.publicKey, privateKey: env.vars.privateKey }
-    # Registry.interpret (Registry.handle env.registryCacheRef)
-    # Repo.interpret
-        ( Repo.handle
-            { repos: Repo.defaultRepos
-            , pull: Repo.ForceClean
-            , write: Repo.CommitAs (Repo.pacchettibottiCommitter env.vars.token)
+  operation
+    # Env.runPacchettiBottiEnv { publicKey: env.vars.publicKey, privateKey: env.vars.privateKey }
+    # Registry.interpret
+        ( Registry.handle
+            { repos: Registry.defaultRepos
+            , pull: Git.ForceClean
+            , write: Registry.CommitAs (Git.pacchettibottiCommitter env.vars.token)
             , workdir: scratchDir
             , debouncer: env.debouncer
+            , cacheRef: env.registryCacheRef
             }
         )
     # Pursuit.interpret (Pursuit.handleAff env.vars.token)

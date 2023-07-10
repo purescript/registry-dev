@@ -11,6 +11,7 @@ module Registry.Scripts.Solver where
 
 import Registry.App.Prelude
 
+import App.CLI.Git as Git
 import Data.Argonaut.Core as Json
 import Data.Array as Array
 import Data.Codec.Argonaut as J
@@ -34,10 +35,7 @@ import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
-import Registry.App.Effect.Registry (readManifestIndexFromDisk)
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Registry.Repo (PullMode(..), WriteMode(..))
-import Registry.App.Effect.Registry.Repo as Repo
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Foreign.FSExtra as FS.Extra
@@ -116,22 +114,21 @@ main = launchAff_ do
   let cache = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cache
 
-  debouncer <- Repo.newDebouncer
-  let repoEnv pull write = { pull, write, repos: Repo.defaultRepos, workdir: scratchDir, debouncer }
+  debouncer <- Registry.newDebouncer
+  let registryEnv pull write = { pull, write, repos: Registry.defaultRepos, workdir: scratchDir, debouncer, cacheRef: registryCacheRef }
   token <- Env.lookupRequired Env.githubToken
   octokit <- Octokit.newOctokit token
   let
     runAppEffects =
-      Storage.interpret (Storage.handleReadOnly cache)
+      Registry.interpret (Registry.handle (registryEnv Git.Autostash Registry.ReadOnly))
+        >>> Storage.interpret (Storage.handleReadOnly cache)
         >>> Pursuit.interpret Pursuit.handlePure
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-        >>> Repo.interpret (Repo.handle (repoEnv Autostash ReadOnly))
 
   let
     doTheThing = do
       Log.info $ "Reading registry index from " <> Path.concat [ scratchDir, "registry-index" ] <> " ..."
-      index <- readManifestIndexFromDisk $ Path.concat [ scratchDir, "registry-index" ]
-
+      index <- Registry.readManifestIndexFromDisk $ Path.concat [ scratchDir, "registry-index" ]
       action $ map (unwrap >>> _.dependencies) <$> ManifestIndex.toMap index
 
   -- Logging setup
@@ -143,7 +140,6 @@ main = launchAff_ do
     logPath = Path.concat [ logDir, logFile ]
 
   doTheThing
-    # Registry.interpret (Registry.handle registryCacheRef)
     # runAppEffects
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
