@@ -1,6 +1,9 @@
 -- | An effect for interacting with registry data, such as metadata, manifests,
--- | and package sets.
+-- | and package sets. The default handler uses local checkouts of the Git
+-- | repositories for each and interactions are done on the file system.
 module Registry.App.Effect.Registry where
+
+import Registry.App.Prelude
 
 import App.CLI.Git (GitResult)
 import App.CLI.Git as Git
@@ -27,10 +30,8 @@ import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.PackageSet (PscTag(..))
-import Registry.App.Legacy.PackageSet as Legacy.Manifest
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
 import Registry.App.Legacy.Types (legacyPackageSetCodec)
-import Registry.App.Prelude (class Eq, class Functor, class Functor2, class MonadEffect, type (+), type (~>), Either(..), Encoding(..), FilePath, Location(..), Manifest(..), ManifestIndex, Map, Maybe(..), Metadata, PackageName, PackageSet(..), Proxy(..), Ref, Tuple(..), Unit, Version, append, bimap, bind, discard, for, for_, formatPackageVersion, identity, liftEffect, lmap, map, map2, note, nowUTC, otherwise, partitionEithers, printJson, pure, readJsonFile, stringifyJson, traverse, un, unit, unless, when, writeJsonFile, ($), (/=), (<#>), (<<<), (<=), (<>), (=<<), (==), (>), (>>=), (>>>))
 import Registry.Constants as Constants
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (Address)
@@ -502,7 +503,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
     metadata <- Except.rethrow =<< handle env (ReadAllMetadata identity)
 
     Log.debug $ "Converting package set..."
-    converted <- case Legacy.Manifest.convertPackageSet manifests metadata set of
+    converted <- case Legacy.PackageSet.convertPackageSet manifests metadata set of
       Left error -> Except.throw $ "Failed to convert package set " <> name <> " to a legacy package set: " <> error
       Right converted -> pure converted
 
