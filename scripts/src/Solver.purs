@@ -36,6 +36,7 @@ import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Foreign.FSExtra as FS.Extra
@@ -123,6 +124,7 @@ main = launchAff_ do
       Registry.interpret (Registry.handle (registryEnv Git.Autostash Registry.ReadOnly))
         >>> Storage.interpret (Storage.handleReadOnly cache)
         >>> Pursuit.interpret Pursuit.handlePure
+        >>> Source.interpret Source.handle
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
 
   let

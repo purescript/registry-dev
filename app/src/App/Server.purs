@@ -34,6 +34,8 @@ import Registry.App.Effect.Pursuit (PURSUIT)
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Source (SOURCE)
+import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest (LEGACY_CACHE, _legacyCache)
@@ -194,7 +196,7 @@ createServerEnv = do
     , jobId: Nothing
     }
 
-type ServerEffects = (PACCHETTIBOTTI_ENV + REGISTRY + GITHUB + STORAGE + PURSUIT + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (PACCHETTIBOTTI_ENV + REGISTRY + STORAGE + PURSUIT + SOURCE + GITHUB + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer :: ServerEnv -> (ServerEnv -> Request Route -> Run ServerEffects Response) -> Request Route -> Aff Response
 runServer env router' request = do
@@ -258,8 +260,9 @@ runEffects env operation = Aff.attempt do
             }
         )
     # Pursuit.interpret (Pursuit.handleAff env.vars.token)
-    # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache: env.cacheDir, ref: env.githubCacheRef })
     # Storage.interpret (Storage.handleS3 { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }, cache: env.cacheDir })
+    # Source.interpret Source.handle
+    # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache: env.cacheDir, ref: env.githubCacheRef })
     # Cache.interpret _legacyCache (Cache.handleMemoryFs { cache: env.cacheDir, ref: env.legacyCacheRef })
     # Except.catch (\msg -> Log.error msg *> Run.liftAff (Aff.throwError (Aff.error msg)))
     # Log.interpret

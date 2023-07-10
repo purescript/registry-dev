@@ -16,10 +16,6 @@ module Registry.App.API
 
 import Registry.App.Prelude
 
-import Affjax.Node as Affjax.Node
-import Affjax.ResponseFormat as ResponseFormat
-import Affjax.StatusCode (StatusCode(..))
-import App.CLI.Git as Git
 import Control.Alternative as Alternative
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
@@ -30,8 +26,6 @@ import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
-import Data.HTTP.Method (Method(..))
-import Data.JSDate as JSDate
 import Data.Map as Map
 import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
@@ -40,7 +34,6 @@ import Data.String.NonEmpty as NonEmptyString
 import Data.String.Regex as Regex
 import Effect.Aff as Aff
 import Effect.Ref as Ref
-import Node.Buffer as Buffer
 import Node.ChildProcess as ChildProcess
 import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as FS.Stats
@@ -62,6 +55,8 @@ import Registry.App.Effect.Pursuit (PURSUIT)
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Source (SOURCE)
+import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.LenientVersion as LenientVersion
@@ -73,7 +68,6 @@ import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (IssueNumber(..), Team)
 import Registry.Foreign.Octokit as Octokit
-import Registry.Foreign.Tar as Foreign.Tar
 import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Path as Internal.Path
 import Registry.Location as Location
@@ -325,7 +319,7 @@ authenticated auth = case auth.payload of
         Registry.mirrorLegacyRegistry payload.name payload.newLocation
         Log.notify "Mirrored registry operation to the legacy registry."
 
-type PublishEffects r = (PURSUIT + REGISTRY + STORAGE + GITHUB + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
+type PublishEffects r = (PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Publish a package via the 'publish' operation. If the package has not been
 -- | published before then it will be registered and the given version will be
@@ -378,7 +372,7 @@ publish source payload = do
   -- the package directory along with its detected publish time.
   Log.debug "Metadata validated. Fetching package source code..."
   tmp <- Tmp.mkTmpDir
-  { packageDirectory, publishedTime } <- fetchPackageSource { tmpDir: tmp, ref: payload.ref, location: existingMetadata.location }
+  { path: packageDirectory, published: publishedTime } <- Source.fetch tmp existingMetadata.location payload.ref
 
   Log.debug $ "Package downloaded to " <> packageDirectory <> ", verifying it contains a src directory with valid modules..."
   Internal.Path.readPursFiles (Path.concat [ packageDirectory, "src" ]) >>= case _ of
@@ -900,131 +894,6 @@ formatPursuitResolutions { resolutions, dependenciesDir } =
       bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
       packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.print version ]
     [ Tuple bowerPackageName { path: packagePath, version } ]
-
-data PursPublishMethod = LegacyPursPublish | PursPublish
-
--- | A temporary flag that records whether we are using legacy purs publish
--- | (which requires all packages to be a Git repository) or new purs publish
--- | (which accepts any directory with package sources).
-pursPublishMethod :: PursPublishMethod
-pursPublishMethod = LegacyPursPublish
-
-fetchPackageSource
-  :: forall r
-   . { tmpDir :: FilePath, ref :: String, location :: Location }
-  -> Run (GITHUB + LOG + EXCEPT String + AFF + EFFECT + r) { packageDirectory :: FilePath, publishedTime :: DateTime }
-fetchPackageSource { tmpDir, ref, location } = case location of
-  Git _ -> do
-    -- TODO: Support non-GitHub packages. Remember subdir when doing so. (See #15)
-    Except.throw "Packages are only allowed to come from GitHub for now. See #15"
-
-  GitHub { owner, repo, subdir } -> do
-    -- TODO: Support subdir. In the meantime, we verify subdir is not present. (See #16)
-    when (isJust subdir) $ Except.throw "`subdir` is not supported for now. See #16"
-
-    case pursPublishMethod of
-      -- This needs to be removed so that we can support non-GitHub packages (#15)
-      -- and monorepo packages (#16).
-      --
-      -- However, the PureScript compiler requires packages to be a Git repo
-      -- with a tag checked out. Until we can replace using the compiler's
-      -- 'publish' command for docs we have to use this hacky checkout.
-      LegacyPursPublish -> do
-        Log.debug $ "Using legacy Git clone to fetch package source at tag: " <> show { owner, repo, ref }
-
-        let
-          repoDir = Path.concat [ tmpDir, repo ]
-
-          -- FIXME: This should be removed / replaced so that we can test
-          -- without hitting the network.
-          clonePackageAtTag = do
-            let url = Array.fold [ "https://github.com/", owner, "/", repo ]
-            let args = [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false", repoDir ]
-            withBackoff' (Git.gitCLI args Nothing) >>= case _ of
-              Nothing -> Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> url <> " " <> ref
-              Just (Left err) -> Aff.throwError $ Aff.error err
-              Just (Right _) -> pure unit
-
-        Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
-          Left error -> do
-            Log.error $ "Failed to clone git tag: " <> Aff.message error
-            Except.throw $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
-          Right _ -> Log.debug $ "Cloned package source to " <> Path.concat [ tmpDir, repo ]
-
-        Log.debug $ "Getting published time..."
-
-        let
-          getRefTime = do
-            timestamp <- Except.rethrow =<< Run.liftAff (Git.gitCLI [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir))
-            jsDate <- Run.liftEffect $ JSDate.parse timestamp
-            dateTime <- Except.note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
-            pure dateTime
-
-        -- Cloning will result in the `repo` name as the directory name
-        publishedTime <- Except.runExcept getRefTime >>= case _ of
-          Left error -> do
-            Log.error $ "Failed to get published time: " <> error
-            Except.throw $ "Cloned repository " <> owner <> "/" <> repo <> " at ref " <> ref <> ", but could not read the published time from the ref."
-          Right value -> pure value
-        pure { packageDirectory: repoDir, publishedTime }
-
-      -- This method is not currently used (see the comment on LegacyPursPublish),
-      -- but it's implemented here to demonstrate what we should do once we no
-      -- longer have to check out the repository.
-      PursPublish -> do
-        Log.debug $ "Using GitHub API to fetch package source at tag " <> show { owner, repo, ref }
-        commitDate <- do
-          let destination = owner <> "/" <> repo
-          commit <- GitHub.getRefCommit { owner, repo } (RawVersion ref) >>= case _ of
-            Left githubError -> do
-              Log.error $ "Failed to fetch " <> destination <> " at ref " <> ref <> ": " <> Octokit.printGitHubError githubError
-              Except.throw $ "Failed to fetch commit data associated with " <> destination <> " at ref " <> ref
-            Right result -> pure result
-          GitHub.getCommitDate { owner, repo } commit >>= case _ of
-            Left githubError -> do
-              Log.error $ "Failed to fetch " <> destination <> " at commit " <> commit <> ": " <> Octokit.printGitHubError githubError
-              Except.throw $ "Unable to get published time for commit " <> commit <> " associated with the given ref " <> ref
-            Right a -> pure a
-
-        let tarballName = ref <> ".tar.gz"
-        let absoluteTarballPath = Path.concat [ tmpDir, tarballName ]
-        let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
-        Log.debug $ "Fetching tarball from GitHub: " <> archiveUrl
-
-        response <- Run.liftAff $ withBackoff' $ Affjax.Node.request $ Affjax.Node.defaultRequest
-          { method = Left GET
-          , responseFormat = ResponseFormat.arrayBuffer
-          , url = archiveUrl
-          }
-
-        case response of
-          Nothing -> Except.throw $ "Could not download " <> archiveUrl
-          Just (Left error) -> do
-            Log.error $ "Failed to download " <> archiveUrl <> " because of an HTTP error: " <> Affjax.Node.printError error
-            Except.throw $ "Could not download " <> archiveUrl
-          Just (Right { status, body }) | status /= StatusCode 200 -> do
-            buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
-            bodyString <- Run.liftEffect $ Buffer.toString UTF8 (buffer :: Buffer)
-            Log.error $ "Failed to download " <> archiveUrl <> " because of a non-200 status code (" <> show status <> ") with body " <> bodyString
-            Except.throw $ "Could not download " <> archiveUrl
-          Just (Right { body }) -> do
-            Log.debug $ "Successfully downloaded " <> archiveUrl <> " into a buffer."
-            buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
-            Run.liftAff (Aff.attempt (FS.Aff.writeFile absoluteTarballPath buffer)) >>= case _ of
-              Left error -> do
-                Log.error $ "Downloaded " <> archiveUrl <> " but failed to write it to the file at path " <> absoluteTarballPath <> ":\n" <> Aff.message error
-                Except.throw $ "Could not download " <> archiveUrl <> " due to an internal error."
-              Right _ ->
-                Log.debug $ "Tarball downloaded to " <> absoluteTarballPath
-
-        Log.debug "Verifying tarball..."
-        Foreign.Tar.getToplevelDir absoluteTarballPath >>= case _ of
-          Nothing ->
-            Except.throw "Downloaded tarball from GitHub has no top-level directory."
-          Just dir -> do
-            Log.debug "Extracting the tarball..."
-            Tar.extract { cwd: tmpDir, archive: tarballName }
-            pure { packageDirectory: dir, publishedTime: commitDate }
 
 -- | Copy files from the package source directory to the destination directory
 -- | for the tarball. This will copy all always-included files as well as files

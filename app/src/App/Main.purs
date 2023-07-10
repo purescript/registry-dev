@@ -28,6 +28,7 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Constants as Constants
@@ -98,6 +99,7 @@ main = launchAff_ $ do
       # Registry.interpret (Registry.handle registryEnv)
       # Storage.interpret (Storage.handleS3 { s3: env.spacesConfig, cache })
       # Pursuit.interpret (Pursuit.handleAff env.token)
+      # Source.interpret Source.handle
       # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache, ref: githubCacheRef })
       -- Caching & logging
       # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })

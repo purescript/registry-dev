@@ -139,13 +139,13 @@ type LogGitHubEnv =
 handleGitHub :: forall a r. LogGitHubEnv -> Log a -> Run (AFF + EFFECT + r) a
 handleGitHub env = case _ of
   Log Notify message next -> do
-    let issueNumber = Int.toStringAs Int.decimal $ un IssueNumber env.issue
+    let _issueNumber = Int.toStringAs Int.decimal $ un IssueNumber env.issue
     let comment = Dodo.print Dodo.plainText Dodo.twoSpaces (toLog message)
     let request = Octokit.createCommentRequest { address: env.registry, issue: env.issue, body: comment }
     -- TODO: figure out how to log here
     -- debug $ "Notifying via a GitHub comment on issue " <> issueNumber
     Octokit.request env.octokit request >>= case _ of
-      Left err -> do
+      Left _err -> do
         -- error $ "Could not send comment to GitHub due to an unexpected error."
         -- debug $ Octokit.printGitHubError err
         pure unit

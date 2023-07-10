@@ -2,15 +2,14 @@ module Registry.App.Prelude
   ( Backoff
   , LogLevel(..)
   , LogVerbosity(..)
-  , printLogLevel
-  , parseLogLevel
-  , logLevelToPriority
-  , logLevelFromPriority
+  , PursPublishMethod(..)
   , class Functor2
-  , map2
   , formatPackageVersion
   , fromJust'
   , guardA
+  , logLevelFromPriority
+  , logLevelToPriority
+  , map2
   , mapKeys
   , module Either
   , module Extra
@@ -21,8 +20,11 @@ module Registry.App.Prelude
   , pacchettibottiEmail
   , pacchettibottiKeyType
   , parseJson
+  , parseLogLevel
   , partitionEithers
   , printJson
+  , printLogLevel
+  , pursPublishMethod
   , readJsonFile
   , scratchDir
   , stringifyJson
@@ -256,3 +258,12 @@ data LogVerbosity = Quiet | Normal | Verbose
 
 derive instance Eq LogVerbosity
 derive instance Ord LogVerbosity
+
+-- | A temporary flag that records whether we are using legacy purs publish
+-- | (which requires all packages to be a Git repository) or new purs publish
+-- | (which accepts any directory with package sources).
+data PursPublishMethod = LegacyPursPublish | PursPublish
+
+-- | The current purs publish method
+pursPublishMethod :: PursPublishMethod
+pursPublishMethod = LegacyPursPublish

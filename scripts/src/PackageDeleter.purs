@@ -24,6 +24,7 @@ import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest (_legacyCache)
 import Registry.Foreign.FSExtra as FS.Extra
@@ -149,6 +150,7 @@ main = launchAff_ do
     interpret =
       Registry.interpret (Registry.handle registryEnv)
         >>> Storage.interpret (if arguments.upload then Storage.handleS3 { s3, cache } else Storage.handleReadOnly cache)
+        >>> Source.interpret Source.handle
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
         >>> Pursuit.interpret Pursuit.handlePure
         >>> Cache.interpret _legacyCache (Cache.handleMemoryFs { ref: legacyCacheRef, cache })

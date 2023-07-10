@@ -10,6 +10,7 @@ module Registry.Test.Assert.Run
 
 import Registry.App.Prelude
 
+import App.CLI.Git as Git
 import Data.Array as Array
 import Data.Foldable (class Foldable)
 import Data.Foldable as Foldable
@@ -18,6 +19,7 @@ import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
 import Effect.Aff as Aff
+import Effect.Now as Now
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import Node.FS.Aff as FS.Aff
@@ -36,6 +38,8 @@ import Registry.App.Effect.Pursuit (PURSUIT, Pursuit(..))
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY, Registry(..))
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Source (SOURCE, Source(..))
+import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE, Storage)
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest (LEGACY_CACHE)
@@ -71,6 +75,7 @@ type TEST_EFFECTS =
       + REGISTRY
       + PACKAGE_SETS
       + STORAGE
+      + SOURCE
       + GITHUB
       + PACCHETTIBOTTI_ENV
       + GITHUB_EVENT_ENV
@@ -92,13 +97,13 @@ type TestEnv =
   , username :: String
   }
 
--- FIXME: Rename to 'runTestEffects'
 runTestEffects :: forall a. TestEnv -> Run TEST_EFFECTS a -> Aff a
 runTestEffects env =
   Pursuit.interpret (handlePursuitMock env.metadata)
     >>> Registry.interpret (handleRegistryMock { metadataRef: env.metadata, indexRef: env.index })
     >>> PackageSets.interpret handlePackageSetsMock
     >>> Storage.interpret (handleStorageMock { storage: env.storage })
+    >>> Source.interpret (handleSourceMock { github: env.github })
     >>> GitHub.interpret (handleGitHubMock { github: env.github })
     -- Environments
     >>> Env.runGitHubEventEnv { username: env.username, issue: IssueNumber 1 }
@@ -244,6 +249,42 @@ handleStorageMock env = case _ of
           >=> String.stripSuffix (String.Pattern ".tar.gz")
       versions = Array.mapMaybe (Either.hush <<< Version.parse <=< extractVersion) paths
     pure $ reply $ Right $ Set.fromFoldable versions
+
+type SourceMockEnv = { github :: FilePath }
+
+handleSourceMock :: forall r a. SourceMockEnv -> Source a -> Run (EXCEPT String + AFF + EFFECT + r) a
+handleSourceMock env = case _ of
+  Fetch destination location ref reply -> do
+    now <- Run.liftEffect Now.nowDateTime
+    case location of
+      Git _ -> pure $ reply $ Left "Packages cannot be published from Git yet (only GitHub)."
+      GitHub { subdir } | isJust subdir -> pure $ reply $ Left "Packages cannot use the 'subdir' key yet."
+      GitHub { repo } -> do
+        let
+          name = stripPureScriptPrefix repo
+          fixedRef = fromMaybe ref $ String.stripPrefix (String.Pattern "v") ref
+          dirname = name <> "-" <> fixedRef
+          localPath = Path.concat [ env.github, dirname ]
+          destinationPath = Path.concat [ destination, dirname <> "-checkout" ]
+        Run.liftAff $ FS.Extra.copy { from: localPath, to: destinationPath, preserveTimestamps: true }
+
+        case pursPublishMethod of
+          LegacyPursPublish -> do
+            -- When using the compiler and legacy 'purs publish' we have to be
+            -- in a clean git repository with the ref checked out.
+            Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ destinationPath, ".gitignore" ]) "output"
+            let exec args = void (Git.withGit destinationPath args identity)
+            exec [ "init" ]
+            exec [ "config", "user.name", "test-user" ]
+            exec [ "config", "user.email", "<" <> "test-user@aol.com" <> ">" ]
+            exec [ "add", "." ]
+            exec [ "commit", "--no-sign", "-m", "Initial commit" ]
+            exec [ "tag", "--no-sign", "-m", ref, ref ]
+
+          PursPublish ->
+            Except.throw "Tests are not set up for 'PursPublish' and must be fixed."
+
+        pure $ reply $ Right { path: destinationPath, published: now }
 
 type GitHubMockEnv = { github :: FilePath }
 
