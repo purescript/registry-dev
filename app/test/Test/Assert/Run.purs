@@ -2,22 +2,25 @@
 -- | the various registry effects and fixtures for a minimal registry.
 module Registry.Test.Assert.Run
   ( TEST_EFFECTS
+  , runBaseEffects
   , runTestEffects
-  , readFixtures
   , shouldContain
   , shouldNotContain
   ) where
 
 import Registry.App.Prelude
 
+import Data.Array as Array
 import Data.Foldable (class Foldable)
 import Data.Foldable as Foldable
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.Set as Set
+import Data.String as String
 import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
+import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
@@ -37,6 +40,7 @@ import Registry.App.Effect.Storage (STORAGE, Storage)
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest (LEGACY_CACHE)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
+import Registry.App.Prelude as Either
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubError(..), IssueNumber(..))
 import Registry.ManifestIndex as ManifestIndex
@@ -80,35 +84,20 @@ type TEST_EFFECTS =
   )
 
 type TestEnv =
-  { metadata :: Ref (Map PackageName Metadata)
+  { workdir :: FilePath
+  , metadata :: Ref (Map PackageName Metadata)
   , index :: Ref ManifestIndex
+  , storage :: FilePath
   , username :: String
   }
 
-readFixtures :: Aff { metadata :: Ref (Map PackageName Metadata), index :: Ref ManifestIndex }
-readFixtures = do
-  let
-    run = do
-      initialMetadata <- Registry.readAllMetadataFromDisk metadataFixtures
-      metadata <- liftEffect $ Ref.new initialMetadata
-
-      initialIndex <- Registry.readManifestIndexFromDisk manifestFixtures
-      index <- liftEffect $ Ref.new initialIndex
-
-      pure { metadata, index }
-
-  run
-    # Log.interpret (\(Log _ _ next) -> pure next)
-    # Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
-    # Run.runBaseAff'
-
 -- FIXME: Rename to 'runTestEffects'
-runTestEffects :: forall a. TestEnv -> Run TEST_EFFECTS a -> Aff (Either String a)
+runTestEffects :: forall a. TestEnv -> Run TEST_EFFECTS a -> Aff a
 runTestEffects env =
   Pursuit.interpret (handlePursuitMock env.metadata)
     >>> Registry.interpret (handleRegistryMock { metadataRef: env.metadata, indexRef: env.index })
     >>> PackageSets.interpret handlePackageSetsMock
-    >>> Storage.interpret handleStorageMock
+    >>> Storage.interpret (handleStorageMock { storage: env.storage })
     >>> GitHub.interpret handleGitHubMock
     -- Environments
     >>> Env.runGitHubEventEnv { username: env.username, issue: IssueNumber 1 }
@@ -119,7 +108,15 @@ runTestEffects env =
     -- Other effects
     >>> Log.interpret (\(Log _ _ next) -> pure next)
     -- Base effects
-    >>> Except.runExcept
+    >>> Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
+    >>> Run.runBaseAff'
+
+-- | For testing simple Run functions that don't need the whole environment.
+runBaseEffects :: forall a. Run (LOG + EXCEPT String + AFF + EFFECT + ()) a -> Aff a
+runBaseEffects =
+  Log.interpret (\(Log _ _ next) -> pure next)
+    -- Base effects
+    >>> Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
     >>> Run.runBaseAff'
 
 runLegacyCacheMemory :: forall r a. CacheRef -> Run (LEGACY_CACHE + LOG + EFFECT + r) a -> Run (LOG + EFFECT + r) a
@@ -127,12 +124,6 @@ runLegacyCacheMemory = Cache.interpret Legacy.Manifest._legacyCache <<< Cache.ha
 
 runGitHubCacheMemory :: forall r a. CacheRef -> Run (GITHUB_CACHE + LOG + EFFECT + r) a -> Run (LOG + EFFECT + r) a
 runGitHubCacheMemory = Cache.interpret GitHub._githubCache <<< Cache.handleMemory
-
-metadataFixtures :: FilePath
-metadataFixtures = Path.concat [ "test", "_fixtures", "registry-metadata" ]
-
-manifestFixtures :: FilePath
-manifestFixtures = Path.concat [ "test", "_fixtures", "registry-index" ]
 
 handlePursuitMock :: forall r a. Ref (Map PackageName Metadata) -> Pursuit a -> Run (EFFECT + r) a
 handlePursuitMock metadataRef = case _ of
@@ -154,6 +145,7 @@ handleRegistryMock env = case _ of
   ReadManifest name version reply -> do
     index <- Run.liftEffect (Ref.read env.indexRef)
     pure $ reply $ Right $ ManifestIndex.lookup name version index
+
   WriteManifest manifest reply -> do
     index <- Run.liftEffect (Ref.read env.indexRef)
     case ManifestIndex.insert manifest index of
@@ -161,6 +153,7 @@ handleRegistryMock env = case _ of
       Right index' -> do
         Run.liftEffect (Ref.write index' env.indexRef)
         pure $ reply $ Right unit
+
   DeleteManifest name version reply -> do
     index <- Run.liftEffect (Ref.read env.indexRef)
     case ManifestIndex.delete name version index of
@@ -168,15 +161,19 @@ handleRegistryMock env = case _ of
       Right index' -> do
         Run.liftEffect (Ref.write index' env.indexRef)
         pure $ reply $ Right unit
+
   ReadAllManifests reply -> do
     index <- Run.liftEffect (Ref.read env.indexRef)
     pure $ reply $ Right index
+
   ReadMetadata name reply -> do
     metadata <- Run.liftEffect (Ref.read env.metadataRef)
     pure $ reply $ Right $ Map.lookup name metadata
+
   WriteMetadata name metadata reply -> do
     Run.liftEffect (Ref.modify_ (Map.insert name metadata) env.metadataRef)
     pure $ reply $ Right unit
+
   ReadAllMetadata reply -> do
     metadata <- Run.liftEffect (Ref.read env.metadataRef)
     pure $ reply $ Right metadata
@@ -184,9 +181,11 @@ handleRegistryMock env = case _ of
   -- FIXME: Actually reply with a package set
   ReadLatestPackageSet reply ->
     pure $ reply $ Right Nothing
+
   -- FIXME: Actually write package set
   WritePackageSet _packageSet _message reply ->
     pure $ reply $ Right unit
+
   -- FIXME: Actually reply with a package set
   ReadAllPackageSets reply ->
     pure $ reply $ Right Map.empty
@@ -208,28 +207,34 @@ handlePackageSetsMock = case _ of
   UpgradeSequential packageSet _compilerVersion changeSet reply ->
     pure $ reply $ Right $ Just { failed: changeSet, succeeded: changeSet, result: packageSet }
 
-handleStorageMock :: forall r a. Storage a -> Run (AFF + r) a
-handleStorageMock = case _ of
-  Storage.Upload _name _version _destinationPath reply ->
+type StorageMockEnv = { storage :: FilePath }
+
+-- We handle the storage effect by copying files to/from the provided
+-- upload/download directories, and listing versions based on the filenames.
+handleStorageMock :: forall r a. StorageMockEnv -> Storage a -> Run (AFF + r) a
+handleStorageMock env = case _ of
+  Storage.Upload name version sourcePath reply -> do
+    let destinationPath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
+    Run.liftAff $ FS.Extra.copy { from: sourcePath, to: destinationPath, preserveTimestamps: true }
     pure $ reply $ Right unit
 
-  -- FIXME: We probably shouldn't be storing tarballs in fixtures.
-  Storage.Download name version destinationPath reply ->
-    if name == Utils.unsafePackageName "prelude" && version == Utils.unsafeVersion "6.0.1" then do
-      -- Note: When we're inside the test effects we are running from the root
-      -- of the repository, so we need "app" at the start of the path.
-      let sourcePath = Path.concat [ "app", "test", "_fixtures", "registry-storage", "prelude-6.0.1.tar.gz" ]
-      Run.liftAff $ FS.Extra.copy { from: sourcePath, to: destinationPath, preserveTimestamps: false }
-      pure $ reply $ Right unit
-    else
-      pure $ reply $ Left $ "No such fixture: " <> PackageName.print name <> " " <> Version.print version
-
-  Storage.Delete _name _version reply ->
+  Storage.Download name version destinationPath reply -> do
+    let sourcePath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
+    Run.liftAff $ FS.Extra.copy { from: sourcePath, to: destinationPath, preserveTimestamps: true }
     pure $ reply $ Right unit
 
-  -- FIXME: Actually reply with a set of versions based on the fixtures.
-  Storage.Query _name reply -> do
-    pure $ reply $ Right Set.empty
+  Storage.Delete name version reply -> do
+    let sourcePath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
+    Run.liftAff (Aff.attempt (FS.Aff.stat sourcePath)) >>= case _ of
+      Left _ -> pure $ reply $ Left $ "Cannot delete " <> sourcePath <> " because it does not exist in download directory."
+      Right _ -> do
+        Run.liftAff $ FS.Extra.remove sourcePath
+        pure $ reply $ Right unit
+
+  Storage.Query name reply -> do
+    paths <- Run.liftAff $ FS.Aff.readdir env.storage
+    let versions = Array.mapMaybe (Either.hush <<< Version.parse <=< String.stripPrefix (String.Pattern (PackageName.print name <> "-"))) paths
+    pure $ reply $ Right $ Set.fromFoldable versions
 
 handleGitHubMock :: forall r a. GitHub a -> Run r a
 handleGitHubMock = case _ of

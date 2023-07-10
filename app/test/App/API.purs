@@ -7,10 +7,13 @@ import Data.Foldable (traverse_)
 import Data.Map as Map
 import Data.String.NonEmpty as NonEmptyString
 import Effect.Aff as Aff
+import Effect.Ref as Ref
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
+import Registry.App.Effect.Log as Log
+import Registry.App.Effect.Registry as Registry
 import Registry.App.Legacy.Types (RawPackageName(..))
 import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
@@ -18,14 +21,22 @@ import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Tmp as Tmp
 import Registry.PackageName as PackageName
 import Registry.Test.Assert as Assert
-import Registry.Test.Assert.Run (TEST_EFFECTS)
 import Registry.Test.Assert.Run as Assert.Run
 import Registry.Test.Utils as Utils
 import Registry.Version as Version
 import Run (EFFECT, Run)
 import Run as Run
-import Test.Spec (ComputationType)
+import Run.Except as Except
 import Test.Spec as Spec
+
+-- | The environment accessible to each assertion in the test suite, derived
+-- | from the fixtures.
+type PipelineEnv =
+  { workdir :: FilePath
+  , metadata :: Ref (Map PackageName Metadata)
+  , index :: Ref ManifestIndex
+  , storageDir :: FilePath
+  }
 
 spec :: Spec.Spec Unit
 spec = do
@@ -36,27 +47,65 @@ spec = do
     removeIgnoredTarballFiles
     copySourceFiles
 
-  Spec.describe "API pipelines run correctly" do
-    Spec.it "Publish" do
-      -- FIXME: The API pipeline will actually clone 'effect', but we probably
-      -- want a minimal fixture instead (?)
-      --
-      -- FIXME: Gotta have a registry available in order to "publish" packages
-      -- which have dependencies.
-      { index, metadata } <- Assert.Run.readFixtures
-      cwd <- liftEffect Process.cwd
-      liftEffect $ Process.chdir ".."
-      result <- Assert.Run.runTestEffects { index, metadata, username: "jon" } $ API.publish API.Current
+  Spec.describe "API pipelines run correctly" $ Spec.around withCleanEnv do
+    Spec.it "Publish" \{ workdir, index, metadata, storageDir } -> do
+      let testEnv = { workdir, index, metadata, username: "jon", storage: storageDir }
+      -- We want to test that the publish pipeline runs correctly, so we first
+      -- delete the effect@4.0.0 package, then we attempt to publish it.
+      Assert.Run.runTestEffects testEnv $ API.publish API.Current
         { compiler: Utils.unsafeVersion "0.15.9"
         , location: Just $ GitHub { owner: "purescript", repo: "purescript-effect", subdir: Nothing }
         , name: Utils.unsafePackageName "effect"
         , ref: "v4.0.0"
         , resolutions: Nothing
         }
+  where
+  withCleanEnv :: (PipelineEnv -> Aff Unit) -> Aff Unit
+  withCleanEnv action = do
+    cwd <- liftEffect Process.cwd
+    workdir <- liftAff Tmp.mkTmpDir
+    Aff.bracket (enterCleanEnv workdir) (exitCleanEnv cwd) action
+    where
+    -- Exits the clean environment for the test
+    exitCleanEnv :: FilePath -> PipelineEnv -> Aff Unit
+    exitCleanEnv cwd { workdir } = do
       liftEffect $ Process.chdir cwd
-      case result of
-        Left err -> Aff.throwError (Aff.error err)
-        Right _ -> pure unit
+      FS.Extra.remove workdir
+
+    -- Sets up a clean environment for each test, beginning with only what's in
+    -- the fixtures directory.
+    enterCleanEnv :: FilePath -> Aff PipelineEnv
+    enterCleanEnv workdir = do
+      -- FIXME: The publish pipeline probably shouldn't require this. But...the
+      -- publish pipeline requires that there be a 'types' directory containing
+      -- dhall types for the registry in the current working directory.
+      FS.Extra.copy { from: Path.concat [ "..", "types" ], to: Path.concat [ workdir, "types" ], preserveTimestamps: true }
+
+      let localFixtures = Path.concat [ "test", "_fixtures" ]
+      testFixtures <- liftAff Tmp.mkTmpDir
+      let copyFixture path = FS.Extra.copy { from: Path.concat [ localFixtures, path ], to: Path.concat [ testFixtures, path ], preserveTimestamps: true }
+
+      -- Set up a clean fixtures environment.
+      liftAff do
+        copyFixture "registry-index"
+        copyFixture "registry-metadata"
+        copyFixture "registry-storage"
+
+      let
+        readFixtures = do
+          initialMetadata <- Registry.readAllMetadataFromDisk $ Path.concat [ testFixtures, "registry-metadata" ]
+          metadata <- liftEffect $ Ref.new initialMetadata
+          initialIndex <- Registry.readManifestIndexFromDisk $ Path.concat [ testFixtures, "registry-index" ]
+          index <- liftEffect $ Ref.new initialIndex
+          pure { metadata, index }
+
+      fixtures <- readFixtures
+        # Log.interpret (\(Log.Log _ _ next) -> pure next)
+        # Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
+        # Run.runBaseAff'
+
+      liftEffect $ Process.chdir workdir
+      pure { workdir, metadata: fixtures.metadata, index: fixtures.index, storageDir: Path.concat [ testFixtures, "registry-storage" ] }
 
 checkBuildPlanToResolutions :: Spec.Spec Unit
 checkBuildPlanToResolutions = do
@@ -124,7 +173,7 @@ removeIgnoredTarballFiles = Spec.before runBefore do
     pure { tmp, writeDirectories, writeFiles }
 
 copySourceFiles :: Spec.Spec Unit
-copySourceFiles = Spec.hoistSpec identity hoistFn $ Spec.before runBefore do
+copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runBaseEffects) $ Spec.before runBefore do
   let
     goodDirectories = [ "src" ]
     goodFiles = [ "purs.json", "README.md", "LICENSE", Path.concat [ "src", "Main.purs" ], Path.concat [ "src", "Main.js" ] ]
@@ -165,13 +214,6 @@ copySourceFiles = Spec.hoistSpec identity hoistFn $ Spec.before runBefore do
     for_ acceptedPaths \path -> do
       paths.succeeded `Assert.Run.shouldContain` path
   where
-  hoistFn :: forall a. ComputationType -> Run TEST_EFFECTS a -> Aff a
-  hoistFn _ op = do
-    { metadata, index } <- Assert.Run.readFixtures
-    Assert.Run.runTestEffects { metadata, index, username: "jon" } op >>= case _ of
-      Left err -> Aff.throwError $ Aff.error err
-      Right a -> pure a
-
   runBefore :: forall r. Run (EFFECT + r) _
   runBefore = do
     tmp <- Tmp.mkTmpDir
