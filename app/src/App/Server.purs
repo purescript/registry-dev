@@ -56,7 +56,7 @@ data Route
   | Unpublish
   | Transfer
   | Jobs JobId
-      { logLevel :: Maybe LogLevel
+      { level :: Maybe LogLevel
       , since :: Maybe DateTime
       }
 
@@ -81,7 +81,7 @@ routes = Routing.root $ Routing.prefix "api" $ Routing.prefix "v1" $ RoutingG.su
   , "Transfer": "transfer" / RoutingG.noArgs
   , "Jobs": "jobs" /
       ( jobIdS ?
-          { logLevel: Routing.optional <<< logLevelP <<< Routing.string
+          { level: Routing.optional <<< logLevelP <<< Routing.string
           , since: Routing.optional <<< timestampP <<< Routing.string
           }
       )
@@ -95,11 +95,34 @@ type PublishResponse = { jobId :: JobId }
 publishResponseCodec :: JsonCodec PublishResponse
 publishResponseCodec = CA.Record.object "PublishResponse" { jobId: Db.jobIdCodec }
 
+type Job =
+  { jobId :: JobId
+  , jobType :: Db.JobType
+  , createdAt :: DateTime
+  , finishedAt :: Maybe DateTime
+  , success :: Boolean
+  , logs :: Array Db.LogLine
+  }
+
+jobCodec :: JsonCodec Job
+jobCodec = CA.Record.object "Job"
+  { jobId: Db.jobIdCodec
+  , jobType: Db.jobTypeCodec
+  , createdAt: Internal.Codec.iso8601DateTime
+  , finishedAt: CAR.optional Internal.Codec.iso8601DateTime
+  , success: CA.boolean
+  , logs: CA.array Db.logLineCodec
+  }
+
 router :: ServerEnv -> Request Route -> Run ServerEffects Response
 router env { route, method, body } = HTTPurple.usingCont case route, method of
   Publish, Post -> do
     publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
     jobId <- liftEffect $ newJobId
+    now <- nowUTC
+    -- FIXME: add PackageName, Version to the Job table, and return the current JobId if there is a pipeline in progress!!
+    let newJob = { createdAt: now, jobId, jobType: Db.Publish }
+    liftEffect $ Db.createJob env.db newJob
     lift $ Log.info $ "Received publish request, job id: " <> unwrap jobId
     let newEnv = env { jobId = Just jobId }
     _fiber <- liftAff $ Aff.forkAff $ runEffects newEnv (API.publish Current publish)
@@ -128,10 +151,14 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
-  Jobs jobId { logLevel: maybeLogLevel, since }, Get -> do
-    let logLevel = fromMaybe Notify maybeLogLevel
+  Jobs jobId { level: maybeLogLevel, since }, Get -> do
+    let logLevel = fromMaybe Error maybeLogLevel
     logs <- liftEffect $ Db.selectLogsByJob env.db jobId logLevel since
-    jsonOk (CA.array Db.logLineCodec) logs
+    maybeJob <- liftEffect $ Db.selectJob env.db jobId
+    case maybeJob of
+      -- FIXME: maybe log here?
+      Left err -> HTTPurple.notFound
+      Right job -> jsonOk jobCodec (Record.insert (Proxy :: _ "logs") logs job)
 
   _, _ -> HTTPurple.notFound
 
@@ -244,8 +271,8 @@ jsonOk codec datum = HTTPurple.ok' HTTPurple.jsonHeaders $ HTTPurple.toJson (jso
 
 runEffects :: forall a. ServerEnv -> Run ServerEffects a -> Aff (Either Aff.Error a)
 runEffects env operation = Aff.attempt do
-  now <- nowUTC
-  let logFile = String.take 10 (Formatter.DateTime.format Internal.Format.iso8601Date now) <> ".log"
+  today <- nowUTC
+  let logFile = String.take 10 (Formatter.DateTime.format Internal.Format.iso8601Date today) <> ".log"
   let logPath = Path.concat [ env.logsDir, logFile ]
   operation
     # Env.runPacchettiBottiEnv { publicKey: env.vars.publicKey, privateKey: env.vars.privateKey }
@@ -264,7 +291,14 @@ runEffects env operation = Aff.attempt do
     # Source.interpret Source.handle
     # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache: env.cacheDir, ref: env.githubCacheRef })
     # Cache.interpret _legacyCache (Cache.handleMemoryFs { cache: env.cacheDir, ref: env.legacyCacheRef })
-    # Except.catch (\msg -> Log.error msg *> Run.liftAff (Aff.throwError (Aff.error msg)))
+    # Except.catch
+        ( \msg -> do
+            finishedAt <- nowUTC
+            case env.jobId of
+              Just jobId -> liftEffect $ Db.finishJob env.db { jobId, finishedAt, success: false }
+              Nothing -> pure unit
+            Log.error msg *> Run.liftAff (Aff.throwError (Aff.error msg))
+        )
     # Log.interpret
         ( \log -> case env.jobId of
             Nothing -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log
