@@ -3,7 +3,10 @@
 -- | computations, while at the same time generating efficient JavaScript.
 module Effect
   ( Effect
-  , untilE, whileE, forE, foreachE
+  , untilE
+  , whileE
+  , forE
+  , foreachE
   ) where
 
 import Prelude

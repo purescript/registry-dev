@@ -175,47 +175,160 @@ foreign import data EffectFn10 :: Type -> Type -> Type -> Type -> Type -> Type -
 
 type role EffectFn10 representational representational representational representational representational representational representational representational representational representational representational
 
-foreign import mkEffectFn1 :: forall a r.
-  (a -> Effect r) -> EffectFn1 a r
-foreign import mkEffectFn2 :: forall a b r.
-  (a -> b -> Effect r) -> EffectFn2 a b r
-foreign import mkEffectFn3 :: forall a b c r.
-  (a -> b -> c -> Effect r) -> EffectFn3 a b c r
-foreign import mkEffectFn4 :: forall a b c d r.
-  (a -> b -> c -> d -> Effect r) -> EffectFn4 a b c d r
-foreign import mkEffectFn5 :: forall a b c d e r.
-  (a -> b -> c -> d -> e -> Effect r) -> EffectFn5 a b c d e r
-foreign import mkEffectFn6 :: forall a b c d e f r.
-  (a -> b -> c -> d -> e -> f -> Effect r) -> EffectFn6 a b c d e f r
-foreign import mkEffectFn7 :: forall a b c d e f g r.
-  (a -> b -> c -> d -> e -> f -> g -> Effect r) -> EffectFn7 a b c d e f g r
-foreign import mkEffectFn8 :: forall a b c d e f g h r.
-  (a -> b -> c -> d -> e -> f -> g -> h -> Effect r) -> EffectFn8 a b c d e f g h r
-foreign import mkEffectFn9 :: forall a b c d e f g h i r.
-  (a -> b -> c -> d -> e -> f -> g -> h -> i -> Effect r) -> EffectFn9 a b c d e f g h i r
-foreign import mkEffectFn10 :: forall a b c d e f g h i j r.
-  (a -> b -> c -> d -> e -> f -> g -> h -> i -> j -> Effect r) -> EffectFn10 a b c d e f g h i j r
+foreign import mkEffectFn1
+  :: forall a r
+   . (a -> Effect r)
+  -> EffectFn1 a r
 
-foreign import runEffectFn1 :: forall a r.
-  EffectFn1 a r -> a -> Effect r
-foreign import runEffectFn2 :: forall a b r.
-  EffectFn2 a b r -> a -> b -> Effect r
-foreign import runEffectFn3 :: forall a b c r.
-  EffectFn3 a b c r -> a -> b -> c -> Effect r
-foreign import runEffectFn4 :: forall a b c d r.
-  EffectFn4 a b c d r -> a -> b -> c -> d -> Effect r
-foreign import runEffectFn5 :: forall a b c d e r.
-  EffectFn5 a b c d e r -> a -> b -> c -> d -> e -> Effect r
-foreign import runEffectFn6 :: forall a b c d e f r.
-  EffectFn6 a b c d e f r -> a -> b -> c -> d -> e -> f -> Effect r
-foreign import runEffectFn7 :: forall a b c d e f g r.
-  EffectFn7 a b c d e f g r -> a -> b -> c -> d -> e -> f -> g -> Effect r
-foreign import runEffectFn8 :: forall a b c d e f g h r.
-  EffectFn8 a b c d e f g h r -> a -> b -> c -> d -> e -> f -> g -> h -> Effect r
-foreign import runEffectFn9 :: forall a b c d e f g h i r.
-  EffectFn9 a b c d e f g h i r -> a -> b -> c -> d -> e -> f -> g -> h -> i -> Effect r
-foreign import runEffectFn10 :: forall a b c d e f g h i j r.
-  EffectFn10 a b c d e f g h i j r -> a -> b -> c -> d -> e -> f -> g -> h -> i -> j -> Effect r
+foreign import mkEffectFn2
+  :: forall a b r
+   . (a -> b -> Effect r)
+  -> EffectFn2 a b r
+
+foreign import mkEffectFn3
+  :: forall a b c r
+   . (a -> b -> c -> Effect r)
+  -> EffectFn3 a b c r
+
+foreign import mkEffectFn4
+  :: forall a b c d r
+   . (a -> b -> c -> d -> Effect r)
+  -> EffectFn4 a b c d r
+
+foreign import mkEffectFn5
+  :: forall a b c d e r
+   . (a -> b -> c -> d -> e -> Effect r)
+  -> EffectFn5 a b c d e r
+
+foreign import mkEffectFn6
+  :: forall a b c d e f r
+   . (a -> b -> c -> d -> e -> f -> Effect r)
+  -> EffectFn6 a b c d e f r
+
+foreign import mkEffectFn7
+  :: forall a b c d e f g r
+   . (a -> b -> c -> d -> e -> f -> g -> Effect r)
+  -> EffectFn7 a b c d e f g r
+
+foreign import mkEffectFn8
+  :: forall a b c d e f g h r
+   . (a -> b -> c -> d -> e -> f -> g -> h -> Effect r)
+  -> EffectFn8 a b c d e f g h r
+
+foreign import mkEffectFn9
+  :: forall a b c d e f g h i r
+   . (a -> b -> c -> d -> e -> f -> g -> h -> i -> Effect r)
+  -> EffectFn9 a b c d e f g h i r
+
+foreign import mkEffectFn10
+  :: forall a b c d e f g h i j r
+   . (a -> b -> c -> d -> e -> f -> g -> h -> i -> j -> Effect r)
+  -> EffectFn10 a b c d e f g h i j r
+
+foreign import runEffectFn1
+  :: forall a r
+   . EffectFn1 a r
+  -> a
+  -> Effect r
+
+foreign import runEffectFn2
+  :: forall a b r
+   . EffectFn2 a b r
+  -> a
+  -> b
+  -> Effect r
+
+foreign import runEffectFn3
+  :: forall a b c r
+   . EffectFn3 a b c r
+  -> a
+  -> b
+  -> c
+  -> Effect r
+
+foreign import runEffectFn4
+  :: forall a b c d r
+   . EffectFn4 a b c d r
+  -> a
+  -> b
+  -> c
+  -> d
+  -> Effect r
+
+foreign import runEffectFn5
+  :: forall a b c d e r
+   . EffectFn5 a b c d e r
+  -> a
+  -> b
+  -> c
+  -> d
+  -> e
+  -> Effect r
+
+foreign import runEffectFn6
+  :: forall a b c d e f r
+   . EffectFn6 a b c d e f r
+  -> a
+  -> b
+  -> c
+  -> d
+  -> e
+  -> f
+  -> Effect r
+
+foreign import runEffectFn7
+  :: forall a b c d e f g r
+   . EffectFn7 a b c d e f g r
+  -> a
+  -> b
+  -> c
+  -> d
+  -> e
+  -> f
+  -> g
+  -> Effect r
+
+foreign import runEffectFn8
+  :: forall a b c d e f g h r
+   . EffectFn8 a b c d e f g h r
+  -> a
+  -> b
+  -> c
+  -> d
+  -> e
+  -> f
+  -> g
+  -> h
+  -> Effect r
+
+foreign import runEffectFn9
+  :: forall a b c d e f g h i r
+   . EffectFn9 a b c d e f g h i r
+  -> a
+  -> b
+  -> c
+  -> d
+  -> e
+  -> f
+  -> g
+  -> h
+  -> i
+  -> Effect r
+
+foreign import runEffectFn10
+  :: forall a b c d e f g h i j r
+   . EffectFn10 a b c d e f g h i j r
+  -> a
+  -> b
+  -> c
+  -> d
+  -> e
+  -> f
+  -> g
+  -> h
+  -> i
+  -> j
+  -> Effect r
 
 -- The reason these are written eta-expanded instead of as:
 -- ```

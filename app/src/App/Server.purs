@@ -26,7 +26,7 @@ import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Db (Db, JobId(..))
 import Registry.App.Effect.Db as Db
-import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV, DatabaseUrl)
+import Registry.App.Effect.Env (DatabaseUrl, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
