@@ -30,7 +30,7 @@ import Registry.Internal.Format as Internal.Format
 
 foreign import data Db :: Type
 
-foreign import connect :: Effect Db
+foreign import connect :: FilePath -> Effect Db
 
 foreign import insertLogImpl :: Db -> LogLineJS -> Effect Unit
 

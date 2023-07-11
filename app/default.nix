@@ -33,6 +33,8 @@ in {
   server = stdenv.mkDerivation rec {
     name = "registry-server";
     src = ./.;
+    database = ../db;
+    dhallTypes = ../types;
     nativeBuildInputs = [esbuild];
     buildInputs = [compilers nodejs];
     entrypoint = writeText "entrypoint.js" ''
@@ -46,14 +48,17 @@ in {
       esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node --packages=external
     '';
     installPhase = ''
-      mkdir -p $out/bin 
+      mkdir -p $out/bin
 
       echo "Copying files..."
       cp ${name}.js $out/${name}.js
       ln -s ${package-lock}/js/node_modules $out
 
       echo "Copying Dhall types..."
-      cp -r types $out/bin
+      cp -r ${dhallTypes} $out/bin/types
+
+      echo "Copying database..."
+      cp -r ${database} $out/bin/db
 
       echo "Creating node script..."
       echo '#!/usr/bin/env sh' > $out/bin/${name}

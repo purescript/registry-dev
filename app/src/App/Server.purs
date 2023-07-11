@@ -5,6 +5,7 @@ import Registry.App.Prelude hiding ((/))
 import App.CLI.Git as Git
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec.Argonaut.Record as CAR
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime as DateTime
 import Data.Formatter.DateTime as Formatter.DateTime
@@ -18,13 +19,14 @@ import HTTPurple (class Generic, JsonDecoder(..), JsonEncoder(..), Method(..), R
 import HTTPurple as HTTPurple
 import Node.Path as Path
 import Node.Process as Process
+import Record as Record
 import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Db (Db, JobId(..))
 import Registry.App.Effect.Db as Db
-import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV)
+import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV, DatabaseUrl)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -42,6 +44,7 @@ import Registry.App.Legacy.Manifest (LEGACY_CACHE, _legacyCache)
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubToken, Octokit)
 import Registry.Foreign.Octokit as Octokit
+import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
 import Registry.Operation as Operation
 import Routing.Duplex as Routing
@@ -157,7 +160,7 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
     maybeJob <- liftEffect $ Db.selectJob env.db jobId
     case maybeJob of
       -- FIXME: maybe log here?
-      Left err -> HTTPurple.notFound
+      Left _err -> HTTPurple.notFound
       Right job -> jsonOk jobCodec (Record.insert (Proxy :: _ "logs") logs job)
 
   _, _ -> HTTPurple.notFound
@@ -168,6 +171,7 @@ type ServerEnvVars =
   , privateKey :: String
   , spacesKey :: String
   , spacesSecret :: String
+  , databaseUrl :: DatabaseUrl
   }
 
 readServerEnvVars :: Aff ServerEnvVars
@@ -178,7 +182,8 @@ readServerEnvVars = do
   privateKey <- Env.lookupRequired Env.pacchettibottiED25519
   spacesKey <- Env.lookupRequired Env.spacesKey
   spacesSecret <- Env.lookupRequired Env.spacesSecret
-  pure { token, publicKey, privateKey, spacesKey, spacesSecret }
+  databaseUrl <- Env.lookupRequired Env.databaseUrl
+  pure { token, publicKey, privateKey, spacesKey, spacesSecret, databaseUrl }
 
 type ServerEnv =
   { cacheDir :: FilePath
@@ -208,7 +213,7 @@ createServerEnv = do
   octokit <- Octokit.newOctokit vars.token
   debouncer <- Registry.newDebouncer
 
-  db <- liftEffect $ Db.connect
+  db <- liftEffect $ Db.connect vars.databaseUrl.path
 
   pure
     { debouncer

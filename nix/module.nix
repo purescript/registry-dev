@@ -21,24 +21,53 @@ in {
     firewall.allowedTCPPorts = [22 80 443];
   };
 
-  systemd.services = {
+  users = {
+    mutableUsers = false;
+
+    users = let
+      deployers = import ./deployers.nix;
+    in
+      pkgs.lib.mapAttrs (user: attrs: {
+        isNormalUser = true;
+        home = "/home/${user}";
+        extraGroups = ["wheel"];
+        packages = [pkgs.rsync pkgs.git pkgs.curl pkgs.coreutils pkgs.vim];
+        openssh.authorizedKeys.keys = attrs.sshKeys;
+      })
+      deployers;
+  };
+
+  systemd.services = let
+    stateDir = "/var/lib/registry-server";
+    defaultEnv = builtins.readFile ../.env.example;
+  in {
     server = {
       description = "registry server";
       wantedBy = ["multi-user.target"];
       serviceConfig = {
-        # FIXME: We need to pass these in correctly instead of using dummy
         # values. Explore Nix secrets solutions (agenix, etc.) for this.
         ExecStart = "${pkgs.writeShellScriptBin "registry-server-init" ''
-          # Dummy env vars for the test server.
-          export PACCHETTIBOTTI_TOKEN="ghp_XXX"
-          export SPACES_KEY="abcxyz"
-          export SPACES_SECRET="abcxyz"
+          # Ensure the state directory is available
+          mkdir -p ${stateDir}/db
 
-          # These two are base64-encoded.
-          # The first is 'ssh-ed25519 abcxyz pacchettibotti@purescript.org"
-          # The second is 'abcxyz'
-          export PACCHETTIBOTTI_ED25519_PUB="c3NoLWVkMjU1MTkgYWJjeHl6IHBhY2NoZXR0aWJvdHRpQHB1cmVzY3JpcHQub3Jn"
-          export PACCHETTIBOTTI_ED25519="YWJjeHl6"
+          # Initialize environment variables
+          set -o allexport
+          if [ -f ${stateDir}/.env ]; then
+            echo "Using production environment variables"
+            source ${stateDir}/.env
+          else
+            echo "WARNING: No environment variables found in ${stateDir}."
+            echo "Continuing with dummy values, not suitable for production."
+            cat ${defaultEnv} > .env
+            source .env
+          fi
+          set +o allexport
+
+          # Initialize or migrate the database
+          export DATABASE_URL="sqlite:${stateDir}/db/registry.sqlite3"
+          pushd ${pkgs.registry.apps.server}/bin
+          ${pkgs.dbmate}/bin/dbmate up
+          popd
 
           ${pkgs.registry.apps.server}/bin/registry-server
         ''}/bin/registry-server-init";

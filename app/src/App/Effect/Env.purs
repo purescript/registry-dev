@@ -112,6 +112,12 @@ spacesKey = EnvKey { key: "SPACES_KEY", decode: pure }
 spacesSecret :: EnvKey String
 spacesSecret = EnvKey { key: "SPACES_SECRET", decode: pure }
 
+type DatabaseUrl = { prefix :: String, path :: FilePath }
+
+-- | The location of the sqlite database
+databaseUrl :: EnvKey DatabaseUrl
+databaseUrl = EnvKey { key: "DATABASE_URL", decode: decodeDatabaseUrl }
+
 -- | A GitHub token for the @pacchettibotti user at the PACCHETTIBOTTI_TOKEN key.
 pacchettibottiToken :: EnvKey GitHubToken
 pacchettibottiToken = EnvKey { key: "PACCHETTIBOTTI_TOKEN", decode: decodeGitHubToken }
@@ -147,6 +153,13 @@ pacchettibottiED25519Pub = EnvKey
 -- | A file path to the JSON payload describing the triggered GitHub event.
 githubEventPath :: EnvKey FilePath
 githubEventPath = EnvKey { key: "GITHUB_EVENT_PATH", decode: pure }
+
+decodeDatabaseUrl :: String -> Either String DatabaseUrl
+decodeDatabaseUrl input = do
+  let prefix = "sqlite:"
+  case String.stripPrefix (String.Pattern prefix) input of
+    Nothing -> Left $ "Database URL must begin with 'sqlite:' but the input does not: " <> input
+    Just path -> pure { prefix, path }
 
 decodeGitHubToken :: String -> Either String GitHubToken
 decodeGitHubToken input = case String.stripPrefix (String.Pattern "ghp_") input of

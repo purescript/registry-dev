@@ -25,6 +25,9 @@
   }: let
     supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
 
+    # Users authorized to deploy to the registry.
+    deployers = import ./nix/deployers.nix;
+
     registryOverlay = final: prev: rec {
       nodejs = prev.nodejs-18_x;
 
@@ -49,9 +52,15 @@
           # better-sqlite3 relies on node-gyp and python3 in the build environment, so
           # we add those to the native build inputs.
           .overrideAttrs (finalAttrs: prevAttrs: {
-            nativeBuildInputs = prevAttrs.nativeBuildInputs or []
+            nativeBuildInputs =
+              prevAttrs.nativeBuildInputs
+              or []
               ++ [prev.python3 prev.nodePackages.node-gyp]
-              ++ (if prev.stdenv.isDarwin then [prev.darwin.cctools] else []);
+              ++ (
+                if prev.stdenv.isDarwin
+                then [prev.darwin.cctools]
+                else []
+              );
           });
 
         # Produces a list of all PureScript binaries supported by purescript-overlay,
@@ -267,7 +276,6 @@
         default = pkgs.mkShell {
           name = "registry-dev";
           inherit DHALL_PRELUDE;
-          DATABASE_URL="sqlite:db/registry.sqlite3";
           packages = with pkgs; [
             # All stable PureScript compilers
             registry.compilers
@@ -319,10 +327,9 @@
         }: {
           deployment.targetHost = "registry.purescript.org";
 
-          # The build isn't that computationally expensive, and copying the whole
-          # closure over takes forever, so we build on the host. This also makes
-          # it possible to run 'colmena apply' from a darwin system.
-          deployment.buildOnTarget = true;
+          # Set 'true' to build on the target machine (necessary if deploying
+          # from a non-linux machine).
+          deployment.buildOnTarget = false;
 
           # We import the server module and also the digital ocean configuration
           # necessary to run in a DO droplet.
@@ -336,6 +343,7 @@
               {
                 # Enable Digital Ocean monitoring
                 services.do-agent.enable = true;
+
                 nix = {
                   gc.automatic = true;
                   settings.auto-optimise-store = true;
@@ -347,6 +355,7 @@
                   acceptTerms = true;
                   defaults.email = "hello@thomashoneyman.com";
                 };
+
                 services.nginx.virtualHosts."registry.purescript.org" = {
                   forceSSL = true;
                   enableACME = true;
