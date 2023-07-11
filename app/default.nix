@@ -46,11 +46,14 @@ in {
       esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node --packages=external
     '';
     installPhase = ''
-      mkdir -p $out/bin
+      mkdir -p $out/bin 
 
       echo "Copying files..."
       cp ${name}.js $out/${name}.js
       ln -s ${package-lock}/js/node_modules $out
+
+      echo "Copying Dhall types..."
+      cp -r types $out/bin
 
       echo "Creating node script..."
       echo '#!/usr/bin/env sh' > $out/bin/${name}
