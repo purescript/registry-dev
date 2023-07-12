@@ -248,7 +248,8 @@
                 start_all()
                 registry.wait_for_unit("server.service")
 
-                client.succeed("sleep 5")
+                result = client.wait_until_succeeds("curl --fail-with-body http://registry/api/v1/jobs", timeout=180)
+                print(result)
 
                 def succeed_endpoint(endpoint, expected):
                   actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
