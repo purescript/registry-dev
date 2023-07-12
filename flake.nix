@@ -131,43 +131,22 @@
         program = "${drv}/bin/${drv.name}";
       };
 
-      # Machine configurations for NixOS
-      vm-base = {
-        lib,
-        modulesPath,
-        ...
-      }: {
-        imports = ["${modulesPath}/virtualisation/qemu-vm.nix"];
-        # https://github.com/utmapp/UTM/issues/2353
-        networking.nameservers = lib.mkIf pkgs.stdenv.isDarwin ["8.8.8.8"];
-        nixpkgs.overlays = [purescript-overlay.overlays.default slimlock.overlays.default registryOverlay];
-        # NOTE: Use 'shutdown now' to exit the VM.
-        services.getty.autologinUser = "root";
-        virtualisation = {
-          graphics = false;
-          host = {inherit pkgs;};
-          forwardPorts = [
-            {
-              from = "host";
-              guest.port = 80;
-              host.port = 8080;
-            }
-          ];
-        };
-      };
-
-      vm-machine = nixpkgs.lib.nixosSystem {
-        system = builtins.replaceStrings ["darwin"] ["linux"] system;
-        modules = [vm-base ./nix/module.nix];
-      };
-
       # Allows you to run a local VM with the registry server, mimicking the
       # actual deployment.
-      run-vm = pkgs.writeShellScript "run-vm.sh" ''
-        export NIX_DISK_IMAGE=$(mktemp -u -t nixos.qcow2.XXXXXXX)
-        trap "rm -f $NIX_DISK_IMAGE" EXIT
-        ${vm-machine.config.system.build.vm}/bin/run-registry-vm
-      '';
+      run-vm = let
+        vm-machine = nixpkgs.lib.nixosSystem {
+          system = builtins.replaceStrings ["darwin"] ["linux"] system;
+          modules = [
+            {nixpkgs.overlays = [purescript-overlay.overlays.default slimlock.overlays.default registryOverlay];}
+            ./nix/vm.nix
+          ];
+        };
+      in
+        pkgs.writeShellScript "run-vm.sh" ''
+          export NIX_DISK_IMAGE=$(mktemp -u -t nixos.qcow2.XXXXXXX)
+          trap "rm -f $NIX_DISK_IMAGE" EXIT
+          ${vm-machine.config.system.build.vm}/bin/run-registry-vm
+        '';
     in rec {
       packages = pkgs.registry.apps // pkgs.registry.scripts;
 
@@ -241,7 +220,18 @@
             pkgs.nixosTest {
               name = "server integration test";
               nodes = {
-                registry = ./nix/module.nix;
+                registry = {
+                  imports = [./nix/module.nix];
+                  config = {
+                    virtualisation.graphics = false;
+                    services.registry-server = {
+                      enable = true;
+                      host = "localhost";
+                      port = 8080;
+                      enableCerts = false;
+                    };
+                  };
+                };
                 client = {
                   config = {
                     virtualisation.graphics = false;
@@ -255,19 +245,28 @@
               # the script fails the lint — if you see an unexpected failure, check
               # the nix log for errors.
               testScript = ''
+                import time
+
                 # Machines are available based on their host name, or their name in
                 # the "nodes" record if their host name is not set.
                 start_all()
                 registry.wait_for_unit("server.service")
+                time.sleep(3)
+
                 # We wait for the server to be ready; without this, in CI sometimes
                 # the client starts sending requests before the server is ready.
-                client.wait_until_succeeds("${pkgs.curl}/bin/curl http://registry/api/v1/jobs/0", timeout=180)
+                print("Waiting for server to be ready by curling /api/v1/jobs")
+                client.wait_until_succeeds("${pkgs.curl}/bin/curl http://registry/api/v1/jobs", timeout=180)
 
-                def test_endpoint(endpoint, expected):
+                def succeed_endpoint(endpoint, expected):
                   actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
-                  assert expected == actual, f"Endpoint {endpoint} returns {expected}"
+                  if actual != expected:
+                    journal = registry.succeed("journalctl -u server.service", timeout=180)
+                    print(journal)
+                  assert expected == actual, f"Endpoint {endpoint} should return {expected} but returned {actual}"
 
-                test_endpoint("jobs/0", "TODO")
+                print("Testing 'jobs' endpoint...")
+                succeed_endpoint("jobs", "[]")
               '';
             };
       };
@@ -324,8 +323,10 @@
           lib,
           modulesPath,
           ...
-        }: {
-          deployment.targetHost = "registry.purescript.org";
+        }: let
+          host = "registry.purescript.org";
+        in {
+          deployment.targetHost = host;
 
           # Set 'true' to build on the target machine (necessary if deploying
           # from a non-linux machine).
@@ -338,28 +339,17 @@
             ++ [
               (modulesPath + "/virtualisation/digital-ocean-config.nix")
               ./nix/module.nix
-
               # Extra config for the deployed server only.
               {
                 # Enable Digital Ocean monitoring
                 services.do-agent.enable = true;
 
-                nix = {
-                  gc.automatic = true;
-                  settings.auto-optimise-store = true;
-                };
+                # Enable the registry server
+                services.registry-server.enable = true;
+                services.registry-server.host = host;
 
-                # We want https for the registry server, but we can't enable it
-                # until we have a domain name for it.
-                security.acme = {
-                  acceptTerms = true;
-                  defaults.email = "hello@thomashoneyman.com";
-                };
-
-                services.nginx.virtualHosts."registry.purescript.org" = {
-                  forceSSL = true;
-                  enableACME = true;
-                };
+                # Don't change this.
+                system.stateVersion = "23.05";
               }
             ];
         };

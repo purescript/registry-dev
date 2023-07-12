@@ -58,10 +58,8 @@ data Route
   = Publish
   | Unpublish
   | Transfer
-  | Jobs JobId
-      { level :: Maybe LogLevel
-      , since :: Maybe DateTime
-      }
+  | Jobs
+  | Job JobId { level :: Maybe LogLevel, since :: Maybe DateTime }
 
 derive instance Generic Route _
 
@@ -82,7 +80,8 @@ routes = Routing.root $ Routing.prefix "api" $ Routing.prefix "v1" $ RoutingG.su
   { "Publish": "publish" / RoutingG.noArgs
   , "Unpublish": "unpublish" / RoutingG.noArgs
   , "Transfer": "transfer" / RoutingG.noArgs
-  , "Jobs": "jobs" /
+  , "Jobs": "jobs" / RoutingG.noArgs
+  , "Job": "jobs" /
       ( jobIdS ?
           { level: Routing.optional <<< logLevelP <<< Routing.string
           , since: Routing.optional <<< timestampP <<< Routing.string
@@ -154,7 +153,10 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
-  Jobs jobId { level: maybeLogLevel, since }, Get -> do
+  Jobs, Get -> do
+    jsonOk (CA.array jobCodec) []
+
+  Job jobId { level: maybeLogLevel, since }, Get -> do
     let logLevel = fromMaybe Error maybeLogLevel
     logs <- liftEffect $ Db.selectLogsByJob env.db jobId logLevel since
     maybeJob <- liftEffect $ Db.selectJob env.db jobId
