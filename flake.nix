@@ -53,9 +53,7 @@
           # we add those to the native build inputs.
           .overrideAttrs (finalAttrs: prevAttrs: {
             nativeBuildInputs =
-              prevAttrs.nativeBuildInputs
-              or []
-              ++ [prev.python3 prev.nodePackages.node-gyp]
+              (prevAttrs.nativeBuildInputs or [] ++ [prev.python3 prev.nodePackages.node-gyp])
               ++ (
                 if prev.stdenv.isDarwin
                 then [prev.darwin.cctools]
@@ -148,7 +146,7 @@
           ${vm-machine.config.system.build.vm}/bin/run-registry-vm
         '';
     in rec {
-      packages = pkgs.registry.apps // pkgs.registry.scripts;
+      packages = pkgs.registry.apps; # // pkgs.registry.scripts;
 
       apps =
         pkgs.lib.mapAttrs (_: drv: mkAppOutput drv) packages
@@ -251,6 +249,10 @@
                 # the "nodes" record if their host name is not set.
                 start_all()
                 registry.wait_for_unit("server.service")
+
+                # We wait for the server to be ready, as systemd is over-eager
+                # about saying the server has come up. FIXME: there's got to be
+                # a better way to do this.
                 time.sleep(5)
 
                 # We wait for the server to be ready; without this, in CI sometimes
