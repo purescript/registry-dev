@@ -251,7 +251,7 @@
                 # the "nodes" record if their host name is not set.
                 start_all()
                 registry.wait_for_unit("server.service")
-                time.sleep(3)
+                time.sleep(5)
 
                 # We wait for the server to be ready; without this, in CI sometimes
                 # the client starts sending requests before the server is ready.
