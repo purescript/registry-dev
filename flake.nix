@@ -146,15 +146,13 @@
           ${vm-machine.config.system.build.vm}/bin/run-registry-vm
         '';
     in rec {
-      packages = pkgs.registry.apps; # // pkgs.registry.scripts;
+      packages = pkgs.registry.apps // pkgs.registry.scripts;
 
       apps =
         pkgs.lib.mapAttrs (_: drv: mkAppOutput drv) packages
         // {
-          default = {
-            type = "app";
-            program = "${run-vm}";
-          };
+          default.type = "app";
+          default.program = "${run-vm}";
         };
 
       checks = {
@@ -248,17 +246,13 @@
                 start_all()
                 registry.wait_for_unit("server.service")
 
-                result = client.wait_until_succeeds("curl --fail-with-body http://registry/api/v1/jobs", timeout=180)
-                print(result)
+                client.wait_until_succeeds("${pkgs.curl}/bin/curl --fail-with-body http://registry/api/v1/jobs", timeout=180)
 
                 def succeed_endpoint(endpoint, expected):
+                  print(f"Checking endpoint {endpoint}")
                   actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
-                  if actual != expected:
-                    journal = registry.succeed("journalctl -u server.service", timeout=180)
-                    print(journal)
                   assert expected == actual, f"Endpoint {endpoint} should return {expected} but returned {actual}"
 
-                print("Testing 'jobs' endpoint...")
                 succeed_endpoint("jobs", "[]")
               '';
             };
