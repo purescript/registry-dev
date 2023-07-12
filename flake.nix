@@ -243,22 +243,12 @@
               # the script fails the lint — if you see an unexpected failure, check
               # the nix log for errors.
               testScript = ''
-                import time
-
                 # Machines are available based on their host name, or their name in
                 # the "nodes" record if their host name is not set.
                 start_all()
                 registry.wait_for_unit("server.service")
 
-                # We wait for the server to be ready, as systemd is over-eager
-                # about saying the server has come up. FIXME: there's got to be
-                # a better way to do this.
-                time.sleep(5)
-
-                # We wait for the server to be ready; without this, in CI sometimes
-                # the client starts sending requests before the server is ready.
-                print("Waiting for server to be ready by curling /api/v1/jobs")
-                client.wait_until_succeeds("${pkgs.curl}/bin/curl http://registry/api/v1/jobs", timeout=180)
+                client.succeed("sleep 5")
 
                 def succeed_endpoint(endpoint, expected):
                   actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
