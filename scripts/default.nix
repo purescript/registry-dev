@@ -1,4 +1,4 @@
-{ makeWrapper, lib, stdenv, purix, slimlock, esbuild, nodejs, writeText, compilers, dhall, dhall-json, licensee, git }:
+{ makeWrapper, lib, stdenv, purix, slimlock, esbuild, nodejs, writeText, compilers, dhall, dhall-json, licensee, git, coreutils, gzip }:
 let
   package-lock = slimlock.buildPackageLock { src = ../.; omit = ["dev" "peer"];};
 
@@ -35,7 +35,7 @@ let
       '';
       postFixup = ''
         wrapProgram $out/bin/${name} \
-          --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git ]}
+          --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git coreutils gzip ]}
       '';
       };
 in {
