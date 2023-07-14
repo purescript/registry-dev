@@ -267,6 +267,7 @@
             licensee
             coreutils
             gzip
+            gnutar
             dhall
             dhall-json
 
