@@ -15,7 +15,8 @@ import Dodo.Ansi as Ansi
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Node.FS.Aff as FS.Aff
-import Registry.App.Effect.Db (Db, JobId)
+import Registry.API.V1 (JobId, LogLevel(..), printLogLevel)
+import Registry.App.Effect.Db (Db)
 import Registry.App.Effect.Db as Db
 import Registry.Foreign.Octokit (Address, IssueNumber(..), Octokit)
 import Registry.Foreign.Octokit as Octokit

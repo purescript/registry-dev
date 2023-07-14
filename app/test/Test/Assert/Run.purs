@@ -230,8 +230,11 @@ handleStorageMock env = case _ of
 
   Storage.Download name version destinationPath reply -> do
     let sourcePath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
-    Run.liftAff $ FS.Extra.copy { from: sourcePath, to: destinationPath, preserveTimestamps: true }
-    pure $ reply $ Right unit
+    Run.liftAff (Aff.attempt (FS.Aff.stat sourcePath)) >>= case _ of
+      Left _ -> pure $ reply $ Left $ "Cannot copy " <> sourcePath <> " because it does not exist in download directory."
+      Right _ -> do
+        Run.liftAff $ FS.Extra.copy { from: sourcePath, to: destinationPath, preserveTimestamps: true }
+        pure $ reply $ Right unit
 
   Storage.Delete name version reply -> do
     let sourcePath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
@@ -266,25 +269,30 @@ handleSourceMock env = case _ of
           dirname = name <> "-" <> fixedRef
           localPath = Path.concat [ env.github, dirname ]
           destinationPath = Path.concat [ destination, dirname <> "-checkout" ]
-        Run.liftAff $ FS.Extra.copy { from: localPath, to: destinationPath, preserveTimestamps: true }
+        Run.liftAff (Aff.attempt (FS.Aff.stat localPath)) >>= case _ of
+          Left _ -> pure $ reply $ Left $ "Cannot copy " <> localPath <> " because it does not exist."
+          Right _ -> do
+            Run.liftAff $ FS.Extra.copy { from: localPath, to: destinationPath, preserveTimestamps: true }
+            case pursPublishMethod of
+              LegacyPursPublish -> do
+                -- When using the compiler and legacy 'purs publish' we have to be
+                -- in a clean git repository with the ref checked out.
+                Run.liftAff $ FS.Aff.rm'
+                  (Path.concat [ destinationPath, ".git" ])
+                  { recursive: true, force: true, maxRetries: 10, retryDelay: 1000 }
+                Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ destinationPath, ".gitignore" ]) "output"
+                let exec args = void (Git.withGit destinationPath args identity)
+                exec [ "init" ]
+                exec [ "config", "user.name", "test-user" ]
+                exec [ "config", "user.email", "<test-user@aol.com>" ]
+                exec [ "add", "." ]
+                exec [ "commit", "--no-sign", "-m", "Initial commit" ]
+                exec [ "tag", "--no-sign", "-m", ref, ref ]
 
-        case pursPublishMethod of
-          LegacyPursPublish -> do
-            -- When using the compiler and legacy 'purs publish' we have to be
-            -- in a clean git repository with the ref checked out.
-            Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ destinationPath, ".gitignore" ]) "output"
-            let exec args = void (Git.withGit destinationPath args identity)
-            exec [ "init" ]
-            exec [ "config", "user.name", "test-user" ]
-            exec [ "config", "user.email", "<" <> "test-user@aol.com" <> ">" ]
-            exec [ "add", "." ]
-            exec [ "commit", "--no-sign", "-m", "Initial commit" ]
-            exec [ "tag", "--no-sign", "-m", ref, ref ]
+              PursPublish ->
+                Except.throw "Tests are not set up for 'PursPublish' and must be fixed."
 
-          PursPublish ->
-            Except.throw "Tests are not set up for 'PursPublish' and must be fixed."
-
-        pure $ reply $ Right { path: destinationPath, published: now }
+            pure $ reply $ Right { path: destinationPath, published: now }
 
 type GitHubMockEnv = { github :: FilePath }
 

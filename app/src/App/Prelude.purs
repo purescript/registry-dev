@@ -1,14 +1,11 @@
 module Registry.App.Prelude
   ( Backoff
-  , LogLevel(..)
   , LogVerbosity(..)
   , PursPublishMethod(..)
   , class Functor2
   , formatPackageVersion
   , fromJust'
   , guardA
-  , logLevelFromPriority
-  , logLevelToPriority
   , map2
   , mapKeys
   , module Either
@@ -20,10 +17,8 @@ module Registry.App.Prelude
   , pacchettibottiEmail
   , pacchettibottiKeyType
   , parseJson
-  , parseLogLevel
   , partitionEithers
   , printJson
-  , printLogLevel
   , pursPublishMethod
   , readJsonFile
   , scratchDir
@@ -213,46 +208,6 @@ nowUTC = Extra.liftEffect do
 
 formatPackageVersion :: PackageName -> Version -> String
 formatPackageVersion name version = PackageName.print name <> "@" <> Version.print version
-
-data LogLevel = Debug | Info | Warn | Error | Notify
-
-derive instance Eq LogLevel
-derive instance Ord LogLevel
-
-printLogLevel :: LogLevel -> String
-printLogLevel = case _ of
-  Debug -> "DEBUG"
-  Info -> "INFO"
-  Warn -> "WARN"
-  Error -> "ERROR"
-  Notify -> "NOTIFY"
-
--- These numbers are not consecutive so that we can insert new log levels if need be
-logLevelToPriority :: LogLevel -> Int
-logLevelToPriority = case _ of
-  Debug -> 0
-  Info -> 10
-  Warn -> 20
-  Error -> 30
-  Notify -> 40
-
-logLevelFromPriority :: Int -> Either.Either String LogLevel
-logLevelFromPriority = case _ of
-  0 -> Either.Right Debug
-  10 -> Either.Right Info
-  20 -> Either.Right Warn
-  30 -> Either.Right Error
-  40 -> Either.Right Notify
-  other -> Either.Left $ "Invalid log level priority: " <> show other
-
-parseLogLevel :: String -> Either.Either String LogLevel
-parseLogLevel = case _ of
-  "DEBUG" -> Either.Right Debug
-  "INFO" -> Either.Right Info
-  "WARN" -> Either.Right Warn
-  "ERROR" -> Either.Right Error
-  "NOTIFY" -> Either.Right Notify
-  other -> Either.Left $ "Invalid log level: " <> other
 
 data LogVerbosity = Quiet | Normal | Verbose
 

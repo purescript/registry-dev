@@ -4,27 +4,24 @@ import Registry.App.Prelude hiding ((/))
 
 import App.CLI.Git as Git
 import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Record as CA.Record
-import Data.Codec.Argonaut.Record as CAR
-import Data.DateTime (DateTime)
-import Data.Formatter.DateTime as DateTime
 import Data.Formatter.DateTime as Formatter.DateTime
-import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Newtype (unwrap)
 import Data.String as String
 import Data.UUID.Random as UUID
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
-import HTTPurple (class Generic, JsonDecoder(..), JsonEncoder(..), Method(..), Request, Response, RouteDuplex', (/), (?))
+import HTTPurple (JsonDecoder(..), JsonEncoder(..), Method(..), Request, Response)
 import HTTPurple as HTTPurple
 import Node.Path as Path
 import Node.Process as Process
 import Record as Record
+import Registry.API.V1 (JobId(..), JobType(..), LogLevel(..), Route(..))
+import Registry.API.V1 as V1
 import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Db (Db, JobId(..))
+import Registry.App.Effect.Db (Db)
 import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Env (DatabaseUrl, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
@@ -44,128 +41,92 @@ import Registry.App.Legacy.Manifest (LEGACY_CACHE, _legacyCache)
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubToken, Octokit)
 import Registry.Foreign.Octokit as Octokit
-import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
 import Registry.Operation as Operation
-import Routing.Duplex as Routing
-import Routing.Duplex.Generic as RoutingG
+import Registry.PackageName as PackageName
+import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
-data Route
-  = Publish
-  | Unpublish
-  | Transfer
-  | Jobs
-  | Job JobId { level :: Maybe LogLevel, since :: Maybe DateTime }
-
-derive instance Generic Route _
-
-jobIdS :: RouteDuplex' JobId
-jobIdS = _Newtype Routing.segment
-
-logLevelP :: RouteDuplex' String -> RouteDuplex' LogLevel
-logLevelP = Routing.as printLogLevel parseLogLevel
-
-timestampP :: RouteDuplex' String -> RouteDuplex' DateTime
-timestampP = Routing.as printTimestamp parseTimestamp
-  where
-  printTimestamp t = DateTime.format Internal.Format.iso8601DateTime t
-  parseTimestamp s = DateTime.unformat Internal.Format.iso8601DateTime s
-
-routes :: RouteDuplex' Route
-routes = Routing.root $ Routing.prefix "api" $ Routing.prefix "v1" $ RoutingG.sum
-  { "Publish": "publish" / RoutingG.noArgs
-  , "Unpublish": "unpublish" / RoutingG.noArgs
-  , "Transfer": "transfer" / RoutingG.noArgs
-  , "Jobs": "jobs" / RoutingG.noArgs
-  , "Job": "jobs" /
-      ( jobIdS ?
-          { level: Routing.optional <<< logLevelP <<< Routing.string
-          , since: Routing.optional <<< timestampP <<< Routing.string
-          }
-      )
-  }
-
 newJobId :: Effect JobId
 newJobId = (JobId <<< UUID.toString) <$> UUID.make
-
-type PublishResponse = { jobId :: JobId }
-
-publishResponseCodec :: JsonCodec PublishResponse
-publishResponseCodec = CA.Record.object "PublishResponse" { jobId: Db.jobIdCodec }
-
-type Job =
-  { jobId :: JobId
-  , jobType :: Db.JobType
-  , createdAt :: DateTime
-  , finishedAt :: Maybe DateTime
-  , success :: Boolean
-  , logs :: Array Db.LogLine
-  }
-
-jobCodec :: JsonCodec Job
-jobCodec = CA.Record.object "Job"
-  { jobId: Db.jobIdCodec
-  , jobType: Db.jobTypeCodec
-  , createdAt: Internal.Codec.iso8601DateTime
-  , finishedAt: CAR.optional Internal.Codec.iso8601DateTime
-  , success: CA.boolean
-  , logs: CA.array Db.logLineCodec
-  }
 
 router :: ServerEnv -> Request Route -> Run ServerEffects Response
 router env { route, method, body } = HTTPurple.usingCont case route, method of
   Publish, Post -> do
     publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
-    jobId <- liftEffect $ newJobId
-    now <- nowUTC
-    -- FIXME: add PackageName, Version to the Job table, and return the current JobId if there is a pipeline in progress!!
-    let newJob = { createdAt: now, jobId, jobType: Db.Publish }
-    liftEffect $ Db.createJob env.db newJob
-    lift $ Log.info $ "Received publish request, job id: " <> unwrap jobId
-    let newEnv = env { jobId = Just jobId }
-    _fiber <- liftAff $ Aff.forkAff $ runEffects newEnv (API.publish Current publish)
-    jsonOk publishResponseCodec { jobId }
+    lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
+    forkPipelineJob publish.name publish.ref PublishJob
+      ( \jobId -> do
+          Log.info $ "Received Publish request, job id: " <> unwrap jobId
+          API.publish Current publish
+      )
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
     case auth.payload of
-      Operation.Unpublish _ -> do
-        -- TODO: fork, get a jobid, etc
-        -- TODO: we'll need a job type too!
-        -- TODO: return json
-        lift $ API.authenticated auth
-        HTTPurple.ok "Completed unpublish operation."
+      Operation.Unpublish { name, version } -> do
+        forkPipelineJob name (Version.print version) UnpublishJob
+          ( \jobId -> do
+              Log.info $ "Received Unpublish request, job id: " <> unwrap jobId
+              API.authenticated auth
+          )
       _ ->
         HTTPurple.badRequest "Expected unpublish operation."
 
   Transfer, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
     case auth.payload of
-      Operation.Transfer _ -> do
-        -- TODO: fork, get a jobid, and so on and so on
-        -- TODO: return json
-        lift $ API.authenticated auth
-        HTTPurple.ok "Completed transfer operation."
+      Operation.Transfer { name } -> do
+        forkPipelineJob name "" TransferJob
+          ( \jobId -> do
+              Log.info $ "Received Transfer request, job id: " <> unwrap jobId
+              API.authenticated auth
+          )
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
   Jobs, Get -> do
-    jsonOk (CA.array jobCodec) []
+    jsonOk (CA.array V1.jobCodec) []
 
   Job jobId { level: maybeLogLevel, since }, Get -> do
     let logLevel = fromMaybe Error maybeLogLevel
     logs <- liftEffect $ Db.selectLogsByJob env.db jobId logLevel since
     maybeJob <- liftEffect $ Db.selectJob env.db jobId
     case maybeJob of
-      -- FIXME: maybe log here?
-      Left _err -> HTTPurple.notFound
-      Right job -> jsonOk jobCodec (Record.insert (Proxy :: _ "logs") logs job)
+      Left err -> do
+        lift $ Log.error $ "Error while fetching job: " <> err
+        HTTPurple.notFound
+      Right job -> jsonOk V1.jobCodec (Record.insert (Proxy :: _ "logs") logs job)
 
   _, _ -> HTTPurple.notFound
+  where
+  forkPipelineJob packageName ref jobType action = do
+    -- First thing we check if the package already has a pipeline in progress
+    maybeCurrentJob <- liftEffect $ Db.runningJobForPackage env.db packageName
+    case maybeCurrentJob of
+      -- If yes, we error out if it's the wrong kind, return it if it's the same type
+      Right { jobId, jobType: runningJobType } -> do
+        lift $ Log.info $ "Found running job for package " <> PackageName.print packageName <> ", job id: " <> unwrap jobId
+        case runningJobType == jobType of
+          true -> jsonOk V1.jobCreatedResponseCodec { jobId }
+          false -> HTTPurple.badRequest $ "There is already a " <> V1.printJobType runningJobType <> " job running for package " <> PackageName.print packageName
+      -- otherwise spin up a new thread
+      Left _err -> do
+        lift $ Log.info $ "No running job for package " <> PackageName.print packageName <> ", creating a new one"
+        jobId <- liftEffect $ newJobId
+        now <- nowUTC
+        let newJob = { createdAt: now, jobId, jobType, packageName, ref }
+        liftEffect $ Db.createJob env.db newJob
+        let newEnv = env { jobId = Just jobId }
+
+        _fiber <- liftAff $ Aff.forkAff $ Aff.attempt $ do
+          void $ runEffects newEnv (action jobId)
+          finishedAt <- nowUTC
+          liftEffect $ Db.finishJob env.db { jobId, finishedAt, success: true }
+        jsonOk V1.jobCreatedResponseCodec { jobId }
 
 type ServerEnvVars =
   { token :: GitHubToken
@@ -216,6 +177,11 @@ createServerEnv = do
   debouncer <- Registry.newDebouncer
 
   db <- liftEffect $ Db.connect vars.databaseUrl.path
+  -- At server startup we clean out all the jobs that are not completed,
+  -- because they are stale runs from previous startups of the server.
+  -- We can just remove the jobs, and all the logs belonging to them will be
+  -- removed automatically by the foreign key constraint.
+  liftEffect $ Db.deleteIncompleteJobs db
 
   pure
     { debouncer
@@ -251,7 +217,7 @@ main = do
         , port: 8080
         , onStarted
         }
-        { route: routes
+        { route: V1.routes
         , router: runServer env router
         }
       pure unit
@@ -302,6 +268,7 @@ runEffects env operation = Aff.attempt do
         ( \msg -> do
             finishedAt <- nowUTC
             case env.jobId of
+              -- Important to make sure that we mark the job as completed
               Just jobId -> liftEffect $ Db.finishJob env.db { jobId, finishedAt, success: false }
               Nothing -> pure unit
             Log.error msg *> Run.liftAff (Aff.throwError (Aff.error msg))
@@ -315,5 +282,3 @@ runEffects env operation = Aff.attempt do
                 *> Log.handleDb { db: env.db } jobId log
         )
     # Run.runBaseAff'
-
--- TODO: request path in logs: (String.joinWith "__" request.path)

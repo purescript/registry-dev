@@ -614,7 +614,8 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
     Except.throw $ "Package tarball is only " <> Number.Format.toString bytes <> " bytes, which indicates the source was not correctly packaged."
 
   hash <- Sha256.hashFile tarballPath
-  Log.info $ "Tarball size of " <> show bytes <> " is acceptable. Hash: " <> Sha256.print hash
+  Log.info $ "Tarball size of " <> show bytes <> " bytes is acceptable."
+  Log.info $ "Tarball hash: " <> Sha256.print hash
 
   -- Now that we have the package source contents we can verify we can compile
   -- the package. We skip failures when the package is a legacy package.
