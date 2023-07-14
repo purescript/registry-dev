@@ -1,12 +1,18 @@
 {
+  makeWrapper,
+  lib,
   stdenv,
   purix,
   slimlock,
   purs-backend-es,
   esbuild,
   writeText,
-  compilers,
   nodejs,
+  compilers,
+  dhall,
+  dhall-json,
+  git,
+  licensee
 }: let
   package-lock = slimlock.buildPackageLock {src = ../.; omit = ["dev" "peer"];};
   spago-lock = purix.buildSpagoLock {
@@ -37,8 +43,8 @@ in {
   server = stdenv.mkDerivation rec {
     name = "registry-server";
     src = ./src;
-    nativeBuildInputs = [esbuild];
-    buildInputs = [compilers nodejs];
+    nativeBuildInputs = [esbuild makeWrapper];
+    buildInputs = [nodejs];
     entrypoint = writeText "entrypoint.js" ''
       import { main } from "./output/Registry.App.Server";
       main();
@@ -57,13 +63,17 @@ in {
       chmod +x $out/bin/${name}
       cp ${name}.js $out
     '';
+    postFixup = ''
+      wrapProgram $out/bin/${name} \
+        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git ]}
+    '';
   };
 
   github-importer = stdenv.mkDerivation rec {
     name = "registry-github-importer";
     src = ./src;
-    nativeBuildInputs = [esbuild];
-    buildInputs = [compilers nodejs];
+    nativeBuildInputs = [esbuild makeWrapper];
+    buildInputs = [nodejs];
     entrypoint = writeText "entrypoint.js" ''
       import { main } from "./output/Registry.App.Main";
       main();
@@ -74,16 +84,17 @@ in {
       cp ${entrypoint} entrypoint.js
       esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node
     '';
-    checkPhase = ''
-
-    '';
     installPhase = ''
       mkdir -p $out/bin
       cp ${name}.js $out/${name}.js
       echo '#!/usr/bin/env sh' > $out/bin/${name}
-      echo 'exec node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
+      echo 'exec ${nodejs}/bin/node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
       chmod +x $out/bin/${name}
       cp ${name}.js $out
+    '';
+    postFixup = ''
+      wrapProgram $out/bin/${name} \
+        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git ]}
     '';
   };
 }

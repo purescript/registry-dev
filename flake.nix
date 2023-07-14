@@ -60,9 +60,9 @@
             stableOnly;
           };
       in {
+        inherit compilers;
         apps = prev.callPackages ./app {inherit compilers;};
         scripts = prev.callPackages ./scripts {inherit compilers;};
-        inherit compilers;
       };
     };
   in
@@ -232,7 +232,7 @@
             registry.wait_for_unit("server.service")
             # We wait for the server to be ready; without this, in CI sometimes
             # the client starts sending requests before the server is ready.
-            client.wait_until_succeeds("${pkgs.curl}/bin/curl http://registry/api/v1/jobs/0", timeout=180)
+            client.wait_until_succeeds("${pkgs.curl}/bin/curl --fail-with-body http://registry/api/v1/jobs/0", timeout=180)
 
             def test_endpoint(endpoint, expected):
               actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
