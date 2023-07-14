@@ -9,6 +9,7 @@
   writeText,
   nodejs,
   compilers,
+  dhall,
   dhall-json,
   git,
   licensee
@@ -64,7 +65,7 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [ compilers dhall-json licensee git ]}
+        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git ]}
     '';
   };
 
@@ -93,7 +94,7 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [ compilers dhall-json licensee git ]}
+        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git ]}
     '';
   };
 }
