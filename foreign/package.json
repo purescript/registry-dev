@@ -3,10 +3,10 @@
   "private": true,
   "license": "BSD-3-Clause",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.367.0",
     "@octokit/plugin-retry": "^3.0.9",
     "@octokit/plugin-throttling": "^3.7.0",
     "@octokit/rest": "^18.12.0",
+    "aws-sdk": "^2.1050.0",
     "fast-glob": "^3.2.11",
     "fs-extra": "^10.0.0",
     "fuse.js": "^6.6.2",

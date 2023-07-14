@@ -59,20 +59,18 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
     publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
     lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
     forkPipelineJob publish.name publish.ref PublishJob
-      ( \jobId -> do
-          Log.info $ "Received Publish request, job id: " <> unwrap jobId
-          API.publish Current publish
-      )
+      \jobId -> do
+        Log.info $ "Received Publish request, job id: " <> unwrap jobId
+        API.publish Current publish
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
     case auth.payload of
       Operation.Unpublish { name, version } -> do
         forkPipelineJob name (Version.print version) UnpublishJob
-          ( \jobId -> do
-              Log.info $ "Received Unpublish request, job id: " <> unwrap jobId
-              API.authenticated auth
-          )
+          \jobId -> do
+            Log.info $ "Received Unpublish request, job id: " <> unwrap jobId
+            API.authenticated auth
       _ ->
         HTTPurple.badRequest "Expected unpublish operation."
 
@@ -81,10 +79,9 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
     case auth.payload of
       Operation.Transfer { name } -> do
         forkPipelineJob name "" TransferJob
-          ( \jobId -> do
-              Log.info $ "Received Transfer request, job id: " <> unwrap jobId
-              API.authenticated auth
-          )
+          \jobId -> do
+            Log.info $ "Received Transfer request, job id: " <> unwrap jobId
+            API.authenticated auth
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
