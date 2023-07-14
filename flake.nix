@@ -60,9 +60,9 @@
             stableOnly;
           };
       in {
+        inherit compilers;
         apps = prev.callPackages ./app {inherit compilers;};
         scripts = prev.callPackages ./scripts {inherit compilers;};
-        inherit compilers;
       };
     };
   in

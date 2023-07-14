@@ -1,4 +1,4 @@
-{ stdenv, purix, slimlock, esbuild, nodejs, writeText, compilers }:
+{ makeWrapper, lib, stdenv, purix, slimlock, esbuild, nodejs, writeText, compilers, dhall-json, licensee, git }:
 let
   package-lock = slimlock.buildPackageLock { src = ../.; omit = ["dev" "peer"];};
 
@@ -13,8 +13,8 @@ let
     stdenv.mkDerivation rec {
       inherit name;
       src = ./src;
-      nativeBuildInputs = [ esbuild ];
-      buildInputs = [ nodejs compilers ];
+      nativeBuildInputs = [ esbuild makeWrapper ];
+      buildInputs = [ nodejs ];
       entrypoint = writeText "entrypoint.js" ''
         import { main } from "./output/Registry.Scripts.${module}";
         main();
@@ -29,11 +29,15 @@ let
         mkdir -p $out/bin
         cp ${name}.js $out/${name}.js
         echo '#!/usr/bin/env sh' > $out/bin/${name}
-        echo 'exec node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
+        echo 'exec ${nodejs}/bin/node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
         chmod +x $out/bin/${name}
         cp ${name}.js $out
       '';
-    };
+      postFixup = ''
+        wrapProgram $out/bin/${name} \
+          --set PATH ${lib.makeBinPath [ compilers dhall-json licensee git ]}
+      '';
+      };
 in {
   legacy-importer = build-script "registry-legacy-importer" "LegacyImporter";
   package-deleter = build-script "registry-package-deleter" "PackageDeleter";

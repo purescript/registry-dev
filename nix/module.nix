@@ -5,8 +5,6 @@ in {
   environment = {
     systemPackages = [
       pkgs.vim
-      # FIXME: This should be picked up via the buildInputs, surely? It's not.
-      pkgs.registry.compilers
     ];
   };
 
