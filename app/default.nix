@@ -12,7 +12,9 @@
   dhall,
   dhall-json,
   git,
-  licensee
+  licensee,
+  coreutils,
+  gzip
 }: let
   package-lock = slimlock.buildPackageLock {src = ../.; omit = ["dev" "peer"];};
   spago-lock = purix.buildSpagoLock {
@@ -65,7 +67,7 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git ]}
+        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git coreutils gzip ]}
     '';
   };
 
@@ -94,7 +96,7 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git ]}
+        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git coreutils gzip ]}
     '';
   };
 }
