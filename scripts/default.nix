@@ -1,10 +1,17 @@
 {
-  stdenv,
+  makeWrapper, lib, stdenv,
   purix,
   esbuild,
   nodejs,
   writeText,
   compilers,
+  dhall,
+  dhall-json,
+  licensee,
+  git,
+  coreutils,
+  gzip,
+  gnutar,
   # from the registry at the top level
   spago-lock,
   package-lock,
@@ -12,9 +19,9 @@
   build-script = name: module:
     stdenv.mkDerivation rec {
       inherit name;
-      src = ./.;
-      nativeBuildInputs = [esbuild];
-      buildInputs = [nodejs compilers];
+      src = ./src;
+      nativeBuildInputs = [ esbuild ];
+      buildInputs = [ nodejs compilers ];
       entrypoint = writeText "entrypoint.js" ''
         import { main } from "./output/Registry.Scripts.${module}";
         main();
@@ -34,10 +41,14 @@
 
         echo "Creating wrapper script..."
         echo '#!/usr/bin/env sh' > $out/bin/${name}
-        echo 'exec node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
+        echo 'exec ${nodejs}/bin/node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
         chmod +x $out/bin/${name}
       '';
-    };
+      postFixup = ''
+        wrapProgram $out/bin/${name} \
+          --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git coreutils gzip gnutar ]}
+      '';
+      };
 in {
   legacy-importer = build-script "registry-legacy-importer" "LegacyImporter";
   package-deleter = build-script "registry-package-deleter" "PackageDeleter";

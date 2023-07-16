@@ -36,11 +36,7 @@ in {
 
   config = lib.mkIf cfg.enable {
     environment = {
-      systemPackages = [
-        pkgs.vim
-        # FIXME: This should be picked up via the buildInputs, surely? It's not.
-        pkgs.registry.compilers
-      ];
+      systemPackages = [ pkgs.vim ];
     };
 
     nix = {
@@ -154,7 +150,7 @@ in {
               </head>
               <body>
                 <h1>PureScript Registry</h1>
-                <p>Welcome to the registry server. The API is located at <code>/api.</code></p>
+                <p>Welcome to the registry server. The API is located at <code>/api/v1.</code></p>
               </body>
               </html>
             '';

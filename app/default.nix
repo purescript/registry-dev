@@ -1,11 +1,20 @@
 {
+  makeWrapper,
+  lib,
   stdenv,
   purix,
   purs-backend-es,
   esbuild,
   writeText,
-  compilers,
   nodejs,
+  compilers,
+  dhall,
+  dhall-json,
+  git,
+  licensee,
+  coreutils,
+  gzip,
+  gnutar,
   # from the registry at the top level
   spago-lock,
   package-lock,
@@ -35,8 +44,8 @@ in {
     src = ./.;
     database = ../db;
     dhallTypes = ../types;
-    nativeBuildInputs = [esbuild];
-    buildInputs = [compilers nodejs];
+    nativeBuildInputs = [esbuild makeWrapper];
+    buildInputs = [nodejs];
     entrypoint = writeText "entrypoint.js" ''
       import { main } from "./output/Registry.App.Server";
       main();
@@ -65,13 +74,17 @@ in {
       echo 'exec ${nodejs}/bin/node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
       chmod +x $out/bin/${name}
     '';
+    postFixup = ''
+      wrapProgram $out/bin/${name} \
+        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git coreutils gzip gnutar ]}
+    '';
   };
 
   github-importer = stdenv.mkDerivation rec {
     name = "registry-github-importer";
     src = ./.;
-    nativeBuildInputs = [esbuild];
-    buildInputs = [compilers nodejs];
+    nativeBuildInputs = [esbuild makeWrapper];
+    buildInputs = [nodejs];
     entrypoint = writeText "entrypoint.js" ''
       import { main } from "./output/Registry.App.Main";
       main();
@@ -93,6 +106,10 @@ in {
       echo '#!/usr/bin/env sh' > $out/bin/${name}
       echo 'exec ${nodejs}/bin/node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
       chmod +x $out/bin/${name}
+    '';
+    postFixup = ''
+      wrapProgram $out/bin/${name} \
+        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git coreutils gzip gnutar ]}
     '';
   };
 }
