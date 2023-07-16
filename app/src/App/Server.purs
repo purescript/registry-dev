@@ -2,7 +2,6 @@ module Registry.App.Server where
 
 import Registry.App.Prelude hiding ((/))
 
-import App.CLI.Git as Git
 import Data.Codec.Argonaut as CA
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Newtype (unwrap)
@@ -19,6 +18,7 @@ import Registry.API.V1 (JobId(..), JobType(..), LogLevel(..), Route(..))
 import Registry.API.V1 as V1
 import Registry.App.API (Source(..))
 import Registry.App.API as API
+import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Db (Db)

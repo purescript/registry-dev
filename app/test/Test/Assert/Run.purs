@@ -10,7 +10,6 @@ module Registry.Test.Assert.Run
 
 import Registry.App.Prelude
 
-import App.CLI.Git as Git
 import Data.Array as Array
 import Data.Foldable (class Foldable)
 import Data.Foldable as Foldable
@@ -24,6 +23,7 @@ import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
+import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)

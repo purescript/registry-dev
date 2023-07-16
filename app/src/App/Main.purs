@@ -2,7 +2,6 @@ module Registry.App.Main where
 
 import Registry.App.Prelude
 
-import App.CLI.Git as Git
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
@@ -18,6 +17,7 @@ import Node.Process as Process
 import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.Auth as Auth
+import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env

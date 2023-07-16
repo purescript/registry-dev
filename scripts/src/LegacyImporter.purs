@@ -8,7 +8,6 @@ module Registry.Scripts.LegacyImporter where
 
 import Registry.App.Prelude
 
-import App.CLI.Git as Git
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Control.Alternative (guard)
@@ -44,6 +43,7 @@ import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API (Source(..))
 import Registry.App.API as API
+import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env

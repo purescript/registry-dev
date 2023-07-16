@@ -1,4 +1,4 @@
-module App.CLI.Git where
+module Registry.App.CLI.Git where
 
 import Registry.App.Prelude
 

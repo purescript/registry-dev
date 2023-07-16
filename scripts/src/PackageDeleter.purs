@@ -2,7 +2,6 @@ module Registry.Scripts.PackageDeleter where
 
 import Registry.App.Prelude
 
-import App.CLI.Git as Git
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Control.Apply (lift2)
@@ -18,6 +17,7 @@ import Effect.Class.Console as Console
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
+import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub

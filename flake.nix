@@ -117,7 +117,7 @@
           set -euo pipefail
           WORKDIR=$(mktemp -d)
           cp spago.yaml spago.lock $WORKDIR
-          cp -a app foreign lib scripts $WORKDIR
+          cp -a app foreign lib scripts types $WORKDIR
           ln -s ${pkgs.registry.package-lock}/js/node_modules $WORKDIR/node_modules
           pushd $WORKDIR
           ${pkgs.spago-unstable}/bin/spago test

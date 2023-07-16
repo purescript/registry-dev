@@ -11,7 +11,6 @@ module Registry.Scripts.Solver where
 
 import Registry.App.Prelude
 
-import App.CLI.Git as Git
 import Data.Argonaut.Core as Json
 import Data.Array as Array
 import Data.Codec.Argonaut as J
@@ -30,6 +29,7 @@ import Node.Process as Node.Process
 import Node.Process as Process
 import Parsing as Parsing
 import Registry.App.API as API
+import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub

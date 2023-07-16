@@ -5,8 +5,6 @@ module Registry.App.Effect.Registry where
 
 import Registry.App.Prelude
 
-import App.CLI.Git (GitResult)
-import App.CLI.Git as Git
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
@@ -23,6 +21,8 @@ import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
+import Registry.App.CLI.Git (GitResult)
+import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (class MemoryEncodable, Cache, CacheRef, MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.GitHub (GITHUB)

@@ -6,7 +6,6 @@ import Registry.App.Prelude
 import Affjax.Node as Affjax.Node
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
-import App.CLI.Git as Git
 import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.HTTP.Method (Method(..))
@@ -15,6 +14,7 @@ import Effect.Aff as Aff
 import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
+import Registry.App.CLI.Git as Git
 import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
