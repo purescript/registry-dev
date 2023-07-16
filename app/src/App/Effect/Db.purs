@@ -15,9 +15,9 @@ import Registry.App.Prelude
 import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime as DateTime
-import Effect.Class.Console (log)
-import Registry.API.V1 (JobId(..), JobType, LogLevel, LogLine, logLevelFromPriority, logLevelToPriority, parseJobType, printJobType)
-import Registry.App.Prelude as Nullable
+import Effect.Console as Console
+import Registry.API.V1 (JobId(..), JobType, LogLevel, LogLine)
+import Registry.API.V1 as API.V1
 import Registry.Internal.Format as Internal.Format
 import Registry.PackageName as PackageName
 
@@ -29,13 +29,13 @@ foreign import insertLogImpl :: Db -> LogLineJS -> Effect Unit
 
 foreign import selectLogsByJobImpl :: Db -> String -> Int -> Effect (Array LogLineJS)
 
-foreign import createJobImpl :: Db -> NewJobJs -> Effect Unit
+foreign import createJobImpl :: Db -> NewJobJS -> Effect Unit
 
-foreign import finishJobImpl :: Db -> JobResultJs -> Effect Unit
+foreign import finishJobImpl :: Db -> JobResultJS -> Effect Unit
 
-foreign import selectJobImpl :: Db -> String -> Effect (Nullable JobJs)
+foreign import selectJobImpl :: Db -> String -> Effect (Nullable JobJS)
 
-foreign import runningJobForPackageImpl :: Db -> String -> Effect (Nullable JobJs)
+foreign import runningJobForPackageImpl :: Db -> String -> Effect (Nullable JobJS)
 
 foreign import deleteIncompleteJobsImpl :: Db -> Effect Unit
 
@@ -47,14 +47,14 @@ type LogLineJS =
   }
 
 fromLogLineJS :: LogLineJS -> Either String LogLine
-fromLogLineJS { level: rawLevel, message, timestamp: rawTimestamp, jobId } = case logLevelFromPriority rawLevel, DateTime.unformat Internal.Format.iso8601DateTime rawTimestamp of
+fromLogLineJS { level: rawLevel, message, timestamp: rawTimestamp, jobId } = case API.V1.logLevelFromPriority rawLevel, DateTime.unformat Internal.Format.iso8601DateTime rawTimestamp of
   Left err, _ -> Left err
   _, Left err -> Left $ "Invalid timestamp " <> show rawTimestamp <> ": " <> err
   Right level, Right timestamp -> Right { level, message, jobId: JobId jobId, timestamp }
 
 toLogLineJS :: LogLine -> LogLineJS
 toLogLineJS { level, message, timestamp, jobId: JobId jobId } =
-  { level: logLevelToPriority level
+  { level: API.V1.logLevelToPriority level
   , message
   , timestamp: DateTime.format Internal.Format.iso8601DateTime timestamp
   , jobId
@@ -62,12 +62,12 @@ toLogLineJS { level, message, timestamp, jobId: JobId jobId } =
 
 selectLogsByJob :: Db -> JobId -> LogLevel -> Maybe DateTime -> Effect (Array LogLine)
 selectLogsByJob db (JobId jobId) level maybeDatetime = do
-  logs <- selectLogsByJobImpl db jobId (logLevelToPriority level)
+  logs <- selectLogsByJobImpl db jobId (API.V1.logLevelToPriority level)
 
   let { success, fail } = partitionEithers $ map fromLogLineJS logs
   -- TODO: port this in Run so we can use the logger. But the logger needs the Db...
   when (Array.length fail > 0) do
-    log $ "Failed to parse " <> show (Array.length fail) <> " log lines"
+    Console.log $ "Failed to parse " <> show (Array.length fail) <> " log lines"
 
   pure $ Array.filter (\{ timestamp } -> timestamp > (fromMaybe bottom maybeDatetime)) success
 
@@ -82,7 +82,7 @@ type NewJob =
   , ref :: String
   }
 
-type NewJobJs =
+type NewJobJS =
   { jobId :: String
   , jobType :: String
   , createdAt :: String
@@ -96,7 +96,7 @@ type JobResult =
   , success :: Boolean
   }
 
-type JobResultJs =
+type JobResultJS =
   { jobId :: String
   , finishedAt :: String
   , success :: Int
@@ -112,7 +112,7 @@ type Job =
   , success :: Boolean
   }
 
-type JobJs =
+type JobJS =
   { jobId :: String
   , jobType :: String
   , packageName :: String
@@ -122,29 +122,29 @@ type JobJs =
   , success :: Int
   }
 
-toNewJobJs :: NewJob -> NewJobJs
-toNewJobJs { jobId: JobId jobId, jobType, createdAt, packageName, ref } =
+toNewJobJS :: NewJob -> NewJobJS
+toNewJobJS { jobId: JobId jobId, jobType, createdAt, packageName, ref } =
   { jobId
-  , jobType: printJobType jobType
+  , jobType: API.V1.printJobType jobType
   , createdAt: DateTime.format Internal.Format.iso8601DateTime createdAt
   , packageName: PackageName.print packageName
   , ref
   }
 
-toJobResultJs :: JobResult -> JobResultJs
-toJobResultJs { jobId: JobId jobId, finishedAt, success } =
+toJobResultJS :: JobResult -> JobResultJS
+toJobResultJS { jobId: JobId jobId, finishedAt, success } =
   { jobId
   , finishedAt: DateTime.format Internal.Format.iso8601DateTime finishedAt
   , success: if success then 1 else 0
   }
 
-fromJobJs :: JobJs -> Either String Job
-fromJobJs raw = do
+fromJobJS :: JobJS -> Either String Job
+fromJobJS raw = do
   let jobId = JobId raw.jobId
-  jobType <- parseJobType raw.jobType
+  jobType <- API.V1.parseJobType raw.jobType
   packageName <- PackageName.parse raw.packageName
   createdAt <- DateTime.unformat Internal.Format.iso8601DateTime raw.createdAt
-  finishedAt <- case Nullable.toMaybe raw.finishedAt of
+  finishedAt <- case toMaybe raw.finishedAt of
     Nothing -> pure Nothing
     Just rawFinishedAt -> Just <$> DateTime.unformat Internal.Format.iso8601DateTime rawFinishedAt
   success <- case raw.success of
@@ -154,21 +154,21 @@ fromJobJs raw = do
   pure $ { jobId, jobType, createdAt, finishedAt, success, packageName, ref: raw.ref }
 
 createJob :: Db -> NewJob -> Effect Unit
-createJob db newJob = createJobImpl db $ toNewJobJs newJob
+createJob db newJob = createJobImpl db $ toNewJobJS newJob
 
 finishJob :: Db -> JobResult -> Effect Unit
-finishJob db result = finishJobImpl db $ toJobResultJs result
+finishJob db result = finishJobImpl db $ toJobResultJS result
 
 selectJob :: Db -> JobId -> Effect (Either String Job)
 selectJob db (JobId jobId) = do
-  maybeJob <- Nullable.toMaybe <$> selectJobImpl db jobId
-  pure $ (note ("Couldn't find job with id " <> jobId) maybeJob) >>= fromJobJs
+  maybeJob <- toMaybe <$> selectJobImpl db jobId
+  pure $ (note ("Couldn't find job with id " <> jobId) maybeJob) >>= fromJobJS
 
 runningJobForPackage :: Db -> PackageName -> Effect (Either String Job)
 runningJobForPackage db packageName = do
   let pkgStr = PackageName.print packageName
-  maybeJobJs <- Nullable.toMaybe <$> runningJobForPackageImpl db pkgStr
-  pure $ (note ("Couldn't find running job for package " <> pkgStr) maybeJobJs) >>= fromJobJs
+  maybeJobJS <- toMaybe <$> runningJobForPackageImpl db pkgStr
+  pure $ (note ("Couldn't find running job for package " <> pkgStr) maybeJobJS) >>= fromJobJS
 
 deleteIncompleteJobs :: Db -> Effect Unit
 deleteIncompleteJobs db = deleteIncompleteJobsImpl db
