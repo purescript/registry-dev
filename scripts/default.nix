@@ -1,5 +1,7 @@
 {
-  makeWrapper, lib, stdenv,
+  makeWrapper,
+  lib,
+  stdenv,
   purix,
   esbuild,
   nodejs,
@@ -20,8 +22,8 @@
     stdenv.mkDerivation rec {
       inherit name;
       src = ./src;
-      nativeBuildInputs = [ esbuild ];
-      buildInputs = [ nodejs compilers ];
+      nativeBuildInputs = [ esbuild makeWrapper ];
+      buildInputs = [ nodejs ];
       entrypoint = writeText "entrypoint.js" ''
         import { main } from "./output/Registry.Scripts.${module}";
         main();
