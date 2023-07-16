@@ -47,6 +47,6 @@ package:
       - argonaut-core
       - exceptions
       - node-child-process
+      - node-execa
       - spec
-      - sunde
       - unsafe-coerce
