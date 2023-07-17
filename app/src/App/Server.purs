@@ -2,6 +2,7 @@ module Registry.App.Server where
 
 import Registry.App.Prelude hiding ((/))
 
+import Control.Monad.Cont (ContT)
 import Data.Codec.Argonaut as CA
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Newtype (unwrap)
@@ -21,7 +22,7 @@ import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Db (Db)
+import Registry.App.Effect.Db (DB)
 import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Env (DatabaseUrl, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
@@ -38,6 +39,8 @@ import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest (LEGACY_CACHE, _legacyCache)
+import Registry.App.SQLite (SQLite)
+import Registry.App.SQLite as SQLite
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubToken, Octokit)
 import Registry.Foreign.Octokit as Octokit
@@ -50,8 +53,10 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
-newJobId :: Effect JobId
-newJobId = (JobId <<< UUID.toString) <$> UUID.make
+newJobId :: forall m. MonadEffect m => m JobId
+newJobId = liftEffect do
+  id <- UUID.make
+  pure $ JobId $ UUID.toString id
 
 router :: ServerEnv -> Request Route -> Run ServerEffects Response
 router env { route, method, body } = HTTPurple.usingCont case route, method of
@@ -90,20 +95,20 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
 
   Job jobId { level: maybeLogLevel, since }, Get -> do
     let logLevel = fromMaybe Error maybeLogLevel
-    logs <- liftEffect $ Db.selectLogsByJob env.db jobId logLevel since
-    maybeJob <- liftEffect $ Db.selectJob env.db jobId
-    case maybeJob of
+    logs <- lift $ Db.selectLogsByJob jobId logLevel since
+    lift (Db.selectJob jobId) >>= case _ of
       Left err -> do
         lift $ Log.error $ "Error while fetching job: " <> err
         HTTPurple.notFound
-      Right job -> jsonOk V1.jobCodec (Record.insert (Proxy :: _ "logs") logs job)
+      Right job -> do
+        jsonOk V1.jobCodec (Record.insert (Proxy :: _ "logs") logs job)
 
   _, _ -> HTTPurple.notFound
   where
+  forkPipelineJob :: PackageName -> String -> JobType -> (JobId -> Run _ Unit) -> ContT Response (Run _) Response
   forkPipelineJob packageName ref jobType action = do
     -- First thing we check if the package already has a pipeline in progress
-    maybeCurrentJob <- liftEffect $ Db.runningJobForPackage env.db packageName
-    case maybeCurrentJob of
+    lift (Db.runningJobForPackage packageName) >>= case _ of
       -- If yes, we error out if it's the wrong kind, return it if it's the same type
       Right { jobId, jobType: runningJobType } -> do
         lift $ Log.info $ "Found running job for package " <> PackageName.print packageName <> ", job id: " <> unwrap jobId
@@ -113,16 +118,16 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
       -- otherwise spin up a new thread
       Left _err -> do
         lift $ Log.info $ "No running job for package " <> PackageName.print packageName <> ", creating a new one"
-        jobId <- liftEffect $ newJobId
+        jobId <- newJobId
         now <- nowUTC
         let newJob = { createdAt: now, jobId, jobType, packageName, ref }
-        liftEffect $ Db.createJob env.db newJob
+        lift $ Db.createJob newJob
         let newEnv = env { jobId = Just jobId }
 
         _fiber <- liftAff $ Aff.forkAff $ Aff.attempt $ do
           void $ runEffects newEnv (action jobId)
           finishedAt <- nowUTC
-          liftEffect $ Db.finishJob env.db { jobId, finishedAt, success: true }
+          void $ runEffects newEnv (Db.finishJob { jobId, finishedAt, success: true })
         jsonOk V1.jobCreatedResponseCodec { jobId }
 
 type ServerEnvVars =
@@ -154,7 +159,7 @@ type ServerEnv =
   , octokit :: Octokit
   , vars :: ServerEnvVars
   , debouncer :: Registry.Debouncer
-  , db :: Db
+  , db :: SQLite
   , jobId :: Maybe JobId
   }
 
@@ -173,12 +178,16 @@ createServerEnv = do
   octokit <- Octokit.newOctokit vars.token
   debouncer <- Registry.newDebouncer
 
-  db <- liftEffect $ Db.connect vars.databaseUrl.path
+  db <- liftEffect $ SQLite.connect
+    { database: vars.databaseUrl.path
+    , logger: Run.runBaseEffect <<< Log.interpret (Log.handleTerminal Verbose) <<< Log.info
+    }
+
   -- At server startup we clean out all the jobs that are not completed,
   -- because they are stale runs from previous startups of the server.
   -- We can just remove the jobs, and all the logs belonging to them will be
   -- removed automatically by the foreign key constraint.
-  liftEffect $ Db.deleteIncompleteJobs db
+  liftEffect $ SQLite.deleteIncompleteJobs db
 
   pure
     { debouncer
@@ -193,7 +202,7 @@ createServerEnv = do
     , jobId: Nothing
     }
 
-type ServerEffects = (PACCHETTIBOTTI_ENV + REGISTRY + STORAGE + PURSUIT + SOURCE + GITHUB + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (PACCHETTIBOTTI_ENV + REGISTRY + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer :: ServerEnv -> (ServerEnv -> Request Route -> Run ServerEffects Response) -> Request Route -> Aff Response
 runServer env router' request = do
@@ -226,7 +235,7 @@ main = do
       , " │ Server now up on port 8080                │"
       , " │                                           │"
       , " │ To test, run:                             │"
-      , " │  > curl -v localhost:8080/api/v1/publish  │"
+      , " │  > curl -v localhost:8080/api/v1/jobs     │"
       , " └───────────────────────────────────────────┘"
       ]
 
@@ -266,16 +275,17 @@ runEffects env operation = Aff.attempt do
             finishedAt <- nowUTC
             case env.jobId of
               -- Important to make sure that we mark the job as completed
-              Just jobId -> liftEffect $ Db.finishJob env.db { jobId, finishedAt, success: false }
+              Just jobId -> Db.finishJob { jobId, finishedAt, success: false }
               Nothing -> pure unit
             Log.error msg *> Run.liftAff (Aff.throwError (Aff.error msg))
         )
+    # Db.interpret (Db.handleSQLite { db: env.db })
     # Log.interpret
         ( \log -> case env.jobId of
             Nothing -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log
             Just jobId ->
               Log.handleTerminal Normal log
                 *> Log.handleFs Verbose logPath log
-                *> Log.handleDb { db: env.db } jobId log
+                *> Log.handleDb { db: env.db, job: jobId } log
         )
     # Run.runBaseAff'

@@ -1,174 +1,97 @@
-module Registry.App.Effect.Db
-  ( Db
-  , connect
-  , createJob
-  , finishJob
-  , selectJob
-  , insertLog
-  , selectLogsByJob
-  , runningJobForPackage
-  , deleteIncompleteJobs
-  ) where
+module Registry.App.Effect.Db where
 
 import Registry.App.Prelude
 
 import Data.Array as Array
 import Data.DateTime (DateTime)
-import Data.Formatter.DateTime as DateTime
-import Effect.Console as Console
-import Registry.API.V1 (JobId(..), JobType, LogLevel, LogLine)
-import Registry.API.V1 as API.V1
-import Registry.Internal.Format as Internal.Format
-import Registry.PackageName as PackageName
+import Data.String as String
+import Registry.API.V1 (JobId, LogLevel, LogLine)
+import Registry.App.Effect.Log (LOG)
+import Registry.App.Effect.Log as Log
+import Registry.App.SQLite (JobResult, NewJob, SQLite)
+import Registry.App.SQLite as SQLite
+import Run (EFFECT, Run)
+import Run as Run
 
-foreign import data Db :: Type
+-- We could separate these by database if it grows too large. Also, for now these
+-- simply lift their Effect-based equivalents in the SQLite module, but ideally
+-- that module would expose lower-level building blocks for accessing the database
+-- and we'd implement these in terms of those in this module.
+--
+-- Also, this does not currently include setup and teardown (those are handled
+-- outside the effect), but we may wish to add those in the future if they'll
+-- be part of app code we want to test.
+data Db a
+  = InsertLog LogLine a
+  | SelectLogsByJob JobId LogLevel (Maybe DateTime) (Array LogLine -> a)
+  | CreateJob NewJob a
+  | FinishJob JobResult a
+  | SelectJob JobId (Either String SQLite.Job -> a)
+  | RunningJobForPackage PackageName (Either String SQLite.Job -> a)
 
-foreign import connect :: FilePath -> Effect Db
+derive instance Functor Db
 
-foreign import insertLogImpl :: Db -> LogLineJS -> Effect Unit
+-- | An effect for accessing the database.
+type DB r = (db :: Db | r)
 
-foreign import selectLogsByJobImpl :: Db -> String -> Int -> Effect (Array LogLineJS)
+_db :: Proxy "db"
+_db = Proxy
 
-foreign import createJobImpl :: Db -> NewJobJS -> Effect Unit
+-- | Insert a new log line into the database.
+insertLog :: forall r. LogLine -> Run (DB + r) Unit
+insertLog log = Run.lift _db (InsertLog log unit)
 
-foreign import finishJobImpl :: Db -> JobResultJS -> Effect Unit
+-- | Select all logs for a given job, filtered by loglevel and a time cutoff.
+selectLogsByJob :: forall r. JobId -> LogLevel -> Maybe DateTime -> Run (DB + r) (Array LogLine)
+selectLogsByJob jobId logLevel since = Run.lift _db (SelectLogsByJob jobId logLevel since identity)
 
-foreign import selectJobImpl :: Db -> String -> Effect (Nullable JobJS)
+-- | Create a new job in the database.
+createJob :: forall r. NewJob -> Run (DB + r) Unit
+createJob newJob = Run.lift _db (CreateJob newJob unit)
 
-foreign import runningJobForPackageImpl :: Db -> String -> Effect (Nullable JobJS)
+-- | Set a job in the database to the 'finished' state.
+finishJob :: forall r. JobResult -> Run (DB + r) Unit
+finishJob jobResult = Run.lift _db (FinishJob jobResult unit)
 
-foreign import deleteIncompleteJobsImpl :: Db -> Effect Unit
+-- | Select a job by ID from the database.
+selectJob :: forall r. JobId -> Run (DB + r) (Either String SQLite.Job)
+selectJob jobId = Run.lift _db (SelectJob jobId identity)
 
-type LogLineJS =
-  { level :: Int
-  , message :: String
-  , timestamp :: String
-  , jobId :: String
-  }
+-- | Select a job by package name from the database, failing if there is no
+-- | current job available for that package name.
+runningJobForPackage :: forall r. PackageName -> Run (DB + r) (Either String SQLite.Job)
+runningJobForPackage name = Run.lift _db (RunningJobForPackage name identity)
 
-fromLogLineJS :: LogLineJS -> Either String LogLine
-fromLogLineJS { level: rawLevel, message, timestamp: rawTimestamp, jobId } = case API.V1.logLevelFromPriority rawLevel, DateTime.unformat Internal.Format.iso8601DateTime rawTimestamp of
-  Left err, _ -> Left err
-  _, Left err -> Left $ "Invalid timestamp " <> show rawTimestamp <> ": " <> err
-  Right level, Right timestamp -> Right { level, message, jobId: JobId jobId, timestamp }
+interpret :: forall r a. (Db ~> Run r) -> Run (DB + r) a -> Run r a
+interpret handler = Run.interpret (Run.on _db handler Run.send)
 
-toLogLineJS :: LogLine -> LogLineJS
-toLogLineJS { level, message, timestamp, jobId: JobId jobId } =
-  { level: API.V1.logLevelToPriority level
-  , message
-  , timestamp: DateTime.format Internal.Format.iso8601DateTime timestamp
-  , jobId
-  }
+type SQLiteEnv = { db :: SQLite }
 
-selectLogsByJob :: Db -> JobId -> LogLevel -> Maybe DateTime -> Effect (Array LogLine)
-selectLogsByJob db (JobId jobId) level maybeDatetime = do
-  logs <- selectLogsByJobImpl db jobId (API.V1.logLevelToPriority level)
+-- | Interpret DB by interacting with the SQLite database on disk.
+handleSQLite :: forall r a. SQLiteEnv -> Db a -> Run (LOG + EFFECT + r) a
+handleSQLite env = case _ of
+  InsertLog log next -> do
+    Run.liftEffect $ SQLite.insertLog env.db log
+    pure next
 
-  let { success, fail } = partitionEithers $ map fromLogLineJS logs
-  -- TODO: port this in Run so we can use the logger. But the logger needs the Db...
-  when (Array.length fail > 0) do
-    Console.log $ "Failed to parse " <> show (Array.length fail) <> " log lines"
+  SelectLogsByJob jobId logLevel since reply -> do
+    logs <- Run.liftEffect $ SQLite.selectLogsByJob env.db jobId logLevel since
+    unless (Array.null logs.fail) do
+      Log.warn $ "Some logs are not readable: " <> String.joinWith "\n" logs.fail
+    pure $ reply logs.success
 
-  pure $ Array.filter (\{ timestamp } -> timestamp > (fromMaybe bottom maybeDatetime)) success
+  CreateJob newJob next -> do
+    Run.liftEffect $ SQLite.createJob env.db newJob
+    pure next
 
-insertLog :: Db -> LogLine -> Effect Unit
-insertLog db logLine = insertLogImpl db $ toLogLineJS logLine
+  FinishJob jobResult next -> do
+    Run.liftEffect $ SQLite.finishJob env.db jobResult
+    pure next
 
-type NewJob =
-  { jobId :: JobId
-  , jobType :: JobType
-  , createdAt :: DateTime
-  , packageName :: PackageName
-  , ref :: String
-  }
+  SelectJob jobId reply -> do
+    job <- Run.liftEffect $ SQLite.selectJob env.db jobId
+    pure $ reply job
 
-type NewJobJS =
-  { jobId :: String
-  , jobType :: String
-  , createdAt :: String
-  , packageName :: String
-  , ref :: String
-  }
-
-type JobResult =
-  { jobId :: JobId
-  , finishedAt :: DateTime
-  , success :: Boolean
-  }
-
-type JobResultJS =
-  { jobId :: String
-  , finishedAt :: String
-  , success :: Int
-  }
-
-type Job =
-  { jobId :: JobId
-  , jobType :: JobType
-  , packageName :: PackageName
-  , ref :: String
-  , createdAt :: DateTime
-  , finishedAt :: Maybe DateTime
-  , success :: Boolean
-  }
-
-type JobJS =
-  { jobId :: String
-  , jobType :: String
-  , packageName :: String
-  , ref :: String
-  , createdAt :: String
-  , finishedAt :: Nullable String
-  , success :: Int
-  }
-
-toNewJobJS :: NewJob -> NewJobJS
-toNewJobJS { jobId: JobId jobId, jobType, createdAt, packageName, ref } =
-  { jobId
-  , jobType: API.V1.printJobType jobType
-  , createdAt: DateTime.format Internal.Format.iso8601DateTime createdAt
-  , packageName: PackageName.print packageName
-  , ref
-  }
-
-toJobResultJS :: JobResult -> JobResultJS
-toJobResultJS { jobId: JobId jobId, finishedAt, success } =
-  { jobId
-  , finishedAt: DateTime.format Internal.Format.iso8601DateTime finishedAt
-  , success: if success then 1 else 0
-  }
-
-fromJobJS :: JobJS -> Either String Job
-fromJobJS raw = do
-  let jobId = JobId raw.jobId
-  jobType <- API.V1.parseJobType raw.jobType
-  packageName <- PackageName.parse raw.packageName
-  createdAt <- DateTime.unformat Internal.Format.iso8601DateTime raw.createdAt
-  finishedAt <- case toMaybe raw.finishedAt of
-    Nothing -> pure Nothing
-    Just rawFinishedAt -> Just <$> DateTime.unformat Internal.Format.iso8601DateTime rawFinishedAt
-  success <- case raw.success of
-    0 -> Right false
-    1 -> Right true
-    _ -> Left $ "Invalid success value " <> show raw.success
-  pure $ { jobId, jobType, createdAt, finishedAt, success, packageName, ref: raw.ref }
-
-createJob :: Db -> NewJob -> Effect Unit
-createJob db newJob = createJobImpl db $ toNewJobJS newJob
-
-finishJob :: Db -> JobResult -> Effect Unit
-finishJob db result = finishJobImpl db $ toJobResultJS result
-
-selectJob :: Db -> JobId -> Effect (Either String Job)
-selectJob db (JobId jobId) = do
-  maybeJob <- toMaybe <$> selectJobImpl db jobId
-  pure $ (note ("Couldn't find job with id " <> jobId) maybeJob) >>= fromJobJS
-
-runningJobForPackage :: Db -> PackageName -> Effect (Either String Job)
-runningJobForPackage db packageName = do
-  let pkgStr = PackageName.print packageName
-  maybeJobJS <- toMaybe <$> runningJobForPackageImpl db pkgStr
-  pure $ (note ("Couldn't find running job for package " <> pkgStr) maybeJobJS) >>= fromJobJS
-
-deleteIncompleteJobs :: Db -> Effect Unit
-deleteIncompleteJobs db = deleteIncompleteJobsImpl db
+  RunningJobForPackage name reply -> do
+    job <- Run.liftEffect $ SQLite.runningJobForPackage env.db name
+    pure $ reply job

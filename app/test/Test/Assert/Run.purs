@@ -277,14 +277,12 @@ handleSourceMock env = case _ of
               LegacyPursPublish -> do
                 -- When using the compiler and legacy 'purs publish' we have to be
                 -- in a clean git repository with the ref checked out.
-                Run.liftAff $ FS.Aff.rm'
-                  (Path.concat [ destinationPath, ".git" ])
-                  { recursive: true, force: true, maxRetries: 10, retryDelay: 1000 }
+                Run.liftAff $ FS.Aff.rm' (Path.concat [ destinationPath, ".git" ]) { recursive: true, force: true, maxRetries: 10, retryDelay: 1000 }
                 Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ destinationPath, ".gitignore" ]) "output"
                 let exec args = void (Git.withGit destinationPath args identity)
                 exec [ "init" ]
                 exec [ "config", "user.name", "test-user" ]
-                exec [ "config", "user.email", "<test-user@aol.com>" ]
+                exec [ "config", "user.email", "test-user@aol.com" ]
                 exec [ "add", "." ]
                 exec [ "commit", "--no-sign", "-m", "Initial commit" ]
                 exec [ "tag", "--no-sign", "-m", ref, ref ]

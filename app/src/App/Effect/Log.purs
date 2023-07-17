@@ -16,8 +16,8 @@ import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Node.FS.Aff as FS.Aff
 import Registry.API.V1 (JobId, LogLevel(..), printLogLevel)
-import Registry.App.Effect.Db (Db)
-import Registry.App.Effect.Db as Db
+import Registry.App.SQLite (SQLite)
+import Registry.App.SQLite as SQLite
 import Registry.Foreign.Octokit (Address, IssueNumber(..), Octokit)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Format as Internal.Format
@@ -78,7 +78,7 @@ interpret :: forall a r. (Log ~> Run r) -> Run (LOG + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _log handler Run.send)
 
 -- | Write logs to the terminal only.
-handleTerminal :: forall a r. LogVerbosity -> Log a -> Run (AFF + r) a
+handleTerminal :: forall a r. LogVerbosity -> Log a -> Run (EFFECT + r) a
 handleTerminal verbosity = case _ of
   Log level message next -> do
     let
@@ -89,7 +89,7 @@ handleTerminal verbosity = case _ of
         Error -> Ansi.foreground Ansi.Red (Dodo.text "[ERROR] ") <> message
         Notify -> Ansi.foreground Ansi.BrightBlue (Dodo.text "[NOTIFY] ") <> message
 
-    Run.liftAff case verbosity of
+    Run.liftEffect case verbosity of
       Quiet -> pure unit
       Normal -> when (level /= Debug) (Console.log printed)
       Verbose -> Console.log printed
@@ -157,20 +157,17 @@ handleGitHub env = case _ of
   Log _ _ next -> pure next
 
 type LogDbEnv =
-  { db :: Db
+  { db :: SQLite
+  , job :: JobId
   }
 
 -- | Handle a log by recording it in the database.
-handleDb :: forall a r. LogDbEnv -> JobId -> Log a -> Run (AFF + EFFECT + r) a
-handleDb env jobId = case _ of
+handleDb :: forall a r. LogDbEnv -> Log a -> Run (EFFECT + r) a
+handleDb env = case _ of
   Log level message next -> do
     timestamp <- nowUTC
     let
-      row =
-        { timestamp
-        , level
-        , jobId
-        , message: Dodo.print Dodo.plainText Dodo.twoSpaces (toLog message)
-        }
-    liftEffect $ Db.insertLog env.db row
+      msg = Dodo.print Dodo.plainText Dodo.twoSpaces (toLog message)
+      row = { timestamp, level, jobId: env.job, message: msg }
+    Run.liftEffect $ SQLite.insertLog env.db row
     pure next
