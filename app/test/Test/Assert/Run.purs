@@ -26,6 +26,8 @@ import Node.Path as Path
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Comment (COMMENT)
+import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB, GITHUB_CACHE, GitHub(..))
@@ -81,6 +83,7 @@ type TEST_EFFECTS =
       + GITHUB_EVENT_ENV
       + GITHUB_CACHE
       + LEGACY_CACHE
+      + COMMENT
       + LOG
       + EXCEPT String
       + AFF
@@ -112,6 +115,7 @@ runTestEffects env =
     >>> runGitHubCacheMemory (unsafePerformEffect Cache.newCacheRef)
     >>> runLegacyCacheMemory (unsafePerformEffect Cache.newCacheRef)
     -- Other effects
+    >>> Comment.interpret Comment.handleLog
     >>> Log.interpret (\(Log _ _ next) -> pure next)
     -- Base effects
     >>> Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))

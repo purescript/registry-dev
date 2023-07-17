@@ -1,14 +1,13 @@
 -- | A general logging effect suitable for recording events as they happen in
 -- | the application, including debugging logs. Should not be used to report
--- | important events to registry users; for that, use the Notify effect.
+-- | important events to registry users; for that, use the Comment effect.
 module Registry.App.Effect.Log where
 
 import Registry.App.Prelude
 
 import Ansi.Codes (GraphicsParam)
 import Data.Array as Array
-import Data.Formatter.DateTime as Formatters.DateTime
-import Data.Int as Int
+import Data.Formatter.DateTime as Formatter.DateTime
 import Dodo (Doc)
 import Dodo as Dodo
 import Dodo.Ansi as Ansi
@@ -18,8 +17,6 @@ import Node.FS.Aff as FS.Aff
 import Registry.API.V1 (JobId, LogLevel(..), printLogLevel)
 import Registry.App.SQLite (SQLite)
 import Registry.App.SQLite as SQLite
-import Registry.Foreign.Octokit (Address, IssueNumber(..), Octokit)
-import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Format as Internal.Format
 import Registry.PackageName as PackageName
 import Registry.Range as Range
@@ -71,9 +68,6 @@ warn = log Warn <<< toLog
 error :: forall a r. Loggable a => a -> Run (LOG + r) Unit
 error = log Error <<< toLog
 
-notify :: forall a r. Loggable a => a -> Run (LOG + r) Unit
-notify = log Notify <<< toLog
-
 interpret :: forall a r. (Log ~> Run r) -> Run (LOG + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _log handler Run.send)
 
@@ -87,7 +81,6 @@ handleTerminal verbosity = case _ of
         Info -> message
         Warn -> Ansi.foreground Ansi.Yellow (Dodo.text "[WARNING] ") <> message
         Error -> Ansi.foreground Ansi.Red (Dodo.text "[ERROR] ") <> message
-        Notify -> Ansi.foreground Ansi.BrightBlue (Dodo.text "[NOTIFY] ") <> message
 
     Run.liftEffect case verbosity of
       Quiet -> pure unit
@@ -103,21 +96,19 @@ handleFs verbosity logfile action = case action of
     let
       attemptWrite = do
         now <- nowUTC
-        let
-          time = Formatters.DateTime.format Internal.Format.iso8601DateTime now
 
-          formatted = Dodo.print Dodo.plainText Dodo.twoSpaces
-            ( Array.fold
-                [ Dodo.text "["
-                , Dodo.text time
-                , Dodo.space
-                , Dodo.text (printLogLevel level)
-                , Dodo.text "]"
-                , Dodo.space
-                , message
-                , Dodo.break
-                ]
-            )
+        let
+          time = Formatter.DateTime.format Internal.Format.iso8601DateTime now
+          formatted = Dodo.print Dodo.plainText Dodo.twoSpaces $ Array.fold
+            [ Dodo.text "["
+            , Dodo.text time
+            , Dodo.space
+            , Dodo.text (printLogLevel level)
+            , Dodo.text "]"
+            , Dodo.space
+            , message
+            , Dodo.break
+            ]
 
         Run.liftAff (Aff.attempt (FS.Aff.appendTextFile UTF8 logfile formatted)) >>= case _ of
           Left err -> Console.error $ "LOG ERROR: Failed to write to file " <> logfile <> ": " <> Aff.message err
@@ -129,32 +120,6 @@ handleFs verbosity logfile action = case action of
       Verbose -> attemptWrite
 
     pure next
-
-type LogGitHubEnv =
-  { octokit :: Octokit
-  , issue :: IssueNumber
-  , registry :: Address
-  }
-
--- | Handle a log by commenting on the relevant GitHub issue, if important for the user.
-handleGitHub :: forall a r. LogGitHubEnv -> Log a -> Run (AFF + EFFECT + r) a
-handleGitHub env = case _ of
-  Log Notify message next -> do
-    let _issueNumber = Int.toStringAs Int.decimal $ un IssueNumber env.issue
-    let comment = Dodo.print Dodo.plainText Dodo.twoSpaces (toLog message)
-    let request = Octokit.createCommentRequest { address: env.registry, issue: env.issue, body: comment }
-    -- TODO: figure out how to log here
-    -- debug $ "Notifying via a GitHub comment on issue " <> issueNumber
-    Octokit.request env.octokit request >>= case _ of
-      Left _err -> do
-        -- error $ "Could not send comment to GitHub due to an unexpected error."
-        -- debug $ Octokit.printGitHubError err
-        pure unit
-      Right _ ->
-        -- debug $ "Created GitHub comment on issue " <> issueNumber
-        pure unit
-    pure next
-  Log _ _ next -> pure next
 
 type LogDbEnv =
   { db :: SQLite

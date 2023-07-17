@@ -19,6 +19,7 @@ import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
@@ -154,6 +155,7 @@ main = launchAff_ do
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
         >>> Pursuit.interpret Pursuit.handlePure
         >>> Cache.interpret _legacyCache (Cache.handleMemoryFs { ref: legacyCacheRef, cache })
+        >>> Comment.interpret Comment.handleLog
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
         >>> Run.runBaseAff'
 

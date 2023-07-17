@@ -31,6 +31,7 @@ import Parsing as Parsing
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
@@ -146,6 +147,7 @@ main = launchAff_ do
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'
 

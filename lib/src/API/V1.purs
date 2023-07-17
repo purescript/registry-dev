@@ -132,7 +132,7 @@ logLineCodec = CA.Record.object "LogLine"
   , timestamp: Internal.Codec.iso8601DateTime
   }
 
-data LogLevel = Debug | Info | Warn | Error | Notify
+data LogLevel = Debug | Info | Warn | Error
 
 derive instance Eq LogLevel
 derive instance Ord LogLevel
@@ -143,7 +143,6 @@ printLogLevel = case _ of
   Info -> "INFO"
   Warn -> "WARN"
   Error -> "ERROR"
-  Notify -> "NOTIFY"
 
 -- These numbers are not consecutive so that we can insert new log levels if need be
 logLevelToPriority :: LogLevel -> Int
@@ -152,7 +151,6 @@ logLevelToPriority = case _ of
   Info -> 10
   Warn -> 20
   Error -> 30
-  Notify -> 40
 
 logLevelFromPriority :: Int -> Either String LogLevel
 logLevelFromPriority = case _ of
@@ -160,7 +158,6 @@ logLevelFromPriority = case _ of
   10 -> Right Info
   20 -> Right Warn
   30 -> Right Error
-  40 -> Right Notify
   other -> Left $ "Invalid log level priority: " <> show other
 
 parseLogLevel :: String -> Either String LogLevel
@@ -169,5 +166,4 @@ parseLogLevel = case _ of
   "INFO" -> Right Info
   "WARN" -> Right Warn
   "ERROR" -> Right Error
-  "NOTIFY" -> Right Notify
   other -> Left $ "Invalid log level: " <> other

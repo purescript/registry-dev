@@ -19,6 +19,7 @@ import Registry.App.API as API
 import Registry.App.Auth as Auth
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
@@ -103,8 +104,9 @@ main = launchAff_ $ do
       # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache, ref: githubCacheRef })
       -- Caching & logging
       # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
-      # Except.catch (\msg -> Log.error msg *> Log.notify msg *> Run.liftEffect (Ref.write true thrownRef))
-      # Log.interpret (\log -> Log.handleTerminal Verbose log *> Log.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Registry.defaultRepos.registry } log)
+      # Except.catch (\msg -> Log.error msg *> Comment.comment msg *> Run.liftEffect (Ref.write true thrownRef))
+      # Comment.interpret (Comment.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Registry.defaultRepos.registry })
+      # Log.interpret (Log.handleTerminal Verbose)
       -- Base effects
       # Run.runBaseAff'
 
