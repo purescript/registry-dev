@@ -1,4 +1,4 @@
-module Registry.App.Main where
+module Registry.App.GitHubIssue where
 
 import Registry.App.Prelude
 

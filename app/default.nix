@@ -76,7 +76,7 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git coreutils gzip gnutar ]}
+        --set PATH ${lib.makeBinPath [compilers dhall dhall-json licensee git coreutils gzip gnutar]}
     '';
   };
 
@@ -86,7 +86,7 @@ in {
     nativeBuildInputs = [esbuild makeWrapper];
     buildInputs = [nodejs];
     entrypoint = writeText "entrypoint.js" ''
-      import { main } from "./output/Registry.App.Main";
+      import { main } from "./output/Registry.App.GitHubIssue";
       main();
     '';
     buildPhase = ''
@@ -109,7 +109,7 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git coreutils gzip gnutar ]}
+        --set PATH ${lib.makeBinPath [compilers dhall dhall-json licensee git coreutils gzip gnutar]}
     '';
   };
 }
