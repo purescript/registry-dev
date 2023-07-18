@@ -356,10 +356,8 @@ fetchSpagoDhallJson address ref = Run.Except.runExceptAt _spagoDhallError do
     process <- Execa.execa cmd args (_ { cwd = cwd })
     process.stdin.writeUtf8End dhall
     result <- process.result
-    pure $ case result of
-      Right { exitCode, stdout, stderr }
-        | exitCode == 0 -> lmap CA.printJsonDecodeError $ parseJson CA.json stdout
-        | otherwise -> Left stderr
+    pure case result of
+      Right { stdout } -> lmap CA.printJsonDecodeError $ parseJson CA.json stdout
       Left { stderr } -> Left stderr
 
 newtype Bowerfile = Bowerfile

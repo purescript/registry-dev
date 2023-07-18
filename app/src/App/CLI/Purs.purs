@@ -119,14 +119,12 @@ callCompiler compilerArgs = do
 
   result <- _.result =<< Execa.execa purs (printCommand compilerArgs.command) (_ { cwd = compilerArgs.cwd })
   pure case result of
-    Left exception -> Left case exception.originalMessage of
-      errorMessage
-        | errorMessage == Just (String.joinWith " " [ "spawn", purs, "ENOENT" ]) -> MissingCompiler
-        | otherwise -> UnknownError exception.message
-    Right { exitCode: 0, stdout } -> Right $ String.trim stdout
-    Right { stdout, stderr } -> Left do
-      case parseJson errorsCodec (String.trim stdout) of
+    Left { originalMessage }
+      | originalMessage == Just (String.joinWith " " [ "spawn", purs, "ENOENT" ]) -> Left MissingCompiler
+    Left { stdout, stderr } -> Left do
+      case parseJson errorsCodec stdout of
         Left err -> UnknownError $ String.joinWith "\n" [ stdout, stderr, CA.printJsonDecodeError err ]
         Right ({ errors } :: { errors :: Array CompilerError })
           | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
           | otherwise -> CompilationError errors
+    Right { stdout } -> Right stdout
