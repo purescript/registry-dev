@@ -38,7 +38,7 @@ spec = do
   testCompilationError =
     Spec.it "Handles compilation error for bad input file" do
       let fixture = Path.concat [ "test", "_fixtures", "ShouldFailToCompile" ]
-      result <- Purs.callCompiler { command: Purs.Compile { globs: [ fixture ] }, cwd: Nothing, version: Just "0.15.9" }
+      result <- Purs.callCompiler { command: Purs.Compile { globs: [ fixture ] }, cwd: Nothing, version: Nothing }
       case result of
         Left (CompilationError [ { position: { startLine: 1, startColumn: 1 } } ]) -> pure unit
         _ -> Assert.fail "Should have failed with CompilationError"
