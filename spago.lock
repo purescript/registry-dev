@@ -38,6 +38,7 @@ workspace:
         - newtype
         - node-buffer
         - node-child-process
+        - node-execa
         - node-fs
         - node-fs-aff
         - node-path
@@ -61,7 +62,6 @@ workspace:
         - safe-coerce
         - spago-core
         - strings
-        - sunde
         - these
         - transformers
         - tuples
@@ -155,8 +155,8 @@ workspace:
         - argonaut-core
         - exceptions
         - node-child-process
+        - node-execa
         - spec
-        - sunde
         - unsafe-coerce
     registry-scripts:
       path: scripts
@@ -853,6 +853,12 @@ packages:
       - foreign
       - integers
       - now
+  js-timers:
+    type: registry
+    version: 6.1.0
+    integrity: sha256-znHWLSSOYw15P5DTcsAdal2lf7nGA2yayLdOZ2t5r7o=
+    dependencies:
+      - effect
   js-uri:
     type: registry
     version: 3.1.0
@@ -1019,6 +1025,61 @@ packages:
       - nullable
       - posix-types
       - unsafe-coerce
+  node-event-emitter:
+    type: registry
+    version: 3.0.0
+    integrity: sha256-Qw0MjsT4xRH2j2i4K8JmRjcMKnH5z1Cw39t00q4LE4w=
+    dependencies:
+      - effect
+      - either
+      - functions
+      - maybe
+      - nullable
+      - prelude
+      - unsafe-coerce
+  node-execa:
+    type: registry
+    version: 3.0.0
+    integrity: sha256-ApGpjD1sq39MRsLgRPqCj3f9OhTy6J/BLNvrpmRZ4jk=
+    dependencies:
+      - aff
+      - arrays
+      - control
+      - effect
+      - either
+      - exceptions
+      - foldable-traversable
+      - foreign
+      - foreign-object
+      - functions
+      - integers
+      - js-timers
+      - maybe
+      - node-buffer
+      - node-event-emitter
+      - node-fs
+      - node-human-signals
+      - node-path
+      - node-process
+      - node-streams
+      - nullable
+      - numbers
+      - ordered-collections
+      - parallel
+      - parsing
+      - partial
+      - posix-types
+      - prelude
+      - profunctor-lenses
+      - record
+      - refs
+      - safe-coerce
+      - strings
+      - tailrec
+      - transformers
+      - tuples
+      - unsafe-coerce
+      - unsafe-reference
   node-fs:
     type: registry
     version: 8.2.0
@@ -1069,6 +1130,17 @@ packages:
       - options
       - prelude
       - unsafe-coerce
+  node-human-signals:
+    type: registry
+    version: 1.0.0
+    integrity: sha256-HOUfMQTAIuL5AOCUlJJcKq78masah+388eQOdloYH1g=
+    dependencies:
+      - arrays
+      - control
+      - foreign-object
+      - maybe
+      - ordered-collections
+      - prelude
   node-net:
     type: registry
     version: 4.0.0
@@ -1621,6 +1693,12 @@ packages:
     version: 6.0.0
     integrity: sha256-IqIYW4Vkevn8sI+6aUwRGvd87tVL36BBeOr0cGAE7t0=
     dependencies: []
+  unsafe-reference:
+    type: registry
+    version: 5.0.0
+    integrity: sha256-zU7BhfJU14nXQRZG9iADsp0mSiKhz07OcKyjRB2YT+Y=
+    dependencies:
+      - prelude
   untagged-union:
     type: registry
     version: 1.0.0

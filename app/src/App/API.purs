@@ -34,10 +34,10 @@ import Data.String.NonEmpty as NonEmptyString
 import Data.String.Regex as Regex
 import Effect.Aff as Aff
 import Effect.Ref as Ref
-import Node.ChildProcess as ChildProcess
 import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
+import Node.Library.Execa as Execa
 import Node.Path as Path
 import Registry.App.Auth as Auth
 import Registry.App.CLI.Purs (CompilerFailure(..))
@@ -93,7 +93,6 @@ import Run.Except as Except
 import Spago.Core.Config as Spago
 import Spago.Core.Prelude as Spago.Prelude
 import Spago.Log as Spago.Log
-import Sunde as Sunde
 
 -- | Operations can be exercised for old, pre-registry packages, or for packages
 -- | which are on the 0.15 compiler series. If a true legacy package is uploaded
@@ -963,12 +962,13 @@ removeIgnoredTarballFiles path = do
 jsonToDhallManifest :: String -> Aff (Either String String)
 jsonToDhallManifest jsonStr = do
   let cmd = "json-to-dhall"
-  let stdin = Just jsonStr
   let args = [ "--records-loose", "--unions-strict", "." <> Path.sep <> Path.concat [ "types", "v1", "Manifest.dhall" ] ]
-  result <- Sunde.spawn { cmd, stdin, args } ChildProcess.defaultSpawnOptions
-  pure $ case result.exit of
-    ChildProcess.Normally 0 -> Right jsonStr
-    _ -> Left result.stderr
+  process <- Execa.execa cmd args identity
+  process.stdin.writeUtf8End jsonStr
+  result <- process.result
+  pure case result of
+    Right _ -> Right jsonStr
+    Left { stderr } -> Left stderr
 
 getPacchettiBotti :: forall r. Run (PACCHETTIBOTTI_ENV + r) Owner
 getPacchettiBotti = do

@@ -8,9 +8,7 @@ import Data.Codec.Argonaut.Compat as CA.Compat
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.Foldable (foldMap)
 import Data.String as String
-import Effect.Exception as Exception
-import Node.ChildProcess as NodeProcess
-import Sunde as Process
+import Node.Library.Execa as Execa
 
 -- | Call a specific version of the PureScript compiler
 callCompiler_ :: { version :: Maybe String, command :: PursCommand, cwd :: Maybe FilePath } -> Aff Unit
@@ -119,16 +117,14 @@ callCompiler compilerArgs = do
     errorsCodec = CA.Record.object "CompilerErrors"
       { errors: CA.array compilerErrorCodec }
 
-  result <- try $ Process.spawn { cmd: purs, stdin: Nothing, args: printCommand compilerArgs.command } (NodeProcess.defaultSpawnOptions { cwd = compilerArgs.cwd })
-  pure $ case result of
-    Left exception -> Left $ case Exception.message exception of
-      errorMessage
-        | errorMessage == String.joinWith " " [ "spawn", purs, "ENOENT" ] -> MissingCompiler
-        | otherwise -> UnknownError errorMessage
-    Right { exit: NodeProcess.Normally 0, stdout } -> Right $ String.trim stdout
-    Right { stdout, stderr } -> Left do
-      case parseJson errorsCodec (String.trim stdout) of
+  result <- _.result =<< Execa.execa purs (printCommand compilerArgs.command) (_ { cwd = compilerArgs.cwd })
+  pure case result of
+    Left { originalMessage }
+      | originalMessage == Just (String.joinWith " " [ "spawn", purs, "ENOENT" ]) -> Left MissingCompiler
+    Left { stdout, stderr } -> Left do
+      case parseJson errorsCodec stdout of
         Left err -> UnknownError $ String.joinWith "\n" [ stdout, stderr, CA.printJsonDecodeError err ]
         Right ({ errors } :: { errors :: Array CompilerError })
           | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
           | otherwise -> CompilationError errors
+    Right { stdout } -> Right stdout

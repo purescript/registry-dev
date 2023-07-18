@@ -7,7 +7,7 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.String as String
 import Data.String.CodeUnits as CodeUnits
-import Node.ChildProcess as ChildProcess
+import Node.Library.Execa as Execa
 import Parsing as Parsing
 import Parsing.Combinators as Parsing.Combinators
 import Parsing.String as Parsing.String
@@ -21,7 +21,6 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 import Safe.Coerce (coerce)
-import Sunde as Sunde
 
 -- | The result of running a Git action that can have no effect. For example,
 -- | none of these will have an effect: committing an unchanged file path,
@@ -75,12 +74,10 @@ mkOrigin address committer = Origin $ Array.fold
 -- | Run the `git` tool via the command line.
 gitCLI :: Array String -> Maybe FilePath -> Aff (Either String String)
 gitCLI args cwd = do
-  result <- liftAff $ Sunde.spawn { cmd: "git", args, stdin: Nothing } (ChildProcess.defaultSpawnOptions { cwd = cwd })
-  let stdout = String.trim result.stdout
-  let stderr = String.trim result.stderr
-  pure $ case result.exit of
-    ChildProcess.Normally 0 -> Right stdout
-    _ -> Left (stdout <> stderr)
+  result <- liftAff $ _.result =<< Execa.execa "git" args (_ { cwd = cwd })
+  pure case result of
+    Right { stdout } -> Right stdout
+    Left { stdout, stderr } -> Left (stdout <> stderr)
 
 withGit :: forall r. FilePath -> Array String -> (String -> String) -> Run (AFF + EXCEPT String + r) String
 withGit cwd args onError = Run.liftAff (gitCLI args (Just cwd)) >>= case _ of

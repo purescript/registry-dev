@@ -5,16 +5,14 @@ import Prelude
 import Control.Monad.Except (ExceptT(..))
 import Control.Monad.Except as Except
 import Data.Either (Either(..))
-import Data.Maybe (Maybe(..))
 import Data.String as String
 import Effect.Aff (Aff)
-import Node.ChildProcess as Process
+import Node.Library.Execa as Execa
 import Node.Path (FilePath)
 import Node.Path as Path
 import Registry.Sha256 as Sha256
 import Registry.Test.Assert as Assert
 import Registry.Test.Utils as Utils
-import Sunde as Sunde
 import Test.Spec as Spec
 
 spec :: Spec.Spec Unit
@@ -63,9 +61,9 @@ sha256Nix :: FilePath -> ExceptT String Aff Sha256.Sha256
 sha256Nix path = ExceptT do
   -- In Nix 2.4 this will become `nix hash file`
   let args = [ "hash-file", "--sri", path ]
-  result <- Sunde.spawn { cmd: "nix", args, stdin: Nothing } Process.defaultSpawnOptions
-  pure $ case result.exit of
-    Process.Normally 0 ->
-      Sha256.parse $ String.trim result.stdout
-    _ ->
-      Left result.stderr
+  result <- _.result =<< Execa.execa "nix" args identity
+  pure $ case result of
+    Right { stdout } ->
+      Sha256.parse $ String.trim stdout
+    Left { stderr } ->
+      Left stderr
