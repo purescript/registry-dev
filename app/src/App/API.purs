@@ -962,6 +962,8 @@ removeIgnoredTarballFiles path = do
 jsonToDhallManifest :: String -> Aff (Either String String)
 jsonToDhallManifest jsonStr = do
   let cmd = "json-to-dhall"
+  -- Dhall requires that the path begin with './', but joining paths together with Node
+  -- will remove the './' prefix. We need to manually append this to the relative path.
   let args = [ "--records-loose", "--unions-strict", "." <> Path.sep <> Path.concat [ "types", "v1", "Manifest.dhall" ] ]
   process <- Execa.execa cmd args identity
   process.stdin.writeUtf8End jsonStr
