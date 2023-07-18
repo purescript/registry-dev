@@ -1,19 +1,22 @@
 -- | A general logging effect suitable for recording events as they happen in
 -- | the application, including debugging logs. Should not be used to report
--- | important events to registry users; for that, use the Notify effect.
+-- | important events to registry users; for that, use the Comment effect.
 module Registry.App.Effect.Log where
 
 import Registry.App.Prelude
 
 import Ansi.Codes (GraphicsParam)
 import Data.Array as Array
-import Data.Formatter.DateTime as Formatters.DateTime
+import Data.Formatter.DateTime as Formatter.DateTime
 import Dodo (Doc)
 import Dodo as Dodo
 import Dodo.Ansi as Ansi
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Node.FS.Aff as FS.Aff
+import Registry.API.V1 (JobId, LogLevel(..), printLogLevel)
+import Registry.App.SQLite (SQLite)
+import Registry.App.SQLite as SQLite
 import Registry.Internal.Format as Internal.Format
 import Registry.PackageName as PackageName
 import Registry.Range as Range
@@ -21,16 +24,6 @@ import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Type.Proxy (Proxy(..))
-
-data LogLevel = Debug | Info | Warn | Error
-
-derive instance Eq LogLevel
-derive instance Ord LogLevel
-
-data LogVerbosity = Quiet | Normal | Verbose
-
-derive instance Eq LogVerbosity
-derive instance Ord LogVerbosity
 
 class Loggable a where
   toLog :: a -> Doc GraphicsParam
@@ -79,7 +72,7 @@ interpret :: forall a r. (Log ~> Run r) -> Run (LOG + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _log handler Run.send)
 
 -- | Write logs to the terminal only.
-handleTerminal :: forall a r. LogVerbosity -> Log a -> Run (AFF + r) a
+handleTerminal :: forall a r. LogVerbosity -> Log a -> Run (EFFECT + r) a
 handleTerminal verbosity = case _ of
   Log level message next -> do
     let
@@ -89,7 +82,7 @@ handleTerminal verbosity = case _ of
         Warn -> Ansi.foreground Ansi.Yellow (Dodo.text "[WARNING] ") <> message
         Error -> Ansi.foreground Ansi.Red (Dodo.text "[ERROR] ") <> message
 
-    Run.liftAff case verbosity of
+    Run.liftEffect case verbosity of
       Quiet -> pure unit
       Normal -> when (level /= Debug) (Console.log printed)
       Verbose -> Console.log printed
@@ -103,27 +96,19 @@ handleFs verbosity logfile action = case action of
     let
       attemptWrite = do
         now <- nowUTC
+
         let
-          time = Formatters.DateTime.format Internal.Format.iso8601DateTime now
-
-          level' = case level of
-            Debug -> "DEBUG"
-            Info -> "INFO"
-            Warn -> "WARN"
-            Error -> "ERROR"
-
-          formatted = Dodo.print Dodo.plainText Dodo.twoSpaces
-            ( Array.fold
-                [ Dodo.text "["
-                , Dodo.text time
-                , Dodo.space
-                , Dodo.text level'
-                , Dodo.text "]"
-                , Dodo.space
-                , message
-                , Dodo.break
-                ]
-            )
+          time = Formatter.DateTime.format Internal.Format.iso8601DateTime now
+          formatted = Dodo.print Dodo.plainText Dodo.twoSpaces $ Array.fold
+            [ Dodo.text "["
+            , Dodo.text time
+            , Dodo.space
+            , Dodo.text (printLogLevel level)
+            , Dodo.text "]"
+            , Dodo.space
+            , message
+            , Dodo.break
+            ]
 
         Run.liftAff (Aff.attempt (FS.Aff.appendTextFile UTF8 logfile formatted)) >>= case _ of
           Left err -> Console.error $ "LOG ERROR: Failed to write to file " <> logfile <> ": " <> Aff.message err
@@ -134,4 +119,20 @@ handleFs verbosity logfile action = case action of
       Normal -> when (level /= Debug) attemptWrite
       Verbose -> attemptWrite
 
+    pure next
+
+type LogDbEnv =
+  { db :: SQLite
+  , job :: JobId
+  }
+
+-- | Handle a log by recording it in the database.
+handleDb :: forall a r. LogDbEnv -> Log a -> Run (EFFECT + r) a
+handleDb env = case _ of
+  Log level message next -> do
+    timestamp <- nowUTC
+    let
+      msg = Dodo.print Dodo.plainText Dodo.twoSpaces (toLog message)
+      row = { timestamp, level, jobId: env.job, message: msg }
+    Run.liftEffect $ SQLite.insertLog env.db row
     pure next

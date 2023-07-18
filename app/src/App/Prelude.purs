@@ -1,10 +1,12 @@
 module Registry.App.Prelude
   ( Backoff
+  , LogVerbosity(..)
+  , PursPublishMethod(..)
   , class Functor2
-  , map2
   , formatPackageVersion
   , fromJust'
   , guardA
+  , map2
   , mapKeys
   , module Either
   , module Extra
@@ -17,6 +19,7 @@ module Registry.App.Prelude
   , parseJson
   , partitionEithers
   , printJson
+  , pursPublishMethod
   , readJsonFile
   , scratchDir
   , stringifyJson
@@ -205,3 +208,17 @@ nowUTC = Extra.liftEffect do
 
 formatPackageVersion :: PackageName -> Version -> String
 formatPackageVersion name version = PackageName.print name <> "@" <> Version.print version
+
+data LogVerbosity = Quiet | Normal | Verbose
+
+derive instance Eq LogVerbosity
+derive instance Ord LogVerbosity
+
+-- | A temporary flag that records whether we are using legacy purs publish
+-- | (which requires all packages to be a Git repository) or new purs publish
+-- | (which accepts any directory with package sources).
+data PursPublishMethod = LegacyPursPublish | PursPublish
+
+-- | The current purs publish method
+pursPublishMethod :: PursPublishMethod
+pursPublishMethod = LegacyPursPublish

@@ -184,7 +184,7 @@ handleMemoryFs env = case _ of
     Exists.runExists (deleteFsImpl env.cache) (encodeFs key)
 
 -- | A class for encoding the values associated with a cache key in a form
--- | suitable for the file system.
+-- | suitable for storing them in memory.
 class MemoryEncodable key where
   encodeMemory :: forall b z. key z b -> Exists (MemoryEncoding z b)
 
@@ -215,7 +215,7 @@ newCacheRef = liftEffect $ Ref.new Map.empty
 -- storing a fiber along with each cache value, where the fiber will delete the
 -- value after _n_ minutes. When the value is accessed the fiber is killed and
 -- a new one spawned.
-handleMemory :: forall k r a. MemoryEncodable k => CacheRef -> Cache k a -> Run (LOG + AFF + EFFECT + r) a
+handleMemory :: forall k r a. MemoryEncodable k => CacheRef -> Cache k a -> Run (LOG + EFFECT + r) a
 handleMemory ref = case _ of
   Get key -> Exists.runExists (getMemoryImpl ref) (encodeMemory key)
   Put key next -> Exists.runExists (putMemoryImpl ref next) (encodeMemory key)

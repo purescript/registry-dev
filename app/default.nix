@@ -3,7 +3,6 @@
   lib,
   stdenv,
   purix,
-  slimlock,
   purs-backend-es,
   esbuild,
   writeText,
@@ -15,20 +14,17 @@
   licensee,
   coreutils,
   gzip,
-  gnutar
+  gnutar,
+  # from the registry at the top level
+  spago-lock,
+  package-lock,
 }: let
-  package-lock = slimlock.buildPackageLock {src = ../.; omit = ["dev" "peer"];};
-  spago-lock = purix.buildSpagoLock {
-    src = ../.;
-    corefn = true;
-  };
-
   # Since both the importer and the server share the same build process, we
   # don't need to build them twice separately and can share an optimized output
   # directory.
   shared = stdenv.mkDerivation {
     name = "registry-app-shared";
-    src = ./src;
+    src = ./.;
     phases = ["buildPhase" "installPhase"];
     nativeBuildInputs = [purs-backend-es];
     buildPhase = ''
@@ -45,7 +41,9 @@
 in {
   server = stdenv.mkDerivation rec {
     name = "registry-server";
-    src = ./src;
+    src = ./.;
+    database = ../db;
+    dhallTypes = ../types;
     nativeBuildInputs = [esbuild makeWrapper];
     buildInputs = [nodejs];
     entrypoint = writeText "entrypoint.js" ''
@@ -56,48 +54,62 @@ in {
       ln -s ${package-lock}/js/node_modules .
       cp -r ${shared}/output .
       cp ${entrypoint} entrypoint.js
-      esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node
+      esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node --packages=external
     '';
     installPhase = ''
       mkdir -p $out/bin
+
+      echo "Copying files..."
       cp ${name}.js $out/${name}.js
+      ln -s ${package-lock}/js/node_modules $out
+
+      echo "Copying Dhall types..."
+      cp -r ${dhallTypes} $out/bin/types
+
+      echo "Copying database..."
+      cp -r ${database} $out/bin/db
+
+      echo "Creating node script..."
       echo '#!/usr/bin/env sh' > $out/bin/${name}
       echo 'exec ${nodejs}/bin/node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
       chmod +x $out/bin/${name}
-      cp ${name}.js $out
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git coreutils gzip gnutar ]}
+        --set PATH ${lib.makeBinPath [compilers dhall dhall-json licensee git coreutils gzip gnutar]}
     '';
   };
 
   github-importer = stdenv.mkDerivation rec {
     name = "registry-github-importer";
-    src = ./src;
+    src = ./.;
     nativeBuildInputs = [esbuild makeWrapper];
     buildInputs = [nodejs];
     entrypoint = writeText "entrypoint.js" ''
-      import { main } from "./output/Registry.App.Main";
+      import { main } from "./output/Registry.App.GitHubIssue";
       main();
     '';
     buildPhase = ''
       ln -s ${package-lock}/js/node_modules .
       cp -r ${shared}/output .
       cp ${entrypoint} entrypoint.js
-      esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node
+      esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node --packages=external
     '';
     installPhase = ''
-      mkdir -p $out/bin
+      mkdir -p $out/bin $out
+
+      echo "Copying files..."
       cp ${name}.js $out/${name}.js
+      ln -s ${package-lock}/js/node_modules $out
+
+      echo "Creating node script..."
       echo '#!/usr/bin/env sh' > $out/bin/${name}
       echo 'exec ${nodejs}/bin/node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
       chmod +x $out/bin/${name}
-      cp ${name}.js $out
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [ compilers dhall dhall-json licensee git coreutils gzip gnutar ]}
+        --set PATH ${lib.makeBinPath [compilers dhall dhall-json licensee git coreutils gzip gnutar]}
     '';
   };
 }

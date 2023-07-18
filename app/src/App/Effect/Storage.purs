@@ -3,7 +3,7 @@ module Registry.App.Effect.Storage
   ( S3Env
   , STORAGE
   , STORAGE_CACHE
-  , Storage
+  , Storage(..)
   , StorageCache
   , _storage
   , _storageCache

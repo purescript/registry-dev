@@ -25,6 +25,9 @@
   }: let
     supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
 
+    # Users authorized to deploy to the registry.
+    deployers = import ./nix/deployers.nix;
+
     registryOverlay = final: prev: rec {
       nodejs = prev.nodejs-18_x;
 
@@ -36,6 +39,30 @@
 
       # Packages associated with the registry, ie. in this repository.
       registry = let
+        spago-lock = prev.purix.buildSpagoLock {
+          src = ./.;
+          corefn = true;
+        };
+
+        package-lock =
+          (prev.slimlock.buildPackageLock {
+            src = ./.;
+            omit = ["dev" "peer"];
+          })
+          # better-sqlite3 relies on node-gyp and python3 in the build environment, so
+          # we add those to the native build inputs.
+          .overrideAttrs (finalAttrs: prevAttrs: {
+            nativeBuildInputs =
+              (prevAttrs.nativeBuildInputs
+                or []
+                ++ [prev.python3 prev.nodePackages.node-gyp])
+              ++ (
+                if prev.stdenv.isDarwin
+                then [prev.darwin.cctools]
+                else []
+              );
+          });
+
         # Produces a list of all PureScript binaries supported by purescript-overlay,
         # ie. those from 0.13 onwards, callable using the naming convention
         # `purs-MAJOR_MINOR_PATCH`.
@@ -47,8 +74,7 @@
         compilers = let
           # Only include the compiler at normal MAJOR.MINOR.PATCH versions.
           stableOnly =
-            prev.lib.filterAttrs
-            (name: _: (builtins.match "^purs-[0-9]_[0-9]+_[0-9]$" name != null))
+            prev.lib.filterAttrs (name: _: (builtins.match "^purs-[0-9]_[0-9]+_[0-9]$" name != null))
             prev.purs-bin;
         in
           prev.symlinkJoin {
@@ -60,24 +86,34 @@
             stableOnly;
           };
       in {
-        inherit compilers;
-        apps = prev.callPackages ./app {inherit compilers;};
-        scripts = prev.callPackages ./scripts {inherit compilers;};
+        apps = prev.callPackages ./app {
+          inherit compilers package-lock spago-lock;
+        };
+        scripts = prev.callPackages ./scripts {
+          inherit compilers package-lock spago-lock;
+        };
+        inherit compilers package-lock spago-lock;
       };
     };
   in
     flake-utils.lib.eachSystem supportedSystems (system: let
       pkgs = import nixpkgs {
         inherit system;
-        overlays = [purescript-overlay.overlays.default slimlock.overlays.default registryOverlay];
+        overlays = [
+          purescript-overlay.overlays.default
+          slimlock.overlays.default
+          registryOverlay
+        ];
       };
 
       # We can't import from remote urls in dhall when running in CI, so we
       # fetch the repository and use the local path instead.
-      DHALL_PRELUDE = "${builtins.fetchGit {
-        url = "https://github.com/dhall-lang/dhall-lang";
-        rev = "e35f69d966f205fdc0d6a5e8d0209e7b600d90b3";
-      }}/Prelude/package.dhall";
+      DHALL_PRELUDE = "${
+        builtins.fetchGit {
+          url = "https://github.com/dhall-lang/dhall-lang";
+          rev = "e35f69d966f205fdc0d6a5e8d0209e7b600d90b3";
+        }
+      }/Prelude/package.dhall";
 
       # We can't run 'spago test' in our flake checks because it tries to
       # write to a cache and I can't figure out how to disable it. Instead
@@ -88,13 +124,12 @@
       # the output dir locally, and runs 'spago test'.
       #
       # $ nix develop --command run-tests-script
-      npmDependencies = pkgs.slimlock.buildPackageLock {src = ./.;};
       run-tests-script = pkgs.writeShellScriptBin "run-tests-script" ''
         set -euo pipefail
         WORKDIR=$(mktemp -d)
         cp spago.yaml spago.lock $WORKDIR
-        cp -a app foreign lib scripts $WORKDIR
-        ln -s ${npmDependencies}/js/node_modules $WORKDIR/node_modules
+        cp -a app foreign lib scripts types $WORKDIR
+        ln -s ${pkgs.registry.package-lock}/js/node_modules $WORKDIR/node_modules
         pushd $WORKDIR
         ${pkgs.spago-unstable}/bin/spago test
         popd
@@ -105,53 +140,36 @@
         program = "${drv}/bin/${drv.name}";
       };
 
-      # Machine configurations for NixOS
-      vm-base = {
-        lib,
-        modulesPath,
-        ...
-      }: {
-        imports = ["${modulesPath}/virtualisation/qemu-vm.nix"];
-        # https://github.com/utmapp/UTM/issues/2353
-        networking.nameservers = lib.mkIf pkgs.stdenv.isDarwin ["8.8.8.8"];
-        nixpkgs.overlays = [purescript-overlay.overlays.default slimlock.overlays.default registryOverlay];
-        # NOTE: Use 'shutdown now' to exit the VM.
-        services.getty.autologinUser = "root";
-        virtualisation = {
-          graphics = false;
-          host = {inherit pkgs;};
-          forwardPorts = [
-            {
-              from = "host";
-              guest.port = 80;
-              host.port = 8080;
-            }
-          ];
-        };
-      };
-
-      vm-machine = nixpkgs.lib.nixosSystem {
-        system = builtins.replaceStrings ["darwin"] ["linux"] system;
-        modules = [vm-base ./nix/module.nix];
-      };
-
       # Allows you to run a local VM with the registry server, mimicking the
       # actual deployment.
-      run-vm = pkgs.writeShellScript "run-vm.sh" ''
-        export NIX_DISK_IMAGE=$(mktemp -u -t nixos.qcow2.XXXXXXX)
-        trap "rm -f $NIX_DISK_IMAGE" EXIT
-        ${vm-machine.config.system.build.vm}/bin/run-registry-vm
-      '';
+      run-vm = let
+        vm-machine = nixpkgs.lib.nixosSystem {
+          system = builtins.replaceStrings ["darwin"] ["linux"] system;
+          modules = [
+            {
+              nixpkgs.overlays = [
+                purescript-overlay.overlays.default
+                slimlock.overlays.default
+                registryOverlay
+              ];
+            }
+            ./nix/vm.nix
+          ];
+        };
+      in
+        pkgs.writeShellScript "run-vm.sh" ''
+          export NIX_DISK_IMAGE=$(mktemp -u -t nixos.qcow2.XXXXXXX)
+          trap "rm -f $NIX_DISK_IMAGE" EXIT
+          ${vm-machine.config.system.build.vm}/bin/run-registry-vm
+        '';
     in rec {
       packages = pkgs.registry.apps // pkgs.registry.scripts;
 
       apps =
         pkgs.lib.mapAttrs (_: drv: mkAppOutput drv) packages
         // {
-          default = {
-            type = "app";
-            program = "${run-vm}";
-          };
+          default.type = "app";
+          default.program = "${run-vm}";
         };
 
       checks = {
@@ -203,44 +221,54 @@
         # This is an integration test that will run the server and allow us to
         # test it by sending API requests. You can run only this check with:
         # nix build .#checks.${your-system}.integration
-        integration = if pkgs.stdenv.isDarwin 
-        then pkgs.runCommand "integration-disabled" {} ''
-          mkdir $out
-          echo "Integration tests are not supported on macOS systems, skipping..."
-          exit 0
-        ''
-        else pkgs.nixosTest {
-          name = "server integration test";
-          nodes = {
-            registry = ./nix/module.nix;
-            client = {
-              config = {
-                virtualisation.graphics = false;
+        integration =
+          if pkgs.stdenv.isDarwin
+          then
+            pkgs.runCommand "integration-disabled" {} ''
+              mkdir $out
+              echo "Integration tests are not supported on macOS systems, skipping..."
+              exit 0
+            ''
+          else
+            pkgs.nixosTest {
+              name = "server integration test";
+              nodes = {
+                registry = {
+                  imports = [./nix/module.nix];
+                  config = {
+                    virtualisation.graphics = false;
+                    services.registry-server = {
+                      enable = true;
+                      host = "localhost";
+                      port = 8080;
+                      enableCerts = false;
+                    };
+                  };
+                };
+                client = {config = {virtualisation.graphics = false;};};
               };
+              # Test scripts are written in Python:
+              # https://nixos.org/manual/nixos/stable/index.html#sec-nixos-tests
+              #
+              # Note that the python file will be linted, and the test will fail if
+              # the script fails the lint — if you see an unexpected failure, check
+              # the nix log for errors.
+              testScript = ''
+                # Machines are available based on their host name, or their name in
+                # the "nodes" record if their host name is not set.
+                start_all()
+                registry.wait_for_unit("server.service")
+
+                client.wait_until_succeeds("${pkgs.curl}/bin/curl --fail-with-body http://registry/api/v1/jobs", timeout=180)
+
+                def succeed_endpoint(endpoint, expected):
+                  print(f"Checking endpoint {endpoint}")
+                  actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
+                  assert expected == actual, f"Endpoint {endpoint} should return {expected} but returned {actual}"
+
+                succeed_endpoint("jobs", "[]")
+              '';
             };
-          };
-          # Test scripts are written in Python:
-          # https://nixos.org/manual/nixos/stable/index.html#sec-nixos-tests
-          #
-          # Note that the python file will be linted, and the test will fail if
-          # the script fails the lint — if you see an unexpected failure, check
-          # the nix log for errors.
-          testScript = ''
-            # Machines are available based on their host name, or their name in
-            # the "nodes" record if their host name is not set.
-            start_all()
-            registry.wait_for_unit("server.service")
-            # We wait for the server to be ready; without this, in CI sometimes
-            # the client starts sending requests before the server is ready.
-            client.wait_until_succeeds("${pkgs.curl}/bin/curl --fail-with-body http://registry/api/v1/jobs/0", timeout=180)
-
-            def test_endpoint(endpoint, expected):
-              actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
-              assert expected == actual, f"Endpoint {endpoint} returns {expected}"
-
-            test_endpoint("jobs/0", "TODO")
-          '';
-        };
       };
 
       devShells = {
@@ -270,6 +298,7 @@
             gnutar
             dhall
             dhall-json
+            dbmate
 
             # Development tooling
             purs
@@ -287,7 +316,11 @@
         meta = {
           nixpkgs = import nixpkgs {
             system = "x86_64-linux";
-            overlays = [purescript-overlay.overlays.default slimlock.overlays.default registryOverlay];
+            overlays = [
+              purescript-overlay.overlays.default
+              slimlock.overlays.default
+              registryOverlay
+            ];
           };
         };
         # The registry server
@@ -295,41 +328,34 @@
           lib,
           modulesPath,
           ...
-        }: {
-          deployment.targetHost = "registry.purescript.org";
+        }: let
+          host = "registry.purescript.org";
+        in {
+          deployment.targetHost = host;
 
-          # The build isn't that computationally expensive, and copying the whole
-          # closure over takes forever, so we build on the host. This also makes
-          # it possible to run 'colmena apply' from a darwin system.
-          deployment.buildOnTarget = true;
+          # Set 'true' to build on the target machine (necessary if deploying
+          # from a non-linux machine).
+          deployment.buildOnTarget = false;
 
           # We import the server module and also the digital ocean configuration
           # necessary to run in a DO droplet.
           imports =
-            lib.optional (builtins.pathExists ./do-userdata.nix) ./do-userdata.nix
+            lib.optional (builtins.pathExists ./do-userdata.nix)
+            ./do-userdata.nix
             ++ [
               (modulesPath + "/virtualisation/digital-ocean-config.nix")
               ./nix/module.nix
-
               # Extra config for the deployed server only.
               {
                 # Enable Digital Ocean monitoring
                 services.do-agent.enable = true;
-                nix = {
-                  gc.automatic = true;
-                  settings.auto-optimise-store = true;
-                };
 
-                # We want https for the registry server, but we can't enable it
-                # until we have a domain name for it.
-                security.acme = {
-                  acceptTerms = true;
-                  defaults.email = "hello@thomashoneyman.com";
-                };
-                services.nginx.virtualHosts."registry.purescript.org" = {
-                  forceSSL = true;
-                  enableACME = true;
-                };
+                # Enable the registry server
+                services.registry-server.enable = true;
+                services.registry-server.host = host;
+
+                # Don't change this.
+                system.stateVersion = "23.05";
               }
             ];
         };

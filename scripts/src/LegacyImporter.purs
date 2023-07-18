@@ -43,18 +43,17 @@ import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API (Source(..))
 import Registry.App.API as API
+import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (PullMode(..), WriteMode(..))
-import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LogVerbosity(..))
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
@@ -120,37 +119,40 @@ main = launchAff_ do
   -- uploaded, but nothing is committed. In update-registry mode, tarballs are
   -- uploaded and manifests and metadata are written, committed, and pushed.
   runAppEffects <- do
-    debouncer <- Git.newDebouncer
-    let gitEnv pull write = { pull, write, repos: Git.defaultRepos, workdir: scratchDir, debouncer }
+    debouncer <- Registry.newDebouncer
+    let registryEnv pull write = { pull, write, repos: Registry.defaultRepos, workdir: scratchDir, debouncer, cacheRef: registryCacheRef }
     case mode of
       DryRun -> do
         token <- Env.lookupRequired Env.githubToken
         octokit <- Octokit.newOctokit token
         pure do
-          Storage.interpret (Storage.handleReadOnly cache)
+          Registry.interpret (Registry.handle (registryEnv Git.Autostash Registry.ReadOnly))
+            >>> Storage.interpret (Storage.handleReadOnly cache)
             >>> Pursuit.interpret Pursuit.handlePure
+            >>> Source.interpret Source.handle
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-            >>> Git.interpret (Git.handle (gitEnv Autostash ReadOnly))
 
       GenerateRegistry -> do
         token <- Env.lookupRequired Env.githubToken
         s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
         octokit <- Octokit.newOctokit token
         pure do
-          Storage.interpret (Storage.handleS3 { s3, cache })
+          Registry.interpret (Registry.handle (registryEnv Git.Autostash (Registry.CommitAs (Git.pacchettibottiCommitter token))))
+            >>> Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret Pursuit.handlePure
+            >>> Source.interpret Source.handle
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-            >>> Git.interpret (Git.handle (gitEnv Autostash (CommitAs (Git.pacchettibottiCommitter token))))
 
       UpdateRegistry -> do
         token <- Env.lookupRequired Env.pacchettibottiToken
         s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
         octokit <- Octokit.newOctokit token
         pure do
-          Storage.interpret (Storage.handleS3 { s3, cache })
+          Registry.interpret (Registry.handle (registryEnv Git.ForceClean (Registry.CommitAs (Git.pacchettibottiCommitter token))))
+            >>> Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret (Pursuit.handleAff token)
+            >>> Source.interpret Source.handle
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-            >>> Git.interpret (Git.handle (gitEnv ForceClean (CommitAs (Git.pacchettibottiCommitter token))))
 
   -- Logging setup
   let logDir = Path.concat [ scratchDir, "logs" ]
@@ -161,12 +163,11 @@ main = launchAff_ do
     logPath = Path.concat [ logDir, logFile ]
 
   runLegacyImport mode logPath
-    # Registry.interpret (Registry.handle registryCacheRef)
     # runAppEffects
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
-    # Notify.interpret Notify.handleLog
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'
 

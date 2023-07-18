@@ -11,15 +11,14 @@ import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.Auth as Auth
+import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
-import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LogVerbosity(..))
+import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
@@ -48,26 +47,27 @@ main = launchAff_ do
   publicKey <- Env.lookupRequired Env.pacchettibottiED25519Pub
   privateKey <- Env.lookupRequired Env.pacchettibottiED25519
 
-  -- Git
-  debouncer <- Git.newDebouncer
-  let
-    gitEnv :: GitEnv
-    gitEnv =
-      { write: CommitAs (Git.pacchettibottiCommitter token)
-      , pull: ForceClean
-      , repos: Git.defaultRepos
-      , workdir: scratchDir
-      , debouncer
-      }
-
-  -- GitHub
-  octokit <- Octokit.newOctokit token
-
   -- Caching
   let cache = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cache
   githubCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
+
+  -- GitHub
+  octokit <- Octokit.newOctokit token
+
+  -- Registry
+  debouncer <- Registry.newDebouncer
+  let
+    registryEnv :: Registry.RegistryEnv
+    registryEnv =
+      { write: Registry.CommitAs (Git.pacchettibottiCommitter token)
+      , pull: Git.ForceClean
+      , repos: Registry.defaultRepos
+      , workdir: scratchDir
+      , debouncer
+      , cacheRef: registryCacheRef
+      }
 
   -- Logging
   now <- nowUTC
@@ -78,12 +78,11 @@ main = launchAff_ do
 
   transfer
     # Env.runPacchettiBottiEnv { privateKey, publicKey }
-    # Registry.interpret (Registry.handle registryCacheRef)
+    # Registry.interpret (Registry.handle registryEnv)
     # Storage.interpret (Storage.handleReadOnly cache)
-    # Git.interpret (Git.handle gitEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-    # Notify.interpret Notify.handleLog
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'
 

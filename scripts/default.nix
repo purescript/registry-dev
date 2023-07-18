@@ -1,14 +1,23 @@
-{ makeWrapper, lib, stdenv, purix, slimlock, esbuild, nodejs, writeText, compilers, dhall, dhall-json, licensee, git, coreutils, gzip, gnutar }:
-let
-  package-lock = slimlock.buildPackageLock { src = ../.; omit = ["dev" "peer"];};
-
-  spago-lock = purix.buildSpagoLock {
-    src = ../.;
-    # Not technically necessary since we aren't using backend-es, but this
-    # prevents us from having to build dependencies with and without corefn.
-    corefn = true;
-  };
-
+{
+  makeWrapper,
+  lib,
+  stdenv,
+  purix,
+  esbuild,
+  nodejs,
+  writeText,
+  compilers,
+  dhall,
+  dhall-json,
+  licensee,
+  git,
+  coreutils,
+  gzip,
+  gnutar,
+  # from the registry at the top level
+  spago-lock,
+  package-lock,
+}: let
   build-script = name: module:
     stdenv.mkDerivation rec {
       inherit name;
@@ -23,15 +32,19 @@ let
         ln -s ${package-lock}/js/node_modules .
         cp -r ${spago-lock.registry-scripts}/output .
         cp ${entrypoint} entrypoint.js
-        esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node
+        esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node --packages=external
       '';
       installPhase = ''
         mkdir -p $out/bin
+
+        echo "Copying files..."
         cp ${name}.js $out/${name}.js
+        ln -s ${package-lock}/js/node_modules $out
+
+        echo "Creating wrapper script..."
         echo '#!/usr/bin/env sh' > $out/bin/${name}
         echo 'exec ${nodejs}/bin/node '"$out/${name}.js"' "$@"' >> $out/bin/${name}
         chmod +x $out/bin/${name}
-        cp ${name}.js $out
       '';
       postFixup = ''
         wrapProgram $out/bin/${name} \
