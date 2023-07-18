@@ -3,9 +3,11 @@ module Test.Registry.App.CLI.Purs (spec) where
 import Registry.App.Prelude
 
 import Data.Foldable (traverse_)
+import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
+import Registry.Foreign.Tmp as Tmp
 import Registry.Test.Assert as Assert
 import Test.Spec as Spec
 
@@ -37,8 +39,10 @@ spec = do
 
   testCompilationError =
     Spec.it "Handles compilation error for bad input file" do
-      let fixture = Path.concat [ "test", "_fixtures", "ShouldFailToCompile" ]
-      result <- Purs.callCompiler { command: Purs.Compile { globs: [ fixture ] }, cwd: Nothing, version: Nothing }
+      tmp <- Tmp.mkTmpDir
+      let file = Path.concat [ tmp, "ShouldFailToCompile.purs" ]
+      FS.Aff.writeTextFile UTF8 file "<contents>"
+      result <- Purs.callCompiler { command: Purs.Compile { globs: [ file ] }, cwd: Nothing, version: Nothing }
       case result of
         Left (CompilationError [ { position: { startLine: 1, startColumn: 1 } } ]) -> pure unit
         _ -> Assert.fail "Should have failed with CompilationError"
