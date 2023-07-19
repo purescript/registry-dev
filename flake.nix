@@ -74,7 +74,7 @@
         compilers = let
           # Only include the compiler at normal MAJOR.MINOR.PATCH versions.
           stableOnly =
-            prev.lib.filterAttrs (name: _: (builtins.match "^purs-[0-9]_[0-9]+_[0-9]$" name != null))
+            prev.lib.filterAttrs (name: _: (builtins.match "^purs-[0-9]+_[0-9]+_[0-9]+$" name != null))
             prev.purs-bin;
         in
           prev.symlinkJoin {
