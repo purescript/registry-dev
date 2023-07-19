@@ -4,21 +4,11 @@ import Registry.App.Prelude
 
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
-import Effect.Class.Console as Console
-import Node.Process as Process
 import Registry.App.CLI.PursVersions (pursVersions)
 import Registry.Test.Assert as Assert
+import Registry.Test.Assert.Run as Test.Run
 import Registry.Version as Version
-import Run (AFF, EFFECT, Run)
-import Run as Run
-import Run.Except (EXCEPT)
-import Run.Except as Except
 import Test.Spec as Spec
-
-interpret :: forall a. Run (EXCEPT String + AFF + EFFECT + ()) a -> Aff a
-interpret =
-  Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit 1))
-    >>> Run.runBaseAff'
 
 -- NOTE: This should be kept up to date as new versions of the compiler are released.
 -- Upon release of a new compiler version and update of `purescript-overlay`, the tests below will fail until the version is added here.
@@ -56,6 +46,6 @@ knownCompilers = map (unsafeFromRight <<< Version.parse)
 spec :: Spec.Spec Unit
 spec = do
   Spec.it "All expected versions are present in purs-version" do
-    versionsNonEmpty <- interpret pursVersions
+    versionsNonEmpty <- Test.Run.runBaseEffects pursVersions
     let versions = NEA.toArray versionsNonEmpty
     Array.sort versions `Assert.shouldEqual` Array.sort knownCompilers
