@@ -71,28 +71,31 @@
         #
         # To add a new compiler to the list, just update the flake:
         #   $ nix flake update
-        compilers = let
-          # Only include the compiler at normal MAJOR.MINOR.PATCH versions.
-          stableOnly =
-            prev.lib.filterAttrs (name: _: (builtins.match "^purs-[0-9]+_[0-9]+_[0-9]+$" name != null))
-            prev.purs-bin;
-        in
+        supportedCompilers = prev.lib.filterAttrs (name: _: (builtins.match "^purs-[0-9]+_[0-9]+_[0-9]+$" name != null)) prev.purs-bin;
+
+        # An attrset containing all the PureScript binaries we want to make
+        # available.
+        compilers = 
           prev.symlinkJoin {
             name = "purs-compilers";
             paths = prev.lib.mapAttrsToList (name: drv:
               prev.writeShellScriptBin name ''
                 exec ${drv}/bin/purs "$@"
               '')
-            stableOnly;
+            supportedCompilers;
           };
+
+        purs-versions = prev.writeShellScriptBin "purs-versions" ''
+          echo ${prev.lib.concatMapStringsSep " " (x: prev.lib.removePrefix "purs-" (builtins.replaceStrings ["_"] ["."] x)) (prev.lib.attrNames supportedCompilers)}
+        '';
       in {
         apps = prev.callPackages ./app {
-          inherit compilers package-lock spago-lock;
+          inherit compilers purs-versions package-lock spago-lock;
         };
         scripts = prev.callPackages ./scripts {
-          inherit compilers package-lock spago-lock;
+          inherit compilers purs-versions package-lock spago-lock;
         };
-        inherit compilers package-lock spago-lock;
+        inherit purs-versions compilers package-lock spago-lock;
       };
     };
   in
@@ -278,6 +281,7 @@
           packages = with pkgs; [
             # All stable PureScript compilers
             registry.compilers
+            registry.purs-versions
 
             # TODO: Hacky, remove when I can run spago test in a pure env
             run-tests-script
