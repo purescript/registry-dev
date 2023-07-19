@@ -7,6 +7,7 @@ import Test.Registry.App.API as Test.API
 import Test.Registry.App.Auth as Test.Auth
 import Test.Registry.App.CLI.Licensee as Test.CLI.Licensee
 import Test.Registry.App.CLI.Purs as Test.CLI.Purs
+import Test.Registry.App.CLI.PursVersions as Test.CLI.PursVersions
 import Test.Registry.App.CLI.Tar as Test.CLI.Tar
 import Test.Registry.App.Effect.PackageSets as Test.Effect.PackageSets
 import Test.Registry.App.GitHubIssue as Test.GitHubIssue
@@ -24,6 +25,7 @@ main = launchAff_ $ runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_0
     Spec.describe "Licensee" Test.CLI.Licensee.spec
     Spec.describe "Tar" Test.CLI.Tar.spec
     Spec.describe "Purs" Test.CLI.Purs.spec
+    Spec.describe "PursVersions" Test.CLI.PursVersions.spec
 
   Spec.describe "Registry.App.Effect" do
     Test.Effect.PackageSets.spec
