@@ -86,7 +86,7 @@
           };
 
         purs-versions = prev.writeShellScriptBin "purs-versions" ''
-          echo ${builtins.concatStringsSep " " (prev.lib.attrNames supportedCompilers)}
+          echo ${prev.lib.concatMapStringsSep " " (x: prev.lib.removePrefix "purs-" (builtins.replaceStrings ["_"] ["."] x)) (prev.lib.attrNames supportedCompilers)}
         '';
       in {
         apps = prev.callPackages ./app {
