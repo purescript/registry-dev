@@ -8,6 +8,7 @@
   writeText,
   nodejs,
   compilers,
+  purs-versions,
   dhall,
   dhall-json,
   git,
@@ -76,7 +77,7 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [compilers dhall dhall-json licensee git coreutils gzip gnutar]}
+        --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git coreutils gzip gnutar]}
     '';
   };
 
@@ -109,7 +110,7 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [compilers dhall dhall-json licensee git coreutils gzip gnutar]}
+        --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git coreutils gzip gnutar]}
     '';
   };
 }
