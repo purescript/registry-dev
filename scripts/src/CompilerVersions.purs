@@ -2,15 +2,22 @@ module Registry.Scripts.CompilerVersions where
 
 import Registry.App.Prelude
 
+import ArgParse.Basic (ArgParser)
+import ArgParse.Basic as Arg
 import Data.Array as Array
+import Data.Array.NonEmpty as NEA
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.String as String
+import Data.Tuple (uncurry)
 import Effect.Class.Console as Console
-import Effect.Ref as Ref
+import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.CLI.Git as Git
+import Registry.App.CLI.Purs as Purs
+import Registry.App.CLI.PursVersions as PursVersions
+import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
@@ -18,27 +25,64 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Storage (STORAGE)
+import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
+import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Format as Internal.Format
-import Registry.License as License
-import Registry.Location as Location
 import Registry.Manifest (Manifest(..))
-import Registry.ManifestIndex (toSortedArray)
+import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Range as Range
-import Registry.Solver as Solver
 import Registry.Version as Version
-import Run (Run, EFFECT)
+import Run (EFFECT, Run, AFF)
 import Run as Run
-import Run.Except (EXCEPT)
+import Run.Except (EXCEPT, rethrow, throw)
 import Run.Except as Except
+
+data InputMode
+  = File FilePath
+  | Package PackageName Version
+  | AllPackages
+
+parser :: ArgParser InputMode
+parser = Arg.choose "input (--file or --package or --all)"
+  [ Arg.argument [ "--file" ]
+      """Verify packages from a JSON file like: [ "prelude", "console" ]"""
+      # Arg.unformat "FILE_PATH" pure
+      # map File
+  , Arg.argument [ "--package" ]
+      "Verify the indicated package"
+      # Arg.unformat "NAME@VERSION" parsePackage
+      # map (uncurry Package)
+  , Arg.flag [ "--all" ] "Verify all packages" $> AllPackages
+  ]
+  where
+  parsePackage :: String -> Either String (Tuple PackageName Version)
+  parsePackage input = do
+    let split = String.split (String.Pattern "@") input
+    case Array.length split of
+      0 -> Left "Expected package@version but received nothing."
+      2 -> do
+        rawPackage <- note "Unexpected error" (Array.index split 0)
+        package <- lmap (append ("Failed to parse package name '" <> rawPackage <> "': ")) (PackageName.parse rawPackage)
+        rawVersion <- note "Unexpected error" (Array.index split 1)
+        version <- lmap (append ("Failed to parse version '" <> rawVersion <> "': ")) (Version.parse rawVersion)
+        pure $ Tuple package version
+      _ -> Left $ "Expected package@version but received an invalid format: " <> input
 
 main :: Effect Unit
 main = launchAff_ do
+  args <- Array.drop 2 <$> liftEffect Process.argv
+  let description = "A script for determining the supported compiler versions for packages."
+  arguments <- case Arg.parseArgs "compiler-versions" description parser args of
+    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
+    Right command -> pure command
+
   -- Environment
   _ <- Env.loadEnvFile ".env"
-  token <- Env.lookupRequired Env.pacchettibottiToken
+  token <- Env.lookupRequired Env.githubToken
 
   -- Caching
   let cache = Path.concat [ scratchDir, ".cache" ]
@@ -66,86 +110,93 @@ main = launchAff_ do
   now <- nowUTC
   let logDir = Path.concat [ scratchDir, "logs" ]
   FS.Extra.ensureDirectory logDir
-  let logFile = "verify-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
+  let logFile = "compiler-versions-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
   let logPath = Path.concat [ logDir, logFile ]
   Console.log $ "Logs available at " <> logPath
 
-  solveCompilerVersions
-    # Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit 1))
-    # Registry.interpret (Registry.handle registryEnv)
-    # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-    # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
-    # Run.runBaseAff'
-
-solveCompilerVersions :: forall r. Run (LOG + EFFECT + REGISTRY + EXCEPT String + r) Unit
-solveCompilerVersions = do
-  --allMetadata <- Registry.readAllMetadata
-  allManifests <- Registry.readAllManifests
   let
-    compilerPackage = unsafeFromRight $ PackageName.parse "compiler"
-    compilerVersions = map (unsafeFromRight <<< Version.parse)
-      [ "0.13.0"
-      , "0.13.2"
-      , "0.13.3"
-      , "0.13.4"
-      , "0.13.5"
-      , "0.13.6"
-      , "0.13.8"
-      , "0.14.0"
-      , "0.14.1"
-      , "0.14.2"
-      , "0.14.3"
-      , "0.14.4"
-      , "0.14.5"
-      , "0.14.6"
-      , "0.14.7"
-      , "0.14.8"
-      , "0.14.9"
-      , "0.15.0"
-      , "0.15.2"
-      , "0.15.3"
-      , "0.15.4"
-      , "0.15.5"
-      , "0.15.6"
-      , "0.15.7"
-      , "0.15.8"
-      , "0.15.9"
-      , "0.15.10"
-      ]
+    runDetermineCompilerVersionsForPackage :: PackageName -> Version -> Aff Unit
+    runDetermineCompilerVersionsForPackage package version =
+      determineCompilerVersionsForPackage package version
+        # Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit 1))
+        # Registry.interpret (Registry.handle registryEnv)
+        # Storage.interpret (Storage.handleReadOnly cache)
+        # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+        # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+        # Run.runBaseAff'
 
-    compilerManifests =  do
-      let
-        go :: Version -> Maybe (Tuple Version Manifest)
-        go version = do
-          license <- hush $ License.parse "MIT"
-          pure $ Tuple version $ Manifest
-            { name: compilerPackage
-            , version
-            , license
-            , location: Location.GitHub { owner: "purescript", repo: "purescript", subdir: Nothing }
-            , owners: Nothing
-            , description: Nothing
-            , files: Nothing
-            , dependencies: Map.empty
-            }
+  case arguments of
+    File _ -> Console.log "Unsupported at this time." *> liftEffect (Process.exit 1)
+    Package package version -> runDetermineCompilerVersionsForPackage package version
+    AllPackages -> Console.log "Unsupported at this time." *> liftEffect (Process.exit 1)
 
-      Map.fromFoldable
-        [ Tuple compilerPackage $ Map.fromFoldable $ Array.mapMaybe go compilerVersions
-        ]
+determineCompilerVersionsForPackage :: forall r. PackageName -> Version -> Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) Unit
+determineCompilerVersionsForPackage package version = do
+  allManifests <- map ManifestIndex.toMap Registry.readAllManifests
+  compilerVersions <- PursVersions.pursVersions
+  Log.debug $ "Checking Manifest Index for " <> formatPackageVersion package version
+  Manifest { dependencies } <- rethrow $ (note "Invalid Version" <<< Map.lookup version <=< note "Invalid PackageName" <<< Map.lookup package) allManifests
+  unless (Map.isEmpty dependencies) do
+    Log.error "Cannot check package that has dependencies."
+    throw "Cannot check package that has dependencies."
+  tmp <- Run.liftAff Tmp.mkTmpDir
+  let formattedName = formatPackageVersion package version
+  let extractedName = PackageName.print package <> "-" <> Version.print version
+  let tarballName = extractedName <> ".tar.gz"
+  let tarballPath = Path.concat [ tmp, tarballName ]
+  let extractedPath = Path.concat [ tmp, extractedName ]
+  let installPath = Path.concat [ tmp, formattedName ]
+  Log.debug $ "Installing " <> formattedName
+  Storage.download package version tarballPath
+  Run.liftAff do
+    Tar.extract { cwd: tmp, archive: tarballName }
+    FS.Extra.remove tarballPath
+    FS.Aff.rename extractedPath installPath
+  Log.debug $ "Installed " <> formatPackageVersion package version
+  Log.debug $ "Finding supported compiler versions for " <> formatPackageVersion package version
 
-  newManifestsRef <- liftEffect $ Ref.new compilerManifests
+  let
+    checkCompiler compiler = do
+      Log.debug $ "Trying to compile " <> formatPackageVersion package version <> " with purs@" <> Version.print compiler
 
-  for_ (toSortedArray allManifests) \manifest -> do
-    let
-      getDependencies = _.dependencies <<< un Manifest
-
-      insertCompilerDependency :: Manifest -> Version ->  Manifest
-      insertCompilerDependency (Manifest manifest) version = Manifest $ manifest
-        { dependencies = Map.insert compilerPackage (unsafeFromJust (Range.mk version (Version.bumpMinor version))) manifest.dependencies
+      result <- Run.liftAff $ Purs.callCompiler
+        { command: Purs.Compile { globs: [ Path.concat [ formattedName, "src/**/*.purs" ] ] }
+        , version: Just (Version.print compiler)
+        , cwd: Just tmp
         }
 
-    newManifests <- liftEffect $ Ref.read newManifestsRef
-    Log.info "here"
-    pure $ Solver.solve (map (map getDependencies) newManifests) (getDependencies manifest)
+      case result of
+        Left _ -> do
+          Log.debug $ "Failed to compile " <> formatPackageVersion package version <> " with purs@" <> Version.print compiler
+          pure false
+        Right _ -> do
+          Log.debug $ "Compiled " <> formatPackageVersion package version <> " with purs@" <> Version.print compiler
+          pure true
 
-  pure unit
+    goCompilerVersions { first: mbFirst, last: mbLast } compilers = case Array.uncons compilers of
+      Nothing -> do -- no more compiler versions to check, construct range
+        case mbFirst, mbLast of
+          Just first, Just last -> pure $ Range.mk first (Version.bumpPatch last)
+          _, _ -> pure Nothing
+      Just { head, tail } -> do -- more compiler versions to check, may be done.
+        case mbFirst of
+          Nothing -> do -- searching for first compiler version
+            supported <- checkCompiler head
+            if supported then
+              goCompilerVersions { first: Just head, last: Just head } tail
+            else
+              goCompilerVersions { first: Nothing, last: Nothing } tail
+          Just first -> do -- already found first, need to check if contiguous compiler versions are valid
+            supported <- checkCompiler head
+            if supported then
+              goCompilerVersions { first: Just first, last: Just head } tail
+            else
+              goCompilerVersions { first: Just first, last: mbLast } []
+
+  mbRange <- goCompilerVersions { first: Nothing, last: Nothing } (Array.sort (NEA.toArray compilerVersions))
+  case mbRange of
+    Nothing -> do
+      Log.error $ "Could not find supported compiler versions for " <> formatPackageVersion package version
+      Run.liftEffect $ Process.exit 1
+    Just range ->
+      Log.info $ "Found supported compiler versions for " <> formatPackageVersion package version <> ": " <> Range.print range
