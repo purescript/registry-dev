@@ -59,4 +59,5 @@ in {
   package-transferrer = build-script "registry-package-transferrer" "PackageTransferrer";
   solver = build-script "registry-solver" "Solver";
   verify-integrity = build-script "registry-verify-integrity" "VerifyIntegrity";
+  compiler-versions = build-script "compiler-versions" "CompilerVersions";
 }
