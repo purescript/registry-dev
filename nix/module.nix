@@ -36,7 +36,7 @@ in {
 
   config = lib.mkIf cfg.enable {
     environment = {
-      systemPackages = [pkgs.vim];
+      systemPackages = [pkgs.vim pkgs.git];
     };
 
     nix = {
