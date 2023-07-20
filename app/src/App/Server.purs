@@ -151,7 +151,9 @@ readServerEnvVars = do
   spacesKey <- Env.lookupRequired Env.spacesKey
   spacesSecret <- Env.lookupRequired Env.spacesSecret
   databaseUrl <- Env.lookupRequired Env.databaseUrl
-  dhallTypes <- Env.lookupRequired Env.dhallTypes
+  dhallTypes <- do
+    types <- Env.lookupRequired Env.dhallTypes
+    liftEffect $ Path.resolve [] types
   pure { token, publicKey, privateKey, spacesKey, spacesSecret, databaseUrl, dhallTypes }
 
 type ServerEnv =

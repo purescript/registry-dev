@@ -138,7 +138,9 @@ initializeGitHub = do
   privateKey <- Env.lookupRequired Env.pacchettibottiED25519
   spacesKey <- Env.lookupRequired Env.spacesKey
   spacesSecret <- Env.lookupRequired Env.spacesSecret
-  dhallTypes <- Env.lookupRequired Env.dhallTypes
+  dhallTypes <- do
+    types <- Env.lookupRequired Env.dhallTypes
+    liftEffect $ Path.resolve [] types
   eventPath <- Env.lookupRequired Env.githubEventPath
 
   octokit <- Octokit.newOctokit token

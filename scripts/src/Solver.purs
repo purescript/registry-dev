@@ -118,7 +118,9 @@ main = launchAff_ do
 
   debouncer <- Registry.newDebouncer
   let registryEnv pull write = { pull, write, repos: Registry.defaultRepos, workdir: scratchDir, debouncer, cacheRef: registryCacheRef }
-  dhallTypes <- Env.lookupRequired Env.dhallTypes
+  dhallTypes <- do
+    types <- Env.lookupRequired Env.dhallTypes
+    liftEffect $ Path.resolve [] types
   token <- Env.lookupRequired Env.githubToken
   octokit <- Octokit.newOctokit token
 

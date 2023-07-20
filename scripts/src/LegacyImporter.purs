@@ -162,7 +162,9 @@ main = launchAff_ do
     logFile = "legacy-importer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
     logPath = Path.concat [ logDir, logFile ]
 
-  dhallTypes <- Env.lookupRequired Env.dhallTypes
+  dhallTypes <- do
+    types <- Env.lookupRequired Env.dhallTypes
+    liftEffect $ Path.resolve [] types
 
   runLegacyImport mode logPath
     # runAppEffects
