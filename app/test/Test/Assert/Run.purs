@@ -20,7 +20,6 @@ import Data.String as String
 import Effect.Aff as Aff
 import Effect.Now as Now
 import Effect.Ref as Ref
-import Effect.Unsafe (unsafePerformEffect)
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.CLI.Git as Git

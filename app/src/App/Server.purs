@@ -130,6 +130,7 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
             Right _ -> do
               finishedAt <- nowUTC
               void $ runEffects newEnv (Db.finishJob { jobId, finishedAt, success: true })
+
         jsonOk V1.jobCreatedResponseCodec { jobId }
 
 type ServerEnvVars =
@@ -186,7 +187,7 @@ createServerEnv = do
 
   db <- liftEffect $ SQLite.connect
     { database: vars.databaseUrl.path
-    , logger: Run.runBaseEffect <<< Log.interpret (Log.handleTerminal Verbose) <<< Log.info
+    , logger: mempty -- Run.runBaseEffect <<< Log.interpret (Log.handleTerminal Normal) <<< Log.info
     }
 
   -- At server startup we clean out all the jobs that are not completed,
