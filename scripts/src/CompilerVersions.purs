@@ -36,7 +36,7 @@ import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Version as Version
-import Run (EFFECT, Run, AFF)
+import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT, rethrow, throw)
 import Run.Except as Except
