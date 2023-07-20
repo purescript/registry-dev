@@ -28,7 +28,7 @@ import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Comment (COMMENT)
 import Registry.App.Effect.Comment as Comment
-import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
+import Registry.App.Effect.Env (DHALL_ENV, GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB, GITHUB_CACHE, GitHub(..))
 import Registry.App.Effect.GitHub as GitHub
@@ -81,6 +81,7 @@ type TEST_EFFECTS =
       + GITHUB
       + PACCHETTIBOTTI_ENV
       + GITHUB_EVENT_ENV
+      + DHALL_ENV
       + GITHUB_CACHE
       + LEGACY_CACHE
       + COMMENT
@@ -101,25 +102,30 @@ type TestEnv =
   }
 
 runTestEffects :: forall a. TestEnv -> Run TEST_EFFECTS a -> Aff a
-runTestEffects env =
-  Pursuit.interpret (handlePursuitMock env.metadata)
-    >>> Registry.interpret (handleRegistryMock { metadataRef: env.metadata, indexRef: env.index })
-    >>> PackageSets.interpret handlePackageSetsMock
-    >>> Storage.interpret (handleStorageMock { storage: env.storage })
-    >>> Source.interpret (handleSourceMock { github: env.github })
-    >>> GitHub.interpret (handleGitHubMock { github: env.github })
+runTestEffects env operation = do
+  typesDir <- liftEffect $ Path.resolve [] "./types"
+  githubCache <- liftEffect Cache.newCacheRef
+  legacyCache <- liftEffect Cache.newCacheRef
+  operation
+    # Pursuit.interpret (handlePursuitMock env.metadata)
+    # Registry.interpret (handleRegistryMock { metadataRef: env.metadata, indexRef: env.index })
+    # PackageSets.interpret handlePackageSetsMock
+    # Storage.interpret (handleStorageMock { storage: env.storage })
+    # Source.interpret (handleSourceMock { github: env.github })
+    # GitHub.interpret (handleGitHubMock { github: env.github })
     -- Environments
-    >>> Env.runGitHubEventEnv { username: env.username, issue: IssueNumber 1 }
-    >>> Env.runPacchettiBottiEnv { publicKey: "Unimplemented", privateKey: "Unimplemented" }
+    # Env.runGitHubEventEnv { username: env.username, issue: IssueNumber 1 }
+    # Env.runPacchettiBottiEnv { publicKey: "Unimplemented", privateKey: "Unimplemented" }
+    # Env.runDhallEnv { typesDir }
     -- Caches
-    >>> runGitHubCacheMemory (unsafePerformEffect Cache.newCacheRef)
-    >>> runLegacyCacheMemory (unsafePerformEffect Cache.newCacheRef)
+    # runGitHubCacheMemory githubCache
+    # runLegacyCacheMemory legacyCache
     -- Other effects
-    >>> Comment.interpret Comment.handleLog
-    >>> Log.interpret (\(Log _ _ next) -> pure next)
+    # Comment.interpret Comment.handleLog
+    # Log.interpret (\(Log _ _ next) -> pure next)
     -- Base effects
-    >>> Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
-    >>> Run.runBaseAff'
+    # Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
+    # Run.runBaseAff'
 
 -- | For testing simple Run functions that don't need the whole environment.
 runBaseEffects :: forall a. Run (LOG + EXCEPT String + AFF + EFFECT + ()) a -> Aff a

@@ -106,6 +106,7 @@ main = launchAff_ do
   -- Environment
   _ <- Env.loadEnvFile ".env"
   token <- Env.lookupRequired Env.pacchettibottiToken
+  dhallTypes <- Env.lookupRequired Env.dhallTypes
   s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
 
   -- GitHub
@@ -149,7 +150,8 @@ main = launchAff_ do
 
   let
     interpret =
-      Registry.interpret (Registry.handle registryEnv)
+      Env.runDhallEnv { typesDir: dhallTypes }
+        >>> Registry.interpret (Registry.handle registryEnv)
         >>> Storage.interpret (if arguments.upload then Storage.handleS3 { s3, cache } else Storage.handleReadOnly cache)
         >>> Source.interpret Source.handle
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })

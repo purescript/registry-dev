@@ -45,7 +45,7 @@ import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Comment (COMMENT)
 import Registry.App.Effect.Comment as Comment
-import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
+import Registry.App.Effect.Env (DHALL_ENV, GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -320,7 +320,7 @@ authenticated auth = case auth.payload of
         Registry.mirrorLegacyRegistry payload.name payload.newLocation
         Comment.comment "Mirrored registry operation to the legacy registry."
 
-type PublishEffects r = (PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT + r)
+type PublishEffects r = (DHALL_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Publish a package via the 'publish' operation. If the package has not been
 -- | published before then it will be registered and the given version will be
@@ -454,7 +454,7 @@ publish source payload = do
     Left error -> do
       Log.error $ "Could not read purs.json from path " <> packagePursJson <> ": " <> Aff.message error
       Except.throw $ "Could not find a purs.json file in the package source."
-    Right string -> Run.liftAff (jsonToDhallManifest string) >>= case _ of
+    Right string -> Env.askDhallEnv >>= \{ typesDir } -> Run.liftAff (jsonToDhallManifest typesDir string) >>= case _ of
       Left error -> do
         Log.error $ "Manifest does not typecheck: " <> error
         Except.throw $ "Found a valid purs.json file in the package source, but it does not typecheck."
@@ -959,12 +959,12 @@ removeIgnoredTarballFiles path = do
   for_ (ignoredDirectories <> ignoredFiles <> globMatches.succeeded) \match ->
     FS.Extra.remove (Path.concat [ path, match ])
 
-jsonToDhallManifest :: String -> Aff (Either String String)
-jsonToDhallManifest jsonStr = do
+jsonToDhallManifest :: FilePath -> String -> Aff (Either String String)
+jsonToDhallManifest dhallTypes jsonStr = do
   let cmd = "json-to-dhall"
   -- Dhall requires that the path begin with './', but joining paths together with Node
   -- will remove the './' prefix. We need to manually append this to the relative path.
-  let args = [ "--records-loose", "--unions-strict", "." <> Path.sep <> Path.concat [ "types", "v1", "Manifest.dhall" ] ]
+  let args = [ "--records-loose", "--unions-strict", Path.concat [ dhallTypes, "v1", "Manifest.dhall" ] ]
   process <- Execa.execa cmd args identity
   process.stdin.writeUtf8End jsonStr
   result <- process.result
