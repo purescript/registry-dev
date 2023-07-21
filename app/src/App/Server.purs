@@ -12,6 +12,7 @@ import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import HTTPurple (JsonDecoder(..), JsonEncoder(..), Method(..), Request, Response)
 import HTTPurple as HTTPurple
+import Halogen.Subscription as Subscription
 import Node.Path as Path
 import Node.Process as Process
 import Record as Record
@@ -160,6 +161,7 @@ readServerEnvVars = do
 type ServerEnv =
   { cacheDir :: FilePath
   , logsDir :: FilePath
+  , dbLogger :: Subscription.Emitter String
   , githubCacheRef :: CacheRef
   , legacyCacheRef :: CacheRef
   , registryCacheRef :: CacheRef
@@ -185,12 +187,14 @@ createServerEnv = do
   octokit <- Octokit.newOctokit vars.token
   debouncer <- Registry.newDebouncer
 
+  -- We can't log to the database until we have a database connection, so we
+  -- set up a listener we can push to, and then set up the log effect to log
+  -- anything it receives.
+  dbLogger <- liftEffect Subscription.create
+
   db <- liftEffect $ SQLite.connect
     { database: vars.databaseUrl.path
-    -- To see all database queries logged in the terminal, use this instead
-    -- of 'mempty'. Turned off by default because this is so verbose.
-    -- Run.runBaseEffect <<< Log.interpret (Log.handleTerminal Normal) <<< Log.info
-    , logger: mempty
+    , logger: Subscription.notify dbLogger.listener
     }
 
   -- At server startup we clean out all the jobs that are not completed,
@@ -206,6 +210,7 @@ createServerEnv = do
     , registryCacheRef
     , cacheDir
     , logsDir
+    , dbLogger: dbLogger.emitter
     , vars
     , octokit
     , db
@@ -261,8 +266,24 @@ jsonOk codec datum = HTTPurple.ok' HTTPurple.jsonHeaders $ HTTPurple.toJson (jso
 runEffects :: forall a. ServerEnv -> Run ServerEffects a -> Aff (Either Aff.Error a)
 runEffects env operation = Aff.attempt do
   today <- nowUTC
-  let logFile = String.take 10 (Formatter.DateTime.format Internal.Format.iso8601Date today) <> ".log"
-  let logPath = Path.concat [ env.logsDir, logFile ]
+
+  let
+    logFile = String.take 10 (Formatter.DateTime.format Internal.Format.iso8601Date today) <> ".log"
+    logPath = Path.concat [ env.logsDir, logFile ]
+
+    -- We can't set up the db logger when we initialize the database because
+    -- we don't have a connection yet. Instead, we set up a listener. Here,
+    -- we run logs produced via the db logger by writing them to the database.
+    runDbLogger =
+      Log.interpret
+        ( \log -> case env.jobId of
+            Nothing -> Log.handleTerminal Normal log
+            Just jobId -> Log.handleDb { db: env.db, job: jobId } log
+        )
+        >>> Run.runBaseEffect
+
+  subscription <- liftEffect $ Subscription.subscribe env.dbLogger (runDbLogger <<< Log.debug)
+
   operation
     # Env.runPacchettiBottiEnv { publicKey: env.vars.publicKey, privateKey: env.vars.privateKey }
     # Env.runDhallEnv { typesDir: env.vars.dhallTypes }
@@ -288,16 +309,19 @@ runEffects env operation = Aff.attempt do
               -- Important to make sure that we mark the job as completed
               Just jobId -> Db.finishJob { jobId, finishedAt, success: false }
               Nothing -> pure unit
-            Log.error msg *> Run.liftAff (Aff.throwError (Aff.error msg))
+            Run.liftEffect (Subscription.unsubscribe subscription)
+            Log.error msg
+            Run.liftAff (Aff.throwError (Aff.error msg))
         )
     # Db.interpret (Db.handleSQLite { db: env.db })
     # Comment.interpret Comment.handleLog
     # Log.interpret
-        ( \log -> case env.jobId of
-            Nothing -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log
-            Just jobId ->
-              Log.handleTerminal Normal log
-                *> Log.handleFs Verbose logPath log
-                *> Log.handleDb { db: env.db, job: jobId } log
+        ( \log ->
+            case env.jobId of
+              Nothing -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log
+              Just jobId ->
+                Log.handleTerminal Normal log
+                  *> Log.handleFs Verbose logPath log
+                  *> Log.handleDb { db: env.db, job: jobId } log
         )
     # Run.runBaseAff'
