@@ -115,19 +115,18 @@ main = launchAff_ do
   Console.log $ "Logs available at " <> logPath
 
   let
-    runDetermineCompilerVersionsForPackage :: PackageName -> Version -> Aff Unit
-    runDetermineCompilerVersionsForPackage package version =
-      determineCompilerVersionsForPackage package version
-        # Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit 1))
-        # Registry.interpret (Registry.handle registryEnv)
-        # Storage.interpret (Storage.handleReadOnly cache)
-        # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-        # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
-        # Run.runBaseAff'
+    interpret :: Run _ ~> Aff
+    interpret =
+      Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit 1))
+        >>> Registry.interpret (Registry.handle registryEnv)
+        >>> Storage.interpret (Storage.handleReadOnly cache)
+        >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+        >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+        >>> Run.runBaseAff'
 
   case arguments of
     File _ -> Console.log "Unsupported at this time." *> liftEffect (Process.exit 1)
-    Package package version -> runDetermineCompilerVersionsForPackage package version
+    Package package version -> interpret $ determineCompilerVersionsForPackage package version
     AllPackages -> Console.log "Unsupported at this time." *> liftEffect (Process.exit 1)
 
 determineCompilerVersionsForPackage :: forall r. PackageName -> Version -> Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) Unit
