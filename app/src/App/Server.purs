@@ -187,7 +187,10 @@ createServerEnv = do
 
   db <- liftEffect $ SQLite.connect
     { database: vars.databaseUrl.path
-    , logger: mempty -- Run.runBaseEffect <<< Log.interpret (Log.handleTerminal Normal) <<< Log.info
+    -- To see all database queries logged in the terminal, use this instead
+    -- of 'mempty'. Turned off by default because this is so verbose.
+    -- Run.runBaseEffect <<< Log.interpret (Log.handleTerminal Normal) <<< Log.info
+    , logger: mempty
     }
 
   -- At server startup we clean out all the jobs that are not completed,
