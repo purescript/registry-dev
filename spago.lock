@@ -26,6 +26,7 @@ workspace:
         - foldable-traversable
         - foreign-object
         - formatters
+        - halogen-subscriptions
         - http-methods
         - httpurple
         - identity
@@ -754,6 +755,18 @@ packages:
     dependencies:
       - catenable-lists
       - ordered-collections
+  halogen-subscriptions:
+    type: registry
+    version: 2.0.0
+    integrity: sha256-8/BPME/sC/kWMDxp0+n4k09gA1IIedXn2yUJ4pCH5xw=
+    dependencies:
+      - arrays
+      - effect
+      - foldable-traversable
+      - functors
+      - refs
+      - safe-coerce
+      - unsafe-reference
   heterogeneous:
     type: registry
     version: 0.6.0

@@ -29,6 +29,7 @@ package:
     - foldable-traversable
     - foreign-object
     - formatters
+    - halogen-subscriptions
     - http-methods
     - httpurple
     - identity
