@@ -49,14 +49,14 @@ data InputMode
 parser :: ArgParser InputMode
 parser = Arg.choose "input (--file or --package or --all)"
   [ Arg.argument [ "--file" ]
-      """Verify packages from a JSON file like: [ "prelude", "console" ]"""
+      """Compute supported compiler versions for packages from a JSON file like: [ "prelude", "console" ]"""
       # Arg.unformat "FILE_PATH" pure
       # map File
   , Arg.argument [ "--package" ]
-      "Verify the indicated package"
+      "Compute supported compiler versions for the indicated package"
       # Arg.unformat "NAME@VERSION" parsePackage
       # map (uncurry Package)
-  , Arg.flag [ "--all" ] "Verify all packages" $> AllPackages
+  , Arg.flag [ "--all" ] "Compute supported compiler versions for all packages" $> AllPackages
   ]
   where
   parsePackage :: String -> Either String (Tuple PackageName Version)
