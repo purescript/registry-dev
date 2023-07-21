@@ -7,6 +7,7 @@ import ArgParse.Basic as Arg
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Formatter.DateTime as Formatter.DateTime
+import Data.List (filterM)
 import Data.Map as Map
 import Data.String as String
 import Data.Tuple (uncurry)
@@ -172,30 +173,19 @@ determineCompilerVersionsForPackage package version = do
           Log.debug $ "Compiled " <> formatPackageVersion package version <> " with purs@" <> Version.print compiler
           pure true
 
-    goCompilerVersions { first: mbFirst, last: mbLast } compilers = case Array.uncons compilers of
-      Nothing -> do -- no more compiler versions to check, construct range
-        case mbFirst, mbLast of
-          Just first, Just last -> pure $ Range.mk first (Version.bumpPatch last)
-          _, _ -> pure Nothing
-      Just { head, tail } -> do -- more compiler versions to check, may be done.
-        case mbFirst of
-          Nothing -> do -- searching for first compiler version
-            supported <- checkCompiler head
-            if supported then
-              goCompilerVersions { first: Just head, last: Just head } tail
-            else
-              goCompilerVersions { first: Nothing, last: Nothing } tail
-          Just first -> do -- already found first, need to check if contiguous compiler versions are valid
-            supported <- checkCompiler head
-            if supported then
-              goCompilerVersions { first: Just first, last: Just head } tail
-            else
-              goCompilerVersions { first: Just first, last: mbLast } []
+    goCompilerVersions supported compilers = case Array.uncons compilers of
+      Nothing -> pure supported
+      Just { head, tail } -> do
+        success <- checkCompiler head
+        if success then
+          goCompilerVersions (supported <> [ head ]) tail
+        else
+          goCompilerVersions supported tail
 
-  mbRange <- goCompilerVersions { first: Nothing, last: Nothing } (Array.sort (NEA.toArray compilerVersions))
-  case mbRange of
-    Nothing -> do
-      Log.error $ "Could not find supported compiler versions for " <> formatPackageVersion package version
-      Run.liftEffect $ Process.exit 1
-    Just range ->
-      Log.info $ "Found supported compiler versions for " <> formatPackageVersion package version <> ": " <> Range.print range
+  supported <- goCompilerVersions [] (Array.sort (NEA.toArray compilerVersions))
+
+  if Array.null supported then do
+    Log.error $ "Could not find supported compiler versions for " <> formatPackageVersion package version
+    Run.liftEffect $ Process.exit 1
+  else
+    Log.info $ "Found supported compiler versions for " <> formatPackageVersion package version <> ": " <> Array.intercalate ", " (map Version.print supported)
