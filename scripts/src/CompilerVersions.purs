@@ -38,7 +38,7 @@ import Registry.Range as Range
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
-import Run.Except (EXCEPT, rethrow, throw)
+import Run.Except (EXCEPT)
 import Run.Except as Except
 
 data InputMode
@@ -134,10 +134,10 @@ determineCompilerVersionsForPackage package version = do
   allManifests <- map ManifestIndex.toMap Registry.readAllManifests
   compilerVersions <- PursVersions.pursVersions
   Log.debug $ "Checking Manifest Index for " <> formatPackageVersion package version
-  Manifest { dependencies } <- rethrow $ (note "Invalid Version" <<< Map.lookup version <=< note "Invalid PackageName" <<< Map.lookup package) allManifests
+  Manifest { dependencies } <- Except.rethrow $ (note "Invalid Version" <<< Map.lookup version <=< note "Invalid PackageName" <<< Map.lookup package) allManifests
   unless (Map.isEmpty dependencies) do
     Log.error "Cannot check package that has dependencies."
-    throw "Cannot check package that has dependencies."
+    Except.throw "Cannot check package that has dependencies."
   tmp <- Run.liftAff Tmp.mkTmpDir
   let formattedName = formatPackageVersion package version
   let extractedName = PackageName.print package <> "-" <> Version.print version
