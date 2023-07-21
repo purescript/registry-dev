@@ -284,7 +284,13 @@ runEffects env operation = Aff.attempt do
 
   subscription <- liftEffect $ Subscription.subscribe env.dbLogger (runDbLogger <<< Log.debug)
 
-  operation
+  let
+    operation' = do
+      result <- operation
+      liftEffect $ Subscription.unsubscribe subscription
+      pure result
+
+  operation'
     # Env.runPacchettiBottiEnv { publicKey: env.vars.publicKey, privateKey: env.vars.privateKey }
     # Env.runDhallEnv { typesDir: env.vars.dhallTypes }
     # Registry.interpret
