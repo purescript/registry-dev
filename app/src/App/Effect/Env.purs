@@ -18,6 +18,23 @@ import Run.Reader as Run.Reader
 
 -- | Environment fields available in the GitHub Event environment, namely
 -- | pointers to the user who created the event and the issue associated with it.
+type DhallEnv =
+  { typesDir :: FilePath
+  }
+
+type DHALL_ENV r = (dhallEnv :: Reader DhallEnv | r)
+
+_dhallEnv :: Proxy "dhallEnv"
+_dhallEnv = Proxy
+
+askDhallEnv :: forall r. Run (DHALL_ENV + r) DhallEnv
+askDhallEnv = Run.Reader.askAt _dhallEnv
+
+runDhallEnv :: forall r a. DhallEnv -> Run (DHALL_ENV + r) a -> Run r a
+runDhallEnv = Run.Reader.runReaderAt _dhallEnv
+
+-- | Environment fields available in the GitHub Event environment, namely
+-- | pointers to the user who created the event and the issue associated with it.
 type GitHubEventEnv =
   { username :: String
   , issue :: IssueNumber
@@ -117,6 +134,10 @@ type DatabaseUrl = { prefix :: String, path :: FilePath }
 -- | The location of the sqlite database
 databaseUrl :: EnvKey DatabaseUrl
 databaseUrl = EnvKey { key: "DATABASE_URL", decode: decodeDatabaseUrl }
+
+-- | The location of the Dhall specifications directory
+dhallTypes :: EnvKey FilePath
+dhallTypes = EnvKey { key: "DHALL_TYPES", decode: pure }
 
 -- | A GitHub token for the @pacchettibotti user at the PACCHETTIBOTTI_TOKEN key.
 pacchettibottiToken :: EnvKey GitHubToken

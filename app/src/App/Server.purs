@@ -26,7 +26,7 @@ import Registry.App.Effect.Comment (COMMENT)
 import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Db (DB)
 import Registry.App.Effect.Db as Db
-import Registry.App.Effect.Env (DatabaseUrl, PACCHETTIBOTTI_ENV)
+import Registry.App.Effect.Env (DHALL_ENV, DatabaseUrl, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -65,19 +65,17 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
   Publish, Post -> do
     publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
     lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
-    forkPipelineJob publish.name publish.ref PublishJob
-      \jobId -> do
-        Log.info $ "Received Publish request, job id: " <> unwrap jobId
-        API.publish Current publish
+    forkPipelineJob publish.name publish.ref PublishJob \jobId -> do
+      Log.info $ "Received Publish request, job id: " <> unwrap jobId
+      API.publish Current publish
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
     case auth.payload of
       Operation.Unpublish { name, version } -> do
-        forkPipelineJob name (Version.print version) UnpublishJob
-          \jobId -> do
-            Log.info $ "Received Unpublish request, job id: " <> unwrap jobId
-            API.authenticated auth
+        forkPipelineJob name (Version.print version) UnpublishJob \jobId -> do
+          Log.info $ "Received Unpublish request, job id: " <> unwrap jobId
+          API.authenticated auth
       _ ->
         HTTPurple.badRequest "Expected unpublish operation."
 
@@ -85,10 +83,9 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
     case auth.payload of
       Operation.Transfer { name } -> do
-        forkPipelineJob name "" TransferJob
-          \jobId -> do
-            Log.info $ "Received Transfer request, job id: " <> unwrap jobId
-            API.authenticated auth
+        forkPipelineJob name "" TransferJob \jobId -> do
+          Log.info $ "Received Transfer request, job id: " <> unwrap jobId
+          API.authenticated auth
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
@@ -127,9 +124,13 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
         let newEnv = env { jobId = Just jobId }
 
         _fiber <- liftAff $ Aff.forkAff $ Aff.attempt $ do
-          void $ runEffects newEnv (action jobId)
-          finishedAt <- nowUTC
-          void $ runEffects newEnv (Db.finishJob { jobId, finishedAt, success: true })
+          result <- runEffects newEnv (action jobId)
+          case result of
+            Left _ -> pure unit
+            Right _ -> do
+              finishedAt <- nowUTC
+              void $ runEffects newEnv (Db.finishJob { jobId, finishedAt, success: true })
+
         jsonOk V1.jobCreatedResponseCodec { jobId }
 
 type ServerEnvVars =
@@ -139,6 +140,7 @@ type ServerEnvVars =
   , spacesKey :: String
   , spacesSecret :: String
   , databaseUrl :: DatabaseUrl
+  , dhallTypes :: FilePath
   }
 
 readServerEnvVars :: Aff ServerEnvVars
@@ -150,7 +152,10 @@ readServerEnvVars = do
   spacesKey <- Env.lookupRequired Env.spacesKey
   spacesSecret <- Env.lookupRequired Env.spacesSecret
   databaseUrl <- Env.lookupRequired Env.databaseUrl
-  pure { token, publicKey, privateKey, spacesKey, spacesSecret, databaseUrl }
+  dhallTypes <- do
+    types <- Env.lookupRequired Env.dhallTypes
+    liftEffect $ Path.resolve [] types
+  pure { token, publicKey, privateKey, spacesKey, spacesSecret, databaseUrl, dhallTypes }
 
 type ServerEnv =
   { cacheDir :: FilePath
@@ -182,7 +187,10 @@ createServerEnv = do
 
   db <- liftEffect $ SQLite.connect
     { database: vars.databaseUrl.path
-    , logger: Run.runBaseEffect <<< Log.interpret (Log.handleTerminal Verbose) <<< Log.info
+    -- To see all database queries logged in the terminal, use this instead
+    -- of 'mempty'. Turned off by default because this is so verbose.
+    -- Run.runBaseEffect <<< Log.interpret (Log.handleTerminal Normal) <<< Log.info
+    , logger: mempty
     }
 
   -- At server startup we clean out all the jobs that are not completed,
@@ -204,7 +212,7 @@ createServerEnv = do
     , jobId: Nothing
     }
 
-type ServerEffects = (PACCHETTIBOTTI_ENV + REGISTRY + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (DHALL_ENV + PACCHETTIBOTTI_ENV + REGISTRY + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer :: ServerEnv -> (ServerEnv -> Request Route -> Run ServerEffects Response) -> Request Route -> Aff Response
 runServer env router' request = do
@@ -257,6 +265,7 @@ runEffects env operation = Aff.attempt do
   let logPath = Path.concat [ env.logsDir, logFile ]
   operation
     # Env.runPacchettiBottiEnv { publicKey: env.vars.publicKey, privateKey: env.vars.privateKey }
+    # Env.runDhallEnv { typesDir: env.vars.dhallTypes }
     # Registry.interpret
         ( Registry.handle
             { repos: Registry.defaultRepos
