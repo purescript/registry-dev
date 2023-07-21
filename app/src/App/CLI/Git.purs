@@ -261,11 +261,11 @@ gitPush { address, committer } cwd = Except.runExcept do
       let
         inRepoErr error = " in local checkout " <> cwd <> ": " <> error
 
-        origin :: URL
-        origin = coerce (mkOrigin address committer)
+        repoOrigin :: URL
+        repoOrigin = coerce (mkOrigin address committer)
 
-      _ <- withGit cwd [ "push", origin ] \error ->
-        "Failed to push to " <> origin <> " from " <> status.branch <> inRepoErr error
+      _ <- withGit cwd [ "push", repoOrigin ] \error ->
+        "Failed to push to " <> address.owner <> "/" <> address.repo <> " from " <> status.branch <> inRepoErr error
 
       pure Changed
 

@@ -75,15 +75,14 @@
 
         # An attrset containing all the PureScript binaries we want to make
         # available.
-        compilers = 
-          prev.symlinkJoin {
-            name = "purs-compilers";
-            paths = prev.lib.mapAttrsToList (name: drv:
-              prev.writeShellScriptBin name ''
-                exec ${drv}/bin/purs "$@"
-              '')
-            supportedCompilers;
-          };
+        compilers = prev.symlinkJoin {
+          name = "purs-compilers";
+          paths = prev.lib.mapAttrsToList (name: drv:
+            prev.writeShellScriptBin name ''
+              exec ${drv}/bin/purs "$@"
+            '')
+          supportedCompilers;
+        };
 
         purs-versions = prev.writeShellScriptBin "purs-versions" ''
           echo ${prev.lib.concatMapStringsSep " " (x: prev.lib.removePrefix "purs-" (builtins.replaceStrings ["_"] ["."] x)) (prev.lib.attrNames supportedCompilers)}
@@ -278,6 +277,7 @@
         default = pkgs.mkShell {
           name = "registry-dev";
           inherit DHALL_PRELUDE;
+          DHALL_TYPES = ./types;
           packages = with pkgs; [
             # All stable PureScript compilers
             registry.compilers

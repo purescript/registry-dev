@@ -44,7 +44,6 @@ in {
     name = "registry-server";
     src = ./.;
     database = ../db;
-    dhallTypes = ../types;
     nativeBuildInputs = [esbuild makeWrapper];
     buildInputs = [nodejs];
     entrypoint = writeText "entrypoint.js" ''
@@ -64,9 +63,6 @@ in {
       cp ${name}.js $out/${name}.js
       ln -s ${package-lock}/js/node_modules $out
 
-      echo "Copying Dhall types..."
-      cp -r ${dhallTypes} $out/bin/types
-
       echo "Copying database..."
       cp -r ${database} $out/bin/db
 
@@ -77,7 +73,8 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git coreutils gzip gnutar]}
+        --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git coreutils gzip gnutar]} \
+        --set DHALL_TYPES ${../types}
     '';
   };
 
@@ -110,7 +107,8 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git coreutils gzip gnutar]}
+        --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git coreutils gzip gnutar]} \
+        --set DHALL_TYPES ${../types}
     '';
   };
 }
