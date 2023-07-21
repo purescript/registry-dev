@@ -7,10 +7,9 @@ import ArgParse.Basic as Arg
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Formatter.DateTime as Formatter.DateTime
-import Data.List (filterM)
 import Data.Map as Map
 import Data.String as String
-import Data.Tuple (uncurry)
+import Data.Tuple as Tuple
 import Effect.Class.Console as Console
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
@@ -35,7 +34,6 @@ import Registry.Internal.Format as Internal.Format
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
-import Registry.Range as Range
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
@@ -56,7 +54,7 @@ parser = Arg.choose "input (--file or --package or --all)"
   , Arg.argument [ "--package" ]
       "Compute supported compiler versions for the indicated package"
       # Arg.unformat "NAME@VERSION" parsePackage
-      # map (uncurry Package)
+      # map (Tuple.uncurry Package)
   , Arg.flag [ "--all" ] "Compute supported compiler versions for all packages" $> AllPackages
   ]
   where
