@@ -1,0 +1,34 @@
+on:
+  # This event is triggered once per non-Github Actions check-suite. If the only
+  # check suites we are running are garnix and Github Actions-based ones, this
+  # will be triggered only once, when garnix is done with all the builds for a
+  # commit.
+  check_suite:
+    types: [completed]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Add SSH key
+        env:
+          HOSTNAME: registry.purescript.org
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          mkdir -p /home/runner/.ssh
+          ssh-keyscan $HOSTNAME >> /home/runner/.ssh/known_hosts
+          $SSH_KEY=$(echo "${{ secrets.PACCHETTIBOTTI_SSH_KEY }}" | base64 --decode)
+          echo $SSH_KEY > /home/runner/.ssh/github_actions
+          chmod 600 /home/runner/.ssh/github_actions
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add /home/runner/.ssh/github_actions
+
+      - name: Deploy with Colmena
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          nix develop --command colmena apply
