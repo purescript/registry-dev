@@ -184,13 +184,14 @@ createServerEnv = do
   octokit <- Octokit.newOctokit vars.token
   debouncer <- Registry.newDebouncer
 
-  db <- liftEffect $ SQLite.connect { database: vars.databaseUrl.path, logger: mempty }
-
   -- At server startup we clean out all the jobs that are not completed,
   -- because they are stale runs from previous startups of the server.
   -- We can just remove the jobs, and all the logs belonging to them will be
   -- removed automatically by the foreign key constraint.
-  liftEffect $ SQLite.deleteIncompleteJobs db
+  liftEffect do
+    db <- SQLite.connect { database: vars.databaseUrl.path, logger: mempty }
+    SQLite.deleteIncompleteJobs db
+    SQLite.close db
 
   pure
     { debouncer
