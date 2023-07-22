@@ -10,8 +10,6 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.String as String
 import Data.Tuple (uncurry)
-import Debug (traceM)
-import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
