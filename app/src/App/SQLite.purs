@@ -5,6 +5,7 @@ module Registry.App.SQLite
   , NewJob
   , SQLite
   , connect
+  , close
   , createJob
   , deleteIncompleteJobs
   , finishJob
@@ -30,6 +31,8 @@ data SQLite
 
 foreign import connectImpl :: EffectFn2 FilePath (EffectFn1 String Unit) SQLite
 
+foreign import closeImpl :: EffectFn1 SQLite Unit
+
 foreign import insertLogImpl :: EffectFn2 SQLite JSLogLine Unit
 
 foreign import selectLogsByJobImpl :: EffectFn3 SQLite String Int (Array JSLogLine)
@@ -49,8 +52,13 @@ type ConnectOptions =
   , logger :: String -> Effect Unit
   }
 
+-- | Open a new database connection
 connect :: ConnectOptions -> Effect SQLite
 connect { database, logger } = Uncurried.runEffectFn2 connectImpl database (Uncurried.mkEffectFn1 logger)
+
+-- | Close the database connection
+close :: SQLite -> Effect Unit
+close = Uncurried.runEffectFn1 closeImpl
 
 type JSLogLine =
   { level :: Int

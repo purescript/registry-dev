@@ -42,7 +42,6 @@ import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest (LEGACY_CACHE, _legacyCache)
-import Registry.App.SQLite (SQLite)
 import Registry.App.SQLite as SQLite
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubToken, Octokit)
@@ -161,14 +160,12 @@ readServerEnvVars = do
 type ServerEnv =
   { cacheDir :: FilePath
   , logsDir :: FilePath
-  , dbLogger :: Subscription.Emitter String
   , githubCacheRef :: CacheRef
   , legacyCacheRef :: CacheRef
   , registryCacheRef :: CacheRef
   , octokit :: Octokit
   , vars :: ServerEnvVars
   , debouncer :: Registry.Debouncer
-  , db :: SQLite
   , jobId :: Maybe JobId
   }
 
@@ -187,15 +184,7 @@ createServerEnv = do
   octokit <- Octokit.newOctokit vars.token
   debouncer <- Registry.newDebouncer
 
-  -- We can't log to the database until we have a database connection, so we
-  -- set up a listener we can push to, and then set up the log effect to log
-  -- anything it receives.
-  dbLogger <- liftEffect Subscription.create
-
-  db <- liftEffect $ SQLite.connect
-    { database: vars.databaseUrl.path
-    , logger: Subscription.notify dbLogger.listener
-    }
+  db <- liftEffect $ SQLite.connect { database: vars.databaseUrl.path, logger: mempty }
 
   -- At server startup we clean out all the jobs that are not completed,
   -- because they are stale runs from previous startups of the server.
@@ -210,10 +199,8 @@ createServerEnv = do
     , registryCacheRef
     , cacheDir
     , logsDir
-    , dbLogger: dbLogger.emitter
     , vars
     , octokit
-    , db
     , jobId: Nothing
     }
 
@@ -274,20 +261,23 @@ runEffects env operation = Aff.attempt do
     -- We can't set up the db logger when we initialize the database because
     -- we don't have a connection yet. Instead, we set up a listener. Here,
     -- we run logs produced via the db logger by writing them to the database.
-    runDbLogger =
+    runDbLogger db =
       Log.interpret
         ( \log -> case env.jobId of
             Nothing -> Log.handleTerminal Normal log
-            Just jobId -> Log.handleDb { db: env.db, job: jobId } log
+            Just jobId -> Log.handleDb { db, job: jobId } log
         )
         >>> Run.runBaseEffect
 
-  subscription <- liftEffect $ Subscription.subscribe env.dbLogger (runDbLogger <<< Log.debug)
+  logger <- liftEffect Subscription.create
+  db <- liftEffect $ SQLite.connect { database: env.vars.databaseUrl.path, logger: Subscription.notify logger.listener }
+  subscription <- liftEffect $ Subscription.subscribe logger.emitter (runDbLogger db <<< Log.debug)
 
   let
     operation' = do
       result <- operation
-      liftEffect $ Subscription.unsubscribe subscription
+      Run.liftEffect $ Subscription.unsubscribe subscription
+      Run.liftEffect $ SQLite.close db
       pure result
 
   operation'
@@ -315,11 +305,12 @@ runEffects env operation = Aff.attempt do
               -- Important to make sure that we mark the job as completed
               Just jobId -> Db.finishJob { jobId, finishedAt, success: false }
               Nothing -> pure unit
-            Run.liftEffect (Subscription.unsubscribe subscription)
+            Run.liftEffect $ Subscription.unsubscribe subscription
+            Run.liftEffect $ SQLite.close db
             Log.error msg
-            Run.liftAff (Aff.throwError (Aff.error msg))
+            Run.liftAff $ Aff.throwError $ Aff.error msg
         )
-    # Db.interpret (Db.handleSQLite { db: env.db })
+    # Db.interpret (Db.handleSQLite { db })
     # Comment.interpret Comment.handleLog
     # Log.interpret
         ( \log ->
@@ -328,6 +319,6 @@ runEffects env operation = Aff.attempt do
               Just jobId ->
                 Log.handleTerminal Normal log
                   *> Log.handleFs Verbose logPath log
-                  *> Log.handleDb { db: env.db, job: jobId } log
+                  *> Log.handleDb { db, job: jobId } log
         )
     # Run.runBaseAff'

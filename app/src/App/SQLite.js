@@ -2,13 +2,27 @@ import Database from "better-sqlite3";
 
 export const connectImpl = (path, logger) => {
   logger("Connecting to database at " + path);
+
   let db = new Database(path, {
     fileMustExist: true,
     verbose: logger,
   });
+
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
+
+  // Ensure that the database is closed when the process exits.
+  // https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md#close---this
+  process.on("exit", () => db.close());
+  process.on("SIGHUP", () => process.exit(128 + 1));
+  process.on("SIGINT", () => process.exit(128 + 2));
+  process.on("SIGTERM", () => process.exit(128 + 15));
+
   return db;
+};
+
+export const closeImpl = (db) => {
+  db.close();
 };
 
 export const insertLogImpl = (db, logLine) => {
