@@ -28,6 +28,12 @@ jobs:
           ssh-agent -a $SSH_AUTH_SOCK > /dev/null
           ssh-add - <<< "${{ secrets.PACCHETTIBOTTI_SSH_KEY }}"
 
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v4
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v2
+
       - name: Deploy with Colmena
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
