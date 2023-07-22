@@ -3,13 +3,16 @@ on:
   # check suites we are running are garnix and Github Actions-based ones, this
   # will be triggered only once, when garnix is done with all the builds for a
   # commit.
-  check_suite:
-    types: [completed]
+  # check_suite:
+  #   types: [completed]
+  push:
+    branches:
+      - trh/continuous-deploy
 
 jobs:
   deploy:
     # Deploys should only occur from the master branch
-    if: github.ref_name == 'master'
+    # if: github.ref_name == 'master'
     runs-on: ubuntu-latest
 
     steps:
