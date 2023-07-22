@@ -19,18 +19,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Add SSH key
+      - name: Setup SSH keys and known_hosts
         env:
-          HOSTNAME: registry.purescript.org
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
         run: |
-          mkdir -p /home/runner/.ssh
-          ssh-keyscan $HOSTNAME >> /home/runner/.ssh/known_hosts
-          $SSH_KEY=$(echo "${{ secrets.PACCHETTIBOTTI_SSH_KEY }}" | base64 --decode)
-          echo $SSH_KEY > /home/runner/.ssh/github_actions
-          chmod 600 /home/runner/.ssh/github_actions
           ssh-agent -a $SSH_AUTH_SOCK > /dev/null
-          ssh-add /home/runner/.ssh/github_actions
+          ssh-add - <<< "${{ secrets.PACCHETTIBOTTI_SSH_KEY }}"
 
       - name: Deploy with Colmena
         env:
