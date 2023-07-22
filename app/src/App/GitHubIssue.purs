@@ -93,7 +93,7 @@ main = launchAff_ $ do
     thrownRef <- liftEffect $ Ref.new false
 
     run
-      # Env.runDhallEnv { typesDir: env.dhallTypes }
+      # Env.runResourceEnv env.resourceEnv
       # Env.runGitHubEventEnv { username: env.username, issue: env.issue }
       # Env.runPacchettiBottiEnv { publicKey: env.publicKey, privateKey: env.privateKey }
       -- App effects
@@ -128,7 +128,7 @@ type GitHubEventEnv =
   , spacesConfig :: SpaceKey
   , publicKey :: String
   , privateKey :: String
-  , dhallTypes :: FilePath
+  , resourceEnv :: Env.ResourceEnv
   }
 
 initializeGitHub :: Aff (Maybe GitHubEventEnv)
@@ -138,9 +138,7 @@ initializeGitHub = do
   privateKey <- Env.lookupRequired Env.pacchettibottiED25519
   spacesKey <- Env.lookupRequired Env.spacesKey
   spacesSecret <- Env.lookupRequired Env.spacesSecret
-  dhallTypes <- do
-    types <- Env.lookupRequired Env.dhallTypes
-    liftEffect $ Path.resolve [] types
+  resourceEnv <- Env.lookupResourceEnv
   eventPath <- Env.lookupRequired Env.githubEventPath
 
   octokit <- Octokit.newOctokit token
@@ -176,7 +174,7 @@ initializeGitHub = do
         , spacesConfig: { key: spacesKey, secret: spacesSecret }
         , publicKey
         , privateKey
-        , dhallTypes
+        , resourceEnv
         }
 
 data OperationDecoding

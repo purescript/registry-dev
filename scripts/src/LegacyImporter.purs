@@ -158,17 +158,16 @@ main = launchAff_ do
   let logDir = Path.concat [ scratchDir, "logs" ]
   FS.Extra.ensureDirectory logDir
   now <- nowUTC
+
   let
     logFile = "legacy-importer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
     logPath = Path.concat [ logDir, logFile ]
 
-  dhallTypes <- do
-    types <- Env.lookupRequired Env.dhallTypes
-    liftEffect $ Path.resolve [] types
+  resourceEnv <- Env.lookupResourceEnv
 
   runLegacyImport mode logPath
     # runAppEffects
-    # Env.runDhallEnv { typesDir: dhallTypes }
+    # Env.runResourceEnv resourceEnv
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))

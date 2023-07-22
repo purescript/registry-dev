@@ -27,7 +27,7 @@ import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Comment (COMMENT)
 import Registry.App.Effect.Comment as Comment
-import Registry.App.Effect.Env (DHALL_ENV, GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
+import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV, RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB, GITHUB_CACHE, GitHub(..))
 import Registry.App.Effect.GitHub as GitHub
@@ -80,7 +80,7 @@ type TEST_EFFECTS =
       + GITHUB
       + PACCHETTIBOTTI_ENV
       + GITHUB_EVENT_ENV
-      + DHALL_ENV
+      + RESOURCE_ENV
       + GITHUB_CACHE
       + LEGACY_CACHE
       + COMMENT
@@ -102,7 +102,7 @@ type TestEnv =
 
 runTestEffects :: forall a. TestEnv -> Run TEST_EFFECTS a -> Aff a
 runTestEffects env operation = do
-  typesDir <- liftEffect $ Path.resolve [] "./types"
+  resourceEnv <- Env.lookupResourceEnv
   githubCache <- liftEffect Cache.newCacheRef
   legacyCache <- liftEffect Cache.newCacheRef
   operation
@@ -115,7 +115,7 @@ runTestEffects env operation = do
     -- Environments
     # Env.runGitHubEventEnv { username: env.username, issue: IssueNumber 1 }
     # Env.runPacchettiBottiEnv { publicKey: "Unimplemented", privateKey: "Unimplemented" }
-    # Env.runDhallEnv { typesDir }
+    # Env.runResourceEnv resourceEnv
     -- Caches
     # runGitHubCacheMemory githubCache
     # runLegacyCacheMemory legacyCache

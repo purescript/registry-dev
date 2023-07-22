@@ -102,11 +102,7 @@ Of course, we don't _actually_ want to touch any real-world data and in a Nix te
 
 Git can use a local file path instead of a remote URL, such that `git clone my-path new-repo` clones to `new-repo` and sets as its origin `my-path`. You can even make changes and push to the upstream if the upstream has been configured with `receive.denyCurrentBranch` set to `ignore`, though this wrecks the upstream's working index. For the sake of tests this doesn't matter.
 
-To support the integration test we set the `GIT_SERVER_URL` environment variable to the local file system instead of to github.com. Specifically, we point to a directory that is set up with fake `purescript/registry`, `purescript/registry-index`, and `purescript/package-sets` repositories built from the fixtures at runtime.
-
-```sh
-GIT_SERVER_URL=file:///tmp/repo-fixtures/
-```
+To support the integration test we supply a wrapped version of `git` that replaces URLs of the form `https://...<domain>/...` with `file://...<path>/...`, where `<path>` is a temporary directory set up with fake repositories built from the fixtures at runtime. For example, this path for the registry-index repository might be `file:///tmp/repo-fixtures/purescript/registry-index`. In this way we can replace various possible Git servers the registry may contact with local fixtures instead.
 
 #### HTTP
 

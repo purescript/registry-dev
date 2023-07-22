@@ -811,8 +811,8 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
       CommitAs committer -> do
         result <- Except.runExcept do
           let cwd = repoPath repoKey
-          let Git.Origin origin = Git.mkOrigin address committer
-          output <- Git.withGit cwd [ "push", "--tags", origin ] \error ->
+          let Git.AuthOrigin authOrigin = Git.mkAuthOrigin address committer
+          output <- Git.withGit cwd [ "push", "--tags", authOrigin ] \error ->
             "Failed to push tags in local checkout " <> cwd <> ": " <> error
           if String.contains (String.Pattern "Everything up-to-date") output then pure Git.NoChange else pure Git.Changed
         pure result

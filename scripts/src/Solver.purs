@@ -118,9 +118,7 @@ main = launchAff_ do
 
   debouncer <- Registry.newDebouncer
   let registryEnv pull write = { pull, write, repos: Registry.defaultRepos, workdir: scratchDir, debouncer, cacheRef: registryCacheRef }
-  dhallTypes <- do
-    types <- Env.lookupRequired Env.dhallTypes
-    liftEffect $ Path.resolve [] types
+  resourceEnv <- Env.lookupResourceEnv
   token <- Env.lookupRequired Env.githubToken
   octokit <- Octokit.newOctokit token
 
@@ -148,7 +146,7 @@ main = launchAff_ do
 
   doTheThing
     # runAppEffects
-    # Env.runDhallEnv { typesDir: dhallTypes }
+    # Env.runResourceEnv resourceEnv
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))

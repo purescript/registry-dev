@@ -7,7 +7,6 @@ import ArgParse.Basic as Arg
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Formatter.DateTime as Formatter.DateTime
-import Data.List (filterM)
 import Data.Map as Map
 import Data.String as String
 import Data.Tuple (uncurry)
@@ -35,7 +34,6 @@ import Registry.Internal.Format as Internal.Format
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
-import Registry.Range as Range
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
