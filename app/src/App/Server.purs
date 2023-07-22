@@ -178,7 +178,7 @@ createServerEnv = do
   legacyCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
 
-  octokit <- Octokit.newOctokit vars.token
+  octokit <- Octokit.newOctokit vars.token vars.resourceEnv.githubApiUrl
   debouncer <- Registry.newDebouncer
 
   db <- liftEffect $ SQLite.connect
@@ -260,8 +260,6 @@ runEffects env operation = Aff.attempt do
   let logFile = String.take 10 (Formatter.DateTime.format Internal.Format.iso8601Date today) <> ".log"
   let logPath = Path.concat [ env.logsDir, logFile ]
   operation
-    # Env.runPacchettiBottiEnv { publicKey: env.vars.publicKey, privateKey: env.vars.privateKey }
-    # Env.runResourceEnv env.vars.resourceEnv
     # Registry.interpret
         ( Registry.handle
             { repos: Registry.defaultRepos
@@ -296,4 +294,6 @@ runEffects env operation = Aff.attempt do
                 *> Log.handleFs Verbose logPath log
                 *> Log.handleDb { db: env.db, job: jobId } log
         )
+    # Env.runPacchettiBottiEnv { publicKey: env.vars.publicKey, privateKey: env.vars.privateKey }
+    # Env.runResourceEnv env.vars.resourceEnv
     # Run.runBaseAff'

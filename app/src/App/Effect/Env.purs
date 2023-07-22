@@ -13,6 +13,7 @@ import Effect.Exception as Exception
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
+import Registry.Constants as Constants
 import Registry.Foreign.Octokit (GitHubToken(..), IssueNumber)
 import Run (Run)
 import Run.Reader (Reader)
@@ -22,6 +23,7 @@ type ResourceEnv =
   { dhallTypes :: FilePath
   , databaseUrl :: DatabaseUrl
   , s3ApiUrl :: URL
+  , s3BucketUrl :: URL
   , githubApiUrl :: URL
   }
 
@@ -42,11 +44,13 @@ lookupResourceEnv = do
   dhallTypesEnv <- liftEffect <<< Path.resolve [] =<< lookupWithDefault dhallTypes defaultDhallTypes
   databaseUrlEnv <- lookupWithDefault databaseUrl defaultDatabaseUrl
   s3ApiUrlEnv <- lookupWithDefault s3ApiUrl defaultS3ApiUrl
+  s3BucketUrlEnv <- lookupWithDefault s3BucketUrl defaultS3BucketUrl
   githubApiUrlEnv <- lookupWithDefault githubApiUrl defaultGitHubApiUrl
   pure
     { dhallTypes: dhallTypesEnv
     , databaseUrl: databaseUrlEnv
     , s3ApiUrl: s3ApiUrlEnv
+    , s3BucketUrl: s3BucketUrlEnv
     , githubApiUrl: githubApiUrlEnv
     }
 
@@ -178,14 +182,21 @@ s3ApiUrl :: EnvKey URL
 s3ApiUrl = EnvKey { key: "S3_API_URL", decode: pure }
 
 defaultS3ApiUrl :: URL
-defaultS3ApiUrl = "https://ams3.digitaloceanspaces.com"
+defaultS3ApiUrl = Constants.storageUrl
+
+-- | The base URL of the S3 API
+s3BucketUrl :: EnvKey URL
+s3BucketUrl = EnvKey { key: "S3_BUCKET_URL", decode: pure }
+
+defaultS3BucketUrl :: URL
+defaultS3BucketUrl = "https://ams3.digitaloceanspaces.com"
 
 -- | The base URL of the GitHub API
 githubApiUrl :: EnvKey URL
 githubApiUrl = EnvKey { key: "GITHUB_API_URL", decode: pure }
 
 defaultGitHubApiUrl :: URL
-defaultGitHubApiUrl = "https://github.com"
+defaultGitHubApiUrl = "https://api.github.com"
 
 -- | A GitHub token for the @pacchettibotti user at the PACCHETTIBOTTI_TOKEN key.
 pacchettibottiToken :: EnvKey GitHubToken

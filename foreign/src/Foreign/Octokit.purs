@@ -69,7 +69,7 @@ import Data.Variant as Variant
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (class MonadEffect, liftEffect)
-import Effect.Uncurried (EffectFn1, EffectFn6, runEffectFn1, runEffectFn6)
+import Effect.Uncurried (EffectFn2, EffectFn6, runEffectFn2, runEffectFn6)
 import Foreign.Object (Object)
 import Foreign.Object as Object
 import Node.Path (FilePath)
@@ -87,10 +87,10 @@ derive newtype instance Ord GitHubToken
 -- | An instance of GitHub's Octokit client
 foreign import data Octokit :: Type
 
-foreign import newOctokitImpl :: EffectFn1 GitHubToken Octokit
+foreign import newOctokitImpl :: EffectFn2 GitHubToken String Octokit
 
-newOctokit :: forall m. MonadEffect m => GitHubToken -> m Octokit
-newOctokit = liftEffect <<< runEffectFn1 newOctokitImpl
+newOctokit :: forall m. MonadEffect m => GitHubToken -> String -> m Octokit
+newOctokit token baseUrl = liftEffect $ runEffectFn2 newOctokitImpl token baseUrl
 
 -- | A newline-delimited base64-encoded file retrieved from the GitHub API
 newtype Base64Content = Base64Content String

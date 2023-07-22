@@ -82,6 +82,7 @@ main = launchAff_ do
   -- Environment
   _ <- Env.loadEnvFile ".env"
   token <- Env.lookupRequired Env.githubToken
+  resourceEnv <- Env.lookupResourceEnv
 
   -- Caching
   let cache = Path.concat [ scratchDir, ".cache" ]
@@ -90,7 +91,7 @@ main = launchAff_ do
   registryCacheRef <- Cache.newCacheRef
 
   -- GitHub
-  octokit <- Octokit.newOctokit token
+  octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
 
   -- Registry
   debouncer <- Registry.newDebouncer
@@ -121,6 +122,7 @@ main = launchAff_ do
         >>> Storage.interpret (Storage.handleReadOnly cache)
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+        >>> Env.runResourceEnv resourceEnv
         >>> Run.runBaseAff'
 
   case arguments of

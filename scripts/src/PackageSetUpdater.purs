@@ -79,7 +79,8 @@ main = Aff.launchAff_ do
   let packageSetsEnv = { workdir: Path.concat [ scratchDir, "package-set-build" ] }
 
   -- GitHub
-  octokit <- Octokit.newOctokit token
+  resourceEnv <- Env.lookupResourceEnv
+  octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
 
   -- Caching
   let cache = Path.concat [ scratchDir, ".cache" ]
@@ -115,6 +116,7 @@ main = Aff.launchAff_ do
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+    # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
 
 updater :: forall r. Run (REGISTRY + PACKAGE_SETS + LOG + EXCEPT String + AFF + EFFECT + r) Unit

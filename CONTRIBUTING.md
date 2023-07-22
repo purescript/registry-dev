@@ -112,7 +112,8 @@ Instead of sending requests to the actual APIs we want to hit, we'll instead sen
 
 ```sh
 GITHUB_API_URL=http://localhost:<wiremock-port>/github
-S3_API_URL=https://localhost:<wiremock-port>/s3
+S3_API_URL=https://localhost:<wiremock-port>/packages
+S3_BUCKET_URL=https://localhost:<wiremock-port>/bucket
 ```
 
 ## Deployment

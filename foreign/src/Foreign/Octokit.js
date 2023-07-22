@@ -4,9 +4,10 @@ import { throttling } from "@octokit/plugin-throttling";
 
 const Octokit = GitHubOctokit.plugin(retry, throttling);
 
-export const newOctokitImpl = (authToken) => {
+export const newOctokitImpl = (authToken, baseUrl) => {
   const octokit = new Octokit({
     auth: authToken,
+    baseUrl,
     request: {
       per_page: 100, // this is the maximum
     },

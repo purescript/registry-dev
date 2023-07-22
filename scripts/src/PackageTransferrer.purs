@@ -46,6 +46,7 @@ main = launchAff_ do
   token <- Env.lookupRequired Env.pacchettibottiToken
   publicKey <- Env.lookupRequired Env.pacchettibottiED25519Pub
   privateKey <- Env.lookupRequired Env.pacchettibottiED25519
+  resourceEnv <- Env.lookupResourceEnv
 
   -- Caching
   let cache = Path.concat [ scratchDir, ".cache" ]
@@ -54,7 +55,7 @@ main = launchAff_ do
   registryCacheRef <- Cache.newCacheRef
 
   -- GitHub
-  octokit <- Octokit.newOctokit token
+  octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
 
   -- Registry
   debouncer <- Registry.newDebouncer
@@ -77,13 +78,14 @@ main = launchAff_ do
   let logPath = Path.concat [ logDir, logFile ]
 
   transfer
-    # Env.runPacchettiBottiEnv { privateKey, publicKey }
     # Registry.interpret (Registry.handle registryEnv)
     # Storage.interpret (Storage.handleReadOnly cache)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+    # Env.runPacchettiBottiEnv { privateKey, publicKey }
+    # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
 
 transfer :: forall r. Run (API.AuthenticatedEffects + r) Unit
