@@ -8,6 +8,8 @@ on:
 
 jobs:
   deploy:
+    # Deploys should only occur from the master branch
+    if: github.ref_name == 'master'
     runs-on: ubuntu-latest
 
     steps:
