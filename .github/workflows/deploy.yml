@@ -26,8 +26,7 @@ jobs:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
         run: |
           ssh-agent -a $SSH_AUTH_SOCK > /dev/null
-          $SSH_KEY=$(echo "${{ secrets.PACCHETTIBOTTI_SSH_KEY }}" | base64 --decode)
-          ssh-add - <<< "$SSH_KEY"
+          ssh-add - <<< "${{ secrets.PACCHETTIBOTTI_SSH_KEY }}"
 
       - name: Deploy with Colmena
         env:
