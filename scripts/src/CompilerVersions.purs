@@ -7,10 +7,11 @@ import ArgParse.Basic as Arg
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Formatter.DateTime as Formatter.DateTime
-import Data.List (filterM)
 import Data.Map as Map
 import Data.String as String
 import Data.Tuple (uncurry)
+import Debug (traceM)
+import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
@@ -35,7 +36,8 @@ import Registry.Internal.Format as Internal.Format
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
-import Registry.Range as Range
+import Registry.Solver (DependencyIndex)
+import Registry.Solver as Solver
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
@@ -128,7 +130,7 @@ main = launchAff_ do
   case arguments of
     File _ -> Console.log "Unsupported at this time." *> liftEffect (Process.exit 1)
     Package package version -> interpret $ determineCompilerVersionsForPackage package version
-    AllPackages -> Console.log "Unsupported at this time." *> liftEffect (Process.exit 1)
+    AllPackages -> void $ interpret determineAllCompilerVersions
 
 determineCompilerVersionsForPackage :: forall r. PackageName -> Version -> Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) Unit
 determineCompilerVersionsForPackage package version = do
@@ -189,3 +191,53 @@ determineCompilerVersionsForPackage package version = do
     Run.liftEffect $ Process.exit 1
   else
     Log.info $ "Found supported compiler versions for " <> formatPackageVersion package version <> ": " <> Array.intercalate ", " (map Version.print supported)
+
+determineAllCompilerVersions :: forall r. Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) (Map (Tuple PackageName Version) (Array Version))
+determineAllCompilerVersions = do
+  allManifests <- ManifestIndex.toSortedArray <$> Registry.readAllManifests
+  compilerVersions <- PursVersions.pursVersions
+  supportedForVersion <- map Map.fromFoldable $ for compilerVersions \compiler ->
+    Tuple compiler <$> Array.foldM (checkCompilation compiler) Map.empty allManifests
+  pure $ Map.fromFoldableWith append do
+    Tuple compiler supported <- Map.toUnfoldable supportedForVersion
+    Tuple package versions <- Map.toUnfoldable supported
+    Tuple version _ <- Map.toUnfoldable versions
+    [ Tuple (Tuple package version) [ compiler ] ]
+  where
+  checkCompilation :: Version -> DependencyIndex -> Manifest -> Run _ DependencyIndex
+  checkCompilation compiler prev (Manifest { name, version, dependencies }) = do
+    case Solver.solve prev dependencies of
+      Left _ ->  pure prev
+      Right resolutions -> do
+        supported <- installAndBuildWithVersion compiler (Map.insert name version resolutions)
+        if supported then
+          pure $ Map.insertWith Map.union name (Map.singleton version dependencies) prev
+        else
+          pure prev
+
+  installAndBuildWithVersion :: Version -> Map PackageName Version -> Run _ Boolean
+  installAndBuildWithVersion compiler resolutions = do
+    tmp <- Tmp.mkTmpDir
+    let dependenciesDir = Path.concat [ tmp, ".registry" ]
+    FS.Extra.ensureDirectory dependenciesDir
+    let globs = [ Path.concat [ dependenciesDir, "*/src/**/*.purs" ] ]
+
+    forWithIndex_ resolutions \name version -> do
+      let
+        filename = PackageName.print name <> "-" <> Version.print version <> ".tar.gz"
+        filepath = Path.concat [ dependenciesDir, filename ]
+      Storage.download name version filepath
+      Tar.extract { cwd: dependenciesDir, archive: filename }
+      Run.liftAff $ FS.Aff.unlink filepath
+
+    compilerOutput <- Run.liftAff $ Purs.callCompiler
+      { command: Purs.Compile { globs }
+      , version: Just (Version.print compiler)
+      , cwd: Just tmp
+      }
+
+    FS.Extra.remove tmp
+
+    case compilerOutput of
+      Left _ -> pure false
+      Right _ -> pure true
