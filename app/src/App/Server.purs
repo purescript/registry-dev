@@ -89,7 +89,7 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
-  Jobs, Get -> do
+  Jobs, Get ->
     jsonOk (CA.array V1.jobCodec) []
 
   Job jobId { level: maybeLogLevel, since }, Get -> do

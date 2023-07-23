@@ -37,13 +37,9 @@
         exec ${prev.nixFlakes}/bin/nix --experimental-features "nix-command flakes" "$@"
       '';
 
-      # Detects argumetns to 'git' containing a GitHub URL and replaces it with
-      # a local filepath.
-      #
-      # Still need the 'writeShellScriptBin "git"' part so that we can override
-      # the git binary in the VM.
-      #
-      # Once this works I can turn to the wiremock bits.
+      # Detects arguments to 'git' containing a URL and replaces them with a
+      # local filepath. This is a drop-in replacement for 'git' that should be
+      # used in offline / test environments when we only want fixture data.
       gitMock = let
         nodeScript = script:
           prev.writeScript "node-cmd" ''
@@ -63,9 +59,9 @@
           function replaceIfUrl(arg) {
             try {
               const url = new URL(arg);
-              const new = 'file://' + repoFixturesDir + '/' + url.pathname;
-              console.log('Replacing URL', arg, 'with', new);
-              return new;
+              const path = url.pathname.replace(/\.git$/, ''');
+              const file = 'file://' + repoFixturesDir + path;
+              return file;
             } catch (e) {
               // Not a URL, ignore
             }
@@ -78,8 +74,22 @@
             const arg = args[i];
             modified.push(replaceIfUrl(arg));
           }
-          console.log('Running git with args:', modified);
-          spawn('${prev.git}/bin/git', modified, { stdio: 'inherit' });
+
+          const git = spawn('${prev.git}/bin/git', modified);
+
+          git.stdout.on('data', (data) => {
+            console.log(data);
+          });
+
+          git.stderr.on('data', (data) => {
+            console.error(data);
+          });
+
+          git.on('close', (code) => {
+            if (code !== 0) {
+              throw new Error('git exited with code ' + code);
+            }
+          });
         '';
       in
         prev.writeShellScriptBin "git" ''
@@ -287,6 +297,13 @@
                 registry = {
                   imports = [./nix/module.nix];
                   config = {
+                    nixpkgs.overlays = [
+                      # We need to ensure that the server is using the mock git
+                      # binary instead of the real one. We do not, however, want
+                      # to override 'git' in nixpkgs because that would make us
+                      # rebuild everything that depends on git.
+                      (_: prev: {registry.apps.server = prev.registry.apps.server.override {git = prev.gitMock;};})
+                    ];
                     virtualisation.graphics = false;
                     services.registry-server = {
                       enable = true;
@@ -298,26 +315,91 @@
                 };
                 client = {config = {virtualisation.graphics = false;};};
               };
+
               # Test scripts are written in Python:
               # https://nixos.org/manual/nixos/stable/index.html#sec-nixos-tests
               #
               # Note that the python file will be linted, and the test will fail if
               # the script fails the lint — if you see an unexpected failure, check
               # the nix log for errors.
-              testScript = ''
+              testScript = let
+                setupGitFixtures = pkgs.writeShellScriptBin "setup-git-fixtures" ''
+                  set -e
+
+                  mkdir -p $1/purescript
+
+                  git config --global user.email "pacchettibotti@purescript.org"
+                  git config --global user.name "pacchettibotti"
+                  git config --global init.defaultBranch "master"
+
+                  # First the registry-index repo
+                  cp -r ${./app/fixtures/registry-index} $1/purescript/registry-index
+
+                  # Then the registry repo
+                  mkdir -p $1/purescript/registry
+                  cp -r ${./app/fixtures/registry-metadata} $1/purescript/registry/metadata
+
+                  # Then arbitrary Git repos
+                  cp -r ${./app/fixtures/github-packages/effect-4.0.0} $1/purescript/effect
+
+                  # Then we initialize the repos
+                  for REPO in $1/purescript/*/
+                  do
+                    pushd $REPO
+                    git init
+                    git add .
+                    git commit -m "Fixture commit"
+                    # Necessary so you can push to the upstream on the same branch
+                    # as you are currently on. Wrecks the tree for the upstream,
+                    # but this is acceptable for testing.
+                    git config receive.denyCurrentBranch ignore
+                    popd
+                  done
+                '';
+              in ''
                 # Machines are available based on their host name, or their name in
                 # the "nodes" record if their host name is not set.
                 start_all()
-                registry.wait_for_unit("server.service")
 
-                client.wait_until_succeeds("${pkgs.curl}/bin/curl --fail-with-body http://registry/api/v1/jobs", timeout=180)
+                ##########
+                #
+                # SETUP
+                #
+                ##########
+
+                # We set up fixtures
+                repo_fixtures_dir = registry.succeed("mktemp -d -t repo-fixtures-XXXXXX")
+                registry.succeed(f"${setupGitFixtures}/bin/setup-git-fixtures {repo_fixtures_dir}")
+
+                # We override the environment variables visible to the server
+                # service to those needed by the integration test.
+                conf_dir = "/run/systemd/system/server.service.d"
+                conf_file = f"{conf_dir}/override.conf"
+                registry.succeed(f"mkdir -p {conf_dir}")
+                registry.succeed(f"echo '[Service]' >> {conf_file}")
+                registry.succeed(f"echo 'Environment=REPO_FIXTURES_DIR={repo_fixtures_dir}' >> {conf_file}")
+
+                # After changing the environment variables, we need to reload
+                registry.succeed("systemctl daemon-reload")
+                registry.succeed("systemctl restart server.service")
+
+                # We wait for the server to start up and for the client to be
+                # able to reach it.
+                registry.wait_for_unit("server.service")
+                client.wait_until_succeeds("${pkgs.curl}/bin/curl --fail-with-body http://registry/api/v1/jobs", timeout=20)
+
+                ##########
+                #
+                # TESTS
+                #
+                ##########
 
                 def succeed_endpoint(endpoint, expected):
                   print(f"Checking endpoint {endpoint}")
                   actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
                   assert expected == actual, f"Endpoint {endpoint} should return {expected} but returned {actual}"
 
-                succeed_endpoint("jobs", "[]")
+                succeed_endpoint("jobs", "[a]")
               '';
             };
       };
