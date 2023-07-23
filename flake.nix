@@ -40,33 +40,51 @@
       # Detects argumetns to 'git' containing a GitHub URL and replaces it with
       # a local filepath.
       #
-      # Replace this with a zero-dependency Node script that iterates over the
-      # arguments, parses the urls, and replaces them with local paths. Throw
-      # if it isn't a github url and say that's unsupported. Then forward the
-      # arguments on to git.
-      #
       # Still need the 'writeShellScriptBin "git"' part so that we can override
       # the git binary in the VM.
       #
       # Once this works I can turn to the wiremock bits.
-      gitMock = prev.writeShellScriptBin "git" ''
-        if [[ "$1" == "clone" ]]; then
-          dest=$(echo $2 | sed -r 's/https:\/\/.*github.com(.*).?\.git/\1/g')
-          echo $dest
-          exit 1
-        elif [[ "$1" == "pull" ]]; then
-          dest=$(echo $2 | sed -r 's/https:\/\/.*github.com(.*).?\.git/\1/g')
-          echo $dest
-          exit 1
-        elif [[ "$1" == "push" ]]; then
-          dest=$(echo $2 | sed -r 's/https:\/\/.*github.com(.*).?\.git/\1/g')
-          echo $dest
-          exit 1
-        else
-          echo "Unsupported mock git command $1"
-          exit 1
-        fi
-      '';
+      gitMock = let
+        nodeScript = script:
+          prev.writeScript "node-cmd" ''
+            ${nodejs}/bin/node -e "${script}" "$@"
+          '';
+
+        mock = nodeScript ''
+          const { URL } = require('url');
+          const { spawn } = require('child_process');
+
+          const repoFixturesDir = process.env.REPO_FIXTURES_DIR;
+          if (!repoFixturesDir) {
+            throw new Error('REPO_FIXTURES_DIR is not set, but is required.');
+          }
+
+          // Replace any URL arguments with the local fixtures path.
+          function replaceIfUrl(arg) {
+            try {
+              const url = new URL(arg);
+              const new = 'file://' + repoFixturesDir + '/' + url.pathname;
+              console.log('Replacing URL', arg, 'with', new);
+              return new;
+            } catch (e) {
+              // Not a URL, ignore
+            }
+            return arg;
+          }
+
+          const args = process.argv.slice(1);
+          const modified = [];
+          for (let i = 0; i < args.length; i++) {
+            const arg = args[i];
+            modified.push(replaceIfUrl(arg));
+          }
+          console.log('Running git with args:', modified);
+          spawn('${prev.git}/bin/git', modified, { stdio: 'inherit' });
+        '';
+      in
+        prev.writeShellScriptBin "git" ''
+          exec ${mock} "$@"
+        '';
 
       # Packages associated with the registry, ie. in this repository.
       registry = let
@@ -323,7 +341,7 @@
             # Project tooling
             nixFlakes
             nixfmt
-            gitMock
+            git
             bash
             nodejs
             jq

@@ -116,19 +116,17 @@ There is an integration test that will deploy the production registry server (no
 nix build checks.x86_64-linux.integration
 ```
 
-### Structure
-
 The integration test uses the same server machine that we deploy. It makes requests to the GitHub API and our S3 storage, executes `git` commands against the upstream registry, registry-index, and package-sets repositories, accesses a SQLite database, and so on. In other words, it uses the real-world implementations of the `Registry`, `GitHub`, `Storage`, and other effects.
 
 Of course, we don't _actually_ want to touch any real-world data and in a Nix test environment we cannot access the network arbitrarily. Instead we hijack the effect implementations from the outside in two ways.
 
-#### Git
+#### Intercepting Git
 
 Git can use a local file path instead of a remote URL, such that `git clone my-path new-repo` clones to `new-repo` and sets as its origin `my-path`. You can even make changes and push to the upstream if the upstream has been configured with `receive.denyCurrentBranch` set to `ignore`, though this wrecks the upstream's working index. For the sake of tests this doesn't matter.
 
 To support the integration test we supply a wrapped version of `git` that replaces URLs of the form `https://...<domain>/...` with `file://...<path>/...`, where `<path>` is a temporary directory set up with fake repositories built from the fixtures at runtime. For example, this path for the registry-index repository might be `file:///tmp/repo-fixtures/purescript/registry-index`. In this way we can replace various possible Git servers the registry may contact with local fixtures instead.
 
-#### HTTP
+#### Intercepting HTTPS
 
 Likewise, we can replace HTTP requests with [wiremock](https://wiremock.org). This tool allows us to intercept requests and return a fixture result instead. The virtual machine that runs the integration test is set up with `wiremock` running on the machine; its configuration is in the [`nix`](./nix) directory.
 
