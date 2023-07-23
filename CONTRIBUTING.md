@@ -75,6 +75,12 @@ There are also a number of checks run by the Nix flake for non-PureScript code, 
 nix flake check
 ```
 
+There is an integration test that will deploy the registry server and make requests to the API, which you can run if you are on a Linux machine. It is included in the `nix flake check` command by default, but it can be convenient to run standalone as well:
+
+```sh
+nix build checks.x86_64-linux.integration
+```
+
 You can "deploy" the registry server to a local VM and manually hit the API as if it were the production server:
 
 ```sh
@@ -82,11 +88,29 @@ You can "deploy" the registry server to a local VM and manually hit the API as i
 nix run
 ```
 
-These checks are also run in the repository continuous integration.
+### Testing Guidelines
 
-## Integration Test
+The PureScript code in the registry is well-tested, ranging from tests for individual functions to full end-to-end tests for the registry server running in a NixOS machine configured the same way as the deployed machine. The smaller and more pure the test, the easier it is to write and maintain; most code is tested via unit tests written with `spec`, and only the core pipelines are run in the integration test.
 
-There is an integration test that will deploy the registry server and make requests to the API, which you can run if you are on a Linux machine. It is included in the `nix flake check` command by default, but it can be convenient to run standalone as well:
+Each PureScript workspace has a `test` directory containing tests written with `spec`. For example, see the [`lib`](./lib/test/), [`foreign`](./foreign/test/), or [`app`](./app/test/) test directories. If you write a new function in e.g. the `foreign` workspace, then write tests in the `foreign/test` directory.
+
+In general we prefer that tests are self-contained in PureScript. For example, if you need to decode some JSON data, prefer to write that data in a PureScript string and decode the string rather than read a JSON file from disk. If a function must read from disk, prefer to generate test data and write it to a `tmp` directory rather than commit test files to the repository.
+
+However, in the rare case where you do need to store test data in the repository, you can do so in the `fixtures` directory. For example, see the [`lib` fixtures](./lib/fixtures/) or the [`app` fixtures](./app/fixtures/). (These are only for tests, but they're kept outside the `test` directory so that Spago doesn't try to compile PureScript code found in the fixtures when running `spago test`.)
+
+### Mock Tests
+
+The registry source code is defined such that most effectful code is abstracted by the [`App.Effect`](./app/src/App/Effect) modules. This allows us to mock those effects for testing purposes. For example, the `publish` function will download packages from S3 using the `STORAGE` effect, publish documentation to Pursuit with the `PURSUIT` effect, write to the registry repository with the `REGISTRY` effect, fetch data from remote repositories with the `GITHUB` effect, and more.
+
+We obviously don't want to perform these effects in our tests, but we still want to test that the `publish` function behaves as expected. If you are writing a test for a function written in `Run (SOME_EFFECT + r) a`, like `publish`, then you will need to mock effects when writing your tests. You can see the mock implementations in the [`Registry.Test.Assert.Run`](./app/test/Test/Assert/Run.purs) module.
+
+The mock tests use fixtures to represent remote resources. For example, instead of a remote S3 bucket we have the [`registry-storage`](./app/fixtures/registry-storage/) fixtures; this directory is our 'storage backend' and we can 'download' tarballs from it and 'upload' tarballs to it. Instead of accessing arbitrary GitHub repositories we have the [`github-packages`](./app/fixtures/github-packages/) fixtures. Instead of the upstream registry, registry-index, and package-sets repositories, we have e.g. the [`registry-index`](./app/fixtures/registry-index) fixtures.
+
+The function under test will only have access to data in these fixtures.
+
+### Integration Tests
+
+There is an integration test that will deploy the production registry server (no mock effects) and then execute a number of requests against its API. On x86_64-linux machines you can run it:
 
 ```sh
 nix build checks.x86_64-linux.integration
