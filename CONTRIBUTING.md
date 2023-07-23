@@ -126,6 +126,8 @@ Git can use a local file path instead of a remote URL, such that `git clone my-p
 
 To support the integration test we supply a wrapped version of `git` that replaces URLs of the form `https://...<domain>/...` with `file://...<path>/...`, where `<path>` is a temporary directory set up with fake repositories built from the fixtures at runtime. For example, this path for the registry-index repository might be `file:///tmp/repo-fixtures/purescript/registry-index`. In this way we can replace various possible Git servers the registry may contact with local fixtures instead.
 
+The wrapped git needs to know where the fixture data lives on the integration test virtual machine, and so we thread a `REPO_FIXTURES_DIR` environment variable through the systemd service for the server to the wrapper script. Packages will be cloned from that directory instead of from GitHub.
+
 #### Intercepting HTTPS
 
 Likewise, we can replace HTTP requests with [wiremock](https://wiremock.org). This tool allows us to intercept requests and return a fixture result instead. The virtual machine that runs the integration test is set up with `wiremock` running on the machine; its configuration is in the [`nix`](./nix) directory.

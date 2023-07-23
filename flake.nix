@@ -399,7 +399,7 @@
                   actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
                   assert expected == actual, f"Endpoint {endpoint} should return {expected} but returned {actual}"
 
-                succeed_endpoint("jobs", "[a]")
+                succeed_endpoint("jobs", "[]")
               '';
             };
       };
