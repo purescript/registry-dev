@@ -10,6 +10,7 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.String as String
 import Data.Tuple (uncurry)
+import Debug (traceM)
 import Effect.Class.Console as Console
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
@@ -128,7 +129,10 @@ main = launchAff_ do
   case arguments of
     File _ -> Console.log "Unsupported at this time." *> liftEffect (Process.exit 1)
     Package package version -> interpret $ determineCompilerVersionsForPackage package version
-    AllPackages -> void $ interpret determineAllCompilerVersions
+    AllPackages -> do
+      supportedVersions <- interpret determineAllCompilerVersions
+      for_ (Map.toUnfoldable supportedVersions :: Array _) \(Tuple package compilers) ->
+        traceM $ uncurry formatPackageVersion package <> ": " <> Array.intercalate ", " (map Version.print (Array.sort compilers))
 
 determineCompilerVersionsForPackage :: forall r. PackageName -> Version -> Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) Unit
 determineCompilerVersionsForPackage package version = do
@@ -194,7 +198,8 @@ determineAllCompilerVersions :: forall r. Run (AFF + EFFECT + REGISTRY + EXCEPT 
 determineAllCompilerVersions = do
   allManifests <- ManifestIndex.toSortedArray <$> Registry.readAllManifests
   compilerVersions <- PursVersions.pursVersions
-  supportedForVersion <- map Map.fromFoldable $ for compilerVersions \compiler ->
+  supportedForVersion <- map Map.fromFoldable $ for compilerVersions \compiler -> do
+    traceM $ "Starting checks for " <> Version.print compiler
     Tuple compiler <$> Array.foldM (checkCompilation compiler) Map.empty allManifests
   pure $ Map.fromFoldableWith append do
     Tuple compiler supported <- Map.toUnfoldable supportedForVersion
