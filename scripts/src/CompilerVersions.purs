@@ -4,9 +4,12 @@ import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
+import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Formatter.DateTime as Formatter.DateTime
+import Data.Function (flip)
 import Data.Map as Map
 import Data.Semigroup.Foldable as Foldable
+import Data.Set as Set
 import Data.String as String
 import Data.Tuple (uncurry)
 import Debug (traceM)
@@ -200,7 +203,7 @@ determineAllCompilerVersions :: forall r. Run (AFF + EFFECT + REGISTRY + EXCEPT 
 determineAllCompilerVersions = do
   allManifests <- ManifestIndex.toSortedArray <$> Registry.readAllManifests
   compilerVersions <- PursVersions.pursVersions
-  supportedForVersion <- map Map.fromFoldable $ for compilerVersions \compiler -> do
+  supportedForVersion <- map Map.fromFoldable $ for (Just (NEA.last compilerVersions)) \compiler -> do
     Log.info $ "Starting checks for " <> Version.print compiler
     Tuple compiler <$> Array.foldM (checkCompilation compiler) Map.empty allManifests
   pure $ Map.fromFoldableWith append do
@@ -209,8 +212,10 @@ determineAllCompilerVersions = do
     Tuple version _ <- Map.toUnfoldable versions
     [ Tuple (Tuple package version) [ compiler ] ]
   where
+  -- Adds packages which compile with `version` to the `DependencyIndex`
   checkCompilation :: Version -> DependencyIndex -> Manifest -> Run _ DependencyIndex
   checkCompilation compiler prev manifest@(Manifest { name, version, dependencies }) = do
+    Log.info $ flip foldMapWithIndex (map Map.keys prev) \package versions -> PackageName.print package <> String.joinWith ", " (map Version.print (Set.toUnfoldable versions)) <> " "
     Log.info $ "Checking " <> formatPackageVersion name version <> " with compiler purs@" <> Version.print compiler <> "..."
     Log.debug $ "Solving " <> PackageName.print name <> "@" <> Version.print version
     case Solver.solve prev dependencies of
@@ -260,7 +265,7 @@ determineAllCompilerVersions = do
       Left (Purs.MissingCompiler) ->
         Except.throw "Failed to compile because the compiler was not found."
       Left (Purs.CompilationError errors) -> do
-        Log.warn $ "Failed to compile with purs@" <> Version.print compiler <> ": " <> Purs.printCompilerErrors errors
+        Log.debug $ "Failed to compile with purs@" <> Version.print compiler <> ": " <> Purs.printCompilerErrors errors
         pure false
       Right _ -> do
         Log.debug $ "Successfully compiled with purs@" <> Version.print compiler
