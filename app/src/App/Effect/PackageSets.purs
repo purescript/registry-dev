@@ -240,8 +240,7 @@ handle env = case _ of
   compileInstalledPackages compiler = do
     Log.debug "Compiling installed packages..."
     let command = Purs.Compile { globs: [ Path.concat [ Path.basename packagesWorkDir, "**/*.purs" ] ] }
-    let version = Version.print compiler
-    Run.liftAff $ Purs.callCompiler { command, version: Just version, cwd: Just env.workdir }
+    Run.liftAff $ Purs.callCompiler { command, version: Just compiler, cwd: Just env.workdir }
 
   attemptChanges :: Version -> PackageSet -> ChangeSet -> Run _ (Either CompilerFailure PackageSet)
   attemptChanges compiler (PackageSet set) changes = do
