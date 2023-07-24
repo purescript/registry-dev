@@ -123,7 +123,7 @@ callCompiler compilerArgs = do
       | originalMessage == Just (String.joinWith " " [ "spawn", purs, "ENOENT" ]) -> Left MissingCompiler
     Left { stdout, stderr } -> Left do
       case parseJson errorsCodec stdout of
-        Left err -> UnknownError $ String.joinWith "\n" [ stdout, stderr, CA.printJsonDecodeError err ]
+        Left err -> UnknownError $ String.joinWith "\n" [ "\n[STDOUT]", stdout, "[STDERR]", stderr, "[DECODE ERROR]", CA.printJsonDecodeError err ]
         Right ({ errors } :: { errors :: Array CompilerError })
           | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
           | otherwise -> CompilationError errors

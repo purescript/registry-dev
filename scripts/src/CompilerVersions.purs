@@ -1,13 +1,12 @@
 module Registry.Scripts.CompilerVersions where
 
-import Registry.App.Prelude
-
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
+import Data.Semigroup.Foldable as Foldable
 import Data.String as String
 import Data.Tuple (uncurry)
 import Debug (traceM)
@@ -28,11 +27,14 @@ import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
+import Registry.App.Prelude (type (+), type (~>), Aff, Effect, Either(..), FilePath, LogVerbosity(..), Map, Maybe(..), PackageName, Tuple(..), Unit, Version, append, bind, discard, for, forWithIndex_, for_, formatPackageVersion, launchAff_, liftEffect, lmap, map, note, nowUTC, pure, scratchDir, unless, (#), ($), ($>), (*>), (<$>), (<<<), (<=<), (<>), (>>>))
+import Registry.App.Prelude as Json
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Format as Internal.Format
 import Registry.Manifest (Manifest(..))
+import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Solver (DependencyIndex)
@@ -199,7 +201,7 @@ determineAllCompilerVersions = do
   allManifests <- ManifestIndex.toSortedArray <$> Registry.readAllManifests
   compilerVersions <- PursVersions.pursVersions
   supportedForVersion <- map Map.fromFoldable $ for compilerVersions \compiler -> do
-    traceM $ "Starting checks for " <> Version.print compiler
+    Log.info $ "Starting checks for " <> Version.print compiler
     Tuple compiler <$> Array.foldM (checkCompilation compiler) Map.empty allManifests
   pure $ Map.fromFoldableWith append do
     Tuple compiler supported <- Map.toUnfoldable supportedForVersion
@@ -208,14 +210,21 @@ determineAllCompilerVersions = do
     [ Tuple (Tuple package version) [ compiler ] ]
   where
   checkCompilation :: Version -> DependencyIndex -> Manifest -> Run _ DependencyIndex
-  checkCompilation compiler prev (Manifest { name, version, dependencies }) = do
+  checkCompilation compiler prev manifest@(Manifest { name, version, dependencies }) = do
+    Log.info $ "Checking " <> formatPackageVersion name version <> " with compiler purs@" <> Version.print compiler <> "..."
+    Log.debug $ "Solving " <> PackageName.print name <> "@" <> Version.print version
     case Solver.solve prev dependencies of
-      Left _ ->  pure prev
+      Left unsolvable -> do
+        Log.debug $ "Could not solve " <> formatPackageVersion name version <> " with manifest " <> Json.printJson Manifest.codec manifest
+        Log.debug $ Foldable.foldMap1 (append "\n" <<< Solver.printSolverError) unsolvable
+        pure prev
       Right resolutions -> do
         supported <- installAndBuildWithVersion compiler (Map.insert name version resolutions)
-        if supported then
+        if supported then do
+          Log.info $ "Including package version " <> formatPackageVersion name version
           pure $ Map.insertWith Map.union name (Map.singleton version dependencies) prev
-        else
+        else do
+          Log.info $ "Skipping package version " <> formatPackageVersion name version
           pure prev
 
   installAndBuildWithVersion :: Version -> Map PackageName Version -> Run _ Boolean
@@ -223,8 +232,10 @@ determineAllCompilerVersions = do
     tmp <- Tmp.mkTmpDir
     let dependenciesDir = Path.concat [ tmp, ".registry" ]
     FS.Extra.ensureDirectory dependenciesDir
+    Log.debug $ "Created tmp dir for dependencies: " <> dependenciesDir
     let globs = [ Path.concat [ dependenciesDir, "*/src/**/*.purs" ] ]
 
+    Log.debug "Downloading dependencies..."
     forWithIndex_ resolutions \name version -> do
       let
         filename = PackageName.print name <> "-" <> Version.print version <> ".tar.gz"
@@ -233,6 +244,7 @@ determineAllCompilerVersions = do
       Tar.extract { cwd: dependenciesDir, archive: filename }
       Run.liftAff $ FS.Aff.unlink filepath
 
+    Log.debug $ "Compiling with purs@" <> Version.print compiler <> " and globs " <> String.joinWith " " globs
     compilerOutput <- Run.liftAff $ Purs.callCompiler
       { command: Purs.Compile { globs }
       , version: Just (Version.print compiler)
@@ -242,5 +254,14 @@ determineAllCompilerVersions = do
     FS.Extra.remove tmp
 
     case compilerOutput of
-      Left _ -> pure false
-      Right _ -> pure true
+      Left (Purs.UnknownError error) -> do
+        Log.error $ "Failed to compile because of an unknown compiler error: " <> error
+        pure false
+      Left (Purs.MissingCompiler) ->
+        Except.throw "Failed to compile because the compiler was not found."
+      Left (Purs.CompilationError errors) -> do
+        Log.warn $ "Failed to compile with purs@" <> Version.print compiler <> ": " <> Purs.printCompilerErrors errors
+        pure false
+      Right _ -> do
+        Log.debug $ "Successfully compiled with purs@" <> Version.print compiler
+        pure true
