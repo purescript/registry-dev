@@ -86,11 +86,6 @@ in {
             if [ -f ${cfg.stateDir}/.env ]; then
               echo "Using production environment variables"
               source ${cfg.stateDir}/.env
-            else
-              echo "WARNING: No environment variables found in ${cfg.stateDir}."
-              echo "Continuing with dummy values, not suitable for production."
-              cat ${defaultEnv} > .env
-              source .env
             fi
             set +o allexport
 

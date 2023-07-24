@@ -8,6 +8,7 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Newtype (unwrap)
 import Data.String as String
 import Data.UUID.Random as UUID
+import Debug (traceM)
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import HTTPurple (JsonDecoder(..), JsonEncoder(..), Method(..), Request, Response)
@@ -41,6 +42,7 @@ import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest (LEGACY_CACHE, _legacyCache)
+import Registry.App.Legacy.Types (RawVersion(..))
 import Registry.App.SQLite (SQLite)
 import Registry.App.SQLite as SQLite
 import Registry.Foreign.FSExtra as FS.Extra
@@ -89,7 +91,9 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
-  Jobs, Get ->
+  Jobs, Get -> do
+    result <- lift $ GitHub.getContent { owner: "purescript", repo: "purescript-effect" } (RawVersion "v4.0.0") "bower.json"
+    traceM result
     jsonOk (CA.array V1.jobCodec) []
 
   Job jobId { level: maybeLogLevel, since }, Get -> do
@@ -288,9 +292,9 @@ runEffects env operation = Aff.attempt do
     # Comment.interpret Comment.handleLog
     # Log.interpret
         ( \log -> case env.jobId of
-            Nothing -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log
+            Nothing -> Log.handleTerminal Verbose log *> Log.handleFs Verbose logPath log
             Just jobId ->
-              Log.handleTerminal Normal log
+              Log.handleTerminal Verbose log
                 *> Log.handleFs Verbose logPath log
                 *> Log.handleDb { db: env.db, job: jobId } log
         )

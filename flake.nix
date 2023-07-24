@@ -203,6 +203,9 @@
 
       # Allows you to run a local VM with the registry server, mimicking the
       # actual deployment.
+      #
+      # FIXME: This needs to have environment variables loaded, as is done in
+      # the integration test.
       run-vm = let
         vm-machine = nixpkgs.lib.nixosSystem {
           system = builtins.replaceStrings ["darwin"] ["linux"] system;
@@ -290,12 +293,32 @@
               echo "Integration tests are not supported on macOS systems, skipping..."
               exit 0
             ''
-          else
+          else let
+            serverPort = 8080;
+            stateDir = "/var/lib/registry-server";
+            githubPort = 9001;
+            bucketPort = 9002;
+            s3Port = 9003;
+
+            envFile = pkgs.writeText ".env" ''
+              # Values we need to explicitly set
+              GITHUB_API_URL=http://localhost:${toString githubPort}
+              S3_API_URL=http://localhost:${toString s3Port}
+              S3_BUCKET_URL=http://localhost:${toString bucketPort}
+
+              # Secrets, which we'll use dummy values for in the integration test
+              SPACES_KEY="abcxyz"
+              SPACES_SECRET="abcxyz"
+              PACCHETTIBOTTI_TOKEN="ghp_pacchettibottitoken"
+              PACCHETTIBOTTI_ED25519_PUB="c3NoLWVkMjU1MTkgYWJjeHl6IHBhY2NoZXR0aWJvdHRpQHB1cmVzY3JpcHQub3Jn"
+              PACCHETTIBOTTI_ED25519="YWJjeHl6"
+            '';
+          in
             pkgs.nixosTest {
               name = "server integration test";
               nodes = {
                 registry = {
-                  imports = [./nix/module.nix];
+                  imports = [./nix/wiremock.nix ./nix/module.nix];
                   config = {
                     nixpkgs.overlays = [
                       # We need to ensure that the server is using the mock git
@@ -304,12 +327,40 @@
                       # rebuild everything that depends on git.
                       (_: prev: {registry.apps.server = prev.registry.apps.server.override {git = prev.gitMock;};})
                     ];
+
                     virtualisation.graphics = false;
+
                     services.registry-server = {
                       enable = true;
                       host = "localhost";
-                      port = 8080;
+                      port = serverPort;
                       enableCerts = false;
+                      stateDir = stateDir;
+                    };
+
+                    # We need multiple instances of wiremock (one per external
+                    # API), and this is difficult to do with NixOS modules. The
+                    # standard alternative approach is to use containers.
+                    # https://nixos.org/manual/nixos/stable/index.html#sec-declarative-containers
+                    #
+                    # Once I get the GitHub API working I can move on to the S3
+                    # API and the S3 bucket.
+                    services.wiremock = {
+                      enable = true;
+                      port = githubPort;
+                      mappings = [
+                        {
+                          request = {
+                            method = "GET";
+                            url = "/repos/purescript/purescript-effect/contents/bower.json?ref=v4.0.0";
+                          };
+                          response = {
+                            status = 200;
+                            headers."Content-Type" = "text/plain";
+                            body = "Literal text to put in the body";
+                          };
+                        }
+                      ];
                     };
                   };
                 };
@@ -369,18 +420,12 @@
 
                 # We set up fixtures
                 repo_fixtures_dir = registry.succeed("mktemp -d -t repo-fixtures-XXXXXX")
+                registry.succeed("mkdir -p ${stateDir}")
+                registry.succeed("cat ${envFile} > ${stateDir}/.env")
+                registry.succeed(f"echo 'REPO_FIXTURES_DIR={repo_fixtures_dir}' >> ${stateDir}/.env")
                 registry.succeed(f"${setupGitFixtures}/bin/setup-git-fixtures {repo_fixtures_dir}")
 
-                # We override the environment variables visible to the server
-                # service to those needed by the integration test.
-                conf_dir = "/run/systemd/system/server.service.d"
-                conf_file = f"{conf_dir}/override.conf"
-                registry.succeed(f"mkdir -p {conf_dir}")
-                registry.succeed(f"echo '[Service]' >> {conf_file}")
-                registry.succeed(f"echo 'Environment=REPO_FIXTURES_DIR={repo_fixtures_dir}' >> {conf_file}")
-
                 # After changing the environment variables, we need to reload
-                registry.succeed("systemctl daemon-reload")
                 registry.succeed("systemctl restart server.service")
 
                 # We wait for the server to start up and for the client to be
@@ -399,7 +444,7 @@
                   actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
                   assert expected == actual, f"Endpoint {endpoint} should return {expected} but returned {actual}"
 
-                succeed_endpoint("jobs", "[]")
+                succeed_endpoint("jobs", "[a]")
               '';
             };
       };

@@ -132,12 +132,12 @@ The wrapped git needs to know where the fixture data lives on the integration te
 
 Likewise, we can replace HTTP requests with [wiremock](https://wiremock.org). This tool allows us to intercept requests and return a fixture result instead. The virtual machine that runs the integration test is set up with `wiremock` running on the machine; its configuration is in the [`nix`](./nix) directory.
 
-Instead of sending requests to the actual APIs we want to hit, we'll instead send them to the Wiremock server. To do that we need to configure the base URLs for each external API we hit (namely, S3 and GitHub).
+Instead of sending requests to the actual APIs we want to hit, we'll instead send them to the Wiremock services. To do that we need to configure the base URLs for each external API we hit. For example:
 
 ```sh
-GITHUB_API_URL=http://localhost:<wiremock-port>/github
-S3_API_URL=https://localhost:<wiremock-port>/packages
-S3_BUCKET_URL=https://localhost:<wiremock-port>/bucket
+GITHUB_API_URL=http://localhost:<github-port>
+S3_API_URL=https://localhost:<s3-port>
+S3_BUCKET_URL=https://localhost:<bucket-port>
 ```
 
 ## Deployment
