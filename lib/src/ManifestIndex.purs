@@ -68,6 +68,7 @@ import Registry.Manifest as Manifest
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
+import Registry.Range as Range
 import Registry.Version (Version)
 
 -- | An index of package manifests, keyed by package name and version. The index
@@ -191,7 +192,7 @@ topologicalSort manifests =
   resolveDependencies :: Manifest -> Tuple (Tuple PackageName Version) (Tuple Manifest (List (Tuple PackageName Version)))
   resolveDependencies manifest@(Manifest { name, version, dependencies }) =
     Tuple (Tuple name version) $ Tuple manifest $ List.fromFoldable do
-      Tuple dependency _ <- Map.toUnfoldable dependencies
+      Tuple dependency range <- Map.toUnfoldable dependencies
       -- This case should not be possible: it means that the manifest indicates
       -- a dependency that does not exist at all. (TODO: Explain)
       let versions = Maybe.fromMaybe [] $ Map.lookup dependency allPackageVersions
@@ -199,8 +200,8 @@ topologicalSort manifests =
       -- versions admitted by the given range. This is faster and correct, but
       -- fails in the case where we want to produce a maximal index while
       -- ignoring version bounds.
-      --     included <- Array.filter (Range.includes range) versions
-      included <- versions
+      included <- Array.filter (Range.includes range) versions
+      --included <- versions
       [ Tuple dependency included ]
 
 -- | Calculate the directory containing this package in the registry index,
