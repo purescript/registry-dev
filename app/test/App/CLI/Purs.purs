@@ -41,8 +41,16 @@ spec = do
     Spec.it "Handles compilation error for bad input file" do
       tmp <- Tmp.mkTmpDir
       let file = Path.concat [ tmp, "ShouldFailToCompile.purs" ]
-      FS.Aff.writeTextFile UTF8 file "<contents>"
+      FS.Aff.writeTextFile UTF8 file "module _ where"
       result <- Purs.callCompiler { command: Purs.Compile { globs: [ file ] }, cwd: Nothing, version: Nothing }
       case result of
-        Left (CompilationError [ { position: { startLine: 1, startColumn: 1 } } ]) -> pure unit
-        _ -> Assert.fail "Should have failed with CompilationError"
+        Left (CompilationError [ { position: { startLine: 1, startColumn: 8 } } ]) ->
+          pure unit
+        Left (CompilationError errors) ->
+          Assert.fail $ "Should have failed with CompilationError at position 1:8 but failed with a different compilation error:\n\n" <> Purs.printCompilerErrors errors
+        Left MissingCompiler ->
+          Assert.fail "Should have failed with CompilationError but failed with MissingCompiler"
+        Left (UnknownError err) ->
+          Assert.fail $ "Should have failed with CompilationError but failed with UnknownError " <> err
+        Right _ ->
+          Assert.fail $ "Should have failed with CompilationError but succeeded"
