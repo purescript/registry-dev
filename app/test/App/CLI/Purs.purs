@@ -16,9 +16,9 @@ import Test.Spec as Spec
 
 spec :: Spec.Spec Unit
 spec = do
-  traverse_ testVersion (map Utils.unsafeVersion [ "0.13.0", "0.14.0", "0.14.7", "0.15.4" ])
-  traverse_ testMissingVersion (map Utils.unsafeVersion [ "0.13.1", "0.13.7", "0.15.1", "0.12.0", "0.14.12345" ])
-  traverse_ testCompilationError (map hush [ Version.parse "0.13.0", Version.parse "0.13.8", Version.parse "0.14.0", Version.parse "0.15.0", Left "latest" ])
+  traverse_ (testVersion <<< Utils.unsafeVersion) [ "0.13.0", "0.14.0", "0.14.7", "0.15.4" ]
+  traverse_ (testMissingVersion <<< Utils.unsafeVersion) [ "0.13.1", "0.13.7", "0.15.1", "0.12.0", "0.14.12345" ]
+  traverse_ (testCompilationError <<< hush) [ Version.parse "0.13.0", Version.parse "0.13.8", Version.parse "0.14.0", Version.parse "0.15.0", Left "latest" ]
   where
   testVersion version =
     Spec.it ("Calls compiler version " <> Version.print version) do
