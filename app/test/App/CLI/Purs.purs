@@ -10,13 +10,14 @@ import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
 import Registry.Foreign.Tmp as Tmp
 import Registry.Test.Assert as Assert
+import Registry.Test.Utils as Utils
 import Registry.Version as Version
 import Test.Spec as Spec
 
 spec :: Spec.Spec Unit
 spec = do
-  traverse_ testVersion (Array.mapMaybe (hush <<< Version.parse) [ "0.13.0", "0.14.0", "0.14.7", "0.15.4" ])
-  traverse_ testMissingVersion (Array.mapMaybe (hush <<< Version.parse) [ "0.13.1", "0.13.7", "0.15.1", "0.12.0", "0.14.12345" ])
+  traverse_ testVersion (map Utils.unsafeVersion [ "0.13.0", "0.14.0", "0.14.7", "0.15.4" ])
+  traverse_ testMissingVersion (map Utils.unsafeVersion [ "0.13.1", "0.13.7", "0.15.1", "0.12.0", "0.14.12345" ])
   traverse_ testCompilationError (map hush [ Version.parse "0.13.0", Version.parse "0.13.8", Version.parse "0.14.0", Version.parse "0.15.0", Left "latest" ])
   where
   testVersion version =
