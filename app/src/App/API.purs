@@ -777,7 +777,7 @@ compilePackage { packageSourceDir, compiler, resolutions } = Except.runExcept do
   Log.debug "Compiling..."
   compilerOutput <- Run.liftAff $ Purs.callCompiler
     { command: Purs.Compile { globs }
-    , version: Just (Version.print compiler)
+    , version: Just compiler
     , cwd: Just packageSourceDir
     }
 
@@ -834,7 +834,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
   -- with the format used by Pursuit in PureScript versions at least up to 0.16
   compilerOutput <- Run.liftAff $ Purs.callCompiler
     { command: Purs.Publish { resolutions: resolutionsFilePath }
-    , version: Just (Version.print compiler)
+    , version: Just compiler
     , cwd: Just packageSourceDir
     }
 
