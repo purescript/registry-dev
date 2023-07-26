@@ -1,8 +1,11 @@
 module Registry.App.Prelude
-  ( Backoff
-  , LogVerbosity(..)
+  ( LogVerbosity(..)
   , PursPublishMethod(..)
+  , RetryRequestError(..)
+  , Retry
+  , RetryResult(..)
   , class Functor2
+  , defaultRetry
   , formatPackageVersion
   , fromJust'
   , guardA
@@ -26,13 +29,18 @@ module Registry.App.Prelude
   , traverseKeys
   , unsafeFromJust
   , unsafeFromRight
-  , withBackoff
-  , withBackoff'
+  , withRetry
+  , withRetryOnTimeout
+  , withRetryRequest
+  , withRetryRequest'
   , writeJsonFile
   ) where
 
 import Prelude
 
+import Affjax as Affjax
+import Affjax.Node as Affjax.Node
+import Affjax.StatusCode (StatusCode(..))
 import Control.Alt ((<|>)) as Extra
 import Control.Alternative (class Alternative, empty)
 import Control.Monad.Except (ExceptT(..)) as Extra
@@ -151,52 +159,99 @@ traverseKeys k = map Map.fromFoldable <<< Extra.traverse (Extra.ltraverse k) <<<
 guardA :: forall f. Alternative f => Boolean -> f Unit
 guardA = if _ then pure unit else empty
 
--- | Attempt an effectful computation with exponential backoff.
-withBackoff' :: forall a. Extra.Aff a -> Extra.Aff (Maybe.Maybe a)
-withBackoff' action = withBackoff
-  { delay: Aff.Milliseconds 5_000.0
-  , action
-  , shouldCancel: \_ -> pure true
-  , shouldRetry: \attempt -> if attempt > 3 then pure Maybe.Nothing else pure (Maybe.Just action)
+data RetryRequestError a
+  = AffjaxError (Affjax.Error)
+  | StatusError (Affjax.Response a)
+
+withRetryRequest' :: forall a. Affjax.Request a -> Extra.Aff (RetryResult (RetryRequestError a) (Affjax.Response a))
+withRetryRequest' = withRetryRequest
+  { timeout: defaultRetry.timeout
+  , retryOnCancel: defaultRetry.retryOnCancel
+  , retryOnFailure: \attempt -> case _ of
+      AffjaxError _ -> false
+      StatusError { status: StatusCode status } ->
+        -- We retry on 500-level errors in case the server is temporarily
+        -- unresponsive, and fail otherwise.
+        if status >= 500 then
+          attempt < 3
+        else false
+  }
+  (\error -> AffjaxError error)
+  (\response@{ status: StatusCode status } -> if status >= 400 then Either.Left (StatusError response) else Either.Right response)
+
+withRetryRequest
+  :: forall e a b
+   . Retry e
+  -> (Affjax.Error -> e)
+  -> (Affjax.Response a -> Either.Either e b)
+  -> Affjax.Request a
+  -> Extra.Aff (RetryResult e b)
+withRetryRequest retry onAffjaxError onAffjaxResponse request =
+  withRetry retry (map (Either.either (Either.Left <<< onAffjaxError) onAffjaxResponse) (Affjax.Node.request request))
+
+withRetryOnTimeout :: forall err a. Extra.Aff (Either.Either err a) -> Extra.Aff (RetryResult err a)
+withRetryOnTimeout = withRetry defaultRetry
+
+type Retry err =
+  { timeout :: Aff.Milliseconds
+  , retryOnCancel :: Int -> Boolean
+  , retryOnFailure :: Int -> err -> Boolean
   }
 
-type Backoff a =
-  { delay :: Aff.Milliseconds
-  , action :: Extra.Aff a
-  , shouldCancel :: Int -> Extra.Aff Boolean
-  , shouldRetry :: Int -> Extra.Aff (Maybe.Maybe (Extra.Aff a))
+-- | Default retry configuration, which retries on cancellation but does not
+-- | retry on failure.
+defaultRetry :: forall err. Retry err
+defaultRetry =
+  { timeout: Aff.Milliseconds 5000.0
+  , retryOnCancel: \attempt -> attempt <= 3
+  , retryOnFailure: \_ _ -> false
   }
 
--- | Attempt an effectful computation with exponential backoff, starting with
--- | the provided timeout.
-withBackoff :: forall a. Backoff a -> Extra.Aff (Maybe.Maybe a)
-withBackoff { delay: Aff.Milliseconds timeout, action, shouldCancel, shouldRetry } = do
+data RetryResult err a
+  = Cancelled
+  | Failed err
+  | Succeeded a
+
+derive instance (Eq err, Eq a) => Eq (RetryResult err a)
+
+-- | Attempt an effectful computation that can fail by specifying how to retry
+-- | the request and whether it should time out.
+withRetry :: forall err a. Retry err -> Extra.Aff (Either.Either err a) -> Extra.Aff (RetryResult err a)
+withRetry { timeout: Aff.Milliseconds timeout, retryOnCancel, retryOnFailure } action = do
   let
-    runAction attempt action' ms =
+    runAction :: Extra.Aff (Either.Either err a) -> Int -> Extra.Aff (RetryResult err a)
+    runAction action' ms = do
       Parallel.sequential $ Foldable.oneOf
-        [ Parallel.parallel (map Maybe.Just action')
-        , Parallel.parallel (runTimeout attempt ms)
+        [ Parallel.parallel $ action' >>= case _ of
+            Either.Left err -> pure $ Failed err
+            Either.Right val -> pure $ Succeeded val
+        , Parallel.parallel (runTimeout ms)
         ]
 
-    runTimeout attempt ms = do
+    runTimeout :: Int -> Extra.Aff (RetryResult err a)
+    runTimeout ms = do
       _ <- Aff.delay (Aff.Milliseconds (Int.toNumber ms))
-      shouldCancel attempt >>= if _ then pure Maybe.Nothing else runTimeout attempt (ms * 2)
+      pure Cancelled
 
-    loop :: Int -> Maybe.Maybe a -> Extra.Aff (Maybe.Maybe a)
+    loop :: Int -> RetryResult err a -> Extra.Aff (RetryResult err a)
     loop attempt = case _ of
-      Maybe.Nothing -> do
-        maybeRetry <- shouldRetry attempt
-        case maybeRetry of
-          Maybe.Nothing -> pure Maybe.Nothing
-          Maybe.Just newAction -> do
-            let newTimeout = Int.floor timeout `Int.pow` (attempt + 1)
-            maybeResult <- runAction attempt newAction newTimeout
-            loop (attempt + 1) maybeResult
-      Maybe.Just result ->
-        pure (Maybe.Just result)
+      Cancelled ->
+        if retryOnCancel attempt then do
+          let newTimeout = Int.floor timeout `Int.pow` (attempt + 1)
+          runAction action newTimeout
+        else
+          pure Cancelled
+      Failed err ->
+        if retryOnFailure attempt err then do
+          let newTimeout = Int.floor timeout `Int.pow` (attempt + 1)
+          runAction action newTimeout
+        else
+          pure (Failed err)
+      Succeeded result ->
+        pure (Succeeded result)
 
-  maybeResult <- runAction 0 action (Int.floor timeout)
-  loop 1 maybeResult
+  result <- runAction action (Int.floor timeout)
+  loop 1 result
 
 -- | Get the current time, standardizing on the UTC timezone to avoid ambiguity
 -- | when running on different machines.
