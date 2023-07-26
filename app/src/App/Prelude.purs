@@ -155,9 +155,6 @@ mapKeys k = Map.fromFoldable <<< map (Extra.lmap k) <<< (Map.toUnfoldable :: _ -
 traverseKeys :: forall a b v. Ord a => Ord b => (a -> Either.Either String b) -> Extra.Map a v -> Either.Either String (Extra.Map b v)
 traverseKeys k = map Map.fromFoldable <<< Extra.traverse (Extra.ltraverse k) <<< (Map.toUnfoldable :: _ -> Array _)
 
-guardA :: forall f. Alternative f => Boolean -> f Unit
-guardA = if _ then pure unit else empty
-
 data RetryRequestError a
   = AffjaxError (Affjax.Error)
   | StatusError (Affjax.Response a)
