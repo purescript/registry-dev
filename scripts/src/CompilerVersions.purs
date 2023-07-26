@@ -233,7 +233,7 @@ failureReasonCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variant
 
   fromVariant = Variant.match
     { cannotSolve: \_ -> CannotSolve
-    , cannotCompile: \_ ->  CannotCompile
+    , cannotCompile: \_ -> CannotCompile
     , unknownReason: \_ -> UnknownReason
     }
 
