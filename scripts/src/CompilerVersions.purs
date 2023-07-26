@@ -8,6 +8,7 @@ import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Function (flip)
 import Data.Map as Map
+import Data.Maybe as Maybe
 import Data.Semigroup.Foldable as Foldable
 import Data.Set as Set
 import Data.String as String
@@ -30,7 +31,7 @@ import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
-import Registry.App.Prelude (type (+), type (~>), Aff, Effect, Either(..), FilePath, LogVerbosity(..), Map, Maybe(..), PackageName, Tuple(..), Unit, Version, append, bind, discard, for, forWithIndex_, for_, formatPackageVersion, launchAff_, liftEffect, lmap, map, note, nowUTC, pure, scratchDir, unless, (#), ($), ($>), (*>), (<$>), (<<<), (<=<), (<>), (>>>))
+import Registry.App.Prelude (type (+), type (~>), Aff, Effect, Either(..), LogVerbosity(..), Map, Maybe(..), PackageName, Tuple(..), Unit, Version, append, bind, discard, for, forWithIndex_, for_, formatPackageVersion, launchAff_, liftEffect, lmap, map, note, nowUTC, pure, scratchDir, unless, (#), ($), ($>), (*>), (<$>), (<<<), (<=<), (<>), (>>>))
 import Registry.App.Prelude as Json
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
@@ -48,23 +49,28 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
-data InputMode
-  = File FilePath
-  | Package PackageName Version
-  | AllPackages
+type Arguments =
+  { package :: Maybe (Tuple PackageName Version)
+  , compiler :: Maybe Version
+  }
 
-parser :: ArgParser InputMode
-parser = Arg.choose "input (--file or --package or --all)"
-  [ Arg.argument [ "--file" ]
-      """Compute supported compiler versions for packages from a JSON file like: [ "prelude", "console" ]"""
-      # Arg.unformat "FILE_PATH" pure
-      # map File
-  , Arg.argument [ "--package" ]
-      "Compute supported compiler versions for the indicated package"
-      # Arg.unformat "NAME@VERSION" parsePackage
-      # map (uncurry Package)
-  , Arg.flag [ "--all" ] "Compute supported compiler versions for all packages" $> AllPackages
-  ]
+parser :: ArgParser Arguments
+parser = Arg.fromRecord
+  { package: Arg.choose "input (--all-packages or --package)"
+      [ Arg.flag [ "--all-packages" ] "Check compiler versions for all packages" $> Nothing
+      , Arg.argument [ "--package" ]
+          "Check compiler versions for specific package"
+          # Arg.unformat "NAME@VERSION" parsePackage
+          # map Just
+      ]
+  , compiler: Arg.choose "input (--all-compilers or --compiler)"
+      [ Arg.flag [ "--all-compilers" ] "Check all compiler versions" $> Nothing
+      , Arg.argument [ "--compiler" ]
+          "Check compiler versions for specific package"
+          # Arg.unformat "VERSION" Version.parse
+          # map Just
+      ]
+  }
   where
   parsePackage :: String -> Either String (Tuple PackageName Version)
   parsePackage input = do
@@ -131,16 +137,15 @@ main = launchAff_ do
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
         >>> Run.runBaseAff'
 
-  case arguments of
-    File _ -> Console.log "Unsupported at this time." *> liftEffect (Process.exit 1)
-    Package package version -> interpret $ determineCompilerVersionsForPackage package version
-    AllPackages -> do
-      supportedVersions <- interpret determineAllCompilerVersions
+  case arguments.package of
+    Just (Tuple package version) -> interpret $ determineCompilerVersionsForPackage package version arguments.compiler
+    Nothing -> do
+      supportedVersions <- interpret $ determineAllCompilerVersions arguments.compiler
       for_ (Map.toUnfoldable supportedVersions :: Array _) \(Tuple package compilers) ->
         traceM $ uncurry formatPackageVersion package <> ": " <> Array.intercalate ", " (map Version.print (Array.sort compilers))
 
-determineCompilerVersionsForPackage :: forall r. PackageName -> Version -> Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) Unit
-determineCompilerVersionsForPackage package version = do
+determineCompilerVersionsForPackage :: forall r. PackageName -> Version -> Maybe Version -> Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) Unit
+determineCompilerVersionsForPackage package version mbCompiler = do
   allManifests <- map ManifestIndex.toMap Registry.readAllManifests
   compilerVersions <- PursVersions.pursVersions
   Log.debug $ "Checking Manifest Index for " <> formatPackageVersion package version
@@ -191,7 +196,7 @@ determineCompilerVersionsForPackage package version = do
         else
           goCompilerVersions supported tail
 
-  supported <- goCompilerVersions [] (Array.sort (NEA.toArray compilerVersions))
+  supported <- goCompilerVersions [] (Maybe.maybe (Array.sort (NEA.toArray compilerVersions)) Array.singleton mbCompiler)
 
   if Array.null supported then do
     Log.error $ "Could not find supported compiler versions for " <> formatPackageVersion package version
@@ -199,11 +204,12 @@ determineCompilerVersionsForPackage package version = do
   else
     Log.info $ "Found supported compiler versions for " <> formatPackageVersion package version <> ": " <> Array.intercalate ", " (map Version.print supported)
 
-determineAllCompilerVersions :: forall r. Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) (Map (Tuple PackageName Version) (Array Version))
-determineAllCompilerVersions = do
+determineAllCompilerVersions :: forall r. Maybe Version -> Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) (Map (Tuple PackageName Version) (Array Version))
+determineAllCompilerVersions mbCompiler = do
   allManifests <- ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges <$> Registry.readAllManifests
   compilerVersions <- PursVersions.pursVersions
-  supportedForVersion <- map Map.fromFoldable $ for (Just (NEA.last compilerVersions)) \compiler -> do
+  let compilersToCheck = Maybe.maybe compilerVersions NEA.singleton mbCompiler
+  supportedForVersion <- map Map.fromFoldable $ for compilersToCheck \compiler -> do
     Log.info $ "Starting checks for " <> Version.print compiler
     Tuple compiler <$> Array.foldM (checkCompilation compiler) Map.empty allManifests
   pure $ Map.fromFoldableWith append do
