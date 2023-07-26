@@ -9,9 +9,10 @@ import Data.Codec.Argonaut.Record as CA.Record
 import Data.Foldable (foldMap)
 import Data.String as String
 import Node.Library.Execa as Execa
+import Registry.Version as Version
 
 -- | Call a specific version of the PureScript compiler
-callCompiler_ :: { version :: Maybe String, command :: PursCommand, cwd :: Maybe FilePath } -> Aff Unit
+callCompiler_ :: { version :: Maybe Version, command :: PursCommand, cwd :: Maybe FilePath } -> Aff Unit
 callCompiler_ = void <<< callCompiler
 
 data CompilerFailure
@@ -86,7 +87,7 @@ printCompilerErrors errors = do
       ]
 
 type CompilerArgs =
-  { version :: Maybe String
+  { version :: Maybe Version
   , cwd :: Maybe FilePath
   , command :: PursCommand
   }
@@ -114,8 +115,7 @@ callCompiler compilerArgs = do
         Just version ->
           append "purs-"
             $ String.replaceAll (String.Pattern ".") (String.Replacement "_")
-            $ fromMaybe version
-            $ String.stripPrefix (String.Pattern "v") version
+            $ Version.print version
 
     errorsCodec = CA.Record.object "CompilerErrors"
       { errors: CA.array compilerErrorCodec }
@@ -125,8 +125,13 @@ callCompiler compilerArgs = do
     Left { originalMessage }
       | originalMessage == Just (String.joinWith " " [ "spawn", purs, "ENOENT" ]) -> Left MissingCompiler
     Left { stdout, stderr } -> Left do
-      case parseJson errorsCodec stdout of
-        Left err -> UnknownError $ String.joinWith "\n" [ "\n[STDOUT]", stdout, "[STDERR]", stderr, "[DECODE ERROR]", CA.printJsonDecodeError err ]
+      let
+        output = case compilerArgs.version of
+          Nothing -> stdout
+          Just version | Right min <- Version.parse "0.14.0", version < min -> stderr
+          Just _ -> stdout
+      case parseJson errorsCodec output of
+        Left err -> UnknownError $ String.joinWith "\n" [ stdout, stderr, CA.printJsonDecodeError err ]
         Right ({ errors } :: { errors :: Array CompilerError })
           | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
           | otherwise -> CompilationError errors

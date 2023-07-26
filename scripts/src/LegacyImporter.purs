@@ -10,7 +10,6 @@ import Registry.App.Prelude
 
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
-import Control.Alternative (guard)
 import Control.Apply (lift2)
 import Data.Array as Array
 import Data.Codec.Argonaut as CA

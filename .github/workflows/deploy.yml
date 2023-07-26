@@ -1,0 +1,38 @@
+name: deploy
+
+on:
+  # This event is triggered once per non-Github Actions check-suite. If the only
+  # check suites we are running are garnix and Github Actions-based ones, this
+  # will be triggered only once, when garnix is done with all the builds for a
+  # commit.
+  check_suite:
+    types: [completed]
+
+jobs:
+  deploy:
+    # Deploys should only occur from the master branch
+    if: github.ref_name == 'master'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup SSH keys and known_hosts
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add - <<< "${{ secrets.PACCHETTIBOTTI_SSH_KEY }}"
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v4
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v2
+
+      - name: Deploy with Colmena
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          nix develop --command colmena apply

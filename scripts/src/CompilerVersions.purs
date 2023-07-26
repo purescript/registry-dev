@@ -170,7 +170,7 @@ determineCompilerVersionsForPackage package version = do
 
       result <- Run.liftAff $ Purs.callCompiler
         { command: Purs.Compile { globs: [ Path.concat [ formattedName, "src/**/*.purs" ] ] }
-        , version: Just (Version.print compiler)
+        , version: Just compiler
         , cwd: Just tmp
         }
 
