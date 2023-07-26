@@ -16,7 +16,6 @@ module Registry.App.API
 
 import Registry.App.Prelude
 
-import Control.Alternative as Alternative
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
@@ -177,7 +176,7 @@ packageSetUpdate payload = do
         prevVersion <- Map.lookup name prevPackages
         -- We want to fail if the existing version is greater than the
         -- new proposed version.
-        Alternative.guard (prevVersion > newVersion)
+        guard (prevVersion > newVersion)
         pure (Tuple name { old: prevVersion, new: newVersion })
 
   when (not (Array.null downgradedPackages)) do
@@ -707,7 +706,7 @@ validateResolutions manifest resolutions = do
         ]
 
       missingPackagesError = do
-        guardA (not Array.null missingPackages)
+        guard (not Array.null missingPackages)
         pure
           $ String.joinWith "\n  - "
           $ Array.cons "The build plan is missing dependencies that are listed in the manifest:"
@@ -724,7 +723,7 @@ validateResolutions manifest resolutions = do
         ]
 
       incorrectVersionsError = do
-        guardA (not Array.null incorrectVersions)
+        guard (not Array.null incorrectVersions)
         pure
           $ String.joinWith "\n  - "
           $ Array.cons "The build plan provides dependencies at versions outside the range listed in the manifest:"

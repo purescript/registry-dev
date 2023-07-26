@@ -5,7 +5,6 @@ module Registry.App.Prelude
   , class Functor2
   , formatPackageVersion
   , fromJust'
-  , guardA
   , map2
   , mapKeys
   , module Either
@@ -34,7 +33,7 @@ module Registry.App.Prelude
 import Prelude
 
 import Control.Alt ((<|>)) as Extra
-import Control.Alternative (class Alternative, empty)
+import Control.Alternative (guard) as Extra
 import Control.Monad.Except (ExceptT(..)) as Extra
 import Control.Monad.Trans.Class (lift) as Extra
 import Control.Parallel.Class as Parallel
@@ -147,9 +146,6 @@ mapKeys k = Map.fromFoldable <<< map (Extra.lmap k) <<< (Map.toUnfoldable :: _ -
 
 traverseKeys :: forall a b v. Ord a => Ord b => (a -> Either.Either String b) -> Extra.Map a v -> Either.Either String (Extra.Map b v)
 traverseKeys k = map Map.fromFoldable <<< Extra.traverse (Extra.ltraverse k) <<< (Map.toUnfoldable :: _ -> Array _)
-
-guardA :: forall f. Alternative f => Boolean -> f Unit
-guardA = if _ then pure unit else empty
 
 -- | Attempt an effectful computation with exponential backoff.
 withBackoff' :: forall a. Extra.Aff a -> Extra.Aff (Maybe.Maybe a)
