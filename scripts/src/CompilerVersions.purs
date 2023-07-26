@@ -1,16 +1,15 @@
 module Registry.Scripts.CompilerVersions where
 
+import Registry.App.Prelude
+
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
-import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Formatter.DateTime as Formatter.DateTime
-import Data.Function (flip)
 import Data.Map as Map
 import Data.Maybe as Maybe
 import Data.Semigroup.Foldable as Foldable
-import Data.Set as Set
 import Data.String as String
 import Data.Tuple (uncurry)
 import Debug (traceM)
@@ -31,7 +30,6 @@ import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
-import Registry.App.Prelude (type (+), type (~>), Aff, Effect, Either(..), LogVerbosity(..), Map, Maybe(..), PackageName, Tuple(..), Unit, Version, append, bind, discard, for, forWithIndex_, for_, formatPackageVersion, launchAff_, liftEffect, lmap, map, note, nowUTC, pure, scratchDir, unless, (#), ($), ($>), (*>), (<$>), (<<<), (<=<), (<>), (>>>))
 import Registry.App.Prelude as Json
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
@@ -206,12 +204,14 @@ determineCompilerVersionsForPackage package version mbCompiler = do
 
 determineAllCompilerVersions :: forall r. Maybe Version -> Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) (Map (Tuple PackageName Version) (Array Version))
 determineAllCompilerVersions mbCompiler = do
-  allManifests <- ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges <$> Registry.readAllManifests
+  allManifests <- Array.mapWithIndex Tuple <<< ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges <$> Registry.readAllManifests
   compilerVersions <- PursVersions.pursVersions
-  let compilersToCheck = Maybe.maybe compilerVersions NEA.singleton mbCompiler
+  let
+    compilersToCheck = Maybe.maybe compilerVersions NEA.singleton mbCompiler
+    total = Array.length allManifests
   supportedForVersion <- map Map.fromFoldable $ for compilersToCheck \compiler -> do
     Log.info $ "Starting checks for " <> Version.print compiler
-    Tuple compiler <$> Array.foldM (checkCompilation compiler) Map.empty allManifests
+    Tuple compiler <$> Array.foldM (checkCompilation compiler total) Map.empty allManifests
   pure $ Map.fromFoldableWith append do
     Tuple compiler supported <- Map.toUnfoldable supportedForVersion
     Tuple package versions <- Map.toUnfoldable supported
@@ -219,10 +219,10 @@ determineAllCompilerVersions mbCompiler = do
     [ Tuple (Tuple package version) [ compiler ] ]
   where
   -- Adds packages which compile with `version` to the `DependencyIndex`
-  checkCompilation :: Version -> DependencyIndex -> Manifest -> Run _ DependencyIndex
-  checkCompilation compiler prev manifest@(Manifest { name, version, dependencies }) = do
-    Log.info $ flip foldMapWithIndex (map Map.keys prev) \package versions -> PackageName.print package <> String.joinWith ", " (map Version.print (Set.toUnfoldable versions)) <> " "
-    Log.info $ "Checking " <> formatPackageVersion name version <> " with compiler purs@" <> Version.print compiler <> "..."
+  checkCompilation :: Version -> Int -> DependencyIndex -> Tuple Int Manifest -> Run _ DependencyIndex
+  checkCompilation compiler total prev (Tuple index manifest@(Manifest { name, version, dependencies })) = do
+    let progress = fold [ "[", Version.print compiler, " ", show (1 + index), "/", show total, "]" ]
+    Log.info $ progress <> " Checking " <> formatPackageVersion name version
     Log.debug $ "Solving " <> PackageName.print name <> "@" <> Version.print version
     case Solver.solve prev dependencies of
       Left unsolvable -> do
@@ -232,10 +232,10 @@ determineAllCompilerVersions mbCompiler = do
       Right resolutions -> do
         supported <- installAndBuildWithVersion compiler (Map.insert name version resolutions)
         if supported then do
-          Log.info $ "Including package version " <> formatPackageVersion name version
+          Log.debug $ "Including package version " <> formatPackageVersion name version
           pure $ Map.insertWith Map.union name (Map.singleton version dependencies) prev
         else do
-          Log.info $ "Skipping package version " <> formatPackageVersion name version
+          Log.debug $ "Skipping package version " <> formatPackageVersion name version
           pure prev
 
   installAndBuildWithVersion :: Version -> Map PackageName Version -> Run _ Boolean
