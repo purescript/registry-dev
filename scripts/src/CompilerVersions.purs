@@ -252,7 +252,7 @@ determineAllCompilerVersions = do
     Log.debug $ "Compiling with purs@" <> Version.print compiler <> " and globs " <> String.joinWith " " globs
     compilerOutput <- Run.liftAff $ Purs.callCompiler
       { command: Purs.Compile { globs }
-      , version: Just (Version.print compiler)
+      , version: Just compiler
       , cwd: Just tmp
       }
 
