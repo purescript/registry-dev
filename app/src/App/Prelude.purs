@@ -229,25 +229,24 @@ withRetry { timeout: Aff.Milliseconds timeout, retryOnCancel, retryOnFailure } a
       _ <- Aff.delay (Aff.Milliseconds (Int.toNumber ms))
       pure Cancelled
 
-    loop :: Int -> RetryResult err a -> Extra.Aff (RetryResult err a)
-    loop attempt = case _ of
+    retry :: Int -> RetryResult err a -> Extra.Aff (RetryResult err a)
+    retry attempt = case _ of
       Cancelled ->
         if retryOnCancel attempt then do
           let newTimeout = Int.floor timeout `Int.pow` (attempt + 1)
-          runAction action newTimeout
+          retry (attempt + 1) =<< runAction action newTimeout
         else
           pure Cancelled
       Failed err ->
         if retryOnFailure attempt err then do
           let newTimeout = Int.floor timeout `Int.pow` (attempt + 1)
-          runAction action newTimeout
+          retry (attempt + 1) =<< runAction action newTimeout
         else
           pure (Failed err)
       Succeeded result ->
         pure (Succeeded result)
 
-  result <- runAction action (Int.floor timeout)
-  loop 1 result
+  retry 1 =<< runAction action (Int.floor timeout)
 
 -- | Get the current time, standardizing on the UTC timezone to avoid ambiguity
 -- | when running on different machines.
