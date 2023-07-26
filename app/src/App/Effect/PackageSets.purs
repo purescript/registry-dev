@@ -5,7 +5,6 @@ module Registry.App.Effect.PackageSets where
 
 import Registry.App.Prelude
 
-import Control.Alternative (guard)
 import Data.Array as Array
 import Data.DateTime as DateTime
 import Data.Filterable as Filterable
@@ -308,9 +307,9 @@ handle env = case _ of
 commitMessage :: PackageSet -> ChangeSet -> Version -> String
 commitMessage (PackageSet set) accepted newVersion = String.joinWith "\n" $ fold
   [ [ "Release " <> Version.print newVersion <> " package set.\n" ]
-  , guardA (not (Array.null added)) $> (addedLines <> "\n")
-  , guardA (not (Array.null updated)) $> (updatedLines <> "\n")
-  , guardA (not (Array.null removed)) $> (removedLines <> "\n")
+  , guard (not (Array.null added)) $> (addedLines <> "\n")
+  , guard (not (Array.null updated)) $> (updatedLines <> "\n")
+  , guard (not (Array.null removed)) $> (removedLines <> "\n")
   ]
   where
   added = do
@@ -318,7 +317,7 @@ commitMessage (PackageSet set) accepted newVersion = String.joinWith "\n" $ fold
     version <- case change of
       Remove -> []
       Update version -> [ version ]
-    guardA (not (Map.member packageName set.packages))
+    guard (not (Map.member packageName set.packages))
     pure $ Tuple packageName version
 
   addedLines = "New packages:\n" <> String.joinWith "\n" do
@@ -339,7 +338,7 @@ commitMessage (PackageSet set) accepted newVersion = String.joinWith "\n" $ fold
 
   removed = do
     Tuple packageName change <- Map.toUnfoldable accepted
-    guardA (change == Remove)
+    guard (change == Remove)
     version <- maybe [] pure (Map.lookup packageName set.packages)
     pure $ Tuple packageName version
 

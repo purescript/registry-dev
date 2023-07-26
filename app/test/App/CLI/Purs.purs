@@ -2,7 +2,6 @@ module Test.Registry.App.CLI.Purs (spec) where
 
 import Registry.App.Prelude
 
-import Data.Array as Array
 import Data.Foldable (traverse_)
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
