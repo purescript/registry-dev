@@ -8,7 +8,6 @@ module Registry.App.Prelude
   , defaultRetry
   , formatPackageVersion
   , fromJust'
-  , guardA
   , map2
   , mapKeys
   , module Either
@@ -42,7 +41,7 @@ import Affjax as Affjax
 import Affjax.Node as Affjax.Node
 import Affjax.StatusCode (StatusCode(..))
 import Control.Alt ((<|>)) as Extra
-import Control.Alternative (class Alternative, empty)
+import Control.Alternative (guard) as Extra
 import Control.Monad.Except (ExceptT(..)) as Extra
 import Control.Monad.Trans.Class (lift) as Extra
 import Control.Parallel.Class as Parallel

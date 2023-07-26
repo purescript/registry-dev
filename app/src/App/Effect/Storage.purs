@@ -138,7 +138,7 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
       $ resources
       >>= \resource -> do
         { name: parsedName, version } <- Array.fromFoldable $ parsePackagePath resource
-        version <$ guardA (name == parsedName)
+        version <$ guard (name == parsedName)
 
   Download name version path reply -> map (map reply) Except.runExcept do
     let package = formatPackageVersion name version

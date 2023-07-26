@@ -179,7 +179,7 @@ findRecentUploads limit = do
       versions <- Array.fromFoldable $ NonEmptyArray.fromArray do
         Tuple version { publishedTime } <- Map.toUnfoldable metadata.published
         let diff = DateTime.diff now publishedTime
-        guardA (diff <= limit)
+        guard (diff <= limit)
         pure version
       pure (Tuple name versions)
 
