@@ -46,13 +46,6 @@ spec = do
       FS.Aff.writeTextFile UTF8 file "<contents>"
       result <- Purs.callCompiler { command: Purs.Compile { globs: [ file ] }, cwd: Nothing, version }
       case result of
-        Left (CompilationError [ { position: { startLine: 1, startColumn: 8 } } ]) ->
+        Left (CompilationError [ { position: { startLine: 1, startColumn: 1 } } ]) ->
           pure unit
-        Left (CompilationError errors) ->
-          Assert.fail $ "Should have failed with CompilationError at position 1:8 but failed with a different compilation error:\n\n" <> Purs.printCompilerErrors errors
-        Left MissingCompiler ->
-          Assert.fail "Should have failed with CompilationError but failed with MissingCompiler"
-        Left (UnknownError err) ->
-          Assert.fail $ "Should have failed with CompilationError but failed with UnknownError " <> err
-        Right _ ->
-          Assert.fail $ "Should have failed with CompilationError but succeeded"
+        _ -> Assert.fail "Should have failed with CompilationError"

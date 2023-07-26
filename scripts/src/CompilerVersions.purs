@@ -201,7 +201,7 @@ determineCompilerVersionsForPackage package version = do
 
 determineAllCompilerVersions :: forall r. Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) (Map (Tuple PackageName Version) (Array Version))
 determineAllCompilerVersions = do
-  allManifests <- ManifestIndex.toSortedArray <$> Registry.readAllManifests
+  allManifests <- ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges <$> Registry.readAllManifests
   compilerVersions <- PursVersions.pursVersions
   supportedForVersion <- map Map.fromFoldable $ for (Just (NEA.last compilerVersions)) \compiler -> do
     Log.info $ "Starting checks for " <> Version.print compiler

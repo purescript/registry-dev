@@ -227,7 +227,7 @@ runLegacyImport mode logs = do
   Log.info $ formatImportStats $ calculateImportStats legacyRegistry importedIndex
 
   Log.info "Sorting packages for upload..."
-  let allIndexPackages = ManifestIndex.toSortedArray importedIndex.registryIndex
+  let allIndexPackages = ManifestIndex.toSortedArray ManifestIndex.IgnoreRanges importedIndex.registryIndex
 
   Log.info "Removing packages that previously failed publish"
   indexPackages <- allIndexPackages # Array.filterA \(Manifest { name, version }) ->

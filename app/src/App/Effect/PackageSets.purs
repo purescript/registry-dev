@@ -126,7 +126,7 @@ handle env = case _ of
     index <- Registry.readAllManifests
 
     let
-      sortedPackages = ManifestIndex.toSortedArray index
+      sortedPackages = ManifestIndex.toSortedArray ManifestIndex.IgnoreRanges index
       sortedBatch = sortedPackages # Array.mapMaybe \(Manifest { name, version }) -> do
         update <- Map.lookup name changes
         case update of
