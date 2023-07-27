@@ -72,12 +72,15 @@ printCompilerErrors errors = do
   String.joinWith "\n" printed
   where
   printCompilerError :: CompilerError -> String
-  printCompilerError { moduleName, filename, message, errorLink } =
+  printCompilerError { moduleName, filename, message, errorLink, position } =
     String.joinWith "\n"
-      [ foldMap (\name -> "  Module: " <> name <> "\n") moduleName <> "  File: " <> filename
+      [ foldMap (\name -> "  Module: " <> name <> "\n") moduleName <> "  File: " <> filename <> "\n"
       , "  Message:"
       , ""
-      , "  " <> message
+      , message
+      -- The message has a newline, so no need for another.
+      , "  Position:"
+      , "  " <> show position.startLine <> ":" <> show position.startColumn <> " - " <> show position.endLine <> ":" <> show position.endColumn
       , ""
       , "  Error details:"
       , "  " <> errorLink

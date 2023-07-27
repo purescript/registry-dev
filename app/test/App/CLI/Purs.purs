@@ -46,5 +46,6 @@ spec = do
       FS.Aff.writeTextFile UTF8 file "<contents>"
       result <- Purs.callCompiler { command: Purs.Compile { globs: [ file ] }, cwd: Nothing, version }
       case result of
-        Left (CompilationError [ { position: { startLine: 1, startColumn: 1 } } ]) -> pure unit
+        Left (CompilationError [ { position: { startLine: 1, startColumn: 1 } } ]) ->
+          pure unit
         _ -> Assert.fail "Should have failed with CompilationError"

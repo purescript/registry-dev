@@ -12,6 +12,7 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
+-- | Returns a sorted array of PureScript compilers supported by the Registry
 pursVersions :: forall r. Run (EXCEPT String + AFF + r) (NonEmptyArray Version)
 pursVersions = do
   result <- Run.liftAff $ _.result =<< Execa.execa "purs-versions" [] identity
@@ -23,4 +24,4 @@ pursVersions = do
 
   case NEA.fromArray success of
     Nothing -> Except.throw "No purs versions"
-    Just arr -> pure arr
+    Just arr -> pure $ NEA.sort arr
