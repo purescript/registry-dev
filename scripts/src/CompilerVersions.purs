@@ -7,13 +7,15 @@ import ArgParse.Basic as Arg
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as Codec.Common
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.Codec.Argonaut.Variant as CA.Variant
+import Data.Exists as Exists
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
-import Data.Maybe as Maybe
 import Data.Profunctor as Profunctor
 import Data.Semigroup.Foldable as Semigroup.Foldable
+import Data.Set as Set
 import Data.String as String
 import Data.Variant as Variant
 import Effect.Class.Console as Console
@@ -24,6 +26,7 @@ import Registry.App.CLI.Git as Git
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.CLI.Tar as Tar
+import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
@@ -50,9 +53,15 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
+data TargetCompiler
+  = AllCompilers
+  | OneCompiler Version
+
+derive instance Eq TargetCompiler
+
 type Arguments =
   { package :: Maybe (Tuple PackageName Version)
-  , compiler :: Maybe Version
+  , compiler :: TargetCompiler
   }
 
 parser :: ArgParser Arguments
@@ -65,11 +74,11 @@ parser = Arg.fromRecord
           # map Just
       ]
   , compiler: Arg.choose "input (--all-compilers or --compiler)"
-      [ Arg.flag [ "--all-compilers" ] "Check all compiler versions" $> Nothing
+      [ Arg.flag [ "--all-compilers" ] "Check all compiler versions" $> AllCompilers
       , Arg.argument [ "--compiler" ]
           "Check compiler versions for specific package"
           # Arg.unformat "VERSION" Version.parse
-          # map Just
+          # map OneCompiler
       ]
   }
   where
@@ -135,57 +144,66 @@ main = launchAff_ do
         >>> Registry.interpret (Registry.handle registryEnv)
         >>> Storage.interpret (Storage.handleReadOnly cache)
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+        >>> Cache.interpret _compilationCache (Cache.handleFs cache :: Cache CompilationCache ~> _)
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
         >>> Run.runBaseAff'
 
   case arguments.package of
-    Just (Tuple package version) -> interpret $ determineCompilerVersionsForPackage package version arguments.compiler
+    Just (Tuple package version) ->
+      interpret $ compilersForPackageVersion package version arguments.compiler
     Nothing -> do
-      { failures, results } <- interpret $ determineAllCompilerVersions arguments.compiler
+      { failures, results } <- interpret $ compilersForAllPackages arguments.compiler
       let resultsDir = Path.concat [ scratchDir, "results" ]
       FS.Extra.ensureDirectory resultsDir
       let
         resultsFile = "compiler-versions-results-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".json"
         failuresFile = "compiler-versions-failures-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".json"
-
       writeJsonFile (Internal.Codec.packageMap (Internal.Codec.versionMap (CA.array Version.codec))) (Path.concat [ resultsDir, resultsFile ]) results
       writeJsonFile (Internal.Codec.versionMap (CA.array failureCodec)) (Path.concat [ resultsDir, failuresFile ]) failures
 
-determineCompilerVersionsForPackage :: forall r. PackageName -> Version -> Maybe Version -> Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) Unit
-determineCompilerVersionsForPackage package version mbCompiler = do
-  allManifests <- map ManifestIndex.toMap Registry.readAllManifests
-  compilerVersions <- PursVersions.pursVersions
-  Log.debug $ "Checking Manifest Index for " <> formatPackageVersion package version
-  Manifest { dependencies } <- Except.rethrow $ (note "Invalid Version" <<< Map.lookup version <=< note "Invalid PackageName" <<< Map.lookup package) allManifests
+compilersForPackageVersion
+  :: forall r
+   . PackageName
+  -> Version
+  -> TargetCompiler
+  -> Run (REGISTRY + STORAGE + LOG + EXCEPT String + AFF + EFFECT + r) Unit
+compilersForPackageVersion package version target = do
+  allManifests <- Registry.readAllManifests
+  supportedCompilers <- PursVersions.pursVersions
+  Log.debug $ "Checking manifest index for " <> formatPackageVersion package version
+  Manifest { dependencies } <- Except.rethrow (note "No entry found in manifest index." (ManifestIndex.lookup package version allManifests))
+  -- FIXME: Support packages with dependencies once we have compilers versions
+  -- in metadata.
   unless (Map.isEmpty dependencies) do
     Log.error "Cannot check package that has dependencies."
     Except.throw "Cannot check package that has dependencies."
-  tmp <- Run.liftAff Tmp.mkTmpDir
+
+  tmp <- Run.liftEffect Tmp.mkTmpDir
   let formattedName = formatPackageVersion package version
   let extractedName = PackageName.print package <> "-" <> Version.print version
   let tarballName = extractedName <> ".tar.gz"
   let tarballPath = Path.concat [ tmp, tarballName ]
   let extractedPath = Path.concat [ tmp, extractedName ]
   let installPath = Path.concat [ tmp, formattedName ]
+
   Log.debug $ "Installing " <> formattedName
   Storage.download package version tarballPath
+  Run.liftEffect $ Tar.extract { cwd: tmp, archive: tarballName }
   Run.liftAff do
-    Tar.extract { cwd: tmp, archive: tarballName }
     FS.Extra.remove tarballPath
     FS.Aff.rename extractedPath installPath
+
   Log.debug $ "Installed " <> formatPackageVersion package version
   Log.debug $ "Finding supported compiler versions for " <> formatPackageVersion package version
 
   let
     checkCompiler compiler = do
       Log.debug $ "Trying to compile " <> formatPackageVersion package version <> " with purs@" <> Version.print compiler
-
       result <- Run.liftAff $ Purs.callCompiler
         { command: Purs.Compile { globs: [ Path.concat [ formattedName, "src/**/*.purs" ] ] }
         , version: Just compiler
         , cwd: Just tmp
         }
-
       case result of
         Left _ -> do
           Log.debug $ "Failed to compile " <> formatPackageVersion package version <> " with purs@" <> Version.print compiler
@@ -203,7 +221,9 @@ determineCompilerVersionsForPackage package version mbCompiler = do
         else
           goCompilerVersions supported tail
 
-  supported <- goCompilerVersions [] (Maybe.maybe (Array.sort (NEA.toArray compilerVersions)) Array.singleton mbCompiler)
+  supported <- goCompilerVersions [] $ case target of
+    AllCompilers -> NEA.toArray supportedCompilers
+    OneCompiler compiler -> [ compiler ]
 
   if Array.null supported then do
     Log.error $ "Could not find supported compiler versions for " <> formatPackageVersion package version
@@ -211,57 +231,17 @@ determineCompilerVersionsForPackage package version mbCompiler = do
   else
     Log.info $ "Found supported compiler versions for " <> formatPackageVersion package version <> ": " <> Array.intercalate ", " (map Version.print supported)
 
-data FailureReason
-  = CannotSolve
-  | CannotCompile
-  | UnknownReason
-
-failureReasonCodec :: JsonCodec FailureReason
-failureReasonCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
-  { cannotSolve: Left unit
-  , cannotCompile: Left unit
-  , unknownReason: Left unit
-  }
-  where
-  toVariant = case _ of
-    CannotSolve -> Variant.inj (Proxy :: _ "cannotSolve") unit
-    CannotCompile -> Variant.inj (Proxy :: _ "cannotCompile") unit
-    UnknownReason -> Variant.inj (Proxy :: _ "unknownReason") unit
-
-  fromVariant = Variant.match
-    { cannotSolve: \_ -> CannotSolve
-    , cannotCompile: \_ -> CannotCompile
-    , unknownReason: \_ -> UnknownReason
-    }
-
-type Failure =
-  { name :: PackageName
-  , version :: Version
-  , reason :: FailureReason
-  }
-
-failureCodec :: JsonCodec Failure
-failureCodec = CA.Record.object "Failure"
-  { name: PackageName.codec
-  , version: Version.codec
-  , reason: failureReasonCodec
-  }
-
-type CompilerVersionResults =
-  { results :: Map PackageName (Map Version (Array Version))
-  , failures :: Map Version (Array Failure)
-  }
-
-determineAllCompilerVersions :: forall r. Maybe Version -> Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) CompilerVersionResults
-determineAllCompilerVersions mbCompiler = do
-  allManifests <- Array.mapWithIndex Tuple <<< ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges <$> Registry.readAllManifests
-  compilerVersions <- PursVersions.pursVersions
-  let
-    compilersToCheck = Maybe.maybe compilerVersions NEA.singleton mbCompiler
-    total = Array.length allManifests
+compilersForAllPackages :: forall r. TargetCompiler -> Run (COMPILATION_CACHE + REGISTRY + STORAGE + LOG + EXCEPT String + AFF + EFFECT + r) CompilerVersionResults
+compilersForAllPackages target = do
+  index <- Registry.readAllManifests
+  let sortedManifests = Array.mapWithIndex Tuple (ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges index)
+  let manifestCount = Array.length sortedManifests
+  compilersToCheck <- case target of
+    AllCompilers -> PursVersions.pursVersions
+    OneCompiler version -> pure (NEA.singleton version)
   supportedForVersion <- map Map.fromFoldable $ for compilersToCheck \compiler -> do
-    Log.info $ "Starting checks for " <> Version.print compiler
-    Tuple compiler <$> Array.foldM (checkCompilation compiler total) { failures: [], results: Map.empty } allManifests
+    Log.info $ "Starting checks for compiler " <> Version.print compiler
+    Tuple compiler <$> Array.foldM (checkCompilation compiler manifestCount) { failures: [], results: Map.empty } sortedManifests
 
   let
     results = Map.fromFoldableWith (Map.unionWith append) do
@@ -279,21 +259,44 @@ determineAllCompilerVersions mbCompiler = do
   checkCompilation compiler total { failures: prevFailures, results: prevResults } (Tuple index manifest@(Manifest { name, version, dependencies })) = do
     let progress = fold [ "[", Version.print compiler, " ", show (1 + index), "/", show total, "]" ]
     Log.info $ progress <> " Checking " <> formatPackageVersion name version
-    Log.debug $ "Solving " <> PackageName.print name <> "@" <> Version.print version
-    case Solver.solve prevResults dependencies of
-      Left unsolvable -> do
-        Log.debug $ "Could not solve " <> formatPackageVersion name version <> " with manifest " <> printJson Manifest.codec manifest
-        Log.debug $ Semigroup.Foldable.foldMap1 (append "\n" <<< Solver.printSolverError) unsolvable
-        pure { failures: prevFailures <> [ { name, version, reason: CannotSolve } ], results: prevResults }
-      Right resolutions -> do
-        supported <- installAndBuildWithVersion compiler (Map.insert name version resolutions)
-        case supported of
-          Nothing -> do
-            Log.debug $ "Including package version " <> formatPackageVersion name version
-            pure $ { failures: prevFailures, results: Map.insertWith Map.union name (Map.singleton version dependencies) prevResults }
-          Just reason -> do
-            Log.debug $ "Skipping package version " <> formatPackageVersion name version
-            pure $ { failures: prevFailures <> [ { name, version, reason } ], results: prevResults }
+
+    let
+      successResult = { failures: prevFailures, results: Map.insertWith Map.union name (Map.singleton version dependencies) prevResults }
+      failResult reason = { failures: prevFailures <> [ { name, version, reason } ], results: prevResults }
+      runCheckWithCache prevCache = do
+        Log.debug $ "Solving " <> PackageName.print name <> "@" <> Version.print version
+        case Solver.solve prevResults dependencies of
+          Left unsolvable -> do
+            Log.debug $ "Could not solve " <> formatPackageVersion name version <> " with manifest " <> printJson Manifest.codec manifest
+            Log.debug $ Semigroup.Foldable.foldMap1 (append "\n" <<< Solver.printSolverError) unsolvable
+            Cache.put _compilationCache (CompileResult name version) $ case prevCache of
+              Nothing -> { failed: Map.singleton compiler CannotSolve, succeeded: Set.empty }
+              Just prev -> prev { failed = Map.insert compiler CannotSolve prev.failed }
+            pure $ failResult CannotSolve
+          Right resolutions -> do
+            supported <- installAndBuildWithVersion compiler (Map.insert name version resolutions)
+            case supported of
+              Nothing -> do
+                Log.debug $ "Including package version " <> formatPackageVersion name version
+                Cache.put _compilationCache (CompileResult name version) $ case prevCache of
+                  Nothing -> { failed: Map.empty, succeeded: Set.singleton compiler }
+                  Just prev -> prev { succeeded = Set.insert compiler prev.succeeded }
+                pure successResult
+              Just reason -> do
+                Log.debug $ "Skipping package version " <> formatPackageVersion name version
+                Cache.put _compilationCache (CompileResult name version) $ case prevCache of
+                  Nothing -> { failed: Map.singleton compiler reason, succeeded: Set.empty }
+                  Just prev -> prev { failed = Map.insert compiler reason prev.failed }
+                pure $ failResult reason
+
+    Cache.get _compilationCache (CompileResult name version) >>= case _ of
+      Just { failed } | Just reason <- Map.lookup compiler failed -> do
+        Log.debug "Got failure from cache."
+        pure $ failResult reason
+      Just { succeeded } | Set.member compiler succeeded -> do
+        Log.debug "Got success from cache."
+        pure successResult
+      cache -> runCheckWithCache cache
 
   installAndBuildWithVersion :: Version -> Map PackageName Version -> Run _ (Maybe FailureReason)
   installAndBuildWithVersion compiler resolutions = do
@@ -333,3 +336,79 @@ determineAllCompilerVersions mbCompiler = do
       Right _ -> do
         Log.debug $ "Successfully compiled with purs@" <> Version.print compiler
         pure Nothing
+
+type Failure =
+  { name :: PackageName
+  , version :: Version
+  , reason :: FailureReason
+  }
+
+failureCodec :: JsonCodec Failure
+failureCodec = CA.Record.object "Failure"
+  { name: PackageName.codec
+  , version: Version.codec
+  , reason: failureReasonCodec
+  }
+
+type CompilerVersionResults =
+  { results :: Map PackageName (Map Version (Array Version))
+  , failures :: Map Version (Array Failure)
+  }
+
+data FailureReason
+  = CannotSolve
+  | CannotCompile
+  | UnknownReason
+
+derive instance Eq FailureReason
+
+failureReasonCodec :: JsonCodec FailureReason
+failureReasonCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
+  { cannotSolve: Left unit
+  , cannotCompile: Left unit
+  , unknownReason: Left unit
+  }
+  where
+  toVariant = case _ of
+    CannotSolve -> Variant.inj (Proxy :: _ "cannotSolve") unit
+    CannotCompile -> Variant.inj (Proxy :: _ "cannotCompile") unit
+    UnknownReason -> Variant.inj (Proxy :: _ "unknownReason") unit
+
+  fromVariant = Variant.match
+    { cannotSolve: \_ -> CannotSolve
+    , cannotCompile: \_ -> CannotCompile
+    , unknownReason: \_ -> UnknownReason
+    }
+
+type CompilationResults =
+  { failed :: Map Version FailureReason
+  , succeeded :: Set Version
+  }
+
+compilationResultsCodec :: JsonCodec CompilationResults
+compilationResultsCodec = CA.Record.object "CompilationResults"
+  { failed: Internal.Codec.versionMap failureReasonCodec
+  , succeeded: Codec.Common.set Version.codec
+  }
+
+-- | A key type for caching compilation results
+data CompilationCache (c :: Type -> Type -> Type) a = CompileResult PackageName Version (c CompilationResults a)
+
+instance Functor2 c => Functor (CompilationCache c) where
+  map k = case _ of
+    CompileResult name version a -> CompileResult name version (map2 k a)
+
+instance MemoryEncodable CompilationCache where
+  encodeMemory = case _ of
+    CompileResult name version next ->
+      Exists.mkExists $ Key ("CompileResult__" <> PackageName.print name <> "-" <> Version.print version) next
+
+instance FsEncodable CompilationCache where
+  encodeFs = case _ of
+    CompileResult name version next ->
+      Exists.mkExists $ AsJson ("CompileResult__" <> PackageName.print name <> "-" <> Version.print version) compilationResultsCodec next
+
+type COMPILATION_CACHE r = (compilationCache :: Cache CompilationCache | r)
+
+_compilationCache :: Proxy "compilationCache"
+_compilationCache = Proxy
