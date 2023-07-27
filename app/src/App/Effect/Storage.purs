@@ -33,6 +33,7 @@ import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.Constants as Constants
+import Registry.Foreign.S3 (Space)
 import Registry.Foreign.S3 as S3
 import Registry.PackageName as PackageName
 import Registry.Version as Version
@@ -125,20 +126,10 @@ handleS3 :: forall r a. S3Env -> Storage a -> Run (LOG + AFF + EFFECT + r) a
 handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case _ of
   Query name reply -> map (map reply) Except.runExcept do
     s3 <- connectS3 env.s3
-    resources <- Run.liftAff (withRetryOnTimeout (Aff.attempt (S3.listObjects s3 { prefix: PackageName.print name <> "/" }))) >>= case _ of
-      Cancelled -> do
-        Log.error $ "Failed to list S3 objects for " <> PackageName.print name <> " because the process timed out."
-        Except.throw $ "Could not list resources for " <> PackageName.print name <> " due to an error connecting to the storage backend."
-      Failed err -> do
-        Log.error $ "Failed to list S3 objects for " <> PackageName.print name <> " due to an exception: " <> Aff.message err
-        Except.throw $ "Could not list resources for " <> PackageName.print name <> " due to an error connecting to the storage backend."
-      Succeeded objects ->
-        pure $ map _.key objects
-    pure $ Set.fromFoldable
-      $ resources
-      >>= \resource -> do
-        { name: parsedName, version } <- Array.fromFoldable $ parsePackagePath resource
-        version <$ guard (name == parsedName)
+    resources <- Except.rethrow =<< Run.liftAff (withRetryListObjects s3 name)
+    pure $ Set.fromFoldable $ resources >>= \resource -> do
+      { name: parsedName, version } <- Array.fromFoldable $ parsePackagePath resource
+      version <$ guard (name == parsedName)
 
   Download name version path reply -> map (map reply) Except.runExcept do
     let package = formatPackageVersion name version
@@ -169,16 +160,7 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
 
     Log.debug $ "Read file for " <> package <> ", now uploading to " <> packagePath <> "..."
     s3 <- connectS3 env.s3
-    published <- Run.liftAff (withRetryOnTimeout (Aff.attempt (S3.listObjects s3 { prefix: PackageName.print name <> "/" }))) >>= case _ of
-      Cancelled -> do
-        Log.error $ "Failed to list S3 objects for " <> PackageName.print name <> " because the process timed out."
-        Except.throw $ "Could not upload package " <> package <> " due to an error connecting to the storage backend."
-      Failed error -> do
-        Log.error $ "Failed to list S3 objects for " <> PackageName.print name <> " because of an exception: " <> Aff.message error
-        Except.throw $ "Could not upload package " <> package <> " due to an error connecting to the storage backend."
-      Succeeded objects ->
-        pure $ map _.key objects
-
+    published <- Except.rethrow =<< Run.liftAff (withRetryListObjects s3 name)
     if Array.elem packagePath published then do
       Log.error $ packagePath <> " already exists on S3."
       Except.throw $ "Could not upload " <> package <> " because a package at " <> formatPackageUrl name version <> " already exists."
@@ -202,16 +184,7 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
 
     Log.debug $ "Deleting " <> package
     s3 <- connectS3 env.s3
-    published <- Run.liftAff (withRetryOnTimeout (Aff.attempt (S3.listObjects s3 { prefix: PackageName.print name <> "/" }))) >>= case _ of
-      Cancelled -> do
-        Log.error $ "Failed to delete " <> package <> " because the process timed out when attempting to list objects at " <> packagePath <> " from S3."
-        Except.throw $ "Could not delete " <> package <> " from the storage backend."
-      Failed error -> do
-        Log.error $ "Failed to delete " <> package <> " because of an exception: " <> Aff.message error
-        Except.throw $ "Could not delete package " <> package <> " due to an error connecting to the storage backend."
-      Succeeded objects ->
-        pure $ map _.key objects
-
+    published <- Except.rethrow =<< Run.liftAff (withRetryListObjects s3 name)
     if Array.elem packagePath published then do
       Log.debug $ "Deleting release from the bucket at path " <> packagePath
       let deleteParams = { key: packagePath }
@@ -291,6 +264,19 @@ downloadS3 name version = do
       Log.debug $ "Successfully downloaded " <> package <> " into a buffer."
       buffer :: Buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
       pure buffer
+
+withRetryListObjects :: Space -> PackageName -> Aff (Either String (Array String))
+withRetryListObjects s3 name = do
+  let package = PackageName.print name
+  result <- withRetry (defaultRetry { retryOnFailure = \attempt _ -> attempt < 3 }) do
+    Aff.attempt (S3.listObjects s3 { prefix: package <> "/" })
+  pure $ case result of
+    Cancelled -> do
+      Left $ "Failed to list S3 objects for " <> package <> " because the process timed out."
+    Failed error -> do
+      Left $ "Failed to list S3 objects for " <> package <> " because of an exception: " <> Aff.message error
+    Succeeded objects ->
+      pure $ map _.key objects
 
 -- | A key type for the storage cache. Only supports packages identified by
 -- | their name and version.
