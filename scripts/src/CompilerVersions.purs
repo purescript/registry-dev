@@ -13,11 +13,9 @@ import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.Maybe as Maybe
 import Data.Profunctor as Profunctor
-import Data.Semigroup.Foldable as Foldable
+import Data.Semigroup.Foldable as Semigroup.Foldable
 import Data.String as String
-import Data.Tuple (uncurry)
 import Data.Variant as Variant
-import Debug (traceM)
 import Effect.Class.Console as Console
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
@@ -35,11 +33,10 @@ import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
-import Registry.App.Prelude as Json
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
-import Registry.Internal.Codec as Codec
+import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
 import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
@@ -151,8 +148,8 @@ main = launchAff_ do
         resultsFile = "compiler-versions-results-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".json"
         failuresFile = "compiler-versions-failures-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".json"
 
-      writeJsonFile (Codec.packageMap (Codec.versionMap (CA.array Version.codec))) (Path.concat [ resultsDir, resultsFile ]) results
-      writeJsonFile (Codec.versionMap (CA.array failureCodec)) (Path.concat [ resultsDir, failuresFile ]) failures
+      writeJsonFile (Internal.Codec.packageMap (Internal.Codec.versionMap (CA.array Version.codec))) (Path.concat [ resultsDir, resultsFile ]) results
+      writeJsonFile (Internal.Codec.versionMap (CA.array failureCodec)) (Path.concat [ resultsDir, failuresFile ]) failures
 
 determineCompilerVersionsForPackage :: forall r. PackageName -> Version -> Maybe Version -> Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) Unit
 determineCompilerVersionsForPackage package version mbCompiler = do
@@ -250,7 +247,12 @@ failureCodec = CA.Record.object "Failure"
   , reason: failureReasonCodec
   }
 
-determineAllCompilerVersions :: forall r. Maybe Version -> Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) { results :: Map PackageName (Map Version (Array Version)), failures :: Map Version (Array Failure) }
+type CompilerVersionResults =
+  { results :: Map PackageName (Map Version (Array Version))
+  , failures :: Map Version (Array Failure)
+  }
+
+determineAllCompilerVersions :: forall r. Maybe Version -> Run (AFF + EFFECT + REGISTRY + EXCEPT String + LOG + STORAGE + r) CompilerVersionResults
 determineAllCompilerVersions mbCompiler = do
   allManifests <- Array.mapWithIndex Tuple <<< ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges <$> Registry.readAllManifests
   compilerVersions <- PursVersions.pursVersions
@@ -280,8 +282,8 @@ determineAllCompilerVersions mbCompiler = do
     Log.debug $ "Solving " <> PackageName.print name <> "@" <> Version.print version
     case Solver.solve prevResults dependencies of
       Left unsolvable -> do
-        Log.debug $ "Could not solve " <> formatPackageVersion name version <> " with manifest " <> Json.printJson Manifest.codec manifest
-        Log.debug $ Foldable.foldMap1 (append "\n" <<< Solver.printSolverError) unsolvable
+        Log.debug $ "Could not solve " <> formatPackageVersion name version <> " with manifest " <> printJson Manifest.codec manifest
+        Log.debug $ Semigroup.Foldable.foldMap1 (append "\n" <<< Solver.printSolverError) unsolvable
         pure { failures: prevFailures <> [ { name, version, reason: CannotSolve } ], results: prevResults }
       Right resolutions -> do
         supported <- installAndBuildWithVersion compiler (Map.insert name version resolutions)
