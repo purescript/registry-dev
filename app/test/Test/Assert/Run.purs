@@ -292,9 +292,11 @@ handleSourceMock env = case _ of
                 exec [ "init" ]
                 exec [ "config", "user.name", "test-user" ]
                 exec [ "config", "user.email", "test-user@aol.com" ]
+                exec [ "config", "commit.gpgSign", "false" ]
+                exec [ "config", "tag.gpgSign", "false" ]
                 exec [ "add", "." ]
-                exec [ "commit", "--no-sign", "-m", "Initial commit" ]
-                exec [ "tag", "--no-sign", "-m", ref, ref ]
+                exec [ "commit", "-m", "Initial commit" ]
+                exec [ "tag", "-m", ref, ref ]
 
               PursPublish ->
                 Except.throw "Tests are not set up for 'PursPublish' and must be fixed."
