@@ -294,17 +294,19 @@
               exit 0
             ''
           else let
-            serverPort = 8080;
             stateDir = "/var/lib/registry-server";
+            serverPort = 8080;
             githubPort = 9001;
             bucketPort = 9002;
             s3Port = 9003;
+            pursuitPort = 9004;
 
             envFile = pkgs.writeText ".env" ''
               # Values we need to explicitly set
               GITHUB_API_URL=http://localhost:${toString githubPort}
               S3_API_URL=http://localhost:${toString s3Port}
               S3_BUCKET_URL=http://localhost:${toString bucketPort}
+              PURSUIT_API_URL=http://localhost:${toString pursuitPort}
 
               # Secrets, which we'll use dummy values for in the integration test
               SPACES_KEY="abcxyz"
@@ -318,7 +320,13 @@
               name = "server integration test";
               nodes = {
                 registry = {
-                  imports = [./nix/wiremock.nix ./nix/module.nix];
+                  imports = [
+                    (import ./nix/wiremock.nix {service = "github-api";})
+                    (import ./nix/wiremock.nix {service = "s3-api";})
+                    (import ./nix/wiremock.nix {service = "bucket-api";})
+                    (import ./nix/wiremock.nix {service = "pursuit-api";})
+                    ./nix/module.nix
+                  ];
                   config = {
                     nixpkgs.overlays = [
                       # We need to ensure that the server is using the mock git
@@ -338,14 +346,7 @@
                       stateDir = stateDir;
                     };
 
-                    # We need multiple instances of wiremock (one per external
-                    # API), and this is difficult to do with NixOS modules. The
-                    # standard alternative approach is to use containers.
-                    # https://nixos.org/manual/nixos/stable/index.html#sec-declarative-containers
-                    #
-                    # Once I get the GitHub API working I can move on to the S3
-                    # API and the S3 bucket.
-                    services.wiremock = {
+                    services.wiremock-github-api = {
                       enable = true;
                       port = githubPort;
                       mappings = [
@@ -356,8 +357,119 @@
                           };
                           response = {
                             status = 200;
-                            headers."Content-Type" = "text/plain";
-                            body = "Literal text to put in the body";
+                            headers."Content-Type" = "application/json";
+                            jsonBody = {
+                              type = "file";
+                              encoding = "base64";
+                              content = ''ewogICJuYW1lIjogInB1cmVzY3JpcHQtZWZmZWN0IiwKICAiaG9tZXBhZ2Ui\nOiAiaHR0cHM6Ly9naXRodWIuY29tL3B1cmVzY3JpcHQvcHVyZXNjcmlwdC1l\nZmZlY3QiLAogICJsaWNlbnNlIjogIkJTRC0zLUNsYXVzZSIsCiAgInJlcG9z\naXRvcnkiOiB7CiAgICAidHlwZSI6ICJnaXQiLAogICAgInVybCI6ICJodHRw\nczovL2dpdGh1Yi5jb20vcHVyZXNjcmlwdC9wdXJlc2NyaXB0LWVmZmVjdC5n\naXQiCiAgfSwKICAiaWdub3JlIjogWwogICAgIioqLy4qIiwKICAgICJib3dl\ncl9jb21wb25lbnRzIiwKICAgICJub2RlX21vZHVsZXMiLAogICAgIm91dHB1\ndCIsCiAgICAidGVzdCIsCiAgICAiYm93ZXIuanNvbiIsCiAgICAicGFja2Fn\nZS5qc29uIgogIF0sCiAgImRlcGVuZGVuY2llcyI6IHsKICAgICJwdXJlc2Ny\naXB0LXByZWx1ZGUiOiAiXjYuMC4wIgogIH0KfQo=\n'';
+                            };
+                          };
+                        }
+                        {
+                          request = {
+                            method = "GET";
+                            url = "/repos/purescript/purescript-effect/contents/LICENSE?ref=v4.0.0";
+                          };
+                          response = {
+                            status = 200;
+                            headers."Content-Type" = "application/json";
+                            jsonBody = {
+                              type = "file";
+                              encoding = "base64";
+                              content = ''Q29weXJpZ2h0IDIwMTggUHVyZVNjcmlwdAoKUmVkaXN0cmlidXRpb24gYW5k\nIHVzZSBpbiBzb3VyY2UgYW5kIGJpbmFyeSBmb3Jtcywgd2l0aCBvciB3aXRo\nb3V0IG1vZGlmaWNhdGlvbiwKYXJlIHBlcm1pdHRlZCBwcm92aWRlZCB0aGF0\nIHRoZSBmb2xsb3dpbmcgY29uZGl0aW9ucyBhcmUgbWV0OgoKMS4gUmVkaXN0\ncmlidXRpb25zIG9mIHNvdXJjZSBjb2RlIG11c3QgcmV0YWluIHRoZSBhYm92\nZSBjb3B5cmlnaHQgbm90aWNlLCB0aGlzCmxpc3Qgb2YgY29uZGl0aW9ucyBh\nbmQgdGhlIGZvbGxvd2luZyBkaXNjbGFpbWVyLgoKMi4gUmVkaXN0cmlidXRp\nb25zIGluIGJpbmFyeSBmb3JtIG11c3QgcmVwcm9kdWNlIHRoZSBhYm92ZSBj\nb3B5cmlnaHQgbm90aWNlLAp0aGlzIGxpc3Qgb2YgY29uZGl0aW9ucyBhbmQg\ndGhlIGZvbGxvd2luZyBkaXNjbGFpbWVyIGluIHRoZSBkb2N1bWVudGF0aW9u\nIGFuZC9vcgpvdGhlciBtYXRlcmlhbHMgcHJvdmlkZWQgd2l0aCB0aGUgZGlz\ndHJpYnV0aW9uLgoKMy4gTmVpdGhlciB0aGUgbmFtZSBvZiB0aGUgY29weXJp\nZ2h0IGhvbGRlciBub3IgdGhlIG5hbWVzIG9mIGl0cyBjb250cmlidXRvcnMK\nbWF5IGJlIHVzZWQgdG8gZW5kb3JzZSBvciBwcm9tb3RlIHByb2R1Y3RzIGRl\ncml2ZWQgZnJvbSB0aGlzIHNvZnR3YXJlIHdpdGhvdXQKc3BlY2lmaWMgcHJp\nb3Igd3JpdHRlbiBwZXJtaXNzaW9uLgoKVEhJUyBTT0ZUV0FSRSBJUyBQUk9W\nSURFRCBCWSBUSEUgQ09QWVJJR0hUIEhPTERFUlMgQU5EIENPTlRSSUJVVE9S\nUyAiQVMgSVMiIEFORApBTlkgRVhQUkVTUyBPUiBJTVBMSUVEIFdBUlJBTlRJ\nRVMsIElOQ0xVRElORywgQlVUIE5PVCBMSU1JVEVEIFRPLCBUSEUgSU1QTElF\nRApXQVJSQU5USUVTIE9GIE1FUkNIQU5UQUJJTElUWSBBTkQgRklUTkVTUyBG\nT1IgQSBQQVJUSUNVTEFSIFBVUlBPU0UgQVJFCkRJU0NMQUlNRUQuIElOIE5P\nIEVWRU5UIFNIQUxMIFRIRSBDT1BZUklHSFQgSE9MREVSIE9SIENPTlRSSUJV\nVE9SUyBCRSBMSUFCTEUgRk9SCkFOWSBESVJFQ1QsIElORElSRUNULCBJTkNJ\nREVOVEFMLCBTUEVDSUFMLCBFWEVNUExBUlksIE9SIENPTlNFUVVFTlRJQUwg\nREFNQUdFUwooSU5DTFVESU5HLCBCVVQgTk9UIExJTUlURUQgVE8sIFBST0NV\nUkVNRU5UIE9GIFNVQlNUSVRVVEUgR09PRFMgT1IgU0VSVklDRVM7CkxPU1Mg\nT0YgVVNFLCBEQVRBLCBPUiBQUk9GSVRTOyBPUiBCVVNJTkVTUyBJTlRFUlJV\nUFRJT04pIEhPV0VWRVIgQ0FVU0VEIEFORCBPTgpBTlkgVEhFT1JZIE9GIExJ\nQUJJTElUWSwgV0hFVEhFUiBJTiBDT05UUkFDVCwgU1RSSUNUIExJQUJJTElU\nWSwgT1IgVE9SVAooSU5DTFVESU5HIE5FR0xJR0VOQ0UgT1IgT1RIRVJXSVNF\nKSBBUklTSU5HIElOIEFOWSBXQVkgT1VUIE9GIFRIRSBVU0UgT0YgVEhJUwpT\nT0ZUV0FSRSwgRVZFTiBJRiBBRFZJU0VEIE9GIFRIRSBQT1NTSUJJTElUWSBP\nRiBTVUNIIERBTUFHRS4K\n'';
+                            };
+                          };
+                        }
+                      ];
+                    };
+
+                    services.wiremock-s3-api = {
+                      enable = true;
+                      port = s3Port;
+                      files = [
+                        {
+                          name = "prelude-6.0.1.tar.gz";
+                          path = ./app/fixtures/registry-storage/prelude-6.0.1.tar.gz;
+                        }
+                      ];
+                      mappings = [
+                        {
+                          request = {
+                            method = "GET";
+                            url = "/prelude/6.0.1.tar.gz";
+                          };
+                          response = {
+                            status = 200;
+                            headers."Content-Type" = "application/octet-stream";
+                            bodyFileName = "prelude-6.0.1.tar.gz";
+                          };
+                        }
+                      ];
+                    };
+
+                    services.wiremock-bucket-api = {
+                      enable = true;
+                      port = bucketPort;
+                      mappings = [
+                        {
+                          request = {
+                            method = "GET";
+                          };
+                          response = {
+                            status = 200;
+                            body = "<ListBucketResult><Contents><Key>prelude/6.0.1.tar.gz</Key><Size>16298</Size><ETag>\"abc123\"</ETag></Contents></ListBucketResult>";
+                          };
+                        }
+                        # We don't expect that effect-4.0.0 has been uploaded.
+                        {
+                          request = {
+                            method = "PUT";
+                            url = "/effect/4.0.0.tar.gz";
+                          };
+                          response = {
+                            status = 200;
+                            body = "<ETag>\"abc123\"</ETag>";
+                          };
+                        }
+                        # But we do expect that prelude has been uploaded and
+                        # can't be uploaded again.
+                        {
+                          request = {
+                            method = "PUT";
+                            url = "/prelude/6.0.1.tar.gz";
+                          };
+                          response = {
+                            status = 500;
+                          };
+                        }
+                      ];
+                    };
+
+                    services.wiremock-pursuit-api = {
+                      enable = true;
+                      port = pursuitPort;
+                      mappings = [
+                        # Already-published packages, ie. the registry-storage
+                        # tarballs.
+                        {
+                          request = {
+                            method = "GET";
+                            url = "/packages/purescript-prelude/available-versions";
+                          };
+                          response = {
+                            status = 200;
+                            body = ''[["6.0.1","https://pursuit.purescript.org/packages/purescript-prelude/6.0.1"]]'';
+                          };
+                        }
+                        # The result of publishing a package, which we hardcode
+                        # to 201 (success) for now.
+                        {
+                          request = {
+                            method = "POST";
+                            url = "/packages";
+                          };
+                          response = {
+                            status = 201;
                           };
                         }
                       ];
@@ -431,6 +543,10 @@
                 # We wait for the server to start up and for the client to be
                 # able to reach it.
                 registry.wait_for_unit("server.service")
+                registry.wait_for_unit("wiremock-github-api.service")
+                registry.wait_for_unit("wiremock-s3-api.service")
+                registry.wait_for_unit("wiremock-bucket-api.service")
+                registry.wait_for_unit("wiremock-pursuit-api.service")
                 client.wait_until_succeeds("${pkgs.curl}/bin/curl --fail-with-body http://registry/api/v1/jobs", timeout=20)
 
                 ##########

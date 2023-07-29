@@ -25,6 +25,7 @@ type ResourceEnv =
   , s3ApiUrl :: URL
   , s3BucketUrl :: URL
   , githubApiUrl :: URL
+  , pursuitApiUrl :: URL
   }
 
 -- | A
@@ -46,12 +47,14 @@ lookupResourceEnv = do
   s3ApiUrlEnv <- lookupWithDefault s3ApiUrl defaultS3ApiUrl
   s3BucketUrlEnv <- lookupWithDefault s3BucketUrl defaultS3BucketUrl
   githubApiUrlEnv <- lookupWithDefault githubApiUrl defaultGitHubApiUrl
+  pursuitApiUrlEnv <- lookupWithDefault pursuitApiUrl defaultPursuitApiUrl
   pure
     { dhallTypes: dhallTypesEnv
     , databaseUrl: databaseUrlEnv
     , s3ApiUrl: s3ApiUrlEnv
     , s3BucketUrl: s3BucketUrlEnv
     , githubApiUrl: githubApiUrlEnv
+    , pursuitApiUrl: pursuitApiUrlEnv
     }
 
 -- | Environment fields available in the GitHub Event environment, namely
@@ -197,6 +200,13 @@ githubApiUrl = EnvKey { key: "GITHUB_API_URL", decode: pure }
 
 defaultGitHubApiUrl :: URL
 defaultGitHubApiUrl = "https://api.github.com"
+
+-- | The base URL of the GitHub API
+pursuitApiUrl :: EnvKey URL
+pursuitApiUrl = EnvKey { key: "PURSUIT_API_URL", decode: pure }
+
+defaultPursuitApiUrl :: URL
+defaultPursuitApiUrl = "https://pursuit.purescript.org"
 
 -- | A GitHub token for the @pacchettibotti user at the PACCHETTIBOTTI_TOKEN key.
 pacchettibottiToken :: EnvKey GitHubToken
