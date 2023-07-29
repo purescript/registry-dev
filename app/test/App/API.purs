@@ -115,13 +115,13 @@ spec = do
       -- Set up a clean fixtures environment.
       liftAff do
         copyFixture "registry-index"
-        copyFixture "registry-metadata"
+        copyFixture "registry"
         copyFixture "registry-storage"
         copyFixture "github-packages"
 
       let
         readFixtures = do
-          initialMetadata <- Registry.readAllMetadataFromDisk $ Path.concat [ testFixtures, "registry-metadata" ]
+          initialMetadata <- Registry.readAllMetadataFromDisk $ Path.concat [ testFixtures, "registry", "metadata" ]
           metadata <- liftEffect $ Ref.new initialMetadata
           initialIndex <- Registry.readManifestIndexFromDisk $ Path.concat [ testFixtures, "registry-index" ]
           index <- liftEffect $ Ref.new initialIndex

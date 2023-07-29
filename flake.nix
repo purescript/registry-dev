@@ -61,6 +61,7 @@
               const url = new URL(arg);
               const path = url.pathname.replace(/\.git$/, ''');
               const file = 'file://' + repoFixturesDir + path;
+              console.log(file);
               return file;
             } catch (e) {
               // Not a URL, ignore
@@ -78,11 +79,11 @@
           const git = spawn('${prev.git}/bin/git', modified);
 
           git.stdout.on('data', (data) => {
-            console.log(data);
+            console.log(data.toString('utf8'));
           });
 
           git.stderr.on('data', (data) => {
-            console.error(data);
+            console.error(data.toString('utf8'));
           });
 
           git.on('close', (code) => {
@@ -303,6 +304,7 @@
 
             envFile = pkgs.writeText ".env" ''
               # Values we need to explicitly set
+              DHALL_PRELUDE=${DHALL_PRELUDE}
               GITHUB_API_URL=http://localhost:${toString githubPort}
               S3_API_URL=http://localhost:${toString s3Port}
               S3_BUCKET_URL=http://localhost:${toString bucketPort}
@@ -361,7 +363,7 @@
                             jsonBody = {
                               type = "file";
                               encoding = "base64";
-                              content = ''ewogICJuYW1lIjogInB1cmVzY3JpcHQtZWZmZWN0IiwKICAiaG9tZXBhZ2Ui\nOiAiaHR0cHM6Ly9naXRodWIuY29tL3B1cmVzY3JpcHQvcHVyZXNjcmlwdC1l\nZmZlY3QiLAogICJsaWNlbnNlIjogIkJTRC0zLUNsYXVzZSIsCiAgInJlcG9z\naXRvcnkiOiB7CiAgICAidHlwZSI6ICJnaXQiLAogICAgInVybCI6ICJodHRw\nczovL2dpdGh1Yi5jb20vcHVyZXNjcmlwdC9wdXJlc2NyaXB0LWVmZmVjdC5n\naXQiCiAgfSwKICAiaWdub3JlIjogWwogICAgIioqLy4qIiwKICAgICJib3dl\ncl9jb21wb25lbnRzIiwKICAgICJub2RlX21vZHVsZXMiLAogICAgIm91dHB1\ndCIsCiAgICAidGVzdCIsCiAgICAiYm93ZXIuanNvbiIsCiAgICAicGFja2Fn\nZS5qc29uIgogIF0sCiAgImRlcGVuZGVuY2llcyI6IHsKICAgICJwdXJlc2Ny\naXB0LXByZWx1ZGUiOiAiXjYuMC4wIgogIH0KfQo=\n'';
+                              content = "ewogICJuYW1lIjogInB1cmVzY3JpcHQtZWZmZWN0IiwKICAiaG9tZXBhZ2Ui\nOiAiaHR0cHM6Ly9naXRodWIuY29tL3B1cmVzY3JpcHQvcHVyZXNjcmlwdC1l\nZmZlY3QiLAogICJsaWNlbnNlIjogIkJTRC0zLUNsYXVzZSIsCiAgInJlcG9z\naXRvcnkiOiB7CiAgICAidHlwZSI6ICJnaXQiLAogICAgInVybCI6ICJodHRw\nczovL2dpdGh1Yi5jb20vcHVyZXNjcmlwdC9wdXJlc2NyaXB0LWVmZmVjdC5n\naXQiCiAgfSwKICAiaWdub3JlIjogWwogICAgIioqLy4qIiwKICAgICJib3dl\ncl9jb21wb25lbnRzIiwKICAgICJub2RlX21vZHVsZXMiLAogICAgIm91dHB1\ndCIsCiAgICAidGVzdCIsCiAgICAiYm93ZXIuanNvbiIsCiAgICAicGFja2Fn\nZS5qc29uIgogIF0sCiAgImRlcGVuZGVuY2llcyI6IHsKICAgICJwdXJlc2Ny\naXB0LXByZWx1ZGUiOiAiXjYuMC4wIgogIH0KfQo=\n";
                             };
                           };
                         }
@@ -376,7 +378,24 @@
                             jsonBody = {
                               type = "file";
                               encoding = "base64";
-                              content = ''Q29weXJpZ2h0IDIwMTggUHVyZVNjcmlwdAoKUmVkaXN0cmlidXRpb24gYW5k\nIHVzZSBpbiBzb3VyY2UgYW5kIGJpbmFyeSBmb3Jtcywgd2l0aCBvciB3aXRo\nb3V0IG1vZGlmaWNhdGlvbiwKYXJlIHBlcm1pdHRlZCBwcm92aWRlZCB0aGF0\nIHRoZSBmb2xsb3dpbmcgY29uZGl0aW9ucyBhcmUgbWV0OgoKMS4gUmVkaXN0\ncmlidXRpb25zIG9mIHNvdXJjZSBjb2RlIG11c3QgcmV0YWluIHRoZSBhYm92\nZSBjb3B5cmlnaHQgbm90aWNlLCB0aGlzCmxpc3Qgb2YgY29uZGl0aW9ucyBh\nbmQgdGhlIGZvbGxvd2luZyBkaXNjbGFpbWVyLgoKMi4gUmVkaXN0cmlidXRp\nb25zIGluIGJpbmFyeSBmb3JtIG11c3QgcmVwcm9kdWNlIHRoZSBhYm92ZSBj\nb3B5cmlnaHQgbm90aWNlLAp0aGlzIGxpc3Qgb2YgY29uZGl0aW9ucyBhbmQg\ndGhlIGZvbGxvd2luZyBkaXNjbGFpbWVyIGluIHRoZSBkb2N1bWVudGF0aW9u\nIGFuZC9vcgpvdGhlciBtYXRlcmlhbHMgcHJvdmlkZWQgd2l0aCB0aGUgZGlz\ndHJpYnV0aW9uLgoKMy4gTmVpdGhlciB0aGUgbmFtZSBvZiB0aGUgY29weXJp\nZ2h0IGhvbGRlciBub3IgdGhlIG5hbWVzIG9mIGl0cyBjb250cmlidXRvcnMK\nbWF5IGJlIHVzZWQgdG8gZW5kb3JzZSBvciBwcm9tb3RlIHByb2R1Y3RzIGRl\ncml2ZWQgZnJvbSB0aGlzIHNvZnR3YXJlIHdpdGhvdXQKc3BlY2lmaWMgcHJp\nb3Igd3JpdHRlbiBwZXJtaXNzaW9uLgoKVEhJUyBTT0ZUV0FSRSBJUyBQUk9W\nSURFRCBCWSBUSEUgQ09QWVJJR0hUIEhPTERFUlMgQU5EIENPTlRSSUJVVE9S\nUyAiQVMgSVMiIEFORApBTlkgRVhQUkVTUyBPUiBJTVBMSUVEIFdBUlJBTlRJ\nRVMsIElOQ0xVRElORywgQlVUIE5PVCBMSU1JVEVEIFRPLCBUSEUgSU1QTElF\nRApXQVJSQU5USUVTIE9GIE1FUkNIQU5UQUJJTElUWSBBTkQgRklUTkVTUyBG\nT1IgQSBQQVJUSUNVTEFSIFBVUlBPU0UgQVJFCkRJU0NMQUlNRUQuIElOIE5P\nIEVWRU5UIFNIQUxMIFRIRSBDT1BZUklHSFQgSE9MREVSIE9SIENPTlRSSUJV\nVE9SUyBCRSBMSUFCTEUgRk9SCkFOWSBESVJFQ1QsIElORElSRUNULCBJTkNJ\nREVOVEFMLCBTUEVDSUFMLCBFWEVNUExBUlksIE9SIENPTlNFUVVFTlRJQUwg\nREFNQUdFUwooSU5DTFVESU5HLCBCVVQgTk9UIExJTUlURUQgVE8sIFBST0NV\nUkVNRU5UIE9GIFNVQlNUSVRVVEUgR09PRFMgT1IgU0VSVklDRVM7CkxPU1Mg\nT0YgVVNFLCBEQVRBLCBPUiBQUk9GSVRTOyBPUiBCVVNJTkVTUyBJTlRFUlJV\nUFRJT04pIEhPV0VWRVIgQ0FVU0VEIEFORCBPTgpBTlkgVEhFT1JZIE9GIExJ\nQUJJTElUWSwgV0hFVEhFUiBJTiBDT05UUkFDVCwgU1RSSUNUIExJQUJJTElU\nWSwgT1IgVE9SVAooSU5DTFVESU5HIE5FR0xJR0VOQ0UgT1IgT1RIRVJXSVNF\nKSBBUklTSU5HIElOIEFOWSBXQVkgT1VUIE9GIFRIRSBVU0UgT0YgVEhJUwpT\nT0ZUV0FSRSwgRVZFTiBJRiBBRFZJU0VEIE9GIFRIRSBQT1NTSUJJTElUWSBP\nRiBTVUNIIERBTUFHRS4K\n'';
+                              content = "Q29weXJpZ2h0IDIwMTggUHVyZVNjcmlwdAoKUmVkaXN0cmlidXRpb24gYW5k\nIHVzZSBpbiBzb3VyY2UgYW5kIGJpbmFyeSBmb3Jtcywgd2l0aCBvciB3aXRo\nb3V0IG1vZGlmaWNhdGlvbiwKYXJlIHBlcm1pdHRlZCBwcm92aWRlZCB0aGF0\nIHRoZSBmb2xsb3dpbmcgY29uZGl0aW9ucyBhcmUgbWV0OgoKMS4gUmVkaXN0\ncmlidXRpb25zIG9mIHNvdXJjZSBjb2RlIG11c3QgcmV0YWluIHRoZSBhYm92\nZSBjb3B5cmlnaHQgbm90aWNlLCB0aGlzCmxpc3Qgb2YgY29uZGl0aW9ucyBh\nbmQgdGhlIGZvbGxvd2luZyBkaXNjbGFpbWVyLgoKMi4gUmVkaXN0cmlidXRp\nb25zIGluIGJpbmFyeSBmb3JtIG11c3QgcmVwcm9kdWNlIHRoZSBhYm92ZSBj\nb3B5cmlnaHQgbm90aWNlLAp0aGlzIGxpc3Qgb2YgY29uZGl0aW9ucyBhbmQg\ndGhlIGZvbGxvd2luZyBkaXNjbGFpbWVyIGluIHRoZSBkb2N1bWVudGF0aW9u\nIGFuZC9vcgpvdGhlciBtYXRlcmlhbHMgcHJvdmlkZWQgd2l0aCB0aGUgZGlz\ndHJpYnV0aW9uLgoKMy4gTmVpdGhlciB0aGUgbmFtZSBvZiB0aGUgY29weXJp\nZ2h0IGhvbGRlciBub3IgdGhlIG5hbWVzIG9mIGl0cyBjb250cmlidXRvcnMK\nbWF5IGJlIHVzZWQgdG8gZW5kb3JzZSBvciBwcm9tb3RlIHByb2R1Y3RzIGRl\ncml2ZWQgZnJvbSB0aGlzIHNvZnR3YXJlIHdpdGhvdXQKc3BlY2lmaWMgcHJp\nb3Igd3JpdHRlbiBwZXJtaXNzaW9uLgoKVEhJUyBTT0ZUV0FSRSBJUyBQUk9W\nSURFRCBCWSBUSEUgQ09QWVJJR0hUIEhPTERFUlMgQU5EIENPTlRSSUJVVE9S\nUyAiQVMgSVMiIEFORApBTlkgRVhQUkVTUyBPUiBJTVBMSUVEIFdBUlJBTlRJ\nRVMsIElOQ0xVRElORywgQlVUIE5PVCBMSU1JVEVEIFRPLCBUSEUgSU1QTElF\nRApXQVJSQU5USUVTIE9GIE1FUkNIQU5UQUJJTElUWSBBTkQgRklUTkVTUyBG\nT1IgQSBQQVJUSUNVTEFSIFBVUlBPU0UgQVJFCkRJU0NMQUlNRUQuIElOIE5P\nIEVWRU5UIFNIQUxMIFRIRSBDT1BZUklHSFQgSE9MREVSIE9SIENPTlRSSUJV\nVE9SUyBCRSBMSUFCTEUgRk9SCkFOWSBESVJFQ1QsIElORElSRUNULCBJTkNJ\nREVOVEFMLCBTUEVDSUFMLCBFWEVNUExBUlksIE9SIENPTlNFUVVFTlRJQUwg\nREFNQUdFUwooSU5DTFVESU5HLCBCVVQgTk9UIExJTUlURUQgVE8sIFBST0NV\nUkVNRU5UIE9GIFNVQlNUSVRVVEUgR09PRFMgT1IgU0VSVklDRVM7CkxPU1Mg\nT0YgVVNFLCBEQVRBLCBPUiBQUk9GSVRTOyBPUiBCVVNJTkVTUyBJTlRFUlJV\nUFRJT04pIEhPV0VWRVIgQ0FVU0VEIEFORCBPTgpBTlkgVEhFT1JZIE9GIExJ\nQUJJTElUWSwgV0hFVEhFUiBJTiBDT05UUkFDVCwgU1RSSUNUIExJQUJJTElU\nWSwgT1IgVE9SVAooSU5DTFVESU5HIE5FR0xJR0VOQ0UgT1IgT1RIRVJXSVNF\nKSBBUklTSU5HIElOIEFOWSBXQVkgT1VUIE9GIFRIRSBVU0UgT0YgVEhJUwpT\nT0ZUV0FSRSwgRVZFTiBJRiBBRFZJU0VEIE9GIFRIRSBQT1NTSUJJTElUWSBP\nRiBTVUNIIERBTUFHRS4K\n";
+                            };
+                          };
+                        }
+                        {
+                          request = {
+                            method = "GET";
+                            url = "/repos/purescript/package-sets/tags";
+                          };
+                          response = {
+                            status = 200;
+                            headers."Content-Type" = "application/json";
+                            jsonBody = {
+                              name = "psc-0.15.10-20230105";
+                              commit = {
+                                sha = "090897c992b2b310b1456506308db789672adac1";
+                                url = "https://api.github.com/repos/purescript/package-sets/commits/090897c992b2b310b1456506308db789672adac1";
+                              };
                             };
                           };
                         }
@@ -499,16 +518,19 @@
                   cp -r ${./app/fixtures/registry-index} $1/purescript/registry-index
 
                   # Then the registry repo
-                  mkdir -p $1/purescript/registry
-                  cp -r ${./app/fixtures/registry-metadata} $1/purescript/registry/metadata
+                  cp -r ${./app/fixtures/registry} $1/purescript/registry
 
-                  # Then arbitrary Git repos
-                  cp -r ${./app/fixtures/github-packages/effect-4.0.0} $1/purescript/effect
+                  # Finally, the legacy package-sets repo
+                  cp -r ${./app/fixtures/package-sets} $1/purescript/package-sets
+
+                  # Next, we set up arbitrary Git repos that should be available
+                  cp -r ${./app/fixtures/github-packages/effect-4.0.0} $1/purescript/purescript-effect
 
                   # Then we initialize the repos
                   for REPO in $1/purescript/*/
                   do
                     pushd $REPO
+                    echo "Initializing $REPO"
                     git init
                     git add .
                     git commit -m "Fixture commit"
@@ -518,8 +540,32 @@
                     git config receive.denyCurrentBranch ignore
                     popd
                   done
+
+                  # Then we fixup the repos that need tags
+                  pushd $1/purescript/package-sets
+                  git tag -m "psc-0.15.4-20230105" psc-0.15.4-20230105
+                  popd
+
+                  pushd $1/purescript/purescript-effect
+                  git tag -m "v4.0.0" v4.0.0
+                  popd
+                '';
+
+                publish_effect = pkgs.writeText "publish-effect-4.0.0.json" ''
+                  {
+                    "name": "effect",
+                    "ref": "v4.0.0",
+                    "compiler": "0.15.4",
+                    "location": {
+                      "githubOwner": "purescript",
+                      "githubRepo": "purescript-effect"
+                    }
+                  }
                 '';
               in ''
+                import json
+                import time
+
                 # Machines are available based on their host name, or their name in
                 # the "nodes" record if their host name is not set.
                 start_all()
@@ -532,10 +578,11 @@
 
                 # We set up fixtures
                 repo_fixtures_dir = registry.succeed("mktemp -d -t repo-fixtures-XXXXXX")
+                print(registry.succeed(f"${setupGitFixtures}/bin/setup-git-fixtures {repo_fixtures_dir}"))
+
                 registry.succeed("mkdir -p ${stateDir}")
                 registry.succeed("cat ${envFile} > ${stateDir}/.env")
                 registry.succeed(f"echo 'REPO_FIXTURES_DIR={repo_fixtures_dir}' >> ${stateDir}/.env")
-                registry.succeed(f"${setupGitFixtures}/bin/setup-git-fixtures {repo_fixtures_dir}")
 
                 # After changing the environment variables, we need to reload
                 registry.succeed("systemctl restart server.service")
@@ -547,6 +594,9 @@
                 registry.wait_for_unit("wiremock-s3-api.service")
                 registry.wait_for_unit("wiremock-bucket-api.service")
                 registry.wait_for_unit("wiremock-pursuit-api.service")
+
+                # Give time for all the various services to come up...
+                time.sleep(5)
                 client.wait_until_succeeds("${pkgs.curl}/bin/curl --fail-with-body http://registry/api/v1/jobs", timeout=20)
 
                 ##########
@@ -555,12 +605,33 @@
                 #
                 ##########
 
-                def succeed_endpoint(endpoint, expected):
-                  print(f"Checking endpoint {endpoint}")
-                  actual = client.succeed(f"${pkgs.curl}/bin/curl http://registry/api/v1/{endpoint}")
-                  assert expected == actual, f"Endpoint {endpoint} should return {expected} but returned {actual}"
+                # First we initiate the call to publish
+                print("POST /publish")
+                publish_result = json.loads(client.succeed("${pkgs.curl}/bin/curl -L -X POST -d '@${publish_effect}' http://registry/api/v1/publish --header 'Content-Type:application/json'"))
+                print(publish_result)
+                job_id = publish_result['jobId']
+                assert len(job_id) == 36, f"POST /publish should return a 36-char job id, but returned {publish_result}"
 
-                succeed_endpoint("jobs", "[a]")
+                # Then we poll for job results, expecting an eventual 'success'.
+                try_count = 0
+                delay_seconds = 3
+                prev_timestamp = "2023-07-29T00:00:00.000Z"
+                log_level = "DEBUG"
+                while True:
+                  print(f"Requesting job information for job {job_id}")
+                  poll_result = json.loads(client.succeed(f"${pkgs.curl}/bin/curl -L http://registry/api/v1/jobs/{job_id}?since={prev_timestamp}&level={log_level}"))
+                  print(poll_result)
+                  if "finishedAt" in poll_result:
+                    print("Job has completed!")
+                    success = poll_result['success']
+                    assert success, f"GET /jobs/{job_id} should return success, but it returned {poll_result}"
+                    break
+                  elif (try_count * delay_seconds) > 60:
+                    raise ValueError(f"Cancelling publish request after {try_count * delay_seconds} seconds, this is too long...")
+                  else:
+                    print(f"Job is still ongoing, retrying in {delay_seconds} seconds...")
+                    time.sleep(delay_seconds)
+                    try_count = try_count + 1
               '';
             };
       };

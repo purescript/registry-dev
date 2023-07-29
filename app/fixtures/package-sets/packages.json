@@ -1,0 +1,12 @@
+{
+  "metadata": {
+    "dependencies": [],
+    "repo": "https://github.com/purescript/purescript-metadata.git",
+    "version": "v0.15.4"
+  },
+  "prelude": {
+    "dependencies": [],
+    "repo": "https://github.com/purescript/purescript-prelude.git",
+    "version": "v6.0.1"
+  }
+}

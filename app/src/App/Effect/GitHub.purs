@@ -37,6 +37,7 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.Types (RawVersion(..))
 import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit (Address, GitHubError(..), GitHubRoute(..), Octokit, Request, Tag, Team)
+import Registry.Foreign.Octokit as GitHub
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Codec as Internal.Codec
 import Run (AFF, EFFECT, Run)
@@ -273,7 +274,12 @@ requestWithBackoff octokit githubRequest = do
     }
   case result of
     Nothing -> pure $ Left $ APIError { statusCode: 400, message: "Unable to reach GitHub servers." }
-    Just accepted -> pure accepted
+    Just accepted -> case accepted of
+      Left githubErr -> do
+        Log.debug $ "Request to route " <> route <> " failed: " <> GitHub.printGitHubError githubErr
+        pure accepted
+      Right _ -> do
+        pure accepted
 
 type RequestResult =
   { modified :: DateTime

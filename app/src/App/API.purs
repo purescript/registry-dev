@@ -826,6 +826,15 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
 
   Run.liftAff $ writeJsonFile pursuitResolutionsCodec resolutionsFilePath resolvedPaths
 
+  -- The 'purs publish' command requires a clean working tree, but it isn't
+  -- guaranteed that packages have an adequate .gitignore file; compilers prior
+  -- to 0.14.7 did not ignore the purs.json file when publishing. So we stash
+  -- changes made during the publishing process (ie. inclusion of a new purs.json
+  -- file and an output directory from compilation) before calling purs publish.
+  -- https://git-scm.com/docs/gitignore
+  Log.debug "Adding output and purs.json to local git excludes..."
+  Run.liftAff $ FS.Aff.appendTextFile UTF8 (Path.concat [ packageSourceDir, ".git", "info", "exclude" ]) (String.joinWith "\n" [ "output", "purs.json" ])
+
   -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
   -- package name in the manifest file:
   -- https://github.com/purescript/purescript/blob/a846892d178d3c9c76c162ca39b9deb6fad4ec8e/src/Language/PureScript/Publish/Registry/Compat.hs#L19

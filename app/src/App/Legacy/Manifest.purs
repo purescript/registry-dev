@@ -223,7 +223,11 @@ fetchLegacyManifestFiles
   -> Run (GITHUB + LOG + AFF + EFFECT + r) (Either LegacyManifestValidationError (These Bowerfile SpagoDhallJson))
 fetchLegacyManifestFiles address ref = do
   eitherBower <- fetchBowerfile address ref
+  void $ flip ltraverse eitherBower \error ->
+    Log.debug $ "Failed to fetch bowerfile: " <> Octokit.printGitHubError error
   eitherSpago <- fetchSpagoDhallJson address ref
+  void $ flip ltraverse eitherSpago \error ->
+    Log.debug $ "Failed to fetch spago.dhall: " <> Octokit.printGitHubError error
   pure $ case eitherBower, eitherSpago of
     Left _, Left _ -> Left { error: NoManifests, reason: "No bower.json or spago.dhall files available." }
     Right bower, Left _ -> Right $ This bower

@@ -76,7 +76,7 @@ gitCLI :: Array String -> Maybe FilePath -> Aff (Either String String)
 gitCLI args cwd = do
   result <- liftAff $ _.result =<< Execa.execa "git" args (_ { cwd = cwd })
   pure case result of
-    Right { stdout } -> Right stdout
+    Right { stdout } -> Right (String.trim stdout)
     Left { stdout, stderr } -> Left (stdout <> stderr)
 
 withGit :: forall r. FilePath -> Array String -> (String -> String) -> Run (AFF + EXCEPT String + r) String
