@@ -263,23 +263,25 @@ requestWithBackoff octokit githubRequest = do
   let route = Octokit.printGitHubRoute githubRequest.route
   { githubApiUrl } <- Env.askResourceEnv
   Log.debug $ "Making request to " <> route <> " with base URL " <> githubApiUrl
-  let action = Octokit.request octokit githubRequest
-  result <- Run.liftAff $ withBackoff
-    { delay: Duration.Milliseconds 5_000.0
-    , action
-    , shouldCancel: \_ -> Octokit.request octokit Octokit.rateLimitRequest >>= case _ of
-        Right { remaining } | remaining == 0 -> pure false
-        _ -> pure true
-    , shouldRetry: \attempt -> if attempt <= 3 then pure (Just action) else pure Nothing
-    }
+  result <- Run.liftAff do
+    let
+      retryOptions =
+        { timeout: defaultRetry.timeout
+        , retryOnCancel: defaultRetry.retryOnCancel
+        , retryOnFailure: \attempt err -> case err of
+            UnexpectedError _ -> false
+            DecodeError _ -> false
+            -- https://docs.github.com/en/rest/overview/resources-in-the-rest-api?apiVersion=2022-11-28#exceeding-the-rate-limit
+            APIError { statusCode } | statusCode >= 400 && statusCode <= 500 -> false
+            APIError _ -> attempt <= 3
+        }
+    withRetry retryOptions (Octokit.request octokit githubRequest)
   case result of
-    Nothing -> pure $ Left $ APIError { statusCode: 400, message: "Unable to reach GitHub servers." }
-    Just accepted -> case accepted of
-      Left githubErr -> do
-        Log.debug $ "Request to route " <> route <> " failed: " <> GitHub.printGitHubError githubErr
-        pure accepted
-      Right _ -> do
-        pure accepted
+    Cancelled -> pure $ Left $ APIError { statusCode: 400, message: "Unable to reach GitHub servers." }
+    Failed err -> do
+      Log.debug $ "Request failed with error: " <> Octokit.printGitHubError err
+      pure $ Left err
+    Succeeded success -> pure $ Right success
 
 type RequestResult =
   { modified :: DateTime

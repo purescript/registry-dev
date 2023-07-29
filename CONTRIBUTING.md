@@ -204,11 +204,13 @@ services.wiremock-s3-api = {
 
 ## Deployment
 
-You can deploy a new version of the registry server in one step:
+The registry is continuously deployed. The [deploy.yml](./.github/workflows/deploy.yml) file defines a GitHub Actions workflow to auto-deploy the server when a new commit is pushed to `master` and test workflows have passed.
+
+However, you can manually deploy a new version of the registry server in one step:
 
 ```sh
 # Will deploy the server to registry.purescript.org
 colmena apply
 ```
 
-If the deployment fails it will automatically be rolled back. If you have provisioned a new machine altogether, then you will first need to copy a valid `.env` file to `/var/lib/registry-server/.env` before the server will run. You can test that the server has come up appropriately by SSH-ing into the server and running `journalctl -fu server.service`.
+If the deployment fails it will automatically be rolled back. If you have provisioned a new machine or need to update a secret, then you will first need to copy a valid `.env` file to `/var/lib/registry-server/.env` before the server will run. You can test that the server has come up appropriately by SSHing into the server and running `journalctl -u server.service`.

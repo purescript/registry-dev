@@ -10,7 +10,6 @@ import Registry.App.Prelude
 
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
-import Control.Alternative (guard)
 import Control.Apply (lift2)
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
@@ -226,7 +225,7 @@ runLegacyImport mode logs = do
   Log.info $ formatImportStats $ calculateImportStats legacyRegistry importedIndex
 
   Log.info "Sorting packages for upload..."
-  let allIndexPackages = ManifestIndex.toSortedArray importedIndex.registryIndex
+  let allIndexPackages = ManifestIndex.toSortedArray ManifestIndex.IgnoreRanges importedIndex.registryIndex
 
   Log.info "Removing packages that previously failed publish"
   indexPackages <- allIndexPackages # Array.filterA \(Manifest { name, version }) ->

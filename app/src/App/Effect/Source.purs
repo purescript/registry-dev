@@ -5,7 +5,6 @@ import Registry.App.Prelude
 
 import Affjax.Node as Affjax.Node
 import Affjax.ResponseFormat as ResponseFormat
-import Affjax.StatusCode (StatusCode(..))
 import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.HTTP.Method (Method(..))
@@ -79,10 +78,10 @@ handle = case _ of
               clonePackageAtTag = do
                 let url = Array.fold [ "https://github.com/", owner, "/", repo ]
                 let args = [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false", repoDir ]
-                withBackoff' (Git.gitCLI args Nothing) >>= case _ of
-                  Nothing -> Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> url <> " " <> ref
-                  Just (Left err) -> Aff.throwError $ Aff.error err
-                  Just (Right _) -> pure unit
+                withRetryOnTimeout (Git.gitCLI args Nothing) >>= case _ of
+                  Cancelled -> Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> url <> " " <> ref
+                  Failed err -> Aff.throwError $ Aff.error err
+                  Succeeded _ -> pure unit
 
             Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
               Left error -> do
@@ -133,23 +132,23 @@ handle = case _ of
             let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
             Log.debug $ "Fetching tarball from GitHub: " <> archiveUrl
 
-            response <- Run.liftAff $ withBackoff' $ Affjax.Node.request $ Affjax.Node.defaultRequest
+            response <- Run.liftAff $ withRetryRequest' $ Affjax.Node.defaultRequest
               { method = Left GET
               , responseFormat = ResponseFormat.arrayBuffer
               , url = archiveUrl
               }
 
             case response of
-              Nothing -> Except.throw $ "Could not download " <> archiveUrl
-              Just (Left error) -> do
+              Cancelled -> Except.throw $ "Could not download " <> archiveUrl
+              Failed (AffjaxError error) -> do
                 Log.error $ "Failed to download " <> archiveUrl <> " because of an HTTP error: " <> Affjax.Node.printError error
                 Except.throw $ "Could not download " <> archiveUrl
-              Just (Right { status, body }) | status /= StatusCode 200 -> do
+              Failed (StatusError { status, body }) -> do
                 buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
                 bodyString <- Run.liftEffect $ Buffer.toString UTF8 (buffer :: Buffer)
                 Log.error $ "Failed to download " <> archiveUrl <> " because of a non-200 status code (" <> show status <> ") with body " <> bodyString
                 Except.throw $ "Could not download " <> archiveUrl
-              Just (Right { body }) -> do
+              Succeeded { body } -> do
                 Log.debug $ "Successfully downloaded " <> archiveUrl <> " into a buffer."
                 buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
                 Run.liftAff (Aff.attempt (FS.Aff.writeFile absoluteTarballPath buffer)) >>= case _ of

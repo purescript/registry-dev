@@ -23,6 +23,7 @@ module Registry.ManifestIndex
   , toMap
   , toSortedArray
   , topologicalSort
+  , IncludeRanges(..)
   , writeEntryFile
   ) where
 
@@ -68,6 +69,7 @@ import Registry.Manifest as Manifest
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
+import Registry.Range as Range
 import Registry.Version (Version)
 
 -- | An index of package manifests, keyed by package name and version. The index
@@ -86,8 +88,8 @@ toMap :: ManifestIndex -> Map PackageName (Map Version Manifest)
 toMap (ManifestIndex index) = index
 
 -- | Produce an array of manifests topologically sorted by dependencies.
-toSortedArray :: ManifestIndex -> Array Manifest
-toSortedArray (ManifestIndex index) = topologicalSort $ Set.fromFoldable do
+toSortedArray :: IncludeRanges -> ManifestIndex -> Array Manifest
+toSortedArray includeRanges (ManifestIndex index) = topologicalSort includeRanges $ Set.fromFoldable do
   Tuple _ versions <- Map.toUnfoldableUnordered index
   Tuple _ manifest <- Map.toUnfoldableUnordered versions
   [ manifest ]
@@ -163,12 +165,16 @@ maximalIndex manifests = do
       Left errors -> Tuple (Map.insertWith Map.union name (Map.singleton version errors) failed) index
       Right newIndex -> Tuple failed newIndex
 
-  Array.foldl insertManifest (Tuple Map.empty empty) (topologicalSort manifests)
+  Array.foldl insertManifest (Tuple Map.empty empty) (topologicalSort IgnoreRanges manifests)
+
+data IncludeRanges
+  = ConsiderRanges
+  | IgnoreRanges
 
 -- | Topologically sort a set of manifests so that each manifest in the array
 -- | depends only on package versions that have already been encountered.
-topologicalSort :: Set Manifest -> Array Manifest
-topologicalSort manifests =
+topologicalSort :: IncludeRanges -> Set Manifest -> Array Manifest
+topologicalSort includeRanges manifests =
   Array.fromFoldable
     $ List.reverse
     $ List.mapMaybe (flip Graph.lookup graph)
@@ -191,16 +197,13 @@ topologicalSort manifests =
   resolveDependencies :: Manifest -> Tuple (Tuple PackageName Version) (Tuple Manifest (List (Tuple PackageName Version)))
   resolveDependencies manifest@(Manifest { name, version, dependencies }) =
     Tuple (Tuple name version) $ Tuple manifest $ List.fromFoldable do
-      Tuple dependency _ <- Map.toUnfoldable dependencies
+      Tuple dependency range <- Map.toUnfoldable dependencies
       -- This case should not be possible: it means that the manifest indicates
       -- a dependency that does not exist at all. (TODO: Explain)
       let versions = Maybe.fromMaybe [] $ Map.lookup dependency allPackageVersions
-      -- Technically, we should restrict the sort to only apply to package
-      -- versions admitted by the given range. This is faster and correct, but
-      -- fails in the case where we want to produce a maximal index while
-      -- ignoring version bounds.
-      --     included <- Array.filter (Range.includes range) versions
-      included <- versions
+      included <- case includeRanges of
+        ConsiderRanges -> Array.filter (Range.includes range) versions
+        IgnoreRanges -> versions
       [ Tuple dependency included ]
 
 -- | Calculate the directory containing this package in the registry index,

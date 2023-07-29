@@ -8,4 +8,8 @@
   fabrizio = {
     sshKeys = ["ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPqIMvUZf1ffuqlKqemYMrLruO15Hy1SM+We5W1GHI9wLbY6FOsfDL78Yx6Eywc2iU0acpbyr1RVvgJ0gbMbHGc= purescript-infra@secretive.hadrianus.local"];
   };
+
+  pacchettibotti = {
+    sshKeys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGm5hQeEQS85APheDeSRyggo0Igdq6CbTfq1f8eQG45t pacchettibotti@purescript.org"];
+  };
 }

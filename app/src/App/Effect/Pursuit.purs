@@ -67,51 +67,47 @@ handleAff (GitHubToken token) = case _ of
     { pursuitApiUrl } <- Env.askResourceEnv
     Log.debug "Pushing to Pursuit..."
 
-    let
-      loop n = do
-        result <- Run.liftAff $ withBackoff' $ Affjax.Node.request
-          { content: Just $ RequestBody.json payload
-          , headers:
-              [ RequestHeader.Accept MediaType.applicationJSON
-              , RequestHeader.RequestHeader "Authorization" ("token " <> token)
-              ]
-          , method: Left Method.POST
-          , username: Nothing
-          , withCredentials: false
-          , password: Nothing
-          , responseFormat: ResponseFormat.string
-          , timeout: Nothing
-          , url: Array.fold [ pursuitApiUrl, "/packages" ]
-          }
+    result <- Run.liftAff $ withRetryRequest'
+      { content: Just $ RequestBody.json payload
+      , headers:
+          [ RequestHeader.Accept MediaType.applicationJSON
+          , RequestHeader.RequestHeader "Authorization" ("token " <> token)
+          ]
+      , method: Left Method.POST
+      , username: Nothing
+      , withCredentials: false
+      , password: Nothing
+      , responseFormat: ResponseFormat.string
+      , timeout: Nothing
+      , url: Array.fold [ pursuitApiUrl, "/packages" ]
+      }
 
-        case result of
-          Nothing -> do
-            Log.error $ "Pursuit failed to connect after several retries."
-            pure $ Left $ "Expected to receive a 201 status from Pursuit, but failed to connect after several retries."
-          Just (Right { status: StatusCode status })
-            | status == 201 -> do
-                Log.debug "Received 201 status, which indicates the upload was successful."
-                pure $ Right unit
-            | n > 0, status == 400 || status == 502 -> do
-                Log.debug $ "Received " <> show status <> ", retrying..."
-                Run.liftAff $ Aff.delay $ Milliseconds 1000.0
-                loop (n - 1)
-          Just (Right { body, status: StatusCode status }) -> do
+    result' <- case result of
+      Cancelled -> do
+        Log.error $ "Pursuit failed to connect after several retries."
+        pure $ Left $ "Expected to receive a 201 status from Pursuit, but failed to connect after several retries."
+      Failed reqError -> case reqError of
+        AffjaxError err -> do
+          pure $ Left $ "Pursuit publishing failed with an HTTP error: " <> Affjax.Node.printError err
+        StatusError { body, status: StatusCode status } -> do
+          Log.error $ "Pursuit publishing failed with status " <> show status <> " and body\n" <> body
+          pure $ Left $ "Expected to receive a 201 status from Pursuit, but received " <> show status <> " instead."
+      Succeeded { body, status: StatusCode status }
+        | status == 201 -> do
+            Log.debug "Received 201 status, which indicates the upload was successful."
+            pure $ Right unit
+        | otherwise -> do
             Log.error $ "Pursuit publishing failed with status " <> show status <> " and body\n" <> body
             pure $ Left $ "Expected to receive a 201 status from Pursuit, but received " <> show status <> " instead."
-          Just (Left httpError) -> do
-            let printedError = Affjax.Node.printError httpError
-            Log.error $ "Pursuit publishing failed because of an HTTP error: " <> printedError
-            pure $ Left "Could not reach Pursuit due to an HTTP error."
 
-    reply <$> loop 2
+    pure $ reply result'
 
   GetPublishedVersions pname reply -> do
     { pursuitApiUrl } <- Env.askResourceEnv
     let name = PackageName.print pname
     let url = Array.fold [ pursuitApiUrl, "/packages/purescript-" <> name <> "/available-versions" ]
     Log.debug $ "Checking if package docs for " <> name <> " are published on Pursuit using endpoint " <> url
-    result <- Run.liftAff $ withBackoff' $ Affjax.Node.request
+    result <- Run.liftAff $ withRetryRequest'
       { content: Nothing
       , headers: [ RequestHeader.Accept MediaType.applicationJSON ]
       , method: Left Method.GET
@@ -124,17 +120,17 @@ handleAff (GitHubToken token) = case _ of
       }
 
     case result of
-      Nothing -> do
+      Cancelled -> do
         Log.error $ "Could not reach Pursuit after multiple retries at URL " <> url
         pure $ reply $ Left $ "Could not reach Pursuit to determine published versions for " <> name
-      Just (Left httpError) -> do
+      Failed (AffjaxError httpError) -> do
         let printedError = Affjax.Node.printError httpError
         Log.error $ "Pursuit publishing failed because of an HTTP error: " <> printedError
         pure $ reply $ Left "Could not reach Pursuit due to an HTTP error."
-      Just (Right { body, status: StatusCode status }) | status /= 200 -> do
+      Failed (StatusError { body, status: StatusCode status }) -> do
         Log.error $ "Could not fetch published versions from Pursuit (received non-200 response) " <> show status <> " and body\n" <> Argonaut.stringify body
         pure $ reply $ Left $ "Received non-200 response from Pursuit: " <> show status
-      Just (Right { body }) -> case CA.decode availableVersionsCodec body of
+      Succeeded { body } -> case CA.decode availableVersionsCodec body of
         Left error -> do
           let printed = CA.printJsonDecodeError error
           Log.error $ "Failed to decode body " <> Argonaut.stringify body <> "\n with error: " <> printed

@@ -719,10 +719,7 @@
           host = "registry.purescript.org";
         in {
           deployment.targetHost = host;
-
-          # Set 'true' to build on the target machine (necessary if deploying
-          # from a non-linux machine).
-          deployment.buildOnTarget = false;
+          deployment.buildOnTarget = true;
 
           # We import the server module and also the digital ocean configuration
           # necessary to run in a DO droplet.
