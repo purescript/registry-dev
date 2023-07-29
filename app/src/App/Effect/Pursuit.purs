@@ -16,8 +16,6 @@ import Data.HTTP.Method as Method
 import Data.Map as Map
 import Data.MediaType.Common as MediaType
 import Data.Profunctor as Profunctor
-import Effect.Aff (Milliseconds(..))
-import Effect.Aff as Aff
 import Registry.App.Effect.Env (RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log (LOG)

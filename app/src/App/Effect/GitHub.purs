@@ -37,7 +37,6 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.Types (RawVersion(..))
 import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit (Address, GitHubError(..), GitHubRoute(..), Octokit, Request, Tag, Team)
-import Registry.Foreign.Octokit as GitHub
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Codec as Internal.Codec
 import Run (AFF, EFFECT, Run)

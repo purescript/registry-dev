@@ -34,7 +34,6 @@ import Registry.App.Effect.Env (RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.Constants as Constants
 import Registry.Foreign.S3 as S3
 import Registry.PackageName as PackageName
 import Registry.Version as Version
@@ -271,7 +270,7 @@ downloadS3 name version = do
       buffer :: Buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
       pure buffer
 
-withRetryListObjects :: Space -> PackageName -> Aff (Either String (Array String))
+withRetryListObjects :: S3.Space -> PackageName -> Aff (Either String (Array String))
 withRetryListObjects s3 name = do
   let package = PackageName.print name
   result <- withRetry (defaultRetry { retryOnFailure = \attempt _ -> attempt < 3 }) do
