@@ -28,6 +28,18 @@
     # Users authorized to deploy to the registry.
     deployers = import ./nix/deployers.nix;
 
+    # We can't import from remote urls in dhall when running in CI or other
+    # network-restricted environments, so we fetch the repository and use the
+    # local path instead.
+    DHALL_PRELUDE = "${
+      builtins.fetchGit {
+        url = "https://github.com/dhall-lang/dhall-lang";
+        rev = "e35f69d966f205fdc0d6a5e8d0209e7b600d90b3";
+      }
+    }/Prelude/package.dhall";
+
+    DHALL_TYPES = ./types;
+
     registryOverlay = final: prev: rec {
       nodejs = prev.nodejs-18_x;
 
@@ -168,15 +180,6 @@
         ];
       };
 
-      # We can't import from remote urls in dhall when running in CI, so we
-      # fetch the repository and use the local path instead.
-      DHALL_PRELUDE = "${
-        builtins.fetchGit {
-          url = "https://github.com/dhall-lang/dhall-lang";
-          rev = "e35f69d966f205fdc0d6a5e8d0209e7b600d90b3";
-        }
-      }/Prelude/package.dhall";
-
       # We can't run 'spago test' in our flake checks because it tries to
       # write to a cache and I can't figure out how to disable it. Instead
       # we supply it as a shell script.
@@ -202,11 +205,32 @@
         program = "${drv}/bin/${drv.name}";
       };
 
+      # A full set of environment variables, each set to their default values
+      # according to the env.example file, or to the values explicitly set below
+      # (e.g. DHALL_PRELUDE and DHALL_TYPES).
+      defaultEnv = parseEnv ./.env.example // {inherit DHALL_PRELUDE DHALL_TYPES;};
+
+      # Parse a .env file, skipping empty lines and comments, into Nix attrset
+      parseEnv = path: let
+        # Filter out lines only containing whitespace or comments
+        lines = pkgs.lib.splitString "\n" (builtins.readFile path);
+        noEmpties = builtins.filter (line: builtins.match "^[[:space:]]*$" line == null) lines;
+        noComments = builtins.filter (line: builtins.match "^#.*$" line == null) noEmpties;
+        toKeyPair = line: let
+          parts = pkgs.lib.splitString "=" line;
+        in {
+          name = builtins.head parts;
+          value = pkgs.lib.concatStrings (builtins.tail parts);
+        };
+      in
+        builtins.listToAttrs (builtins.map toKeyPair noComments);
+
+      # Print an attrset of env vars { ENV_VAR = "value"; } as a newline-delimited
+      # string of "ENV_VAR=value" lines.
+      printEnv = env: pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "${name}=${value}") env);
+
       # Allows you to run a local VM with the registry server, mimicking the
       # actual deployment.
-      #
-      # FIXME: This needs to have environment variables loaded, as is done in
-      # the integration test.
       run-vm = let
         vm-machine = nixpkgs.lib.nixosSystem {
           system = builtins.replaceStrings ["darwin"] ["linux"] system;
@@ -218,7 +242,19 @@
                 registryOverlay
               ];
             }
-            ./nix/vm.nix
+            ./nix/test-vm.nix
+            {
+              services.registry-server = {
+                enable = true;
+                host = "localhost";
+                port = 8080;
+                enableCerts = false;
+                # Note: the default credentials are not valid, so you cannot
+                # actually publish packages, etc. without overriding the relevant
+                # env vars below.
+                envVars = defaultEnv;
+              };
+            }
           ];
         };
       in
@@ -257,7 +293,7 @@
         verify-dhall = pkgs.stdenv.mkDerivation rec {
           name = "verify-dhall";
           src = ./.;
-          inherit DHALL_PRELUDE;
+          inherit DHALL_PRELUDE DHALL_TYPES;
           buildInputs = [pkgs.dhall pkgs.dhall-json];
           buildPhase = ''
             set -euo pipefail
@@ -295,28 +331,25 @@
               exit 0
             ''
           else let
-            stateDir = "/var/lib/registry-server";
             serverPort = 8080;
             githubPort = 9001;
             bucketPort = 9002;
             s3Port = 9003;
             pursuitPort = 9004;
+            stateDir = "/var/lib/registry-server";
+            envVars =
+              defaultEnv
+              // {
+                # We override all remote APIs with their local wiremock ports
+                GITHUB_API_URL = "http://localhost:${toString githubPort}";
+                S3_API_URL = "http://localhost:${toString s3Port}";
+                S3_BUCKET_URL = "http://localhost:${toString bucketPort}";
+                PURSUIT_API_URL = "http://localhost:${toString pursuitPort}";
 
-            envFile = pkgs.writeText ".env" ''
-              # Values we need to explicitly set
-              DHALL_PRELUDE=${DHALL_PRELUDE}
-              GITHUB_API_URL=http://localhost:${toString githubPort}
-              S3_API_URL=http://localhost:${toString s3Port}
-              S3_BUCKET_URL=http://localhost:${toString bucketPort}
-              PURSUIT_API_URL=http://localhost:${toString pursuitPort}
-
-              # Secrets, which we'll use dummy values for in the integration test
-              SPACES_KEY="abcxyz"
-              SPACES_SECRET="abcxyz"
-              PACCHETTIBOTTI_TOKEN="ghp_pacchettibottitoken"
-              PACCHETTIBOTTI_ED25519_PUB="c3NoLWVkMjU1MTkgYWJjeHl6IHBhY2NoZXR0aWJvdHRpQHB1cmVzY3JpcHQub3Jn"
-              PACCHETTIBOTTI_ED25519="YWJjeHl6"
-            '';
+                # We add an extra env var for the mock git applicaiton to know
+                # where the fixtures are.
+                REPO_FIXTURES_DIR = "${stateDir}/repo-fixtures";
+              };
           in
             pkgs.nixosTest {
               name = "server integration test";
@@ -346,6 +379,7 @@
                       port = serverPort;
                       enableCerts = false;
                       stateDir = stateDir;
+                      envVars = envVars;
                     };
 
                     services.wiremock-github-api = {
@@ -508,26 +542,26 @@
                 setupGitFixtures = pkgs.writeShellScriptBin "setup-git-fixtures" ''
                   set -e
 
-                  mkdir -p $1/purescript
+                  mkdir -p ${envVars.REPO_FIXTURES_DIR}/purescript
 
                   git config --global user.email "pacchettibotti@purescript.org"
                   git config --global user.name "pacchettibotti"
                   git config --global init.defaultBranch "master"
 
                   # First the registry-index repo
-                  cp -r ${./app/fixtures/registry-index} $1/purescript/registry-index
+                  cp -r ${./app/fixtures/registry-index} ${envVars.REPO_FIXTURES_DIR}/purescript/registry-index
 
                   # Then the registry repo
-                  cp -r ${./app/fixtures/registry} $1/purescript/registry
+                  cp -r ${./app/fixtures/registry} ${envVars.REPO_FIXTURES_DIR}/purescript/registry
 
                   # Finally, the legacy package-sets repo
-                  cp -r ${./app/fixtures/package-sets} $1/purescript/package-sets
+                  cp -r ${./app/fixtures/package-sets} ${envVars.REPO_FIXTURES_DIR}/purescript/package-sets
 
                   # Next, we set up arbitrary Git repos that should be available
-                  cp -r ${./app/fixtures/github-packages/effect-4.0.0} $1/purescript/purescript-effect
+                  cp -r ${./app/fixtures/github-packages/effect-4.0.0} ${envVars.REPO_FIXTURES_DIR}/purescript/purescript-effect
 
                   # Then we initialize the repos
-                  for REPO in $1/purescript/*/
+                  for REPO in ${envVars.REPO_FIXTURES_DIR}/purescript/*/
                   do
                     pushd $REPO
                     echo "Initializing $REPO"
@@ -542,11 +576,11 @@
                   done
 
                   # Then we fixup the repos that need tags
-                  pushd $1/purescript/package-sets
+                  pushd ${envVars.REPO_FIXTURES_DIR}/purescript/package-sets
                   git tag -m "psc-0.15.4-20230105" psc-0.15.4-20230105
                   popd
 
-                  pushd $1/purescript/purescript-effect
+                  pushd ${envVars.REPO_FIXTURES_DIR}/purescript/purescript-effect
                   git tag -m "v4.0.0" v4.0.0
                   popd
                 '';
@@ -566,37 +600,25 @@
                 import json
                 import time
 
-                # Machines are available based on their host name, or their name in
-                # the "nodes" record if their host name is not set.
-                start_all()
-
                 ##########
                 #
                 # SETUP
                 #
                 ##########
 
-                # We set up fixtures
-                repo_fixtures_dir = registry.succeed("mktemp -d -t repo-fixtures-XXXXXX")
-                print(registry.succeed(f"${setupGitFixtures}/bin/setup-git-fixtures {repo_fixtures_dir}"))
+                # We set up the git fixtures
+                registry.start()
+                print(registry.succeed("${setupGitFixtures}/bin/setup-git-fixtures"))
 
-                registry.succeed("mkdir -p ${stateDir}")
-                registry.succeed("cat ${envFile} > ${stateDir}/.env")
-                registry.succeed(f"echo 'REPO_FIXTURES_DIR={repo_fixtures_dir}' >> ${stateDir}/.env")
-
-                # After changing the environment variables, we need to reload
-                registry.succeed("systemctl restart server.service")
-
-                # We wait for the server to start up and for the client to be
-                # able to reach it.
-                registry.wait_for_unit("server.service")
+                # We wait for the server to start up and for the client to be able to reach it.
                 registry.wait_for_unit("wiremock-github-api.service")
                 registry.wait_for_unit("wiremock-s3-api.service")
                 registry.wait_for_unit("wiremock-bucket-api.service")
                 registry.wait_for_unit("wiremock-pursuit-api.service")
+                registry.wait_for_unit("server.service")
 
                 # Give time for all the various services to come up...
-                time.sleep(5)
+                client.start()
                 client.wait_until_succeeds("${pkgs.curl}/bin/curl --fail-with-body http://registry/api/v1/jobs", timeout=20)
 
                 ##########
@@ -639,8 +661,6 @@
       devShells = {
         default = pkgs.mkShell {
           name = "registry-dev";
-          inherit DHALL_PRELUDE;
-          DHALL_TYPES = ./types;
           packages = with pkgs; [
             # All stable PureScript compilers
             registry.compilers

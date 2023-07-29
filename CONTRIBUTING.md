@@ -72,7 +72,7 @@ spago test
 There are also a number of checks run by the Nix flake for non-PureScript code, such as verifying Dhall types. Run them:
 
 ```sh
-nix flake check
+nix flake check -L
 ```
 
 There is an integration test that will deploy the registry server and make requests to the API, which you can run if you are on a Linux machine. It is included in the `nix flake check` command by default, but it can be convenient to run standalone as well:
@@ -116,9 +116,9 @@ There is an integration test that will deploy the production registry server (no
 nix build checks.x86_64-linux.integration
 ```
 
-The integration test uses the same server machine that we deploy. It makes requests to the GitHub API and our S3 storage, executes `git` commands against the upstream registry, registry-index, and package-sets repositories, accesses a SQLite database, and so on. In other words, it uses the real-world implementations of the `Registry`, `GitHub`, `Storage`, and other effects.
+The integration test uses the same server machine that we deploy. It makes requests to the GitHub API and our S3 storage, executes `git` commands against the upstream registry, registry-index, and package-sets repositories, accesses a SQLite database, and so on. In other words, it uses the real-world implementations of the `Registry`, `GitHub`, `Storage`, and other effects. It is the most complicated to set up, so the integration tests **should be kept minimal**. If it is possible to use unit tests or mock effects, use those instead. The integration test ensures that each API endpoint is usable, but scenarios more complicated than standard usage should be done in mock effect tests instead.
 
-Of course, we don't _actually_ want to touch any real-world data and in a Nix test environment we cannot access the network arbitrarily. Instead we hijack the effect implementations from the outside in two ways.
+Of course, we don't _actually_ want to touch any real-world data and in a Nix test environment we cannot access the network arbitrarily. Instead we hijack the effect implementations from the outside and supply the same fixtures which are available in the mock effect tests. There are two external methods of access we need to replace.
 
 #### Intercepting Git
 
@@ -130,14 +130,76 @@ The wrapped git needs to know where the fixture data lives on the integration te
 
 #### Intercepting HTTPS
 
-Likewise, we can replace HTTP requests with [wiremock](https://wiremock.org). This tool allows us to intercept requests and return a fixture result instead. The virtual machine that runs the integration test is set up with `wiremock` running on the machine; its configuration is in the [`nix`](./nix) directory.
-
-Instead of sending requests to the actual APIs we want to hit, we'll instead send them to the Wiremock services. To do that we need to configure the base URLs for each external API we hit. For example:
+Likewise, we can replace HTTP requests with [wiremock](https://wiremock.org). This tool allows us to return fixture results to HTTP requests. Each API we access has its own wiremock service set up with fixture data; the basic service definition is in the [`nix/wiremock.nix`](./nix/wiremock.nix) file, and individual services with their fixture data are found in the [`flake.nix`](./flake.nix) file. Instead of sending requests to e.g. the GitHub API at https://api.github.com we send them to the local Wiremock server. To do that, we configure our integration test VM with the base URLs for each API we hit. For example:
 
 ```sh
-GITHUB_API_URL=http://localhost:<github-port>
-S3_API_URL=https://localhost:<s3-port>
-S3_BUCKET_URL=https://localhost:<bucket-port>
+# Requests to the GitHub API via Octokit
+GITHUB_API_URL=http://localhost:9001
+
+# Requests to packages.registry.purescript.org, e.g. downloads
+S3_API_URL=https://localhost:9002
+
+# Requests to the underlying S3 bucket, e.g. 'listObjects'
+S3_BUCKET_URL=https://localhost:9003
+
+# Requests to pursuit.purescript.org
+PURSUIT_API_URL=https://localhost:9004
+```
+
+For each service definition we include request/response pairs we intend to be available on our local API, written in Nix. Here's a short example of creating a mock GitHub API with a request/response pair; in the deployed virtual machine, requests to the GitHub API can be made to http://localhost:9001.
+
+```nix
+services.wiremock-github-api = {
+  enable = true;
+  port = 9001;
+  mappings = [
+    {
+      request = {
+        method = "GET";
+        url = "/repos/purescript/package-sets/tags";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/json";
+        jsonBody = {
+          name = "psc-0.15.10-20230105";
+          commit = {
+            sha = "090897c992b2b310b1456506308db789672adac1";
+            url = "https://api.github.com/repos/purescript/package-sets/commits/090897c992b2b310b1456506308db789672adac1";
+          };
+        };
+      };
+    }
+  ];
+};
+```
+
+It is also possible to include specific files that should be returned to requests via the `files` key. Here's another short example of setting up an S3 mock, in which we copy files from the fixtures into the wiremock service's working directory given a particular file name, and then write request/response mappings that respond to requests by reading the file at path given by `bodyFileName`.
+
+```nix
+services.wiremock-s3-api = {
+  enable = true;
+  port = 9002;
+  files = [
+    {
+      name = "prelude-6.0.1.tar.gz";
+      path = ./app/fixtures/registry-storage/prelude-6.0.1.tar.gz;
+    }
+  ];
+  mappings = [
+    {
+      request = {
+        method = "GET";
+        url = "/prelude/6.0.1.tar.gz";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/octet-stream";
+        bodyFileName = "prelude-6.0.1.tar.gz";
+      };
+    }
+  ];
+};
 ```
 
 ## Deployment
@@ -149,4 +211,4 @@ You can deploy a new version of the registry server in one step:
 colmena apply
 ```
 
-If the deployment fails it will automatically be rolled back. If you have provisioned a new machine altogether, then you will first need to copy a valid `.env` file to `/var/lib/registry-server/.env` before the server will run. You can test that the server has come up appropriately by SSH-ing into the server and running `journalctl -u server.service`.
+If the deployment fails it will automatically be rolled back. If you have provisioned a new machine altogether, then you will first need to copy a valid `.env` file to `/var/lib/registry-server/.env` before the server will run. You can test that the server has come up appropriately by SSH-ing into the server and running `journalctl -fu server.service`.
