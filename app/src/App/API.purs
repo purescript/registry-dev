@@ -927,7 +927,6 @@ copyPackageSourceFiles { files, excludeFiles, source, destination } = do
           Log.warn $ "The following paths matched by globs in the 'excludeFiles' key will be included in the tarball and cannot be excluded: " <> String.joinWith ", " (NonEmptySet.toUnfoldable removedObligatoryFiles)
           pure $ succeeded Array.\\ NonEmptySet.toUnfoldable removedObligatoryFiles
 
-
   userFiles <- case files of
     Nothing -> pure []
     Just nonEmptyGlobs -> do
@@ -952,7 +951,6 @@ copyPackageSourceFiles { files, excludeFiles, source, destination } = do
               pure unit
 
       pure succeeded
-
 
   includedFiles <- FastGlob.match source includedGlobs
   includedInsensitiveFiles <- FastGlob.match' source includedInsensitiveGlobs { caseSensitive: false }
@@ -1010,8 +1008,8 @@ spagoToManifest :: Spago.Config -> Either String Manifest
 spagoToManifest config = do
   package@{ name, description, dependencies: Spago.Dependencies deps } <- note "Did not find a package in the config" config.package
   publishConfig@{ version, license } <- note "Did not find a `publish` section in the package config" package.publish
-  let files = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.files)
-  let excludeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.excludeFiles)
+  let files = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.include)
+  let excludeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.exclude)
   location <- note "Did not find a `location` field in the publish config" publishConfig.location
   let
     checkRange :: Tuple PackageName (Maybe Range) -> Either PackageName (Tuple PackageName Range)
