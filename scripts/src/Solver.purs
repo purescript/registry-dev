@@ -29,16 +29,15 @@ import Node.Process as Node.Process
 import Node.Process as Process
 import Parsing as Parsing
 import Registry.App.API as API
+import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (PullMode(..), WriteMode(..))
-import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Pursuit as Pursuit
-import Registry.App.Effect.Registry (readManifestIndexFromDisk)
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Foreign.FSExtra as FS.Extra
@@ -117,22 +116,26 @@ main = launchAff_ do
   let cache = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cache
 
-  debouncer <- Git.newDebouncer
-  let gitEnv pull write = { pull, write, repos: Git.defaultRepos, workdir: scratchDir, debouncer }
+  debouncer <- Registry.newDebouncer
+  let registryEnv pull write = { pull, write, repos: Registry.defaultRepos, workdir: scratchDir, debouncer, cacheRef: registryCacheRef }
+  dhallTypes <- do
+    types <- Env.lookupRequired Env.dhallTypes
+    liftEffect $ Path.resolve [] types
   token <- Env.lookupRequired Env.githubToken
   octokit <- Octokit.newOctokit token
+
   let
     runAppEffects =
-      Storage.interpret (Storage.handleReadOnly cache)
+      Registry.interpret (Registry.handle (registryEnv Git.Autostash Registry.ReadOnly))
+        >>> Storage.interpret (Storage.handleReadOnly cache)
         >>> Pursuit.interpret Pursuit.handlePure
+        >>> Source.interpret Source.handle
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-        >>> Git.interpret (Git.handle (gitEnv Autostash ReadOnly))
 
   let
     doTheThing = do
       Log.info $ "Reading registry index from " <> Path.concat [ scratchDir, "registry-index" ] <> " ..."
-      index <- readManifestIndexFromDisk $ Path.concat [ scratchDir, "registry-index" ]
-
+      index <- Registry.readManifestIndexFromDisk $ Path.concat [ scratchDir, "registry-index" ]
       action $ map (unwrap >>> _.dependencies) <$> ManifestIndex.toMap index
 
   -- Logging setup
@@ -144,13 +147,13 @@ main = launchAff_ do
     logPath = Path.concat [ logDir, logFile ]
 
   doTheThing
-    # Registry.interpret (Registry.handle registryCacheRef)
     # runAppEffects
+    # Env.runDhallEnv { typesDir: dhallTypes }
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
-    # Notify.interpret Notify.handleLog
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
-    # Log.interpret (\log -> Log.handleTerminal Log.Normal log *> Log.handleFs Log.Verbose logPath log)
+    # Comment.interpret Comment.handleLog
+    # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'
 
   where

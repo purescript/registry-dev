@@ -1,7 +1,7 @@
 package:
   name: registry-app
   run:
-    main: Registry.App.Main
+    main: Registry.App.Server
   publish:
     license: BSD-3-Clause
     version: 0.0.1
@@ -41,6 +41,7 @@ package:
     - newtype
     - node-buffer
     - node-child-process
+    - node-execa
     - node-fs
     - node-fs-aff
     - node-path
@@ -56,6 +57,7 @@ package:
     - prelude
     - profunctor
     - profunctor-lenses
+    - record
     - refs
     - registry-foreign
     - registry-lib
@@ -63,13 +65,13 @@ package:
     - safe-coerce
     - spago-core
     - strings
-    - sunde
     - these
     - transformers
     - tuples
     - typelevel-prelude
     - unicode
     - unsafe-coerce
+    - uuidv4
     - variant
   test:
     main: Test.Registry.Main

@@ -9,6 +9,8 @@ export const connectImpl = ({ key, secret }, endpoint) => {
   });
 };
 
+// TODO: we should switch to v3 of the SDK:
+// https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/clients/client-s3/classes/listobjectsv2command.html
 export const listObjectsImpl = (s3, params) => {
   return new Promise(function (resolve, reject) {
     s3.listObjectsV2(params, function (err, data) {

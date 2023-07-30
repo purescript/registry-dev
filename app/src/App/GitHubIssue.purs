@@ -1,4 +1,4 @@
-module Registry.App.Main where
+module Registry.App.GitHubIssue where
 
 import Registry.App.Prelude
 
@@ -17,19 +17,19 @@ import Node.Process as Process
 import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.Auth as Auth
+import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
-import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG, LogVerbosity(..))
+import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Constants as Constants
@@ -66,24 +66,25 @@ main = launchAff_ $ do
             signed <- signPacchettiBottiIfTrustee payload
             API.authenticated signed
 
-    -- Git env
-    debouncer <- Git.newDebouncer
-    let
-      gitEnv :: GitEnv
-      gitEnv =
-        { repos: Git.defaultRepos
-        , pull: ForceClean
-        , write: CommitAs (Git.pacchettibottiCommitter env.token)
-        , workdir: scratchDir
-        , debouncer
-        }
-
     -- Caching
     let cache = Path.concat [ scratchDir, ".cache" ]
     FS.Extra.ensureDirectory cache
     githubCacheRef <- Cache.newCacheRef
     legacyCacheRef <- Cache.newCacheRef
     registryCacheRef <- Cache.newCacheRef
+
+    -- Registry env
+    debouncer <- Registry.newDebouncer
+    let
+      registryEnv :: Registry.RegistryEnv
+      registryEnv =
+        { repos: Registry.defaultRepos
+        , pull: Git.ForceClean
+        , write: Registry.CommitAs (Git.pacchettibottiCommitter env.token)
+        , workdir: scratchDir
+        , debouncer
+        , cacheRef: registryCacheRef
+        }
 
     --  Package sets
     let workdir = Path.concat [ scratchDir, "package-sets-work" ]
@@ -92,19 +93,20 @@ main = launchAff_ $ do
     thrownRef <- liftEffect $ Ref.new false
 
     run
+      # Env.runDhallEnv { typesDir: env.dhallTypes }
       # Env.runGitHubEventEnv { username: env.username, issue: env.issue }
       # Env.runPacchettiBottiEnv { publicKey: env.publicKey, privateKey: env.privateKey }
       -- App effects
       # PackageSets.interpret (PackageSets.handle { workdir })
-      # Registry.interpret (Registry.handle registryCacheRef)
+      # Registry.interpret (Registry.handle registryEnv)
       # Storage.interpret (Storage.handleS3 { s3: env.spacesConfig, cache })
-      # Git.interpret (Git.handle gitEnv)
       # Pursuit.interpret (Pursuit.handleAff env.token)
+      # Source.interpret Source.handle
       # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache, ref: githubCacheRef })
       -- Caching & logging
       # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
-      # Except.catch (\msg -> Log.error msg *> Notify.notify msg *> Run.liftEffect (Ref.write true thrownRef))
-      # Notify.interpret (Notify.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Git.defaultRepos.registry })
+      # Except.catch (\msg -> Log.error msg *> Comment.comment msg *> Run.liftEffect (Ref.write true thrownRef))
+      # Comment.interpret (Comment.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Registry.defaultRepos.registry })
       # Log.interpret (Log.handleTerminal Verbose)
       -- Base effects
       # Run.runBaseAff'
@@ -126,6 +128,7 @@ type GitHubEventEnv =
   , spacesConfig :: SpaceKey
   , publicKey :: String
   , privateKey :: String
+  , dhallTypes :: FilePath
   }
 
 initializeGitHub :: Aff (Maybe GitHubEventEnv)
@@ -135,6 +138,9 @@ initializeGitHub = do
   privateKey <- Env.lookupRequired Env.pacchettibottiED25519
   spacesKey <- Env.lookupRequired Env.spacesKey
   spacesSecret <- Env.lookupRequired Env.spacesSecret
+  dhallTypes <- do
+    types <- Env.lookupRequired Env.dhallTypes
+    liftEffect $ Path.resolve [] types
   eventPath <- Env.lookupRequired Env.githubEventPath
 
   octokit <- Octokit.newOctokit token
@@ -170,6 +176,7 @@ initializeGitHub = do
         , spacesConfig: { key: spacesKey, secret: spacesSecret }
         , publicKey
         , privateKey
+        , dhallTypes
         }
 
 data OperationDecoding

@@ -8,46 +8,25 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      SPACES_KEY: ${{ secrets.SPACES_KEY }}
-      SPACES_SECRET: ${{ secrets.SPACES_SECRET }}
     steps:
       # Setup
       - name: Check out source repository
         uses: actions/checkout@v2
 
-      - name: Cache NPM dependencies
-        uses: actions/cache@v2
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Cache PureScript dependencies
-        uses: actions/cache@v2
-        with:
-          key: ${{ runner.os }}-spago-${{ hashFiles('**/spago.yaml') }}
-          path: |
-            .spago
-            output
-
       - name: Install Nix
-        uses: cachix/install-nix-action@v16
-        with:
-          extra_nix_config: |
-            access-tokens = github.com=${{ env.GITHUB_TOKEN }}
+        uses: DeterminateSystems/nix-installer-action@v4
 
-      # Checks for the Registry Draft
-      - name: "Check that all Dhall compiles, and fixtures correctly conform to a Manifest"
-        run: nix develop --command 'registry-verify-dhall'
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v2
 
-      - name: "Build project"
-        run: nix develop --command 'registry-build'
+      # Separates all the cache downloading time from the time required to actually run a step
+      # of the workflow
+      - name: Initialize Nix
+        run: nix develop
 
-      - name: "Run tests"
-        run: nix develop --command 'registry-test'
-
-      - name: "Verify CI code formats"
-        run: nix develop --command 'registry-check-format'
+      # Unfortunately I can't run 'spago test' in a derivation because it doesn't
+      # have a mode that ignores the cache. So we run it in a script instead.
+      # Once we can make this a normal derivation then we can delete this 
+      # workflow file altogether.
+      - name: Run Spago tests
+        run: nix develop --command run-tests-script

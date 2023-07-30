@@ -5,7 +5,7 @@
 -- | This is not a general logging effect. For that, you should use the Log
 -- | effect. This effect should be used sparingly to notify registry users of
 -- | events with formatted, human-readable messages providing context.
-module Registry.App.Effect.Notify where
+module Registry.App.Effect.Comment where
 
 import Registry.App.Prelude
 
@@ -21,44 +21,44 @@ import Registry.Foreign.Octokit as Octokit
 import Run (AFF, EFFECT, Run)
 import Run as Run
 
-data Notify a = Notify (Doc GraphicsParam) a
+data Comment a = Comment (Doc GraphicsParam) a
 
-derive instance Functor Notify
+derive instance Functor Comment
 
 -- | An effect for notifying consumers of important events in the application
-type NOTIFY r = (notify :: Notify | r)
+type COMMENT r = (comment :: Comment | r)
 
-_notify :: Proxy "notify"
-_notify = Proxy
+_comment :: Proxy "comment"
+_comment = Proxy
 
-notify :: forall a r. Log.Loggable a => a -> Run (NOTIFY + r) Unit
-notify message = Run.lift _notify (Notify (Log.toLog message) unit)
+comment :: forall a r. Log.Loggable a => a -> Run (COMMENT + r) Unit
+comment message = Run.lift _comment (Comment (Log.toLog message) unit)
 
-interpret :: forall r a. (Notify ~> Run r) -> Run (NOTIFY + r) a -> Run r a
-interpret handler = Run.interpret (Run.on _notify handler Run.send)
+interpret :: forall r a. (Comment ~> Run r) -> Run (COMMENT + r) a -> Run r a
+interpret handler = Run.interpret (Run.on _comment handler Run.send)
 
--- | Handle a notification by logging it to the console.
-handleLog :: forall a r. Notify a -> Run (LOG + r) a
+-- | Handle a notification by converting it to an info-level LOG
+handleLog :: forall a r. Comment a -> Run (LOG + r) a
 handleLog = case _ of
-  Notify message next -> do
+  Comment message next -> do
     Log.info $ Ansi.foreground Ansi.BrightBlue (Dodo.text "[NOTIFY] ") <> message
     pure next
 
-type NotifyGitHubEnv =
+type CommentGitHubEnv =
   { octokit :: Octokit
   , issue :: IssueNumber
   , registry :: Address
   }
 
 -- | Handle a notification by commenting on the relevant GitHub issue.
-handleGitHub :: forall a r. NotifyGitHubEnv -> Notify a -> Run (LOG + AFF + EFFECT + r) a
+handleGitHub :: forall a r. CommentGitHubEnv -> Comment a -> Run (LOG + AFF + EFFECT + r) a
 handleGitHub env = case _ of
-  Notify message next -> do
+  Comment message next -> do
     let issueNumber = Int.toStringAs Int.decimal $ un IssueNumber env.issue
-    Log.debug $ "Notifying via a GitHub comment on issue " <> issueNumber
-    handleLog (Notify message unit)
-    let comment = Dodo.print Dodo.plainText Dodo.twoSpaces (Log.toLog message)
-    let request = Octokit.createCommentRequest { address: env.registry, issue: env.issue, body: comment }
+    Log.debug $ "Commenting via a GitHub comment on issue " <> issueNumber
+    handleLog (Comment message unit)
+    let body = Dodo.print Dodo.plainText Dodo.twoSpaces (Log.toLog message)
+    let request = Octokit.createCommentRequest { address: env.registry, issue: env.issue, body }
     Octokit.request env.octokit request >>= case _ of
       Left error -> do
         Log.error $ "Could not send comment to GitHub due to an unexpected error."

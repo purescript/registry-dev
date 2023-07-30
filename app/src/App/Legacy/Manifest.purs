@@ -21,8 +21,8 @@ import Data.These (These(..))
 import Data.These as These
 import Data.Variant as Variant
 import Effect.Aff as Aff
-import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS.Aff
+import Node.Library.Execa as Execa
 import Node.Path as Path
 import Registry.App.CLI.Licensee as Licensee
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
@@ -49,7 +49,6 @@ import Run.Except (EXCEPT)
 import Run.Except as Except
 import Run.Except as Run.Except
 import Safe.Coerce (coerce)
-import Sunde as Process
 import Type.Proxy (Proxy(..))
 
 type LegacyManifest =
@@ -354,12 +353,13 @@ fetchSpagoDhallJson address ref = Run.Except.runExceptAt _spagoDhallError do
   dhallToJson :: { dhall :: String, cwd :: Maybe FilePath } -> Aff (Either String Json)
   dhallToJson { dhall, cwd } = do
     let cmd = "dhall-to-json"
-    let stdin = Just dhall
     let args = []
-    result <- Process.spawn { cmd, stdin, args } (NodeProcess.defaultSpawnOptions { cwd = cwd })
-    pure $ case result.exit of
-      NodeProcess.Normally 0 -> lmap CA.printJsonDecodeError $ parseJson CA.json result.stdout
-      _ -> Left result.stderr
+    process <- Execa.execa cmd args (_ { cwd = cwd })
+    process.stdin.writeUtf8End dhall
+    result <- process.result
+    pure case result of
+      Right { stdout } -> lmap CA.printJsonDecodeError $ parseJson CA.json stdout
+      Left { stderr } -> Left stderr
 
 newtype Bowerfile = Bowerfile
   { description :: Maybe String

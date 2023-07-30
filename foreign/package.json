@@ -12,7 +12,7 @@
     "fuse.js": "^6.6.2",
     "jsonrepair": "^2.2.1",
     "registry-lib": "file:../lib",
-    "semver": "^7.3.5",
+    "semver": "^7.5.2",
     "tar": "^6.1.11",
     "tmp": "^0.2.1"
   }

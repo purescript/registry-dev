@@ -201,7 +201,7 @@ testIndex { satisfied, unsatisfied } = case ManifestIndex.maximalIndex (Set.from
 
 testSorted :: forall m. MonadThrow Error m => Array Manifest -> m Unit
 testSorted input = do
-  let sorted = ManifestIndex.topologicalSort (Set.fromFoldable input)
+  let sorted = ManifestIndex.topologicalSort ManifestIndex.IgnoreRanges (Set.fromFoldable input)
   unless (input == sorted) do
     Assert.fail $ String.joinWith "\n"
       [ Argonaut.stringifyWithIndent 2 $ CA.encode (CA.array manifestCodec') input

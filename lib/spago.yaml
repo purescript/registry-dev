@@ -13,6 +13,7 @@ package:
     - datetime
     - effect
     - either
+    - exceptions
     - foldable-traversable
     - foreign-object
     - formatters
@@ -28,11 +29,14 @@ package:
     - node-fs
     - node-fs-aff
     - node-path
+    - nullable
     - ordered-collections
     - parsing
     - partial
     - prelude
     - profunctor
+    - profunctor-lenses
+    - routing-duplex
     - safe-coerce
     - strings
     - transformers
@@ -43,6 +47,6 @@ package:
       - argonaut-core
       - exceptions
       - node-child-process
+      - node-execa
       - spec
-      - sunde
       - unsafe-coerce

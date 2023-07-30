@@ -6,11 +6,10 @@ import Control.Parallel as Parallel
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
-import Node.ChildProcess as NodeProcess
 import Node.FS.Aff as FS
+import Node.Library.Execa as Execa
 import Node.Path as Path
 import Registry.Foreign.Tmp as Tmp
-import Sunde as Process
 
 -- | Attempt to detect the license associated with a set of provided files
 detectFiles :: Array { name :: FilePath, contents :: String } -> Aff (Either String (Array String))
@@ -25,13 +24,16 @@ detectFiles files = do
 detect :: FilePath -> Aff (Either String (Array String))
 detect directory = do
   let cmd = "licensee"
-  let stdin = Nothing
   let args = [ "detect", "--json", directory ]
-  result <- Process.spawn { cmd, stdin, args } NodeProcess.defaultSpawnOptions
-  case result.exit of
-    -- Licensee will exit with `Normally 1` if it didn't parse any licenses,
+  result <- _.result =<< Execa.execa cmd args identity
+  let
+    { exitCode, stdout, stderr } = case result of
+      Left { exitCode, stdout, stderr } -> { exitCode, stdout, stderr }
+      Right { exitCode, stdout, stderr } -> { exitCode: Just exitCode, stdout, stderr }
+  pure case exitCode of
+    -- Licensee will exit with `1` if it didn't parse any licenses,
     -- but we consider this valid Licensee output.
-    NodeProcess.Normally n | n == 0 || n == 1 -> do
+    Just n | n == 0 || n == 1 -> do
       let
         parse :: String -> Either JsonDecodeError (Array String)
         parse str = map (map _.spdx_id <<< _.licenses) $ flip parseJson str $ CA.Record.object "Licenses"
@@ -39,15 +41,15 @@ detect directory = do
               { spdx_id: CA.string }
           }
 
-      case parse result.stdout of
+      case parse stdout of
         Left error -> do
           let printedError = CA.printJsonDecodeError error
-          pure $ Left printedError
+          Left printedError
         Right out -> do
           -- A NOASSERTION result means that a LICENSE file could not be parsed.
           -- For the purposes of the registry we disregard this result, since
           -- we retrieve the license via the package manifest(s) as well.
-          pure $ Right $ Array.filter (_ /= "NOASSERTION") out
+          Right $ Array.filter (_ /= "NOASSERTION") out
 
     _ ->
-      pure $ Left result.stderr
+      Left stderr

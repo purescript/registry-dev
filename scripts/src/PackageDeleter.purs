@@ -17,16 +17,15 @@ import Effect.Class.Console as Console
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
+import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.Git (GitEnv, PullMode(..), WriteMode(..))
-import Registry.App.Effect.Git as Git
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LogVerbosity(..))
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Notify as Notify
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest (_legacyCache)
 import Registry.Foreign.FSExtra as FS.Extra
@@ -44,7 +43,7 @@ type Arguments =
   , reimport :: Boolean
   , commit :: Boolean
   , upload :: Boolean
-  , pullMode :: PullMode
+  , pullMode :: Git.PullMode
   }
 
 data InputMode = File FilePath | Package PackageName Version
@@ -79,8 +78,8 @@ parser = Arg.fromRecord
       , Arg.flag [ "--no-upload" ] "Do not upload changes to S3 storage" $> false
       ]
   , pullMode:
-      Arg.flag [ "--autostash" ] "Autostash when pulling, instead of requiring a clean checkout" $> Autostash
-        # Arg.default OnlyClean
+      Arg.flag [ "--autostash" ] "Autostash when pulling, instead of requiring a clean checkout" $> Git.Autostash
+        # Arg.default Git.OnlyClean
   }
   where
   parsePackage :: String -> Either String (Tuple PackageName Version)
@@ -107,19 +106,10 @@ main = launchAff_ do
   -- Environment
   _ <- Env.loadEnvFile ".env"
   token <- Env.lookupRequired Env.pacchettibottiToken
+  dhallTypes <- do
+    types <- Env.lookupRequired Env.dhallTypes
+    liftEffect $ Path.resolve [] types
   s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
-
-  -- Git
-  debouncer <- Git.newDebouncer
-  let
-    gitEnv :: WriteMode -> GitEnv
-    gitEnv writeMode =
-      { write: writeMode
-      , pull: arguments.pullMode -- --autostash
-      , repos: Git.defaultRepos
-      , workdir: scratchDir
-      , debouncer
-      }
 
   -- GitHub
   octokit <- Octokit.newOctokit token
@@ -130,6 +120,19 @@ main = launchAff_ do
   githubCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
   legacyCacheRef <- Cache.newCacheRef
+
+  -- Registry
+  debouncer <- Registry.newDebouncer
+  let
+    registryEnv :: Registry.RegistryEnv
+    registryEnv =
+      { write: Registry.ReadOnly -- We commit in bulk after running everything.
+      , pull: arguments.pullMode
+      , repos: Registry.defaultRepos
+      , workdir: scratchDir
+      , debouncer
+      , cacheRef: registryCacheRef
+      }
 
   -- Logging
   now <- nowUTC
@@ -148,19 +151,19 @@ main = launchAff_ do
       Right values -> pure values
 
   let
-    interpret gitMode =
-      Registry.interpret (Registry.handle registryCacheRef)
+    interpret =
+      Env.runDhallEnv { typesDir: dhallTypes }
+        >>> Registry.interpret (Registry.handle registryEnv)
         >>> Storage.interpret (if arguments.upload then Storage.handleS3 { s3, cache } else Storage.handleReadOnly cache)
+        >>> Source.interpret Source.handle
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-        >>> Git.interpret (Git.handle (gitEnv gitMode))
         >>> Pursuit.interpret Pursuit.handlePure
         >>> Cache.interpret _legacyCache (Cache.handleMemoryFs { ref: legacyCacheRef, cache })
-        >>> Notify.interpret Notify.handleLog
+        >>> Comment.interpret Comment.handleLog
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
         >>> Run.runBaseAff'
 
-  -- We run deletions *without* committing, because we'll do it in bulk later.
-  interpret ReadOnly do
+  interpret do
     Log.info $ Array.fold
       [ "Deleting package versions:"
       , do
@@ -178,19 +181,33 @@ main = launchAff_ do
           Right _ ->
             Log.info $ "Successfully removed " <> formatted
 
-  -- --commit
-  when arguments.commit do
-    -- Then we add our commits with committing enabled.
-    interpret (CommitAs (Git.pacchettibottiCommitter token)) do
-      Git.commit Git.CommitMetadataIndex "Remove some package versions from metadata." >>= case _ of
+    -- --commit
+    when arguments.commit do
+      -- Then we add our commits out-of-band by manually committing the
+      -- repositories. This isn't generally recommended (we should commit as
+      -- part of the registry effect), but for bulk deletions it works.
+      commitMetadataResult <- Git.gitCommit
+        { address: registryEnv.repos.registry
+        , committer: Git.pacchettibottiCommitter token
+        , commit: Registry.commitKeyToPaths Registry.CommitMetadataIndex
+        , message: "Remove some package versions from metadata."
+        }
+        (Path.concat [ registryEnv.workdir, "registry" ])
+      case commitMetadataResult of
         Left error -> Log.error $ "Failed to commit metadata: " <> error
         Right _ -> pure unit
 
-      Git.commit Git.CommitManifestIndex "Remove some package versions from manifest index." >>= case _ of
+      commitManifestIndexResult <- Git.gitCommit
+        { address: registryEnv.repos.manifestIndex
+        , committer: Git.pacchettibottiCommitter token
+        , commit: Registry.commitKeyToPaths Registry.CommitManifestIndex
+        , message: "Remove some package versions from manifest index."
+        }
+        (Path.concat [ registryEnv.workdir, "registry-index" ])
+      case commitManifestIndexResult of
         Left error -> Log.error $ "Failed to commit manifest index: " <> error
         Right _ -> pure unit
 
-  interpret ReadOnly do
     Log.info "Finished."
 
 deleteVersion :: forall r. Arguments -> PackageName -> Version -> Run (API.PublishEffects + r) Unit

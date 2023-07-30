@@ -1,8 +1,10 @@
 {
   "name": "registry-app",
   "private": true,
+  "type": "module",
   "license": "BSD-3-Clause",
   "dependencies": {
+    "better-sqlite3": "^8.4.0",
     "registry-foreign": "file:../foreign",
     "registry-lib": "file:../lib",
     "xhr2": "^0.2.1",
