@@ -240,6 +240,6 @@ manifestCodec' = Profunctor.dimap to from $ CA.Record.object "ManifestRep"
         }
     , description: Nothing
     , owners: Nothing
-    , files: Nothing
+    , includeFiles: Nothing
     , excludeFiles: Nothing
     }

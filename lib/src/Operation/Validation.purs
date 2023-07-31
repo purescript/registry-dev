@@ -220,8 +220,8 @@ alwaysIncludedFilesIfPresent = Set.fromFoldable
   ]
 
 -- | Validate that the given directory contains no files that are excluded by
--- | the package's configuration.
--- | In case of error, return the set of files that shouldn't be excluded
+-- | the package's configuration. In case of error, return the set of files that
+-- | shouldn't be excluded
 validateNoExcludedObligatoryFiles :: Array FilePath -> Either (NonEmptySet FilePath) Unit
 validateNoExcludedObligatoryFiles files = do
   let fileSet = Set.fromFoldable files

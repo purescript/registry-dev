@@ -199,10 +199,15 @@ All packages in the registry contain a `purs.json` manifest file in their root d
 - `location`: a valid [`Location`](#location)
 - `owners` (optional): a non-empty array of [`Owner`](#owner)
 - `description` (optional): a description of your library as a plain text string, not markdown, up to 300 characters
-- `files` (optional): a non-empty array of globs, where globs are used to match files outside the `src` directory you want included in your package tarball
-  - Globs must contain only `*`, `**`, `/`, `.`, `..`, and characters for Linux file paths. It is not possible to negate a glob (ie. the `!` character), and globs cannot represent a path out of the package source directory.
+- `includeFiles` (optional): a non-empty array of globs, where globs are used to match file paths (in addition to the `src` directory and other always-included files) that you want included in your package tarball
+- `excludeFiles` (optional): a non-empty array of globs, where globs are used to match file paths in your package source to exclude them from your package tarball.
 - `dependencies`: dependencies of your package as key-value pairs where the keys are [`PackageName`](#packagename)s and values are [`Range`](#range)s; this is a required field, but if you have no dependencies you can provide an empty object.
-  - All dependencies you provide must exist in the registry, and the dependency ranges must be solvable (ie. it must be possible to produce a single version of each dependency that satisfies the provided version bounds, including any transitive dependencies).
+
+Note:
+
+- Globs you provide at the `includeFiles` and `excludeFiles` keys must contain only `*`, `**`, `/`, `.`, `..`, and characters for Linux file paths. It is not possible to negate a glob (ie. the `!` character), and globs cannot represent a path out of the package source directory.
+- When packaging your project source, the registry will first "include" your `src` directory and always-included files such as your `purs.json` file. Then it will include files which match globs indicated by the `includeFiles` key. Finally, it will apply the excluding globs indicated by the `excludeFiles` key to the included files (always-included files cannot be excluded).
+- Dependencies you provide at the `dependencies` key must exist in the registry, and the dependency ranges must be solvable (ie. it must be possible to produce a single version of each dependency that satisfies the provided version bounds, including any transitive dependencies).
 
 For example:
 
@@ -216,7 +221,8 @@ For example:
     "githubOwner": "purescript",
     "githubRepo": "purescript-control"
   },
-  "files": ["test/**/*.purs"],
+  "include": ["test/**/*.purs"],
+  "exclude": ["test/graphs"],
   "dependencies": { "newtype": ">=3.0.0 <4.0.0", "prelude": ">=4.0.0 <5.0.0" }
 }
 ```

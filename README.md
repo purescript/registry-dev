@@ -112,37 +112,6 @@ All the pre-registry packages will be grandfathered in, see [here for details](#
 You can find some examples of the `Manifest` that has been generated for them in
 the [examples](./examples) folder.
 
-Here we embed a copy of the `Manifest` schema for ease of consultation:
-
-```dhall
-{-
-
-The schema for `purs.json` files.
-
-This object holds all the info that the Registry needs to know about it.
-
--}
-
-let Map = (./Prelude.dhall).Map.Type
-
-let Manifest =
-      -- The name of the package
-      { name : Text
-      -- A short description of the package
-      , description : Optional Text
-      -- The SPDX code for the license under which the code is released
-      , license : Text
-      -- The version of this package
-      , version : Text
-      -- The location where package sources can be found
-      , location : ./Location.dhall
-      -- The packages this package depends on
-      , dependencies : Map Text Text
-      }
-
-in Manifest
-```
-
 Note: the [`Location` schema](./v1/Location.dhall) includes support for packages that are
 not published from the root of the repository, by supplying the (optional) `subdir` field.
 This means that a repository could potentially host several packages (commonly called a "monorepo").

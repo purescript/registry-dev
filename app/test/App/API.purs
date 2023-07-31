@@ -216,7 +216,7 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runBaseEffects) $ Sp
     writeDirectories (goodDirectories <> Constants.ignoredDirectories <> [ "test" ])
     writeFiles (goodFiles <> Constants.ignoredFiles <> [ Path.concat [ "test", "Main.purs" ] ])
 
-    API.copyPackageSourceFiles { files: Nothing, excludeFiles: Nothing, source, destination }
+    API.copyPackageSourceFiles { includeFiles: Nothing, excludeFiles: Nothing, source, destination }
 
     paths <- FastGlob.match destination [ "**/*" ]
 
@@ -232,14 +232,14 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runBaseEffects) $ Sp
 
   Spec.it "Copies user-specified files" \{ source, destination, writeDirectories, writeFiles } -> do
     let
-      userFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/*.purs" ]
+      includeFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/*.purs" ]
       testDir = [ "test" ]
       testFiles = [ Path.concat [ "test", "Main.purs" ], Path.concat [ "test", "Test.purs" ] ]
 
     writeDirectories (goodDirectories <> testDir)
     writeFiles (goodFiles <> testFiles)
 
-    API.copyPackageSourceFiles { files: userFiles, excludeFiles: Nothing, source, destination }
+    API.copyPackageSourceFiles { includeFiles, excludeFiles: Nothing, source, destination }
 
     paths <- FastGlob.match destination [ "**/*" ]
 
@@ -250,7 +250,7 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runBaseEffects) $ Sp
 
   Spec.it "Does not copy user-specified excluded files" \{ source, destination, writeDirectories, writeFiles } -> do
     let
-      userFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/*.purs" ]
+      includeFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/*.purs" ]
       excludeFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/Test.purs" ]
       testDir = [ "test" ]
       testMain = Path.concat [ "test", "Main.purs" ]
@@ -260,7 +260,7 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runBaseEffects) $ Sp
     writeDirectories (goodDirectories <> testDir)
     writeFiles (goodFiles <> testFiles)
 
-    API.copyPackageSourceFiles { files: userFiles, excludeFiles, source, destination }
+    API.copyPackageSourceFiles { includeFiles, excludeFiles, source, destination }
 
     paths <- FastGlob.match destination [ "**/*" ]
 
@@ -271,13 +271,13 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runBaseEffects) $ Sp
 
   Spec.it "Won't exclude always included files" \{ source, destination, writeDirectories, writeFiles } -> do
     let
-      userFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/*.purs" ]
+      includeFiles = NonEmptyArray.fromArray =<< sequence [ NonEmptyString.fromString "test/**/*.purs" ]
       excludeFiles = Just $ NonEmptyArray.singleton (NonEmptyString.nes (Proxy :: _ "purs.json"))
 
     writeDirectories (goodDirectories)
     writeFiles (goodFiles)
 
-    API.copyPackageSourceFiles { files: userFiles, excludeFiles, source, destination }
+    API.copyPackageSourceFiles { includeFiles, excludeFiles, source, destination }
 
     paths <- FastGlob.match destination [ "**/*" ]
 

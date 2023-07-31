@@ -14,7 +14,6 @@ module Registry.App.API
   , copyPackageSourceFiles
   ) where
 
-import Prelude
 import Registry.App.Prelude
 
 import Data.Argonaut.Parser as Argonaut.Parser
@@ -593,7 +592,7 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
   -- We copy over all files that are always included (ie. src dir, purs.json file),
   -- and any files the user asked for via the 'files' key, and remove all files
   -- that should never be included (even if the user asked for them).
-  copyPackageSourceFiles { files: manifest.files, excludeFiles: manifest.excludeFiles, source: packageDirectory, destination: packageSourceDir }
+  copyPackageSourceFiles { includeFiles: manifest.includeFiles, excludeFiles: manifest.excludeFiles, source: packageDirectory, destination: packageSourceDir }
   Log.debug "Removing always-ignored files from the packaging directory."
   removeIgnoredTarballFiles packageSourceDir
 
@@ -905,13 +904,13 @@ formatPursuitResolutions { resolutions, dependenciesDir } =
 -- | Finally, it removes any files specified in the globs behind the `excludeFiles` key.
 copyPackageSourceFiles
   :: forall r
-   . { files :: Maybe (NonEmptyArray NonEmptyString)
+   . { includeFiles :: Maybe (NonEmptyArray NonEmptyString)
      , excludeFiles :: Maybe (NonEmptyArray NonEmptyString)
      , source :: FilePath
      , destination :: FilePath
      }
   -> Run (LOG + EXCEPT String + AFF + EFFECT + r) Unit
-copyPackageSourceFiles { files, excludeFiles, source, destination } = do
+copyPackageSourceFiles { includeFiles, excludeFiles, source, destination } = do
   Log.debug $ "Copying package source files from " <> source <> " to " <> destination
 
   userExcludeFiles <- case excludeFiles of
@@ -920,14 +919,14 @@ copyPackageSourceFiles { files, excludeFiles, source, destination } = do
       let globs = map NonEmptyString.toString $ NonEmptyArray.toArray nonEmptyGlobs
       { succeeded, failed } <- FastGlob.match source globs
       -- Since we will only subtract the excluded globs we can safely ignore the failed globs
-      Log.warn $ "The following paths matched by globs in the 'excludeFiles' key are outside your package directory: " <> String.joinWith ", " failed
+      Log.warn $ "The following paths matched by globs in the 'exclude' key are outside your package directory: " <> String.joinWith ", " failed
       case validateNoExcludedObligatoryFiles succeeded of
         Right _ -> pure succeeded
         Left removedObligatoryFiles -> do
           Log.warn $ "The following paths matched by globs in the 'excludeFiles' key will be included in the tarball and cannot be excluded: " <> String.joinWith ", " (NonEmptySet.toUnfoldable removedObligatoryFiles)
           pure $ succeeded Array.\\ NonEmptySet.toUnfoldable removedObligatoryFiles
 
-  userFiles <- case files of
+  userFiles <- case includeFiles of
     Nothing -> pure []
     Just nonEmptyGlobs -> do
       let globs = map NonEmptyString.toString $ NonEmptyArray.toArray nonEmptyGlobs
@@ -936,7 +935,7 @@ copyPackageSourceFiles { files, excludeFiles, source, destination } = do
 
       unless (Array.null failed) do
         Except.throw $ String.joinWith " "
-          [ "Some paths matched by globs in the 'files' key are outside your package directory."
+          [ "Some paths matched by globs in the 'include' key are outside your package directory."
           , "Please ensure globs only match within your package directory, including symlinks."
           ]
 
@@ -946,7 +945,7 @@ copyPackageSourceFiles { files, excludeFiles, source, destination } = do
           let fullPaths = map (\path -> Path.concat [ source, path ]) matches
           Operation.Validation.validatePursModules fullPaths >>= case _ of
             Left formattedError ->
-              Except.throw $ "Some PureScript modules listed in the 'files' section of your manifest contain malformed or disallowed module names." <> formattedError
+              Except.throw $ "Some PureScript modules listed in the 'include' section of your manifest contain malformed or disallowed module names." <> formattedError
             Right _ ->
               pure unit
 
@@ -1008,7 +1007,7 @@ spagoToManifest :: Spago.Config -> Either String Manifest
 spagoToManifest config = do
   package@{ name, description, dependencies: Spago.Dependencies deps } <- note "Did not find a package in the config" config.package
   publishConfig@{ version, license } <- note "Did not find a `publish` section in the package config" package.publish
-  let files = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.include)
+  let includeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.include)
   let excludeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.exclude)
   location <- note "Did not find a `location` field in the publish config" publishConfig.location
   let
@@ -1028,6 +1027,6 @@ spagoToManifest config = do
     , description
     , dependencies
     , owners: Nothing -- TODO Spago still needs to add this to its config
-    , files
+    , includeFiles
     , excludeFiles
     }
