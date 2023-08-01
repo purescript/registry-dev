@@ -935,7 +935,7 @@ copyPackageSourceFiles { includeFiles, excludeFiles, source, destination } = do
 
       unless (Array.null failed) do
         Except.throw $ String.joinWith " "
-          [ "Some paths matched by globs in the 'include' key are outside your package directory."
+          [ "Some paths matched by globs in the 'includeFiles' key are outside your package directory."
           , "Please ensure globs only match within your package directory, including symlinks."
           ]
 
@@ -945,7 +945,7 @@ copyPackageSourceFiles { includeFiles, excludeFiles, source, destination } = do
           let fullPaths = map (\path -> Path.concat [ source, path ]) matches
           Operation.Validation.validatePursModules fullPaths >>= case _ of
             Left formattedError ->
-              Except.throw $ "Some PureScript modules listed in the 'include' section of your manifest contain malformed or disallowed module names." <> formattedError
+              Except.throw $ "Some PureScript modules listed in the 'includeFiles' section of your manifest contain malformed or disallowed module names." <> formattedError
             Right _ ->
               pure unit
 
