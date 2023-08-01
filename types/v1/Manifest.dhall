@@ -15,7 +15,8 @@ let Manifest =
     , location : ./Location.dhall
     , owners : Optional (List ./Owner.dhall)
     , description : Optional Text
-    , files : Optional (List Text)
+    , includeFiles : Optional (List Text)
+    , excludeFiles : Optional (List Text)
     , dependencies : Optional (Map PackageName Range)
     }
 

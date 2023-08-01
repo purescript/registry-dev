@@ -28,8 +28,10 @@ import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Map as Map
 import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
+import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
-import Data.String.NonEmpty as NonEmptyString
+import Data.String.NonEmpty (fromString) as NonEmptyString
+import Data.String.NonEmpty.Internal (toString) as NonEmptyString
 import Data.String.Regex as Regex
 import Effect.Aff as Aff
 import Effect.Ref as Ref
@@ -76,7 +78,7 @@ import Registry.Manifest as Manifest
 import Registry.Metadata as Metadata
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageSetUpdateData, PublishData)
 import Registry.Operation as Operation
-import Registry.Operation.Validation (UnpublishError(..))
+import Registry.Operation.Validation (UnpublishError(..), validateNoExcludedObligatoryFiles)
 import Registry.Operation.Validation as Operation.Validation
 import Registry.Owner as Owner
 import Registry.PackageName as PackageName
@@ -590,7 +592,7 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
   -- We copy over all files that are always included (ie. src dir, purs.json file),
   -- and any files the user asked for via the 'files' key, and remove all files
   -- that should never be included (even if the user asked for them).
-  copyPackageSourceFiles manifest.files { source: packageDirectory, destination: packageSourceDir }
+  copyPackageSourceFiles { includeFiles: manifest.includeFiles, excludeFiles: manifest.excludeFiles, source: packageDirectory, destination: packageSourceDir }
   Log.debug "Removing always-ignored files from the packaging directory."
   removeIgnoredTarballFiles packageSourceDir
 
@@ -899,33 +901,51 @@ formatPursuitResolutions { resolutions, dependenciesDir } =
 -- | Copy files from the package source directory to the destination directory
 -- | for the tarball. This will copy all always-included files as well as files
 -- | provided by the user via the `files` key.
+-- | Finally, it removes any files specified in the globs behind the `excludeFiles` key.
 copyPackageSourceFiles
   :: forall r
-   . Maybe (NonEmptyArray NonEmptyString)
-  -> { source :: FilePath, destination :: FilePath }
+   . { includeFiles :: Maybe (NonEmptyArray NonEmptyString)
+     , excludeFiles :: Maybe (NonEmptyArray NonEmptyString)
+     , source :: FilePath
+     , destination :: FilePath
+     }
   -> Run (LOG + EXCEPT String + AFF + EFFECT + r) Unit
-copyPackageSourceFiles files { source, destination } = do
+copyPackageSourceFiles { includeFiles, excludeFiles, source, destination } = do
   Log.debug $ "Copying package source files from " <> source <> " to " <> destination
 
-  userFiles <- case files of
+  userExcludeFiles <- case excludeFiles of
     Nothing -> pure []
     Just nonEmptyGlobs -> do
       let globs = map NonEmptyString.toString $ NonEmptyArray.toArray nonEmptyGlobs
       { succeeded, failed } <- FastGlob.match source globs
+      -- Since we will only subtract the excluded globs we can safely ignore the failed globs
+      Log.warn $ "The following paths matched by globs in the 'exclude' key are outside your package directory: " <> String.joinWith ", " failed
+      case validateNoExcludedObligatoryFiles succeeded of
+        Right _ -> pure succeeded
+        Left removedObligatoryFiles -> do
+          Log.warn $ "The following paths matched by globs in the 'excludeFiles' key will be included in the tarball and cannot be excluded: " <> String.joinWith ", " (NonEmptySet.toUnfoldable removedObligatoryFiles)
+          pure $ succeeded Array.\\ NonEmptySet.toUnfoldable removedObligatoryFiles
+
+  userFiles <- case includeFiles of
+    Nothing -> pure []
+    Just nonEmptyGlobs -> do
+      let globs = map NonEmptyString.toString $ NonEmptyArray.toArray nonEmptyGlobs
+      { succeeded, failed } <- FastGlob.match source globs
+      let succeededAndNotExcluded = succeeded Array.\\ userExcludeFiles
 
       unless (Array.null failed) do
         Except.throw $ String.joinWith " "
-          [ "Some paths matched by globs in the 'files' key are outside your package directory."
+          [ "Some paths matched by globs in the 'includeFiles' key are outside your package directory."
           , "Please ensure globs only match within your package directory, including symlinks."
           ]
 
-      case NonEmptyArray.fromArray (Array.filter (Regex.test Internal.Path.pursFileExtensionRegex) succeeded) of
+      case NonEmptyArray.fromArray (Array.filter (Regex.test Internal.Path.pursFileExtensionRegex) succeededAndNotExcluded) of
         Nothing -> pure unit
         Just matches -> do
           let fullPaths = map (\path -> Path.concat [ source, path ]) matches
           Operation.Validation.validatePursModules fullPaths >>= case _ of
             Left formattedError ->
-              Except.throw $ "Some PureScript modules listed in the 'files' section of your manifest contain malformed or disallowed module names." <> formattedError
+              Except.throw $ "Some PureScript modules listed in the 'includeFiles' section of your manifest contain malformed or disallowed module names." <> formattedError
             Right _ ->
               pure unit
 
@@ -934,7 +954,7 @@ copyPackageSourceFiles files { source, destination } = do
   includedFiles <- FastGlob.match source includedGlobs
   includedInsensitiveFiles <- FastGlob.match' source includedInsensitiveGlobs { caseSensitive: false }
 
-  let filesToCopy = userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded
+  let filesToCopy = (userFiles <> includedFiles.succeeded <> includedInsensitiveFiles.succeeded) Array.\\ userExcludeFiles
   let makePaths path = { from: Path.concat [ source, path ], to: Path.concat [ destination, path ], preserveTimestamps: true }
 
   case map makePaths filesToCopy of
@@ -987,6 +1007,8 @@ spagoToManifest :: Spago.Config -> Either String Manifest
 spagoToManifest config = do
   package@{ name, description, dependencies: Spago.Dependencies deps } <- note "Did not find a package in the config" config.package
   publishConfig@{ version, license } <- note "Did not find a `publish` section in the package config" package.publish
+  let includeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.include)
+  let excludeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.exclude)
   location <- note "Did not find a `location` field in the publish config" publishConfig.location
   let
     checkRange :: Tuple PackageName (Maybe Range) -> Either PackageName (Tuple PackageName Range)
@@ -1005,5 +1027,6 @@ spagoToManifest config = do
     , description
     , dependencies
     , owners: Nothing -- TODO Spago still needs to add this to its config
-    , files: Nothing -- TODO Spago still needs to add this to its config
+    , includeFiles
+    , excludeFiles
     }
