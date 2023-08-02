@@ -13,8 +13,11 @@
       "public": "abc123"
     }
   ],
-  "files": [
+  "includeFiles": [
     "test/**/*.purs"
+  ],
+  "excludeFiles": [
+    "test/**/*Spec.purs"
   ],
   "dependencies": {}
 }

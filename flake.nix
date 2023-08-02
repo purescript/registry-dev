@@ -41,7 +41,7 @@
     DHALL_TYPES = ./types;
 
     registryOverlay = final: prev: rec {
-      nodejs = prev.nodejs-18_x;
+      nodejs = prev.nodejs_20;
 
       # We don't want to force everyone to update their configs if they aren't
       # normally on flakes.

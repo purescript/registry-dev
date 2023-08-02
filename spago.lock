@@ -199,7 +199,7 @@ workspace:
   extra_packages:
     spago-core:
       git: https://github.com/purescript/spago.git
-      ref: 4f6dc9d6354402abcb6b5564a9768b1af219b83a
+      ref: c0c5eddf7e5f3f7c2bab47ea73351c0e13dc20f2
       subdir: spaghetto/core
 packages:
   aff:
@@ -1500,7 +1500,7 @@ packages:
   spago-core:
     type: git
     url: https://github.com/purescript/spago.git
-    rev: 4f6dc9d6354402abcb6b5564a9768b1af219b83a
+    rev: c0c5eddf7e5f3f7c2bab47ea73351c0e13dc20f2
     subdir: spaghetto/core
     dependencies:
       - aff
