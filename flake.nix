@@ -293,6 +293,7 @@
             nixFlakes
             nixfmt
             git
+            git-lfs
             bash
             nodejs
             jq
