@@ -2,8 +2,8 @@
 module Registry.App.Effect.GitHub
   ( GITHUB
   , GITHUB_CACHE
-  , GitHubCache
   , GitHub(..)
+  , GitHubCache
   , _github
   , _githubCache
   , getCommitDate
@@ -11,9 +11,9 @@ module Registry.App.Effect.GitHub
   , getJsonFile
   , getRefCommit
   , handle
+  , interpret
   , listTags
   , listTeamMembers
-  , interpret
   ) where
 
 import Registry.App.Prelude
@@ -30,6 +30,8 @@ import Data.Time.Duration as Duration
 import Foreign.Object as Object
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, CacheRef, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Env (RESOURCE_ENV)
+import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.Types (RawVersion(..))
@@ -129,7 +131,7 @@ type GitHubEnv =
 -- | An effectful handler for the GITHUB effect which makes calls to GitHub
 -- | using Octokit. This handler consumes a GITHUB_CACHE by caching in memory
 -- | with the filesystem as a fallback.
-handle :: forall r a. GitHubEnv -> GitHub a -> Run (LOG + AFF + EFFECT + r) a
+handle :: forall r a. GitHubEnv -> GitHub a -> Run (RESOURCE_ENV + LOG + AFF + EFFECT + r) a
 handle env = Cache.interpret _githubCache (Cache.handleMemoryFs { cache: env.cache, ref: env.ref }) <<< case _ of
   ListTags address reply -> do
     Log.debug $ "Listing tags for " <> address.owner <> "/" <> address.repo
@@ -165,7 +167,7 @@ handle env = Cache.interpret _githubCache (Cache.handleMemoryFs { cache: env.cac
 -- | A helper function for implementing GET requests to the GitHub API that
 -- | relies on the GitHub API to report whether there is any new data, and falls
 -- | back to the cache if there is not.
-request :: forall r a. Octokit -> Request a -> Run (GITHUB_CACHE + LOG + AFF + EFFECT + r) (Either GitHubError a)
+request :: forall r a. Octokit -> Request a -> Run (RESOURCE_ENV + GITHUB_CACHE + LOG + AFF + EFFECT + r) (Either GitHubError a)
 request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } = do
   let printedRoute = Octokit.printGitHubRoute route
   -- We cache GET requests, other than requests to fetch the current rate limit.
@@ -255,9 +257,11 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
 
 -- | Apply exponential backoff to requests that hang, but without cancelling
 -- | requests if we have reached our rate limit and have been throttled.
-requestWithBackoff :: forall a r. Octokit -> Request a -> Run (LOG + AFF + r) (Either Octokit.GitHubError a)
+requestWithBackoff :: forall a r. Octokit -> Request a -> Run (RESOURCE_ENV + LOG + AFF + r) (Either Octokit.GitHubError a)
 requestWithBackoff octokit githubRequest = do
-  Log.debug $ "Making request to " <> Octokit.printGitHubRoute githubRequest.route
+  let route = Octokit.printGitHubRoute githubRequest.route
+  { githubApiUrl } <- Env.askResourceEnv
+  Log.debug $ "Making request to " <> route <> " with base URL " <> githubApiUrl
   result <- Run.liftAff do
     let
       retryOptions =

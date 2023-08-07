@@ -46,7 +46,7 @@ import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Comment (COMMENT)
 import Registry.App.Effect.Comment as Comment
-import Registry.App.Effect.Env (DHALL_ENV, GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
+import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV, RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -321,7 +321,7 @@ authenticated auth = case auth.payload of
         Registry.mirrorLegacyRegistry payload.name payload.newLocation
         Comment.comment "Mirrored registry operation to the legacy registry."
 
-type PublishEffects r = (DHALL_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT + r)
+type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Publish a package via the 'publish' operation. If the package has not been
 -- | published before then it will be registered and the given version will be
@@ -455,7 +455,7 @@ publish source payload = do
     Left error -> do
       Log.error $ "Could not read purs.json from path " <> packagePursJson <> ": " <> Aff.message error
       Except.throw $ "Could not find a purs.json file in the package source."
-    Right string -> Env.askDhallEnv >>= \{ typesDir } -> Run.liftAff (jsonToDhallManifest typesDir string) >>= case _ of
+    Right string -> Env.askResourceEnv >>= \{ dhallTypes } -> Run.liftAff (jsonToDhallManifest dhallTypes string) >>= case _ of
       Left error -> do
         Log.error $ "Manifest does not typecheck: " <> error
         Except.throw $ "Found a valid purs.json file in the package source, but it does not typecheck."
@@ -826,6 +826,15 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
     resolutionsFilePath = Path.concat [ tmp, "resolutions.json" ]
 
   Run.liftAff $ writeJsonFile pursuitResolutionsCodec resolutionsFilePath resolvedPaths
+
+  -- The 'purs publish' command requires a clean working tree, but it isn't
+  -- guaranteed that packages have an adequate .gitignore file; compilers prior
+  -- to 0.14.7 did not ignore the purs.json file when publishing. So we stash
+  -- changes made during the publishing process (ie. inclusion of a new purs.json
+  -- file and an output directory from compilation) before calling purs publish.
+  -- https://git-scm.com/docs/gitignore
+  Log.debug "Adding output and purs.json to local git excludes..."
+  Run.liftAff $ FS.Aff.appendTextFile UTF8 (Path.concat [ packageSourceDir, ".git", "info", "exclude" ]) (String.joinWith "\n" [ "output", "purs.json" ])
 
   -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
   -- package name in the manifest file:

@@ -65,6 +65,7 @@ main = launchAff_ do
   -- Environment
   _ <- Env.loadEnvFile ".env"
   token <- Env.lookupRequired Env.pacchettibottiToken
+  resourceEnv <- Env.lookupResourceEnv
   s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
 
   -- Caching
@@ -74,7 +75,7 @@ main = launchAff_ do
   registryCacheRef <- Cache.newCacheRef
 
   -- GitHub
-  octokit <- Octokit.newOctokit token
+  octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
 
   -- Registry
   debouncer <- Registry.newDebouncer
@@ -112,6 +113,7 @@ main = launchAff_ do
         >>> Registry.interpret (Registry.handle registryEnv)
         >>> Storage.interpret (Storage.handleS3 { s3, cache })
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+        >>> Env.runResourceEnv resourceEnv
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
         >>> Run.runBaseAff'
 

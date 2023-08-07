@@ -3,6 +3,7 @@ module Registry.App.Effect.Env where
 
 import Registry.App.Prelude
 
+import Affjax (URL)
 import Data.Array as Array
 import Data.String as String
 import Data.String.Base64 as Base64
@@ -10,28 +11,52 @@ import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Node.FS.Aff as FS.Aff
+import Node.Path as Path
 import Node.Process as Process
+import Registry.Constants as Constants
 import Registry.Foreign.Octokit (GitHubToken(..), IssueNumber)
 import Run (Run)
 import Run.Reader (Reader)
 import Run.Reader as Run.Reader
 
--- | Environment fields available in the GitHub Event environment, namely
--- | pointers to the user who created the event and the issue associated with it.
-type DhallEnv =
-  { typesDir :: FilePath
+type ResourceEnv =
+  { dhallTypes :: FilePath
+  , databaseUrl :: DatabaseUrl
+  , s3ApiUrl :: URL
+  , s3BucketUrl :: URL
+  , githubApiUrl :: URL
+  , pursuitApiUrl :: URL
   }
 
-type DHALL_ENV r = (dhallEnv :: Reader DhallEnv | r)
+-- | An effect for various external resources (files, databases, API endpoints,
+-- | and so on) that the registry needs to connect to.
+type RESOURCE_ENV r = (resourceEnv :: Reader ResourceEnv | r)
 
-_dhallEnv :: Proxy "dhallEnv"
-_dhallEnv = Proxy
+_resourceEnv :: Proxy "resourceEnv"
+_resourceEnv = Proxy
 
-askDhallEnv :: forall r. Run (DHALL_ENV + r) DhallEnv
-askDhallEnv = Run.Reader.askAt _dhallEnv
+askResourceEnv :: forall r. Run (RESOURCE_ENV + r) ResourceEnv
+askResourceEnv = Run.Reader.askAt _resourceEnv
 
-runDhallEnv :: forall r a. DhallEnv -> Run (DHALL_ENV + r) a -> Run r a
-runDhallEnv = Run.Reader.runReaderAt _dhallEnv
+runResourceEnv :: forall r a. ResourceEnv -> Run (RESOURCE_ENV + r) a -> Run r a
+runResourceEnv = Run.Reader.runReaderAt _resourceEnv
+
+lookupResourceEnv :: forall m. MonadEffect m => m ResourceEnv
+lookupResourceEnv = do
+  dhallTypesEnv <- liftEffect <<< Path.resolve [] =<< lookupWithDefault dhallTypes defaultDhallTypes
+  databaseUrlEnv <- lookupWithDefault databaseUrl defaultDatabaseUrl
+  s3ApiUrlEnv <- lookupWithDefault s3ApiUrl defaultS3ApiUrl
+  s3BucketUrlEnv <- lookupWithDefault s3BucketUrl defaultS3BucketUrl
+  githubApiUrlEnv <- lookupWithDefault githubApiUrl defaultGitHubApiUrl
+  pursuitApiUrlEnv <- lookupWithDefault pursuitApiUrl defaultPursuitApiUrl
+  pure
+    { dhallTypes: dhallTypesEnv
+    , databaseUrl: databaseUrlEnv
+    , s3ApiUrl: s3ApiUrlEnv
+    , s3BucketUrl: s3BucketUrlEnv
+    , githubApiUrl: githubApiUrlEnv
+    , pursuitApiUrl: pursuitApiUrlEnv
+    }
 
 -- | Environment fields available in the GitHub Event environment, namely
 -- | pointers to the user who created the event and the issue associated with it.
@@ -107,6 +132,17 @@ lookupOptional (EnvKey { key, decode }) = liftEffect $ Process.lookupEnv key >>=
     Left error -> Exception.throw $ "Found " <> key <> " in the environment with value " <> value <> ", but it could not be decoded: " <> error
     Right decoded -> pure $ Just decoded
 
+-- | Look up an optional environment variable, throwing an exception if it is
+-- | present but cannot be decoded, and returning a default value if missing or
+-- | empty.
+lookupWithDefault :: forall m a. MonadEffect m => EnvKey a -> a -> m a
+lookupWithDefault (EnvKey { key, decode }) default = liftEffect $ Process.lookupEnv key >>= case _ of
+  Nothing -> pure default
+  Just "" -> pure default
+  Just value -> case decode value of
+    Left error -> Exception.throw $ "Found " <> key <> " in the environment with value " <> value <> ", but it could not be decoded: " <> error
+    Right decoded -> pure decoded
+
 -- | Look up a required environment variable, throwing an exception if it is
 -- | missing, an empty string, or present but cannot be decoded.
 lookupRequired :: forall m a. MonadEffect m => EnvKey a -> m a
@@ -135,9 +171,43 @@ type DatabaseUrl = { prefix :: String, path :: FilePath }
 databaseUrl :: EnvKey DatabaseUrl
 databaseUrl = EnvKey { key: "DATABASE_URL", decode: decodeDatabaseUrl }
 
+defaultDatabaseUrl :: DatabaseUrl
+defaultDatabaseUrl = { prefix: "sqlite:", path: "db/registry.sqlite3" }
+
 -- | The location of the Dhall specifications directory
 dhallTypes :: EnvKey FilePath
 dhallTypes = EnvKey { key: "DHALL_TYPES", decode: pure }
+
+defaultDhallTypes :: FilePath
+defaultDhallTypes = "./types"
+
+-- | The base URL of the S3 API
+s3ApiUrl :: EnvKey URL
+s3ApiUrl = EnvKey { key: "S3_API_URL", decode: pure }
+
+defaultS3ApiUrl :: URL
+defaultS3ApiUrl = Constants.storageUrl
+
+-- | The base URL of the S3 API
+s3BucketUrl :: EnvKey URL
+s3BucketUrl = EnvKey { key: "S3_BUCKET_URL", decode: pure }
+
+defaultS3BucketUrl :: URL
+defaultS3BucketUrl = "https://ams3.digitaloceanspaces.com"
+
+-- | The base URL of the GitHub API
+githubApiUrl :: EnvKey URL
+githubApiUrl = EnvKey { key: "GITHUB_API_URL", decode: pure }
+
+defaultGitHubApiUrl :: URL
+defaultGitHubApiUrl = "https://api.github.com"
+
+-- | The base URL of the GitHub API
+pursuitApiUrl :: EnvKey URL
+pursuitApiUrl = EnvKey { key: "PURSUIT_API_URL", decode: pure }
+
+defaultPursuitApiUrl :: URL
+defaultPursuitApiUrl = "https://pursuit.purescript.org"
 
 -- | A GitHub token for the @pacchettibotti user at the PACCHETTIBOTTI_TOKEN key.
 pacchettibottiToken :: EnvKey GitHubToken

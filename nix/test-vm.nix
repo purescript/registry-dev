@@ -14,13 +14,6 @@
     # NOTE: Use 'shutdown now' to exit the VM.
     services.getty.autologinUser = "root";
 
-    services.registry-server = {
-      enable = true;
-      host = "localhost";
-      port = 8080;
-      enableCerts = false;
-    };
-
     virtualisation = {
       graphics = false;
       host = {inherit pkgs;};

@@ -16,6 +16,8 @@ import Data.HTTP.Method as Method
 import Data.Map as Map
 import Data.MediaType.Common as MediaType
 import Data.Profunctor as Profunctor
+import Registry.App.Effect.Env (RESOURCE_ENV)
+import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.LenientVersion (LenientVersion(..))
@@ -57,9 +59,10 @@ handlePure = case _ of
   GetPublishedVersions _ reply -> pure $ reply $ Right Map.empty
 
 -- | Handle Pursuit by executing HTTP requests using the provided auth token.
-handleAff :: forall r a. GitHubToken -> Pursuit a -> Run (LOG + AFF + r) a
+handleAff :: forall r a. GitHubToken -> Pursuit a -> Run (RESOURCE_ENV + LOG + AFF + r) a
 handleAff (GitHubToken token) = case _ of
   Publish payload reply -> do
+    { pursuitApiUrl } <- Env.askResourceEnv
     Log.debug "Pushing to Pursuit..."
 
     result <- Run.liftAff $ withRetryRequest'
@@ -74,7 +77,7 @@ handleAff (GitHubToken token) = case _ of
       , password: Nothing
       , responseFormat: ResponseFormat.string
       , timeout: Nothing
-      , url: "https://pursuit.purescript.org/packages"
+      , url: Array.fold [ pursuitApiUrl, "/packages" ]
       }
 
     result' <- case result of
@@ -98,8 +101,9 @@ handleAff (GitHubToken token) = case _ of
     pure $ reply result'
 
   GetPublishedVersions pname reply -> do
+    { pursuitApiUrl } <- Env.askResourceEnv
     let name = PackageName.print pname
-    let url = "https://pursuit.purescript.org/packages/purescript-" <> name <> "/available-versions"
+    let url = Array.fold [ pursuitApiUrl, "/packages/purescript-" <> name <> "/available-versions" ]
     Log.debug $ "Checking if package docs for " <> name <> " are published on Pursuit using endpoint " <> url
     result <- Run.liftAff $ withRetryRequest'
       { content: Nothing

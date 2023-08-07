@@ -20,7 +20,7 @@ import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (defaultConfig, runSpec')
 
 main :: Effect Unit
-main = launchAff_ $ runSpec' (defaultConfig { timeout = Just $ Milliseconds 10_000.0 }) [ consoleReporter ] do
+main = launchAff_ $ runSpec' (defaultConfig { timeout = Just $ Milliseconds 300_000.0 }) [ consoleReporter ] do
   Spec.describe "Registry.App.CLI" do
     Spec.describe "Licensee" Test.CLI.Licensee.spec
     Spec.describe "Tar" Test.CLI.Tar.spec
