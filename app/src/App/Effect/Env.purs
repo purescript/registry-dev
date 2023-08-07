@@ -28,7 +28,8 @@ type ResourceEnv =
   , pursuitApiUrl :: URL
   }
 
--- | A
+-- | An effect for various external resources (files, databases, API endpoints,
+-- | and so on) that the registry needs to connect to.
 type RESOURCE_ENV r = (resourceEnv :: Reader ResourceEnv | r)
 
 _resourceEnv :: Proxy "resourceEnv"
