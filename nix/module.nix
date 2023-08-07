@@ -92,14 +92,14 @@ in {
             # Initialize environment variables
             set -o allexport
             source ${defaultEnvFile}
-            set +o allexport
 
-            # If a .env file exists in the stateDir then the server will load it
-            # at startup; any env vars included will overwrite those provided
-            # via the 'cfg.envVars' option.
+            # If a .env file exists in the stateDir then we will use it instead;
+            # this overwrites the cfg.envVars settings.
             if [ -f ${cfg.stateDir}/.env ]; then
               echo "Production .env file found! Values will overwrite the defaults."
+              source ${defaultEnvFile}
             fi
+            set +o allexport
 
             export DATABASE_URL="sqlite:${cfg.stateDir}/db/registry.sqlite3"
             pushd ${pkgs.registry.apps.server}/bin
