@@ -97,7 +97,7 @@ in {
             # this overwrites the cfg.envVars settings.
             if [ -f ${cfg.stateDir}/.env ]; then
               echo "Production .env file found! Values will overwrite the defaults."
-              source ${defaultEnvFile}
+              source ${cfg.stateDir}/.env
             fi
             set +o allexport
 
