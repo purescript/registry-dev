@@ -30,10 +30,10 @@ import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
 import Registry.App.Effect.Cache (class FsEncodable, Cache, FsEncoding(..))
 import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.Env (RESOURCE_ENV)
+import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.Constants as Constants
-import Registry.Foreign.S3 (Space)
 import Registry.Foreign.S3 as S3
 import Registry.PackageName as PackageName
 import Registry.Version as Version
@@ -98,15 +98,17 @@ parsePackagePath input = do
       if Array.length parts > 2 then "Too many parts in path: " <> input
       else "Too few parts in path: " <> input
 
-formatPackageUrl :: PackageName -> Version -> Affjax.Node.URL
-formatPackageUrl name version = Constants.storageUrl <> "/" <> formatPackagePath name version
+formatPackageUrl :: forall r. PackageName -> Version -> Run (RESOURCE_ENV + r) Affjax.Node.URL
+formatPackageUrl name version = do
+  { s3ApiUrl } <- Env.askResourceEnv
+  pure $ Array.fold [ s3ApiUrl, "/", formatPackagePath name version ]
 
-connectS3 :: forall r. S3.SpaceKey -> Run (LOG + EXCEPT String + AFF + r) S3.Space
+connectS3 :: forall r. S3.SpaceKey -> Run (RESOURCE_ENV + LOG + EXCEPT String + AFF + r) S3.Space
 connectS3 key = do
   let bucket = "purescript-registry"
-  let space = "ams3.digitaloceanspaces.com"
+  { s3BucketUrl: space } <- Env.askResourceEnv
   Log.debug $ "Connecting to the bucket " <> bucket <> " at space " <> space <> " with public key " <> key.key
-  Run.liftAff (withRetryOnTimeout (Aff.attempt (S3.connect key "ams3.digitaloceanspaces.com" bucket))) >>= case _ of
+  Run.liftAff (withRetryOnTimeout (Aff.attempt (S3.connect key space bucket))) >>= case _ of
     Cancelled ->
       Except.throw "Timed out when attempting to connect to S3 storage backend."
     Failed err -> do
@@ -122,7 +124,7 @@ type S3Env =
   }
 
 -- | Handle package storage using a remote S3 bucket.
-handleS3 :: forall r a. S3Env -> Storage a -> Run (LOG + AFF + EFFECT + r) a
+handleS3 :: forall r a. S3Env -> Storage a -> Run (RESOURCE_ENV + LOG + AFF + EFFECT + r) a
 handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case _ of
   Query name reply -> map (map reply) Except.runExcept do
     s3 <- connectS3 env.s3
@@ -163,7 +165,8 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
     published <- Except.rethrow =<< Run.liftAff (withRetryListObjects s3 name)
     if Array.elem packagePath published then do
       Log.error $ packagePath <> " already exists on S3."
-      Except.throw $ "Could not upload " <> package <> " because a package at " <> formatPackageUrl name version <> " already exists."
+      packageUrl <- formatPackageUrl name version
+      Except.throw $ "Could not upload " <> package <> " because a package at " <> packageUrl <> " already exists."
     else do
       Log.debug $ "Uploading release to the bucket at path " <> packagePath
       let putParams = { key: packagePath, body: buffer, acl: S3.PublicRead }
@@ -203,18 +206,20 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
       Except.throw $ "Could not delete " <> package <> " because it does not exist in the storage backend."
 
 -- | A storage effect that reads from the registry but does not write to it.
-handleReadOnly :: forall r a. FilePath -> Storage a -> Run (LOG + AFF + EFFECT + r) a
+handleReadOnly :: forall r a. FilePath -> Storage a -> Run (RESOURCE_ENV + LOG + AFF + EFFECT + r) a
 handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< case _ of
   -- TODO: is there a way to do this without S3 credentials?
   Query _ reply -> do
     pure $ reply $ Left "Cannot query in read-only mode."
 
   Upload name version _ reply -> do
-    Log.warn $ "Requested upload of " <> formatPackageVersion name version <> " to url " <> formatPackageUrl name version <> " but this interpreter is read-only."
+    packageUrl <- formatPackageUrl name version
+    Log.warn $ "Requested upload of " <> formatPackageVersion name version <> " to url " <> packageUrl <> " but this interpreter is read-only."
     pure $ reply $ Right unit
 
   Delete name version reply -> do
-    Log.warn $ "Requested deletion of " <> formatPackageVersion name version <> " from url " <> formatPackageUrl name version <> " but this interpreter is read-only."
+    packageUrl <- formatPackageUrl name version
+    Log.warn $ "Requested deletion of " <> formatPackageVersion name version <> " from url " <> packageUrl <> " but this interpreter is read-only."
     pure $ reply $ Right unit
 
   Download name version path reply -> map (map reply) Except.runExcept do
@@ -233,11 +238,11 @@ handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< 
       Right _ -> pure unit
 
 -- | An implementation for downloading packages from the registry using `Aff` requests.
-downloadS3 :: forall r. PackageName -> Version -> Run (LOG + EXCEPT String + AFF + EFFECT + r) Buffer
+downloadS3 :: forall r. PackageName -> Version -> Run (RESOURCE_ENV + LOG + EXCEPT String + AFF + EFFECT + r) Buffer
 downloadS3 name version = do
-  let
-    package = formatPackageVersion name version
-    packageUrl = formatPackageUrl name version
+  let package = formatPackageVersion name version
+
+  packageUrl <- formatPackageUrl name version
 
   Log.debug $ "Downloading " <> package <> " from " <> packageUrl
   response <- Run.liftAff $ withRetryRequest' $ Affjax.Node.defaultRequest
@@ -265,7 +270,7 @@ downloadS3 name version = do
       buffer :: Buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
       pure buffer
 
-withRetryListObjects :: Space -> PackageName -> Aff (Either String (Array String))
+withRetryListObjects :: S3.Space -> PackageName -> Aff (Either String (Array String))
 withRetryListObjects s3 name = do
   let package = PackageName.print name
   result <- withRetry (defaultRetry { retryOnFailure = \attempt _ -> attempt < 3 }) do

@@ -95,7 +95,9 @@ handle = case _ of
               getRefTime = do
                 timestamp <- Except.rethrow =<< Run.liftAff (Git.gitCLI [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir))
                 jsDate <- Run.liftEffect $ JSDate.parse timestamp
-                dateTime <- Except.note "Failed to convert JSDate to DateTime" $ JSDate.toDateTime jsDate
+                dateTime <- case JSDate.toDateTime jsDate of
+                  Nothing -> Except.throw $ "Could not parse timestamp of git ref to a datetime given timestamp " <> timestamp <> " and parsed js date " <> JSDate.toUTCString jsDate
+                  Just parsed -> pure parsed
                 pure dateTime
 
             -- Cloning will result in the `repo` name as the directory name

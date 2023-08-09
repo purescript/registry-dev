@@ -32,11 +32,17 @@ in {
       default = true;
       description = "Whether to enable Let's Encrypt certificates for the registry server";
     };
+
+    envVars = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.either lib.types.str lib.types.path);
+      default = {};
+      description = "Environment variables to set for the registry server";
+    };
   };
 
   config = lib.mkIf cfg.enable {
     environment = {
-      systemPackages = [pkgs.vim];
+      systemPackages = [pkgs.vim pkgs.git];
     };
 
     nix = {
@@ -71,30 +77,30 @@ in {
     };
 
     systemd.services = let
-      defaultEnv = builtins.readFile ../.env.example;
+      # Print an attrset of env vars { ENV_VAR = "value"; } as a newline-delimited
+      # string of "ENV_VAR=value" lines, then write the text to the Nix store.
+      defaultEnvFile = pkgs.writeText ".env" (pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "${name}=${value}") cfg.envVars));
     in {
       server = {
         description = "registry server";
         wantedBy = ["multi-user.target" "nginx.service"];
         serviceConfig = {
           ExecStart = "${pkgs.writeShellScriptBin "registry-server-init" ''
-            # Ensure the state directory is available
+            # Ensure the state directory is available and initialize the database
             mkdir -p ${cfg.stateDir}/db
 
             # Initialize environment variables
             set -o allexport
+            source ${defaultEnvFile}
+
+            # If a .env file exists in the stateDir then we will use it instead;
+            # this overwrites the cfg.envVars settings.
             if [ -f ${cfg.stateDir}/.env ]; then
-              echo "Using production environment variables"
+              echo "Production .env file found! Values will overwrite the defaults."
               source ${cfg.stateDir}/.env
-            else
-              echo "WARNING: No environment variables found in ${cfg.stateDir}."
-              echo "Continuing with dummy values, not suitable for production."
-              cat ${defaultEnv} > .env
-              source .env
             fi
             set +o allexport
 
-            # Initialize or migrate the database
             export DATABASE_URL="sqlite:${cfg.stateDir}/db/registry.sqlite3"
             pushd ${pkgs.registry.apps.server}/bin
             ${pkgs.dbmate}/bin/dbmate up

@@ -75,7 +75,6 @@ in {
     postFixup = ''
       wrapProgram $out/bin/${name} \
         --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git git-lfs coreutils gzip gnutar]} \
-        --set DHALL_TYPES ${../types}
     '';
   };
 
@@ -109,7 +108,6 @@ in {
     postFixup = ''
       wrapProgram $out/bin/${name} \
         --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git git-lfs coreutils gzip gnutar]} \
-        --set DHALL_TYPES ${../types}
     '';
   };
 }

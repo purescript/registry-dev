@@ -104,6 +104,7 @@ main = launchAff_ do
     Right command -> pure command
 
   Env.loadEnvFile ".env"
+  resourceEnv <- Env.lookupResourceEnv
 
   githubCacheRef <- Cache.newCacheRef
   legacyCacheRef <- Cache.newCacheRef
@@ -123,7 +124,7 @@ main = launchAff_ do
     case mode of
       DryRun -> do
         token <- Env.lookupRequired Env.githubToken
-        octokit <- Octokit.newOctokit token
+        octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
         pure do
           Registry.interpret (Registry.handle (registryEnv Git.Autostash Registry.ReadOnly))
             >>> Storage.interpret (Storage.handleReadOnly cache)
@@ -134,7 +135,7 @@ main = launchAff_ do
       GenerateRegistry -> do
         token <- Env.lookupRequired Env.githubToken
         s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
-        octokit <- Octokit.newOctokit token
+        octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
         pure do
           Registry.interpret (Registry.handle (registryEnv Git.Autostash (Registry.CommitAs (Git.pacchettibottiCommitter token))))
             >>> Storage.interpret (Storage.handleS3 { s3, cache })
@@ -145,7 +146,7 @@ main = launchAff_ do
       UpdateRegistry -> do
         token <- Env.lookupRequired Env.pacchettibottiToken
         s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
-        octokit <- Octokit.newOctokit token
+        octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
         pure do
           Registry.interpret (Registry.handle (registryEnv Git.ForceClean (Registry.CommitAs (Git.pacchettibottiCommitter token))))
             >>> Storage.interpret (Storage.handleS3 { s3, cache })
@@ -157,22 +158,19 @@ main = launchAff_ do
   let logDir = Path.concat [ scratchDir, "logs" ]
   FS.Extra.ensureDirectory logDir
   now <- nowUTC
+
   let
     logFile = "legacy-importer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
     logPath = Path.concat [ logDir, logFile ]
 
-  dhallTypes <- do
-    types <- Env.lookupRequired Env.dhallTypes
-    liftEffect $ Path.resolve [] types
-
   runLegacyImport mode logPath
     # runAppEffects
-    # Env.runDhallEnv { typesDir: dhallTypes }
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+    # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
 
 runLegacyImport :: forall r. ImportMode -> FilePath -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit

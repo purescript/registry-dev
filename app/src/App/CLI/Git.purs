@@ -54,12 +54,12 @@ pacchettibottiCommitter token =
   , token
   }
 
-newtype Origin = Origin String
+newtype AuthOrigin = AuthOrigin String
 
-derive instance Newtype Origin _
+derive instance Newtype AuthOrigin _
 
-mkOrigin :: Octokit.Address -> Committer -> Origin
-mkOrigin address committer = Origin $ Array.fold
+mkAuthOrigin :: Octokit.Address -> Committer -> AuthOrigin
+mkAuthOrigin address committer = AuthOrigin $ Array.fold
   [ "https://"
   , String.toLower committer.name
   , ":"
@@ -76,7 +76,7 @@ gitCLI :: Array String -> Maybe FilePath -> Aff (Either String String)
 gitCLI args cwd = do
   result <- liftAff $ _.result =<< Execa.execa "git" args (_ { cwd = cwd })
   pure case result of
-    Right { stdout } -> Right stdout
+    Right { stdout } -> Right (String.trim stdout)
     Left { stdout, stderr } -> Left (stdout <> stderr)
 
 withGit :: forall r. FilePath -> Array String -> (String -> String) -> Run (AFF + EXCEPT String + r) String
@@ -259,12 +259,13 @@ gitPush { address, committer } cwd = Except.runExcept do
         Log.warn $ "Ahead of main by " <> show n <> " commits (expected 1)"
 
       let
+        inRepoErr :: String -> String
         inRepoErr error = " in local checkout " <> cwd <> ": " <> error
 
-        repoOrigin :: URL
-        repoOrigin = coerce (mkOrigin address committer)
+        authOrigin :: URL
+        authOrigin = coerce (mkAuthOrigin address committer)
 
-      _ <- withGit cwd [ "push", repoOrigin ] \error ->
+      _ <- withGit cwd [ "push", authOrigin ] \error ->
         "Failed to push to " <> address.owner <> "/" <> address.repo <> " from " <> status.branch <> inRepoErr error
 
       pure Changed

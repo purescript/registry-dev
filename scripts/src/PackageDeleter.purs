@@ -106,13 +106,11 @@ main = launchAff_ do
   -- Environment
   _ <- Env.loadEnvFile ".env"
   token <- Env.lookupRequired Env.pacchettibottiToken
-  dhallTypes <- do
-    types <- Env.lookupRequired Env.dhallTypes
-    liftEffect $ Path.resolve [] types
+  resourceEnv <- Env.lookupResourceEnv
   s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
 
   -- GitHub
-  octokit <- Octokit.newOctokit token
+  octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
 
   -- Caching
   let cache = Path.concat [ scratchDir, ".cache" ]
@@ -152,8 +150,7 @@ main = launchAff_ do
 
   let
     interpret =
-      Env.runDhallEnv { typesDir: dhallTypes }
-        >>> Registry.interpret (Registry.handle registryEnv)
+      Registry.interpret (Registry.handle registryEnv)
         >>> Storage.interpret (if arguments.upload then Storage.handleS3 { s3, cache } else Storage.handleReadOnly cache)
         >>> Source.interpret Source.handle
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
@@ -161,6 +158,7 @@ main = launchAff_ do
         >>> Cache.interpret _legacyCache (Cache.handleMemoryFs { ref: legacyCacheRef, cache })
         >>> Comment.interpret Comment.handleLog
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+        >>> Env.runResourceEnv resourceEnv
         >>> Run.runBaseAff'
 
   interpret do

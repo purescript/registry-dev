@@ -26,7 +26,7 @@ import Registry.App.Effect.Comment (COMMENT)
 import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Db (DB)
 import Registry.App.Effect.Db as Db
-import Registry.App.Effect.Env (DHALL_ENV, DatabaseUrl, PACCHETTIBOTTI_ENV)
+import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV, RESOURCE_ENV, ResourceEnv)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -139,8 +139,7 @@ type ServerEnvVars =
   , privateKey :: String
   , spacesKey :: String
   , spacesSecret :: String
-  , databaseUrl :: DatabaseUrl
-  , dhallTypes :: FilePath
+  , resourceEnv :: ResourceEnv
   }
 
 readServerEnvVars :: Aff ServerEnvVars
@@ -151,11 +150,8 @@ readServerEnvVars = do
   privateKey <- Env.lookupRequired Env.pacchettibottiED25519
   spacesKey <- Env.lookupRequired Env.spacesKey
   spacesSecret <- Env.lookupRequired Env.spacesSecret
-  databaseUrl <- Env.lookupRequired Env.databaseUrl
-  dhallTypes <- do
-    types <- Env.lookupRequired Env.dhallTypes
-    liftEffect $ Path.resolve [] types
-  pure { token, publicKey, privateKey, spacesKey, spacesSecret, databaseUrl, dhallTypes }
+  resourceEnv <- Env.lookupResourceEnv
+  pure { token, publicKey, privateKey, spacesKey, spacesSecret, resourceEnv }
 
 type ServerEnv =
   { cacheDir :: FilePath
@@ -182,11 +178,11 @@ createServerEnv = do
   legacyCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
 
-  octokit <- Octokit.newOctokit vars.token
+  octokit <- Octokit.newOctokit vars.token vars.resourceEnv.githubApiUrl
   debouncer <- Registry.newDebouncer
 
   db <- liftEffect $ SQLite.connect
-    { database: vars.databaseUrl.path
+    { database: vars.resourceEnv.databaseUrl.path
     -- To see all database queries logged in the terminal, use this instead
     -- of 'mempty'. Turned off by default because this is so verbose.
     -- Run.runBaseEffect <<< Log.interpret (Log.handleTerminal Normal) <<< Log.info
@@ -212,7 +208,7 @@ createServerEnv = do
     , jobId: Nothing
     }
 
-type ServerEffects = (DHALL_ENV + PACCHETTIBOTTI_ENV + REGISTRY + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + REGISTRY + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer :: ServerEnv -> (ServerEnv -> Request Route -> Run ServerEffects Response) -> Request Route -> Aff Response
 runServer env router' request = do
@@ -264,8 +260,6 @@ runEffects env operation = Aff.attempt do
   let logFile = String.take 10 (Formatter.DateTime.format Internal.Format.iso8601Date today) <> ".log"
   let logPath = Path.concat [ env.logsDir, logFile ]
   operation
-    # Env.runPacchettiBottiEnv { publicKey: env.vars.publicKey, privateKey: env.vars.privateKey }
-    # Env.runDhallEnv { typesDir: env.vars.dhallTypes }
     # Registry.interpret
         ( Registry.handle
             { repos: Registry.defaultRepos
@@ -294,10 +288,12 @@ runEffects env operation = Aff.attempt do
     # Comment.interpret Comment.handleLog
     # Log.interpret
         ( \log -> case env.jobId of
-            Nothing -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log
+            Nothing -> Log.handleTerminal Verbose log *> Log.handleFs Verbose logPath log
             Just jobId ->
-              Log.handleTerminal Normal log
+              Log.handleTerminal Verbose log
                 *> Log.handleFs Verbose logPath log
                 *> Log.handleDb { db: env.db, job: jobId } log
         )
+    # Env.runPacchettiBottiEnv { publicKey: env.vars.publicKey, privateKey: env.vars.privateKey }
+    # Env.runResourceEnv env.vars.resourceEnv
     # Run.runBaseAff'
