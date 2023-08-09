@@ -29,10 +29,8 @@ data Route
   | Unpublish
   | Transfer
   | Jobs
-  | Job JobId
-      { level :: Maybe LogLevel
-      , since :: Maybe DateTime
-      }
+  | Job JobId { level :: Maybe LogLevel, since :: Maybe DateTime }
+  | Status
 
 derive instance Generic Route _
 
@@ -48,6 +46,7 @@ routes = Routing.root $ Routing.prefix "api" $ Routing.prefix "v1" $ RoutingG.su
           , since: Routing.optional <<< timestampP <<< Routing.string
           }
       )
+  , "Status": "status" / RoutingG.noArgs
   }
 
 jobIdS :: RouteDuplex' JobId

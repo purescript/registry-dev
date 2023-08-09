@@ -2,6 +2,9 @@ module Registry.App.Server where
 
 import Registry.App.Prelude hiding ((/))
 
+import Affjax.Node as Affjax
+import Affjax.ResponseFormat as ResponseFormat
+import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Cont (ContT)
 import Data.Codec.Argonaut as CA
 import Data.Formatter.DateTime as Formatter.DateTime
@@ -12,6 +15,7 @@ import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import HTTPurple (JsonDecoder(..), JsonEncoder(..), Method(..), Request, Response)
 import HTTPurple as HTTPurple
+import HTTPurple.Status as Status
 import Node.Path as Path
 import Node.Process as Process
 import Record as Record
@@ -102,7 +106,14 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
       Right job -> do
         jsonOk V1.jobCodec (Record.insert (Proxy :: _ "logs") logs job)
 
-  _, _ -> HTTPurple.notFound
+  Status, Get ->
+    HTTPurple.emptyResponse Status.ok
+
+  Status, Head ->
+    HTTPurple.emptyResponse Status.ok
+
+  _, _ ->
+    HTTPurple.notFound
   where
   forkPipelineJob :: PackageName -> String -> JobType -> (JobId -> Run _ Unit) -> ContT Response (Run _) Response
   forkPipelineJob packageName ref jobType action = do
@@ -224,6 +235,17 @@ main = do
       Console.log $ "Failed to start server: " <> Aff.message error
       Process.exit 1
     Right env -> do
+      _healthcheck <- Aff.launchAff do
+        let
+          loop = do
+            Affjax.get ResponseFormat.ignore env.vars.resourceEnv.healthchecksUrl >>= case _ of
+              Left _ -> pure unit
+              Right { status: StatusCode status } | status /= 200 -> pure unit
+              Right _ -> do
+                Aff.delay (Aff.Milliseconds (1000.0 * 60.0 * 5.0))
+                loop
+        loop
+
       _close <- HTTPurple.serve
         { hostname: "0.0.0.0"
         , port: 8080
