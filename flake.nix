@@ -40,6 +40,11 @@
 
     DHALL_TYPES = ./types;
 
+    # We disable git-lfs files explicitly, as this is intended for large files
+    # (typically >4GB), and source packgaes really ought not be shipping large
+    # files — just source code.
+    GIT_LFS_SKIP_SMUDGE = 1;
+
     registryOverlay = final: prev: rec {
       nodejs = prev.nodejs_20;
 
@@ -208,7 +213,7 @@
       # A full set of environment variables, each set to their default values
       # according to the env.example file, or to the values explicitly set below
       # (e.g. DHALL_PRELUDE and DHALL_TYPES).
-      defaultEnv = parseEnv ./.env.example // {inherit DHALL_PRELUDE DHALL_TYPES;};
+      defaultEnv = parseEnv ./.env.example // {inherit DHALL_PRELUDE DHALL_TYPES GIT_LFS_SKIP_SMUDGE;};
 
       # Parse a .env file, skipping empty lines and comments, into Nix attrset
       parseEnv = path: let
@@ -660,6 +665,7 @@
 
       devShells = {
         default = pkgs.mkShell {
+          inherit GIT_LFS_SKIP_SMUDGE;
           name = "registry-dev";
           packages = with pkgs; [
             # All stable PureScript compilers
