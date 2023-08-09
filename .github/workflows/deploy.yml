@@ -1,12 +1,8 @@
 name: deploy
 
 on:
-  # This event is triggered once per non-Github Actions check-suite. If the only
-  # check suites we are running are garnix and Github Actions-based ones, this
-  # will be triggered only once, when garnix is done with all the builds for a
-  # commit.
-  check_suite:
-    types: [completed]
+  push:
+    branches: [master]
 
 jobs:
   deploy:
