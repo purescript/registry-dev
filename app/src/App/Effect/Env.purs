@@ -26,6 +26,7 @@ type ResourceEnv =
   , s3BucketUrl :: URL
   , githubApiUrl :: URL
   , pursuitApiUrl :: URL
+  , healthchecksUrl :: URL
   }
 
 -- | An effect for various external resources (files, databases, API endpoints,
@@ -49,6 +50,7 @@ lookupResourceEnv = do
   s3BucketUrlEnv <- lookupWithDefault s3BucketUrl defaultS3BucketUrl
   githubApiUrlEnv <- lookupWithDefault githubApiUrl defaultGitHubApiUrl
   pursuitApiUrlEnv <- lookupWithDefault pursuitApiUrl defaultPursuitApiUrl
+  healthchecksUrlEnv <- lookupRequired healthchecksUrl
   pure
     { dhallTypes: dhallTypesEnv
     , databaseUrl: databaseUrlEnv
@@ -56,6 +58,7 @@ lookupResourceEnv = do
     , s3BucketUrl: s3BucketUrlEnv
     , githubApiUrl: githubApiUrlEnv
     , pursuitApiUrl: pursuitApiUrlEnv
+    , healthchecksUrl: healthchecksUrlEnv
     }
 
 -- | Environment fields available in the GitHub Event environment, namely
@@ -202,12 +205,16 @@ githubApiUrl = EnvKey { key: "GITHUB_API_URL", decode: pure }
 defaultGitHubApiUrl :: URL
 defaultGitHubApiUrl = "https://api.github.com"
 
--- | The base URL of the GitHub API
+-- | The base URL of the Pursuit API
 pursuitApiUrl :: EnvKey URL
 pursuitApiUrl = EnvKey { key: "PURSUIT_API_URL", decode: pure }
 
 defaultPursuitApiUrl :: URL
 defaultPursuitApiUrl = "https://pursuit.purescript.org"
+
+-- | The URL of the health checks endpoint
+healthchecksUrl :: EnvKey URL
+healthchecksUrl = EnvKey { key: "HEALTHCHECKS_URL", decode: pure }
 
 -- | A GitHub token for the @pacchettibotti user at the PACCHETTIBOTTI_TOKEN key.
 pacchettibottiToken :: EnvKey GitHubToken
