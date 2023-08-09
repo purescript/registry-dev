@@ -12,6 +12,7 @@
   dhall-json,
   licensee,
   git,
+  git-lfs,
   coreutils,
   gzip,
   gnutar,
@@ -23,8 +24,8 @@
     stdenv.mkDerivation rec {
       inherit name;
       src = ./src;
-      nativeBuildInputs = [ esbuild makeWrapper ];
-      buildInputs = [ nodejs ];
+      nativeBuildInputs = [esbuild makeWrapper];
+      buildInputs = [nodejs];
       entrypoint = writeText "entrypoint.js" ''
         import { main } from "./output/Registry.Scripts.${module}";
         main();
@@ -49,9 +50,9 @@
       '';
       postFixup = ''
         wrapProgram $out/bin/${name} \
-          --set PATH ${lib.makeBinPath [ compilers purs-versions dhall dhall-json licensee git coreutils gzip gnutar ]}
+          --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git git-lfs coreutils gzip gnutar]}
       '';
-      };
+    };
 in {
   legacy-importer = build-script "registry-legacy-importer" "LegacyImporter";
   package-deleter = build-script "registry-package-deleter" "PackageDeleter";

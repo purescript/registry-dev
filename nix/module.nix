@@ -34,7 +34,7 @@ in {
     };
 
     envVars = lib.mkOption {
-      type = lib.types.attrsOf (lib.types.either lib.types.str lib.types.path);
+      type = lib.types.attrsOf (lib.types.either lib.types.str (lib.types.either lib.types.int lib.types.path));
       default = {};
       description = "Environment variables to set for the registry server";
     };
@@ -79,7 +79,13 @@ in {
     systemd.services = let
       # Print an attrset of env vars { ENV_VAR = "value"; } as a newline-delimited
       # string of "ENV_VAR=value" lines, then write the text to the Nix store.
-      defaultEnvFile = pkgs.writeText ".env" (pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "${name}=${value}") cfg.envVars));
+      defaultEnvFile =
+        pkgs.writeText ".env"
+        (pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value:
+          if (builtins.typeOf value == "int")
+          then "${name}=${toString value}"
+          else "${name}=${value}")
+        cfg.envVars));
     in {
       server = {
         description = "registry server";

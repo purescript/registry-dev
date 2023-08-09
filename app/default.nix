@@ -12,6 +12,7 @@
   dhall,
   dhall-json,
   git,
+  git-lfs,
   licensee,
   coreutils,
   gzip,
@@ -73,7 +74,7 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git coreutils gzip gnutar]} \
+        --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git git-lfs coreutils gzip gnutar]} \
     '';
   };
 
@@ -106,7 +107,7 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git coreutils gzip gnutar]} \
+        --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git git-lfs coreutils gzip gnutar]} \
     '';
   };
 }
