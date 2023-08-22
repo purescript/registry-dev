@@ -278,13 +278,11 @@ pursPublishMethod = LegacyPursPublish
 -- | Operations can be exercised for old, pre-registry packages, or for packages
 -- | which are on the 0.15 compiler series. If a true legacy package is uploaded
 -- | then we do not require compilation to succeed and we don't publish docs.
-data PackageSource
-  = PackageSource'Legacy
-  | PackageSource'Current
+data PackageSource = LegacyPackage | CurrentPackage
 
 derive instance Eq PackageSource
 
 printPackageSource :: PackageSource -> String
 printPackageSource = case _ of
-  PackageSource'Legacy -> "legacy"
-  PackageSource'Current -> "current"
+  LegacyPackage -> "legacy"
+  CurrentPackage -> "current"

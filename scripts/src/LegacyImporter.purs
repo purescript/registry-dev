@@ -280,9 +280,9 @@ runLegacyImport mode logs = do
 
       let
         source = case mode of
-          DryRun -> PackageSource'Legacy
-          GenerateRegistry -> PackageSource'Legacy
-          UpdateRegistry -> PackageSource'Current
+          DryRun -> LegacyPackage
+          GenerateRegistry -> LegacyPackage
+          UpdateRegistry -> CurrentPackage
 
       void $ for notPublished \(Manifest manifest) -> do
         let formatted = formatPackageVersion manifest.name manifest.version

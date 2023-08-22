@@ -94,14 +94,14 @@ handle = case _ of
 
             let
               getRefTime = case source of
-                PackageSource'Legacy -> do
+                LegacyPackage -> do
                   timestamp <- Except.rethrow =<< Run.liftAff (Git.gitCLI [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir))
                   jsDate <- Run.liftEffect $ JSDate.parse timestamp
                   dateTime <- case JSDate.toDateTime jsDate of
                     Nothing -> Except.throw $ "Could not parse timestamp of git ref to a datetime given timestamp " <> timestamp <> " and parsed js date " <> JSDate.toUTCString jsDate
                     Just parsed -> pure parsed
                   pure dateTime
-                PackageSource'Current ->
+                CurrentPackage ->
                   Run.liftEffect Now.nowDateTime
 
             -- Cloning will result in the `repo` name as the directory name

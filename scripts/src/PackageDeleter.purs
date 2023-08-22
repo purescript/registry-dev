@@ -237,7 +237,7 @@ deleteVersion arguments name version = do
           Just (Left _) -> Log.error "Cannot reimport a version that was specifically unpublished"
           Just (Right specificPackageMetadata) -> do
             -- Obtains `newMetadata` via cache
-            API.publish PackageSource'Legacy
+            API.publish LegacyPackage
               { location: Just oldMetadata.location
               , name: name
               , ref: specificPackageMetadata.ref

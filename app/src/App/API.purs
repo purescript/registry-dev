@@ -619,7 +619,7 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
     Left error
       -- We allow legacy packages to fail compilation because we do not
       -- necessarily know what compiler to use with them.
-      | source == PackageSource'Legacy -> do
+      | source == LegacyPackage -> do
           Log.debug error
           Log.warn "Failed to compile, but continuing because this package is a legacy package."
       | otherwise ->
@@ -642,7 +642,7 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
   -- team should manually insert the entry.
   Registry.writeManifest (Manifest manifest)
 
-  when (source == PackageSource'Current) $ case compilationResult of
+  when (source == CurrentPackage) $ case compilationResult of
     Left error -> do
       Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
       Except.throw "Cannot publish to Pursuit because this package failed to compile."
