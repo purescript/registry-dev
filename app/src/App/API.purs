@@ -361,7 +361,7 @@ publish source payload = do
   -- the package directory along with its detected publish time.
   Log.debug "Metadata validated. Fetching package source code..."
   tmp <- Tmp.mkTmpDir
-  { path: packageDirectory, published: publishedTime } <- Source.fetch tmp existingMetadata.location payload.ref
+  { path: packageDirectory, published: publishedTime } <- Source.fetch source tmp existingMetadata.location payload.ref
 
   Log.debug $ "Package downloaded to " <> packageDirectory <> ", verifying it contains a src directory with valid modules..."
   Internal.Path.readPursFiles (Path.concat [ packageDirectory, "src" ]) >>= case _ of
