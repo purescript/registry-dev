@@ -14,7 +14,6 @@ import Foreign.Object as Object
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
-import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.Auth as Auth
 import Registry.App.CLI.Git as Git
@@ -58,7 +57,7 @@ main = launchAff_ $ do
 
         Right packageOperation -> case packageOperation of
           Publish payload ->
-            API.publish Current payload
+            API.publish PackageSource'Current payload
           Authenticated payload -> do
             -- If we receive an authenticated operation via GitHub, then we
             -- re-sign it with pacchettibotti credentials if and only if the

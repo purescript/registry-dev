@@ -1,5 +1,6 @@
 module Registry.App.Prelude
   ( LogVerbosity(..)
+  , PackageSource(..)
   , PursPublishMethod(..)
   , RetryRequestError(..)
   , Retry
@@ -21,6 +22,7 @@ module Registry.App.Prelude
   , parseJson
   , partitionEithers
   , printJson
+  , printPackageSource
   , pursPublishMethod
   , readJsonFile
   , scratchDir
@@ -272,3 +274,17 @@ data PursPublishMethod = LegacyPursPublish | PursPublish
 -- | The current purs publish method
 pursPublishMethod :: PursPublishMethod
 pursPublishMethod = LegacyPursPublish
+
+-- | Operations can be exercised for old, pre-registry packages, or for packages
+-- | which are on the 0.15 compiler series. If a true legacy package is uploaded
+-- | then we do not require compilation to succeed and we don't publish docs.
+data PackageSource
+  = PackageSource'Legacy
+  | PackageSource'Current
+
+derive instance Eq PackageSource
+
+printPackageSource :: PackageSource -> String
+printPackageSource = case _ of
+  PackageSource'Legacy -> "legacy"
+  PackageSource'Current -> "current"

@@ -40,7 +40,6 @@ import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
-import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
@@ -281,9 +280,9 @@ runLegacyImport mode logs = do
 
       let
         source = case mode of
-          DryRun -> Legacy
-          GenerateRegistry -> Legacy
-          UpdateRegistry -> Current
+          DryRun -> PackageSource'Legacy
+          GenerateRegistry -> PackageSource'Legacy
+          UpdateRegistry -> PackageSource'Current
 
       void $ for notPublished \(Manifest manifest) -> do
         let formatted = formatPackageVersion manifest.name manifest.version

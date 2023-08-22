@@ -1,6 +1,5 @@
 module Registry.App.API
-  ( Source(..)
-  , PackageSetUpdateEffects
+  ( PackageSetUpdateEffects
   , packageSetUpdate
   , PublishEffects
   , publish
@@ -94,18 +93,6 @@ import Run.Except as Except
 import Spago.Core.Config as Spago
 import Spago.Core.Prelude as Spago.Prelude
 import Spago.Log as Spago.Log
-
--- | Operations can be exercised for old, pre-registry packages, or for packages
--- | which are on the 0.15 compiler series. If a true legacy package is uploaded
--- | then we do not require compilation to succeed and we don't publish docs.
-data Source = Legacy | Current
-
-derive instance Eq Source
-
-printSource :: Source -> String
-printSource = case _ of
-  Legacy -> "legacy"
-  Current -> "current"
 
 type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + COMMENT + LOG + EXCEPT String + r)
 
@@ -327,11 +314,11 @@ type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + 
 -- | published before then it will be registered and the given version will be
 -- | upload. If it has been published before then the existing metadata will be
 -- | updated with the new version.
-publish :: forall r. Source -> PublishData -> Run (PublishEffects + r) Unit
+publish :: forall r. PackageSource -> PublishData -> Run (PublishEffects + r) Unit
 publish source payload = do
   let printedName = PackageName.print payload.name
 
-  Log.debug $ "Publishing " <> printSource source <> " package " <> printedName <> " with payload:\n" <> stringifyJson Operation.publishCodec payload
+  Log.debug $ "Publishing " <> printPackageSource source <> " package " <> printedName <> " with payload:\n" <> stringifyJson Operation.publishCodec payload
 
   Log.debug $ "Verifying metadata..."
   Metadata existingMetadata <- Registry.readMetadata payload.name >>= case _ of
@@ -551,7 +538,7 @@ publish source payload = do
     }
 
 type PublishRegistry =
-  { source :: Source
+  { source :: PackageSource
   , manifest :: Manifest
   , metadata :: Metadata
   , payload :: PublishData
@@ -632,7 +619,7 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
     Left error
       -- We allow legacy packages to fail compilation because we do not
       -- necessarily know what compiler to use with them.
-      | source == Legacy -> do
+      | source == PackageSource'Legacy -> do
           Log.debug error
           Log.warn "Failed to compile, but continuing because this package is a legacy package."
       | otherwise ->
@@ -655,7 +642,7 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
   -- team should manually insert the entry.
   Registry.writeManifest (Manifest manifest)
 
-  when (source == Current) $ case compilationResult of
+  when (source == PackageSource'Current) $ case compilationResult of
     Left error -> do
       Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
       Except.throw "Cannot publish to Pursuit because this package failed to compile."
