@@ -2,7 +2,6 @@ module Registry.App.CLI.Git where
 
 import Registry.App.Prelude
 
-import Affjax (URL)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.String as String

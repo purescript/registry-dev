@@ -7,8 +7,6 @@ package:
     version: 0.0.1
   dependencies:
     - aff
-    - affjax
-    - affjax-node
     - ansi
     - argonaut-core
     - arrays
@@ -26,6 +24,7 @@ package:
     - exceptions
     - exists
     - filterable
+    - fetch
     - foldable-traversable
     - foreign-object
     - formatters
@@ -35,6 +34,7 @@ package:
     - integers
     - js-date
     - js-uri
+    - js-promise-aff
     - lists
     - maybe
     - media-types

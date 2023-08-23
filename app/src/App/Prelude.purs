@@ -2,9 +2,9 @@ module Registry.App.Prelude
   ( LogVerbosity(..)
   , PackageSource(..)
   , PursPublishMethod(..)
-  , RetryRequestError(..)
   , Retry
   , RetryResult(..)
+  , URL
   , class Functor2
   , defaultRetry
   , formatPackageVersion
@@ -32,16 +32,11 @@ module Registry.App.Prelude
   , unsafeFromRight
   , withRetry
   , withRetryOnTimeout
-  , withRetryRequest
-  , withRetryRequest'
   , writeJsonFile
   ) where
 
 import Prelude
 
-import Affjax as Affjax
-import Affjax.Node as Affjax.Node
-import Affjax.StatusCode (StatusCode(..))
 import Control.Alt ((<|>)) as Extra
 import Control.Alternative (guard) as Extra
 import Control.Monad.Except (ExceptT(..)) as Extra
@@ -97,6 +92,8 @@ import Registry.Types (License, Location(..), Manifest(..), ManifestIndex, Metad
 import Registry.Version as Version
 import Type.Proxy (Proxy(..)) as Extra
 import Type.Row (type (+)) as Extra
+
+type URL = String
 
 class Functor2 (c :: Type -> Type -> Type) where
   map2 :: forall a b z. (a -> b) -> c z a -> c z b
@@ -156,36 +153,6 @@ mapKeys k = Map.fromFoldable <<< map (Extra.lmap k) <<< (Map.toUnfoldable :: _ -
 
 traverseKeys :: forall a b v. Ord a => Ord b => (a -> Either.Either String b) -> Extra.Map a v -> Either.Either String (Extra.Map b v)
 traverseKeys k = map Map.fromFoldable <<< Extra.traverse (Extra.ltraverse k) <<< (Map.toUnfoldable :: _ -> Array _)
-
-data RetryRequestError a
-  = AffjaxError (Affjax.Error)
-  | StatusError (Affjax.Response a)
-
-withRetryRequest' :: forall a. Affjax.Request a -> Extra.Aff (RetryResult (RetryRequestError a) (Affjax.Response a))
-withRetryRequest' = withRetryRequest
-  { timeout: defaultRetry.timeout
-  , retryOnCancel: defaultRetry.retryOnCancel
-  , retryOnFailure: \attempt -> case _ of
-      AffjaxError _ -> false
-      StatusError { status: StatusCode status } ->
-        -- We retry on 500-level errors in case the server is temporarily
-        -- unresponsive, and fail otherwise.
-        if status >= 500 then
-          attempt < 3
-        else false
-  }
-  (\error -> AffjaxError error)
-  (\response@{ status: StatusCode status } -> if status >= 400 then Either.Left (StatusError response) else Either.Right response)
-
-withRetryRequest
-  :: forall e a b
-   . Retry e
-  -> (Affjax.Error -> e)
-  -> (Affjax.Response a -> Either.Either e b)
-  -> Affjax.Request a
-  -> Extra.Aff (RetryResult e b)
-withRetryRequest retry onAffjaxError onAffjaxResponse request =
-  withRetry retry (map (Either.either (Either.Left <<< onAffjaxError) onAffjaxResponse) (Affjax.Node.request request))
 
 withRetryOnTimeout :: forall err a. Extra.Aff (Either.Either err a) -> Extra.Aff (RetryResult err a)
 withRetryOnTimeout = withRetry defaultRetry

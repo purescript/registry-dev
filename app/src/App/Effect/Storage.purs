@@ -18,14 +18,13 @@ module Registry.App.Effect.Storage
 
 import Registry.App.Prelude
 
-import Affjax.Node as Affjax.Node
-import Affjax.ResponseFormat as ResponseFormat
 import Data.Array as Array
 import Data.Exists as Exists
-import Data.HTTP.Method (Method(..))
 import Data.Set as Set
 import Data.String as String
 import Effect.Aff as Aff
+import Effect.Exception as Exception
+import Fetch.Retry as Fetch
 import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
 import Registry.App.Effect.Cache (class FsEncodable, Cache, FsEncoding(..))
@@ -98,7 +97,7 @@ parsePackagePath input = do
       if Array.length parts > 2 then "Too many parts in path: " <> input
       else "Too few parts in path: " <> input
 
-formatPackageUrl :: forall r. PackageName -> Version -> Run (RESOURCE_ENV + r) Affjax.Node.URL
+formatPackageUrl :: forall r. PackageName -> Version -> Run (RESOURCE_ENV + r) URL
 formatPackageUrl name version = do
   { s3ApiUrl } <- Env.askResourceEnv
   pure $ Array.fold [ s3ApiUrl, "/", formatPackagePath name version ]
@@ -245,11 +244,7 @@ downloadS3 name version = do
   packageUrl <- formatPackageUrl name version
 
   Log.debug $ "Downloading " <> package <> " from " <> packageUrl
-  response <- Run.liftAff $ withRetryRequest' $ Affjax.Node.defaultRequest
-    { method = Left GET
-    , responseFormat = ResponseFormat.arrayBuffer
-    , url = packageUrl
-    }
+  response <- Run.liftAff $ Fetch.withRetryRequest packageUrl {}
 
   -- TODO: Rely on the metadata to check the size and hash? Or do we not care
   -- for registry-internal operations?
@@ -257,17 +252,20 @@ downloadS3 name version = do
     Cancelled -> do
       Log.error $ "Failed to download " <> package <> " from " <> packageUrl <> " because of a connection timeout."
       Except.throw $ "Failed to download " <> package <> " from the storage backend."
-    Failed (AffjaxError error) -> do
-      Log.error $ "Failed to download " <> package <> " from " <> packageUrl <> " because of an HTTP error: " <> Affjax.Node.printError error
+    Failed (Fetch.FetchError error) -> do
+      Log.error $ "Failed to download " <> package <> " from " <> packageUrl <> " because of an HTTP error: " <> Exception.message error
       Except.throw $ "Could not download " <> package <> " from the storage backend."
-    Failed (StatusError { status, body }) -> do
-      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
+    Failed (Fetch.StatusError { status, arrayBuffer: arrayBufferAff }) -> do
+      arrayBuffer <- Run.liftAff arrayBufferAff
+      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
       bodyString <- Run.liftEffect $ Buffer.toString UTF8 (buffer :: Buffer)
       Log.error $ "Failed to download " <> package <> " from " <> packageUrl <> " because of a bad status code (" <> show status <> ") with body " <> bodyString
       Except.throw $ "Could not download " <> package <> " from the storage backend."
-    Succeeded { body } -> do
+    Succeeded { arrayBuffer: arrayBufferAff } -> do
+      arrayBuffer <- Run.liftAff arrayBufferAff
+
       Log.debug $ "Successfully downloaded " <> package <> " into a buffer."
-      buffer :: Buffer <- Run.liftEffect $ Buffer.fromArrayBuffer body
+      buffer :: Buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
       pure buffer
 
 withRetryListObjects :: S3.Space -> PackageName -> Aff (Either String (Array String))

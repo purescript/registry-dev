@@ -3,7 +3,6 @@ module Registry.App.Effect.Env where
 
 import Registry.App.Prelude
 
-import Affjax (URL)
 import Data.Array as Array
 import Data.String as String
 import Data.String.Base64 as Base64
