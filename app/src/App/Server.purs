@@ -21,7 +21,6 @@ import Node.Process as Process
 import Record as Record
 import Registry.API.V1 (JobId(..), JobType(..), LogLevel(..), Route(..))
 import Registry.API.V1 as V1
-import Registry.App.API (Source(..))
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (CacheRef)
@@ -71,7 +70,7 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
     lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
     forkPipelineJob publish.name publish.ref PublishJob \jobId -> do
       Log.info $ "Received Publish request, job id: " <> unwrap jobId
-      API.publish Current publish
+      API.publish CurrentPackage publish
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body

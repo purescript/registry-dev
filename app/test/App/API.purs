@@ -69,7 +69,7 @@ spec = do
             }
 
         -- First, we publish the package.
-        API.publish API.Current publishArgs
+        API.publish CurrentPackage publishArgs
 
         -- Then, we can check that it did make it to "Pursuit" as expected
         Pursuit.getPublishedVersions name >>= case _ of
@@ -84,7 +84,7 @@ spec = do
 
         -- Finally, we can verify that publishing the package again should fail
         -- since it already exists.
-        Except.runExcept (API.publish API.Current publishArgs) >>= case _ of
+        Except.runExcept (API.publish CurrentPackage publishArgs) >>= case _ of
           Left _ -> pure unit
           Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to fail."
   where
