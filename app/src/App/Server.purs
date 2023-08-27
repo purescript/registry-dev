@@ -2,9 +2,6 @@ module Registry.App.Server where
 
 import Registry.App.Prelude hiding ((/))
 
-import Affjax.Node as Affjax
-import Affjax.ResponseFormat as ResponseFormat
-import Affjax.StatusCode (StatusCode(..))
 import Control.Monad.Cont (ContT)
 import Data.Codec.Argonaut as CA
 import Data.Formatter.DateTime as Formatter.DateTime
@@ -13,6 +10,7 @@ import Data.String as String
 import Data.UUID.Random as UUID
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
+import Fetch as Fetch
 import HTTPurple (JsonDecoder(..), JsonEncoder(..), Method(..), Request, Response)
 import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
@@ -236,13 +234,14 @@ main = do
     Right env -> do
       _healthcheck <- Aff.launchAff do
         let
-          loop = do
-            Affjax.get ResponseFormat.ignore env.vars.resourceEnv.healthchecksUrl >>= case _ of
-              Left _ -> pure unit
-              Right { status: StatusCode status } | status /= 200 -> pure unit
-              Right _ -> do
-                Aff.delay (Aff.Milliseconds (1000.0 * 60.0 * 5.0))
-                loop
+          loop =
+            Aff.attempt (Fetch.fetch env.vars.resourceEnv.healthchecksUrl {}) >>=
+              case _ of
+                Left _ -> pure unit
+                Right { status } | status /= 200 -> pure unit
+                Right _ -> do
+                  Aff.delay (Aff.Milliseconds (1000.0 * 60.0 * 5.0))
+                  loop
         loop
 
       _close <- HTTPurple.serve

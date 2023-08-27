@@ -7,6 +7,7 @@
     "@octokit/plugin-throttling": "^3.7.0",
     "@octokit/rest": "^18.12.0",
     "aws-sdk": "^2.1050.0",
+    "better-sqlite3": "^8.5.2",
     "fast-glob": "^3.2.11",
     "fs-extra": "^10.0.0",
     "fuse.js": "^6.6.2",
@@ -14,6 +15,7 @@
     "registry-lib": "file:../lib",
     "semver": "^7.5.2",
     "tar": "^6.1.11",
-    "tmp": "^0.2.1"
+    "tmp": "^0.2.1",
+    "yaml": "^2.3.1"
   }
 }

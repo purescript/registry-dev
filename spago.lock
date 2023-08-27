@@ -4,8 +4,6 @@ workspace:
       path: app
       dependencies:
         - aff
-        - affjax
-        - affjax-node
         - ansi
         - argonaut-core
         - arrays
@@ -22,6 +20,7 @@ workspace:
         - either
         - exceptions
         - exists
+        - fetch
         - filterable
         - foldable-traversable
         - foreign-object
@@ -31,6 +30,7 @@ workspace:
         - identity
         - integers
         - js-date
+        - js-promise-aff
         - js-uri
         - lists
         - maybe
@@ -195,7 +195,7 @@ workspace:
         - variant
       test_dependencies: []
   package_set:
-    registry: 28.1.1
+    registry: 37.0.0
   extra_packages:
     spago-core:
       git: https://github.com/purescript/spago.git
@@ -231,33 +231,6 @@ packages:
     dependencies:
       - aff
       - foreign
-  affjax:
-    type: registry
-    version: 13.0.0
-    integrity: sha256-blYfaoW4FYIrIdvmT4sB7nN7BathFaEfZuiVLPmHJOo=
-    dependencies:
-      - aff
-      - argonaut-core
-      - arraybuffer-types
-      - foreign
-      - form-urlencoded
-      - http-methods
-      - integers
-      - media-types
-      - nullable
-      - refs
-      - unsafe-coerce
-      - web-xhr
-  affjax-node:
-    type: registry
-    version: 1.0.0
-    integrity: sha256-NcmRTXJxJzgHuKoLh+36yA8UejkfouYcX3uevT+Trjc=
-    dependencies:
-      - aff
-      - affjax
-      - either
-      - maybe
-      - prelude
   ansi:
     type: registry
     version: 7.0.0
@@ -592,6 +565,50 @@ packages:
     integrity: sha256-A0JQHpTfo1dNOj9U5/Fd3xndlRSE0g2IQWOGor2yXn8=
     dependencies:
       - unsafe-coerce
+  fetch:
+    type: registry
+    version: 2.0.0
+    integrity: sha256-43ojzk1qxr5EUTuRmL8R4Fnqd0V3uXFhL5lWCytaer0=
+    dependencies:
+      - aff
+      - arraybuffer-types
+      - effect
+      - fetch-core
+      - foreign
+      - http-methods
+      - js-promise-aff
+      - newtype
+      - prelude
+      - record
+      - typelevel-prelude
+      - web-file
+      - web-streams
+  fetch-core:
+    type: registry
+    version: 5.1.0
+    integrity: sha256-mBifgiz5g2QhyCHeYn/A6M6+7FWEw63KxXN+UWFHX/o=
+    dependencies:
+      - arraybuffer-types
+      - arrays
+      - console
+      - effect
+      - foldable-traversable
+      - foreign
+      - foreign-object
+      - functions
+      - http-methods
+      - js-promise
+      - maybe
+      - newtype
+      - nullable
+      - prelude
+      - record
+      - tuples
+      - typelevel-prelude
+      - unfoldable
+      - unsafe-coerce
+      - web-file
+      - web-streams
   filterable:
     type: registry
     version: 5.0.0
@@ -665,18 +682,6 @@ packages:
     integrity: sha256-X7u0SuCvFbLbzuNEKLBNuWjmcroqMqit4xEzpQwAP7E=
     dependencies:
       - aff
-  form-urlencoded:
-    type: registry
-    version: 7.0.0
-    integrity: sha256-WUzk8DTjrbPVHKZ5w7XpPBO6ci6xFhvYguHp6RvX+18=
-    dependencies:
-      - foldable-traversable
-      - js-uri
-      - maybe
-      - newtype
-      - prelude
-      - strings
-      - tuples
   formatters:
     type: registry
     version: 7.0.0
@@ -853,6 +858,25 @@ packages:
       - foreign
       - integers
       - now
+  js-promise:
+    type: registry
+    version: 1.0.0
+    integrity: sha256-kXNo5g9RJgPdrTuKRe5oG2kBIwPp+j5VDPDplqZBJzQ=
+    dependencies:
+      - effect
+      - exceptions
+      - foldable-traversable
+      - functions
+      - maybe
+      - prelude
+  js-promise-aff:
+    type: registry
+    version: 1.0.0
+    integrity: sha256-s9kml9Ei74hKlMMg41yyZp4GkbmYUwaH+gBWWrdhwec=
+    dependencies:
+      - aff
+      - foreign
+      - js-promise
   js-timers:
     type: registry
     version: 6.1.0
@@ -1104,8 +1128,8 @@ packages:
       - unsafe-coerce
   node-fs-aff:
     type: registry
-    version: 9.2.0
-    integrity: sha256-usKEFrLY9zh8o3IP3bwc+jX7Zd4OOmhHvwLFZlxdN8U=
+    version: 9.2.2
+    integrity: sha256-BPcg35n+cnQzAcediaqTf4hJYbiotZEG72e8JjL/nRo=
     dependencies:
       - aff
       - either
@@ -1237,8 +1261,8 @@ packages:
       - tuples
   ordered-collections:
     type: registry
-    version: 3.0.0
-    integrity: sha256-R9WddNBRPkY37gw8XkDCLX2vJ5eI9qdaWDdCp61r2+M=
+    version: 3.1.0
+    integrity: sha256-Qs3KjwxhDbemLBzvn5hxagwieOZVcUnPeBENe9NK5fQ=
     dependencies:
       - arrays
       - foldable-traversable
@@ -1260,8 +1284,8 @@ packages:
       - prelude
   parallel:
     type: registry
-    version: 6.0.0
-    integrity: sha256-VJbkGD0rAKX+NUEeBJbYJ78bEKaZbgow+QwQEfPB6ko=
+    version: 7.0.0
+    integrity: sha256-gUC9i4Txnx9K9RcMLsjujbwZz6BB1bnE2MLvw4GIw5o=
     dependencies:
       - control
       - effect
@@ -1538,17 +1562,17 @@ packages:
       - tuples
   spec:
     type: registry
-    version: 7.3.0
-    integrity: sha256-YmmRmlHmSHyAM8j5/QVHLgkMhtAkt2FXytVb5j/Zu0s=
+    version: 7.5.4
+    integrity: sha256-o49xJAmAN//ZYVMTz01xeDqdLOiEYoHbaXZYtOXmUZI=
     dependencies:
       - aff
       - ansi
       - arrays
       - avar
       - bifunctors
-      - console
       - control
       - datetime
+      - debug
       - effect
       - either
       - exceptions
@@ -1564,6 +1588,7 @@ packages:
       - parallel
       - pipes
       - prelude
+      - refs
       - strings
       - tailrec
       - transformers
@@ -1759,30 +1784,15 @@ packages:
       - foreign
       - media-types
       - web-dom
-  web-html:
+  web-streams:
     type: registry
-    version: 4.1.0
-    integrity: sha256-ByqS/h1/yG+hjCOnOQp7L1QpIWzQENNKB1kaHtpEhlE=
-    dependencies:
-      - js-date
-      - web-dom
-      - web-file
-      - web-storage
-  web-storage:
-    type: registry
-    version: 5.0.0
-    integrity: sha256-q+6lxcnfWxus0/nDeFVtF1V+tLehZvvXQ0cduYPLksY=
-    dependencies:
-      - nullable
-      - web-events
-  web-xhr:
-    type: registry
-    version: 5.0.1
-    integrity: sha256-3dbIPVG66S+hPrgEVnpD78hrGjE7qlBbsReWOz89Ios=
+    version: 4.0.0
+    integrity: sha256-02HgXIk6R+pU9fWOX42krukAI1QkCbLKcCv3b4Jq6WI=
     dependencies:
       - arraybuffer-types
-      - datetime
-      - http-methods
-      - web-dom
-      - web-file
-      - web-html
+      - effect
+      - exceptions
+      - js-promise
+      - nullable
+      - prelude
+      - tuples

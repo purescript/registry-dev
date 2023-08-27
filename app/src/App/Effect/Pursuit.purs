@@ -3,19 +3,15 @@ module Registry.App.Effect.Pursuit where
 
 import Registry.App.Prelude
 
-import Affjax.Node (URL)
-import Affjax.Node as Affjax.Node
-import Affjax.RequestBody as RequestBody
-import Affjax.RequestHeader as RequestHeader
-import Affjax.ResponseFormat as ResponseFormat
-import Affjax.StatusCode (StatusCode(..))
 import Data.Argonaut.Core as Argonaut
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Data.HTTP.Method as Method
 import Data.Map as Map
-import Data.MediaType.Common as MediaType
 import Data.Profunctor as Profunctor
+import Effect.Exception as Exception
+import Fetch.Retry as Fetch
+import Foreign (unsafeFromForeign)
 import Registry.App.Effect.Env (RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log (LOG)
@@ -65,37 +61,34 @@ handleAff (GitHubToken token) = case _ of
     { pursuitApiUrl } <- Env.askResourceEnv
     Log.debug "Pushing to Pursuit..."
 
-    result <- Run.liftAff $ withRetryRequest'
-      { content: Just $ RequestBody.json payload
-      , headers:
-          [ RequestHeader.Accept MediaType.applicationJSON
-          , RequestHeader.RequestHeader "Authorization" ("token " <> token)
-          ]
-      , method: Left Method.POST
-      , username: Nothing
-      , withCredentials: false
-      , password: Nothing
-      , responseFormat: ResponseFormat.string
-      , timeout: Nothing
-      , url: Array.fold [ pursuitApiUrl, "/packages" ]
-      }
+    result <- Run.liftAff $
+      Fetch.withRetryRequest (Array.fold [ pursuitApiUrl, "/packages" ])
+        { method: Method.POST
+        , body: Argonaut.stringify payload
+        , headers:
+            { "Accept": "application/json"
+            , "Authorization": "token " <> token
+            }
+        }
 
     result' <- case result of
       Cancelled -> do
         Log.error $ "Pursuit failed to connect after several retries."
         pure $ Left $ "Expected to receive a 201 status from Pursuit, but failed to connect after several retries."
       Failed reqError -> case reqError of
-        AffjaxError err -> do
-          pure $ Left $ "Pursuit publishing failed with an HTTP error: " <> Affjax.Node.printError err
-        StatusError { body, status: StatusCode status } -> do
-          Log.error $ "Pursuit publishing failed with status " <> show status <> " and body\n" <> body
+        Fetch.FetchError err -> do
+          pure $ Left $ "Pursuit publishing failed with an HTTP error: " <> Exception.message err
+        Fetch.StatusError { text: textAff, status } -> do
+          text <- Run.liftAff textAff
+          Log.error $ "Pursuit publishing failed with status " <> show status <> " and body\n" <> text
           pure $ Left $ "Expected to receive a 201 status from Pursuit, but received " <> show status <> " instead."
-      Succeeded { body, status: StatusCode status }
+      Succeeded { text: textAff, status }
         | status == 201 -> do
             Log.debug "Received 201 status, which indicates the upload was successful."
             pure $ Right unit
         | otherwise -> do
-            Log.error $ "Pursuit publishing failed with status " <> show status <> " and body\n" <> body
+            text <- Run.liftAff textAff
+            Log.error $ "Pursuit publishing failed with status " <> show status <> " and body\n" <> text
             pure $ Left $ "Expected to receive a 201 status from Pursuit, but received " <> show status <> " instead."
 
     pure $ reply result'
@@ -105,37 +98,33 @@ handleAff (GitHubToken token) = case _ of
     let name = PackageName.print pname
     let url = Array.fold [ pursuitApiUrl, "/packages/purescript-" <> name <> "/available-versions" ]
     Log.debug $ "Checking if package docs for " <> name <> " are published on Pursuit using endpoint " <> url
-    result <- Run.liftAff $ withRetryRequest'
-      { content: Nothing
-      , headers: [ RequestHeader.Accept MediaType.applicationJSON ]
-      , method: Left Method.GET
-      , username: Nothing
-      , withCredentials: false
-      , password: Nothing
-      , responseFormat: ResponseFormat.json
-      , timeout: Nothing
-      , url
+    result <- Run.liftAff $ Fetch.withRetryRequest url
+      { headers: { accept: "application/json" }
       }
 
     case result of
       Cancelled -> do
         Log.error $ "Could not reach Pursuit after multiple retries at URL " <> url
         pure $ reply $ Left $ "Could not reach Pursuit to determine published versions for " <> name
-      Failed (AffjaxError httpError) -> do
-        let printedError = Affjax.Node.printError httpError
+      Failed (Fetch.FetchError httpError) -> do
+        let printedError = Exception.message httpError
         Log.error $ "Pursuit publishing failed because of an HTTP error: " <> printedError
         pure $ reply $ Left "Could not reach Pursuit due to an HTTP error."
-      Failed (StatusError { body, status: StatusCode status }) -> do
-        Log.error $ "Could not fetch published versions from Pursuit (received non-200 response) " <> show status <> " and body\n" <> Argonaut.stringify body
+      Failed (Fetch.StatusError { text: textAff, status }) -> do
+        text <- Run.liftAff textAff
+        Log.error $ "Could not fetch published versions from Pursuit (received non-200 response) " <> show status <> " and body\n" <> text
         pure $ reply $ Left $ "Received non-200 response from Pursuit: " <> show status
-      Succeeded { body } -> case CA.decode availableVersionsCodec body of
-        Left error -> do
-          let printed = CA.printJsonDecodeError error
-          Log.error $ "Failed to decode body " <> Argonaut.stringify body <> "\n with error: " <> printed
-          pure $ reply $ Left $ "Received a response from Pursuit, but it could not be decoded:\n\n" <> printed <> "\n\ncc: @purescript/packaging"
-        Right versions -> do
-          Log.debug "Found versions from Pursuit!"
-          pure $ reply $ Right versions
+      Succeeded { text: textAff, json: jsonAff } -> do
+        json <- Run.liftAff jsonAff
+        case CA.decode availableVersionsCodec (unsafeFromForeign json) of
+          Left error -> do
+            let printed = CA.printJsonDecodeError error
+            text <- Run.liftAff textAff
+            Log.error $ "Failed to decode body " <> text <> "\n with error: " <> printed
+            pure $ reply $ Left $ "Received a response from Pursuit, but it could not be decoded:\n\n" <> printed <> "\n\ncc: @purescript/packaging"
+          Right versions -> do
+            Log.debug "Found versions from Pursuit!"
+            pure $ reply $ Right versions
 
 -- The Pursuit /available-versions endpoint returns versions as a tuple of the
 -- version number and documentation URL, represented as a two-element array.

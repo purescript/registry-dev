@@ -7,7 +7,6 @@
     "better-sqlite3": "^8.4.0",
     "registry-foreign": "file:../foreign",
     "registry-lib": "file:../lib",
-    "xhr2": "^0.2.1",
     "yaml": "^2.2.2"
   }
 }
