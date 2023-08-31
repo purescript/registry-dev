@@ -195,7 +195,7 @@ workspace:
         - variant
       test_dependencies: []
   package_set:
-    registry: 37.0.0
+    registry: 35.1.0
   extra_packages:
     spago-core:
       git: https://github.com/purescript/spago.git
@@ -1261,8 +1261,8 @@ packages:
       - tuples
   ordered-collections:
     type: registry
-    version: 3.1.0
-    integrity: sha256-Qs3KjwxhDbemLBzvn5hxagwieOZVcUnPeBENe9NK5fQ=
+    version: 3.0.0
+    integrity: sha256-R9WddNBRPkY37gw8XkDCLX2vJ5eI9qdaWDdCp61r2+M=
     dependencies:
       - arrays
       - foldable-traversable
@@ -1284,8 +1284,8 @@ packages:
       - prelude
   parallel:
     type: registry
-    version: 7.0.0
-    integrity: sha256-gUC9i4Txnx9K9RcMLsjujbwZz6BB1bnE2MLvw4GIw5o=
+    version: 6.0.0
+    integrity: sha256-VJbkGD0rAKX+NUEeBJbYJ78bEKaZbgow+QwQEfPB6ko=
     dependencies:
       - control
       - effect

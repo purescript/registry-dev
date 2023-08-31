@@ -13,6 +13,7 @@ import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
+import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
@@ -104,6 +105,8 @@ spec = do
     -- the fixtures directory.
     enterCleanEnv :: FilePath -> Aff PipelineEnv
     enterCleanEnv workdir = do
+      Env.loadEnvFile (Path.concat [ "..", ".env.example" ])
+
       -- FIXME: The publish pipeline probably shouldn't require this. But...the
       -- publish pipeline requires that there be a 'types' directory containing
       -- dhall types for the registry in the current working directory.
