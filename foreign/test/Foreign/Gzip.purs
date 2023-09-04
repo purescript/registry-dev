@@ -13,12 +13,13 @@ import Test.Spec as Spec
 
 spec :: Spec.Spec Unit
 spec = do
-  Spec.it "Compresses a string with gzip" do
-    tmp <- Tmp.mkTmpDir
-    let
-      file = Path.concat [ tmp, "out.gz" ]
-      contents = "<contents>"
-    buffer <- Gzip.compress contents
-    FS.Aff.writeFile file buffer
-    result <- _.result =<< Execa.execa "gzcat" [ file ] identity
-    (_.stdout <$> result) `Assert.shouldEqual` Right contents
+  Spec.describe "compress" do
+    Spec.it "Compresses a string with gzip" do
+      tmp <- Tmp.mkTmpDir
+      let
+        file = Path.concat [ tmp, "out.gz" ]
+        contents = "<contents>"
+      buffer <- Gzip.compress contents
+      FS.Aff.writeFile file buffer
+      result <- _.result =<< Execa.execa "gzcat" [ file ] identity
+      (_.stdout <$> result) `Assert.shouldEqual` Right contents
