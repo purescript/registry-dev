@@ -19,7 +19,7 @@ spec = do
       let
         file = Path.concat [ tmp, "out.gz" ]
         contents = "<contents>"
-      buffer <- Gzip.compress contents
+      buffer <- Gzip.toBuffer <$> Gzip.compress contents
       FS.Aff.writeFile file buffer
       result <- _.result =<< Execa.execa "zcat" [ file ] identity
       (_.stdout <$> result) `Assert.shouldEqual` Right contents

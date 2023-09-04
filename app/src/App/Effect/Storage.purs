@@ -244,7 +244,7 @@ downloadS3 name version = do
   packageUrl <- formatPackageUrl name version
 
   Log.debug $ "Downloading " <> package <> " from " <> packageUrl
-  response <- Run.liftAff $ Fetch.withRetryRequest packageUrl {}
+  response <- Run.liftAff $ Fetch.withRetryRequest @String packageUrl {}
 
   -- TODO: Rely on the metadata to check the size and hash? Or do we not care
   -- for registry-internal operations?

@@ -12,7 +12,6 @@ import Data.Profunctor as Profunctor
 import Effect.Exception as Exception
 import Fetch.Retry as Fetch
 import Foreign (unsafeFromForeign)
-import Node.Buffer as Buffer
 import Registry.App.Effect.Env (RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log (LOG)
@@ -65,10 +64,9 @@ handleAff (GitHubToken token) = case _ of
 
     result <- Run.liftAff do
       gzipped <- Gzip.compress (Argonaut.stringify payload)
-      body <- liftEffect (Buffer.toString UTF8 gzipped)
       Fetch.withRetryRequest (Array.fold [ pursuitApiUrl, "/packages" ])
         { method: Method.POST
-        , body
+        , body: gzipped
         , headers:
             { "Accept": "application/json"
             , "Content-Encoding": "gzip"
@@ -103,7 +101,7 @@ handleAff (GitHubToken token) = case _ of
     let name = PackageName.print pname
     let url = Array.fold [ pursuitApiUrl, "/packages/purescript-" <> name <> "/available-versions" ]
     Log.debug $ "Checking if package docs for " <> name <> " are published on Pursuit using endpoint " <> url
-    result <- Run.liftAff $ Fetch.withRetryRequest url
+    result <- Run.liftAff $ Fetch.withRetryRequest @String url
       { headers: { accept: "application/json" }
       }
 

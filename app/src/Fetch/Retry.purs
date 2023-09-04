@@ -8,7 +8,7 @@ import Registry.App.Prelude
 
 import Effect.Aff (Error)
 import Effect.Aff as Aff
-import Fetch (class ToCoreRequestOptions, HighlevelRequestOptions, Response, new)
+import Fetch (class ToCoreRequestOptions, class ToRequestBody, HighlevelRequestOptions, Response, new)
 import Fetch (Response) as ReExport
 import Fetch.Core as Core
 import Fetch.Core.Request as CoreRequest
@@ -22,8 +22,9 @@ data RetryRequestError
   | StatusError Response
 
 withRetryRequest
-  :: forall input output thruIn thruOut headers
-   . Union input thruIn (HighlevelRequestOptions headers String)
+  :: forall input output thruIn thruOut headers @body
+   . ToRequestBody body
+  => Union input thruIn (HighlevelRequestOptions headers body)
   => Union output thruOut CoreRequest.UnsafeRequestOptions
   => ToCoreRequestOptions input output
   => String
@@ -31,7 +32,7 @@ withRetryRequest
   -> Aff (RetryResult RetryRequestError Response)
 withRetryRequest url r =
   withRetry retry
-    $ (Aff.attempt $ fetch @thruIn url r)
+    $ (Aff.attempt $ fetchBody @thruIn url r)
     <#>
       ( either
           (Left <<< FetchError)
@@ -60,15 +61,16 @@ withRetryRequest url r =
 -- | The upstream library will soon be updated to use Visible Type Application
 -- | and then we can drop this redefinition:
 -- | https://github.com/rowtype-yoga/purescript-fetch/issues/9
-fetch
-  :: forall input output @thruIn thruOut headers
-   . Union input thruIn (HighlevelRequestOptions headers String)
+fetchBody
+  :: forall input output @thruIn thruOut headers @body
+   . ToRequestBody body
+  => Union input thruIn (HighlevelRequestOptions headers body)
   => Union output thruOut CoreRequest.UnsafeRequestOptions
   => ToCoreRequestOptions input output
   => String
   -> { | input }
   -> Aff Response
-fetch url input = do
+fetchBody url input = do
   request <- liftEffect $ new url $ Request.convert input
   coreResponse <- Promise.Aff.toAffE $ Core.fetch request
   pure $ Response.convert coreResponse

@@ -15,6 +15,7 @@ package:
     - datetime
     - effect
     - either
+    - fetch
     - filterable
     - foldable-traversable
     - foreign-object
