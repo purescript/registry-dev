@@ -6,6 +6,7 @@ import Data.Either (Either(..))
 import Node.FS.Aff as FS.Aff
 import Node.Library.Execa as Execa
 import Node.Path as Path
+import Registry.Foreign.Gzip (Gzip(..))
 import Registry.Foreign.Gzip as Gzip
 import Registry.Foreign.Tmp as Tmp
 import Registry.Test.Assert as Assert
@@ -19,7 +20,7 @@ spec = do
       let
         file = Path.concat [ tmp, "out.gz" ]
         contents = "<contents>"
-      buffer <- Gzip.toBuffer <$> Gzip.compress contents
+      Gzip buffer <- Gzip.compress contents
       FS.Aff.writeFile file buffer
       result <- _.result =<< Execa.execa "zcat" [ file ] identity
       (_.stdout <$> result) `Assert.shouldEqual` Right contents

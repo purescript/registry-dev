@@ -8,7 +8,7 @@ import Registry.App.Prelude
 
 import Effect.Aff (Error)
 import Effect.Aff as Aff
-import Fetch (class ToCoreRequestOptions, class ToRequestBody, HighlevelRequestOptions, Response, new)
+import Fetch (class ToCoreRequestOptions, HighlevelRequestOptions, Response, new)
 import Fetch (Response) as ReExport
 import Fetch.Core as Core
 import Fetch.Core.Request as CoreRequest
@@ -23,8 +23,7 @@ data RetryRequestError
 
 withRetryRequest
   :: forall input output thruIn thruOut headers @body
-   . ToRequestBody body
-  => Union input thruIn (HighlevelRequestOptions headers body)
+   . Union input thruIn (HighlevelRequestOptions headers body)
   => Union output thruOut CoreRequest.UnsafeRequestOptions
   => ToCoreRequestOptions input output
   => String
@@ -63,8 +62,7 @@ withRetryRequest url r =
 -- | https://github.com/rowtype-yoga/purescript-fetch/issues/9
 fetchBody
   :: forall input output @thruIn thruOut headers body
-   . ToRequestBody body
-  => Union input thruIn (HighlevelRequestOptions headers body)
+   . Union input thruIn (HighlevelRequestOptions headers body)
   => Union output thruOut CoreRequest.UnsafeRequestOptions
   => ToCoreRequestOptions input output
   => String

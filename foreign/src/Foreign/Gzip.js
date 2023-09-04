@@ -6,4 +6,3 @@ export const compressImpl = (input, onError, onBuffer) =>
   );
 
 export const toRequestBodyImpl = (a) => a;
-export const toBuffer = (a) => a;

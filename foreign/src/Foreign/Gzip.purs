@@ -1,7 +1,6 @@
 module Registry.Foreign.Gzip
-  ( compress
-  , toBuffer
-  , Gzipped
+  ( Gzip(..)
+  , compress
   ) where
 
 import Prelude
@@ -15,18 +14,17 @@ import Fetch (class ToRequestBody)
 import Fetch.Core.RequestBody (RequestBody)
 import Node.Buffer (Buffer)
 
-foreign import compressImpl :: EffectFn3 String (EffectFn1 Error Unit) (EffectFn1 Gzipped Unit) Unit
+foreign import compressImpl :: EffectFn3 String (EffectFn1 Error Unit) (EffectFn1 Gzip Unit) Unit
 
-foreign import data Gzipped :: Type
+foreign import toRequestBodyImpl :: Buffer -> RequestBody
 
-foreign import toRequestBodyImpl :: Gzipped -> RequestBody
-foreign import toBuffer :: Gzipped -> Buffer
+newtype Gzip = Gzip Buffer
 
-instance ToRequestBody Gzipped where
-  toRequestBody = toRequestBodyImpl
+instance ToRequestBody Gzip where
+  toRequestBody (Gzip buffer) = toRequestBodyImpl buffer
 
 -- | Compress a string using gzip.
-compress :: forall m. MonadAff m => String -> m Gzipped
+compress :: forall m. MonadAff m => String -> m Gzip
 compress input = liftAff do
   makeAff \handle -> do
     runEffectFn3 compressImpl input
