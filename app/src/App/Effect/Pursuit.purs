@@ -12,12 +12,14 @@ import Data.Profunctor as Profunctor
 import Effect.Exception as Exception
 import Fetch.Retry as Fetch
 import Foreign (unsafeFromForeign)
+import Node.Buffer as Buffer
 import Registry.App.Effect.Env (RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.LenientVersion (LenientVersion(..))
 import Registry.App.Legacy.LenientVersion as LenientVersion
+import Registry.Foreign.Gzip as Gzip
 import Registry.Foreign.Octokit (GitHubToken(..))
 import Registry.PackageName as PackageName
 import Registry.Version as Version
@@ -61,12 +63,15 @@ handleAff (GitHubToken token) = case _ of
     { pursuitApiUrl } <- Env.askResourceEnv
     Log.debug "Pushing to Pursuit..."
 
-    result <- Run.liftAff $
+    result <- Run.liftAff do
+      gzipped <- Gzip.compress (Argonaut.stringify payload)
+      body <- liftEffect (Buffer.toString UTF8 gzipped)
       Fetch.withRetryRequest (Array.fold [ pursuitApiUrl, "/packages" ])
         { method: Method.POST
-        , body: Argonaut.stringify payload
+        , body
         , headers:
             { "Accept": "application/json"
+            , "Content-Encoding": "gzip"
             , "Authorization": "token " <> token
             }
         }
