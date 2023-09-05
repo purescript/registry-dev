@@ -13,15 +13,20 @@ import Effect.Uncurried (EffectFn1, EffectFn3, mkEffectFn1, runEffectFn3)
 import Fetch (class ToRequestBody)
 import Fetch.Core.RequestBody (RequestBody)
 import Node.Buffer (Buffer)
-
-foreign import compressImpl :: EffectFn3 String (EffectFn1 Error Unit) (EffectFn1 Gzip Unit) Unit
-
-foreign import toRequestBodyImpl :: Buffer -> RequestBody
+import Unsafe.Coerce (unsafeCoerce)
 
 newtype Gzip = Gzip Buffer
 
+-- A `Buffer` can be passed as a `RequestBody`, but this is not yet reflected in
+-- the types of the upstream `fetch` library. See:
+-- https://github.com/rowtype-yoga/purescript-fetch/issues/11
+gzipToRequestBody :: Gzip -> RequestBody
+gzipToRequestBody = unsafeCoerce
+
 instance ToRequestBody Gzip where
-  toRequestBody (Gzip buffer) = toRequestBodyImpl buffer
+  toRequestBody = gzipToRequestBody
+
+foreign import compressImpl :: EffectFn3 String (EffectFn1 Error Unit) (EffectFn1 Gzip Unit) Unit
 
 -- | Compress a string using gzip.
 compress :: forall m. MonadAff m => String -> m Gzip
