@@ -101,7 +101,7 @@ handleAff (GitHubToken token) = case _ of
     let name = PackageName.print pname
     let url = Array.fold [ pursuitApiUrl, "/packages/purescript-" <> name <> "/available-versions" ]
     Log.debug $ "Checking if package docs for " <> name <> " are published on Pursuit using endpoint " <> url
-    result <- Run.liftAff $ Fetch.withRetryRequest @String url
+    result <- Run.liftAff $ Fetch.withRetryRequest url
       { headers: { accept: "application/json" }
       }
 

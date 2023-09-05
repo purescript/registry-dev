@@ -136,7 +136,7 @@ handle = case _ of
             Log.debug $ "Fetching tarball from GitHub: " <> archiveUrl
 
             response :: RetryResult Fetch.RetryRequestError Fetch.Response <-
-              Run.liftAff $ Fetch.withRetryRequest @String archiveUrl {}
+              Run.liftAff $ Fetch.withRetryRequest archiveUrl {}
 
             case response of
               Cancelled -> Except.throw $ "Could not download " <> archiveUrl

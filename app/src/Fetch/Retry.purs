@@ -22,7 +22,7 @@ data RetryRequestError
   | StatusError Response
 
 withRetryRequest
-  :: forall input output thruIn thruOut headers @body
+  :: forall input output thruIn thruOut headers body
    . Union input thruIn (HighlevelRequestOptions headers body)
   => Union output thruOut CoreRequest.UnsafeRequestOptions
   => ToCoreRequestOptions input output
@@ -31,7 +31,7 @@ withRetryRequest
   -> Aff (RetryResult RetryRequestError Response)
 withRetryRequest url r =
   withRetry retry
-    $ (Aff.attempt $ fetchBody @thruIn url r)
+    $ (Aff.attempt $ fetch @thruIn url r)
     <#>
       ( either
           (Left <<< FetchError)
@@ -60,7 +60,7 @@ withRetryRequest url r =
 -- | The upstream library will soon be updated to use Visible Type Application
 -- | and then we can drop this redefinition:
 -- | https://github.com/rowtype-yoga/purescript-fetch/issues/9
-fetchBody
+fetch
   :: forall input output @thruIn thruOut headers body
    . Union input thruIn (HighlevelRequestOptions headers body)
   => Union output thruOut CoreRequest.UnsafeRequestOptions
@@ -68,7 +68,7 @@ fetchBody
   => String
   -> { | input }
   -> Aff Response
-fetchBody url input = do
+fetch url input = do
   request <- liftEffect $ new url $ Request.convert input
   coreResponse <- Promise.Aff.toAffE $ Core.fetch request
   pure $ Response.convert coreResponse
