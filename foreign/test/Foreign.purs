@@ -5,6 +5,7 @@ import Prelude
 import Effect (Effect)
 import Effect.Aff as Aff
 import Test.Registry.Foreign.FastGlob as Foreign.FastGlob
+import Test.Registry.Foreign.Gzip as Foreign.Gzip
 import Test.Registry.Foreign.JsonRepair as Foreign.JsonRepair
 import Test.Registry.Foreign.SPDX as Foreign.SPDX
 import Test.Spec as Spec
@@ -17,3 +18,4 @@ main = Aff.launchAff_ $ runSpec [ consoleReporter ] do
     Spec.describe "SPDX" Foreign.SPDX.spec
     Spec.describe "JsonRepair" Foreign.JsonRepair.spec
     Spec.describe "FastGlob" Foreign.FastGlob.spec
+    Spec.describe "Gzip" Foreign.Gzip.spec

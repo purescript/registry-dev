@@ -18,6 +18,7 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.LenientVersion (LenientVersion(..))
 import Registry.App.Legacy.LenientVersion as LenientVersion
+import Registry.Foreign.Gzip as Gzip
 import Registry.Foreign.Octokit (GitHubToken(..))
 import Registry.PackageName as PackageName
 import Registry.Version as Version
@@ -61,12 +62,14 @@ handleAff (GitHubToken token) = case _ of
     { pursuitApiUrl } <- Env.askResourceEnv
     Log.debug "Pushing to Pursuit..."
 
-    result <- Run.liftAff $
+    result <- Run.liftAff do
+      gzipped <- Gzip.compress (Argonaut.stringify payload)
       Fetch.withRetryRequest (Array.fold [ pursuitApiUrl, "/packages" ])
         { method: Method.POST
-        , body: Argonaut.stringify payload
+        , body: gzipped
         , headers:
             { "Accept": "application/json"
+            , "Content-Encoding": "gzip"
             , "Authorization": "token " <> token
             }
         }

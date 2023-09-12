@@ -22,8 +22,8 @@ data RetryRequestError
   | StatusError Response
 
 withRetryRequest
-  :: forall input output thruIn thruOut headers
-   . Union input thruIn (HighlevelRequestOptions headers String)
+  :: forall input output thruIn thruOut headers body
+   . Union input thruIn (HighlevelRequestOptions headers body)
   => Union output thruOut CoreRequest.UnsafeRequestOptions
   => ToCoreRequestOptions input output
   => String
@@ -61,8 +61,8 @@ withRetryRequest url r =
 -- | and then we can drop this redefinition:
 -- | https://github.com/rowtype-yoga/purescript-fetch/issues/9
 fetch
-  :: forall input output @thruIn thruOut headers
-   . Union input thruIn (HighlevelRequestOptions headers String)
+  :: forall input output @thruIn thruOut headers body
+   . Union input thruIn (HighlevelRequestOptions headers body)
   => Union output thruOut CoreRequest.UnsafeRequestOptions
   => ToCoreRequestOptions input output
   => String
