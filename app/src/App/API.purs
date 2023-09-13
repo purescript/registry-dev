@@ -204,9 +204,9 @@ packageSetUpdate payload = do
   let changeSet = candidates.accepted <#> maybe Remove Update
   Comment.comment "Attempting to build package set update."
   PackageSets.upgradeAtomic latestPackageSet (fromMaybe prevCompiler payload.compiler) changeSet >>= case _ of
-    Nothing ->
-      Except.throw "The package set produced from this suggested update does not compile."
-    Just packageSet -> do
+    Left error ->
+      Except.throw $ "The package set produced from this suggested update does not compile:\n\n" <> error
+    Right packageSet -> do
       let commitMessage = PackageSets.commitMessage latestPackageSet changeSet (un PackageSet packageSet).version
       Registry.writePackageSet packageSet commitMessage
       Comment.comment "Built and released a new package set! Now mirroring to the package-sets repo..."
