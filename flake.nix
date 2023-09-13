@@ -38,13 +38,13 @@
       }
     }/Prelude/package.dhall";
 
+    # The location of the Dhall type specifications, used to type-check manifests.
     DHALL_TYPES = ./types;
 
     # We disable git-lfs files explicitly, as this is intended for large files
     # (typically >4GB), and source packgaes really ought not be shipping large
     # files — just source code.
     GIT_LFS_SKIP_SMUDGE = 1;
-
     registryOverlay = final: prev: rec {
       nodejs = prev.nodejs_20;
 
@@ -231,10 +231,6 @@
         };
       in
         builtins.listToAttrs (builtins.map toKeyPair noComments);
-
-      # Print an attrset of env vars { ENV_VAR = "value"; } as a newline-delimited
-      # string of "ENV_VAR=value" lines.
-      printEnv = env: pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "${name}=${value}") env);
 
       # Allows you to run a local VM with the registry server, mimicking the
       # actual deployment.
@@ -746,6 +742,12 @@
                 # Enable the registry server
                 services.registry-server.enable = true;
                 services.registry-server.host = host;
+                services.registry-server.envVars = {
+                  # These env vars are known to Nix so we set them in advance.
+                  # Others, like credentials, must be set in a .env file in
+                  # the state directory, unless there are viable defaults.
+                  inherit DHALL_PRELUDE DHALL_TYPES GIT_LFS_SKIP_SMUDGE;
+                };
 
                 # Don't change this.
                 system.stateVersion = "23.05";

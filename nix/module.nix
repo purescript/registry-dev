@@ -79,13 +79,14 @@ in {
     systemd.services = let
       # Print an attrset of env vars { ENV_VAR = "value"; } as a newline-delimited
       # string of "ENV_VAR=value" lines, then write the text to the Nix store.
-      defaultEnvFile =
-        pkgs.writeText ".env"
-        (pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value:
+      printEnv = vars:
+        pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value:
           if (builtins.typeOf value == "int")
           then "${name}=${toString value}"
           else "${name}=${value}")
-        cfg.envVars));
+        vars);
+      defaultEnvFile =
+        pkgs.writeText ".env" (printEnv cfg.envVars);
     in {
       server = {
         description = "registry server";
