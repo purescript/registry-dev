@@ -51,7 +51,7 @@ type SequentialUpgradeResult =
   }
 
 data PackageSets a
-  = UpgradeAtomic PackageSet Version ChangeSet (Either String (Maybe PackageSet) -> a)
+  = UpgradeAtomic PackageSet Version ChangeSet (Either String (Either String PackageSet) -> a)
   | UpgradeSequential PackageSet Version ChangeSet (Either String (Maybe SequentialUpgradeResult) -> a)
 
 derive instance Functor PackageSets
@@ -65,7 +65,7 @@ _packageSets = Proxy
 -- | Upgrade the given package set using the provided compiler version and set
 -- | of changes. If any change fails, then the upgrade is aborted and the
 -- | unsuccessful changes are returned.
-upgradeAtomic :: forall r. PackageSet -> Version -> ChangeSet -> Run (PACKAGE_SETS + EXCEPT String + r) (Maybe PackageSet)
+upgradeAtomic :: forall r. PackageSet -> Version -> ChangeSet -> Run (PACKAGE_SETS + EXCEPT String + r) (Either String PackageSet)
 upgradeAtomic oldSet compiler changes = Run.lift _packageSets (UpgradeAtomic oldSet compiler changes identity) >>= Except.rethrow
 
 -- | Upgrade the given package set using the provided compiler version and set
@@ -74,8 +74,8 @@ upgradeAtomic oldSet compiler changes = Run.lift _packageSets (UpgradeAtomic old
 upgradeSequential :: forall r. PackageSet -> Version -> ChangeSet -> Run (PACKAGE_SETS + EXCEPT String + r) (Maybe SequentialUpgradeResult)
 upgradeSequential oldSet compiler changes = do
   upgradeAtomic oldSet compiler changes >>= case _ of
-    Just result -> pure $ Just { failed: Map.empty, succeeded: changes, result }
-    Nothing -> Run.lift _packageSets (UpgradeSequential oldSet compiler changes identity) >>= Except.rethrow
+    Left _ -> Run.lift _packageSets (UpgradeSequential oldSet compiler changes identity) >>= Except.rethrow
+    Right result -> pure $ Just { failed: Map.empty, succeeded: changes, result }
 
 interpret :: forall r a. (PackageSets ~> Run r) -> Run (PACKAGE_SETS + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _packageSets handler Run.send)
@@ -105,8 +105,10 @@ handle env = case _ of
         MissingCompiler -> Except.throw $ printMissingCompiler compiler
         UnknownError error -> Except.throw $ printUnknownError error
         CompilationError errors -> do
-          Log.error $ printCompilationError errors
-          Except.throw "Compilation failed, but the starting package set must compile in order to process a batch."
+          Except.throw $ Array.fold
+            [ "Compilation failed, but the starting package set must compile in order to process a batch:\n\n"
+            , printCompilationError errors
+            ]
       Right _ -> pure unit
 
     attemptChanges compiler oldSet changes >>= case _ of
@@ -114,12 +116,13 @@ handle env = case _ of
         MissingCompiler -> Except.throw $ printMissingCompiler compiler
         UnknownError error -> Except.throw $ printUnknownError error
         CompilationError errors -> do
-          Log.info $ printCompilationError errors
-          pure Nothing
+          let printed = printCompilationError errors
+          Log.warn printed
+          pure (Left printed)
       Right pending -> do
         newSet <- updatePackageSetMetadata compiler { previous: oldSet, pending } changes
         validatePackageSet newSet
-        pure (Just newSet)
+        pure (Right newSet)
 
   UpgradeSequential oldSet@(PackageSet { packages }) compiler changes reply -> reply <$> Except.runExcept do
     Log.info $ "Performing sequential upgrade of package set " <> Version.print (un PackageSet oldSet).version
