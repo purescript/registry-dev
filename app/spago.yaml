@@ -43,7 +43,6 @@ package:
     - node-child-process
     - node-execa
     - node-fs
-    - node-fs-aff
     - node-path
     - node-process
     - now

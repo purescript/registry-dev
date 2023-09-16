@@ -40,6 +40,5 @@ package:
     main: Test.Foreign
     dependencies:
       - node-fs
-      - node-fs-aff
       - node-process
       - spec
