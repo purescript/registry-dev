@@ -3,6 +3,7 @@ module Registry.Foreign.FastGlob
   , Include(..)
   , match
   , match'
+  , convertPathToPattern
   ) where
 
 import Prelude
@@ -63,6 +64,9 @@ globOptionsToJSGlobOptions cwd options = do
 
 foreign import matchImpl :: Array String -> JSGlobOptions -> Effect (Promise (Array FilePath))
 
+-- | Escape special characters and convert paths to only have forward slashes (which FastGlob requires)
+foreign import convertPathToPattern :: FilePath -> FilePath
+
 type SanitizedPaths = { succeeded :: Array FilePath, failed :: Array String }
 
 -- | Match the provided list of glob patterns.
@@ -80,7 +84,8 @@ match'
   -> m SanitizedPaths
 match' baseDirectory entries opts = do
   let jsOptions = globOptionsToJSGlobOptions baseDirectory options
-  matches <- liftAff $ Promise.toAffE $ matchImpl entries jsOptions
+  -- Need to convert the entries to only have forward slashes for Windows compat
+  matches <- liftAff $ Promise.toAffE $ matchImpl (map convertPathToPattern entries) jsOptions
   results <- traverse (Internal.Path.sanitizePath baseDirectory) matches
   let { left, right } = partitionMap identity results
   pure { failed: left, succeeded: right }
