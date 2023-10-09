@@ -15,7 +15,7 @@ import Test.Spec as Spec
 spec :: Spec Unit
 spec = do
   Spec.it "Round-trips manifest fixtures" do
-    let manifestFixturesPath = Path.concat [ "fixtures", "manifests" ]
+    let manifestFixturesPath = Path.concat [ "lib", "fixtures", "manifests" ]
     fixturePaths <- FS.Aff.readdir manifestFixturesPath
     fixtures <- for fixturePaths \path -> do
       rawManifest <- FS.Aff.readTextFile UTF8 $ Path.concat [ manifestFixturesPath, path ]

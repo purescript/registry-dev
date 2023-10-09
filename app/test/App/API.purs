@@ -105,15 +105,15 @@ spec = do
     -- the fixtures directory.
     enterCleanEnv :: FilePath -> Aff PipelineEnv
     enterCleanEnv workdir = do
-      Env.loadEnvFile (Path.concat [ "..", ".env.example" ])
+      Env.loadEnvFile ".env.example"
 
       -- FIXME: The publish pipeline probably shouldn't require this. But...the
       -- publish pipeline requires that there be a 'types' directory containing
       -- dhall types for the registry in the current working directory.
-      FS.Extra.copy { from: Path.concat [ "..", "types" ], to: Path.concat [ workdir, "types" ], preserveTimestamps: true }
+      FS.Extra.copy { from: "types", to: Path.concat [ workdir, "types" ], preserveTimestamps: true }
 
       testFixtures <- liftAff Tmp.mkTmpDir
-      let copyFixture path = FS.Extra.copy { from: Path.concat [ "fixtures", path ], to: Path.concat [ testFixtures, path ], preserveTimestamps: true }
+      let copyFixture path = FS.Extra.copy { from: Path.concat [ "app", "fixtures", path ], to: Path.concat [ testFixtures, path ], preserveTimestamps: true }
 
       -- Set up a clean fixtures environment.
       liftAff do

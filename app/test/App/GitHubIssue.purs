@@ -7,6 +7,7 @@ import Registry.App.Prelude
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Codec.Argonaut as CA
 import Data.Map as Map
+import Node.Path as Path
 import Registry.App.GitHubIssue as GitHubIssue
 import Registry.Foreign.Octokit (IssueNumber(..))
 import Registry.Operation (PackageOperation(..), PackageSetOperation(..))
@@ -35,7 +36,7 @@ decodeEventsToOps = do
         , location: Nothing
         }
 
-    res <- GitHubIssue.readOperation "fixtures/update_issue_comment.json"
+    res <- GitHubIssue.readOperation $ Path.concat [ "app", "fixtures", "update_issue_comment.json" ]
     res `Assert.shouldEqual` GitHubIssue.DecodedOperation issueNumber username (Right operation)
 
   Spec.it "decodes an Addition operation" do
@@ -50,7 +51,7 @@ decodeEventsToOps = do
         , resolutions: Just $ Map.fromFoldable [ Utils.unsafePackageName "prelude" /\ Utils.unsafeVersion "1.0.0" ]
         }
 
-    res <- GitHubIssue.readOperation "fixtures/addition_issue_created.json"
+    res <- GitHubIssue.readOperation $ Path.concat [ "app", "fixtures", "addition_issue_created.json" ]
     res `Assert.shouldEqual` GitHubIssue.DecodedOperation issueNumber username (Right operation)
 
   Spec.it "decodes a Package Set Update operation" do
@@ -65,7 +66,7 @@ decodeEventsToOps = do
             ]
         }
 
-    res <- GitHubIssue.readOperation "fixtures/package-set-update_issue_created.json"
+    res <- GitHubIssue.readOperation $ Path.concat [ "app", "fixtures", "package-set-update_issue_created.json" ]
     res `Assert.shouldEqual` GitHubIssue.DecodedOperation issueNumber username (Left operation)
 
   Spec.it "decodes lenient JSON" do
