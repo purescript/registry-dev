@@ -47,7 +47,7 @@ hooksSpagoHash :: Sha256.Sha256
 hooksSpagoHash = Utils.fromRight "Failed to parse Sha256" $ Sha256.parse "sha256-fN9RUAzN21ZY4Y0UwqUSxwUPVz1g7/pcqoDvbJZoT04="
 
 hooksSpago :: FilePath
-hooksSpago = Path.concat [ "fixtures", "packages", "halogen-hooks-0.5.0", "spago.dhall" ]
+hooksSpago = Path.concat [ "lib", "fixtures", "packages", "halogen-hooks-0.5.0", "spago.dhall" ]
 
 -- Test hash produced by `openssl`:
 -- openssl dgst -sha256 -binary < fixtures/packages/halogen-hooks-0.5.0/LICENSE | openssl base64 -A
@@ -55,7 +55,7 @@ hooksLicenseHash :: Sha256.Sha256
 hooksLicenseHash = Utils.fromRight "Failed to parse Sha256" $ Sha256.parse "sha256-wOzNcCq20TAL/LMT1lYIiaoEIFGDBw+yp14bj7qK9v4="
 
 hooksLicense :: FilePath
-hooksLicense = Path.concat [ "fixtures", "packages", "halogen-hooks-0.5.0", "LICENSE" ]
+hooksLicense = Path.concat [ "lib", "fixtures", "packages", "halogen-hooks-0.5.0", "LICENSE" ]
 
 sha256Nix :: FilePath -> ExceptT String Aff Sha256.Sha256
 sha256Nix path = ExceptT do
