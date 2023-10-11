@@ -32,7 +32,7 @@
     easy-dhall-nix,
     ...
   }: let
-    supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin"];
+    supportedSystems = ["aarch64-darwin" "x86_64-linux" "aarch64-linux" "x86_64-darwin"];
 
     registryOverlay = final: prev: {
       pursPackages = prev.callPackage easy-purescript-nix {};

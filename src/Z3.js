@@ -1,12 +1,13 @@
 import { init } from 'z3-solver';
 
-export const newSolverImpl = (name) => {
+export const newZ3Impl = () => {
   console.log("JS: Initing");
-  return init()
-    .then(({ Context }) => {
-      console.log("JS: Returning context");
-      return new Context(name);
-    });
+  return init().then((z3) => z3);
+}
+
+export const newSolverImpl = ({Context}, name) => {
+  console.log("Getting new context " + name);
+  return new Context(name);
 };
 
 export const addVariablesImpl = (Z3, vs) => {
@@ -28,15 +29,23 @@ export const addVariablesImpl = (Z3, vs) => {
   return newVars;
 };
 
+// https://www.philipzucker.com/z3-rise4fun/optimization.html
 export const solveImpl = (Z3, vs, expr) => {
-  let solver = new Z3.Solver();
+  let solver = new Z3.Optimize();
   let converted = convertExpr(Z3, vs, expr);
-  // console.log(converted.toString());
   solver.add(converted);
+  let goal = mkGoal(vs);
+  if (goal !== null) {
+    console.log("Calling maximize..");
+    solver.maximize(goal);
+  }
+  //console.log("Solver state");
   console.log(solver.toString());
+  //console.log("Checking solver..");
   return solver.check()
     .then((checkResult) => {
       if (checkResult === "unsat") {
+        // TODO: expose unsat core
         throw Error("UNSAT!");
       } else {
         let model = solver.model();
@@ -47,9 +56,6 @@ export const solveImpl = (Z3, vs, expr) => {
           // TODO: the value function is only for Ints, but not bools?
           if (typeof v.value === 'function') {
             modelResults[element.name()] = Number(v.value());
-            //console.log(element.name(), Number(v.value()));
-          } else {
-            // console.log("Variable " + element.name() + " doesn't have a value");
           }
         });
         return modelResults;
@@ -58,7 +64,6 @@ export const solveImpl = (Z3, vs, expr) => {
 }
 
 const convertExpr = (Z3, vs, e) => {
-  // console.log(e);
   switch (e.op) {
     case "or":
       let newEs1 = e.l.map((clause) => convertExpr(Z3, vs, clause));
@@ -84,4 +89,21 @@ const convertExpr = (Z3, vs, e) => {
     default:
       throw Error("UNMATCHED Z3 EXPR");
   }
+}
+
+const mkGoal = (vs) => {
+  let goal = null;
+  let entries = Object.entries(vs);
+  entries.forEach(([key, value]) => {
+    if (!key.startsWith("var__")) {
+      console.log("Adding to maximise:", key);
+      if (goal == null) {
+        goal = value;
+      } else {
+        console.log("Adding", key, "to", goal.toString())
+        goal = value.add(goal);
+      }
+    }
+  });
+  return goal;
 }

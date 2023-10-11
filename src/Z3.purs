@@ -1,4 +1,4 @@
-module Z3 where
+module Z3 (main) where
 
 import Registry.Prelude
 
@@ -9,9 +9,8 @@ import Data.List as List
 import Data.Map as Map
 import Data.Newtype (unwrap)
 import Data.Set as Set
-import Data.Traversable as Traversable
 import Effect.Ref as Ref
-import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, runEffectFn1, runEffectFn2, runEffectFn3)
+import Effect.Uncurried (EffectFn2, EffectFn3, runEffectFn2, runEffectFn3)
 import Effect.Unsafe (unsafePerformEffect)
 import Foreign (Foreign)
 import Foreign.Object as Object
@@ -34,14 +33,19 @@ instance Show Var where
 
 type VarDecl = { typ :: String, name :: String }
 
+foreign import data Z3 :: Type
 foreign import data Solver :: Type
 foreign import data Variables :: Type
-foreign import newSolverImpl :: EffectFn1 String (Promise Solver)
+foreign import newZ3Impl :: Effect (Promise Z3)
+foreign import newSolverImpl :: EffectFn2 Z3 String Solver
 foreign import addVariablesImpl :: EffectFn2 Solver (Array VarDecl) Variables
 foreign import solveImpl :: EffectFn3 Solver Variables JSClause (Promise (Object Int))
 
-newSolver :: String -> Aff Solver
-newSolver = Promise.toAffE <<< runEffectFn1 newSolverImpl
+newZ3 :: Aff Z3
+newZ3 = Promise.toAffE newZ3Impl
+
+newSolver :: Z3 -> String -> Effect Solver
+newSolver z3 = runEffectFn2 newSolverImpl z3
 
 addVariables :: Solver -> Array VarDecl -> Aff Variables
 addVariables s = liftEffect <<< runEffectFn2 addVariablesImpl s
@@ -98,14 +102,14 @@ main = launchAff_ do
 
   -- Pick the package to solve
   let lookupVersions pkg = just $ Map.lookup (right $ PackageName.parse pkg) registryIndex
-  -- let pkg = "aff"
-  let pkg = "halogen"
-  -- let vs = "7.1.0"
-  let vs = "7.0.0"
+  let pkg = "node-child-process"
+  let vs = "2.0.0"
+  -- let pkg = "halogen"
+  -- let vs = "7.0.0"
   let
     Manifest manifest = just do
       versions <- Map.lookup (right $ PackageName.parse pkg) registryIndex
-      manifest <- Map.lookup (right $ Version.parseVersion Version.Lenient vs) versions --  versions
+      manifest <- Map.lookup (right $ Version.parseVersion Version.Lenient vs) versions
       pure manifest
 
   -- Construct the clause tree
@@ -123,7 +127,7 @@ main = launchAff_ do
             pure ZTRU
           else do
             clauses <- clausesForManifest innerManifest
-            newVar <- map (\n -> "var" <> show n) $ liftEffect $ Ref.modify (_ + 1) freshNamesRef
+            newVar <- map (\n -> "var__" <> show n) $ liftEffect $ Ref.modify (_ + 1) freshNamesRef
             let
               newClause = case clauses of
                 [] -> ZTRU
@@ -151,32 +155,31 @@ main = launchAff_ do
           _ -> ZAND [ rangeClause, implicationClause ]
 
   manifestClauses <- clausesForManifest manifest
-  cacheClauses <- map (Map.values >>> List.toUnfoldable >>> map \{ var, clause } -> ZIFF var clause) $ liftEffect $ Ref.read clausesCacheRef
-  let (affVersionClauses :: Z3Clause Version) = ZAND $ manifestClauses <> cacheClauses
+  cachedClauses <- map (Map.values >>> List.toUnfoldable >>> map \{ var, clause } -> ZIFF var clause) $ liftEffect $ Ref.read clausesCacheRef
+  let (packageClause :: Z3Clause Version) = ZAND $ manifestClauses <> cachedClauses
 
-  log $ show affVersionClauses
+  log $ show packageClause
   log "------------------------------------------------------------------------"
-  affIntClauses :: Z3Clause Int <- liftEffect $ convertToInts registryIndex affVersionClauses
-  -- log $ show affIntClauses
-  newAffVersionClauses :: Z3Clause Version <- liftEffect $ convertToVersion registryIndex affIntClauses
-  -- when (newAffVersionClauses /= affVersionClauses) do
-  --  unsafeCrashWith "clauses diverge"
-  let names = getNames newAffVersionClauses
+  -- Here we map from versions to ints - to avoid mismatches and missing versions we first traverse the tree,
+  -- gather all the versions for every package in a set, then sort them and map them to ints
+  let lookupTable = gatherVersions registryIndex packageClause
+  let (clauseToSolve :: Z3Clause Int) = convertToInts lookupTable packageClause
+  let names = getNames packageClause
   -- log $ show names
   log "Getting new solver"
-  solver <- newSolver "main"
+  z3 <- newZ3
+  solver <- liftEffect $ newSolver z3 "main"
   log "Adding variables"
   vars <- addVariables solver (Set.toUnfoldable names)
   log "Solving"
   log "------------------------------------------------------------------------"
-  -- TODO: Tell Z3 to optimise the sum of the package versions: https://www.philipzucker.com/z3-rise4fun/optimization.html
-  result :: Object Int <- solve solver vars affIntClauses
+  result :: Object Int <- solve solver vars clauseToSolve
   resultsArray <- for (Object.toUnfoldable result :: Array (Tuple String Int)) \(Tuple pkgStr n) -> do
     let pkg' = unsafePackageName pkgStr
     newVersion <- liftEffect $ toVersion registryIndex pkg' n
     pure (Tuple pkg' newVersion)
   log "Found a build plan:"
-  void $ for resultsArray \(Tuple p v) -> log $ "  - " <> show p <> ": " <> show v
+  void $ for (Array.sort resultsArray) \(Tuple p v) -> log $ "  - " <> show p <> ": " <> show v
   liftEffect $ exit 0
 
 just :: forall a. Maybe a -> a
@@ -196,89 +199,58 @@ type LookupTable =
 cacheRef :: Ref (Map PackageName LookupTable)
 cacheRef = unsafePerformEffect (Ref.new Map.empty)
 
-toInt :: RegistryIndex -> PackageName -> Version -> Effect Int
-toInt registryIndex packageName version = do
-  cache <- Ref.read cacheRef
-  case Map.lookup packageName cache of
-    Just lookupTable -> do
-      case Map.lookup version lookupTable.toInt of
-        Just i -> pure i
-        Nothing -> do
-          -- If we get a nothing here we are probably looking up a range that doesn't exist,
-          -- i.e. <7.0.0, where 7.0.0 was never a version.
-          -- So we check if it's at either threshold and add it to both lookup fns if yes
-          let
-            max = just $ Traversable.maximum $ Map.keys lookupTable.toInt
-            min = just $ Traversable.minimum $ Map.keys lookupTable.toInt
-          if version > max then do
-            let n = Map.size lookupTable.toInt
-            let
-              newLookupTable =
-                { toInt: Map.insert version n lookupTable.toInt
-                , toVersion: Map.insert n version lookupTable.toVersion
-                }
-            Ref.write (Map.insert packageName newLookupTable cache) cacheRef
-            pure n
-          else if version < min then do
-            let
-              n = (-1)
-              newLookupTable =
-                { toInt: Map.insert version n lookupTable.toInt
-                , toVersion: Map.insert n version lookupTable.toVersion
-                }
-            Ref.write (Map.insert packageName newLookupTable cache) cacheRef
-            pure n
-          else unsafeCrashWith $ "Tried to lookup key " <> show version <> " from map: " <> show lookupTable.toInt
-    Nothing -> do
-      let
-        (versions :: Array Version) = Array.fromFoldable $ Map.keys $ just $ Map.lookup packageName registryIndex
-        (lookupTable :: LookupTable) =
-          { toInt: Map.fromFoldable $ Array.mapWithIndex (\i v -> Tuple v i) versions
-          , toVersion: Map.fromFoldable $ Array.mapWithIndex (\i v -> Tuple i v) versions
-          }
-      Ref.write (Map.insert packageName lookupTable cache) cacheRef
-      toInt registryIndex packageName version
+gatherVersions :: RegistryIndex -> Z3Clause Version -> Map PackageName LookupTable
+gatherVersions registryIndex clause = map toLookupTable (go Map.empty clause)
+  where
+  toLookupTable :: Set Version -> LookupTable
+  toLookupTable vs =
+    let
+      (versions :: Array Version) = Array.fromFoldable vs
+    in
+      { toInt: Map.fromFoldable $ Array.mapWithIndex (\i v -> Tuple v i) versions
+      , toVersion: Map.fromFoldable $ Array.mapWithIndex (\i v -> Tuple i v) versions
+      }
 
-toVersion :: RegistryIndex -> PackageName -> Int -> Effect Version
+  -- In the nothing case the package was not in the memo, so we read it from the index too
+  updateVersionSet pkg v Nothing = Just $ fromMaybe (Set.singleton v) $ map Map.keys $ Map.lookup pkg registryIndex
+  updateVersionSet _pkg v (Just vs) = Just (Set.insert v vs)
+
+  go acc = case _ of
+    ZTRU -> acc
+    ZVAR _ -> acc
+    ZGE pkg v -> Map.alter (updateVersionSet pkg v) pkg acc
+    ZLT pkg v -> Map.alter (updateVersionSet pkg v) pkg acc
+    ZEQ pkg v -> Map.alter (updateVersionSet pkg v) pkg acc
+    ZIFF _ c -> go acc c
+    ZIMP l r -> Array.foldl go acc [ l, r ]
+    ZOR cs -> Array.foldl go acc cs
+    ZAND cs -> Array.foldl go acc cs
+
+toVersion :: RegistryIndex -> PackageName -> Int -> Effect (Maybe Version)
 toVersion _registryIndex packageName version = do
   cache <- Ref.read cacheRef
   case Map.lookup packageName cache of
-    Just lt -> pure $ unsafeLookup ("toVersionNotCached " <> PackageName.print packageName <> "\n" <> show lt) version lt.toVersion
+    Just lt -> do
+      log $ "Discarding package " <> show packageName
+      pure $ Map.lookup version lt.toVersion
     Nothing -> unsafeCrashWith "wrong"
 
-convertToInts :: RegistryIndex -> Z3Clause Version -> Effect (Z3Clause Int)
-convertToInts registryIndex = case _ of
-  ZGE pkg v -> map (ZGE pkg) (toInt registryIndex pkg v)
-  ZLT pkg v -> map (ZLT pkg) (toInt registryIndex pkg v)
-  ZEQ pkg v -> map (ZEQ pkg) (toInt registryIndex pkg v)
-  ZOR cs -> map ZOR $ traverse (convertToInts registryIndex) cs
-  ZAND cs -> map ZAND $ traverse (convertToInts registryIndex) cs
-  ZVAR v -> pure (ZVAR v)
-  ZTRU -> pure ZTRU
-  ZIMP lhs rhs -> do
-    l <- convertToInts registryIndex lhs
-    r <- convertToInts registryIndex rhs
-    pure $ ZIMP l r
-  ZIFF l rhs -> do
-    r <- convertToInts registryIndex rhs
-    pure $ ZIFF l r
+toInt :: Map PackageName LookupTable -> PackageName -> Version -> Int
+toInt lookupTable pkg v = just do
+  pkgTables <- Map.lookup pkg lookupTable
+  Map.lookup v pkgTables.toInt
 
-convertToVersion :: RegistryIndex -> Z3Clause Int -> Effect (Z3Clause Version)
-convertToVersion registryIndex = case _ of
-  ZGE pkg v -> map (ZGE pkg) (toVersion registryIndex pkg v)
-  ZLT pkg v -> map (ZLT pkg) (toVersion registryIndex pkg v)
-  ZEQ pkg v -> map (ZEQ pkg) (toVersion registryIndex pkg v)
-  ZOR cs -> map ZOR $ traverse (convertToVersion registryIndex) cs
-  ZAND cs -> map ZAND $ traverse (convertToVersion registryIndex) cs
-  ZVAR v -> pure (ZVAR v)
-  ZTRU -> pure ZTRU
-  ZIMP lhs rhs -> do
-    l <- convertToVersion registryIndex lhs
-    r <- convertToVersion registryIndex rhs
-    pure $ ZIMP l r
-  ZIFF l rhs -> do
-    r <- convertToVersion registryIndex rhs
-    pure $ ZIFF l r
+convertToInts :: Map PackageName LookupTable -> Z3Clause Version -> Z3Clause Int
+convertToInts lookupTable = case _ of
+  ZGE pkg v -> ZGE pkg (toInt lookupTable pkg v)
+  ZLT pkg v -> ZLT pkg (toInt lookupTable pkg v)
+  ZEQ pkg v -> ZEQ pkg (toInt lookupTable pkg v)
+  ZOR cs -> ZOR $ map (convertToInts lookupTable) cs
+  ZAND cs -> ZAND $ map (convertToInts lookupTable) cs
+  ZIMP lhs rhs -> ZIMP (convertToInts lookupTable lhs) (convertToInts lookupTable rhs)
+  ZIFF l rhs -> ZIFF l (convertToInts lookupTable rhs)
+  ZVAR v -> ZVAR v
+  ZTRU -> ZTRU
 
 getNames :: forall a. Z3Clause a -> Set VarDecl
 getNames = case _ of
@@ -295,10 +267,11 @@ getNames = case _ of
   intVar pkg = Set.singleton { typ: "int", name: PackageName.print pkg }
   boolVar (Var var) = Set.singleton { typ: "bool", name: var }
 
-unsafeLookup :: forall k v. Ord k => Show k => Show v => String -> k -> Map k v -> v
-unsafeLookup canary k m = case Map.lookup k m of
-  Just a -> a
-  Nothing -> unsafeCrashWith $ canary <> ": tried to lookup key " <> show k <> " from map: " <> show m
-
 unsafePackageName :: String -> PackageName
 unsafePackageName = right <<< PackageName.parse
+
+-- TODO: when we'll want to extract the unsat core, we need to set the
+-- core to be minimal:
+-- def set_core_minimize(s):
+--  s.set("sat.core.minimize","true")  # For Bit-vector theories
+--  s.set("smt.core.minimize","true")  # For general SMT
