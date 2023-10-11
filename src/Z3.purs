@@ -9,6 +9,7 @@ import Data.List as List
 import Data.Map as Map
 import Data.Newtype (unwrap)
 import Data.Set as Set
+import Effect.Console as Console
 import Effect.Ref as Ref
 import Effect.Uncurried (EffectFn2, EffectFn3, runEffectFn2, runEffectFn3)
 import Effect.Unsafe (unsafePerformEffect)
@@ -98,24 +99,30 @@ derive instance Functor Z3Clause
 main :: Effect Unit
 main = launchAff_ do
   registryIndex <- liftAff $ Index.readRegistryIndex "/Users/fabrizio/Library/Caches/spago-nodejs/registry-index"
-  log $ show $ Map.size registryIndex
+  -- log $ show $ Map.size registryIndex
+  z3 <- newZ3
+  void $ for (Map.toUnfoldable registryIndex :: Array _) \(Tuple packageName versions) ->
+    void $ for (Map.toUnfoldable versions :: Array _) \(Tuple version manifest) -> do
+      let input = { registryIndex, manifest, z3, pkg: packageName }
+      try (solvePackageVersion input) >>= case _ of
+        Left err -> liftEffect $ Console.error $ "UNSOLVABLE: " <> PackageName.print packageName <> "@" <> Version.printVersion version
+        Right res -> liftEffect $ Console.log $ "SOLVED: " <> PackageName.print packageName <> "@" <> Version.printVersion version
+  liftEffect $ exit 0
 
-  -- Pick the package to solve
-  let lookupVersions pkg = just $ Map.lookup (right $ PackageName.parse pkg) registryIndex
-  let pkg = "node-child-process"
-  let vs = "2.0.0"
-  -- let pkg = "halogen"
-  -- let vs = "7.0.0"
-  let
-    Manifest manifest = just do
-      versions <- Map.lookup (right $ PackageName.parse pkg) registryIndex
-      manifest <- Map.lookup (right $ Version.parseVersion Version.Lenient vs) versions
-      pure manifest
+type SolveIn =
+  { registryIndex :: RegistryIndex
+  , pkg :: PackageName
+  , z3 :: Z3
+  , manifest :: Manifest
+  }
 
+solvePackageVersion :: SolveIn -> Aff (Array (Tuple PackageName (Maybe Version)))
+solvePackageVersion { registryIndex, manifest: Manifest manifest, z3 } = do
   -- Construct the clause tree
   clausesCacheRef <- liftEffect $ Ref.new Map.empty
   freshNamesRef <- liftEffect $ Ref.new 0
   let
+    lookupVersions pkg = just $ Map.lookup pkg registryIndex
     memoizeClausesForVersion implicationKey innerManifest = do
       clausesCache <- liftEffect $ Ref.read clausesCacheRef
       case Map.lookup implicationKey clausesCache of
@@ -139,7 +146,7 @@ main = launchAff_ do
       -- For every dependency range, add a constraint for the range itself, and a bunch of implications for each version in the range (recursive step)
       \(Tuple packageName range) -> do
         let
-          manifests = map unwrap $ versionsForRange (lookupVersions (PackageName.print packageName)) range
+          manifests = map unwrap $ versionsForRange (lookupVersions packageName) range
           rangeClause = ZAND [ ZGE packageName (Version.greaterThanOrEq range), ZLT packageName (Version.lessThan range) ]
           implicationKey version = ZEQ packageName version
           mkImplication innerManifest = do
@@ -158,29 +165,28 @@ main = launchAff_ do
   cachedClauses <- map (Map.values >>> List.toUnfoldable >>> map \{ var, clause } -> ZIFF var clause) $ liftEffect $ Ref.read clausesCacheRef
   let (packageClause :: Z3Clause Version) = ZAND $ manifestClauses <> cachedClauses
 
-  log $ show packageClause
-  log "------------------------------------------------------------------------"
+  -- log $ show packageClause
+  -- log "------------------------------------------------------------------------"
   -- Here we map from versions to ints - to avoid mismatches and missing versions we first traverse the tree,
   -- gather all the versions for every package in a set, then sort them and map them to ints
   let lookupTable = gatherVersions registryIndex packageClause
   let (clauseToSolve :: Z3Clause Int) = convertToInts lookupTable packageClause
   let names = getNames packageClause
   -- log $ show names
-  log "Getting new solver"
-  z3 <- newZ3
-  solver <- liftEffect $ newSolver z3 "main"
-  log "Adding variables"
+  -- log "Getting new solver"
+  solver <- liftEffect $ newSolver z3 (PackageName.print manifest.name <> "-" <> Version.printVersion manifest.version)
+  -- log "Adding variables"
   vars <- addVariables solver (Set.toUnfoldable names)
-  log "Solving"
-  log "------------------------------------------------------------------------"
+  -- log "Solving"
+  -- log "------------------------------------------------------------------------"
   result :: Object Int <- solve solver vars clauseToSolve
   resultsArray <- for (Object.toUnfoldable result :: Array (Tuple String Int)) \(Tuple pkgStr n) -> do
     let pkg' = unsafePackageName pkgStr
     newVersion <- liftEffect $ toVersion registryIndex pkg' n
     pure (Tuple pkg' newVersion)
-  log "Found a build plan:"
-  void $ for (Array.sort resultsArray) \(Tuple p v) -> log $ "  - " <> show p <> ": " <> show v
-  liftEffect $ exit 0
+  -- log "Found a build plan:"
+  -- void $ for (Array.sort resultsArray) \(Tuple p v) -> log $ "  - " <> show p <> ": " <> show v
+  pure resultsArray
 
 just :: forall a. Maybe a -> a
 just = fromJust' (\_ -> unsafeCrashWith "this should be a just")
@@ -231,7 +237,7 @@ toVersion _registryIndex packageName version = do
   cache <- Ref.read cacheRef
   case Map.lookup packageName cache of
     Just lt -> do
-      log $ "Discarding package " <> show packageName
+      -- log $ "Discarding package " <> show packageName
       pure $ Map.lookup version lt.toVersion
     Nothing -> unsafeCrashWith "wrong"
 
