@@ -27,8 +27,10 @@ import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Map as Map
 import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
+import Data.Set as Set
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
+import Data.String.CodeUnits as String.CodeUnits
 import Data.String.NonEmpty (fromString) as NonEmptyString
 import Data.String.NonEmpty.Internal (toString) as NonEmptyString
 import Data.String.Regex as Regex
@@ -39,6 +41,9 @@ import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
 import Node.Library.Execa as Execa
 import Node.Path as Path
+import Parsing as Parsing
+import Parsing.Combinators.Array as Parsing.Combinators.Array
+import Parsing.String as Parsing.String
 import Registry.App.Auth as Auth
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
@@ -82,6 +87,8 @@ import Registry.Operation.Validation as Operation.Validation
 import Registry.Owner as Owner
 import Registry.PackageName as PackageName
 import Registry.PackageSet as PackageSet
+import Registry.PursGraph (ModuleName(..))
+import Registry.PursGraph as PursGraph
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
 import Registry.Solver as Solver
@@ -90,7 +97,7 @@ import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
-import Spago.Core.Config as Spago
+import Spago.Core.Config as Spago.Config
 import Spago.Core.Prelude as Spago.Prelude
 import Spago.Log as Spago.Log
 
@@ -388,70 +395,68 @@ publish source payload = do
   --  - if it's a legacy import then we can try to infer as much info as possible to make a manifest
   let packagePursJson = Path.concat [ packageDirectory, "purs.json" ]
   hadPursJson <- Run.liftEffect $ FS.Sync.exists packagePursJson
-  unless hadPursJson do
-    let packageSpagoYaml = Path.concat [ packageDirectory, "spago.yaml" ]
-    hasSpagoYaml <- Run.liftEffect $ FS.Sync.exists packageSpagoYaml
-    case hasSpagoYaml of
-      true -> do
-        Comment.comment $ "Package source does not have a purs.json file, creating one from your spago.yaml file..."
-        -- Need to make a Spago log env first, disable the logging
-        let spagoEnv = { logOptions: { color: false, verbosity: Spago.Log.LogQuiet } }
-        maybeConfig <- Spago.Prelude.runSpago spagoEnv (Spago.readConfig packageSpagoYaml)
-        case maybeConfig of
-          Left err' -> Except.throw $ String.joinWith "\n"
-            [ "Could not publish your package - a spago.yaml was present, but it was not possible to read it:"
-            , err'
-            ]
-          Right { yaml: config } -> do
-            -- Once we have the config we are still not entirely sure it fits into a Manifest
-            -- E.g. need to make sure all the ranges are present
-            case spagoToManifest config of
-              Left err -> Except.throw $ String.joinWith "\n"
-                [ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:"
-                , err
-                ]
-              Right manifest -> do
-                Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
-                Run.liftAff $ writeJsonFile Manifest.codec packagePursJson manifest
-      false -> do
-        Comment.comment $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
-        address <- case existingMetadata.location of
-          Git _ -> Except.throw "Legacy packages can only come from GitHub."
-          GitHub { subdir: Just subdir } -> Except.throw $ "Legacy packages cannot use the 'subdir' key, but this package specifies a " <> subdir <> " subdir."
-          GitHub { owner, repo } -> pure { owner, repo }
 
-        version <- case LenientVersion.parse payload.ref of
-          Left _ -> Except.throw $ "The provided ref " <> payload.ref <> " is not a version of the form X.Y.Z or vX.Y.Z, so it cannot be used."
-          Right result -> pure $ LenientVersion.version result
+  let packageSpagoYaml = Path.concat [ packageDirectory, "spago.yaml" ]
+  hasSpagoYaml <- Run.liftEffect $ FS.Sync.exists packageSpagoYaml
 
-        Legacy.Manifest.fetchLegacyManifest payload.name address (RawVersion payload.ref) >>= case _ of
-          Left manifestError -> do
-            let formatError { error, reason } = reason <> " " <> Legacy.Manifest.printLegacyManifestError error
-            Except.throw $ String.joinWith "\n"
-              [ "Could not publish your package because there were issues converting its spago.dhall and/or bower.json files into a purs.json manifest:"
-              , formatError manifestError
+  Manifest manifest <-
+    if hadPursJson then
+      Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 packagePursJson)) >>= case _ of
+        Left error -> do
+          Except.throw $ "Could not read purs.json from path " <> packagePursJson <> ": " <> Aff.message error
+        Right string -> Env.askResourceEnv >>= \{ dhallTypes } -> Run.liftAff (jsonToDhallManifest dhallTypes string) >>= case _ of
+          Left error -> do
+            Log.error $ "Manifest does not typecheck: " <> error
+            Except.throw $ "Found a valid purs.json file in the package source, but it does not typecheck."
+          Right _ -> case parseJson Manifest.codec string of
+            Left err -> do
+              Log.error $ "Failed to parse manifest: " <> CA.printJsonDecodeError err
+              Except.throw $ "Found a purs.json file in the package source, but it could not be decoded."
+            Right manifest -> do
+              Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec manifest
+              pure manifest
+
+    else if hasSpagoYaml then do
+      Comment.comment $ "Package source does not have a purs.json file, creating one from your spago.yaml file..."
+      -- Need to make a Spago log env first, disable the logging
+      let spagoEnv = { logOptions: { color: false, verbosity: Spago.Log.LogQuiet } }
+      Spago.Prelude.runSpago spagoEnv (Spago.Config.readConfig packageSpagoYaml) >>= case _ of
+        Left readErr -> Except.throw $ String.joinWith "\n"
+          [ "Could not publish your package - a spago.yaml was present, but it was not possible to read it:"
+          , readErr
+          ]
+        Right { yaml: config } -> do
+          -- Once we have the config we are still not entirely sure it fits into a Manifest
+          -- E.g. need to make sure all the ranges are present
+          case spagoToManifest config of
+            Left err -> Except.throw $ String.joinWith "\n"
+              [ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:"
+              , err
               ]
-          Right legacyManifest -> do
-            Log.debug $ "Successfully produced a legacy manifest from the package source. Writing it to the package source..."
-            let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location legacyManifest
-            Run.liftAff $ writeJsonFile Manifest.codec packagePursJson manifest
+            Right manifest -> do
+              Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
+              pure manifest
+    else do
+      Comment.comment $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
+      address <- case existingMetadata.location of
+        Git _ -> Except.throw "Legacy packages can only come from GitHub."
+        GitHub { subdir: Just subdir } -> Except.throw $ "Legacy packages cannot use the 'subdir' key, but this package specifies a " <> subdir <> " subdir."
+        GitHub { owner, repo } -> pure { owner, repo }
 
-  Log.debug "A valid purs.json is available in the package source."
+      version <- case LenientVersion.parse payload.ref of
+        Left _ -> Except.throw $ "The provided ref " <> payload.ref <> " is not a version of the form X.Y.Z or vX.Y.Z, so it cannot be used."
+        Right result -> pure $ LenientVersion.version result
 
-  Manifest manifest <- Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 packagePursJson)) >>= case _ of
-    Left error -> do
-      Log.error $ "Could not read purs.json from path " <> packagePursJson <> ": " <> Aff.message error
-      Except.throw $ "Could not find a purs.json file in the package source."
-    Right string -> Env.askResourceEnv >>= \{ dhallTypes } -> Run.liftAff (jsonToDhallManifest dhallTypes string) >>= case _ of
-      Left error -> do
-        Log.error $ "Manifest does not typecheck: " <> error
-        Except.throw $ "Found a valid purs.json file in the package source, but it does not typecheck."
-      Right _ -> case parseJson Manifest.codec string of
-        Left err -> do
-          Log.error $ "Failed to parse manifest: " <> CA.printJsonDecodeError err
-          Except.throw $ "Found a purs.json file in the package source, but it could not be decoded."
-        Right manifest -> do
-          Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec manifest
+      Legacy.Manifest.fetchLegacyManifest payload.name address (RawVersion payload.ref) >>= case _ of
+        Left manifestError -> do
+          let formatError { error, reason } = reason <> " " <> Legacy.Manifest.printLegacyManifestError error
+          Except.throw $ String.joinWith "\n"
+            [ "Could not publish your package because there were issues converting its spago.dhall and/or bower.json files into a purs.json manifest:"
+            , formatError manifestError
+            ]
+        Right legacyManifest -> do
+          Log.debug $ "Successfully produced a legacy manifest from the package source."
+          let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location legacyManifest
           pure manifest
 
   Comment.comment "Verifying package..."
@@ -527,15 +532,149 @@ publish source payload = do
           , url
           ]
 
-  publishRegistry
-    { source
-    , manifest: Manifest manifest
-    , metadata: Metadata metadata
-    , payload
-    , publishedTime
-    , tmp
-    , packageDirectory
-    }
+  -- Now that we've verified the package we can write the manifest to the source
+  -- directory and then publish it. However: packages converted from spago.dhall
+  -- files may not have correct dependencies because we can't determine which
+  -- are test-only; for this reason, we will prune unused dependencies from the
+  -- manifest before writing it.
+  if hadPursJson then do
+    publishRegistry
+      { source
+      , manifest: Manifest manifest
+      , metadata: Metadata metadata
+      , payload
+      , publishedTime
+      , tmp
+      , packageDirectory
+      }
+
+  -- We need to write a generated purs.json file if the package uses spago.yaml
+  else if hasSpagoYaml then do
+    Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
+    publishRegistry
+      { source
+      , manifest: Manifest manifest
+      , metadata: Metadata metadata
+      , payload
+      , publishedTime
+      , tmp
+      , packageDirectory
+      }
+
+  -- Otherwise this is a legacy package, so we prune unused dependencies.
+  else do
+    Log.debug "Pruning unused dependencies from legacy package manifest..."
+
+    Log.debug "Solving manifest to get all transitive dependencies."
+    resolutions <- verifyResolutions (Manifest manifest) payload.resolutions
+
+    Log.debug "Installing dependencies."
+    tmpDepsDir <- Tmp.mkTmpDir
+    installBuildPlan resolutions tmpDepsDir
+
+    Log.debug "Discovering used dependencies from source."
+    let srcGlobs = Path.concat [ packageDirectory, "src", "**", "*.purs" ]
+    let depGlobs = Path.concat [ tmpDepsDir, "*", "src", "**", "*.purs" ]
+    let command = Purs.Graph { globs: [ srcGlobs, depGlobs ] }
+    Run.liftAff (Purs.callCompiler { command, version: Just payload.compiler, cwd: Nothing }) >>= case _ of
+      Left err -> do
+        let prefix = "Failed to discover unused dependencies because purs graph failed: "
+        Log.error $ prefix <> case err of
+          UnknownError str -> str
+          CompilationError errs -> Purs.printCompilerErrors errs
+          MissingCompiler -> "missing compiler " <> Version.print payload.compiler
+        -- We allow legacy packages through even if we couldn't run purs graph,
+        -- because we can't be sure we chose the correct compiler version.
+        if source == LegacyPackage then
+          Comment.comment "Failed to prune dependencies for legacy package, continuing anyway..."
+        else do
+          Except.throw "purs graph failed; cannot verify unused dependencies."
+      Right output -> case Argonaut.Parser.jsonParser output of
+        Left parseErr -> Except.throw $ "Failed to parse purs graph output as JSON while finding unused dependencies: " <> parseErr
+        Right json -> case CA.decode PursGraph.pursGraphCodec json of
+          Left decodeErr -> Except.throw $ "Failed to decode JSON from purs graph output while finding unused dependencies: " <> CA.printJsonDecodeError decodeErr
+          Right graph -> do
+            Log.debug "Got a valid graph of source and dependencies. Removing install dir and associating discovered modules with their packages..."
+            FS.Extra.remove tmpDepsDir
+
+            let
+              -- We need access to a graph that _doesn't_ include the package
+              -- source, because we only care about dependencies of the package.
+              noSrcGraph = Map.filter (isNothing <<< String.stripPrefix (String.Pattern packageDirectory) <<< _.path) graph
+
+              -- FIXME: Extract this and test it independently
+              -- Without the package source, we can expect every package to
+              -- have the same pattern: '<tmpdir>/<package>-<version>/...'
+              parser :: FilePath -> Either String PackageName
+              parser fp = do
+                packageVersion <- lmap Parsing.parseErrorMessage $ Parsing.runParser fp do
+                  _ <- Parsing.String.string tmpDepsDir
+                  _ <- Parsing.String.string Path.sep
+                  Tuple packageVersionChars _ <- Parsing.Combinators.Array.manyTill_ Parsing.String.anyChar (Parsing.String.string Path.sep)
+                  pure $ String.CodeUnits.fromCharArray (Array.fromFoldable packageVersionChars)
+
+                -- Then we can drop everything after the last hyphen (the
+                -- version number) and join the rest back together.
+                let separated = String.split (String.Pattern "-") packageVersion
+                let packageString = String.joinWith "-" (Array.dropEnd 1 separated)
+                PackageName.parse packageString
+
+            case PursGraph.associateModules parser noSrcGraph of
+              Left errs ->
+                Except.throw $ String.joinWith "\n"
+                  [ "Failed to associate modules with packages while finding unused dependencies:"
+                  , flip NonEmptyArray.foldMap1 errs \{ error, module: ModuleName moduleName, path } ->
+                      "  - " <> moduleName <> " (" <> path <> "): " <> error <> "\n"
+                  ]
+              Right modulePackageMap -> do
+                Log.debug "Associated modules with their package names. Finding all modules used in package source..."
+                -- The modules used in the package source code are any that have
+                -- a path beginning with the package source directory. We only
+                -- care about dependents of these modules.
+                let sourceModules = Map.keys $ Map.filter (isJust <<< String.stripPrefix (String.Pattern packageDirectory) <<< _.path) graph
+
+                Log.debug "Found all modules used in package source. Finding all modules used by those modules..."
+                -- We find all dependencies of each module used in the source,
+                -- which results in a set containing every module name reachable
+                -- by the source code.
+                let allReachableModules = Set.fromFoldable $ Array.fold $ Array.mapMaybe (flip PursGraph.allDependencies graph) $ Set.toUnfoldable sourceModules
+
+                -- Then we can associate each reachable module with its package
+                -- name to get the full set of used package names.
+                let allUsedPackages = Set.mapMaybe (flip Map.lookup modulePackageMap) allReachableModules
+
+                -- Finally, we can use this to find the unused dependencies.
+                Log.debug "Found all packages reachable by the project source code. Determining unused dependencies..."
+                case Operation.Validation.getUnusedDependencies (Manifest manifest) resolutions allUsedPackages of
+                  Nothing -> do
+                    Log.debug "No unused dependencies! This manifest is good to go."
+                    Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
+                    publishRegistry
+                      { source
+                      , manifest: Manifest manifest
+                      , metadata: Metadata metadata
+                      , payload
+                      , publishedTime
+                      , tmp
+                      , packageDirectory
+                      }
+                  Just isUnused -> do
+                    let printed = String.joinWith ", " (PackageName.print <$> NonEmptySet.toUnfoldable isUnused)
+                    Log.debug $ "Found unused dependencies: " <> printed
+                    Comment.comment $ "Generated legacy manifest contains unused dependencies which will be removed: " <> printed
+                    let verified = manifest { dependencies = Map.filterKeys (not <<< flip NonEmptySet.member isUnused) manifest.dependencies }
+                    Log.debug "Writing updated, pruned manifest."
+                    Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest verified)
+                    -- FIXME: Need an end-to-end test for this.
+                    publishRegistry
+                      { source
+                      , manifest: Manifest verified
+                      , metadata: Metadata metadata
+                      , payload
+                      , publishedTime
+                      , tmp
+                      , packageDirectory
+                      }
 
 type PublishRegistry =
   { source :: PackageSource
@@ -735,6 +874,7 @@ compilePackage { packageSourceDir, compiler, resolutions } = Except.runExcept do
   tmp <- Tmp.mkTmpDir
   let dependenciesDir = Path.concat [ tmp, ".registry" ]
   FS.Extra.ensureDirectory dependenciesDir
+
   let
     globs =
       if Map.isEmpty resolutions then
@@ -744,23 +884,8 @@ compilePackage { packageSourceDir, compiler, resolutions } = Except.runExcept do
         , Path.concat [ dependenciesDir, "*/src/**/*.purs" ]
         ]
 
-  -- We fetch every dependency at its resolved version, unpack the tarball, and
-  -- store the resulting source code in a specified directory for dependencies.
-  forWithIndex_ resolutions \name version -> do
-    let
-      -- This filename uses the format the directory name will have once
-      -- unpacked, ie. package-name-major.minor.patch
-      filename = PackageName.print name <> "-" <> Version.print version <> ".tar.gz"
-      filepath = Path.concat [ dependenciesDir, filename ]
-    Storage.download name version filepath
-    Run.liftAff (Aff.attempt (Tar.extract { cwd: dependenciesDir, archive: filename })) >>= case _ of
-      Left error -> do
-        Log.error $ "Failed to unpack " <> filename <> ": " <> Aff.message error
-        Except.throw "Failed to unpack dependency tarball, cannot continue."
-      Right _ ->
-        Log.debug $ "Unpacked " <> filename
-    Run.liftAff $ FS.Aff.unlink filepath
-    Log.debug $ "Installed " <> formatPackageVersion name version
+  Log.debug "Installing build plan..."
+  installBuildPlan resolutions dependenciesDir
 
   Log.debug "Compiling..."
   compilerOutput <- Run.liftAff $ Purs.callCompiler
@@ -788,6 +913,28 @@ compilePackage { packageSourceDir, compiler, resolutions } = Except.runExcept do
       , "```"
       ]
     Right _ -> pure dependenciesDir
+
+-- | Install all dependencies indicated by the build plan to the specified
+-- | directory. Packages will be installed at 'dir/package-name-x.y.z'.
+installBuildPlan :: forall r. Map PackageName Version -> FilePath -> Run (STORAGE + LOG + AFF + EXCEPT String + r) Unit
+installBuildPlan resolutions dependenciesDir = do
+  -- We fetch every dependency at its resolved version, unpack the tarball, and
+  -- store the resulting source code in a specified directory for dependencies.
+  forWithIndex_ resolutions \name version -> do
+    let
+      -- This filename uses the format the directory name will have once
+      -- unpacked, ie. package-name-major.minor.patch
+      filename = PackageName.print name <> "-" <> Version.print version <> ".tar.gz"
+      filepath = Path.concat [ dependenciesDir, filename ]
+    Storage.download name version filepath
+    Run.liftAff (Aff.attempt (Tar.extract { cwd: dependenciesDir, archive: filename })) >>= case _ of
+      Left error -> do
+        Log.error $ "Failed to unpack " <> filename <> ": " <> Aff.message error
+        Except.throw "Failed to unpack dependency tarball, cannot continue."
+      Right _ ->
+        Log.debug $ "Unpacked " <> filename
+    Run.liftAff $ FS.Aff.unlink filepath
+    Log.debug $ "Installed " <> formatPackageVersion name version
 
 type PublishToPursuit =
   { packageSourceDir :: FilePath
@@ -999,9 +1146,9 @@ getPacchettiBotti = do
 packagingTeam :: Team
 packagingTeam = { org: "purescript", team: "packaging" }
 
-spagoToManifest :: Spago.Config -> Either String Manifest
+spagoToManifest :: Spago.Config.Config -> Either String Manifest
 spagoToManifest config = do
-  package@{ name, description, dependencies: Spago.Dependencies deps } <- note "Did not find a package in the config" config.package
+  package@{ name, description, dependencies: Spago.Config.Dependencies deps } <- note "Did not find a package in the config" config.package
   publishConfig@{ version, license } <- note "Did not find a `publish` section in the package config" package.publish
   let includeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.include)
   let excludeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.exclude)
