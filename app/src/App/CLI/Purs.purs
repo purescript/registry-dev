@@ -96,12 +96,14 @@ data PursCommand
   = Version
   | Compile { globs :: Array FilePath }
   | Publish { resolutions :: FilePath }
+  | Graph { globs :: Array FilePath }
 
 printCommand :: PursCommand -> Array String
 printCommand = case _ of
   Version -> [ "--version" ]
   Compile { globs } -> [ "compile" ] <> globs <> [ "--json-errors" ]
   Publish { resolutions } -> [ "publish", "--manifest", "purs.json", "--resolutions", resolutions ]
+  Graph { globs } -> [ "graph" ] <> globs <> [ "--json-errors" ]
 
 -- | Call a specific version of the PureScript compiler
 callCompiler :: CompilerArgs -> Aff (Either CompilerFailure String)
@@ -118,7 +120,8 @@ callCompiler compilerArgs = do
             $ Version.print version
 
     errorsCodec = CA.Record.object "CompilerErrors"
-      { errors: CA.array compilerErrorCodec }
+      { errors: CA.array compilerErrorCodec
+      }
 
   result <- _.result =<< Execa.execa purs (printCommand compilerArgs.command) (_ { cwd = compilerArgs.cwd })
   pure case result of
