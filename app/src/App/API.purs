@@ -533,11 +533,10 @@ publish source payload = do
           ]
 
   -- Now that we've verified the package we can write the manifest to the source
-  -- directory and then publish it. However: packages converted from spago.dhall
-  -- files may not have correct dependencies because we can't determine which
-  -- are test-only; for this reason, we will prune unused dependencies from the
-  -- manifest before writing it.
+  -- directory and then publish it.
   if hadPursJson then do
+    -- No need to verify the generated manifest because nothing was generated,
+    -- and no need to write a file (it's already in the package source.)
     publishRegistry
       { source
       , manifest: Manifest manifest
@@ -548,8 +547,10 @@ publish source payload = do
       , packageDirectory
       }
 
-  -- We need to write a generated purs.json file if the package uses spago.yaml
   else if hasSpagoYaml then do
+    -- We need to write the generated purs.json file, but because spago-next
+    -- already does unused dependency checks and supports explicit test-only
+    -- dependencies we can skip those checks.
     Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
     publishRegistry
       { source
@@ -561,7 +562,9 @@ publish source payload = do
       , packageDirectory
       }
 
-  -- Otherwise this is a legacy package, so we prune unused dependencies.
+  -- Otherwise this is a legacy package, generated from a combination of bower,
+  -- spago.dhall, and package set files, so we need to verify the generated
+  -- manifest does not contain unused dependencies before writing it.
   else do
     Log.debug "Pruning unused dependencies from legacy package manifest..."
 
@@ -650,7 +653,6 @@ publish source payload = do
                     let verified = manifest { dependencies = Map.filterKeys (not <<< flip NonEmptySet.member isUnused) manifest.dependencies }
                     Log.debug "Writing updated, pruned manifest."
                     Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest verified)
-                    -- FIXME: Need an end-to-end test for this.
                     publishRegistry
                       { source
                       , manifest: Manifest verified
