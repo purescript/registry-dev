@@ -52,8 +52,19 @@ spec = do
     removeIgnoredTarballFiles
     copySourceFiles
 
+  Spec.describe "Parses installed paths" do
+    Spec.it "Parses install path <tmp>/my-package-1.0.0/..." do
+      tmp <- Tmp.mkTmpDir
+      let moduleA = Path.concat [ tmp, "my-package-1.0.0", "src", "ModuleA.purs" ]
+      case API.parseInstalledModulePath { prefix: tmp, path: moduleA } of
+        Left err -> Assert.fail $ "Expected to parse " <> moduleA <> " but got error: " <> err
+        Right { name, version } -> do
+          Assert.shouldEqual name (Utils.unsafePackageName "my-package")
+          Assert.shouldEqual version (Utils.unsafeVersion "1.0.0")
+      FS.Extra.remove tmp
+
   Spec.describe "API pipelines run correctly" $ Spec.around withCleanEnv do
-    Spec.it "Publish" \{ workdir, index, metadata, storageDir, githubDir } -> do
+    Spec.it "Publish a legacy-converted package" \{ workdir, index, metadata, storageDir, githubDir } -> do
       let testEnv = { workdir, index, metadata, username: "jon", storage: storageDir, github: githubDir }
       Assert.Run.runTestEffects testEnv do
         -- We'll publish effect@4.0.0

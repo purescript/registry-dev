@@ -1,16 +1,15 @@
 module Registry.App.API
-  ( PackageSetUpdateEffects
-  , packageSetUpdate
+  ( AuthenticatedEffects
+  , PackageSetUpdateEffects
   , PublishEffects
-  , publish
-  , AuthenticatedEffects
   , authenticated
-  , packagingTeam
-  -- The below are exported for tests, but aren't otherwise intended for use
-  -- outside this module.
-  , formatPursuitResolutions
-  , removeIgnoredTarballFiles
   , copyPackageSourceFiles
+  , formatPursuitResolutions
+  , packageSetUpdate
+  , packagingTeam
+  , parseInstalledModulePath
+  , publish
+  , removeIgnoredTarballFiles
   ) where
 
 import Registry.App.Prelude
@@ -42,6 +41,7 @@ import Node.FS.Sync as FS.Sync
 import Node.Library.Execa as Execa
 import Node.Path as Path
 import Parsing as Parsing
+import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Registry.App.Auth as Auth
@@ -602,24 +602,9 @@ publish source payload = do
               -- source, because we only care about dependencies of the package.
               noSrcGraph = Map.filter (isNothing <<< String.stripPrefix (String.Pattern packageDirectory) <<< _.path) graph
 
-              -- FIXME: Extract this and test it independently
-              -- Without the package source, we can expect every package to
-              -- have the same pattern: '<tmpdir>/<package>-<version>/...'
-              parser :: FilePath -> Either String PackageName
-              parser fp = do
-                packageVersion <- lmap Parsing.parseErrorMessage $ Parsing.runParser fp do
-                  _ <- Parsing.String.string tmpDepsDir
-                  _ <- Parsing.String.string Path.sep
-                  Tuple packageVersionChars _ <- Parsing.Combinators.Array.manyTill_ Parsing.String.anyChar (Parsing.String.string Path.sep)
-                  pure $ String.CodeUnits.fromCharArray (Array.fromFoldable packageVersionChars)
+              pathParser = map _.name <<< parseInstalledModulePath <<< { prefix: tmpDepsDir, path: _ }
 
-                -- Then we can drop everything after the last hyphen (the
-                -- version number) and join the rest back together.
-                let separated = String.split (String.Pattern "-") packageVersion
-                let packageString = String.joinWith "-" (Array.dropEnd 1 separated)
-                PackageName.parse packageString
-
-            case PursGraph.associateModules parser noSrcGraph of
+            case PursGraph.associateModules pathParser noSrcGraph of
               Left errs ->
                 Except.throw $ String.joinWith "\n"
                   [ "Failed to associate modules with packages while finding unused dependencies:"
@@ -935,6 +920,27 @@ installBuildPlan resolutions dependenciesDir = do
         Log.debug $ "Unpacked " <> filename
     Run.liftAff $ FS.Aff.unlink filepath
     Log.debug $ "Installed " <> formatPackageVersion name version
+
+-- | Parse the name and version from a path to a module installed in the standard
+-- | form: '<dir>/<package-name>-<x.y.z>/...'
+parseInstalledModulePath :: { prefix :: FilePath, path :: FilePath } -> Either String { name :: PackageName, version :: Version }
+parseInstalledModulePath { prefix, path } = do
+  packageVersion <- lmap Parsing.parseErrorMessage $ Parsing.runParser path do
+    _ <- Parsing.String.string prefix
+    _ <- Parsing.Combinators.optional (Parsing.Combinators.try (Parsing.String.string Path.sep))
+    Tuple packageVersionChars _ <- Parsing.Combinators.Array.manyTill_ Parsing.String.anyChar (Parsing.String.string Path.sep)
+    pure $ String.CodeUnits.fromCharArray (Array.fromFoldable packageVersionChars)
+
+  -- Then we can drop everything after the last hyphen (the
+  -- version number) and join the rest back together.
+  case NonEmptyArray.fromArray $ String.split (String.Pattern "-") packageVersion of
+    Nothing -> Left $ "Could not parse package name and version from install path: " <> path
+    Just separated -> do
+      let packageString = String.joinWith "-" (NonEmptyArray.dropEnd 1 separated)
+      name <- PackageName.parse packageString
+      let versionString = NonEmptyArray.last separated
+      version <- Version.parse versionString
+      pure { name, version }
 
 type PublishToPursuit =
   { packageSourceDir :: FilePath
