@@ -579,7 +579,10 @@ publish source payload = do
     let srcGlobs = Path.concat [ packageDirectory, "src", "**", "*.purs" ]
     let depGlobs = Path.concat [ tmpDepsDir, "*", "src", "**", "*.purs" ]
     let command = Purs.Graph { globs: [ srcGlobs, depGlobs ] }
-    Run.liftAff (Purs.callCompiler { command, version: Just payload.compiler, cwd: Nothing }) >>= case _ of
+    -- We need to use the minimum compiler version that supports 'purs graph'
+    let minGraphCompiler = unsafeFromRight (Version.parse "0.13.8")
+    let callCompilerVersion = if payload.compiler >= minGraphCompiler then payload.compiler else minGraphCompiler
+    Run.liftAff (Purs.callCompiler { command, version: Just callCompilerVersion, cwd: Nothing }) >>= case _ of
       Left err -> do
         let prefix = "Failed to discover unused dependencies because purs graph failed: "
         Log.error $ prefix <> case err of
