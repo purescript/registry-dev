@@ -12,6 +12,7 @@ import Test.Registry.Operation as Test.Operation
 import Test.Registry.Operation.Validation as Test.Operation.Validation
 import Test.Registry.PackageName as Test.PackageName
 import Test.Registry.PackageSet as Test.PackageSet
+import Test.Registry.PursGraph as Test.PursGraph
 import Test.Registry.Range as Test.Range
 import Test.Registry.SSH as Test.SSH
 import Test.Registry.Sha256 as Test.Sha256
@@ -40,3 +41,4 @@ main = Aff.launchAff_ $ Spec.Runner.runSpec [ Spec.Reporter.consoleReporter ] do
   Spec.describe "ManifestIndex" Test.ManifestIndex.spec
   Spec.describe "Solver" Test.Solver.spec
   Spec.describe "Operation Validation" Test.Operation.Validation.spec
+  Spec.describe "Purs Graph" Test.PursGraph.spec

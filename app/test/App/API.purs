@@ -6,6 +6,7 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable (traverse_)
 import Data.Map as Map
 import Data.Set as Set
+import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
 import Effect.Aff as Aff
 import Effect.Ref as Ref
@@ -13,6 +14,7 @@ import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API as API
+import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
@@ -23,7 +25,10 @@ import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Tmp as Tmp
+import Registry.Internal.Codec as Internal.Codec
+import Registry.Manifest as Manifest
 import Registry.PackageName as PackageName
+import Registry.Range as Range
 import Registry.Test.Assert as Assert
 import Registry.Test.Assert.Run as Assert.Run
 import Registry.Test.Utils as Utils
@@ -52,11 +57,24 @@ spec = do
     removeIgnoredTarballFiles
     copySourceFiles
 
+  Spec.describe "Parses installed paths" do
+    Spec.it "Parses install path <tmp>/my-package-1.0.0/..." do
+      tmp <- Tmp.mkTmpDir
+      let moduleA = Path.concat [ tmp, "my-package-1.0.0", "src", "ModuleA.purs" ]
+      case API.parseInstalledModulePath { prefix: tmp, path: moduleA } of
+        Left err -> Assert.fail $ "Expected to parse " <> moduleA <> " but got error: " <> err
+        Right { name, version } -> do
+          Assert.shouldEqual name (Utils.unsafePackageName "my-package")
+          Assert.shouldEqual version (Utils.unsafeVersion "1.0.0")
+      FS.Extra.remove tmp
+
   Spec.describe "API pipelines run correctly" $ Spec.around withCleanEnv do
-    Spec.it "Publish" \{ workdir, index, metadata, storageDir, githubDir } -> do
+    Spec.it "Publish a legacy-converted package with unused deps" \{ workdir, index, metadata, storageDir, githubDir } -> do
       let testEnv = { workdir, index, metadata, username: "jon", storage: storageDir, github: githubDir }
       Assert.Run.runTestEffects testEnv do
-        -- We'll publish effect@4.0.0
+        -- We'll publish effect@4.0.0 from the fixtures/github-packages
+        -- directory, which has an unnecessary dependency on 'type-equality'
+        -- inserted into it.
         let
           name = Utils.unsafePackageName "effect"
           version = Utils.unsafeVersion "4.0.0"
@@ -83,11 +101,28 @@ spec = do
           unless (Set.member version versions) do
             Except.throw $ "Expected " <> formatPackageVersion name version <> " to be published to registry storage."
 
+        -- Let's verify the manifest does not include the unnecessary
+        -- 'type-equality' dependency...
+        Storage.download name version "effect-result"
+        Tar.extract { cwd: workdir, archive: "effect-result" }
+        Run.liftAff (readJsonFile Manifest.codec (Path.concat [ "effect-4.0.0", "purs.json" ])) >>= case _ of
+          Left err -> Except.throw $ "Expected effect@4.0.0 to be downloaded to effect-4.0.0 with a purs.json but received error " <> err
+          Right (Manifest manifest) -> do
+            let expectedDeps = Map.singleton (Utils.unsafePackageName "prelude") (Utils.unsafeRange ">=6.0.0 <7.0.0")
+            when (manifest.dependencies /= expectedDeps) do
+              Except.throw $ String.joinWith "\n"
+                [ "Expected effect@4.0.0 to have dependencies"
+                , printJson (Internal.Codec.packageMap Range.codec) expectedDeps
+                , "\nbut got"
+                , printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
+                ]
+
         -- Finally, we can verify that publishing the package again should fail
         -- since it already exists.
         Except.runExcept (API.publish CurrentPackage publishArgs) >>= case _ of
           Left _ -> pure unit
           Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to fail."
+
   where
   withCleanEnv :: (PipelineEnv -> Aff Unit) -> Aff Unit
   withCleanEnv action = do

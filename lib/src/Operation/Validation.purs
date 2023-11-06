@@ -97,6 +97,23 @@ getUnresolvedDependencies (Manifest { dependencies }) resolutions =
         | not (Range.includes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
         | otherwise -> Nothing
 
+-- | Discovers dependencies listed in the manifest that are not actually used
+-- | by the solved dependencies. This should not produce an error, but it
+-- | indicates an over-constrained manifest.
+getUnusedDependencies :: Manifest -> Map PackageName Version -> Set PackageName -> Maybe (NonEmptySet PackageName)
+getUnusedDependencies (Manifest { dependencies }) resolutions discovered = do
+  let
+    -- There may be too many resolved dependencies because the manifest includes
+    -- e.g. test dependencies, so we start by only considering resolved deps
+    -- that are actually used.
+    inUse = Set.filter (flip Set.member discovered) (Map.keys resolutions)
+
+    -- Next, we can determine which dependencies are unused by looking at the
+    -- difference between the manifest dependencies and the resolved packages
+    unused = Set.filter (not <<< flip Set.member inUse) (Map.keys dependencies)
+
+  NonEmptySet.fromSet unused
+
 data TarballSizeResult
   = ExceedsMaximum Number
   | WarnPackageSize Number
