@@ -76,7 +76,7 @@ fetchLegacyManifest
 fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestError do
   legacyPackageSets <- fetchLegacyPackageSets >>= case _ of
     Left error -> do
-      Log.error $ "Failed error when to fetch legacy package sets: " <> Octokit.printGitHubError error
+      Log.error $ "Failed to fetch legacy package sets: " <> Octokit.printGitHubError error
       Except.throw "Could not retrieve legacy package sets; aborting to avoid producing incorrect legacy manifest depedency bounds."
     Right union -> pure union
 

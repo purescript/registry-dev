@@ -1,0 +1,6 @@
+{
+  "Type.Equality": {
+    "depends": [],
+    "path": "type-equality/src/Type/Equality.purs"
+  }
+}

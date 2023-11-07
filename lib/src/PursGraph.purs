@@ -4,9 +4,11 @@ module Registry.PursGraph where
 
 import Prelude
 
+import Control.Monad.ST as ST
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
+import Data.Array.ST as Array.ST
 import Data.Bifunctor (bimap)
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
@@ -19,11 +21,13 @@ import Data.Newtype (class Newtype, un)
 import Data.Profunctor as Profunctor
 import Data.Set (Set)
 import Data.Set as Set
-import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
+import Foreign.Object as Object
+import Foreign.Object.ST as Object.ST
 import Node.Path (FilePath)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.PackageName (PackageName)
+import Safe.Coerce (coerce)
 
 -- | A graph of the dependencies between modules, discovered by the purs
 -- | compiler from a set of source files.
@@ -78,13 +82,29 @@ associateModules parse graph = do
 directDependencies :: ModuleName -> PursGraph -> Maybe (Set ModuleName)
 directDependencies name = map (Set.fromFoldable <<< _.depends) <<< Map.lookup name
 
--- | Find all dependencies of the given module, according to the given graph.
+-- | Find all dependencies of the given module, according to the given graph,
+-- | excluding the module itself.
 allDependencies :: ModuleName -> PursGraph -> Maybe (Set ModuleName)
-allDependencies start graph = map Set.fromFoldable (getDependencies start)
-  where
-  getDependencies name =
-    map _.depends (Map.lookup name graph) >>= case _ of
-      [] -> pure []
-      directs -> do
-        let nextDeps = map Array.concat (traverse getDependencies directs)
-        nextDeps <> Just directs
+allDependencies start graph = Map.lookup start graph <#> \_ -> allDependenciesOf (Set.singleton start) graph
+
+-- | Find all dependencies of a set of input modules according to the given
+-- | graph, excluding the input modules themselves.
+allDependenciesOf :: Set ModuleName -> PursGraph -> Set ModuleName
+allDependenciesOf sources graph = ST.run do
+  pending <- Array.ST.thaw (Set.toUnfoldable sources)
+  visited <- Object.ST.new
+
+  ST.while (map (_ > 0) (Array.ST.length pending)) do
+    Array.ST.shift pending >>= case _ of
+      Nothing -> pure unit
+      Just (ModuleName mod) -> Object.ST.peek mod visited >>= case _ of
+        Nothing -> do
+          void $ Object.ST.poke mod unit visited
+          case Map.lookup (ModuleName mod) graph of
+            Nothing -> pure unit
+            Just { depends } -> void $ Array.ST.pushAll depends pending
+        Just _ -> pure unit
+
+  seen <- Object.freezeST visited
+  let seenModules = Array.filter (not <<< flip Set.member sources) $ coerce $ Object.keys seen
+  pure $ Set.fromFoldable seenModules
