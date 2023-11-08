@@ -756,7 +756,7 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
   Comment.comment "Package is verified! Uploading it to the storage backend..."
   Storage.upload manifest.name manifest.version tarballPath
   Log.debug $ "Adding the new version " <> Version.print manifest.version <> " to the package metadata file."
-  let newMetadata = metadata { published = Map.insert manifest.version { hash, ref: payload.ref, publishedTime, bytes } metadata.published }
+  let newMetadata = metadata { published = Map.insert manifest.version { hash, ref: payload.ref, compilers: Left payload.compiler, publishedTime, bytes } metadata.published }
   Registry.writeMetadata manifest.name (Metadata newMetadata)
   Comment.comment "Successfully uploaded package to the registry! 🎉 🚀"
 

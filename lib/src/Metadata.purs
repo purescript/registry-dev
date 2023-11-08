@@ -20,12 +20,14 @@ module Registry.Metadata
 
 import Prelude
 
+import Control.Alt ((<|>))
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Codec.Argonaut (JsonCodec)
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
+import Data.Either (Either(..))
 import Data.Map (Map)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
@@ -38,6 +40,7 @@ import Registry.Owner as Owner
 import Registry.Sha256 (Sha256)
 import Registry.Sha256 as Sha256
 import Registry.Version (Version)
+import Registry.Version as Version
 import Type.Proxy (Proxy(..))
 
 -- | A record of all published and unpublished versions of a package, along with
@@ -69,18 +72,33 @@ codec = Profunctor.wrapIso Metadata $ CA.object "Metadata"
 -- | not rely on its presence!
 type PublishedMetadata =
   { bytes :: Number
+  , compilers :: Either Version (NonEmptyArray Version)
   , hash :: Sha256
   , publishedTime :: DateTime
+
+  -- UNSPECIFIED: Will be removed in the future.
   , ref :: String
   }
 
 publishedMetadataCodec :: JsonCodec PublishedMetadata
 publishedMetadataCodec = CA.Record.object "PublishedMetadata"
   { bytes: CA.number
+  , compilers: compilersCodec
   , hash: Sha256.codec
   , publishedTime: Internal.Codec.iso8601DateTime
   , ref: CA.string
   }
+  where
+  compilersCodec :: JsonCodec (Either Version (NonEmptyArray Version))
+  compilersCodec = CA.codec' decode encode
+    where
+    decode json =
+      map Left (CA.decode Version.codec json)
+        <|> map Right (CA.decode (CA.Common.nonEmptyArray Version.codec) json)
+
+    encode = case _ of
+      Left version -> CA.encode Version.codec version
+      Right versions -> CA.encode (CA.Common.nonEmptyArray Version.codec) versions
 
 -- | Metadata about an unpublished package version.
 type UnpublishedMetadata =
