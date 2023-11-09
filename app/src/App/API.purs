@@ -625,10 +625,7 @@ publish source payload = do
                 let sourceModules = Map.keys $ Map.filter (isJust <<< String.stripPrefix (String.Pattern packageDirectory) <<< _.path) graph
 
                 Log.debug "Found all modules used in package source. Finding all modules used by those modules..."
-                -- We find all dependencies of each module used in the source,
-                -- which results in a set containing every module name reachable
-                -- by the source code.
-                let allReachableModules = Set.fromFoldable $ Array.fold $ Array.mapMaybe (flip PursGraph.allDependencies graph) $ Set.toUnfoldable sourceModules
+                let allReachableModules = PursGraph.allDependenciesOf sourceModules graph
 
                 -- Then we can associate each reachable module with its package
                 -- name to get the full set of used package names.
