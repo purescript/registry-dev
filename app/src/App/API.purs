@@ -4,6 +4,8 @@ module Registry.App.API
   , PublishEffects
   , authenticated
   , copyPackageSourceFiles
+  , findAllCompilers
+  , findFirstCompiler
   , formatPursuitResolutions
   , packageSetUpdate
   , packagingTeam
@@ -16,7 +18,6 @@ import Registry.App.Prelude
 
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
-import Data.Array.NonEmpty as NEA
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
@@ -76,6 +77,7 @@ import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (IssueNumber(..), Team)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
+import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Path as Internal.Path
 import Registry.Location as Location
 import Registry.Manifest as Manifest
@@ -253,7 +255,7 @@ authenticated auth = case auth.payload of
         pure published
 
     pacchettiBotti <- getPacchettiBotti
-    let owners = maybe [] NEA.toArray (un Metadata metadata).owners
+    let owners = maybe [] NonEmptyArray.toArray (un Metadata metadata).owners
     Run.liftAff (Auth.verifyPayload pacchettiBotti owners auth) >>= case _ of
       Left _ | [] <- owners -> do
         Log.error $ "Unpublishing is an authenticated operation, but no owners were listed in the metadata: " <> stringifyJson Metadata.codec metadata
@@ -291,7 +293,7 @@ authenticated auth = case auth.payload of
       Just value -> pure value
 
     pacchettiBotti <- getPacchettiBotti
-    let owners = maybe [] NEA.toArray (un Metadata metadata).owners
+    let owners = maybe [] NonEmptyArray.toArray (un Metadata metadata).owners
     Run.liftAff (Auth.verifyPayload pacchettiBotti owners auth) >>= case _ of
       Left _ | [] <- owners -> do
         Log.error $ "Transferring is an authenticated operation, but no owners were listed in the metadata: " <> stringifyJson Metadata.codec metadata
@@ -510,7 +512,7 @@ publish source payload = do
           , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
           ]
         verifiedResolutions <- verifyResolutions (Manifest manifest) payload.resolutions
-        compilationResult <- compilePackage { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions }
+        compilationResult <- compilePackage { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions }
         case compilationResult of
           Left error -> do
             Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
@@ -734,9 +736,15 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
 
   -- Now that we have the package source contents we can verify we can compile
   -- the package. We skip failures when the package is a legacy package.
-  Log.info "Verifying package compiles (this may take a while)..."
+  Comment.comment $ Array.fold
+    [ "Verifying package compiles using compiler "
+    , Version.print payload.compiler
+    , " and resolutions:\n\n```json"
+    , printJson (Internal.Codec.packageMap Version.codec) verifiedResolutions
+    , "\n```"
+    ]
   compilationResult <- compilePackage
-    { packageSourceDir: packageDirectory
+    { source: packageDirectory
     , compiler: payload.compiler
     , resolutions: verifiedResolutions
     }
@@ -851,55 +859,111 @@ validateResolutions manifest resolutions = do
       ]
 
 type CompilePackage =
-  { packageSourceDir :: FilePath
+  { source :: FilePath
   , compiler :: Version
   , resolutions :: Map PackageName Version
   }
 
 compilePackage :: forall r. CompilePackage -> Run (STORAGE + LOG + AFF + EFFECT + r) (Either String FilePath)
-compilePackage { packageSourceDir, compiler, resolutions } = Except.runExcept do
+compilePackage { source, compiler, resolutions } = Except.runExcept do
   tmp <- Tmp.mkTmpDir
-  let dependenciesDir = Path.concat [ tmp, ".registry" ]
-  FS.Extra.ensureDirectory dependenciesDir
+  output <- do
+    if Map.isEmpty resolutions then do
+      Log.debug "Compiling source code (no dependencies to install)..."
+      Run.liftAff $ Purs.callCompiler
+        { command: Purs.Compile { globs: [ "src/**/*.purs" ] }
+        , version: Just compiler
+        , cwd: Just source
+        }
+    else do
+      Log.debug "Installing build plan..."
+      installBuildPlan resolutions tmp
+      Log.debug "Compiling..."
+      Run.liftAff $ Purs.callCompiler
+        { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ tmp, "*/src/**/*.purs" ] ] }
+        , version: Just compiler
+        , cwd: Just source
+        }
 
+  case output of
+    Left err -> Except.throw $ printCompilerFailure compiler err
+    Right _ -> pure tmp
+
+-- | Given a set of package versions, determine the set of compilers that can be
+-- | used for all packages.
+compatibleCompilers :: Map PackageName Metadata -> Map PackageName Version -> Set Version
+compatibleCompilers allMetadata resolutions = do
   let
-    globs =
-      if Map.isEmpty resolutions then
-        [ "src/**/*.purs" ]
-      else
-        [ "src/**/*.purs"
-        , Path.concat [ dependenciesDir, "*/src/**/*.purs" ]
-        ]
+    associated :: Array (NonEmptyArray Version)
+    associated = Map.toUnfoldableUnordered resolutions # Array.mapMaybe \(Tuple name version) -> do
+      Metadata metadata <- Map.lookup name allMetadata
+      published <- Map.lookup version metadata.published
+      case published.compilers of
+        Left _ -> Nothing
+        Right all -> Just all
 
-  Log.debug "Installing build plan..."
-  installBuildPlan resolutions dependenciesDir
+  Array.foldl (\prev next -> Set.intersection prev (Set.fromFoldable next)) Set.empty associated
 
-  Log.debug "Compiling..."
-  compilerOutput <- Run.liftAff $ Purs.callCompiler
-    { command: Purs.Compile { globs }
-    , version: Just compiler
-    , cwd: Just packageSourceDir
-    }
+type DiscoverCompilers =
+  { source :: FilePath
+  , compilers :: Array Version
+  , installed :: FilePath
+  }
 
-  case compilerOutput of
-    Left MissingCompiler -> Except.throw $ Array.fold
-      [ "Compilation failed because the build plan compiler version "
-      , Version.print compiler
-      , " is not supported. Please try again with a different compiler."
-      ]
-    Left (CompilationError errs) -> Except.throw $ String.joinWith "\n"
-      [ "Compilation failed because the build plan does not compile with version " <> Version.print compiler <> " of the compiler:"
-      , "```"
-      , Purs.printCompilerErrors errs
-      , "```"
-      ]
-    Left (UnknownError err) -> Except.throw $ String.joinWith "\n"
-      [ "Compilation failed for your package due to a compiler error:"
-      , "```"
-      , err
-      , "```"
-      ]
-    Right _ -> pure dependenciesDir
+-- | Find all compilers that can compile the package source code and installed
+-- | resolutions from the given array of compilers.
+findAllCompilers :: forall r. DiscoverCompilers -> Run (STORAGE + LOG + AFF + EFFECT + r) { failed :: Map Version CompilerFailure, succeeded :: Set Version }
+findAllCompilers { source, compilers, installed } = do
+  checkedCompilers <- for compilers \target -> do
+    Log.debug $ "Trying compiler " <> Version.print target
+    workdir <- Tmp.mkTmpDir
+    result <- Run.liftAff $ Purs.callCompiler
+      { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }
+      , version: Just target
+      , cwd: Just workdir
+      }
+    FS.Extra.remove workdir
+    pure $ bimap (Tuple target) (const target) result
+  let results = partitionEithers checkedCompilers
+  pure { failed: Map.fromFoldable results.fail, succeeded: Set.fromFoldable results.success }
+
+-- | Find the first compiler that can compile the package source code and
+-- | installed resolutions from the given array of compilers.
+findFirstCompiler :: forall r. DiscoverCompilers -> Run (STORAGE + LOG + AFF + EFFECT + r) (Maybe Version)
+findFirstCompiler { source, compilers, installed } = do
+  search <- Except.runExcept $ for compilers \target -> do
+    Log.debug $ "Trying compiler " <> Version.print target
+    workdir <- Tmp.mkTmpDir
+    result <- Run.liftAff $ Purs.callCompiler
+      { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }
+      , version: Just target
+      , cwd: Just workdir
+      }
+    FS.Extra.remove workdir
+    either (\_ -> Except.throw target) (\_ -> pure unit) result
+  case search of
+    Left found -> pure $ Just found
+    Right _ -> pure Nothing
+
+printCompilerFailure :: Version -> CompilerFailure -> String
+printCompilerFailure compiler = case _ of
+  MissingCompiler -> Array.fold
+    [ "Compilation failed because the build plan compiler version "
+    , Version.print compiler
+    , " is not supported. Please try again with a different compiler."
+    ]
+  CompilationError errs -> String.joinWith "\n"
+    [ "Compilation failed because the build plan does not compile with version " <> Version.print compiler <> " of the compiler:"
+    , "```"
+    , Purs.printCompilerErrors errs
+    , "```"
+    ]
+  UnknownError err -> String.joinWith "\n"
+    [ "Compilation failed due to a compiler error:"
+    , "```"
+    , err
+    , "```"
+    ]
 
 -- | Install all dependencies indicated by the build plan to the specified
 -- | directory. Packages will be installed at 'dir/package-name-x.y.z'.
