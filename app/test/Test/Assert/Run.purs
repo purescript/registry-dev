@@ -266,7 +266,7 @@ type SourceMockEnv = { github :: FilePath }
 
 handleSourceMock :: forall r a. SourceMockEnv -> Source a -> Run (EXCEPT String + AFF + EFFECT + r) a
 handleSourceMock env = case _ of
-  Fetch _source destination location ref reply -> do
+  Fetch destination location ref reply -> do
     now <- Run.liftEffect Now.nowDateTime
     case location of
       Git _ -> pure $ reply $ Left "Packages cannot be published from Git yet (only GitHub)."

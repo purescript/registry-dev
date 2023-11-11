@@ -88,7 +88,7 @@ spec = do
             }
 
         -- First, we publish the package.
-        API.publish CurrentPackage publishArgs
+        API.publish publishArgs
 
         -- Then, we can check that it did make it to "Pursuit" as expected
         Pursuit.getPublishedVersions name >>= case _ of
@@ -119,7 +119,7 @@ spec = do
 
         -- Finally, we can verify that publishing the package again should fail
         -- since it already exists.
-        Except.runExcept (API.publish CurrentPackage publishArgs) >>= case _ of
+        Except.runExcept (API.publish publishArgs) >>= case _ of
           Left _ -> pure unit
           Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to fail."
 
@@ -184,7 +184,7 @@ checkBuildPlanToResolutions = do
   Spec.it "buildPlanToResolutions produces expected resolutions file format" do
     Assert.shouldEqual generatedResolutions expectedResolutions
   where
-  dependenciesDir = "testDir"
+  installedResolutions = "testDir"
 
   resolutions = Map.fromFoldable
     [ Tuple (Utils.unsafePackageName "prelude") (Utils.unsafeVersion "1.0.0")
@@ -195,14 +195,14 @@ checkBuildPlanToResolutions = do
   generatedResolutions =
     API.formatPursuitResolutions
       { resolutions
-      , dependenciesDir
+      , installedResolutions
       }
 
   expectedResolutions = Map.fromFoldable do
     packageName /\ version <- (Map.toUnfoldable resolutions :: Array _)
     let
       bowerName = RawPackageName ("purescript-" <> PackageName.print packageName)
-      path = Path.concat [ dependenciesDir, PackageName.print packageName <> "-" <> Version.print version ]
+      path = Path.concat [ installedResolutions, PackageName.print packageName <> "-" <> Version.print version ]
     pure $ Tuple bowerName { path, version }
 
 removeIgnoredTarballFiles :: Spec.Spec Unit

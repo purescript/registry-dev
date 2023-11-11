@@ -68,7 +68,7 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
     lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
     forkPipelineJob publish.name publish.ref PublishJob \jobId -> do
       Log.info $ "Received Publish request, job id: " <> unwrap jobId
-      API.publish CurrentPackage publish
+      API.publish publish
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
@@ -292,7 +292,7 @@ runEffects env operation = Aff.attempt do
         )
     # Pursuit.interpret (Pursuit.handleAff env.vars.token)
     # Storage.interpret (Storage.handleS3 { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }, cache: env.cacheDir })
-    # Source.interpret Source.handle
+    # Source.interpret (Source.handle Source.Recent)
     # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache: env.cacheDir, ref: env.githubCacheRef })
     # Cache.interpret _legacyCache (Cache.handleMemoryFs { cache: env.cacheDir, ref: env.legacyCacheRef })
     # Except.catch

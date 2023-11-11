@@ -57,7 +57,7 @@ main = launchAff_ $ do
 
         Right packageOperation -> case packageOperation of
           Publish payload ->
-            API.publish CurrentPackage payload
+            API.publish payload
           Authenticated payload -> do
             -- If we receive an authenticated operation via GitHub, then we
             -- re-sign it with pacchettibotti credentials if and only if the
@@ -97,7 +97,7 @@ main = launchAff_ $ do
       # Registry.interpret (Registry.handle registryEnv)
       # Storage.interpret (Storage.handleS3 { s3: env.spacesConfig, cache })
       # Pursuit.interpret (Pursuit.handleAff env.token)
-      # Source.interpret Source.handle
+      # Source.interpret (Source.handle Source.Recent)
       # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache, ref: githubCacheRef })
       -- Caching & logging
       # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })

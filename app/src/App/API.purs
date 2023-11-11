@@ -323,11 +323,11 @@ type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + 
 -- | published before then it will be registered and the given version will be
 -- | upload. If it has been published before then the existing metadata will be
 -- | updated with the new version.
-publish :: forall r. PackageSource -> PublishData -> Run (PublishEffects + r) Unit
-publish source payload = do
+publish :: forall r. PublishData -> Run (PublishEffects + r) Unit
+publish payload = do
   let printedName = PackageName.print payload.name
 
-  Log.debug $ "Publishing " <> printPackageSource source <> " package " <> printedName <> " with payload:\n" <> stringifyJson Operation.publishCodec payload
+  Log.debug $ "Publishing package " <> printedName <> " with payload:\n" <> stringifyJson Operation.publishCodec payload
 
   Log.debug $ "Verifying metadata..."
   Metadata existingMetadata <- Registry.readMetadata payload.name >>= case _ of
@@ -370,7 +370,7 @@ publish source payload = do
   -- the package directory along with its detected publish time.
   Log.debug "Metadata validated. Fetching package source code..."
   tmp <- Tmp.mkTmpDir
-  { path: packageDirectory, published: publishedTime } <- Source.fetch source tmp existingMetadata.location payload.ref
+  { path: packageDirectory, published: publishedTime } <- Source.fetch tmp existingMetadata.location payload.ref
 
   Log.debug $ "Package downloaded to " <> packageDirectory <> ", verifying it contains a src directory with valid modules..."
   Internal.Path.readPursFiles (Path.concat [ packageDirectory, "src" ]) >>= case _ of
@@ -517,9 +517,9 @@ publish source payload = do
           Left error -> do
             Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
             Except.throw "Cannot publish to Pursuit because this package failed to compile."
-          Right dependenciesDir -> do
+          Right installedResolutions -> do
             Log.debug "Uploading to Pursuit"
-            publishToPursuit { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, dependenciesDir }
+            publishToPursuit { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, installedResolutions }
 
       Just url -> do
         Except.throw $ String.joinWith "\n"
@@ -540,8 +540,7 @@ publish source payload = do
     -- No need to verify the generated manifest because nothing was generated,
     -- and no need to write a file (it's already in the package source.)
     publishRegistry
-      { source
-      , manifest: Manifest manifest
+      { manifest: Manifest manifest
       , metadata: Metadata metadata
       , payload
       , publishedTime
@@ -555,8 +554,7 @@ publish source payload = do
     -- dependencies we can skip those checks.
     Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
     publishRegistry
-      { source
-      , manifest: Manifest manifest
+      { manifest: Manifest manifest
       , metadata: Metadata metadata
       , payload
       , publishedTime
@@ -587,16 +585,10 @@ publish source payload = do
     Run.liftAff (Purs.callCompiler { command, version: Just callCompilerVersion, cwd: Nothing }) >>= case _ of
       Left err -> do
         let prefix = "Failed to discover unused dependencies because purs graph failed: "
-        Log.error $ prefix <> case err of
+        Except.throw $ prefix <> case err of
           UnknownError str -> str
-          CompilationError errs -> Purs.printCompilerErrors errs
+          CompilationError errs -> "\n" <> Purs.printCompilerErrors errs
           MissingCompiler -> "missing compiler " <> Version.print payload.compiler
-        -- We allow legacy packages through even if we couldn't run purs graph,
-        -- because we can't be sure we chose the correct compiler version.
-        if source == LegacyPackage then
-          Comment.comment "Failed to prune dependencies for legacy package, continuing anyway..."
-        else do
-          Except.throw "purs graph failed; cannot verify unused dependencies."
       Right output -> case Argonaut.Parser.jsonParser output of
         Left parseErr -> Except.throw $ "Failed to parse purs graph output as JSON while finding unused dependencies: " <> parseErr
         Right json -> case CA.decode PursGraph.pursGraphCodec json of
@@ -609,7 +601,6 @@ publish source payload = do
               -- We need access to a graph that _doesn't_ include the package
               -- source, because we only care about dependencies of the package.
               noSrcGraph = Map.filter (isNothing <<< String.stripPrefix (String.Pattern packageDirectory) <<< _.path) graph
-
               pathParser = map _.name <<< parseInstalledModulePath <<< { prefix: tmpDepsDir, path: _ }
 
             case PursGraph.associateModules pathParser noSrcGraph of
@@ -640,8 +631,7 @@ publish source payload = do
                     Log.debug "No unused dependencies! This manifest is good to go."
                     Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
                     publishRegistry
-                      { source
-                      , manifest: Manifest manifest
+                      { manifest: Manifest manifest
                       , metadata: Metadata metadata
                       , payload
                       , publishedTime
@@ -656,8 +646,7 @@ publish source payload = do
                     Log.debug "Writing updated, pruned manifest."
                     Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest verified)
                     publishRegistry
-                      { source
-                      , manifest: Manifest verified
+                      { manifest: Manifest verified
                       , metadata: Metadata metadata
                       , payload
                       , publishedTime
@@ -666,8 +655,7 @@ publish source payload = do
                       }
 
 type PublishRegistry =
-  { source :: PackageSource
-  , manifest :: Manifest
+  { manifest :: Manifest
   , metadata :: Metadata
   , payload :: PublishData
   , publishedTime :: DateTime
@@ -680,7 +668,7 @@ type PublishRegistry =
 -- publish to Pursuit only (in the case the package has been pushed to the
 -- registry, but docs have not been uploaded).
 publishRegistry :: forall r. PublishRegistry -> Run (PublishEffects + r) Unit
-publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manifest manifest, publishedTime, tmp, packageDirectory } = do
+publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manifest, publishedTime, tmp, packageDirectory } = do
   Log.debug "Verifying the package build plan..."
   verifiedResolutions <- verifyResolutions (Manifest manifest) payload.resolutions
 
@@ -743,23 +731,10 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
     , printJson (Internal.Codec.packageMap Version.codec) verifiedResolutions
     , "\n```"
     ]
-  compilationResult <- compilePackage
-    { source: packageDirectory
-    , compiler: payload.compiler
-    , resolutions: verifiedResolutions
-    }
 
-  case compilationResult of
-    Left error
-      -- We allow legacy packages to fail compilation because we do not
-      -- necessarily know what compiler to use with them.
-      | source == LegacyPackage -> do
-          Log.debug error
-          Log.warn "Failed to compile, but continuing because this package is a legacy package."
-      | otherwise ->
-          Except.throw error
-    Right _ ->
-      pure unit
+  installedResolutions <- compilePackage { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions } >>= case _ of
+    Left error -> Except.throw error
+    Right installed -> pure installed
 
   Comment.comment "Package is verified! Uploading it to the storage backend..."
   Storage.upload manifest.name manifest.version tarballPath
@@ -768,21 +743,13 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
   Registry.writeMetadata manifest.name (Metadata newMetadata)
   Comment.comment "Successfully uploaded package to the registry! 🎉 🚀"
 
-  -- After a package has been uploaded we add it to the registry index, we
-  -- upload its documentation to Pursuit, and we can now process it for package
-  -- sets when the next batch goes out.
-
   -- We write to the registry index if possible. If this fails, the packaging
   -- team should manually insert the entry.
+  Log.debug "Adding the new version to the registry index"
   Registry.writeManifest (Manifest manifest)
 
-  when (source == CurrentPackage) $ case compilationResult of
-    Left error -> do
-      Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
-      Except.throw "Cannot publish to Pursuit because this package failed to compile."
-    Right dependenciesDir -> do
-      Log.debug "Uploading to Pursuit"
-      publishToPursuit { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, dependenciesDir }
+  Log.debug "Uploading package documentation to pursuit"
+  publishToPursuit { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, installedResolutions }
 
   Registry.mirrorLegacyRegistry payload.name newMetadata.location
   Comment.comment "Mirrored registry operation to the legacy registry."
@@ -1009,10 +976,10 @@ parseInstalledModulePath { prefix, path } = do
       pure { name, version }
 
 type PublishToPursuit =
-  { packageSourceDir :: FilePath
-  , dependenciesDir :: FilePath
+  { source :: FilePath
   , compiler :: Version
   , resolutions :: Map PackageName Version
+  , installedResolutions :: FilePath
   }
 
 -- | Publishes a package to Pursuit.
@@ -1023,12 +990,12 @@ publishToPursuit
   :: forall r
    . PublishToPursuit
   -> Run (PURSUIT + COMMENT + LOG + EXCEPT String + AFF + EFFECT + r) Unit
-publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = do
+publishToPursuit { source, compiler, resolutions, installedResolutions } = do
   Log.debug "Generating a resolutions file"
   tmp <- Tmp.mkTmpDir
 
   let
-    resolvedPaths = formatPursuitResolutions { resolutions, dependenciesDir }
+    resolvedPaths = formatPursuitResolutions { resolutions, installedResolutions }
     resolutionsFilePath = Path.concat [ tmp, "resolutions.json" ]
 
   Run.liftAff $ writeJsonFile pursuitResolutionsCodec resolutionsFilePath resolvedPaths
@@ -1040,7 +1007,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
   -- file and an output directory from compilation) before calling purs publish.
   -- https://git-scm.com/docs/gitignore
   Log.debug "Adding output and purs.json to local git excludes..."
-  Run.liftAff $ FS.Aff.appendTextFile UTF8 (Path.concat [ packageSourceDir, ".git", "info", "exclude" ]) (String.joinWith "\n" [ "output", "purs.json" ])
+  Run.liftAff $ FS.Aff.appendTextFile UTF8 (Path.concat [ source, ".git", "info", "exclude" ]) (String.joinWith "\n" [ "output", "purs.json" ])
 
   -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
   -- package name in the manifest file:
@@ -1051,7 +1018,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
   compilerOutput <- Run.liftAff $ Purs.callCompiler
     { command: Purs.Publish { resolutions: resolutionsFilePath }
     , version: Just compiler
-    , cwd: Just packageSourceDir
+    , cwd: Just source
     }
 
   publishJson <- case compilerOutput of
@@ -1104,13 +1071,13 @@ pursuitResolutionsCodec = rawPackageNameMapCodec $ CA.Record.object "Resolution"
 --
 -- Note: This interfaces with Pursuit, and therefore we must add purescript-
 -- prefixes to all package names for compatibility with the Bower naming format.
-formatPursuitResolutions :: { resolutions :: Map PackageName Version, dependenciesDir :: FilePath } -> PursuitResolutions
-formatPursuitResolutions { resolutions, dependenciesDir } =
+formatPursuitResolutions :: { resolutions :: Map PackageName Version, installedResolutions :: FilePath } -> PursuitResolutions
+formatPursuitResolutions { resolutions, installedResolutions } =
   Map.fromFoldable do
     Tuple name version <- Map.toUnfoldable resolutions
     let
       bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
-      packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.print version ]
+      packagePath = Path.concat [ installedResolutions, PackageName.print name <> "-" <> Version.print version ]
     [ Tuple bowerPackageName { path: packagePath, version } ]
 
 -- | Copy files from the package source directory to the destination directory

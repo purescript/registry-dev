@@ -128,7 +128,7 @@ main = launchAff_ do
           Registry.interpret (Registry.handle (registryEnv Git.Autostash Registry.ReadOnly))
             >>> Storage.interpret (Storage.handleReadOnly cache)
             >>> Pursuit.interpret Pursuit.handlePure
-            >>> Source.interpret Source.handle
+            >>> Source.interpret (Source.handle Source.Old)
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
 
       GenerateRegistry -> do
@@ -139,7 +139,7 @@ main = launchAff_ do
           Registry.interpret (Registry.handle (registryEnv Git.Autostash (Registry.CommitAs (Git.pacchettibottiCommitter token))))
             >>> Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret Pursuit.handlePure
-            >>> Source.interpret Source.handle
+            >>> Source.interpret (Source.handle Source.Old)
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
 
       UpdateRegistry -> do
@@ -150,7 +150,7 @@ main = launchAff_ do
           Registry.interpret (Registry.handle (registryEnv Git.ForceClean (Registry.CommitAs (Git.pacchettibottiCommitter token))))
             >>> Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret (Pursuit.handleAff token)
-            >>> Source.interpret Source.handle
+            >>> Source.interpret (Source.handle Source.Recent)
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
 
   -- Logging setup
@@ -162,7 +162,7 @@ main = launchAff_ do
     logFile = "legacy-importer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
     logPath = Path.concat [ logDir, logFile ]
 
-  runLegacyImport mode logPath
+  runLegacyImport logPath
     # runAppEffects
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
@@ -172,8 +172,8 @@ main = launchAff_ do
     # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
 
-runLegacyImport :: forall r. ImportMode -> FilePath -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit
-runLegacyImport mode logs = do
+runLegacyImport :: forall r. FilePath -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit
+runLegacyImport logs = do
   Log.info "Starting legacy import!"
   Log.info $ "Logs available at " <> logs
 
@@ -278,12 +278,6 @@ runLegacyImport mode logs = do
         , Array.foldMap (append "\n  - " <<< printPackage) manifests
         ]
 
-      let
-        source = case mode of
-          DryRun -> LegacyPackage
-          GenerateRegistry -> LegacyPackage
-          UpdateRegistry -> CurrentPackage
-
       void $ for notPublished \(Manifest manifest) -> do
         let formatted = formatPackageVersion manifest.name manifest.version
         Log.info $ Array.foldMap (append "\n")
@@ -294,7 +288,7 @@ runLegacyImport mode logs = do
           ]
         operation <- mkOperation (Manifest manifest)
 
-        result <- Except.runExcept $ API.publish source operation
+        result <- Except.runExcept $ API.publish operation
         -- TODO: Some packages will fail because the legacy importer does not
         -- perform all the same validation checks that the publishing flow does.
         -- What should we do when a package has a valid manifest but fails for

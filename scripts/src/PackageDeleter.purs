@@ -152,7 +152,7 @@ main = launchAff_ do
     interpret =
       Registry.interpret (Registry.handle registryEnv)
         >>> Storage.interpret (if arguments.upload then Storage.handleS3 { s3, cache } else Storage.handleReadOnly cache)
-        >>> Source.interpret Source.handle
+        >>> Source.interpret (Source.handle Source.Old)
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
         >>> Pursuit.interpret Pursuit.handlePure
         >>> Cache.interpret _legacyCache (Cache.handleMemoryFs { ref: legacyCacheRef, cache })
@@ -237,7 +237,7 @@ deleteVersion arguments name version = do
           Just (Left _) -> Log.error "Cannot reimport a version that was specifically unpublished"
           Just (Right specificPackageMetadata) -> do
             -- Obtains `newMetadata` via cache
-            API.publish LegacyPackage
+            API.publish
               { location: Just oldMetadata.location
               , name: name
               , ref: specificPackageMetadata.ref

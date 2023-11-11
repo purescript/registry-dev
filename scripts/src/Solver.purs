@@ -127,7 +127,7 @@ main = launchAff_ do
       Registry.interpret (Registry.handle (registryEnv Git.Autostash Registry.ReadOnly))
         >>> Storage.interpret (Storage.handleReadOnly cache)
         >>> Pursuit.interpret Pursuit.handlePure
-        >>> Source.interpret Source.handle
+        >>> Source.interpret (Source.handle Source.Old)
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
 
   let
