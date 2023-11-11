@@ -17,11 +17,13 @@ import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
+import Dodo as Dodo
 import Effect.Aff as Aff
 import Effect.Now as Now
 import Effect.Ref as Ref
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
+import Registry.API.V1 (LogLevel)
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
@@ -93,6 +95,7 @@ type TEST_EFFECTS =
 
 type TestEnv =
   { workdir :: FilePath
+  , logs :: Ref (Array (Tuple LogLevel String))
   , metadata :: Ref (Map PackageName Metadata)
   , index :: Ref ManifestIndex
   , storage :: FilePath
@@ -121,7 +124,7 @@ runTestEffects env operation = do
     # runLegacyCacheMemory legacyCache
     -- Other effects
     # Comment.interpret Comment.handleLog
-    # Log.interpret (\(Log _ _ next) -> pure next)
+    # Log.interpret (\(Log level msg next) -> Run.liftEffect (Ref.modify_ (_ <> [ Tuple level (Dodo.print Dodo.plainText Dodo.twoSpaces msg) ]) env.logs) *> pure next)
     -- Base effects
     # Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
     # Run.runBaseAff'

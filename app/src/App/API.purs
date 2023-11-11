@@ -3,6 +3,7 @@ module Registry.App.API
   , PackageSetUpdateEffects
   , PublishEffects
   , authenticated
+  , compatibleCompilers
   , copyPackageSourceFiles
   , findAllCompilers
   , findFirstCompiler
@@ -28,6 +29,7 @@ import Data.Map as Map
 import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
 import Data.Set as Set
+import Data.Set.NonEmpty (NonEmptySet)
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
@@ -739,7 +741,8 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
   Comment.comment "Package is verified! Uploading it to the storage backend..."
   Storage.upload manifest.name manifest.version tarballPath
   Log.debug $ "Adding the new version " <> Version.print manifest.version <> " to the package metadata file."
-  let newMetadata = metadata { published = Map.insert manifest.version { hash, ref: payload.ref, compilers: Left payload.compiler, publishedTime, bytes } metadata.published }
+  let newPublishedVersion = { hash, ref: payload.ref, compilers: Left payload.compiler, publishedTime, bytes }
+  let newMetadata = metadata { published = Map.insert manifest.version newPublishedVersion metadata.published }
   Registry.writeMetadata manifest.name (Metadata newMetadata)
   Comment.comment "Successfully uploaded package to the registry! 🎉 🚀"
 
@@ -752,7 +755,42 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
   publishToPursuit { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, installedResolutions }
 
   Registry.mirrorLegacyRegistry payload.name newMetadata.location
-  Comment.comment "Mirrored registry operation to the legacy registry."
+  Comment.comment "Mirrored registry operation to the legacy registry!"
+
+  allMetadata <- Registry.readAllMetadata
+  compatible <- case compatibleCompilers allMetadata verifiedResolutions of
+    Nothing -> do
+      let msg = "Dependencies admit no overlapping compiler versions! This should not be possible. Resolutions: " <> printJson (Internal.Codec.packageMap Version.codec) verifiedResolutions
+      Log.error msg *> Except.throw msg
+    Just result -> pure result
+
+  Comment.comment $ Array.fold
+    [ "The following compilers are compatible with this package according to its dependency resolutions: "
+    , String.joinWith ", " (map (\v -> "`" <> Version.print v <> "`") $ NonEmptySet.toUnfoldable compatible)
+    , ".\n\n"
+    , "Computing the list of compilers usable with your package version..."
+    ]
+
+  { failed: invalidCompilers, succeeded: validCompilers } <- findAllCompilers
+    { source: packageDirectory
+    , installed: installedResolutions
+    , compilers: Array.fromFoldable $ NonEmptySet.filter (notEq payload.compiler) compatible
+    }
+
+  unless (Map.isEmpty invalidCompilers) do
+    Log.debug $ "Some compilers failed: " <> String.joinWith ", " (map Version.print (Set.toUnfoldable (Map.keys invalidCompilers)))
+
+  let
+    allVerified = case NonEmptySet.fromFoldable validCompilers of
+      Nothing -> NonEmptyArray.singleton payload.compiler
+      Just verified -> NonEmptyArray.fromFoldable1 $ NonEmptySet.insert payload.compiler verified
+
+  Comment.comment $ "Found compatible compilers: " <> String.joinWith ", " (map (\v -> "`" <> Version.print v <> "`") (NonEmptyArray.toArray allVerified))
+  let compilersMetadata = newMetadata { published = Map.update (Just <<< (_ { compilers = Right allVerified })) manifest.version newMetadata.published }
+  Registry.writeMetadata manifest.name (Metadata compilersMetadata)
+  Log.debug $ "Wrote new metadata " <> printJson Metadata.codec (Metadata compilersMetadata)
+
+  Comment.comment "Wrote completed metadata to the registry!"
 
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the
@@ -858,7 +896,7 @@ compilePackage { source, compiler, resolutions } = Except.runExcept do
 
 -- | Given a set of package versions, determine the set of compilers that can be
 -- | used for all packages.
-compatibleCompilers :: Map PackageName Metadata -> Map PackageName Version -> Set Version
+compatibleCompilers :: Map PackageName Metadata -> Map PackageName Version -> Maybe (NonEmptySet Version)
 compatibleCompilers allMetadata resolutions = do
   let
     associated :: Array (NonEmptyArray Version)
@@ -869,7 +907,12 @@ compatibleCompilers allMetadata resolutions = do
         Left _ -> Nothing
         Right all -> Just all
 
-  Array.foldl (\prev next -> Set.intersection prev (Set.fromFoldable next)) Set.empty associated
+  Array.uncons associated >>= case _ of
+    { head, tail: [] } ->
+      pure $ NonEmptySet.fromFoldable1 head
+    { head, tail } -> do
+      let foldFn prev = Set.intersection prev <<< Set.fromFoldable
+      NonEmptySet.fromFoldable $ Array.foldl foldFn (Set.fromFoldable head) tail
 
 type DiscoverCompilers =
   { source :: FilePath

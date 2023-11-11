@@ -6,6 +6,7 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable (traverse_)
 import Data.Map as Map
 import Data.Set as Set
+import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
 import Effect.Aff as Aff
@@ -68,10 +69,39 @@ spec = do
           Assert.shouldEqual version (Utils.unsafeVersion "1.0.0")
       FS.Extra.remove tmp
 
+  Spec.describe "Finds compatible compilers from dependencies" do
+    Spec.it "Finds intersect of single package" do
+      Assert.Run.runBaseEffects do
+        metadata <- Registry.readAllMetadataFromDisk $ Path.concat [ "app", "fixtures", "registry", "metadata" ]
+        let expected = map Utils.unsafeVersion [ "0.15.10", "0.15.12" ]
+        case API.compatibleCompilers metadata (Map.singleton (Utils.unsafePackageName "prelude") (Utils.unsafeVersion "6.0.1")) of
+          Nothing -> Except.throw $ "Got no compatible compilers, but expected " <> Utils.unsafeStringify (map Version.print expected)
+          Just set -> do
+            let actual = NonEmptySet.toUnfoldable set
+            unless (actual == expected) do
+              Except.throw $ "Expected " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print actual)
+
+    Spec.it "Finds intersect of multiple packages" do
+      Assert.Run.runBaseEffects do
+        metadata <- Registry.readAllMetadataFromDisk $ Path.concat [ "app", "fixtures", "registry", "metadata" ]
+        let
+          expected = map Utils.unsafeVersion [ "0.15.10" ]
+          resolutions = Map.fromFoldable $ map (bimap Utils.unsafePackageName Utils.unsafeVersion)
+            [ Tuple "prelude" "6.0.1"
+            , Tuple "type-equality" "4.0.1"
+            ]
+        case API.compatibleCompilers metadata resolutions of
+          Nothing -> Except.throw $ "Got no compatible compilers, but expected " <> Utils.unsafeStringify (map Version.print expected)
+          Just set -> do
+            let actual = NonEmptySet.toUnfoldable set
+            unless (actual == expected) do
+              Except.throw $ "Expected " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print actual)
+
   Spec.describe "API pipelines run correctly" $ Spec.around withCleanEnv do
     Spec.it "Publish a legacy-converted package with unused deps" \{ workdir, index, metadata, storageDir, githubDir } -> do
-      let testEnv = { workdir, index, metadata, username: "jon", storage: storageDir, github: githubDir }
-      Assert.Run.runTestEffects testEnv do
+      logs <- liftEffect (Ref.new [])
+      let testEnv = { workdir, logs, index, metadata, username: "jon", storage: storageDir, github: githubDir }
+      result <- Assert.Run.runTestEffects testEnv $ Except.runExcept do
         -- We'll publish effect@4.0.0 from the fixtures/github-packages
         -- directory, which has an unnecessary dependency on 'type-equality'
         -- inserted into it.
@@ -80,7 +110,7 @@ spec = do
           version = Utils.unsafeVersion "4.0.0"
           ref = "v4.0.0"
           publishArgs =
-            { compiler: Utils.unsafeVersion "0.15.9"
+            { compiler: Utils.unsafeVersion "0.15.10"
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-effect", subdir: Nothing }
             , name
             , ref
@@ -117,11 +147,32 @@ spec = do
                 , printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
                 ]
 
+        -- We should verify the resulting metadata file is correct
+        Metadata effectMetadata <- Registry.readMetadata name >>= case _ of
+          Nothing -> Except.throw $ "Expected " <> PackageName.print name <> " to be in metadata."
+          Just m -> pure m
+
+        case Map.lookup version effectMetadata.published of
+          Nothing -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to be in metadata."
+          Just published -> case published.compilers of
+            Left one -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix but unfinished single version: " <> Version.print one
+            Right many -> do
+              let many' = NonEmptyArray.toArray many
+              let expected = map Utils.unsafeVersion [ "0.15.10", "0.15.12" ]
+              unless (many' == expected) do
+                Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
+
         -- Finally, we can verify that publishing the package again should fail
         -- since it already exists.
         Except.runExcept (API.publish publishArgs) >>= case _ of
           Left _ -> pure unit
           Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to fail."
+
+      case result of
+        Left err -> do
+          recorded <- liftEffect (Ref.read logs)
+          Assert.fail $ "Expected to publish effect@4.0.0 but got error: " <> err <> "\n\nLogs:\n" <> String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
+        Right _ -> pure unit
 
   where
   withCleanEnv :: (PipelineEnv -> Aff Unit) -> Aff Unit
