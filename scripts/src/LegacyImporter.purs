@@ -67,12 +67,9 @@ import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
-import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
-import Registry.Operation (PublishData)
 import Registry.PackageName as PackageName
-import Registry.Solver (DependencyIndex)
 import Registry.Solver as Solver
 import Registry.Version as Version
 import Run (Run)
@@ -241,116 +238,79 @@ runLegacyImport logs = do
     let isPublished { name, version } = hasMetadata allMetadata name version
     pure $ indexPackages # Array.filter \(Manifest manifest) -> not (isPublished manifest)
 
-  Tuple _ operations <- do
-    let
-      buildOperation
-        :: Tuple DependencyIndex (Array (Tuple Manifest PublishData))
-        -> Manifest
-        -> Run _ (Tuple DependencyIndex (Array (Tuple Manifest PublishData)))
-      buildOperation (Tuple prevIndex prevData) (Manifest manifest) = do
-        let formatted = formatPackageVersion manifest.name manifest.version
-        RawVersion ref <- case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
-          Nothing -> Except.throw $ "Unable to recover package ref for " <> formatted
-          Just ref -> pure ref
+  let
+    publishLegacyPackage :: Manifest -> Run _ Unit
+    publishLegacyPackage (Manifest manifest) = do
+      let formatted = formatPackageVersion manifest.name manifest.version
+      Log.info $ "PUBLISHING: " <> formatted
+      RawVersion ref <- case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
+        Nothing -> Except.throw $ "Unable to recover package ref for " <> formatted
+        Just ref -> pure ref
 
-        Log.debug $ "Solving for " <> formatted
-        case Solver.solve prevIndex manifest.dependencies of
-          Left unsolvable -> do
-            Log.warn $ "Could not solve " <> formatted
-            let errors = map Solver.printSolverError $ NonEmptyList.toUnfoldable unsolvable
-            Log.debug $ String.joinWith "\n" errors
-            Cache.put _importCache (ImportManifest manifest.name (RawVersion ref)) (Left { error: SolveFailed, reason: String.joinWith " " errors })
-            pure $ Tuple prevIndex prevData
-          Right resolutions -> do
-            Log.debug $ "Solved " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions
-            Log.debug "Determining a compiler version suitable for publishing..."
-            allMetadata <- Registry.readAllMetadata
-            possibleCompilers <- case API.compatibleCompilers allMetadata resolutions of
-              Nothing | Map.isEmpty resolutions -> do
-                Log.debug "No resolutions, so all compilers could be compatible."
-                allCompilers <- PursVersions.pursVersions
-                pure $ NonEmptySet.fromFoldable1 allCompilers
-              Nothing ->
-                Except.throw "No overlapping compilers found in dependencies; this should not happen!"
-              Just compilers -> do
-                Log.debug $ "Compatible compilers for dependencies of " <> formatted <> ": " <> stringifyJson (CA.array Version.codec) (NonEmptySet.toUnfoldable compilers)
-                pure compilers
+      Log.debug $ "Solving dependencies for " <> formatted
+      index <- Registry.readAllManifests
+      let solverIndex = map (map (_.dependencies <<< un Manifest)) $ ManifestIndex.toMap index
+      case Solver.solve solverIndex manifest.dependencies of
+        Left unsolvable -> do
+          Log.warn $ "Could not solve " <> formatted
+          let errors = map Solver.printSolverError $ NonEmptyList.toUnfoldable unsolvable
+          Log.debug $ String.joinWith "\n" errors
+          Cache.put _importCache (ImportManifest manifest.name (RawVersion ref)) (Left { error: SolveFailed, reason: String.joinWith " " errors })
+        Right resolutions -> do
+          Log.debug $ "Solved " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions
+          Log.debug "Determining a compiler version suitable for publishing..."
+          allMetadata <- Registry.readAllMetadata
+          possibleCompilers <- case API.compatibleCompilers allMetadata resolutions of
+            Nothing | Map.isEmpty resolutions -> do
+              Log.debug "No resolutions, so all compilers could be compatible."
+              allCompilers <- PursVersions.pursVersions
+              pure $ NonEmptySet.fromFoldable1 allCompilers
+            Nothing ->
+              Except.throw "No overlapping compilers found in dependencies; this should not happen!"
+            Just compilers -> do
+              Log.debug $ "Compatible compilers for dependencies of " <> formatted <> ": " <> stringifyJson (CA.array Version.codec) (NonEmptySet.toUnfoldable compilers)
+              pure compilers
+          Log.debug "Fetching source and installing dependencies to test compilers"
+          tmp <- Tmp.mkTmpDir
+          { path } <- Source.fetch tmp manifest.location ref
+          Log.debug $ "Downloaded source to " <> path
+          Log.debug "Downloading dependencies..."
+          let installDir = Path.concat [ tmp, ".registry" ]
+          FS.Extra.ensureDirectory installDir
+          API.installBuildPlan resolutions installDir
+          Log.debug $ "Installed to " <> installDir
+          Log.debug "Finding first compiler that can build the package..."
+          selected <- API.findFirstCompiler { source: path, installed: installDir, compilers: NonEmptySet.toUnfoldable possibleCompilers }
+          FS.Extra.remove tmp
+          case selected of
+            Nothing -> Log.error "Could not find any valid compilers for this package."
+            Just compiler -> do
+              Log.debug $ "Selected " <> Version.print compiler <> " for publishing."
+              let
+                payload =
+                  { name: manifest.name
+                  , location: Just manifest.location
+                  , ref
+                  , compiler
+                  , resolutions: Just resolutions
+                  }
+              Except.runExcept (API.publish payload) >>= case _ of
+                Left error -> do
+                  Log.error $ "Failed to publish " <> formatted <> ": " <> error
+                  Cache.put _importCache (PublishFailure manifest.name manifest.version) error
+                Right _ -> do
+                  Log.info $ "Published " <> formatted
 
-            Log.debug "Fetching source and installing dependencies to test compilers"
-            tmp <- Tmp.mkTmpDir
-            { path } <- Source.fetch tmp manifest.location ref
-            Log.debug $ "Downloaded source to " <> path
-            Log.debug "Downloading dependencies..."
-            let installDir = Path.concat [ tmp, ".registry" ]
-            FS.Extra.ensureDirectory installDir
-            API.installBuildPlan resolutions installDir
-            Log.debug $ "Installed to " <> installDir
-            Log.debug "Finding first compiler that can build the package..."
-            selected <- API.findFirstCompiler { source: path, installed: installDir, compilers: NonEmptySet.toUnfoldable possibleCompilers }
-            FS.Extra.remove tmp
-            case selected of
-              Nothing -> do
-                Log.warn "Could not find any valid compilers for this package."
-                Log.debug "Skipping this package."
-                pure $ Tuple prevIndex prevData
-              Just compiler -> do
-                Log.debug $ "Selected " <> Version.print compiler <> " for publishing."
-                let
-                  operation :: PublishData
-                  operation =
-                    { name: manifest.name
-                    , location: Just manifest.location
-                    , ref
-                    , compiler
-                    , resolutions: Just resolutions
-                    }
-
-                -- FIXME: Can't actually accumulate dependenyc index, and need to publish
-                -- packages before moving to the next. Replace this implementation such that
-                -- we publish each package, then read the manifest / metadata indices again
-                -- on every iteration.
-                pure $ Tuple (Map.insertWith Map.union manifest.name (Map.singleton manifest.version manifest.dependencies) prevIndex) (Array.snoc prevData (Tuple (Manifest manifest) operation))
-
-    Array.foldM buildOperation (Tuple Map.empty []) notPublished
-
-  case operations of
+  case notPublished of
     [] -> Log.info "No packages to publish."
-    ops -> do
+    manifests -> do
       Log.info $ Array.foldMap (append "\n")
         [ "----------"
         , "AVAILABLE TO PUBLISH"
-        , Array.foldMap (\(Tuple _ { name, ref }) -> "\n  - " <> PackageName.print name <> " " <> ref) ops
+        , Array.foldMap (\(Manifest { name, version }) -> "\n  - " <> formatPackageVersion name version) manifests
         , "----------"
         ]
-
-      void $ for ops \(Tuple (Manifest manifest) publish) -> do
-        let formatted = formatPackageVersion manifest.name manifest.version
-
-        -- Never happens, just a safety check.
-        when (manifest.name /= publish.name) do
-          Except.throw $ "Package name mismatch: " <> formatted <> " is being published as " <> PackageName.print publish.name
-
-        Log.info $ Array.foldMap (append "\n")
-          [ "----------"
-          , "PUBLISHING: " <> formatted
-          , stringifyJson Location.codec manifest.location
-          , "----------"
-          ]
-
-        result <- Except.runExcept $ API.publish publish
-
-        -- TODO: Some packages will fail because the legacy importer does not
-        -- perform all the same validation checks that the publishing flow does.
-        -- What should we do when a package has a valid manifest but fails for
-        -- other reasons? Should they be added to the package validation
-        -- failures and we defer writing the package failures until the import
-        -- has completed?
-        case result of
-          Left error -> do
-            Log.error $ "Failed to publish " <> formatted <> ": " <> error
-            Cache.put _importCache (PublishFailure manifest.name manifest.version) error
-          Right _ -> do
-            Log.info $ "Published " <> formatted
+      void $ for manifests publishLegacyPackage
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
