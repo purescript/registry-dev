@@ -8,6 +8,7 @@ module Registry.App.API
   , findAllCompilers
   , findFirstCompiler
   , formatPursuitResolutions
+  , installBuildPlan
   , packageSetUpdate
   , packagingTeam
   , parseInstalledModulePath
@@ -50,6 +51,7 @@ import Parsing.String as Parsing.String
 import Registry.App.Auth as Auth
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
+import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Comment (COMMENT)
 import Registry.App.Effect.Comment as Comment
@@ -759,6 +761,10 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
 
   allMetadata <- Registry.readAllMetadata
   compatible <- case compatibleCompilers allMetadata verifiedResolutions of
+    Nothing | Map.isEmpty verifiedResolutions -> do
+      Log.debug "No dependencies, so all compilers are potentially compatible."
+      allCompilers <- PursVersions.pursVersions
+      pure $ NonEmptySet.fromFoldable1 allCompilers
     Nothing -> do
       let msg = "Dependencies admit no overlapping compiler versions! This should not be possible. Resolutions: " <> printJson (Internal.Codec.packageMap Version.codec) verifiedResolutions
       Log.error msg *> Except.throw msg

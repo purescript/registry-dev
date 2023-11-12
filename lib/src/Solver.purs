@@ -146,6 +146,7 @@ intersectionFromRange' package range =
 --------------------------------------------------------------------------------
 
 type SolverErrors = NEL.NonEmptyList SolverError
+
 data SolverError
   = Conflicts (Map PackageName Intersection)
   | WhileSolving PackageName (Map Version SolverError)
