@@ -12,6 +12,7 @@ import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Control.Apply (lift2)
 import Data.Array as Array
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
@@ -22,6 +23,7 @@ import Data.Filterable (partition)
 import Data.Foldable (foldMap)
 import Data.Foldable as Foldable
 import Data.Formatter.DateTime as Formatter.DateTime
+import Data.Function (on)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.List as List
 import Data.List.NonEmpty as NonEmptyList
@@ -44,6 +46,7 @@ import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
+import Registry.App.CLI.Purs (CompilerFailure, compilerFailureCodec)
 import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
@@ -61,10 +64,12 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
+import Registry.App.Prelude as Either
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (Address, Tag)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
+import Registry.Internal.Codec (packageMap, versionMap)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
 import Registry.Manifest as Manifest
@@ -218,16 +223,15 @@ runLegacyImport logs = do
   Log.info $ formatImportStats $ calculateImportStats legacyRegistry importedIndex
 
   Log.info "Sorting packages for upload..."
-  let allIndexPackages = ManifestIndex.toSortedArray ManifestIndex.IgnoreRanges importedIndex.registryIndex
+  let allIndexPackages = ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges importedIndex.registryIndex
 
-  Log.info "Removing packages that previously failed publish"
-  indexPackages <- allIndexPackages # Array.filterA \(Manifest { name, version }) ->
-    isNothing <$> Cache.get _importCache (PublishFailure name version)
-
-  notPublished <- do
+  Log.info "Removing packages that previously failed publish or have been published"
+  publishable <- do
     allMetadata <- Registry.readAllMetadata
-    let isPublished { name, version } = hasMetadata allMetadata name version
-    pure $ indexPackages # Array.filter \(Manifest manifest) -> not (isPublished manifest)
+    allIndexPackages # Array.filterA \(Manifest { name, version }) -> do
+      Cache.get _importCache (PublishFailure name version) >>= case _ of
+        Nothing -> pure $ not $ hasMetadata allMetadata name version
+        Just _ -> pure false
 
   let
     publishLegacyPackage :: Manifest -> Run _ Unit
@@ -237,16 +241,15 @@ runLegacyImport logs = do
       RawVersion ref <- case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
         Nothing -> Except.throw $ "Unable to recover package ref for " <> formatted
         Just ref -> pure ref
-
       Log.debug $ "Solving dependencies for " <> formatted
       index <- Registry.readAllManifests
       Log.debug $ "Read all manifests: " <> String.joinWith ", " (map (\(Manifest m) -> formatPackageVersion m.name m.version) $ ManifestIndex.toSortedArray ManifestIndex.IgnoreRanges index)
       let solverIndex = map (map (_.dependencies <<< un Manifest)) $ ManifestIndex.toMap index
       case Solver.solve solverIndex manifest.dependencies of
         Left unsolvable -> do
-          Log.warn $ "Could not solve " <> formatted
           let errors = map Solver.printSolverError $ NonEmptyList.toUnfoldable unsolvable
-          Log.debug $ String.joinWith "\n" errors
+          Log.warn $ "Could not solve " <> formatted <> Array.foldMap (append "\n") errors
+          Cache.put _importCache (PublishFailure manifest.name manifest.version) (SolveFailed $ String.joinWith " " errors)
         Right resolutions -> do
           Log.debug $ "Solved " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions
           Log.debug "Determining a compiler version suitable for publishing..."
@@ -274,8 +277,19 @@ runLegacyImport logs = do
           selected <- API.findFirstCompiler { source: path, installed: installDir, compilers: NonEmptySet.toUnfoldable possibleCompilers }
           FS.Extra.remove tmp
           case selected of
-            Nothing -> Log.error "Could not find any valid compilers for this package."
-            Just compiler -> do
+            Left failures -> do
+              let
+                collected :: Map (NonEmptyArray Version) CompilerFailure
+                collected = do
+                  let
+                    foldFn prev xs = do
+                      let Tuple _ failure = NonEmptyArray.head xs
+                      let key = map fst xs
+                      Map.insert key failure prev
+                  Array.foldl foldFn Map.empty $ Array.groupAllBy (compare `on` snd) (Map.toUnfoldable failures)
+              Log.error $ "Failed to find any valid compilers for publishing:\n" <> printJson compilerFailureMapCodec collected
+              Cache.put _importCache (PublishFailure manifest.name manifest.version) (NoCompilersFound collected)
+            Right compiler -> do
               Log.debug $ "Selected " <> Version.print compiler <> " for publishing."
               let
                 payload =
@@ -288,11 +302,11 @@ runLegacyImport logs = do
               Except.runExcept (API.publish payload) >>= case _ of
                 Left error -> do
                   Log.error $ "Failed to publish " <> formatted <> ": " <> error
-                -- Cache.put _importCache (PublishFailure manifest.name manifest.version) error
+                  Cache.put _importCache (PublishFailure manifest.name manifest.version) (PublishError error)
                 Right _ -> do
                   Log.info $ "Published " <> formatted
 
-  case notPublished of
+  case publishable of
     [] -> Log.info "No packages to publish."
     manifests -> do
       Log.info $ Array.foldMap (append "\n")
@@ -301,7 +315,23 @@ runLegacyImport logs = do
         , Array.foldMap (\(Manifest { name, version }) -> "\n  - " <> formatPackageVersion name version) manifests
         , "----------"
         ]
-      void $ for manifests publishLegacyPackage
+
+      void $ for (Array.take 150 manifests) publishLegacyPackage
+
+      Log.info "Finished publishing! Collecting all publish failures and writing to disk."
+      let
+        collectError prev (Manifest { name, version }) = do
+          Cache.get _importCache (PublishFailure name version) >>= case _ of
+            Nothing -> pure prev
+            Just error -> pure $ Map.insertWith Map.union name (Map.singleton version error) prev
+      failures <- Array.foldM collectError Map.empty allIndexPackages
+      Run.liftAff $ writePublishFailures failures
+
+-- | Record all package failures to the 'package-failures.json' file.
+writePublishFailures :: Map PackageName (Map Version PublishError) -> Aff Unit
+writePublishFailures =
+  writeJsonFile (packageMap (versionMap jsonValidationErrorCodec)) (Path.concat [ scratchDir, "publish-failures.json" ])
+    <<< map (map formatPublishError)
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
@@ -456,6 +486,38 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
 
   pure $ Map.fromFoldable manifests
 
+data PublishError = SolveFailed String | NoCompilersFound (Map (NonEmptyArray Version) CompilerFailure) | PublishError String
+
+derive instance Eq PublishError
+
+publishErrorCodec :: JsonCodec PublishError
+publishErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
+  { solveFailed: Right CA.string
+  , noCompilersFound: Right compilerFailureMapCodec
+  , publishError: Right CA.string
+  }
+  where
+  toVariant = case _ of
+    SolveFailed error -> Variant.inj (Proxy :: _ "solveFailed") error
+    NoCompilersFound failed -> Variant.inj (Proxy :: _ "noCompilersFound") failed
+    PublishError error -> Variant.inj (Proxy :: _ "publishError") error
+
+  fromVariant = Variant.match
+    { solveFailed: SolveFailed
+    , noCompilersFound: NoCompilersFound
+    , publishError: PublishError
+    }
+
+compilerFailureMapCodec :: JsonCodec (Map (NonEmptyArray Version) CompilerFailure)
+compilerFailureMapCodec = do
+  let
+    print = NonEmptyArray.intercalate "," <<< map Version.print
+    parse input = do
+      let versions = String.split (String.Pattern ",") input
+      let parsed = Array.mapMaybe (Either.hush <<< Version.parse) versions
+      NonEmptyArray.fromArray parsed
+  Internal.Codec.strMap "CompilerFailureMap" parse print compilerFailureCodec
+
 type EXCEPT_VERSION :: Row (Type -> Type) -> Row (Type -> Type)
 type EXCEPT_VERSION r = (exceptVersion :: Except VersionValidationError | r)
 
@@ -481,8 +543,6 @@ data VersionError
   | DisabledVersion
   | InvalidManifest LegacyManifestValidationError
   | UnregisteredDependencies (Array PackageName)
-  | SolveFailed
-  | NoCompilerFound
 
 versionErrorCodec :: JsonCodec VersionError
 versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
@@ -497,8 +557,6 @@ versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantM
       , reason: CA.string
       }
   , unregisteredDependencies: Right (CA.array PackageName.codec)
-  , solveFailed: Left unit
-  , noCompilerFound: Left unit
   }
   where
   toVariant = case _ of
@@ -506,16 +564,12 @@ versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantM
     DisabledVersion -> Variant.inj (Proxy :: _ "disabledVersion") unit
     InvalidManifest inner -> Variant.inj (Proxy :: _ "invalidManifest") inner
     UnregisteredDependencies inner -> Variant.inj (Proxy :: _ "unregisteredDependencies") inner
-    SolveFailed -> Variant.inj (Proxy :: _ "solveFailed") unit
-    NoCompilerFound -> Variant.inj (Proxy :: _ "noCompilerFound") unit
 
   fromVariant = Variant.match
     { invalidTag: InvalidTag
     , disabledVersion: \_ -> DisabledVersion
     , invalidManifest: InvalidManifest
     , unregisteredDependencies: UnregisteredDependencies
-    , solveFailed: \_ -> SolveFailed
-    , noCompilerFound: \_ -> NoCompilerFound
     }
 
 validateVersionDisabled :: PackageName -> LenientVersion -> Either VersionValidationError Unit
@@ -665,14 +719,14 @@ validatePackageName (RawPackageName name) =
 
 type JsonValidationError =
   { tag :: String
-  , value :: Maybe String
+  , value :: Maybe Json
   , reason :: String
   }
 
 jsonValidationErrorCodec :: JsonCodec JsonValidationError
 jsonValidationErrorCodec = CA.Record.object "JsonValidationError"
   { tag: CA.string
-  , value: CA.Record.optional CA.string
+  , value: CA.Record.optional CA.json
   , reason: CA.string
   }
 
@@ -681,30 +735,34 @@ formatPackageValidationError { error, reason } = case error of
   InvalidPackageName ->
     { tag: "InvalidPackageName", value: Nothing, reason }
   InvalidPackageURL url ->
-    { tag: "InvalidPackageURL", value: Just url, reason }
+    { tag: "InvalidPackageURL", value: Just (CA.encode CA.string url), reason }
   PackageURLRedirects { registered } ->
-    { tag: "PackageURLRedirects", value: Just (registered.owner <> "/" <> registered.repo), reason }
+    { tag: "PackageURLRedirects", value: Just (CA.encode CA.string (registered.owner <> "/" <> registered.repo)), reason }
   CannotAccessRepo address ->
-    { tag: "CannotAccessRepo", value: Just (address.owner <> "/" <> address.repo), reason }
+    { tag: "CannotAccessRepo", value: Just (CA.encode CA.string (address.owner <> "/" <> address.repo)), reason }
   DisabledPackage ->
     { tag: "DisabledPackage", value: Nothing, reason }
 
 formatVersionValidationError :: VersionValidationError -> JsonValidationError
 formatVersionValidationError { error, reason } = case error of
   InvalidTag tag ->
-    { tag: "InvalidTag", value: Just tag.name, reason }
+    { tag: "InvalidTag", value: Just (CA.encode CA.string tag.name), reason }
   DisabledVersion ->
     { tag: "DisabledVersion", value: Nothing, reason }
   InvalidManifest err -> do
     let errorValue = Legacy.Manifest.printLegacyManifestError err.error
-    { tag: "InvalidManifest", value: Just errorValue, reason }
-  UnregisteredDependencies names -> do
-    let errorValue = String.joinWith ", " $ map PackageName.print names
-    { tag: "UnregisteredDependencies", value: Just errorValue, reason }
-  SolveFailed ->
-    { tag: "SolveFailed", value: Nothing, reason }
-  NoCompilerFound ->
-    { tag: "NoCompilerFound", value: Nothing, reason }
+    { tag: "InvalidManifest", value: Just (CA.encode CA.string errorValue), reason }
+  UnregisteredDependencies names ->
+    { tag: "UnregisteredDependencies", value: Just (CA.encode (CA.array PackageName.codec) names), reason }
+
+formatPublishError :: PublishError -> JsonValidationError
+formatPublishError = case _ of
+  SolveFailed error ->
+    { tag: "SolveFailed", value: Nothing, reason: error }
+  NoCompilersFound versions ->
+    { tag: "NoCompilersFound", value: Just (CA.encode compilerFailureMapCodec versions), reason: "No valid compilers found for publishing." }
+  PublishError error ->
+    { tag: "PublishError", value: Nothing, reason: error }
 
 type ImportStats =
   { packagesProcessed :: Int
@@ -800,8 +858,6 @@ calculateImportStats legacyRegistry imported = do
         DisabledVersion -> "Disabled Version"
         InvalidManifest err -> "Invalid Manifest (" <> innerKey err <> ")"
         UnregisteredDependencies _ -> "Unregistered Dependencies"
-        SolveFailed -> "Solve Failed"
-        NoCompilerFound -> "No Compiler Found"
 
       innerKey = _.error >>> case _ of
         NoManifests -> "No Manifests"
@@ -845,7 +901,7 @@ legacyRepoParser = do
 data ImportCache :: (Type -> Type -> Type) -> Type -> Type
 data ImportCache c a
   = ImportManifest PackageName RawVersion (c (Either VersionValidationError Manifest) a)
-  | PublishFailure PackageName Version (c String a)
+  | PublishFailure PackageName Version (c PublishError a)
 
 instance Functor2 c => Functor (ImportCache c) where
   map k (ImportManifest name version a) = ImportManifest name version (map2 k a)
@@ -864,7 +920,7 @@ instance FsEncodable ImportCache where
       let codec = CA.Common.either versionValidationErrorCodec Manifest.codec
       Exists.mkExists $ AsJson ("ImportManifest__" <> PackageName.print name <> "__" <> version) codec next
     PublishFailure name version next -> do
-      let codec = CA.string
+      let codec = publishErrorCodec
       Exists.mkExists $ AsJson ("PublishFailure__" <> PackageName.print name <> "__" <> Version.print version) codec next
 
 type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)

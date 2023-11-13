@@ -21,6 +21,22 @@ data CompilerFailure
   | MissingCompiler
 
 derive instance Eq CompilerFailure
+derive instance Ord CompilerFailure
+
+compilerFailureCodec :: JsonCodec CompilerFailure
+compilerFailureCodec = CA.codec' decode encode
+  where
+  decode :: Json -> Either JsonDecodeError CompilerFailure
+  decode json =
+    map CompilationError (CA.decode (CA.array compilerErrorCodec) json)
+      <|> map UnknownError (CA.decode CA.string json)
+      <|> map (const MissingCompiler) (CA.decode CA.null json)
+
+  encode :: CompilerFailure -> Json
+  encode = case _ of
+    CompilationError errors -> CA.encode (CA.array compilerErrorCodec) errors
+    UnknownError message -> CA.encode CA.string message
+    MissingCompiler -> CA.encode CA.null unit
 
 type CompilerError =
   { position :: SourcePosition

@@ -389,9 +389,9 @@ publish payload = do
       -- supports syntax back to 0.14.0. We'll still try to validate the package
       -- but it may fail to parse.
       Operation.Validation.validatePursModules files >>= case _ of
-        Left formattedError | payload.compiler < unsafeFromRight (Version.parse "0.14.0") -> do
+        Left formattedError | payload.compiler < unsafeFromRight (Version.parse "0.15.0") -> do
           Log.debug $ "Package failed to parse in validatePursModules: " <> formattedError
-          Log.debug $ "Skipping check because package is published with a pre-0.14.0 compiler (" <> Version.print payload.compiler <> ")."
+          Log.debug $ "Skipping check because package is published with a pre-0.15.0 compiler (" <> Version.print payload.compiler <> ")."
         Left formattedError ->
           Except.throw $ Array.fold
             [ "This package has either malformed or disallowed PureScript module names "
@@ -801,8 +801,7 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
   Comment.comment $ Array.fold
     [ "The following compilers are compatible with this package according to its dependency resolutions: "
     , String.joinWith ", " (map (\v -> "`" <> Version.print v <> "`") $ NonEmptySet.toUnfoldable compatible)
-    , ".\n\n"
-    , "Computing the list of compilers usable with your package version..."
+    , ". Computing the list of compilers usable with your package version..."
     ]
 
   { failed: invalidCompilers, succeeded: validCompilers } <- findAllCompilers
@@ -949,8 +948,8 @@ compatibleCompilers allMetadata resolutions = do
       NonEmptySet.fromFoldable $ Array.foldl foldFn (Set.fromFoldable head) tail
 
 type DiscoverCompilers =
-  { source :: FilePath
-  , compilers :: Array Version
+  { compilers :: Array Version
+  , source :: FilePath
   , installed :: FilePath
   }
 
@@ -974,7 +973,7 @@ findAllCompilers { source, compilers, installed } = do
 -- | Find the first compiler that can compile the package source code and
 -- | installed resolutions from the given array of compilers. Begins with the
 -- | latest compiler and works backwards to older compilers.
-findFirstCompiler :: forall r. DiscoverCompilers -> Run (STORAGE + LOG + AFF + EFFECT + r) (Maybe Version)
+findFirstCompiler :: forall r. DiscoverCompilers -> Run (STORAGE + LOG + AFF + EFFECT + r) (Either (Map Version CompilerFailure) Version)
 findFirstCompiler { source, compilers, installed } = do
   search <- Except.runExcept $ for (Array.reverse (Array.sort compilers)) \target -> do
     Log.debug $ "Trying compiler " <> Version.print target
@@ -985,10 +984,12 @@ findFirstCompiler { source, compilers, installed } = do
       , cwd: Just workdir
       }
     FS.Extra.remove workdir
-    for_ result (\_ -> Except.throw target)
+    case result of
+      Left error -> pure $ Tuple target error
+      Right _ -> Except.throw target
   case search of
-    Left found -> pure $ Just found
-    Right _ -> pure Nothing
+    Left worked -> pure $ Right worked
+    Right others -> pure $ Left $ Map.fromFoldable others
 
 printCompilerFailure :: Version -> CompilerFailure -> String
 printCompilerFailure compiler = case _ of
