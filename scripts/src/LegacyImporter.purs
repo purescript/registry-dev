@@ -214,16 +214,7 @@ runLegacyImport logs = do
   Run.liftAff $ writePackageFailures importedIndex.failedPackages
   Run.liftAff $ writeVersionFailures importedIndex.failedVersions
 
-  Log.info "Writing empty metadata files for legacy packages that can't be registered..."
-  void $ forWithIndex importedIndex.reservedPackages \package location -> do
-    Registry.readMetadata package >>= case _ of
-      Nothing -> do
-        let metadata = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
-        Registry.writeMetadata package metadata
-      Just _ -> pure unit
-
   Log.info "Ready for upload!"
-
   Log.info $ formatImportStats $ calculateImportStats legacyRegistry importedIndex
 
   Log.info "Sorting packages for upload..."
@@ -242,20 +233,20 @@ runLegacyImport logs = do
     publishLegacyPackage :: Manifest -> Run _ Unit
     publishLegacyPackage (Manifest manifest) = do
       let formatted = formatPackageVersion manifest.name manifest.version
-      Log.info $ "PUBLISHING: " <> formatted
+      Log.info $ "\n----------\nPUBLISHING: " <> formatted <> "\n----------\n"
       RawVersion ref <- case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
         Nothing -> Except.throw $ "Unable to recover package ref for " <> formatted
         Just ref -> pure ref
 
       Log.debug $ "Solving dependencies for " <> formatted
       index <- Registry.readAllManifests
+      Log.debug $ "Read all manifests: " <> String.joinWith ", " (map (\(Manifest m) -> formatPackageVersion m.name m.version) $ ManifestIndex.toSortedArray ManifestIndex.IgnoreRanges index)
       let solverIndex = map (map (_.dependencies <<< un Manifest)) $ ManifestIndex.toMap index
       case Solver.solve solverIndex manifest.dependencies of
         Left unsolvable -> do
           Log.warn $ "Could not solve " <> formatted
           let errors = map Solver.printSolverError $ NonEmptyList.toUnfoldable unsolvable
           Log.debug $ String.joinWith "\n" errors
-          Cache.put _importCache (ImportManifest manifest.name (RawVersion ref)) (Left { error: SolveFailed, reason: String.joinWith " " errors })
         Right resolutions -> do
           Log.debug $ "Solved " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions
           Log.debug "Determining a compiler version suitable for publishing..."
@@ -297,7 +288,7 @@ runLegacyImport logs = do
               Except.runExcept (API.publish payload) >>= case _ of
                 Left error -> do
                   Log.error $ "Failed to publish " <> formatted <> ": " <> error
-                  Cache.put _importCache (PublishFailure manifest.name manifest.version) error
+                -- Cache.put _importCache (PublishFailure manifest.name manifest.version) error
                 Right _ -> do
                   Log.info $ "Published " <> formatted
 
@@ -865,7 +856,7 @@ instance MemoryEncodable ImportCache where
     ImportManifest name (RawVersion version) next ->
       Exists.mkExists $ Key ("ImportManifest__" <> PackageName.print name <> "__" <> version) next
     PublishFailure name version next -> do
-      Exists.mkExists $ Key ("PublishFailureCache__" <> PackageName.print name <> "__" <> Version.print version) next
+      Exists.mkExists $ Key ("PublishFailure__" <> PackageName.print name <> "__" <> Version.print version) next
 
 instance FsEncodable ImportCache where
   encodeFs = case _ of
@@ -874,7 +865,7 @@ instance FsEncodable ImportCache where
       Exists.mkExists $ AsJson ("ImportManifest__" <> PackageName.print name <> "__" <> version) codec next
     PublishFailure name version next -> do
       let codec = CA.string
-      Exists.mkExists $ AsJson ("PublishFailureCache__" <> PackageName.print name <> "__" <> Version.print version) codec next
+      Exists.mkExists $ AsJson ("PublishFailure__" <> PackageName.print name <> "__" <> Version.print version) codec next
 
 type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)
 

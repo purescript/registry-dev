@@ -111,10 +111,11 @@ gitPull { address: { owner, repo }, pullMode } cwd = Except.runExcept do
         ]
       pure true
     Just files -> do
-      Log.debug $ Array.fold
-        [ "Some files are untracked or dirty in local checkout of " <> cwd <> ": "
-        , NonEmptyArray.foldMap1 (append "\n  - ") files
-        ]
+      -- FIXME
+      -- Log.debug $ Array.fold
+      --   [ "Some files are untracked or dirty in local checkout of " <> cwd <> ": "
+      --   , NonEmptyArray.foldMap1 (append "\n  - ") files
+      --   ]
       Log.warn $ Array.fold
         [ "Local checkout of " <> formatted
         , " has untracked or dirty files, it may not be safe to pull the latest."

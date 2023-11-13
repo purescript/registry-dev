@@ -384,13 +384,18 @@ publish payload = do
         , "All package sources must be in the `src` directory, with any additional "
         , "sources indicated by the `files` key in your manifest."
         ]
-    Just files -> do
+    Just files ->
+      -- The 'validatePursModules' function uses language-cst-parser, which only
+      -- supports syntax back to 0.14.0. We'll still try to validate the package
+      -- but it may fail to parse.
       Operation.Validation.validatePursModules files >>= case _ of
+        Left formattedError | payload.compiler < unsafeFromRight (Version.parse "0.14.0") -> do
+          Log.debug $ "Package failed to parse in validatePursModules: " <> formattedError
+          Log.debug $ "Skipping check because package is published with a pre-0.14.0 compiler (" <> Version.print payload.compiler <> ")."
         Left formattedError ->
           Except.throw $ Array.fold
             [ "This package has either malformed or disallowed PureScript module names "
-            , "in its `src` directory. All package sources must be in the `src` directory, "
-            , "with any additional sources indicated by the `files` key in your manifest."
+            , "in its source: "
             , formattedError
             ]
         Right _ ->
@@ -510,6 +515,12 @@ publish payload = do
       Right versions -> pure versions
 
     case Map.lookup manifest.version published of
+      Nothing | payload.compiler < unsafeFromRight (Version.parse "0.14.7") -> do
+        Comment.comment $ Array.fold
+          [ "This version has already been published to the registry, but the docs have not been "
+          , "uploaded to Pursuit. Unfortunately, it is not possible to publish to Pursuit via the "
+          , "registry using compiler versions prior to 0.14.7. Please try with a later compiler."
+          ]
       Nothing -> do
         Comment.comment $ Array.fold
           [ "This version has already been published to the registry, but the docs have not been "
@@ -523,7 +534,11 @@ publish payload = do
             Except.throw "Cannot publish to Pursuit because this package failed to compile."
           Right installedResolutions -> do
             Log.debug "Uploading to Pursuit"
-            publishToPursuit { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, installedResolutions }
+            publishToPursuit { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, installedResolutions } >>= case _ of
+              Left publishErr -> Except.throw publishErr
+              Right _ -> do
+                Log.debug "Package docs publish succeeded"
+                Comment.comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
       Just url -> do
         Except.throw $ String.joinWith "\n"
@@ -731,7 +746,8 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
   Comment.comment $ Array.fold
     [ "Verifying package compiles using compiler "
     , Version.print payload.compiler
-    , " and resolutions:\n\n```json"
+    , " and resolutions:\n"
+    , "```json\n"
     , printJson (Internal.Codec.packageMap Version.codec) verifiedResolutions
     , "\n```"
     ]
@@ -753,11 +769,23 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
   Log.debug "Adding the new version to the registry index"
   Registry.writeManifest (Manifest manifest)
 
-  Log.debug "Uploading package documentation to pursuit"
-  publishToPursuit { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, installedResolutions }
-
   Registry.mirrorLegacyRegistry payload.name newMetadata.location
   Comment.comment "Mirrored registry operation to the legacy registry!"
+
+  Log.debug "Uploading package documentation to Pursuit"
+  if payload.compiler >= unsafeFromRight (Version.parse "0.14.7") then
+    publishToPursuit { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, installedResolutions } >>= case _ of
+      Left publishErr -> do
+        Log.error publishErr
+        Comment.comment $ "Failed to publish package docs to Pursuit: " <> publishErr
+      Right _ ->
+        Comment.comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+  else do
+    Comment.comment $ Array.fold
+      [ "Skipping Pursuit publishing because this package was published with a pre-0.14.7 compiler ("
+      , Version.print payload.compiler
+      , "). If you want to publish documentation, please try again with a later compiler."
+      ]
 
   allMetadata <- Registry.readAllMetadata
   compatible <- case compatibleCompilers allMetadata verifiedResolutions of
@@ -944,10 +972,11 @@ findAllCompilers { source, compilers, installed } = do
   pure { failed: Map.fromFoldable results.fail, succeeded: Set.fromFoldable results.success }
 
 -- | Find the first compiler that can compile the package source code and
--- | installed resolutions from the given array of compilers.
+-- | installed resolutions from the given array of compilers. Begins with the
+-- | latest compiler and works backwards to older compilers.
 findFirstCompiler :: forall r. DiscoverCompilers -> Run (STORAGE + LOG + AFF + EFFECT + r) (Maybe Version)
 findFirstCompiler { source, compilers, installed } = do
-  search <- Except.runExcept $ for compilers \target -> do
+  search <- Except.runExcept $ for (Array.reverse (Array.sort compilers)) \target -> do
     Log.debug $ "Trying compiler " <> Version.print target
     workdir <- Tmp.mkTmpDir
     result <- Run.liftAff $ Purs.callCompiler
@@ -956,7 +985,7 @@ findFirstCompiler { source, compilers, installed } = do
       , cwd: Just workdir
       }
     FS.Extra.remove workdir
-    either (\_ -> Except.throw target) (\_ -> pure unit) result
+    for_ result (\_ -> Except.throw target)
   case search of
     Left found -> pure $ Just found
     Right _ -> pure Nothing
@@ -975,7 +1004,7 @@ printCompilerFailure compiler = case _ of
     , "```"
     ]
   UnknownError err -> String.joinWith "\n"
-    [ "Compilation failed due to a compiler error:"
+    [ "Compilation failed with version " <> Version.print compiler <> " because of an error :"
     , "```"
     , err
     , "```"
@@ -1034,12 +1063,13 @@ type PublishToPursuit =
 -- | Publishes a package to Pursuit.
 -- |
 -- | ASSUMPTIONS: This function should not be run on legacy packages or on
--- | packages where the `purescript-` prefix is still present.
+-- | packages where the `purescript-` prefix is still present. Cannot be used
+-- | on packages prior to 0.14.7.
 publishToPursuit
   :: forall r
    . PublishToPursuit
-  -> Run (PURSUIT + COMMENT + LOG + EXCEPT String + AFF + EFFECT + r) Unit
-publishToPursuit { source, compiler, resolutions, installedResolutions } = do
+  -> Run (PURSUIT + COMMENT + LOG + AFF + EFFECT + r) (Either String Unit)
+publishToPursuit { source, compiler, resolutions, installedResolutions } = Except.runExcept do
   Log.debug "Generating a resolutions file"
   tmp <- Tmp.mkTmpDir
 
@@ -1050,10 +1080,8 @@ publishToPursuit { source, compiler, resolutions, installedResolutions } = do
   Run.liftAff $ writeJsonFile pursuitResolutionsCodec resolutionsFilePath resolvedPaths
 
   -- The 'purs publish' command requires a clean working tree, but it isn't
-  -- guaranteed that packages have an adequate .gitignore file; compilers prior
-  -- to 0.14.7 did not ignore the purs.json file when publishing. So we stash
-  -- changes made during the publishing process (ie. inclusion of a new purs.json
-  -- file and an output directory from compilation) before calling purs publish.
+  -- guaranteed that packages have an adequate .gitignore file. So we stash
+  -- stash changes made during the publishing process before calling publish.
   -- https://git-scm.com/docs/gitignore
   Log.debug "Adding output and purs.json to local git excludes..."
   Run.liftAff $ FS.Aff.appendTextFile UTF8 (Path.concat [ source, ".git", "info", "exclude" ]) (String.joinWith "\n" [ "output", "purs.json" ])
@@ -1071,23 +1099,8 @@ publishToPursuit { source, compiler, resolutions, installedResolutions } = do
     }
 
   publishJson <- case compilerOutput of
-    Left MissingCompiler -> Except.throw $ Array.fold
-      [ "Publishing failed because the build plan compiler version "
-      , Version.print compiler
-      , " is not supported. Please try again with a different compiler."
-      ]
-    Left (CompilationError errs) -> Except.throw $ String.joinWith "\n"
-      [ "Publishing failed because the build plan does not compile with version " <> Version.print compiler <> " of the compiler:"
-      , "```"
-      , Purs.printCompilerErrors errs
-      , "```"
-      ]
-    Left (UnknownError err) -> Except.throw $ String.joinWith "\n"
-      [ "Publishing failed for your package due to an unknown compiler error:"
-      , "```"
-      , err
-      , "```"
-      ]
+    Left error ->
+      Except.throw $ printCompilerFailure compiler error
     Right publishResult -> do
       -- The output contains plenty of diagnostic lines, ie. "Compiling ..."
       -- but we only want the final JSON payload.
@@ -1109,7 +1122,7 @@ publishToPursuit { source, compiler, resolutions, installedResolutions } = do
     Left error ->
       Except.throw $ "Could not publish your package to Pursuit because an error was encountered (cc: @purescript/packaging): " <> error
     Right _ ->
-      Comment.comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+      pure unit
 
 type PursuitResolutions = Map RawPackageName { version :: Version, path :: FilePath }
 

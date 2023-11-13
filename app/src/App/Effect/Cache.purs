@@ -168,7 +168,7 @@ handleMemoryFs env = case _ of
           case inFs of
             Nothing -> pure $ reply Nothing
             Just entry -> do
-              Log.debug $ "Fell back to on-disk entry for " <> memory
+              -- Log.debug $ "Fell back to on-disk entry for " <> memory
               putMemoryImpl env.ref unit (Key memory (Const entry))
               pure $ reply $ Just $ unCache entry
         Just cached ->
@@ -227,7 +227,8 @@ getMemoryImpl ref (Key id (Reply reply)) = do
   cache <- Run.liftEffect $ Ref.read ref
   case Map.lookup id cache of
     Nothing -> do
-      Log.debug $ "No cache entry found for " <> id <> " in memory."
+      -- FIXME: Re-enable these (?)
+      -- Log.debug $ "No cache entry found for " <> id <> " in memory."
       pure $ reply Nothing
     Just cached -> do
       pure $ reply $ Just $ unCache cached
@@ -236,7 +237,7 @@ putMemoryImpl :: forall x r a. CacheRef -> a -> MemoryEncoding Const a x -> Run 
 putMemoryImpl ref next (Key id (Const value)) = do
   let (toCache :: x -> CacheValue) = unsafeCoerce
   Run.liftEffect $ Ref.modify_ (Map.insert id (toCache value)) ref
-  Log.debug $ "Wrote cache entry for " <> id <> " in memory."
+  -- Log.debug $ "Wrote cache entry for " <> id <> " in memory."
   pure next
 
 deleteMemoryImpl :: forall x r a. CacheRef -> MemoryEncoding Ignore a x -> Run (LOG + EFFECT + r) a
@@ -275,7 +276,7 @@ getFsImpl cacheDir = case _ of
     let path = Path.concat [ cacheDir, safePath id ]
     Run.liftAff (Aff.attempt (FS.Aff.readFile path)) >>= case _ of
       Left _ -> do
-        Log.debug $ "No cache found for " <> id <> " at path " <> path
+        -- Log.debug $ "No cache found for " <> id <> " at path " <> path
         pure $ reply Nothing
       Right buf -> do
         pure $ reply $ Just buf
@@ -284,7 +285,7 @@ getFsImpl cacheDir = case _ of
     let path = Path.concat [ cacheDir, safePath id ]
     Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 path)) >>= case _ of
       Left _ -> do
-        Log.debug $ "No cache file found for " <> id <> " at path " <> path
+        -- Log.debug $ "No cache file found for " <> id <> " at path " <> path
         pure $ reply Nothing
       Right content -> case Argonaut.Parser.jsonParser content of
         Left parseError -> do
@@ -307,7 +308,7 @@ putFsImpl cacheDir next = case _ of
         Log.warn $ "Failed to write cache entry for " <> id <> " at path " <> path <> " as a buffer: " <> Aff.message fsError
         pure next
       Right _ -> do
-        Log.debug $ "Wrote cache entry for " <> id <> " as a buffer at path " <> path
+        -- Log.debug $ "Wrote cache entry for " <> id <> " as a buffer at path " <> path
         pure next
 
   AsJson id codec (Const value) -> do
@@ -317,7 +318,7 @@ putFsImpl cacheDir next = case _ of
         Log.warn $ "Failed to write cache entry for " <> id <> " at path " <> path <> " as JSON: " <> Aff.message fsError
         pure next
       Right _ -> do
-        Log.debug $ "Wrote cache entry for " <> id <> " at path " <> path <> " as JSON."
+        -- Log.debug $ "Wrote cache entry for " <> id <> " at path " <> path <> " as JSON."
         pure next
 
 deleteFsImpl :: forall a b r. FilePath -> FsEncoding Ignore a b -> Run (LOG + AFF + r) a

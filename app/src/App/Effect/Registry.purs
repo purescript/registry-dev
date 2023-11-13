@@ -358,7 +358,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
 
         Just metadata -> do
           Log.debug $ "Successfully read metadata for " <> printedName <> " from path " <> path
-          Log.debug $ "Setting metadata cache to singleton entry (as cache was previosuly empty)."
+          Log.debug $ "Setting metadata cache to singleton entry (as cache was previously empty)."
           Cache.put _registryCache AllMetadata (Map.singleton name metadata)
           pure $ Just metadata
 
