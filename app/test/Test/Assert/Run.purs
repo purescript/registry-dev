@@ -166,7 +166,7 @@ handleRegistryMock env = case _ of
 
   WriteManifest manifest reply -> do
     index <- Run.liftEffect (Ref.read env.indexRef)
-    case ManifestIndex.insert manifest index of
+    case ManifestIndex.insert ManifestIndex.ConsiderRanges manifest index of
       Left err -> pure $ reply $ Left $ "Failed to insert manifest:\n" <> Utils.unsafeStringify manifest <> " due to an error:\n" <> Utils.unsafeStringify err
       Right index' -> do
         Run.liftEffect (Ref.write index' env.indexRef)
@@ -174,7 +174,7 @@ handleRegistryMock env = case _ of
 
   DeleteManifest name version reply -> do
     index <- Run.liftEffect (Ref.read env.indexRef)
-    case ManifestIndex.delete name version index of
+    case ManifestIndex.delete ManifestIndex.ConsiderRanges name version index of
       Left err -> pure $ reply $ Left $ "Failed to delete entry for :\n" <> Utils.formatPackageVersion name version <> " due to an error:\n" <> Utils.unsafeStringify err
       Right index' -> do
         Run.liftEffect (Ref.write index' env.indexRef)

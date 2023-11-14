@@ -44,7 +44,6 @@ package:
   test:
     main: Test.Registry
     dependencies:
-      - argonaut-core
       - exceptions
       - node-child-process
       - node-execa

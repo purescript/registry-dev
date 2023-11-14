@@ -97,7 +97,7 @@ convertedPackageSet =
     Left err -> unsafeCrashWith err
     Right value -> value
   where
-  index = unsafeFromRight $ ManifestIndex.fromSet $ Set.fromFoldable
+  index = unsafeFromRight $ ManifestIndex.fromSet ManifestIndex.ConsiderRanges $ Set.fromFoldable
     [ mkManifest assert [ console, effect, prelude ]
     , mkManifest console [ effect, prelude ]
     , mkManifest effect [ prelude ]

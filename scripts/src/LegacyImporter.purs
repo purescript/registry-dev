@@ -64,7 +64,6 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
-import Registry.App.Prelude as Either
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (Address, Tag)
 import Registry.Foreign.Octokit as Octokit
@@ -75,6 +74,7 @@ import Registry.Internal.Format as Internal.Format
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
+import Registry.Range as Range
 import Registry.Solver as Solver
 import Registry.Version as Version
 import Run (Run)
@@ -219,6 +219,15 @@ runLegacyImport logs = do
   Run.liftAff $ writePackageFailures importedIndex.failedPackages
   Run.liftAff $ writeVersionFailures importedIndex.failedVersions
 
+  let metadataPackage = unsafeFromRight (PackageName.parse "metadata")
+  Registry.readMetadata metadataPackage >>= case _ of
+    Nothing -> do
+      Log.info "Writing empty metadata file for the 'metadata' package"
+      let location = GitHub { owner: "purescript", repo: "purescript-metadata", subdir: Nothing }
+      let entry = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
+      Registry.writeMetadata metadataPackage entry
+    Just _ -> pure unit
+
   Log.info "Ready for upload!"
   Log.info $ formatImportStats $ calculateImportStats legacyRegistry importedIndex
 
@@ -243,7 +252,7 @@ runLegacyImport logs = do
         Just ref -> pure ref
       Log.debug $ "Solving dependencies for " <> formatted
       index <- Registry.readAllManifests
-      Log.debug $ "Read all manifests: " <> String.joinWith ", " (map (\(Manifest m) -> formatPackageVersion m.name m.version) $ ManifestIndex.toSortedArray ManifestIndex.IgnoreRanges index)
+      Log.debug $ "Read all manifests: " <> String.joinWith ", " (map (\(Manifest m) -> formatPackageVersion m.name m.version) $ ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges index)
       let solverIndex = map (map (_.dependencies <<< un Manifest)) $ ManifestIndex.toMap index
       case Solver.solve solverIndex manifest.dependencies of
         Left unsolvable -> do
@@ -251,7 +260,7 @@ runLegacyImport logs = do
           Log.warn $ "Could not solve " <> formatted <> Array.foldMap (append "\n") errors
           Cache.put _importCache (PublishFailure manifest.name manifest.version) (SolveFailed $ String.joinWith " " errors)
         Right resolutions -> do
-          Log.debug $ "Solved " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions
+          Log.debug $ "Solved " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions <> "\nfrom dependency list\n" <> printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
           Log.debug "Determining a compiler version suitable for publishing..."
           allMetadata <- Registry.readAllMetadata
           possibleCompilers <- case API.compatibleCompilers allMetadata resolutions of
@@ -316,7 +325,7 @@ runLegacyImport logs = do
         , "----------"
         ]
 
-      void $ for (Array.take 150 manifests) publishLegacyPackage
+      void $ for (Array.take 500 manifests) publishLegacyPackage
 
       Log.info "Finished publishing! Collecting all publish failures and writing to disk."
       let
@@ -388,11 +397,10 @@ importLegacyRegistry legacyRegistry = do
 
     -- A 'checked' index is one where we have verified that all dependencies
     -- are self-contained within the registry.
-    Tuple unsatisfied validIndex = ManifestIndex.maximalIndex validLegacyManifests
+    Tuple unsatisfied validIndex = ManifestIndex.maximalIndex ManifestIndex.ConsiderRanges validLegacyManifests
 
     -- The list of all packages that were present in the legacy registry files,
-    -- but which have no versions present in the fully-imported registry. These
-    -- packages still need to have empty metadata files written for them.
+    -- but which have no versions present in the fully-imported registry.
     reservedPackages :: Map PackageName Location
     reservedPackages =
       Map.fromFoldable $ Array.mapMaybe reserved $ Map.toUnfoldable legacyRegistry
@@ -472,6 +480,9 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
                     Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
                     Right result -> pure result
                 pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
+              case manifest of
+                Left err -> Log.info $ "Failed to build manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ": " <> printJson versionValidationErrorCodec err
+                Right val -> Log.info $ "Built manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ":\n" <> printJson Manifest.codec val
               Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) manifest
               exceptVersion manifest
             Just cached ->
@@ -514,7 +525,7 @@ compilerFailureMapCodec = do
     print = NonEmptyArray.intercalate "," <<< map Version.print
     parse input = do
       let versions = String.split (String.Pattern ",") input
-      let parsed = Array.mapMaybe (Either.hush <<< Version.parse) versions
+      let parsed = Array.mapMaybe (hush <<< Version.parse) versions
       NonEmptyArray.fromArray parsed
   Internal.Codec.strMap "CompilerFailureMap" parse print compilerFailureCodec
 
@@ -780,7 +791,7 @@ formatImportStats stats = String.joinWith "\n"
   , show stats.packagesProcessed <> " packages processed:"
   , indent $ show stats.packageResults.success <> " fully successful"
   , indent $ show stats.packageResults.partial <> " partially successful"
-  , indent $ show (stats.packageNamesReserved - stats.packageResults.fail) <> " reserved (no usable versions)"
+  , indent $ show (stats.packageNamesReserved - stats.packageResults.fail) <> " omitted (no usable versions)"
   , indent $ show stats.packageResults.fail <> " fully failed"
   , indent "---"
   , formatErrors stats.packageErrors

@@ -9,7 +9,6 @@ import Data.Codec.Argonaut.Record as CA.Record
 import Data.Codec.Argonaut.Variant as CA.Variant
 import Data.Either as Either
 import Data.Exists as Exists
-import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map (SemigroupMap(..))
 import Data.Map as Map
 import Data.Ord.Max (Max(..))
@@ -35,7 +34,7 @@ import Registry.App.Legacy.LenientRange as LenientRange
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
 import Registry.App.Legacy.Types (LegacyPackageSet(..), LegacyPackageSetEntry, LegacyPackageSetUnion, RawPackageName(..), RawVersion(..), RawVersionRange(..), legacyPackageSetCodec, legacyPackageSetUnionCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionRangeCodec)
-import Registry.Foreign.Octokit (Address, GitHubError)
+import Registry.Foreign.Octokit (Address, GitHubError(..))
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
 import Registry.License as License
@@ -137,21 +136,13 @@ fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestErr
               Left bowerError, Left _ -> Left bowerError
               Right bowerDeps, Left _ -> Right bowerDeps
               Left _, Right spagoDeps -> Right spagoDeps
-              Right bowerDeps, Right spagoDeps -> Right do
-                bowerDeps # mapWithIndex \package range ->
-                  case Map.lookup package spagoDeps of
-                    Nothing -> range
-                    Just spagoRange -> Range.union range spagoRange
+              Right bowerDeps, Right spagoDeps -> Right $ Map.unionWith Range.union bowerDeps spagoDeps
 
       unionPackageSets = case maybePackageSetDeps, unionManifests of
         Nothing, Left manifestError -> Left manifestError
         Nothing, Right manifestDeps -> Right manifestDeps
         Just packageSetDeps, Left _ -> Right packageSetDeps
-        Just packageSetDeps, Right manifestDeps -> Right do
-          packageSetDeps # mapWithIndex \package range ->
-            case Map.lookup package manifestDeps of
-              Nothing -> range
-              Just manifestRange -> Range.union range manifestRange
+        Just packageSetDeps, Right manifestDeps -> Right $ Map.unionWith Range.union manifestDeps packageSetDeps
 
     Run.Except.rethrowAt _legacyManifestError unionPackageSets
 
@@ -221,16 +212,22 @@ fetchLegacyManifestFiles
   :: forall r
    . Address
   -> RawVersion
-  -> Run (GITHUB + LOG + AFF + EFFECT + r) (Either LegacyManifestValidationError (These Bowerfile SpagoDhallJson))
+  -> Run (GITHUB + LOG + AFF + EFFECT + EXCEPT String + r) (Either LegacyManifestValidationError (These Bowerfile SpagoDhallJson))
 fetchLegacyManifestFiles address ref = do
   eitherBower <- fetchBowerfile address ref
-  void $ flip ltraverse eitherBower \error ->
-    Log.debug $ "Failed to fetch bowerfile: " <> Octokit.printGitHubError error
+  void $ flip ltraverse eitherBower case _ of
+    APIError { statusCode } | statusCode == 401 ->
+      Except.throw "Permission error on token used to fetch manifests!"
+    error ->
+      Log.debug $ "Failed to fetch bowerfile: " <> Octokit.printGitHubError error
   eitherSpago <- fetchSpagoDhallJson address ref
-  void $ flip ltraverse eitherSpago \error ->
-    Log.debug $ "Failed to fetch spago.dhall: " <> Octokit.printGitHubError error
+  void $ flip ltraverse eitherSpago case _ of
+    APIError { statusCode } | statusCode == 401 ->
+      Except.throw "Permission error on token used to fetch manifests!"
+    error ->
+      Log.debug $ "Failed to fetch spago.dhall: " <> Octokit.printGitHubError error
   pure $ case eitherBower, eitherSpago of
-    Left _, Left _ -> Left { error: NoManifests, reason: "No bower.json or spago.dhall files available." }
+    Left errL, Left errR -> Left { error: NoManifests, reason: "No bower.json or spago.dhall files available: " <> Octokit.printGitHubError errL <> ", " <> Octokit.printGitHubError errR }
     Right bower, Left _ -> Right $ This bower
     Left _, Right spago -> Right $ That spago
     Right bower, Right spago -> Right $ Both bower spago

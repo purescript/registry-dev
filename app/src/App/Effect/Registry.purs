@@ -251,7 +251,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
     let formatted = formatPackageVersion name version
     Log.info $ "Writing manifest for " <> formatted <> ":\n" <> printJson Manifest.codec manifest
     index <- Except.rethrow =<< handle env (ReadAllManifests identity)
-    case ManifestIndex.insert manifest index of
+    case ManifestIndex.insert ManifestIndex.ConsiderRanges manifest index of
       Left error ->
         Except.throw $ Array.fold
           [ "Can't insert " <> formatted <> " into manifest index because it has unsatisfied dependencies:"
@@ -274,7 +274,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
     let formatted = formatPackageVersion name version
     Log.info $ "Deleting manifest for " <> formatted
     index <- Except.rethrow =<< handle env (ReadAllManifests identity)
-    case ManifestIndex.delete name version index of
+    case ManifestIndex.delete ManifestIndex.ConsiderRanges name version index of
       Left error ->
         Except.throw $ Array.fold
           [ "Can't delete " <> formatted <> " from manifest index because it would produce unsatisfied dependencies:"
@@ -835,8 +835,9 @@ readManifestIndexFromDisk root = do
 
   entries <- map partitionEithers $ for packages.success (ManifestIndex.readEntryFile root)
   case entries.fail of
-    [] -> case ManifestIndex.fromSet $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray entries.success of
+    [] -> case ManifestIndex.fromSet ManifestIndex.ConsiderRanges $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray entries.success of
       Left errors -> do
+        Log.debug $ "Could not read a valid manifest index from entry files: " <> Array.foldMap (Array.foldMap (\(Manifest { name, version }) -> "\n  - " <> formatPackageVersion name version) <<< NonEmptyArray.toArray) entries.success
         Except.throw $ append "Unable to read manifest index (some packages are not satisfiable): " $ Array.foldMap (append "\n  - ") do
           Tuple name versions <- Map.toUnfoldable errors
           Tuple version dependency <- Map.toUnfoldable versions
