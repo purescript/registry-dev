@@ -3,6 +3,7 @@ module Test.Registry.App.API (spec) where
 import Registry.App.Prelude
 
 import Data.Array.NonEmpty as NonEmptyArray
+import Data.Codec.Argonaut as CA
 import Data.Foldable (traverse_)
 import Data.Map as Map
 import Data.Set as Set
@@ -75,8 +76,8 @@ spec = do
         metadata <- Registry.readAllMetadataFromDisk $ Path.concat [ "app", "fixtures", "registry", "metadata" ]
         let expected = map Utils.unsafeVersion [ "0.15.10", "0.15.12" ]
         case API.compatibleCompilers metadata (Map.singleton (Utils.unsafePackageName "prelude") (Utils.unsafeVersion "6.0.1")) of
-          Nothing -> Except.throw $ "Got no compatible compilers, but expected " <> Utils.unsafeStringify (map Version.print expected)
-          Just set -> do
+          Left failed -> Except.throw $ "Expected " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> printJson (CA.array API.groupedByCompilersCodec) failed
+          Right set -> do
             let actual = NonEmptySet.toUnfoldable set
             unless (actual == expected) do
               Except.throw $ "Expected " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print actual)
@@ -91,8 +92,8 @@ spec = do
             , Tuple "type-equality" "4.0.1"
             ]
         case API.compatibleCompilers metadata resolutions of
-          Nothing -> Except.throw $ "Got no compatible compilers, but expected " <> Utils.unsafeStringify (map Version.print expected)
-          Just set -> do
+          Left failed -> Except.throw $ "Expected " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> printJson (CA.array API.groupedByCompilersCodec) failed
+          Right set -> do
             let actual = NonEmptySet.toUnfoldable set
             unless (actual == expected) do
               Except.throw $ "Expected " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print actual)

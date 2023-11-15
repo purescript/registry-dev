@@ -11,6 +11,7 @@ module Registry.Test.Assert.Run
 import Registry.App.Prelude
 
 import Data.Array as Array
+import Data.Exists as Exists
 import Data.Foldable (class Foldable)
 import Data.Foldable as Foldable
 import Data.FunctorWithIndex (mapWithIndex)
@@ -24,6 +25,8 @@ import Effect.Ref as Ref
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.API.V1 (LogLevel)
+import Registry.App.API (COMPILER_CACHE)
+import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
@@ -85,6 +88,7 @@ type TEST_EFFECTS =
       + RESOURCE_ENV
       + GITHUB_CACHE
       + LEGACY_CACHE
+      + COMPILER_CACHE
       + COMMENT
       + LOG
       + EXCEPT String
@@ -120,6 +124,7 @@ runTestEffects env operation = do
     # Env.runPacchettiBottiEnv { publicKey: "Unimplemented", privateKey: "Unimplemented" }
     # Env.runResourceEnv resourceEnv
     -- Caches
+    # runCompilerCacheMock
     # runGitHubCacheMemory githubCache
     # runLegacyCacheMemory legacyCache
     -- Other effects
@@ -142,6 +147,22 @@ runLegacyCacheMemory = Cache.interpret Legacy.Manifest._legacyCache <<< Cache.ha
 
 runGitHubCacheMemory :: forall r a. CacheRef -> Run (GITHUB_CACHE + LOG + EFFECT + r) a -> Run (LOG + EFFECT + r) a
 runGitHubCacheMemory = Cache.interpret GitHub._githubCache <<< Cache.handleMemory
+
+runCompilerCacheMock :: forall r a. Run (COMPILER_CACHE + LOG + r) a -> Run (LOG + r) a
+runCompilerCacheMock = Cache.interpret API._compilerCache case _ of
+  Cache.Get key -> Exists.runExists getImpl (Cache.encodeFs key)
+  Cache.Put _ next -> pure next
+  Cache.Delete key -> Exists.runExists deleteImpl (Cache.encodeFs key)
+  where
+  getImpl :: forall x z. Cache.FsEncoding Cache.Reply x z -> Run _ x
+  getImpl = case _ of
+    Cache.AsBuffer _ (Cache.Reply reply) -> pure $ reply Nothing
+    Cache.AsJson _ _ (Cache.Reply reply) -> pure $ reply Nothing
+
+  deleteImpl :: forall x z. Cache.FsEncoding Cache.Ignore x z -> Run _ x
+  deleteImpl = case _ of
+    Cache.AsBuffer _ (Cache.Ignore next) -> pure next
+    Cache.AsJson _ _ (Cache.Ignore next) -> pure next
 
 handlePursuitMock :: forall r a. Ref (Map PackageName Metadata) -> Pursuit a -> Run (EFFECT + r) a
 handlePursuitMock metadataRef = case _ of

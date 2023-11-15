@@ -28,6 +28,7 @@ import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
 import Parsing as Parsing
+import Registry.App.API (_compilerCache)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
@@ -148,6 +149,7 @@ main = launchAff_ do
     # runAppEffects
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
+    # Cache.interpret _compilerCache (Cache.handleFs cache)
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Comment.interpret Comment.handleLog
     # Env.runResourceEnv resourceEnv

@@ -101,6 +101,7 @@ main = launchAff_ $ do
       # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache, ref: githubCacheRef })
       -- Caching & logging
       # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
+      # Cache.interpret API._compilerCache (Cache.handleFs cache)
       # Except.catch (\msg -> Log.error msg *> Comment.comment msg *> Run.liftEffect (Ref.write true thrownRef))
       # Comment.interpret (Comment.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Registry.defaultRepos.registry })
       # Log.interpret (Log.handleTerminal Verbose)

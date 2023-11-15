@@ -1,13 +1,18 @@
 module Registry.App.API
   ( AuthenticatedEffects
+  , COMPILER_CACHE
+  , CompilerCache
+  , GroupedByCompilers
   , PackageSetUpdateEffects
   , PublishEffects
+  , _compilerCache
   , authenticated
   , compatibleCompilers
   , copyPackageSourceFiles
   , findAllCompilers
   , findFirstCompiler
   , formatPursuitResolutions
+  , groupedByCompilersCodec
   , installBuildPlan
   , packageSetUpdate
   , packagingTeam
@@ -23,10 +28,13 @@ import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.DateTime (DateTime)
+import Data.Exists as Exists
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
+import Data.Function (on)
 import Data.Map as Map
 import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
@@ -40,6 +48,7 @@ import Data.String.NonEmpty.Internal (toString) as NonEmptyString
 import Data.String.Regex as Regex
 import Effect.Aff as Aff
 import Effect.Ref as Ref
+import Effect.Unsafe (unsafePerformEffect)
 import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
@@ -50,10 +59,12 @@ import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Registry.App.Auth as Auth
-import Registry.App.CLI.Purs (CompilerFailure(..))
+import Registry.App.CLI.Purs (CompilerFailure(..), compilerFailureCodec)
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.CLI.Tar as Tar
+import Registry.App.Effect.Cache (class FsEncodable, Cache)
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Comment (COMMENT)
 import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV, RESOURCE_ENV)
@@ -82,6 +93,7 @@ import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (IssueNumber(..), Team)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
+import Registry.Internal.Codec (versionMap)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Path as Internal.Path
 import Registry.Location as Location
@@ -321,7 +333,7 @@ authenticated auth = case auth.payload of
         Registry.mirrorLegacyRegistry payload.name payload.newLocation
         Comment.comment "Mirrored registry operation to the legacy registry."
 
-type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT + r)
+type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + COMPILER_CACHE + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Publish a package via the 'publish' operation. If the package has not been
 -- | published before then it will be registered and the given version will be
@@ -386,7 +398,7 @@ publish payload = do
         ]
     Just files ->
       -- The 'validatePursModules' function uses language-cst-parser, which only
-      -- supports syntax back to 0.14.0. We'll still try to validate the package
+      -- supports syntax back to 0.15.0. We'll still try to validate the package
       -- but it may fail to parse.
       Operation.Validation.validatePursModules files >>= case _ of
         Left formattedError | payload.compiler < unsafeFromRight (Version.parse "0.15.0") -> do
@@ -787,14 +799,21 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
 
   allMetadata <- Registry.readAllMetadata
   compatible <- case compatibleCompilers allMetadata verifiedResolutions of
-    Nothing | Map.isEmpty verifiedResolutions -> do
-      Log.debug "No dependencies, so all compilers are potentially compatible."
+    Left [] -> do
+      Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
       allCompilers <- PursVersions.pursVersions
       pure $ NonEmptySet.fromFoldable1 allCompilers
-    Nothing -> do
-      let msg = "Dependencies admit no overlapping compiler versions! This should not be possible. Resolutions: " <> printJson (Internal.Codec.packageMap Version.codec) verifiedResolutions
-      Log.error msg *> Except.throw msg
-    Just result -> pure result
+    Left errors -> do
+      let
+        printError { packages, compilers } = do
+          let key = String.joinWith ", " $ foldlWithIndex (\name prev version -> Array.cons (formatPackageVersion name version) prev) [] packages
+          let val = String.joinWith ", " $ map Version.print $ NonEmptySet.toUnfoldable compilers
+          key <> " support compilers " <> val
+      Except.throw $ Array.fold
+        [ "Dependencies admit no overlapping compiler versions, so your package cannot be compiled:\n"
+        , Array.foldMap (append "\n  - " <<< printError) errors
+        ]
+    Right result -> pure result
 
   Comment.comment $ Array.fold
     [ "The following compilers are compatible with this package according to its dependency resolutions: "
@@ -802,11 +821,23 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
     , ". Computing the list of compilers usable with your package version..."
     ]
 
-  { failed: invalidCompilers, succeeded: validCompilers } <- findAllCompilers
-    { source: packageDirectory
-    , installed: installedResolutions
-    , compilers: Array.fromFoldable $ NonEmptySet.filter (notEq payload.compiler) compatible
-    }
+  let tryCompilers = Array.fromFoldable $ NonEmptySet.filter (notEq payload.compiler) compatible
+  { failed: invalidCompilers, succeeded: validCompilers } <- case NonEmptyArray.fromArray tryCompilers of
+    Nothing -> pure { failed: Map.empty, succeeded: Set.empty }
+    Just try -> Cache.get _compilerCache (Compilation (Manifest manifest) verifiedResolutions try) >>= case _ of
+      Nothing -> do
+        intermediate <- findAllCompilers
+          { source: packageDirectory
+          , installed: installedResolutions
+          , compilers: tryCompilers
+          }
+        -- We need to insert the payload compiler, which we previously omitted
+        -- from the list of compilers to try for efficiency's sake.
+        let result = intermediate { succeeded = Set.insert payload.compiler intermediate.succeeded }
+        Cache.put _compilerCache (Compilation (Manifest manifest) verifiedResolutions try) result
+        pure result
+      Just cached ->
+        pure cached
 
   unless (Map.isEmpty invalidCompilers) do
     Log.debug $ "Some compilers failed: " <> String.joinWith ", " (map Version.print (Set.toUnfoldable (Map.keys invalidCompilers)))
@@ -814,7 +845,7 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
   let
     allVerified = case NonEmptySet.fromFoldable validCompilers of
       Nothing -> NonEmptyArray.singleton payload.compiler
-      Just verified -> NonEmptyArray.fromFoldable1 $ NonEmptySet.insert payload.compiler verified
+      Just verified -> NonEmptyArray.fromFoldable1 verified
 
   Comment.comment $ "Found compatible compilers: " <> String.joinWith ", " (map (\v -> "`" <> Version.print v <> "`") (NonEmptyArray.toArray allVerified))
   let compilersMetadata = newMetadata { published = Map.update (Just <<< (_ { compilers = Right allVerified })) manifest.version newMetadata.published }
@@ -822,6 +853,8 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
   Log.debug $ "Wrote new metadata " <> printJson Metadata.codec (Metadata compilersMetadata)
 
   Comment.comment "Wrote completed metadata to the registry!"
+  FS.Extra.remove tmp
+  FS.Extra.remove packageDirectory
 
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the
@@ -925,25 +958,56 @@ compilePackage { source, compiler, resolutions } = Except.runExcept do
     Left err -> Except.throw $ printCompilerFailure compiler err
     Right _ -> pure tmp
 
+type GroupedByCompilers =
+  { packages :: Map PackageName Version
+  , compilers :: NonEmptySet Version
+  }
+
+groupedByCompilersCodec :: JsonCodec GroupedByCompilers
+groupedByCompilersCodec = CA.Record.object "GroupedByCompilers"
+  { compilers: CA.Common.nonEmptySet Version.codec
+  , packages: Internal.Codec.packageMap Version.codec
+  }
+
 -- | Given a set of package versions, determine the set of compilers that can be
 -- | used for all packages.
-compatibleCompilers :: Map PackageName Metadata -> Map PackageName Version -> Maybe (NonEmptySet Version)
+compatibleCompilers :: Map PackageName Metadata -> Map PackageName Version -> Either (Array GroupedByCompilers) (NonEmptySet Version)
 compatibleCompilers allMetadata resolutions = do
   let
-    associated :: Array (NonEmptyArray Version)
+    associated :: Array { name :: PackageName, version :: Version, compilers :: NonEmptyArray Version }
     associated = Map.toUnfoldableUnordered resolutions # Array.mapMaybe \(Tuple name version) -> do
       Metadata metadata <- Map.lookup name allMetadata
       published <- Map.lookup version metadata.published
       case published.compilers of
         Left _ -> Nothing
-        Right all -> Just all
+        Right compilers -> Just { name, version, compilers: compilers }
 
-  Array.uncons associated >>= case _ of
-    { head, tail: [] } ->
-      pure $ NonEmptySet.fromFoldable1 head
-    { head, tail } -> do
-      let foldFn prev = Set.intersection prev <<< Set.fromFoldable
-      NonEmptySet.fromFoldable $ Array.foldl foldFn (Set.fromFoldable head) tail
+  case Array.uncons associated of
+    Nothing ->
+      Left []
+    Just { head, tail: [] } ->
+      Right $ NonEmptySet.fromFoldable1 head.compilers
+    Just { head, tail } -> do
+      let foldFn prev = Set.intersection prev <<< Set.fromFoldable <<< _.compilers
+      case NonEmptySet.fromFoldable $ Array.foldl foldFn (Set.fromFoldable head.compilers) tail of
+        -- An empty intersection means there are no shared compilers among the
+        -- resolved dependencies.
+        Nothing -> do
+          let
+            grouped :: Array (NonEmptyArray { name :: PackageName, version :: Version, compilers :: NonEmptyArray Version })
+            grouped = Array.groupAllBy (compare `on` _.compilers) (Array.cons head tail)
+
+            collect :: NonEmptyArray { name :: PackageName, version :: Version, compilers :: NonEmptyArray Version } -> GroupedByCompilers
+            collect vals =
+              { packages: Map.fromFoldable (map (\{ name, version } -> Tuple name version) vals)
+              -- We've already grouped by compilers, so those must all be equal
+              -- and we can take just the first value.
+              , compilers: NonEmptySet.fromFoldable1 (NonEmptyArray.head vals).compilers
+              }
+          Left $ Array.foldl (\prev -> Array.snoc prev <<< collect) [] grouped
+
+        Just set ->
+          Right set
 
 type DiscoverCompilers =
   { compilers :: Array Version
@@ -951,9 +1015,14 @@ type DiscoverCompilers =
   , installed :: FilePath
   }
 
+type FindAllCompilersResult =
+  { failed :: Map Version CompilerFailure
+  , succeeded :: Set Version
+  }
+
 -- | Find all compilers that can compile the package source code and installed
 -- | resolutions from the given array of compilers.
-findAllCompilers :: forall r. DiscoverCompilers -> Run (STORAGE + LOG + AFF + EFFECT + r) { failed :: Map Version CompilerFailure, succeeded :: Set Version }
+findAllCompilers :: forall r. DiscoverCompilers -> Run (STORAGE + LOG + AFF + EFFECT + r) FindAllCompilersResult
 findAllCompilers { source, compilers, installed } = do
   checkedCompilers <- for compilers \target -> do
     Log.debug $ "Trying compiler " <> Version.print target
@@ -1121,7 +1190,7 @@ publishToPursuit { source, compiler, resolutions, installedResolutions } = Excep
     Left error ->
       Except.throw $ "Could not publish your package to Pursuit because an error was encountered (cc: @purescript/packaging): " <> error
     Right _ ->
-      pure unit
+      FS.Extra.remove tmp
 
 type PursuitResolutions = Map RawPackageName { version :: Version, path :: FilePath }
 
@@ -1273,3 +1342,33 @@ spagoToManifest config = do
     , includeFiles
     , excludeFiles
     }
+
+type COMPILER_CACHE r = (compilerCache :: Cache CompilerCache | r)
+
+_compilerCache :: Proxy "compilerCache"
+_compilerCache = Proxy
+
+data CompilerCache :: (Type -> Type -> Type) -> Type -> Type
+data CompilerCache c a = Compilation Manifest (Map PackageName Version) (NonEmptyArray Version) (c FindAllCompilersResult a)
+
+instance Functor2 c => Functor (CompilerCache c) where
+  map k (Compilation manifest resolutions compilers a) = Compilation manifest resolutions compilers (map2 k a)
+
+instance FsEncodable CompilerCache where
+  encodeFs = case _ of
+    Compilation (Manifest manifest) resolutions compilers next -> do
+      let
+        baseKey = "Compilation__" <> PackageName.print manifest.name <> "__" <> Version.print manifest.version <> "__"
+        hashKey = do
+          let resolutions' = foldlWithIndex (\name prev version -> formatPackageVersion name version <> prev) "" resolutions
+          let compilers' = NonEmptyArray.foldMap1 Version.print compilers
+          unsafePerformEffect $ Sha256.hashString $ resolutions' <> compilers'
+        cacheKey = baseKey <> Sha256.print hashKey
+
+      let
+        codec = CA.Record.object "FindAllCompilersResult"
+          { failed: versionMap compilerFailureCodec
+          , succeeded: CA.Common.set Version.codec
+          }
+
+      Exists.mkExists $ Cache.AsJson cacheKey codec next

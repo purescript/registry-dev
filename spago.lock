@@ -153,7 +153,6 @@ workspace:
         - transformers
         - tuples
       test_dependencies:
-        - debug
         - exceptions
         - node-child-process
         - node-execa

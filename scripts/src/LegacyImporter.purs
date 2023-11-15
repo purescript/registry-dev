@@ -44,6 +44,7 @@ import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
+import Registry.App.API (GroupedByCompilers, _compilerCache)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.CLI.Purs (CompilerFailure, compilerFailureCodec)
@@ -177,6 +178,7 @@ main = launchAff_ do
     # runAppEffects
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
+    # Cache.interpret _compilerCache (Cache.handleFs cache)
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
@@ -267,13 +269,22 @@ runLegacyImport logs = do
           Log.debug "Determining a compiler version suitable for publishing..."
           allMetadata <- Registry.readAllMetadata
           possibleCompilers <- case API.compatibleCompilers allMetadata resolutions of
-            Nothing | Map.isEmpty resolutions -> do
-              Log.debug "No resolutions, so all compilers could be compatible."
+            Left [] -> do
+              Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
               allCompilers <- PursVersions.pursVersions
               pure $ NonEmptySet.fromFoldable1 allCompilers
-            Nothing ->
-              Except.throw "No overlapping compilers found in dependencies; this should not happen!"
-            Just compilers -> do
+            Left errors -> do
+              let
+                printError { packages, compilers } = do
+                  let key = String.joinWith ", " $ foldlWithIndex (\name prev version -> Array.cons (formatPackageVersion name version) prev) [] packages
+                  let val = String.joinWith ", " $ map Version.print $ NonEmptySet.toUnfoldable compilers
+                  key <> " support compilers " <> val
+              Cache.put _importCache (PublishFailure manifest.name manifest.version) (UnsolvableDependencyCompilers errors)
+              Except.throw $ Array.fold
+                [ "Dependencies admit no overlapping compiler versions so your package cannot be compiled:\n"
+                , Array.foldMap (append "\n  - " <<< printError) errors
+                ]
+            Right compilers -> do
               Log.debug $ "Compatible compilers for dependencies of " <> formatted <> ": " <> stringifyJson (CA.array Version.codec) (NonEmptySet.toUnfoldable compilers)
               pure compilers
           Log.debug "Fetching source and installing dependencies to test compilers"
@@ -328,7 +339,7 @@ runLegacyImport logs = do
         , "----------"
         ]
 
-      void $ for (Array.take 500 manifests) publishLegacyPackage
+      void $ for (Array.take 1000 manifests) publishLegacyPackage
 
       Log.info "Finished publishing! Collecting all publish failures and writing to disk."
       let
@@ -505,7 +516,11 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
 
   pure $ Map.fromFoldable manifests
 
-data PublishError = SolveFailed String | NoCompilersFound (Map (NonEmptyArray Version) CompilerFailure) | PublishError String
+data PublishError
+  = SolveFailed String
+  | NoCompilersFound (Map (NonEmptyArray Version) CompilerFailure)
+  | UnsolvableDependencyCompilers (Array GroupedByCompilers)
+  | PublishError String
 
 derive instance Eq PublishError
 
@@ -513,17 +528,20 @@ publishErrorCodec :: JsonCodec PublishError
 publishErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
   { solveFailed: Right CA.string
   , noCompilersFound: Right compilerFailureMapCodec
+  , unsolvableDependencyCompilers: Right (CA.array API.groupedByCompilersCodec)
   , publishError: Right CA.string
   }
   where
   toVariant = case _ of
     SolveFailed error -> Variant.inj (Proxy :: _ "solveFailed") error
     NoCompilersFound failed -> Variant.inj (Proxy :: _ "noCompilersFound") failed
+    UnsolvableDependencyCompilers group -> Variant.inj (Proxy :: _ "unsolvableDependencyCompilers") group
     PublishError error -> Variant.inj (Proxy :: _ "publishError") error
 
   fromVariant = Variant.match
     { solveFailed: SolveFailed
     , noCompilersFound: NoCompilersFound
+    , unsolvableDependencyCompilers: UnsolvableDependencyCompilers
     , publishError: PublishError
     }
 
@@ -780,6 +798,8 @@ formatPublishError = case _ of
     { tag: "SolveFailed", value: Nothing, reason: error }
   NoCompilersFound versions ->
     { tag: "NoCompilersFound", value: Just (CA.encode compilerFailureMapCodec versions), reason: "No valid compilers found for publishing." }
+  UnsolvableDependencyCompilers failed ->
+    { tag: "UnsolvableDependencyCompilers", value: Just (CA.encode (CA.array API.groupedByCompilersCodec) failed), reason: "Resolved dependencies cannot compile together" }
   PublishError error ->
     { tag: "PublishError", value: Nothing, reason: error }
 
@@ -934,6 +954,11 @@ fetchSpagoYaml address ref = do
             Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
             pure $ Just manifest
 
+type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)
+
+_importCache :: Proxy "importCache"
+_importCache = Proxy
+
 -- | A key type for the storage cache. Only supports packages identified by
 -- | their name and version.
 data ImportCache :: (Type -> Type -> Type) -> Type -> Type
@@ -960,8 +985,3 @@ instance FsEncodable ImportCache where
     PublishFailure name version next -> do
       let codec = publishErrorCodec
       Exists.mkExists $ AsJson ("PublishFailure__" <> PackageName.print name <> "__" <> Version.print version) codec next
-
-type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)
-
-_importCache :: Proxy "importCache"
-_importCache = Proxy

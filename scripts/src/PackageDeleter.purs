@@ -16,6 +16,7 @@ import Effect.Class.Console (log)
 import Effect.Class.Console as Console
 import Node.Path as Path
 import Node.Process as Process
+import Registry.App.API (_compilerCache)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
@@ -156,6 +157,7 @@ main = launchAff_ do
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
         >>> Pursuit.interpret Pursuit.handlePure
         >>> Cache.interpret _legacyCache (Cache.handleMemoryFs { ref: legacyCacheRef, cache })
+        >>> Cache.interpret _compilerCache (Cache.handleFs cache)
         >>> Comment.interpret Comment.handleLog
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
         >>> Env.runResourceEnv resourceEnv
