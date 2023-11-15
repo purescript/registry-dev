@@ -14,6 +14,7 @@ module Registry.App.API
   , parseInstalledModulePath
   , publish
   , removeIgnoredTarballFiles
+  , spagoToManifest
   ) where
 
 import Registry.App.Prelude
@@ -104,8 +105,7 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 import Spago.Core.Config as Spago.Config
-import Spago.Core.Prelude as Spago.Prelude
-import Spago.Log as Spago.Log
+import Spago.FS as Spago.FS
 
 type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + COMMENT + LOG + EXCEPT String + r)
 
@@ -429,16 +429,14 @@ publish payload = do
 
     else if hasSpagoYaml then do
       Comment.comment $ "Package source does not have a purs.json file, creating one from your spago.yaml file..."
-      -- Need to make a Spago log env first, disable the logging
-      let spagoEnv = { logOptions: { color: false, verbosity: Spago.Log.LogQuiet } }
-      Spago.Prelude.runSpago spagoEnv (Spago.Config.readConfig packageSpagoYaml) >>= case _ of
-        Left readErr -> Except.throw $ String.joinWith "\n"
+      Run.liftAff (Spago.FS.readYamlDocFile Spago.Config.configCodec packageSpagoYaml) >>= case _ of
+        Left readError -> Except.throw $ String.joinWith "\n"
           [ "Could not publish your package - a spago.yaml was present, but it was not possible to read it:"
-          , readErr
+          , readError
           ]
         Right { yaml: config } -> do
           -- Once we have the config we are still not entirely sure it fits into a Manifest
-          -- E.g. need to make sure all the ranges are present
+          -- e.g. need to make sure all the ranges are present
           case spagoToManifest config of
             Left err -> Except.throw $ String.joinWith "\n"
               [ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:"

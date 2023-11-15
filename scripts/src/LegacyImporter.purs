@@ -54,6 +54,7 @@ import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
+import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
@@ -82,6 +83,8 @@ import Run as Run
 import Run.Except (EXCEPT, Except)
 import Run.Except as Except
 import Run.Except as Run.Except
+import Spago.Core.Config as Spago.Config
+import Spago.Yaml as Yaml
 import Type.Proxy (Proxy(..))
 
 data ImportMode = DryRun | GenerateRegistry | UpdateRegistry
@@ -469,27 +472,32 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
       -- one we compare it to the existing entry, failing if there is a
       -- difference; if we can't, we warn and fall back to the existing entry.
       Registry.readManifest package.name (LenientVersion.version version) >>= case _ of
-        Nothing -> do
-          Cache.get _importCache (ImportManifest package.name (RawVersion tag.name)) >>= case _ of
-            Nothing -> do
-              Log.debug $ "Building manifest in legacy import because it was not found in cache: " <> formatPackageVersion package.name (LenientVersion.version version)
-              manifest <- Run.Except.runExceptAt _exceptVersion do
-                exceptVersion $ validateVersionDisabled package.name version
-                legacyManifest <- do
-                  Legacy.Manifest.fetchLegacyManifest package.name package.address (RawVersion tag.name) >>= case _ of
-                    Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
-                    Right result -> pure result
-                pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
-              case manifest of
-                Left err -> Log.info $ "Failed to build manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ": " <> printJson versionValidationErrorCodec err
-                Right val -> Log.info $ "Built manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ":\n" <> printJson Manifest.codec val
-              Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) manifest
-              exceptVersion manifest
-            Just cached ->
-              exceptVersion cached
-
-        Just manifest ->
-          exceptVersion $ Right manifest
+        Just manifest -> pure manifest
+        Nothing -> Cache.get _importCache (ImportManifest package.name (RawVersion tag.name)) >>= case _ of
+          Just cached -> exceptVersion cached
+          Nothing -> do
+            -- While technically not 'legacy', we do need to handle packages with
+            -- spago.yaml files because they've begun to pop up since the registry
+            -- alpha began and we don't want to drop them when doing a re-import.
+            fetchSpagoYaml package.address (RawVersion tag.name) >>= case _ of
+              Just manifest -> do
+                Log.debug $ "Built manifest from discovered spago.yaml file."
+                Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) (Right manifest)
+                pure manifest
+              Nothing -> do
+                Log.debug $ "Building manifest in legacy import because there is no registry entry, spago.yaml, or cached result: " <> formatPackageVersion package.name (LenientVersion.version version)
+                manifest <- Run.Except.runExceptAt _exceptVersion do
+                  exceptVersion $ validateVersionDisabled package.name version
+                  legacyManifest <- do
+                    Legacy.Manifest.fetchLegacyManifest package.name package.address (RawVersion tag.name) >>= case _ of
+                      Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
+                      Right result -> pure result
+                  pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
+                case manifest of
+                  Left err -> Log.info $ "Failed to build manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ": " <> printJson versionValidationErrorCodec err
+                  Right val -> Log.info $ "Built manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ":\n" <> printJson Manifest.codec val
+                Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) manifest
+                exceptVersion manifest
 
   manifests <- for package.tags \tag -> do
     manifest <- buildManifestForVersion tag
@@ -906,6 +914,25 @@ legacyRepoParser = do
   let repo = fromMaybe repoWithSuffix (String.stripSuffix (String.Pattern ".git") repoWithSuffix)
 
   pure { owner, repo }
+
+fetchSpagoYaml :: forall r. Address -> RawVersion -> Run (GITHUB + LOG + EXCEPT String + r) (Maybe Manifest)
+fetchSpagoYaml address ref = do
+  eitherSpagoYaml <- GitHub.getContent address ref "spago.yaml"
+  case eitherSpagoYaml of
+    Left err -> do
+      Log.debug $ "No spago.yaml found: " <> Octokit.printGitHubError err
+      pure Nothing
+    Right file -> do
+      Log.debug $ "Found spago.yaml file\n" <> file
+      case Yaml.parseYamlDoc Spago.Config.configCodec file of
+        Left error -> Except.throw $ "Failed to parse spago.yaml file:\n" <> file <> "\nwith errors:\n" <> CA.printJsonDecodeError error
+        Right { yaml: parsed } -> case API.spagoToManifest parsed of
+          Left err -> do
+            Log.warn $ "Failed to convert parsed spago.yaml file to purs.json " <> file <> "\nwith errors:\n" <> err
+            pure Nothing
+          Right manifest -> do
+            Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
+            pure $ Just manifest
 
 -- | A key type for the storage cache. Only supports packages identified by
 -- | their name and version.
