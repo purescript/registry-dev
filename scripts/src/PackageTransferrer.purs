@@ -123,25 +123,21 @@ transferPackage rawPackageName newLocation = do
     Left _ -> Except.throw $ "Could not transfer " <> rawPackageName <> " because it is not a valid package name."
     Right value -> pure value
 
-  allMetadata <- Registry.readAllMetadata
-  if not (Operation.Validation.locationIsUnique newLocation allMetadata) then
-    Log.error "Cannot transfer package because the new location is already in use."
-  else do
-    let
-      payload = { name, newLocation }
-      rawPayload = stringifyJson Operation.transferCodec payload
+  let
+    payload = { name, newLocation }
+    rawPayload = stringifyJson Operation.transferCodec payload
 
-    { privateKey } <- Env.askPacchettiBotti
+  { privateKey } <- Env.askPacchettiBotti
 
-    signature <- case Auth.signPayload { privateKey, rawPayload } of
-      Left _ -> Except.throw "Error signing transfer."
-      Right signature -> pure signature
+  signature <- case Auth.signPayload { privateKey, rawPayload } of
+    Left _ -> Except.throw "Error signing transfer."
+    Right signature -> pure signature
 
-    API.authenticated
-      { payload: Transfer payload
-      , rawPayload
-      , signature
-      }
+  API.authenticated
+    { payload: Transfer payload
+    , rawPayload
+    , signature
+    }
 
 type PackageLocations =
   { metadataLocation :: Location
@@ -156,13 +152,18 @@ packageLocationsCodec = CA.Record.object "PackageLocations"
 
 latestLocations :: forall r. Map String String -> Run (REGISTRY + GITHUB + LOG + EXCEPT String + r) (Map String (Maybe PackageLocations))
 latestLocations packages = forWithIndex packages \package location -> do
+  allMetadata <- Registry.readAllMetadata
   let rawName = RawPackageName (stripPureScriptPrefix package)
   Run.Except.runExceptAt LegacyImporter._exceptPackage (LegacyImporter.validatePackage rawName location) >>= case _ of
-    Left { error: LegacyImporter.PackageURLRedirects { received, registered } } ->
-      pure $ Just
-        { metadataLocation: GitHub { owner: registered.owner, repo: registered.repo, subdir: Nothing }
-        , tagLocation: GitHub { owner: received.owner, repo: received.repo, subdir: Nothing }
-        }
+    Left { error: LegacyImporter.PackageURLRedirects { received, registered } } -> do
+      let newLocation = GitHub { owner: received.owner, repo: received.repo, subdir: Nothing }
+      if Operation.Validation.locationIsUnique newLocation allMetadata then
+        pure $ Just
+          { metadataLocation: GitHub { owner: registered.owner, repo: registered.repo, subdir: Nothing }
+          , tagLocation: newLocation
+          }
+      else
+        pure Nothing
     Left _ -> pure Nothing
     Right packageResult | Array.null packageResult.tags -> pure Nothing
     Right packageResult -> do
