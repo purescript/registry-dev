@@ -2,16 +2,13 @@ module Registry.App.API
   ( AuthenticatedEffects
   , COMPILER_CACHE
   , CompilerCache
-  , GroupedByCompilers
   , PackageSetUpdateEffects
   , PublishEffects
   , _compilerCache
   , authenticated
-  , compatibleCompilers
   , copyPackageSourceFiles
   , findAllCompilers
   , formatPursuitResolutions
-  , groupedByCompilersCodec
   , installBuildPlan
   , packageSetUpdate
   , packagingTeam
@@ -34,12 +31,10 @@ import Data.DateTime (DateTime)
 import Data.Exists as Exists
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
-import Data.Function (on)
 import Data.Map as Map
 import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
 import Data.Set as Set
-import Data.Set.NonEmpty (NonEmptySet)
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
@@ -797,42 +792,16 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
       , "). If you want to publish documentation, please try again with a later compiler."
       ]
 
-  allMetadata <- Registry.readAllMetadata
-  compatible <- case compatibleCompilers allMetadata verifiedResolutions of
-    Left [] -> do
-      Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
-      allCompilers <- PursVersions.pursVersions
-      pure $ NonEmptySet.fromFoldable1 allCompilers
-    Left errors -> do
-      let
-        printError { packages, compilers } = do
-          let key = String.joinWith ", " $ foldlWithIndex (\name prev version -> Array.cons (formatPackageVersion name version) prev) [] packages
-          let val = String.joinWith ", " $ map Version.print $ NonEmptySet.toUnfoldable compilers
-          key <> " support compilers " <> val
-      Except.throw $ Array.fold
-        [ "Dependencies admit no overlapping compiler versions, so your package cannot be compiled:\n"
-        , Array.foldMap (append "\n  - " <<< printError) errors
-        ]
-    Right result -> pure result
-
-  Comment.comment $ Array.fold
-    [ "The following compilers are compatible with this package according to its dependency resolutions: "
-    , String.joinWith ", " (map (\v -> "`" <> Version.print v <> "`") $ NonEmptySet.toUnfoldable compatible)
-    , ". Computing the list of compilers usable with your package version..."
-    ]
-
-  let tryCompilers = Array.fromFoldable $ NonEmptySet.filter (notEq payload.compiler) compatible
-  { failed: invalidCompilers, succeeded: validCompilers } <- case NonEmptyArray.fromArray tryCompilers of
-    Nothing -> pure { failed: Map.empty, succeeded: Set.empty }
+  allCompilers <- PursVersions.pursVersions
+  { failed: invalidCompilers, succeeded: validCompilers } <- case NonEmptyArray.fromFoldable $ NonEmptyArray.filter (notEq payload.compiler) allCompilers of
+    Nothing -> pure { failed: Map.empty, succeeded: Set.singleton payload.compiler }
     Just try -> do
-      intermediate <- findAllCompilers
+      found <- findAllCompilers
         { source: packageDirectory
         , manifest: Manifest manifest
         , compilers: try
         }
-      -- We need to insert the payload compiler, which we previously omitted
-      -- from the list of compilers to try for efficiency's sake.
-      pure $ intermediate { succeeded = Set.insert payload.compiler intermediate.succeeded }
+      pure $ found { succeeded = Set.insert payload.compiler found.succeeded }
 
   unless (Map.isEmpty invalidCompilers) do
     Log.debug $ "Some compilers failed: " <> String.joinWith ", " (map Version.print (Set.toUnfoldable (Map.keys invalidCompilers)))
@@ -952,57 +921,6 @@ compilePackage { source, compiler, resolutions } = Except.runExcept do
   case output of
     Left err -> Except.throw $ printCompilerFailure compiler err
     Right _ -> pure tmp
-
-type GroupedByCompilers =
-  { packages :: Map PackageName Version
-  , compilers :: NonEmptySet Version
-  }
-
-groupedByCompilersCodec :: JsonCodec GroupedByCompilers
-groupedByCompilersCodec = CA.Record.object "GroupedByCompilers"
-  { compilers: CA.Common.nonEmptySet Version.codec
-  , packages: Internal.Codec.packageMap Version.codec
-  }
-
--- | Given a set of package versions, determine the set of compilers that can be
--- | used for all packages.
-compatibleCompilers :: Map PackageName Metadata -> Map PackageName Version -> Either (Array GroupedByCompilers) (NonEmptySet Version)
-compatibleCompilers allMetadata resolutions = do
-  let
-    associated :: Array { name :: PackageName, version :: Version, compilers :: NonEmptyArray Version }
-    associated = Map.toUnfoldableUnordered resolutions # Array.mapMaybe \(Tuple name version) -> do
-      Metadata metadata <- Map.lookup name allMetadata
-      published <- Map.lookup version metadata.published
-      case published.compilers of
-        Left _ -> Nothing
-        Right compilers -> Just { name, version, compilers: compilers }
-
-  case Array.uncons associated of
-    Nothing ->
-      Left []
-    Just { head, tail: [] } ->
-      Right $ NonEmptySet.fromFoldable1 head.compilers
-    Just { head, tail } -> do
-      let foldFn prev = Set.intersection prev <<< Set.fromFoldable <<< _.compilers
-      case NonEmptySet.fromFoldable $ Array.foldl foldFn (Set.fromFoldable head.compilers) tail of
-        -- An empty intersection means there are no shared compilers among the
-        -- resolved dependencies.
-        Nothing -> do
-          let
-            grouped :: Array (NonEmptyArray { name :: PackageName, version :: Version, compilers :: NonEmptyArray Version })
-            grouped = Array.groupAllBy (compare `on` _.compilers) (Array.cons head tail)
-
-            collect :: NonEmptyArray { name :: PackageName, version :: Version, compilers :: NonEmptyArray Version } -> GroupedByCompilers
-            collect vals =
-              { packages: Map.fromFoldable (map (\{ name, version } -> Tuple name version) vals)
-              -- We've already grouped by compilers, so those must all be equal
-              -- and we can take just the first value.
-              , compilers: NonEmptySet.fromFoldable1 (NonEmptyArray.head vals).compilers
-              }
-          Left $ Array.foldl (\prev -> Array.snoc prev <<< collect) [] grouped
-
-        Just set ->
-          Right set
 
 type FindAllCompilersResult =
   { failed :: Map Version (Either SolverErrors CompilerFailure)

@@ -31,6 +31,7 @@ import Data.Map as Map
 import Data.Ordering (invert)
 import Data.Profunctor as Profunctor
 import Data.Set as Set
+import Data.Set.NonEmpty (NonEmptySet)
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
@@ -44,7 +45,6 @@ import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
-import Registry.App.API (GroupedByCompilers, _compilerCache)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.CLI.Purs (CompilerFailure, compilerFailureCodec)
@@ -180,7 +180,7 @@ main = launchAff_ do
     # runAppEffects
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
-    # Cache.interpret _compilerCache (Cache.handleFs cache)
+    # Cache.interpret API._compilerCache (Cache.handleFs cache)
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
     # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
@@ -227,13 +227,15 @@ runLegacyImport logs = do
   Run.liftAff $ writeVersionFailures importedIndex.failedVersions
 
   let metadataPackage = unsafeFromRight (PackageName.parse "metadata")
-  Registry.readMetadata metadataPackage >>= case _ of
-    Nothing -> do
-      Log.info "Writing empty metadata file for the 'metadata' package"
-      let location = GitHub { owner: "purescript", repo: "purescript-metadata", subdir: Nothing }
-      let entry = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
-      Registry.writeMetadata metadataPackage entry
-    Just _ -> pure unit
+  let pursPackage = unsafeFromRight (PackageName.parse "purs")
+  for_ [ metadataPackage, pursPackage ] \package ->
+    Registry.readMetadata package >>= case _ of
+      Nothing -> do
+        Log.info $ "Writing empty metadata file for " <> PackageName.print package
+        let location = GitHub { owner: "purescript", repo: "purescript-" <> PackageName.print package, subdir: Nothing }
+        let entry = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
+        Registry.writeMetadata package entry
+      Just _ -> pure unit
 
   Log.info "Ready for upload!"
   Log.info $ formatImportStats $ calculateImportStats legacyRegistry importedIndex
@@ -274,16 +276,16 @@ runLegacyImport logs = do
           let errors = map Solver.printSolverError $ NonEmptyList.toUnfoldable unsolvable
           Log.warn $ "Could not solve " <> formatted <> Array.foldMap (append "\n") errors
           Cache.put _importCache (PublishFailure manifest.name manifest.version) (SolveFailed $ String.joinWith " " errors)
-        Right (Tuple mbCompiler resolutions) -> do
+        Right (Tuple _ resolutions) -> do
           Log.debug $ "Solved " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions <> "\nfrom dependency list\n" <> printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
-          possibleCompilers <- case mbCompiler of
-            Just one -> do
-              Log.info $ "Solver produced a compiler version suitable for publishing: " <> Version.print one
-              pure $ NonEmptySet.singleton one
-            Nothing -> do
+          possibleCompilers <-
+            if Map.isEmpty manifest.dependencies then do
+              Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
+              pure $ NonEmptySet.fromFoldable1 allCompilers
+            else do
               Log.debug "No compiler version was produced by the solver, so all compilers are potentially compatible."
               allMetadata <- Registry.readAllMetadata
-              case API.compatibleCompilers allMetadata resolutions of
+              case compatibleCompilers allMetadata resolutions of
                 Left [] -> do
                   Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
                   pure $ NonEmptySet.fromFoldable1 allCompilers
@@ -543,7 +545,7 @@ publishErrorCodec :: JsonCodec PublishError
 publishErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
   { solveFailed: Right CA.string
   , noCompilersFound: Right compilerFailureMapCodec
-  , unsolvableDependencyCompilers: Right (CA.array API.groupedByCompilersCodec)
+  , unsolvableDependencyCompilers: Right (CA.array groupedByCompilersCodec)
   , publishError: Right CA.string
   }
   where
@@ -814,7 +816,7 @@ formatPublishError = case _ of
   NoCompilersFound versions ->
     { tag: "NoCompilersFound", value: Just (CA.encode compilerFailureMapCodec versions), reason: "No valid compilers found for publishing." }
   UnsolvableDependencyCompilers failed ->
-    { tag: "UnsolvableDependencyCompilers", value: Just (CA.encode (CA.array API.groupedByCompilersCodec) failed), reason: "Resolved dependencies cannot compile together" }
+    { tag: "UnsolvableDependencyCompilers", value: Just (CA.encode (CA.array groupedByCompilersCodec) failed), reason: "Resolved dependencies cannot compile together" }
   PublishError error ->
     { tag: "PublishError", value: Nothing, reason: error }
 
@@ -995,6 +997,57 @@ findFirstCompiler { source, compilers, installed } = do
   case search of
     Left worked -> pure $ Right worked
     Right others -> pure $ Left $ Map.fromFoldable others
+
+type GroupedByCompilers =
+  { packages :: Map PackageName Version
+  , compilers :: NonEmptySet Version
+  }
+
+groupedByCompilersCodec :: JsonCodec GroupedByCompilers
+groupedByCompilersCodec = CA.Record.object "GroupedByCompilers"
+  { compilers: CA.Common.nonEmptySet Version.codec
+  , packages: Internal.Codec.packageMap Version.codec
+  }
+
+-- | Given a set of package versions, determine the set of compilers that can be
+-- | used for all packages.
+compatibleCompilers :: Map PackageName Metadata -> Map PackageName Version -> Either (Array GroupedByCompilers) (NonEmptySet Version)
+compatibleCompilers allMetadata resolutions = do
+  let
+    associated :: Array { name :: PackageName, version :: Version, compilers :: NonEmptyArray Version }
+    associated = Map.toUnfoldableUnordered resolutions # Array.mapMaybe \(Tuple name version) -> do
+      Metadata metadata <- Map.lookup name allMetadata
+      published <- Map.lookup version metadata.published
+      case published.compilers of
+        Left _ -> Nothing
+        Right compilers -> Just { name, version, compilers: compilers }
+
+  case Array.uncons associated of
+    Nothing ->
+      Left []
+    Just { head, tail: [] } ->
+      Right $ NonEmptySet.fromFoldable1 head.compilers
+    Just { head, tail } -> do
+      let foldFn prev = Set.intersection prev <<< Set.fromFoldable <<< _.compilers
+      case NonEmptySet.fromFoldable $ Array.foldl foldFn (Set.fromFoldable head.compilers) tail of
+        -- An empty intersection means there are no shared compilers among the
+        -- resolved dependencies.
+        Nothing -> do
+          let
+            grouped :: Array (NonEmptyArray { name :: PackageName, version :: Version, compilers :: NonEmptyArray Version })
+            grouped = Array.groupAllBy (compare `on` _.compilers) (Array.cons head tail)
+
+            collect :: NonEmptyArray { name :: PackageName, version :: Version, compilers :: NonEmptyArray Version } -> GroupedByCompilers
+            collect vals =
+              { packages: Map.fromFoldable (map (\{ name, version } -> Tuple name version) vals)
+              -- We've already grouped by compilers, so those must all be equal
+              -- and we can take just the first value.
+              , compilers: NonEmptySet.fromFoldable1 (NonEmptyArray.head vals).compilers
+              }
+          Left $ Array.foldl (\prev -> Array.snoc prev <<< collect) [] grouped
+
+        Just set ->
+          Right set
 
 type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)
 

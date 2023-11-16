@@ -3,11 +3,9 @@ module Test.Registry.App.API (spec) where
 import Registry.App.Prelude
 
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Codec.Argonaut as CA
 import Data.Foldable (traverse_)
 import Data.Map as Map
 import Data.Set as Set
-import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
 import Effect.Aff as Aff
@@ -70,34 +68,6 @@ spec = do
           Assert.shouldEqual version (Utils.unsafeVersion "1.0.0")
       FS.Extra.remove tmp
 
-  Spec.describe "Finds compatible compilers from dependencies" do
-    Spec.it "Finds intersect of single package" do
-      Assert.Run.runBaseEffects do
-        metadata <- Registry.readAllMetadataFromDisk $ Path.concat [ "app", "fixtures", "registry", "metadata" ]
-        let expected = map Utils.unsafeVersion [ "0.15.10", "0.15.12" ]
-        case API.compatibleCompilers metadata (Map.singleton (Utils.unsafePackageName "prelude") (Utils.unsafeVersion "6.0.1")) of
-          Left failed -> Except.throw $ "Expected " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> printJson (CA.array API.groupedByCompilersCodec) failed
-          Right set -> do
-            let actual = NonEmptySet.toUnfoldable set
-            unless (actual == expected) do
-              Except.throw $ "Expected " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print actual)
-
-    Spec.it "Finds intersect of multiple packages" do
-      Assert.Run.runBaseEffects do
-        metadata <- Registry.readAllMetadataFromDisk $ Path.concat [ "app", "fixtures", "registry", "metadata" ]
-        let
-          expected = map Utils.unsafeVersion [ "0.15.10" ]
-          resolutions = Map.fromFoldable $ map (bimap Utils.unsafePackageName Utils.unsafeVersion)
-            [ Tuple "prelude" "6.0.1"
-            , Tuple "type-equality" "4.0.1"
-            ]
-        case API.compatibleCompilers metadata resolutions of
-          Left failed -> Except.throw $ "Expected " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> printJson (CA.array API.groupedByCompilersCodec) failed
-          Right set -> do
-            let actual = NonEmptySet.toUnfoldable set
-            unless (actual == expected) do
-              Except.throw $ "Expected " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print actual)
-
   Spec.describe "API pipelines run correctly" $ Spec.around withCleanEnv do
     Spec.it "Publish a legacy-converted package with unused deps" \{ workdir, index, metadata, storageDir, githubDir } -> do
       logs <- liftEffect (Ref.new [])
@@ -159,7 +129,7 @@ spec = do
             Left one -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix but unfinished single version: " <> Version.print one
             Right many -> do
               let many' = NonEmptyArray.toArray many
-              let expected = map Utils.unsafeVersion [ "0.15.10", "0.15.12" ]
+              let expected = map Utils.unsafeVersion [ "0.15.10", "0.15.11", "0.15.12" ]
               unless (many' == expected) do
                 Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
 
