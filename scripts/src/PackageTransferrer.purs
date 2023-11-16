@@ -33,6 +33,7 @@ import Registry.Internal.Format as Internal.Format
 import Registry.Location as Location
 import Registry.Operation (AuthenticatedPackageOperation(..))
 import Registry.Operation as Operation
+import Registry.Operation.Validation as Operation.Validation
 import Registry.PackageName as PackageName
 import Registry.Scripts.LegacyImporter as LegacyImporter
 import Run (Run)
@@ -122,21 +123,25 @@ transferPackage rawPackageName newLocation = do
     Left _ -> Except.throw $ "Could not transfer " <> rawPackageName <> " because it is not a valid package name."
     Right value -> pure value
 
-  let
-    payload = { name, newLocation }
-    rawPayload = stringifyJson Operation.transferCodec payload
+  allMetadata <- Registry.readAllMetadata
+  if not (Operation.Validation.locationIsUnique newLocation allMetadata) then
+    Log.error "Cannot transfer package because the new location is already in use."
+  else do
+    let
+      payload = { name, newLocation }
+      rawPayload = stringifyJson Operation.transferCodec payload
 
-  { privateKey } <- Env.askPacchettiBotti
+    { privateKey } <- Env.askPacchettiBotti
 
-  signature <- case Auth.signPayload { privateKey, rawPayload } of
-    Left _ -> Except.throw "Error signing transfer."
-    Right signature -> pure signature
+    signature <- case Auth.signPayload { privateKey, rawPayload } of
+      Left _ -> Except.throw "Error signing transfer."
+      Right signature -> pure signature
 
-  API.authenticated
-    { payload: Transfer payload
-    , rawPayload
-    , signature
-    }
+    API.authenticated
+      { payload: Transfer payload
+      , rawPayload
+      , signature
+      }
 
 type PackageLocations =
   { metadataLocation :: Location
