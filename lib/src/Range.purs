@@ -5,15 +5,16 @@ module Registry.Range
   ( Range
   , caret
   , codec
+  , exact
   , greaterThanOrEq
   , includes
   , intersect
   , lessThan
+  , mk
   , parse
   , parser
   , print
   , union
-  , mk
   ) where
 
 import Prelude
@@ -138,6 +139,11 @@ mk lhs rhs | lhs < rhs = Just (Range { lhs, rhs })
 mk _ _ = Nothing
 
 -- | Produce a "caret range" from a version.
--- | I.e. "^0.15.6" ==> ">=0.15.6 > 0.16.0"
+-- | i.e. "^0.15.6" ==> ">=0.15.6 > 0.16.0"
 caret :: Version -> Range
 caret v = Range { lhs: v, rhs: Version.bumpHighest v }
+
+-- | Produce an exact range from a version.
+-- | i.e. "0.15.6" ==> ">=0.15.6 <0.15.7"
+exact :: Version -> Range
+exact v = Range { lhs: v, rhs: Version.bumpPatch v }

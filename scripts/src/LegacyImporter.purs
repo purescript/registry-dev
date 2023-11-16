@@ -48,6 +48,7 @@ import Registry.App.API (GroupedByCompilers, _compilerCache)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.CLI.Purs (CompilerFailure, compilerFailureCodec)
+import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
@@ -60,6 +61,7 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Source as Source
+import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
@@ -79,7 +81,7 @@ import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Solver as Solver
 import Registry.Version as Version
-import Run (Run)
+import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT, Except)
 import Run.Except as Except
@@ -247,6 +249,13 @@ runLegacyImport logs = do
         Nothing -> pure $ not $ hasMetadata allMetadata name version
         Just _ -> pure false
 
+  allCompilers <- PursVersions.pursVersions
+  allCompilersRange <- case Range.mk (NonEmptyArray.head allCompilers) (NonEmptyArray.last allCompilers) of
+    Nothing -> Except.throw $ "Failed to construct a compiler range from " <> Version.print (NonEmptyArray.head allCompilers) <> " and " <> Version.print (NonEmptyArray.last allCompilers)
+    Just range -> do
+      Log.info $ "All available compilers range: " <> Range.print range
+      pure range
+
   let
     publishLegacyPackage :: Manifest -> Run _ Unit
     publishLegacyPackage (Manifest manifest) = do
@@ -255,38 +264,44 @@ runLegacyImport logs = do
       RawVersion ref <- case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
         Nothing -> Except.throw $ "Unable to recover package ref for " <> formatted
         Just ref -> pure ref
+
+      Log.debug "Building dependency index with compiler versions..."
+      compilerIndex <- API.readCompilerIndex
+
       Log.debug $ "Solving dependencies for " <> formatted
-      index <- Registry.readAllManifests
-      Log.debug $ "Read all manifests: " <> String.joinWith ", " (map (\(Manifest m) -> formatPackageVersion m.name m.version) $ ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges index)
-      let solverIndex = map (map (_.dependencies <<< un Manifest)) $ ManifestIndex.toMap index
-      case Solver.solve solverIndex manifest.dependencies of
+      case Solver.solveWithCompiler allCompilersRange compilerIndex manifest.dependencies of
         Left unsolvable -> do
           let errors = map Solver.printSolverError $ NonEmptyList.toUnfoldable unsolvable
           Log.warn $ "Could not solve " <> formatted <> Array.foldMap (append "\n") errors
           Cache.put _importCache (PublishFailure manifest.name manifest.version) (SolveFailed $ String.joinWith " " errors)
-        Right resolutions -> do
+        Right (Tuple mbCompiler resolutions) -> do
           Log.debug $ "Solved " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions <> "\nfrom dependency list\n" <> printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
-          Log.debug "Determining a compiler version suitable for publishing..."
-          allMetadata <- Registry.readAllMetadata
-          possibleCompilers <- case API.compatibleCompilers allMetadata resolutions of
-            Left [] -> do
-              Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
-              allCompilers <- PursVersions.pursVersions
-              pure $ NonEmptySet.fromFoldable1 allCompilers
-            Left errors -> do
-              let
-                printError { packages, compilers } = do
-                  let key = String.joinWith ", " $ foldlWithIndex (\name prev version -> Array.cons (formatPackageVersion name version) prev) [] packages
-                  let val = String.joinWith ", " $ map Version.print $ NonEmptySet.toUnfoldable compilers
-                  key <> " support compilers " <> val
-              Cache.put _importCache (PublishFailure manifest.name manifest.version) (UnsolvableDependencyCompilers errors)
-              Except.throw $ Array.fold
-                [ "Dependencies admit no overlapping compiler versions so your package cannot be compiled:\n"
-                , Array.foldMap (append "\n  - " <<< printError) errors
-                ]
-            Right compilers -> do
-              Log.debug $ "Compatible compilers for dependencies of " <> formatted <> ": " <> stringifyJson (CA.array Version.codec) (NonEmptySet.toUnfoldable compilers)
-              pure compilers
+          possibleCompilers <- case mbCompiler of
+            Just one -> do
+              Log.info $ "Solver produced a compiler version suitable for publishing: " <> Version.print one
+              pure $ NonEmptySet.singleton one
+            Nothing -> do
+              Log.debug "No compiler version was produced by the solver, so all compilers are potentially compatible."
+              allMetadata <- Registry.readAllMetadata
+              case API.compatibleCompilers allMetadata resolutions of
+                Left [] -> do
+                  Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
+                  pure $ NonEmptySet.fromFoldable1 allCompilers
+                Left errors -> do
+                  let
+                    printError { packages, compilers } = do
+                      let key = String.joinWith ", " $ foldlWithIndex (\name prev version -> Array.cons (formatPackageVersion name version) prev) [] packages
+                      let val = String.joinWith ", " $ map Version.print $ NonEmptySet.toUnfoldable compilers
+                      key <> " support compilers " <> val
+                  Cache.put _importCache (PublishFailure manifest.name manifest.version) (UnsolvableDependencyCompilers errors)
+                  Except.throw $ Array.fold
+                    [ "Resolutions admit no overlapping compiler versions so your package cannot be compiled:\n"
+                    , Array.foldMap (append "\n  - " <<< printError) errors
+                    ]
+                Right compilers -> do
+                  Log.debug $ "Compatible compilers for resolutions of " <> formatted <> ": " <> stringifyJson (CA.array Version.codec) (NonEmptySet.toUnfoldable compilers)
+                  pure compilers
+
           Log.debug "Fetching source and installing dependencies to test compilers"
           tmp <- Tmp.mkTmpDir
           { path } <- Source.fetch tmp manifest.location ref
@@ -297,7 +312,7 @@ runLegacyImport logs = do
           API.installBuildPlan resolutions installDir
           Log.debug $ "Installed to " <> installDir
           Log.debug "Finding first compiler that can build the package..."
-          selected <- API.findFirstCompiler { source: path, installed: installDir, compilers: NonEmptySet.toUnfoldable possibleCompilers }
+          selected <- findFirstCompiler { source: path, installed: installDir, compilers: NonEmptySet.toUnfoldable possibleCompilers }
           FS.Extra.remove tmp
           case selected of
             Left failures -> do
@@ -953,6 +968,33 @@ fetchSpagoYaml address ref = do
           Right manifest -> do
             Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
             pure $ Just manifest
+
+-- | Find the first compiler that can compile the package source code and
+-- | installed resolutions from the given array of compilers. Begins with the
+-- | latest compiler and works backwards to older compilers.
+findFirstCompiler
+  :: forall r
+   . { compilers :: Array Version
+     , source :: FilePath
+     , installed :: FilePath
+     }
+  -> Run (STORAGE + LOG + AFF + EFFECT + r) (Either (Map Version CompilerFailure) Version)
+findFirstCompiler { source, compilers, installed } = do
+  search <- Except.runExcept $ for (Array.reverse (Array.sort compilers)) \target -> do
+    Log.debug $ "Trying compiler " <> Version.print target
+    workdir <- Tmp.mkTmpDir
+    result <- Run.liftAff $ Purs.callCompiler
+      { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }
+      , version: Just target
+      , cwd: Just workdir
+      }
+    FS.Extra.remove workdir
+    case result of
+      Left error -> pure $ Tuple target error
+      Right _ -> Except.throw target
+  case search of
+    Left worked -> pure $ Right worked
+    Right others -> pure $ Left $ Map.fromFoldable others
 
 type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)
 

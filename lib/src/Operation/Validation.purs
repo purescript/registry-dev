@@ -8,7 +8,6 @@ import Data.Array.NonEmpty as NEA
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Either (Either(..))
-import Data.List.NonEmpty (NonEmptyList)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), maybe)
@@ -20,7 +19,7 @@ import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Data.Traversable (traverse)
-import Data.Tuple (Tuple(..), uncurry)
+import Data.Tuple (Tuple(..), snd, uncurry)
 import Data.Tuple.Nested (type (/\), (/\))
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff)
@@ -32,14 +31,13 @@ import PureScript.CST.Errors as CST.Errors
 import PureScript.CST.Types as CST.Types
 import Registry.Location (Location)
 import Registry.Manifest (Manifest(..))
-import Registry.ManifestIndex (ManifestIndex)
-import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
 import Registry.Operation (PublishData)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
 import Registry.Range as Range
+import Registry.Solver (CompilerIndex)
 import Registry.Solver as Solver
 import Registry.Version (Version)
 
@@ -72,10 +70,9 @@ isNotUnpublished (Manifest { version }) (Metadata { unpublished }) =
   Map.lookup version unpublished
 
 -- | Verifies that the manifest dependencies are solvable by the registry solver.
-validateDependenciesSolve :: Manifest -> ManifestIndex -> Either (NonEmptyList Solver.SolverError) (Map PackageName Version)
-validateDependenciesSolve manifest manifestIndex = do
-  let getDependencies = _.dependencies <<< un Manifest
-  Solver.solve (map (map getDependencies) (ManifestIndex.toMap manifestIndex)) (getDependencies manifest)
+validateDependenciesSolve :: Version -> Manifest -> CompilerIndex -> Either Solver.SolverErrors (Map PackageName Version)
+validateDependenciesSolve compiler (Manifest manifest) compilerIndex =
+  map snd $ Solver.solveWithCompiler (Range.exact compiler) compilerIndex manifest.dependencies
 
 -- | Verifies that all dependencies in the manifest are present in the build
 -- | plan, and the version listed in the build plan is within the range provided

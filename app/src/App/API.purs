@@ -10,7 +10,6 @@ module Registry.App.API
   , compatibleCompilers
   , copyPackageSourceFiles
   , findAllCompilers
-  , findFirstCompiler
   , formatPursuitResolutions
   , groupedByCompilersCodec
   , installBuildPlan
@@ -18,6 +17,7 @@ module Registry.App.API
   , packagingTeam
   , parseInstalledModulePath
   , publish
+  , readCompilerIndex
   , removeIgnoredTarballFiles
   , spagoToManifest
   ) where
@@ -93,7 +93,6 @@ import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (IssueNumber(..), Team)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
-import Registry.Internal.Codec (versionMap)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Path as Internal.Path
 import Registry.Location as Location
@@ -110,6 +109,7 @@ import Registry.PursGraph (ModuleName(..))
 import Registry.PursGraph as PursGraph
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
+import Registry.Solver (SolverErrors)
 import Registry.Solver as Solver
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
@@ -536,7 +536,7 @@ publish payload = do
           [ "This version has already been published to the registry, but the docs have not been "
           , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
           ]
-        verifiedResolutions <- verifyResolutions (Manifest manifest) payload.resolutions
+        verifiedResolutions <- verifyResolutions payload.compiler (Manifest manifest) payload.resolutions
         compilationResult <- compilePackage { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions }
         case compilationResult of
           Left error -> do
@@ -598,7 +598,7 @@ publish payload = do
     Log.debug "Pruning unused dependencies from legacy package manifest..."
 
     Log.debug "Solving manifest to get all transitive dependencies."
-    resolutions <- verifyResolutions (Manifest manifest) payload.resolutions
+    resolutions <- verifyResolutions payload.compiler (Manifest manifest) payload.resolutions
 
     Log.debug "Installing dependencies."
     tmpDepsDir <- Tmp.mkTmpDir
@@ -699,7 +699,7 @@ type PublishRegistry =
 publishRegistry :: forall r. PublishRegistry -> Run (PublishEffects + r) Unit
 publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manifest, publishedTime, tmp, packageDirectory } = do
   Log.debug "Verifying the package build plan..."
-  verifiedResolutions <- verifyResolutions (Manifest manifest) payload.resolutions
+  verifiedResolutions <- verifyResolutions payload.compiler (Manifest manifest) payload.resolutions
 
   Log.debug "Verifying that the package dependencies are all registered..."
   unregisteredRef <- Run.liftEffect $ Ref.new Map.empty
@@ -824,20 +824,15 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
   let tryCompilers = Array.fromFoldable $ NonEmptySet.filter (notEq payload.compiler) compatible
   { failed: invalidCompilers, succeeded: validCompilers } <- case NonEmptyArray.fromArray tryCompilers of
     Nothing -> pure { failed: Map.empty, succeeded: Set.empty }
-    Just try -> Cache.get _compilerCache (Compilation (Manifest manifest) verifiedResolutions try) >>= case _ of
-      Nothing -> do
-        intermediate <- findAllCompilers
-          { source: packageDirectory
-          , installed: installedResolutions
-          , compilers: tryCompilers
-          }
-        -- We need to insert the payload compiler, which we previously omitted
-        -- from the list of compilers to try for efficiency's sake.
-        let result = intermediate { succeeded = Set.insert payload.compiler intermediate.succeeded }
-        Cache.put _compilerCache (Compilation (Manifest manifest) verifiedResolutions try) result
-        pure result
-      Just cached ->
-        pure cached
+    Just try -> do
+      intermediate <- findAllCompilers
+        { source: packageDirectory
+        , manifest: Manifest manifest
+        , compilers: try
+        }
+      -- We need to insert the payload compiler, which we previously omitted
+      -- from the list of compilers to try for efficiency's sake.
+      pure $ intermediate { succeeded = Set.insert payload.compiler intermediate.succeeded }
 
   unless (Map.isEmpty invalidCompilers) do
     Log.debug $ "Some compilers failed: " <> String.joinWith ", " (map Version.print (Set.toUnfoldable (Map.keys invalidCompilers)))
@@ -859,12 +854,12 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the
 -- | manifest. If not, we solve their manifest to produce a build plan.
-verifyResolutions :: forall r. Manifest -> Maybe (Map PackageName Version) -> Run (REGISTRY + LOG + EXCEPT String + r) (Map PackageName Version)
-verifyResolutions manifest resolutions = do
+verifyResolutions :: forall r. Version -> Manifest -> Maybe (Map PackageName Version) -> Run (REGISTRY + LOG + AFF + EXCEPT String + r) (Map PackageName Version)
+verifyResolutions compiler manifest resolutions = do
   Log.debug "Check the submitted build plan matches the manifest"
-  manifestIndex <- Registry.readAllManifests
+  compilerIndex <- readCompilerIndex
   case resolutions of
-    Nothing -> case Operation.Validation.validateDependenciesSolve manifest manifestIndex of
+    Nothing -> case Operation.Validation.validateDependenciesSolve compiler manifest compilerIndex of
       Left errors -> do
         let
           printedError = String.joinWith "\n"
@@ -1009,54 +1004,54 @@ compatibleCompilers allMetadata resolutions = do
         Just set ->
           Right set
 
-type DiscoverCompilers =
-  { compilers :: Array Version
-  , source :: FilePath
-  , installed :: FilePath
-  }
-
 type FindAllCompilersResult =
-  { failed :: Map Version CompilerFailure
+  { failed :: Map Version (Either SolverErrors CompilerFailure)
   , succeeded :: Set Version
   }
 
 -- | Find all compilers that can compile the package source code and installed
 -- | resolutions from the given array of compilers.
-findAllCompilers :: forall r. DiscoverCompilers -> Run (STORAGE + LOG + AFF + EFFECT + r) FindAllCompilersResult
-findAllCompilers { source, compilers, installed } = do
+findAllCompilers
+  :: forall r
+   . { source :: FilePath, manifest :: Manifest, compilers :: NonEmptyArray Version }
+  -> Run (REGISTRY + STORAGE + COMPILER_CACHE + LOG + AFF + EFFECT + EXCEPT String + r) FindAllCompilersResult
+findAllCompilers { source, manifest, compilers } = do
+  compilerIndex <- readCompilerIndex
   checkedCompilers <- for compilers \target -> do
     Log.debug $ "Trying compiler " <> Version.print target
-    workdir <- Tmp.mkTmpDir
-    result <- Run.liftAff $ Purs.callCompiler
-      { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }
-      , version: Just target
-      , cwd: Just workdir
-      }
-    FS.Extra.remove workdir
-    pure $ bimap (Tuple target) (const target) result
-  let results = partitionEithers checkedCompilers
-  pure { failed: Map.fromFoldable results.fail, succeeded: Set.fromFoldable results.success }
+    case Solver.solveWithCompiler (Range.exact target) compilerIndex (un Manifest manifest).dependencies of
+      Left solverErrors -> pure $ Left $ Tuple target (Left solverErrors)
+      Right (Tuple mbCompiler resolutions) -> do
+        Log.debug $ "Solved with compiler " <> Version.print target <> " and got resolutions:\n" <> printJson (Internal.Codec.packageMap Version.codec) resolutions
+        case mbCompiler of
+          Nothing -> Except.throw "Produced a compiler-derived build plan with no compiler!"
+          Just selected | selected /= target -> Except.throw $ Array.fold
+            [ "Produced a compiler-derived build plan that selects a compiler ("
+            , Version.print selected
+            , ") that differs from the target compiler ("
+            , Version.print target
+            , ")."
+            ]
+          Just _ -> pure unit
+        Cache.get _compilerCache (Compilation manifest resolutions target) >>= case _ of
+          Nothing -> do
+            workdir <- Tmp.mkTmpDir
+            let installed = Path.concat [ workdir, ".registry" ]
+            FS.Extra.ensureDirectory installed
+            installBuildPlan resolutions installed
+            result <- Run.liftAff $ Purs.callCompiler
+              { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }
+              , version: Just target
+              , cwd: Just workdir
+              }
+            FS.Extra.remove workdir
+            Cache.put _compilerCache (Compilation manifest resolutions target) { target, result: map (const unit) result }
+            pure $ bimap (Tuple target <<< Right) (const target) result
+          Just { result } ->
+            pure $ bimap (Tuple target <<< Right) (const target) result
 
--- | Find the first compiler that can compile the package source code and
--- | installed resolutions from the given array of compilers. Begins with the
--- | latest compiler and works backwards to older compilers.
-findFirstCompiler :: forall r. DiscoverCompilers -> Run (STORAGE + LOG + AFF + EFFECT + r) (Either (Map Version CompilerFailure) Version)
-findFirstCompiler { source, compilers, installed } = do
-  search <- Except.runExcept $ for (Array.reverse (Array.sort compilers)) \target -> do
-    Log.debug $ "Trying compiler " <> Version.print target
-    workdir <- Tmp.mkTmpDir
-    result <- Run.liftAff $ Purs.callCompiler
-      { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }
-      , version: Just target
-      , cwd: Just workdir
-      }
-    FS.Extra.remove workdir
-    case result of
-      Left error -> pure $ Tuple target error
-      Right _ -> Except.throw target
-  case search of
-    Left worked -> pure $ Right worked
-    Right others -> pure $ Left $ Map.fromFoldable others
+  let results = partitionEithers $ NonEmptyArray.toArray checkedCompilers
+  pure { failed: Map.fromFoldable results.fail, succeeded: Set.fromFoldable results.success }
 
 printCompilerFailure :: Version -> CompilerFailure -> String
 printCompilerFailure compiler = case _ of
@@ -1343,32 +1338,38 @@ spagoToManifest config = do
     , excludeFiles
     }
 
+readCompilerIndex :: forall r. Run (REGISTRY + AFF + EXCEPT String + r) Solver.CompilerIndex
+readCompilerIndex = do
+  metadata <- Registry.readAllMetadata
+  manifests <- Registry.readAllManifests
+  allCompilers <- PursVersions.pursVersions
+  pure $ Solver.buildCompilerIndex allCompilers manifests metadata
+
 type COMPILER_CACHE r = (compilerCache :: Cache CompilerCache | r)
 
 _compilerCache :: Proxy "compilerCache"
 _compilerCache = Proxy
 
 data CompilerCache :: (Type -> Type -> Type) -> Type -> Type
-data CompilerCache c a = Compilation Manifest (Map PackageName Version) (NonEmptyArray Version) (c FindAllCompilersResult a)
+data CompilerCache c a = Compilation Manifest (Map PackageName Version) Version (c { target :: Version, result :: Either CompilerFailure Unit } a)
 
 instance Functor2 c => Functor (CompilerCache c) where
-  map k (Compilation manifest resolutions compilers a) = Compilation manifest resolutions compilers (map2 k a)
+  map k (Compilation manifest resolutions compiler a) = Compilation manifest resolutions compiler (map2 k a)
 
 instance FsEncodable CompilerCache where
   encodeFs = case _ of
-    Compilation (Manifest manifest) resolutions compilers next -> do
+    Compilation (Manifest manifest) resolutions compiler next -> do
       let
-        baseKey = "Compilation__" <> PackageName.print manifest.name <> "__" <> Version.print manifest.version <> "__"
+        baseKey = "Compilation__" <> PackageName.print manifest.name <> "__" <> Version.print manifest.version <> "__" <> Version.print compiler <> "__"
         hashKey = do
           let resolutions' = foldlWithIndex (\name prev version -> formatPackageVersion name version <> prev) "" resolutions
-          let compilers' = NonEmptyArray.foldMap1 Version.print compilers
-          unsafePerformEffect $ Sha256.hashString $ resolutions' <> compilers'
+          unsafePerformEffect $ Sha256.hashString resolutions'
         cacheKey = baseKey <> Sha256.print hashKey
 
       let
         codec = CA.Record.object "FindAllCompilersResult"
-          { failed: versionMap compilerFailureCodec
-          , succeeded: CA.Common.set Version.codec
+          { target: Version.codec
+          , result: CA.Common.either compilerFailureCodec CA.null
           }
 
       Exists.mkExists $ Cache.AsJson cacheKey codec next
