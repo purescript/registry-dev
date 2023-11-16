@@ -95,10 +95,11 @@ main = launchAff_ do
 transfer :: forall r. Run (API.AuthenticatedEffects + r) Unit
 transfer = do
   Log.info "Processing legacy registry..."
+  allMetadata <- Registry.readAllMetadata
   { bower, new } <- Registry.readLegacyRegistry
   let packages = Map.union bower new
   Log.info "Reading latest locations for legacy registry packages..."
-  locations <- latestLocations packages
+  locations <- latestLocations allMetadata packages
   let needsTransfer = Map.catMaybes locations
   case Map.size needsTransfer of
     0 -> Log.info "No packages require transferring."
@@ -140,32 +141,31 @@ transferPackage rawPackageName newLocation = do
     }
 
 type PackageLocations =
-  { metadataLocation :: Location
+  { registeredLocation :: Location
   , tagLocation :: Location
   }
 
 packageLocationsCodec :: JsonCodec PackageLocations
 packageLocationsCodec = CA.Record.object "PackageLocations"
-  { metadataLocation: Location.codec
+  { registeredLocation: Location.codec
   , tagLocation: Location.codec
   }
 
-latestLocations :: forall r. Map String String -> Run (REGISTRY + GITHUB + LOG + EXCEPT String + r) (Map String (Maybe PackageLocations))
-latestLocations packages = forWithIndex packages \package location -> do
-  allMetadata <- Registry.readAllMetadata
+latestLocations :: forall r. Map PackageName Metadata -> Map String String -> Run (REGISTRY + GITHUB + LOG + EXCEPT String + r) (Map String (Maybe PackageLocations))
+latestLocations allMetadata packages = forWithIndex packages \package location -> do
   let rawName = RawPackageName (stripPureScriptPrefix package)
   Run.Except.runExceptAt LegacyImporter._exceptPackage (LegacyImporter.validatePackage rawName location) >>= case _ of
     Left { error: LegacyImporter.PackageURLRedirects { received, registered } } -> do
       let newLocation = GitHub { owner: received.owner, repo: received.repo, subdir: Nothing }
       Log.info $ "Package " <> package <> " has moved to " <> locationToPackageUrl newLocation
       if Operation.Validation.locationIsUnique newLocation allMetadata then do
-        Log.info $ "New location " <> locationToPackageUrl newLocation <> " is unique; package will be transferred."
+        Log.info "New location is unique; package will be transferred."
         pure $ Just
-          { metadataLocation: GitHub { owner: registered.owner, repo: registered.repo, subdir: Nothing }
+          { registeredLocation: GitHub { owner: registered.owner, repo: registered.repo, subdir: Nothing }
           , tagLocation: newLocation
           }
       else do
-        Log.info $ "New location " <> locationToPackageUrl newLocation <> " is not unique; package will not be transferred."
+        Log.info "Package will not be transferred! New location is already in use."
         pure Nothing
     Left _ -> pure Nothing
     Right packageResult | Array.null packageResult.tags -> pure Nothing
@@ -179,7 +179,7 @@ latestLocations packages = forWithIndex packages \package location -> do
             Log.warn $ "Could not verify location of " <> PackageName.print packageResult.name <> ": " <> error
             pure Nothing
           Right locations
-            | locationsMatch locations.metadataLocation locations.tagLocation -> pure Nothing
+            | locationsMatch locations.registeredLocation locations.tagLocation -> pure Nothing
             | otherwise -> pure $ Just locations
   where
   -- The eq instance for locations has case sensitivity, but GitHub doesn't care.
@@ -206,7 +206,7 @@ latestPackageLocations package (Metadata { location, published }) = do
       note "No versions match repo tags" $ Array.find (isMatchingTag version) package.tags
   tagUrl <- note ("Could not parse tag url " <> matchingTag.url) $ LegacyImporter.tagUrlToRepoUrl matchingTag.url
   let tagLocation = GitHub { owner: tagUrl.owner, repo: tagUrl.repo, subdir: Nothing }
-  pure { metadataLocation: location, tagLocation }
+  pure { registeredLocation: location, tagLocation }
 
 locationToPackageUrl :: Location -> String
 locationToPackageUrl = case _ of
