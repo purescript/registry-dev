@@ -157,12 +157,15 @@ latestLocations packages = forWithIndex packages \package location -> do
   Run.Except.runExceptAt LegacyImporter._exceptPackage (LegacyImporter.validatePackage rawName location) >>= case _ of
     Left { error: LegacyImporter.PackageURLRedirects { received, registered } } -> do
       let newLocation = GitHub { owner: received.owner, repo: received.repo, subdir: Nothing }
-      if Operation.Validation.locationIsUnique newLocation allMetadata then
+      Log.info $ "Package " <> package <> " has moved to " <> locationToPackageUrl newLocation
+      if Operation.Validation.locationIsUnique newLocation allMetadata then do
+        Log.info $ "New location " <> locationToPackageUrl newLocation <> " is unique; package will be transferred."
         pure $ Just
           { metadataLocation: GitHub { owner: registered.owner, repo: registered.repo, subdir: Nothing }
           , tagLocation: newLocation
           }
-      else
+      else do
+        Log.info $ "New location " <> locationToPackageUrl newLocation <> " is not unique; package will not be transferred."
         pure Nothing
     Left _ -> pure Nothing
     Right packageResult | Array.null packageResult.tags -> pure Nothing
