@@ -1224,15 +1224,6 @@ type AdjustManifest =
   , resolutions :: Maybe (Map PackageName Version)
   }
 
--- other TODOs:
---   - make sure that we're handling 'verified resolutions' appropriately
---   - if we changed the manifest then don't trust our initial compile,
---     do it over again with the new resolutions (maybe just always redo
---     it for simplicity's sake? like findAllCompilers just tries them all?)
---   - delete the validation 'unused dependencies' check since we have
---     this whole dedicated function?
---   - test this function (a bitch, i know)
-
 -- | Check the given manifest to determine dependencies that are unused and can
 -- | be removed, as well as dependencies that are used but not listed in the
 -- | manifest dependencies.
