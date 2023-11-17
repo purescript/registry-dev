@@ -25,6 +25,7 @@ package:
     - exists
     - filterable
     - fetch
+    - fetch-core
     - foldable-traversable
     - foreign-object
     - formatters
