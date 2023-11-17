@@ -304,18 +304,35 @@ runLegacyImport logs = do
                   Log.debug $ "Compatible compilers for resolutions of " <> formatted <> ": " <> stringifyJson (CA.array Version.codec) (NonEmptySet.toUnfoldable compilers)
                   pure compilers
 
-          Log.debug "Fetching source and installing dependencies to test compilers"
-          tmp <- Tmp.mkTmpDir
-          { path } <- Source.fetch tmp manifest.location ref
-          Log.debug $ "Downloaded source to " <> path
-          Log.debug "Downloading dependencies..."
-          let installDir = Path.concat [ tmp, ".registry" ]
-          FS.Extra.ensureDirectory installDir
-          API.installBuildPlan resolutions installDir
-          Log.debug $ "Installed to " <> installDir
-          Log.debug "Finding first compiler that can build the package..."
-          selected <- findFirstCompiler { source: path, installed: installDir, compilers: NonEmptySet.toUnfoldable possibleCompilers }
-          FS.Extra.remove tmp
+          cached <- do
+            cached <- for (NonEmptySet.toUnfoldable possibleCompilers) \compiler ->
+              Cache.get API._compilerCache (API.Compilation (Manifest manifest) resolutions compiler) >>= case _ of
+                Nothing -> pure Nothing
+                Just { result: Left _ } -> pure Nothing
+                Just { target, result: Right _ } -> pure $ Just target
+            pure $ NonEmptyArray.fromArray $ Array.catMaybes cached
+
+          selected <- case cached of
+            Just prev -> do
+              let selected = NonEmptyArray.last prev
+              Log.debug $ "Found successful cached compilation for " <> formatted <> " and chose " <> Version.print selected
+              pure $ Right selected
+            Nothing -> do
+              Log.debug $ "No cached compilation for " <> formatted <> ", so compiling with all compilers to find first working one."
+              Log.debug "Fetching source and installing dependencies to test compilers"
+              tmp <- Tmp.mkTmpDir
+              { path } <- Source.fetch tmp manifest.location ref
+              Log.debug $ "Downloaded source to " <> path
+              Log.debug "Downloading dependencies..."
+              let installDir = Path.concat [ tmp, ".registry" ]
+              FS.Extra.ensureDirectory installDir
+              API.installBuildPlan resolutions installDir
+              Log.debug $ "Installed to " <> installDir
+              Log.debug "Trying compilers one-by-one..."
+              selected <- findFirstCompiler { source: path, installed: installDir, compilers: NonEmptySet.toUnfoldable possibleCompilers }
+              FS.Extra.remove tmp
+              pure selected
+
           case selected of
             Left failures -> do
               let
@@ -356,7 +373,7 @@ runLegacyImport logs = do
         , "----------"
         ]
 
-      void $ for (Array.take 1000 manifests) publishLegacyPackage
+      void $ for (Array.take 100 manifests) publishLegacyPackage
 
       Log.info "Finished publishing! Collecting all publish failures and writing to disk."
       let

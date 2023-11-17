@@ -80,7 +80,17 @@ associateModules parse graph = do
 
 -- | Find direct dependencies of the given module, according to the given graph.
 directDependencies :: ModuleName -> PursGraph -> Maybe (Set ModuleName)
-directDependencies name = map (Set.fromFoldable <<< _.depends) <<< Map.lookup name
+directDependencies start graph = Map.lookup start graph <#> \_ -> directDependenciesOf (Set.singleton start) graph
+
+-- | Find direct dependencies of a set of input modules according to the given
+-- | graph, excluding the input modules themselves.
+directDependenciesOf :: Set ModuleName -> PursGraph -> Set ModuleName
+directDependenciesOf sources graph = do
+  let
+    foldFn prev name = case Map.lookup name graph of
+      Nothing -> prev
+      Just { depends } -> Set.union prev (Array.foldl (\acc mod -> if Set.member mod sources then acc else Set.insert mod acc) Set.empty depends)
+  Array.foldl foldFn Set.empty $ Set.toUnfoldable sources
 
 -- | Find all dependencies of the given module, according to the given graph,
 -- | excluding the module itself.

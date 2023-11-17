@@ -1,7 +1,7 @@
 module Registry.App.API
   ( AuthenticatedEffects
   , COMPILER_CACHE
-  , CompilerCache
+  , CompilerCache(..)
   , PackageSetUpdateEffects
   , PublishEffects
   , _compilerCache
@@ -31,9 +31,11 @@ import Data.DateTime (DateTime)
 import Data.Exists as Exists
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
+import Data.Map (SemigroupMap(..))
 import Data.Map as Map
 import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
+import Data.Semigroup.Foldable as Foldable1
 import Data.Set as Set
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
@@ -104,13 +106,14 @@ import Registry.PursGraph (ModuleName(..))
 import Registry.PursGraph as PursGraph
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
-import Registry.Solver (SolverErrors)
+import Registry.Solver (CompilerIndex(..), SolverErrors)
 import Registry.Solver as Solver
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
+import Safe.Coerce as Safe.Coerce
 import Spago.Core.Config as Spago.Config
 import Spago.FS as Spago.FS
 
@@ -531,7 +534,8 @@ publish payload = do
           [ "This version has already been published to the registry, but the docs have not been "
           , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
           ]
-        verifiedResolutions <- verifyResolutions payload.compiler (Manifest manifest) payload.resolutions
+        compilerIndex <- readCompilerIndex
+        verifiedResolutions <- verifyResolutions compilerIndex payload.compiler (Manifest manifest) payload.resolutions
         compilationResult <- compilePackage { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions }
         case compilationResult of
           Left error -> do
@@ -591,92 +595,24 @@ publish payload = do
   -- manifest does not contain unused dependencies before writing it.
   else do
     Log.debug "Pruning unused dependencies from legacy package manifest..."
+    compilerIndex <- readCompilerIndex
+    Tuple fixedManifest fixedResolutions <- fixManifestDependencies
+      { source: packageDirectory
+      , compiler: payload.compiler
+      , manifest: Manifest manifest
+      , index: compilerIndex
+      , resolutions: payload.resolutions
+      }
 
-    Log.debug "Solving manifest to get all transitive dependencies."
-    resolutions <- verifyResolutions payload.compiler (Manifest manifest) payload.resolutions
-
-    Log.debug "Installing dependencies."
-    tmpDepsDir <- Tmp.mkTmpDir
-    installBuildPlan resolutions tmpDepsDir
-
-    Log.debug "Discovering used dependencies from source."
-    let srcGlobs = Path.concat [ packageDirectory, "src", "**", "*.purs" ]
-    let depGlobs = Path.concat [ tmpDepsDir, "*", "src", "**", "*.purs" ]
-    let command = Purs.Graph { globs: [ srcGlobs, depGlobs ] }
-    -- We need to use the minimum compiler version that supports 'purs graph'
-    let minGraphCompiler = unsafeFromRight (Version.parse "0.13.8")
-    let callCompilerVersion = if payload.compiler >= minGraphCompiler then payload.compiler else minGraphCompiler
-    Run.liftAff (Purs.callCompiler { command, version: Just callCompilerVersion, cwd: Nothing }) >>= case _ of
-      Left err -> do
-        let prefix = "Failed to discover unused dependencies because purs graph failed: "
-        Except.throw $ prefix <> case err of
-          UnknownError str -> str
-          CompilationError errs -> "\n" <> Purs.printCompilerErrors errs
-          MissingCompiler -> "missing compiler " <> Version.print payload.compiler
-      Right output -> case Argonaut.Parser.jsonParser output of
-        Left parseErr -> Except.throw $ "Failed to parse purs graph output as JSON while finding unused dependencies: " <> parseErr
-        Right json -> case CA.decode PursGraph.pursGraphCodec json of
-          Left decodeErr -> Except.throw $ "Failed to decode JSON from purs graph output while finding unused dependencies: " <> CA.printJsonDecodeError decodeErr
-          Right graph -> do
-            Log.debug "Got a valid graph of source and dependencies. Removing install dir and associating discovered modules with their packages..."
-            FS.Extra.remove tmpDepsDir
-
-            let
-              -- We need access to a graph that _doesn't_ include the package
-              -- source, because we only care about dependencies of the package.
-              noSrcGraph = Map.filter (isNothing <<< String.stripPrefix (String.Pattern packageDirectory) <<< _.path) graph
-              pathParser = map _.name <<< parseInstalledModulePath <<< { prefix: tmpDepsDir, path: _ }
-
-            case PursGraph.associateModules pathParser noSrcGraph of
-              Left errs ->
-                Except.throw $ String.joinWith "\n"
-                  [ "Failed to associate modules with packages while finding unused dependencies:"
-                  , flip NonEmptyArray.foldMap1 errs \{ error, module: ModuleName moduleName, path } ->
-                      "  - " <> moduleName <> " (" <> path <> "): " <> error <> "\n"
-                  ]
-              Right modulePackageMap -> do
-                Log.debug "Associated modules with their package names. Finding all modules used in package source..."
-                -- The modules used in the package source code are any that have
-                -- a path beginning with the package source directory. We only
-                -- care about dependents of these modules.
-                let sourceModules = Map.keys $ Map.filter (isJust <<< String.stripPrefix (String.Pattern packageDirectory) <<< _.path) graph
-
-                Log.debug "Found all modules used in package source. Finding all modules used by those modules..."
-                let allReachableModules = PursGraph.allDependenciesOf sourceModules graph
-
-                -- Then we can associate each reachable module with its package
-                -- name to get the full set of used package names.
-                let allUsedPackages = Set.mapMaybe (flip Map.lookup modulePackageMap) allReachableModules
-
-                -- Finally, we can use this to find the unused dependencies.
-                Log.debug "Found all packages reachable by the project source code. Determining unused dependencies..."
-                case Operation.Validation.getUnusedDependencies (Manifest manifest) resolutions allUsedPackages of
-                  Nothing -> do
-                    Log.debug "No unused dependencies! This manifest is good to go."
-                    Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
-                    publishRegistry
-                      { manifest: Manifest manifest
-                      , metadata: Metadata metadata
-                      , payload
-                      , publishedTime
-                      , tmp
-                      , packageDirectory
-                      }
-                  Just isUnused -> do
-                    let printed = String.joinWith ", " (PackageName.print <$> NonEmptySet.toUnfoldable isUnused)
-                    Log.debug $ "Found unused dependencies: " <> printed
-                    Comment.comment $ "Generated legacy manifest contains unused dependencies which will be removed: " <> printed
-                    let verified = manifest { dependencies = Map.filterKeys (not <<< flip NonEmptySet.member isUnused) manifest.dependencies }
-                    Log.debug "Writing updated, pruned manifest."
-                    Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest verified)
-                    publishRegistry
-                      { manifest: Manifest verified
-                      , metadata: Metadata metadata
-                      , payload
-                      , publishedTime
-                      , tmp
-                      , packageDirectory
-                      }
+    Run.liftAff $ writeJsonFile Manifest.codec packagePursJson fixedManifest
+    publishRegistry
+      { manifest: fixedManifest
+      , metadata: Metadata metadata
+      , payload: payload { resolutions = Just fixedResolutions }
+      , publishedTime
+      , tmp
+      , packageDirectory
+      }
 
 type PublishRegistry =
   { manifest :: Manifest
@@ -694,7 +630,8 @@ type PublishRegistry =
 publishRegistry :: forall r. PublishRegistry -> Run (PublishEffects + r) Unit
 publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manifest, publishedTime, tmp, packageDirectory } = do
   Log.debug "Verifying the package build plan..."
-  verifiedResolutions <- verifyResolutions payload.compiler (Manifest manifest) payload.resolutions
+  compilerIndex <- readCompilerIndex
+  verifiedResolutions <- verifyResolutions compilerIndex payload.compiler (Manifest manifest) payload.resolutions
 
   Log.debug "Verifying that the package dependencies are all registered..."
   unregisteredRef <- Run.liftEffect $ Ref.new Map.empty
@@ -766,8 +703,10 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
   Log.debug $ "Adding the new version " <> Version.print manifest.version <> " to the package metadata file."
   let newPublishedVersion = { hash, ref: payload.ref, compilers: Left payload.compiler, publishedTime, bytes }
   let newMetadata = metadata { published = Map.insert manifest.version newPublishedVersion metadata.published }
-  Registry.writeMetadata manifest.name (Metadata newMetadata)
-  Comment.comment "Successfully uploaded package to the registry! 🎉 🚀"
+
+  -- FIXME: Re-enable.
+  -- Registry.writeMetadata manifest.name (Metadata newMetadata)
+  -- Comment.comment "Successfully uploaded package to the registry! 🎉 🚀"
 
   -- We write to the registry index if possible. If this fails, the packaging
   -- team should manually insert the entry.
@@ -811,6 +750,11 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
       Nothing -> NonEmptyArray.singleton payload.compiler
       Just verified -> NonEmptyArray.fromFoldable1 verified
 
+  -- FIXME: Remove
+  case NonEmptyArray.length allVerified of
+    1 -> unsafeCrashWith $ "Only one compiler verified (this is odd)" <> Version.print (NonEmptyArray.head allVerified)
+    _ -> pure unit
+
   Comment.comment $ "Found compatible compilers: " <> String.joinWith ", " (map (\v -> "`" <> Version.print v <> "`") (NonEmptyArray.toArray allVerified))
   let compilersMetadata = newMetadata { published = Map.update (Just <<< (_ { compilers = Right allVerified })) manifest.version newMetadata.published }
   Registry.writeMetadata manifest.name (Metadata compilersMetadata)
@@ -823,25 +767,25 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the
 -- | manifest. If not, we solve their manifest to produce a build plan.
-verifyResolutions :: forall r. Version -> Manifest -> Maybe (Map PackageName Version) -> Run (REGISTRY + LOG + AFF + EXCEPT String + r) (Map PackageName Version)
-verifyResolutions compiler manifest resolutions = do
+verifyResolutions :: forall r. CompilerIndex -> Version -> Manifest -> Maybe (Map PackageName Version) -> Run (REGISTRY + LOG + AFF + EXCEPT String + r) (Map PackageName Version)
+verifyResolutions compilerIndex compiler manifest resolutions = do
   Log.debug "Check the submitted build plan matches the manifest"
-  compilerIndex <- readCompilerIndex
   case resolutions of
-    Nothing -> case Operation.Validation.validateDependenciesSolve compiler manifest compilerIndex of
-      Left errors -> do
-        let
-          printedError = String.joinWith "\n"
-            [ "Could not produce valid dependencies for manifest."
-            , "```"
-            , errors # foldMapWithIndex \index error -> String.joinWith "\n"
-                [ "[Error " <> show (index + 1) <> "]"
-                , Solver.printSolverError error
-                ]
-            , "```"
-            ]
-        Except.throw printedError
-      Right solved -> pure solved
+    Nothing -> do
+      case Operation.Validation.validateDependenciesSolve compiler manifest compilerIndex of
+        Left errors -> do
+          let
+            printedError = String.joinWith "\n"
+              [ "Could not produce valid dependencies for manifest."
+              , "```"
+              , errors # foldMapWithIndex \index error -> String.joinWith "\n"
+                  [ "[Error " <> show (index + 1) <> "]"
+                  , Solver.printSolverError error
+                  ]
+              , "```"
+              ]
+          Except.throw printedError
+        Right solved -> pure solved
     Just provided -> do
       validateResolutions manifest provided
       pure provided
@@ -938,7 +882,10 @@ findAllCompilers { source, manifest, compilers } = do
   checkedCompilers <- for compilers \target -> do
     Log.debug $ "Trying compiler " <> Version.print target
     case Solver.solveWithCompiler (Range.exact target) compilerIndex (un Manifest manifest).dependencies of
-      Left solverErrors -> pure $ Left $ Tuple target (Left solverErrors)
+      Left solverErrors -> do
+        Log.info $ "Failed to solve with compiler " <> Version.print target
+        Log.debug $ Foldable1.foldMap1 (append "\n" <<< Solver.printSolverError) solverErrors
+        pure $ Left $ Tuple target (Left solverErrors)
       Right (Tuple mbCompiler resolutions) -> do
         Log.debug $ "Solved with compiler " <> Version.print target <> " and got resolutions:\n" <> printJson (Internal.Codec.packageMap Version.codec) resolutions
         case mbCompiler of
@@ -953,6 +900,7 @@ findAllCompilers { source, manifest, compilers } = do
           Just _ -> pure unit
         Cache.get _compilerCache (Compilation manifest resolutions target) >>= case _ of
           Nothing -> do
+            Log.debug $ "No cached compilation, compiling with compiler " <> Version.print target
             workdir <- Tmp.mkTmpDir
             let installed = Path.concat [ workdir, ".registry" ]
             FS.Extra.ensureDirectory installed
@@ -963,6 +911,11 @@ findAllCompilers { source, manifest, compilers } = do
               , cwd: Just workdir
               }
             FS.Extra.remove workdir
+            case result of
+              Left err -> do
+                Log.info $ "Compilation failed with compiler " <> Version.print target <> ":\n" <> printCompilerFailure target err
+              Right _ -> do
+                Log.debug $ "Compilation succeeded with compiler " <> Version.print target
             Cache.put _compilerCache (Compilation manifest resolutions target) { target, result: map (const unit) result }
             pure $ bimap (Tuple target <<< Right) (const target) result
           Just { result } ->
@@ -1262,6 +1215,160 @@ readCompilerIndex = do
   manifests <- Registry.readAllManifests
   allCompilers <- PursVersions.pursVersions
   pure $ Solver.buildCompilerIndex allCompilers manifests metadata
+
+type AdjustManifest =
+  { source :: FilePath
+  , compiler :: Version
+  , manifest :: Manifest
+  , index :: CompilerIndex
+  , resolutions :: Maybe (Map PackageName Version)
+  }
+
+-- other TODOs:
+--   - make sure that we're handling 'verified resolutions' appropriately
+--   - if we changed the manifest then don't trust our initial compile,
+--     do it over again with the new resolutions (maybe just always redo
+--     it for simplicity's sake? like findAllCompilers just tries them all?)
+--   - delete the validation 'unused dependencies' check since we have
+--     this whole dedicated function?
+--   - test this function (a bitch, i know)
+
+-- | Check the given manifest to determine dependencies that are unused and can
+-- | be removed, as well as dependencies that are used but not listed in the
+-- | manifest dependencies.
+fixManifestDependencies
+  :: forall r
+   . AdjustManifest
+  -> Run (COMMENT + REGISTRY + STORAGE + LOG + EXCEPT String + AFF + EFFECT + r) (Tuple Manifest (Map PackageName Version))
+fixManifestDependencies { source, compiler, index, manifest: Manifest manifest, resolutions } = do
+  verified <- verifyResolutions index compiler (Manifest manifest) resolutions
+
+  Log.debug "Fixing manifest dependencies if needed..."
+  tmp <- Tmp.mkTmpDir
+  installBuildPlan verified tmp
+
+  Log.debug "Discovering used dependencies from source."
+  let srcGlobs = Path.concat [ source, "src", "**", "*.purs" ]
+  let depGlobs = Path.concat [ tmp, "*", "src", "**", "*.purs" ]
+  let command = Purs.Graph { globs: [ srcGlobs, depGlobs ] }
+
+  -- We need to use the minimum compiler version that supports 'purs graph'.
+  -- Technically that's 0.13.8, but that version had a bug wrt transitive
+  -- dependencies, so we start from 0.14.0.
+  let minGraphCompiler = unsafeFromRight (Version.parse "0.14.0")
+  let compiler' = if compiler >= minGraphCompiler then compiler else minGraphCompiler
+  result <- Run.liftAff (Purs.callCompiler { command, version: Just compiler', cwd: Nothing })
+  FS.Extra.remove tmp
+  case result of
+    Left err -> case err of
+      UnknownError str -> Except.throw str
+      MissingCompiler -> Except.throw $ "Missing compiler " <> Version.print compiler'
+      CompilationError errs -> do
+        Log.warn $ Array.fold
+          [ "Failed to discover unused dependencies because purs graph failed:\n"
+          , Purs.printCompilerErrors errs
+          ]
+        -- purs graph will fail if the source code is malformed or because the
+        -- package uses syntax before the oldest usable purs graph compiler (ie.
+        -- 0.14.0). In this case we can't determine unused dependencies and should
+        -- leave the manifest untouched.
+        pure $ Tuple (Manifest manifest) verified
+    Right output -> do
+      graph <- case Argonaut.Parser.jsonParser output of
+        Left parseErr -> Except.throw $ "Failed to parse purs graph output as JSON while finding unused dependencies: " <> parseErr
+        Right json -> case CA.decode PursGraph.pursGraphCodec json of
+          Left decodeErr -> Except.throw $ "Failed to decode JSON from purs graph output while finding unused dependencies: " <> CA.printJsonDecodeError decodeErr
+          Right graph -> do
+            Log.debug "Got a valid graph of source and dependencies."
+            pure graph
+
+      let
+        depsGraph = Map.filter (isNothing <<< String.stripPrefix (String.Pattern source) <<< _.path) graph
+        pathParser = map _.name <<< parseInstalledModulePath <<< { prefix: tmp, path: _ }
+
+      associated <- case PursGraph.associateModules pathParser depsGraph of
+        Left errs -> do
+          Except.throw $ String.joinWith "\n"
+            [ "Failed to associate modules with packages while finding unused dependencies:"
+            , flip NonEmptyArray.foldMap1 errs \{ error, module: ModuleName moduleName, path } ->
+                "  - " <> moduleName <> " (" <> path <> "): " <> error <> "\n"
+            ]
+        Right modules -> pure modules
+
+      let sourceModules = Map.keys $ Map.filter (isJust <<< String.stripPrefix (String.Pattern source) <<< _.path) graph
+      let directImports = PursGraph.directDependenciesOf sourceModules graph
+      Log.debug $ "Found modules directly imported by project source code: " <> String.joinWith ", " (map unwrap (Set.toUnfoldable directImports))
+      let directPackages = Set.mapMaybe (flip Map.lookup associated) directImports
+      Log.debug $ "Found packages directly imported by project source code: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable directPackages))
+
+      -- Unused packages are those which are listed in the manifest dependencies
+      -- but which are not imported by the package source code.
+      let unusedInManifest = Set.filter (not <<< flip Set.member directPackages) (Map.keys manifest.dependencies)
+
+      if Set.isEmpty unusedInManifest then
+        -- If there are no unused dependencies then we don't need to fix anything.
+        pure $ Tuple (Manifest manifest) verified
+      else do
+        Log.debug $ "Found unused dependencies: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable unusedInManifest))
+
+        let
+          registry :: Solver.TransitivizedRegistry
+          registry = Solver.initializeRegistry $ un CompilerIndex index
+
+          prune :: Map PackageName Range -> Map PackageName Range
+          prune deps = do
+            let
+              partition = partitionEithers $ map (\entry -> entry # if Set.member (fst entry) directPackages then Right else Left) $ Map.toUnfoldable deps
+              unusedDeps = Map.fromFoldable partition.fail
+
+            if Map.isEmpty unusedDeps then
+              deps
+            else do
+              let
+                usedDeps :: Map PackageName Range
+                usedDeps = Map.fromFoldable partition.success
+
+                unusedTransitive :: Map PackageName Range
+                unusedTransitive =
+                  Map.mapMaybeWithKey (\key intersect -> if Map.member key unusedDeps then Nothing else Range.mk (Solver.lowerBound intersect) (Solver.upperBound intersect))
+                    $ Safe.Coerce.coerce
+                    $ _.required
+                    $ Solver.solveSteps (Solver.solveSeed { registry, required: Solver.initializeRequired unusedDeps })
+
+              prune $ Map.unionWith (\used unused -> fromMaybe used (Range.intersect used unused)) usedDeps unusedTransitive
+
+          prunedDependencies = prune manifest.dependencies
+
+        -- Missing packages are those which are imported by the package source
+        -- but which are not listed in the manifest dependencies.
+        let missing = Set.filter (not <<< flip Set.member (Map.keys prunedDependencies)) directPackages
+        when (Set.size missing > 0) do
+          let path = Path.concat [ scratchDir, "missing-deps" ]
+          FS.Extra.ensureDirectory path
+          Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ path, formatPackageVersion manifest.name manifest.version <> "-unused-dependencies.txt" ]) (String.joinWith "\n" (map PackageName.print (Set.toUnfoldable missing)))
+          Log.warn $ "Found missing dependencies: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable missing))
+
+        case Solver.solveFull { registry, required: Solver.initializeRequired prunedDependencies } of
+          Left failure ->
+            Except.throw $ "Failed to solve for dependencies while fixing manifest: " <> Foldable1.foldMap1 (append "\n" <<< Solver.printSolverError) failure
+          Right new' -> do
+            let purs = unsafeFromRight (PackageName.parse "purs")
+            let newResolutions = Map.delete purs new'
+            let removed = Map.keys $ Map.difference manifest.dependencies prunedDependencies
+            let added = Map.difference prunedDependencies manifest.dependencies
+            Comment.comment $ String.joinWith "\n"
+              [ "Your package is using a legacy manifest format, so we have adjusted your dependencies to remove unused ones. Your dependency list was:"
+              , "```json"
+              , printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
+              , "```"
+              , "  - We have removed the following packages: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable removed))
+              , "  - We have added the following packages: " <> String.joinWith ", " (map (\(Tuple name range) -> PackageName.print name <> "(" <> Range.print range <> ")") (Map.toUnfoldable added))
+              , "Your new dependency list is:"
+              , "```json"
+              , printJson (Internal.Codec.packageMap Range.codec) prunedDependencies
+              , "```"
+              ]
+            pure $ Tuple (Manifest (manifest { dependencies = prunedDependencies })) newResolutions
 
 type COMPILER_CACHE r = (compilerCache :: Cache CompilerCache | r)
 
