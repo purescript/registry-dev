@@ -7,6 +7,7 @@ import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
 import Node.FS.Aff as FS
+import Node.ChildProcess.Types (Exit(..))
 import Node.Library.Execa as Execa
 import Node.Path as Path
 import Registry.Foreign.Tmp as Tmp
@@ -25,15 +26,11 @@ detect :: FilePath -> Aff (Either String (Array String))
 detect directory = do
   let cmd = "licensee"
   let args = [ "detect", "--json", directory ]
-  result <- _.result =<< Execa.execa cmd args identity
-  let
-    { exitCode, stdout, stderr } = case result of
-      Left { exitCode, stdout, stderr } -> { exitCode, stdout, stderr }
-      Right { exitCode, stdout, stderr } -> { exitCode: Just exitCode, stdout, stderr }
-  pure case exitCode of
+  result <- _.getResult =<< Execa.execa cmd args identity
+  pure case result.exit of
     -- Licensee will exit with `1` if it didn't parse any licenses,
     -- but we consider this valid Licensee output.
-    Just n | n == 0 || n == 1 -> do
+    Normally n | n == 0 || n == 1 -> do
       let
         parse :: String -> Either JsonDecodeError (Array String)
         parse str = map (map _.spdx_id <<< _.licenses) $ flip parseJson str $ CA.Record.object "Licenses"
@@ -41,7 +38,7 @@ detect directory = do
               { spdx_id: CA.string }
           }
 
-      case parse stdout of
+      case parse result.stdout of
         Left error -> do
           let printedError = CA.printJsonDecodeError error
           Left printedError
@@ -52,4 +49,4 @@ detect directory = do
           Right $ Array.filter (_ /= "NOASSERTION") out
 
     _ ->
-      Left stderr
+      Left result.stderr

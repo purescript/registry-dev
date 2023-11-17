@@ -22,5 +22,7 @@ spec = do
         contents = "<contents>"
       Gzip buffer <- Gzip.compress contents
       FS.Aff.writeFile file buffer
-      result <- _.result =<< Execa.execa "zcat" [ file ] identity
-      (_.stdout <$> result) `Assert.shouldEqual` Right contents
+      result <- _.getResult =<< Execa.execa "zcat" [ file ] identity
+      case result.exit of
+        Normally 0 -> result.stdout `Assert.shouldEqual` contents
+        _ -> Assert.fail $ result.originalMessage

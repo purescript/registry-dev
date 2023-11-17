@@ -7,6 +7,7 @@ import Control.Monad.Except as Except
 import Data.Either (Either(..))
 import Data.String as String
 import Effect.Aff (Aff)
+import Node.ChildProcess.Types (Exit(..))
 import Node.Library.Execa as Execa
 import Node.Path (FilePath)
 import Node.Path as Path
@@ -61,9 +62,9 @@ sha256Nix :: FilePath -> ExceptT String Aff Sha256.Sha256
 sha256Nix path = ExceptT do
   -- In Nix 2.4 this will become `nix hash file`
   let args = [ "hash-file", "--sri", path ]
-  result <- _.result =<< Execa.execa "nix" args identity
-  pure $ case result of
-    Right { stdout } ->
-      Sha256.parse $ String.trim stdout
-    Left { stderr } ->
-      Left stderr
+  result <- _.getResult =<< Execa.execa "nix" args identity
+  pure $ case result.exit of
+    Normally 0 ->
+      Sha256.parse $ String.trim result.stdout
+    _ ->
+      Left result.stderr

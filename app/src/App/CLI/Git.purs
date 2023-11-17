@@ -7,6 +7,7 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.String as String
 import Data.String.CodeUnits as CodeUnits
 import Node.Library.Execa as Execa
+import Node.ChildProcess.Types (Exit(..))
 import Parsing as Parsing
 import Parsing.Combinators as Parsing.Combinators
 import Parsing.String as Parsing.String
@@ -73,10 +74,10 @@ mkAuthOrigin address committer = AuthOrigin $ Array.fold
 -- | Run the `git` tool via the command line.
 gitCLI :: Array String -> Maybe FilePath -> Aff (Either String String)
 gitCLI args cwd = do
-  result <- liftAff $ _.result =<< Execa.execa "git" args (_ { cwd = cwd })
-  pure case result of
-    Right { stdout } -> Right (String.trim stdout)
-    Left { stdout, stderr } -> Left (stdout <> stderr)
+  result <- liftAff $ _.getResult =<< Execa.execa "git" args (_ { cwd = cwd })
+  pure case result.exit of
+    Normally 0 -> Right (String.trim result.stdout)
+    _ -> Left (result.stdout <> result.stderr)
 
 withGit :: forall r. FilePath -> Array String -> (String -> String) -> Run (AFF + EXCEPT String + r) String
 withGit cwd args onError = Run.liftAff (gitCLI args (Just cwd)) >>= case _ of
