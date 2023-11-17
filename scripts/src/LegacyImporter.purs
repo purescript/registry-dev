@@ -373,7 +373,7 @@ runLegacyImport logs = do
         , "----------"
         ]
 
-      void $ for (Array.take 100 manifests) publishLegacyPackage
+      void $ for (Array.take 1500 manifests) publishLegacyPackage
 
       Log.info "Finished publishing! Collecting all publish failures and writing to disk."
       let

@@ -1336,8 +1336,8 @@ fixManifestDependencies { source, compiler, index, manifest: Manifest manifest, 
         when (Set.size missing > 0) do
           let path = Path.concat [ scratchDir, "missing-deps" ]
           FS.Extra.ensureDirectory path
-          Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ path, formatPackageVersion manifest.name manifest.version <> "-unused-dependencies.txt" ]) (String.joinWith "\n" (map PackageName.print (Set.toUnfoldable missing)))
-          Log.warn $ "Found missing dependencies: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable missing))
+          Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ path, formatPackageVersion manifest.name manifest.version <> "-missing-dependencies.txt" ]) (String.joinWith "\n" (map PackageName.print (Set.toUnfoldable missing)))
+          Log.warn $ "Missing direct imports: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable missing))
 
         case Solver.solveFull { registry, required: Solver.initializeRequired prunedDependencies } of
           Left failure ->
