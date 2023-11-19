@@ -750,11 +750,6 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
       Nothing -> NonEmptyArray.singleton payload.compiler
       Just verified -> NonEmptyArray.fromFoldable1 verified
 
-  -- FIXME: Remove
-  case NonEmptyArray.length allVerified of
-    1 -> unsafeCrashWith $ "Only one compiler verified (this is odd)" <> Version.print (NonEmptyArray.head allVerified)
-    _ -> pure unit
-
   Comment.comment $ "Found compatible compilers: " <> String.joinWith ", " (map (\v -> "`" <> Version.print v <> "`") (NonEmptyArray.toArray allVerified))
   let compilersMetadata = newMetadata { published = Map.update (Just <<< (_ { compilers = Right allVerified })) manifest.version newMetadata.published }
   Registry.writeMetadata manifest.name (Metadata compilersMetadata)

@@ -6,6 +6,7 @@ import Registry.App.Prelude
 import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.JSDate as JSDate
+import Data.String as String
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Effect.Now as Now
@@ -20,6 +21,7 @@ import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.Types (RawVersion(..))
+import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tar as Foreign.Tar
 import Registry.Location as Location
@@ -90,11 +92,22 @@ handle importType = case _ of
                   Failed err -> Aff.throwError $ Aff.error err
                   Succeeded _ -> pure unit
 
+              alreadyExists = String.contains (String.Pattern "already exists and is not an empty directory")
+
             Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
-              Left error -> do
-                Log.error $ "Failed to clone git tag: " <> Aff.message error
-                Except.throw $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
               Right _ -> Log.debug $ "Cloned package source to " <> repoDir
+              Left error -> do
+                Log.error $ "Failed to clone git tag: " <> Aff.message error <> ", retrying..."
+                when (alreadyExists (Aff.message error)) $ FS.Extra.remove repoDir
+                Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
+                  Right _ -> Log.debug $ "Cloned package source to " <> repoDir
+                  Left error2 -> do
+                    Log.error $ "Failed to clone git tag (attempt 2): " <> Aff.message error2 <> ", retrying..."
+                    Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
+                      Right _ -> Log.debug $ "Cloned package source to " <> repoDir
+                      Left error3 -> do
+                        Log.error $ "Failed to clone git tag (attempt 3): " <> Aff.message error3
+                        unsafeCrashWith $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
 
             Log.debug $ "Getting published time..."
 

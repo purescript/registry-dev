@@ -45,6 +45,7 @@ import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
+import Registry.App.API (COMPILER_CACHE)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.CLI.Purs (CompilerFailure, compilerFailureCodec)
@@ -329,7 +330,13 @@ runLegacyImport logs = do
               API.installBuildPlan resolutions installDir
               Log.debug $ "Installed to " <> installDir
               Log.debug "Trying compilers one-by-one..."
-              selected <- findFirstCompiler { source: path, installed: installDir, compilers: NonEmptySet.toUnfoldable possibleCompilers }
+              selected <- findFirstCompiler
+                { source: path
+                , installed: installDir
+                , compilers: NonEmptySet.toUnfoldable possibleCompilers
+                , resolutions
+                , manifest: Manifest manifest
+                }
               FS.Extra.remove tmp
               pure selected
 
@@ -373,7 +380,7 @@ runLegacyImport logs = do
         , "----------"
         ]
 
-      void $ for (Array.take 1500 manifests) publishLegacyPackage
+      void $ for manifests publishLegacyPackage
 
       Log.info "Finished publishing! Collecting all publish failures and writing to disk."
       let
@@ -994,23 +1001,34 @@ fetchSpagoYaml address ref = do
 findFirstCompiler
   :: forall r
    . { compilers :: Array Version
+     , manifest :: Manifest
+     , resolutions :: Map PackageName Version
      , source :: FilePath
      , installed :: FilePath
      }
-  -> Run (STORAGE + LOG + AFF + EFFECT + r) (Either (Map Version CompilerFailure) Version)
-findFirstCompiler { source, compilers, installed } = do
+  -> Run (COMPILER_CACHE + STORAGE + LOG + AFF + EFFECT + r) (Either (Map Version CompilerFailure) Version)
+findFirstCompiler { source, manifest, resolutions, compilers, installed } = do
   search <- Except.runExcept $ for (Array.reverse (Array.sort compilers)) \target -> do
-    Log.debug $ "Trying compiler " <> Version.print target
-    workdir <- Tmp.mkTmpDir
-    result <- Run.liftAff $ Purs.callCompiler
-      { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }
-      , version: Just target
-      , cwd: Just workdir
-      }
-    FS.Extra.remove workdir
+    result <- Cache.get API._compilerCache (API.Compilation manifest resolutions target) >>= case _ of
+      Nothing -> do
+        Log.debug $ "Trying compiler " <> Version.print target
+        workdir <- Tmp.mkTmpDir
+        result <- Run.liftAff $ Purs.callCompiler
+          { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }
+          , version: Just target
+          , cwd: Just workdir
+          }
+        FS.Extra.remove workdir
+        let cache = { result: map (const unit) result, target }
+        Cache.put API._compilerCache (API.Compilation manifest resolutions target) cache
+        pure cache.result
+      Just cached ->
+        pure cached.result
+
     case result of
       Left error -> pure $ Tuple target error
       Right _ -> Except.throw target
+
   case search of
     Left worked -> pure $ Right worked
     Right others -> pure $ Left $ Map.fromFoldable others
