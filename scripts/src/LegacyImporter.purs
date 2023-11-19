@@ -37,6 +37,7 @@ import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
 import Data.Variant as Variant
 import Effect.Class.Console as Console
+import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
 import Parsing (Parser)
@@ -239,7 +240,9 @@ runLegacyImport logs = do
       Just _ -> pure unit
 
   Log.info "Ready for upload!"
-  Log.info $ formatImportStats $ calculateImportStats legacyRegistry importedIndex
+  let importStats = formatImportStats $ calculateImportStats legacyRegistry importedIndex
+  Log.info importStats
+  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "import-stats.txt" ]) importStats
 
   Log.info "Sorting packages for upload..."
   let allIndexPackages = ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges importedIndex.registryIndex
@@ -276,7 +279,10 @@ runLegacyImport logs = do
         Left unsolvable -> do
           let errors = map Solver.printSolverError $ NonEmptyList.toUnfoldable unsolvable
           Log.warn $ "Could not solve " <> formatted <> Array.foldMap (append "\n") errors
-          Cache.put _importCache (PublishFailure manifest.name manifest.version) (SolveFailed $ String.joinWith " " errors)
+          let isCompilerSolveError = String.contains (String.Pattern "Conflict in version ranges for purs:")
+          let { fail: nonCompiler } = partitionEithers $ map (\error -> if isCompilerSolveError error then Right error else Left error) errors
+          let joined = String.joinWith " " errors
+          Cache.put _importCache (PublishFailure manifest.name manifest.version) (if Array.null nonCompiler then SolveFailedCompiler joined else SolveFailedDependencies joined)
         Right (Tuple _ resolutions) -> do
           Log.debug $ "Solved " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions <> "\nfrom dependency list\n" <> printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
           possibleCompilers <-
@@ -380,7 +386,7 @@ runLegacyImport logs = do
         , "----------"
         ]
 
-      void $ for manifests publishLegacyPackage
+      void $ for (Array.take 1000 manifests) publishLegacyPackage
 
       Log.info "Finished publishing! Collecting all publish failures and writing to disk."
       let
@@ -390,6 +396,10 @@ runLegacyImport logs = do
             Just error -> pure $ Map.insertWith Map.union name (Map.singleton version error) prev
       failures <- Array.foldM collectError Map.empty allIndexPackages
       Run.liftAff $ writePublishFailures failures
+
+      let publishStats = formatPublishFailureStats importedIndex.registryIndex failures
+      Log.info publishStats
+      Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "publish-stats.txt" ]) publishStats
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePublishFailures :: Map PackageName (Map Version PublishError) -> Aff Unit
@@ -558,7 +568,8 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
   pure $ Map.fromFoldable manifests
 
 data PublishError
-  = SolveFailed String
+  = SolveFailedDependencies String
+  | SolveFailedCompiler String
   | NoCompilersFound (Map (NonEmptyArray Version) CompilerFailure)
   | UnsolvableDependencyCompilers (Array GroupedByCompilers)
   | PublishError String
@@ -567,24 +578,76 @@ derive instance Eq PublishError
 
 publishErrorCodec :: JsonCodec PublishError
 publishErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
-  { solveFailed: Right CA.string
+  { solveFailedCompiler: Right CA.string
+  , solveFailedDependencies: Right CA.string
   , noCompilersFound: Right compilerFailureMapCodec
   , unsolvableDependencyCompilers: Right (CA.array groupedByCompilersCodec)
   , publishError: Right CA.string
   }
   where
   toVariant = case _ of
-    SolveFailed error -> Variant.inj (Proxy :: _ "solveFailed") error
+    SolveFailedDependencies error -> Variant.inj (Proxy :: _ "solveFailedDependencies") error
+    SolveFailedCompiler error -> Variant.inj (Proxy :: _ "solveFailedCompiler") error
     NoCompilersFound failed -> Variant.inj (Proxy :: _ "noCompilersFound") failed
     UnsolvableDependencyCompilers group -> Variant.inj (Proxy :: _ "unsolvableDependencyCompilers") group
     PublishError error -> Variant.inj (Proxy :: _ "publishError") error
 
   fromVariant = Variant.match
-    { solveFailed: SolveFailed
+    { solveFailedDependencies: SolveFailedDependencies
+    , solveFailedCompiler: SolveFailedCompiler
     , noCompilersFound: NoCompilersFound
     , unsolvableDependencyCompilers: UnsolvableDependencyCompilers
     , publishError: PublishError
     }
+
+formatPublishFailureStats :: ManifestIndex -> Map PackageName (Map Version PublishError) -> String
+formatPublishFailureStats importedIndex results = do
+  let
+    index :: Map PackageName (Map Version Manifest)
+    index = ManifestIndex.toMap importedIndex
+
+    countVersions :: forall a. Map PackageName (Map Version a) -> Int
+    countVersions = Array.foldl (\prev (Tuple _ versions) -> prev + Map.size versions) 0 <<< Map.toUnfoldable
+
+    startPackages :: Int
+    startPackages = Map.size index
+
+    startVersions :: Int
+    startVersions = countVersions index
+
+    failedPackages :: Int
+    failedPackages = Map.size results
+
+    failedVersions :: Int
+    failedVersions = countVersions results
+
+    removedPackages :: Int
+    removedPackages = Map.size index - Map.size results
+
+    countByFailure :: Map String Int
+    countByFailure = do
+      let
+        toKey = case _ of
+          SolveFailedDependencies _ -> "Solving failed (dependencies)"
+          SolveFailedCompiler _ -> "Solving failed (compiler)"
+          NoCompilersFound _ -> "No compilers usable for publishing"
+          UnsolvableDependencyCompilers _ -> "Dependency compiler conflict"
+          PublishError _ -> "Publishing failed"
+
+        foldFn prev (Tuple _ versions) =
+          Array.foldl (\prevCounts (Tuple _ error) -> Map.insertWith (+) (toKey error) 1 prevCounts) prev (Map.toUnfoldable versions)
+
+      Array.foldl foldFn Map.empty (Map.toUnfoldable results)
+
+  String.joinWith "\n"
+    [ "--------------------"
+    , "PUBLISH FAILURES"
+    , "--------------------"
+    , ""
+    , "PACKAGES: " <> show failedPackages <> " out of " <> show startPackages <> " failed (" <> show removedPackages <> " packages have zero usable versions)."
+    , "VERSIONS: " <> show failedVersions <> " out of " <> show startVersions <> " failed."
+    , Array.foldMap (\(Tuple key val) -> "\n  - " <> key <> ": " <> show val) (Map.toUnfoldable countByFailure)
+    ]
 
 compilerFailureMapCodec :: JsonCodec (Map (NonEmptyArray Version) CompilerFailure)
 compilerFailureMapCodec = do
@@ -835,8 +898,10 @@ formatVersionValidationError { error, reason } = case error of
 
 formatPublishError :: PublishError -> JsonValidationError
 formatPublishError = case _ of
-  SolveFailed error ->
-    { tag: "SolveFailed", value: Nothing, reason: error }
+  SolveFailedCompiler error ->
+    { tag: "SolveFailedCompiler", value: Nothing, reason: error }
+  SolveFailedDependencies error ->
+    { tag: "SolveFailedDependencies", value: Nothing, reason: error }
   NoCompilersFound versions ->
     { tag: "NoCompilersFound", value: Just (CA.encode compilerFailureMapCodec versions), reason: "No valid compilers found for publishing." }
   UnsolvableDependencyCompilers failed ->
