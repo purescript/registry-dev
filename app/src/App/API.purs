@@ -1288,39 +1288,27 @@ fixManifestDependencies { source, compiler, index, manifest: Manifest manifest, 
       let directPackages = Set.mapMaybe (flip Map.lookup associated) directImports
       Log.debug $ "Found packages directly imported by project source code: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable directPackages))
 
+      -- Unused packages are those which are listed in the manifest dependencies
+      -- but which are not imported by the package source code.
       let unusedInManifest = Set.filter (not <<< flip Set.member directPackages) (Map.keys manifest.dependencies)
-      when (Set.size unusedInManifest > 0) do
-        Log.warn $ "Manifest includes unused packages: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable unusedInManifest))
 
-      let missingInManifest = Set.filter (not <<< flip Map.member manifest.dependencies) directPackages
-      when (Set.size missingInManifest > 0) do
-        Log.warn $ "Manifest does not include imported packages: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable missingInManifest))
-
-      if Set.isEmpty unusedInManifest && Set.isEmpty missingInManifest then
+      if Set.isEmpty unusedInManifest then
+        -- If there are no unused dependencies then we don't need to fix anything.
         pure $ Tuple (Manifest manifest) verified
       else do
+        Log.debug $ "Found unused dependencies: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable unusedInManifest))
+
         let
           registry :: Solver.TransitivizedRegistry
           registry = Solver.initializeRegistry $ un CompilerIndex index
 
-          solveSteps :: Map PackageName Range -> Map PackageName Range
-          solveSteps init =
-            Map.mapMaybe (\intersect -> Range.mk (Solver.lowerBound intersect) (Solver.upperBound intersect))
-              $ Safe.Coerce.coerce
-              $ _.required
-              $ Solver.solveSteps
-              $ Solver.solveSeed { registry, required: Solver.initializeRequired init }
-
-          expandedManifest :: Map PackageName Range
-          expandedManifest = solveSteps manifest.dependencies
-
-          pruneUnused :: Map PackageName Range -> Map PackageName Range
-          pruneUnused deps = do
+          prune :: Map PackageName Range -> Map PackageName Range
+          prune deps = do
             let
               partition = partitionEithers $ map (\entry -> entry # if Set.member (fst entry) directPackages then Right else Left) $ Map.toUnfoldable deps
-              remainingUnused = Map.fromFoldable partition.fail
+              unusedDeps = Map.fromFoldable partition.fail
 
-            if Map.isEmpty remainingUnused then
+            if Map.isEmpty unusedDeps then
               deps
             else do
               let
@@ -1329,54 +1317,36 @@ fixManifestDependencies { source, compiler, index, manifest: Manifest manifest, 
 
                 unusedTransitive :: Map PackageName Range
                 unusedTransitive =
-                  Map.mapMaybeWithKey (\key intersect -> if Map.member key remainingUnused then Nothing else Range.mk (Solver.lowerBound intersect) (Solver.upperBound intersect))
+                  Map.mapMaybeWithKey (\key intersect -> if Map.member key unusedDeps then Nothing else Range.mk (Solver.lowerBound intersect) (Solver.upperBound intersect))
                     $ Safe.Coerce.coerce
                     $ _.required
-                    $ Solver.solveSteps (Solver.solveSeed { registry, required: Solver.initializeRequired remainingUnused })
+                    $ Solver.solveSteps (Solver.solveSeed { registry, required: Solver.initializeRequired unusedDeps })
 
-              pruneUnused $ Map.unionWith (\used unused -> fromMaybe used (Range.intersect used unused)) usedDeps unusedTransitive
+              prune $ Map.unionWith (\used unused -> fromMaybe used (Range.intersect used unused)) usedDeps unusedTransitive
 
-          fixedDependencies = pruneUnused expandedManifest
+          prunedDependencies = prune manifest.dependencies
 
-        -- Missing packages are those which are imported by the package source
-        -- but which are not listed in the manifest dependencies.
-        let missing = Set.filter (not <<< flip Set.member (Map.keys fixedDependencies)) directPackages
-        case Set.size missing of
-          0 -> pure unit
-          n -> do
-            Log.warn $ show n <> " packages still missing!"
-            unsafeCrashWith $ String.joinWith "\n\n"
-              [ "ORIGINAL  DEPS:\n" <> printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
-              , "EXPANDED  DEPS:\n" <> printJson (Internal.Codec.packageMap Range.codec) expandedManifest
-              , "PRUNED    DEPS:\n" <> printJson (Internal.Codec.packageMap Range.codec) fixedDependencies
-              , "DIRECT IMPORTS: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable directPackages))
-              , "MISSING       : " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable missing))
-              , "RESOLUTIONS   : " <> printJson (Internal.Codec.packageMap Version.codec) verified
-              ]
-
-        case Solver.solveFull { registry, required: Solver.initializeRequired fixedDependencies } of
+        case Solver.solveFull { registry, required: Solver.initializeRequired prunedDependencies } of
           Left failure ->
-            unsafeCrashWith $ "Failed to solve for dependencies while fixing manifest: " <> Foldable1.foldMap1 (append "\n" <<< Solver.printSolverError) failure
+            Except.throw $ "Failed to solve for dependencies while fixing manifest: " <> Foldable1.foldMap1 (append "\n" <<< Solver.printSolverError) failure
           Right new' -> do
             let purs = unsafeFromRight (PackageName.parse "purs")
             let newResolutions = Map.delete purs new'
-            let removed = Map.keys $ Map.difference manifest.dependencies fixedDependencies
-            let added = Map.difference fixedDependencies manifest.dependencies
+            let removed = Map.keys $ Map.difference manifest.dependencies prunedDependencies
+            let added = Map.difference prunedDependencies manifest.dependencies
             Comment.comment $ Array.fold
-              [ "Your package is using a legacy manifest format, so we have adjusted your dependencies to remove unused ones and add directly-imported ones. Your dependency list was:\n"
-              , "```json\n"
+              [ "Your package is using a legacy manifest format, so we have adjusted your dependencies to remove unused ones. Your dependency list was:"
+              , "\n```json\n"
               , printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
               , "\n```\n"
-              , Monoid.guard (not (Set.isEmpty removed)) do
-                  "  - We have removed the following packages: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable removed)) <> "\n"
-              , Monoid.guard (not (Map.isEmpty added)) do
-                  "  - We have added the following packages: " <> String.joinWith ", " (map (\(Tuple name range) -> PackageName.print name <> "(" <> Range.print range <> ")") (Map.toUnfoldable added)) <> "\n"
-              , "Your new dependency list is:\n"
-              , "```json\n"
-              , printJson (Internal.Codec.packageMap Range.codec) fixedDependencies
+              , Monoid.guard (not (Set.isEmpty removed)) $ "  - We have removed the following packages: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable removed)) <> "\n"
+              , Monoid.guard (not (Map.isEmpty added)) $ "  - We have added the following packages: " <> String.joinWith ", " (map (\(Tuple name range) -> PackageName.print name <> "(" <> Range.print range <> ")") (Map.toUnfoldable added)) <> "\n"
+              , "Your new dependency list is:"
+              , "\n```json\n"
+              , printJson (Internal.Codec.packageMap Range.codec) prunedDependencies
               , "\n```\n"
               ]
-            pure $ Tuple (Manifest (manifest { dependencies = fixedDependencies })) newResolutions
+            pure $ Tuple (Manifest (manifest { dependencies = prunedDependencies })) newResolutions
 
 type COMPILER_CACHE r = (compilerCache :: Cache CompilerCache | r)
 
