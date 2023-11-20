@@ -705,9 +705,8 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
   let newPublishedVersion = { hash, ref: payload.ref, compilers: Left payload.compiler, publishedTime, bytes }
   let newMetadata = metadata { published = Map.insert manifest.version newPublishedVersion metadata.published }
 
-  -- FIXME: Re-enable.
-  -- Registry.writeMetadata manifest.name (Metadata newMetadata)
-  -- Comment.comment "Successfully uploaded package to the registry! 🎉 🚀"
+  Registry.writeMetadata manifest.name (Metadata newMetadata)
+  Comment.comment "Successfully uploaded package to the registry! 🎉 🚀"
 
   -- We write to the registry index if possible. If this fails, the packaging
   -- team should manually insert the entry.

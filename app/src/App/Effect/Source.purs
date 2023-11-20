@@ -107,7 +107,7 @@ handle importType = case _ of
                       Right _ -> Log.debug $ "Cloned package source to " <> repoDir
                       Left error3 -> do
                         Log.error $ "Failed to clone git tag (attempt 3): " <> Aff.message error3
-                        unsafeCrashWith $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
+                        Except.throw $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
 
             Log.debug $ "Getting published time..."
 
