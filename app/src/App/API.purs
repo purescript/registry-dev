@@ -757,7 +757,6 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
 
   Comment.comment "Wrote completed metadata to the registry!"
   FS.Extra.remove tmp
-  FS.Extra.remove packageDirectory
 
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the
