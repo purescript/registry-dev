@@ -14,6 +14,7 @@ module Registry.App.API
 
 import Registry.App.Prelude
 
+import App.PackageManagers.Spago as Spago
 import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
@@ -30,7 +31,6 @@ import Data.Set as Set
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
-import Data.String.NonEmpty (fromString) as NonEmptyString
 import Data.String.NonEmpty.Internal (toString) as NonEmptyString
 import Data.String.Regex as Regex
 import Effect.Aff as Aff
@@ -97,9 +97,6 @@ import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
-import Spago.Core.Config as Spago.Config
-import Spago.Core.Prelude as Spago.Prelude
-import Spago.Log as Spago.Log
 
 type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + COMMENT + LOG + EXCEPT String + r)
 
@@ -418,24 +415,7 @@ publish source payload = do
 
     else if hasSpagoYaml then do
       Comment.comment $ "Package source does not have a purs.json file, creating one from your spago.yaml file..."
-      -- Need to make a Spago log env first, disable the logging
-      let spagoEnv = { logOptions: { color: false, verbosity: Spago.Log.LogQuiet } }
-      Spago.Prelude.runSpago spagoEnv (Spago.Config.readConfig packageSpagoYaml) >>= case _ of
-        Left readErr -> Except.throw $ String.joinWith "\n"
-          [ "Could not publish your package - a spago.yaml was present, but it was not possible to read it:"
-          , readErr
-          ]
-        Right { yaml: config } -> do
-          -- Once we have the config we are still not entirely sure it fits into a Manifest
-          -- E.g. need to make sure all the ranges are present
-          case spagoToManifest config of
-            Left err -> Except.throw $ String.joinWith "\n"
-              [ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:"
-              , err
-              ]
-            Right manifest -> do
-              Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
-              pure manifest
+      Spago.getSpagoManifest packageSpagoYaml
     else do
       Comment.comment $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
       address <- case existingMetadata.location of
@@ -1154,30 +1134,3 @@ getPacchettiBotti = do
 packagingTeam :: Team
 packagingTeam = { org: "purescript", team: "packaging" }
 
-spagoToManifest :: Spago.Config.Config -> Either String Manifest
-spagoToManifest config = do
-  package@{ name, description, dependencies: Spago.Config.Dependencies deps } <- note "Did not find a package in the config" config.package
-  publishConfig@{ version, license } <- note "Did not find a `publish` section in the package config" package.publish
-  let includeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.include)
-  let excludeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.exclude)
-  location <- note "Did not find a `location` field in the publish config" publishConfig.location
-  let
-    checkRange :: Tuple PackageName (Maybe Range) -> Either PackageName (Tuple PackageName Range)
-    checkRange (Tuple packageName maybeRange) = case maybeRange of
-      Nothing -> Left packageName
-      Just r -> Right (Tuple packageName r)
-  let { fail: failedPackages, success } = partitionEithers $ map checkRange (Map.toUnfoldable deps :: Array _)
-  dependencies <- case failedPackages of
-    [] -> Right (Map.fromFoldable success)
-    errs -> Left $ "The following packages did not have their ranges specified: " <> String.joinWith ", " (map PackageName.print errs)
-  pure $ Manifest
-    { version
-    , license
-    , name
-    , location
-    , description
-    , dependencies
-    , owners: Nothing -- TODO Spago still needs to add this to its config
-    , includeFiles
-    , excludeFiles
-    }
