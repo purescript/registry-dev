@@ -10,7 +10,7 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CAR
 import Data.Either as Either
-import Data.Function.Uncurried (Fn1, Fn3, runFn1, runFn3)
+import Data.Function.Uncurried (Fn3, runFn3)
 import Data.List as List
 import Data.Map as Map
 import Data.Profunctor as Profunctor
@@ -22,16 +22,13 @@ import Node.FS.Sync as FS
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.Internal.Codec as Internal.Codec
-import Registry.License (License)
 import Registry.License as License
-import Registry.Location (Location)
 import Registry.Location as Location
 import Registry.Manifest (Manifest(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
 import Registry.Range as Range
-import Registry.Version (Version)
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run.Except (EXCEPT)
@@ -64,8 +61,8 @@ getSpagoManifest spagoYamlPath = do
         result <- Aff.attempt $ FS.Aff.readTextFile UTF8 path
         pure do
           yamlStr <- lmap Aff.message result
-          doc <- lmap (append "YAML: ") (yamlParser yamlStr)
-          lmap CA.printJsonDecodeError $ CA.decode configCodec (toJson doc)
+          docAsJson <- lmap (append "YAML: ") (yamlParser yamlStr)
+          lmap CA.printJsonDecodeError $ CA.decode configCodec docAsJson
     where
     configCodec = CAR.object "PartialSpagoConfig"
       { package: CAR.optional $ CAR.object "PackageConfig"
@@ -158,35 +155,10 @@ getSpagoManifest spagoYamlPath = do
       , excludeFiles
       }
 
-type PartialSpagoConfig =
-  { package :: Maybe PartialPackageConfig
-  }
-
-type PartialPackageConfig =
-  { name :: PackageName
-  , description :: Maybe String
-  , dependencies :: Map PackageName (Maybe Range)
-  , publish :: Maybe PublishConfig
-  }
-
-type PublishConfig =
-  { version :: Version
-  , license :: License
-  , location :: Maybe Location
-  , include :: Maybe (Array FilePath)
-  , exclude :: Maybe (Array FilePath)
-  }
-
-foreign import data YamlDoc :: Type -> Type
-
 -- | Parse a JSON string, constructing the `Toml` value described by the string.
 -- | To convert a string into a `Toml` string, see `fromString`.
-yamlParser :: forall a. String -> Either String (YamlDoc a)
+yamlParser :: String -> Either String Core.Json
 yamlParser j = runFn3 yamlDocParserImpl Left Right j
 
-foreign import yamlDocParserImpl :: forall a b. Fn3 (String -> a) (YamlDoc b -> a) String a
+foreign import yamlDocParserImpl :: forall a. Fn3 (String -> a) (Core.Json -> a) String a
 
-toJson :: forall a. YamlDoc a -> Core.Json
-toJson = runFn1 toJsonImpl
-
-foreign import toJsonImpl :: forall a. Fn1 (YamlDoc a) Core.Json
