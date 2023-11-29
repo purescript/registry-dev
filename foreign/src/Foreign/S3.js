@@ -18,7 +18,7 @@ export const connectImpl = ({ key, secret }, endpoint) =>
 
 export const listObjectsImpl = async (s3, params) => {
   const data = await s3.send(new ListObjectsCommand(params));
-  return data["Contents"];
+  return data["Contents"] || [];
 };
 
 export const putObjectImpl = async (s3, params) => {
