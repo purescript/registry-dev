@@ -4,19 +4,18 @@ module App.PackageManagers.Spago
 
 import Registry.App.Prelude
 
-import Data.Argonaut.Core as Core
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CAR
 import Data.Either as Either
-import Data.Function.Uncurried (Fn3, runFn3)
 import Data.List as List
 import Data.Map as Map
 import Data.Profunctor as Profunctor
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
 import Effect.Aff as Aff
+import Foreign.Yaml as Yaml
 import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS
 import Registry.App.Effect.Comment (COMMENT)
@@ -70,7 +69,7 @@ getSpagoManifest spagoYamlPath = do
         result <- Aff.attempt $ FS.Aff.readTextFile UTF8 path
         pure do
           yamlStr <- lmap Aff.message result
-          docAsJson <- lmap (append "YAML: ") (yamlParser yamlStr)
+          docAsJson <- lmap (append "YAML: ") (Yaml.yamlParser yamlStr)
           lmap CA.printJsonDecodeError $ CA.decode configCodec docAsJson
     where
     configCodec = CAR.object "PartialSpagoConfig"
@@ -163,11 +162,4 @@ getSpagoManifest spagoYamlPath = do
       , includeFiles
       , excludeFiles
       }
-
--- | Parse a JSON string, constructing the `Toml` value described by the string.
--- | To convert a string into a `Toml` string, see `fromString`.
-yamlParser :: String -> Either String Core.Json
-yamlParser j = runFn3 yamlDocParserImpl Left Right j
-
-foreign import yamlDocParserImpl :: forall a. Fn3 (String -> a) (Core.Json -> a) String a
 

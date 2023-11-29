@@ -9,4 +9,3 @@ export function yamlDocParserImpl(fail, succ, s) {
     return fail(JSON.stringify(doc.errors));
   }
 }
-
