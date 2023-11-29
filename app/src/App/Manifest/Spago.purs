@@ -1,4 +1,4 @@
-module App.PackageManagers.Spago
+module Registry.App.Manifest.Spago
   ( getSpagoManifest
   ) where
 
