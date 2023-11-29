@@ -16,13 +16,13 @@ import Data.Profunctor as Profunctor
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
 import Effect.Aff as Aff
-import Foreign.Yaml as Yaml
 import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS
 import Registry.App.Effect.Comment (COMMENT)
 import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
+import Registry.Foreign.Yaml as Yaml
 import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
 import Registry.Location as Location

@@ -1,4 +1,4 @@
-module Foreign.Yaml
+module Registry.Foreign.Yaml
   ( yamlParser
   ) where
 
