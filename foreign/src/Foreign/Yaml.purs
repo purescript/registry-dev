@@ -2,9 +2,8 @@ module Foreign.Yaml
   ( yamlParser
   ) where
 
-import Registry.App.Prelude
-
 import Data.Argonaut.Core as Core
+import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn3, runFn3)
 
 -- | Parse a JSON string, constructing the `Toml` value described by the string.
