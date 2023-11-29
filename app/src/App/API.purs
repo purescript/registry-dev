@@ -435,6 +435,12 @@ publish source payload = do
               ]
             Right manifest -> do
               Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
+              Comment.comment $ Array.fold
+                [ "Converted your spago.yaml into a purs.json manifest to use for publishing:\n"
+                , "```json"
+                , printJson Manifest.codec manifest
+                , "```"
+                ]
               pure manifest
     else do
       Comment.comment $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
@@ -457,9 +463,13 @@ publish source payload = do
         Right legacyManifest -> do
           Log.debug $ "Successfully produced a legacy manifest from the package source."
           let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location legacyManifest
+          Comment.comment $ Array.fold
+            [ "Converted your legacy manifest(s) into a purs.json manifest to use for publishing:\n"
+            , "```json"
+            , printJson Manifest.codec manifest
+            , "```"
+            ]
           pure manifest
-
-  Comment.comment "Verifying package..."
 
   -- We trust the manifest for any changes to the 'owners' field, but for all
   -- other fields we trust the registry metadata.
