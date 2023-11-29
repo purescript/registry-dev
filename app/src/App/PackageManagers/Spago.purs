@@ -19,12 +19,15 @@ import Data.String.NonEmpty as NonEmptyString
 import Effect.Aff as Aff
 import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS
+import Registry.App.Effect.Comment (COMMENT)
+import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
 import Registry.Location as Location
 import Registry.Manifest (Manifest(..))
+import Registry.Manifest as Manifest
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
@@ -34,7 +37,7 @@ import Run (AFF, EFFECT, Run)
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
-getSpagoManifest :: forall r. FilePath -> Run (LOG + EXCEPT String + AFF + EFFECT + r) Manifest
+getSpagoManifest :: forall r. FilePath -> Run (LOG + COMMENT + EXCEPT String + AFF + EFFECT + r) Manifest
 getSpagoManifest spagoYamlPath = do
   readConfig spagoYamlPath >>= case _ of
     Left readErr -> Except.throw $ String.joinWith "\n"
@@ -51,9 +54,15 @@ getSpagoManifest spagoYamlPath = do
           ]
         Right manifest -> do
           Log.debug "Succesfully converted a spago.yaml into a purs.json manifest"
+          Comment.comment $ Array.fold
+            [ "Converted your spago.yaml into a purs.json manifest to use for publishing:\n"
+            , "```json"
+            , printJson Manifest.codec manifest
+            , "```"
+            ]
           pure manifest
   where
-  readConfig :: FilePath -> Run (LOG + EXCEPT String + AFF + EFFECT + r) (Either String _)
+  readConfig :: FilePath -> Run (LOG + COMMENT + EXCEPT String + AFF + EFFECT + r) (Either String _)
   readConfig path = liftAff do
     liftEffect (FS.exists path) >>= case _ of
       false -> pure (Left $ "Did not find " <> path <> " file.")
