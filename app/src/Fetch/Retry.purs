@@ -1,7 +1,8 @@
 module Fetch.Retry
-  ( withRetryRequest
-  , RetryRequestError(..)
+  ( RetryRequestError(..)
   , module ReExport
+  , printRetryRequestError
+  , withRetryRequest
   ) where
 
 import Registry.App.Prelude
@@ -21,6 +22,11 @@ data RetryRequestError
   = FetchError Error
   | StatusError Response
 
+printRetryRequestError :: RetryRequestError -> String
+printRetryRequestError = case _ of
+  FetchError error -> "Fetch Error: " <> Aff.message error
+  StatusError response -> "Status Error (" <> show response.status <> "): " <> response.statusText
+
 withRetryRequest
   :: forall input output thruIn thruOut headers body
    . Union input thruIn (HighlevelRequestOptions headers body)
@@ -29,14 +35,8 @@ withRetryRequest
   => String
   -> { | input }
   -> Aff (RetryResult RetryRequestError Response)
-withRetryRequest url r =
-  withRetry retry
-    $ (Aff.attempt $ fetch @thruIn url r)
-    <#>
-      ( either
-          (Left <<< FetchError)
-          onFetchResponse
-      )
+withRetryRequest url opts = withRetry retry do
+  (Aff.attempt $ fetch @thruIn url opts) <#> either (Left <<< FetchError) onFetchResponse
   where
   onFetchResponse :: Response -> Either RetryRequestError Response
   onFetchResponse response =
