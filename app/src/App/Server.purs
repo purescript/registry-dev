@@ -10,7 +10,7 @@ import Data.String as String
 import Data.UUID.Random as UUID
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
-import Fetch as Fetch
+import Fetch.Retry as Fetch.Retry
 import HTTPurple (JsonDecoder(..), JsonEncoder(..), Method(..), Request, Response)
 import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
@@ -234,15 +234,41 @@ main = do
     Right env -> do
       _healthcheck <- Aff.launchAff do
         let
-          loop =
-            Aff.attempt (Fetch.fetch env.vars.resourceEnv.healthchecksUrl {}) >>=
-              case _ of
-                Left _ -> pure unit
-                Right { status } | status /= 200 -> pure unit
-                Right _ -> do
-                  Aff.delay (Aff.Milliseconds (1000.0 * 60.0 * 5.0))
-                  loop
-        loop
+          limit = 10
+          oneMinute = Aff.Milliseconds (1000.0 * 60.0)
+          fiveMinutes = Aff.Milliseconds (1000.0 * 60.0 * 5.0)
+
+          loop n =
+            Fetch.Retry.withRetryRequest env.vars.resourceEnv.healthchecksUrl {} >>= case _ of
+              Succeeded { status } | status == 200 -> do
+                Aff.delay fiveMinutes
+                loop n
+
+              Cancelled | n >= 0 -> do
+                Console.warn $ "Healthchecks cancelled, will retry..."
+                Aff.delay oneMinute
+                loop (n - 1)
+
+              Failed error | n >= 0 -> do
+                Console.warn $ "Healthchecks failed, will retry: " <> Fetch.Retry.printRetryRequestError error
+                Aff.delay oneMinute
+                loop (n - 1)
+
+              Succeeded { status } | status /= 200, n >= 0 -> do
+                Console.error $ "Healthchecks returned non-200 status, will retry: " <> show status
+                Aff.delay oneMinute
+                loop (n - 1)
+
+              Cancelled ->
+                Console.error "Healthchecks cancelled and failure limit reached, will not retry."
+
+              Failed error -> do
+                Console.error $ "Healthchecks failed and failure limit reached, will not retry: " <> Fetch.Retry.printRetryRequestError error
+
+              Succeeded _ -> do
+                Console.error $ "Healthchecks returned non-200 status and failure limit reached, will not retry."
+
+        loop limit
 
       _close <- HTTPurple.serve
         { hostname: "0.0.0.0"
