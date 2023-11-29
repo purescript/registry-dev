@@ -61,6 +61,7 @@ import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit (PURSUIT)
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry as ManifestIndex
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Source (SOURCE)
 import Registry.App.Effect.Source as Source
@@ -435,6 +436,12 @@ publish source payload = do
               ]
             Right manifest -> do
               Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
+              Comment.comment $ Array.fold
+                [ "Converted your spago.yaml into a purs.json manifest to use for publishing:\n"
+                , "```json"
+                , printJson Manifest.codec manifest
+                , "```"
+                ]
               pure manifest
     else do
       Comment.comment $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
@@ -457,9 +464,13 @@ publish source payload = do
         Right legacyManifest -> do
           Log.debug $ "Successfully produced a legacy manifest from the package source."
           let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location legacyManifest
+          Comment.comment $ Array.fold
+            [ "Converted your legacy manifest(s) into a purs.json manifest to use for publishing:\n"
+            , "```json"
+            , printJson Manifest.codec manifest
+            , "```"
+            ]
           pure manifest
-
-  Comment.comment "Verifying package..."
 
   -- We trust the manifest for any changes to the 'owners' field, but for all
   -- other fields we trust the registry metadata.
@@ -495,173 +506,184 @@ publish source payload = do
       , "```"
       ]
 
-  for_ (Operation.Validation.isNotPublished (Manifest manifest) (Metadata metadata)) \info -> do
+  case Operation.Validation.isNotPublished (Manifest manifest) (Metadata metadata) of
     -- If the package has been published already, then we check whether the published
     -- version has made it to Pursuit or not. If it has, then we terminate here. If
-    -- it hasn't then we skip to Pursuit publishing.
-    published <- Pursuit.getPublishedVersions manifest.name >>= case _ of
-      Left error -> Except.throw error
-      Right versions -> pure versions
+    -- it hasn't then we publish to Pursuit and then terminate.
+    Just info -> do
+      published <- Pursuit.getPublishedVersions manifest.name >>= case _ of
+        Left error -> Except.throw error
+        Right versions -> pure versions
 
-    case Map.lookup manifest.version published of
-      Nothing -> do
-        Comment.comment $ Array.fold
-          [ "This version has already been published to the registry, but the docs have not been "
-          , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
-          ]
-        verifiedResolutions <- verifyResolutions (Manifest manifest) payload.resolutions
-        compilationResult <- compilePackage { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions }
-        case compilationResult of
-          Left error -> do
-            Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
-            Except.throw "Cannot publish to Pursuit because this package failed to compile."
-          Right dependenciesDir -> do
-            Log.debug "Uploading to Pursuit"
-            publishToPursuit { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, dependenciesDir }
+      case Map.lookup manifest.version published of
+        Just url -> do
+          Except.throw $ String.joinWith "\n"
+            [ "You tried to upload a version that already exists: " <> Version.print manifest.version
+            , ""
+            , "Its metadata is:"
+            , "```json"
+            , printJson Metadata.publishedMetadataCodec info
+            , "```"
+            , ""
+            , "and its documentation is available here:"
+            , url
+            ]
 
-      Just url -> do
-        Except.throw $ String.joinWith "\n"
-          [ "You tried to upload a version that already exists: " <> Version.print manifest.version
-          , ""
-          , "Its metadata is:"
-          , "```json"
-          , printJson Metadata.publishedMetadataCodec info
-          , "```"
-          , ""
-          , "and its documentation is available here:"
-          , url
-          ]
+        Nothing -> do
+          Comment.comment $ Array.fold
+            [ "This version has already been published to the registry, but the docs have not been "
+            , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
+            ]
+          verifiedResolutions <- verifyResolutions (Manifest manifest) payload.resolutions
+          compilationResult <- compilePackage { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions }
+          case compilationResult of
+            Left error -> do
+              Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
+              Except.throw "Cannot publish to Pursuit because this package failed to compile."
+            Right dependenciesDir -> do
+              Log.debug "Uploading to Pursuit"
+              -- While we have created a manifest from the package source, we
+              -- still need to ensure a purs.json file exists for 'purs publish'.
+              unless hadPursJson do
+                existingManifest <- ManifestIndex.readManifest manifest.name manifest.version
+                case existingManifest of
+                  Nothing -> Except.throw "Version was previously published, but we could not find a purs.json file in the package source, and no existing manifest was found in the registry."
+                  Just existing -> Run.liftAff $ writeJsonFile Manifest.codec packagePursJson existing
+              publishToPursuit { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, dependenciesDir }
 
-  -- Now that we've verified the package we can write the manifest to the source
-  -- directory and then publish it.
-  if hadPursJson then do
-    -- No need to verify the generated manifest because nothing was generated,
-    -- and no need to write a file (it's already in the package source.)
-    publishRegistry
-      { source
-      , manifest: Manifest manifest
-      , metadata: Metadata metadata
-      , payload
-      , publishedTime
-      , tmp
-      , packageDirectory
-      }
+    -- In this case the package version has not been published, so we proceed
+    -- with ordinary publishing.
+    Nothing ->
+      -- Now that we've verified the package we can write the manifest to the source
+      -- directory and then publish it.
+      if hadPursJson then do
+        -- No need to verify the generated manifest because nothing was generated,
+        -- and no need to write a file (it's already in the package source.)
+        publishRegistry
+          { source
+          , manifest: Manifest manifest
+          , metadata: Metadata metadata
+          , payload
+          , publishedTime
+          , tmp
+          , packageDirectory
+          }
 
-  else if hasSpagoYaml then do
-    -- We need to write the generated purs.json file, but because spago-next
-    -- already does unused dependency checks and supports explicit test-only
-    -- dependencies we can skip those checks.
-    Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
-    publishRegistry
-      { source
-      , manifest: Manifest manifest
-      , metadata: Metadata metadata
-      , payload
-      , publishedTime
-      , tmp
-      , packageDirectory
-      }
+      else if hasSpagoYaml then do
+        -- We need to write the generated purs.json file, but because spago-next
+        -- already does unused dependency checks and supports explicit test-only
+        -- dependencies we can skip those checks.
+        Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
+        publishRegistry
+          { source
+          , manifest: Manifest manifest
+          , metadata: Metadata metadata
+          , payload
+          , publishedTime
+          , tmp
+          , packageDirectory
+          }
 
-  -- Otherwise this is a legacy package, generated from a combination of bower,
-  -- spago.dhall, and package set files, so we need to verify the generated
-  -- manifest does not contain unused dependencies before writing it.
-  else do
-    Log.debug "Pruning unused dependencies from legacy package manifest..."
+      -- Otherwise this is a legacy package, generated from a combination of bower,
+      -- spago.dhall, and package set files, so we need to verify the generated
+      -- manifest does not contain unused dependencies before writing it.
+      else do
+        Log.debug "Pruning unused dependencies from legacy package manifest..."
 
-    Log.debug "Solving manifest to get all transitive dependencies."
-    resolutions <- verifyResolutions (Manifest manifest) payload.resolutions
+        Log.debug "Solving manifest to get all transitive dependencies."
+        resolutions <- verifyResolutions (Manifest manifest) payload.resolutions
 
-    Log.debug "Installing dependencies."
-    tmpDepsDir <- Tmp.mkTmpDir
-    installBuildPlan resolutions tmpDepsDir
+        Log.debug "Installing dependencies."
+        tmpDepsDir <- Tmp.mkTmpDir
+        installBuildPlan resolutions tmpDepsDir
 
-    Log.debug "Discovering used dependencies from source."
-    let srcGlobs = Path.concat [ packageDirectory, "src", "**", "*.purs" ]
-    let depGlobs = Path.concat [ tmpDepsDir, "*", "src", "**", "*.purs" ]
-    let command = Purs.Graph { globs: [ srcGlobs, depGlobs ] }
-    -- We need to use the minimum compiler version that supports 'purs graph'
-    let minGraphCompiler = unsafeFromRight (Version.parse "0.13.8")
-    let callCompilerVersion = if payload.compiler >= minGraphCompiler then payload.compiler else minGraphCompiler
-    Run.liftAff (Purs.callCompiler { command, version: Just callCompilerVersion, cwd: Nothing }) >>= case _ of
-      Left err -> do
-        let prefix = "Failed to discover unused dependencies because purs graph failed: "
-        Log.error $ prefix <> case err of
-          UnknownError str -> str
-          CompilationError errs -> Purs.printCompilerErrors errs
-          MissingCompiler -> "missing compiler " <> Version.print payload.compiler
-        -- We allow legacy packages through even if we couldn't run purs graph,
-        -- because we can't be sure we chose the correct compiler version.
-        if source == LegacyPackage then
-          Comment.comment "Failed to prune dependencies for legacy package, continuing anyway..."
-        else do
-          Except.throw "purs graph failed; cannot verify unused dependencies."
-      Right output -> case Argonaut.Parser.jsonParser output of
-        Left parseErr -> Except.throw $ "Failed to parse purs graph output as JSON while finding unused dependencies: " <> parseErr
-        Right json -> case CA.decode PursGraph.pursGraphCodec json of
-          Left decodeErr -> Except.throw $ "Failed to decode JSON from purs graph output while finding unused dependencies: " <> CA.printJsonDecodeError decodeErr
-          Right graph -> do
-            Log.debug "Got a valid graph of source and dependencies. Removing install dir and associating discovered modules with their packages..."
-            FS.Extra.remove tmpDepsDir
+        Log.debug "Discovering used dependencies from source."
+        let srcGlobs = Path.concat [ packageDirectory, "src", "**", "*.purs" ]
+        let depGlobs = Path.concat [ tmpDepsDir, "*", "src", "**", "*.purs" ]
+        let command = Purs.Graph { globs: [ srcGlobs, depGlobs ] }
+        -- We need to use the minimum compiler version that supports 'purs graph'
+        let minGraphCompiler = unsafeFromRight (Version.parse "0.13.8")
+        let callCompilerVersion = if payload.compiler >= minGraphCompiler then payload.compiler else minGraphCompiler
+        Run.liftAff (Purs.callCompiler { command, version: Just callCompilerVersion, cwd: Nothing }) >>= case _ of
+          Left err -> do
+            let prefix = "Failed to discover unused dependencies because purs graph failed: "
+            Log.error $ prefix <> case err of
+              UnknownError str -> str
+              CompilationError errs -> Purs.printCompilerErrors errs
+              MissingCompiler -> "missing compiler " <> Version.print payload.compiler
+            -- We allow legacy packages through even if we couldn't run purs graph,
+            -- because we can't be sure we chose the correct compiler version.
+            if source == LegacyPackage then
+              Comment.comment "Failed to prune dependencies for legacy package, continuing anyway..."
+            else do
+              Except.throw "purs graph failed; cannot verify unused dependencies."
+          Right output -> case Argonaut.Parser.jsonParser output of
+            Left parseErr -> Except.throw $ "Failed to parse purs graph output as JSON while finding unused dependencies: " <> parseErr
+            Right json -> case CA.decode PursGraph.pursGraphCodec json of
+              Left decodeErr -> Except.throw $ "Failed to decode JSON from purs graph output while finding unused dependencies: " <> CA.printJsonDecodeError decodeErr
+              Right graph -> do
+                Log.debug "Got a valid graph of source and dependencies. Removing install dir and associating discovered modules with their packages..."
+                FS.Extra.remove tmpDepsDir
 
-            let
-              -- We need access to a graph that _doesn't_ include the package
-              -- source, because we only care about dependencies of the package.
-              noSrcGraph = Map.filter (isNothing <<< String.stripPrefix (String.Pattern packageDirectory) <<< _.path) graph
+                let
+                  -- We need access to a graph that _doesn't_ include the package
+                  -- source, because we only care about dependencies of the package.
+                  noSrcGraph = Map.filter (isNothing <<< String.stripPrefix (String.Pattern packageDirectory) <<< _.path) graph
 
-              pathParser = map _.name <<< parseInstalledModulePath <<< { prefix: tmpDepsDir, path: _ }
+                  pathParser = map _.name <<< parseInstalledModulePath <<< { prefix: tmpDepsDir, path: _ }
 
-            case PursGraph.associateModules pathParser noSrcGraph of
-              Left errs ->
-                Except.throw $ String.joinWith "\n"
-                  [ "Failed to associate modules with packages while finding unused dependencies:"
-                  , flip NonEmptyArray.foldMap1 errs \{ error, module: ModuleName moduleName, path } ->
-                      "  - " <> moduleName <> " (" <> path <> "): " <> error <> "\n"
-                  ]
-              Right modulePackageMap -> do
-                Log.debug "Associated modules with their package names. Finding all modules used in package source..."
-                -- The modules used in the package source code are any that have
-                -- a path beginning with the package source directory. We only
-                -- care about dependents of these modules.
-                let sourceModules = Map.keys $ Map.filter (isJust <<< String.stripPrefix (String.Pattern packageDirectory) <<< _.path) graph
+                case PursGraph.associateModules pathParser noSrcGraph of
+                  Left errs ->
+                    Except.throw $ String.joinWith "\n"
+                      [ "Failed to associate modules with packages while finding unused dependencies:"
+                      , flip NonEmptyArray.foldMap1 errs \{ error, module: ModuleName moduleName, path } ->
+                          "  - " <> moduleName <> " (" <> path <> "): " <> error <> "\n"
+                      ]
+                  Right modulePackageMap -> do
+                    Log.debug "Associated modules with their package names. Finding all modules used in package source..."
+                    -- The modules used in the package source code are any that have
+                    -- a path beginning with the package source directory. We only
+                    -- care about dependents of these modules.
+                    let sourceModules = Map.keys $ Map.filter (isJust <<< String.stripPrefix (String.Pattern packageDirectory) <<< _.path) graph
 
-                Log.debug "Found all modules used in package source. Finding all modules used by those modules..."
-                let allReachableModules = PursGraph.allDependenciesOf sourceModules graph
+                    Log.debug "Found all modules used in package source. Finding all modules used by those modules..."
+                    let allReachableModules = PursGraph.allDependenciesOf sourceModules graph
 
-                -- Then we can associate each reachable module with its package
-                -- name to get the full set of used package names.
-                let allUsedPackages = Set.mapMaybe (flip Map.lookup modulePackageMap) allReachableModules
+                    -- Then we can associate each reachable module with its package
+                    -- name to get the full set of used package names.
+                    let allUsedPackages = Set.mapMaybe (flip Map.lookup modulePackageMap) allReachableModules
 
-                -- Finally, we can use this to find the unused dependencies.
-                Log.debug "Found all packages reachable by the project source code. Determining unused dependencies..."
-                case Operation.Validation.getUnusedDependencies (Manifest manifest) resolutions allUsedPackages of
-                  Nothing -> do
-                    Log.debug "No unused dependencies! This manifest is good to go."
-                    Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
-                    publishRegistry
-                      { source
-                      , manifest: Manifest manifest
-                      , metadata: Metadata metadata
-                      , payload
-                      , publishedTime
-                      , tmp
-                      , packageDirectory
-                      }
-                  Just isUnused -> do
-                    let printed = String.joinWith ", " (PackageName.print <$> NonEmptySet.toUnfoldable isUnused)
-                    Log.debug $ "Found unused dependencies: " <> printed
-                    Comment.comment $ "Generated legacy manifest contains unused dependencies which will be removed: " <> printed
-                    let verified = manifest { dependencies = Map.filterKeys (not <<< flip NonEmptySet.member isUnused) manifest.dependencies }
-                    Log.debug "Writing updated, pruned manifest."
-                    Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest verified)
-                    publishRegistry
-                      { source
-                      , manifest: Manifest verified
-                      , metadata: Metadata metadata
-                      , payload
-                      , publishedTime
-                      , tmp
-                      , packageDirectory
-                      }
+                    -- Finally, we can use this to find the unused dependencies.
+                    Log.debug "Found all packages reachable by the project source code. Determining unused dependencies..."
+                    case Operation.Validation.getUnusedDependencies (Manifest manifest) resolutions allUsedPackages of
+                      Nothing -> do
+                        Log.debug "No unused dependencies! This manifest is good to go."
+                        Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
+                        publishRegistry
+                          { source
+                          , manifest: Manifest manifest
+                          , metadata: Metadata metadata
+                          , payload
+                          , publishedTime
+                          , tmp
+                          , packageDirectory
+                          }
+                      Just isUnused -> do
+                        let printed = String.joinWith ", " (PackageName.print <$> NonEmptySet.toUnfoldable isUnused)
+                        Log.debug $ "Found unused dependencies: " <> printed
+                        Comment.comment $ "Generated legacy manifest contains unused dependencies which will be removed: " <> printed
+                        let verified = manifest { dependencies = Map.filterKeys (not <<< flip NonEmptySet.member isUnused) manifest.dependencies }
+                        Log.debug "Writing updated, pruned manifest."
+                        Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest verified)
+                        publishRegistry
+                          { source
+                          , manifest: Manifest verified
+                          , metadata: Metadata metadata
+                          , payload
+                          , publishedTime
+                          , tmp
+                          , packageDirectory
+                          }
 
 type PublishRegistry =
   { source :: PackageSource
