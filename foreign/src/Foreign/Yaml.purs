@@ -12,4 +12,3 @@ yamlParser :: String -> Either String Core.Json
 yamlParser j = runFn3 yamlDocParserImpl Left Right j
 
 foreign import yamlDocParserImpl :: forall a. Fn3 (String -> a) (Core.Json -> a) String a
-
