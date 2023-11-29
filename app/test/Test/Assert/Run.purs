@@ -146,6 +146,14 @@ type PursuitMockEnv =
   , metadataRef :: Ref (Map PackageName Metadata)
   }
 
+-- | A mock implementation for Pursuit, which assumes a shared metadata ref with
+-- | the REGISTRY effect handler. All packages present in the metadata ref are
+-- | considered published, so 'Publish' is a no-op and 'GetPublishedVersions'
+-- | reads the metadata ref.
+-- |
+-- | The is 'excludes' option allows us to manually choose packages that should
+-- | NOT have their docs "published", so that we can test things like retrying
+-- | the publish pipeline for Pursuit publishing only.
 handlePursuitMock :: forall r a. PursuitMockEnv -> Pursuit a -> Run (EFFECT + r) a
 handlePursuitMock { excludes, metadataRef } = case _ of
   Publish _json reply ->
