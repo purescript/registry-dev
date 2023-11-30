@@ -230,7 +230,7 @@ main = do
   createServerEnv # Aff.runAff_ case _ of
     Left error -> do
       Console.log $ "Failed to start server: " <> Aff.message error
-      Process.exit 1
+      Process.exit' 1
     Right env -> do
       _healthcheck <- Aff.launchAff do
         let

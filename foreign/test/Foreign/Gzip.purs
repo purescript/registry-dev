@@ -2,7 +2,8 @@ module Test.Registry.Foreign.Gzip (spec) where
 
 import Prelude
 
-import Data.Either (Either(..))
+import Data.Maybe (fromMaybe)
+import Node.ChildProcess.Types (Exit(..))
 import Node.FS.Aff as FS.Aff
 import Node.Library.Execa as Execa
 import Node.Path as Path
@@ -25,4 +26,4 @@ spec = do
       result <- _.getResult =<< Execa.execa "zcat" [ file ] identity
       case result.exit of
         Normally 0 -> result.stdout `Assert.shouldEqual` contents
-        _ -> Assert.fail $ result.originalMessage
+        _ -> Assert.fail $ fromMaybe result.message result.originalMessage

@@ -59,7 +59,7 @@ main = launchAff_ do
   args <- Array.drop 2 <$> liftEffect Process.argv
   let description = "A script for verifying that the registry and registry-index repos match each other and S3."
   arguments <- case Arg.parseArgs "package-verify" description parser args of
-    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
+    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit' 1)
     Right command -> pure command
 
   -- Environment
@@ -103,13 +103,13 @@ main = launchAff_ do
     Package name -> pure (Just [ name ])
     -- --file packagesversions.json
     File path -> liftAff (readJsonFile (CA.array PackageName.codec) path) >>= case _ of
-      Left err -> Console.log err *> liftEffect (Process.exit 1)
+      Left err -> Console.log err *> liftEffect (Process.exit' 1)
       Right values -> pure (Just values)
     All -> pure Nothing
 
   let
     interpret =
-      Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit 1))
+      Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit' 1))
         >>> Registry.interpret (Registry.handle registryEnv)
         >>> Storage.interpret (Storage.handleS3 { s3, cache })
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
@@ -146,7 +146,7 @@ main = launchAff_ do
 
     Log.info "Finished."
     when (any isLeft results) do
-      liftEffect $ Process.exit 1
+      liftEffect $ Process.exit' 1
 
 intercalateMap :: forall f a d. Monoid d => Foldable f => d -> (a -> d) -> f a -> d
 intercalateMap s f = intercalate s <<< map f <<< Array.fromFoldable

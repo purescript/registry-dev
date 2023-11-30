@@ -113,7 +113,7 @@ main = launchAff_ $ do
 
     liftEffect (Ref.read thrownRef) >>= case _ of
       true ->
-        liftEffect $ Process.exit 1
+        liftEffect $ Process.exit' 1
       _ -> do
         -- After the run, close the issue. If an exception was thrown then the issue will remain open.
         _ <- Octokit.request env.octokit (Octokit.closeIssueRequest { address: Constants.registry, issue: env.issue })
