@@ -3,44 +3,6 @@ workspace:
   package_set:
     registry: 46.0.0
   extra_packages:
-    spago-core:
-      git: https://github.com/purescript/spago.git
-      ref: 47b735c5845a084f40826ae1989c3dc6c9171f21
-      subdir: core
-      dependencies:
-      - aff
-      - argonaut-core
-      - arrays
-      - bifunctors
-      - codec-argonaut
-      - console
-      - control
-      - datetime
-      - dodo-printer
-      - effect
-      - either
-      - exceptions
-      - filterable
-      - foldable-traversable
-      - functions
-      - identity
-      - lists
-      - maybe
-      - newtype
-      - node-buffer
-      - node-fs
-      - node-path
-      - node-process
-      - ordered-collections
-      - partial
-      - prelude
-      - profunctor
-      - refs
-      - registry-lib
-      - strings
-      - stringutils
-      - transformers
-      - tuples
     dodo-printer:
       repo: https://github.com/natefaubion/purescript-dodo-printer.git
       version: v2.2.1

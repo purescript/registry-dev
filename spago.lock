@@ -60,7 +60,6 @@ workspace:
         - registry-lib
         - run
         - safe-coerce
-        - spago-core
         - strings
         - these
         - transformers
@@ -300,44 +299,6 @@ workspace:
         - unsafe-coerce
       repo: https://github.com/natefaubion/purescript-language-cst-parser.git
       version: v0.13.0
-    spago-core:
-      dependencies:
-        - aff
-        - argonaut-core
-        - arrays
-        - bifunctors
-        - codec-argonaut
-        - console
-        - control
-        - datetime
-        - dodo-printer
-        - effect
-        - either
-        - exceptions
-        - filterable
-        - foldable-traversable
-        - functions
-        - identity
-        - lists
-        - maybe
-        - newtype
-        - node-buffer
-        - node-fs
-        - node-path
-        - node-process
-        - ordered-collections
-        - partial
-        - prelude
-        - profunctor
-        - refs
-        - registry-lib
-        - strings
-        - stringutils
-        - transformers
-        - tuples
-      git: https://github.com/purescript/spago.git
-      ref: 47b735c5845a084f40826ae1989c3dc6c9171f21
-      subdir: core
 packages:
   aff:
     type: registry
@@ -1717,45 +1678,6 @@ packages:
     integrity: sha256-a1ibQkiUcbODbLE/WAq7Ttbbh9ex+x33VCQ7GngKudU=
     dependencies:
       - unsafe-coerce
-  spago-core:
-    type: git
-    url: https://github.com/purescript/spago.git
-    rev: 47b735c5845a084f40826ae1989c3dc6c9171f21
-    subdir: core
-    dependencies:
-      - aff
-      - argonaut-core
-      - arrays
-      - bifunctors
-      - codec-argonaut
-      - console
-      - control
-      - datetime
-      - dodo-printer
-      - effect
-      - either
-      - exceptions
-      - filterable
-      - foldable-traversable
-      - functions
-      - identity
-      - lists
-      - maybe
-      - newtype
-      - node-buffer
-      - node-fs
-      - node-path
-      - node-process
-      - ordered-collections
-      - partial
-      - prelude
-      - profunctor
-      - refs
-      - registry-lib
-      - strings
-      - stringutils
-      - transformers
-      - tuples
   spec:
     type: registry
     version: 7.5.5
@@ -1819,17 +1741,6 @@ packages:
       - tuples
       - unfoldable
       - unsafe-coerce
-  stringutils:
-    type: registry
-    version: 0.0.12
-    integrity: sha256-t63QWBlp49U0nRqUcFryKflSJsNKGTQAHKjn24/+ooI=
-    dependencies:
-      - arrays
-      - integers
-      - maybe
-      - partial
-      - prelude
-      - strings
   tailrec:
     type: registry
     version: 6.1.0
