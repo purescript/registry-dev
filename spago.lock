@@ -21,7 +21,6 @@ workspace:
         - exceptions
         - exists
         - fetch
-        - fetch-core
         - filterable
         - foldable-traversable
         - foreign-object
@@ -31,6 +30,7 @@ workspace:
         - identity
         - integers
         - js-date
+        - js-fetch
         - js-promise-aff
         - js-uri
         - lists
@@ -220,6 +220,7 @@ workspace:
         - tuples
       repo: https://github.com/natefaubion/purescript-dodo-printer.git
       version: v2.2.1
+    fetch: 4.0.0
     httpurple:
       dependencies:
         - aff
@@ -679,32 +680,6 @@ packages:
       - record
       - strings
       - typelevel-prelude
-      - web-file
-      - web-streams
-  fetch-core:
-    type: registry
-    version: 5.1.0
-    integrity: sha256-mBifgiz5g2QhyCHeYn/A6M6+7FWEw63KxXN+UWFHX/o=
-    dependencies:
-      - arraybuffer-types
-      - arrays
-      - console
-      - effect
-      - foldable-traversable
-      - foreign
-      - foreign-object
-      - functions
-      - http-methods
-      - js-promise
-      - maybe
-      - newtype
-      - nullable
-      - prelude
-      - record
-      - tuples
-      - typelevel-prelude
-      - unfoldable
-      - unsafe-coerce
       - web-file
       - web-streams
   filterable:

@@ -107,4 +107,4 @@ workspace:
         - typelevel-prelude
         - unsafe-coerce
         - untagged-union
-
+    fetch: 4.0.0

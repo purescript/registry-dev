@@ -25,7 +25,6 @@ package:
     - exists
     - filterable
     - fetch
-    - fetch-core
     - foldable-traversable
     - foreign-object
     - formatters
@@ -33,6 +32,7 @@ package:
     - httpurple
     - identity
     - integers
+    - js-fetch
     - js-date
     - js-uri
     - js-promise-aff
