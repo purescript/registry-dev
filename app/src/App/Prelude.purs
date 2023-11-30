@@ -20,11 +20,13 @@ module Registry.App.Prelude
   , pacchettibottiEmail
   , pacchettibottiKeyType
   , parseJson
+  , parseYaml
   , partitionEithers
   , printJson
   , printPackageSource
   , pursPublishMethod
   , readJsonFile
+  , readYamlFile
   , scratchDir
   , stringifyJson
   , traverseKeys
@@ -86,6 +88,7 @@ import Node.Encoding (Encoding(..)) as Extra
 import Node.FS.Aff as FS.Aff
 import Node.Path (FilePath) as Extra
 import Partial.Unsafe (unsafeCrashWith) as Extra
+import Registry.Foreign.Yaml as Yaml
 import Registry.PackageName (stripPureScriptPrefix) as Extra
 import Registry.PackageName as PackageName
 import Registry.Types (License, Location(..), Manifest(..), ManifestIndex, Metadata(..), Owner(..), PackageName, PackageSet(..), PublishedMetadata, Range, Sha256, UnpublishedMetadata, Version)
@@ -131,6 +134,18 @@ readJsonFile :: forall a. Extra.JsonCodec a -> Extra.FilePath -> Extra.Aff (Eith
 readJsonFile codec path = do
   result <- Aff.attempt $ FS.Aff.readTextFile Extra.UTF8 path
   pure (Extra.lmap Aff.message result >>= parseJson codec >>> Extra.lmap CA.printJsonDecodeError)
+
+-- | Parse a type from a string of YAML data after converting it to JSON.
+parseYaml :: forall a. Extra.JsonCodec a -> String -> Either.Either String a
+parseYaml codec yaml = do
+  json <- Extra.lmap (append "YAML: ") (Yaml.yamlParser yaml)
+  Extra.lmap CA.printJsonDecodeError (CA.decode codec json)
+
+-- | Decode data from a YAML file at the provided filepath
+readYamlFile :: forall a. Extra.JsonCodec a -> Extra.FilePath -> Extra.Aff (Either.Either String a)
+readYamlFile codec path = do
+  result <- Aff.attempt $ FS.Aff.readTextFile Extra.UTF8 path
+  pure (Extra.lmap Aff.message result >>= parseYaml codec)
 
 -- | Partition an array of `Either` values into failure and success  values
 partitionEithers :: forall e a. Array (Either.Either e a) -> { fail :: Array e, success :: Array a }

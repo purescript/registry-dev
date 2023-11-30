@@ -30,7 +30,7 @@ import Data.Set as Set
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
-import Data.String.NonEmpty.Internal (toString) as NonEmptyString
+import Data.String.NonEmpty as NonEmptyString
 import Data.String.Regex as Regex
 import Effect.Aff as Aff
 import Effect.Ref as Ref
@@ -70,7 +70,7 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LEGACY_CACHE)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec)
-import Registry.App.Manifest.Spago as Spago
+import Registry.App.Manifest.SpagoYaml as SpagoYaml
 import Registry.Constants (ignoredDirectories, ignoredFiles, ignoredGlobs, includedGlobs, includedInsensitiveGlobs)
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
@@ -416,7 +416,19 @@ publish source payload = do
 
     else if hasSpagoYaml then do
       Comment.comment $ "Package source does not have a purs.json file, creating one from your spago.yaml file..."
-      Spago.getSpagoManifest packageSpagoYaml
+      SpagoYaml.readSpagoYaml packageSpagoYaml >>= case _ of
+        Left readErr -> Except.throw $ "Could not publish your package - a spago.yaml was present, but it was not possible to read it:\n" <> readErr
+        Right config -> case SpagoYaml.spagoYamlToManifest config of
+          Left err -> Except.throw $ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:\n" <> err
+          Right manifest -> do
+            Comment.comment $ Array.fold
+              [ "Converted your spago.yaml into a purs.json manifest to use for publishing:\n"
+              , "```json"
+              , printJson Manifest.codec manifest
+              , "```"
+              ]
+            pure manifest
+
     else do
       Comment.comment $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
       address <- case existingMetadata.location of
@@ -1149,4 +1161,3 @@ getPacchettiBotti = do
 
 packagingTeam :: Team
 packagingTeam = { org: "purescript", team: "packaging" }
-
