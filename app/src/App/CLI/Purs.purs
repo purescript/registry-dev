@@ -8,6 +8,7 @@ import Data.Codec.Argonaut.Compat as CA.Compat
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.Foldable (foldMap)
 import Data.String as String
+import Node.ChildProcess.Types (Exit(..))
 import Node.Library.Execa as Execa
 import Registry.Version as Version
 
@@ -123,19 +124,20 @@ callCompiler compilerArgs = do
       { errors: CA.array compilerErrorCodec
       }
 
-  result <- _.result =<< Execa.execa purs (printCommand compilerArgs.command) (_ { cwd = compilerArgs.cwd })
-  pure case result of
-    Left { originalMessage }
-      | originalMessage == Just (String.joinWith " " [ "spawn", purs, "ENOENT" ]) -> Left MissingCompiler
-    Left { stdout, stderr } -> Left do
-      let
-        output = case compilerArgs.version of
-          Nothing -> stdout
-          Just version | Right min <- Version.parse "0.14.0", version < min -> stderr
-          Just _ -> stdout
-      case parseJson errorsCodec output of
-        Left err -> UnknownError $ String.joinWith "\n" [ stdout, stderr, CA.printJsonDecodeError err ]
-        Right ({ errors } :: { errors :: Array CompilerError })
-          | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
-          | otherwise -> CompilationError errors
-    Right { stdout } -> Right stdout
+  result <- _.getResult =<< Execa.execa purs (printCommand compilerArgs.command) (_ { cwd = compilerArgs.cwd })
+  pure case result.exit of
+    Normally 0 ->
+      Right result.stdout
+    _
+      | result.originalMessage == Just (String.joinWith " " [ "spawn", purs, "ENOENT" ]) -> Left MissingCompiler
+      | otherwise -> Left do
+          let
+            output = case compilerArgs.version of
+              Nothing -> result.stdout
+              Just version | Right min <- Version.parse "0.14.0", version < min -> result.stderr
+              Just _ -> result.stdout
+          case parseJson errorsCodec output of
+            Left err -> UnknownError $ String.joinWith "\n" [ result.stdout, result.stderr, CA.printJsonDecodeError err ]
+            Right ({ errors } :: { errors :: Array CompilerError })
+              | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
+              | otherwise -> CompilationError errors

@@ -15,7 +15,7 @@ type ExtractArgs = { cwd :: String, archive :: FilePath }
 extract :: forall m. MonadEffect m => ExtractArgs -> m Unit
 extract { cwd, archive } = liftEffect do
   let cmd = "tar -xzf " <> archive
-  void $ ChildProcess.execSync cmd (ChildProcess.defaultExecSyncOptions { cwd = Just cwd })
+  void $ ChildProcess.execSync' cmd (_ { cwd = Just cwd })
 
 type CreateArgs = { cwd :: String, folderName :: String }
 
@@ -39,4 +39,4 @@ create { cwd, folderName } = liftEffect do
       , "-"
       , folderName
       ]
-  void $ ChildProcess.execSync cmd (ChildProcess.defaultExecSyncOptions { cwd = Just cwd })
+  void $ ChildProcess.execSync' cmd (_ { cwd = Just cwd })

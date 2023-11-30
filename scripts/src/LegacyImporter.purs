@@ -99,7 +99,7 @@ main = launchAff_ do
 
   let description = "A script for uploading legacy registry packages."
   mode <- case Arg.parseArgs "legacy-importer" description parser args of
-    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
+    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit' 1)
     Right command -> pure command
 
   Env.loadEnvFile ".env"
@@ -166,7 +166,7 @@ main = launchAff_ do
     # runAppEffects
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
-    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
     # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Env.runResourceEnv resourceEnv

@@ -46,6 +46,6 @@ spec = do
     FS.Aff.writeTextFile UTF8 (Path.concat [ tmp, name ]) contents
 
   hashAndBytes path = do
-    FS.Stats.Stats { size: bytes } <- FS.Aff.stat path
+    stats <- FS.Aff.stat path
     hash <- Sha256.hashFile path
-    pure { hash, bytes }
+    pure { hash, bytes: FS.Stats.size stats }

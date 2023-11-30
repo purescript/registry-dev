@@ -1,4 +1,62 @@
 workspace:
   lock: true
   package_set:
-    registry: 35.1.0
+    registry: 46.0.0
+  extra_packages:
+    dodo-printer:
+      repo: https://github.com/natefaubion/purescript-dodo-printer.git
+      version: v2.2.1
+      dependencies:
+        - aff
+        - ansi
+        - arrays
+        - avar
+        - console
+        - control
+        - effect
+        - either
+        - exceptions
+        - foldable-traversable
+        - integers
+        - lists
+        - maybe
+        - newtype
+        - parallel
+        - partial
+        - posix-types
+        - prelude
+        - safe-coerce
+        - strings
+        - tuples
+    language-cst-parser:
+      repo: https://github.com/natefaubion/purescript-language-cst-parser.git
+      version: v0.13.0
+      dependencies:
+        - arrays
+        - console
+        - const
+        - control
+        - effect
+        - either
+        - enums
+        - foldable-traversable
+        - free
+        - functions
+        - functors
+        - identity
+        - integers
+        - lazy
+        - lists
+        - maybe
+        - newtype
+        - numbers
+        - ordered-collections
+        - partial
+        - prelude
+        - st
+        - strings
+        - transformers
+        - tuples
+        - typelevel-prelude
+        - unfoldable
+        - unsafe-coerce

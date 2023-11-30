@@ -11,10 +11,10 @@ import Effect.Aff (Error)
 import Effect.Aff as Aff
 import Fetch (class ToCoreRequestOptions, HighlevelRequestOptions, Response, new)
 import Fetch (Response) as ReExport
-import Fetch.Core as Core
-import Fetch.Core.Request as CoreRequest
 import Fetch.Internal.Request as Request
 import Fetch.Internal.Response as Response
+import JS.Fetch as Core
+import JS.Fetch.Request as CoreRequest
 import Prim.Row (class Union)
 import Promise.Aff as Promise.Aff
 

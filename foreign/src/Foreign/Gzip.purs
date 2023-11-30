@@ -11,7 +11,7 @@ import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Exception (Error)
 import Effect.Uncurried (EffectFn1, EffectFn3, mkEffectFn1, runEffectFn3)
 import Fetch (class ToRequestBody)
-import Fetch.Core.RequestBody (RequestBody)
+import JS.Fetch.RequestBody (RequestBody)
 import Node.Buffer (Buffer)
 import Unsafe.Coerce (unsafeCoerce)
 

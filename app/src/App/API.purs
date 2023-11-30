@@ -34,6 +34,7 @@ import Data.String.NonEmpty as NonEmptyString
 import Data.String.Regex as Regex
 import Effect.Aff as Aff
 import Effect.Ref as Ref
+import Node.ChildProcess.Types (Exit(..))
 import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
@@ -722,7 +723,7 @@ publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manife
   Tar.create { cwd: tmp, folderName: newDir }
 
   Log.info "Tarball created. Verifying its size..."
-  FS.Stats.Stats { size: bytes } <- Run.liftAff $ FS.Aff.stat tarballPath
+  bytes <- Run.liftAff $ map FS.Stats.size $ FS.Aff.stat tarballPath
   for_ (Operation.Validation.validateTarballSize bytes) case _ of
     Operation.Validation.ExceedsMaximum maxPackageBytes ->
       Except.throw $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
@@ -1144,11 +1145,11 @@ jsonToDhallManifest dhallTypes jsonStr = do
   -- will remove the './' prefix. We need to manually append this to the relative path.
   let args = [ "--records-loose", "--unions-strict", Path.concat [ dhallTypes, "v1", "Manifest.dhall" ] ]
   process <- Execa.execa cmd args identity
-  process.stdin.writeUtf8End jsonStr
-  result <- process.result
-  pure case result of
-    Right _ -> Right jsonStr
-    Left { stderr } -> Left stderr
+  for_ process.stdin \{ writeUtf8End } -> writeUtf8End jsonStr
+  result <- process.getResult
+  pure case result.exit of
+    Normally 0 -> Right jsonStr
+    _ -> Left result.stderr
 
 getPacchettiBotti :: forall r. Run (PACCHETTIBOTTI_ENV + r) Owner
 getPacchettiBotti = do

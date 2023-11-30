@@ -32,6 +32,7 @@ package:
     - httpurple
     - identity
     - integers
+    - js-fetch
     - js-date
     - js-uri
     - js-promise-aff
@@ -43,7 +44,6 @@ package:
     - node-child-process
     - node-execa
     - node-fs
-    - node-fs-aff
     - node-path
     - node-process
     - now
