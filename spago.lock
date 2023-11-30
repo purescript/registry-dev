@@ -220,7 +220,6 @@ workspace:
         - tuples
       repo: https://github.com/natefaubion/purescript-dodo-printer.git
       version: v2.2.1
-    fetch: 4.0.0
     language-cst-parser:
       dependencies:
         - arrays
