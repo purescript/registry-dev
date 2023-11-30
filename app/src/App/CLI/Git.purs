@@ -6,8 +6,8 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.String as String
 import Data.String.CodeUnits as CodeUnits
-import Node.Library.Execa as Execa
 import Node.ChildProcess.Types (Exit(..))
+import Node.Library.Execa as Execa
 import Parsing as Parsing
 import Parsing.Combinators as Parsing.Combinators
 import Parsing.String as Parsing.String

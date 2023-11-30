@@ -6,8 +6,8 @@ import Control.Parallel as Parallel
 import Data.Array as Array
 import Data.Codec.Argonaut as CA
 import Data.Codec.Argonaut.Record as CA.Record
-import Node.FS.Aff as FS
 import Node.ChildProcess.Types (Exit(..))
+import Node.FS.Aff as FS
 import Node.Library.Execa as Execa
 import Node.Path as Path
 import Registry.Foreign.Tmp as Tmp

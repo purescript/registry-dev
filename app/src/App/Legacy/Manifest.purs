@@ -21,8 +21,8 @@ import Data.These (These(..))
 import Data.These as These
 import Data.Variant as Variant
 import Effect.Aff as Aff
-import Node.FS.Aff as FS.Aff
 import Node.ChildProcess.Types (Exit(..))
+import Node.FS.Aff as FS.Aff
 import Node.Library.Execa as Execa
 import Node.Path as Path
 import Registry.App.CLI.Licensee as Licensee
