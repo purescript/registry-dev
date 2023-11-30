@@ -221,53 +221,6 @@ workspace:
       repo: https://github.com/natefaubion/purescript-dodo-printer.git
       version: v2.2.1
     fetch: 4.0.0
-    httpurple:
-      dependencies:
-        - aff
-        - arrays
-        - bifunctors
-        - console
-        - control
-        - debug
-        - effect
-        - either
-        - exceptions
-        - foldable-traversable
-        - foreign
-        - foreign-object
-        - functions
-        - js-uri
-        - justifill
-        - lists
-        - literals
-        - maybe
-        - newtype
-        - node-buffer
-        - node-event-emitter
-        - node-fs
-        - node-net
-        - node-http
-        - node-process
-        - node-streams
-        - options
-        - ordered-collections
-        - posix-types
-        - prelude
-        - profunctor
-        - record
-        - record-studio
-        - refs
-        - routing-duplex
-        - safe-coerce
-        - strings
-        - transformers
-        - tuples
-        - type-equality
-        - typelevel-prelude
-        - unsafe-coerce
-        - untagged-union
-      repo: https://github.com/JordanMartinez/purescript-httpurple
-      version: 325edc2a331f21ca05c333c88bb3c260e4d2bf01
     language-cst-parser:
       dependencies:
         - arrays
@@ -852,9 +805,9 @@ packages:
       - prelude
       - strings
   httpurple:
-    type: git
-    url: https://github.com/JordanMartinez/purescript-httpurple
-    rev: 325edc2a331f21ca05c333c88bb3c260e4d2bf01
+    type: registry
+    version: 4.0.0
+    integrity: sha256-oGslmTfJinvk8RPV5dzFOSxRhu6JN3gO8dUZeP6pKcA=
     dependencies:
       - aff
       - arrays
