@@ -387,18 +387,18 @@ runLegacyImport logs = do
 
       void $ for manifests publishLegacyPackage
 
-      Log.info "Finished publishing! Collecting all publish failures and writing to disk."
-      let
-        collectError prev (Manifest { name, version }) = do
-          Cache.get _importCache (PublishFailure name version) >>= case _ of
-            Nothing -> pure prev
-            Just error -> pure $ Map.insertWith Map.union name (Map.singleton version error) prev
-      failures <- Array.foldM collectError Map.empty allIndexPackages
-      Run.liftAff $ writePublishFailures failures
+  Log.info "Finished publishing! Collecting all publish failures and writing to disk."
+  let
+    collectError prev (Manifest { name, version }) = do
+      Cache.get _importCache (PublishFailure name version) >>= case _ of
+        Nothing -> pure prev
+        Just error -> pure $ Map.insertWith Map.union name (Map.singleton version error) prev
+  failures <- Array.foldM collectError Map.empty allIndexPackages
+  Run.liftAff $ writePublishFailures failures
 
-      let publishStats = formatPublishFailureStats importedIndex.registryIndex failures
-      Log.info publishStats
-      Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "publish-stats.txt" ]) publishStats
+  let publishStats = formatPublishFailureStats importedIndex.registryIndex failures
+  Log.info publishStats
+  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "publish-stats.txt" ]) publishStats
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePublishFailures :: Map PackageName (Map Version PublishError) -> Aff Unit
