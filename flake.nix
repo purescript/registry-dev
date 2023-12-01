@@ -480,7 +480,7 @@
                         {
                           request = {
                             method = "PUT";
-                            url = "/effect/4.0.0.tar.gz";
+                            url = "/effect/4.0.0.tar.gz?x-id=PutObject";
                           };
                           response = {
                             status = 200;
@@ -492,7 +492,7 @@
                         {
                           request = {
                             method = "PUT";
-                            url = "/prelude/6.0.1.tar.gz";
+                            url = "/prelude/6.0.1.tar.gz?x-id=PutObject";
                           };
                           response = {
                             status = 500;

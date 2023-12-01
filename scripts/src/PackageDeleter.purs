@@ -101,7 +101,7 @@ main = launchAff_ do
   args <- Array.drop 2 <$> liftEffect Process.argv
   let description = "A script for deleting registry packages."
   arguments <- case Arg.parseArgs "package-deleter" description parser args of
-    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
+    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit' 1)
     Right command -> pure command
 
   -- Environment
@@ -146,7 +146,7 @@ main = launchAff_ do
     Package name version -> pure $ Map.singleton name [ version ]
     -- --file packagesversions.json
     File path -> liftAff (readJsonFile deletePackagesCodec path) >>= case _ of
-      Left err -> Console.log err *> liftEffect (Process.exit 1)
+      Left err -> Console.log err *> liftEffect (Process.exit' 1)
       Right values -> pure values
 
   let

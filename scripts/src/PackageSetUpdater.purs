@@ -57,7 +57,7 @@ main = Aff.launchAff_ do
   args <- Array.drop 2 <$> liftEffect Process.argv
   let description = "A script for updating the package sets."
   mode <- case Arg.parseArgs "package-set-updater" description parser args of
-    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
+    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit' 1)
     Right command -> pure command
 
   -- Environment
@@ -113,7 +113,7 @@ main = Aff.launchAff_ do
     # Registry.interpret (Registry.handle registryEnv)
     # Storage.interpret (Storage.handleReadOnly cache)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
     # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Env.runResourceEnv resourceEnv

@@ -10,7 +10,7 @@ import Test.Spec as Spec
 
 spec :: Spec.Spec Unit
 spec = do
-  let fixtures = Path.concat [ "app", "fixtures", "manifest-files", "halogen-hooks" ]
+  let fixtures = Path.concat [ "app", "fixtures", "licenses", "halogen-hooks" ]
 
   Spec.it "Detects from directory" do
     detected <- Licensee.detect fixtures
@@ -62,7 +62,7 @@ readFiles = do
   pure { license, packageJson, spagoDhall, bowerJson }
 
 fixtureFile :: FilePath -> FilePath
-fixtureFile file = Path.concat [ "app", "fixtures", "manifest-files", "halogen-hooks", file ]
+fixtureFile file = Path.concat [ "app", "fixtures", "licenses", "halogen-hooks", file ]
 
 readLicense :: Aff String
 readLicense = FS.Aff.readTextFile UTF8 $ fixtureFile "LICENSE"

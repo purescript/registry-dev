@@ -1,0 +1,13 @@
+package:
+  name: registry-lib
+  publish:
+    version: 0.0.1
+    license: BSD-3-Clause
+    location:
+      githubOwner: purescript
+      githubRepo: registry-dev
+      subdir: lib
+  dependencies:
+    - prelude: ">=1.0.0 <2.0.0"
+  test:
+    main: Test.Registry

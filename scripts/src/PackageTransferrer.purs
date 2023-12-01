@@ -85,7 +85,7 @@ main = launchAff_ do
     # Registry.interpret (Registry.handle registryEnv)
     # Storage.interpret (Storage.handleReadOnly cache)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
     # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Env.runPacchettiBottiEnv { privateKey, publicKey }

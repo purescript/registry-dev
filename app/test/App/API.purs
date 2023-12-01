@@ -71,7 +71,19 @@ spec = do
   Spec.describe "API pipelines run correctly" $ Spec.around withCleanEnv do
     Spec.it "Publish a legacy-converted package with unused deps" \{ workdir, index, metadata, storageDir, githubDir } -> do
       logs <- liftEffect (Ref.new [])
-      let testEnv = { workdir, logs, index, metadata, username: "jon", storage: storageDir, github: githubDir }
+
+      let
+        testEnv =
+          { workdir
+          , logs
+          , index
+          , metadata
+          , pursuitExcludes: Set.singleton (Utils.unsafePackageName "type-equality")
+          , username: "jon"
+          , storage: storageDir
+          , github: githubDir
+          }
+
       result <- Assert.Run.runTestEffects testEnv $ Except.runExcept do
         -- We'll publish effect@4.0.0 from the fixtures/github-packages
         -- directory, which has an unnecessary dependency on 'type-equality'
@@ -139,12 +151,24 @@ spec = do
           Left _ -> pure unit
           Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to fail."
 
+        -- If we got here then the new published package is fine. There is one
+        -- other successful code path: publishing a package that already exists
+        -- but did not have documentation make it to Pursuit.
+        let
+          pursuitOnlyPublishArgs =
+            { compiler: Utils.unsafeVersion "0.15.9"
+            , location: Just $ GitHub { owner: "purescript", repo: "purescript-type-equality", subdir: Nothing }
+            , name: Utils.unsafePackageName "type-equality"
+            , ref: "v4.0.1"
+            , resolutions: Nothing
+            }
+        API.publish pursuitOnlyPublishArgs
+
       case result of
         Left err -> do
           recorded <- liftEffect (Ref.read logs)
-          Assert.fail $ "Expected to publish effect@4.0.0 but got error: " <> err <> "\n\nLogs:\n" <> String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
+          Assert.fail $ "Expected to publish effect@4.0.0 and type-equality@4.0.1 but got error: " <> err <> "\n\nLogs:\n" <> String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
         Right _ -> pure unit
-
   where
   withCleanEnv :: (PipelineEnv -> Aff Unit) -> Aff Unit
   withCleanEnv action = do

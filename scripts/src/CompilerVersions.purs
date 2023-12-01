@@ -100,7 +100,7 @@ main = launchAff_ do
   args <- Array.drop 2 <$> liftEffect Process.argv
   let description = "A script for determining the supported compiler versions for packages."
   arguments <- case Arg.parseArgs "compiler-versions" description parser args of
-    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
+    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit' 1)
     Right command -> pure command
 
   -- Environment
@@ -141,7 +141,7 @@ main = launchAff_ do
   let
     interpret :: Run _ ~> Aff
     interpret =
-      Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit 1))
+      Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit' 1))
         >>> Registry.interpret (Registry.handle registryEnv)
         >>> Storage.interpret (Storage.handleReadOnly cache)
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
@@ -229,7 +229,7 @@ compilersForPackageVersion package version target = do
 
   if Array.null supported then do
     Log.error $ "Could not find supported compiler versions for " <> formatPackageVersion package version
-    Run.liftEffect $ Process.exit 1
+    Run.liftEffect $ Process.exit' 1
   else
     Log.info $ "Found supported compiler versions for " <> formatPackageVersion package version <> ": " <> Array.intercalate ", " (map Version.print supported)
 

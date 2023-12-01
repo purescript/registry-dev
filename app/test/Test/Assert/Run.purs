@@ -102,6 +102,7 @@ type TestEnv =
   , logs :: Ref (Array (Tuple LogLevel String))
   , metadata :: Ref (Map PackageName Metadata)
   , index :: Ref ManifestIndex
+  , pursuitExcludes :: Set PackageName
   , storage :: FilePath
   , github :: FilePath
   , username :: String
@@ -113,7 +114,7 @@ runTestEffects env operation = do
   githubCache <- liftEffect Cache.newCacheRef
   legacyCache <- liftEffect Cache.newCacheRef
   operation
-    # Pursuit.interpret (handlePursuitMock env.metadata)
+    # Pursuit.interpret (handlePursuitMock { metadataRef: env.metadata, excludes: env.pursuitExcludes })
     # Registry.interpret (handleRegistryMock { metadataRef: env.metadata, indexRef: env.index })
     # PackageSets.interpret handlePackageSetsMock
     # Storage.interpret (handleStorageMock { storage: env.storage })
@@ -164,10 +165,25 @@ runCompilerCacheMock = Cache.interpret API._compilerCache case _ of
     Cache.AsBuffer _ (Cache.Ignore next) -> pure next
     Cache.AsJson _ _ (Cache.Ignore next) -> pure next
 
-handlePursuitMock :: forall r a. Ref (Map PackageName Metadata) -> Pursuit a -> Run (EFFECT + r) a
-handlePursuitMock metadataRef = case _ of
+type PursuitMockEnv =
+  { excludes :: Set PackageName
+  , metadataRef :: Ref (Map PackageName Metadata)
+  }
+
+-- | A mock implementation for Pursuit, which assumes a shared metadata ref with
+-- | the REGISTRY effect handler. All packages present in the metadata ref are
+-- | considered published, so 'Publish' is a no-op and 'GetPublishedVersions'
+-- | reads the metadata ref.
+-- |
+-- | The is 'excludes' option allows us to manually choose packages that should
+-- | NOT have their docs "published", so that we can test things like retrying
+-- | the publish pipeline for Pursuit publishing only.
+handlePursuitMock :: forall r a. PursuitMockEnv -> Pursuit a -> Run (EFFECT + r) a
+handlePursuitMock { excludes, metadataRef } = case _ of
   Publish _json reply ->
     pure $ reply $ Right unit
+  GetPublishedVersions name reply | Set.member name excludes ->
+    pure $ reply $ Right Map.empty
   GetPublishedVersions name reply -> do
     metadata <- Run.liftEffect (Ref.read metadataRef)
     pure $ reply $ Right $ fromMaybe Map.empty do

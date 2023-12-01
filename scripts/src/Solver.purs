@@ -64,7 +64,7 @@ main = launchAff_ do
     getAction = case args of
       [ "--file", path ] -> do
         packageversions <- liftAff (readJsonFile deletePackagesCodec path) >>= case _ of
-          Left err -> Aff.log err *> liftEffect (Process.exit 1)
+          Left err -> Aff.log err *> liftEffect (Process.exit' 1)
           Right values -> pure values
         pure \registry -> do
           forWithIndex_ packageversions \package versionsofpackage -> do
@@ -86,7 +86,7 @@ main = launchAff_ do
           package = unsafeFromRight $ PackageName.parse "manifest"
           version = unsafeFromRight $ Version.parse "0.0.0"
         deps <- liftAff (readJsonFile codec path) >>= case _ of
-          Left err -> Aff.log err *> liftEffect (Process.exit 1)
+          Left err -> Aff.log err *> liftEffect (Process.exit' 1)
           Right values -> pure values
         pure \registry -> test registry package version deps
       [ "--all" ] -> pure \registry -> do
@@ -150,7 +150,7 @@ main = launchAff_ do
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
     # Cache.interpret _compilerCache (Cache.handleFs cache)
-    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
     # Comment.interpret Comment.handleLog
     # Env.runResourceEnv resourceEnv
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)

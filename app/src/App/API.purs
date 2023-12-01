@@ -16,7 +16,6 @@ module Registry.App.API
   , publish
   , readCompilerIndex
   , removeIgnoredTarballFiles
-  , spagoToManifest
   ) where
 
 import Registry.App.Prelude
@@ -41,12 +40,12 @@ import Data.Set as Set
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
-import Data.String.NonEmpty (fromString) as NonEmptyString
-import Data.String.NonEmpty.Internal (toString) as NonEmptyString
+import Data.String.NonEmpty as NonEmptyString
 import Data.String.Regex as Regex
 import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
+import Node.ChildProcess.Types (Exit(..))
 import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
@@ -76,6 +75,7 @@ import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit (PURSUIT)
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry as ManifestIndex
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Source (SOURCE)
 import Registry.App.Effect.Source as Source
@@ -85,6 +85,7 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LEGACY_CACHE)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec)
+import Registry.App.Manifest.SpagoYaml as SpagoYaml
 import Registry.Constants (ignoredDirectories, ignoredFiles, ignoredGlobs, includedGlobs, includedInsensitiveGlobs)
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
@@ -115,8 +116,6 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 import Safe.Coerce as Safe.Coerce
-import Spago.Core.Config as Spago.Config
-import Spago.FS as Spago.FS
 
 type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + COMMENT + LOG + EXCEPT String + r)
 
@@ -440,22 +439,19 @@ publish payload = do
 
     else if hasSpagoYaml then do
       Comment.comment $ "Package source does not have a purs.json file, creating one from your spago.yaml file..."
-      Run.liftAff (Spago.FS.readYamlDocFile Spago.Config.configCodec packageSpagoYaml) >>= case _ of
-        Left readError -> Except.throw $ String.joinWith "\n"
-          [ "Could not publish your package - a spago.yaml was present, but it was not possible to read it:"
-          , readError
-          ]
-        Right { yaml: config } -> do
-          -- Once we have the config we are still not entirely sure it fits into a Manifest
-          -- e.g. need to make sure all the ranges are present
-          case spagoToManifest config of
-            Left err -> Except.throw $ String.joinWith "\n"
-              [ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:"
-              , err
+      SpagoYaml.readSpagoYaml packageSpagoYaml >>= case _ of
+        Left readErr -> Except.throw $ "Could not publish your package - a spago.yaml was present, but it was not possible to read it:\n" <> readErr
+        Right config -> case SpagoYaml.spagoYamlToManifest config of
+          Left err -> Except.throw $ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:\n" <> err
+          Right manifest -> do
+            Comment.comment $ Array.fold
+              [ "Converted your spago.yaml into a purs.json manifest to use for publishing:\n"
+              , "```json"
+              , printJson Manifest.codec manifest
+              , "```"
               ]
-            Right manifest -> do
-              Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
-              pure manifest
+            pure manifest
+
     else do
       Comment.comment $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
       address <- case existingMetadata.location of
@@ -477,9 +473,13 @@ publish payload = do
         Right legacyManifest -> do
           Log.debug $ "Successfully produced a legacy manifest from the package source."
           let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location legacyManifest
+          Comment.comment $ Array.fold
+            [ "Converted your legacy manifest(s) into a purs.json manifest to use for publishing:\n"
+            , "```json"
+            , printJson Manifest.codec manifest
+            , "```"
+            ]
           pure manifest
-
-  Comment.comment "Verifying package..."
 
   -- We trust the manifest for any changes to the 'owners' field, but for all
   -- other fields we trust the registry metadata.
@@ -515,105 +515,115 @@ publish payload = do
       , "```"
       ]
 
-  for_ (Operation.Validation.isNotPublished (Manifest manifest) (Metadata metadata)) \info -> do
+  case Operation.Validation.isNotPublished (Manifest manifest) (Metadata metadata) of
     -- If the package has been published already, then we check whether the published
     -- version has made it to Pursuit or not. If it has, then we terminate here. If
-    -- it hasn't then we skip to Pursuit publishing.
-    published <- Pursuit.getPublishedVersions manifest.name >>= case _ of
-      Left error -> Except.throw error
-      Right versions -> pure versions
+    -- it hasn't then we publish to Pursuit and then terminate.
+    Just info -> do
+      published <- Pursuit.getPublishedVersions manifest.name >>= case _ of
+        Left error -> Except.throw error
+        Right versions -> pure versions
 
-    case Map.lookup manifest.version published of
-      Nothing | payload.compiler < unsafeFromRight (Version.parse "0.14.7") -> do
-        Comment.comment $ Array.fold
-          [ "This version has already been published to the registry, but the docs have not been "
-          , "uploaded to Pursuit. Unfortunately, it is not possible to publish to Pursuit via the "
-          , "registry using compiler versions prior to 0.14.7. Please try with a later compiler."
-          ]
-      Nothing -> do
-        Comment.comment $ Array.fold
-          [ "This version has already been published to the registry, but the docs have not been "
-          , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
-          ]
+      case Map.lookup manifest.version published of
+        Just url -> do
+          Except.throw $ String.joinWith "\n"
+            [ "You tried to upload a version that already exists: " <> Version.print manifest.version
+            , ""
+            , "Its metadata is:"
+            , "```json"
+            , printJson Metadata.publishedMetadataCodec info
+            , "```"
+            , ""
+            , "and its documentation is available here:"
+            , url
+            ]
+
+        Nothing | payload.compiler < unsafeFromRight (Version.parse "0.14.7") -> do
+          Comment.comment $ Array.fold
+            [ "This version has already been published to the registry, but the docs have not been "
+            , "uploaded to Pursuit. Unfortunately, it is not possible to publish to Pursuit via the "
+            , "registry using compiler versions prior to 0.14.7. Please try with a later compiler."
+            ]
+
+        Nothing -> do
+          Comment.comment $ Array.fold
+            [ "This version has already been published to the registry, but the docs have not been "
+            , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
+            ]
+          compilerIndex <- readCompilerIndex
+          verifiedResolutions <- verifyResolutions compilerIndex payload.compiler (Manifest manifest) payload.resolutions
+          compilationResult <- compilePackage { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions }
+          case compilationResult of
+            Left error -> do
+              Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
+              Except.throw "Cannot publish to Pursuit because this package failed to compile."
+            Right installedResolutions -> do
+              Log.debug "Uploading to Pursuit"
+              -- While we have created a manifest from the package source, we
+              -- still need to ensure a purs.json file exists for 'purs publish'.
+              unless hadPursJson do
+                existingManifest <- ManifestIndex.readManifest manifest.name manifest.version
+                case existingManifest of
+                  Nothing -> Except.throw "Version was previously published, but we could not find a purs.json file in the package source, and no existing manifest was found in the registry."
+                  Just existing -> Run.liftAff $ writeJsonFile Manifest.codec packagePursJson existing
+              publishToPursuit { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, installedResolutions } >>= case _ of
+                Left publishErr -> Except.throw publishErr
+                Right _ -> Comment.comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+
+    -- In this case the package version has not been published, so we proceed
+    -- with ordinary publishing.
+    Nothing ->
+      -- Now that we've verified the package we can write the manifest to the source
+      -- directory and then publish it.
+      if hadPursJson then do
+        -- No need to verify the generated manifest because nothing was generated,
+        -- and no need to write a file (it's already in the package source.)
+        publishRegistry
+          { manifest: Manifest manifest
+          , metadata: Metadata metadata
+          , payload
+          , publishedTime
+          , tmp
+          , packageDirectory
+          }
+
+      else if hasSpagoYaml then do
+        -- We need to write the generated purs.json file, but because spago-next
+        -- already does unused dependency checks and supports explicit test-only
+        -- dependencies we can skip those checks.
+        Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
+        publishRegistry
+          { manifest: Manifest manifest
+          , metadata: Metadata metadata
+          , payload
+          , publishedTime
+          , tmp
+          , packageDirectory
+          }
+
+      -- Otherwise this is a legacy package, generated from a combination of bower,
+      -- spago.dhall, and package set files, so we need to verify the generated
+      -- manifest does not contain unused dependencies before writing it.
+      else do
+        Log.debug "Pruning unused dependencies from legacy package manifest..."
         compilerIndex <- readCompilerIndex
-        verifiedResolutions <- verifyResolutions compilerIndex payload.compiler (Manifest manifest) payload.resolutions
-        compilationResult <- compilePackage { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions }
-        case compilationResult of
-          Left error -> do
-            Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
-            Except.throw "Cannot publish to Pursuit because this package failed to compile."
-          Right installedResolutions -> do
-            Log.debug "Uploading to Pursuit"
-            publishToPursuit { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, installedResolutions } >>= case _ of
-              Left publishErr -> Except.throw publishErr
-              Right _ -> do
-                Log.debug "Package docs publish succeeded"
-                Comment.comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+        Tuple fixedManifest fixedResolutions <- fixManifestDependencies
+          { source: packageDirectory
+          , compiler: payload.compiler
+          , manifest: Manifest manifest
+          , index: compilerIndex
+          , resolutions: payload.resolutions
+          }
 
-      Just url -> do
-        Except.throw $ String.joinWith "\n"
-          [ "You tried to upload a version that already exists: " <> Version.print manifest.version
-          , ""
-          , "Its metadata is:"
-          , "```json"
-          , printJson Metadata.publishedMetadataCodec info
-          , "```"
-          , ""
-          , "and its documentation is available here:"
-          , url
-          ]
-
-  -- Now that we've verified the package we can write the manifest to the source
-  -- directory and then publish it.
-  if hadPursJson then do
-    -- No need to verify the generated manifest because nothing was generated,
-    -- and no need to write a file (it's already in the package source.)
-    publishRegistry
-      { manifest: Manifest manifest
-      , metadata: Metadata metadata
-      , payload
-      , publishedTime
-      , tmp
-      , packageDirectory
-      }
-
-  else if hasSpagoYaml then do
-    -- We need to write the generated purs.json file, but because spago-next
-    -- already does unused dependency checks and supports explicit test-only
-    -- dependencies we can skip those checks.
-    Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
-    publishRegistry
-      { manifest: Manifest manifest
-      , metadata: Metadata metadata
-      , payload
-      , publishedTime
-      , tmp
-      , packageDirectory
-      }
-
-  -- Otherwise this is a legacy package, generated from a combination of bower,
-  -- spago.dhall, and package set files, so we need to verify the generated
-  -- manifest does not contain unused dependencies before writing it.
-  else do
-    Log.debug "Pruning unused dependencies from legacy package manifest..."
-    compilerIndex <- readCompilerIndex
-    Tuple fixedManifest fixedResolutions <- fixManifestDependencies
-      { source: packageDirectory
-      , compiler: payload.compiler
-      , manifest: Manifest manifest
-      , index: compilerIndex
-      , resolutions: payload.resolutions
-      }
-
-    Run.liftAff $ writeJsonFile Manifest.codec packagePursJson fixedManifest
-    publishRegistry
-      { manifest: fixedManifest
-      , metadata: Metadata metadata
-      , payload: payload { resolutions = Just fixedResolutions }
-      , publishedTime
-      , tmp
-      , packageDirectory
-      }
+        Run.liftAff $ writeJsonFile Manifest.codec packagePursJson fixedManifest
+        publishRegistry
+          { manifest: fixedManifest
+          , metadata: Metadata metadata
+          , payload: payload { resolutions = Just fixedResolutions }
+          , publishedTime
+          , tmp
+          , packageDirectory
+          }
 
 type PublishRegistry =
   { manifest :: Manifest
@@ -666,7 +676,7 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
   Tar.create { cwd: tmp, folderName: newDir }
 
   Log.info "Tarball created. Verifying its size..."
-  FS.Stats.Stats { size: bytes } <- Run.liftAff $ FS.Aff.stat tarballPath
+  bytes <- Run.liftAff $ map FS.Stats.size $ FS.Aff.stat tarballPath
   for_ (Operation.Validation.validateTarballSize bytes) case _ of
     Operation.Validation.ExceedsMaximum maxPackageBytes ->
       Except.throw $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
@@ -1157,11 +1167,11 @@ jsonToDhallManifest dhallTypes jsonStr = do
   -- will remove the './' prefix. We need to manually append this to the relative path.
   let args = [ "--records-loose", "--unions-strict", Path.concat [ dhallTypes, "v1", "Manifest.dhall" ] ]
   process <- Execa.execa cmd args identity
-  process.stdin.writeUtf8End jsonStr
-  result <- process.result
-  pure case result of
-    Right _ -> Right jsonStr
-    Left { stderr } -> Left stderr
+  for_ process.stdin \{ writeUtf8End } -> writeUtf8End jsonStr
+  result <- process.getResult
+  pure case result.exit of
+    Normally 0 -> Right jsonStr
+    _ -> Left result.stderr
 
 getPacchettiBotti :: forall r. Run (PACCHETTIBOTTI_ENV + r) Owner
 getPacchettiBotti = do
@@ -1174,34 +1184,6 @@ getPacchettiBotti = do
 
 packagingTeam :: Team
 packagingTeam = { org: "purescript", team: "packaging" }
-
-spagoToManifest :: Spago.Config.Config -> Either String Manifest
-spagoToManifest config = do
-  package@{ name, description, dependencies: Spago.Config.Dependencies deps } <- note "Did not find a package in the config" config.package
-  publishConfig@{ version, license } <- note "Did not find a `publish` section in the package config" package.publish
-  let includeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.include)
-  let excludeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publishConfig.exclude)
-  location <- note "Did not find a `location` field in the publish config" publishConfig.location
-  let
-    checkRange :: Tuple PackageName (Maybe Range) -> Either PackageName (Tuple PackageName Range)
-    checkRange (Tuple packageName maybeRange) = case maybeRange of
-      Nothing -> Left packageName
-      Just r -> Right (Tuple packageName r)
-  let { fail: failedPackages, success } = partitionEithers $ map checkRange (Map.toUnfoldable deps :: Array _)
-  dependencies <- case failedPackages of
-    [] -> Right (Map.fromFoldable success)
-    errs -> Left $ "The following packages did not have their ranges specified: " <> String.joinWith ", " (map PackageName.print errs)
-  pure $ Manifest
-    { version
-    , license
-    , name
-    , location
-    , description
-    , dependencies
-    , owners: Nothing -- TODO Spago still needs to add this to its config
-    , includeFiles
-    , excludeFiles
-    }
 
 readCompilerIndex :: forall r. Run (REGISTRY + AFF + EXCEPT String + r) Solver.CompilerIndex
 readCompilerIndex = do

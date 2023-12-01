@@ -20,6 +20,7 @@ import Data.These (These(..))
 import Data.These as These
 import Data.Variant as Variant
 import Effect.Aff as Aff
+import Node.ChildProcess.Types (Exit(..))
 import Node.FS.Aff as FS.Aff
 import Node.Library.Execa as Execa
 import Node.Path as Path
@@ -356,11 +357,11 @@ fetchSpagoDhallJson address ref = Run.Except.runExceptAt _spagoDhallError do
     let cmd = "dhall-to-json"
     let args = []
     process <- Execa.execa cmd args (_ { cwd = cwd })
-    process.stdin.writeUtf8End dhall
-    result <- process.result
-    pure case result of
-      Right { stdout } -> lmap CA.printJsonDecodeError $ parseJson CA.json stdout
-      Left { stderr } -> Left stderr
+    for_ process.stdin \{ writeUtf8End } -> writeUtf8End dhall
+    result <- process.getResult
+    pure case result.exit of
+      Normally 0 -> lmap CA.printJsonDecodeError $ parseJson CA.json result.stdout
+      _ -> Left result.stderr
 
 newtype Bowerfile = Bowerfile
   { description :: Maybe String

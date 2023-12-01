@@ -1,7 +1,8 @@
 module Fetch.Retry
-  ( withRetryRequest
-  , RetryRequestError(..)
+  ( RetryRequestError(..)
   , module ReExport
+  , printRetryRequestError
+  , withRetryRequest
   ) where
 
 import Registry.App.Prelude
@@ -10,16 +11,21 @@ import Effect.Aff (Error)
 import Effect.Aff as Aff
 import Fetch (class ToCoreRequestOptions, HighlevelRequestOptions, Response, new)
 import Fetch (Response) as ReExport
-import Fetch.Core as Core
-import Fetch.Core.Request as CoreRequest
 import Fetch.Internal.Request as Request
 import Fetch.Internal.Response as Response
+import JS.Fetch as Core
+import JS.Fetch.Request as CoreRequest
 import Prim.Row (class Union)
 import Promise.Aff as Promise.Aff
 
 data RetryRequestError
   = FetchError Error
   | StatusError Response
+
+printRetryRequestError :: RetryRequestError -> String
+printRetryRequestError = case _ of
+  FetchError error -> "Fetch Error: " <> Aff.message error
+  StatusError response -> "Status Error (" <> show response.status <> "): " <> response.statusText
 
 withRetryRequest
   :: forall input output thruIn thruOut headers body
@@ -29,14 +35,8 @@ withRetryRequest
   => String
   -> { | input }
   -> Aff (RetryResult RetryRequestError Response)
-withRetryRequest url r =
-  withRetry retry
-    $ (Aff.attempt $ fetch @thruIn url r)
-    <#>
-      ( either
-          (Left <<< FetchError)
-          onFetchResponse
-      )
+withRetryRequest url opts = withRetry retry do
+  (Aff.attempt $ fetch @thruIn url opts) <#> either (Left <<< FetchError) onFetchResponse
   where
   onFetchResponse :: Response -> Either RetryRequestError Response
   onFetchResponse response =

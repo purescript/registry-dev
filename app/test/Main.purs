@@ -15,12 +15,19 @@ import Test.Registry.App.Legacy.LenientRange as Test.Legacy.LenientRange
 import Test.Registry.App.Legacy.LenientVersion as Test.Legacy.LenientVersion
 import Test.Registry.App.Legacy.Manifest as Test.Legacy.Manifest
 import Test.Registry.App.Legacy.PackageSet as Test.Legacy.PackageSet
+import Test.Registry.App.Manifest.SpagoYaml as Test.Manifest.SpagoYaml
 import Test.Spec as Spec
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (defaultConfig, runSpec')
 
 main :: Effect Unit
 main = launchAff_ $ runSpec' (defaultConfig { timeout = Just $ Milliseconds 300_000.0 }) [ consoleReporter ] do
+  Spec.describe "Registry.App.API" do
+    Test.API.spec
+
+  Spec.describe "Registry.App.Auth" do
+    Test.Auth.spec
+
   Spec.describe "Registry.App.CLI" do
     Spec.describe "Licensee" Test.CLI.Licensee.spec
     Spec.describe "Tar" Test.CLI.Tar.spec
@@ -30,17 +37,14 @@ main = launchAff_ $ runSpec' (defaultConfig { timeout = Just $ Milliseconds 300_
   Spec.describe "Registry.App.Effect" do
     Test.Effect.PackageSets.spec
 
+  Spec.describe "Registry.App.GitHubIssue" do
+    Test.GitHubIssue.spec
+
   Spec.describe "Registry.App.Legacy" do
     Spec.describe "Lenient Version" Test.Legacy.LenientVersion.spec
     Spec.describe "Lenient Range" Test.Legacy.LenientRange.spec
     Spec.describe "Legacy Manifest" Test.Legacy.Manifest.spec
     Spec.describe "Legacy Package Set" Test.Legacy.PackageSet.spec
 
-  Spec.describe "Registry.App.Auth" do
-    Test.Auth.spec
-
-  Spec.describe "Registry.App.API" do
-    Test.API.spec
-
-  Spec.describe "Registry.App.GitHubIssue" do
-    Test.GitHubIssue.spec
+  Spec.describe "Registry.App.Manifest" do
+    Spec.describe "SpagoYaml" Test.Manifest.SpagoYaml.spec

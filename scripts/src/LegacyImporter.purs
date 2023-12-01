@@ -70,6 +70,7 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
+import Registry.App.Manifest.SpagoYaml as SpagoYaml
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (Address, Tag)
 import Registry.Foreign.Octokit as Octokit
@@ -88,8 +89,6 @@ import Run as Run
 import Run.Except (EXCEPT, Except)
 import Run.Except as Except
 import Run.Except as Run.Except
-import Spago.Core.Config as Spago.Config
-import Spago.Yaml as Yaml
 import Type.Proxy (Proxy(..))
 
 data ImportMode = DryRun | GenerateRegistry | UpdateRegistry
@@ -115,7 +114,7 @@ main = launchAff_ do
 
   let description = "A script for uploading legacy registry packages."
   mode <- case Arg.parseArgs "legacy-importer" description parser args of
-    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit 1)
+    Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit' 1)
     Right command -> pure command
 
   Env.loadEnvFile ".env"
@@ -183,7 +182,7 @@ main = launchAff_ do
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
     # Cache.interpret API._compilerCache (Cache.handleFs cache)
-    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit 1))
+    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
     # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Env.runResourceEnv resourceEnv
@@ -1048,13 +1047,13 @@ fetchSpagoYaml address ref = do
     Left err -> do
       Log.debug $ "No spago.yaml found: " <> Octokit.printGitHubError err
       pure Nothing
-    Right file -> do
-      Log.debug $ "Found spago.yaml file\n" <> file
-      case Yaml.parseYamlDoc Spago.Config.configCodec file of
-        Left error -> Except.throw $ "Failed to parse spago.yaml file:\n" <> file <> "\nwith errors:\n" <> CA.printJsonDecodeError error
-        Right { yaml: parsed } -> case API.spagoToManifest parsed of
+    Right contents -> do
+      Log.debug $ "Found spago.yaml file\n" <> contents
+      case parseYaml SpagoYaml.spagoYamlCodec contents of
+        Left error -> Except.throw $ "Failed to parse spago.yaml file:\n" <> contents <> "\nwith errors:\n" <> error
+        Right config -> case SpagoYaml.spagoYamlToManifest config of
           Left err -> do
-            Log.warn $ "Failed to convert parsed spago.yaml file to purs.json " <> file <> "\nwith errors:\n" <> err
+            Log.warn $ "Failed to convert parsed spago.yaml file to purs.json " <> contents <> "\nwith errors:\n" <> err
             pure Nothing
           Right manifest -> do
             Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
