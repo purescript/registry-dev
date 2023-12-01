@@ -600,7 +600,7 @@ publishErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantM
     }
 
 formatPublishFailureStats :: ManifestIndex -> Map PackageName (Map Version PublishError) -> String
-formatPublishFailureStats importedIndex results = do
+formatPublishFailureStats importedIndex failures = do
   let
     index :: Map PackageName (Map Version Manifest)
     index = ManifestIndex.toMap importedIndex
@@ -615,13 +615,20 @@ formatPublishFailureStats importedIndex results = do
     startVersions = countVersions index
 
     failedPackages :: Int
-    failedPackages = Map.size results
+    failedPackages = Map.size failures
 
     failedVersions :: Int
-    failedVersions = countVersions results
+    failedVersions = countVersions failures
 
-    removedPackages :: Int
-    removedPackages = Map.size index - Map.size results
+    removedPackages :: Set PackageName
+    removedPackages = do
+      let
+        foldFn package prev versions = fromMaybe prev do
+          allVersions <- Map.lookup package index
+          guard (Map.keys allVersions == Map.keys versions)
+          pure $ Set.insert package prev
+
+      foldlWithIndex foldFn Set.empty failures
 
     countByFailure :: Map String Int
     countByFailure = do
@@ -636,16 +643,16 @@ formatPublishFailureStats importedIndex results = do
         foldFn prev (Tuple _ versions) =
           Array.foldl (\prevCounts (Tuple _ error) -> Map.insertWith (+) (toKey error) 1 prevCounts) prev (Map.toUnfoldable versions)
 
-      Array.foldl foldFn Map.empty (Map.toUnfoldable results)
+      Array.foldl foldFn Map.empty (Map.toUnfoldable failures)
 
   String.joinWith "\n"
     [ "--------------------"
     , "PUBLISH FAILURES"
     , "--------------------"
     , ""
-    , "PACKAGES: " <> show failedPackages <> " out of " <> show startPackages <> " failed (" <> show removedPackages <> " packages have zero usable versions)."
+    , "PACKAGES: " <> show failedPackages <> " out of " <> show startPackages <> " had at least 1 version fail (" <> show (Set.size removedPackages) <> " packages have zero usable versions)."
     , "VERSIONS: " <> show failedVersions <> " out of " <> show startVersions <> " failed."
-    , Array.foldMap (\(Tuple key val) -> "\n  - " <> key <> ": " <> show val) (Map.toUnfoldable countByFailure)
+    , Array.foldMap (\(Tuple key val) -> "\n  - " <> key <> ": " <> show val) (Array.sortBy (comparing snd) (Map.toUnfoldable countByFailure))
     ]
 
 compilerFailureMapCodec :: JsonCodec (Map (NonEmptyArray Version) CompilerFailure)
