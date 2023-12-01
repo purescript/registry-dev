@@ -12,6 +12,16 @@ import Node.ChildProcess.Types (Exit(..))
 import Node.Library.Execa as Execa
 import Registry.Version as Version
 
+-- | The minimum compiler version that supports 'purs graph'
+minPursGraph :: Version
+minPursGraph = unsafeFromRight (Version.parse "0.14.0")
+
+minPursuitPublish :: Version
+minPursuitPublish = unsafeFromRight (Version.parse "0.14.7")
+
+minLanguageCSTParser :: Version
+minLanguageCSTParser = unsafeFromRight (Version.parse "0.15.0")
+
 -- | Call a specific version of the PureScript compiler
 callCompiler_ :: { version :: Maybe Version, command :: PursCommand, cwd :: Maybe FilePath } -> Aff Unit
 callCompiler_ = void <<< callCompiler

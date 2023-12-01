@@ -878,10 +878,10 @@ readAllMetadataFromDisk metadataDir = do
 
   entries <- Run.liftAff $ map partitionEithers $ for packages.success \name -> do
     result <- readJsonFile Metadata.codec (Path.concat [ metadataDir, PackageName.print name <> ".json" ])
-    pure $ map (Tuple name) result
+    pure $ bimap (Tuple name) (Tuple name) result
 
   unless (Array.null entries.fail) do
-    Except.throw $ append "Could not read metadata for all packages because the metadata directory is invalid (some package metadata cannot be decoded):" $ Array.foldMap (append "\n  - ") entries.fail
+    Except.throw $ append "Could not read metadata for all packages because the metadata directory is invalid (some package metadata cannot be decoded):" $ Array.foldMap (\(Tuple name err) -> "\n  - " <> PackageName.print name <> ": " <> err) entries.fail
 
   Log.debug "Successfully read metadata entries."
   pure $ Map.fromFoldable entries.success

@@ -399,7 +399,7 @@ publish payload = do
       -- supports syntax back to 0.15.0. We'll still try to validate the package
       -- but it may fail to parse.
       Operation.Validation.validatePursModules files >>= case _ of
-        Left formattedError | payload.compiler < unsafeFromRight (Version.parse "0.15.0") -> do
+        Left formattedError | payload.compiler < Purs.minLanguageCSTParser -> do
           Log.debug $ "Package failed to parse in validatePursModules: " <> formattedError
           Log.debug $ "Skipping check because package is published with a pre-0.15.0 compiler (" <> Version.print payload.compiler <> ")."
         Left formattedError ->
@@ -538,11 +538,12 @@ publish payload = do
             , url
             ]
 
-        Nothing | payload.compiler < unsafeFromRight (Version.parse "0.14.7") -> do
+        Nothing | payload.compiler < Purs.minPursuitPublish -> do
           Comment.comment $ Array.fold
             [ "This version has already been published to the registry, but the docs have not been "
             , "uploaded to Pursuit. Unfortunately, it is not possible to publish to Pursuit via the "
-            , "registry using compiler versions prior to 0.14.7. Please try with a later compiler."
+            , "registry using compiler versions prior to " <> Version.print Purs.minPursuitPublish
+            , ". Please try with a later compiler."
             ]
 
         Nothing -> do
@@ -727,7 +728,7 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
   Comment.comment "Mirrored registry operation to the legacy registry!"
 
   Log.debug "Uploading package documentation to Pursuit"
-  if payload.compiler >= unsafeFromRight (Version.parse "0.14.7") then
+  if payload.compiler >= Purs.minPursuitPublish then
     publishToPursuit { source: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, installedResolutions } >>= case _ of
       Left publishErr -> do
         Log.error publishErr
@@ -742,26 +743,21 @@ publishRegistry { payload, metadata: Metadata metadata, manifest: Manifest manif
       ]
 
   allCompilers <- PursVersions.pursVersions
-  { failed: invalidCompilers, succeeded: validCompilers } <- case NonEmptyArray.fromFoldable $ NonEmptyArray.filter (notEq payload.compiler) allCompilers of
-    Nothing -> pure { failed: Map.empty, succeeded: Set.singleton payload.compiler }
+  { failed: invalidCompilers, succeeded: validCompilers } <- case NonEmptyArray.fromFoldable $ NonEmptyArray.delete payload.compiler allCompilers of
+    Nothing -> pure { failed: Map.empty, succeeded: NonEmptySet.singleton payload.compiler }
     Just try -> do
       found <- findAllCompilers
         { source: packageDirectory
         , manifest: Manifest manifest
         , compilers: try
         }
-      pure $ found { succeeded = Set.insert payload.compiler found.succeeded }
+      pure { failed: found.failed, succeeded: NonEmptySet.cons payload.compiler found.succeeded }
 
   unless (Map.isEmpty invalidCompilers) do
     Log.debug $ "Some compilers failed: " <> String.joinWith ", " (map Version.print (Set.toUnfoldable (Map.keys invalidCompilers)))
 
-  let
-    allVerified = case NonEmptySet.fromFoldable validCompilers of
-      Nothing -> NonEmptyArray.singleton payload.compiler
-      Just verified -> NonEmptyArray.fromFoldable1 verified
-
-  Comment.comment $ "Found compatible compilers: " <> String.joinWith ", " (map (\v -> "`" <> Version.print v <> "`") (NonEmptyArray.toArray allVerified))
-  let compilersMetadata = newMetadata { published = Map.update (Just <<< (_ { compilers = Right allVerified })) manifest.version newMetadata.published }
+  Comment.comment $ "Found compatible compilers: " <> String.joinWith ", " (map (\v -> "`" <> Version.print v <> "`") (NonEmptySet.toUnfoldable validCompilers))
+  let compilersMetadata = newMetadata { published = Map.update (Just <<< (_ { compilers = Right (NonEmptySet.toUnfoldable1 validCompilers) })) manifest.version newMetadata.published }
   Registry.writeMetadata manifest.name (Metadata compilersMetadata)
   Log.debug $ "Wrote new metadata " <> printJson Metadata.codec (Metadata compilersMetadata)
 
@@ -1002,7 +998,7 @@ type PublishToPursuit =
 -- |
 -- | ASSUMPTIONS: This function should not be run on legacy packages or on
 -- | packages where the `purescript-` prefix is still present. Cannot be used
--- | on packages prior to 0.14.7.
+-- | on packages prior to 'Purs.minPursuitPublish'
 publishToPursuit
   :: forall r
    . PublishToPursuit
@@ -1010,6 +1006,9 @@ publishToPursuit
 publishToPursuit { source, compiler, resolutions, installedResolutions } = Except.runExcept do
   Log.debug "Generating a resolutions file"
   tmp <- Tmp.mkTmpDir
+
+  when (compiler < Purs.minPursuitPublish) do
+    Except.throw $ "Cannot publish to Pursuit because this package was published with a pre-0.14.7 compiler (" <> Version.print compiler <> "). If you want to publish documentation, please try again with a later compiler."
 
   let
     resolvedPaths = formatPursuitResolutions { resolutions, installedResolutions }
@@ -1220,10 +1219,7 @@ fixManifestDependencies { source, compiler, index, manifest: Manifest manifest, 
   let command = Purs.Graph { globs: [ srcGlobs, depGlobs ] }
 
   -- We need to use the minimum compiler version that supports 'purs graph'.
-  -- Technically that's 0.13.8, but that version had a bug wrt transitive
-  -- dependencies, so we start from 0.14.0.
-  let minGraphCompiler = unsafeFromRight (Version.parse "0.14.0")
-  let compiler' = if compiler >= minGraphCompiler then compiler else minGraphCompiler
+  let compiler' = if compiler >= Purs.minPursGraph then compiler else Purs.minPursGraph
   result <- Run.liftAff (Purs.callCompiler { command, version: Just compiler', cwd: Nothing })
   FS.Extra.remove tmp
   case result of
