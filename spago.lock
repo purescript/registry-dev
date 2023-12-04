@@ -195,6 +195,8 @@ workspace:
     registry: 46.0.0
   extra_packages:
     dodo-printer:
+      repo: https://github.com/natefaubion/purescript-dodo-printer.git
+      version: v2.2.1
       dependencies:
         - aff
         - ansi
@@ -217,9 +219,9 @@ workspace:
         - safe-coerce
         - strings
         - tuples
-      repo: https://github.com/natefaubion/purescript-dodo-printer.git
-      version: v2.2.1
     language-cst-parser:
+      repo: https://github.com/natefaubion/purescript-language-cst-parser.git
+      version: v0.13.0
       dependencies:
         - arrays
         - console
@@ -249,8 +251,6 @@ workspace:
         - typelevel-prelude
         - unfoldable
         - unsafe-coerce
-      repo: https://github.com/natefaubion/purescript-language-cst-parser.git
-      version: v0.13.0
 packages:
   aff:
     type: registry
