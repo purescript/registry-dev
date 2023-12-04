@@ -245,6 +245,7 @@ runLegacyImport logs = do
 
   Log.info "Sorting packages for upload..."
   let allIndexPackages = ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges importedIndex.registryIndex
+  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "sorted-packages.txt" ]) $ String.joinWith "\n" $ map (\(Manifest { name, version }) -> PackageName.print name <> "@" <> Version.print version) allIndexPackages
 
   Log.info "Removing packages that previously failed publish or have been published"
   publishable <- do
@@ -255,7 +256,7 @@ runLegacyImport logs = do
         Just _ -> pure false
 
   allCompilers <- PursVersions.pursVersions
-  allCompilersRange <- case Range.mk (NonEmptyArray.head allCompilers) (NonEmptyArray.last allCompilers) of
+  allCompilersRange <- case Range.mk (NonEmptyArray.head allCompilers) (Version.bumpPatch (NonEmptyArray.last allCompilers)) of
     Nothing -> Except.throw $ "Failed to construct a compiler range from " <> Version.print (NonEmptyArray.head allCompilers) <> " and " <> Version.print (NonEmptyArray.last allCompilers)
     Just range -> do
       Log.info $ "All available compilers range: " <> Range.print range

@@ -446,9 +446,9 @@ publish payload = do
           Right manifest -> do
             Comment.comment $ Array.fold
               [ "Converted your spago.yaml into a purs.json manifest to use for publishing:\n"
-              , "```json"
+              , "```json\n"
               , printJson Manifest.codec manifest
-              , "```"
+              , "```\n"
               ]
             pure manifest
 
@@ -475,9 +475,9 @@ publish payload = do
           let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location legacyManifest
           Comment.comment $ Array.fold
             [ "Converted your legacy manifest(s) into a purs.json manifest to use for publishing:\n"
-            , "```json"
+            , "```json\n"
             , printJson Manifest.codec manifest
-            , "```"
+            , "```\n"
             ]
           pure manifest
 
