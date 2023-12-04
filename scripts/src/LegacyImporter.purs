@@ -397,9 +397,11 @@ runLegacyImport logs = do
   failures <- Array.foldM collectError Map.empty allIndexPackages
   Run.liftAff $ writePublishFailures failures
 
-  let publishStats = formatPublishFailureStats importedIndex.registryIndex failures
-  Log.info publishStats
-  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "publish-stats.txt" ]) publishStats
+  let publishStats = collectPublishFailureStats importedIndex.registryIndex failures
+  let publishStatsMessage = formatPublishFailureStats publishStats
+  Log.info publishStatsMessage
+  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "publish-stats.txt" ]) publishStatsMessage
+  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "removed-packages.txt" ]) (String.joinWith "\n" (map PackageName.print (Set.toUnfoldable publishStats.packages.failed)))
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePublishFailures :: Map PackageName (Map Version PublishError) -> Aff Unit
@@ -600,8 +602,13 @@ publishErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantM
     , publishError: PublishError
     }
 
-formatPublishFailureStats :: ManifestIndex -> Map PackageName (Map Version PublishError) -> String
-formatPublishFailureStats importedIndex failures = do
+type PublishFailureStats =
+  { packages :: { total :: Int, partial :: Int, failed :: Set PackageName }
+  , versions :: { total :: Int, failed :: Int, reason :: Map String Int }
+  }
+
+collectPublishFailureStats :: ManifestIndex -> Map PackageName (Map Version PublishError) -> PublishFailureStats
+collectPublishFailureStats importedIndex failures = do
   let
     index :: Map PackageName (Map Version Manifest)
     index = ManifestIndex.toMap importedIndex
@@ -646,15 +653,28 @@ formatPublishFailureStats importedIndex failures = do
 
       Array.foldl foldFn Map.empty (Map.toUnfoldable failures)
 
-  String.joinWith "\n"
-    [ "--------------------"
-    , "PUBLISH FAILURES"
-    , "--------------------"
-    , ""
-    , "PACKAGES: " <> show failedPackages <> " out of " <> show startPackages <> " had at least 1 version fail (" <> show (Set.size removedPackages) <> " packages have zero usable versions)."
-    , "VERSIONS: " <> show failedVersions <> " out of " <> show startVersions <> " failed."
-    , Array.foldMap (\(Tuple key val) -> "\n  - " <> key <> ": " <> show val) (Array.sortBy (comparing snd) (Map.toUnfoldable countByFailure))
-    ]
+  { packages:
+      { total: startPackages
+      , partial: failedPackages
+      , failed: removedPackages
+      }
+  , versions:
+      { total: startVersions
+      , failed: failedVersions
+      , reason: countByFailure
+      }
+  }
+
+formatPublishFailureStats :: PublishFailureStats -> String
+formatPublishFailureStats { packages, versions } = String.joinWith "\n"
+  [ "--------------------"
+  , "PUBLISH FAILURES"
+  , "--------------------"
+  , ""
+  , show packages.partial <> " out of " <> show packages.total <> " packages had at least 1 version fail (" <> show (Set.size packages.failed) <> " packages had all versions fail)."
+  , show versions.failed <> " out of " <> show versions.total <> " versions failed."
+  , Array.foldMap (\(Tuple key val) -> "\n  - " <> key <> ": " <> show val) (Array.sortBy (comparing snd) (Map.toUnfoldable versions.reason))
+  ]
 
 compilerFailureMapCodec :: JsonCodec (Map (NonEmptyArray Version) CompilerFailure)
 compilerFailureMapCodec = do
