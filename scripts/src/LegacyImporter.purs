@@ -234,7 +234,7 @@ runLegacyImport mode logs = do
 
   -- This record comes from the build directory (.spago) and records information
   -- from the most recent build.
-  let compiler = unsafeFromRight (Version.parse BuildInfo.buildInfo.pursVersion)
+  let compiler = unsafeFromRight (Version.parse BuildInfo.pursVersion)
 
   -- Just a safety check to ensure the compiler used in the pipeline is not too
   -- low. Should be bumped from time to time to the latest compiler.
