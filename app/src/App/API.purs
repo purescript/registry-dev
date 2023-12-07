@@ -445,10 +445,10 @@ publish maybeLegacyIndex payload = do
           Left err -> Except.throw $ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:\n" <> err
           Right manifest -> do
             Comment.comment $ Array.fold
-              [ "Converted your spago.yaml into a purs.json manifest to use for publishing:\n"
-              , "```json\n"
+              [ "Converted your spago.yaml into a purs.json manifest to use for publishing:"
+              , "\n```json\n"
               , printJson Manifest.codec manifest
-              , "```\n"
+              , "\n```\n"
               ]
             pure manifest
 
@@ -474,10 +474,10 @@ publish maybeLegacyIndex payload = do
           Log.debug $ "Successfully produced a legacy manifest from the package source."
           let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location legacyManifest
           Comment.comment $ Array.fold
-            [ "Converted your legacy manifest(s) into a purs.json manifest to use for publishing:\n"
-            , "```json\n"
+            [ "Converted your legacy manifest(s) into a purs.json manifest to use for publishing:"
+            , "\n```json\n"
             , printJson Manifest.codec manifest
-            , "```\n"
+            , "\n```\n"
             ]
           pure manifest
 
@@ -1217,7 +1217,9 @@ conformLegacyManifest (Manifest manifest) currentIndex legacyRegistry problem = 
       Map.mapMaybe (\intersect -> Range.mk (Solver.lowerBound intersect) (Solver.upperBound intersect))
         $ Safe.Coerce.coerce
         $ _.required
-        $ Solver.solveSteps (Solver.solveSeed { registry: legacyRegistry, required: manifestRequired })
+        $ Solver.solveSteps
+        $ Solver.solveSeed
+        $ Solver.withReachable { registry: legacyRegistry, required: manifestRequired }
 
   Log.debug $ "Got transitive solution:\n" <> printJson (Internal.Codec.packageMap Range.codec) legacyTransitive
 

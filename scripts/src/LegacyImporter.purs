@@ -263,8 +263,8 @@ runLegacyImport logs = do
       pure range
 
   let
-    publishLegacyPackage :: Manifest -> Run _ Unit
-    publishLegacyPackage (Manifest manifest) = do
+    publishLegacyPackage :: Solver.TransitivizedRegistry -> Manifest -> Run _ Unit
+    publishLegacyPackage legacyIndex (Manifest manifest) = do
       let formatted = formatPackageVersion manifest.name manifest.version
       Log.info $ "\n----------\nPUBLISHING: " <> formatted <> "\n----------\n"
       RawVersion ref <- case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
@@ -369,10 +369,6 @@ runLegacyImport logs = do
                   , compiler
                   , resolutions: Just resolutions
                   }
-                legacyIndex =
-                  Solver.exploreAllTransitiveDependencies
-                    $ Solver.initializeRegistry
-                    $ map (map (un Manifest >>> _.dependencies)) (ManifestIndex.toMap importedIndex.registryIndex)
               Except.runExcept (API.publish (Just legacyIndex) payload) >>= case _ of
                 Left error -> do
                   Log.error $ "Failed to publish " <> formatted <> ": " <> error
@@ -390,7 +386,14 @@ runLegacyImport logs = do
         , "----------"
         ]
 
-      void $ for manifests publishLegacyPackage
+      legacyIndex <- do
+        Log.info "Transitivizing legacy registry..."
+        pure
+          $ Solver.exploreAllTransitiveDependencies
+          $ Solver.initializeRegistry
+          $ map (map (un Manifest >>> _.dependencies)) (ManifestIndex.toMap importedIndex.registryIndex)
+
+      void $ for manifests (publishLegacyPackage legacyIndex)
 
   Log.info "Finished publishing! Collecting all publish failures and writing to disk."
   let
