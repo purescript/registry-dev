@@ -369,7 +369,11 @@ runLegacyImport logs = do
                   , compiler
                   , resolutions: Just resolutions
                   }
-              Except.runExcept (API.publish payload) >>= case _ of
+                legacyIndex =
+                  Solver.exploreAllTransitiveDependencies
+                    $ Solver.initializeRegistry
+                    $ map (map (un Manifest >>> _.dependencies)) (ManifestIndex.toMap importedIndex.registryIndex)
+              Except.runExcept (API.publish (Just legacyIndex) payload) >>= case _ of
                 Left error -> do
                   Log.error $ "Failed to publish " <> formatted <> ": " <> error
                   Cache.put _importCache (PublishFailure manifest.name manifest.version) (PublishError error)
@@ -529,39 +533,31 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
     buildManifestForVersion :: Tag -> Run _ (Either VersionValidationError Manifest)
     buildManifestForVersion tag = Run.Except.runExceptAt _exceptVersion do
       version <- exceptVersion $ validateVersion tag
-
-      -- TODO: This will use the manifest for the package version from the
-      -- registry, without trying to produce a legacy manifest. However, we may
-      -- want to always attempt to produce a legacy manifest. If we can produce
-      -- one we compare it to the existing entry, failing if there is a
-      -- difference; if we can't, we warn and fall back to the existing entry.
-      Registry.readManifest package.name (LenientVersion.version version) >>= case _ of
-        Just manifest -> pure manifest
-        Nothing -> Cache.get _importCache (ImportManifest package.name (RawVersion tag.name)) >>= case _ of
-          Just cached -> exceptVersion cached
-          Nothing -> do
-            -- While technically not 'legacy', we do need to handle packages with
-            -- spago.yaml files because they've begun to pop up since the registry
-            -- alpha began and we don't want to drop them when doing a re-import.
-            fetchSpagoYaml package.address (RawVersion tag.name) >>= case _ of
-              Just manifest -> do
-                Log.debug $ "Built manifest from discovered spago.yaml file."
-                Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) (Right manifest)
-                pure manifest
-              Nothing -> do
-                Log.debug $ "Building manifest in legacy import because there is no registry entry, spago.yaml, or cached result: " <> formatPackageVersion package.name (LenientVersion.version version)
-                manifest <- Run.Except.runExceptAt _exceptVersion do
-                  exceptVersion $ validateVersionDisabled package.name version
-                  legacyManifest <- do
-                    Legacy.Manifest.fetchLegacyManifest package.name package.address (RawVersion tag.name) >>= case _ of
-                      Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
-                      Right result -> pure result
-                  pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
-                case manifest of
-                  Left err -> Log.info $ "Failed to build manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ": " <> printJson versionValidationErrorCodec err
-                  Right val -> Log.info $ "Built manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ":\n" <> printJson Manifest.codec val
-                Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) manifest
-                exceptVersion manifest
+      Cache.get _importCache (ImportManifest package.name (RawVersion tag.name)) >>= case _ of
+        Just cached -> exceptVersion cached
+        Nothing -> do
+          -- While technically not 'legacy', we do need to handle packages with
+          -- spago.yaml files because they've begun to pop up since the registry
+          -- alpha began and we don't want to drop them when doing a re-import.
+          fetchSpagoYaml package.address (RawVersion tag.name) >>= case _ of
+            Just manifest -> do
+              Log.debug $ "Built manifest from discovered spago.yaml file."
+              Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) (Right manifest)
+              pure manifest
+            Nothing -> do
+              Log.debug $ "Building manifest in legacy import because there is no registry entry, spago.yaml, or cached result: " <> formatPackageVersion package.name (LenientVersion.version version)
+              manifest <- Run.Except.runExceptAt _exceptVersion do
+                exceptVersion $ validateVersionDisabled package.name version
+                legacyManifest <- do
+                  Legacy.Manifest.fetchLegacyManifest package.name package.address (RawVersion tag.name) >>= case _ of
+                    Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
+                    Right result -> pure result
+                pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
+              case manifest of
+                Left err -> Log.info $ "Failed to build manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ": " <> printJson versionValidationErrorCodec err
+                Right val -> Log.info $ "Built manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ":\n" <> printJson Manifest.codec val
+              Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) manifest
+              exceptVersion manifest
 
   manifests <- for package.tags \tag -> do
     manifest <- buildManifestForVersion tag
@@ -1103,7 +1099,7 @@ findFirstCompiler { source, manifest, resolutions, compilers, installed } = do
   search <- Except.runExcept $ for (Array.reverse (Array.sort compilers)) \target -> do
     result <- Cache.get API._compilerCache (API.Compilation manifest resolutions target) >>= case _ of
       Nothing -> do
-        Log.debug $ "Trying compiler " <> Version.print target
+        Log.info $ "Not cached, trying compiler " <> Version.print target
         workdir <- Tmp.mkTmpDir
         result <- Run.liftAff $ Purs.callCompiler
           { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }

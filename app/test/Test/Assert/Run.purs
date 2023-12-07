@@ -108,8 +108,8 @@ type TestEnv =
   , username :: String
   }
 
-runTestEffects :: forall a. TestEnv -> Run TEST_EFFECTS a -> Aff a
-runTestEffects env operation = do
+runTestEffects :: forall a. TestEnv -> Run TEST_EFFECTS a -> Aff (Either Aff.Error a)
+runTestEffects env operation = Aff.attempt do
   resourceEnv <- Env.lookupResourceEnv
   githubCache <- liftEffect Cache.newCacheRef
   legacyCache <- liftEffect Cache.newCacheRef
@@ -137,7 +137,7 @@ runTestEffects env operation = do
 
 -- | For testing simple Run functions that don't need the whole environment.
 runBaseEffects :: forall a. Run (LOG + EXCEPT String + AFF + EFFECT + ()) a -> Aff a
-runBaseEffects =
+runBaseEffects = do
   Log.interpret (\(Log _ _ next) -> pure next)
     -- Base effects
     >>> Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))

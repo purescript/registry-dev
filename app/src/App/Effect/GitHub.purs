@@ -241,8 +241,8 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
             -- auto-expire cache entries. We will be behind GitHub at most this amount per repo.
             --
             -- TODO: This 'diff' check should be removed once we have conditional requests.
-            Right _ | DateTime.diff now prevResponse.modified >= Duration.Hours 24.0 -> do
-              Log.debug $ "Found cache entry but it was modified more than 24 hours ago, refetching " <> printedRoute
+            Right _ | DateTime.diff now prevResponse.modified >= Duration.Hours 23.0 -> do
+              Log.debug $ "Found cache entry but it was modified more than 23 hours ago, refetching " <> printedRoute
               result <- requestWithBackoff octokit githubRequest
               Cache.put _githubCache (Request route) (result <#> \resp -> { response: CA.encode codec resp, modified: now, etag: Nothing })
               pure result

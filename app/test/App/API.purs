@@ -9,6 +9,7 @@ import Data.Set as Set
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
 import Effect.Aff as Aff
+import Effect.Class.Console as Console
 import Effect.Ref as Ref
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
@@ -27,8 +28,10 @@ import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Manifest as Manifest
+import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Range as Range
+import Registry.Solver as Solver
 import Registry.Test.Assert as Assert
 import Registry.Test.Assert.Run as Assert.Run
 import Registry.Test.Utils as Utils
@@ -57,22 +60,18 @@ spec = do
     removeIgnoredTarballFiles
     copySourceFiles
 
-  Spec.describe "Parses installed paths" do
-    Spec.it "Parses install path <tmp>/my-package-1.0.0/..." do
-      tmp <- Tmp.mkTmpDir
-      let moduleA = Path.concat [ tmp, "my-package-1.0.0", "src", "ModuleA.purs" ]
-      case API.parseInstalledModulePath { prefix: tmp, path: moduleA } of
-        Left err -> Assert.fail $ "Expected to parse " <> moduleA <> " but got error: " <> err
-        Right { name, version } -> do
-          Assert.shouldEqual name (Utils.unsafePackageName "my-package")
-          Assert.shouldEqual version (Utils.unsafeVersion "1.0.0")
-      FS.Extra.remove tmp
-
   Spec.describe "API pipelines run correctly" $ Spec.around withCleanEnv do
     Spec.it "Publish a legacy-converted package with unused deps" \{ workdir, index, metadata, storageDir, githubDir } -> do
       logs <- liftEffect (Ref.new [])
 
       let
+        toLegacyIndex :: ManifestIndex -> Solver.TransitivizedRegistry
+        toLegacyIndex =
+          Solver.exploreAllTransitiveDependencies
+            <<< Solver.initializeRegistry
+            <<< map (map (_.dependencies <<< un Manifest))
+            <<< ManifestIndex.toMap
+
         testEnv =
           { workdir
           , logs
@@ -101,7 +100,8 @@ spec = do
             }
 
         -- First, we publish the package.
-        API.publish publishArgs
+        Registry.readAllManifests >>= \idx ->
+          API.publish (Just (toLegacyIndex idx)) publishArgs
 
         -- Then, we can check that it did make it to "Pursuit" as expected
         Pursuit.getPublishedVersions name >>= case _ of
@@ -147,7 +147,7 @@ spec = do
 
         -- Finally, we can verify that publishing the package again should fail
         -- since it already exists.
-        Except.runExcept (API.publish publishArgs) >>= case _ of
+        Except.runExcept (API.publish Nothing publishArgs) >>= case _ of
           Left _ -> pure unit
           Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to fail."
 
@@ -162,13 +162,60 @@ spec = do
             , ref: "v4.0.1"
             , resolutions: Nothing
             }
-        API.publish pursuitOnlyPublishArgs
+        Registry.readAllManifests >>= \idx ->
+          API.publish (Just (toLegacyIndex idx)) pursuitOnlyPublishArgs
+
+        -- We can also verify that transitive dependencies are added for legacy
+        -- packages.
+        let
+          transitive = { name: Utils.unsafePackageName "transitive", version: Utils.unsafeVersion "1.0.0" }
+          transitivePublishArgs =
+            { compiler: Utils.unsafeVersion "0.15.10"
+            , location: Just $ GitHub { owner: "purescript", repo: "purescript-transitive", subdir: Nothing }
+            , name: transitive.name
+            , ref: "v" <> Version.print transitive.version
+            , resolutions: Nothing
+            }
+        Registry.readAllManifests >>= \idx ->
+          API.publish (Just (toLegacyIndex idx)) transitivePublishArgs
+
+        -- We should verify the resulting metadata file is correct
+        Metadata transitiveMetadata <- Registry.readMetadata transitive.name >>= case _ of
+          Nothing -> Except.throw $ "Expected " <> PackageName.print transitive.name <> " to be in metadata."
+          Just m -> pure m
+
+        case Map.lookup transitive.version transitiveMetadata.published of
+          Nothing -> Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to be in metadata."
+          Just published -> case published.compilers of
+            Left one -> Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to have a compiler matrix but unfinished single version: " <> Version.print one
+            Right many -> do
+              let many' = NonEmptyArray.toArray many
+              let expected = map Utils.unsafeVersion [ "0.15.10", "0.15.11", "0.15.12" ]
+              unless (many' == expected) do
+                Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
+
+        Registry.readManifest transitive.name transitive.version >>= case _ of
+          Nothing -> Except.throw $ "Expected " <> PackageName.print transitive.name <> " to be in manifest index."
+          Just (Manifest manifest) -> do
+            let expectedDeps = Map.singleton (Utils.unsafePackageName "prelude") (Utils.unsafeRange ">=6.0.0 <7.0.0")
+            when (manifest.dependencies /= expectedDeps) do
+              Except.throw $ String.joinWith "\n"
+                [ "Expected transitive@1.0.0 to have dependencies"
+                , printJson (Internal.Codec.packageMap Range.codec) expectedDeps
+                , "\nbut got"
+                , printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
+                ]
 
       case result of
-        Left err -> do
+        Left exn -> do
           recorded <- liftEffect (Ref.read logs)
-          Assert.fail $ "Expected to publish effect@4.0.0 and type-equality@4.0.1 but got error: " <> err <> "\n\nLogs:\n" <> String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
-        Right _ -> pure unit
+          Console.error $ String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
+          Assert.fail $ "Got an Aff exception! " <> Aff.message exn
+        Right (Left err) -> do
+          recorded <- liftEffect (Ref.read logs)
+          Console.error $ String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
+          Assert.fail $ "Expected to publish effect@4.0.0 and type-equality@4.0.1 and transitive@1.0.0 but got error: " <> err
+        Right (Right _) -> pure unit
   where
   withCleanEnv :: (PipelineEnv -> Aff Unit) -> Aff Unit
   withCleanEnv action = do

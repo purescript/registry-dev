@@ -57,7 +57,7 @@ main = launchAff_ $ do
 
         Right packageOperation -> case packageOperation of
           Publish payload ->
-            API.publish payload
+            API.publish Nothing payload
           Authenticated payload -> do
             -- If we receive an authenticated operation via GitHub, then we
             -- re-sign it with pacchettibotti credentials if and only if the

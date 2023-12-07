@@ -69,7 +69,7 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
     lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
     forkPipelineJob publish.name publish.ref PublishJob \jobId -> do
       Log.info $ "Received Publish request, job id: " <> unwrap jobId
-      API.publish publish
+      API.publish Nothing publish
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body

@@ -5,6 +5,7 @@ import Prelude
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
+import Data.Bifunctor as Bifunctor
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Either (Either(..))
@@ -35,6 +36,8 @@ import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
 import Registry.Operation (PublishData)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.PursGraph (AssociatedError, ModuleName, PursGraph)
+import Registry.PursGraph as PursGraph
 import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.Solver (CompilerIndex)
@@ -68,6 +71,59 @@ isNotPublished (Manifest { version }) (Metadata { published }) =
 isNotUnpublished :: Manifest -> Metadata -> Maybe UnpublishedMetadata
 isNotUnpublished (Manifest { version }) (Metadata { unpublished }) =
   Map.lookup version unpublished
+
+data ValidateDepsError
+  = UnusedDependencies (NonEmptySet PackageName)
+  | MissingDependencies (NonEmptySet PackageName)
+  | UnusedAndMissing { unused :: NonEmptySet PackageName, missing :: NonEmptySet PackageName }
+
+derive instance Eq ValidateDepsError
+
+printValidateDepsError :: ValidateDepsError -> String
+printValidateDepsError = case _ of
+  UnusedDependencies unused ->
+    "Unused dependencies (" <> printPackages unused <> ")"
+  MissingDependencies missing ->
+    "Missing dependencies (" <> printPackages missing <> ")"
+  UnusedAndMissing { unused, missing } ->
+    "Unused dependencies (" <> printPackages unused <> ") and missing dependencies (" <> printPackages missing <> ")"
+  where
+  printPackages :: NonEmptySet PackageName -> String
+  printPackages = String.joinWith ", " <<< map PackageName.print <<< NonEmptySet.toUnfoldable
+
+-- | Verifies that the manifest lists dependencies imported in the source code,
+-- | no more (ie. unused) and no less (ie. transitive). The graph passed to this
+-- | function should be the output of 'purs graph' executed on the 'output'
+-- | directory of the package compiled with its dependencies.
+noTransitiveOrMissingDeps :: Manifest -> PursGraph -> (FilePath -> Either String PackageName) -> Either (Either (NonEmptyArray AssociatedError) ValidateDepsError) Unit
+noTransitiveOrMissingDeps (Manifest manifest) graph parser = do
+  associated <- Bifunctor.lmap Left $ PursGraph.associateModules parser graph
+
+  let
+    packageModules :: Set ModuleName
+    packageModules = Map.keys $ Map.filter (_ == manifest.name) associated
+
+    directImportModules :: Set ModuleName
+    directImportModules = PursGraph.directDependenciesOf packageModules graph
+
+    directImportPackages :: Set PackageName
+    directImportPackages = Set.mapMaybe (flip Map.lookup associated) directImportModules
+
+    -- Unused packages are those which are listed in the manifest dependencies
+    -- but which are not imported by the package source code.
+    unusedDependencies :: Set PackageName
+    unusedDependencies = Set.filter (not <<< flip Set.member directImportPackages) (Map.keys manifest.dependencies)
+
+    -- Missing packages are those which are imported by the package source code
+    -- but which are not listed in its dependencies.
+    missingDependencies :: Set PackageName
+    missingDependencies = Set.filter (not <<< flip Map.member manifest.dependencies) directImportPackages
+
+  case NonEmptySet.fromSet unusedDependencies, NonEmptySet.fromSet missingDependencies of
+    Nothing, Nothing -> Right unit
+    Just unused, Nothing -> Left $ Right $ UnusedDependencies unused
+    Nothing, Just missing -> Left $ Right $ MissingDependencies missing
+    Just unused, Just missing -> Left $ Right $ UnusedAndMissing { unused, missing }
 
 -- | Verifies that the manifest dependencies are solvable by the registry solver.
 validateDependenciesSolve :: Version -> Manifest -> CompilerIndex -> Either Solver.SolverErrors (Map PackageName Version)

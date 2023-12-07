@@ -1,0 +1,12 @@
+{
+  "name": "purescript-transitive",
+  "homepage": "https://github.com/purescript/purescript-transitive",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/purescript/purescript-transitive.git"
+  },
+  "dependencies": {
+    "purescript-effect": "^4.0.0"
+  }
+}
