@@ -207,7 +207,7 @@ Note:
 
 - Globs you provide at the `includeFiles` and `excludeFiles` keys must contain only `*`, `**`, `/`, `.`, `..`, and characters for Linux file paths. It is not possible to negate a glob (ie. the `!` character), and globs cannot represent a path out of the package source directory.
 - When packaging your project source, the registry will first "include" your `src` directory and always-included files such as your `purs.json` file. Then it will include files which match globs indicated by the `includeFiles` key ([always-ignored files](#always-ignored-files) cannot be included). Finally, it will apply the excluding globs indicated by the `excludeFiles` key to the included files ([always-included files](#always-included-files) cannot be excluded).
-- Dependencies you provide at the `dependencies` key must exist in the registry, and the dependency ranges must be solvable (ie. it must be possible to produce a single version of each dependency that satisfies the provided version bounds, including any transitive dependencies).
+- Dependencies you provide at the `dependencies` key must exist in the registry, the dependency ranges must be solvable (ie. it must be possible to produce a single version of each dependency that satisfies the provided version bounds, including any transitive dependencies), and transitive dependencies are not allowed (ie. any modules you import in your code must come from packages listed in your dependencies).
 
 For example:
 
