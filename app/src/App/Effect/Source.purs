@@ -82,7 +82,7 @@ handle importType = case _ of
             Log.debug $ "Using legacy Git clone to fetch package source at tag: " <> show { owner, repo, ref }
 
             let
-              repoDir = Path.concat [ destination, repo ]
+              repoDir = Path.concat [ destination, repo <> "-" <> ref ]
 
               clonePackageAtTag = do
                 let url = Array.fold [ "https://github.com/", owner, "/", repo ]
@@ -99,10 +99,13 @@ handle importType = case _ of
               Left error -> do
                 Log.error $ "Failed to clone git tag: " <> Aff.message error <> ", retrying..."
                 when (alreadyExists (Aff.message error)) $ FS.Extra.remove repoDir
+                Run.liftAff (Aff.delay (Aff.Milliseconds 1000.0))
                 Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
                   Right _ -> Log.debug $ "Cloned package source to " <> repoDir
                   Left error2 -> do
                     Log.error $ "Failed to clone git tag (attempt 2): " <> Aff.message error2 <> ", retrying..."
+                    when (alreadyExists (Aff.message error)) $ FS.Extra.remove repoDir
+                    Run.liftAff (Aff.delay (Aff.Milliseconds 1000.0))
                     Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
                       Right _ -> Log.debug $ "Cloned package source to " <> repoDir
                       Left error3 -> do

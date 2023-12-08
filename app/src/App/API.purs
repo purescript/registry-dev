@@ -104,7 +104,7 @@ import Registry.PursGraph (ModuleName(..))
 import Registry.PursGraph as PursGraph
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
-import Registry.Solver (CompilerIndex(..), DependencyIndex, Intersection, SolverErrors)
+import Registry.Solver (CompilerIndex, DependencyIndex, Intersection, SolverErrors)
 import Registry.Solver as Solver
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
@@ -576,7 +576,9 @@ publish maybeLegacyIndex payload = do
                   Just existing -> Run.liftAff $ writeJsonFile Manifest.codec packagePursJson existing
               publishToPursuit { source: downloadedPackage, compiler: payload.compiler, resolutions: verifiedResolutions, installedResolutions } >>= case _ of
                 Left publishErr -> Except.throw publishErr
-                Right _ -> Comment.comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+                Right _ -> do
+                  FS.Extra.remove tmp
+                  Comment.comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
     -- In this case the package version has not been published, so we proceed
     -- with ordinary publishing.
@@ -644,18 +646,15 @@ publish maybeLegacyIndex payload = do
                         "\n  - " <> moduleName <> " (" <> path <> "): " <> error
                     ]
 
-                Left (Right depError)
-                  -- If the package fails the transitive / missing check and uses
-                  -- a contemporary manifest then it should be rejected.
-                  | (hadPursJson || hasSpagoYaml) ->
-                      Except.throw $ "Failed to validate unused / missing dependencies: " <> Operation.Validation.printValidateDepsError depError
-                  -- If the package fails, is legacy, and we have a legacy index
-                  -- then we can try to fix it.
-                  | Just legacyIndex <- maybeLegacyIndex -> do
-                      Log.info $ "Found fixable dependency errors: " <> Operation.Validation.printValidateDepsError depError
-                      conformLegacyManifest (Manifest receivedManifest) compilerIndex legacyIndex depError
-                  | otherwise ->
-                      Except.throw $ "Failed to validate unused / missing dependencies and no legacy index was provided to attempt a fix: " <> Operation.Validation.printValidateDepsError depError
+                -- FIXME: For now we attempt to fix packages if a legacy index
+                -- is provided (ie. the publish is via the importer) but we
+                -- should at some point make this a hard error.
+                Left (Right depError) -> case maybeLegacyIndex of
+                  Nothing ->
+                    Except.throw $ "Failed to validate unused / missing dependencies: " <> Operation.Validation.printValidateDepsError depError
+                  Just legacyIndex -> do
+                    Log.info $ "Found fixable dependency errors: " <> Operation.Validation.printValidateDepsError depError
+                    conformLegacyManifest (Manifest receivedManifest) payload.compiler compilerIndex legacyIndex depError
 
                 -- If the check passes then we can simply return the manifest and
                 -- resolutions.
@@ -689,7 +688,7 @@ publish maybeLegacyIndex payload = do
       -- We clear the installation directory so that no old installed resolutions
       -- stick around.
       Run.liftAff $ FS.Extra.remove installedResolutions
-      installBuildPlan validatedResolutions installedResolutions
+      installBuildPlan resolutions installedResolutions
       compilationResult <- Run.liftAff $ Purs.callCompiler
         { command: Purs.Compile { globs: [ Path.concat [ packageSource, "src/**/*.purs" ], Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
         , version: Just payload.compiler
@@ -1193,23 +1192,27 @@ type AdjustManifest =
 conformLegacyManifest
   :: forall r
    . Manifest
+  -> Version
   -> CompilerIndex
   -> Solver.TransitivizedRegistry
   -> ValidateDepsError
-  -> Run (COMMENT + LOG + r) (Tuple Manifest (Map PackageName Version))
-conformLegacyManifest (Manifest manifest) currentIndex legacyRegistry problem = Except.catch (\e -> unsafeCrashWith e) do
+  -> Run (COMMENT + LOG + EXCEPT String + r) (Tuple Manifest (Map PackageName Version))
+conformLegacyManifest (Manifest manifest) compiler currentIndex legacyRegistry problem = do
   let
-    purs :: PackageName
-    purs = unsafeFromRight (PackageName.parse "purs")
-
     manifestRequired :: SemigroupMap PackageName Intersection
     manifestRequired = Solver.initializeRequired manifest.dependencies
 
   legacyResolutions <- case Solver.solveFull { registry: legacyRegistry, required: manifestRequired } of
-    Left unsolvable -> Except.throw $ "Legacy resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvable
-    Right solved -> pure solved
-
-  Log.debug $ "Got legacy resolutions:\n" <> printJson (Internal.Codec.packageMap Version.codec) legacyResolutions
+    Left unsolvableLegacy -> do
+      Log.error $ "Legacy resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvableLegacy
+      case Solver.solveWithCompiler (Range.exact compiler) currentIndex manifest.dependencies of
+        Left unsolvableCurrent -> Except.throw $ "Resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvableCurrent
+        Right (Tuple _ solved) -> do
+          Log.debug $ "Got current resolutions as a fallback to unsolvable legacy resolutions:\n" <> printJson (Internal.Codec.packageMap Version.codec) solved
+          pure solved
+    Right solved -> do
+      Log.debug $ "Got legacy resolutions:\n" <> printJson (Internal.Codec.packageMap Version.codec) solved
+      pure solved
 
   let
     legacyTransitive :: Map PackageName Range
@@ -1248,25 +1251,24 @@ conformLegacyManifest (Manifest manifest) currentIndex legacyRegistry problem = 
 
         foundFromResolutions :: Map PackageName Range
         foundFromResolutions = Map.fromFoldable do
-          associated.fail <#> \pkg -> case Map.lookup pkg resolutionRanges of
-            Nothing -> unsafeCrashWith $ "Package " <> PackageName.print pkg <> " not found in resolution ranges"
-            Just range -> Tuple pkg range
+          associated.fail # Array.mapMaybe \pkg -> map (Tuple pkg) (Map.lookup pkg resolutionRanges)
 
       Map.union foundFromTransitive foundFromResolutions
 
-    fixUnused names (Manifest m) resolutions = do
+    fixUnused names (Manifest m) = do
       let unused = Map.fromFoldable $ NonEmptySet.map (\name -> Tuple name unit) names
       let fixedDependencies = Map.difference m.dependencies unused
-      let fixedResolutions = Map.difference resolutions unused
-      Tuple fixedDependencies fixedResolutions
+      case Solver.solveWithCompiler (Range.exact compiler) currentIndex fixedDependencies of
+        Left unsolvable -> Except.throw $ "Legacy resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvable
+        Right (Tuple _ solved) -> pure $ Tuple fixedDependencies solved
 
     fixMissing names (Manifest m) = do
       let fixedDependencies = Map.union m.dependencies (associateMissing (NonEmptySet.toUnfoldable names))
       -- Once we've fixed the missing dependencies we need to be sure we can still
       -- produce a viable solution with the current index.
-      case Solver.solve (un CompilerIndex currentIndex) fixedDependencies of
-        Left unsolvable -> unsafeCrashWith $ "Legacy resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvable
-        Right solved -> Tuple fixedDependencies (Map.delete purs solved)
+      case Solver.solveWithCompiler (Range.exact compiler) currentIndex fixedDependencies of
+        Left unsolvable -> Except.throw $ "Legacy resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvable
+        Right (Tuple _ solved) -> pure $ Tuple fixedDependencies solved
 
     previousDepsMessage = Array.fold
       [ "Your package is using a legacy manifest format, so we have adjusted your dependencies to remove unused ones and add direct-imported ones. "
@@ -1285,7 +1287,7 @@ conformLegacyManifest (Manifest manifest) currentIndex legacyRegistry problem = 
 
   case problem of
     UnusedDependencies names -> do
-      let (Tuple deps resolutions) = fixUnused names (Manifest manifest) legacyResolutions
+      Tuple deps resolutions <- fixUnused names (Manifest manifest)
       let newManifest = Manifest (manifest { dependencies = deps })
       Comment.comment $ Array.fold
         [ previousDepsMessage
@@ -1294,7 +1296,7 @@ conformLegacyManifest (Manifest manifest) currentIndex legacyRegistry problem = 
         ]
       pure $ Tuple newManifest resolutions
     MissingDependencies names -> do
-      let (Tuple deps resolutions) = fixMissing names (Manifest manifest)
+      Tuple deps resolutions <- fixMissing names (Manifest manifest)
       let newManifest = Manifest (manifest { dependencies = deps })
       Comment.comment $ Array.fold
         [ previousDepsMessage
@@ -1303,8 +1305,9 @@ conformLegacyManifest (Manifest manifest) currentIndex legacyRegistry problem = 
         ]
       pure $ Tuple newManifest resolutions
     UnusedAndMissing { missing, unused } -> do
-      let result = fixMissing missing (Manifest manifest)
-      let (Tuple newDeps newResolutions) = fixUnused unused (Manifest (manifest { dependencies = (fst result) })) (snd result)
+      let unused' = Map.fromFoldable $ NonEmptySet.map (\name -> Tuple name unit) unused
+      let trimmed = Map.difference manifest.dependencies unused'
+      Tuple newDeps newResolutions <- fixMissing missing (Manifest (manifest { dependencies = trimmed }))
       let newManifest = Manifest (manifest { dependencies = newDeps })
       Comment.comment $ Array.fold
         [ previousDepsMessage
