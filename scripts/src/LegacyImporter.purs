@@ -35,6 +35,7 @@ import Data.Set.NonEmpty (NonEmptySet)
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
+import Data.These (These(..))
 import Data.Variant as Variant
 import Effect.Class.Console as Console
 import Node.FS.Aff as FS.Aff
@@ -275,91 +276,157 @@ runLegacyImport logs = do
       compilerIndex <- API.readCompilerIndex
 
       Log.debug $ "Solving dependencies for " <> formatted
-      case Solver.solveWithCompiler allCompilersRange compilerIndex manifest.dependencies of
-        Left unsolvable -> do
-          let errors = map Solver.printSolverError $ NonEmptyList.toUnfoldable unsolvable
-          Log.warn $ "Could not solve " <> formatted <> Array.foldMap (append "\n") errors
-          let isCompilerSolveError = String.contains (String.Pattern "Conflict in version ranges for purs:")
-          let { fail: nonCompiler } = partitionEithers $ map (\error -> if isCompilerSolveError error then Right error else Left error) errors
-          let joined = String.joinWith " " errors
-          Cache.put _importCache (PublishFailure manifest.name manifest.version) (if Array.null nonCompiler then SolveFailedCompiler joined else SolveFailedDependencies joined)
-        Right (Tuple _ resolutions) -> do
-          Log.debug $ "Solved " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions <> "\nfrom dependency list\n" <> printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
-          possibleCompilers <-
-            if Map.isEmpty manifest.dependencies then do
-              Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
-              pure $ NonEmptySet.fromFoldable1 allCompilers
-            else do
-              Log.debug "No compiler version was produced by the solver, so all compilers are potentially compatible."
-              allMetadata <- Registry.readAllMetadata
-              case compatibleCompilers allMetadata resolutions of
-                Left [] -> do
+      eitherResolutions <- do
+        let toErrors = map Solver.printSolverError <<< NonEmptyList.toUnfoldable
+        let isCompilerSolveError = String.contains (String.Pattern "Conflict in version ranges for purs:")
+        let partitionIsCompiler = partitionEithers <<< map (\error -> if isCompilerSolveError error then Right error else Left error)
+
+        legacySolution <- case Solver.solveFull { registry: legacyIndex, required: Solver.initializeRequired manifest.dependencies } of
+          Left unsolvable -> do
+            let errors = toErrors unsolvable
+            let joined = String.joinWith " " errors
+            let { fail: nonCompiler } = partitionIsCompiler errors
+            Log.warn $ "Could not solve with legacy index " <> formatted <> Array.foldMap (append "\n") errors
+            pure $ Left $ if Array.null nonCompiler then SolveFailedCompiler joined else SolveFailedDependencies joined
+          Right resolutions -> do
+            Log.debug $ "Solved " <> formatted <> " with legacy index."
+            pure $ Right resolutions
+
+        currentSolution <- case Solver.solveWithCompiler allCompilersRange compilerIndex manifest.dependencies of
+          Left unsolvable -> do
+            let errors = toErrors unsolvable
+            let joined = String.joinWith " " errors
+            let { fail: nonCompiler } = partitionIsCompiler errors
+            Log.warn $ "Could not solve with current index " <> formatted <> Array.foldMap (append "\n") errors
+            pure $ Left $ if Array.null nonCompiler then SolveFailedCompiler joined else SolveFailedDependencies joined
+          Right (Tuple _ resolutions) -> do
+            Log.debug $ "Solved " <> formatted <> " with contemporary index."
+            pure $ Right resolutions
+
+        pure $ case legacySolution, currentSolution of
+          Left err, Left _ -> Left err
+          Right resolutions, Left _ -> Right $ This resolutions
+          Left _, Right resolutions -> Right $ That resolutions
+          Right legacyResolutions, Right currentResolutions -> Right $ Both legacyResolutions currentResolutions
+
+      case eitherResolutions of
+        -- We skip if we couldn't solve (but we write the error to cache).
+        Left err ->
+          Cache.put _importCache (PublishFailure manifest.name manifest.version) err
+        Right resolutionOptions -> do
+          Log.info "Selecting usable compiler from resolutions..."
+
+          let
+            findFirstFromResolutions :: Map PackageName Version -> Run _ (Either (Map Version CompilerFailure) Version)
+            findFirstFromResolutions resolutions = do
+              Log.debug $ "Finding compiler for " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions <> "\nfrom dependency list\n" <> printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
+              possibleCompilers <-
+                if Map.isEmpty manifest.dependencies then do
                   Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
                   pure $ NonEmptySet.fromFoldable1 allCompilers
-                Left errors -> do
-                  let
-                    printError { packages, compilers } = do
-                      let key = String.joinWith ", " $ foldlWithIndex (\name prev version -> Array.cons (formatPackageVersion name version) prev) [] packages
-                      let val = String.joinWith ", " $ map Version.print $ NonEmptySet.toUnfoldable compilers
-                      key <> " support compilers " <> val
-                  Cache.put _importCache (PublishFailure manifest.name manifest.version) (UnsolvableDependencyCompilers errors)
-                  Except.throw $ Array.fold
-                    [ "Resolutions admit no overlapping compiler versions so your package cannot be compiled:\n"
-                    , Array.foldMap (append "\n  - " <<< printError) errors
-                    ]
-                Right compilers -> do
-                  Log.debug $ "Compatible compilers for resolutions of " <> formatted <> ": " <> stringifyJson (CA.array Version.codec) (NonEmptySet.toUnfoldable compilers)
-                  pure compilers
+                else do
+                  Log.debug "No compiler version was produced by the solver, so all compilers are potentially compatible."
+                  allMetadata <- Registry.readAllMetadata
+                  case compatibleCompilers allMetadata resolutions of
+                    Left [] -> do
+                      Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
+                      pure $ NonEmptySet.fromFoldable1 allCompilers
+                    Left errors -> do
+                      let
+                        printError { packages, compilers } = do
+                          let key = String.joinWith ", " $ foldlWithIndex (\name prev version -> Array.cons (formatPackageVersion name version) prev) [] packages
+                          let val = String.joinWith ", " $ map Version.print $ NonEmptySet.toUnfoldable compilers
+                          key <> " support compilers " <> val
+                      Cache.put _importCache (PublishFailure manifest.name manifest.version) (UnsolvableDependencyCompilers errors)
+                      Except.throw $ Array.fold
+                        [ "Resolutions admit no overlapping compiler versions so your package cannot be compiled:\n"
+                        , Array.foldMap (append "\n  - " <<< printError) errors
+                        ]
+                    Right compilers -> do
+                      Log.debug $ "Compatible compilers for resolutions of " <> formatted <> ": " <> stringifyJson (CA.array Version.codec) (NonEmptySet.toUnfoldable compilers)
+                      pure compilers
 
-          cached <- do
-            cached <- for (NonEmptySet.toUnfoldable possibleCompilers) \compiler ->
-              Cache.get API._compilerCache (API.Compilation (Manifest manifest) resolutions compiler) >>= case _ of
-                Nothing -> pure Nothing
-                Just { result: Left _ } -> pure Nothing
-                Just { target, result: Right _ } -> pure $ Just target
-            pure $ NonEmptyArray.fromArray $ Array.catMaybes cached
+              cached <- do
+                cached <- for (NonEmptySet.toUnfoldable possibleCompilers) \compiler ->
+                  Cache.get API._compilerCache (API.Compilation (Manifest manifest) resolutions compiler) >>= case _ of
+                    Nothing -> pure Nothing
+                    Just { result: Left _ } -> pure Nothing
+                    Just { target, result: Right _ } -> pure $ Just target
+                pure $ NonEmptyArray.fromArray $ Array.catMaybes cached
 
-          selected <- case cached of
-            Just prev -> do
-              let selected = NonEmptyArray.last prev
-              Log.debug $ "Found successful cached compilation for " <> formatted <> " and chose " <> Version.print selected
-              pure $ Right selected
-            Nothing -> do
-              Log.debug $ "No cached compilation for " <> formatted <> ", so compiling with all compilers to find first working one."
-              Log.debug "Fetching source and installing dependencies to test compilers"
-              tmp <- Tmp.mkTmpDir
-              { path } <- Source.fetch tmp manifest.location ref
-              Log.debug $ "Downloaded source to " <> path
-              Log.debug "Downloading dependencies..."
-              let installDir = Path.concat [ tmp, ".registry" ]
-              FS.Extra.ensureDirectory installDir
-              API.installBuildPlan resolutions installDir
-              Log.debug $ "Installed to " <> installDir
-              Log.debug "Trying compilers one-by-one..."
-              selected <- findFirstCompiler
-                { source: path
-                , installed: installDir
-                , compilers: NonEmptySet.toUnfoldable possibleCompilers
-                , resolutions
-                , manifest: Manifest manifest
-                }
-              FS.Extra.remove tmp
-              pure selected
+              case cached of
+                Just prev -> do
+                  let selected = NonEmptyArray.last prev
+                  Log.debug $ "Found successful cached compilation for " <> formatted <> " and chose " <> Version.print selected
+                  pure $ Right selected
+                Nothing -> do
+                  Log.debug $ "No cached compilation for " <> formatted <> ", so compiling with all compilers to find first working one."
+                  Log.debug "Fetching source and installing dependencies to test compilers"
+                  tmp <- Tmp.mkTmpDir
+                  { path } <- Source.fetch tmp manifest.location ref
+                  Log.debug $ "Downloaded source to " <> path
+                  Log.debug "Downloading dependencies..."
+                  let installDir = Path.concat [ tmp, ".registry" ]
+                  FS.Extra.ensureDirectory installDir
+                  API.installBuildPlan resolutions installDir
+                  Log.debug $ "Installed to " <> installDir
+                  Log.debug "Trying compilers one-by-one..."
+                  selected <- findFirstCompiler
+                    { source: path
+                    , installed: installDir
+                    , compilers: NonEmptySet.toUnfoldable possibleCompilers
+                    , resolutions
+                    , manifest: Manifest manifest
+                    }
+                  FS.Extra.remove tmp
+                  pure selected
 
-          case selected of
-            Left failures -> do
+          let
+            collectCompilerErrors :: Map Version CompilerFailure -> Map (NonEmptyArray Version) CompilerFailure
+            collectCompilerErrors failures = do
               let
-                collected :: Map (NonEmptyArray Version) CompilerFailure
-                collected = do
-                  let
-                    foldFn prev xs = do
-                      let Tuple _ failure = NonEmptyArray.head xs
-                      let key = map fst xs
-                      Map.insert key failure prev
-                  Array.foldl foldFn Map.empty $ Array.groupAllBy (compare `on` snd) (Map.toUnfoldable failures)
+                foldFn prev xs = do
+                  let Tuple _ failure = NonEmptyArray.head xs
+                  let key = map fst xs
+                  Map.insert key failure prev
+              Array.foldl foldFn Map.empty $ Array.groupAllBy (compare `on` snd) (Map.toUnfoldable failures)
+
+            reportFailures :: forall a. _ -> Run _ (Either PublishError a)
+            reportFailures failures = do
+              let collected = collectCompilerErrors failures
               Log.error $ "Failed to find any valid compilers for publishing:\n" <> printJson compilerFailureMapCodec collected
-              Cache.put _importCache (PublishFailure manifest.name manifest.version) (NoCompilersFound collected)
-            Right compiler -> do
+              pure $ Left $ NoCompilersFound collected
+
+          -- Here, we finally attempt to find a suitable compiler. If we only
+          -- got one set of working resolutions that's what we use. If we got
+          -- solutions with both the legacy and adjusted-manifest indices, then
+          -- we try the adjusted index first since that's what is used in the
+          -- publish pipeline.
+          eitherCompiler <- case resolutionOptions of
+            This legacyResolutions -> do
+              selected <- findFirstFromResolutions legacyResolutions
+              case selected of
+                Left failures -> reportFailures failures
+                Right compiler -> pure $ Right $ Tuple compiler legacyResolutions
+            That currentResolutions -> do
+              selected <- findFirstFromResolutions currentResolutions
+              case selected of
+                Left failures -> reportFailures failures
+                Right compiler -> pure $ Right $ Tuple compiler currentResolutions
+            Both legacyResolutions currentResolutions -> do
+              selectedCurrent <- findFirstFromResolutions currentResolutions
+              case selectedCurrent of
+                Right compiler -> pure $ Right $ Tuple compiler currentResolutions
+                Left currentFailures | legacyResolutions == currentResolutions -> reportFailures currentFailures
+                Left _ -> do
+                  selectedLegacy <- findFirstFromResolutions legacyResolutions
+                  case selectedLegacy of
+                    Left failures -> reportFailures failures
+                    Right compiler -> pure $ Right $ Tuple compiler legacyResolutions
+
+          case eitherCompiler of
+            Left err -> Cache.put _importCache (PublishFailure manifest.name manifest.version) err
+            Right (Tuple compiler resolutions) -> do
               Log.debug $ "Selected " <> Version.print compiler <> " for publishing."
               let
                 payload =
