@@ -36,6 +36,7 @@ import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
 import Data.These (These(..))
+import Data.Tuple (uncurry)
 import Data.Variant as Variant
 import Effect.Class.Console as Console
 import Node.FS.Aff as FS.Aff
@@ -83,6 +84,7 @@ import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Range as Range
+import Registry.Solver (CompilerIndex(..))
 import Registry.Solver as Solver
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
@@ -290,7 +292,17 @@ runLegacyImport logs = do
             pure $ Left $ if Array.null nonCompiler then SolveFailedCompiler joined else SolveFailedDependencies joined
           Right resolutions -> do
             Log.debug $ "Solved " <> formatted <> " with legacy index."
-            pure $ Right resolutions
+            -- The solutions do us no good if the dependencies don't exist. Note
+            -- the compiler index is updated on every publish.
+            let lookupInRegistry res = maybe (Left res) (\_ -> Right res) (Map.lookup (fst res) (un CompilerIndex compilerIndex) >>= Map.lookup (snd res))
+            let { fail: notRegistered } = partitionEithers $ map lookupInRegistry $ Map.toUnfoldable resolutions
+            if (Array.null notRegistered) then
+              pure $ Right resolutions
+            else do
+              let missing = "Some resolutions from legacy index are not registered: " <> String.joinWith ", " (map (uncurry formatPackageVersion) notRegistered)
+              Log.warn missing
+              Log.warn "Not using legacy index resolutions for this package."
+              pure $ Left $ SolveFailedDependencies missing
 
         currentSolution <- case Solver.solveWithCompiler allCompilersRange compilerIndex manifest.dependencies of
           Left unsolvable -> do
@@ -337,11 +349,11 @@ runLegacyImport logs = do
                           let key = String.joinWith ", " $ foldlWithIndex (\name prev version -> Array.cons (formatPackageVersion name version) prev) [] packages
                           let val = String.joinWith ", " $ map Version.print $ NonEmptySet.toUnfoldable compilers
                           key <> " support compilers " <> val
-                      Cache.put _importCache (PublishFailure manifest.name manifest.version) (UnsolvableDependencyCompilers errors)
-                      Except.throw $ Array.fold
-                        [ "Resolutions admit no overlapping compiler versions so your package cannot be compiled:\n"
+                      Log.warn $ Array.fold
+                        [ "Resolutions admit no overlapping compiler versions:\n"
                         , Array.foldMap (append "\n  - " <<< printError) errors
                         ]
+                      pure $ NonEmptySet.fromFoldable1 allCompilers
                     Right compilers -> do
                       Log.debug $ "Compatible compilers for resolutions of " <> formatted <> ": " <> stringifyJson (CA.array Version.codec) (NonEmptySet.toUnfoldable compilers)
                       pure compilers

@@ -1204,7 +1204,7 @@ conformLegacyManifest (Manifest manifest) compiler currentIndex legacyRegistry p
 
   legacyResolutions <- case Solver.solveFull { registry: legacyRegistry, required: manifestRequired } of
     Left unsolvableLegacy -> do
-      Log.error $ "Legacy resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvableLegacy
+      Log.warn $ "Legacy resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvableLegacy
       case Solver.solveWithCompiler (Range.exact compiler) currentIndex manifest.dependencies of
         Left unsolvableCurrent -> Except.throw $ "Resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvableCurrent
         Right (Tuple _ solved) -> do
@@ -1259,7 +1259,9 @@ conformLegacyManifest (Manifest manifest) compiler currentIndex legacyRegistry p
       let unused = Map.fromFoldable $ NonEmptySet.map (\name -> Tuple name unit) names
       let fixedDependencies = Map.difference m.dependencies unused
       case Solver.solveWithCompiler (Range.exact compiler) currentIndex fixedDependencies of
-        Left unsolvable -> Except.throw $ "Legacy resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvable
+        Left unsolvable -> do
+          Log.warn $ "Fixed dependencies cannot be used to produce a viable solution: " <> printJson (Internal.Codec.packageMap Range.codec) fixedDependencies
+          Except.throw $ "Resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvable
         Right (Tuple _ solved) -> pure $ Tuple fixedDependencies solved
 
     fixMissing names (Manifest m) = do
@@ -1267,7 +1269,9 @@ conformLegacyManifest (Manifest manifest) compiler currentIndex legacyRegistry p
       -- Once we've fixed the missing dependencies we need to be sure we can still
       -- produce a viable solution with the current index.
       case Solver.solveWithCompiler (Range.exact compiler) currentIndex fixedDependencies of
-        Left unsolvable -> Except.throw $ "Legacy resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvable
+        Left unsolvable -> do
+          Log.warn $ "Fixed dependencies cannot be used to produce a viable solution: " <> printJson (Internal.Codec.packageMap Range.codec) fixedDependencies
+          Except.throw $ "Resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvable
         Right (Tuple _ solved) -> pure $ Tuple fixedDependencies solved
 
     previousDepsMessage = Array.fold
