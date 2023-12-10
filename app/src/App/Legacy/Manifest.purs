@@ -58,7 +58,8 @@ type LegacyManifest =
   }
 
 toManifest :: PackageName -> Version -> Location -> LegacyManifest -> Manifest
-toManifest name version location { license, description, dependencies } = do
+toManifest name version location legacy = do
+  let { license, description, dependencies } = patchLegacyManifest name version legacy
   let includeFiles = Nothing
   let excludeFiles = Nothing
   let owners = Nothing
@@ -161,6 +162,39 @@ fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestErr
       fields.description
 
   pure { license, dependencies, description }
+
+-- | Some legacy manifests must be patched to be usable.
+patchLegacyManifest :: PackageName -> Version -> LegacyManifest -> LegacyManifest
+patchLegacyManifest name version legacy = do
+  let hyruleName = unsafeFromRight (PackageName.parse "hyrule")
+  -- hyrule v2.2.0 removes a module that breaks all versions of bolson
+  -- prior to the versions below
+  let earlyBolsonLimit = unsafeFromRight (Version.parse "0.3.0")
+  let earlyDekuLimit = unsafeFromRight (Version.parse "0.7.0")
+  let earlyRitoLimit = unsafeFromRight (Version.parse "0.3.0")
+  let earlyHyruleFixedRange = unsafeFromJust (Range.mk (unsafeFromRight (Version.parse "1.6.4")) (unsafeFromRight (Version.parse "2.2.0")))
+  let earlyFixHyrule = Map.update (\_ -> Just earlyHyruleFixedRange) hyruleName
+
+  -- hyrule v2.4.0 removes a module that breaks all versions of bolson, deku,
+  -- and rito prior to the versions below
+  let hyruleFixedRange = unsafeFromJust (Range.mk (unsafeFromRight (Version.parse "2.0.0")) (unsafeFromRight (Version.parse "2.4.0")))
+  let bolsonLimit = unsafeFromRight (Version.parse "0.4.0")
+  let dekuLimit = unsafeFromRight (Version.parse "0.9.25")
+  let ritoLimit = unsafeFromRight (Version.parse "0.3.5")
+  let fixHyrule = Map.update (\_ -> Just hyruleFixedRange) hyruleName
+
+  case PackageName.print name of
+    "bolson"
+      | version < earlyBolsonLimit -> legacy { dependencies = earlyFixHyrule legacy.dependencies }
+      | version < bolsonLimit -> legacy { dependencies = fixHyrule legacy.dependencies }
+    "deku"
+      | version < earlyDekuLimit -> legacy { dependencies = earlyFixHyrule legacy.dependencies }
+      | version < dekuLimit -> legacy { dependencies = fixHyrule legacy.dependencies }
+    "rito"
+      | version < earlyRitoLimit -> legacy { dependencies = earlyFixHyrule legacy.dependencies }
+      | version < ritoLimit -> legacy { dependencies = fixHyrule legacy.dependencies }
+    _ ->
+      legacy
 
 _legacyManifestError :: Proxy "legacyManifestError"
 _legacyManifestError = Proxy
