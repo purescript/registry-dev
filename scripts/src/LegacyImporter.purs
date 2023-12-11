@@ -431,6 +431,7 @@ runLegacyImport logs = do
                 Right compiler -> pure $ Right $ Tuple compiler currentResolutions
                 Left currentFailures | legacyResolutions == currentResolutions -> reportFailures currentFailures
                 Left _ -> do
+                  Log.info $ "Could not find suitable compiler from current index, trying legacy solution..."
                   selectedLegacy <- findFirstFromResolutions legacyResolutions
                   case selectedLegacy of
                     Left failures -> reportFailures failures

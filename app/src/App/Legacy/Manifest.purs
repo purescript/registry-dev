@@ -166,33 +166,38 @@ fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestErr
 -- | Some legacy manifests must be patched to be usable.
 patchLegacyManifest :: PackageName -> Version -> LegacyManifest -> LegacyManifest
 patchLegacyManifest name version legacy = do
-  let hyruleName = unsafeFromRight (PackageName.parse "hyrule")
+  let bolson = unsafeFromRight (PackageName.parse "bolson")
+  let hyrule = unsafeFromRight (PackageName.parse "hyrule")
+
+  let unsafeVersion = unsafeFromRight <<< Version.parse
+  let unsafeRange a b = unsafeFromJust (Range.mk (unsafeVersion a) (unsafeVersion b))
+  let fixRange pkg range = Map.update (\_ -> Just range) pkg
+
   -- hyrule v2.2.0 removes a module that breaks all versions of bolson
   -- prior to the versions below
-  let earlyBolsonLimit = unsafeFromRight (Version.parse "0.3.0")
-  let earlyDekuLimit = unsafeFromRight (Version.parse "0.7.0")
-  let earlyRitoLimit = unsafeFromRight (Version.parse "0.3.0")
-  let earlyHyruleFixedRange = unsafeFromJust (Range.mk (unsafeFromRight (Version.parse "1.6.4")) (unsafeFromRight (Version.parse "2.2.0")))
-  let earlyFixHyrule = Map.update (\_ -> Just earlyHyruleFixedRange) hyruleName
+  let earlyHyruleFixedRange = unsafeRange "1.6.4" "2.2.0"
+  let earlyFixHyrule = fixRange hyrule earlyHyruleFixedRange
 
   -- hyrule v2.4.0 removes a module that breaks all versions of bolson, deku,
   -- and rito prior to the versions below
-  let hyruleFixedRange = unsafeFromJust (Range.mk (unsafeFromRight (Version.parse "2.0.0")) (unsafeFromRight (Version.parse "2.4.0")))
-  let bolsonLimit = unsafeFromRight (Version.parse "0.4.0")
-  let dekuLimit = unsafeFromRight (Version.parse "0.9.25")
-  let ritoLimit = unsafeFromRight (Version.parse "0.3.5")
-  let fixHyrule = Map.update (\_ -> Just hyruleFixedRange) hyruleName
+  let hyruleFixedRange = unsafeRange "2.0.0" "2.4.0"
+  let fixHyrule = fixRange hyrule hyruleFixedRange
+
+  -- bolson v0.3.1 changes the type of a function that breaks deku until 0.9.21
+  let bolsonFixedRange = unsafeRange "0.1.0" "0.3.2"
+  let fixBolson = fixRange bolson bolsonFixedRange
 
   case PackageName.print name of
     "bolson"
-      | version < earlyBolsonLimit -> legacy { dependencies = earlyFixHyrule legacy.dependencies }
-      | version < bolsonLimit -> legacy { dependencies = fixHyrule legacy.dependencies }
+      | version < unsafeVersion "0.3.0" -> legacy { dependencies = earlyFixHyrule legacy.dependencies }
+      | version < unsafeVersion "0.4.0" -> legacy { dependencies = fixHyrule legacy.dependencies }
     "deku"
-      | version < earlyDekuLimit -> legacy { dependencies = earlyFixHyrule legacy.dependencies }
-      | version < dekuLimit -> legacy { dependencies = fixHyrule legacy.dependencies }
+      | version < unsafeVersion "0.7.0" -> legacy { dependencies = earlyFixHyrule legacy.dependencies }
+      | version < unsafeVersion "0.9.21" -> legacy { dependencies = fixBolson (fixHyrule legacy.dependencies) }
+      | version < unsafeVersion "0.9.25" -> legacy { dependencies = fixHyrule legacy.dependencies }
     "rito"
-      | version < earlyRitoLimit -> legacy { dependencies = earlyFixHyrule legacy.dependencies }
-      | version < ritoLimit -> legacy { dependencies = fixHyrule legacy.dependencies }
+      | version < unsafeVersion "0.3.0" -> legacy { dependencies = earlyFixHyrule legacy.dependencies }
+      | version < unsafeVersion "0.3.5" -> legacy { dependencies = fixHyrule legacy.dependencies }
     _ ->
       legacy
 
