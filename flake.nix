@@ -2,7 +2,7 @@
   description = "The PureScript Registry";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/release-23.11";
+    nixpkgs.url = "github:nixos/nixpkgs/release-23.05";
     flake-utils.url = "github:numtide/flake-utils";
 
     flake-compat.url = "github:edolstra/flake-compat";
@@ -47,6 +47,9 @@
     GIT_LFS_SKIP_SMUDGE = 1;
     registryOverlay = final: prev: rec {
       nodejs = prev.nodejs_20;
+      spago = prev.spago-bin.spago-0_93_19;
+      purs-tidy = prev.purs-tidy-unstable;
+      purs-backend-es = prev.purs-backend-es-unstable;
 
       # We don't want to force everyone to update their configs if they aren't
       # normally on flakes.
@@ -203,7 +206,7 @@
 
         pushd $WORKDIR
         export HEALTHCHECKS_URL=${defaultEnv.HEALTHCHECKS_URL}
-        ${pkgs.spago-unstable}/bin/spago test
+        ${pkgs.spago}/bin/spago test
         popd
       '';
 
@@ -694,9 +697,9 @@
 
             # Development tooling
             purs
-            spago-unstable
-            purs-tidy-unstable
-            purs-backend-es-unstable
+            spago
+            purs-tidy
+            purs-backend-es
           ];
         };
       };
