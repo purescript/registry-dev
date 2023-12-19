@@ -18,6 +18,9 @@ import Data.Codec.Argonaut.Common as CA.Common
 import Data.Codec.Argonaut.Record as CA.Record
 import Data.Codec.Argonaut.Variant as CA.Variant
 import Data.Compactable (separate)
+import Data.DateTime (Date, Month(..))
+import Data.DateTime as DateTime
+import Data.Enum (toEnum)
 import Data.Exists as Exists
 import Data.Filterable (partition)
 import Data.Foldable (foldMap)
@@ -224,11 +227,26 @@ runLegacyImport logs = do
     pure $ fixupNames allPackages
 
   Log.info $ "Read " <> show (Set.size (Map.keys legacyRegistry)) <> " package names from the legacy registry."
-  importedIndex <- importLegacyRegistry legacyRegistry
 
-  Log.info "Writing package and version failures to disk..."
-  Run.liftAff $ writePackageFailures importedIndex.failedPackages
-  Run.liftAff $ writeVersionFailures importedIndex.failedVersions
+  Log.info "Reading reserved 0.13 packages..."
+  reserved0_13 <- readPackagesMetadata >>= case _ of
+    Left err -> do
+      Log.warn $ "Could not read reserved packages: " <> err
+      Log.warn $ "Determining reserved packages..."
+      metadata <- getPackagesMetadata legacyRegistry
+      let cutoff = filterPackages_0_13 metadata
+      writePackagesMetadata cutoff
+      pure cutoff
+    Right cutoff -> pure cutoff
+
+  Log.info $ "Reserving metadata files for 0.13 and purs/metadata packages"
+  forWithIndex_ reserved0_13 \package { address } -> Registry.readMetadata package >>= case _ of
+    Nothing -> do
+      Log.info $ "Writing empty metadata file for reserved 0.13 package " <> PackageName.print package
+      let location = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
+      let entry = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
+      Registry.writeMetadata package entry
+    Just _ -> Log.debug $ PackageName.print package <> " already reserved."
 
   let metadataPackage = unsafeFromRight (PackageName.parse "metadata")
   let pursPackage = unsafeFromRight (PackageName.parse "purs")
@@ -240,6 +258,12 @@ runLegacyImport logs = do
         let entry = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
         Registry.writeMetadata package entry
       Just _ -> pure unit
+
+  importedIndex <- importLegacyRegistry legacyRegistry
+
+  Log.info "Writing package and version failures to disk..."
+  Run.liftAff $ writePackageFailures importedIndex.failedPackages
+  Run.liftAff $ writeVersionFailures importedIndex.failedVersions
 
   Log.info "Ready for upload!"
   let importStats = calculateImportStats legacyRegistry importedIndex
@@ -485,11 +509,12 @@ runLegacyImport logs = do
   failures <- Array.foldM collectError Map.empty allIndexPackages
   Run.liftAff $ writePublishFailures failures
 
-  let publishStats = collectPublishFailureStats importStats importedIndex.registryIndex failures
+  let publishStats = collectPublishFailureStats importStats (map _.address reserved0_13) importedIndex.registryIndex failures
   let publishStatsMessage = formatPublishFailureStats publishStats
   Log.info publishStatsMessage
   Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "publish-stats.txt" ]) publishStatsMessage
-  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "removed-packages.txt" ]) (String.joinWith "\n" (map PackageName.print (Set.toUnfoldable publishStats.packages.failed)))
+  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "reserved-packages.txt" ]) (String.joinWith "\n" (map PackageName.print (Set.toUnfoldable publishStats.packages.reserved)))
+  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "removed-packages.txt" ]) (String.joinWith "\n" (map PackageName.print (Set.toUnfoldable (Set.difference publishStats.packages.failed publishStats.packages.reserved))))
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePublishFailures :: Map PackageName (Map Version PublishError) -> Aff Unit
@@ -514,7 +539,7 @@ type LegacyRegistry = Map RawPackageName String
 type ImportedIndex =
   { failedPackages :: Map RawPackageName PackageValidationError
   , failedVersions :: Map RawPackageName (Map RawVersion VersionValidationError)
-  , reservedPackages :: Map PackageName Location
+  , removedPackages :: Map PackageName Location
   , registryIndex :: ManifestIndex
   , packageRefs :: Map PackageName (Map Version RawVersion)
   }
@@ -556,11 +581,11 @@ importLegacyRegistry legacyRegistry = do
 
     -- The list of all packages that were present in the legacy registry files,
     -- but which have no versions present in the fully-imported registry.
-    reservedPackages :: Map PackageName Location
-    reservedPackages =
-      Map.fromFoldable $ Array.mapMaybe reserved $ Map.toUnfoldable legacyRegistry
+    removedPackages :: Map PackageName Location
+    removedPackages =
+      Map.fromFoldable $ Array.mapMaybe removed $ Map.toUnfoldable legacyRegistry
       where
-      reserved (Tuple (RawPackageName name) address) = do
+      removed (Tuple (RawPackageName name) address) = do
         packageName <- hush $ PackageName.parse name
         guard $ isNothing $ Map.lookup packageName $ ManifestIndex.toMap validIndex
         { owner, repo } <- hush $ Parsing.runParser address legacyRepoParser
@@ -592,7 +617,7 @@ importLegacyRegistry legacyRegistry = do
   pure
     { failedPackages: packageFailures
     , failedVersions: versionFailures
-    , reservedPackages: reservedPackages
+    , removedPackages: removedPackages
     , registryIndex: validIndex
     , packageRefs
     }
@@ -683,12 +708,12 @@ publishErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantM
     }
 
 type PublishFailureStats =
-  { packages :: { total :: Int, considered :: Int, partial :: Int, failed :: Set PackageName }
+  { packages :: { total :: Int, considered :: Int, partial :: Int, failed :: Set PackageName, reserved :: Set PackageName }
   , versions :: { total :: Int, considered :: Int, failed :: Int, reason :: Map String Int }
   }
 
-collectPublishFailureStats :: ImportStats -> ManifestIndex -> Map PackageName (Map Version PublishError) -> PublishFailureStats
-collectPublishFailureStats importStats importedIndex failures = do
+collectPublishFailureStats :: ImportStats -> Map PackageName Address -> ManifestIndex -> Map PackageName (Map Version PublishError) -> PublishFailureStats
+collectPublishFailureStats importStats reserved0_13 importedIndex failures = do
   let
     index :: Map PackageName (Map Version Manifest)
     index = ManifestIndex.toMap importedIndex
@@ -703,7 +728,7 @@ collectPublishFailureStats importStats importedIndex failures = do
     consideredPackages = Map.size index
 
     startVersions :: Int
-    startVersions = countVersions index
+    startVersions = importStats.versionsProcessed
 
     consideredVersions :: Int
     consideredVersions = countVersions index
@@ -724,6 +749,11 @@ collectPublishFailureStats importStats importedIndex failures = do
 
       foldlWithIndex foldFn Set.empty failures
 
+    -- Packages that are eligible for removal — but are reserved due to 0.13 or
+    -- organization status — are the 'reserved packages'.
+    reservedPackages :: Set PackageName
+    reservedPackages = Set.intersection removedPackages (Map.keys reserved0_13)
+
     countByFailure :: Map String Int
     countByFailure = do
       let
@@ -743,6 +773,7 @@ collectPublishFailureStats importStats importedIndex failures = do
       { total: startPackages
       , considered: consideredPackages
       , partial: failedPackages
+      , reserved: reservedPackages
       , failed: removedPackages
       }
   , versions:
@@ -760,11 +791,12 @@ formatPublishFailureStats { packages, versions } = String.joinWith "\n"
   , "--------------------"
   , ""
   , show packages.considered <> " of " <> show packages.total <> " total packages were considered for publishing (others had no manifests imported.)"
-  , "  - " <> show (packages.total - packages.partial - (Set.size packages.failed)) <> " out of " <> show packages.total <> " packages fully succeeded."
+  , "  - " <> show (packages.total - packages.partial - (Set.size packages.failed)) <> " out of " <> show packages.considered <> " packages fully succeeded."
   , "  - " <> show packages.partial <> " packages partially succeeded."
-  , "  - " <> show (Set.size packages.failed) <> " packages had all versions fail and are subject to removal."
+  , "  - " <> show (Set.size packages.reserved) <> " packages fully failed, but are reserved due to 0.13 or organization status."
+  , "  - " <> show (Set.size packages.failed - Set.size packages.reserved) <> " packages had all versions fail and will be removed."
   , ""
-  , show versions.total <> " total versions were considered for publishing.\n  - " <> show versions.failed <> " out of " <> show versions.total <> " versions failed."
+  , show versions.considered <> " of " <> show versions.total <> " total versions were considered for publishing.\n  - " <> show versions.failed <> " out of " <> show versions.total <> " versions failed."
   , Array.foldMap (\(Tuple key val) -> "\n    - " <> key <> ": " <> show val) (Array.sortBy (comparing snd) (Map.toUnfoldable versions.reason))
   ]
 
@@ -887,6 +919,56 @@ type PackageResult =
   , tags :: Array Tag
   }
 
+type PackagesMetadata = { address :: Address, lastPublished :: Date }
+
+packagesMetadataCodec :: JsonCodec PackagesMetadata
+packagesMetadataCodec = CA.Record.object "PackagesMetadata"
+  { address: CA.Record.object "Address" { owner: CA.string, repo: CA.string }
+  , lastPublished: Internal.Codec.iso8601Date
+  }
+
+getPackagesMetadata :: forall r. Map RawPackageName String -> Run (EXCEPT String + GITHUB + r) (Map PackageName PackagesMetadata)
+getPackagesMetadata legacyRegistry = do
+  associated <- for (Map.toUnfoldableUnordered legacyRegistry) \(Tuple rawName rawUrl) -> do
+    Except.runExceptAt (Proxy :: _ "exceptPackage") (validatePackage rawName rawUrl) >>= case _ of
+      Left _ -> pure Nothing
+      Right { name, address, tags } -> case Array.head tags of
+        Nothing -> pure Nothing
+        Just tag -> do
+          result <- GitHub.getCommitDate address tag.sha
+          case result of
+            Left error -> unsafeCrashWith ("Failed to get commit date for " <> PackageName.print name <> "@" <> tag.name <> ": " <> Octokit.printGitHubError error)
+            Right date -> pure $ Just $ Tuple name { address, lastPublished: DateTime.date date }
+  pure $ Map.fromFoldable $ Array.catMaybes associated
+
+filterPackages_0_13 :: Map PackageName PackagesMetadata -> Map PackageName PackagesMetadata
+filterPackages_0_13 = do
+  let
+    -- 0.13 release date
+    cutoff = DateTime.canonicalDate (unsafeFromJust (toEnum 2019)) May (unsafeFromJust (toEnum 29))
+    organizations =
+      [ "purescript"
+      , "purescript-contrib"
+      , "purescript-node"
+      , "purescript-web"
+      , "rowtype-yoga"
+      , "purescript-halogen"
+      , "purescript-deprecated"
+      ]
+
+  Map.filterWithKey \_ metadata -> do
+    let { owner } = metadata.address
+    owner `Array.elem` organizations || metadata.lastPublished >= cutoff
+
+writePackagesMetadata :: forall r. Map PackageName PackagesMetadata -> Run (LOG + AFF + r) Unit
+writePackagesMetadata pkgs = do
+  let path = Path.concat [ scratchDir, "packages-metadata.json" ]
+  Log.info $ "Writing packages metadata to " <> path
+  Run.liftAff $ writeJsonFile (packageMap packagesMetadataCodec) path pkgs
+
+readPackagesMetadata :: forall r. Run (AFF + r) (Either String (Map PackageName PackagesMetadata))
+readPackagesMetadata = Run.liftAff $ readJsonFile (packageMap packagesMetadataCodec) (Path.concat [ scratchDir, "packages-metadata.json" ])
+
 validatePackage :: forall r. RawPackageName -> String -> Run (GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) PackageResult
 validatePackage rawPackage rawUrl = do
   name <- exceptPackage $ validatePackageName rawPackage
@@ -959,6 +1041,7 @@ validatePackageDisabled package =
   disabledPackages :: Map String String
   disabledPackages = Map.fromFoldable
     [ Tuple "metadata" reservedPackage
+    , Tuple "purs" reservedPackage
     , Tuple "bitstrings" noSrcDirectory
     , Tuple "purveyor" noSrcDirectory
     , Tuple "styled-components" noSrcDirectory
@@ -1031,7 +1114,7 @@ formatPublishError = case _ of
 type ImportStats =
   { packagesProcessed :: Int
   , versionsProcessed :: Int
-  , packageNamesReserved :: Int
+  , packageNamesRemoved :: Int
   , packageResults :: { success :: Int, partial :: Int, fail :: Int }
   , versionResults :: { success :: Int, fail :: Int }
   , packageErrors :: Map String Int
@@ -1044,7 +1127,7 @@ formatImportStats stats = String.joinWith "\n"
   , show stats.packagesProcessed <> " packages processed:"
   , indent $ show stats.packageResults.success <> " fully successful"
   , indent $ show stats.packageResults.partial <> " partially successful"
-  , indent $ show (stats.packageNamesReserved - stats.packageResults.fail) <> " omitted (no usable versions)"
+  , indent $ show (stats.packageNamesRemoved - stats.packageResults.fail) <> " omitted (no usable versions)"
   , indent $ show stats.packageResults.fail <> " fully failed"
   , indent "---"
   , formatErrors stats.packageErrors
@@ -1077,8 +1160,8 @@ calculateImportStats legacyRegistry imported = do
     packagesProcessed =
       Map.size legacyRegistry
 
-    packageNamesReserved =
-      Map.size imported.reservedPackages
+    packageNamesRemoved =
+      Map.size imported.removedPackages
 
     packageResults = do
       let succeeded = Map.keys registryIndex
@@ -1131,7 +1214,7 @@ calculateImportStats legacyRegistry imported = do
 
   { packagesProcessed
   , versionsProcessed
-  , packageNamesReserved
+  , packageNamesRemoved
   , packageResults
   , versionResults
   , packageErrors
