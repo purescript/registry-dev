@@ -694,7 +694,7 @@
 
             # Development tooling
             purs
-            spago-unstable
+            spago-bin.spago-0_93_19
             purs-tidy-unstable
             purs-backend-es-unstable
           ];

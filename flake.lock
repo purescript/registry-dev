@@ -17,17 +17,19 @@
       }
     },
     "flake-compat_2": {
+      "flake": false,
       "locked": {
         "lastModified": 1696426674,
         "narHash": "sha256-kvjfFW7WAETZlt09AgDn1MrtKzP7t90Vf7vypd3OL1U=",
+        "owner": "edolstra",
+        "repo": "flake-compat",
         "rev": "0f9255e01c2351cc7d116c072cb317785dd33b33",
-        "revCount": 57,
-        "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/edolstra/flake-compat/1.0.1/018afb31-abd1-7bff-a5e4-cff7e18efb7a/source.tar.gz"
+        "type": "github"
       },
       "original": {
-        "type": "tarball",
-        "url": "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz"
+        "owner": "edolstra",
+        "repo": "flake-compat",
+        "type": "github"
       }
     },
     "flake-utils": {
@@ -50,11 +52,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1701699333,
-        "narHash": "sha256-ePa4oynwTNXuc4bqbi5ZMrO72yGuTPukptuMmgXPM5k=",
+        "lastModified": 1704290814,
+        "narHash": "sha256-LWvKHp7kGxk/GEtlrGYV68qIvPHkU9iToomNFGagixU=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "42499b9f6515dbca54cec1cae78165fd4e5eccfe",
+        "rev": "70bdadeb94ffc8806c0570eb5c2695ad29f0e421",
         "type": "github"
       },
       "original": {
@@ -73,11 +75,11 @@
         "slimlock": "slimlock"
       },
       "locked": {
-        "lastModified": 1701720691,
-        "narHash": "sha256-BaQ+UyYSqNezOnM6OtR/dcC3Iwa95k+2ojEcvs82MoQ=",
+        "lastModified": 1704323758,
+        "narHash": "sha256-N2Mc/TWDXdaO7ovriQUI/EgNUJC2yo4GtINntFqlxt0=",
         "owner": "thomashoneyman",
         "repo": "purescript-overlay",
-        "rev": "8260c6819df0814c0cc1e7fc262d60910399c89f",
+        "rev": "4cd371d97a8a90ced0cef59ec20b76f4f7c17c1c",
         "type": "github"
       },
       "original": {
@@ -123,11 +125,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1688756706,
-        "narHash": "sha256-xzkkMv3neJJJ89zo3o2ojp7nFeaZc2G0fYwNXNJRFlo=",
+        "lastModified": 1702828829,
+        "narHash": "sha256-tL/ThLAk5JgYdKXy3MIZYnDavemjpemF17dVgbfbYM8=",
         "owner": "thomashoneyman",
         "repo": "slimlock",
-        "rev": "cf72723f59e2340d24881fd7bf61cb113b4c407c",
+        "rev": "a7ce81f35d236a5e58bce30e34825013e19ffade",
         "type": "github"
       },
       "original": {
