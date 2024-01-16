@@ -760,6 +760,12 @@ publish maybeLegacyIndex payload = do
           , "). If you want to publish documentation, please try again with a later compiler."
           ]
 
+      -- FIXME: Take this out such that it downloads the package source from the
+      -- registry as a tarball and determines a single compiler version such that
+      -- this block can be run in parallel / forked.
+      --
+      -- MAKE SURE that we update the legacy importer accordingly — run all the
+      -- compiler jobs after publishing a package and before publishing the next
       Comment.comment "Determining all valid compiler versions for this package..."
       allCompilers <- PursVersions.pursVersions
       { failed: invalidCompilers, succeeded: validCompilers } <- case NonEmptyArray.fromFoldable $ NonEmptyArray.delete payload.compiler allCompilers of

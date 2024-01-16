@@ -62,6 +62,7 @@ newJobId = liftEffect do
   id <- UUID.make
   pure $ JobId $ UUID.toString id
 
+-- FIXME: Add package set updates route, uses a different jobs table
 router :: ServerEnv -> Request Route -> Run ServerEffects Response
 router env { route, method, body } = HTTPurple.usingCont case route, method of
   Publish, Post -> do
@@ -70,6 +71,9 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
     forkPipelineJob publish.name publish.ref PublishJob \jobId -> do
       Log.info $ "Received Publish request, job id: " <> unwrap jobId
       API.publish Nothing publish
+  -- FIXME: Fork remaining compilers here (requires that 'publish' returns
+  -- them or that we can determine it another way such as just fork for all
+  -- compilers).
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
@@ -113,9 +117,15 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
   _, _ ->
     HTTPurple.notFound
   where
+  -- FIXME: This function should accept any of the API payloads we support,
+  -- and use that with the db to check if that payload is currently running.
+  -- ie. make generic, not just 'publish'
   forkPipelineJob :: PackageName -> String -> JobType -> (JobId -> Run _ Unit) -> ContT Response (Run _) Response
   forkPipelineJob packageName ref jobType action = do
     -- First thing we check if the package already has a pipeline in progress
+
+    -- FIXME: Condition should be for the same payload, not just package job
+    -- FIXME: Don't start the job, just put it in the db
     lift (Db.runningJobForPackage packageName) >>= case _ of
       -- If yes, we error out if it's the wrong kind, return it if it's the same type
       Right { jobId, jobType: runningJobType } -> do
@@ -132,9 +142,11 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
         lift $ Db.createJob newJob
         let newEnv = env { jobId = Just jobId }
 
+        -- FIXME: Insead of forking a job arbitrarily, put into a queue
         _fiber <- liftAff $ Aff.forkAff $ Aff.attempt $ do
           result <- runEffects newEnv (action jobId)
           case result of
+            -- FIXME: Take a look at this
             Left _ -> pure unit
             Right _ -> do
               finishedAt <- nowUTC
@@ -226,6 +238,11 @@ runServer env router' request = do
     Left error -> HTTPurple.badRequest (Aff.message error)
     Right response -> pure response
 
+-- FIXME: Add a queue loop that checks the various jobs databases to see if there
+-- are any 'created' & not 'started' & not 'finished' entries. Look in this order:
+--  - package jobs
+--  - package set jobs
+--  - compiler matrix jobs
 main :: Effect Unit
 main = do
   createServerEnv # Aff.runAff_ case _ of

@@ -24,10 +24,12 @@ import Routing.Duplex as Routing
 import Routing.Duplex.Generic as RoutingG
 import Routing.Duplex.Generic.Syntax ((/), (?))
 
+-- FIXME: Add 'package sets' publish
 data Route
   = Publish
   | Unpublish
   | Transfer
+  -- | PackageSetUpdate
   | Jobs
   | Job JobId { level :: Maybe LogLevel, since :: Maybe DateTime }
   | Status
@@ -96,7 +98,8 @@ derive instance Newtype JobId _
 jobIdCodec :: JsonCodec JobId
 jobIdCodec = Profunctor.wrapIso JobId CA.string
 
-data JobType = PublishJob | UnpublishJob | TransferJob
+-- FIXME: Add 'package sets' publish
+data JobType = PublishJob | UnpublishJob | TransferJob -- | PackageSetUpdateJob
 
 derive instance Eq JobType
 
