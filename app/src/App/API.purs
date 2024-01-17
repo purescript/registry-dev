@@ -420,6 +420,11 @@ publish maybeLegacyIndex payload = do
   let packageSpagoYaml = Path.concat [ downloadedPackage, "spago.yaml" ]
   hasSpagoYaml <- Run.liftEffect $ FS.Sync.exists packageSpagoYaml
 
+  address <- case existingMetadata.location of
+    Git _ -> Except.throw "Packages can only come from GitHub for now."
+    GitHub { subdir: Just subdir } -> Except.throw $ "Packages cannot yet use the 'subdir' key, but this package specifies a " <> subdir <> " subdir."
+    GitHub { owner, repo } -> pure { owner, repo }
+
   Manifest receivedManifest <-
     if hadPursJson then
       Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 packagePursJson)) >>= case _ of
@@ -454,10 +459,6 @@ publish maybeLegacyIndex payload = do
 
     else do
       Comment.comment $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
-      address <- case existingMetadata.location of
-        Git _ -> Except.throw "Legacy packages can only come from GitHub."
-        GitHub { subdir: Just subdir } -> Except.throw $ "Legacy packages cannot use the 'subdir' key, but this package specifies a " <> subdir <> " subdir."
-        GitHub { owner, repo } -> pure { owner, repo }
 
       version <- case LenientVersion.parse payload.ref of
         Left _ -> Except.throw $ "The provided ref " <> payload.ref <> " is not a version of the form X.Y.Z or vX.Y.Z, so it cannot be used."
