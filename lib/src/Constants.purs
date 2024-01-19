@@ -41,6 +41,11 @@ ignoredDirectories =
   , "CVS"
   , ".svn"
   , ".hg"
+  -- Additional VCS directories
+  , "_darcs"
+  , ".fossil"
+  , ".jj"
+  , ".pijul"
   ]
 
 ignoredFiles :: Array FilePath
