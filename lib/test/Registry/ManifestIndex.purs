@@ -75,8 +75,8 @@ spec = do
       manifest1 = unsafeManifest "prelude" "1.0.0" []
       manifest2 = Newtype.over Manifest (_ { description = Just "My prelude description." }) manifest1
       index =
-        ManifestIndex.insert manifest1 ManifestIndex.empty
-          >>= ManifestIndex.insert manifest2
+        ManifestIndex.insert ManifestIndex.ConsiderRanges manifest1 ManifestIndex.empty
+          >>= ManifestIndex.insert ManifestIndex.ConsiderRanges manifest2
 
     case index of
       Left errors ->
@@ -104,17 +104,20 @@ spec = do
       tinyIndex :: Array Manifest
       tinyIndex = [ unsafeManifest "prelude" "1.0.0" [] ]
 
-    testIndex { satisfied: tinyIndex, unsatisfied: [] }
+    testIndex ManifestIndex.ConsiderRanges { satisfied: tinyIndex, unsatisfied: [] }
 
   Spec.it "Fails to parse non-self-contained index" do
     let
-      satisfied :: Array Manifest
-      satisfied =
+      satisfiedStrict :: Array Manifest
+      satisfiedStrict =
         [ unsafeManifest "prelude" "1.0.0" []
         , unsafeManifest "control" "1.0.0" [ Tuple "prelude" ">=1.0.0 <2.0.0" ]
-        -- It is OK for the version bounds to not exist, although we may
-        -- choose to make this more strict in the future.
-        , unsafeManifest "control" "2.0.0" [ Tuple "prelude" ">=2.0.0 <3.0.0" ]
+        ]
+
+      -- Packages with dependencies that exist, but not at the proper bounds.
+      satisfiedLoose :: Array Manifest
+      satisfiedLoose = satisfiedStrict <>
+        [ unsafeManifest "control" "2.0.0" [ Tuple "prelude" ">=2.0.0 <3.0.0" ]
         ]
 
       unsatisfied :: Array Manifest
@@ -122,7 +125,8 @@ spec = do
         [ unsafeManifest "control" "3.0.0" [ Tuple "tuples" ">=2.0.0 <3.0.0" ]
         ]
 
-    testIndex { satisfied, unsatisfied }
+    testIndex ManifestIndex.ConsiderRanges { satisfied: satisfiedStrict, unsatisfied }
+    testIndex ManifestIndex.IgnoreRanges { satisfied: satisfiedLoose, unsatisfied }
 
   Spec.it "Parses cyclical but acceptable index" do
     let
@@ -134,7 +138,7 @@ spec = do
         , unsafeManifest "control" "2.0.0" []
         ]
 
-    testIndex { satisfied, unsatisfied: [] }
+    testIndex ManifestIndex.ConsiderRanges { satisfied, unsatisfied: [] }
 
   Spec.it "Does not parse unacceptable cyclical index" do
     let
@@ -144,7 +148,7 @@ spec = do
         , unsafeManifest "control" "1.0.0" [ Tuple "prelude" ">=1.0.0 <2.0.0" ]
         ]
 
-    testIndex { satisfied: [], unsatisfied }
+    testIndex ManifestIndex.ConsiderRanges { satisfied: [], unsatisfied }
 
 contextEntry :: String
 contextEntry =
@@ -156,9 +160,10 @@ contextEntry =
 testIndex
   :: forall m
    . MonadThrow Error m
-  => { satisfied :: Array Manifest, unsatisfied :: Array Manifest }
+  => ManifestIndex.IncludeRanges
+  -> { satisfied :: Array Manifest, unsatisfied :: Array Manifest }
   -> m Unit
-testIndex { satisfied, unsatisfied } = case ManifestIndex.maximalIndex (Set.fromFoldable (Array.fold [ satisfied, unsatisfied ])) of
+testIndex consider { satisfied, unsatisfied } = case ManifestIndex.maximalIndex consider (Set.fromFoldable (Array.fold [ satisfied, unsatisfied ])) of
   Tuple errors result -> do
     let
       { fail: shouldHaveErrors } =

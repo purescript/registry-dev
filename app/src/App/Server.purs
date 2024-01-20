@@ -19,6 +19,7 @@ import Node.Process as Process
 import Record as Record
 import Registry.API.V1 (JobId(..), JobType(..), LogLevel(..), Route(..))
 import Registry.API.V1 as V1
+import Registry.App.API (COMPILER_CACHE, _compilerCache)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (CacheRef)
@@ -68,7 +69,7 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
     lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
     forkPipelineJob publish.name publish.ref PublishJob \jobId -> do
       Log.info $ "Received Publish request, job id: " <> unwrap jobId
-      API.publish CurrentPackage publish
+      API.publish Nothing publish
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
@@ -216,7 +217,7 @@ createServerEnv = do
     , jobId: Nothing
     }
 
-type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + REGISTRY + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + REGISTRY + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMPILER_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer :: ServerEnv -> (ServerEnv -> Request Route -> Run ServerEffects Response) -> Request Route -> Aff Response
 runServer env router' request = do
@@ -318,9 +319,10 @@ runEffects env operation = Aff.attempt do
         )
     # Pursuit.interpret (Pursuit.handleAff env.vars.token)
     # Storage.interpret (Storage.handleS3 { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }, cache: env.cacheDir })
-    # Source.interpret Source.handle
+    # Source.interpret (Source.handle Source.Recent)
     # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache: env.cacheDir, ref: env.githubCacheRef })
     # Cache.interpret _legacyCache (Cache.handleMemoryFs { cache: env.cacheDir, ref: env.legacyCacheRef })
+    # Cache.interpret _compilerCache (Cache.handleFs env.cacheDir)
     # Except.catch
         ( \msg -> do
             finishedAt <- nowUTC

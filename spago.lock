@@ -150,7 +150,6 @@ workspace:
         - transformers
         - tuples
       test_dependencies:
-        - argonaut-core
         - exceptions
         - node-child-process
         - node-execa

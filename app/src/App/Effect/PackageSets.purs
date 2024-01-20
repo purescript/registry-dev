@@ -428,7 +428,7 @@ validatePackageSet (PackageSet set) = do
     -- We can now attempt to produce a self-contained manifest index from the
     -- collected manifests. If this fails then the package set is not
     -- self-contained.
-    Tuple unsatisfied _ = ManifestIndex.maximalIndex (Set.fromFoldable success)
+    Tuple unsatisfied _ = ManifestIndex.maximalIndex ManifestIndex.IgnoreRanges (Set.fromFoldable success)
 
   -- Otherwise, we can check if we were able to produce an index from the
   -- package set alone, without errors.

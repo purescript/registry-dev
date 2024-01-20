@@ -14,6 +14,7 @@ let PublishedMetadata =
       { hash : Sha256
       , bytes : Natural
       , publishedTime : ISO8601String
+      , compilers : < Single : Version | Many : List Version >
       }
 
 let UnpublishedMetadata =

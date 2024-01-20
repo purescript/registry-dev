@@ -12,6 +12,16 @@ import Node.ChildProcess.Types (Exit(..))
 import Node.Library.Execa as Execa
 import Registry.Version as Version
 
+-- | The minimum compiler version that supports 'purs graph'
+minPursGraph :: Version
+minPursGraph = unsafeFromRight (Version.parse "0.14.0")
+
+minPursuitPublish :: Version
+minPursuitPublish = unsafeFromRight (Version.parse "0.14.7")
+
+minLanguageCSTParser :: Version
+minLanguageCSTParser = unsafeFromRight (Version.parse "0.15.0")
+
 -- | Call a specific version of the PureScript compiler
 callCompiler_ :: { version :: Maybe Version, command :: PursCommand, cwd :: Maybe FilePath } -> Aff Unit
 callCompiler_ = void <<< callCompiler
@@ -22,6 +32,22 @@ data CompilerFailure
   | MissingCompiler
 
 derive instance Eq CompilerFailure
+derive instance Ord CompilerFailure
+
+compilerFailureCodec :: JsonCodec CompilerFailure
+compilerFailureCodec = CA.codec' decode encode
+  where
+  decode :: Json -> Either JsonDecodeError CompilerFailure
+  decode json =
+    map CompilationError (CA.decode (CA.array compilerErrorCodec) json)
+      <|> map UnknownError (CA.decode CA.string json)
+      <|> map (const MissingCompiler) (CA.decode CA.null json)
+
+  encode :: CompilerFailure -> Json
+  encode = case _ of
+    CompilationError errors -> CA.encode (CA.array compilerErrorCodec) errors
+    UnknownError message -> CA.encode CA.string message
+    MissingCompiler -> CA.encode CA.null unit
 
 type CompilerError =
   { position :: SourcePosition

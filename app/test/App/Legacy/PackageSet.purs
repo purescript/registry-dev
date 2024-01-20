@@ -2,6 +2,7 @@ module Test.Registry.App.Legacy.PackageSet (spec) where
 
 import Registry.App.Prelude
 
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime (DateTime(..))
 import Data.Either as Either
 import Data.Map as Map
@@ -96,7 +97,7 @@ convertedPackageSet =
     Left err -> unsafeCrashWith err
     Right value -> value
   where
-  index = unsafeFromRight $ ManifestIndex.fromSet $ Set.fromFoldable
+  index = unsafeFromRight $ ManifestIndex.fromSet ManifestIndex.ConsiderRanges $ Set.fromFoldable
     [ mkManifest assert [ console, effect, prelude ]
     , mkManifest console [ effect, prelude ]
     , mkManifest effect [ prelude ]
@@ -208,6 +209,7 @@ unsafeMetadataEntry (Tuple name version) = do
       { ref: LenientVersion.raw version
       , hash: unsafeFromRight $ Sha256.parse "sha256-gb24ZRec6mgR8TFBVR2eIh5vsMdhuL+zK9VKjWP74Cw="
       , bytes: 0.0
+      , compilers: Right (NonEmptyArray.singleton (Utils.unsafeVersion "0.15.2"))
       , publishedTime: DateTime (Utils.unsafeDate "2022-07-07") bottom
       }
 

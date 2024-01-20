@@ -6,6 +6,7 @@ import Registry.App.Prelude
 import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.JSDate as JSDate
+import Data.String as String
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Effect.Now as Now
@@ -20,6 +21,7 @@ import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.Types (RawVersion(..))
+import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tar as Foreign.Tar
 import Registry.Location as Location
@@ -28,8 +30,15 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
+-- | Packages can be published via the legacy importer or a user via the API. We
+-- | determine some information differently in these cases, such as the time the
+-- | package was published.
+data ImportType = Old | Recent
+
+derive instance Eq ImportType
+
 -- | An effect for fetching package sources
-data Source a = Fetch PackageSource FilePath Location String (Either String FetchedSource -> a)
+data Source a = Fetch FilePath Location String (Either String FetchedSource -> a)
 
 derive instance Functor Source
 
@@ -41,17 +50,17 @@ _source = Proxy
 type FetchedSource = { path :: FilePath, published :: DateTime }
 
 -- | Fetch the provided location to the provided destination path.
-fetch :: forall r. PackageSource -> FilePath -> Location -> String -> Run (SOURCE + EXCEPT String + r) FetchedSource
-fetch source destination location ref = Except.rethrow =<< Run.lift _source (Fetch source destination location ref identity)
+fetch :: forall r. FilePath -> Location -> String -> Run (SOURCE + EXCEPT String + r) FetchedSource
+fetch destination location ref = Except.rethrow =<< Run.lift _source (Fetch destination location ref identity)
 
 -- | Run the SOURCE effect given a handler.
 interpret :: forall r a. (Source ~> Run r) -> Run (SOURCE + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _source handler Run.send)
 
 -- | Handle the SOURCE effect by downloading package source to the file system.
-handle :: forall r a. Source a -> Run (GITHUB + LOG + AFF + EFFECT + r) a
-handle = case _ of
-  Fetch source destination location ref reply -> map (map reply) Except.runExcept do
+handle :: forall r a. ImportType -> Source a -> Run (GITHUB + LOG + AFF + EFFECT + r) a
+handle importType = case _ of
+  Fetch destination location ref reply -> map (map reply) Except.runExcept do
     Log.info $ "Fetching " <> printJson Location.codec location
     case location of
       Git _ -> do
@@ -73,7 +82,7 @@ handle = case _ of
             Log.debug $ "Using legacy Git clone to fetch package source at tag: " <> show { owner, repo, ref }
 
             let
-              repoDir = Path.concat [ destination, repo ]
+              repoDir = Path.concat [ destination, repo <> "-" <> ref ]
 
               clonePackageAtTag = do
                 let url = Array.fold [ "https://github.com/", owner, "/", repo ]
@@ -83,24 +92,38 @@ handle = case _ of
                   Failed err -> Aff.throwError $ Aff.error err
                   Succeeded _ -> pure unit
 
+              alreadyExists = String.contains (String.Pattern "already exists and is not an empty directory")
+
             Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
-              Left error -> do
-                Log.error $ "Failed to clone git tag: " <> Aff.message error
-                Except.throw $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
               Right _ -> Log.debug $ "Cloned package source to " <> repoDir
+              Left error -> do
+                Log.error $ "Failed to clone git tag: " <> Aff.message error <> ", retrying..."
+                when (alreadyExists (Aff.message error)) $ FS.Extra.remove repoDir
+                Run.liftAff (Aff.delay (Aff.Milliseconds 1000.0))
+                Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
+                  Right _ -> Log.debug $ "Cloned package source to " <> repoDir
+                  Left error2 -> do
+                    Log.error $ "Failed to clone git tag (attempt 2): " <> Aff.message error2 <> ", retrying..."
+                    when (alreadyExists (Aff.message error)) $ FS.Extra.remove repoDir
+                    Run.liftAff (Aff.delay (Aff.Milliseconds 1000.0))
+                    Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
+                      Right _ -> Log.debug $ "Cloned package source to " <> repoDir
+                      Left error3 -> do
+                        Log.error $ "Failed to clone git tag (attempt 3): " <> Aff.message error3
+                        Except.throw $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
 
             Log.debug $ "Getting published time..."
 
             let
-              getRefTime = case source of
-                LegacyPackage -> do
+              getRefTime = case importType of
+                Old -> do
                   timestamp <- Except.rethrow =<< Run.liftAff (Git.gitCLI [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir))
                   jsDate <- Run.liftEffect $ JSDate.parse timestamp
                   dateTime <- case JSDate.toDateTime jsDate of
                     Nothing -> Except.throw $ "Could not parse timestamp of git ref to a datetime given timestamp " <> timestamp <> " and parsed js date " <> JSDate.toUTCString jsDate
                     Just parsed -> pure parsed
                   pure dateTime
-                CurrentPackage ->
+                Recent ->
                   Run.liftEffect Now.nowDateTime
 
             -- Cloning will result in the `repo` name as the directory name
