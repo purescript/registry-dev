@@ -325,34 +325,41 @@
           # This script verifies that
           # - all the dhall we have in the repo actually compiles
           # - all the example manifests actually typecheck as Manifests
-          verify-dhall = pkgs.stdenv.mkDerivation rec {
-            name = "verify-dhall";
-            src = ./.;
-            inherit DHALL_PRELUDE DHALL_TYPES;
-            buildInputs = [ pkgs.dhall pkgs.dhall-json ];
-            buildPhase = ''
-              set -euo pipefail
+          verify-dhall = pkgs.runCommand "verify-dhall" {
+            src = fileset.toSource {
+              root = ./.;
+              fileset = fileset.unions [ ./types ./lib/fixtures/manifests ];
+            };
+            env = { inherit DHALL_PRELUDE; };
+            buildInputs = with pkgs; [ dhall dhall-json parallel ];
+          } ''
+            set -euo pipefail
 
-              mkdir -p cache/dhall
-              export XDG_CACHE_HOME="$PWD/cache"
+            mkdir -p cache/dhall
+            export XDG_CACHE_HOME="$PWD/cache"
 
-              for FILE in $(find ./types/v1 -iname "*.dhall")
-              do
-                echo "Typechecking ''${FILE}";
-                dhall <<< "./''${FILE}" > /dev/null
-              done
+            find $src/types/v1 -iname "*.dhall" \
+              | parallel ${
+                lib.strings.escapeShellArgs [
+                  "--will-cite"
+                  ''
+                    echo "Typechecking {}"
+                    dhall <<< {} | tee $out
+                  ''
+                ]
+              }
 
-              for FILE in $(find ./lib/fixtures/manifests -iname "*.json")
-              do
-                echo "Conforming ''${FILE} to the Manifest type"
-                cat "''${FILE}" | json-to-dhall --records-loose --unions-strict "./types/v1/Manifest.dhall" > /dev/null
-              done
-            '';
-
-            installPhase = ''
-              mkdir $out
-            '';
-          };
+            find $src/lib/fixtures/manifests -iname "*.json" \
+              | parallel ${
+                lib.strings.escapeShellArgs [
+                  "--will-cite"
+                  ''
+                    echo "Conforming {} to the Manifest type"
+                    json-to-dhall --plain --records-loose --unions-strict --file {} $src/types/v1/Manifest.dhall | tee --append $out
+                  ''
+                ]
+              }
+          '';
 
           # This is an integration test that will run the server and allow us to
           # test it by sending API requests. You can run only this check with:
