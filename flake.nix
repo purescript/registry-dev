@@ -311,18 +311,16 @@
             nixfmt --check $(find $src -type f) | tee $out
           '';
 
-          check-format = pkgs.stdenv.mkDerivation {
-            name = "check-format";
-            src = ./.;
-            buildInputs = [ pkgs.purs-tidy ];
-            buildPhase = ''
-              set -e
-              purs-tidy check app foreign lib scripts
-            '';
-            installPhase = ''
-              mkdir $out
-            '';
-          };
+          purescript-format = pkgs.runCommand "purescript-format-check" {
+            src = fileset.toSource {
+              root = ./.;
+              fileset = pureScriptFileset;
+            };
+            buildInputs = with pkgs; [ purs-tidy ];
+          } ''
+            set -euo pipefail
+            purs-tidy check $src | tee $out
+          '';
 
           # This script verifies that
           # - all the dhall we have in the repo actually compiles
