@@ -23,10 +23,27 @@
     slimlock,
     ...
   }: let
+    inherit (nixpkgs.lib) fileset;
+
     supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
 
     # Users authorized to deploy to the registry.
     deployers = import ./nix/deployers.nix;
+
+    pureScriptFileset = fileset.intersection (fileset.gitTracked ./.)
+      (fileset.unions [
+        ./app
+        (fileset.maybeMissing ./check)
+        ./foreign
+        ./lib
+        ./scripts
+        ./spago.lock
+        ./spago.yaml
+      ]);
+
+    npmFileset = fileset.intersection (fileset.gitTracked ./.)
+      (fileset.fileFilter (file:
+        file.name == "package.json" || file.name == "package-lock.json") ./.);
 
     # We can't import from remote urls in dhall when running in CI or other
     # network-restricted environments, so we fetch the repository and use the
@@ -117,13 +134,19 @@
       # Packages associated with the registry, ie. in this repository.
       registry = let
         spago-lock = prev.purix.buildSpagoLock {
-          src = ./.;
+          src = fileset.toSource {
+            root = ./.;
+            fileset = pureScriptFileset;
+          };
           corefn = true;
         };
 
         package-lock =
           (prev.slimlock.buildPackageLock {
-            src = ./.;
+            src = fileset.toSource {
+              root = ./.;
+              fileset = npmFileset;
+            };
             omit = ["dev" "peer"];
           })
           # better-sqlite3 relies on node-gyp and python3 in the build environment, so
