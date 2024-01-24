@@ -208,6 +208,8 @@
         ];
       };
 
+      inherit (pkgs) lib;
+
       # We can't run 'spago test' in our flake checks because it tries to
       # write to a cache and I can't figure out how to disable it. Instead
       # we supply it as a shell script.
@@ -300,6 +302,21 @@
         };
 
       checks = {
+        nix-format = pkgs.runCommand "nix-format"
+          {
+            src = fileset.toSource {
+              root = ./.;
+              fileset = fileset.fileFilter (file: file.hasExt "nix") ./.;
+            };
+            buildInputs = with pkgs; [
+              nixfmt
+            ];
+          }
+          ''
+            set -euo pipefail
+            nixfmt --check $(find $src -type f) | tee $out
+          '';
+
         check-format = pkgs.stdenv.mkDerivation {
           name = "check-format";
           src = ./.;
