@@ -1,34 +1,17 @@
-{
-  makeWrapper,
-  lib,
-  stdenv,
-  purix,
-  purs-backend-es,
-  esbuild,
-  writeText,
-  nodejs,
-  compilers,
-  purs-versions,
-  dhall,
-  dhall-json,
-  git,
-  git-lfs,
-  licensee,
-  coreutils,
-  gzip,
-  gnutar,
-  # from the registry at the top level
-  spago-lock,
-  package-lock,
-}: let
+{ makeWrapper, lib, stdenv, purix, purs-backend-es, esbuild, writeText, nodejs
+, compilers, purs-versions, dhall, dhall-json, git, git-lfs, licensee, coreutils
+, gzip, gnutar
+# from the registry at the top level
+, spago-lock, package-lock }:
+let
   # Since both the importer and the server share the same build process, we
   # don't need to build them twice separately and can share an optimized output
   # directory.
   shared = stdenv.mkDerivation {
     name = "registry-app-shared";
     src = ./.;
-    phases = ["buildPhase" "installPhase"];
-    nativeBuildInputs = [purs-backend-es];
+    phases = [ "buildPhase" "installPhase" ];
+    nativeBuildInputs = [ purs-backend-es ];
     buildPhase = ''
       ln -s ${package-lock}/js/node_modules .
       cp -r ${spago-lock.registry-app}/output .
@@ -45,8 +28,8 @@ in {
     name = "registry-server";
     src = ./.;
     database = ../db;
-    nativeBuildInputs = [esbuild makeWrapper];
-    buildInputs = [nodejs];
+    nativeBuildInputs = [ esbuild makeWrapper ];
+    buildInputs = [ nodejs ];
     entrypoint = writeText "entrypoint.js" ''
       import { main } from "./output/Registry.App.Server";
       main();
@@ -74,15 +57,28 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git git-lfs coreutils gzip gnutar]} \
+        --set PATH ${
+          lib.makeBinPath [
+            compilers
+            purs-versions
+            dhall
+            dhall-json
+            licensee
+            git
+            git-lfs
+            coreutils
+            gzip
+            gnutar
+          ]
+        } \
     '';
   };
 
   github-importer = stdenv.mkDerivation rec {
     name = "registry-github-importer";
     src = ./.;
-    nativeBuildInputs = [esbuild makeWrapper];
-    buildInputs = [nodejs];
+    nativeBuildInputs = [ esbuild makeWrapper ];
+    buildInputs = [ nodejs ];
     entrypoint = writeText "entrypoint.js" ''
       import { main } from "./output/Registry.App.GitHubIssue";
       main();
@@ -107,7 +103,20 @@ in {
     '';
     postFixup = ''
       wrapProgram $out/bin/${name} \
-        --set PATH ${lib.makeBinPath [compilers purs-versions dhall dhall-json licensee git git-lfs coreutils gzip gnutar]} \
+        --set PATH ${
+          lib.makeBinPath [
+            compilers
+            purs-versions
+            dhall
+            dhall-json
+            licensee
+            git
+            git-lfs
+            coreutils
+            gzip
+            gnutar
+          ]
+        } \
     '';
   };
 }
