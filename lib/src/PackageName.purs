@@ -116,7 +116,7 @@ parser = do
 
   if String.null name then
     Parsing.fail "Package name cannot be empty"
-  else if String.length name > 50 then
-    Parsing.fail "Package name cannot be longer than 50 characters"
+  else if String.length name > 150 then
+    Parsing.fail "Package name cannot be longer than 150 characters"
   else
     pure $ PackageName name
