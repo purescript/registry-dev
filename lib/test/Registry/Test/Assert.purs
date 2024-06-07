@@ -2,18 +2,17 @@ module Registry.Test.Assert where
 
 import Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Control.Monad.Error.Class (class MonadThrow)
-import Data.Argonaut.Core as Argonaut
-import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Bifunctor (lmap)
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
+import Data.Codec.JSON as CJ
 import Data.Either (Either(..))
 import Data.Foldable (class Foldable)
 import Data.Foldable as Foldable
 import Data.String as String
 import Effect.Exception (Error)
+import JSON as JSON
 import Registry.Test.Utils as Utils
 import Test.Spec.Assertions (AnyShow(..))
 import Test.Spec.Assertions as Assertions
@@ -51,11 +50,11 @@ shouldNotSatisfy a predicate =
 
 type Fixture = { label :: String, value :: String }
 
-shouldRoundTrip :: forall m a. MonadThrow Error m => String -> JsonCodec a -> Array Fixture -> m Unit
+shouldRoundTrip :: forall m a. MonadThrow Error m => String -> CJ.Codec a -> Array Fixture -> m Unit
 shouldRoundTrip type_ codec fixtures = do
   let
     parseFixture { label, value } =
-      case lmap CA.printJsonDecodeError <<< CA.decode codec =<< Argonaut.Parser.jsonParser value of
+      case lmap CJ.DecodeError.print <<< CJ.decode codec =<< JSON.parse value of
         Left error -> Left { label, input: value, error }
         Right result -> Right { label, input: value, result }
 
@@ -71,7 +70,7 @@ shouldRoundTrip type_ codec fixtures = do
 
   let
     roundtrip = fixtureParseResult.success <#> \fields -> do
-      let printed = Argonaut.stringifyWithIndent 2 $ CA.encode codec fields.result
+      let printed = JSON.printIndented $ CJ.encode codec fields.result
       let input = String.trim fields.input
       if input == printed then Right unit else Left { label: fields.label, input, printed }
 

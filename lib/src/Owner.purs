@@ -11,9 +11,8 @@ module Registry.Owner
 
 import Prelude
 
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Record as CJ.Record
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Profunctor as Profunctor
@@ -30,9 +29,9 @@ derive newtype instance Eq Owner
 
 -- | A codec for encoding and decoding an `Owner` as JSON. Represented as a JSON
 -- | object.
-codec :: JsonCodec Owner
-codec = Profunctor.wrapIso Owner $ CA.Record.object "Owner"
-  { id: CA.Record.optional CA.string
-  , keytype: CA.string
-  , public: CA.string
+codec :: CJ.Codec Owner
+codec = Profunctor.wrapIso Owner $ CJ.named "Owner" $ CJ.Record.object
+  { id: CJ.Record.optional CJ.string
+  , keytype: CJ.string
+  , public: CJ.string
   }

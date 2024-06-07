@@ -3,15 +3,16 @@ module Registry.App.Effect.Pursuit where
 
 import Registry.App.Prelude
 
-import Data.Argonaut.Core as Argonaut
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
-import Data.Codec.Argonaut as CA
+import Data.Codec.JSON as CJ
 import Data.HTTP.Method as Method
 import Data.Map as Map
 import Data.Profunctor as Profunctor
 import Effect.Exception as Exception
 import Fetch.Retry as Fetch
 import Foreign (unsafeFromForeign)
+import JSON as JSON
 import Registry.App.Effect.Env (RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log (LOG)
@@ -27,7 +28,7 @@ import Run as Run
 
 -- | An effect for interacting with Pursuit
 data Pursuit a
-  = Publish Json (Either String Unit -> a)
+  = Publish JSON (Either String Unit -> a)
   | GetPublishedVersions PackageName (Either String (Map Version URL) -> a)
 
 derive instance Functor Pursuit
@@ -38,7 +39,7 @@ _pursuit :: Proxy "pursuit"
 _pursuit = Proxy
 
 -- | Publish a package to Pursuit using the JSON output of the compiler.
-publish :: forall r. Json -> Run (PURSUIT + r) (Either String Unit)
+publish :: forall r. JSON -> Run (PURSUIT + r) (Either String Unit)
 publish json = Run.lift _pursuit (Publish json identity)
 
 -- | List published versions from Pursuit
@@ -63,7 +64,7 @@ handleAff (GitHubToken token) = case _ of
     Log.debug "Pushing to Pursuit..."
 
     result <- Run.liftAff do
-      gzipped <- Gzip.compress (Argonaut.stringify payload)
+      gzipped <- Gzip.compress (JSON.print payload)
       Fetch.withRetryRequest (Array.fold [ pursuitApiUrl, "/packages" ])
         { method: Method.POST
         , body: gzipped
@@ -119,9 +120,9 @@ handleAff (GitHubToken token) = case _ of
         pure $ reply $ Left $ "Received non-200 response from Pursuit: " <> show status
       Succeeded { text: textAff, json: jsonAff } -> do
         json <- Run.liftAff jsonAff
-        case CA.decode availableVersionsCodec (unsafeFromForeign json) of
+        case CJ.decode availableVersionsCodec (unsafeFromForeign json) of
           Left error -> do
-            let printed = CA.printJsonDecodeError error
+            let printed = CJ.DecodeError.print error
             text <- Run.liftAff textAff
             Log.error $ "Failed to decode body " <> text <> "\n with error: " <> printed
             pure $ reply $ Left $ "Received a response from Pursuit, but it could not be decoded:\n\n" <> printed <> "\n\ncc: @purescript/packaging"
@@ -132,8 +133,8 @@ handleAff (GitHubToken token) = case _ of
 -- The Pursuit /available-versions endpoint returns versions as a tuple of the
 -- version number and documentation URL, represented as a two-element array.
 -- [["2.0.0","https://pursuit.purescript.org/packages/purescript-halogen/2.0.0"]]
-availableVersionsCodec :: JsonCodec (Map Version URL)
-availableVersionsCodec = Profunctor.dimap toRep fromRep (CA.array (CA.array CA.string))
+availableVersionsCodec :: CJ.Codec (Map Version URL)
+availableVersionsCodec = Profunctor.dimap toRep fromRep (CJ.array (CJ.array CJ.string))
   where
   toRep = map (\(Tuple version url) -> [ Version.print version, url ]) <<< Map.toUnfoldable
   fromRep = Map.fromFoldable <<< Array.mapMaybe \array -> do

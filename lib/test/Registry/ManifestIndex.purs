@@ -3,11 +3,9 @@ module Test.Registry.ManifestIndex (spec) where
 import Prelude
 
 import Control.Monad.Error.Class (class MonadThrow)
-import Data.Argonaut.Core as Argonaut
 import Data.Array as Array
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Record as CJ.Record
 import Data.Either (Either(..))
 import Data.Int as Int
 import Data.List as List
@@ -23,6 +21,7 @@ import Data.String as String
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
 import Effect.Exception (Error)
+import JSON as JSON
 import Node.Path as Path
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Location (Location(..))
@@ -204,25 +203,25 @@ testSorted input = do
   let sorted = ManifestIndex.topologicalSort ManifestIndex.IgnoreRanges (Set.fromFoldable input)
   unless (input == sorted) do
     Assert.fail $ String.joinWith "\n"
-      [ Argonaut.stringifyWithIndent 2 $ CA.encode (CA.array manifestCodec') input
+      [ JSON.printIndented $ CJ.encode (CJ.array manifestCodec') input
       , " is not equal to "
-      , Argonaut.stringifyWithIndent 2 $ CA.encode (CA.array manifestCodec') sorted
+      , JSON.printIndented $ CJ.encode (CJ.array manifestCodec') sorted
       ]
 
 formatInsertErrors :: Map PackageName Range -> String
 formatInsertErrors errors = String.joinWith "\n"
   [ "Failed to insert. Failed to satisfy:"
-  , Argonaut.stringifyWithIndent 2 $ CA.encode (Internal.Codec.packageMap Range.codec) errors
+  , JSON.printIndented $ CJ.encode (Internal.Codec.packageMap Range.codec) errors
   ]
 
 formatIndex :: ManifestIndex -> String
 formatIndex =
-  Argonaut.stringifyWithIndent 2
-    <<< CA.encode (Internal.Codec.packageMap (Internal.Codec.versionMap manifestCodec'))
+  JSON.printIndented
+    <<< CJ.encode (Internal.Codec.packageMap (Internal.Codec.versionMap manifestCodec'))
     <<< ManifestIndex.toMap
 
-manifestCodec' :: JsonCodec Manifest
-manifestCodec' = Profunctor.dimap to from $ CA.Record.object "ManifestRep"
+manifestCodec' :: CJ.Codec Manifest
+manifestCodec' = Profunctor.dimap to from $ CJ.named "ManifestRep" $ CJ.Record.object
   { name: PackageName.codec
   , version: Version.codec
   , dependencies: Internal.Codec.packageMap Range.codec

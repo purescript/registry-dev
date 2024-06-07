@@ -2,10 +2,11 @@ module Test.Registry.App.CLI.Purs (spec) where
 
 import Registry.App.Prelude
 
-import Data.Argonaut.Parser as Argonaut.Parser
-import Data.Codec.Argonaut as CA
+import Codec.JSON.DecodeError as CJ.DecodeError
+import Data.Codec.JSON as CJ
 import Data.Foldable (traverse_)
 import Data.Map as Map
+import JSON as JSON
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.CLI.Purs (CompilerFailure(..))
@@ -69,10 +70,10 @@ spec = do
           CompilationError errs -> Purs.printCompilerErrors errs
           UnknownError str -> str
           MissingCompiler -> "MissingCompiler"
-        Right str -> case Argonaut.Parser.jsonParser str of
+        Right str -> case JSON.parse str of
           Left parseErr -> Assert.fail $ "Failed to parse output as JSON: " <> parseErr
-          Right json -> case CA.decode PursGraph.pursGraphCodec json of
-            Left decodeErr -> Assert.fail $ "Failed to decode JSON: " <> CA.printJsonDecodeError decodeErr
+          Right json -> case CJ.decode PursGraph.pursGraphCodec json of
+            Left decodeErr -> Assert.fail $ "Failed to decode JSON: " <> CJ.DecodeError.print decodeErr
             Right graph -> do
               let
                 expected = Map.fromFoldable

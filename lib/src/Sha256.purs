@@ -15,16 +15,19 @@ module Registry.Sha256
 
 import Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
+import Control.Monad.Except (Except, except)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
-import Data.Either (Either, hush)
+import Data.Codec as Codec
+import Data.Codec.JSON as CJ
+import Data.Either (Either)
 import Data.List.Lazy as List.Lazy
 import Data.String.CodeUnits as String.CodeUnits
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (class MonadEffect, liftEffect)
+import JSON (JSON)
 import Node.Buffer (Buffer)
 import Node.Buffer as Buffer
 import Node.Encoding (Encoding(..))
@@ -41,8 +44,14 @@ newtype Sha256 = Sha256 { sri :: String, hash :: String }
 derive instance Eq Sha256
 
 -- | A codec for encoding and decoding a `Sha256` as a JSON string
-codec :: JsonCodec Sha256
-codec = CA.prismaticCodec "Sha256" (hush <<< parse) print CA.string
+codec :: CJ.Codec Sha256
+codec = CJ.named "Sha256" $ Codec.codec' decode encode
+  where
+  decode :: JSON -> Except CJ.DecodeError Sha256
+  decode = except <<< lmap CJ.DecodeError.basic <<< parse <=< Codec.decode CJ.string
+
+  encode :: Sha256 -> JSON
+  encode = print >>> CJ.encode CJ.string
 
 -- | Print a Sha256 as a subresource integrity hash using sha256
 print :: Sha256 -> String

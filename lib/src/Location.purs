@@ -13,10 +13,9 @@ module Registry.Location
 import Prelude
 
 import Control.Alt ((<|>))
-import Data.Bifunctor (lmap)
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec as Codec
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Record as CJ.Record
 import Data.Maybe (Maybe)
 import Data.Profunctor as Profunctor
 import Node.Path (FilePath)
@@ -34,17 +33,16 @@ derive instance Eq Location
 -- | A codec for encoding and decoding a `Location` as JSON. To see how each
 -- | possible `Location` is represented, please see the relevant codec (for
 -- | example the `githubCodec` or `gitCodec` implementations).
-codec :: JsonCodec Location
-codec = CA.codec' decode encode
+codec :: CJ.Codec Location
+codec = CJ.named "Location" $ Codec.codec' decode encode
   where
-  decode json =
-    lmap (const (CA.TypeMismatch "Location")) do
-      map Git (CA.decode gitCodec json)
-      <|> map GitHub (CA.decode githubCodec json)
+  decode json = do
+    map Git (Codec.decode gitCodec json)
+      <|> map GitHub (Codec.decode githubCodec json)
 
   encode = case _ of
-    Git git -> CA.encode gitCodec git
-    GitHub github -> CA.encode githubCodec github
+    Git git -> CJ.encode gitCodec git
+    GitHub github -> CJ.encode githubCodec github
 
 -- | The location of a package within a GitHub repository
 type GitHubData =
@@ -56,11 +54,11 @@ type GitHubData =
 -- | Encode `GitHubData` as a Json object. The JSON representation of the GitHub
 -- | type uses 'githubOwner' and 'githubRepo', but in PureScript we use 'owner'
 -- | and 'repo' for convenience.
-githubCodec :: JsonCodec GitHubData
-githubCodec = Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "GitHub"
-  { githubOwner: CA.string
-  , githubRepo: CA.string
-  , subdir: CA.Record.optional CA.string
+githubCodec :: CJ.Codec GitHubData
+githubCodec = Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "GitHub" $ CJ.Record.object
+  { githubOwner: CJ.string
+  , githubRepo: CJ.string
+  , subdir: CJ.Record.optional CJ.string
   }
   where
   toJsonRep { owner, repo, subdir } = { githubOwner: owner, githubRepo: repo, subdir }
@@ -74,10 +72,10 @@ type GitData =
 
 -- | Encode `GitData` as a Json object. The JSON representation of the GitHub
 -- | type uses 'gitUrl' but in PureScript we use 'url' for convenience.
-gitCodec :: JsonCodec GitData
-gitCodec = Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Git"
-  { gitUrl: Internal.Codec.parsedString "GitUrl" Internal.Parsing.gitUrl
-  , subdir: CA.Record.optional CA.string
+gitCodec :: CJ.Codec GitData
+gitCodec = Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "Git" $ CJ.Record.object
+  { gitUrl: Internal.Codec.parsedString Internal.Parsing.gitUrl
+  , subdir: CJ.Record.optional CJ.string
   }
   where
   -- The JSON representation of the GitHub type uses 'gitUrl', but in PureScript

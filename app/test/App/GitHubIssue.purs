@@ -4,9 +4,10 @@ module Test.Registry.App.GitHubIssue
 
 import Registry.App.Prelude
 
-import Data.Argonaut.Parser as Argonaut.Parser
-import Data.Codec.Argonaut as CA
+import Codec.JSON.DecodeError as CJ.DecodeError
+import Data.Codec.JSON as CJ
 import Data.Map as Map
+import JSON as JSON
 import Node.Path as Path
 import Registry.App.GitHubIssue as GitHubIssue
 import Registry.Foreign.Octokit (IssueNumber(..))
@@ -81,7 +82,7 @@ decodeEventsToOps = do
 
       rawOperation = preludeAdditionString
 
-      parseJson = bimap CA.printJsonDecodeError Publish <<< CA.decode Operation.publishCodec <=< Argonaut.Parser.jsonParser
+      parseJson = bimap CJ.DecodeError.print Publish <<< CJ.decode Operation.publishCodec <=< JSON.parse
 
     parseJson (GitHubIssue.firstObject rawOperation) `Assert.shouldEqual` (Right operation)
 

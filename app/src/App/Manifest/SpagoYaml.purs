@@ -4,12 +4,13 @@ module Registry.App.Manifest.SpagoYaml where
 
 import Registry.App.Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Codec.Argonaut (JsonDecodeError(..))
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Common as CA.Common
-import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec as Codec
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
+import Data.Codec.JSON.Record as CJ.Record
 import Data.Map as Map
 import Data.Profunctor as Profunctor
 import Data.Set as Set
@@ -55,9 +56,9 @@ readSpagoYaml = liftAff <<< readYamlFile spagoYamlCodec
 -- | A spago.yaml config
 type SpagoYaml = { package :: Maybe PackageConfig }
 
-spagoYamlCodec :: JsonCodec SpagoYaml
-spagoYamlCodec = CA.Record.object "SpagoYaml"
-  { package: CA.Record.optional packageConfigCodec
+spagoYamlCodec :: CJ.Codec SpagoYaml
+spagoYamlCodec = CJ.named "SpagoYaml" $ CJ.Record.object
+  { package: CJ.Record.optional packageConfigCodec
   }
 
 type PackageConfig =
@@ -67,12 +68,12 @@ type PackageConfig =
   , publish :: Maybe PublishConfig
   }
 
-packageConfigCodec :: JsonCodec PackageConfig
-packageConfigCodec = CA.Record.object "PackageConfig"
+packageConfigCodec :: CJ.Codec PackageConfig
+packageConfigCodec = CJ.named "PackageConfig" $ CJ.Record.object
   { name: PackageName.codec
-  , description: CA.Record.optional CA.string
+  , description: CJ.Record.optional CJ.string
   , dependencies: dependenciesCodec
-  , publish: CA.Record.optional publishConfigCodec
+  , publish: CJ.Record.optional publishConfigCodec
   }
 
 type PublishConfig =
@@ -84,18 +85,18 @@ type PublishConfig =
   , owners :: Maybe (NonEmptyArray Owner)
   }
 
-publishConfigCodec :: JsonCodec PublishConfig
-publishConfigCodec = CA.Record.object "PublishConfig"
+publishConfigCodec :: CJ.Codec PublishConfig
+publishConfigCodec = CJ.named "PublishConfig" $ CJ.Record.object
   { version: Version.codec
   , license: License.codec
-  , location: CA.Record.optional Location.codec
-  , include: CA.Record.optional (CA.array CA.string)
-  , exclude: CA.Record.optional (CA.array CA.string)
-  , owners: CA.Record.optional (CA.Common.nonEmptyArray Owner.codec)
+  , location: CJ.Record.optional Location.codec
+  , include: CJ.Record.optional (CJ.array CJ.string)
+  , exclude: CJ.Record.optional (CJ.array CJ.string)
+  , owners: CJ.Record.optional (CJ.Common.nonEmptyArray Owner.codec)
   }
 
-dependenciesCodec :: JsonCodec (Map PackageName (Maybe SpagoRange))
-dependenciesCodec = Profunctor.dimap toJsonRep fromJsonRep $ CA.array dependencyCodec
+dependenciesCodec :: CJ.Codec (Map PackageName (Maybe SpagoRange))
+dependenciesCodec = Profunctor.dimap toJsonRep fromJsonRep $ CJ.array dependencyCodec
   where
   -- Dependencies are encoded as an array, where the array can contain either
   -- a package name only (no range), or a package name with "*" (unbounded range),
@@ -110,27 +111,27 @@ dependenciesCodec = Profunctor.dimap toJsonRep fromJsonRep $ CA.array dependency
 
   -- Pairs of package name & range are encoded as a singleton map in the conversion
   -- from YAML to JSON, so we decode the received map explicitly as a tuple.
-  singletonCodec :: JsonCodec (Tuple PackageName SpagoRange)
-  singletonCodec = CA.codec' decode encode
+  singletonCodec :: CJ.Codec (Tuple PackageName SpagoRange)
+  singletonCodec = Codec.codec' decode encode
     where
-    encode (Tuple name range) = CA.encode (Internal.Codec.packageMap spagoRangeCodec) (Map.singleton name range)
+    encode (Tuple name range) = CJ.encode (Internal.Codec.packageMap spagoRangeCodec) (Map.singleton name range)
     decode json = do
-      singleton <- CA.decode (Internal.Codec.packageMap spagoRangeCodec) json
-      case Map.toUnfoldable singleton of
+      singleton <- Codec.decode (Internal.Codec.packageMap spagoRangeCodec) json
+      except case Map.toUnfoldable singleton of
         [ Tuple name range ] -> Right (Tuple name range)
-        [] -> Left $ TypeMismatch "Expected a singleton map but received an empty one"
-        xs -> Left $ TypeMismatch $ "Expected a singleton map but received a map with " <> show (Array.length xs) <> " elements."
+        [] -> Left $ CJ.DecodeError.basic "Expected a singleton map but received an empty one"
+        xs -> Left $ CJ.DecodeError.basic $ "Expected a singleton map but received a map with " <> show (Array.length xs) <> " elements."
 
-  dependencyCodec :: JsonCodec (Either PackageName (Tuple PackageName SpagoRange))
-  dependencyCodec = CA.codec' decode encode
+  dependencyCodec :: CJ.Codec (Either PackageName (Tuple PackageName SpagoRange))
+  dependencyCodec = Codec.codec' decode encode
     where
     encode = case _ of
-      Left name -> CA.encode PackageName.codec name
-      Right tuple -> CA.encode singletonCodec tuple
+      Left name -> CJ.encode PackageName.codec name
+      Right tuple -> CJ.encode singletonCodec tuple
 
     decode json =
-      map Left (CA.decode PackageName.codec json)
-        <|> map Right (CA.decode singletonCodec json)
+      map Left (Codec.decode PackageName.codec json)
+        <|> map Right (Codec.decode singletonCodec json)
 
 convertSpagoDependencies :: Map PackageName (Maybe SpagoRange) -> Either (Set PackageName) (Map PackageName Range)
 convertSpagoDependencies dependencies = do
@@ -162,8 +163,8 @@ printSpagoRange = case _ of
   Unbounded -> "*"
   Bounded range -> Range.print range
 
-spagoRangeCodec :: JsonCodec SpagoRange
-spagoRangeCodec = CA.codec' decode encode
+spagoRangeCodec :: CJ.Codec SpagoRange
+spagoRangeCodec = CJ.named "SpagoRange" $ Codec.codec' decode encode
   where
-  encode = CA.encode CA.string <<< printSpagoRange
-  decode = CA.decode CA.string >=> parseSpagoRange >>> lmap (append "SpagoRange: " >>> CA.TypeMismatch)
+  encode = CJ.encode CJ.string <<< printSpagoRange
+  decode = Codec.decode CJ.string >=> (parseSpagoRange >>> lmap CJ.DecodeError.basic >>> except)

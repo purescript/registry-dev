@@ -5,12 +5,10 @@ package:
     version: 0.0.1
   dependencies:
     - aff
-    - argonaut-core
     - argparse-basic
     - arrays
-    - codec-argonaut
+    - codec-json
     - console
-    - control
     - datetime
     - either
     - exceptions
@@ -18,8 +16,10 @@ package:
     - filterable
     - foldable-traversable
     - formatters
+    - json
     - lists
     - newtype
+    - node-fs
     - node-path
     - node-process
     - now

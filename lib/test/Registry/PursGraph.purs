@@ -2,10 +2,10 @@ module Test.Registry.PursGraph (spec) where
 
 import Prelude
 
-import Data.Argonaut.Parser as Argonaut.Parser
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Codec.Argonaut as CA
+import Data.Codec.JSON as CJ
 import Data.Either (Either(..))
 import Data.Foldable (for_)
 import Data.Foldable as Foldable
@@ -15,6 +15,7 @@ import Data.Maybe as Maybe
 import Data.Set (Set)
 import Data.Set as Set
 import Data.String as String
+import JSON as JSON
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
@@ -29,10 +30,10 @@ import Test.Spec as Spec
 spec :: Spec.Spec Unit
 spec = do
   let
-    parse raw = case Argonaut.Parser.jsonParser raw of
+    parse raw = case JSON.parse raw of
       Left err -> Left $ "Failed to parse graph as JSON:\n\n" <> raw <> "\n\n  due to an error:\n\n" <> err
-      Right json -> case CA.decode PursGraph.pursGraphCodec json of
-        Left err -> Left $ "Failed to decode graph JSON:\n\n" <> CA.printJsonDecodeError err
+      Right json -> case CJ.decode PursGraph.pursGraphCodec json of
+        Left err -> Left $ "Failed to decode graph JSON:\n\n" <> CJ.DecodeError.print err
         Right result -> pure result
 
   Spec.it "type-equality (no deps)" do

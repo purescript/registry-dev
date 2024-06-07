@@ -6,15 +6,16 @@ package:
   dependencies:
     - aff
     - aff-promise
-    - argonaut-core
     - arrays
     - b64
     - bifunctors
-    - codec-argonaut
+    - codec
+    - codec-json
     - convertable-options
     - datetime
     - effect
     - either
+    - exceptions
     - fetch
     - filterable
     - foldable-traversable
@@ -23,6 +24,8 @@ package:
     - http-methods
     - integers
     - js-date
+    - js-fetch
+    - json
     - maybe
     - newtype
     - node-buffer
@@ -33,12 +36,15 @@ package:
     - profunctor
     - registry-lib
     - strings
+    - transformers
     - tuples
     - unsafe-coerce
     - variant
   test:
     main: Test.Foreign
     dependencies:
+      - node-child-process
+      - node-execa
       - node-fs
       - node-process
       - spec

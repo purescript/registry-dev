@@ -20,9 +20,8 @@ import Prelude
 
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Common as CA.Common
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
 import Data.Map (Map)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
@@ -72,15 +71,15 @@ instance Ord Manifest where
 -- | A codec for encoding and decoding a `Manifest` as JSON. Represented as a
 -- | JSON object. The implementation uses explicitly ordered keys instead of
 -- | record sugar.
-codec :: JsonCodec Manifest
-codec = Profunctor.wrapIso Manifest $ CA.object "Manifest"
-  $ CA.recordProp (Proxy :: _ "name") PackageName.codec
-  $ CA.recordProp (Proxy :: _ "version") Version.codec
-  $ CA.recordProp (Proxy :: _ "license") License.codec
-  $ CA.recordPropOptional (Proxy :: _ "description") (Internal.Codec.limitedString 300)
-  $ CA.recordProp (Proxy :: _ "location") Location.codec
-  $ CA.recordPropOptional (Proxy :: _ "owners") (CA.Common.nonEmptyArray Owner.codec)
-  $ CA.recordPropOptional (Proxy :: _ "includeFiles") (CA.Common.nonEmptyArray CA.Common.nonEmptyString)
-  $ CA.recordPropOptional (Proxy :: _ "excludeFiles") (CA.Common.nonEmptyArray CA.Common.nonEmptyString)
-  $ CA.recordProp (Proxy :: _ "dependencies") (Internal.Codec.packageMap Range.codec)
-  $ CA.record
+codec :: CJ.Codec Manifest
+codec = Profunctor.wrapIso Manifest $ CJ.named "Manifest" $ CJ.object
+  $ CJ.recordProp (Proxy :: _ "name") PackageName.codec
+  $ CJ.recordProp (Proxy :: _ "version") Version.codec
+  $ CJ.recordProp (Proxy :: _ "license") License.codec
+  $ CJ.recordPropOptional (Proxy :: _ "description") (Internal.Codec.limitedString 300)
+  $ CJ.recordProp (Proxy :: _ "location") Location.codec
+  $ CJ.recordPropOptional (Proxy :: _ "owners") (CJ.Common.nonEmptyArray Owner.codec)
+  $ CJ.recordPropOptional (Proxy :: _ "includeFiles") (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
+  $ CJ.recordPropOptional (Proxy :: _ "excludeFiles") (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
+  $ CJ.recordProp (Proxy :: _ "dependencies") (Internal.Codec.packageMap Range.codec)
+  $ CJ.record
