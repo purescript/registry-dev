@@ -14,8 +14,7 @@ module Registry.PackageSet
 
 import Prelude
 
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
+import Data.Codec.JSON as CJ
 import Data.DateTime (Date)
 import Data.Map (Map)
 import Data.Newtype (class Newtype)
@@ -41,10 +40,10 @@ derive newtype instance Eq PackageSet
 -- | A codec for encoding and decoding a `PackageSet` as JSON. Represented as a
 -- | JSON object. We use an explicit ordering instead of record sugar in the
 -- | implementation.
-codec :: JsonCodec PackageSet
-codec = Profunctor.wrapIso PackageSet $ CA.object "PackageSet"
-  $ CA.recordProp (Proxy :: _ "version") Version.codec
-  $ CA.recordProp (Proxy :: _ "compiler") Version.codec
-  $ CA.recordProp (Proxy :: _ "published") Internal.Codec.iso8601Date
-  $ CA.recordProp (Proxy :: _ "packages") (Internal.Codec.packageMap Version.codec)
-  $ CA.record
+codec :: CJ.Codec PackageSet
+codec = Profunctor.wrapIso PackageSet $ CJ.named "PackageSet" $ CJ.object
+  $ CJ.recordProp (Proxy :: _ "version") Version.codec
+  $ CJ.recordProp (Proxy :: _ "compiler") Version.codec
+  $ CJ.recordProp (Proxy :: _ "published") Internal.Codec.iso8601Date
+  $ CJ.recordProp (Proxy :: _ "packages") (Internal.Codec.packageMap Version.codec)
+  $ CJ.record

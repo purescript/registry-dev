@@ -19,6 +19,7 @@ module Registry.Foreign.Octokit
   , Tag
   , Team
   , TeamMember
+  , atKey
   , closeIssueRequest
   , createCommentRequest
   , decodeBase64Content
@@ -40,15 +41,16 @@ module Registry.Foreign.Octokit
 
 import Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
+import Control.Monad.Except (except)
 import Control.Promise (Promise)
 import Control.Promise as Promise
-import Data.Argonaut.Core (Json)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
-import Data.Codec.Argonaut (JsonCodec, JsonDecodeError)
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Record as CA.Record
-import Data.Codec.Argonaut.Variant as CA.Variant
+import Data.Codec as Codec
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Record as CJ.Record
+import Data.Codec.JSON.Variant as CJ.Variant
 import Data.DateTime (DateTime)
 import Data.DateTime.Instant (Instant)
 import Data.DateTime.Instant as Instant
@@ -72,6 +74,10 @@ import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Uncurried (EffectFn2, EffectFn6, runEffectFn2, runEffectFn6)
 import Foreign.Object (Object)
 import Foreign.Object as Object
+import JSON (JSON)
+import JSON as JSON
+import JSON.Object as JSON.Object
+import JSON.Path as JSON.Path
 import Node.Path (FilePath)
 import Registry.Internal.Codec as Internal.Codec
 import Type.Proxy (Proxy(..))
@@ -128,7 +134,7 @@ listTeamMembersRequest team =
   , headers: Object.empty
   , args: noArgs
   , paginate: true
-  , codec: CA.array $ CA.Record.object "TeamMember" { login: CA.string, id: CA.int }
+  , codec: CJ.array $ CJ.named "TeamMember" $ CJ.Record.object { login: CJ.string, id: CJ.int }
   }
 
 type Tag = { name :: String, sha :: String, url :: String }
@@ -141,9 +147,9 @@ listTagsRequest address =
   , headers: Object.empty
   , args: noArgs
   , paginate: true
-  , codec: CA.array $ Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Tag"
-      { name: CA.string
-      , commit: CA.Record.object "Tag.Commit" { sha: CA.string, url: CA.string }
+  , codec: CJ.array $ Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "Tag" $ CJ.Record.object
+      { name: CJ.string
+      , commit: CJ.Record.object { sha: CJ.string, url: CJ.string }
       }
   }
   where
@@ -159,19 +165,22 @@ getContentRequest { address, ref, path } =
   , headers: Object.empty
   , args: noArgs
   , paginate: false
-  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Content"
-      { data: CA.Record.object "Content.data"
+  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "Content" $ CJ.Record.object
+      { data: CJ.Record.object
           { type: value "file"
           , encoding: value "base64"
-          , content: CA.string
+          , content: CJ.string
           }
       }
   }
   where
-  value :: String -> JsonCodec String
-  value expected = CA.codec'
-    (\json -> CA.decode CA.string json >>= \decoded -> if decoded == expected then pure expected else Left (CA.UnexpectedValue json))
-    (\_ -> CA.encode CA.string expected)
+  value :: String -> CJ.Codec String
+  value expected = Codec.codec'
+    ( \json -> except $ CJ.decode CJ.string json >>= \decoded -> case decoded == expected of
+        true -> pure expected
+        false -> Left (CJ.DecodeError.basic $ "Unexpected JSON value (expecting '" <> expected <> "'): " <> JSON.print json)
+    )
+    (\_ -> CJ.encode CJ.string expected)
 
   toJsonRep (Base64Content str) = { data: { type: "file", encoding: "base64", content: str } }
   fromJsonRep { data: { content } } = Base64Content content
@@ -184,7 +193,7 @@ getRefCommitRequest { address, ref } =
   , headers: Object.empty
   , args: noArgs
   , paginate: false
-  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Ref" { object: CA.Record.object "Ref.object" { sha: CA.string } }
+  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "Ref" $ CJ.Record.object { object: CJ.Record.object { sha: CJ.string } }
   }
   where
   toJsonRep sha = { object: { sha } }
@@ -198,8 +207,8 @@ getCommitDateRequest { address, commitSha } =
   , headers: Object.empty
   , args: noArgs
   , paginate: false
-  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "Commit"
-      { committer: CA.Record.object "Commit.committer" { date: Internal.Codec.iso8601DateTime } }
+  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "Commit" $ CJ.Record.object
+      { committer: CJ.Record.object { date: Internal.Codec.iso8601DateTime } }
   }
   where
   toJsonRep date = { committer: { date } }
@@ -213,7 +222,7 @@ createCommentRequest { address, issue: IssueNumber issue, body } =
   , headers: Object.empty
   , args: unsafeToJSArgs { body }
   , paginate: false
-  , codec: CA.codec' (\_ -> pure unit) (CA.encode CA.null)
+  , codec: Codec.codec' (\_ -> pure unit) (CJ.encode CJ.null)
   }
 
 -- | Close an issue. Requires authentication.
@@ -224,7 +233,7 @@ closeIssueRequest { address, issue: IssueNumber issue } =
   , headers: Object.empty
   , args: unsafeToJSArgs { state: "closed" }
   , paginate: false
-  , codec: CA.codec' (\_ -> pure unit) (CA.encode CA.null)
+  , codec: Codec.codec' (\_ -> pure unit) (CJ.encode CJ.null)
   }
 
 type RateLimit =
@@ -239,13 +248,13 @@ rateLimitRequest =
   , headers: Object.empty
   , args: noArgs
   , paginate: false
-  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CA.Record.object "RateLimit"
-      { data: CA.Record.object "RateLimit.data"
-          { resources: CA.Record.object "RateLimit.data.resources"
-              { core: CA.Record.object "RateLimit.data.resources.core"
-                  { limit: CA.int
-                  , remaining: CA.int
-                  , reset: CA.number
+  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "RateLimit" $ CJ.Record.object
+      { data: CJ.Record.object
+          { resources: CJ.Record.object
+              { core: CJ.Record.object
+                  { limit: CJ.int
+                  , remaining: CJ.int
+                  , reset: CJ.number
                   }
               }
           }
@@ -292,11 +301,11 @@ type Request a =
   , headers :: Object String
   , args :: JSArgs
   , paginate :: Boolean
-  , codec :: JsonCodec a
+  , codec :: CJ.Codec a
   }
 
-foreign import requestImpl :: forall r. EffectFn6 Octokit String (Object String) JSArgs (Object Json -> r) (Json -> r) (Promise r)
-foreign import paginateImpl :: forall r. EffectFn6 Octokit String (Object String) JSArgs (Object Json -> r) (Json -> r) (Promise r)
+foreign import requestImpl :: forall r. EffectFn6 Octokit String (Object String) JSArgs (Object JSON -> r) (JSON -> r) (Promise r)
+foreign import paginateImpl :: forall r. EffectFn6 Octokit String (Object String) JSArgs (Object JSON -> r) (JSON -> r) (Promise r)
 
 -- | Make a request to the GitHub API
 --
@@ -309,16 +318,17 @@ request octokit { route, headers, args, paginate, codec } = do
     Left githubError -> case decodeGitHubAPIError githubError of
       Left decodeError -> Left $ UnexpectedError decodeError
       Right decoded -> Left $ APIError decoded
-    Right json -> case CA.decode codec json of
-      Left decodeError -> Left $ DecodeError $ CA.printJsonDecodeError decodeError
+    Right json -> case CJ.decode codec json of
+      Left decodeError -> Left $ DecodeError $ CJ.DecodeError.print decodeError
       Right parsed -> Right parsed
   where
-  decodeGitHubAPIError :: Object Json -> Either String GitHubAPIError
-  decodeGitHubAPIError object = lmap CA.printJsonDecodeError do
-    statusCode <- atKey "status" CA.int object
+  decodeGitHubAPIError :: Object JSON -> Either String GitHubAPIError
+  decodeGitHubAPIError object = lmap CJ.DecodeError.print do
+    let jObject = JSON.Object.fromFoldableWithIndex object
+    statusCode <- atKey "status" CJ.int jObject
     message <- case statusCode of
       304 -> pure ""
-      _ -> atKey "response" CA.jobject object >>= atKey "data" CA.jobject >>= atKey "message" CA.string
+      _ -> atKey "response" CJ.jobject jObject >>= atKey "data" CJ.jobject >>= atKey "message" CJ.string
     pure { statusCode, message }
 
 type GitHubAPIError =
@@ -326,10 +336,10 @@ type GitHubAPIError =
   , message :: String
   }
 
-githubApiErrorCodec :: JsonCodec GitHubAPIError
-githubApiErrorCodec = CA.Record.object "GitHubAPIError"
-  { statusCode: CA.int
-  , message: CA.string
+githubApiErrorCodec :: CJ.Codec GitHubAPIError
+githubApiErrorCodec = CJ.named "GitHubAPIError" $ CJ.Record.object
+  { statusCode: CJ.int
+  , message: CJ.string
   }
 
 data GitHubError
@@ -340,11 +350,11 @@ data GitHubError
 derive instance Eq GitHubError
 derive instance Ord GitHubError
 
-githubErrorCodec :: JsonCodec GitHubError
-githubErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
-  { unexpectedError: Right CA.string
+githubErrorCodec :: CJ.Codec GitHubError
+githubErrorCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantMatch
+  { unexpectedError: Right CJ.string
   , apiError: Right githubApiErrorCodec
-  , decodeError: Right CA.string
+  , decodeError: Right CJ.string
   }
   where
   toVariant = case _ of
@@ -375,9 +385,9 @@ printGitHubError = case _ of
     , error
     ]
 
-atKey :: forall a. String -> JsonCodec a -> Object Json -> Either JsonDecodeError a
+atKey :: forall a. String -> CJ.Codec a -> JSON.JObject -> Either CJ.DecodeError a
 atKey key codec object =
   Maybe.maybe
-    (Left (CA.AtKey key CA.MissingValue))
-    (lmap (CA.AtKey key) <<< CA.decode codec)
-    (Object.lookup key object)
+    (Left $ CJ.DecodeError.noValueFound $ JSON.Path.AtKey key JSON.Path.Tip)
+    (lmap (CJ.DecodeError.withPath (\p -> JSON.Path.extend p (JSON.Path.AtKey key JSON.Path.Tip))) <<< CJ.decode codec)
+    (JSON.Object.lookup key object)

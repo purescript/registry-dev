@@ -18,16 +18,19 @@ module Registry.Version
 
 import Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
+import Control.Monad.Except (Except, except)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bifunctor (lmap)
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
-import Data.Either (Either, hush)
+import Data.Codec as Codec
+import Data.Codec.JSON as CJ
+import Data.Either (Either)
 import Data.Int as Int
 import Data.Maybe (maybe)
 import Data.String as String
 import Data.String.CodeUnits as CodeUnits
+import JSON (JSON)
 import Parsing (Parser)
 import Parsing as Parsing
 import Parsing.Combinators.Array as Parsing.Combinators.Array
@@ -61,8 +64,14 @@ instance Ord Version where
       x -> x
 
 -- | A codec for encoding and decoding a `Version` as a JSON string.
-codec :: JsonCodec Version
-codec = CA.prismaticCodec "Version" (hush <<< parse) print CA.string
+codec :: CJ.Codec Version
+codec = CJ.named "Version" $ Codec.codec' decode encode
+  where
+  decode :: JSON -> Except CJ.DecodeError Version
+  decode = except <<< lmap CJ.DecodeError.basic <<< parse <=< Codec.decode CJ.string
+
+  encode :: Version -> JSON
+  encode = print >>> CJ.encode CJ.string
 
 -- | Print a `Version` as a string of the form "X.Y.Z"
 print :: Version -> String

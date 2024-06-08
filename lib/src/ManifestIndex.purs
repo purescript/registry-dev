@@ -29,13 +29,12 @@ module Registry.ManifestIndex
 
 import Prelude
 
-import Data.Argonaut.Core as Argonaut
-import Data.Argonaut.Parser as Argonaut.Parser
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bifunctor (lmap)
-import Data.Codec.Argonaut as CA
+import Data.Codec.JSON as CJ
 import Data.Either (Either(..))
 import Data.Graph (Graph)
 import Data.Graph as Graph
@@ -57,6 +56,7 @@ import Data.Tuple (Tuple(..))
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (liftEffect)
+import JSON as JSON
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FS.Aff
 import Node.FS.Perms as FS.Perms
@@ -244,8 +244,8 @@ packageEntryFilePath name = Path.concat [ packageEntryDirectory name, PackageNam
 parseEntry :: String -> Either String (NonEmptyArray Manifest)
 parseEntry entry = do
   let split = String.split (String.Pattern "\n") <<< String.trim
-  jsonArray <- traverse Argonaut.Parser.jsonParser (split entry)
-  entries <- traverse (lmap CA.printJsonDecodeError <<< CA.decode Manifest.codec) jsonArray
+  jsonArray <- traverse JSON.parse (split entry)
+  entries <- traverse (lmap CJ.DecodeError.print <<< CJ.decode Manifest.codec) jsonArray
   case NonEmptyArray.fromArray entries of
     Nothing -> Left "No entries exist."
     Just entries' -> pure entries'
@@ -254,7 +254,7 @@ parseEntry entry = do
 -- | lowest version to highest version.
 printEntry :: NonEmptySet Manifest -> String
 printEntry =
-  Array.foldMap ((_ <> "\n") <<< Argonaut.stringify <<< CA.encode Manifest.codec)
+  Array.foldMap ((_ <> "\n") <<< JSON.print <<< CJ.encode Manifest.codec)
     <<< Array.sortBy (comparing (_.version <<< un Manifest))
     <<< Array.fromFoldable
 

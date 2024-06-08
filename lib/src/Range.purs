@@ -18,16 +18,19 @@ module Registry.Range
 
 import Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Control.Alt ((<|>))
 import Control.Monad.Error.Class as Error
+import Control.Monad.Except (Except, except)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
-import Data.Either (Either, hush)
+import Data.Codec as Codec
+import Data.Codec.JSON as CJ
+import Data.Either (Either)
 import Data.Function (on)
 import Data.Maybe (Maybe(..))
 import Data.String.CodeUnits as String.CodeUnits
+import JSON (JSON)
 import Parsing (Parser)
 import Parsing as Parsing
 import Parsing.String as Parsing.String
@@ -47,8 +50,14 @@ instance Eq Range where
 
 -- | A codec for encoding and decoding a `Range` as JSON. Ranges are encoded as
 -- | strings of the form ">=X.Y.Z <X.Y.Z".
-codec :: JsonCodec Range
-codec = CA.prismaticCodec "Range" (hush <<< parse) print CA.string
+codec :: CJ.Codec Range
+codec = CJ.named "Range" $ Codec.codec' decode encode
+  where
+  decode :: JSON -> Except CJ.DecodeError Range
+  decode = except <<< lmap CJ.DecodeError.basic <<< parse <=< Codec.decode CJ.string
+
+  encode :: Range -> JSON
+  encode = print >>> CJ.encode CJ.string
 
 -- | Print a range in the form ">=X.Y.Z <X.Y.Z"
 print :: Range -> String

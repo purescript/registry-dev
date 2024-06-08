@@ -18,16 +18,17 @@ module Registry.App.Effect.GitHub
 
 import Registry.App.Prelude
 
-import Data.Argonaut.Parser as Argonaut.Parser
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Common as CA.Common
-import Data.Codec.Argonaut.Record as CA.Record
+import Codec.JSON.DecodeError as CJ.DecodeError
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
+import Data.Codec.JSON.Record as CJ.Record
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Exists as Exists
 import Data.HTTP.Method (Method(..))
 import Data.Time.Duration as Duration
 import Foreign.Object as Object
+import JSON as JSON
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, CacheRef, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env (RESOURCE_ENV)
@@ -67,7 +68,7 @@ instance MemoryEncodable GitHubCache where
 instance FsEncodable GitHubCache where
   encodeFs = case _ of
     Request route next -> do
-      let codec = CA.Common.either Octokit.githubErrorCodec requestResultCodec
+      let codec = CJ.Common.either Octokit.githubErrorCodec requestResultCodec
       Exists.mkExists $ AsJson ("Request__" <> Octokit.printGitHubRoute route) codec next
 
 data GitHub a
@@ -99,14 +100,14 @@ getContent :: forall r. Address -> RawVersion -> FilePath -> Run (GITHUB + r) (E
 getContent address (RawVersion ref) path = Run.lift _github (GetContent address ref path identity)
 
 -- | Read the content of a JSON file in the provided repo, decoding its contents.
-getJsonFile :: forall r a. Address -> RawVersion -> JsonCodec a -> FilePath -> Run (GITHUB + r) (Either GitHubError a)
+getJsonFile :: forall r a. Address -> RawVersion -> CJ.Codec a -> FilePath -> Run (GITHUB + r) (Either GitHubError a)
 getJsonFile address ref codec path = do
   content <- getContent address ref path
   let
-    attemptDecode inner = case Argonaut.Parser.jsonParser (JsonRepair.tryRepair inner) of
+    attemptDecode inner = case JSON.parse (JsonRepair.tryRepair inner) of
       Left jsonError -> Left $ Octokit.DecodeError $ "Not Json: " <> jsonError
-      Right json -> case CA.decode codec json of
-        Left decodeError -> Left $ Octokit.DecodeError $ CA.printJsonDecodeError decodeError
+      Right json -> case CJ.decode codec json of
+        Left decodeError -> Left $ Octokit.DecodeError $ CJ.DecodeError.print decodeError
         Right decoded -> Right decoded
   pure $ attemptDecode =<< content
 
@@ -178,7 +179,7 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
       case entry of
         Nothing -> do
           result <- requestWithBackoff octokit githubRequest
-          Cache.put _githubCache (Request route) (result <#> \response -> { modified: now, etag: Nothing, response: CA.encode codec response })
+          Cache.put _githubCache (Request route) (result <#> \response -> { modified: now, etag: Nothing, response: CJ.encode codec response })
           pure result
 
         Just cached -> case cached of
@@ -195,9 +196,9 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
             Cache.delete _githubCache (Request route)
             request octokit githubRequest
 
-          Right prevResponse -> case CA.decode codec prevResponse.response of
+          Right prevResponse -> case CJ.decode codec prevResponse.response of
             Left err -> do
-              Log.debug $ "Could not decode previous response data using the provided codec: " <> CA.printJsonDecodeError err
+              Log.debug $ "Could not decode previous response data using the provided codec: " <> CJ.DecodeError.print err
               Log.debug $ "This indicates an out-of-date cache entry. Clearing cache for route " <> printedRoute
               Cache.delete _githubCache (Request route)
               Log.debug "Retrying request..."
@@ -216,7 +217,7 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
             Right decoded | Just etag <- prevResponse.etag -> do
               Log.debug $ "Found valid cache entry with etags for " <> printedRoute
               let headers = Object.insert "If-None-Match" etag githubRequest.headers
-              Log.debug $ "Verifying cached status with headers: " <> stringifyJson (CA.Common.foreignObject CA.string) headers
+              Log.debug $ "Verifying cached status with headers: " <> stringifyJson (CJ.Common.foreignObject CJ.string) headers
               let modifiedRequest = githubRequest { headers = headers }
               conditionalResponse <- requestWithBackoff octokit modifiedRequest
               case conditionalResponse of
@@ -234,7 +235,7 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
                   Cache.put _githubCache (Request route) (Left otherError)
                   pure (Left otherError)
                 Right valid -> do
-                  Cache.put _githubCache (Request route) (Right { response: CA.encode codec valid, modified: now, etag: Nothing })
+                  Cache.put _githubCache (Request route) (Right { response: CJ.encode codec valid, modified: now, etag: Nothing })
                   pure $ Right valid
 
             -- Since we don't have support for conditional requests via etags, we'll instead
@@ -244,7 +245,7 @@ request octokit githubRequest@{ route: route@(GitHubRoute method _ _), codec } =
             Right _ | DateTime.diff now prevResponse.modified >= Duration.Hours 4.0 -> do
               Log.debug $ "Found cache entry but it was modified more than 4 hours ago, refetching " <> printedRoute
               result <- requestWithBackoff octokit githubRequest
-              Cache.put _githubCache (Request route) (result <#> \resp -> { response: CA.encode codec resp, modified: now, etag: Nothing })
+              Cache.put _githubCache (Request route) (result <#> \resp -> { response: CJ.encode codec resp, modified: now, etag: Nothing })
               pure result
 
             Right decoded -> do
@@ -285,12 +286,12 @@ requestWithBackoff octokit githubRequest = do
 type RequestResult =
   { modified :: DateTime
   , etag :: Maybe String
-  , response :: Json
+  , response :: JSON
   }
 
-requestResultCodec :: JsonCodec RequestResult
-requestResultCodec = CA.Record.object "RequestResult"
-  { etag: CA.Common.maybe CA.string
+requestResultCodec :: CJ.Codec RequestResult
+requestResultCodec = CJ.named "RequestResult" $ CJ.Record.object
+  { etag: CJ.Common.maybe CJ.string
   , modified: Internal.Codec.iso8601DateTime
-  , response: CA.json
+  , response: CJ.json
   }

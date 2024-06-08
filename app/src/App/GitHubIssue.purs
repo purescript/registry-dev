@@ -2,15 +2,16 @@ module Registry.App.GitHubIssue where
 
 import Registry.App.Prelude
 
-import Data.Argonaut.Parser as Argonaut.Parser
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
-import Data.Codec.Argonaut as CA
+import Data.Codec.JSON as CJ
 import Data.Foldable (traverse_)
 import Data.String as String
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Effect.Ref as Ref
-import Foreign.Object as Object
+import JSON as JSON
+import JSON.Object as CJ.Object
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
@@ -188,7 +189,7 @@ readOperation :: FilePath -> Aff OperationDecoding
 readOperation eventPath = do
   fileContents <- FS.Aff.readTextFile UTF8 eventPath
 
-  IssueEvent { issueNumber, body, username } <- case Argonaut.Parser.jsonParser fileContents >>= decodeIssueEvent of
+  IssueEvent { issueNumber, body, username } <- case JSON.parse fileContents >>= decodeIssueEvent of
     Left err ->
       -- If we don't receive a valid event path or the contents can't be decoded
       -- then this is a catastrophic error and we exit the workflow.
@@ -200,28 +201,28 @@ readOperation eventPath = do
     -- TODO: Right now we parse all operations from GitHub issues, but we should
     -- in the future only parse out package set operations. The others should be
     -- handled via a HTTP API.
-    decodeOperation :: Json -> Either JsonDecodeError (Either PackageSetOperation PackageOperation)
+    decodeOperation :: JSON -> Either CJ.DecodeError (Either PackageSetOperation PackageOperation)
     decodeOperation json = do
-      object <- CA.decode CA.jobject json
-      let keys = Object.keys object
+      object <- CJ.decode CJ.jobject json
+      let keys = CJ.Object.keys object
       let hasKeys = all (flip Array.elem keys)
       if hasKeys [ "packages" ] then
-        map (Left <<< PackageSetUpdate) (CA.decode Operation.packageSetUpdateCodec json)
+        map (Left <<< PackageSetUpdate) (CJ.decode Operation.packageSetUpdateCodec json)
       else if hasKeys [ "name", "ref", "compiler" ] then
-        map (Right <<< Publish) (CA.decode Operation.publishCodec json)
+        map (Right <<< Publish) (CJ.decode Operation.publishCodec json)
       else if hasKeys [ "payload", "signature" ] then
-        map (Right <<< Authenticated) (CA.decode Operation.authenticatedCodec json)
+        map (Right <<< Authenticated) (CJ.decode Operation.authenticatedCodec json)
       else
-        Left $ CA.TypeMismatch "Operation: Expected a valid registry operation, but provided object did not match any operation decoder."
+        Left $ CJ.DecodeError.basic "Operation: Expected a valid registry operation, but provided object did not match any operation decoder."
 
-  case Argonaut.Parser.jsonParser (JsonRepair.tryRepair (firstObject body)) of
+  case JSON.parse (JsonRepair.tryRepair (firstObject body)) of
     Left err -> do
       Console.log "Not JSON."
       Console.logShow { err, body }
       pure NotJson
     Right json -> case decodeOperation json of
       Left jsonError -> do
-        let printedError = CA.printJsonDecodeError jsonError
+        let printedError = CJ.DecodeError.print jsonError
         Console.log $ "Malformed JSON:\n" <> printedError
         Console.log $ "Received body:\n" <> body
         pure $ MalformedJson issueNumber printedError
@@ -250,27 +251,20 @@ newtype IssueEvent = IssueEvent
 
 derive instance Newtype IssueEvent _
 
-decodeIssueEvent :: Json -> Either String IssueEvent
-decodeIssueEvent json = lmap CA.printJsonDecodeError do
-  object <- CA.decode CA.jobject json
-  username <- atKey "login" CA.string =<< atKey "sender" CA.jobject object
+decodeIssueEvent :: JSON -> Either String IssueEvent
+decodeIssueEvent json = lmap CJ.DecodeError.print do
+  object <- CJ.decode CJ.jobject json
+  username <- Octokit.atKey "login" CJ.string =<< Octokit.atKey "sender" CJ.jobject object
 
-  issueObject <- atKey "issue" CA.jobject object
-  issueNumber <- atKey "number" CA.int issueObject
+  issueObject <- Octokit.atKey "issue" CJ.jobject object
+  issueNumber <- Octokit.atKey "number" CJ.int issueObject
 
   -- We accept issue creation and issue comment events, but both contain an
   -- 'issue' field. However, only comments contain a 'comment' field. For that
   -- reason we first try to parse the comment and fall back to the issue if
   -- that fails.
-  body <- atKey "body" CA.string =<< atKey "comment" CA.jobject object <|> pure issueObject
+  body <- Octokit.atKey "body" CJ.string =<< Octokit.atKey "comment" CJ.jobject object <|> pure issueObject
   pure $ IssueEvent { body, username, issueNumber: IssueNumber issueNumber }
-  where
-  atKey :: forall a. String -> JsonCodec a -> Object Json -> Either JsonDecodeError a
-  atKey key codec object =
-    maybe
-      (Left $ CA.AtKey key CA.MissingValue)
-      (lmap (CA.AtKey key) <<< CA.decode codec)
-      (Object.lookup key object)
 
 -- | Re-sign a payload as pacchettibotti if the authenticated operation was
 -- | submitted by a registry trustee.

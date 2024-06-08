@@ -3,7 +3,7 @@ module Registry.App.Server where
 import Registry.App.Prelude hiding ((/))
 
 import Control.Monad.Cont (ContT)
-import Data.Codec.Argonaut as CA
+import Data.Codec.JSON as CJ
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Newtype (unwrap)
 import Data.String as String
@@ -91,7 +91,7 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
         HTTPurple.badRequest "Expected transfer operation."
 
   Jobs, Get -> do
-    jsonOk (CA.array V1.jobCodec) []
+    jsonOk (CJ.array V1.jobCodec) []
 
   Job jobId { level: maybeLogLevel, since }, Get -> do
     let logLevel = fromMaybe Error maybeLogLevel
@@ -291,13 +291,13 @@ main = do
       , " └───────────────────────────────────────────┘"
       ]
 
-jsonDecoder :: forall a. JsonCodec a -> JsonDecoder JsonDecodeError a
+jsonDecoder :: forall a. CJ.Codec a -> JsonDecoder CJ.DecodeError a
 jsonDecoder codec = JsonDecoder (parseJson codec)
 
-jsonEncoder :: forall a. JsonCodec a -> JsonEncoder a
+jsonEncoder :: forall a. CJ.Codec a -> JsonEncoder a
 jsonEncoder codec = JsonEncoder (stringifyJson codec)
 
-jsonOk :: forall m a. MonadAff m => JsonCodec a -> a -> m Response
+jsonOk :: forall m a. MonadAff m => CJ.Codec a -> a -> m Response
 jsonOk codec datum = HTTPurple.ok' HTTPurple.jsonHeaders $ HTTPurple.toJson (jsonEncoder codec) datum
 
 runEffects :: forall a. ServerEnv -> Run ServerEffects a -> Aff (Either Aff.Error a)

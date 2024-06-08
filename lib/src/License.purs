@@ -16,12 +16,15 @@ module Registry.License
 
 import Prelude
 
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
+import Codec.JSON.DecodeError as CJ.DecodeError
+import Control.Monad.Except (Except, except)
+import Data.Bifunctor (lmap)
+import Data.Codec as Codec
+import Data.Codec.JSON as CJ
 import Data.Either (Either(..))
-import Data.Either as Either
 import Data.Function.Uncurried (Fn3, runFn3)
 import Data.String as String
+import JSON (JSON)
 import Safe.Coerce (coerce)
 
 -- | An SPDX license identifier such as 'MIT' or 'Apache-2.0'.
@@ -30,8 +33,14 @@ newtype License = License String
 derive newtype instance Eq License
 
 -- | A codec for encoding and decoding a `License` as JSON
-codec :: JsonCodec License
-codec = CA.prismaticCodec "License" (Either.hush <<< parse) print CA.string
+codec :: CJ.Codec License
+codec = CJ.named "License" $ Codec.codec' decode encode
+  where
+  decode :: JSON -> Except CJ.DecodeError License
+  decode = except <<< lmap CJ.DecodeError.basic <<< parse <=< Codec.decode CJ.string
+
+  encode :: License -> JSON
+  encode = print >>> CJ.encode CJ.string
 
 -- | Print an SPDX license identifier as a string.
 print :: License -> String

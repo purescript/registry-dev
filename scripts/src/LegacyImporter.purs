@@ -12,10 +12,10 @@ import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Control.Apply (lift2)
 import Data.Array as Array
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Common as CA.Common
-import Data.Codec.Argonaut.Record as CA.Record
-import Data.Codec.Argonaut.Variant as CA.Variant
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
+import Data.Codec.JSON.Record as CJ.Record
+import Data.Codec.JSON.Variant as CJ.Variant
 import Data.Compactable (separate)
 import Data.Exists as Exists
 import Data.Filterable (partition)
@@ -70,8 +70,7 @@ import Registry.PackageName as PackageName
 import Registry.Version as Version
 import Run (Run)
 import Run as Run
-import Run.Except (EXCEPT, Except)
-import Run.Except as Except
+import Run.Except (EXCEPT)
 import Run.Except as Run.Except
 import Spago.Generated.BuildInfo as BuildInfo
 import Type.Proxy (Proxy(..))
@@ -166,7 +165,7 @@ main = launchAff_ do
     # runAppEffects
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
-    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
+    # Run.Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
     # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Env.runResourceEnv resourceEnv
@@ -240,7 +239,7 @@ runLegacyImport mode logs = do
   -- low. Should be bumped from time to time to the latest compiler.
   let minCompiler = unsafeFromRight (Version.parse "0.15.7")
   when (compiler < minCompiler) do
-    Except.throw $ "Local compiler " <> Version.print compiler <> " is too low (min: " <> Version.print minCompiler <> ")."
+    Run.Except.throw $ "Local compiler " <> Version.print compiler <> " is too low (min: " <> Version.print minCompiler <> ")."
 
   Log.info $ "Using compiler " <> Version.print compiler
 
@@ -254,7 +253,7 @@ runLegacyImport mode logs = do
         Nothing -> do
           let formatted = formatPackageVersion manifest.name manifest.version
           Log.error $ "Unable to recover package ref for " <> formatted
-          Except.throw $ "Failed to create publish operation for " <> formatted
+          Run.Except.throw $ "Failed to create publish operation for " <> formatted
         Just ref ->
           pure
             { location: Just manifest.location
@@ -294,7 +293,7 @@ runLegacyImport mode logs = do
           ]
         operation <- mkOperation (Manifest manifest)
 
-        result <- Except.runExcept $ API.publish source operation
+        result <- Run.Except.runExcept $ API.publish source operation
         -- TODO: Some packages will fail because the legacy importer does not
         -- perform all the same validation checks that the publishing flow does.
         -- What should we do when a package has a valid manifest but fails for
@@ -462,7 +461,7 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
   pure $ Map.fromFoldable manifests
 
 type EXCEPT_VERSION :: Row (Type -> Type) -> Row (Type -> Type)
-type EXCEPT_VERSION r = (exceptVersion :: Except VersionValidationError | r)
+type EXCEPT_VERSION r = (exceptVersion :: Run.Except.Except VersionValidationError | r)
 
 _exceptVersion = Proxy :: Proxy "exceptVersion"
 
@@ -474,10 +473,10 @@ exceptVersion = Run.Except.rethrowAt _exceptVersion
 
 type VersionValidationError = { error :: VersionError, reason :: String }
 
-versionValidationErrorCodec :: JsonCodec VersionValidationError
-versionValidationErrorCodec = CA.Record.object "VersionValidationError"
+versionValidationErrorCodec :: CJ.Codec VersionValidationError
+versionValidationErrorCodec = CJ.named "VersionValidationError" $ CJ.Record.object
   { error: versionErrorCodec
-  , reason: CA.string
+  , reason: CJ.string
   }
 
 -- | An error that affects a specific package version
@@ -487,19 +486,19 @@ data VersionError
   | InvalidManifest LegacyManifestValidationError
   | UnregisteredDependencies (Array PackageName)
 
-versionErrorCodec :: JsonCodec VersionError
-versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
-  { invalidTag: Right $ CA.Record.object "Tag"
-      { name: CA.string
-      , sha: CA.string
-      , url: CA.string
+versionErrorCodec :: CJ.Codec VersionError
+versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantMatch
+  { invalidTag: Right $ CJ.named "Tag" $ CJ.Record.object
+      { name: CJ.string
+      , sha: CJ.string
+      , url: CJ.string
       }
   , disabledVersion: Left unit
-  , invalidManifest: Right $ CA.Record.object "LegacyManifestValidationError"
+  , invalidManifest: Right $ CJ.named "LegacyManifestValidationError" $ CJ.Record.object
       { error: Legacy.Manifest.legacyManifestErrorCodec
-      , reason: CA.string
+      , reason: CJ.string
       }
-  , unregisteredDependencies: Right (CA.array PackageName.codec)
+  , unregisteredDependencies: Right (CJ.array PackageName.codec)
   }
   where
   toVariant = case _ of
@@ -542,7 +541,7 @@ validateVersion tag =
     }
 
 type EXCEPT_PACKAGE :: Row (Type -> Type) -> Row (Type -> Type)
-type EXCEPT_PACKAGE r = (exceptPackage :: Except PackageValidationError | r)
+type EXCEPT_PACKAGE r = (exceptPackage :: Run.Except.Except PackageValidationError | r)
 
 _exceptPackage = Proxy :: Proxy "exceptPackage"
 
@@ -595,7 +594,7 @@ fetchPackageTags address = GitHub.listTags address >>= case _ of
       let reason = "GitHub API error with status code " <> show apiError.statusCode
       throwPackage { error, reason }
     _ ->
-      Except.throw $ String.joinWith "\n"
+      Run.Except.throw $ String.joinWith "\n"
         [ "Unexpected GitHub error with a status <= 400"
         , Octokit.printGitHubError err
         ]
@@ -666,11 +665,11 @@ type JsonValidationError =
   , reason :: String
   }
 
-jsonValidationErrorCodec :: JsonCodec JsonValidationError
-jsonValidationErrorCodec = CA.Record.object "JsonValidationError"
-  { tag: CA.string
-  , value: CA.Record.optional CA.string
-  , reason: CA.string
+jsonValidationErrorCodec :: CJ.Codec JsonValidationError
+jsonValidationErrorCodec = CJ.named "JsonValidationError" $ CJ.Record.object
+  { tag: CJ.string
+  , value: CJ.Record.optional CJ.string
+  , reason: CJ.string
   }
 
 formatPackageValidationError :: PackageValidationError -> JsonValidationError
@@ -852,10 +851,10 @@ instance MemoryEncodable ImportCache where
 instance FsEncodable ImportCache where
   encodeFs = case _ of
     ImportManifest name (RawVersion version) next -> do
-      let codec = CA.Common.either versionValidationErrorCodec Manifest.codec
+      let codec = CJ.Common.either versionValidationErrorCodec Manifest.codec
       Exists.mkExists $ AsJson ("ImportManifest__" <> PackageName.print name <> "__" <> version) codec next
     PublishFailure name version next -> do
-      let codec = CA.string
+      let codec = CJ.string
       Exists.mkExists $ AsJson ("PublishFailureCache__" <> PackageName.print name <> "__" <> Version.print version) codec next
 
 type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)

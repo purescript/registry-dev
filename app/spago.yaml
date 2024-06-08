@@ -8,11 +8,11 @@ package:
   dependencies:
     - aff
     - ansi
-    - argonaut-core
     - arrays
     - b64
     - bifunctors
-    - codec-argonaut
+    - codec
+    - codec-json
     - console
     - const
     - control
@@ -23,22 +23,23 @@ package:
     - either
     - exceptions
     - exists
-    - filterable
     - fetch
+    - filterable
     - foldable-traversable
+    - foreign
     - foreign-object
     - formatters
     - http-methods
     - httpurple
     - identity
     - integers
-    - js-fetch
     - js-date
-    - js-uri
+    - js-fetch
     - js-promise-aff
+    - js-uri
+    - json
     - lists
     - maybe
-    - media-types
     - newtype
     - node-buffer
     - node-child-process
@@ -56,7 +57,6 @@ package:
     - partial
     - prelude
     - profunctor
-    - profunctor-lenses
     - record
     - refs
     - registry-foreign

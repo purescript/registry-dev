@@ -3,8 +3,9 @@ module Registry.Scripts.PackageTransferrer where
 import Registry.App.Prelude
 
 import Data.Array as Array
-import Data.Codec.Argonaut.Common as CA.Common
-import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
+import Data.Codec.JSON.Record as CJ.Record
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
 import Data.String as String
@@ -104,7 +105,7 @@ transfer = do
   case Map.size needsTransfer of
     0 -> Log.info "No packages require transferring."
     n -> do
-      Log.info $ Array.fold [ show n, " packages need transferring: ", printJson (CA.Common.strMap packageLocationsCodec) needsTransfer ]
+      Log.info $ Array.fold [ show n, " packages need transferring: ", printJson (CJ.Common.strMap packageLocationsCodec) needsTransfer ]
       _ <- transferAll packages needsTransfer
       Log.info "Completed transfers!"
 
@@ -145,8 +146,8 @@ type PackageLocations =
   , tagLocation :: Location
   }
 
-packageLocationsCodec :: JsonCodec PackageLocations
-packageLocationsCodec = CA.Record.object "PackageLocations"
+packageLocationsCodec :: CJ.Codec PackageLocations
+packageLocationsCodec = CJ.named "PackageLocations" $ CJ.Record.object
   { registeredLocation: Location.codec
   , tagLocation: Location.codec
   }

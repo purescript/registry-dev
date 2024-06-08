@@ -3,12 +3,14 @@ package:
   publish:
     license: BSD-3-Clause
     version: 0.0.1
+  build:
+    pedanticPackages: true
   dependencies:
     - aff
-    - argonaut-core
     - arrays
     - bifunctors
-    - codec-argonaut
+    - codec
+    - codec-json
     - control
     - datetime
     - effect
@@ -21,6 +23,7 @@ package:
     - functors
     - graphs
     - integers
+    - json
     - language-cst-parser
     - lists
     - maybe
@@ -37,14 +40,15 @@ package:
     - profunctor-lenses
     - routing-duplex
     - safe-coerce
+    - st
     - strings
     - transformers
     - tuples
   test:
     main: Test.Registry
     dependencies:
-      - argonaut-core
       - exceptions
+      - json
       - node-child-process
       - node-execa
       - spec

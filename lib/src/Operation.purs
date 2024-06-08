@@ -31,15 +31,17 @@ module Registry.Operation
 
 import Prelude
 
+import Codec.JSON.DecodeError as JSON.DecodeError
 import Control.Alt ((<|>))
-import Data.Argonaut.Parser as Argonaut.Parser
+import Control.Monad.Except (except)
 import Data.Bifunctor (lmap)
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Compat as CA.Compat
-import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec as Codec
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
+import Data.Codec.JSON.Record as CJ.Record
 import Data.Map (Map)
 import Data.Maybe (Maybe)
+import JSON as JSON
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Location (Location)
 import Registry.Location as Location
@@ -77,13 +79,13 @@ type PublishData =
   }
 
 -- | A codec for encoding and decoding a `Publish` operation as JSON.
-publishCodec :: JsonCodec PublishData
-publishCodec = CA.Record.object "Publish"
+publishCodec :: CJ.Codec PublishData
+publishCodec = CJ.named "Publish" $ CJ.Record.object
   { name: PackageName.codec
-  , location: CA.Record.optional Location.codec
-  , ref: CA.string
+  , location: CJ.Record.optional Location.codec
+  , ref: CJ.string
   , compiler: Version.codec
-  , resolutions: CA.Record.optional (Internal.Codec.packageMap Version.codec)
+  , resolutions: CJ.Record.optional (Internal.Codec.packageMap Version.codec)
   }
 
 -- | Authenticate a package operation to send to the registry.
@@ -97,39 +99,43 @@ type AuthenticatedData =
   }
 
 -- | A codec for encoding and decoding authenticated operations as JSON.
-authenticatedCodec :: JsonCodec AuthenticatedData
-authenticatedCodec = toPureScriptRep $ CA.Record.object "Authenticated"
-  { payload: CA.string
-  , signature: CA.string
-  }
+authenticatedCodec :: CJ.Codec AuthenticatedData
+authenticatedCodec = topLevelCodec
   where
   -- We first parse the payload as a simple string to use in verification so as
   -- to preserve any quirks of formatting that could change the hash of its
   -- contents. However, we also need to decode the operation itself, and so we
   -- parse that in a second pass over the input.
-  toPureScriptRep codec = CA.codec' decode encode
+  topLevelCodec :: CJ.Codec AuthenticatedData
+  topLevelCodec = CJ.named "Authenticated" $ Codec.codec' decode encode
     where
     decode json = do
-      rep <- CA.decode codec json
-      payloadJson <- lmap (CA.TypeMismatch <<< append "Json: ") (Argonaut.Parser.jsonParser rep.payload)
-      operation <- CA.decode payloadCodec payloadJson
+      rep <- Codec.decode repCodec json
+      payloadJson <- except $ lmap JSON.DecodeError.basic $ JSON.parse rep.payload
+      operation <- Codec.decode payloadCodec payloadJson
       pure { payload: operation, rawPayload: rep.payload, signature: Signature rep.signature }
 
     encode { rawPayload, signature: Signature signature } =
-      CA.encode codec { payload: rawPayload, signature }
+      CJ.encode repCodec { payload: rawPayload, signature }
+
+  repCodec :: CJ.Codec { payload :: String, signature :: String }
+  repCodec = CJ.named "AuthenticatedData" $ CJ.Record.object
+    { payload: CJ.string
+    , signature: CJ.string
+    }
 
   -- The only acceptable payloads for an authenticated operation are the
   -- `AuthenticatedPackageOperation`s.
-  payloadCodec = CA.codec' decode encode
+  payloadCodec :: CJ.Codec AuthenticatedPackageOperation
+  payloadCodec = CJ.named "AuthenticatedPackageOperation" $ Codec.codec' decode encode
     where
     decode json =
-      lmap (const (CA.TypeMismatch "AuthenticatedPackageOperation")) do
-        map Unpublish (CA.decode unpublishCodec json)
-        <|> map Transfer (CA.decode transferCodec json)
+      map Unpublish (Codec.decode unpublishCodec json)
+        <|> map Transfer (Codec.decode transferCodec json)
 
     encode = case _ of
-      Unpublish unpublish -> CA.encode unpublishCodec unpublish
-      Transfer transfer -> CA.encode transferCodec transfer
+      Unpublish unpublish -> CJ.encode unpublishCodec unpublish
+      Transfer transfer -> CJ.encode transferCodec transfer
 
 -- | Unpublish a package version from the registry. This operation must be
 -- | authenticated and not all package versions can be unpublished.
@@ -143,8 +149,8 @@ type UnpublishData =
   }
 
 -- | A codec for encoding and decoding an `Unpublish` operation as JSON.
-unpublishCodec :: JsonCodec UnpublishData
-unpublishCodec = CA.Record.object "Unpublish"
+unpublishCodec :: CJ.Codec UnpublishData
+unpublishCodec = CJ.named "Unpublish" $ CJ.Record.object
   { name: PackageName.codec
   , version: Version.codec
   , reason: Internal.Codec.limitedString 300
@@ -161,8 +167,8 @@ type TransferData =
   }
 
 -- | A codec for encoding and decoding a `Transfer` operation as JSON.
-transferCodec :: JsonCodec TransferData
-transferCodec = CA.Record.object "Transfer"
+transferCodec :: CJ.Codec TransferData
+transferCodec = CJ.named "Transfer" $ CJ.Record.object
   { name: PackageName.codec
   , newLocation: Location.codec
   }
@@ -182,12 +188,12 @@ type PackageSetUpdateData =
   }
 
 -- | A codec for encoding and decoding a `PackageSetUpdate` operation as JSON.
-packageSetUpdateCodec :: JsonCodec PackageSetUpdateData
-packageSetUpdateCodec = CA.Record.object "PackageSetUpdate"
-  { compiler: CA.Record.optional Version.codec
+packageSetUpdateCodec :: CJ.Codec PackageSetUpdateData
+packageSetUpdateCodec = CJ.named "PackageSetUpdate" $ CJ.Record.object
+  { compiler: CJ.Record.optional Version.codec
   -- We encode and decode `Nothing` values as `null` when working with versions,
   -- as the absence of the key altogether means not to update it, while the
   -- presence of `null` means to remove the package. For that reason we use the
   -- `Compat` version of the `maybe` codec.
-  , packages: Internal.Codec.packageMap (CA.Compat.maybe Version.codec)
+  , packages: Internal.Codec.packageMap (CJ.Common.nullable Version.codec)
   }

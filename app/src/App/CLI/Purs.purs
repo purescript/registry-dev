@@ -2,10 +2,11 @@ module Registry.App.CLI.Purs where
 
 import Registry.App.Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Compat as CA.Compat
-import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
+import Data.Codec.JSON.Record as CJ.Record
 import Data.Foldable (foldMap)
 import Data.String as String
 import Node.ChildProcess.Types (Exit(..))
@@ -32,14 +33,14 @@ type CompilerError =
   , moduleName :: Maybe String
   }
 
-compilerErrorCodec :: JsonCodec CompilerError
-compilerErrorCodec = CA.Record.object "CompilerError"
+compilerErrorCodec :: CJ.Codec CompilerError
+compilerErrorCodec = CJ.named "CompilerError" $ CJ.Record.object
   { position: sourcePositionCodec
-  , message: CA.string
-  , errorCode: CA.string
-  , errorLink: CA.string
-  , filename: CA.string
-  , moduleName: CA.Compat.maybe CA.string
+  , message: CJ.string
+  , errorCode: CJ.string
+  , errorLink: CJ.string
+  , filename: CJ.string
+  , moduleName: CJ.Common.nullable CJ.string
   }
 
 type SourcePosition =
@@ -49,12 +50,12 @@ type SourcePosition =
   , endColumn :: Int
   }
 
-sourcePositionCodec :: JsonCodec SourcePosition
-sourcePositionCodec = CA.Record.object "SourcePosition"
-  { startLine: CA.int
-  , startColumn: CA.int
-  , endLine: CA.int
-  , endColumn: CA.int
+sourcePositionCodec :: CJ.Codec SourcePosition
+sourcePositionCodec = CJ.named "SourcePosition" $ CJ.Record.object
+  { startLine: CJ.int
+  , startColumn: CJ.int
+  , endLine: CJ.int
+  , endColumn: CJ.int
   }
 
 -- TODO: This would be better handled with dodo-printer.
@@ -120,8 +121,8 @@ callCompiler compilerArgs = do
             $ String.replaceAll (String.Pattern ".") (String.Replacement "_")
             $ Version.print version
 
-    errorsCodec = CA.Record.object "CompilerErrors"
-      { errors: CA.array compilerErrorCodec
+    errorsCodec = CJ.named "CompilerErrors" $ CJ.Record.object
+      { errors: CJ.array compilerErrorCodec
       }
 
   result <- _.getResult =<< Execa.execa purs (printCommand compilerArgs.command) (_ { cwd = compilerArgs.cwd })
@@ -137,7 +138,7 @@ callCompiler compilerArgs = do
               Just version | Right min <- Version.parse "0.14.0", version < min -> result.stderr
               Just _ -> result.stdout
           case parseJson errorsCodec output of
-            Left err -> UnknownError $ String.joinWith "\n" [ result.stdout, result.stderr, CA.printJsonDecodeError err ]
+            Left err -> UnknownError $ String.joinWith "\n" [ result.stdout, result.stderr, CJ.DecodeError.print err ]
             Right ({ errors } :: { errors :: Array CompilerError })
               | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
               | otherwise -> CompilationError errors

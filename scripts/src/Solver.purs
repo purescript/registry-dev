@@ -11,9 +11,8 @@ module Registry.Scripts.Solver where
 
 import Registry.App.Prelude
 
-import Data.Argonaut.Core as Json
 import Data.Array as Array
-import Data.Codec.Argonaut as J
+import Data.Codec.JSON as CJ
 import Data.DateTime.Instant as Instant
 import Data.Foldable (foldMap)
 import Data.Formatter.DateTime as Formatter.DateTime
@@ -24,6 +23,7 @@ import Data.Time.Duration (Milliseconds(..))
 import Effect.Class.Console as Aff
 import Effect.Exception (throw)
 import Effect.Now (now)
+import JSON as JSON
 import Node.Path as Path
 import Node.Process as Node.Process
 import Node.Process as Process
@@ -81,7 +81,7 @@ main = launchAff_ do
           parser =
             Range.parser <|> (Version.parser <#> \v -> unsafeFromJust (Range.mk v (Version.bumpPatch v)))
           parsing = hush <<< flip Parsing.runParser parser
-          codec = Codec.packageMap $ J.prismaticCodec "VersionOrRange" parsing Range.print J.string
+          codec = Codec.packageMap $ CJ.prismaticCodec "VersionOrRange" parsing Range.print CJ.string
           package = unsafeFromRight $ PackageName.parse "manifest"
           version = unsafeFromRight $ Version.parse "0.0.0"
         deps <- liftAff (readJsonFile codec path) >>= case _ of
@@ -165,7 +165,7 @@ main = launchAff_ do
     Log.debug $ "Took: " <> show d <> "ms"
     case r of
       Right vs ->
-        Log.debug $ Json.stringifyWithIndent 2 (J.encode (Codec.packageMap Version.codec) vs)
+        Log.debug $ JSON.printIndented (CJ.encode (Codec.packageMap Version.codec) vs)
       Left es -> do
         Log.error $ "Failed: " <> PackageName.print package <> "@" <> Version.print version
         Log.warn $ String.take 5000 $ foldMap Solver.printSolverError es

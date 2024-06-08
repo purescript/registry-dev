@@ -6,7 +6,7 @@ import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Control.Apply (lift2)
 import Data.Array as Array
-import Data.Codec.Argonaut as CA
+import Data.Codec.JSON as CJ
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
@@ -52,8 +52,8 @@ derive instance Eq InputMode
 
 type DeletePackages = Map PackageName (Array Version)
 
-deletePackagesCodec :: JsonCodec DeletePackages
-deletePackagesCodec = Internal.Codec.packageMap (CA.array Version.codec)
+deletePackagesCodec :: CJ.Codec DeletePackages
+deletePackagesCodec = Internal.Codec.packageMap (CJ.array Version.codec)
 
 parser :: ArgParser Arguments
 parser = Arg.fromRecord

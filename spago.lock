@@ -5,11 +5,11 @@ workspace:
       dependencies:
         - aff
         - ansi
-        - argonaut-core
         - arrays
         - b64
         - bifunctors
-        - codec-argonaut
+        - codec
+        - codec-json
         - console
         - const
         - control
@@ -23,6 +23,7 @@ workspace:
         - fetch
         - filterable
         - foldable-traversable
+        - foreign
         - foreign-object
         - formatters
         - http-methods
@@ -33,9 +34,9 @@ workspace:
         - js-fetch
         - js-promise-aff
         - js-uri
+        - json
         - lists
         - maybe
-        - media-types
         - newtype
         - node-buffer
         - node-child-process
@@ -53,7 +54,6 @@ workspace:
         - partial
         - prelude
         - profunctor
-        - profunctor-lenses
         - record
         - refs
         - registry-foreign
@@ -76,15 +76,16 @@ workspace:
       dependencies:
         - aff
         - aff-promise
-        - argonaut-core
         - arrays
         - b64
         - bifunctors
-        - codec-argonaut
+        - codec
+        - codec-json
         - convertable-options
         - datetime
         - effect
         - either
+        - exceptions
         - fetch
         - filterable
         - foldable-traversable
@@ -93,6 +94,8 @@ workspace:
         - http-methods
         - integers
         - js-date
+        - js-fetch
+        - json
         - maybe
         - newtype
         - node-buffer
@@ -103,10 +106,13 @@ workspace:
         - profunctor
         - registry-lib
         - strings
+        - transformers
         - tuples
         - unsafe-coerce
         - variant
       test_dependencies:
+        - node-child-process
+        - node-execa
         - node-fs
         - node-process
         - spec
@@ -114,10 +120,10 @@ workspace:
       path: lib
       dependencies:
         - aff
-        - argonaut-core
         - arrays
         - bifunctors
-        - codec-argonaut
+        - codec
+        - codec-json
         - control
         - datetime
         - effect
@@ -130,6 +136,7 @@ workspace:
         - functors
         - graphs
         - integers
+        - json
         - language-cst-parser
         - lists
         - maybe
@@ -146,12 +153,13 @@ workspace:
         - profunctor-lenses
         - routing-duplex
         - safe-coerce
+        - st
         - strings
         - transformers
         - tuples
       test_dependencies:
-        - argonaut-core
         - exceptions
+        - json
         - node-child-process
         - node-execa
         - spec
@@ -160,12 +168,10 @@ workspace:
       path: scripts
       dependencies:
         - aff
-        - argonaut-core
         - argparse-basic
         - arrays
-        - codec-argonaut
+        - codec-json
         - console
-        - control
         - datetime
         - either
         - exceptions
@@ -173,8 +179,10 @@ workspace:
         - filterable
         - foldable-traversable
         - formatters
+        - json
         - lists
         - newtype
+        - node-fs
         - node-path
         - node-process
         - now
@@ -195,6 +203,7 @@ workspace:
   package_set:
     registry: 46.0.0
   extra_packages:
+    codec-json: 1.2.0
     dodo-printer:
       repo: https://github.com/natefaubion/purescript-dodo-printer.git
       version: v2.2.1
@@ -290,22 +299,6 @@ packages:
       - foldable-traversable
       - lists
       - strings
-  argonaut-core:
-    type: registry
-    version: 7.0.0
-    integrity: sha256-RC82GfAjItydxrO24cdX373KHVZiLqybu19b5X8u7B4=
-    dependencies:
-      - arrays
-      - control
-      - either
-      - foreign-object
-      - functions
-      - gen
-      - maybe
-      - nonempty
-      - prelude
-      - strings
-      - tailrec
   argparse-basic:
     type: registry
     version: 2.0.0
@@ -412,15 +405,16 @@ packages:
     dependencies:
       - bifunctors
       - profunctor
-  codec-argonaut:
+  codec-json:
     type: registry
-    version: 10.0.0
-    integrity: sha256-n80U8KiBk333qfQwDobSZWiyNg9BA3CL/EwFznIdRwI=
+    version: 1.2.0
+    integrity: sha256-59+uYYe/5uTFa/Q6EqF8ekvP/Y4SOjUNfwIqIYtNiGI=
     dependencies:
-      - argonaut-core
       - codec
       - foreign-object
+      - json
       - ordered-collections
+      - transformers
       - type-equality
       - variant
   console:
@@ -941,6 +935,21 @@ packages:
     dependencies:
       - functions
       - maybe
+  json:
+    type: registry
+    version: 1.0.0
+    integrity: sha256-UCHdePAoOD19UyCPLU97oZjcdxLlQZQneWFsfoUNNpE=
+    dependencies:
+      - either
+      - foldable-traversable
+      - functions
+      - gen
+      - integers
+      - maybe
+      - prelude
+      - strings
+      - tuples
+      - unfoldable
   justifill:
     type: registry
     version: 0.5.0

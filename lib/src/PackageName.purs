@@ -12,18 +12,21 @@ module Registry.PackageName
 
 import Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Control.Alt ((<|>))
+import Control.Monad.Except (Except, except)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bifunctor (lmap)
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
-import Data.Either (Either, hush)
+import Data.Codec as Codec
+import Data.Codec.JSON as CJ
+import Data.Either (Either)
 import Data.Maybe (Maybe(..), isJust)
 import Data.Maybe as Maybe
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
 import Data.Tuple (fst)
+import JSON (JSON)
 import Parsing (Parser)
 import Parsing as Parsing
 import Parsing.Combinators as Parsing.Combinators
@@ -51,8 +54,14 @@ derive newtype instance Eq PackageName
 derive newtype instance Ord PackageName
 
 -- | A codec for encoding and decoding a `PackageName` as a JSON string
-codec :: JsonCodec PackageName
-codec = CA.prismaticCodec "PackageName" (hush <<< parse) print CA.string
+codec :: CJ.Codec PackageName
+codec = CJ.named "PackageName" $ Codec.codec' decode encode
+  where
+  decode :: JSON -> Except CJ.DecodeError PackageName
+  decode = except <<< lmap CJ.DecodeError.basic <<< parse <=< Codec.decode CJ.string
+
+  encode :: PackageName -> JSON
+  encode = print >>> CJ.encode CJ.string
 
 -- | Print a package name as a string
 print :: PackageName -> String
