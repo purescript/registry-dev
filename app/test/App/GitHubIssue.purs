@@ -91,7 +91,7 @@ decodeEventsToOps = do
       rawOperation = packageNameTooLongString
 
       parseJson = bimap CJ.DecodeError.print Publish <<< CJ.decode Operation.publishCodec <=< JSON.parse
-    
+
     parseJson (GitHubIssue.firstObject rawOperation) `Assert.shouldEqual` (Left "$.name: Could not decode Publish:\n  Could not decode PackageName:\n    Package name cannot be longer than 150 characters")
 
 preludeAdditionString :: String
