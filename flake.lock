@@ -37,11 +37,11 @@
         "systems": "systems"
       },
       "locked": {
-        "lastModified": 1705309234,
-        "narHash": "sha256-uNRRNRKmJyCRC/8y1RqBkqWBLM034y4qN7EprSdmgyA=",
+        "lastModified": 1710146030,
+        "narHash": "sha256-SZ5L6eA7HJ/nmkzGG7/ISclqe6oZdOZTNoesiInkXPQ=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "1ef2e671c3b0c19053962c07dbda38332dcebf26",
+        "rev": "b1d9ab70662946ef0850d488da1c9019f3a9752a",
         "type": "github"
       },
       "original": {
@@ -52,16 +52,16 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1708979614,
-        "narHash": "sha256-FWLWmYojIg6TeqxSnHkKpHu5SGnFP5um1uUjH+wRV6g=",
+        "lastModified": 1721496955,
+        "narHash": "sha256-o0Sg67Nlu05m+ldonYnIegjW/twI4i2hX3Bduku7VU0=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "b7ee09cf5614b02d289cd86fcfa6f24d4e078c2a",
+        "rev": "2001cd0142dbfd355f9c04bb74196ea84d59280d",
         "type": "github"
       },
       "original": {
         "owner": "nixos",
-        "ref": "release-23.11",
+        "ref": "release-24.05",
         "repo": "nixpkgs",
         "type": "github"
       }
@@ -75,11 +75,11 @@
         "slimlock": "slimlock"
       },
       "locked": {
-        "lastModified": 1708554905,
-        "narHash": "sha256-KXXSaeOgHOE/2YCZNfvw3efe1OZkPH8T6HqziPs2/Q8=",
+        "lastModified": 1720786645,
+        "narHash": "sha256-eiuWqQ9xTA2E76XDg13TQBecnLV1g+ahdauC0FYSD7U=",
         "owner": "thomashoneyman",
         "repo": "purescript-overlay",
-        "rev": "c7d9df1e916aa976125f4459d1bc2a480b75e43b",
+        "rev": "c46925ec09fdf54b5bb4ba38b40e19918d3be7be",
         "type": "github"
       },
       "original": {

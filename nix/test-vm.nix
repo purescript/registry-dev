@@ -1,6 +1,15 @@
 # Machine configuration for the NixOS virtual machine suitable for testing.
-{ lib, pkgs, modulesPath, ... }: {
-  imports = [ "${modulesPath}/virtualisation/qemu-vm.nix" ./module.nix ];
+{
+  lib,
+  pkgs,
+  modulesPath,
+  ...
+}:
+{
+  imports = [
+    "${modulesPath}/virtualisation/qemu-vm.nix"
+    ./module.nix
+  ];
 
   config = {
     # https://github.com/utmapp/UTM/issues/2353
@@ -11,12 +20,16 @@
 
     virtualisation = {
       graphics = false;
-      host = { inherit pkgs; };
-      forwardPorts = [{
-        from = "host";
-        guest.port = 80;
-        host.port = 8080;
-      }];
+      host = {
+        inherit pkgs;
+      };
+      forwardPorts = [
+        {
+          from = "host";
+          guest.port = 80;
+          host.port = 8080;
+        }
+      ];
     };
 
     system.stateVersion = "23.11";
