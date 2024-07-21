@@ -1,14 +1,35 @@
-{ makeWrapper, lib, stdenv, purix, esbuild, nodejs, writeText, compilers
-, purs-versions, dhall, dhall-json, licensee, git, git-lfs, coreutils, gzip
-, gnutar
-# from the registry at the top level
-, spago-lock, package-lock }:
+{
+  makeWrapper,
+  lib,
+  stdenv,
+  purix,
+  esbuild,
+  nodejs,
+  writeText,
+  compilers,
+  purs-versions,
+  dhall,
+  dhall-json,
+  licensee,
+  git,
+  git-lfs,
+  coreutils,
+  gzip,
+  gnutar,
+  # from the registry at the top level
+  spago-lock,
+  package-lock,
+}:
 let
-  build-script = name: module:
+  build-script =
+    name: module:
     stdenv.mkDerivation rec {
       inherit name;
       src = ./src;
-      nativeBuildInputs = [ esbuild makeWrapper ];
+      nativeBuildInputs = [
+        esbuild
+        makeWrapper
+      ];
       buildInputs = [ nodejs ];
       entrypoint = writeText "entrypoint.js" ''
         import { main } from "./output/Registry.Scripts.${module}";
@@ -50,15 +71,13 @@ let
           }
       '';
     };
-in {
+in
+{
   legacy-importer = build-script "registry-legacy-importer" "LegacyImporter";
   package-deleter = build-script "registry-package-deleter" "PackageDeleter";
-  package-set-updater =
-    build-script "registry-package-set-updater" "PackageSetUpdater";
-  package-transferrer =
-    build-script "registry-package-transferrer" "PackageTransferrer";
+  package-set-updater = build-script "registry-package-set-updater" "PackageSetUpdater";
+  package-transferrer = build-script "registry-package-transferrer" "PackageTransferrer";
   solver = build-script "registry-solver" "Solver";
   verify-integrity = build-script "registry-verify-integrity" "VerifyIntegrity";
-  compiler-versions =
-    build-script "registry-compiler-versions" "CompilerVersions";
+  compiler-versions = build-script "registry-compiler-versions" "CompilerVersions";
 }
