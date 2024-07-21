@@ -50,6 +50,7 @@ stripPureScriptPrefix pkg =
 -- | A Registry-compliant package name
 newtype PackageName = PackageName String
 
+derive newtype instance Show PackageName
 derive newtype instance Eq PackageName
 derive newtype instance Ord PackageName
 
