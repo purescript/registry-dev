@@ -2,11 +2,9 @@ module Registry.API.V1 where
 
 import Prelude hiding ((/))
 
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Record as CA.Record
-import Data.Codec.Argonaut.Record as CAR
-import Data.Codec.Argonaut.Sum as CA.Sum
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Record as CJ.Record
+import Data.Codec.JSON.Sum as CJ.Sum
 import Data.DateTime (DateTime)
 import Data.Either (Either(..), hush)
 import Data.Formatter.DateTime as DateTime
@@ -63,8 +61,8 @@ timestampP = Routing.as printTimestamp parseTimestamp
 
 type JobCreatedResponse = { jobId :: JobId }
 
-jobCreatedResponseCodec :: JsonCodec JobCreatedResponse
-jobCreatedResponseCodec = CA.Record.object "JobCreatedResponse" { jobId: jobIdCodec }
+jobCreatedResponseCodec :: CJ.Codec JobCreatedResponse
+jobCreatedResponseCodec = CJ.named "JobCreatedResponse" $ CJ.Record.object { jobId: jobIdCodec }
 
 type Job =
   { jobId :: JobId
@@ -77,24 +75,24 @@ type Job =
   , logs :: Array LogLine
   }
 
-jobCodec :: JsonCodec Job
-jobCodec = CA.Record.object "Job"
+jobCodec :: CJ.Codec Job
+jobCodec = CJ.named "Job" $ CJ.Record.object
   { jobId: jobIdCodec
   , jobType: jobTypeCodec
   , packageName: PackageName.codec
-  , ref: CA.string
+  , ref: CJ.string
   , createdAt: Internal.Codec.iso8601DateTime
-  , finishedAt: CAR.optional Internal.Codec.iso8601DateTime
-  , success: CA.boolean
-  , logs: CA.array logLineCodec
+  , finishedAt: CJ.Record.optional Internal.Codec.iso8601DateTime
+  , success: CJ.boolean
+  , logs: CJ.array logLineCodec
   }
 
 newtype JobId = JobId String
 
 derive instance Newtype JobId _
 
-jobIdCodec :: JsonCodec JobId
-jobIdCodec = Profunctor.wrapIso JobId CA.string
+jobIdCodec :: CJ.Codec JobId
+jobIdCodec = Profunctor.wrapIso JobId CJ.string
 
 data JobType = PublishJob | UnpublishJob | TransferJob
 
@@ -113,8 +111,8 @@ printJobType = case _ of
   UnpublishJob -> "unpublish"
   TransferJob -> "transfer"
 
-jobTypeCodec :: JsonCodec JobType
-jobTypeCodec = CA.Sum.enumSum printJobType (hush <<< parseJobType)
+jobTypeCodec :: CJ.Codec JobType
+jobTypeCodec = CJ.Sum.enumSum printJobType (hush <<< parseJobType)
 
 type LogLine =
   { level :: LogLevel
@@ -123,10 +121,10 @@ type LogLine =
   , timestamp :: DateTime
   }
 
-logLineCodec :: JsonCodec LogLine
-logLineCodec = CA.Record.object "LogLine"
-  { level: CA.Sum.enumSum printLogLevel (hush <<< parseLogLevel)
-  , message: CA.string
+logLineCodec :: CJ.Codec LogLine
+logLineCodec = CJ.named "LogLine" $ CJ.Record.object
+  { level: CJ.Sum.enumSum printLogLevel (hush <<< parseLogLevel)
+  , message: CJ.string
   , jobId: jobIdCodec
   , timestamp: Internal.Codec.iso8601DateTime
   }

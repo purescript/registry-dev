@@ -427,7 +427,8 @@ These files are always included in the tarball, if present:
 
 These files are always excluded from the tarball, regardless of what is specified in the `files` key:
 
-- `.psci`, `.psci_modules`, `.spago`, `node_modules`, `bower_components`, `.git`, `CVS`, `.svn`, and `.hg` directories.
+- `.psci`, `.psci_modules`, `.spago`, `node_modules`, and `bower_components` directories.
+- `.git`, `CVS`, `.svn`, `.hg`, `_darcs`, `.fossil`, `.jj`, and `.pijul` <abbr title="version control system">VCS</abbr> directories.
 - `package-lock.json`, `yarn.lock`, and `pnpm-lock.yaml` files.
 - `.swp`, `._*`, and `.DS_Store` files.
 

@@ -2,11 +2,13 @@ module Registry.App.Legacy.Manifest where
 
 import Registry.App.Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Common as CA.Common
-import Data.Codec.Argonaut.Record as CA.Record
-import Data.Codec.Argonaut.Variant as CA.Variant
+import Data.Codec as Codec
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
+import Data.Codec.JSON.Record as CJ.Record
+import Data.Codec.JSON.Variant as CJ.Variant
 import Data.Either as Either
 import Data.Exists as Exists
 import Data.Map (SemigroupMap(..))
@@ -212,18 +214,18 @@ data LegacyManifestError
   | InvalidLicense (Array String)
   | InvalidDependencies (Array { name :: String, range :: String, error :: String })
 
-legacyManifestErrorCodec :: JsonCodec LegacyManifestError
-legacyManifestErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
+legacyManifestErrorCodec :: CJ.Codec LegacyManifestError
+legacyManifestErrorCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantMatch
   { noManifests: Left unit
   , missingLicense: Left unit
-  , invalidLicense: Right (CA.array CA.string)
-  , invalidDependencies: Right (CA.array dependencyCodec)
+  , invalidLicense: Right (CJ.array CJ.string)
+  , invalidDependencies: Right (CJ.array dependencyCodec)
   }
   where
-  dependencyCodec = CA.Record.object "Dependency"
-    { name: CA.string
-    , range: CA.string
-    , error: CA.string
+  dependencyCodec = CJ.named "Dependency" $ CJ.Record.object
+    { name: CJ.string
+    , range: CJ.string
+    , error: CJ.string
     }
 
   toVariant = case _ of
@@ -341,15 +343,15 @@ newtype SpagoDhallJson = SpagoDhallJson
 
 derive instance Newtype SpagoDhallJson _
 
-spagoDhallJsonCodec :: JsonCodec SpagoDhallJson
-spagoDhallJsonCodec = Profunctor.dimap toRep fromRep $ CA.Record.object "SpagoDhallJson"
-  { license: CA.Record.optional CA.Common.nonEmptyString
-  , dependencies: CA.Record.optional (CA.array (Profunctor.wrapIso RawPackageName CA.string))
-  , packages: CA.Record.optional packageVersionMapCodec
+spagoDhallJsonCodec :: CJ.Codec SpagoDhallJson
+spagoDhallJsonCodec = Profunctor.dimap toRep fromRep $ CJ.named "SpagoDhallJson" $ CJ.Record.object
+  { license: CJ.Record.optional CJ.Common.nonEmptyString
+  , dependencies: CJ.Record.optional (CJ.array (Profunctor.wrapIso RawPackageName CJ.string))
+  , packages: CJ.Record.optional packageVersionMapCodec
   }
   where
-  packageVersionMapCodec :: JsonCodec (Map RawPackageName { version :: RawVersion })
-  packageVersionMapCodec = rawPackageNameMapCodec $ CA.Record.object "VersionObject" { version: rawVersionCodec }
+  packageVersionMapCodec :: CJ.Codec (Map RawPackageName { version :: RawVersion })
+  packageVersionMapCodec = rawPackageNameMapCodec $ CJ.named "VersionObject" $ CJ.Record.object { version: rawVersionCodec }
 
   toRep (SpagoDhallJson fields) = fields
     { dependencies = if Array.null fields.dependencies then Nothing else Just fields.dependencies
@@ -382,8 +384,8 @@ fetchSpagoDhallJson address ref = Run.Except.runExceptAt _spagoDhallError do
   dhallJson <- Run.liftAff $ dhallToJson { dhall: spagoDhall, cwd: Just tmp }
   Run.Except.rethrowAt _spagoDhallError $ case dhallJson of
     Left err -> Left $ Octokit.DecodeError err
-    Right json -> case CA.decode spagoDhallJsonCodec json of
-      Left err -> Left $ Octokit.DecodeError $ CA.printJsonDecodeError err
+    Right json -> case CJ.decode spagoDhallJsonCodec json of
+      Left err -> Left $ Octokit.DecodeError $ CJ.DecodeError.print err
       Right value -> pure value
   where
   _spagoDhallError :: Proxy "spagoDhallError"
@@ -391,7 +393,7 @@ fetchSpagoDhallJson address ref = Run.Except.runExceptAt _spagoDhallError do
 
   -- | Convert a string representing a Dhall expression into JSON using the
   -- | `dhall-to-json` CLI.
-  dhallToJson :: { dhall :: String, cwd :: Maybe FilePath } -> Aff (Either String Json)
+  dhallToJson :: { dhall :: String, cwd :: Maybe FilePath } -> Aff (Either String JSON)
   dhallToJson { dhall, cwd } = do
     let cmd = "dhall-to-json"
     let args = []
@@ -399,7 +401,7 @@ fetchSpagoDhallJson address ref = Run.Except.runExceptAt _spagoDhallError do
     for_ process.stdin \{ writeUtf8End } -> writeUtf8End dhall
     result <- process.getResult
     pure case result.exit of
-      Normally 0 -> lmap CA.printJsonDecodeError $ parseJson CA.json result.stdout
+      Normally 0 -> lmap CJ.DecodeError.print $ parseJson CJ.json result.stdout
       _ -> Left result.stderr
 
 newtype Bowerfile = Bowerfile
@@ -411,24 +413,25 @@ newtype Bowerfile = Bowerfile
 derive instance Newtype Bowerfile _
 derive newtype instance Eq Bowerfile
 
-bowerfileCodec :: JsonCodec Bowerfile
-bowerfileCodec = Profunctor.dimap toRep fromRep $ CA.Record.object "Bowerfile"
-  { description: CA.Record.optional CA.string
-  , dependencies: CA.Record.optional dependenciesCodec
-  , license: CA.Record.optional licenseCodec
+bowerfileCodec :: CJ.Codec Bowerfile
+bowerfileCodec = Profunctor.dimap toRep fromRep $ CJ.named "Bowerfile" $ CJ.Record.object
+  { description: CJ.Record.optional CJ.string
+  , dependencies: CJ.Record.optional dependenciesCodec
+  , license: CJ.Record.optional licenseCodec
   }
   where
   toRep (Bowerfile fields) = fields { dependencies = Just fields.dependencies, license = Just fields.license }
   fromRep fields = Bowerfile $ fields { dependencies = fromMaybe Map.empty fields.dependencies, license = fromMaybe [] fields.license }
 
-  dependenciesCodec :: JsonCodec (Map RawPackageName RawVersionRange)
+  dependenciesCodec :: CJ.Codec (Map RawPackageName RawVersionRange)
   dependenciesCodec = rawPackageNameMapCodec rawVersionRangeCodec
 
-  licenseCodec :: JsonCodec (Array String)
-  licenseCodec = CA.codec' decode encode
+  licenseCodec :: CJ.Codec (Array String)
+  licenseCodec = Codec.codec' decode encode
     where
-    decode json = CA.decode (CA.array CA.string) json <|> map Array.singleton (CA.decode CA.string json)
-    encode = CA.encode (CA.array CA.string)
+    encode = CJ.encode (CJ.array CJ.string)
+    decode json = Codec.decode (CJ.array CJ.string) json
+      <|> map Array.singleton (Codec.decode CJ.string json)
 
 -- | Attempt to construct a Bowerfile from a bower.json file located in a
 -- | remote repository at the given ref.
@@ -527,7 +530,7 @@ instance MemoryEncodable LegacyCache where
 instance FsEncodable LegacyCache where
   encodeFs = case _ of
     LegacySet (RawVersion ref) next ->
-      Exists.mkExists $ AsJson ("LegacySet__" <> ref) (CA.Common.either Octokit.githubErrorCodec legacyPackageSetCodec) next
+      Exists.mkExists $ AsJson ("LegacySet__" <> ref) (CJ.Common.either Octokit.githubErrorCodec legacyPackageSetCodec) next
     LegacyUnion hash next ->
       Exists.mkExists $ AsJson ("LegacyUnion" <> Sha256.print hash) legacyPackageSetUnionCodec next
 

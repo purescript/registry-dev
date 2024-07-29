@@ -19,12 +19,12 @@ module Registry.App.API
 
 import Registry.App.Prelude
 
-import Data.Argonaut.Parser as Argonaut.Parser
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Common as CA.Common
-import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
+import Data.Codec.JSON.Record as CJ.Record
 import Data.Exists as Exists
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
@@ -41,6 +41,7 @@ import Data.String.NonEmpty as NonEmptyString
 import Data.String.Regex as Regex
 import Effect.Aff as Aff
 import Effect.Unsafe (unsafePerformEffect)
+import JSON as JSON
 import Node.ChildProcess.Types (Exit(..))
 import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as FS.Stats
@@ -436,7 +437,7 @@ publish maybeLegacyIndex payload = do
             Except.throw $ "Found a valid purs.json file in the package source, but it does not typecheck."
           Right _ -> case parseJson Manifest.codec string of
             Left err -> do
-              Log.error $ "Failed to parse manifest: " <> CA.printJsonDecodeError err
+              Log.error $ "Failed to parse manifest: " <> CJ.DecodeError.print err
               Except.throw $ "Found a purs.json file in the package source, but it could not be decoded."
             Right manifest -> do
               Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec manifest
@@ -625,10 +626,10 @@ publish maybeLegacyIndex payload = do
             -- unused dependencies. This only affects old packages and we know
             -- they compile, so we've decided it's an acceptable exception.
             pure $ Tuple (Manifest receivedManifest) validatedResolutions
-        Right output -> case Argonaut.Parser.jsonParser output of
+        Right output -> case JSON.parse output of
           Left parseErr -> Except.throw $ "Failed to parse purs graph output as JSON while finding unused dependencies: " <> parseErr
-          Right json -> case CA.decode PursGraph.pursGraphCodec json of
-            Left decodeErr -> Except.throw $ "Failed to decode JSON from purs graph output while finding unused dependencies: " <> CA.printJsonDecodeError decodeErr
+          Right json -> case CJ.decode PursGraph.pursGraphCodec json of
+            Left decodeErr -> Except.throw $ "Failed to decode JSON from purs graph output while finding unused dependencies: " <> CJ.DecodeError.print decodeErr
             Right graph -> do
               Log.debug "Got a valid graph of source and dependencies."
               let
@@ -1031,7 +1032,7 @@ publishToPursuit { source, compiler, resolutions, installedResolutions } = Excep
       let lines = String.split (String.Pattern "\n") publishResult
       case Array.last lines of
         Nothing -> Except.throw "Publishing failed because of an unexpected compiler error. cc @purescript/packaging"
-        Just jsonString -> case Argonaut.Parser.jsonParser jsonString of
+        Just jsonString -> case JSON.parse jsonString of
           Left err -> Except.throw $ String.joinWith "\n"
             [ "Failed to parse output of publishing. cc @purescript/packaging"
             , "```"
@@ -1050,8 +1051,8 @@ publishToPursuit { source, compiler, resolutions, installedResolutions } = Excep
 
 type PursuitResolutions = Map RawPackageName { version :: Version, path :: FilePath }
 
-pursuitResolutionsCodec :: JsonCodec PursuitResolutions
-pursuitResolutionsCodec = rawPackageNameMapCodec $ CA.Record.object "Resolution" { version: Version.codec, path: CA.string }
+pursuitResolutionsCodec :: CJ.Codec PursuitResolutions
+pursuitResolutionsCodec = rawPackageNameMapCodec $ CJ.named "Resolution" $ CJ.Record.object { version: Version.codec, path: CJ.string }
 
 -- Resolutions format: https://github.com/purescript/purescript/pull/3565
 --
@@ -1344,9 +1345,9 @@ instance FsEncodable CompilerCache where
         cacheKey = baseKey <> Sha256.print hashKey
 
       let
-        codec = CA.Record.object "FindAllCompilersResult"
+        codec = CJ.named "FindAllCompilersResult" $ CJ.Record.object
           { target: Version.codec
-          , result: CA.Common.either compilerFailureCodec CA.null
+          , result: CJ.Common.either compilerFailureCodec CJ.null
           }
 
       Exists.mkExists $ Cache.AsJson cacheKey codec next

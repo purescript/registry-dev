@@ -14,9 +14,11 @@ module Registry.App.Legacy.PackageSet
 
 import Registry.App.Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Control.Monad.Error.Class as Error
 import Data.Array as Array
-import Data.Codec.Argonaut as CA
+import Data.Codec as Codec
+import Data.Codec.JSON as CJ
 import Data.Compactable (separate)
 import Data.DateTime (Date, DateTime(..))
 import Data.DateTime as DateTime
@@ -58,15 +60,15 @@ derive instance Newtype PscTag _
 derive instance Eq PscTag
 derive instance Ord PscTag
 
-pscTagCodec :: JsonCodec PscTag
-pscTagCodec = CA.codec' decode encode
+pscTagCodec :: CJ.Codec PscTag
+pscTagCodec = CJ.named "PscTag" $ Codec.codec' decode encode
   where
   decode json = do
-    tagStr <- CA.decode CA.string json
-    lmap (CA.Named "PscTag" <<< CA.TypeMismatch) (parsePscTag tagStr)
+    tagStr <- Codec.decode CJ.string json
+    except $ lmap CJ.DecodeError.basic $ parsePscTag tagStr
 
   encode =
-    CA.encode CA.string <<< printPscTag
+    CJ.encode CJ.string <<< printPscTag
 
 pscDateFormat :: List FormatterCommand
 pscDateFormat = YearFull : MonthTwoDigits : DayOfMonthTwoDigits : Nil
@@ -210,7 +212,7 @@ printDhall (LegacyPackageSet entries) = do
 
 type LatestCompatibleSets = Map Version PscTag
 
-latestCompatibleSetsCodec :: JsonCodec LatestCompatibleSets
+latestCompatibleSetsCodec :: CJ.Codec LatestCompatibleSets
 latestCompatibleSetsCodec = Internal.Codec.versionMap pscTagCodec
 
 -- | Filter the package sets to only those published before the registry was

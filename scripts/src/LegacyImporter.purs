@@ -13,10 +13,10 @@ import ArgParse.Basic as Arg
 import Control.Apply (lift2)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Common as CA.Common
-import Data.Codec.Argonaut.Record as CA.Record
-import Data.Codec.Argonaut.Variant as CA.Variant
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
+import Data.Codec.JSON.Record as CJ.Record
+import Data.Codec.JSON.Variant as CJ.Variant
 import Data.Compactable (separate)
 import Data.DateTime (Date, Month(..))
 import Data.DateTime as DateTime
@@ -92,8 +92,7 @@ import Registry.Solver as Solver
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
-import Run.Except (EXCEPT, Except)
-import Run.Except as Except
+import Run.Except (EXCEPT)
 import Run.Except as Run.Except
 import Type.Proxy (Proxy(..))
 
@@ -188,7 +187,7 @@ main = launchAff_ do
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
     # Cache.interpret API._compilerCache (Cache.handleFs cache)
-    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
+    # Run.Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
     # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Env.runResourceEnv resourceEnv
@@ -285,7 +284,7 @@ runLegacyImport logs = do
 
   allCompilers <- PursVersions.pursVersions
   allCompilersRange <- case Range.mk (NonEmptyArray.head allCompilers) (Version.bumpPatch (NonEmptyArray.last allCompilers)) of
-    Nothing -> Except.throw $ "Failed to construct a compiler range from " <> Version.print (NonEmptyArray.head allCompilers) <> " and " <> Version.print (NonEmptyArray.last allCompilers)
+    Nothing -> Run.Except.throw $ "Failed to construct a compiler range from " <> Version.print (NonEmptyArray.head allCompilers) <> " and " <> Version.print (NonEmptyArray.last allCompilers)
     Just range -> do
       Log.info $ "All available compilers range: " <> Range.print range
       pure range
@@ -296,7 +295,7 @@ runLegacyImport logs = do
       let formatted = formatPackageVersion manifest.name manifest.version
       Log.info $ "\n----------\nPUBLISHING: " <> formatted <> "\n----------\n"
       RawVersion ref <- case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
-        Nothing -> Except.throw $ "Unable to recover package ref for " <> formatted
+        Nothing -> Run.Except.throw $ "Unable to recover package ref for " <> formatted
         Just ref -> pure ref
 
       Log.debug "Building dependency index with compiler versions..."
@@ -380,7 +379,7 @@ runLegacyImport logs = do
                         ]
                       pure $ NonEmptySet.fromFoldable1 allCompilers
                     Right compilers -> do
-                      Log.debug $ "Compatible compilers for resolutions of " <> formatted <> ": " <> stringifyJson (CA.array Version.codec) (NonEmptySet.toUnfoldable compilers)
+                      Log.debug $ "Compatible compilers for resolutions of " <> formatted <> ": " <> stringifyJson (CJ.array Version.codec) (NonEmptySet.toUnfoldable compilers)
                       pure compilers
 
               cached <- do
@@ -474,7 +473,7 @@ runLegacyImport logs = do
                   , compiler
                   , resolutions: Just resolutions
                   }
-              Except.runExcept (API.publish (Just legacyIndex) payload) >>= case _ of
+              Run.Except.runExcept (API.publish (Just legacyIndex) payload) >>= case _ of
                 Left error -> do
                   Log.error $ "Failed to publish " <> formatted <> ": " <> error
                   Cache.put _importCache (PublishFailure manifest.name manifest.version) (PublishError error)
@@ -683,13 +682,13 @@ data PublishError
 
 derive instance Eq PublishError
 
-publishErrorCodec :: JsonCodec PublishError
-publishErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
-  { solveFailedCompiler: Right CA.string
-  , solveFailedDependencies: Right CA.string
+publishErrorCodec :: CJ.Codec PublishError
+publishErrorCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantMatch
+  { solveFailedCompiler: Right CJ.string
+  , solveFailedDependencies: Right CJ.string
   , noCompilersFound: Right compilerFailureMapCodec
-  , unsolvableDependencyCompilers: Right (CA.array groupedByCompilersCodec)
-  , publishError: Right CA.string
+  , unsolvableDependencyCompilers: Right (CJ.array groupedByCompilersCodec)
+  , publishError: Right CJ.string
   }
   where
   toVariant = case _ of
@@ -800,18 +799,21 @@ formatPublishFailureStats { packages, versions } = String.joinWith "\n"
   , Array.foldMap (\(Tuple key val) -> "\n    - " <> key <> ": " <> show val) (Array.sortBy (comparing snd) (Map.toUnfoldable versions.reason))
   ]
 
-compilerFailureMapCodec :: JsonCodec (Map (NonEmptyArray Version) CompilerFailure)
+compilerFailureMapCodec :: CJ.Codec (Map (NonEmptyArray Version) CompilerFailure)
 compilerFailureMapCodec = do
   let
     print = NonEmptyArray.intercalate "," <<< map Version.print
     parse input = do
       let versions = String.split (String.Pattern ",") input
-      let parsed = Array.mapMaybe (hush <<< Version.parse) versions
-      NonEmptyArray.fromArray parsed
+      let { fail, success } = partitionEithers $ map Version.parse versions
+      case NonEmptyArray.fromArray success of
+        Nothing | Array.null fail -> Left "No versions"
+        Nothing -> Left $ "No versions parsed, some failed: " <> String.joinWith ", " fail
+        Just result -> pure result
   Internal.Codec.strMap "CompilerFailureMap" parse print compilerFailureCodec
 
 type EXCEPT_VERSION :: Row (Type -> Type) -> Row (Type -> Type)
-type EXCEPT_VERSION r = (exceptVersion :: Except VersionValidationError | r)
+type EXCEPT_VERSION r = (exceptVersion :: Run.Except.Except VersionValidationError | r)
 
 _exceptVersion = Proxy :: Proxy "exceptVersion"
 
@@ -823,10 +825,10 @@ exceptVersion = Run.Except.rethrowAt _exceptVersion
 
 type VersionValidationError = { error :: VersionError, reason :: String }
 
-versionValidationErrorCodec :: JsonCodec VersionValidationError
-versionValidationErrorCodec = CA.Record.object "VersionValidationError"
+versionValidationErrorCodec :: CJ.Codec VersionValidationError
+versionValidationErrorCodec = CJ.named "VersionValidationError" $ CJ.Record.object
   { error: versionErrorCodec
-  , reason: CA.string
+  , reason: CJ.string
   }
 
 -- | An error that affects a specific package version
@@ -836,19 +838,19 @@ data VersionError
   | InvalidManifest LegacyManifestValidationError
   | UnregisteredDependencies (Array PackageName)
 
-versionErrorCodec :: JsonCodec VersionError
-versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
-  { invalidTag: Right $ CA.Record.object "Tag"
-      { name: CA.string
-      , sha: CA.string
-      , url: CA.string
+versionErrorCodec :: CJ.Codec VersionError
+versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantMatch
+  { invalidTag: Right $ CJ.named "Tag" $ CJ.Record.object
+      { name: CJ.string
+      , sha: CJ.string
+      , url: CJ.string
       }
   , disabledVersion: Left unit
-  , invalidManifest: Right $ CA.Record.object "LegacyManifestValidationError"
+  , invalidManifest: Right $ CJ.named "LegacyManifestValidationError" $ CJ.Record.object
       { error: Legacy.Manifest.legacyManifestErrorCodec
-      , reason: CA.string
+      , reason: CJ.string
       }
-  , unregisteredDependencies: Right (CA.array PackageName.codec)
+  , unregisteredDependencies: Right (CJ.array PackageName.codec)
   }
   where
   toVariant = case _ of
@@ -891,7 +893,7 @@ validateVersion tag =
     }
 
 type EXCEPT_PACKAGE :: Row (Type -> Type) -> Row (Type -> Type)
-type EXCEPT_PACKAGE r = (exceptPackage :: Except PackageValidationError | r)
+type EXCEPT_PACKAGE r = (exceptPackage :: Run.Except.Except PackageValidationError | r)
 
 _exceptPackage = Proxy :: Proxy "exceptPackage"
 
@@ -921,16 +923,16 @@ type PackageResult =
 
 type PackagesMetadata = { address :: Address, lastPublished :: Date }
 
-packagesMetadataCodec :: JsonCodec PackagesMetadata
-packagesMetadataCodec = CA.Record.object "PackagesMetadata"
-  { address: CA.Record.object "Address" { owner: CA.string, repo: CA.string }
+packagesMetadataCodec :: CJ.Codec PackagesMetadata
+packagesMetadataCodec = CJ.named "PackagesMetadata" $ CJ.Record.object
+  { address: CJ.named "Address" $ CJ.Record.object { owner: CJ.string, repo: CJ.string }
   , lastPublished: Internal.Codec.iso8601Date
   }
 
 getPackagesMetadata :: forall r. Map RawPackageName String -> Run (EXCEPT String + GITHUB + r) (Map PackageName PackagesMetadata)
 getPackagesMetadata legacyRegistry = do
   associated <- for (Map.toUnfoldableUnordered legacyRegistry) \(Tuple rawName rawUrl) -> do
-    Except.runExceptAt (Proxy :: _ "exceptPackage") (validatePackage rawName rawUrl) >>= case _ of
+    Run.Except.runExceptAt (Proxy :: _ "exceptPackage") (validatePackage rawName rawUrl) >>= case _ of
       Left _ -> pure Nothing
       Right { name, address, tags } -> case Array.head tags of
         Nothing -> pure Nothing
@@ -994,7 +996,7 @@ fetchPackageTags address = GitHub.listTags address >>= case _ of
       let reason = "GitHub API error with status code " <> show apiError.statusCode
       throwPackage { error, reason }
     _ ->
-      Except.throw $ String.joinWith "\n"
+      Run.Except.throw $ String.joinWith "\n"
         [ "Unexpected GitHub error with a status <= 400"
         , Octokit.printGitHubError err
         ]
@@ -1062,15 +1064,15 @@ validatePackageName (RawPackageName name) =
 
 type JsonValidationError =
   { tag :: String
-  , value :: Maybe Json
+  , value :: Maybe JSON
   , reason :: String
   }
 
-jsonValidationErrorCodec :: JsonCodec JsonValidationError
-jsonValidationErrorCodec = CA.Record.object "JsonValidationError"
-  { tag: CA.string
-  , value: CA.Record.optional CA.json
-  , reason: CA.string
+jsonValidationErrorCodec :: CJ.Codec JsonValidationError
+jsonValidationErrorCodec = CJ.named "JsonValidationError" $ CJ.Record.object
+  { tag: CJ.string
+  , value: CJ.Record.optional CJ.json
+  , reason: CJ.string
   }
 
 formatPackageValidationError :: PackageValidationError -> JsonValidationError
@@ -1078,25 +1080,25 @@ formatPackageValidationError { error, reason } = case error of
   InvalidPackageName ->
     { tag: "InvalidPackageName", value: Nothing, reason }
   InvalidPackageURL url ->
-    { tag: "InvalidPackageURL", value: Just (CA.encode CA.string url), reason }
+    { tag: "InvalidPackageURL", value: Just (CJ.encode CJ.string url), reason }
   PackageURLRedirects { registered } ->
-    { tag: "PackageURLRedirects", value: Just (CA.encode CA.string (registered.owner <> "/" <> registered.repo)), reason }
+    { tag: "PackageURLRedirects", value: Just (CJ.encode CJ.string (registered.owner <> "/" <> registered.repo)), reason }
   CannotAccessRepo address ->
-    { tag: "CannotAccessRepo", value: Just (CA.encode CA.string (address.owner <> "/" <> address.repo)), reason }
+    { tag: "CannotAccessRepo", value: Just (CJ.encode CJ.string (address.owner <> "/" <> address.repo)), reason }
   DisabledPackage ->
     { tag: "DisabledPackage", value: Nothing, reason }
 
 formatVersionValidationError :: VersionValidationError -> JsonValidationError
 formatVersionValidationError { error, reason } = case error of
   InvalidTag tag ->
-    { tag: "InvalidTag", value: Just (CA.encode CA.string tag.name), reason }
+    { tag: "InvalidTag", value: Just (CJ.encode CJ.string tag.name), reason }
   DisabledVersion ->
     { tag: "DisabledVersion", value: Nothing, reason }
   InvalidManifest err -> do
     let errorValue = Legacy.Manifest.printLegacyManifestError err.error
-    { tag: "InvalidManifest", value: Just (CA.encode CA.string errorValue), reason }
+    { tag: "InvalidManifest", value: Just (CJ.encode CJ.string errorValue), reason }
   UnregisteredDependencies names ->
-    { tag: "UnregisteredDependencies", value: Just (CA.encode (CA.array PackageName.codec) names), reason }
+    { tag: "UnregisteredDependencies", value: Just (CJ.encode (CJ.array PackageName.codec) names), reason }
 
 formatPublishError :: PublishError -> JsonValidationError
 formatPublishError = case _ of
@@ -1105,9 +1107,9 @@ formatPublishError = case _ of
   SolveFailedDependencies error ->
     { tag: "SolveFailedDependencies", value: Nothing, reason: error }
   NoCompilersFound versions ->
-    { tag: "NoCompilersFound", value: Just (CA.encode compilerFailureMapCodec versions), reason: "No valid compilers found for publishing." }
+    { tag: "NoCompilersFound", value: Just (CJ.encode compilerFailureMapCodec versions), reason: "No valid compilers found for publishing." }
   UnsolvableDependencyCompilers failed ->
-    { tag: "UnsolvableDependencyCompilers", value: Just (CA.encode (CA.array groupedByCompilersCodec) failed), reason: "Resolved dependencies cannot compile together" }
+    { tag: "UnsolvableDependencyCompilers", value: Just (CJ.encode (CJ.array groupedByCompilersCodec) failed), reason: "Resolved dependencies cannot compile together" }
   PublishError error ->
     { tag: "PublishError", value: Nothing, reason: error }
 
@@ -1253,7 +1255,7 @@ fetchSpagoYaml address ref = do
     Right contents -> do
       Log.debug $ "Found spago.yaml file\n" <> contents
       case parseYaml SpagoYaml.spagoYamlCodec contents of
-        Left error -> Except.throw $ "Failed to parse spago.yaml file:\n" <> contents <> "\nwith errors:\n" <> error
+        Left error -> Run.Except.throw $ "Failed to parse spago.yaml file:\n" <> contents <> "\nwith errors:\n" <> error
         Right config -> case SpagoYaml.spagoYamlToManifest config of
           Left err -> do
             Log.warn $ "Failed to convert parsed spago.yaml file to purs.json " <> contents <> "\nwith errors:\n" <> err
@@ -1275,7 +1277,7 @@ findFirstCompiler
      }
   -> Run (COMPILER_CACHE + STORAGE + LOG + AFF + EFFECT + r) (Either (Map Version CompilerFailure) Version)
 findFirstCompiler { source, manifest, resolutions, compilers, installed } = do
-  search <- Except.runExcept $ for (Array.reverse (Array.sort compilers)) \target -> do
+  search <- Run.Except.runExcept $ for (Array.reverse (Array.sort compilers)) \target -> do
     result <- Cache.get API._compilerCache (API.Compilation manifest resolutions target) >>= case _ of
       Nothing -> do
         Log.info $ "Not cached, trying compiler " <> Version.print target
@@ -1294,7 +1296,7 @@ findFirstCompiler { source, manifest, resolutions, compilers, installed } = do
 
     case result of
       Left error -> pure $ Tuple target error
-      Right _ -> Except.throw target
+      Right _ -> Run.Except.throw target
 
   case search of
     Left worked -> pure $ Right worked
@@ -1305,9 +1307,9 @@ type GroupedByCompilers =
   , compilers :: NonEmptySet Version
   }
 
-groupedByCompilersCodec :: JsonCodec GroupedByCompilers
-groupedByCompilersCodec = CA.Record.object "GroupedByCompilers"
-  { compilers: CA.Common.nonEmptySet Version.codec
+groupedByCompilersCodec :: CJ.Codec GroupedByCompilers
+groupedByCompilersCodec = CJ.named "GroupedByCompilers" $ CJ.Record.object
+  { compilers: CJ.Common.nonEmptySet Version.codec
   , packages: Internal.Codec.packageMap Version.codec
   }
 
@@ -1377,7 +1379,7 @@ instance MemoryEncodable ImportCache where
 instance FsEncodable ImportCache where
   encodeFs = case _ of
     ImportManifest name (RawVersion version) next -> do
-      let codec = CA.Common.either versionValidationErrorCodec Manifest.codec
+      let codec = CJ.Common.either versionValidationErrorCodec Manifest.codec
       Exists.mkExists $ AsJson ("ImportManifest__" <> PackageName.print name <> "__" <> version) codec next
     PublishFailure name version next -> do
       let codec = publishErrorCodec

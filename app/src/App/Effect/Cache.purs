@@ -34,8 +34,8 @@ module Registry.App.Effect.Cache
 
 import Registry.App.Prelude
 
-import Data.Argonaut.Parser as Argonaut.Parser
-import Data.Codec.Argonaut as CA
+import Codec.JSON.DecodeError as CJ.DecodeError
+import Data.Codec.JSON as CJ
 import Data.Const (Const(..))
 import Data.Exists (Exists)
 import Data.Exists as Exists
@@ -45,6 +45,7 @@ import Data.String as String
 import Data.Symbol (class IsSymbol)
 import Effect.Aff as Aff
 import Effect.Ref as Ref
+import JSON as JSON
 import JSURI as JSURI
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
@@ -251,7 +252,7 @@ class FsEncodable key where
 -- | cache values as something other than JSON or a raw buffer.
 data FsEncoding :: (Type -> Type -> Type) -> Type -> Type -> Type
 data FsEncoding z b a
-  = AsJson String (JsonCodec a) (z a b)
+  = AsJson String (CJ.Codec a) (z a b)
   | AsBuffer String (z Buffer b)
 
 -- | Handle the Cache effect by caching values on the file system, given a
@@ -281,13 +282,13 @@ getFsImpl cacheDir = case _ of
     Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 path)) >>= case _ of
       Left _ -> do
         pure $ reply Nothing
-      Right content -> case Argonaut.Parser.jsonParser content of
+      Right content -> case JSON.parse content of
         Left parseError -> do
           Log.error $ "Found cache file for " <> id <> " at path " <> path <> " but its contents are not valid JSON: " <> parseError
           deletePathById cacheDir id *> pure (reply Nothing)
-        Right jsonContent -> case CA.decode codec jsonContent of
+        Right jsonContent -> case CJ.decode codec jsonContent of
           Left decodeError -> do
-            let error = CA.printJsonDecodeError decodeError
+            let error = CJ.DecodeError.print decodeError
             Log.error $ "Found cache file for " <> id <> " at path " <> path <> " but its contents could not be decoded with the provided codec:\n" <> error
             deletePathById cacheDir id *> pure (reply Nothing)
           Right entry -> do

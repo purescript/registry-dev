@@ -37,20 +37,17 @@ module Registry.App.Prelude
 
 import Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Control.Alt ((<|>)) as Extra
 import Control.Alternative (guard) as Extra
-import Control.Monad.Except (ExceptT(..)) as Extra
+import Control.Monad.Except (Except, ExceptT(..), except) as Extra
 import Control.Monad.Trans.Class (lift) as Extra
 import Control.Parallel.Class as Parallel
-import Data.Argonaut.Core (Json) as Extra
-import Data.Argonaut.Core as Argonaut
-import Data.Argonaut.Parser as Argonaut.Parser
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray) as Extra
 import Data.Bifunctor (bimap, lmap) as Extra
 import Data.Bitraversable (ltraverse) as Extra
-import Data.Codec.Argonaut (JsonCodec, JsonDecodeError) as Extra
-import Data.Codec.Argonaut as CA
+import Data.Codec.JSON as CJ
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Either (Either(..), either, fromLeft, fromRight', hush, isRight, note) as Either
@@ -81,6 +78,8 @@ import Effect.Class (class MonadEffect, liftEffect) as Extra
 import Effect.Now as Now
 import Effect.Ref (Ref) as Extra
 import Foreign.Object (Object) as Extra
+import JSON (JSON) as Extra
+import JSON as JSON
 import Node.Buffer (Buffer) as Extra
 import Node.Encoding (Encoding(..)) as Extra
 import Node.FS.Aff as FS.Aff
@@ -112,35 +111,35 @@ pacchettibottiKeyType :: String
 pacchettibottiKeyType = "ssh-ed25519"
 
 -- | Print a type as a formatted JSON string
-printJson :: forall a. Extra.JsonCodec a -> a -> String
-printJson codec = Argonaut.stringifyWithIndent 2 <<< CA.encode codec
+printJson :: forall a. CJ.Codec a -> a -> String
+printJson codec = JSON.printIndented <<< CJ.encode codec
 
 -- | Print a type as a JSON string without formatting
-stringifyJson :: forall a. Extra.JsonCodec a -> a -> String
-stringifyJson codec = Argonaut.stringify <<< CA.encode codec
+stringifyJson :: forall a. CJ.Codec a -> a -> String
+stringifyJson codec = JSON.print <<< CJ.encode codec
 
 -- | Parse a type from a string of JSON data.
-parseJson :: forall a. Extra.JsonCodec a -> String -> Either.Either Extra.JsonDecodeError a
-parseJson codec = CA.decode codec <=< Extra.lmap (\err -> CA.TypeMismatch ("JSON: " <> err)) <<< Argonaut.Parser.jsonParser
+parseJson :: forall a. CJ.Codec a -> String -> Either.Either CJ.DecodeError a
+parseJson codec = CJ.decode codec <=< Extra.lmap (CJ.DecodeError.basic <<< append "JSON: ") <<< JSON.parse
 
 -- | Encode data as formatted JSON and write it to the provided filepath
-writeJsonFile :: forall a. Extra.JsonCodec a -> Extra.FilePath -> a -> Extra.Aff Unit
+writeJsonFile :: forall a. CJ.Codec a -> Extra.FilePath -> a -> Extra.Aff Unit
 writeJsonFile codec path = FS.Aff.writeTextFile Extra.UTF8 path <<< (_ <> "\n") <<< printJson codec
 
 -- | Decode data from a JSON file at the provided filepath
-readJsonFile :: forall a. Extra.JsonCodec a -> Extra.FilePath -> Extra.Aff (Either.Either String a)
+readJsonFile :: forall a. CJ.Codec a -> Extra.FilePath -> Extra.Aff (Either.Either String a)
 readJsonFile codec path = do
   result <- Aff.attempt $ FS.Aff.readTextFile Extra.UTF8 path
-  pure (Extra.lmap Aff.message result >>= parseJson codec >>> Extra.lmap CA.printJsonDecodeError)
+  pure (Extra.lmap Aff.message result >>= parseJson codec >>> Extra.lmap CJ.DecodeError.print)
 
 -- | Parse a type from a string of YAML data after converting it to JSON.
-parseYaml :: forall a. Extra.JsonCodec a -> String -> Either.Either String a
+parseYaml :: forall a. CJ.Codec a -> String -> Either.Either String a
 parseYaml codec yaml = do
   json <- Extra.lmap (append "YAML: ") (Yaml.yamlParser yaml)
-  Extra.lmap CA.printJsonDecodeError (CA.decode codec json)
+  Extra.lmap CJ.DecodeError.print (CJ.decode codec json)
 
 -- | Decode data from a YAML file at the provided filepath
-readYamlFile :: forall a. Extra.JsonCodec a -> Extra.FilePath -> Extra.Aff (Either.Either String a)
+readYamlFile :: forall a. CJ.Codec a -> Extra.FilePath -> Extra.Aff (Either.Either String a)
 readYamlFile codec path = do
   result <- Aff.attempt $ FS.Aff.readTextFile Extra.UTF8 path
   pure (Extra.lmap Aff.message result >>= parseYaml codec)

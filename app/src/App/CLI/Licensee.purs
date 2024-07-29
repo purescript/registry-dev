@@ -2,10 +2,11 @@ module Registry.App.CLI.Licensee where
 
 import Registry.App.Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Control.Parallel as Parallel
 import Data.Array as Array
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Record as CJ.Record
 import Node.ChildProcess.Types (Exit(..))
 import Node.FS.Aff as FS
 import Node.Library.Execa as Execa
@@ -32,15 +33,15 @@ detect directory = do
     -- but we consider this valid Licensee output.
     Normally n | n == 0 || n == 1 -> do
       let
-        parse :: String -> Either JsonDecodeError (Array String)
-        parse str = map (map _.spdx_id <<< _.licenses) $ flip parseJson str $ CA.Record.object "Licenses"
-          { licenses: CA.array $ CA.Record.object "SPDXIds"
-              { spdx_id: CA.string }
+        parse :: String -> Either CJ.DecodeError (Array String)
+        parse str = map (map _.spdx_id <<< _.licenses) $ flip parseJson str $ CJ.named "Licenses" $ CJ.Record.object
+          { licenses: CJ.array $ CJ.named "SPDXIds" $ CJ.Record.object
+              { spdx_id: CJ.string }
           }
 
       case parse result.stdout of
         Left error -> do
-          let printedError = CA.printJsonDecodeError error
+          let printedError = CJ.DecodeError.print error
           Left printedError
         Right out -> do
           -- A NOASSERTION result means that a LICENSE file could not be parsed.

@@ -2,8 +2,8 @@ module Test.Registry.App.Legacy.Manifest (spec) where
 
 import Registry.App.Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
-import Data.Codec.Argonaut as CA
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Test.Assert as Assert
 import Test.Spec (Spec)
@@ -24,7 +24,7 @@ bowerfileSpec = do
             [ "Failed to parse:\n"
             , input
             , "due to an error:\n"
-            , CA.printJsonDecodeError err
+            , CJ.DecodeError.print err
             ]
           Right _ -> pure unit
 

@@ -3,6 +3,7 @@ workspace:
   package_set:
     registry: 46.0.0
   extra_packages:
+    codec-json: 1.2.0
     dodo-printer:
       repo: https://github.com/natefaubion/purescript-dodo-printer.git
       version: v2.2.1

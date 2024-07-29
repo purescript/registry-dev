@@ -21,17 +21,19 @@ module Registry.Metadata
 import Prelude
 
 import Control.Alt ((<|>))
+import Control.Monad.Except (Except, except)
 import Data.Array.NonEmpty (NonEmptyArray)
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Common as CA.Common
-import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec as Codec
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
+import Data.Codec.JSON.Record as CJ.Record
 import Data.DateTime (DateTime)
 import Data.Either (Either(..))
 import Data.Map (Map)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Profunctor as Profunctor
+import JSON (JSON)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Location (Location)
 import Registry.Location as Location
@@ -58,13 +60,13 @@ derive instance Eq Metadata
 
 -- | A codec for encoding and decoding a `Metadata` value as JSON. Represented
 -- | as a JSON object. Keys are explicitly ordered.
-codec :: JsonCodec Metadata
-codec = Profunctor.wrapIso Metadata $ CA.object "Metadata"
-  $ CA.recordProp (Proxy :: _ "location") Location.codec
-  $ CA.recordPropOptional (Proxy :: _ "owners") (CA.Common.nonEmptyArray Owner.codec)
-  $ CA.recordProp (Proxy :: _ "published") (Internal.Codec.versionMap publishedMetadataCodec)
-  $ CA.recordProp (Proxy :: _ "unpublished") (Internal.Codec.versionMap unpublishedMetadataCodec)
-  $ CA.record
+codec :: CJ.Codec Metadata
+codec = Profunctor.wrapIso Metadata $ CJ.named "Metadata" $ CJ.object
+  $ CJ.recordProp (Proxy :: _ "location") Location.codec
+  $ CJ.recordPropOptional (Proxy :: _ "owners") (CJ.Common.nonEmptyArray Owner.codec)
+  $ CJ.recordProp (Proxy :: _ "published") (Internal.Codec.versionMap publishedMetadataCodec)
+  $ CJ.recordProp (Proxy :: _ "unpublished") (Internal.Codec.versionMap unpublishedMetadataCodec)
+  $ CJ.record
 
 -- | Metadata about a published package version.
 -- |
@@ -80,25 +82,26 @@ type PublishedMetadata =
   , ref :: String
   }
 
-publishedMetadataCodec :: JsonCodec PublishedMetadata
-publishedMetadataCodec = CA.Record.object "PublishedMetadata"
-  { bytes: CA.number
+publishedMetadataCodec :: CJ.Codec PublishedMetadata
+publishedMetadataCodec = CJ.named "PublishedMetadata" $ CJ.Record.object
+  { bytes: CJ.number
   , compilers: compilersCodec
   , hash: Sha256.codec
   , publishedTime: Internal.Codec.iso8601DateTime
-  , ref: CA.string
+  , ref: CJ.string
   }
   where
-  compilersCodec :: JsonCodec (Either Version (NonEmptyArray Version))
-  compilersCodec = CA.codec' decode encode
+  compilersCodec :: CJ.Codec (Either Version (NonEmptyArray Version))
+  compilersCodec = Codec.codec' decode encode
     where
-    decode json =
-      map Left (CA.decode Version.codec json)
-        <|> map Right (CA.decode (CA.Common.nonEmptyArray Version.codec) json)
+    decode :: JSON -> Except CJ.DecodeError (Either Version (NonEmptyArray Version))
+    decode json = except do
+      map Left (CJ.decode Version.codec json)
+       <|> map Right (CJ.decode (CJ.Common.nonEmptyArray Version.codec) json)
 
     encode = case _ of
-      Left version -> CA.encode Version.codec version
-      Right versions -> CA.encode (CA.Common.nonEmptyArray Version.codec) versions
+      Left version -> CJ.encode Version.codec version
+      Right versions -> CJ.encode (CJ.Common.nonEmptyArray Version.codec) versions
 
 -- | Metadata about an unpublished package version.
 type UnpublishedMetadata =
@@ -107,8 +110,8 @@ type UnpublishedMetadata =
   , unpublishedTime :: DateTime
   }
 
-unpublishedMetadataCodec :: JsonCodec UnpublishedMetadata
-unpublishedMetadataCodec = CA.Record.object "UnpublishedMetadata"
+unpublishedMetadataCodec :: CJ.Codec UnpublishedMetadata
+unpublishedMetadataCodec = CJ.named "UnpublishedMetadata" $ CJ.Record.object
   { publishedTime: Internal.Codec.iso8601DateTime
   , reason: Internal.Codec.limitedString 300
   , unpublishedTime: Internal.Codec.iso8601DateTime

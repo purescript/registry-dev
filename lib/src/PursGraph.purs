@@ -10,9 +10,8 @@ import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Array.ST as Array.ST
 import Data.Bifunctor (bimap)
-import Data.Codec.Argonaut (JsonCodec)
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Record as CA.Record
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Record as CJ.Record
 import Data.Either (Either(..))
 import Data.Map (Map)
 import Data.Map as Map
@@ -33,18 +32,18 @@ import Safe.Coerce (coerce)
 -- | compiler from a set of source files.
 type PursGraph = Map ModuleName PursGraphNode
 
-pursGraphCodec :: JsonCodec PursGraph
-pursGraphCodec = Internal.Codec.strMap "PursGraph" (Just <<< ModuleName) (un ModuleName) pursGraphNodeCodec
+pursGraphCodec :: CJ.Codec PursGraph
+pursGraphCodec = Internal.Codec.strMap "PursGraph" (Right <<< ModuleName) (un ModuleName) pursGraphNodeCodec
 
 type PursGraphNode =
   { depends :: Array ModuleName
   , path :: FilePath
   }
 
-pursGraphNodeCodec :: JsonCodec PursGraphNode
-pursGraphNodeCodec = CA.Record.object "PursGraphNode"
-  { depends: CA.array moduleNameCodec
-  , path: CA.string
+pursGraphNodeCodec :: CJ.Codec PursGraphNode
+pursGraphNodeCodec = CJ.named "PursGraphNode" $ CJ.Record.object
+  { depends: CJ.array moduleNameCodec
+  , path: CJ.string
   }
 
 -- | A module name string from a 'purs graph' invocation.
@@ -54,8 +53,8 @@ derive instance Newtype ModuleName _
 derive instance Eq ModuleName
 derive instance Ord ModuleName
 
-moduleNameCodec :: JsonCodec ModuleName
-moduleNameCodec = Profunctor.wrapIso ModuleName CA.string
+moduleNameCodec :: CJ.Codec ModuleName
+moduleNameCodec = Profunctor.wrapIso ModuleName CJ.string
 
 type AssociatedError = { module :: ModuleName, path :: FilePath, error :: String }
 

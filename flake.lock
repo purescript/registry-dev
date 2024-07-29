@@ -37,11 +37,11 @@
         "systems": "systems"
       },
       "locked": {
-        "lastModified": 1701680307,
-        "narHash": "sha256-kAuep2h5ajznlPMD9rnQyffWG8EM/C73lejGofXvdM8=",
+        "lastModified": 1710146030,
+        "narHash": "sha256-SZ5L6eA7HJ/nmkzGG7/ISclqe6oZdOZTNoesiInkXPQ=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "4022d587cbbfd70fe950c1e2083a02621806a725",
+        "rev": "b1d9ab70662946ef0850d488da1c9019f3a9752a",
         "type": "github"
       },
       "original": {
@@ -52,16 +52,16 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1704290814,
-        "narHash": "sha256-LWvKHp7kGxk/GEtlrGYV68qIvPHkU9iToomNFGagixU=",
+        "lastModified": 1721496955,
+        "narHash": "sha256-o0Sg67Nlu05m+ldonYnIegjW/twI4i2hX3Bduku7VU0=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "70bdadeb94ffc8806c0570eb5c2695ad29f0e421",
+        "rev": "2001cd0142dbfd355f9c04bb74196ea84d59280d",
         "type": "github"
       },
       "original": {
         "owner": "nixos",
-        "ref": "release-23.05",
+        "ref": "release-24.05",
         "repo": "nixpkgs",
         "type": "github"
       }
@@ -75,11 +75,11 @@
         "slimlock": "slimlock"
       },
       "locked": {
-        "lastModified": 1704323758,
-        "narHash": "sha256-N2Mc/TWDXdaO7ovriQUI/EgNUJC2yo4GtINntFqlxt0=",
+        "lastModified": 1720786645,
+        "narHash": "sha256-eiuWqQ9xTA2E76XDg13TQBecnLV1g+ahdauC0FYSD7U=",
         "owner": "thomashoneyman",
         "repo": "purescript-overlay",
-        "rev": "4cd371d97a8a90ced0cef59ec20b76f4f7c17c1c",
+        "rev": "c46925ec09fdf54b5bb4ba38b40e19918d3be7be",
         "type": "github"
       },
       "original": {
@@ -125,11 +125,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1702828829,
-        "narHash": "sha256-tL/ThLAk5JgYdKXy3MIZYnDavemjpemF17dVgbfbYM8=",
+        "lastModified": 1705950978,
+        "narHash": "sha256-N1/dGu/TaDeHy2emnb9gN2UJJnEuhZ4D3qUuWr2+534=",
         "owner": "thomashoneyman",
         "repo": "slimlock",
-        "rev": "a7ce81f35d236a5e58bce30e34825013e19ffade",
+        "rev": "4c8d8f5e471065778957a60ba96913fad8dc1e79",
         "type": "github"
       },
       "original": {

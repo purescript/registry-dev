@@ -5,11 +5,11 @@ module Registry.App.Effect.Registry where
 
 import Registry.App.Prelude
 
-import Data.Argonaut.Parser as Argonaut.Parser
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Common as CA.Common
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Exists as Exists
@@ -19,6 +19,7 @@ import Data.String as String
 import Data.Time.Duration as Duration
 import Effect.Aff as Aff
 import Effect.Ref as Ref
+import JSON as JSON
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.CLI.Git (GitResult)
@@ -331,18 +332,18 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
           Left fsError -> do
             Log.debug $ "Could not find metadata file for package " <> printedName <> ": " <> Aff.message fsError
             pure Nothing
-          Right contents -> case Argonaut.Parser.jsonParser contents of
+          Right contents -> case JSON.parse contents of
             Left jsonError ->
               Except.throw $ Array.fold
                 [ "Found metadata file for " <> printedName <> " at path " <> path
                 , ", but the file is not valid JSON: " <> jsonError
                 , "\narising from contents:\n" <> contents
                 ]
-            Right parsed -> case CA.decode Metadata.codec parsed of
+            Right parsed -> case CJ.decode Metadata.codec parsed of
               Left decodeError -> do
                 Except.throw $ Array.fold
                   [ "Found metadata file for " <> printedName <> " at path " <> path
-                  , ", but could not decode the JSON" <> CA.printJsonDecodeError decodeError
+                  , ", but could not decode the JSON" <> CJ.DecodeError.print decodeError
                   , "\narising from contents:\n" <> contents
                   ]
               Right metadata -> do
@@ -602,7 +603,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
   ReadLegacyRegistry reply -> map (map reply) Except.runExcept do
     let dir = repoPath RegistryRepo
     Log.info $ "Reading legacy registry from " <> dir
-    let readRegistryFile path = readJsonFile (CA.Common.strMap CA.string) (Path.concat [ dir, path ])
+    let readRegistryFile path = readJsonFile (CJ.Common.strMap CJ.string) (Path.concat [ dir, path ])
     bower <- Run.liftAff (readRegistryFile "bower-packages.json") >>= case _ of
       Left error -> Except.throw $ "Failed to read bower-packages.json file: " <> error
       Right packages -> pure packages
@@ -650,7 +651,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
         let sourcePackages = if file == "new-packages.json" then new else bower
         let packages = Map.insert rawPackageName url sourcePackages
         let path = Path.concat [ dir, file ]
-        Run.liftAff $ writeJsonFile (CA.Common.strMap CA.string) path packages
+        Run.liftAff $ writeJsonFile (CJ.Common.strMap CJ.string) path packages
       pure $ Just $ "Sync " <> PackageName.print name <> " with legacy registry."
 
     case result of

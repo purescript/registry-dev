@@ -6,10 +6,10 @@ import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
-import Data.Codec.Argonaut as CA
-import Data.Codec.Argonaut.Common as Codec.Common
-import Data.Codec.Argonaut.Record as CA.Record
-import Data.Codec.Argonaut.Variant as CA.Variant
+import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
+import Data.Codec.JSON.Record as CJ.Record
+import Data.Codec.JSON.Variant as CJ.Variant
 import Data.Exists as Exists
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
@@ -160,8 +160,8 @@ main = launchAff_ do
       let
         resultsFile = "compiler-versions-results-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".json"
         failuresFile = "compiler-versions-failures-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".json"
-      writeJsonFile (Internal.Codec.packageMap (Internal.Codec.versionMap (CA.array Version.codec))) (Path.concat [ resultsDir, resultsFile ]) results
-      writeJsonFile (Internal.Codec.versionMap (CA.array failureCodec)) (Path.concat [ resultsDir, failuresFile ]) failures
+      writeJsonFile (Internal.Codec.packageMap (Internal.Codec.versionMap (CJ.array Version.codec))) (Path.concat [ resultsDir, resultsFile ]) results
+      writeJsonFile (Internal.Codec.versionMap (CJ.array failureCodec)) (Path.concat [ resultsDir, failuresFile ]) failures
 
 compilersForPackageVersion
   :: forall r
@@ -345,8 +345,8 @@ type Failure =
   , reason :: FailureReason
   }
 
-failureCodec :: JsonCodec Failure
-failureCodec = CA.Record.object "Failure"
+failureCodec :: CJ.Codec Failure
+failureCodec = CJ.named "Failure" $ CJ.Record.object
   { name: PackageName.codec
   , version: Version.codec
   , reason: failureReasonCodec
@@ -364,8 +364,8 @@ data FailureReason
 
 derive instance Eq FailureReason
 
-failureReasonCodec :: JsonCodec FailureReason
-failureReasonCodec = Profunctor.dimap toVariant fromVariant $ CA.Variant.variantMatch
+failureReasonCodec :: CJ.Codec FailureReason
+failureReasonCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantMatch
   { cannotSolve: Left unit
   , cannotCompile: Left unit
   , unknownReason: Left unit
@@ -387,10 +387,10 @@ type CompilationResults =
   , succeeded :: Set Version
   }
 
-compilationResultsCodec :: JsonCodec CompilationResults
-compilationResultsCodec = CA.Record.object "CompilationResults"
+compilationResultsCodec :: CJ.Codec CompilationResults
+compilationResultsCodec = CJ.named "CompilationResults" $ CJ.Record.object
   { failed: Internal.Codec.versionMap failureReasonCodec
-  , succeeded: Codec.Common.set Version.codec
+  , succeeded: CJ.Common.set Version.codec
   }
 
 -- | A key type for caching compilation results

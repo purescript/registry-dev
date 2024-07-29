@@ -7,7 +7,7 @@ import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Control.Apply (lift2)
 import Data.Array as Array
-import Data.Codec.Argonaut as CA
+import Data.Codec.JSON as CJ
 import Data.Either (isLeft)
 import Data.Foldable (class Foldable, foldMap, intercalate)
 import Data.Formatter.DateTime as Formatter.DateTime
@@ -102,7 +102,7 @@ main = launchAff_ do
     -- --package name@version
     Package name -> pure (Just [ name ])
     -- --file packagesversions.json
-    File path -> liftAff (readJsonFile (CA.array PackageName.codec) path) >>= case _ of
+    File path -> liftAff (readJsonFile (CJ.array PackageName.codec) path) >>= case _ of
       Left err -> Console.log err *> liftEffect (Process.exit' 1)
       Right values -> pure (Just values)
     All -> pure Nothing

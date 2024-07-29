@@ -2,7 +2,6 @@ module Registry.Test.Utils where
 
 import Prelude
 
-import Data.Argonaut.Core as Argonaut
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bifunctor (bimap)
@@ -14,6 +13,8 @@ import Data.Formatter.DateTime as DateTime.Formatters
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple)
+import JSON (JSON)
+import JSON as JSON
 import Partial.Unsafe (unsafeCrashWith)
 import Partial.Unsafe as Partial
 import Registry.Internal.Format as Internal.Format
@@ -44,7 +45,7 @@ fromRight msg = Either.fromRight' (\_ -> Partial.unsafeCrashWith msg)
 
 -- | Unsafely stringify a value by coercing it to `Json` and stringifying it.
 unsafeStringify :: forall a. a -> String
-unsafeStringify a = Argonaut.stringify (unsafeCoerce a :: Argonaut.Json)
+unsafeStringify a = JSON.print (unsafeCoerce a :: JSON)
 
 -- | Partition an array of `Either` values into failure and success  values
 partitionEithers :: forall e a. Array (Either e a) -> { fail :: Array e, success :: Array a }
