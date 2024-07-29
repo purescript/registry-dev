@@ -97,7 +97,7 @@ publishedMetadataCodec = CJ.named "PublishedMetadata" $ CJ.Record.object
     decode :: JSON -> Except CJ.DecodeError (Either Version (NonEmptyArray Version))
     decode json = except do
       map Left (CJ.decode Version.codec json)
-       <|> map Right (CJ.decode (CJ.Common.nonEmptyArray Version.codec) json)
+        <|> map Right (CJ.decode (CJ.Common.nonEmptyArray Version.codec) json)
 
     encode = case _ of
       Left version -> CJ.encode Version.codec version
