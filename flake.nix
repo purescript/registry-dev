@@ -852,7 +852,7 @@
               dbmate
 
               # Development tooling
-              purs-bin.purs-0_15_5
+              purs
               spago-bin.spago-0_93_19 # until new lockfile format supported by overlay
               purs-tidy-unstable
               purs-backend-es-unstable
