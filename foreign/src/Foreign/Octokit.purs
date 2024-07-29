@@ -207,17 +207,14 @@ getCommitDateRequest { address, commitSha } =
   , headers: Object.empty
   , args: noArgs
   , paginate: false
-  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "CommitData" $ CJ.Record.object
-      { data: CJ.named "Commit" $ CJ.Record.object
-          { committer: CJ.named "Commit.committer" $ CJ.Record.object
-              { date: Internal.Codec.iso8601DateTime
-              }
-          }
+  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "Commit" $ CJ.Record.object
+      { committer: CJ.named "Commit.committer" $ CJ.Record.object
+          { date: Internal.Codec.iso8601DateTime }
       }
   }
   where
-  toJsonRep date = { data: { committer: { date } } }
-  fromJsonRep = _.data.committer.date
+  toJsonRep date = { committer: { date } }
+  fromJsonRep = _.committer.date
 
 -- | Create a comment on an issue. Requires authentication.
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/issues/createComment.md
