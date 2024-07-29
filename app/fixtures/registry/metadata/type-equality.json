@@ -6,7 +6,7 @@
   "published": {
     "4.0.1": {
       "bytes": 2184,
-      "compilers": ["0.15.12", "0.15.13", "0.15.14"],
+      "compilers": ["0.15.2", "0.15.3", "0.15.4"],
       "hash": "sha256-Hs9D6Y71zFi/b+qu5NSbuadUQXe5iv5iWx0226vOHUw=",
       "publishedTime": "2022-04-27T18:00:18.000Z",
       "ref": "v4.0.1"
