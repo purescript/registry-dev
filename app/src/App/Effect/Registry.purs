@@ -252,7 +252,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
     let formatted = formatPackageVersion name version
     Log.info $ "Writing manifest for " <> formatted <> ":\n" <> printJson Manifest.codec manifest
     index <- Except.rethrow =<< handle env (ReadAllManifests identity)
-    case ManifestIndex.insert manifest index of
+    case ManifestIndex.insert ManifestIndex.ConsiderRanges manifest index of
       Left error ->
         Except.throw $ Array.fold
           [ "Can't insert " <> formatted <> " into manifest index because it has unsatisfied dependencies:"
@@ -275,7 +275,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
     let formatted = formatPackageVersion name version
     Log.info $ "Deleting manifest for " <> formatted
     index <- Except.rethrow =<< handle env (ReadAllManifests identity)
-    case ManifestIndex.delete name version index of
+    case ManifestIndex.delete ManifestIndex.ConsiderRanges name version index of
       Left error ->
         Except.throw $ Array.fold
           [ "Can't delete " <> formatted <> " from manifest index because it would produce unsatisfied dependencies:"
@@ -359,7 +359,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
 
         Just metadata -> do
           Log.debug $ "Successfully read metadata for " <> printedName <> " from path " <> path
-          Log.debug $ "Setting metadata cache to singleton entry (as cache was previosuly empty)."
+          Log.debug $ "Setting metadata cache to singleton entry (as cache was previously empty)."
           Cache.put _registryCache AllMetadata (Map.singleton name metadata)
           pure $ Just metadata
 
@@ -836,8 +836,9 @@ readManifestIndexFromDisk root = do
 
   entries <- map partitionEithers $ for packages.success (ManifestIndex.readEntryFile root)
   case entries.fail of
-    [] -> case ManifestIndex.fromSet $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray entries.success of
+    [] -> case ManifestIndex.fromSet ManifestIndex.ConsiderRanges $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray entries.success of
       Left errors -> do
+        Log.debug $ "Could not read a valid manifest index from entry files: " <> Array.foldMap (Array.foldMap (\(Manifest { name, version }) -> "\n  - " <> formatPackageVersion name version) <<< NonEmptyArray.toArray) entries.success
         Except.throw $ append "Unable to read manifest index (some packages are not satisfiable): " $ Array.foldMap (append "\n  - ") do
           Tuple name versions <- Map.toUnfoldable errors
           Tuple version dependency <- Map.toUnfoldable versions
@@ -878,10 +879,10 @@ readAllMetadataFromDisk metadataDir = do
 
   entries <- Run.liftAff $ map partitionEithers $ for packages.success \name -> do
     result <- readJsonFile Metadata.codec (Path.concat [ metadataDir, PackageName.print name <> ".json" ])
-    pure $ map (Tuple name) result
+    pure $ bimap (Tuple name) (Tuple name) result
 
   unless (Array.null entries.fail) do
-    Except.throw $ append "Could not read metadata for all packages because the metadata directory is invalid (some package metadata cannot be decoded):" $ Array.foldMap (append "\n  - ") entries.fail
+    Except.throw $ append "Could not read metadata for all packages because the metadata directory is invalid (some package metadata cannot be decoded):" $ Array.foldMap (\(Tuple name err) -> "\n  - " <> PackageName.print name <> ": " <> err) entries.fail
 
   Log.debug "Successfully read metadata entries."
   pure $ Map.fromFoldable entries.success

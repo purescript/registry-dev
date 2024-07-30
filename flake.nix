@@ -797,7 +797,7 @@
 
                     # Then we poll for job results, expecting an eventual 'success'.
                     try_count = 0
-                    delay_seconds = 3
+                    delay_seconds = 5
                     prev_timestamp = "2023-07-29T00:00:00.000Z"
                     log_level = "DEBUG"
                     while True:
@@ -809,7 +809,12 @@
                         success = poll_result['success']
                         assert success, f"GET /jobs/{job_id} should return success, but it returned {poll_result}"
                         break
-                      elif (try_count * delay_seconds) > 60:
+
+                      # A fairly long timeout because of the requirement to compile packages.
+                      # FIXME: once this is split into multiple jobs, the timeout can be adjusted
+                      # to a smaller number, e.g. 45 seconds maximum, but we can allow extra time
+                      # for the subsequent compilation jobs to complete.
+                      elif (try_count * delay_seconds) > 180:
                         raise ValueError(f"Cancelling publish request after {try_count * delay_seconds} seconds, this is too long...")
                       else:
                         print(f"Job is still ongoing, retrying in {delay_seconds} seconds...")

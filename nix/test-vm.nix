@@ -19,10 +19,6 @@
     services.getty.autologinUser = "root";
 
     virtualisation = {
-      graphics = false;
-      host = {
-        inherit pkgs;
-      };
       forwardPorts = [
         {
           from = "host";
@@ -30,8 +26,14 @@
           host.port = 8080;
         }
       ];
+      graphics = false;
+      host = {
+        inherit pkgs;
+      };
+      # Can be adjusted if necessary for test systems (default is 1024)
+      memorySize = 2048;
     };
 
-    system.stateVersion = "23.11";
+    system.stateVersion = "24.05";
   };
 }

@@ -11,17 +11,22 @@ module Registry.Test.Assert.Run
 import Registry.App.Prelude
 
 import Data.Array as Array
+import Data.Exists as Exists
 import Data.Foldable (class Foldable)
 import Data.Foldable as Foldable
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
+import Dodo as Dodo
 import Effect.Aff as Aff
 import Effect.Now as Now
 import Effect.Ref as Ref
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
+import Registry.API.V1 (LogLevel)
+import Registry.App.API (COMPILER_CACHE)
+import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
@@ -83,6 +88,7 @@ type TEST_EFFECTS =
       + RESOURCE_ENV
       + GITHUB_CACHE
       + LEGACY_CACHE
+      + COMPILER_CACHE
       + COMMENT
       + LOG
       + EXCEPT String
@@ -93,6 +99,7 @@ type TEST_EFFECTS =
 
 type TestEnv =
   { workdir :: FilePath
+  , logs :: Ref (Array (Tuple LogLevel String))
   , metadata :: Ref (Map PackageName Metadata)
   , index :: Ref ManifestIndex
   , pursuitExcludes :: Set PackageName
@@ -101,8 +108,8 @@ type TestEnv =
   , username :: String
   }
 
-runTestEffects :: forall a. TestEnv -> Run TEST_EFFECTS a -> Aff a
-runTestEffects env operation = do
+runTestEffects :: forall a. TestEnv -> Run TEST_EFFECTS a -> Aff (Either Aff.Error a)
+runTestEffects env operation = Aff.attempt do
   resourceEnv <- Env.lookupResourceEnv
   githubCache <- liftEffect Cache.newCacheRef
   legacyCache <- liftEffect Cache.newCacheRef
@@ -118,18 +125,19 @@ runTestEffects env operation = do
     # Env.runPacchettiBottiEnv { publicKey: "Unimplemented", privateKey: "Unimplemented" }
     # Env.runResourceEnv resourceEnv
     -- Caches
+    # runCompilerCacheMock
     # runGitHubCacheMemory githubCache
     # runLegacyCacheMemory legacyCache
     -- Other effects
     # Comment.interpret Comment.handleLog
-    # Log.interpret (\(Log _ _ next) -> pure next)
+    # Log.interpret (\(Log level msg next) -> Run.liftEffect (Ref.modify_ (_ <> [ Tuple level (Dodo.print Dodo.plainText Dodo.twoSpaces msg) ]) env.logs) *> pure next)
     -- Base effects
     # Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
     # Run.runBaseAff'
 
 -- | For testing simple Run functions that don't need the whole environment.
 runBaseEffects :: forall a. Run (LOG + EXCEPT String + AFF + EFFECT + ()) a -> Aff a
-runBaseEffects =
+runBaseEffects = do
   Log.interpret (\(Log _ _ next) -> pure next)
     -- Base effects
     >>> Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
@@ -140,6 +148,22 @@ runLegacyCacheMemory = Cache.interpret Legacy.Manifest._legacyCache <<< Cache.ha
 
 runGitHubCacheMemory :: forall r a. CacheRef -> Run (GITHUB_CACHE + LOG + EFFECT + r) a -> Run (LOG + EFFECT + r) a
 runGitHubCacheMemory = Cache.interpret GitHub._githubCache <<< Cache.handleMemory
+
+runCompilerCacheMock :: forall r a. Run (COMPILER_CACHE + LOG + r) a -> Run (LOG + r) a
+runCompilerCacheMock = Cache.interpret API._compilerCache case _ of
+  Cache.Get key -> Exists.runExists getImpl (Cache.encodeFs key)
+  Cache.Put _ next -> pure next
+  Cache.Delete key -> Exists.runExists deleteImpl (Cache.encodeFs key)
+  where
+  getImpl :: forall x z. Cache.FsEncoding Cache.Reply x z -> Run _ x
+  getImpl = case _ of
+    Cache.AsBuffer _ (Cache.Reply reply) -> pure $ reply Nothing
+    Cache.AsJson _ _ (Cache.Reply reply) -> pure $ reply Nothing
+
+  deleteImpl :: forall x z. Cache.FsEncoding Cache.Ignore x z -> Run _ x
+  deleteImpl = case _ of
+    Cache.AsBuffer _ (Cache.Ignore next) -> pure next
+    Cache.AsJson _ _ (Cache.Ignore next) -> pure next
 
 type PursuitMockEnv =
   { excludes :: Set PackageName
@@ -179,7 +203,7 @@ handleRegistryMock env = case _ of
 
   WriteManifest manifest reply -> do
     index <- Run.liftEffect (Ref.read env.indexRef)
-    case ManifestIndex.insert manifest index of
+    case ManifestIndex.insert ManifestIndex.ConsiderRanges manifest index of
       Left err -> pure $ reply $ Left $ "Failed to insert manifest:\n" <> Utils.unsafeStringify manifest <> " due to an error:\n" <> Utils.unsafeStringify err
       Right index' -> do
         Run.liftEffect (Ref.write index' env.indexRef)
@@ -187,7 +211,7 @@ handleRegistryMock env = case _ of
 
   DeleteManifest name version reply -> do
     index <- Run.liftEffect (Ref.read env.indexRef)
-    case ManifestIndex.delete name version index of
+    case ManifestIndex.delete ManifestIndex.ConsiderRanges name version index of
       Left err -> pure $ reply $ Left $ "Failed to delete entry for :\n" <> Utils.formatPackageVersion name version <> " due to an error:\n" <> Utils.unsafeStringify err
       Right index' -> do
         Run.liftEffect (Ref.write index' env.indexRef)
@@ -282,7 +306,7 @@ type SourceMockEnv = { github :: FilePath }
 
 handleSourceMock :: forall r a. SourceMockEnv -> Source a -> Run (EXCEPT String + AFF + EFFECT + r) a
 handleSourceMock env = case _ of
-  Fetch _source destination location ref reply -> do
+  Fetch destination location ref reply -> do
     now <- Run.liftEffect Now.nowDateTime
     case location of
       Git _ -> pure $ reply $ Left "Packages cannot be published from Git yet (only GitHub)."

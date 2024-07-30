@@ -11,7 +11,6 @@ import Data.Codec.JSON.Record as CJ.Record
 import Data.Codec.JSON.Variant as CJ.Variant
 import Data.Either as Either
 import Data.Exists as Exists
-import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map (SemigroupMap(..))
 import Data.Map as Map
 import Data.Ord.Max (Max(..))
@@ -38,7 +37,7 @@ import Registry.App.Legacy.LenientRange as LenientRange
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
 import Registry.App.Legacy.Types (LegacyPackageSet(..), LegacyPackageSetEntry, LegacyPackageSetUnion, RawPackageName(..), RawVersion(..), RawVersionRange(..), legacyPackageSetCodec, legacyPackageSetUnionCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionRangeCodec)
-import Registry.Foreign.Octokit (Address, GitHubError)
+import Registry.Foreign.Octokit (Address, GitHubError(..))
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
 import Registry.License as License
@@ -61,7 +60,8 @@ type LegacyManifest =
   }
 
 toManifest :: PackageName -> Version -> Location -> LegacyManifest -> Manifest
-toManifest name version location { license, description, dependencies } = do
+toManifest name version location legacy = do
+  let { license, description, dependencies } = patchLegacyManifest name version legacy
   let includeFiles = Nothing
   let excludeFiles = Nothing
   let owners = Nothing
@@ -140,21 +140,13 @@ fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestErr
               Left bowerError, Left _ -> Left bowerError
               Right bowerDeps, Left _ -> Right bowerDeps
               Left _, Right spagoDeps -> Right spagoDeps
-              Right bowerDeps, Right spagoDeps -> Right do
-                bowerDeps # mapWithIndex \package range ->
-                  case Map.lookup package spagoDeps of
-                    Nothing -> range
-                    Just spagoRange -> Range.union range spagoRange
+              Right bowerDeps, Right spagoDeps -> Right $ Map.unionWith Range.union bowerDeps spagoDeps
 
       unionPackageSets = case maybePackageSetDeps, unionManifests of
         Nothing, Left manifestError -> Left manifestError
         Nothing, Right manifestDeps -> Right manifestDeps
         Just packageSetDeps, Left _ -> Right packageSetDeps
-        Just packageSetDeps, Right manifestDeps -> Right do
-          packageSetDeps # mapWithIndex \package range ->
-            case Map.lookup package manifestDeps of
-              Nothing -> range
-              Just manifestRange -> Range.union range manifestRange
+        Just packageSetDeps, Right manifestDeps -> Right $ Map.unionWith Range.union manifestDeps packageSetDeps
 
     Run.Except.rethrowAt _legacyManifestError unionPackageSets
 
@@ -172,6 +164,44 @@ fetchLegacyManifest name address ref = Run.Except.runExceptAt _legacyManifestErr
       fields.description
 
   pure { license, dependencies, description }
+
+-- | Some legacy manifests must be patched to be usable.
+patchLegacyManifest :: PackageName -> Version -> LegacyManifest -> LegacyManifest
+patchLegacyManifest name version legacy = do
+  let bolson = unsafeFromRight (PackageName.parse "bolson")
+  let hyrule = unsafeFromRight (PackageName.parse "hyrule")
+
+  let unsafeVersion = unsafeFromRight <<< Version.parse
+  let unsafeRange a b = unsafeFromJust (Range.mk (unsafeVersion a) (unsafeVersion b))
+  let fixRange pkg range = Map.update (\_ -> Just range) pkg
+
+  -- hyrule v2.2.0 removes a module that breaks all versions of bolson
+  -- prior to the versions below
+  let earlyHyruleFixedRange = unsafeRange "1.6.4" "2.2.0"
+  let earlyFixHyrule = fixRange hyrule earlyHyruleFixedRange
+
+  -- hyrule v2.4.0 removes a module that breaks all versions of bolson, deku,
+  -- and rito prior to the versions below
+  let hyruleFixedRange = unsafeRange "2.0.0" "2.4.0"
+  let fixHyrule = fixRange hyrule hyruleFixedRange
+
+  -- bolson v0.3.1 changes the type of a function that breaks deku until 0.9.21
+  let bolsonFixedRange = unsafeRange "0.1.0" "0.3.2"
+  let fixBolson = fixRange bolson bolsonFixedRange
+
+  case PackageName.print name of
+    "bolson"
+      | version < unsafeVersion "0.3.0" -> legacy { dependencies = earlyFixHyrule legacy.dependencies }
+      | version < unsafeVersion "0.4.0" -> legacy { dependencies = fixHyrule legacy.dependencies }
+    "deku"
+      | version < unsafeVersion "0.7.0" -> legacy { dependencies = earlyFixHyrule legacy.dependencies }
+      | version < unsafeVersion "0.9.21" -> legacy { dependencies = fixBolson (fixHyrule legacy.dependencies) }
+      | version < unsafeVersion "0.9.25" -> legacy { dependencies = fixHyrule legacy.dependencies }
+    "rito"
+      | version < unsafeVersion "0.3.0" -> legacy { dependencies = earlyFixHyrule legacy.dependencies }
+      | version < unsafeVersion "0.3.5" -> legacy { dependencies = fixHyrule legacy.dependencies }
+    _ ->
+      legacy
 
 _legacyManifestError :: Proxy "legacyManifestError"
 _legacyManifestError = Proxy
@@ -224,16 +254,22 @@ fetchLegacyManifestFiles
   :: forall r
    . Address
   -> RawVersion
-  -> Run (GITHUB + LOG + AFF + EFFECT + r) (Either LegacyManifestValidationError (These Bowerfile SpagoDhallJson))
+  -> Run (GITHUB + LOG + AFF + EFFECT + EXCEPT String + r) (Either LegacyManifestValidationError (These Bowerfile SpagoDhallJson))
 fetchLegacyManifestFiles address ref = do
   eitherBower <- fetchBowerfile address ref
-  void $ flip ltraverse eitherBower \error ->
-    Log.debug $ "Failed to fetch bowerfile: " <> Octokit.printGitHubError error
+  void $ flip ltraverse eitherBower case _ of
+    APIError { statusCode } | statusCode == 401 ->
+      Except.throw "Permission error on token used to fetch manifests!"
+    error ->
+      Log.debug $ "Failed to fetch bowerfile: " <> Octokit.printGitHubError error
   eitherSpago <- fetchSpagoDhallJson address ref
-  void $ flip ltraverse eitherSpago \error ->
-    Log.debug $ "Failed to fetch spago.dhall: " <> Octokit.printGitHubError error
+  void $ flip ltraverse eitherSpago case _ of
+    APIError { statusCode } | statusCode == 401 ->
+      Except.throw "Permission error on token used to fetch manifests!"
+    error ->
+      Log.debug $ "Failed to fetch spago.dhall: " <> Octokit.printGitHubError error
   pure $ case eitherBower, eitherSpago of
-    Left _, Left _ -> Left { error: NoManifests, reason: "No bower.json or spago.dhall files available." }
+    Left errL, Left errR -> Left { error: NoManifests, reason: "No bower.json or spago.dhall files available: " <> Octokit.printGitHubError errL <> ", " <> Octokit.printGitHubError errR }
     Right bower, Left _ -> Right $ This bower
     Left _, Right spago -> Right $ That spago
     Right bower, Right spago -> Right $ Both bower spago

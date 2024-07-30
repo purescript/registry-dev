@@ -43,10 +43,8 @@ withRetryRequest url opts = withRetry retry do
     if response.status >= 400 then Left $ StatusError response
     else Right response
 
-  retry =
-    { timeout: defaultRetry.timeout
-    , retryOnCancel: defaultRetry.retryOnCancel
-    , retryOnFailure: \attempt -> case _ of
+  retry = defaultRetry
+    { retryOnFailure = \attempt -> case _ of
         FetchError _ -> false
         StatusError { status } ->
           -- We retry on 500-level errors in case the server is temporarily
