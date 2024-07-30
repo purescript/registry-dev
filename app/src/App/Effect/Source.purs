@@ -6,7 +6,7 @@ import Registry.App.Prelude
 import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.JSDate as JSDate
-import Data.String as String
+import Effect.Aff (Milliseconds(..))
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Effect.Now as Now
@@ -84,33 +84,26 @@ handle importType = case _ of
             let
               repoDir = Path.concat [ destination, repo <> "-" <> ref ]
 
+              -- If a git clone is cancelled by the timeout, but had partially-cloned, then it will
+              -- leave behind files that prevent a retry.
+              retryOpts = defaultRetry
+                { cleanupOnCancel = FS.Extra.remove repoDir
+                , timeout = Milliseconds 15_000.0
+                }
+
               clonePackageAtTag = do
                 let url = Array.fold [ "https://github.com/", owner, "/", repo ]
                 let args = [ "clone", url, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false", repoDir ]
-                withRetryOnTimeout (Git.gitCLI args Nothing) >>= case _ of
+                withRetry retryOpts (Git.gitCLI args Nothing) >>= case _ of
                   Cancelled -> Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> url <> " " <> ref
                   Failed err -> Aff.throwError $ Aff.error err
                   Succeeded _ -> pure unit
 
-              alreadyExists = String.contains (String.Pattern "already exists and is not an empty directory")
-
             Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
               Right _ -> Log.debug $ "Cloned package source to " <> repoDir
               Left error -> do
-                Log.error $ "Failed to clone git tag: " <> Aff.message error <> ", retrying..."
-                when (alreadyExists (Aff.message error)) $ FS.Extra.remove repoDir
-                Run.liftAff (Aff.delay (Aff.Milliseconds 1000.0))
-                Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
-                  Right _ -> Log.debug $ "Cloned package source to " <> repoDir
-                  Left error2 -> do
-                    Log.error $ "Failed to clone git tag (attempt 2): " <> Aff.message error2 <> ", retrying..."
-                    when (alreadyExists (Aff.message error)) $ FS.Extra.remove repoDir
-                    Run.liftAff (Aff.delay (Aff.Milliseconds 1000.0))
-                    Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
-                      Right _ -> Log.debug $ "Cloned package source to " <> repoDir
-                      Left error3 -> do
-                        Log.error $ "Failed to clone git tag (attempt 3): " <> Aff.message error3
-                        Except.throw $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
+                Log.error $ "Failed to clone git tag: " <> Aff.message error
+                Except.throw $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
 
             Log.debug $ "Getting published time..."
 

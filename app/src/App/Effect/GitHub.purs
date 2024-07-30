@@ -265,10 +265,8 @@ requestWithBackoff octokit githubRequest = do
   Log.debug $ "Making request to " <> route <> " with base URL " <> githubApiUrl
   result <- Run.liftAff do
     let
-      retryOptions =
-        { timeout: defaultRetry.timeout
-        , retryOnCancel: defaultRetry.retryOnCancel
-        , retryOnFailure: \attempt err -> case err of
+      retryOptions = defaultRetry
+        { retryOnFailure = \attempt err -> case err of
             UnexpectedError _ -> false
             DecodeError _ -> false
             -- https://docs.github.com/en/rest/overview/resources-in-the-rest-api?apiVersion=2022-11-28#exceeding-the-rate-limit

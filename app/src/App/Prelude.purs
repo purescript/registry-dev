@@ -171,7 +171,9 @@ withRetryOnTimeout = withRetry defaultRetry
 
 type Retry err =
   { timeout :: Aff.Milliseconds
+  , cleanupOnCancel :: Extra.Aff Unit
   , retryOnCancel :: Int -> Boolean
+  , cleanupOnFailure :: err -> Extra.Aff Unit
   , retryOnFailure :: Int -> err -> Boolean
   }
 
@@ -180,7 +182,9 @@ type Retry err =
 defaultRetry :: forall err. Retry err
 defaultRetry =
   { timeout: Aff.Milliseconds 5000.0
+  , cleanupOnCancel: pure unit
   , retryOnCancel: \attempt -> attempt <= 3
+  , cleanupOnFailure: \_ -> pure unit
   , retryOnFailure: \_ _ -> false
   }
 
@@ -194,7 +198,7 @@ derive instance (Eq err, Eq a) => Eq (RetryResult err a)
 -- | Attempt an effectful computation that can fail by specifying how to retry
 -- | the request and whether it should time out.
 withRetry :: forall err a. Retry err -> Extra.Aff (Either.Either err a) -> Extra.Aff (RetryResult err a)
-withRetry { timeout: Aff.Milliseconds timeout, retryOnCancel, retryOnFailure } action = do
+withRetry { timeout: Aff.Milliseconds timeout, retryOnCancel, retryOnFailure, cleanupOnCancel, cleanupOnFailure } action = do
   let
     runAction :: Extra.Aff (Either.Either err a) -> Int -> Extra.Aff (RetryResult err a)
     runAction action' ms = do
@@ -215,14 +219,18 @@ withRetry { timeout: Aff.Milliseconds timeout, retryOnCancel, retryOnFailure } a
       Cancelled ->
         if retryOnCancel attempt then do
           let newTimeout = Int.floor timeout `Int.pow` (attempt + 1)
+          cleanupOnCancel
           retry (attempt + 1) =<< runAction action newTimeout
-        else
+        else do
+          cleanupOnCancel
           pure Cancelled
       Failed err ->
         if retryOnFailure attempt err then do
           let newTimeout = Int.floor timeout `Int.pow` (attempt + 1)
+          cleanupOnFailure err
           retry (attempt + 1) =<< runAction action newTimeout
-        else
+        else do
+          cleanupOnFailure err
           pure (Failed err)
       Succeeded result ->
         pure (Succeeded result)
