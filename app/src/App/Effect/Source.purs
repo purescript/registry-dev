@@ -130,7 +130,7 @@ handle importType = case _ of
 
                 -- We'll receive this message if we try to clone a repo which doesn't
                 -- exist, which is interpreted as an attempt to fetch a private repo.
-                let missingRepoErr =  "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
+                let missingRepoErr = "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
 
                 if String.contains (String.Pattern missingRepoErr) (Aff.message error) then
                   Except.throw $ InaccessibleRepo { owner, repo }

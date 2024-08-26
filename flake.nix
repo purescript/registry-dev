@@ -289,7 +289,12 @@
         # according to the env.example file, or to the values explicitly set below
         # (e.g. DHALL_PRELUDE and DHALL_TYPES).
         defaultEnv = parseEnv ./.env.example // {
-          inherit DHALL_PRELUDE DHALL_TYPES GIT_LFS_SKIP_SMUDGE GIT_TERMINAL_PROMPT;
+          inherit
+            DHALL_PRELUDE
+            DHALL_TYPES
+            GIT_LFS_SKIP_SMUDGE
+            GIT_TERMINAL_PROMPT
+            ;
         };
 
         # Parse a .env file, skipping empty lines and comments, into Nix attrset
