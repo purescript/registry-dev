@@ -1255,7 +1255,13 @@ fetchSpagoYaml address ref = do
     Right contents -> do
       Log.debug $ "Found spago.yaml file\n" <> contents
       case parseYaml SpagoYaml.spagoYamlCodec contents of
-        Left error -> Run.Except.throw $ "Failed to parse spago.yaml file:\n" <> contents <> "\nwith errors:\n" <> error
+        Left error -> do
+          Log.warn $ "Failed to parse spago.yaml file:\n" <> contents <> "\nwith errors:\n" <> error
+          pure Nothing
+        Right { package: Just { publish: Just { location: Just location } } }
+          | location /= GitHub { owner: address.owner, repo: address.repo, subdir: Nothing } -> do
+              Log.warn "spago.yaml file does not use the same location it was fetched from, this is disallowed..."
+              pure Nothing
         Right config -> case SpagoYaml.spagoYamlToManifest config of
           Left err -> do
             Log.warn $ "Failed to convert parsed spago.yaml file to purs.json " <> contents <> "\nwith errors:\n" <> err

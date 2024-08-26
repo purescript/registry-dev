@@ -496,14 +496,23 @@ publish maybeLegacyIndex payload = do
       ]
 
   unless (Operation.Validation.locationMatches (Manifest receivedManifest) (Metadata metadata)) do
-    Except.throw $ Array.fold
-      [ "The manifest file specifies a location ("
-      , stringifyJson Location.codec receivedManifest.location
-      , ") that differs from the location in the registry metadata ("
-      , stringifyJson Location.codec metadata.location
-      , "). If you would like to change the location of your package you should "
-      , "submit a transfer operation."
-      ]
+    if isJust maybeLegacyIndex then
+      -- The legacy importer is sometimes run on older packages, some of which have been transferred. Since
+      -- package metadata only records the latest location, this can cause a problem: the manifest reports
+      -- the location at the time, but the metadata reports the current location.
+      Log.warn $ Array.fold
+        [ "In legacy mode and manifest location differs from existing metadata. This indicates a package that was "
+        , "transferred from a previous location. Ignoring location match validation..."
+        ]
+    else
+      Except.throw $ Array.fold
+        [ "The manifest file specifies a location ("
+        , stringifyJson Location.codec receivedManifest.location
+        , ") that differs from the location in the registry metadata ("
+        , stringifyJson Location.codec metadata.location
+        , "). If you would like to change the location of your package you should "
+        , "submit a transfer operation."
+        ]
 
   when (Operation.Validation.isMetadataPackage (Manifest receivedManifest)) do
     Except.throw "The `metadata` package cannot be uploaded to the registry because it is a protected package."

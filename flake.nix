@@ -70,6 +70,11 @@
       # (typically >4GB), and source packgaes really ought not be shipping large
       # files — just source code.
       GIT_LFS_SKIP_SMUDGE = 1;
+
+      # We disable git from entering interactive mode at any time, as there is no
+      # one there to answer prompts.
+      GIT_TERMINAL_PROMPT = 0;
+
       registryOverlay = final: prev: rec {
         nodejs = prev.nodejs_20;
 
@@ -284,7 +289,7 @@
         # according to the env.example file, or to the values explicitly set below
         # (e.g. DHALL_PRELUDE and DHALL_TYPES).
         defaultEnv = parseEnv ./.env.example // {
-          inherit DHALL_PRELUDE DHALL_TYPES GIT_LFS_SKIP_SMUDGE;
+          inherit DHALL_PRELUDE DHALL_TYPES GIT_LFS_SKIP_SMUDGE GIT_TERMINAL_PROMPT;
         };
 
         # Parse a .env file, skipping empty lines and comments, into Nix attrset
@@ -826,7 +831,7 @@
 
         devShells = {
           default = pkgs.mkShell {
-            inherit GIT_LFS_SKIP_SMUDGE;
+            inherit GIT_LFS_SKIP_SMUDGE GIT_TERMINAL_PROMPT;
 
             name = "registry-dev";
             packages = with pkgs; [

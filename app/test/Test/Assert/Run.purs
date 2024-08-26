@@ -44,7 +44,7 @@ import Registry.App.Effect.Pursuit (PURSUIT, Pursuit(..))
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY, Registry(..))
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Source (SOURCE, Source(..))
+import Registry.App.Effect.Source (FetchError(..), SOURCE, Source(..))
 import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE, Storage)
 import Registry.App.Effect.Storage as Storage
@@ -309,8 +309,8 @@ handleSourceMock env = case _ of
   Fetch destination location ref reply -> do
     now <- Run.liftEffect Now.nowDateTime
     case location of
-      Git _ -> pure $ reply $ Left "Packages cannot be published from Git yet (only GitHub)."
-      GitHub { subdir } | isJust subdir -> pure $ reply $ Left "Packages cannot use the 'subdir' key yet."
+      Git _ -> pure $ reply $ Left GitHubOnly
+      GitHub { subdir } | isJust subdir -> pure $ reply $ Left NoSubdir
       GitHub { repo } -> do
         let
           name = stripPureScriptPrefix repo
@@ -319,7 +319,7 @@ handleSourceMock env = case _ of
           localPath = Path.concat [ env.github, dirname ]
           destinationPath = Path.concat [ destination, dirname <> "-checkout" ]
         Run.liftAff (Aff.attempt (FS.Aff.stat localPath)) >>= case _ of
-          Left _ -> pure $ reply $ Left $ "Cannot copy " <> localPath <> " because it does not exist."
+          Left _ -> pure $ reply $ Left $ Fatal $ "Cannot copy " <> localPath <> " because it does not exist."
           Right _ -> do
             Run.liftAff $ FS.Extra.copy { from: localPath, to: destinationPath, preserveTimestamps: true }
             case pursPublishMethod of
