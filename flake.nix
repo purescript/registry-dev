@@ -853,7 +853,7 @@
 
               # Development tooling
               purs
-              spago-bin.spago-0_93_19 # until new lockfile format supported by overlay
+              spago-bin.spago-0_93_36
               purs-tidy-unstable
               purs-backend-es-unstable
             ];

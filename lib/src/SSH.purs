@@ -1,21 +1,27 @@
 module Registry.SSH
   ( PublicKey
   , PrivateKey
+  , ParsePrivateKeyError(..)
+  , printParsePrivateKeyError
   , Signature(..)
   , parsePublicKey
   , parsePrivateKey
-  , parsePrivateKeyWithPassword
+  , publicToOwner
   , sign
   , verify
   ) where
 
 import Prelude
 
+import Data.Bifunctor (bimap)
 import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn4, runFn1, runFn2, runFn3, runFn4)
+import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
-import Data.Nullable (Nullable, notNull, null)
+import Data.Nullable (Nullable, null)
+import Data.Nullable as Nullable
 import Effect.Exception as Exception
+import Registry.Owner (Owner(..))
 
 -- | A parsed SSH public key which can be used to verify payloads.
 newtype PublicKey = PublicKey ParsedKey
@@ -37,18 +43,24 @@ foreign import parseKeyImpl :: forall r. Fn4 (Exception.Error -> r) (ParsedKey -
 parse :: String -> Either String ParsedKey
 parse buf = runFn4 parseKeyImpl (Left <<< Exception.message) Right buf null
 
--- | Parse a non-password-protected private SSH key
-parsePrivateKey :: String -> Either String PrivateKey
-parsePrivateKey key = case parse key of
-  Right parsed | not (isPrivateKey parsed) -> Left $ "Expected private key, but this is a public key of type " <> keyType parsed
-  result -> map PrivateKey result
+data ParsePrivateKeyError
+  = GotPublicKeyInstead String
+  | RequiresPassphrase
+  | OtherParseError String
+
+printParsePrivateKeyError :: ParsePrivateKeyError -> String
+printParsePrivateKeyError = case _ of
+  GotPublicKeyInstead keyType' -> "Expected private key, but got public key of type " <> keyType'
+  RequiresPassphrase -> "Encrypted private key requires a passphrase"
+  OtherParseError message -> message
 
 -- | Parse a password-protected private SSH key
-parsePrivateKeyWithPassword :: { key :: String, passphrase :: String } -> Either String PrivateKey
-parsePrivateKeyWithPassword { key, passphrase } =
-  case runFn4 parseKeyImpl (Left <<< Exception.message) Right key (notNull passphrase) of
-    Right parsed | not (isPrivateKey parsed) -> Left $ "Expected private key, but this is a public key of type " <> keyType parsed
-    result -> map PrivateKey result
+parsePrivateKey :: { key :: String, passphrase :: Maybe String } -> Either ParsePrivateKeyError PrivateKey
+parsePrivateKey { key, passphrase } =
+  case runFn4 parseKeyImpl (Left <<< Exception.message) Right key (Nullable.toNullable passphrase) of
+    Right parsed | not (isPrivateKey parsed) -> Left $ GotPublicKeyInstead $ keyType parsed
+    Left "Encrypted private OpenSSH key detected, but no passphrase given" -> Left RequiresPassphrase
+    result -> bimap OtherParseError PrivateKey result
 
 -- | Parse a public SSH key
 parsePublicKey :: String -> Either String PublicKey
@@ -88,3 +100,12 @@ isPrivateKey :: ParsedKey -> Boolean
 isPrivateKey = runFn1 isPrivateKeyImpl
 
 foreign import equalsImpl :: Fn2 ParsedKey ParsedKey Boolean
+
+foreign import publicToOwnerImpl :: Fn1 PublicKey { keytype :: String, public :: String, id :: Nullable String }
+
+publicToOwner :: PublicKey -> Owner
+publicToOwner key =
+  let
+    { id: nullableId, keytype, public } = runFn1 publicToOwnerImpl key
+  in
+    Owner { keytype, public, id: Nullable.toMaybe nullableId }
