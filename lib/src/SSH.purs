@@ -104,8 +104,6 @@ foreign import equalsImpl :: Fn2 ParsedKey ParsedKey Boolean
 foreign import publicToOwnerImpl :: Fn1 PublicKey { keytype :: String, public :: String, id :: Nullable String }
 
 publicToOwner :: PublicKey -> Owner
-publicToOwner key =
-  let
-    { id: nullableId, keytype, public } = runFn1 publicToOwnerImpl key
-  in
-    Owner { keytype, public, id: Nullable.toMaybe nullableId }
+publicToOwner key = do
+  let { id: nullableId, keytype, public } = runFn1 publicToOwnerImpl key
+  Owner { keytype, public, id: Nullable.toMaybe nullableId }
