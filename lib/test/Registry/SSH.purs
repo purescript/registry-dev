@@ -3,6 +3,7 @@ module Test.Registry.SSH (spec) where
 import Prelude
 
 import Data.Either (Either(..))
+import Data.Maybe (Maybe(..))
 import Data.String as String
 import Registry.SSH (Signature(..))
 import Registry.SSH as SSH
@@ -13,8 +14,8 @@ import Test.Spec as Spec
 spec :: Spec.Spec Unit
 spec = do
   Spec.it "Parses an ED25519 private key" do
-    case SSH.parsePrivateKey id_ed25519 of
-      Left err -> Assert.fail $ "Failed to parse ed_25519 private key: " <> err
+    case SSH.parsePrivateKey { key: id_ed25519, passphrase: Nothing } of
+      Left err -> Assert.fail $ "Failed to parse ed_25519 private key: " <> SSH.printPrivateKeyParseError err
       Right _ -> pure unit
 
   Spec.it "Parses an ED25519 public key" do
@@ -23,12 +24,13 @@ spec = do
       Right _ -> pure unit
 
   Spec.it "Parses a password-protected RSA private key" do
-    case SSH.parsePrivateKey id_rsa of
-      Left err1 -> do
-        err1 `Assert.shouldEqual` "Encrypted private OpenSSH key detected, but no passphrase given"
-        case SSH.parsePrivateKeyWithPassword { key: id_rsa, passphrase: id_rsa_password } of
-          Left err2 -> Assert.fail $ "Failed to parse id_rsa private key with password: " <> err2
+    case SSH.parsePrivateKey { key: id_rsa, passphrase: Nothing } of
+      Left err1@SSH.RequiresPassphrase -> do
+        SSH.printPrivateKeyParseError err1 `Assert.shouldEqual` "Encrypted private key requires a passphrase"
+        case SSH.parsePrivateKey { key: id_rsa, passphrase: Just id_rsa_password } of
+          Left err2 -> Assert.fail $ "Failed to parse id_rsa private key with password: " <> SSH.printPrivateKeyParseError err2
           Right _ -> pure unit
+      Left otherError -> Assert.fail $ "Should have required a passphrase, but got: " <> SSH.printPrivateKeyParseError otherError
       Right _ -> Assert.fail $ "Expected parse failure, but got key."
 
   Spec.it "Parses an RSA public key" do
@@ -41,7 +43,7 @@ spec = do
       Left _ -> pure unit
       Right _ -> Assert.fail "Parsed private key as a public key."
 
-    case SSH.parsePrivateKey id_ed25519_pub of
+    case SSH.parsePrivateKey { key: id_ed25519_pub, passphrase: Nothing } of
       Left _ -> pure unit
       Right _ -> Assert.fail "Parsed public key as a private key."
 
