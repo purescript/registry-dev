@@ -6,7 +6,7 @@ module Registry.SSH
   , Signature(..)
   , parsePublicKey
   , parsePrivateKey
-  , publicToOwner
+  , publicKeyToOwner
   , sign
   , verify
   ) where
