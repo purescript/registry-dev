@@ -25,7 +25,11 @@ newtype Owner = Owner
   }
 
 derive instance Newtype Owner _
-derive newtype instance Eq Owner
+
+-- | Owners are equal if their keytype and public key are equal, regardless of
+-- | the id field, which is just an arbitrary string.
+instance Eq Owner where
+  eq (Owner o1) (Owner o2) = o1.keytype == o2.keytype && o1.public == o2.public
 
 -- | A codec for encoding and decoding an `Owner` as JSON. Represented as a JSON
 -- | object.

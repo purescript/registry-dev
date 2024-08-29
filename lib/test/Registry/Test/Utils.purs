@@ -91,7 +91,7 @@ unsafeSSHPublicKey str = fromRight ("Failed to parse SSH key: " <> str) (SSH.par
 
 -- | Unsafely parse a private SSH key from a string
 unsafeSSHPrivateKey :: String -> SSH.PrivateKey
-unsafeSSHPrivateKey str = fromRight ("Failed to parse SSH key: " <> str) (SSH.parsePrivateKey str)
+unsafeSSHPrivateKey str = fromRight ("Failed to parse SSH key: " <> str) (SSH.parsePrivateKey { key: str, passphrase: Nothing })
 
 -- | Unsafely create a manifest from a name, version, and array of dependencies
 -- | where keys are package names and values are ranges.

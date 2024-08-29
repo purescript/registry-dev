@@ -201,7 +201,7 @@ workspace:
         - variant
       test_dependencies: []
   package_set:
-    registry: 46.0.0
+    registry: 50.10.0
   extra_packages:
     codec-json: 1.2.0
     dodo-printer:
@@ -568,10 +568,11 @@ packages:
       - prelude
   encoding:
     type: registry
-    version: 0.0.8
-    integrity: sha256-n0HhENAax0yr7JFwZXcisx0jJvVf1dFwqd+Q5i2Pr88=
+    version: 0.0.9
+    integrity: sha256-vtyUO06Jww8pFl4wRekPd1YpJl2XuQXcaNXQgHtG8Tk=
     dependencies:
       - arraybuffer-types
+      - effect
       - either
       - exceptions
       - functions
@@ -608,16 +609,18 @@ packages:
       - unsafe-coerce
   fetch:
     type: registry
-    version: 4.0.0
-    integrity: sha256-Ita74WPIvzCsSIkUQQbBDKgIrsnuBWIRzEJ8Q5P7iQU=
+    version: 4.1.0
+    integrity: sha256-zCwBUkRL9n6nUhK1+7UqqsuxswPFATsZfGSBOA3NYYY=
     dependencies:
       - aff
       - arraybuffer-types
       - bifunctors
       - effect
+      - either
       - foreign
       - http-methods
       - js-fetch
+      - js-promise
       - js-promise-aff
       - maybe
       - newtype
@@ -1354,8 +1357,8 @@ packages:
       - tuples
   ordered-collections:
     type: registry
-    version: 3.1.1
-    integrity: sha256-boSYHmlz4aSbwsNN4VxiwCStc0t+y1F7BXmBS+1JNtI=
+    version: 3.2.0
+    integrity: sha256-o9jqsj5rpJmMdoe/zyufWHFjYYFTTsJpgcuCnqCO6PM=
     dependencies:
       - arrays
       - foldable-traversable
@@ -1452,8 +1455,8 @@ packages:
     dependencies: []
   profunctor:
     type: registry
-    version: 6.0.0
-    integrity: sha256-99NzxFgTr4CGlCSRYG1kShL+JhYbihhHtbOk1/0R5zI=
+    version: 6.0.1
+    integrity: sha256-E58hSYdJvF2Qjf9dnWLPlJKh2Z2fLfFLkQoYi16vsFk=
     dependencies:
       - control
       - distributive
@@ -1616,8 +1619,8 @@ packages:
       - unsafe-coerce
   spec:
     type: registry
-    version: 7.5.5
-    integrity: sha256-HdyBH7Ys1/m2SdTq3u2u9LdQ4cGeaohWeEMYay2mHdU=
+    version: 7.6.0
+    integrity: sha256-+merGdQbL9zWONbnt8S8J9afGJ59MQqGtS0qSd3yu4I=
     dependencies:
       - aff
       - ansi
@@ -1626,7 +1629,6 @@ packages:
       - bifunctors
       - control
       - datetime
-      - debug
       - effect
       - either
       - exceptions
