@@ -33,5 +33,5 @@ type SignAuthenticated =
 
 signPayload :: SignAuthenticated -> Either String SSH.Signature
 signPayload { privateKey, rawPayload } = do
-  private <- lmap SSH.printParsePrivateKeyError $ SSH.parsePrivateKey { key: privateKey, passphrase: Nothing }
+  private <- lmap SSH.printPrivateKeyParseError $ SSH.parsePrivateKey { key: privateKey, passphrase: Nothing }
   pure $ SSH.sign private rawPayload

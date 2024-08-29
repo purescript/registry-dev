@@ -1,8 +1,8 @@
 module Registry.SSH
   ( PublicKey
   , PrivateKey
-  , ParsePrivateKeyError(..)
-  , printParsePrivateKeyError
+  , PrivateKeyParseError(..)
+  , printPrivateKeyParseError
   , Signature(..)
   , parsePublicKey
   , parsePrivateKey
@@ -43,18 +43,18 @@ foreign import parseKeyImpl :: forall r. Fn4 (Exception.Error -> r) (ParsedKey -
 parse :: String -> Either String ParsedKey
 parse buf = runFn4 parseKeyImpl (Left <<< Exception.message) Right buf null
 
-data ParsePrivateKeyError
+data PrivateKeyParseError
   = GotPublicKeyInstead String
   | RequiresPassphrase
   | OtherParseError String
 
-printParsePrivateKeyError :: ParsePrivateKeyError -> String
-printParsePrivateKeyError = case _ of
+printPrivateKeyParseError :: PrivateKeyParseError -> String
+printPrivateKeyParseError = case _ of
   GotPublicKeyInstead keyType' -> "Expected private key, but got public key of type " <> keyType'
   RequiresPassphrase -> "Encrypted private key requires a passphrase"
   OtherParseError message -> message
 
-parsePrivateKey :: { key :: String, passphrase :: Maybe String } -> Either ParsePrivateKeyError PrivateKey
+parsePrivateKey :: { key :: String, passphrase :: Maybe String } -> Either PrivateKeyParseError PrivateKey
 parsePrivateKey { key, passphrase } =
   case runFn4 parseKeyImpl (Left <<< Exception.message) Right key (Nullable.toNullable passphrase) of
     Right parsed | not (isPrivateKey parsed) -> Left $ GotPublicKeyInstead $ keyType parsed
