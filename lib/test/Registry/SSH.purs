@@ -26,7 +26,7 @@ spec = do
   Spec.it "Parses a password-protected RSA private key" do
     case SSH.parsePrivateKey { key: id_rsa, passphrase: Nothing } of
       Left err1@SSH.RequiresPassphrase -> do
-        SSH.printParsePrivateKeyError err1 `Assert.shouldEqual` "Encrypted private OpenSSH key detected, but no passphrase given"
+        SSH.printParsePrivateKeyError err1 `Assert.shouldEqual` "Encrypted private key requires a passphrase"
         case SSH.parsePrivateKey { key: id_rsa, passphrase: Just id_rsa_password } of
           Left err2 -> Assert.fail $ "Failed to parse id_rsa private key with password: " <> SSH.printParsePrivateKeyError err2
           Right _ -> pure unit

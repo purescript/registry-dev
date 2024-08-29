@@ -54,7 +54,6 @@ printParsePrivateKeyError = case _ of
   RequiresPassphrase -> "Encrypted private key requires a passphrase"
   OtherParseError message -> message
 
--- | Parse a password-protected private SSH key
 parsePrivateKey :: { key :: String, passphrase :: Maybe String } -> Either ParsePrivateKeyError PrivateKey
 parsePrivateKey { key, passphrase } =
   case runFn4 parseKeyImpl (Left <<< Exception.message) Right key (Nullable.toNullable passphrase) of
@@ -103,7 +102,7 @@ foreign import equalsImpl :: Fn2 ParsedKey ParsedKey Boolean
 
 foreign import publicToOwnerImpl :: Fn1 PublicKey { keytype :: String, public :: String, id :: Nullable String }
 
-publicToOwner :: PublicKey -> Owner
-publicToOwner key = do
+publicKeyToOwner :: PublicKey -> Owner
+publicKeyToOwner key = do
   let { id: nullableId, keytype, public } = runFn1 publicToOwnerImpl key
   Owner { keytype, public, id: Nullable.toMaybe nullableId }
