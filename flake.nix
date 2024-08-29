@@ -270,7 +270,7 @@
 
           pushd $WORKDIR
           export HEALTHCHECKS_URL=${defaultEnv.HEALTHCHECKS_URL}
-          ${pkgs.spago-bin.spago-0_93_39}/bin/spago test
+          ${pkgs.spago-bin.spago-0_93_19}/bin/spago test
 
           popd
         '';
@@ -853,7 +853,7 @@
 
               # Development tooling
               purs
-              spago-bin.spago-0_93_39
+              spago-bin.spago-0_93_19 # until new lockfile format supported by overlay
               purs-tidy-unstable
               purs-backend-es-unstable
             ];
