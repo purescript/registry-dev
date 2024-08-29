@@ -1,14 +1,19 @@
 module Registry.App.API
   ( AuthenticatedEffects
+  , COMPILER_CACHE
+  , CompilerCache(..)
   , PackageSetUpdateEffects
   , PublishEffects
+  , _compilerCache
   , authenticated
   , copyPackageSourceFiles
+  , findAllCompilers
   , formatPursuitResolutions
+  , installBuildPlan
   , packageSetUpdate
   , packagingTeam
-  , parseInstalledModulePath
   , publish
+  , readCompilerIndex
   , removeIgnoredTarballFiles
   ) where
 
@@ -16,13 +21,15 @@ import Registry.App.Prelude
 
 import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
-import Data.Array.NonEmpty as NEA
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Common as CJ.Common
 import Data.Codec.JSON.Record as CJ.Record
-import Data.DateTime (DateTime)
+import Data.Exists as Exists
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
+import Data.List.NonEmpty as NonEmptyList
+import Data.Map (SemigroupMap(..))
 import Data.Map as Map
 import Data.Newtype (over, unwrap)
 import Data.Number.Format as Number.Format
@@ -33,7 +40,7 @@ import Data.String.CodeUnits as String.CodeUnits
 import Data.String.NonEmpty as NonEmptyString
 import Data.String.Regex as Regex
 import Effect.Aff as Aff
-import Effect.Ref as Ref
+import Effect.Unsafe (unsafePerformEffect)
 import JSON as JSON
 import Node.ChildProcess.Types (Exit(..))
 import Node.FS.Aff as FS.Aff
@@ -46,9 +53,12 @@ import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Registry.App.Auth as Auth
-import Registry.App.CLI.Purs (CompilerFailure(..))
+import Registry.App.CLI.Purs (CompilerFailure(..), compilerFailureCodec)
 import Registry.App.CLI.Purs as Purs
+import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.CLI.Tar as Tar
+import Registry.App.Effect.Cache (class FsEncodable, Cache)
+import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Comment (COMMENT)
 import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV, RESOURCE_ENV)
@@ -79,13 +89,14 @@ import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (IssueNumber(..), Team)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
+import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Path as Internal.Path
 import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.Metadata as Metadata
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageSetUpdateData, PublishData)
 import Registry.Operation as Operation
-import Registry.Operation.Validation (UnpublishError(..), validateNoExcludedObligatoryFiles)
+import Registry.Operation.Validation (UnpublishError(..), ValidateDepsError(..), validateNoExcludedObligatoryFiles)
 import Registry.Operation.Validation as Operation.Validation
 import Registry.Owner as Owner
 import Registry.PackageName as PackageName
@@ -94,12 +105,14 @@ import Registry.PursGraph (ModuleName(..))
 import Registry.PursGraph as PursGraph
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
+import Registry.Solver (CompilerIndex, DependencyIndex, Intersection, SolverErrors)
 import Registry.Solver as Solver
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
+import Safe.Coerce as Safe.Coerce
 
 type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + COMMENT + LOG + EXCEPT String + r)
 
@@ -253,7 +266,7 @@ authenticated auth = case auth.payload of
         pure published
 
     pacchettiBotti <- getPacchettiBotti
-    let owners = maybe [] NEA.toArray (un Metadata metadata).owners
+    let owners = maybe [] NonEmptyArray.toArray (un Metadata metadata).owners
     Run.liftAff (Auth.verifyPayload pacchettiBotti owners auth) >>= case _ of
       Left _ | [] <- owners -> do
         Log.error $ "Unpublishing is an authenticated operation, but no owners were listed in the metadata: " <> stringifyJson Metadata.codec metadata
@@ -291,7 +304,7 @@ authenticated auth = case auth.payload of
       Just value -> pure value
 
     pacchettiBotti <- getPacchettiBotti
-    let owners = maybe [] NEA.toArray (un Metadata metadata).owners
+    let owners = maybe [] NonEmptyArray.toArray (un Metadata metadata).owners
     Run.liftAff (Auth.verifyPayload pacchettiBotti owners auth) >>= case _ of
       Left _ | [] <- owners -> do
         Log.error $ "Transferring is an authenticated operation, but no owners were listed in the metadata: " <> stringifyJson Metadata.codec metadata
@@ -315,17 +328,21 @@ authenticated auth = case auth.payload of
         Registry.mirrorLegacyRegistry payload.name payload.newLocation
         Comment.comment "Mirrored registry operation to the legacy registry."
 
-type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT + r)
+type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + COMPILER_CACHE + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Publish a package via the 'publish' operation. If the package has not been
 -- | published before then it will be registered and the given version will be
 -- | upload. If it has been published before then the existing metadata will be
 -- | updated with the new version.
-publish :: forall r. PackageSource -> PublishData -> Run (PublishEffects + r) Unit
-publish source payload = do
+--
+-- The legacyIndex argument contains the unverified manifests produced by the
+-- legacy importer; these manifests can be used on legacy packages to conform
+-- them to the registry rule that transitive dependencies are not allowed.
+publish :: forall r. Maybe Solver.TransitivizedRegistry -> PublishData -> Run (PublishEffects + r) Unit
+publish maybeLegacyIndex payload = do
   let printedName = PackageName.print payload.name
 
-  Log.debug $ "Publishing " <> printPackageSource source <> " package " <> printedName <> " with payload:\n" <> stringifyJson Operation.publishCodec payload
+  Log.debug $ "Publishing package " <> printedName <> " with payload:\n" <> stringifyJson Operation.publishCodec payload
 
   Log.debug $ "Verifying metadata..."
   Metadata existingMetadata <- Registry.readMetadata payload.name >>= case _ of
@@ -368,23 +385,28 @@ publish source payload = do
   -- the package directory along with its detected publish time.
   Log.debug "Metadata validated. Fetching package source code..."
   tmp <- Tmp.mkTmpDir
-  { path: packageDirectory, published: publishedTime } <- Source.fetch source tmp existingMetadata.location payload.ref
+  { path: downloadedPackage, published: publishedTime } <- Source.fetch tmp existingMetadata.location payload.ref
 
-  Log.debug $ "Package downloaded to " <> packageDirectory <> ", verifying it contains a src directory with valid modules..."
-  Internal.Path.readPursFiles (Path.concat [ packageDirectory, "src" ]) >>= case _ of
+  Log.debug $ "Package downloaded to " <> downloadedPackage <> ", verifying it contains a src directory with valid modules..."
+  Internal.Path.readPursFiles (Path.concat [ downloadedPackage, "src" ]) >>= case _ of
     Nothing ->
       Except.throw $ Array.fold
         [ "This package has no PureScript files in its `src` directory. "
         , "All package sources must be in the `src` directory, with any additional "
         , "sources indicated by the `files` key in your manifest."
         ]
-    Just files -> do
+    Just files ->
+      -- The 'validatePursModules' function uses language-cst-parser, which only
+      -- supports syntax back to 0.15.0. We'll still try to validate the package
+      -- but it may fail to parse.
       Operation.Validation.validatePursModules files >>= case _ of
+        Left formattedError | payload.compiler < Purs.minLanguageCSTParser -> do
+          Log.debug $ "Package failed to parse in validatePursModules: " <> formattedError
+          Log.debug $ "Skipping check because package is published with a pre-0.15.0 compiler (" <> Version.print payload.compiler <> ")."
         Left formattedError ->
           Except.throw $ Array.fold
             [ "This package has either malformed or disallowed PureScript module names "
-            , "in its `src` directory. All package sources must be in the `src` directory, "
-            , "with any additional sources indicated by the `files` key in your manifest."
+            , "in its source: "
             , formattedError
             ]
         Right _ ->
@@ -393,13 +415,18 @@ publish source payload = do
   -- If the package doesn't have a purs.json we can try to make one - possible scenarios:
   --  - in case it has a spago.yaml then we know how to read that, and have all the info to move forward
   --  - if it's a legacy import then we can try to infer as much info as possible to make a manifest
-  let packagePursJson = Path.concat [ packageDirectory, "purs.json" ]
+  let packagePursJson = Path.concat [ downloadedPackage, "purs.json" ]
   hadPursJson <- Run.liftEffect $ FS.Sync.exists packagePursJson
 
-  let packageSpagoYaml = Path.concat [ packageDirectory, "spago.yaml" ]
+  let packageSpagoYaml = Path.concat [ downloadedPackage, "spago.yaml" ]
   hasSpagoYaml <- Run.liftEffect $ FS.Sync.exists packageSpagoYaml
 
-  Manifest manifest <-
+  address <- case existingMetadata.location of
+    Git _ -> Except.throw "Packages can only come from GitHub for now."
+    GitHub { subdir: Just subdir } -> Except.throw $ "Packages cannot yet use the 'subdir' key, but this package specifies a " <> subdir <> " subdir."
+    GitHub { owner, repo } -> pure { owner, repo }
+
+  Manifest receivedManifest <-
     if hadPursJson then
       Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 packagePursJson)) >>= case _ of
         Left error -> do
@@ -424,19 +451,15 @@ publish source payload = do
           Left err -> Except.throw $ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:\n" <> err
           Right manifest -> do
             Comment.comment $ Array.fold
-              [ "Converted your spago.yaml into a purs.json manifest to use for publishing:\n"
-              , "```json"
+              [ "Converted your spago.yaml into a purs.json manifest to use for publishing:"
+              , "\n```json\n"
               , printJson Manifest.codec manifest
-              , "```"
+              , "\n```\n"
               ]
             pure manifest
 
     else do
       Comment.comment $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
-      address <- case existingMetadata.location of
-        Git _ -> Except.throw "Legacy packages can only come from GitHub."
-        GitHub { subdir: Just subdir } -> Except.throw $ "Legacy packages cannot use the 'subdir' key, but this package specifies a " <> subdir <> " subdir."
-        GitHub { owner, repo } -> pure { owner, repo }
 
       version <- case LenientVersion.parse payload.ref of
         Left _ -> Except.throw $ "The provided ref " <> payload.ref <> " is not a version of the form X.Y.Z or vX.Y.Z, so it cannot be used."
@@ -453,60 +476,69 @@ publish source payload = do
           Log.debug $ "Successfully produced a legacy manifest from the package source."
           let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location legacyManifest
           Comment.comment $ Array.fold
-            [ "Converted your legacy manifest(s) into a purs.json manifest to use for publishing:\n"
-            , "```json"
+            [ "Converted your legacy manifest(s) into a purs.json manifest to use for publishing:"
+            , "\n```json\n"
             , printJson Manifest.codec manifest
-            , "```"
+            , "\n```\n"
             ]
           pure manifest
 
   -- We trust the manifest for any changes to the 'owners' field, but for all
   -- other fields we trust the registry metadata.
-  let metadata = existingMetadata { owners = manifest.owners }
-  unless (Operation.Validation.nameMatches (Manifest manifest) payload) do
+  let metadata = existingMetadata { owners = receivedManifest.owners }
+  unless (Operation.Validation.nameMatches (Manifest receivedManifest) payload) do
     Except.throw $ Array.fold
       [ "The manifest file specifies a package name ("
-      , PackageName.print manifest.name
+      , PackageName.print receivedManifest.name
       , ") that differs from the package name submitted to the API ("
       , PackageName.print payload.name
       , "). The manifest and API request must match."
       ]
 
-  unless (Operation.Validation.locationMatches (Manifest manifest) (Metadata metadata)) do
-    Except.throw $ Array.fold
-      [ "The manifest file specifies a location ("
-      , stringifyJson Location.codec manifest.location
-      , ") that differs from the location in the registry metadata ("
-      , stringifyJson Location.codec metadata.location
-      , "). If you would like to change the location of your package you should "
-      , "submit a transfer operation."
-      ]
+  unless (Operation.Validation.locationMatches (Manifest receivedManifest) (Metadata metadata)) do
+    if isJust maybeLegacyIndex then
+      -- The legacy importer is sometimes run on older packages, some of which have been transferred. Since
+      -- package metadata only records the latest location, this can cause a problem: the manifest reports
+      -- the location at the time, but the metadata reports the current location.
+      Log.warn $ Array.fold
+        [ "In legacy mode and manifest location differs from existing metadata. This indicates a package that was "
+        , "transferred from a previous location. Ignoring location match validation..."
+        ]
+    else
+      Except.throw $ Array.fold
+        [ "The manifest file specifies a location ("
+        , stringifyJson Location.codec receivedManifest.location
+        , ") that differs from the location in the registry metadata ("
+        , stringifyJson Location.codec metadata.location
+        , "). If you would like to change the location of your package you should "
+        , "submit a transfer operation."
+        ]
 
-  when (Operation.Validation.isMetadataPackage (Manifest manifest)) do
+  when (Operation.Validation.isMetadataPackage (Manifest receivedManifest)) do
     Except.throw "The `metadata` package cannot be uploaded to the registry because it is a protected package."
 
-  for_ (Operation.Validation.isNotUnpublished (Manifest manifest) (Metadata metadata)) \info -> do
+  for_ (Operation.Validation.isNotUnpublished (Manifest receivedManifest) (Metadata metadata)) \info -> do
     Except.throw $ String.joinWith "\n"
-      [ "You tried to upload a version that has been unpublished: " <> Version.print manifest.version
+      [ "You tried to upload a version that has been unpublished: " <> Version.print receivedManifest.version
       , ""
       , "```json"
       , printJson Metadata.unpublishedMetadataCodec info
       , "```"
       ]
 
-  case Operation.Validation.isNotPublished (Manifest manifest) (Metadata metadata) of
+  case Operation.Validation.isNotPublished (Manifest receivedManifest) (Metadata metadata) of
     -- If the package has been published already, then we check whether the published
     -- version has made it to Pursuit or not. If it has, then we terminate here. If
     -- it hasn't then we publish to Pursuit and then terminate.
     Just info -> do
-      published <- Pursuit.getPublishedVersions manifest.name >>= case _ of
+      published <- Pursuit.getPublishedVersions receivedManifest.name >>= case _ of
         Left error -> Except.throw error
         Right versions -> pure versions
 
-      case Map.lookup manifest.version published of
+      case Map.lookup receivedManifest.version published of
         Just url -> do
           Except.throw $ String.joinWith "\n"
-            [ "You tried to upload a version that already exists: " <> Version.print manifest.version
+            [ "You tried to upload a version that already exists: " <> Version.print receivedManifest.version
             , ""
             , "Its metadata is:"
             , "```json"
@@ -517,300 +549,272 @@ publish source payload = do
             , url
             ]
 
+        Nothing | payload.compiler < Purs.minPursuitPublish -> do
+          Comment.comment $ Array.fold
+            [ "This version has already been published to the registry, but the docs have not been "
+            , "uploaded to Pursuit. Unfortunately, it is not possible to publish to Pursuit via the "
+            , "registry using compiler versions prior to " <> Version.print Purs.minPursuitPublish
+            , ". Please try with a later compiler."
+            ]
+
         Nothing -> do
           Comment.comment $ Array.fold
             [ "This version has already been published to the registry, but the docs have not been "
             , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
             ]
-          verifiedResolutions <- verifyResolutions (Manifest manifest) payload.resolutions
-          compilationResult <- compilePackage { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions }
+          compilerIndex <- readCompilerIndex
+          verifiedResolutions <- verifyResolutions compilerIndex payload.compiler (Manifest receivedManifest) payload.resolutions
+          let installedResolutions = Path.concat [ tmp, ".registry" ]
+          installBuildPlan verifiedResolutions installedResolutions
+          compilationResult <- Run.liftAff $ Purs.callCompiler
+            { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
+            , version: Just payload.compiler
+            , cwd: Just downloadedPackage
+            }
           case compilationResult of
-            Left error -> do
+            Left compileFailure -> do
+              let error = printCompilerFailure payload.compiler compileFailure
               Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
               Except.throw "Cannot publish to Pursuit because this package failed to compile."
-            Right dependenciesDir -> do
+            Right _ -> do
               Log.debug "Uploading to Pursuit"
               -- While we have created a manifest from the package source, we
               -- still need to ensure a purs.json file exists for 'purs publish'.
               unless hadPursJson do
-                existingManifest <- ManifestIndex.readManifest manifest.name manifest.version
+                existingManifest <- ManifestIndex.readManifest receivedManifest.name receivedManifest.version
                 case existingManifest of
                   Nothing -> Except.throw "Version was previously published, but we could not find a purs.json file in the package source, and no existing manifest was found in the registry."
                   Just existing -> Run.liftAff $ writeJsonFile Manifest.codec packagePursJson existing
-              publishToPursuit { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, dependenciesDir }
+              publishToPursuit { source: downloadedPackage, compiler: payload.compiler, resolutions: verifiedResolutions, installedResolutions } >>= case _ of
+                Left publishErr -> Except.throw publishErr
+                Right _ -> do
+                  FS.Extra.remove tmp
+                  Comment.comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
 
     -- In this case the package version has not been published, so we proceed
     -- with ordinary publishing.
-    Nothing ->
-      -- Now that we've verified the package we can write the manifest to the source
-      -- directory and then publish it.
-      if hadPursJson then do
-        -- No need to verify the generated manifest because nothing was generated,
-        -- and no need to write a file (it's already in the package source.)
-        publishRegistry
-          { source
-          , manifest: Manifest manifest
-          , metadata: Metadata metadata
-          , payload
-          , publishedTime
-          , tmp
-          , packageDirectory
-          }
+    Nothing -> do
+      Log.info "Verifying the package build plan..."
+      compilerIndex <- readCompilerIndex
+      validatedResolutions <- verifyResolutions compilerIndex payload.compiler (Manifest receivedManifest) payload.resolutions
 
-      else if hasSpagoYaml then do
-        -- We need to write the generated purs.json file, but because spago-next
-        -- already does unused dependency checks and supports explicit test-only
-        -- dependencies we can skip those checks.
-        Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
-        publishRegistry
-          { source
-          , manifest: Manifest manifest
-          , metadata: Metadata metadata
-          , payload
-          , publishedTime
-          , tmp
-          , packageDirectory
-          }
+      Comment.comment "Verifying unused and/or missing dependencies..."
 
-      -- Otherwise this is a legacy package, generated from a combination of bower,
-      -- spago.dhall, and package set files, so we need to verify the generated
-      -- manifest does not contain unused dependencies before writing it.
+      -- First we install the resolutions and call 'purs graph' to adjust the
+      -- manifest as needed, but we defer compilation until after this check
+      -- in case the package manifest and resolutions are adjusted.
+      let installedResolutions = Path.concat [ tmp, ".registry" ]
+      installBuildPlan validatedResolutions installedResolutions
+
+      let srcGlobs = Path.concat [ downloadedPackage, "src", "**", "*.purs" ]
+      let depGlobs = Path.concat [ installedResolutions, "*", "src", "**", "*.purs" ]
+      let pursGraph = Purs.Graph { globs: [ srcGlobs, depGlobs ] }
+
+      -- We need to use the minimum compiler version that supports 'purs graph'.
+      let pursGraphCompiler = if payload.compiler >= Purs.minPursGraph then payload.compiler else Purs.minPursGraph
+
+      -- In this step we run 'purs graph' to get a graph of the package source
+      -- and installed dependencies and use that to determine if the manifest
+      -- contains any unused or missing dependencies. If it does and is a legacy
+      -- manifest then we fix it and return the result. If does and is a modern
+      -- manifest (spago.yaml, purs.json, etc.) then we reject it. If it doesn't
+      -- then we simply return the manifest and resolutions we already had.
+      Tuple manifest resolutions <- Run.liftAff (Purs.callCompiler { command: pursGraph, version: Just pursGraphCompiler, cwd: Nothing }) >>= case _ of
+        Left err -> case err of
+          UnknownError str -> Except.throw str
+          MissingCompiler -> Except.throw $ "Missing compiler " <> Version.print pursGraphCompiler
+          CompilationError errs -> do
+            Log.warn $ Array.fold
+              [ "Failed to discover unused dependencies because purs graph failed:\n"
+              , Purs.printCompilerErrors errs
+              ]
+            -- The purs graph command will fail if the source code uses syntax
+            -- before the oldest usable purs graph compiler (ie. 0.14.0). In
+            -- this case we simply accept the dependencies as-is, even though
+            -- they could technically violate Registry rules around missing and
+            -- unused dependencies. This only affects old packages and we know
+            -- they compile, so we've decided it's an acceptable exception.
+            pure $ Tuple (Manifest receivedManifest) validatedResolutions
+        Right output -> case JSON.parse output of
+          Left parseErr -> Except.throw $ "Failed to parse purs graph output as JSON while finding unused dependencies: " <> parseErr
+          Right json -> case CJ.decode PursGraph.pursGraphCodec json of
+            Left decodeErr -> Except.throw $ "Failed to decode JSON from purs graph output while finding unused dependencies: " <> CJ.DecodeError.print decodeErr
+            Right graph -> do
+              Log.debug "Got a valid graph of source and dependencies."
+              let
+                pathParser path = map _.name $ case String.stripPrefix (String.Pattern installedResolutions) path of
+                  Just trimmed -> parseModulePath trimmed
+                  Nothing -> case String.stripPrefix (String.Pattern downloadedPackage) path of
+                    Just _ -> Right { name: receivedManifest.name, version: receivedManifest.version }
+                    Nothing -> Left $ "Failed to parse module path " <> path <> " because it is not in the package source or installed dependencies."
+
+              case Operation.Validation.noTransitiveOrMissingDeps (Manifest receivedManifest) graph pathParser of
+                -- Association failures should always throw
+                Left (Left assocErrors) ->
+                  Except.throw $ Array.fold
+                    [ "Failed to validate unused / missing dependencies because modules could not be associated with package names:"
+                    , flip NonEmptyArray.foldMap1 assocErrors \{ error, module: ModuleName moduleName, path } ->
+                        "\n  - " <> moduleName <> " (" <> path <> "): " <> error
+                    ]
+
+                -- FIXME: For now we attempt to fix packages if a legacy index
+                -- is provided (ie. the publish is via the importer) but we
+                -- should at some point make this a hard error.
+                Left (Right depError) -> case maybeLegacyIndex of
+                  Nothing ->
+                    Except.throw $ "Failed to validate unused / missing dependencies: " <> Operation.Validation.printValidateDepsError depError
+                  Just legacyIndex -> do
+                    Log.info $ "Found fixable dependency errors: " <> Operation.Validation.printValidateDepsError depError
+                    conformLegacyManifest (Manifest receivedManifest) payload.compiler compilerIndex legacyIndex depError
+
+                -- If the check passes then we can simply return the manifest and
+                -- resolutions.
+                Right _ -> pure $ Tuple (Manifest receivedManifest) validatedResolutions
+
+      -- Now that we've verified the package we can write the manifest to the
+      -- source directory.
+      Run.liftAff $ writeJsonFile Manifest.codec packagePursJson manifest
+
+      Log.info "Creating packaging directory"
+      let packageDirname = PackageName.print receivedManifest.name <> "-" <> Version.print receivedManifest.version
+      let packageSource = Path.concat [ tmp, packageDirname ]
+      FS.Extra.ensureDirectory packageSource
+      -- We copy over all files that are always included (ie. src dir, purs.json file),
+      -- and any files the user asked for via the 'files' key, and remove all files
+      -- that should never be included (even if the user asked for them).
+      copyPackageSourceFiles { includeFiles: receivedManifest.includeFiles, excludeFiles: receivedManifest.excludeFiles, source: downloadedPackage, destination: packageSource }
+      removeIgnoredTarballFiles packageSource
+
+      -- Now that we have the package source contents we can verify we can compile
+      -- the package with exactly what is going to be uploaded.
+      Comment.comment $ Array.fold
+        [ "Verifying package compiles using compiler "
+        , Version.print payload.compiler
+        , " and resolutions:\n"
+        , "```json\n"
+        , printJson (Internal.Codec.packageMap Version.codec) resolutions
+        , "\n```"
+        ]
+
+      -- We clear the installation directory so that no old installed resolutions
+      -- stick around.
+      Run.liftAff $ FS.Extra.remove installedResolutions
+      installBuildPlan resolutions installedResolutions
+      compilationResult <- Run.liftAff $ Purs.callCompiler
+        { command: Purs.Compile { globs: [ Path.concat [ packageSource, "src/**/*.purs" ], Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
+        , version: Just payload.compiler
+        , cwd: Just tmp
+        }
+
+      case compilationResult of
+        Left compileFailure -> do
+          let error = printCompilerFailure payload.compiler compileFailure
+          Except.throw $ "Publishing failed due to a compiler error:\n\n" <> error
+        Right _ -> pure unit
+
+      Comment.comment "Package source is verified! Packaging tarball and uploading to the storage backend..."
+      let tarballName = packageDirname <> ".tar.gz"
+      let tarballPath = Path.concat [ tmp, tarballName ]
+      Tar.create { cwd: tmp, folderName: packageDirname }
+
+      Log.info "Tarball created. Verifying its size..."
+      bytes <- Run.liftAff $ map FS.Stats.size $ FS.Aff.stat tarballPath
+      for_ (Operation.Validation.validateTarballSize bytes) case _ of
+        Operation.Validation.ExceedsMaximum maxPackageBytes ->
+          Except.throw $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
+        Operation.Validation.WarnPackageSize maxWarnBytes ->
+          Comment.comment $ "WARNING: Package tarball is " <> show bytes <> "bytes, which exceeds the warning threshold of " <> show maxWarnBytes <> " bytes."
+
+      -- If a package has under ~30 bytes it's about guaranteed that packaging the
+      -- tarball failed. This can happen if the system running the API has a non-
+      -- GNU tar installed, for example.
+      let minBytes = 30.0
+      when (bytes < minBytes) do
+        Except.throw $ "Package tarball is only " <> Number.Format.toString bytes <> " bytes, which indicates the source was not correctly packaged."
+
+      hash <- Sha256.hashFile tarballPath
+      Log.info $ "Tarball size of " <> show bytes <> " bytes is acceptable."
+      Log.info $ "Tarball hash: " <> Sha256.print hash
+
+      Storage.upload (un Manifest manifest).name (un Manifest manifest).version tarballPath
+      Log.debug $ "Adding the new version " <> Version.print (un Manifest manifest).version <> " to the package metadata file."
+      let newPublishedVersion = { hash, ref: payload.ref, compilers: Left payload.compiler, publishedTime, bytes }
+      let newMetadata = metadata { published = Map.insert (un Manifest manifest).version newPublishedVersion metadata.published }
+
+      Registry.writeMetadata (un Manifest manifest).name (Metadata newMetadata)
+      Comment.comment "Successfully uploaded package to the registry! 🎉 🚀"
+
+      -- We write to the registry index if possible. If this fails, the packaging
+      -- team should manually insert the entry.
+      Log.debug "Adding the new version to the registry index"
+      Registry.writeManifest manifest
+
+      Registry.mirrorLegacyRegistry payload.name newMetadata.location
+      Comment.comment "Mirrored registry operation to the legacy registry!"
+
+      Log.debug "Uploading package documentation to Pursuit"
+      if payload.compiler >= Purs.minPursuitPublish then
+        -- TODO: We must use the 'downloadedPackage' instead of 'packageSource'
+        -- because Pursuit requires a git repository, and our tarball directory
+        -- is not one. This should be changed once Pursuit no longer needs git.
+        publishToPursuit { source: downloadedPackage, compiler: payload.compiler, resolutions, installedResolutions } >>= case _ of
+          Left publishErr -> do
+            Log.error publishErr
+            Comment.comment $ "Failed to publish package docs to Pursuit: " <> publishErr
+          Right _ ->
+            Comment.comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
       else do
-        Log.debug "Pruning unused dependencies from legacy package manifest..."
+        Comment.comment $ Array.fold
+          [ "Skipping Pursuit publishing because this package was published with a pre-0.14.7 compiler ("
+          , Version.print payload.compiler
+          , "). If you want to publish documentation, please try again with a later compiler."
+          ]
 
-        Log.debug "Solving manifest to get all transitive dependencies."
-        resolutions <- verifyResolutions (Manifest manifest) payload.resolutions
+      Comment.comment "Determining all valid compiler versions for this package..."
+      allCompilers <- PursVersions.pursVersions
+      { failed: invalidCompilers, succeeded: validCompilers } <- case NonEmptyArray.fromFoldable $ NonEmptyArray.delete payload.compiler allCompilers of
+        Nothing -> pure { failed: Map.empty, succeeded: NonEmptySet.singleton payload.compiler }
+        Just try -> do
+          found <- findAllCompilers
+            { source: packageSource
+            , manifest
+            , compilers: try
+            }
+          pure { failed: found.failed, succeeded: NonEmptySet.cons payload.compiler found.succeeded }
 
-        Log.debug "Installing dependencies."
-        tmpDepsDir <- Tmp.mkTmpDir
-        installBuildPlan resolutions tmpDepsDir
+      unless (Map.isEmpty invalidCompilers) do
+        Log.debug $ "Some compilers failed: " <> String.joinWith ", " (map Version.print (Set.toUnfoldable (Map.keys invalidCompilers)))
 
-        Log.debug "Discovering used dependencies from source."
-        let srcGlobs = Path.concat [ packageDirectory, "src", "**", "*.purs" ]
-        let depGlobs = Path.concat [ tmpDepsDir, "*", "src", "**", "*.purs" ]
-        let command = Purs.Graph { globs: [ srcGlobs, depGlobs ] }
-        -- We need to use the minimum compiler version that supports 'purs graph'
-        let minGraphCompiler = unsafeFromRight (Version.parse "0.13.8")
-        let callCompilerVersion = if payload.compiler >= minGraphCompiler then payload.compiler else minGraphCompiler
-        Run.liftAff (Purs.callCompiler { command, version: Just callCompilerVersion, cwd: Nothing }) >>= case _ of
-          Left err -> do
-            let prefix = "Failed to discover unused dependencies because purs graph failed: "
-            Log.error $ prefix <> case err of
-              UnknownError str -> str
-              CompilationError errs -> Purs.printCompilerErrors errs
-              MissingCompiler -> "missing compiler " <> Version.print payload.compiler
-            -- We allow legacy packages through even if we couldn't run purs graph,
-            -- because we can't be sure we chose the correct compiler version.
-            if source == LegacyPackage then
-              Comment.comment "Failed to prune dependencies for legacy package, continuing anyway..."
-            else do
-              Except.throw "purs graph failed; cannot verify unused dependencies."
-          Right output -> case JSON.parse output of
-            Left parseErr -> Except.throw $ "Failed to parse purs graph output as JSON while finding unused dependencies: " <> parseErr
-            Right json -> case CJ.decode PursGraph.pursGraphCodec json of
-              Left decodeErr -> Except.throw $ "Failed to decode JSON from purs graph output while finding unused dependencies: " <> CJ.DecodeError.print decodeErr
-              Right graph -> do
-                Log.debug "Got a valid graph of source and dependencies. Removing install dir and associating discovered modules with their packages..."
-                FS.Extra.remove tmpDepsDir
+      Comment.comment $ "Found compatible compilers: " <> String.joinWith ", " (map (\v -> "`" <> Version.print v <> "`") (NonEmptySet.toUnfoldable validCompilers))
+      let compilersMetadata = newMetadata { published = Map.update (Just <<< (_ { compilers = Right (NonEmptySet.toUnfoldable1 validCompilers) })) (un Manifest manifest).version newMetadata.published }
+      Registry.writeMetadata (un Manifest manifest).name (Metadata compilersMetadata)
+      Log.debug $ "Wrote new metadata " <> printJson Metadata.codec (Metadata compilersMetadata)
 
-                let
-                  -- We need access to a graph that _doesn't_ include the package
-                  -- source, because we only care about dependencies of the package.
-                  noSrcGraph = Map.filter (isNothing <<< String.stripPrefix (String.Pattern packageDirectory) <<< _.path) graph
-
-                  pathParser = map _.name <<< parseInstalledModulePath <<< { prefix: tmpDepsDir, path: _ }
-
-                case PursGraph.associateModules pathParser noSrcGraph of
-                  Left errs ->
-                    Except.throw $ String.joinWith "\n"
-                      [ "Failed to associate modules with packages while finding unused dependencies:"
-                      , flip NonEmptyArray.foldMap1 errs \{ error, module: ModuleName moduleName, path } ->
-                          "  - " <> moduleName <> " (" <> path <> "): " <> error <> "\n"
-                      ]
-                  Right modulePackageMap -> do
-                    Log.debug "Associated modules with their package names. Finding all modules used in package source..."
-                    -- The modules used in the package source code are any that have
-                    -- a path beginning with the package source directory. We only
-                    -- care about dependents of these modules.
-                    let sourceModules = Map.keys $ Map.filter (isJust <<< String.stripPrefix (String.Pattern packageDirectory) <<< _.path) graph
-
-                    Log.debug "Found all modules used in package source. Finding all modules used by those modules..."
-                    let allReachableModules = PursGraph.allDependenciesOf sourceModules graph
-
-                    -- Then we can associate each reachable module with its package
-                    -- name to get the full set of used package names.
-                    let allUsedPackages = Set.mapMaybe (flip Map.lookup modulePackageMap) allReachableModules
-
-                    -- Finally, we can use this to find the unused dependencies.
-                    Log.debug "Found all packages reachable by the project source code. Determining unused dependencies..."
-                    case Operation.Validation.getUnusedDependencies (Manifest manifest) resolutions allUsedPackages of
-                      Nothing -> do
-                        Log.debug "No unused dependencies! This manifest is good to go."
-                        Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest manifest)
-                        publishRegistry
-                          { source
-                          , manifest: Manifest manifest
-                          , metadata: Metadata metadata
-                          , payload
-                          , publishedTime
-                          , tmp
-                          , packageDirectory
-                          }
-                      Just isUnused -> do
-                        let printed = String.joinWith ", " (PackageName.print <$> NonEmptySet.toUnfoldable isUnused)
-                        Log.debug $ "Found unused dependencies: " <> printed
-                        Comment.comment $ "Generated legacy manifest contains unused dependencies which will be removed: " <> printed
-                        let verified = manifest { dependencies = Map.filterKeys (not <<< flip NonEmptySet.member isUnused) manifest.dependencies }
-                        Log.debug "Writing updated, pruned manifest."
-                        Run.liftAff $ writeJsonFile Manifest.codec packagePursJson (Manifest verified)
-                        publishRegistry
-                          { source
-                          , manifest: Manifest verified
-                          , metadata: Metadata metadata
-                          , payload
-                          , publishedTime
-                          , tmp
-                          , packageDirectory
-                          }
-
-type PublishRegistry =
-  { source :: PackageSource
-  , manifest :: Manifest
-  , metadata :: Metadata
-  , payload :: PublishData
-  , publishedTime :: DateTime
-  , tmp :: FilePath
-  , packageDirectory :: FilePath
-  }
-
--- A private helper function for publishing to the registry. Separated out of
--- the main 'publish' function because we sometimes use the publish function to
--- publish to Pursuit only (in the case the package has been pushed to the
--- registry, but docs have not been uploaded).
-publishRegistry :: forall r. PublishRegistry -> Run (PublishEffects + r) Unit
-publishRegistry { source, payload, metadata: Metadata metadata, manifest: Manifest manifest, publishedTime, tmp, packageDirectory } = do
-  Log.debug "Verifying the package build plan..."
-  verifiedResolutions <- verifyResolutions (Manifest manifest) payload.resolutions
-
-  Log.debug "Verifying that the package dependencies are all registered..."
-  unregisteredRef <- Run.liftEffect $ Ref.new Map.empty
-  forWithIndex_ verifiedResolutions \name version -> do
-    Registry.readMetadata name >>= case _ of
-      Nothing -> Run.liftEffect $ Ref.modify_ (Map.insert name version) unregisteredRef
-      Just (Metadata { published }) -> case Map.lookup version published of
-        Nothing -> Run.liftEffect $ Ref.modify_ (Map.insert name version) unregisteredRef
-        Just _ -> pure unit
-  unregistered <- Run.liftEffect $ Ref.read unregisteredRef
-  unless (Map.isEmpty unregistered) do
-    Except.throw $ Array.fold
-      [ "Cannot register this package because it has unregistered dependencies: "
-      , Array.foldMap (\(Tuple name version) -> "\n  - " <> formatPackageVersion name version) (Map.toUnfoldable unregistered)
-      ]
-
-  Log.info "Packaging tarball for upload..."
-  let newDir = PackageName.print manifest.name <> "-" <> Version.print manifest.version
-  let packageSourceDir = Path.concat [ tmp, newDir ]
-  Log.debug $ "Creating packaging directory at " <> packageSourceDir
-  FS.Extra.ensureDirectory packageSourceDir
-  -- We copy over all files that are always included (ie. src dir, purs.json file),
-  -- and any files the user asked for via the 'files' key, and remove all files
-  -- that should never be included (even if the user asked for them).
-  copyPackageSourceFiles { includeFiles: manifest.includeFiles, excludeFiles: manifest.excludeFiles, source: packageDirectory, destination: packageSourceDir }
-  Log.debug "Removing always-ignored files from the packaging directory."
-  removeIgnoredTarballFiles packageSourceDir
-
-  let tarballName = newDir <> ".tar.gz"
-  let tarballPath = Path.concat [ tmp, tarballName ]
-  Tar.create { cwd: tmp, folderName: newDir }
-
-  Log.info "Tarball created. Verifying its size..."
-  bytes <- Run.liftAff $ map FS.Stats.size $ FS.Aff.stat tarballPath
-  for_ (Operation.Validation.validateTarballSize bytes) case _ of
-    Operation.Validation.ExceedsMaximum maxPackageBytes ->
-      Except.throw $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
-    Operation.Validation.WarnPackageSize maxWarnBytes ->
-      Comment.comment $ "WARNING: Package tarball is " <> show bytes <> "bytes, which exceeds the warning threshold of " <> show maxWarnBytes <> " bytes."
-
-  -- If a package has under ~30 bytes it's about guaranteed that packaging the
-  -- tarball failed. This can happen if the system running the API has a non-
-  -- GNU tar installed, for example.
-  let minBytes = 30.0
-  when (bytes < minBytes) do
-    Except.throw $ "Package tarball is only " <> Number.Format.toString bytes <> " bytes, which indicates the source was not correctly packaged."
-
-  hash <- Sha256.hashFile tarballPath
-  Log.info $ "Tarball size of " <> show bytes <> " bytes is acceptable."
-  Log.info $ "Tarball hash: " <> Sha256.print hash
-
-  -- Now that we have the package source contents we can verify we can compile
-  -- the package. We skip failures when the package is a legacy package.
-  Log.info "Verifying package compiles (this may take a while)..."
-  compilationResult <- compilePackage
-    { packageSourceDir: packageDirectory
-    , compiler: payload.compiler
-    , resolutions: verifiedResolutions
-    }
-
-  case compilationResult of
-    Left error
-      -- We allow legacy packages to fail compilation because we do not
-      -- necessarily know what compiler to use with them.
-      | source == LegacyPackage -> do
-          Log.debug error
-          Log.warn "Failed to compile, but continuing because this package is a legacy package."
-      | otherwise ->
-          Except.throw error
-    Right _ ->
-      pure unit
-
-  Comment.comment "Package is verified! Uploading it to the storage backend..."
-  Storage.upload manifest.name manifest.version tarballPath
-  Log.debug $ "Adding the new version " <> Version.print manifest.version <> " to the package metadata file."
-  let newMetadata = metadata { published = Map.insert manifest.version { hash, ref: payload.ref, publishedTime, bytes } metadata.published }
-  Registry.writeMetadata manifest.name (Metadata newMetadata)
-  Comment.comment "Successfully uploaded package to the registry! 🎉 🚀"
-
-  -- After a package has been uploaded we add it to the registry index, we
-  -- upload its documentation to Pursuit, and we can now process it for package
-  -- sets when the next batch goes out.
-
-  -- We write to the registry index if possible. If this fails, the packaging
-  -- team should manually insert the entry.
-  Registry.writeManifest (Manifest manifest)
-
-  when (source == CurrentPackage) $ case compilationResult of
-    Left error -> do
-      Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
-      Except.throw "Cannot publish to Pursuit because this package failed to compile."
-    Right dependenciesDir -> do
-      Log.debug "Uploading to Pursuit"
-      publishToPursuit { packageSourceDir: packageDirectory, compiler: payload.compiler, resolutions: verifiedResolutions, dependenciesDir }
-
-  Registry.mirrorLegacyRegistry payload.name newMetadata.location
-  Comment.comment "Mirrored registry operation to the legacy registry."
+      Comment.comment "Wrote completed metadata to the registry!"
+      FS.Extra.remove tmp
 
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the
 -- | manifest. If not, we solve their manifest to produce a build plan.
-verifyResolutions :: forall r. Manifest -> Maybe (Map PackageName Version) -> Run (REGISTRY + LOG + EXCEPT String + r) (Map PackageName Version)
-verifyResolutions manifest resolutions = do
+verifyResolutions :: forall r. CompilerIndex -> Version -> Manifest -> Maybe (Map PackageName Version) -> Run (REGISTRY + LOG + AFF + EXCEPT String + r) (Map PackageName Version)
+verifyResolutions compilerIndex compiler manifest resolutions = do
   Log.debug "Check the submitted build plan matches the manifest"
-  manifestIndex <- Registry.readAllManifests
   case resolutions of
-    Nothing -> case Operation.Validation.validateDependenciesSolve manifest manifestIndex of
-      Left errors -> do
-        let
-          printedError = String.joinWith "\n"
-            [ "Could not produce valid dependencies for manifest."
-            , "```"
-            , errors # foldMapWithIndex \index error -> String.joinWith "\n"
-                [ "[Error " <> show (index + 1) <> "]"
-                , Solver.printSolverError error
-                ]
-            , "```"
-            ]
-        Except.throw printedError
-      Right solved -> pure solved
+    Nothing -> do
+      case Operation.Validation.validateDependenciesSolve compiler manifest compilerIndex of
+        Left errors -> do
+          let
+            printedError = String.joinWith "\n"
+              [ "Could not produce valid dependencies for manifest."
+              , "```"
+              , errors # foldMapWithIndex \index error -> String.joinWith "\n"
+                  [ "[Error " <> show (index + 1) <> "]"
+                  , Solver.printSolverError error
+                  ]
+              , "```"
+              ]
+          Except.throw printedError
+        Right solved -> pure solved
     Just provided -> do
       validateResolutions manifest provided
       pure provided
@@ -860,61 +864,88 @@ validateResolutions manifest resolutions = do
       , incorrectVersionsError
       ]
 
-type CompilePackage =
-  { packageSourceDir :: FilePath
-  , compiler :: Version
-  , resolutions :: Map PackageName Version
+type FindAllCompilersResult =
+  { failed :: Map Version (Either SolverErrors CompilerFailure)
+  , succeeded :: Set Version
   }
 
-compilePackage :: forall r. CompilePackage -> Run (STORAGE + LOG + AFF + EFFECT + r) (Either String FilePath)
-compilePackage { packageSourceDir, compiler, resolutions } = Except.runExcept do
-  tmp <- Tmp.mkTmpDir
-  let dependenciesDir = Path.concat [ tmp, ".registry" ]
-  FS.Extra.ensureDirectory dependenciesDir
+-- | Find all compilers that can compile the package source code and installed
+-- | resolutions from the given array of compilers.
+findAllCompilers
+  :: forall r
+   . { source :: FilePath, manifest :: Manifest, compilers :: NonEmptyArray Version }
+  -> Run (REGISTRY + STORAGE + COMPILER_CACHE + LOG + AFF + EFFECT + EXCEPT String + r) FindAllCompilersResult
+findAllCompilers { source, manifest, compilers } = do
+  compilerIndex <- readCompilerIndex
+  checkedCompilers <- for compilers \target -> do
+    Log.debug $ "Trying compiler " <> Version.print target
+    case Solver.solveWithCompiler (Range.exact target) compilerIndex (un Manifest manifest).dependencies of
+      Left solverErrors -> do
+        Log.info $ "Failed to solve with compiler " <> Version.print target
+        pure $ Left $ Tuple target (Left solverErrors)
+      Right (Tuple mbCompiler resolutions) -> do
+        Log.debug $ "Solved with compiler " <> Version.print target <> " and got resolutions:\n" <> printJson (Internal.Codec.packageMap Version.codec) resolutions
+        case mbCompiler of
+          Nothing -> Except.throw "Produced a compiler-derived build plan with no compiler!"
+          Just selected | selected /= target -> Except.throw $ Array.fold
+            [ "Produced a compiler-derived build plan that selects a compiler ("
+            , Version.print selected
+            , ") that differs from the target compiler ("
+            , Version.print target
+            , ")."
+            ]
+          Just _ -> pure unit
+        Cache.get _compilerCache (Compilation manifest resolutions target) >>= case _ of
+          Nothing -> do
+            Log.debug $ "No cached compilation, compiling with compiler " <> Version.print target
+            workdir <- Tmp.mkTmpDir
+            let installed = Path.concat [ workdir, ".registry" ]
+            FS.Extra.ensureDirectory installed
+            installBuildPlan resolutions installed
+            result <- Run.liftAff $ Purs.callCompiler
+              { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }
+              , version: Just target
+              , cwd: Just workdir
+              }
+            FS.Extra.remove workdir
+            case result of
+              Left err -> do
+                Log.info $ "Compilation failed with compiler " <> Version.print target <> ":\n" <> printCompilerFailure target err
+              Right _ -> do
+                Log.debug $ "Compilation succeeded with compiler " <> Version.print target
+            Cache.put _compilerCache (Compilation manifest resolutions target) { target, result: map (const unit) result }
+            pure $ bimap (Tuple target <<< Right) (const target) result
+          Just { result } ->
+            pure $ bimap (Tuple target <<< Right) (const target) result
 
-  let
-    globs =
-      if Map.isEmpty resolutions then
-        [ "src/**/*.purs" ]
-      else
-        [ "src/**/*.purs"
-        , Path.concat [ dependenciesDir, "*/src/**/*.purs" ]
-        ]
+  let results = partitionEithers $ NonEmptyArray.toArray checkedCompilers
+  pure { failed: Map.fromFoldable results.fail, succeeded: Set.fromFoldable results.success }
 
-  Log.debug "Installing build plan..."
-  installBuildPlan resolutions dependenciesDir
-
-  Log.debug "Compiling..."
-  compilerOutput <- Run.liftAff $ Purs.callCompiler
-    { command: Purs.Compile { globs }
-    , version: Just compiler
-    , cwd: Just packageSourceDir
-    }
-
-  case compilerOutput of
-    Left MissingCompiler -> Except.throw $ Array.fold
-      [ "Compilation failed because the build plan compiler version "
-      , Version.print compiler
-      , " is not supported. Please try again with a different compiler."
-      ]
-    Left (CompilationError errs) -> Except.throw $ String.joinWith "\n"
-      [ "Compilation failed because the build plan does not compile with version " <> Version.print compiler <> " of the compiler:"
-      , "```"
-      , Purs.printCompilerErrors errs
-      , "```"
-      ]
-    Left (UnknownError err) -> Except.throw $ String.joinWith "\n"
-      [ "Compilation failed for your package due to a compiler error:"
-      , "```"
-      , err
-      , "```"
-      ]
-    Right _ -> pure dependenciesDir
+printCompilerFailure :: Version -> CompilerFailure -> String
+printCompilerFailure compiler = case _ of
+  MissingCompiler -> Array.fold
+    [ "Compilation failed because the build plan compiler version "
+    , Version.print compiler
+    , " is not supported. Please try again with a different compiler."
+    ]
+  CompilationError errs -> String.joinWith "\n"
+    [ "Compilation failed because the build plan does not compile with version " <> Version.print compiler <> " of the compiler:"
+    , "```"
+    , Purs.printCompilerErrors errs
+    , "```"
+    ]
+  UnknownError err -> String.joinWith "\n"
+    [ "Compilation failed with version " <> Version.print compiler <> " because of an error :"
+    , "```"
+    , err
+    , "```"
+    ]
 
 -- | Install all dependencies indicated by the build plan to the specified
 -- | directory. Packages will be installed at 'dir/package-name-x.y.z'.
 installBuildPlan :: forall r. Map PackageName Version -> FilePath -> Run (STORAGE + LOG + AFF + EXCEPT String + r) Unit
 installBuildPlan resolutions dependenciesDir = do
+  Run.liftAff $ FS.Extra.ensureDirectory dependenciesDir
   -- We fetch every dependency at its resolved version, unpack the tarball, and
   -- store the resulting source code in a specified directory for dependencies.
   forWithIndex_ resolutions \name version -> do
@@ -934,11 +965,10 @@ installBuildPlan resolutions dependenciesDir = do
     Log.debug $ "Installed " <> formatPackageVersion name version
 
 -- | Parse the name and version from a path to a module installed in the standard
--- | form: '<dir>/<package-name>-<x.y.z>/...'
-parseInstalledModulePath :: { prefix :: FilePath, path :: FilePath } -> Either String { name :: PackageName, version :: Version }
-parseInstalledModulePath { prefix, path } = do
+-- | form: '<package-name>-<x.y.z>...'
+parseModulePath :: FilePath -> Either String { name :: PackageName, version :: Version }
+parseModulePath path = do
   packageVersion <- lmap Parsing.parseErrorMessage $ Parsing.runParser path do
-    _ <- Parsing.String.string prefix
     _ <- Parsing.Combinators.optional (Parsing.Combinators.try (Parsing.String.string Path.sep))
     Tuple packageVersionChars _ <- Parsing.Combinators.Array.manyTill_ Parsing.String.anyChar (Parsing.String.string Path.sep)
     pure $ String.CodeUnits.fromCharArray (Array.fromFoldable packageVersionChars)
@@ -955,38 +985,40 @@ parseInstalledModulePath { prefix, path } = do
       pure { name, version }
 
 type PublishToPursuit =
-  { packageSourceDir :: FilePath
-  , dependenciesDir :: FilePath
+  { source :: FilePath
   , compiler :: Version
   , resolutions :: Map PackageName Version
+  , installedResolutions :: FilePath
   }
 
 -- | Publishes a package to Pursuit.
 -- |
 -- | ASSUMPTIONS: This function should not be run on legacy packages or on
--- | packages where the `purescript-` prefix is still present.
+-- | packages where the `purescript-` prefix is still present. Cannot be used
+-- | on packages prior to 'Purs.minPursuitPublish'
 publishToPursuit
   :: forall r
    . PublishToPursuit
-  -> Run (PURSUIT + COMMENT + LOG + EXCEPT String + AFF + EFFECT + r) Unit
-publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = do
+  -> Run (PURSUIT + COMMENT + LOG + AFF + EFFECT + r) (Either String Unit)
+publishToPursuit { source, compiler, resolutions, installedResolutions } = Except.runExcept do
   Log.debug "Generating a resolutions file"
   tmp <- Tmp.mkTmpDir
 
+  when (compiler < Purs.minPursuitPublish) do
+    Except.throw $ "Cannot publish to Pursuit because this package was published with a pre-0.14.7 compiler (" <> Version.print compiler <> "). If you want to publish documentation, please try again with a later compiler."
+
   let
-    resolvedPaths = formatPursuitResolutions { resolutions, dependenciesDir }
+    resolvedPaths = formatPursuitResolutions { resolutions, installedResolutions }
     resolutionsFilePath = Path.concat [ tmp, "resolutions.json" ]
 
   Run.liftAff $ writeJsonFile pursuitResolutionsCodec resolutionsFilePath resolvedPaths
 
   -- The 'purs publish' command requires a clean working tree, but it isn't
-  -- guaranteed that packages have an adequate .gitignore file; compilers prior
-  -- to 0.14.7 did not ignore the purs.json file when publishing. So we stash
-  -- changes made during the publishing process (ie. inclusion of a new purs.json
-  -- file and an output directory from compilation) before calling purs publish.
+  -- guaranteed that packages have an adequate .gitignore file. So we stash
+  -- stash changes made during the publishing process before calling publish.
   -- https://git-scm.com/docs/gitignore
   Log.debug "Adding output and purs.json to local git excludes..."
-  Run.liftAff $ FS.Aff.appendTextFile UTF8 (Path.concat [ packageSourceDir, ".git", "info", "exclude" ]) (String.joinWith "\n" [ "output", "purs.json" ])
+  Run.liftAff $ FS.Aff.appendTextFile UTF8 (Path.concat [ source, ".git", "info", "exclude" ]) (String.joinWith "\n" [ "output", "purs.json" ])
 
   -- NOTE: The compatibility version of purs publish appends 'purescript-' to the
   -- package name in the manifest file:
@@ -997,27 +1029,12 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
   compilerOutput <- Run.liftAff $ Purs.callCompiler
     { command: Purs.Publish { resolutions: resolutionsFilePath }
     , version: Just compiler
-    , cwd: Just packageSourceDir
+    , cwd: Just source
     }
 
   publishJson <- case compilerOutput of
-    Left MissingCompiler -> Except.throw $ Array.fold
-      [ "Publishing failed because the build plan compiler version "
-      , Version.print compiler
-      , " is not supported. Please try again with a different compiler."
-      ]
-    Left (CompilationError errs) -> Except.throw $ String.joinWith "\n"
-      [ "Publishing failed because the build plan does not compile with version " <> Version.print compiler <> " of the compiler:"
-      , "```"
-      , Purs.printCompilerErrors errs
-      , "```"
-      ]
-    Left (UnknownError err) -> Except.throw $ String.joinWith "\n"
-      [ "Publishing failed for your package due to an unknown compiler error:"
-      , "```"
-      , err
-      , "```"
-      ]
+    Left error ->
+      Except.throw $ printCompilerFailure compiler error
     Right publishResult -> do
       -- The output contains plenty of diagnostic lines, ie. "Compiling ..."
       -- but we only want the final JSON payload.
@@ -1039,7 +1056,7 @@ publishToPursuit { packageSourceDir, dependenciesDir, compiler, resolutions } = 
     Left error ->
       Except.throw $ "Could not publish your package to Pursuit because an error was encountered (cc: @purescript/packaging): " <> error
     Right _ ->
-      Comment.comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+      FS.Extra.remove tmp
 
 type PursuitResolutions = Map RawPackageName { version :: Version, path :: FilePath }
 
@@ -1050,13 +1067,13 @@ pursuitResolutionsCodec = rawPackageNameMapCodec $ CJ.named "Resolution" $ CJ.Re
 --
 -- Note: This interfaces with Pursuit, and therefore we must add purescript-
 -- prefixes to all package names for compatibility with the Bower naming format.
-formatPursuitResolutions :: { resolutions :: Map PackageName Version, dependenciesDir :: FilePath } -> PursuitResolutions
-formatPursuitResolutions { resolutions, dependenciesDir } =
+formatPursuitResolutions :: { resolutions :: Map PackageName Version, installedResolutions :: FilePath } -> PursuitResolutions
+formatPursuitResolutions { resolutions, installedResolutions } =
   Map.fromFoldable do
     Tuple name version <- Map.toUnfoldable resolutions
     let
       bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
-      packagePath = Path.concat [ dependenciesDir, PackageName.print name <> "-" <> Version.print version ]
+      packagePath = Path.concat [ installedResolutions, PackageName.print name <> "-" <> Version.print version ]
     [ Tuple bowerPackageName { path: packagePath, version } ]
 
 -- | Copy files from the package source directory to the destination directory
@@ -1163,3 +1180,183 @@ getPacchettiBotti = do
 
 packagingTeam :: Team
 packagingTeam = { org: "purescript", team: "packaging" }
+
+readCompilerIndex :: forall r. Run (REGISTRY + AFF + EXCEPT String + r) Solver.CompilerIndex
+readCompilerIndex = do
+  metadata <- Registry.readAllMetadata
+  manifests <- Registry.readAllManifests
+  allCompilers <- PursVersions.pursVersions
+  pure $ Solver.buildCompilerIndex allCompilers manifests metadata
+
+type AdjustManifest =
+  { source :: FilePath
+  , compiler :: Version
+  , manifest :: Manifest
+  , legacyIndex :: Maybe DependencyIndex
+  , currentIndex :: CompilerIndex
+  , resolutions :: Maybe (Map PackageName Version)
+  }
+
+-- | Conform a legacy manifest to the Registry requirements for dependencies,
+-- | ie. that all direct imports are listed (no transitive dependencies) and no
+-- | unused dependencies are listed.
+conformLegacyManifest
+  :: forall r
+   . Manifest
+  -> Version
+  -> CompilerIndex
+  -> Solver.TransitivizedRegistry
+  -> ValidateDepsError
+  -> Run (COMMENT + LOG + EXCEPT String + r) (Tuple Manifest (Map PackageName Version))
+conformLegacyManifest (Manifest manifest) compiler currentIndex legacyRegistry problem = do
+  let
+    manifestRequired :: SemigroupMap PackageName Intersection
+    manifestRequired = Solver.initializeRequired manifest.dependencies
+
+  legacyResolutions <- case Solver.solveFull { registry: legacyRegistry, required: manifestRequired } of
+    Left unsolvableLegacy -> do
+      Log.warn $ "Legacy resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvableLegacy
+      case Solver.solveWithCompiler (Range.exact compiler) currentIndex manifest.dependencies of
+        Left unsolvableCurrent -> Except.throw $ "Resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvableCurrent
+        Right (Tuple _ solved) -> do
+          Log.debug $ "Got current resolutions as a fallback to unsolvable legacy resolutions:\n" <> printJson (Internal.Codec.packageMap Version.codec) solved
+          pure solved
+    Right solved -> do
+      Log.debug $ "Got legacy resolutions:\n" <> printJson (Internal.Codec.packageMap Version.codec) solved
+      pure solved
+
+  let
+    legacyTransitive :: Map PackageName Range
+    legacyTransitive =
+      Map.mapMaybe (\intersect -> Range.mk (Solver.lowerBound intersect) (Solver.upperBound intersect))
+        $ Safe.Coerce.coerce
+        $ _.required
+        $ Solver.solveSteps
+        $ Solver.solveSeed
+        $ Solver.withReachable { registry: legacyRegistry, required: manifestRequired }
+
+  Log.debug $ "Got transitive solution:\n" <> printJson (Internal.Codec.packageMap Range.codec) legacyTransitive
+
+  let
+    associateMissing :: Array PackageName -> Map PackageName Range
+    associateMissing packages = do
+      -- First we look up the package in the produced transitive ranges, as those
+      -- are the most likely to be correct.
+      let associateTransitive pkg = maybe (Left pkg) (\range -> Right (Tuple pkg range)) (Map.lookup pkg legacyTransitive)
+      let associated = partitionEithers (map associateTransitive packages)
+      let foundFromTransitive = Map.fromFoldable associated.success
+
+      -- If not found, we search for the ranges described for this dependency
+      -- in the manifests of the packages in the resolutions.
+      let
+        resolutionRanges :: Map PackageName Range
+        resolutionRanges = do
+          let
+            foldFn name prev version = fromMaybe prev do
+              versions <- Map.lookup name (un SemigroupMap legacyRegistry)
+              deps <- Map.lookup version (un SemigroupMap versions)
+              let deps' = Map.mapMaybe (\intersect -> Range.mk (Solver.lowerBound intersect) (Solver.upperBound intersect)) (un SemigroupMap deps)
+              pure $ Map.unionWith (\l r -> fromMaybe l (Range.intersect l r)) prev deps'
+
+          foldlWithIndex foldFn Map.empty legacyResolutions
+
+        foundFromResolutions :: Map PackageName Range
+        foundFromResolutions = Map.fromFoldable do
+          associated.fail # Array.mapMaybe \pkg -> map (Tuple pkg) (Map.lookup pkg resolutionRanges)
+
+      Map.union foundFromTransitive foundFromResolutions
+
+    fixUnused names (Manifest m) = do
+      let unused = Map.fromFoldable $ NonEmptySet.map (\name -> Tuple name unit) names
+      let fixedDependencies = Map.difference m.dependencies unused
+      case Solver.solveWithCompiler (Range.exact compiler) currentIndex fixedDependencies of
+        Left unsolvable -> do
+          Log.warn $ "Fixed dependencies cannot be used to produce a viable solution: " <> printJson (Internal.Codec.packageMap Range.codec) fixedDependencies
+          Except.throw $ "Resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvable
+        Right (Tuple _ solved) -> pure $ Tuple fixedDependencies solved
+
+    fixMissing names (Manifest m) = do
+      let fixedDependencies = Map.union m.dependencies (associateMissing (NonEmptySet.toUnfoldable names))
+      -- Once we've fixed the missing dependencies we need to be sure we can still
+      -- produce a viable solution with the current index.
+      case Solver.solveWithCompiler (Range.exact compiler) currentIndex fixedDependencies of
+        Left unsolvable -> do
+          Log.warn $ "Fixed dependencies cannot be used to produce a viable solution: " <> printJson (Internal.Codec.packageMap Range.codec) fixedDependencies
+          Except.throw $ "Resolutions not solvable\n" <> NonEmptyList.foldMap (append "\n  - " <<< Solver.printSolverError) unsolvable
+        Right (Tuple _ solved) -> pure $ Tuple fixedDependencies solved
+
+    previousDepsMessage = Array.fold
+      [ "Your package is using a legacy manifest format, so we have adjusted your dependencies to remove unused ones and add direct-imported ones. "
+      , "Your dependency list was:\n"
+      , "```json\n"
+      , printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
+      , "\n```\n"
+      ]
+
+    newDepsMessage (Manifest new) = Array.fold
+      [ "\nYour new dependency list is:\n"
+      , "```json\n"
+      , printJson (Internal.Codec.packageMap Range.codec) new.dependencies
+      , "\n```\n"
+      ]
+
+  case problem of
+    UnusedDependencies names -> do
+      Tuple deps resolutions <- fixUnused names (Manifest manifest)
+      let newManifest = Manifest (manifest { dependencies = deps })
+      Comment.comment $ Array.fold
+        [ previousDepsMessage
+        , "\nWe have removed the following packages: " <> String.joinWith ", " (map PackageName.print (NonEmptySet.toUnfoldable names)) <> "\n"
+        , newDepsMessage newManifest
+        ]
+      pure $ Tuple newManifest resolutions
+    MissingDependencies names -> do
+      Tuple deps resolutions <- fixMissing names (Manifest manifest)
+      let newManifest = Manifest (manifest { dependencies = deps })
+      Comment.comment $ Array.fold
+        [ previousDepsMessage
+        , "\nWe have added the following packages: " <> String.joinWith ", " (map PackageName.print (NonEmptySet.toUnfoldable names)) <> "\n"
+        , newDepsMessage newManifest
+        ]
+      pure $ Tuple newManifest resolutions
+    UnusedAndMissing { missing, unused } -> do
+      let unused' = Map.fromFoldable $ NonEmptySet.map (\name -> Tuple name unit) unused
+      let trimmed = Map.difference manifest.dependencies unused'
+      Tuple newDeps newResolutions <- fixMissing missing (Manifest (manifest { dependencies = trimmed }))
+      let newManifest = Manifest (manifest { dependencies = newDeps })
+      Comment.comment $ Array.fold
+        [ previousDepsMessage
+        , "\nWe have removed the following packages: " <> String.joinWith ", " (map PackageName.print (NonEmptySet.toUnfoldable unused)) <> "\n"
+        , "We have added the following packages: " <> String.joinWith ", " (map PackageName.print (NonEmptySet.toUnfoldable missing)) <> "\n"
+        , newDepsMessage newManifest
+        ]
+      pure $ Tuple newManifest newResolutions
+
+type COMPILER_CACHE r = (compilerCache :: Cache CompilerCache | r)
+
+_compilerCache :: Proxy "compilerCache"
+_compilerCache = Proxy
+
+data CompilerCache :: (Type -> Type -> Type) -> Type -> Type
+data CompilerCache c a = Compilation Manifest (Map PackageName Version) Version (c { target :: Version, result :: Either CompilerFailure Unit } a)
+
+instance Functor2 c => Functor (CompilerCache c) where
+  map k (Compilation manifest resolutions compiler a) = Compilation manifest resolutions compiler (map2 k a)
+
+instance FsEncodable CompilerCache where
+  encodeFs = case _ of
+    Compilation (Manifest manifest) resolutions compiler next -> do
+      let
+        baseKey = "Compilation__" <> PackageName.print manifest.name <> "__" <> Version.print manifest.version <> "__" <> Version.print compiler <> "__"
+        hashKey = do
+          let resolutions' = foldlWithIndex (\name prev version -> formatPackageVersion name version <> prev) "" resolutions
+          unsafePerformEffect $ Sha256.hashString resolutions'
+        cacheKey = baseKey <> Sha256.print hashKey
+
+      let
+        codec = CJ.named "FindAllCompilersResult" $ CJ.Record.object
+          { target: Version.codec
+          , result: CJ.Common.either compilerFailureCodec CJ.null
+          }
+
+      Exists.mkExists $ Cache.AsJson cacheKey codec next
