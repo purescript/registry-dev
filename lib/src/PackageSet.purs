@@ -15,7 +15,7 @@ module Registry.PackageSet
 import Prelude
 
 import Data.Codec.JSON as CJ
-import Data.Codec.JSON.Record as CJS
+import Data.Codec.JSON.Strict as CJS
 import Data.DateTime (Date)
 import Data.Map (Map)
 import Data.Newtype (class Newtype)
@@ -42,8 +42,8 @@ derive newtype instance Eq PackageSet
 -- | implementation.
 codec :: CJ.Codec PackageSet
 codec = Profunctor.wrapIso PackageSet $ CJ.named "PackageSet" $ CJS.objectStrict
-  { version: Version.codec
-  , compiler: Version.codec
-  , published: Internal.Codec.iso8601Date
-  , packages: Internal.Codec.packageMap Version.codec
-  }
+  $ CJS.recordProp @"version" Version.codec
+  $ CJS.recordProp @"compiler" Version.codec
+  $ CJS.recordProp @"published" Internal.Codec.iso8601Date
+  $ CJS.recordProp @"packages" (Internal.Codec.packageMap Version.codec)
+  $ CJS.record
