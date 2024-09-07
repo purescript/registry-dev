@@ -22,6 +22,7 @@ import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Common as CJ.Common
+import Data.Codec.JSON.Strict as CJS
 import Data.Map (Map)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
@@ -40,7 +41,6 @@ import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.Version (Version)
 import Registry.Version as Version
-import Type.Proxy (Proxy(..))
 
 -- | The manifest for a package version, which records critical information for
 -- | the registry, pursuit, and package managers to use.
@@ -72,14 +72,14 @@ instance Ord Manifest where
 -- | JSON object. The implementation uses explicitly ordered keys instead of
 -- | record sugar.
 codec :: CJ.Codec Manifest
-codec = Profunctor.wrapIso Manifest $ CJ.named "Manifest" $ CJ.object
-  $ CJ.recordProp (Proxy :: _ "name") PackageName.codec
-  $ CJ.recordProp (Proxy :: _ "version") Version.codec
-  $ CJ.recordProp (Proxy :: _ "license") License.codec
-  $ CJ.recordPropOptional (Proxy :: _ "description") (Internal.Codec.limitedString 300)
-  $ CJ.recordProp (Proxy :: _ "location") Location.codec
-  $ CJ.recordPropOptional (Proxy :: _ "owners") (CJ.Common.nonEmptyArray Owner.codec)
-  $ CJ.recordPropOptional (Proxy :: _ "includeFiles") (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
-  $ CJ.recordPropOptional (Proxy :: _ "excludeFiles") (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
-  $ CJ.recordProp (Proxy :: _ "dependencies") (Internal.Codec.packageMap Range.codec)
-  $ CJ.record
+codec = Profunctor.wrapIso Manifest $ CJ.named "Manifest" $ CJS.objectStrict
+  $ CJS.recordProp @"name" PackageName.codec
+  $ CJS.recordProp @"version" Version.codec
+  $ CJS.recordProp @"license" License.codec
+  $ CJS.recordPropOptional @"description" (Internal.Codec.limitedString 300)
+  $ CJS.recordProp @"location" Location.codec
+  $ CJS.recordPropOptional @"owners" (CJ.Common.nonEmptyArray Owner.codec)
+  $ CJS.recordPropOptional @"includeFiles" (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
+  $ CJS.recordPropOptional @"excludeFiles" (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
+  $ CJS.recordProp @"dependencies" (Internal.Codec.packageMap Range.codec)
+  $ CJS.record

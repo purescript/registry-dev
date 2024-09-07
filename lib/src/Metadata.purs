@@ -24,6 +24,7 @@ import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Common as CJ.Common
 import Data.Codec.JSON.Record as CJ.Record
+import Data.Codec.JSON.Strict as CJS
 import Data.DateTime (DateTime)
 import Data.Map (Map)
 import Data.Maybe (Maybe)
@@ -37,7 +38,6 @@ import Registry.Owner as Owner
 import Registry.Sha256 (Sha256)
 import Registry.Sha256 as Sha256
 import Registry.Version (Version)
-import Type.Proxy (Proxy(..))
 
 -- | A record of all published and unpublished versions of a package, along with
 -- | the last-used location and any owners (public keys) authorized to take
@@ -55,12 +55,12 @@ derive instance Eq Metadata
 -- | A codec for encoding and decoding a `Metadata` value as JSON. Represented
 -- | as a JSON object. Keys are explicitly ordered.
 codec :: CJ.Codec Metadata
-codec = Profunctor.wrapIso Metadata $ CJ.named "Metadata" $ CJ.object
-  $ CJ.recordProp (Proxy :: _ "location") Location.codec
-  $ CJ.recordPropOptional (Proxy :: _ "owners") (CJ.Common.nonEmptyArray Owner.codec)
-  $ CJ.recordProp (Proxy :: _ "published") (Internal.Codec.versionMap publishedMetadataCodec)
-  $ CJ.recordProp (Proxy :: _ "unpublished") (Internal.Codec.versionMap unpublishedMetadataCodec)
-  $ CJ.record
+codec = Profunctor.wrapIso Metadata $ CJ.named "Metadata" $ CJS.objectStrict
+  $ CJS.recordProp @"location" Location.codec
+  $ CJS.recordPropOptional @"owners" (CJ.Common.nonEmptyArray Owner.codec)
+  $ CJS.recordProp @"published" (Internal.Codec.versionMap publishedMetadataCodec)
+  $ CJS.recordProp @"unpublished" (Internal.Codec.versionMap unpublishedMetadataCodec)
+  $ CJS.record
 
 -- | Metadata about a published package version.
 -- |
