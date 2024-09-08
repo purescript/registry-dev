@@ -15,6 +15,7 @@ module Registry.PackageSet
 import Prelude
 
 import Data.Codec.JSON as CJ
+import Data.Codec.JSON.Strict as CJS
 import Data.DateTime (Date)
 import Data.Map (Map)
 import Data.Newtype (class Newtype)
@@ -23,7 +24,6 @@ import Registry.Internal.Codec as Internal.Codec
 import Registry.PackageName (PackageName)
 import Registry.Version (Version)
 import Registry.Version as Version
-import Type.Proxy (Proxy(..))
 
 -- | A Registry package set, which contains a set of packages at specific
 -- | versions known to compile together with the given compiler version.
@@ -41,9 +41,9 @@ derive newtype instance Eq PackageSet
 -- | JSON object. We use an explicit ordering instead of record sugar in the
 -- | implementation.
 codec :: CJ.Codec PackageSet
-codec = Profunctor.wrapIso PackageSet $ CJ.named "PackageSet" $ CJ.object
-  $ CJ.recordProp (Proxy :: _ "version") Version.codec
-  $ CJ.recordProp (Proxy :: _ "compiler") Version.codec
-  $ CJ.recordProp (Proxy :: _ "published") Internal.Codec.iso8601Date
-  $ CJ.recordProp (Proxy :: _ "packages") (Internal.Codec.packageMap Version.codec)
-  $ CJ.record
+codec = Profunctor.wrapIso PackageSet $ CJ.named "PackageSet" $ CJS.objectStrict
+  $ CJS.recordProp @"version" Version.codec
+  $ CJS.recordProp @"compiler" Version.codec
+  $ CJS.recordProp @"published" Internal.Codec.iso8601Date
+  $ CJS.recordProp @"packages" (Internal.Codec.packageMap Version.codec)
+  $ CJS.record
