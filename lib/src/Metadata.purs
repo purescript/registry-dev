@@ -24,7 +24,6 @@ import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Common as CJ.Common
 import Data.Codec.JSON.Record as CJ.Record
-import Data.Codec.JSON.Strict as CJS
 import Data.DateTime (DateTime)
 import Data.Map (Map)
 import Data.Maybe (Maybe)
@@ -55,12 +54,12 @@ derive instance Eq Metadata
 -- | A codec for encoding and decoding a `Metadata` value as JSON. Represented
 -- | as a JSON object. Keys are explicitly ordered.
 codec :: CJ.Codec Metadata
-codec = Profunctor.wrapIso Metadata $ CJ.named "Metadata" $ CJS.objectStrict
-  $ CJS.recordProp @"location" Location.codec
-  $ CJS.recordPropOptional @"owners" (CJ.Common.nonEmptyArray Owner.codec)
-  $ CJS.recordProp @"published" (Internal.Codec.versionMap publishedMetadataCodec)
-  $ CJS.recordProp @"unpublished" (Internal.Codec.versionMap unpublishedMetadataCodec)
-  $ CJS.record
+codec = Profunctor.wrapIso Metadata $ CJ.named "Metadata" $ CJ.object
+  $ CJ.recordProp @"location" Location.codec
+  $ CJ.recordPropOptional @"owners" (CJ.Common.nonEmptyArray Owner.codec)
+  $ CJ.recordProp @"published" (Internal.Codec.versionMap publishedMetadataCodec)
+  $ CJ.recordProp @"unpublished" (Internal.Codec.versionMap unpublishedMetadataCodec)
+  $ CJ.record
 
 -- | Metadata about a published package version.
 -- |

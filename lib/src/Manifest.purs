@@ -22,7 +22,6 @@ import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Common as CJ.Common
-import Data.Codec.JSON.Strict as CJS
 import Data.Map (Map)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
@@ -72,14 +71,14 @@ instance Ord Manifest where
 -- | JSON object. The implementation uses explicitly ordered keys instead of
 -- | record sugar.
 codec :: CJ.Codec Manifest
-codec = Profunctor.wrapIso Manifest $ CJ.named "Manifest" $ CJS.objectStrict
-  $ CJS.recordProp @"name" PackageName.codec
-  $ CJS.recordProp @"version" Version.codec
-  $ CJS.recordProp @"license" License.codec
-  $ CJS.recordPropOptional @"description" (Internal.Codec.limitedString 300)
-  $ CJS.recordProp @"location" Location.codec
-  $ CJS.recordPropOptional @"owners" (CJ.Common.nonEmptyArray Owner.codec)
-  $ CJS.recordPropOptional @"includeFiles" (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
-  $ CJS.recordPropOptional @"excludeFiles" (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
-  $ CJS.recordProp @"dependencies" (Internal.Codec.packageMap Range.codec)
-  $ CJS.record
+codec = Profunctor.wrapIso Manifest $ CJ.named "Manifest" $ CJ.object
+  $ CJ.recordProp @"name" PackageName.codec
+  $ CJ.recordProp @"version" Version.codec
+  $ CJ.recordProp @"license" License.codec
+  $ CJ.recordPropOptional @"description" (Internal.Codec.limitedString 300)
+  $ CJ.recordProp @"location" Location.codec
+  $ CJ.recordPropOptional @"owners" (CJ.Common.nonEmptyArray Owner.codec)
+  $ CJ.recordPropOptional @"includeFiles" (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
+  $ CJ.recordPropOptional @"excludeFiles" (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
+  $ CJ.recordProp @"dependencies" (Internal.Codec.packageMap Range.codec)
+  $ CJ.record
