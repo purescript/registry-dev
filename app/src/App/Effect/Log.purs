@@ -134,5 +134,5 @@ handleDb env = case _ of
     let
       msg = Dodo.print Dodo.plainText Dodo.twoSpaces (toLog message)
       row = { timestamp, level, jobId: env.job, message: msg }
-    Run.liftEffect $ SQLite.insertLog env.db row
+    Run.liftEffect $ SQLite.insertLogLine env.db row
     pure next

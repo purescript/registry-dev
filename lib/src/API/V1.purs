@@ -68,7 +68,6 @@ type Job =
   { jobId :: JobId
   , jobType :: JobType
   , packageName :: PackageName
-  , ref :: String
   , createdAt :: DateTime
   , finishedAt :: Maybe DateTime
   , success :: Boolean
@@ -80,7 +79,6 @@ jobCodec = CJ.named "Job" $ CJ.Record.object
   { jobId: jobIdCodec
   , jobType: jobTypeCodec
   , packageName: PackageName.codec
-  , ref: CJ.string
   , createdAt: Internal.Codec.iso8601DateTime
   , finishedAt: CJ.Record.optional Internal.Codec.iso8601DateTime
   , success: CJ.boolean

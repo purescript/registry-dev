@@ -1,0 +1,22 @@
+-- migrate:up
+DROP TABLE IF EXISTS jobs;
+DROP TABLE IF EXISTS logs;
+
+-- migrate:down
+CREATE TABLE IF NOT EXISTS jobs (
+  jobId TEXT PRIMARY KEY NOT NULL,
+  jobType TEXT NOT NULL,
+  packageName TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  finishedAt TEXT,
+  success INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  jobId TEXT NOT NULL REFERENCES jobs (jobId) ON DELETE CASCADE,
+  level INTEGER NOT NULL,
+  message TEXT NOT NULL,
+  timestamp TEXT NOT NULL
+);
