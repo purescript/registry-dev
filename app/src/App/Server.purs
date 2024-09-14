@@ -3,13 +3,22 @@ module Registry.App.Server where
 import Registry.App.Prelude hiding ((/))
 
 import Control.Monad.Cont (ContT)
+import Control.Parallel as Parallel
 import Data.Codec.JSON as CJ
+import Data.DateTime (DateTime(..))
+import Data.DateTime as DateTime
 import Data.Formatter.DateTime as Formatter.DateTime
+import Data.Lens (Lens')
+import Data.Lens as Lens
+import Data.Lens.Record as Lens.Record
 import Data.Newtype (unwrap)
 import Data.String as String
+import Data.Time.Duration (Minutes(..))
 import Data.UUID.Random as UUID
+import Effect.Aff (Fiber, Milliseconds(..))
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
+import Effect.Ref as Ref
 import Fetch.Retry as Fetch.Retry
 import HTTPurple (JsonDecoder(..), JsonEncoder(..), Method(..), Request, Response)
 import HTTPurple as HTTPurple
@@ -43,7 +52,7 @@ import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest (LEGACY_CACHE, _legacyCache)
-import Registry.App.SQLite (SQLite)
+import Registry.App.SQLite (MatrixJobDetails, PackageJobDetails, SQLite, PackageSetJobDetails)
 import Registry.App.SQLite as SQLite
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubToken, Octokit)
@@ -56,40 +65,121 @@ import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
+import Run.Except as Run.Except
 
 newJobId :: forall m. MonadEffect m => m JobId
 newJobId = liftEffect do
   id <- UUID.make
   pure $ JobId $ UUID.toString id
 
+data JobDetails
+  = PackageJob PackageJobDetails
+  | MatrixJob MatrixJobDetails
+  | PackageSetJob PackageSetJobDetails
+
+findNextAvailableJob :: forall r. Run (DB + EXCEPT String + r) (Maybe JobDetails)
+findNextAvailableJob = do
+  Db.selectNextPackageJob >>= case _ of
+    Just job -> pure $ Just $ PackageJob job
+    Nothing -> Db.selectNextMatrixJob >>= case _ of
+      Just job -> pure $ Just $ MatrixJob job
+      Nothing -> Db.selectNextPackageSetJob >>= case _ of
+        Just job -> pure $ Just $ PackageSetJob job
+        Nothing -> pure Nothing
+
+runJobExecutor :: ServerEnv -> Aff (Either Aff.Error Unit)
+runJobExecutor env = do
+  runEffects env Db.deleteIncompleteJobs >>= case _ of
+    Left err -> pure $ Left err
+    Right _ -> loop
+  where
+  loop = runEffects env findNextAvailableJob >>= case _ of
+    Left err ->
+      pure $ Left err
+
+    Right Nothing -> do
+      Aff.delay (Milliseconds 100.0)
+      loop
+
+    Right (Just job) -> do
+      now <- nowUTC
+
+      let
+        jobId = case job of
+          PackageJob details -> details.jobId
+          MatrixJob details -> details.jobId
+          PackageSetJob details -> details.jobId
+
+      -- We race the job execution against a timeout; if the timeout happens first,
+      -- we kill the job and move on to the next one.
+      jobResult <- do
+        let execute = map Just (runEffects env (executeJob now job))
+        let delay = 1000.0 * 60.0 * 5.0 -- 5 minutes
+        let timeout = Aff.delay (Milliseconds delay) $> Nothing
+        Parallel.sequential $ Parallel.parallel execute <|> Parallel.parallel timeout
+
+      finishResult <- runEffects env $ case jobResult of
+        Nothing -> do
+          Log.error $ "Job " <> un JobId jobId <> " timed out."
+          Db.finishJob { jobId, finishedAt: now, success: false }
+
+        Just (Left err) -> do
+          Log.warn $ "Job " <> un JobId jobId <> " failed:\n" <> Aff.message err
+          Db.finishJob { jobId, finishedAt: now, success: false }
+
+        Just (Right _) -> do
+          Log.info $ "Job " <> un JobId jobId <> " succeeded."
+          Db.finishJob { jobId, finishedAt: now, success: true }
+
+      case finishResult of
+        Left err -> pure $ Left err
+        Right _ -> loop
+
+executeJob :: DateTime -> JobDetails -> Run ServerEffects Unit
+executeJob now = case _ of
+  PackageJob { jobId } -> do
+    Db.startJob { jobId, startedAt: now }
+    pure unit -- UNIMPLEMENTED
+  MatrixJob _details ->
+    pure unit -- UNIMPLEMENTED
+  PackageSetJob _details ->
+    pure unit -- UNIMPLEMENTED
+
+squashCommitRegistry :: Run ServerEffects Unit
+squashCommitRegistry = do
+  pure unit
+
 router :: ServerEnv -> Request Route -> Run ServerEffects Response
 router env { route, method, body } = HTTPurple.usingCont case route, method of
   Publish, Post -> do
-    publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
-    lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
-    forkPipelineJob publish.name publish.ref PublishJob \jobId -> do
-      Log.info $ "Received Publish request, job id: " <> unwrap jobId
-      API.publish Nothing publish
+    -- publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
+    -- lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
+    -- forkPipelineJob publish.name publish.ref PublishJob \jobId -> do
+    --   Log.info $ "Received Publish request, job id: " <> unwrap jobId
+    --   API.publish Nothing publish
+    HTTPurple.emptyResponse Status.ok
 
   Unpublish, Post -> do
-    auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
-    case auth.payload of
-      Operation.Unpublish { name, version } -> do
-        forkPipelineJob name (Version.print version) UnpublishJob \jobId -> do
-          Log.info $ "Received Unpublish request, job id: " <> unwrap jobId
-          API.authenticated auth
-      _ ->
-        HTTPurple.badRequest "Expected unpublish operation."
+    -- auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
+    -- case auth.payload of
+    --   Operation.Unpublish { name, version } -> do
+    --     forkPipelineJob name (Version.print version) UnpublishJob \jobId -> do
+    --       Log.info $ "Received Unpublish request, job id: " <> unwrap jobId
+    --       API.authenticated auth
+    --   _ ->
+    --     HTTPurple.badRequest "Expected unpublish operation."
+    HTTPurple.emptyResponse Status.ok
 
   Transfer, Post -> do
-    auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
-    case auth.payload of
-      Operation.Transfer { name } -> do
-        forkPipelineJob name "" TransferJob \jobId -> do
-          Log.info $ "Received Transfer request, job id: " <> unwrap jobId
-          API.authenticated auth
-      _ ->
-        HTTPurple.badRequest "Expected transfer operation."
+    HTTPurple.emptyResponse Status.ok
+    -- auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
+    -- case auth.payload of
+    --   Operation.Transfer { name } -> do
+    --     forkPipelineJob name "" TransferJob \jobId -> do
+    --       Log.info $ "Received Transfer request, job id: " <> unwrap jobId
+    --       API.authenticated auth
+    --   _ ->
+    --     HTTPurple.badRequest "Expected transfer operation."
 
   Jobs, Get -> do
     jsonOk (CJ.array V1.jobCodec) []
@@ -97,12 +187,17 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
   Job jobId { level: maybeLogLevel, since }, Get -> do
     let logLevel = fromMaybe Error maybeLogLevel
     logs <- lift $ Db.selectLogsByJob jobId logLevel since
-    lift (Db.selectJob jobId) >>= case _ of
+    lift (Run.Except.runExcept (Db.selectJobInfo jobId)) >>= case _ of
       Left err -> do
         lift $ Log.error $ "Error while fetching job: " <> err
         HTTPurple.notFound
-      Right job -> do
-        jsonOk V1.jobCodec (Record.insert (Proxy :: _ "logs") logs job)
+      Right Nothing ->
+        HTTPurple.notFound
+      Right (Just job) -> do
+        HTTPurple.emptyResponse Status.ok
+        -- TODO: Return the job details (will need to update the jobCodec and move the various
+        -- details into the API module).
+        -- jsonOk V1.jobCodec (jobDetailstoV1Job job logs)
 
   Status, Get ->
     HTTPurple.emptyResponse Status.ok
@@ -112,35 +207,34 @@ router env { route, method, body } = HTTPurple.usingCont case route, method of
 
   _, _ ->
     HTTPurple.notFound
-  where
-  forkPipelineJob :: PackageName -> String -> JobType -> (JobId -> Run _ Unit) -> ContT Response (Run _) Response
-  forkPipelineJob packageName ref jobType action = do
-    -- First thing we check if the package already has a pipeline in progress
-    lift (Db.runningJobForPackage packageName) >>= case _ of
-      -- If yes, we error out if it's the wrong kind, return it if it's the same type
-      Right { jobId, jobType: runningJobType } -> do
-        lift $ Log.info $ "Found running job for package " <> PackageName.print packageName <> ", job id: " <> unwrap jobId
-        case runningJobType == jobType of
-          true -> jsonOk V1.jobCreatedResponseCodec { jobId }
-          false -> HTTPurple.badRequest $ "There is already a " <> V1.printJobType runningJobType <> " job running for package " <> PackageName.print packageName
-      -- otherwise spin up a new thread
-      Left _err -> do
-        lift $ Log.info $ "No running job for package " <> PackageName.print packageName <> ", creating a new one"
-        jobId <- newJobId
-        now <- nowUTC
-        let newJob = { createdAt: now, jobId, jobType, packageName, ref }
-        lift $ Db.createJob newJob
-        let newEnv = env { jobId = Just jobId }
+  -- where
+  -- forkPipelineJob :: PackageName -> String -> JobType -> (JobId -> Run _ Unit) -> ContT Response (Run _) Response
+  -- forkPipelineJob packageName ref jobType action = do
+  --   -- First thing we check if the package already has a pipeline in progress
+  --   lift (Db.runningJobForPackage packageName) >>= case _ of
+  --     -- If yes, we error out if it's the wrong kind, return it if it's the same type
+  --     Right { jobId, jobType: runningJobType } -> do
+  --       lift $ Log.info $ "Found running job for package " <> PackageName.print packageName <> ", job id: " <> unwrap jobId
+  --       case runningJobType == jobType of
+  --         true -> jsonOk V1.jobCreatedResponseCodec { jobId }
+  --         false -> HTTPurple.badRequest $ "There is already a " <> V1.printJobType runningJobType <> " job running for package " <> PackageName.print packageName
+  --     -- otherwise spin up a new thread
+  --     Left _err -> do
+  --       lift $ Log.info $ "No running job for package " <> PackageName.print packageName <> ", creating a new one"
+  --       jobId <- newJobId
+  --       now <- nowUTC
+  --       let newJob = { createdAt: now, jobId, jobType, packageName, ref }
+  --       lift $ Db.createJob newJob
+  --       let newEnv = env { jobId = Just jobId }
 
-        _fiber <- liftAff $ Aff.forkAff $ Aff.attempt $ do
-          result <- runEffects newEnv (action jobId)
-          case result of
-            Left _ -> pure unit
-            Right _ -> do
-              finishedAt <- nowUTC
-              void $ runEffects newEnv (Db.finishJob { jobId, finishedAt, success: true })
-
-        jsonOk V1.jobCreatedResponseCodec { jobId }
+  --       _fiber <- liftAff $ Aff.forkAff $ Aff.attempt $ do
+  --         result <- runEffects newEnv (action jobId)
+  --         case result of
+  --           Left _ -> pure unit
+  --           Right _ -> do
+  --             finishedAt <- nowUTC
+  --             void $ runEffects newEnv (Db.finishJob { jobId, finishedAt, success: true })
+  --       jsonOk V1.jobCreatedResponseCodec { jobId }
 
 type ServerEnvVars =
   { token :: GitHubToken
@@ -219,7 +313,11 @@ createServerEnv = do
 
 type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + REGISTRY + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMPILER_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT ())
 
-runServer :: ServerEnv -> (ServerEnv -> Request Route -> Run ServerEffects Response) -> Request Route -> Aff Response
+runServer
+  :: ServerEnv
+  -> (ServerEnv -> Request Route -> Run ServerEffects Response)
+  -> Request Route
+  -> Aff Response
 runServer env router' request = do
   result <- runEffects env (router' env request)
   case result of

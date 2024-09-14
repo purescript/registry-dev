@@ -23,6 +23,8 @@ module Registry.Operation
   , TransferData
   , UnpublishData
   , authenticatedCodec
+  , packageOperationCodec
+  , packageSetOperationCodec
   , packageSetUpdateCodec
   , publishCodec
   , transferCodec
@@ -57,6 +59,18 @@ data PackageOperation
   | Authenticated AuthenticatedData
 
 derive instance Eq PackageOperation
+
+-- | A codec for encoding and decoding a `PackageOperation` as JSON.
+packageOperationCodec :: CJ.Codec PackageOperation
+packageOperationCodec = CJ.named "PackageOperation" $ Codec.codec' decode encode
+  where
+  decode json =
+    map Publish (Codec.decode publishCodec json)
+      <|> map Authenticated (Codec.decode authenticatedCodec json)
+
+  encode = case _ of
+    Publish publish -> CJ.encode publishCodec publish
+    Authenticated authenticated -> CJ.encode authenticatedCodec authenticated
 
 -- | An operation supported by the registry HTTP API for package operations and
 -- | which must be authenticated.
@@ -177,6 +191,13 @@ transferCodec = CJ.named "Transfer" $ CJ.Record.object
 data PackageSetOperation = PackageSetUpdate PackageSetUpdateData
 
 derive instance Eq PackageSetOperation
+
+-- | A codec for encoding and decoding a `PackageSetOperation` as JSON.
+packageSetOperationCodec :: CJ.Codec PackageSetOperation
+packageSetOperationCodec = CJ.named "PackageSetOperation" $ Codec.codec' decode encode
+  where
+  decode json = map PackageSetUpdate (Codec.decode packageSetUpdateCodec json)
+  encode (PackageSetUpdate update) = CJ.encode packageSetUpdateCodec update
 
 -- | Submit a batch update to the most recent package set.
 -- |
