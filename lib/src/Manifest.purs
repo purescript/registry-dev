@@ -40,7 +40,6 @@ import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.Version (Version)
 import Registry.Version as Version
-import Type.Proxy (Proxy(..))
 
 -- | The manifest for a package version, which records critical information for
 -- | the registry, pursuit, and package managers to use.
@@ -73,13 +72,13 @@ instance Ord Manifest where
 -- | record sugar.
 codec :: CJ.Codec Manifest
 codec = Profunctor.wrapIso Manifest $ CJ.named "Manifest" $ CJ.object
-  $ CJ.recordProp (Proxy :: _ "name") PackageName.codec
-  $ CJ.recordProp (Proxy :: _ "version") Version.codec
-  $ CJ.recordProp (Proxy :: _ "license") License.codec
-  $ CJ.recordPropOptional (Proxy :: _ "description") (Internal.Codec.limitedString 300)
-  $ CJ.recordProp (Proxy :: _ "location") Location.codec
-  $ CJ.recordPropOptional (Proxy :: _ "owners") (CJ.Common.nonEmptyArray Owner.codec)
-  $ CJ.recordPropOptional (Proxy :: _ "includeFiles") (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
-  $ CJ.recordPropOptional (Proxy :: _ "excludeFiles") (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
-  $ CJ.recordProp (Proxy :: _ "dependencies") (Internal.Codec.packageMap Range.codec)
+  $ CJ.recordProp @"name" PackageName.codec
+  $ CJ.recordProp @"version" Version.codec
+  $ CJ.recordProp @"license" License.codec
+  $ CJ.recordPropOptional @"description" (Internal.Codec.limitedString 300)
+  $ CJ.recordProp @"location" Location.codec
+  $ CJ.recordPropOptional @"owners" (CJ.Common.nonEmptyArray Owner.codec)
+  $ CJ.recordPropOptional @"includeFiles" (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
+  $ CJ.recordPropOptional @"excludeFiles" (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
+  $ CJ.recordProp @"dependencies" (Internal.Codec.packageMap Range.codec)
   $ CJ.record

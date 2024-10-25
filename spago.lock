@@ -201,9 +201,8 @@ workspace:
         - variant
       test_dependencies: []
   package_set:
-    registry: 50.10.0
+    registry: 59.0.0
   extra_packages:
-    codec-json: 1.2.0
     dodo-printer:
       repo: https://github.com/natefaubion/purescript-dodo-printer.git
       version: v2.2.1
@@ -407,8 +406,8 @@ packages:
       - profunctor
   codec-json:
     type: registry
-    version: 1.2.0
-    integrity: sha256-59+uYYe/5uTFa/Q6EqF8ekvP/Y4SOjUNfwIqIYtNiGI=
+    version: 2.0.0
+    integrity: sha256-NLm5BmDZKKexQwtnoZ/NI4yI16srsqIe0M7NdlqB96U=
     dependencies:
       - codec
       - foreign-object
@@ -594,8 +593,8 @@ packages:
       - unfoldable
   exceptions:
     type: registry
-    version: 6.0.0
-    integrity: sha256-y/xTAEIZIARCE+50/u1di0ncebJ+CIwNOLswyOWzMTw=
+    version: 6.1.0
+    integrity: sha256-K0T89IHtF3vBY7eSAO7eDOqSb2J9kZGAcDN5+IKsF8E=
     dependencies:
       - effect
       - either
@@ -940,8 +939,8 @@ packages:
       - maybe
   json:
     type: registry
-    version: 1.0.0
-    integrity: sha256-UCHdePAoOD19UyCPLU97oZjcdxLlQZQneWFsfoUNNpE=
+    version: 1.1.0
+    integrity: sha256-LuN8PyX/gvRR4/7X7M9P+zL7BKbv34NcUE/7MILXQSA=
     dependencies:
       - either
       - foldable-traversable
@@ -1159,8 +1158,8 @@ packages:
       - unsafe-reference
   node-fs:
     type: registry
-    version: 9.1.0
-    integrity: sha256-TzhvGdrwcM0bazDvrWSqh+M/H8GKYf1Na6aGm2Qg4+c=
+    version: 9.2.0
+    integrity: sha256-Sg0vkXycEzkEerX6hLccz21Ygd9w1+QSk1thotRZPGI=
     dependencies:
       - datetime
       - effect
@@ -1619,8 +1618,8 @@ packages:
       - unsafe-coerce
   spec:
     type: registry
-    version: 7.6.0
-    integrity: sha256-+merGdQbL9zWONbnt8S8J9afGJ59MQqGtS0qSd3yu4I=
+    version: 8.0.0
+    integrity: sha256-Yn7MhDai1YULlQF45+9FTOTf2rcjoda1Jf2IrEFCoeg=
     dependencies:
       - aff
       - ansi
@@ -1705,8 +1704,8 @@ packages:
       - tuples
   transformers:
     type: registry
-    version: 6.0.0
-    integrity: sha256-Pzw40HjthX77tdPAYzjx43LK3X5Bb7ZspYAp27wksFA=
+    version: 6.1.0
+    integrity: sha256-3Bm+Z6tsC/paG888XkywDngJ2JMos+JfOhRlkVfb7gI=
     dependencies:
       - control
       - distributive
@@ -1719,6 +1718,7 @@ packages:
       - maybe
       - newtype
       - prelude
+      - st
       - tailrec
       - tuples
       - unfoldable
