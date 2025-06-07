@@ -234,7 +234,7 @@ For example:
 
 All packages in the registry have an associated metadata file, which is located in the `metadata` directory of the `registry` repository under the package name. For example, the metadata for the `aff` package is located at: https://github.com/purescript/registry/blob/main/metadata/aff.json. Metadata files are the source of truth on all published and unpublished versions for a particular package for what there content is and where the package is located. Metadata files are produced by the registry, not by package authors, though they take some information from package manifests.
 
-Each published version of a package records four fields:
+Each published version of a package records the following fields:
 
 - `hash`: a [`Sha256`](#Sha256) of the compressed archive fetched by the registry for the given version
 - `bytes`: the size of the tarball in bytes
