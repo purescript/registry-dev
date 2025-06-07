@@ -249,7 +249,8 @@ runLegacyImport logs = do
 
   let metadataPackage = unsafeFromRight (PackageName.parse "metadata")
   let pursPackage = unsafeFromRight (PackageName.parse "purs")
-  for_ [ metadataPackage, pursPackage ] \package ->
+  let purescriptPackage = unsafeFromRight (PackageName.parse "purescript")
+  for_ [ metadataPackage, pursPackage, purescriptPackage ] \package ->
     Registry.readMetadata package >>= case _ of
       Nothing -> do
         Log.info $ "Writing empty metadata file for " <> PackageName.print package
