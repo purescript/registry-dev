@@ -137,13 +137,11 @@ spec = do
 
         case Map.lookup version effectMetadata.published of
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to be in metadata."
-          Just published -> case published.compilers of
-            Left one -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix but unfinished single version: " <> Version.print one
-            Right many -> do
-              let many' = NonEmptyArray.toArray many
-              let expected = map Utils.unsafeVersion [ "0.15.3", "0.15.4", "0.15.5" ]
-              unless (many' == expected) do
-                Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
+          Just published -> do
+            let many' = NonEmptyArray.toArray published.compilers
+            let expected = map Utils.unsafeVersion [ "0.15.3", "0.15.4", "0.15.5" ]
+            unless (many' == expected) do
+              Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
 
         -- Finally, we can verify that publishing the package again should fail
         -- since it already exists.
@@ -186,13 +184,11 @@ spec = do
 
         case Map.lookup transitive.version transitiveMetadata.published of
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to be in metadata."
-          Just published -> case published.compilers of
-            Left one -> Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to have a compiler matrix but unfinished single version: " <> Version.print one
-            Right many -> do
-              let many' = NonEmptyArray.toArray many
-              let expected = map Utils.unsafeVersion [ "0.15.3", "0.15.4", "0.15.5" ]
-              unless (many' == expected) do
-                Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
+          Just published -> do
+            let many' = NonEmptyArray.toArray published.compilers
+            let expected = map Utils.unsafeVersion [ "0.15.3", "0.15.4", "0.15.5" ]
+            unless (many' == expected) do
+              Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
 
         Registry.readManifest transitive.name transitive.version >>= case _ of
           Nothing -> Except.throw $ "Expected " <> PackageName.print transitive.name <> " to be in manifest index."

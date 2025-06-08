@@ -249,7 +249,8 @@ runLegacyImport logs = do
 
   let metadataPackage = unsafeFromRight (PackageName.parse "metadata")
   let pursPackage = unsafeFromRight (PackageName.parse "purs")
-  for_ [ metadataPackage, pursPackage ] \package ->
+  let purescriptPackage = unsafeFromRight (PackageName.parse "purescript")
+  for_ [ metadataPackage, pursPackage, purescriptPackage ] \package ->
     Registry.readMetadata package >>= case _ of
       Nothing -> do
         Log.info $ "Writing empty metadata file for " <> PackageName.print package
@@ -1328,9 +1329,7 @@ compatibleCompilers allMetadata resolutions = do
     associated = Map.toUnfoldableUnordered resolutions # Array.mapMaybe \(Tuple name version) -> do
       Metadata metadata <- Map.lookup name allMetadata
       published <- Map.lookup version metadata.published
-      case published.compilers of
-        Left _ -> Nothing
-        Right compilers -> Just { name, version, compilers: compilers }
+      Just { name, version, compilers: published.compilers }
 
   case Array.uncons associated of
     Nothing ->

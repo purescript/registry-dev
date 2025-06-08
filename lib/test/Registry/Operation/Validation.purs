@@ -2,6 +2,7 @@ module Test.Registry.Operation.Validation where
 
 import Prelude
 
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either (Either(..))
 import Data.Either as Either
 import Data.Foldable (for_)
@@ -63,7 +64,7 @@ spec = do
       now = unsafeDateTime "2022-12-12T12:00:00.000Z"
       outOfRange = unsafeDateTime "2022-12-10T11:00:00.000Z"
       inRange = unsafeDateTime "2022-12-11T12:00:00.000Z"
-      compilers = Left (unsafeVersion "0.13.0")
+      compilers = NonEmptyArray.singleton (unsafeVersion "0.13.0")
 
       publishedMetadata = { bytes: 100.0, hash: defaultHash, publishedTime: outOfRange, compilers, ref: "" }
 

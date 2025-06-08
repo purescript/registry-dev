@@ -59,7 +59,7 @@
       DHALL_PRELUDE = "${
         builtins.fetchGit {
           url = "https://github.com/dhall-lang/dhall-lang";
-          rev = "e35f69d966f205fdc0d6a5e8d0209e7b600d90b3";
+          rev = "25cf020ab307cb2d66826b0d1ddac8bc89241e27";
         }
       }/Prelude/package.dhall";
 
