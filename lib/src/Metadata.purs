@@ -62,10 +62,10 @@ derive instance Eq Metadata
 -- | as a JSON object. Keys are explicitly ordered.
 codec :: CJ.Codec Metadata
 codec = Profunctor.wrapIso Metadata $ CJ.named "Metadata" $ CJ.object
-  $ CJ.recordProp (Proxy :: _ "location") Location.codec
-  $ CJ.recordPropOptional (Proxy :: _ "owners") (CJ.Common.nonEmptyArray Owner.codec)
-  $ CJ.recordProp (Proxy :: _ "published") (Internal.Codec.versionMap publishedMetadataCodec)
-  $ CJ.recordProp (Proxy :: _ "unpublished") (Internal.Codec.versionMap unpublishedMetadataCodec)
+  $ CJ.recordProp @"location" Location.codec
+  $ CJ.recordPropOptional @"owners" (CJ.Common.nonEmptyArray Owner.codec)
+  $ CJ.recordProp @"published" (Internal.Codec.versionMap publishedMetadataCodec)
+  $ CJ.recordProp @"unpublished" (Internal.Codec.versionMap unpublishedMetadataCodec)
   $ CJ.record
 
 -- | Metadata about a published package version.

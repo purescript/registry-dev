@@ -247,6 +247,7 @@ type ServerEnvVars =
 
 readServerEnvVars :: Aff ServerEnvVars
 readServerEnvVars = do
+  Env.loadEnvFile ".temp/local-server/.env.local"
   Env.loadEnvFile ".env"
   token <- Env.lookupRequired Env.pacchettibottiToken
   publicKey <- Env.lookupRequired Env.pacchettibottiED25519Pub

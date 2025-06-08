@@ -23,7 +23,6 @@ import Registry.Internal.Codec as Internal.Codec
 import Registry.PackageName (PackageName)
 import Registry.Version (Version)
 import Registry.Version as Version
-import Type.Proxy (Proxy(..))
 
 -- | A Registry package set, which contains a set of packages at specific
 -- | versions known to compile together with the given compiler version.
@@ -42,8 +41,8 @@ derive newtype instance Eq PackageSet
 -- | implementation.
 codec :: CJ.Codec PackageSet
 codec = Profunctor.wrapIso PackageSet $ CJ.named "PackageSet" $ CJ.object
-  $ CJ.recordProp (Proxy :: _ "version") Version.codec
-  $ CJ.recordProp (Proxy :: _ "compiler") Version.codec
-  $ CJ.recordProp (Proxy :: _ "published") Internal.Codec.iso8601Date
-  $ CJ.recordProp (Proxy :: _ "packages") (Internal.Codec.packageMap Version.codec)
+  $ CJ.recordProp @"version" Version.codec
+  $ CJ.recordProp @"compiler" Version.codec
+  $ CJ.recordProp @"published" Internal.Codec.iso8601Date
+  $ CJ.recordProp @"packages" (Internal.Codec.packageMap Version.codec)
   $ CJ.record
