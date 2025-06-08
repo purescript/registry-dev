@@ -1330,8 +1330,8 @@ compatibleCompilers allMetadata resolutions = do
       Metadata metadata <- Map.lookup name allMetadata
       published <- Map.lookup version metadata.published
       case published.compilers of
-        Left _ -> Nothing
-        Right compilers -> Just { name, version, compilers: compilers }
+        Nothing -> Nothing
+        Just compilers -> Just { name, version, compilers: compilers }
 
   case Array.uncons associated of
     Nothing ->

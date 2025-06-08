@@ -138,8 +138,8 @@ spec = do
         case Map.lookup version effectMetadata.published of
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to be in metadata."
           Just published -> case published.compilers of
-            Left one -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix but unfinished single version: " <> Version.print one
-            Right many -> do
+            Nothing -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix but no compilers instead"
+            Just many -> do
               let many' = NonEmptyArray.toArray many
               let expected = map Utils.unsafeVersion [ "0.15.3", "0.15.4", "0.15.5" ]
               unless (many' == expected) do
@@ -187,8 +187,8 @@ spec = do
         case Map.lookup transitive.version transitiveMetadata.published of
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to be in metadata."
           Just published -> case published.compilers of
-            Left one -> Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to have a compiler matrix but unfinished single version: " <> Version.print one
-            Right many -> do
+            Nothing -> Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to have a compiler matrix but no compilers instead"
+            Just many -> do
               let many' = NonEmptyArray.toArray many
               let expected = map Utils.unsafeVersion [ "0.15.3", "0.15.4", "0.15.5" ]
               unless (many' == expected) do
