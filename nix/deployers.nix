@@ -9,7 +9,7 @@
 
   fabrizio = {
     sshKeys = [
-      "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPqIMvUZf1ffuqlKqemYMrLruO15Hy1SM+We5W1GHI9wLbY6FOsfDL78Yx6Eywc2iU0acpbyr1RVvgJ0gbMbHGc= purescript-infra@secretive.hadrianus.local"
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKAq2z7PICdQq1Qi7jIF8qsq+W+BPJY5QhmUjRwHSv7P fabrizio@aurelius"
     ];
   };
 
