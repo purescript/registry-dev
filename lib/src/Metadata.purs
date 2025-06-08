@@ -73,7 +73,7 @@ codec = Profunctor.wrapIso Metadata $ CJ.named "Metadata" $ CJ.object
 -- | not rely on its presence!
 type PublishedMetadata =
   { bytes :: Number
-  , compilers :: Either Version (NonEmptyArray Version)
+  , compilers :: NonEmptyArray Version
   , hash :: Sha256
   , publishedTime :: DateTime
 
@@ -84,23 +84,11 @@ type PublishedMetadata =
 publishedMetadataCodec :: CJ.Codec PublishedMetadata
 publishedMetadataCodec = CJ.named "PublishedMetadata" $ CJ.Record.object
   { bytes: CJ.number
-  , compilers: compilersCodec
+  , compilers: CJ.Common.nonEmptyArray Version.codec
   , hash: Sha256.codec
   , publishedTime: Internal.Codec.iso8601DateTime
   , ref: CJ.string
   }
-  where
-  compilersCodec :: CJ.Codec (Either Version (NonEmptyArray Version))
-  compilersCodec = Codec.codec' decode encode
-    where
-    decode :: JSON -> Except CJ.DecodeError (Either Version (NonEmptyArray Version))
-    decode json = except do
-      map Left (CJ.decode Version.codec json)
-        <|> map Right (CJ.decode (CJ.Common.nonEmptyArray Version.codec) json)
-
-    encode = case _ of
-      Left version -> CJ.encode Version.codec version
-      Right versions -> CJ.encode (CJ.Common.nonEmptyArray Version.codec) versions
 
 -- | Metadata about an unpublished package version.
 type UnpublishedMetadata =

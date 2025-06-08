@@ -63,12 +63,8 @@ buildCompilerIndex pursCompilers index metadata = CompilerIndex do
 
     getDependencies (Manifest manifest) = fromMaybe manifest.dependencies do
       Metadata { published } <- Map.lookup manifest.name metadata
-      { compilers: eitherCompilers } <- Map.lookup manifest.version published
-      -- If the dependency hasn't yet had all compilers computed for it,
-      -- then we don't add it to the dependencies to avoid over-
-      -- constraining the solver.
-      compilers <- Either.hush eitherCompilers
-      -- Otherwise, we construct a maximal range for the compilers the
+      { compilers } <- Map.lookup manifest.version published
+      -- Construct a maximal range for the compilers the
       -- indicated package version supports.
       let
         min = Foldable1.minimum compilers

@@ -209,7 +209,7 @@ unsafeMetadataEntry (Tuple name version) = do
       { ref: LenientVersion.raw version
       , hash: unsafeFromRight $ Sha256.parse "sha256-gb24ZRec6mgR8TFBVR2eIh5vsMdhuL+zK9VKjWP74Cw="
       , bytes: 0.0
-      , compilers: Right (NonEmptyArray.singleton (Utils.unsafeVersion "0.15.2"))
+      , compilers: NonEmptyArray.singleton (Utils.unsafeVersion "0.15.2")
       , publishedTime: DateTime (Utils.unsafeDate "2022-07-07") bottom
       }
 

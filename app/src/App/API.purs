@@ -738,7 +738,7 @@ publish maybeLegacyIndex payload = do
 
       Storage.upload (un Manifest manifest).name (un Manifest manifest).version tarballPath
       Log.debug $ "Adding the new version " <> Version.print (un Manifest manifest).version <> " to the package metadata file."
-      let newPublishedVersion = { hash, ref: payload.ref, compilers: Left payload.compiler, publishedTime, bytes }
+      let newPublishedVersion = { hash, ref: payload.ref, compilers: NonEmptyArray.singleton payload.compiler, publishedTime, bytes }
       let newMetadata = metadata { published = Map.insert (un Manifest manifest).version newPublishedVersion metadata.published }
 
       Registry.writeMetadata (un Manifest manifest).name (Metadata newMetadata)
@@ -786,7 +786,7 @@ publish maybeLegacyIndex payload = do
         Log.debug $ "Some compilers failed: " <> String.joinWith ", " (map Version.print (Set.toUnfoldable (Map.keys invalidCompilers)))
 
       Comment.comment $ "Found compatible compilers: " <> String.joinWith ", " (map (\v -> "`" <> Version.print v <> "`") (NonEmptySet.toUnfoldable validCompilers))
-      let compilersMetadata = newMetadata { published = Map.update (Just <<< (_ { compilers = Right (NonEmptySet.toUnfoldable1 validCompilers) })) (un Manifest manifest).version newMetadata.published }
+      let compilersMetadata = newMetadata { published = Map.update (Just <<< (_ { compilers = NonEmptySet.toUnfoldable1 validCompilers })) (un Manifest manifest).version newMetadata.published }
       Registry.writeMetadata (un Manifest manifest).name (Metadata compilersMetadata)
       Log.debug $ "Wrote new metadata " <> printJson Metadata.codec (Metadata compilersMetadata)
 

@@ -1329,9 +1329,7 @@ compatibleCompilers allMetadata resolutions = do
     associated = Map.toUnfoldableUnordered resolutions # Array.mapMaybe \(Tuple name version) -> do
       Metadata metadata <- Map.lookup name allMetadata
       published <- Map.lookup version metadata.published
-      case published.compilers of
-        Left _ -> Nothing
-        Right compilers -> Just { name, version, compilers: compilers }
+      Just { name, version, compilers: published.compilers }
 
   case Array.uncons associated of
     Nothing ->
