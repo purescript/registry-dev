@@ -20,15 +20,20 @@ module Registry.Metadata
 
 import Prelude
 
+import Control.Alt ((<|>))
+import Control.Monad.Except (Except, except)
 import Data.Array.NonEmpty (NonEmptyArray)
+import Data.Codec as Codec
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Common as CJ.Common
 import Data.Codec.JSON.Record as CJ.Record
 import Data.DateTime (DateTime)
+import Data.Either (Either(..))
 import Data.Map (Map)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Profunctor as Profunctor
+import JSON (JSON)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Location (Location)
 import Registry.Location as Location
@@ -37,6 +42,7 @@ import Registry.Owner as Owner
 import Registry.Sha256 (Sha256)
 import Registry.Sha256 as Sha256
 import Registry.Version (Version)
+import Registry.Version as Version
 
 -- | A record of all published and unpublished versions of a package, along with
 -- | the last-used location and any owners (public keys) authorized to take
@@ -67,14 +73,18 @@ codec = Profunctor.wrapIso Metadata $ CJ.named "Metadata" $ CJ.object
 -- | not rely on its presence!
 type PublishedMetadata =
   { bytes :: Number
+  , compilers :: NonEmptyArray Version
   , hash :: Sha256
   , publishedTime :: DateTime
+
+  -- UNSPECIFIED: Will be removed in the future.
   , ref :: String
   }
 
 publishedMetadataCodec :: CJ.Codec PublishedMetadata
 publishedMetadataCodec = CJ.named "PublishedMetadata" $ CJ.Record.object
   { bytes: CJ.number
+  , compilers: CJ.Common.nonEmptyArray Version.codec
   , hash: Sha256.codec
   , publishedTime: Internal.Codec.iso8601DateTime
   , ref: CJ.string

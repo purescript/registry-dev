@@ -207,7 +207,7 @@ Note:
 
 - Globs you provide at the `includeFiles` and `excludeFiles` keys must contain only `*`, `**`, `/`, `.`, `..`, and characters for Linux file paths. It is not possible to negate a glob (ie. the `!` character), and globs cannot represent a path out of the package source directory.
 - When packaging your project source, the registry will first "include" your `src` directory and always-included files such as your `purs.json` file. Then it will include files which match globs indicated by the `includeFiles` key ([always-ignored files](#always-ignored-files) cannot be included). Finally, it will apply the excluding globs indicated by the `excludeFiles` key to the included files ([always-included files](#always-included-files) cannot be excluded).
-- Dependencies you provide at the `dependencies` key must exist in the registry, and the dependency ranges must be solvable (ie. it must be possible to produce a single version of each dependency that satisfies the provided version bounds, including any transitive dependencies).
+- Dependencies you provide at the `dependencies` key must exist in the registry, the dependency ranges must be solvable (ie. it must be possible to produce a single version of each dependency that satisfies the provided version bounds, including any transitive dependencies), and transitive dependencies are not allowed (ie. any modules you import in your code must come from packages listed in your dependencies).
 
 For example:
 
@@ -234,11 +234,12 @@ For example:
 
 All packages in the registry have an associated metadata file, which is located in the `metadata` directory of the `registry` repository under the package name. For example, the metadata for the `aff` package is located at: https://github.com/purescript/registry/blob/main/metadata/aff.json. Metadata files are the source of truth on all published and unpublished versions for a particular package for what there content is and where the package is located. Metadata files are produced by the registry, not by package authors, though they take some information from package manifests.
 
-Each published version of a package records three fields:
+Each published version of a package records the following fields:
 
 - `hash`: a [`Sha256`](#Sha256) of the compressed archive fetched by the registry for the given version
 - `bytes`: the size of the tarball in bytes
 - `publishedTime`: the time the package was published as an `ISO8601` string
+- `compilers`: compiler versions this package is known to work with. This field can be in one of two states: a single version indicates that the package worked with a specific compiler on upload but has not yet been tested with all compilers, whereas a non-empty array of versions indicates the package has been tested with all compilers the registry supports.
 
 Each unpublished version of a package records three fields:
 
