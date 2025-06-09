@@ -47,4 +47,5 @@ package:
       - node-execa
       - node-fs
       - node-process
+      - registry-test-utils
       - spec

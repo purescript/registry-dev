@@ -1,8 +1,7 @@
 workspace:
-  lock: true
-  package_set:
+  packageSet:
     registry: 59.0.0
-  extra_packages:
+  extraPackages:
     dodo-printer:
       repo: https://github.com/natefaubion/purescript-dodo-printer.git
       version: v2.2.1

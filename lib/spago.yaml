@@ -51,5 +51,5 @@ package:
       - json
       - node-child-process
       - node-execa
+      - registry-test-utils
       - spec
-      - unsafe-coerce

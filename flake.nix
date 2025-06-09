@@ -265,12 +265,12 @@
           set -euo pipefail
           WORKDIR=$(mktemp -d)
           cp spago.yaml spago.lock $WORKDIR
-          cp -a app foreign lib scripts types $WORKDIR
+          cp -a app foreign lib scripts test-utils types $WORKDIR
           ln -s ${pkgs.registry.package-lock}/js/node_modules $WORKDIR/node_modules
 
           pushd $WORKDIR
           export HEALTHCHECKS_URL=${defaultEnv.HEALTHCHECKS_URL}
-          ${pkgs.spago-bin.spago-0_93_19}/bin/spago test
+          ${pkgs.spago-bin.spago-0_93_44}/bin/spago test
 
           popd
         '';
@@ -853,7 +853,7 @@
 
               # Development tooling
               purs
-              spago-bin.spago-0_93_19 # until new lockfile format supported by overlay
+              spago-bin.spago-0_93_44
               purs-tidy-unstable
               purs-backend-es-unstable
             ];
