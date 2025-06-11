@@ -153,7 +153,10 @@
             spago-lock = prev.mkSpagoDerivation {
               name = "registry";
               src = ./.;
-              nativeBuildInputs = [ prev.pkgs.spago-bin.spago-0_93_44 prev.pkgs.purescript ];
+              nativeBuildInputs = [
+                prev.pkgs.spago-bin.spago-0_93_44
+                prev.pkgs.purescript
+              ];
               buildPhase = "spago build";
               installPhase = "mkdir $out; cp -r * $out";
             };
