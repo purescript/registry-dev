@@ -34,7 +34,7 @@ let
     nativeBuildInputs = [ purs-backend-es-unstable ];
     buildPhase = ''
       ln -s ${package-lock}/js/node_modules .
-      cp -r ${spago-lock}/output .
+      ln -s ${spago-lock}/output .
       echo "Optimizing with purs-backend-es..."
       purs-backend-es build
     '';

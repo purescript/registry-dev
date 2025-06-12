@@ -36,7 +36,7 @@ let
       '';
       buildPhase = ''
         ln -s ${package-lock}/js/node_modules .
-        cp -r ${spago-lock}/output .
+        ln -s ${spago-lock}/output .
         cp ${entrypoint} entrypoint.js
         esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node --packages=external
       '';
