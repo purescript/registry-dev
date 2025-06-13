@@ -2,7 +2,6 @@
   makeWrapper,
   lib,
   stdenv,
-  purix,
   esbuild,
   nodejs,
   writeText,
@@ -37,7 +36,7 @@ let
       '';
       buildPhase = ''
         ln -s ${package-lock}/js/node_modules .
-        cp -r ${spago-lock.registry-scripts}/output .
+        ln -s ${spago-lock}/output .
         cp ${entrypoint} entrypoint.js
         esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node --packages=external
       '';

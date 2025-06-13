@@ -75,4 +75,5 @@ package:
   test:
     main: Test.Registry.Main
     dependencies:
+      - registry-test-utils
       - spec

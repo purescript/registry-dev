@@ -2,8 +2,7 @@
   makeWrapper,
   lib,
   stdenv,
-  purix,
-  purs-backend-es,
+  purs-backend-es-unstable,
   esbuild,
   writeText,
   nodejs,
@@ -32,16 +31,27 @@ let
       "buildPhase"
       "installPhase"
     ];
-    nativeBuildInputs = [ purs-backend-es ];
+    nativeBuildInputs = [ purs-backend-es-unstable ];
     buildPhase = ''
       ln -s ${package-lock}/js/node_modules .
-      cp -r ${spago-lock.registry-app}/output .
+      ln -s ${spago-lock}/output .
       echo "Optimizing with purs-backend-es..."
       purs-backend-es build
     '';
     installPhase = ''
-      mkdir $out
-      mv output-es $out/output
+      mkdir $out;
+      cp -r output-es $out/output;
+      # This for loop exists because purs-backend-es finds the corefn.json files
+      # just fine, but doesn't find the foreign.js files.
+      # I suspect this is because of a quirky interaction between Nix and `copyFile`,
+      # but I'm not sure how to fix it so we work around it by copying the foreign
+      # modules by hand.
+      for dir in output/*/; do
+        subdir=$(basename "$dir")
+        if [ -f "output/$subdir/foreign.js" ]; then
+          cp "output/$subdir/foreign.js" "$out/output/$subdir/" || true;
+        fi
+      done
     '';
   };
 in
