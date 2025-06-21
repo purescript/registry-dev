@@ -4,6 +4,7 @@
 module Registry.Range
   ( Range
   , caret
+  , exact
   , codec
   , greaterThanOrEq
   , includes
@@ -147,6 +148,11 @@ mk lhs rhs | lhs < rhs = Just (Range { lhs, rhs })
 mk _ _ = Nothing
 
 -- | Produce a "caret range" from a version.
--- | I.e. "^0.15.6" ==> ">=0.15.6 > 0.16.0"
+-- | I.e. "^0.15.6" ==> ">=0.15.6 <0.16.0"
 caret :: Version -> Range
 caret v = Range { lhs: v, rhs: Version.bumpHighest v }
+
+-- | Produce a range that only covers an exact version.
+-- | I.e. "0.15.6" ==> ">=0.15.6 <0.15.7"
+exact :: Version -> Range
+exact v = Range { lhs: v, rhs: Version.bumpPatch v }
