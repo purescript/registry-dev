@@ -59,10 +59,11 @@ import Data.Formatter.DateTime as DateTime
 import Data.Nullable as Nullable
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn4)
 import Effect.Uncurried as Uncurried
-import Registry.API.V1 (JobId(..), JobType, LogLevel, LogLine)
+import Registry.API.V1 (JobId(..), LogLevel, LogLine)
 import Registry.API.V1 as API.V1
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
+import Registry.JobType as JobType
 import Registry.Operation (PackageOperation, PackageSetOperation)
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
@@ -175,26 +176,22 @@ deleteIncompleteJobs = Uncurried.runEffectFn1 deleteIncompleteJobsImpl
 
 type InsertPackageJob =
   { jobId :: JobId
-  , jobType :: JobType
-  , packageName :: PackageName
-  , packageVersion :: Version
   , payload :: PackageOperation
   }
 
 type JSInsertPackageJob =
   { jobId :: String
   , jobType :: String
-  , packageName :: String
-  , packageVersion :: String
   , payload :: String
   }
 
 insertPackageJobToJSRep :: InsertPackageJob -> JSInsertPackageJob
-insertPackageJobToJSRep { jobId, jobType, packageName, packageVersion, payload } =
+insertPackageJobToJSRep { jobId, payload } =
   { jobId: un JobId jobId
-  , jobType: API.V1.printJobType jobType
-  , packageName: PackageName.print packageName
-  , packageVersion: Version.print packageVersion
+  , jobType: JobType.print case payload of
+      Operation.Publish _ -> JobType.PublishJob
+      Operation.Authenticated { payload: Operation.Unpublish _ } -> JobType.UnpublishJob
+      Operation.Authenticated { payload: Operation.Transfer _ } -> JobType.TransferJob
   , payload: stringifyJson Operation.packageOperationCodec payload
   }
 
@@ -206,25 +203,19 @@ insertPackageJob db = Uncurried.runEffectFn2 insertPackageJobImpl db <<< insertP
 
 type InsertMatrixJob =
   { jobId :: JobId
-  , packageName :: PackageName
-  , packageVersion :: Version
   , compilerVersion :: Version
   , payload :: Map PackageName Version
   }
 
 type JSInsertMatrixJob =
   { jobId :: String
-  , packageName :: String
-  , packageVersion :: String
   , compilerVersion :: String
   , payload :: String
   }
 
 insertMatrixJobToJSRep :: InsertMatrixJob -> JSInsertMatrixJob
-insertMatrixJobToJSRep { jobId, packageName, packageVersion, compilerVersion, payload } =
+insertMatrixJobToJSRep { jobId, compilerVersion, payload } =
   { jobId: un JobId jobId
-  , packageName: PackageName.print packageName
-  , packageVersion: Version.print packageVersion
   , compilerVersion: Version.print compilerVersion
   , payload: stringifyJson (Internal.Codec.packageMap Version.codec) payload
   }
@@ -257,7 +248,7 @@ insertPackageSetJob db = Uncurried.runEffectFn2 insertPackageSetJobImpl db <<< i
 
 type PackageJobDetails =
   { jobId :: JobId
-  , jobType :: JobType
+  , jobType :: JobType.JobType
   , packageName :: PackageName
   , packageVersion :: Version
   , payload :: PackageOperation
@@ -277,7 +268,7 @@ type JSPackageJobDetails =
 
 packageJobDetailsFromJSRep :: JSPackageJobDetails -> Either String PackageJobDetails
 packageJobDetailsFromJSRep { jobId, jobType, packageName, packageVersion, payload, createdAt, startedAt } = do
-  ty <- API.V1.parseJobType jobType
+  ty <- JobType.parse jobType
   name <- PackageName.parse packageName
   version <- Version.parse packageVersion
   created <- DateTime.unformat Internal.Format.iso8601DateTime createdAt

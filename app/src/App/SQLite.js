@@ -67,12 +67,12 @@ const _insertJob = (db, table, columns, job) => {
 };
 
 export const insertPackageJobImpl = (db, job) => {
-  const columns = [ 'jobId', 'jobType', 'packageName', 'packageVersion', 'payload' ]
+  const columns = [ 'jobId', 'jobType', 'payload' ]
   return _insertJob(db, PACKAGE_JOBS_TABLE, columns, job);
 };
 
 export const insertMatrixJobImpl = (db, job) => {
-  const columns = [ 'jobId', 'packageName', 'packageVersion', 'compilerVersion', 'payload' ]
+  const columns = [ 'jobId', 'compilerVersion', 'payload' ]
   return _insertJob(db, MATRIX_JOBS_TABLE, columns, job);
 };
 
