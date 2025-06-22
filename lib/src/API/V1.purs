@@ -15,6 +15,7 @@ import Data.Newtype (class Newtype)
 import Data.Profunctor as Profunctor
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
+import Registry.JobType as JobType
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Routing.Duplex (RouteDuplex')
@@ -66,7 +67,7 @@ jobCreatedResponseCodec = CJ.named "JobCreatedResponse" $ CJ.Record.object { job
 
 type Job =
   { jobId :: JobId
-  , jobType :: JobType
+  , jobType :: JobType.JobType
   , packageName :: PackageName
   , createdAt :: DateTime
   , finishedAt :: Maybe DateTime
@@ -77,7 +78,7 @@ type Job =
 jobCodec :: CJ.Codec Job
 jobCodec = CJ.named "Job" $ CJ.Record.object
   { jobId: jobIdCodec
-  , jobType: jobTypeCodec
+  , jobType: JobType.codec
   , packageName: PackageName.codec
   , createdAt: Internal.Codec.iso8601DateTime
   , finishedAt: CJ.Record.optional Internal.Codec.iso8601DateTime
@@ -91,26 +92,6 @@ derive instance Newtype JobId _
 
 jobIdCodec :: CJ.Codec JobId
 jobIdCodec = Profunctor.wrapIso JobId CJ.string
-
-data JobType = PublishJob | UnpublishJob | TransferJob
-
-derive instance Eq JobType
-
-parseJobType :: String -> Either String JobType
-parseJobType = case _ of
-  "publish" -> Right PublishJob
-  "unpublish" -> Right UnpublishJob
-  "transfer" -> Right TransferJob
-  j -> Left $ "Invalid job type " <> show j
-
-printJobType :: JobType -> String
-printJobType = case _ of
-  PublishJob -> "publish"
-  UnpublishJob -> "unpublish"
-  TransferJob -> "transfer"
-
-jobTypeCodec :: CJ.Codec JobType
-jobTypeCodec = CJ.Sum.enumSum printJobType (hush <<< parseJobType)
 
 type LogLine =
   { level :: LogLevel

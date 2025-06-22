@@ -14,8 +14,8 @@
 -- | are well-formed, and JSON codecs package managers can use to construct the
 -- | requests necessary to send to the Registry API or publish in a GitHub issue.
 module Registry.Operation
-  ( AuthenticatedPackageOperation(..)
-  , AuthenticatedData
+  ( AuthenticatedData
+  , AuthenticatedPackageOperation(..)
   , PackageOperation(..)
   , PackageSetOperation(..)
   , PackageSetUpdateData
@@ -23,13 +23,15 @@ module Registry.Operation
   , TransferData
   , UnpublishData
   , authenticatedCodec
+  , packageName
   , packageOperationCodec
   , packageSetOperationCodec
   , packageSetUpdateCodec
   , publishCodec
   , transferCodec
   , unpublishCodec
-  ) where
+  )
+  where
 
 import Prelude
 
@@ -60,6 +62,13 @@ data PackageOperation
 
 derive instance Eq PackageOperation
 
+packageName :: PackageOperation -> PackageName
+packageName = case _ of
+  Publish { name } -> name
+  Authenticated { payload } -> case payload of
+    Unpublish { name } -> name
+    Transfer { name } -> name
+
 -- | A codec for encoding and decoding a `PackageOperation` as JSON.
 packageOperationCodec :: CJ.Codec PackageOperation
 packageOperationCodec = CJ.named "PackageOperation" $ Codec.codec' decode encode
@@ -88,6 +97,7 @@ type PublishData =
   { name :: PackageName
   , location :: Maybe Location
   , ref :: String
+  , version :: Version
   , compiler :: Version
   , resolutions :: Maybe (Map PackageName Version)
   }
@@ -98,6 +108,7 @@ publishCodec = CJ.named "Publish" $ CJ.Record.object
   { name: PackageName.codec
   , location: CJ.Record.optional Location.codec
   , ref: CJ.string
+  , version: Version.codec
   , compiler: Version.codec
   , resolutions: CJ.Record.optional (Internal.Codec.packageMap Version.codec)
   }
