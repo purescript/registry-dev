@@ -3,6 +3,7 @@
 /output-es
 /scratch
 /.vscode
+/.temp
 
 result
 
@@ -19,3 +20,6 @@ result
 # Keep it secret, keep it safe.
 .env
 .envrc
+
+.claude
+CLAUDE.md
