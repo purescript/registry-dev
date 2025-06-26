@@ -6,5 +6,8 @@
     "app",
     "foreign",
     "lib"
-  ]
+  ],
+  "dependencies": {
+    "spago": "^0.93.19"
+  }
 }

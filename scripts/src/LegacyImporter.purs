@@ -471,6 +471,7 @@ runLegacyImport logs = do
                   { name: manifest.name
                   , location: Just manifest.location
                   , ref
+                  , version: manifest.version
                   , compiler
                   , resolutions: Just resolutions
                   }
