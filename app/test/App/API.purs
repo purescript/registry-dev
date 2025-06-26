@@ -96,6 +96,7 @@ spec = do
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-effect", subdir: Nothing }
             , name
             , ref
+            , version
             , resolutions: Nothing
             }
 
@@ -158,6 +159,7 @@ spec = do
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-type-equality", subdir: Nothing }
             , name: Utils.unsafePackageName "type-equality"
             , ref: "v4.0.1"
+            , version: Utils.unsafeVersion "4.0.1"
             , resolutions: Nothing
             }
         Registry.readAllManifests >>= \idx ->
@@ -172,6 +174,7 @@ spec = do
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-transitive", subdir: Nothing }
             , name: transitive.name
             , ref: "v" <> Version.print transitive.version
+            , version: transitive.version
             , resolutions: Nothing
             }
         Registry.readAllManifests >>= \idx ->

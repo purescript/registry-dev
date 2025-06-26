@@ -11,7 +11,7 @@ import Registry.App.Effect.Db (DB)
 import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Log as Log
 import Registry.App.SQLite (MatrixJobDetails, PackageJobDetails, PackageSetJobDetails)
-import Registry.App.Server.Env (ServerEnv, ServerEffects, runEffects)
+import Registry.App.Server.Env (ServerEffects, ServerEnv, runEffects)
 import Run (Run)
 import Run.Except (EXCEPT)
 
@@ -31,57 +31,55 @@ findNextAvailableJob = do
         Nothing -> pure Nothing
 
 runJobExecutor :: ServerEnv -> Aff (Either Aff.Error Unit)
-runJobExecutor env = do
-  runEffects env Db.deleteIncompleteJobs >>= case _ of
-    Left err -> pure $ Left err
-    Right _ -> loop
+runJobExecutor env = runEffects env do
+  Db.deleteIncompleteJobs
+  loop
   where
-  loop = runEffects env findNextAvailableJob >>= case _ of
-    Left err ->
-      pure $ Left err
+  loop = do
+    mJob <- findNextAvailableJob
+    case mJob of
+      Nothing -> do
+        liftAff $ Aff.delay (Milliseconds 100.0)
+        loop
 
-    Right Nothing -> do
-      Aff.delay (Milliseconds 100.0)
-      loop
+      Just job -> do
+        now <- nowUTC
 
-    Right (Just job) -> do
-      now <- nowUTC
+        let
+          jobId = case job of
+            PackageJob details -> details.jobId
+            MatrixJob details -> details.jobId
+            PackageSetJob details -> details.jobId
 
-      let
-        jobId = case job of
-          PackageJob details -> details.jobId
-          MatrixJob details -> details.jobId
-          PackageSetJob details -> details.jobId
+        Db.startJob { jobId, startedAt: now }
 
-      -- We race the job execution against a timeout; if the timeout happens first,
-      -- we kill the job and move on to the next one.
-      jobResult <- do
-        let execute = Just <$> runEffects env (executeJob now job)
-        let delay = 1000.0 * 60.0 * 5.0 -- 5 minutes
-        let timeout = Aff.delay (Milliseconds delay) $> Nothing
-        Parallel.sequential $ Parallel.parallel execute <|> Parallel.parallel timeout
+        -- We race the job execution against a timeout; if the timeout happens first,
+        -- we kill the job and move on to the next one.
+        jobResult <- liftAff do
+          let execute = Just <$> (runEffects env $ executeJob now job)
+          let delay = 1000.0 * 60.0 * 5.0 -- 5 minutes
+          let timeout = Aff.delay (Milliseconds delay) $> Nothing
+          Parallel.sequential $ Parallel.parallel execute <|> Parallel.parallel timeout
 
-      finishResult <- runEffects env case jobResult of
-        Nothing -> do
-          Log.error $ "Job " <> un JobId jobId <> " timed out."
-          Db.finishJob { jobId, finishedAt: now, success: false }
+        success <- case jobResult of
+          Nothing -> do
+            Log.error $ "Job " <> un JobId jobId <> " timed out."
+            pure false
 
-        Just (Left err) -> do
-          Log.warn $ "Job " <> un JobId jobId <> " failed:\n" <> Aff.message err
-          Db.finishJob { jobId, finishedAt: now, success: false }
+          Just (Left err) -> do
+            Log.warn $ "Job " <> un JobId jobId <> " failed:\n" <> Aff.message err
+            pure false
 
-        Just (Right _) -> do
-          Log.info $ "Job " <> un JobId jobId <> " succeeded."
-          Db.finishJob { jobId, finishedAt: now, success: true }
+          Just (Right _) -> do
+            Log.info $ "Job " <> un JobId jobId <> " succeeded."
+            pure true
 
-      case finishResult of
-        Left err -> pure $ Left err
-        Right _ -> loop
+        Db.finishJob { jobId, finishedAt: now, success }
+        loop
 
 executeJob :: DateTime -> JobDetails -> Run ServerEffects Unit
 executeJob now = case _ of
   PackageJob { jobId } -> do
-    Db.startJob { jobId, startedAt: now }
     pure unit -- UNIMPLEMENTED
   MatrixJob _details ->
     pure unit -- UNIMPLEMENTED
