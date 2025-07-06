@@ -2,84 +2,103 @@ module Registry.App.Main where
 
 import Registry.App.Prelude hiding ((/))
 
-import Data.String as String
+import Data.DateTime (diff)
+import Data.Time.Duration (Milliseconds(..), Seconds(..))
+import Debug (traceM)
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Fetch.Retry as Fetch.Retry
-import HTTPurple (Request, Response)
-import HTTPurple as HTTPurple
 import Node.Process as Process
-import Registry.API.V1 (Route)
-import Registry.API.V1 as V1
-import Registry.App.Effect.Env as Env
-import Registry.App.Server.Env (ServerEnv, createServerEnv, runEffects)
+import Registry.App.Server.Env (ServerEnv, createServerEnv)
+import Registry.App.Server.JobExecutor as JobExecutor
 import Registry.App.Server.Router as Router
 
 main :: Effect Unit
-main =
+main = do
+  traceM 1
   createServerEnv # Aff.runAff_ case _ of
     Left error -> do
+      traceM 2
       Console.log $ "Failed to start server: " <> Aff.message error
       Process.exit' 1
     Right env -> do
-      -- Start healthcheck ping loop if URL is configured
       case env.vars.resourceEnv.healthchecksUrl of
         Nothing -> Console.log "HEALTHCHECKS_URL not set, healthcheck pinging disabled"
-        Just healthchecksUrl -> do
-          _healthcheck <- Aff.launchAff do
-            let
-              limit = 10
-              oneMinute = Aff.Milliseconds (1000.0 * 60.0)
-              fiveMinutes = Aff.Milliseconds (1000.0 * 60.0 * 5.0)
-
-              loop n =
-                Fetch.Retry.withRetryRequest healthchecksUrl {} >>= case _ of
-                  Succeeded { status } | status == 200 -> do
-                    Aff.delay fiveMinutes
-                    loop n
-
-                  Cancelled | n >= 0 -> do
-                    Console.warn $ "Healthchecks cancelled, will retry..."
-                    Aff.delay oneMinute
-                    loop (n - 1)
-
-                  Failed error | n >= 0 -> do
-                    Console.warn $ "Healthchecks failed, will retry: " <> Fetch.Retry.printRetryRequestError error
-                    Aff.delay oneMinute
-                    loop (n - 1)
-
-                  Succeeded { status } | status /= 200, n >= 0 -> do
-                    Console.error $ "Healthchecks returned non-200 status, will retry: " <> show status
-                    Aff.delay oneMinute
-                    loop (n - 1)
-
-                  Cancelled ->
-                    Console.error "Healthchecks cancelled and failure limit reached, will not retry."
-
-                  Failed error -> do
-                    Console.error $ "Healthchecks failed and failure limit reached, will not retry: " <> Fetch.Retry.printRetryRequestError error
-
-                  Succeeded _ -> do
-                    Console.error $ "Healthchecks returned non-200 status and failure limit reached, will not retry."
-
-            loop limit
-          pure unit
-
-      -- Read port from SERVER_PORT env var (optional, HTTPurple defaults to 8080)
-      port <- liftEffect $ Env.lookupOptional Env.serverPort
-
-      _close <- HTTPurple.serve
-        { hostname: "0.0.0.0"
-        , port
-        }
-        { route: V1.routes
-        , router: runServer env
-        }
-      pure unit
+        Just healthchecksUrl -> Aff.launchAff_ $ healthcheck healthchecksUrl
+      Aff.launchAff_ $ jobExecutor env
+      Router.runRouter env
   where
-  runServer :: ServerEnv -> Request Route -> Aff Response
-  runServer env request = do
-    result <- runEffects env (Router.router env request)
-    case result of
-      Left error -> HTTPurple.badRequest (Aff.message error)
-      Right response -> pure response
+  healthcheck :: String -> Aff Unit
+  healthcheck healthchecksUrl = loop limit
+    where
+    limit = 10
+    oneMinute = Aff.Milliseconds (1000.0 * 60.0)
+    fiveMinutes = Aff.Milliseconds (1000.0 * 60.0 * 5.0)
+
+    loop n = do
+      traceM 4
+      Fetch.Retry.withRetryRequest healthchecksUrl {} >>= case _ of
+        Succeeded { status } | status == 200 -> do
+          traceM 5
+          Aff.delay fiveMinutes
+          loop n
+
+        Cancelled | n >= 0 -> do
+          traceM 6
+          Console.warn $ "Healthchecks cancelled, will retry..."
+          Aff.delay oneMinute
+          loop (n - 1)
+
+        Failed error | n >= 0 -> do
+          traceM 7
+          Console.warn $ "Healthchecks failed, will retry: " <> Fetch.Retry.printRetryRequestError error
+          Aff.delay oneMinute
+          loop (n - 1)
+
+        Succeeded { status } | status /= 200, n >= 0 -> do
+          traceM 8
+          Console.error $ "Healthchecks returned non-200 status, will retry: " <> show status
+          Aff.delay oneMinute
+          loop (n - 1)
+
+        Cancelled -> do
+          traceM 9
+          Console.error
+            "Healthchecks cancelled and failure limit reached, will not retry."
+
+        Failed error -> do
+          traceM 10
+          Console.error $ "Healthchecks failed and failure limit reached, will not retry: " <> Fetch.Retry.printRetryRequestError error
+
+        Succeeded _ -> do
+          traceM 11
+          Console.error "Healthchecks returned non-200 status and failure limit reached, will not retry."
+
+  jobExecutor :: ServerEnv -> Aff Unit
+  jobExecutor env = do
+    traceM 12
+    loop initialRestartDelay
+    where
+    initialRestartDelay = Milliseconds 100.0
+
+    loop restartDelay = do
+      traceM 13
+      start <- nowUTC
+      result <- JobExecutor.runJobExecutor env
+      end <- nowUTC
+
+      traceM 14
+      Console.error case result of
+        Left error -> "Job executor failed: " <> Aff.message error
+        Right _ -> "Job executor exited for no reason."
+
+      -- This is a heuristic: if the executor keeps crashing immediately, we
+      -- restart with an exponentially increasing delay, but once the executor
+      -- had a run longer than a minute, we start over with a small delay.
+      let
+        nextRestartDelay
+          | end `diff` start > Seconds 60.0 = initialRestartDelay
+          | otherwise = restartDelay <> restartDelay
+
+      Aff.delay nextRestartDelay
+      loop nextRestartDelay

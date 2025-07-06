@@ -30,8 +30,7 @@ module Registry.Operation
   , publishCodec
   , transferCodec
   , unpublishCodec
-  )
-  where
+  ) where
 
 import Prelude
 

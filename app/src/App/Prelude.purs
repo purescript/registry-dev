@@ -60,7 +60,7 @@ import Data.List (List) as Extra
 import Data.Map (Map) as Extra
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, fromMaybe, isJust, isNothing, maybe) as Maybe
-import Data.Newtype (class Newtype, un) as Extra
+import Data.Newtype (class Newtype, un, unwrap, wrap) as Extra
 import Data.Newtype as Newtype
 import Data.Nullable (Nullable, toMaybe, toNullable) as Extra
 import Data.Set (Set) as Extra
