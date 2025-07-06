@@ -56,7 +56,7 @@ in
     ];
     buildInputs = [ nodejs ];
     entrypoint = writeText "entrypoint.js" ''
-      import { main } from "./output/Registry.App.Server";
+      import { main } from "./output/Registry.App.Main";
       main();
     '';
     buildPhase = ''

@@ -1,6 +1,7 @@
 module Registry.JobType where
 
 import Prelude
+
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Sum as CJ.Sum
 import Data.Either (Either(..), hush)

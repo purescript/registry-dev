@@ -15,9 +15,6 @@ import Data.Newtype (class Newtype)
 import Data.Profunctor as Profunctor
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
-import Registry.JobType as JobType
-import Registry.PackageName (PackageName)
-import Registry.PackageName as PackageName
 import Routing.Duplex (RouteDuplex')
 import Routing.Duplex as Routing
 import Routing.Duplex.Generic as RoutingG
@@ -67,8 +64,6 @@ jobCreatedResponseCodec = CJ.named "JobCreatedResponse" $ CJ.Record.object { job
 
 type Job =
   { jobId :: JobId
-  , jobType :: JobType.JobType
-  , packageName :: PackageName
   , createdAt :: DateTime
   , finishedAt :: Maybe DateTime
   , success :: Boolean
@@ -78,8 +73,6 @@ type Job =
 jobCodec :: CJ.Codec Job
 jobCodec = CJ.named "Job" $ CJ.Record.object
   { jobId: jobIdCodec
-  , jobType: JobType.codec
-  , packageName: PackageName.codec
   , createdAt: Internal.Codec.iso8601DateTime
   , finishedAt: CJ.Record.optional Internal.Codec.iso8601DateTime
   , success: CJ.boolean

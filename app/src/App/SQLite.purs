@@ -248,7 +248,6 @@ insertPackageSetJob db = Uncurried.runEffectFn2 insertPackageSetJobImpl db <<< i
 
 type PackageJobDetails =
   { jobId :: JobId
-  , jobType :: JobType.JobType
   , packageName :: PackageName
   , packageVersion :: Version
   , payload :: PackageOperation
@@ -258,7 +257,6 @@ type PackageJobDetails =
 
 type JSPackageJobDetails =
   { jobId :: String
-  , jobType :: String
   , packageName :: String
   , packageVersion :: String
   , payload :: String
@@ -267,8 +265,7 @@ type JSPackageJobDetails =
   }
 
 packageJobDetailsFromJSRep :: JSPackageJobDetails -> Either String PackageJobDetails
-packageJobDetailsFromJSRep { jobId, jobType, packageName, packageVersion, payload, createdAt, startedAt } = do
-  ty <- JobType.parse jobType
+packageJobDetailsFromJSRep { jobId, packageName, packageVersion, payload, createdAt, startedAt } = do
   name <- PackageName.parse packageName
   version <- Version.parse packageVersion
   created <- DateTime.unformat Internal.Format.iso8601DateTime createdAt
@@ -276,7 +273,6 @@ packageJobDetailsFromJSRep { jobId, jobType, packageName, packageVersion, payloa
   parsed <- lmap JSON.DecodeError.print $ parseJson Operation.packageOperationCodec payload
   pure
     { jobId: JobId jobId
-    , jobType: ty
     , packageName: name
     , packageVersion: version
     , payload: parsed

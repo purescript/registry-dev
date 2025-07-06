@@ -790,7 +790,7 @@
 
                     # Give time for all the various services to come up...
                     client.start()
-                    client.wait_until_succeeds("${pkgs.curl}/bin/curl --fail-with-body http://registry/api/v1/jobs", timeout=20)
+                    client.wait_until_succeeds("${pkgs.curl}/bin/curl --fail-with-body http://registry/api/v1/jobs", timeout=120)
 
                     ##########
                     #

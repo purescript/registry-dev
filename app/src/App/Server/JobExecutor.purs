@@ -1,4 +1,4 @@
-module Registry.App.JobExecutor where
+module Registry.App.Server.JobExecutor where
 
 import Registry.App.Prelude hiding ((/))
 
@@ -6,12 +6,13 @@ import Control.Parallel as Parallel
 import Data.DateTime (DateTime)
 import Effect.Aff (Milliseconds(..))
 import Effect.Aff as Aff
-import Registry.API.V1 (JobId(..))
+import Registry.App.API as API
 import Registry.App.Effect.Db (DB)
 import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Log as Log
 import Registry.App.SQLite (MatrixJobDetails, PackageJobDetails, PackageSetJobDetails)
 import Registry.App.Server.Env (ServerEffects, ServerEnv, runEffects)
+import Registry.Operation as Operation
 import Run (Run)
 import Run.Except (EXCEPT)
 
@@ -21,7 +22,7 @@ data JobDetails
   | PackageSetJob PackageSetJobDetails
 
 findNextAvailableJob :: forall r. Run (DB + EXCEPT String + r) (Maybe JobDetails)
-findNextAvailableJob = do
+findNextAvailableJob =
   Db.selectNextPackageJob >>= case _ of
     Just job -> pure $ Just $ PackageJob job
     Nothing -> Db.selectNextMatrixJob >>= case _ of
@@ -63,24 +64,27 @@ runJobExecutor env = runEffects env do
 
         success <- case jobResult of
           Nothing -> do
-            Log.error $ "Job " <> un JobId jobId <> " timed out."
+            Log.error $ "Job " <> unwrap jobId <> " timed out."
             pure false
 
           Just (Left err) -> do
-            Log.warn $ "Job " <> un JobId jobId <> " failed:\n" <> Aff.message err
+            Log.warn $ "Job " <> unwrap jobId <> " failed:\n" <> Aff.message err
             pure false
 
           Just (Right _) -> do
-            Log.info $ "Job " <> un JobId jobId <> " succeeded."
+            Log.info $ "Job " <> unwrap jobId <> " succeeded."
             pure true
 
         Db.finishJob { jobId, finishedAt: now, success }
         loop
 
 executeJob :: DateTime -> JobDetails -> Run ServerEffects Unit
-executeJob now = case _ of
-  PackageJob { jobId } -> do
-    pure unit -- UNIMPLEMENTED
+executeJob _ = case _ of
+  PackageJob { payload: Operation.Publish p } ->
+    API.publish Nothing p
+  PackageJob { payload: Operation.Authenticated auth } ->
+    API.authenticated auth
+
   MatrixJob _details ->
     pure unit -- UNIMPLEMENTED
   PackageSetJob _details ->
