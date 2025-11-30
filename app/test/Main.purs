@@ -18,10 +18,11 @@ import Test.Registry.App.Legacy.PackageSet as Test.Legacy.PackageSet
 import Test.Registry.App.Manifest.SpagoYaml as Test.Manifest.SpagoYaml
 import Test.Spec as Spec
 import Test.Spec.Reporter.Console (consoleReporter)
-import Test.Spec.Runner (defaultConfig, runSpec')
+import Test.Spec.Runner.Node (runSpecAndExitProcess')
+import Test.Spec.Runner.Node.Config as Cfg
 
 main :: Effect Unit
-main = launchAff_ $ runSpec' (defaultConfig { timeout = Just $ Milliseconds 300_000.0 }) [ consoleReporter ] do
+main = runSpecAndExitProcess' config [ consoleReporter ] do
   Spec.describe "Registry.App.API" do
     Test.API.spec
 
@@ -48,3 +49,8 @@ main = launchAff_ $ runSpec' (defaultConfig { timeout = Just $ Milliseconds 300_
 
   Spec.describe "Registry.App.Manifest" do
     Spec.describe "SpagoYaml" Test.Manifest.SpagoYaml.spec
+  where
+  config =
+    { defaultConfig: Cfg.defaultConfig { timeout = Just $ Milliseconds 300_000.0 }
+    , parseCLIOptions: false
+    }

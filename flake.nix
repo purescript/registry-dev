@@ -21,7 +21,6 @@
 
   outputs =
     {
-      self,
       nixpkgs,
       flake-utils,
       purescript-overlay,
@@ -38,9 +37,6 @@
         "x86_64-darwin"
         "aarch64-darwin"
       ];
-
-      # Users authorized to deploy to the registry.
-      deployers = import ./nix/deployers.nix;
 
       pureScriptFileset = fileset.intersection (fileset.gitTracked ./.) (
         fileset.unions [
@@ -288,6 +284,7 @@
         mkAppOutput = drv: {
           type = "app";
           program = "${drv}/bin/${drv.name}";
+          meta.description = drv.meta.description or "PureScript Registry ${drv.name}";
         };
 
         # A full set of environment variables, each set to their default values
@@ -358,8 +355,11 @@
         packages = pkgs.registry.apps // pkgs.registry.scripts;
 
         apps = pkgs.lib.mapAttrs (_: drv: mkAppOutput drv) packages // {
-          default.type = "app";
-          default.program = "${run-vm}";
+          default = {
+            type = "app";
+            program = "${run-vm}";
+            meta.description = "Run the registry server in a NixOS VM";
+          };
         };
 
         checks = {
