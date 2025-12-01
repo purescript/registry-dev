@@ -5,9 +5,6 @@
     nixpkgs.url = "github:nixos/nixpkgs/release-25.05";
     flake-utils.url = "github:numtide/flake-utils";
 
-    flake-compat.url = "github:edolstra/flake-compat";
-    flake-compat.flake = false;
-
     purescript-overlay.url = "github:thomashoneyman/purescript-overlay";
     purescript-overlay.inputs.nixpkgs.follows = "nixpkgs";
 
@@ -48,6 +45,7 @@
           ./test-utils
           ./spago.lock
           ./spago.yaml
+          DHALL_TYPES
         ]
       );
 
@@ -75,11 +73,7 @@
       registryOverlay = final: prev: rec {
         nodejs = prev.nodejs_20;
 
-        # We don't want to force everyone to update their configs if they aren't
-        # normally on flakes.
-        nixFlakes = prev.writeShellScriptBin "nixFlakes" ''
-          exec ${prev.nixVersions.stable}/bin/nix --experimental-features "nix-command flakes" "$@"
-        '';
+
 
         # Detects arguments to 'git' containing a URL and replaces them with a
         # local filepath. This is a drop-in replacement for 'git' that should be
@@ -148,7 +142,10 @@
           let
             spago-lock = prev.mkSpagoDerivation {
               name = "registry";
-              src = ./.;
+              src = fileset.toSource {
+                root = ./.;
+                fileset = pureScriptFileset;
+              };
               nativeBuildInputs = [
                 prev.pkgs.spago-bin.spago-0_93_44
                 prev.pkgs.purescript
@@ -258,29 +255,6 @@
 
         inherit (pkgs) lib;
 
-        # We can't run 'spago test' in our flake checks because it tries to
-        # write to a cache and I can't figure out how to disable it. Instead
-        # we supply it as a shell script.
-        #
-        # Once we can run 'spago test --offline' or something similar, then this
-        # should just be a normal derivation that links the node_modules, copies
-        # the output dir locally, and runs 'spago test'.
-        #
-        # $ nix develop --command run-tests-script
-        run-tests-script = pkgs.writeShellScriptBin "run-tests-script" ''
-          set -euo pipefail
-          WORKDIR=$(mktemp -d)
-          cp spago.yaml spago.lock $WORKDIR
-          cp -a app foreign lib scripts test-utils types $WORKDIR
-          ln -s ${pkgs.registry.package-lock}/js/node_modules $WORKDIR/node_modules
-
-          pushd $WORKDIR
-          export HEALTHCHECKS_URL=${defaultEnv.HEALTHCHECKS_URL}
-          ${pkgs.spago-bin.spago-0_93_44}/bin/spago test
-
-          popd
-        '';
-
         mkAppOutput = drv: {
           type = "app";
           program = "${drv}/bin/${drv.name}";
@@ -363,6 +337,29 @@
         };
 
         checks = {
+          spago-test = pkgs.runCommand "spago-test"
+            {
+              inherit (defaultEnv) HEALTHCHECKS_URL;
+              nativeBuildInputs = with pkgs; [
+                nodejs
+                purescript
+                registry.compilers
+                registry.purs-versions
+                licensee
+                git
+                gzip
+                gnutar
+              ];
+            }
+            ''
+              cp -r ${pkgs.registry.spago-lock} src
+              chmod -R +w src
+              cd src
+              ln -s ${pkgs.registry.package-lock}/js/node_modules .
+              node -e "import('./output/Test.Registry.Main/index.js').then(m => m.main())"
+              echo "Tests passed!" > $out
+            '';
+
           nix-format =
             pkgs.runCommand "nix-format"
               {
@@ -840,14 +837,10 @@
               registry.compilers
               registry.purs-versions
 
-              # TODO: Hacky, remove when I can run spago test in a pure env
-              run-tests-script
-
               # Deployment
               colmena
 
               # Project tooling
-              nixFlakes
               nixfmt-rfc-style
               git
               git-lfs
