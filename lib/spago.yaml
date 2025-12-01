@@ -53,3 +53,4 @@ package:
       - node-execa
       - registry-test-utils
       - spec
+      - spec-node

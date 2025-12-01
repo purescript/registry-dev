@@ -49,3 +49,4 @@ package:
       - node-process
       - registry-test-utils
       - spec
+      - spec-node

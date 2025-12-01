@@ -78,7 +78,7 @@ nix flake check -L
 There is an integration test that will deploy the registry server and make requests to the API, which you can run if you are on a Linux machine. It is included in the `nix flake check` command by default, but it can be convenient to run standalone as well:
 
 ```sh
-nix build checks.x86_64-linux.integration
+nix build .#checks.x86_64-linux.integration
 ```
 
 You can "deploy" the registry server to a local VM and manually hit the API as if it were the production server:

@@ -77,3 +77,4 @@ package:
     dependencies:
       - registry-test-utils
       - spec
+      - spec-node
