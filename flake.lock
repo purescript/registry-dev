@@ -61,16 +61,16 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1749640896,
-        "narHash": "sha256-oVVwB+4NH7aGysjLtsxsOPspUpDsa5nSH1G8CtD6fK4=",
+        "lastModified": 1764638368,
+        "narHash": "sha256-ln1kqV0B2epgFWUeCy+wupfVSFlpMZF8uu9nuXh8C7c=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "bf8a7649aaf6567c0c893db016956f7333a50c38",
+        "rev": "82b75b674b7263dc71ff8c6f5d2ea70686d22b7e",
         "type": "github"
       },
       "original": {
         "owner": "nixos",
-        "ref": "release-25.05",
+        "ref": "release-25.11",
         "repo": "nixpkgs",
         "type": "github"
       }
@@ -134,8 +134,7 @@
         "flake-utils": "flake-utils",
         "mkSpagoDerivation": "mkSpagoDerivation",
         "nixpkgs": "nixpkgs",
-        "purescript-overlay": "purescript-overlay",
-        "slimlock": "slimlock_2"
+        "purescript-overlay": "purescript-overlay"
       }
     },
     "slimlock": {
@@ -151,26 +150,6 @@
         "owner": "thomashoneyman",
         "repo": "slimlock",
         "rev": "cf72723f59e2340d24881fd7bf61cb113b4c407c",
-        "type": "github"
-      },
-      "original": {
-        "owner": "thomashoneyman",
-        "repo": "slimlock",
-        "type": "github"
-      }
-    },
-    "slimlock_2": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1746029857,
-        "narHash": "sha256-431slzM10HQixP4oQlCwGxUPD8wo4DWVGnIcttqyeEs=",
-        "owner": "thomashoneyman",
-        "repo": "slimlock",
-        "rev": "c49740738a026a00ab6be19300e8cf7b6de03fd7",
         "type": "github"
       },
       "original": {

@@ -2,18 +2,21 @@
   description = "The PureScript Registry";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/release-25.05";
+    nixpkgs.url = "github:nixos/nixpkgs/release-25.11";
     flake-utils.url = "github:numtide/flake-utils";
 
-    purescript-overlay.url = "github:thomashoneyman/purescript-overlay";
-    purescript-overlay.inputs.nixpkgs.follows = "nixpkgs";
+    purescript-overlay = {
+      url = "github:thomashoneyman/purescript-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
-    mkSpagoDerivation.url = "github:jeslie0/mkSpagoDerivation";
-    mkSpagoDerivation.inputs.nixpkgs.follows = "nixpkgs";
-    mkSpagoDerivation.inputs.ps-overlay.follows = "purescript-overlay";
-
-    slimlock.url = "github:thomashoneyman/slimlock";
-    slimlock.inputs.nixpkgs.follows = "nixpkgs";
+    mkSpagoDerivation = {
+      url = "github:jeslie0/mkSpagoDerivation";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        ps-overlay.follows = "purescript-overlay";
+      };
+    };
   };
 
   outputs =
@@ -22,7 +25,6 @@
       flake-utils,
       purescript-overlay,
       mkSpagoDerivation,
-      slimlock,
       ...
     }:
     let
@@ -34,6 +36,14 @@
         "x86_64-darwin"
         "aarch64-darwin"
       ];
+
+      # The location of the Dhall type specifications, used to type-check manifests.
+      DHALL_TYPES = ./types;
+
+      # We disable git-lfs files explicitly, as this is intended for large files
+      # (typically >4GB), and source packgaes really ought not be shipping large
+      # files — just source code.
+      GIT_LFS_SKIP_SMUDGE = 1;
 
       pureScriptFileset = fileset.intersection (fileset.gitTracked ./.) (
         fileset.unions [
@@ -63,17 +73,8 @@
         }
       }/Prelude/package.dhall";
 
-      # The location of the Dhall type specifications, used to type-check manifests.
-      DHALL_TYPES = ./types;
-
-      # We disable git-lfs files explicitly, as this is intended for large files
-      # (typically >4GB), and source packgaes really ought not be shipping large
-      # files — just source code.
-      GIT_LFS_SKIP_SMUDGE = 1;
       registryOverlay = final: prev: rec {
         nodejs = prev.nodejs_20;
-
-
 
         # Detects arguments to 'git' containing a URL and replaces them with a
         # local filepath. This is a drop-in replacement for 'git' that should be
@@ -154,33 +155,33 @@
               installPhase = "mkdir $out; cp -r * $out";
             };
 
-            package-lock =
-              (prev.slimlock.buildPackageLock {
-                src = fileset.toSource {
-                  root = ./.;
-                  fileset = npmFileset;
-                };
-                omit = [
-                  "dev"
-                  "peer"
-                ];
-              })
-              # better-sqlite3 relies on node-gyp and python3 in the build environment, so
-              # we add those to the native build inputs.
-              .overrideAttrs
-                (
-                  finalAttrs: prevAttrs: {
-                    nativeBuildInputs =
-                      (
-                        prevAttrs.nativeBuildInputs or [ ]
-                        ++ [
-                          prev.python3
-                          prev.nodePackages.node-gyp
-                        ]
-                      )
-                      ++ (if prev.stdenv.isDarwin then [ prev.darwin.cctools ] else [ ]);
-                  }
-                );
+            package-lock = prev.buildNpmPackage {
+              pname = "purescript-registry";
+              version = "0.0.1";
+              src = fileset.toSource {
+                root = ./.;
+                fileset = npmFileset;
+              };
+              dontNpmBuild = true;
+              # Required for better-sqlite3 native compilation
+              nativeBuildInputs =
+                with prev;
+                [
+                  python3
+                  nodePackages.node-gyp
+                ]
+                ++ prev.lib.optionals prev.stdenv.isDarwin [ prev.darwin.cctools ];
+              # To update: run `nix build .#server` and use the hash from the error
+              npmDepsHash = "sha256-vm6k4DUDWUgPcPeym3YhA1hIg1LbHCDRBSH+7Zs52Uw=";
+              # Override the default installPhase because we only need node_modules,
+              # not a packaged npm module.
+              installPhase = ''
+                mkdir -p $out
+                # Remove workspace symlinks (they point to local packages not in this derivation)
+                rm -f node_modules/{registry-app,registry-lib,registry-foreign}
+                mv node_modules $out/
+              '';
+            };
 
             # Produces a list of all PureScript binaries supported by purescript-overlay,
             # ie. those from 0.13 onwards, callable using the naming convention
@@ -248,7 +249,6 @@
           overlays = [
             purescript-overlay.overlays.default
             mkSpagoDerivation.overlays.default
-            slimlock.overlays.default
             registryOverlay
           ];
         };
@@ -299,7 +299,6 @@
                   nixpkgs.overlays = [
                     purescript-overlay.overlays.default
                     mkSpagoDerivation.overlays.default
-                    slimlock.overlays.default
                     registryOverlay
                   ];
                 }
@@ -337,28 +336,29 @@
         };
 
         checks = {
-          spago-test = pkgs.runCommand "spago-test"
-            {
-              inherit (defaultEnv) HEALTHCHECKS_URL;
-              nativeBuildInputs = with pkgs; [
-                nodejs
-                purescript
-                registry.compilers
-                registry.purs-versions
-                licensee
-                git
-                gzip
-                gnutar
-              ];
-            }
-            ''
-              cp -r ${pkgs.registry.spago-lock} src
-              chmod -R +w src
-              cd src
-              ln -s ${pkgs.registry.package-lock}/js/node_modules .
-              node -e "import('./output/Test.Registry.Main/index.js').then(m => m.main())"
-              echo "Tests passed!" > $out
-            '';
+          spago-test =
+            pkgs.runCommand "spago-test"
+              {
+                inherit (defaultEnv) HEALTHCHECKS_URL;
+                nativeBuildInputs = with pkgs; [
+                  nodejs
+                  purs
+                  registry.compilers
+                  registry.purs-versions
+                  licensee
+                  git
+                  gzip
+                  gnutar
+                ];
+              }
+              ''
+                cp -r ${pkgs.registry.spago-lock} src
+                chmod -R +w src
+                cd src
+                ln -s ${pkgs.registry.package-lock}/node_modules .
+                node -e "import('./output/Test.Registry.Main/index.js').then(m => m.main())"
+                echo "Tests passed!" > $out
+              '';
 
           nix-format =
             pkgs.runCommand "nix-format"
@@ -470,7 +470,7 @@
                   REPO_FIXTURES_DIR = "${stateDir}/repo-fixtures";
                 };
               in
-              pkgs.nixosTest {
+              pkgs.testers.nixosTest {
                 name = "server integration test";
                 nodes = {
                   registry = {
@@ -715,7 +715,6 @@
             overlays = [
               purescript-overlay.overlays.default
               mkSpagoDerivation.overlays.default
-              slimlock.overlays.default
               registryOverlay
             ];
           };

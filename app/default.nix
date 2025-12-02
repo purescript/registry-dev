@@ -33,7 +33,7 @@ let
     ];
     nativeBuildInputs = [ purs-backend-es-unstable ];
     buildPhase = ''
-      ln -s ${package-lock}/js/node_modules .
+      ln -s ${package-lock}/node_modules .
       ln -s ${spago-lock}/output .
       echo "Optimizing with purs-backend-es..."
       purs-backend-es build
@@ -70,7 +70,7 @@ in
       main();
     '';
     buildPhase = ''
-      ln -s ${package-lock}/js/node_modules .
+      ln -s ${package-lock}/node_modules .
       cp -r ${shared}/output .
       cp ${entrypoint} entrypoint.js
       esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node --packages=external
@@ -80,7 +80,7 @@ in
 
       echo "Copying files..."
       cp ${name}.js $out/${name}.js
-      ln -s ${package-lock}/js/node_modules $out
+      ln -s ${package-lock}/node_modules $out/node_modules
 
       echo "Copying database..."
       cp -r ${database} $out/bin/db
@@ -122,7 +122,7 @@ in
       main();
     '';
     buildPhase = ''
-      ln -s ${package-lock}/js/node_modules .
+      ln -s ${package-lock}/node_modules .
       cp -r ${shared}/output .
       cp ${entrypoint} entrypoint.js
       esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node --packages=external
@@ -132,7 +132,7 @@ in
 
       echo "Copying files..."
       cp ${name}.js $out/${name}.js
-      ln -s ${package-lock}/js/node_modules $out
+      ln -s ${package-lock}/node_modules $out/node_modules
 
       echo "Creating node script..."
       echo '#!/usr/bin/env sh' > $out/bin/${name}

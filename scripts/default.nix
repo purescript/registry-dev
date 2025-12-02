@@ -35,7 +35,7 @@ let
         main();
       '';
       buildPhase = ''
-        ln -s ${package-lock}/js/node_modules .
+        ln -s ${package-lock}/node_modules .
         ln -s ${spago-lock}/output .
         cp ${entrypoint} entrypoint.js
         esbuild entrypoint.js --bundle --outfile=${name}.js --platform=node --packages=external
@@ -45,7 +45,7 @@ let
 
         echo "Copying files..."
         cp ${name}.js $out/${name}.js
-        ln -s ${package-lock}/js/node_modules $out
+        ln -s ${package-lock}/node_modules $out/node_modules
 
         echo "Creating wrapper script..."
         echo '#!/usr/bin/env sh' > $out/bin/${name}

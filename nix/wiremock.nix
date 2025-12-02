@@ -96,7 +96,8 @@ in
           "--port ${toString cfg.port}"
           "--root-dir ${rootDir}"
           "--disable-banner"
-        ] ++ lib.optional cfg.verbose "--verbose";
+        ]
+        ++ lib.optional cfg.verbose "--verbose";
       in
       {
         description = "registry server";
