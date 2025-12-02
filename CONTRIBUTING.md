@@ -39,9 +39,23 @@ There are three more directories containing code for the registry.
 
 Finally, the `flake.nix` file orchestrates builds for the whole repository.
 
+## Running the Registry Server Locally
+
+The registry server requires a `.env` file and an initialized database. To run the server for development:
+
+```sh
+# 1. Ensure database is initialized (only needed once)
+dbmate up
+
+# 2. Run the server (from the nix shell)
+cd app && spago run
+```
+
+The server will load environment variables from the `.env` file in the project root and run on port 8080 by default.
+
 ## Available Nix Commands
 
-The Registry server can be run locally:
+You can also run the packaged registry server:
 
 ```sh
 nix run .#server
@@ -79,13 +93,6 @@ There is an integration test that will deploy the registry server and make reque
 
 ```sh
 nix build .#checks.x86_64-linux.integration
-```
-
-You can "deploy" the registry server to a local VM and manually hit the API as if it were the production server:
-
-```sh
-# The server will be available at localhost:8080
-nix run
 ```
 
 ### Testing Guidelines
