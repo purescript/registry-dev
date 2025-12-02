@@ -1,5 +1,6 @@
 /node_modules
 /output
+/output-es
 /scratch
 /.vscode
 
@@ -14,6 +15,7 @@ result
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
+.spec-results
 
 # Keep it secret, keep it safe.
 .env

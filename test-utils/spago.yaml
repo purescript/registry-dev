@@ -1,0 +1,24 @@
+package:
+  name: registry-test-utils
+  build:
+    pedanticPackages: true
+  dependencies:
+    - arrays
+    - bifunctors
+    - codec-json
+    - datetime
+    - either
+    - exceptions
+    - foldable-traversable
+    - formatters
+    - json
+    - maybe
+    - ordered-collections
+    - partial
+    - prelude
+    - registry-lib
+    - spec
+    - strings
+    - transformers
+    - tuples
+    - unsafe-coerce

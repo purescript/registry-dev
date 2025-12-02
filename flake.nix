@@ -2,7 +2,7 @@
   description = "The PureScript Registry";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/release-24.05";
+    nixpkgs.url = "github:nixos/nixpkgs/release-25.05";
     flake-utils.url = "github:numtide/flake-utils";
 
     flake-compat.url = "github:edolstra/flake-compat";
@@ -11,16 +11,20 @@
     purescript-overlay.url = "github:thomashoneyman/purescript-overlay";
     purescript-overlay.inputs.nixpkgs.follows = "nixpkgs";
 
+    mkSpagoDerivation.url = "github:jeslie0/mkSpagoDerivation";
+    mkSpagoDerivation.inputs.nixpkgs.follows = "nixpkgs";
+    mkSpagoDerivation.inputs.ps-overlay.follows = "purescript-overlay";
+
     slimlock.url = "github:thomashoneyman/slimlock";
     slimlock.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
     {
-      self,
       nixpkgs,
       flake-utils,
       purescript-overlay,
+      mkSpagoDerivation,
       slimlock,
       ...
     }:
@@ -34,9 +38,6 @@
         "aarch64-darwin"
       ];
 
-      # Users authorized to deploy to the registry.
-      deployers = import ./nix/deployers.nix;
-
       pureScriptFileset = fileset.intersection (fileset.gitTracked ./.) (
         fileset.unions [
           ./app
@@ -44,6 +45,7 @@
           ./foreign
           ./lib
           ./scripts
+          ./test-utils
           ./spago.lock
           ./spago.yaml
         ]
@@ -81,7 +83,7 @@
         # We don't want to force everyone to update their configs if they aren't
         # normally on flakes.
         nixFlakes = prev.writeShellScriptBin "nixFlakes" ''
-          exec ${prev.nixFlakes}/bin/nix --experimental-features "nix-command flakes" "$@"
+          exec ${prev.nixVersions.stable}/bin/nix --experimental-features "nix-command flakes" "$@"
         '';
 
         # Detects arguments to 'git' containing a URL and replaces them with a
@@ -149,12 +151,15 @@
         # Packages associated with the registry, ie. in this repository.
         registry =
           let
-            spago-lock = prev.purix.buildSpagoLock {
-              src = fileset.toSource {
-                root = ./.;
-                fileset = pureScriptFileset;
-              };
-              corefn = true;
+            spago-lock = prev.mkSpagoDerivation {
+              name = "registry";
+              src = ./.;
+              nativeBuildInputs = [
+                prev.pkgs.spago-bin.spago-0_93_44
+                prev.pkgs.purescript
+              ];
+              buildPhase = "spago build";
+              installPhase = "mkdir $out; cp -r * $out";
             };
 
             package-lock =
@@ -250,6 +255,7 @@
           inherit system;
           overlays = [
             purescript-overlay.overlays.default
+            mkSpagoDerivation.overlays.default
             slimlock.overlays.default
             registryOverlay
           ];
@@ -270,12 +276,12 @@
           set -euo pipefail
           WORKDIR=$(mktemp -d)
           cp spago.yaml spago.lock $WORKDIR
-          cp -a app foreign lib scripts types $WORKDIR
+          cp -a app foreign lib scripts test-utils types $WORKDIR
           ln -s ${pkgs.registry.package-lock}/js/node_modules $WORKDIR/node_modules
 
           pushd $WORKDIR
           export HEALTHCHECKS_URL=${defaultEnv.HEALTHCHECKS_URL}
-          ${pkgs.spago-bin.spago-0_93_19}/bin/spago test
+          ${pkgs.spago-bin.spago-0_93_44}/bin/spago test
 
           popd
         '';
@@ -283,6 +289,7 @@
         mkAppOutput = drv: {
           type = "app";
           program = "${drv}/bin/${drv.name}";
+          meta.description = drv.meta.description or "PureScript Registry ${drv.name}";
         };
 
         # A full set of environment variables, each set to their default values
@@ -327,6 +334,7 @@
                 {
                   nixpkgs.overlays = [
                     purescript-overlay.overlays.default
+                    mkSpagoDerivation.overlays.default
                     slimlock.overlays.default
                     registryOverlay
                   ];
@@ -357,8 +365,11 @@
         packages = pkgs.registry.apps // pkgs.registry.scripts;
 
         apps = pkgs.lib.mapAttrs (_: drv: mkAppOutput drv) packages // {
-          default.type = "app";
-          default.program = "${run-vm}";
+          default = {
+            type = "app";
+            program = "${run-vm}";
+            meta.description = "Run the registry server in a NixOS VM";
+          };
         };
 
         checks = {
@@ -868,7 +879,7 @@
 
               # Development tooling
               purs
-              spago-bin.spago-0_93_19 # until new lockfile format supported by overlay
+              spago-bin.spago-0_93_44
               purs-tidy-unstable
               purs-backend-es-unstable
             ];
@@ -885,6 +896,7 @@
             system = "x86_64-linux";
             overlays = [
               purescript-overlay.overlays.default
+              mkSpagoDerivation.overlays.default
               slimlock.overlays.default
               registryOverlay
             ];
