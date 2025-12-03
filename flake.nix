@@ -34,6 +34,7 @@
       pureScriptFileset = fileset.intersection (fileset.gitTracked ./.) (
         fileset.unions [
           ./app
+          ./app-e2e
           ./foreign
           ./lib
           ./scripts
@@ -58,8 +59,6 @@
         }
       }/Prelude/package.dhall";
 
-      registryLib = import ./nix/lib { lib = nixpkgs.lib; };
-
       # Build sources with filesets
       spagoSrc = fileset.toSource {
         root = ./.;
@@ -76,11 +75,16 @@
         inherit
           purescript-overlay
           mkSpagoDerivation
-          registryLib
           spagoSrc
           npmSrc
           ;
       };
+
+      # Shared Nix utilities
+      nixLib = import ./nix/lib.nix { lib = nixpkgs.lib; };
+
+      # Parse .env.example for devShell defaults
+      envDefaults = nixLib.parseEnvFile (builtins.readFile ./.env.example);
     in
     flake-utils.lib.eachSystem supportedSystems (
       system:
@@ -89,12 +93,20 @@
           inherit system overlays;
         };
 
-        defaultEnv = registryLib.parseEnv ./.env.example // {
-          inherit DHALL_PRELUDE DHALL_TYPES GIT_LFS_SKIP_SMUDGE;
+        # Process-compose based test environment
+        testEnv = import ./nix/test/test-env.nix {
+          inherit pkgs;
+          lib = pkgs.lib;
+          rootPath = ./.;
         };
       in
       {
-        packages = pkgs.registry.apps // pkgs.registry.scripts;
+        packages =
+          pkgs.registry.apps
+          // pkgs.registry.scripts
+          // {
+            test-env = testEnv.testEnvScript;
+          };
 
         apps =
           let
@@ -104,7 +116,14 @@
               meta = drv.meta or { };
             };
           in
-          pkgs.lib.mapAttrs mkApp (pkgs.registry.apps // pkgs.registry.scripts);
+          pkgs.lib.mapAttrs mkApp (pkgs.registry.apps // pkgs.registry.scripts)
+          // {
+            test-env = {
+              type = "app";
+              program = "${testEnv.testEnvScript}/bin/test-env";
+              meta.description = "Start the registry test environment with mocked services";
+            };
+          };
 
         checks = {
           spago-test =
@@ -117,7 +136,6 @@
                     purs
                   ]
                   ++ registry-runtime-deps;
-                HEALTHCHECKS_URL = defaultEnv.HEALTHCHECKS_URL or "";
               }
               ''
                 cp -r ${pkgs.registry-spago-lock} src && chmod -R +w src && cd src
@@ -174,7 +192,13 @@
                 touch $out
               '';
 
-          integration = pkgs.callPackage ./nix/test/integration.nix {
+          # Integration test - exercises the server API
+          integration = import ./nix/test/integration.nix {
+            inherit pkgs spagoSrc testEnv;
+          };
+
+          # VM smoke test - verifies deployment without full API testing
+          smoke = pkgs.callPackage ./nix/test/smoke.nix {
             inherit overlays;
             rootPath = ./.;
           };
@@ -183,6 +207,11 @@
         devShells.default = pkgs.mkShell {
           name = "registry-dev";
           inherit GIT_LFS_SKIP_SMUDGE;
+
+          # Development defaults from .env.example
+          SERVER_PORT = envDefaults.SERVER_PORT;
+          DATABASE_URL = envDefaults.DATABASE_URL;
+
           packages =
             with pkgs;
             registry-runtime-deps
@@ -198,6 +227,7 @@
               spago
               purs-tidy-unstable
               purs-backend-es-unstable
+              process-compose
             ];
         };
       }

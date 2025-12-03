@@ -31,6 +31,11 @@ The registry is a significant PureScript application split into several runnable
 - `lib` contains library code meant for other PureScript packages (such as Spago) to reuse. Core registry types and functions go here, and we are careful not to introduce breaking changes unless absolutely necessary.
 - `scripts` contains runnable modules written on top of the app for performing registry tasks like uploading and transferring packages.
 
+There are two additional PureScript directories focused on testing only:
+
+- `app-e2e` contains tests that exercise the server API, which requires that a server and associated wiremock services are running
+- `test-utils` contains utility code intended only for tests
+
 There are three more directories containing code for the registry.
 
 - `db` contains schemas and migrations for the sqlite3 database used by the server.
@@ -52,6 +57,51 @@ cd app && spago run
 ```
 
 The server will load environment variables from the `.env` file in the project root and run on port 8080 by default.
+
+## Quick Start: Running Integration Tests
+
+There are two kinds of tests we use to verify the registry server. The first is a smoke test which runs in a Nix VM and is used to verify deployment only. The second is a lightweight combination of the server with wiremock instances to mock external services. Here's how to run them:
+
+### Smoke Test
+
+You can run the smoke test with the following -- Linux-only.
+
+```sh
+nix build .#checks.x86_64-linux.smoke -L
+```
+
+### Integration Test
+
+```sh
+# Terminal 1: Start the test environment (wiremock mocks + registry server)
+nix run .#test-env
+
+# Terminal 2: Once the server is ready, run the E2E tests
+spago run -p registry-app-e2e
+```
+
+The test environment:
+- Starts wiremock services mocking GitHub, S3, Pursuit, etc.
+- Starts the registry server on port 9000 with a temporary SQLite database
+- Uses fixture data from `app/fixtures/`
+
+Press `Ctrl+C` in Terminal 1 to stop all services. State is cleaned up automatically.
+
+All arguments after `--` are passed directly to process-compose:
+
+```sh
+# Use interactive TUI instead of log streaming
+nix run .#test-env -- --tui
+
+# Run detached (background mode)
+nix run .#test-env -- --detached
+
+# When detached, manage with process-compose:
+process-compose attach           # Attach TUI
+process-compose down             # Stop all services
+```
+
+You can also set `STATE_DIR` to use a persistent state directory instead of a temp dir.
 
 ## Available Nix Commands
 
@@ -89,12 +139,6 @@ There are also a number of checks run by the Nix flake for non-PureScript code, 
 nix flake check -L
 ```
 
-There is an integration test that will deploy the registry server and make requests to the API, which you can run if you are on a Linux machine. It is included in the `nix flake check` command by default, but it can be convenient to run standalone as well:
-
-```sh
-nix build .#checks.x86_64-linux.integration
-```
-
 ### Testing Guidelines
 
 The PureScript code in the registry is well-tested, ranging from tests for individual functions to full end-to-end tests for the registry server running in a NixOS machine configured the same way as the deployed machine. The smaller and more pure the test, the easier it is to write and maintain; most code is tested via unit tests written with `spec`, and only the core pipelines are run in the integration test.
@@ -115,17 +159,9 @@ The mock tests use fixtures to represent remote resources. For example, instead 
 
 The function under test will only have access to data in these fixtures.
 
-### Integration Tests
+### Notes on Mocking External Services
 
-There is an integration test that will deploy the production registry server (no mock effects) and then execute a number of requests against its API. On x86_64-linux machines you can run it:
-
-```sh
-nix build checks.x86_64-linux.integration
-```
-
-The integration test uses the same server machine that we deploy. It makes requests to the GitHub API and our S3 storage, executes `git` commands against the upstream registry, registry-index, and package-sets repositories, accesses a SQLite database, and so on. In other words, it uses the real-world implementations of the `Registry`, `GitHub`, `Storage`, and other effects. It is the most complicated to set up, so the integration tests **should be kept minimal**. If it is possible to use unit tests or mock effects, use those instead. The integration test ensures that each API endpoint is usable, but scenarios more complicated than standard usage should be done in mock effect tests instead.
-
-Of course, we don't _actually_ want to touch any real-world data and in a Nix test environment we cannot access the network arbitrarily. Instead we hijack the effect implementations from the outside and supply the same fixtures which are available in the mock effect tests. There are two external methods of access we need to replace.
+The registry relies heavily on external services like git forges (via `git`), as well as the Pursuit, GitHub, S3, and other APIs. We mock these services so we can test the server locally without modifying any sensitive data. Below is our approach.
 
 #### Intercepting Git
 
@@ -137,7 +173,7 @@ The wrapped git needs to know where the fixture data lives on the integration te
 
 #### Intercepting HTTPS
 
-Likewise, we can replace HTTP requests with [wiremock](https://wiremock.org). This tool allows us to return fixture results to HTTP requests. Each API we access has its own wiremock service set up with fixture data; the basic service definition is in the [`nix/wiremock.nix`](./nix/wiremock.nix) file, and individual services with their fixture data are found in the [`flake.nix`](./flake.nix) file. Instead of sending requests to e.g. the GitHub API at https://api.github.com we send them to the local Wiremock server. To do that, we configure our integration test VM with the base URLs for each API we hit. For example:
+Likewise, we can replace HTTP requests with [wiremock](https://wiremock.org). This tool allows us to return fixture results to HTTP requests. Each API we access has its own wiremock service set up with fixture data. The wiremock configuration (ports, mappings, and fixture files) is centralized in [`nix/test/config.nix`](./nix/test/config.nix). Environment variables are defined in [`nix/lib/env.nix`](./nix/lib/env.nix). Instead of sending requests to e.g. the GitHub API at https://api.github.com we send them to the local Wiremock server. To do that, we configure our integration test with the base URLs for each API we hit. For example:
 
 ```sh
 # Requests to the GitHub API via Octokit
@@ -182,32 +218,6 @@ services.wiremock-github-api = {
 ```
 
 It is also possible to include specific files that should be returned to requests via the `files` key. Here's another short example of setting up an S3 mock, in which we copy files from the fixtures into the wiremock service's working directory given a particular file name, and then write request/response mappings that respond to requests by reading the file at path given by `bodyFileName`.
-
-```nix
-services.wiremock-s3-api = {
-  enable = true;
-  port = 9002;
-  files = [
-    {
-      name = "prelude-6.0.1.tar.gz";
-      path = ./app/fixtures/registry-storage/prelude-6.0.1.tar.gz;
-    }
-  ];
-  mappings = [
-    {
-      request = {
-        method = "GET";
-        url = "/prelude/6.0.1.tar.gz";
-      };
-      response = {
-        status = 200;
-        headers."Content-Type" = "application/octet-stream";
-        bodyFileName = "prelude-6.0.1.tar.gz";
-      };
-    }
-  ];
-};
-```
 
 ## Deployment
 

@@ -8,17 +8,15 @@
 #   - Build optimization: Apps share a pre-compiled output (app) since they
 #     use the same dependencies and source. Scripts also use this to avoid recompiling.
 {
-  registryLib,
   spagoSrc,
   npmSrc,
 }:
 final: prev:
 let
-  # Shared compiled output for all apps. Both registry-server and registry-github-importer
+  # Shared optimized output for apps. Both registry-server and registry-github-importer
   # are built from ./app with the same dependencies, so we compile once and reuse.
-  # Scripts in ./scripts depend on registry-app, so they also benefit from this cache.
   app = prev.stdenv.mkDerivation {
-    name = "registry-app-shared";
+    name = "registry-app-optimized";
     src = ../../app;
     nativeBuildInputs = [ prev.purs-backend-es-unstable ];
 
@@ -81,6 +79,74 @@ let
       description = "List supported compiler versions";
     };
   };
+
+  # Helper function for building registry PureScript executables.
+  # Compiles a PureScript module to an esbuild-bundled Node.js executable.
+  buildRegistryPackage =
+    {
+      name,
+      module,
+      description,
+      src,
+      spagoLock,
+      extraInstall ? "",
+    }:
+    {
+      lib,
+      stdenv,
+      makeWrapper,
+      esbuild,
+      writeText,
+      nodejs,
+      registry-runtime-deps,
+      registry-package-lock,
+    }:
+    let
+      entrypoint = writeText "entrypoint.js" ''
+        import { main } from "./output/${module}";
+        main();
+      '';
+    in
+    stdenv.mkDerivation {
+      inherit name src;
+
+      nativeBuildInputs = [
+        esbuild
+        makeWrapper
+      ];
+
+      buildInputs = [ nodejs ];
+
+      meta = {
+        inherit description;
+        mainProgram = name;
+      };
+
+      buildPhase = ''
+        runHook preBuild
+        ln -s ${registry-package-lock}/node_modules .
+        cp -r ${spagoLock}/output .
+        cp ${entrypoint} entrypoint.js
+        esbuild entrypoint.js \
+          --bundle \
+          --outfile=${name}.js \
+          --platform=node \
+          --packages=external
+        runHook postBuild
+      '';
+
+      installPhase = ''
+        runHook preInstall
+        mkdir -p $out/bin
+        cp ${name}.js $out/${name}.js
+        makeWrapper ${nodejs}/bin/node $out/bin/${name} \
+          --add-flags "$out/${name}.js" \
+          --set NODE_PATH "${registry-package-lock}/node_modules" \
+          --prefix PATH : "${lib.makeBinPath registry-runtime-deps}"
+        ${extraInstall}
+        runHook postInstall
+      '';
+    };
 in
 {
   # Use Node.js 20 LTS for all registry components
@@ -168,7 +234,7 @@ in
 
   # Applications
 
-  registry-server = prev.callPackage (registryLib.buildRegistryPackage {
+  registry-server = prev.callPackage (buildRegistryPackage {
     name = "registry-server";
     module = "Registry.App.Server";
     description = "PureScript Registry API server";
@@ -177,7 +243,7 @@ in
     extraInstall = "cp -r ${../../db} $out/bin/db";
   }) { };
 
-  registry-github-importer = prev.callPackage (registryLib.buildRegistryPackage {
+  registry-github-importer = prev.callPackage (buildRegistryPackage {
     name = "registry-github-importer";
     module = "Registry.App.GitHubIssue";
     description = "Import packages from GitHub issues";
@@ -190,7 +256,7 @@ in
 // prev.lib.mapAttrs' (
   name: info:
   prev.lib.nameValuePair "registry-${name}" (
-    prev.callPackage (registryLib.buildRegistryPackage {
+    prev.callPackage (buildRegistryPackage {
       name = "registry-${name}";
       module = info.module;
       description = info.description;

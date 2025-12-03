@@ -20,7 +20,8 @@ metadataDirectory = "metadata"
 manifestIndex :: GitHubRepo
 manifestIndex = { owner: "purescript", repo: "registry-index" }
 
--- | The URL of the package storage backend
+-- | The URL of the package storage backend (S3-compatible)
+-- | Used for downloading package tarballs.
 storageUrl :: String
 storageUrl = "https://packages.registry.purescript.org"
 
