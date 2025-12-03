@@ -3,7 +3,6 @@ module Test.Registry where
 import Prelude
 
 import Effect (Effect)
-import Effect.Aff as Aff
 import Test.Registry.Internal as Test.Internal
 import Test.Registry.Manifest as Test.Manifest
 import Test.Registry.ManifestIndex as Test.ManifestIndex
@@ -20,10 +19,10 @@ import Test.Registry.Solver as Test.Solver
 import Test.Registry.Version as Test.Version
 import Test.Spec as Spec
 import Test.Spec.Reporter as Spec.Reporter
-import Test.Spec.Runner as Spec.Runner
+import Test.Spec.Runner.Node (runSpecAndExitProcess)
 
 main :: Effect Unit
-main = Aff.launchAff_ $ Spec.Runner.runSpec [ Spec.Reporter.consoleReporter ] do
+main = runSpecAndExitProcess [ Spec.Reporter.consoleReporter ] do
   Spec.describe "Internal"
     Test.Internal.spec
 
