@@ -15,6 +15,7 @@
 
   outputs =
     {
+      self,
       nixpkgs,
       flake-utils,
       purescript-overlay,
@@ -95,7 +96,7 @@
         testEnv = import ./nix/test/test-env.nix {
           inherit pkgs;
           lib = pkgs.lib;
-          rootPath = ./.;
+          rootPath = self;
         };
       in
       {
@@ -198,7 +199,7 @@
           # VM smoke test - verifies deployment without full API testing
           smoke = pkgs.callPackage ./nix/test/smoke.nix {
             inherit overlays;
-            rootPath = ./.;
+            rootPath = self;
           };
         };
 
