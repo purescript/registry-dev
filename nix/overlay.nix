@@ -17,7 +17,7 @@ let
   # are built from ./app with the same dependencies, so we compile once and reuse.
   app = prev.stdenv.mkDerivation {
     name = "registry-app-optimized";
-    src = ../../app;
+    src = ../app;
     nativeBuildInputs = [ prev.purs-backend-es-unstable ];
 
     phases = [
@@ -238,16 +238,16 @@ in
     name = "registry-server";
     module = "Registry.App.Server";
     description = "PureScript Registry API server";
-    src = ../../app;
+    src = ../app;
     spagoLock = app;
-    extraInstall = "cp -r ${../../db} $out/bin/db";
+    extraInstall = "cp -r ${../db} $out/bin/db";
   }) { };
 
   registry-github-importer = prev.callPackage (buildRegistryPackage {
     name = "registry-github-importer";
     module = "Registry.App.GitHubIssue";
     description = "Import packages from GitHub issues";
-    src = ../../app;
+    src = ../app;
     spagoLock = app;
   }) { };
 
@@ -260,7 +260,7 @@ in
       name = "registry-${name}";
       module = info.module;
       description = info.description;
-      src = ../../scripts/src;
+      src = ../scripts/src;
       spagoLock = final.registry-spago-lock;
     }) { }
   )

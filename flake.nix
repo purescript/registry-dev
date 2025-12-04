@@ -71,14 +71,12 @@
       };
 
       # Overlays
-      overlays = import ./nix/overlays {
-        inherit
-          purescript-overlay
-          mkSpagoDerivation
-          spagoSrc
-          npmSrc
-          ;
-      };
+      registry-overlay = import ./nix/overlay.nix { inherit spagoSrc npmSrc; };
+      overlays = [
+        purescript-overlay.overlays.default
+        mkSpagoDerivation.overlays.default
+        registry-overlay
+      ];
 
       # Shared Nix utilities
       nixLib = import ./nix/lib.nix { lib = nixpkgs.lib; };

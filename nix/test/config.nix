@@ -22,29 +22,37 @@ let
     bucket = serverPort + 2;
     s3 = serverPort + 3;
     pursuit = serverPort + 4;
+    healthchecks = serverPort + 5;
   };
 
   # Default state directory for tests
   defaultStateDir = "/var/lib/registry-server";
 
-  # Test environment variables - these are set by serverStartScript at runtime
-  # based on STATE_DIR. We define the mock service URLs here for reference.
+  # Mock service URLs for test environment
   mockUrls = {
     github = "http://localhost:${toString ports.github}";
     s3 = "http://localhost:${toString ports.s3}";
     bucket = "http://localhost:${toString ports.bucket}";
     pursuit = "http://localhost:${toString ports.pursuit}";
+    healthchecks = "http://localhost:${toString ports.healthchecks}";
   };
 
-  # Placeholder secrets for testing (not real credentials)
-  testSecrets = {
-    GITHUB_TOKEN = "ghp_test_placeholder_token_not_real";
-    PACCHETTIBOTTI_TOKEN = "ghp_test_placeholder_token_not_real";
-    SPACES_KEY = "test_spaces_key_placeholder";
-    SPACES_SECRET = "test_spaces_secret_placeholder";
-    PACCHETTIBOTTI_ED25519 = "dGVzdC1wbGFjZWhvbGRlci1wcml2YXRlLWtleS1mb3ItdGVzdGluZy1vbmx5Cg==";
-    PACCHETTIBOTTI_ED25519_PUB = "c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSVBsYWNlaG9sZGVyS2V5Rm9yVGVzdGluZ09ubHkwMDAwMDAwMDAwMDAgcGFjY2hldHRpYm90dGlAcHVyZXNjcmlwdC5vcmcK";
+  # Complete test environment - starts with .env.example defaults which include
+  # mock secrets, then overrides external services with mock URLs. The DATABASE_URL
+  # and REPO_FIXTURES_DIR vars are derived from STATE_DIR at runtime so those are
+  # implemented in the script directly.
+  testEnv = envDefaults // {
+    # Mock service URLs (override production endpoints)
+    GITHUB_API_URL = mockUrls.github;
+    S3_API_URL = mockUrls.s3;
+    S3_BUCKET_URL = mockUrls.bucket;
+    PURSUIT_API_URL = mockUrls.pursuit;
+    HEALTHCHECKS_URL = mockUrls.healthchecks;
   };
+
+  envToExports =
+    env:
+    lib.concatStringsSep "\n" (lib.mapAttrsToList (name: value: ''export ${name}="${value}"'') env);
 
   # Git mock that redirects URLs to local fixtures; this is necessary because otherwise
   # commands would reach out to GitHub or the other package origins.
@@ -224,6 +232,20 @@ let
     }
   ];
 
+  # Healthchecks API wiremock mappings (simple ping endpoint)
+  healthchecksMappings = [
+    {
+      request = {
+        method = "GET";
+        urlPattern = "/.*";
+      };
+      response = {
+        status = 200;
+        body = "OK";
+      };
+    }
+  ];
+
   # Pursuit API wiremock mappings
   pursuitMappings = [
     {
@@ -313,6 +335,13 @@ let
         mappings = pursuitMappings;
       };
     };
+    healthchecks = {
+      port = ports.healthchecks;
+      rootDir = mkWiremockRoot {
+        name = "healthchecks";
+        mappings = healthchecksMappings;
+      };
+    };
   };
 
   # Combined wiremock root directory with all service mappings
@@ -399,37 +428,23 @@ let
   serverStartScript = pkgs.writeShellScriptBin "start-server" ''
     set -e
 
+    # Set all test environment variables (from envDefaults + mock URLs).
+    ${envToExports testEnv}
+
     # STATE_DIR is required
     if [ -z "''${STATE_DIR:-}" ]; then
       echo "ERROR: STATE_DIR must be set"
       exit 1
     fi
 
-    export PATH="${lib.makeBinPath registryPkgs.registry-runtime-deps}:$PATH"
-    export PATH="${gitMock}/bin:$PATH"
-    export GIT_BINARY="${pkgs.git}/bin/git"
-
-    # Paths derived from STATE_DIR
+    # Runtime paths (derived from STATE_DIR, can't be set statically)
     export DATABASE_URL="sqlite:$STATE_DIR/db/registry.sqlite3"
     export REPO_FIXTURES_DIR="$STATE_DIR/repo-fixtures"
 
-    # Server config
-    export SERVER_PORT="${toString ports.server}"
-
-    # Mock service URLs (override production constants in PureScript)
-    export GITHUB_API_URL="${mockUrls.github}"
-    export S3_API_URL="${mockUrls.s3}"
-    export S3_BUCKET_URL="${mockUrls.bucket}"
-    export PURSUIT_API_URL="${mockUrls.pursuit}"
-    # HEALTHCHECKS_URL is optional - not setting it disables healthcheck pinging
-
-    # Placeholder secrets for testing
-    export GITHUB_TOKEN="${testSecrets.GITHUB_TOKEN}"
-    export PACCHETTIBOTTI_TOKEN="${testSecrets.PACCHETTIBOTTI_TOKEN}"
-    export SPACES_KEY="${testSecrets.SPACES_KEY}"
-    export SPACES_SECRET="${testSecrets.SPACES_SECRET}"
-    export PACCHETTIBOTTI_ED25519="${testSecrets.PACCHETTIBOTTI_ED25519}"
-    export PACCHETTIBOTTI_ED25519_PUB="${testSecrets.PACCHETTIBOTTI_ED25519_PUB}"
+    # PATH setup for runtime deps and git mock
+    export PATH="${lib.makeBinPath registryPkgs.registry-runtime-deps}:$PATH"
+    export PATH="${gitMock}/bin:$PATH"
+    export GIT_BINARY="${pkgs.git}/bin/git"
 
     mkdir -p "$STATE_DIR/db"
 
@@ -457,7 +472,8 @@ in
     ports
     defaultStateDir
     mockUrls
-    testSecrets
+    testEnv
+    envToExports
     gitMock
     gitMockOverlay
     wiremockConfigs

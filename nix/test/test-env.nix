@@ -62,6 +62,7 @@ let
       wiremock-s3 = mkWiremockProcess "s3" ports.s3;
       wiremock-bucket = mkWiremockProcess "bucket" ports.bucket;
       wiremock-pursuit = mkWiremockProcess "pursuit" ports.pursuit;
+      wiremock-healthchecks = mkWiremockProcess "healthchecks" ports.healthchecks;
 
       registry-server = {
         command = "${serverStartScript}/bin/start-server";
@@ -70,6 +71,7 @@ let
           wiremock-s3.condition = "process_healthy";
           wiremock-bucket.condition = "process_healthy";
           wiremock-pursuit.condition = "process_healthy";
+          wiremock-healthchecks.condition = "process_healthy";
         };
         readiness_probe = {
           http_get = {
