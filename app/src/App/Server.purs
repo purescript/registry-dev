@@ -275,7 +275,7 @@ main = do
             loop limit
           pure unit
 
-      -- Read port from SERVER_PORT env var (optional)
+      -- Read port from SERVER_PORT env var (optional, HTTPurple defaults to 8080)
       port <- liftEffect $ Env.lookupOptional serverPort
 
       _close <- HTTPurple.serve
