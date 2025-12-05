@@ -1,9 +1,15 @@
 -- | An effect for reading common data from an environment.
+-- |
+-- | Configuration Philosophy:
+-- | - Production infrastructure URLs are hardcoded here
+-- | - Secrets (tokens, keys) are required env vars with no defaults
+-- | - Local dev conveniences (DATABASE_URL, DHALL_TYPES) have sensible defaults
 module Registry.App.Effect.Env where
 
 import Registry.App.Prelude
 
 import Data.Array as Array
+import Data.Int as Int
 import Data.String as String
 import Data.String.Base64 as Base64
 import Dotenv as Dotenv
@@ -12,7 +18,6 @@ import Effect.Exception as Exception
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
-import Registry.Constants as Constants
 import Registry.Foreign.Octokit (GitHubToken(..), IssueNumber)
 import Run (Run)
 import Run.Reader (Reader)
@@ -25,7 +30,7 @@ type ResourceEnv =
   , s3BucketUrl :: URL
   , githubApiUrl :: URL
   , pursuitApiUrl :: URL
-  , healthchecksUrl :: URL
+  , healthchecksUrl :: Maybe URL
   }
 
 -- | An effect for various external resources (files, databases, API endpoints,
@@ -43,13 +48,16 @@ runResourceEnv = Run.Reader.runReaderAt _resourceEnv
 
 lookupResourceEnv :: forall m. MonadEffect m => m ResourceEnv
 lookupResourceEnv = do
-  dhallTypesEnv <- liftEffect <<< Path.resolve [] =<< lookupWithDefault dhallTypes defaultDhallTypes
-  databaseUrlEnv <- lookupWithDefault databaseUrl defaultDatabaseUrl
-  s3ApiUrlEnv <- lookupWithDefault s3ApiUrl defaultS3ApiUrl
-  s3BucketUrlEnv <- lookupWithDefault s3BucketUrl defaultS3BucketUrl
-  githubApiUrlEnv <- lookupWithDefault githubApiUrl defaultGitHubApiUrl
-  pursuitApiUrlEnv <- lookupWithDefault pursuitApiUrl defaultPursuitApiUrl
-  healthchecksUrlEnv <- lookupRequired healthchecksUrl
+  dhallTypesEnv <- liftEffect <<< Path.resolve [] =<< lookupWithDefault dhallTypes "./types"
+  databaseUrlEnv <- lookupWithDefault databaseUrl { prefix: "sqlite:", path: "db/registry.sqlite3" }
+
+  s3ApiUrlEnv <- lookupWithDefault s3ApiUrl productionS3ApiUrl
+  s3BucketUrlEnv <- lookupWithDefault s3BucketUrl productionS3BucketUrl
+  githubApiUrlEnv <- lookupWithDefault githubApiUrl productionGitHubApiUrl
+  pursuitApiUrlEnv <- lookupWithDefault pursuitApiUrl productionPursuitApiUrl
+
+  -- Optional - if not set, healthcheck pinging is disabled
+  healthchecksUrlEnv <- lookupOptional healthchecksUrl
   pure
     { dhallTypes: dhallTypesEnv
     , databaseUrl: databaseUrlEnv
@@ -136,7 +144,7 @@ lookupOptional (EnvKey { key, decode }) = liftEffect $ Process.lookupEnv key >>=
 
 -- | Look up an optional environment variable, throwing an exception if it is
 -- | present but cannot be decoded, and returning a default value if missing or
--- | empty.
+-- | empty. Use this for local dev conveniences like DATABASE_URL.
 lookupWithDefault :: forall m a. MonadEffect m => EnvKey a -> a -> m a
 lookupWithDefault (EnvKey { key, decode }) default = liftEffect $ Process.lookupEnv key >>= case _ of
   Nothing -> pure default
@@ -149,8 +157,8 @@ lookupWithDefault (EnvKey { key, decode }) default = liftEffect $ Process.lookup
 -- | missing, an empty string, or present but cannot be decoded.
 lookupRequired :: forall m a. MonadEffect m => EnvKey a -> m a
 lookupRequired (EnvKey { key, decode }) = liftEffect $ Process.lookupEnv key >>= case _ of
-  Nothing -> Exception.throw $ key <> " is not present in the environment."
-  Just "" -> Exception.throw $ "Found " <> key <> " in the environment, but its value was an empty string."
+  Nothing -> Exception.throw $ key <> " is not present in the environment. Copy .env.example to .env and fill in your credentials."
+  Just "" -> Exception.throw $ "Found " <> key <> " in the environment, but its value was an empty string. Check your .env file."
   Just value -> case decode value of
     Left error -> Exception.throw $ "Found " <> key <> " in the environment with value " <> value <> ", but it could not be decoded: " <> error
     Right decoded -> pure decoded
@@ -169,51 +177,64 @@ spacesSecret = EnvKey { key: "SPACES_SECRET", decode: pure }
 
 type DatabaseUrl = { prefix :: String, path :: FilePath }
 
--- | The location of the sqlite database
+-- | The location of the sqlite database.
 databaseUrl :: EnvKey DatabaseUrl
 databaseUrl = EnvKey { key: "DATABASE_URL", decode: decodeDatabaseUrl }
 
-defaultDatabaseUrl :: DatabaseUrl
-defaultDatabaseUrl = { prefix: "sqlite:", path: "db/registry.sqlite3" }
-
--- | The location of the Dhall specifications directory
+-- | The location of the Dhall specifications directory.
 dhallTypes :: EnvKey FilePath
 dhallTypes = EnvKey { key: "DHALL_TYPES", decode: pure }
 
-defaultDhallTypes :: FilePath
-defaultDhallTypes = "./types"
-
--- | The base URL of the S3 API
+-- | Override for the S3 storage API URL.
+-- | If not set, uses productionS3ApiUrl.
+-- | Set this to point to mock services during testing.
 s3ApiUrl :: EnvKey URL
 s3ApiUrl = EnvKey { key: "S3_API_URL", decode: pure }
 
-defaultS3ApiUrl :: URL
-defaultS3ApiUrl = Constants.storageUrl
-
--- | The base URL of the S3 API
+-- | Override for the S3 bucket URL.
+-- | If not set, uses productionS3BucketUrl.
+-- | Set this to point to mock services during testing.
 s3BucketUrl :: EnvKey URL
 s3BucketUrl = EnvKey { key: "S3_BUCKET_URL", decode: pure }
 
-defaultS3BucketUrl :: URL
-defaultS3BucketUrl = "https://ams3.digitaloceanspaces.com"
-
--- | The base URL of the GitHub API
+-- | Override for the GitHub API URL.
+-- | If not set, uses productionGitHubApiUrl.
+-- | Set this to point to mock services during testing.
 githubApiUrl :: EnvKey URL
 githubApiUrl = EnvKey { key: "GITHUB_API_URL", decode: pure }
 
-defaultGitHubApiUrl :: URL
-defaultGitHubApiUrl = "https://api.github.com"
-
--- | The base URL of the Pursuit API
+-- | Override for the Pursuit API URL.
+-- | If not set, uses productionPursuitApiUrl.
+-- | Set this to point to mock services during testing.
 pursuitApiUrl :: EnvKey URL
 pursuitApiUrl = EnvKey { key: "PURSUIT_API_URL", decode: pure }
 
-defaultPursuitApiUrl :: URL
-defaultPursuitApiUrl = "https://pursuit.purescript.org"
+-- Production URL defaults (only used by the app, not exposed to library users)
 
--- | The URL of the health checks endpoint
+-- | The URL of the package storage backend (S3-compatible)
+productionS3ApiUrl :: URL
+productionS3ApiUrl = "https://packages.registry.purescript.org"
+
+-- | The URL of the S3 bucket for uploads and listings (DigitalOcean Spaces endpoint)
+productionS3BucketUrl :: URL
+productionS3BucketUrl = "https://ams3.digitaloceanspaces.com"
+
+-- | The GitHub API base URL
+productionGitHubApiUrl :: URL
+productionGitHubApiUrl = "https://api.github.com"
+
+-- | The Pursuit documentation hosting API base URL
+productionPursuitApiUrl :: URL
+productionPursuitApiUrl = "https://pursuit.purescript.org"
+
+-- | The URL of the health checks endpoint.
+-- | Optional - if not set, healthcheck pinging is disabled.
 healthchecksUrl :: EnvKey URL
 healthchecksUrl = EnvKey { key: "HEALTHCHECKS_URL", decode: pure }
+
+-- | The port the server should listen on
+serverPort :: EnvKey Int
+serverPort = EnvKey { key: "SERVER_PORT", decode: \s -> note ("Invalid port: " <> s) (Int.fromString s) }
 
 -- | A GitHub token for the @pacchettibotti user at the PACCHETTIBOTTI_TOKEN key.
 pacchettibottiToken :: EnvKey GitHubToken

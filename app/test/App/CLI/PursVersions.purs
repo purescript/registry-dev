@@ -7,6 +7,7 @@ import Data.Array.NonEmpty as NEA
 import Registry.App.CLI.PursVersions (pursVersions)
 import Registry.Test.Assert as Assert
 import Registry.Test.Assert.Run as Test.Run
+import Registry.Test.Utils (filterAvailableCompilers)
 import Registry.Version as Version
 import Test.Spec as Spec
 
@@ -53,4 +54,7 @@ spec = do
   Spec.it "All expected versions are present in purs-version" do
     versionsNonEmpty <- Test.Run.runBaseEffects pursVersions
     let versions = NEA.toArray versionsNonEmpty
-    Array.sort versions `Assert.shouldEqual` Array.sort knownCompilers
+    -- Filter expected compilers to only those available on the current platform.
+    -- On aarch64-darwin, compilers before 0.15.9 don't have native binaries.
+    let expectedCompilers = filterAvailableCompilers knownCompilers
+    Array.sort versions `Assert.shouldEqual` Array.sort expectedCompilers

@@ -27,7 +27,9 @@ function replaceIfUrl(arg) {
     const url = new URL(arg);
     const path = url.pathname.replace(/\.git$/, "");
     const file = "file://" + repoFixturesDir + path;
-    console.log(file);
+    if (process.env.GIT_MOCK_DEBUG) {
+      console.error(`[git-mock] ${arg} -> ${file}`);
+    }
     return file;
   } catch (e) {
     // Not a URL, ignore

@@ -3,6 +3,7 @@ module Test.Registry.App.CLI.Purs (spec) where
 import Registry.App.Prelude
 
 import Codec.JSON.DecodeError as CJ.DecodeError
+import Data.Array as Array
 import Data.Codec.JSON as CJ
 import Data.Foldable (traverse_)
 import Data.Map as Map
@@ -15,16 +16,25 @@ import Registry.Foreign.Tmp as Tmp
 import Registry.PursGraph (ModuleName(..))
 import Registry.PursGraph as PursGraph
 import Registry.Test.Assert as Assert
+import Registry.Test.Utils (filterAvailableCompilers)
 import Registry.Test.Utils as Utils
 import Registry.Version as Version
 import Test.Spec as Spec
 
 spec :: Spec.Spec Unit
 spec = do
-  traverse_ (testVersion <<< Utils.unsafeVersion) [ "0.13.0", "0.14.0", "0.14.7", "0.15.4" ]
+  -- Filter test versions to only those available on the current platform.
+  -- On aarch64-darwin, compilers before 0.15.9 don't have native binaries.
+  let
+    filterVersions = filterAvailableCompilers <<< map Utils.unsafeVersion
+    filterMaybeVersions = map (map Utils.unsafeVersion) >>> case _ of
+      vs | Utils.isAarch64Darwin -> Array.filter (maybe true (\v -> v >= Utils.minAarch64DarwinCompiler)) vs
+      vs -> vs
+
+  traverse_ testVersion (filterVersions [ "0.13.0", "0.14.0", "0.14.7", "0.15.4" ])
   traverse_ (testMissingVersion <<< Utils.unsafeVersion) [ "0.13.1", "0.13.7", "0.15.1", "0.12.0", "0.14.12345" ]
-  traverse_ (testCompilationError <<< map Utils.unsafeVersion) [ Just "0.13.0", Just "0.13.8", Just "0.14.0", Just "0.15.0", Nothing ]
-  traverse_ (testGraph <<< map Utils.unsafeVersion) [ Just "0.14.0", Just "0.15.0", Nothing ]
+  traverse_ testCompilationError (filterMaybeVersions [ Just "0.13.0", Just "0.13.8", Just "0.14.0", Just "0.15.0", Nothing ])
+  traverse_ testGraph (filterMaybeVersions [ Just "0.14.0", Just "0.15.0", Nothing ])
   where
   testVersion version =
     Spec.it ("Calls compiler version " <> Version.print version) do
