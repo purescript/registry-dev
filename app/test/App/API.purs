@@ -92,7 +92,7 @@ spec = do
           version = Utils.unsafeVersion "4.0.0"
           ref = "v4.0.0"
           publishArgs =
-            { compiler: Utils.unsafeVersion "0.15.4"
+            { compiler: Utils.unsafeVersion "0.15.9"
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-effect", subdir: Nothing }
             , name
             , ref
@@ -139,7 +139,7 @@ spec = do
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to be in metadata."
           Just published -> do
             let many' = NonEmptyArray.toArray published.compilers
-            let expected = map Utils.unsafeVersion [ "0.15.3", "0.15.4", "0.15.5" ]
+            let expected = map Utils.unsafeVersion [ "0.15.9", "0.15.10" ]
             unless (many' == expected) do
               Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
 
@@ -154,7 +154,7 @@ spec = do
         -- but did not have documentation make it to Pursuit.
         let
           pursuitOnlyPublishArgs =
-            { compiler: Utils.unsafeVersion "0.15.4"
+            { compiler: Utils.unsafeVersion "0.15.9"
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-type-equality", subdir: Nothing }
             , name: Utils.unsafePackageName "type-equality"
             , ref: "v4.0.1"
@@ -168,7 +168,7 @@ spec = do
         let
           transitive = { name: Utils.unsafePackageName "transitive", version: Utils.unsafeVersion "1.0.0" }
           transitivePublishArgs =
-            { compiler: Utils.unsafeVersion "0.15.4"
+            { compiler: Utils.unsafeVersion "0.15.9"
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-transitive", subdir: Nothing }
             , name: transitive.name
             , ref: "v" <> Version.print transitive.version
@@ -186,7 +186,7 @@ spec = do
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to be in metadata."
           Just published -> do
             let many' = NonEmptyArray.toArray published.compilers
-            let expected = map Utils.unsafeVersion [ "0.15.3", "0.15.4", "0.15.5" ]
+            let expected = map Utils.unsafeVersion [ "0.15.9", "0.15.10" ]
             unless (many' == expected) do
               Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
 

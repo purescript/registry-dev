@@ -16,7 +16,6 @@
     "package.json"
   ],
   "dependencies": {
-    "purescript-prelude": "^6.0.0",
-    "purescript-type-equality": "^4.0.0"
+    "purescript-prelude": "^6.0.0"
   }
 }

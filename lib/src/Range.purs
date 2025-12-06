@@ -4,7 +4,6 @@
 module Registry.Range
   ( Range
   , caret
-  , exact
   , codec
   , exact
   , greaterThanOrEq

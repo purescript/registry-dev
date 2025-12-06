@@ -380,12 +380,9 @@ let
     for repo in "$FIXTURES_DIR"/purescript/*/; do
       cd "$repo"
       git init -b master && git add .
-
       GIT_AUTHOR_NAME="pacchettibotti" GIT_AUTHOR_EMAIL="pacchettibotti@purescript.org" \
       GIT_COMMITTER_NAME="pacchettibotti" GIT_COMMITTER_EMAIL="pacchettibotti@purescript.org" \
         git commit -m "Fixture commit"
-
-      && git commit -m "Fixture commit"
       git config receive.denyCurrentBranch ignore
     done
 
