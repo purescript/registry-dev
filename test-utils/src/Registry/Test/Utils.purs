@@ -31,6 +31,50 @@ import Registry.Version (Version)
 import Registry.Version as Version
 import Unsafe.Coerce (unsafeCoerce)
 
+foreign import archImpl :: String
+foreign import platformImpl :: String
+
+-- | CPU architecture as reported by Node.js process.arch
+data Arch = ARM64 | X64 | UnknownArch String
+
+derive instance Eq Arch
+
+-- | Operating system platform as reported by Node.js process.platform
+data Platform = Darwin | Linux | UnknownPlatform String
+
+derive instance Eq Platform
+
+-- | Get the current CPU architecture
+arch :: Arch
+arch = case archImpl of
+  "arm64" -> ARM64
+  "x64" -> X64
+  other -> UnknownArch other
+
+-- | Get the current OS platform
+platform :: Platform
+platform = case platformImpl of
+  "darwin" -> Darwin
+  "linux" -> Linux
+  other -> UnknownPlatform other
+
+-- | Returns true if running on Apple Silicon (aarch64-darwin)
+isAarch64Darwin :: Boolean
+isAarch64Darwin = arch == ARM64 && platform == Darwin
+
+-- | The minimum compiler version with native aarch64-darwin binaries.
+-- | Earlier versions only have x86_64-linux and x86_64-darwin builds.
+minAarch64DarwinCompiler :: Version
+minAarch64DarwinCompiler = unsafeVersion "0.15.9"
+
+-- | Filter compiler versions to only those available on the current platform.
+-- | On aarch64-darwin, compilers before 0.15.9 don't have native binaries,
+-- | so tests for those versions should be skipped.
+filterAvailableCompilers :: Array Version -> Array Version
+filterAvailableCompilers versions
+  | isAarch64Darwin = Array.filter (\v -> v >= minAarch64DarwinCompiler) versions
+  | otherwise = versions
+
 -- | Unsafely unpack the `Just` of an `Maybe`, given a message to crash with
 -- | if the value is a `Nothing`.
 fromJust :: forall a. String -> Maybe a -> a

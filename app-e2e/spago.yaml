@@ -1,0 +1,20 @@
+package:
+  name: registry-app-e2e
+  build:
+    pedanticPackages: true
+  dependencies:
+    - aff
+    - arrays
+    - console
+    - datetime
+    - effect
+    - either
+    - maybe
+    - prelude
+    - registry-lib
+    - registry-test-utils
+    - spec
+    - spec-node
+    - strings
+  run:
+    main: Test.E2E.Main

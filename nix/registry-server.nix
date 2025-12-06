@@ -6,6 +6,28 @@
 }:
 let
   cfg = config.services.registry-server;
+
+  # Convert env vars attrset to .env file format
+  envFile = pkgs.writeText ".env" (
+    lib.concatStringsSep "\n" (lib.mapAttrsToList (k: v: "${k}=${toString v}") cfg.envVars)
+  );
+
+  serverInit = pkgs.writeShellScriptBin "registry-server-init" ''
+    mkdir -p ${cfg.stateDir}/db
+
+    set -o allexport
+    source ${envFile}
+    [ -f ${cfg.stateDir}/.env ] && source ${cfg.stateDir}/.env
+    set +o allexport
+
+    export DATABASE_URL="sqlite:${cfg.stateDir}/db/registry.sqlite3"
+
+    cd ${pkgs.registry-server}/bin
+    ${pkgs.dbmate}/bin/dbmate up
+
+    cd ${cfg.stateDir}
+    exec ${pkgs.registry-server}/bin/registry-server
+  '';
 in
 {
   options.services.registry-server = {
@@ -26,13 +48,13 @@ in
     stateDir = lib.mkOption {
       type = lib.types.str;
       default = "/var/lib/registry-server";
-      description = "The directory to store the registry server state (database, etc.)";
+      description = "The directory to store the registry server state";
     };
 
     enableCerts = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Whether to enable Let's Encrypt certificates for the registry server";
+      description = "Whether to enable Let's Encrypt certificates";
     };
 
     envVars = lib.mkOption {
@@ -40,23 +62,20 @@ in
         lib.types.either lib.types.str (lib.types.either lib.types.int lib.types.path)
       );
       default = { };
-      description = "Environment variables to set for the registry server";
+      description = "Environment variables for the registry server";
     };
   };
 
   config = lib.mkIf cfg.enable {
-    environment = {
-      systemPackages = [
-        pkgs.vim
-        pkgs.git
-      ];
-    };
+    environment.systemPackages = [
+      pkgs.vim
+      pkgs.git
+    ];
 
     nix = {
       gc.automatic = true;
       settings = {
         auto-optimise-store = true;
-        # https://garnix.io/docs/caching
         substituters = [ "https://cache.garnix.io" ];
         trusted-public-keys = [ "cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g=" ];
       };
@@ -73,75 +92,37 @@ in
 
     users = {
       mutableUsers = false;
-
       users =
         let
           deployers = import ./deployers.nix;
         in
-        pkgs.lib.mapAttrs (user: attrs: {
+        lib.mapAttrs (user: attrs: {
           isNormalUser = true;
           home = "/home/${user}";
           extraGroups = [ "wheel" ];
-          packages = [
-            pkgs.rsync
-            pkgs.git
-            pkgs.curl
-            pkgs.coreutils
-            pkgs.vim
+          packages = with pkgs; [
+            rsync
+            git
+            curl
+            coreutils
+            vim
           ];
           openssh.authorizedKeys.keys = attrs.sshKeys;
         }) deployers;
     };
 
-    systemd.services =
-      let
-        # Print an attrset of env vars { ENV_VAR = "value"; } as a newline-delimited
-        # string of "ENV_VAR=value" lines, then write the text to the Nix store.
-        printEnv =
-          vars:
-          pkgs.lib.concatStringsSep "\n" (
-            pkgs.lib.mapAttrsToList (
-              name: value:
-              if (builtins.typeOf value == "int") then "${name}=${toString value}" else "${name}=${value}"
-            ) vars
-          );
-        defaultEnvFile = pkgs.writeText ".env" (printEnv cfg.envVars);
-      in
-      {
-        server = {
-          description = "registry server";
-          wantedBy = [
-            "multi-user.target"
-            "nginx.service"
-          ];
-          serviceConfig = {
-            ExecStart = "${pkgs.writeShellScriptBin "registry-server-init" ''
-              # Ensure the state directory is available and initialize the database
-              mkdir -p ${cfg.stateDir}/db
-
-              # Initialize environment variables
-              set -o allexport
-              source ${defaultEnvFile}
-
-              # If a .env file exists in the stateDir then we will use it instead;
-              # this overwrites the cfg.envVars settings.
-              if [ -f ${cfg.stateDir}/.env ]; then
-                echo "Production .env file found! Values will overwrite the defaults."
-                source ${cfg.stateDir}/.env
-              fi
-              set +o allexport
-
-              export DATABASE_URL="sqlite:${cfg.stateDir}/db/registry.sqlite3"
-              pushd ${pkgs.registry.apps.server}/bin
-              ${pkgs.dbmate}/bin/dbmate up
-              popd
-
-              echo "Starting registry server..."
-              ${pkgs.registry.apps.server}/bin/registry-server
-            ''}/bin/registry-server-init";
-          };
-        };
+    systemd.services.server = {
+      description = "registry server";
+      wantedBy = [
+        "multi-user.target"
+        "nginx.service"
+      ];
+      serviceConfig = {
+        ExecStart = "${serverInit}/bin/registry-server-init";
+        Type = "simple";
+        Restart = "always";
       };
+    };
 
     swapDevices = [
       {
@@ -178,11 +159,7 @@ in
               <html>
               <head>
                 <title>PureScript Registry</title>
-                <style>
-                  body {
-                    font-family: sans-serif;
-                  }
-                </style>
+                <style>body { font-family: sans-serif; }</style>
               </head>
               <body>
                 <h1>PureScript Registry</h1>
@@ -192,9 +169,7 @@ in
             '';
           };
 
-          locations."/api" = {
-            proxyPass = "http://127.0.0.1:${toString cfg.port}";
-          };
+          locations."/api".proxyPass = "http://127.0.0.1:${toString cfg.port}";
         };
       };
     };

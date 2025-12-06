@@ -28,7 +28,7 @@ import Registry.App.Effect.Comment (COMMENT)
 import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Db (DB)
 import Registry.App.Effect.Db as Db
-import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV, RESOURCE_ENV, ResourceEnv)
+import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV, RESOURCE_ENV, ResourceEnv, serverPort)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -233,64 +233,60 @@ main = do
       Console.log $ "Failed to start server: " <> Aff.message error
       Process.exit' 1
     Right env -> do
-      _healthcheck <- Aff.launchAff do
-        let
-          limit = 10
-          oneMinute = Aff.Milliseconds (1000.0 * 60.0)
-          fiveMinutes = Aff.Milliseconds (1000.0 * 60.0 * 5.0)
+      -- Start healthcheck ping loop if URL is configured
+      case env.vars.resourceEnv.healthchecksUrl of
+        Nothing -> Console.log "HEALTHCHECKS_URL not set, healthcheck pinging disabled"
+        Just healthchecksUrl -> do
+          _healthcheck <- Aff.launchAff do
+            let
+              limit = 10
+              oneMinute = Aff.Milliseconds (1000.0 * 60.0)
+              fiveMinutes = Aff.Milliseconds (1000.0 * 60.0 * 5.0)
 
-          loop n =
-            Fetch.Retry.withRetryRequest env.vars.resourceEnv.healthchecksUrl {} >>= case _ of
-              Succeeded { status } | status == 200 -> do
-                Aff.delay fiveMinutes
-                loop n
+              loop n =
+                Fetch.Retry.withRetryRequest healthchecksUrl {} >>= case _ of
+                  Succeeded { status } | status == 200 -> do
+                    Aff.delay fiveMinutes
+                    loop n
 
-              Cancelled | n >= 0 -> do
-                Console.warn $ "Healthchecks cancelled, will retry..."
-                Aff.delay oneMinute
-                loop (n - 1)
+                  Cancelled | n >= 0 -> do
+                    Console.warn $ "Healthchecks cancelled, will retry..."
+                    Aff.delay oneMinute
+                    loop (n - 1)
 
-              Failed error | n >= 0 -> do
-                Console.warn $ "Healthchecks failed, will retry: " <> Fetch.Retry.printRetryRequestError error
-                Aff.delay oneMinute
-                loop (n - 1)
+                  Failed error | n >= 0 -> do
+                    Console.warn $ "Healthchecks failed, will retry: " <> Fetch.Retry.printRetryRequestError error
+                    Aff.delay oneMinute
+                    loop (n - 1)
 
-              Succeeded { status } | status /= 200, n >= 0 -> do
-                Console.error $ "Healthchecks returned non-200 status, will retry: " <> show status
-                Aff.delay oneMinute
-                loop (n - 1)
+                  Succeeded { status } | status /= 200, n >= 0 -> do
+                    Console.error $ "Healthchecks returned non-200 status, will retry: " <> show status
+                    Aff.delay oneMinute
+                    loop (n - 1)
 
-              Cancelled ->
-                Console.error "Healthchecks cancelled and failure limit reached, will not retry."
+                  Cancelled ->
+                    Console.error "Healthchecks cancelled and failure limit reached, will not retry."
 
-              Failed error -> do
-                Console.error $ "Healthchecks failed and failure limit reached, will not retry: " <> Fetch.Retry.printRetryRequestError error
+                  Failed error -> do
+                    Console.error $ "Healthchecks failed and failure limit reached, will not retry: " <> Fetch.Retry.printRetryRequestError error
 
-              Succeeded _ -> do
-                Console.error $ "Healthchecks returned non-200 status and failure limit reached, will not retry."
+                  Succeeded _ -> do
+                    Console.error $ "Healthchecks returned non-200 status and failure limit reached, will not retry."
 
-        loop limit
+            loop limit
+          pure unit
+
+      -- Read port from SERVER_PORT env var (optional, HTTPurple defaults to 8080)
+      port <- liftEffect $ Env.lookupOptional serverPort
 
       _close <- HTTPurple.serve
         { hostname: "0.0.0.0"
-        , port: 8080
-        , onStarted
+        , port
         }
         { route: V1.routes
         , router: runServer env router
         }
       pure unit
-  where
-  onStarted :: Effect Unit
-  onStarted = do
-    Console.log $ String.joinWith "\n"
-      [ " ┌───────────────────────────────────────────┐"
-      , " │ Server now up on port 8080                │"
-      , " │                                           │"
-      , " │ To test, run:                             │"
-      , " │  > curl -v localhost:8080/api/v1/jobs     │"
-      , " └───────────────────────────────────────────┘"
-      ]
 
 jsonDecoder :: forall a. CJ.Codec a -> JsonDecoder CJ.DecodeError a
 jsonDecoder codec = JsonDecoder (parseJson codec)
