@@ -31,7 +31,7 @@ import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.List.NonEmpty as NonEmptyList
 import Data.Map (SemigroupMap(..))
 import Data.Map as Map
-import Data.Newtype (over, unwrap)
+import Data.Newtype (over)
 import Data.Number.Format as Number.Format
 import Data.Set as Set
 import Data.Set.NonEmpty as NonEmptySet

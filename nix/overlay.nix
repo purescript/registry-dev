@@ -183,7 +183,7 @@ in
       ++ prev.lib.optionals prev.stdenv.isDarwin [ prev.darwin.cctools ];
 
     # To update: run `nix build .#server` and copy the hash from the error
-    npmDepsHash = "sha256-vm6k4DUDWUgPcPeym3YhA1hIg1LbHCDRBSH+7Zs52Uw=";
+    npmDepsHash = "sha256-Ju7R6Sa+NIHD8fkxLxicqToPLxLD4RM4wvl6bktE/7Y=";
 
     installPhase = ''
       mkdir -p $out
@@ -236,7 +236,7 @@ in
 
   registry-server = prev.callPackage (buildRegistryPackage {
     name = "registry-server";
-    module = "Registry.App.Server";
+    module = "Registry.App.Main";
     description = "PureScript Registry API server";
     src = ../app;
     spagoLock = app;

@@ -4,10 +4,8 @@ import Registry.App.Prelude hiding ((/))
 
 import Control.Monad.Cont (ContT)
 import Data.Codec.JSON as CJ
-import Data.String as String
 import Data.UUID.Random as UUID
 import Effect.Aff as Aff
-import Effect.Class.Console as Console
 import HTTPurple (Method(..), Request, Response)
 import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
@@ -47,14 +45,14 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
   Publish, Post -> do
     publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
     lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
-    forkPackageJob $ Operation.Publish publish
+    insertPackageJob $ Operation.Publish publish
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
     case auth.payload of
       Operation.Unpublish payload -> do
         lift $ Log.info $ "Received Unpublish request: " <> printJson Operation.unpublishCodec payload
-        forkPackageJob $ Operation.Authenticated auth
+        insertPackageJob $ Operation.Authenticated auth
       _ ->
         HTTPurple.badRequest "Expected unpublish operation."
 
@@ -63,12 +61,14 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
     case auth.payload of
       Operation.Transfer payload -> do
         lift $ Log.info $ "Received Transfer request: " <> printJson Operation.transferCodec payload
-        forkPackageJob $ Operation.Authenticated auth
+        insertPackageJob $ Operation.Authenticated auth
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
+  -- TODO return jobs
   Jobs, Get -> do
-    jsonOk (CJ.array V1.jobCodec) [ { jobId: wrap "foo", createdAt: bottom, finishedAt: Nothing, success: true, logs: [] } ]
+    now <- liftEffect nowUTC
+    jsonOk (CJ.array V1.jobCodec) [ { jobId: wrap "foo", createdAt: now, finishedAt: Nothing, success: true, logs: [] } ]
 
   Job jobId { level: maybeLogLevel, since }, Get -> do
     let logLevel = fromMaybe Error maybeLogLevel
@@ -77,7 +77,7 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
       Left err -> do
         lift $ Log.error $ "Error while fetching job: " <> err
         HTTPurple.notFound
-      Right Nothing ->
+      Right Nothing -> do
         HTTPurple.notFound
       Right (Just job) ->
         jsonOk V1.jobCodec
@@ -97,8 +97,8 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
   _, _ ->
     HTTPurple.notFound
   where
-  forkPackageJob :: PackageOperation -> ContT Response (Run _) Response
-  forkPackageJob operation = do
+  insertPackageJob :: PackageOperation -> ContT Response (Run _) Response
+  insertPackageJob operation = do
     lift $ Log.info $ "Enqueuing job for package " <> PackageName.print (Operation.packageName operation)
     jobId <- newJobId
     lift $ Db.insertPackageJob { jobId, payload: operation }

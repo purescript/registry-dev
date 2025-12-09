@@ -44,7 +44,7 @@ const _insertJob = (db, table, columns, job) => {
 
   const insertInfo = db.prepare(`
     INSERT INTO ${JOB_INFO_TABLE} (jobId, createdAt, startedAt, finishedAt, success)
-    VALUES (@jobId, @createdAt, @startedAt, @finishedAt, @success
+    VALUES (@jobId, @createdAt, @startedAt, @finishedAt, @success)
   `);
 
   const insertJob = db.prepare(`
@@ -67,17 +67,17 @@ const _insertJob = (db, table, columns, job) => {
 };
 
 export const insertPackageJobImpl = (db, job) => {
-  const columns = [ 'jobId', 'jobType', 'payload' ]
+  const columns = ['jobId', 'jobType', 'packageName', 'payload']
   return _insertJob(db, PACKAGE_JOBS_TABLE, columns, job);
 };
 
 export const insertMatrixJobImpl = (db, job) => {
-  const columns = [ 'jobId', 'compilerVersion', 'payload' ]
+  const columns = ['jobId', 'packageName', 'packageVersion', 'compilerVersion', 'payload']
   return _insertJob(db, MATRIX_JOBS_TABLE, columns, job);
 };
 
 export const insertPackageSetJobImpl = (db, job) => {
-  const columns = [ 'jobId', 'payload' ]
+  const columns = ['jobId', 'payload']
   return _insertJob(db, PACKAGE_SET_JOBS_TABLE, columns, job);
 };
 
@@ -87,6 +87,7 @@ export const selectNextPackageJobImpl = (db) => {
     FROM ${PACKAGE_JOBS_TABLE} job
     JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
     WHERE info.finishedAt IS NULL
+    AND info.startedAt IS NULL
     ORDER BY info.createdAt DESC
     LIMIT 1
   `);
@@ -99,6 +100,7 @@ export const selectNextMatrixJobImpl = (db) => {
     FROM ${MATRIX_JOBS_TABLE} job
     JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
     WHERE info.finishedAt IS NULL
+    AND info.startedAt IS NULL
     ORDER BY info.createdAt DESC
     LIMIT 1
   `);
@@ -111,6 +113,7 @@ export const selectNextPackageSetJobImpl = (db) => {
     FROM ${PACKAGE_SET_JOBS_TABLE} job
     JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
     WHERE info.finishedAt IS NULL
+    AND info.startedAt IS NULL
     ORDER BY info.createdAt DESC
     LIMIT 1
   `);

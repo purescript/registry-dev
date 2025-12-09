@@ -74,14 +74,14 @@ configFromEnv = do
 -- | Errors that can occur during client operations
 data ClientError
   = HttpError { status :: Int, body :: String }
-  | ParseError String
+  | ParseError { msg :: String, raw :: String }
   | Timeout String
   | NetworkError String
 
 printClientError :: ClientError -> String
 printClientError = case _ of
   HttpError { status, body } -> "HTTP Error " <> Int.toStringAs Int.decimal status <> ": " <> body
-  ParseError msg -> "Parse Error: " <> msg
+  ParseError { msg, raw } -> "Parse Error: " <> msg <> "\nOriginal: " <> raw
   Timeout msg -> "Timeout: " <> msg
   NetworkError msg -> "Network Error: " <> msg
 
@@ -102,7 +102,7 @@ get codec config path = runExceptT do
   body <- lift response.text
   if response.status >= 200 && response.status < 300 then
     case parseResponse codec body of
-      Left err -> throwError $ ParseError err
+      Left err -> throwError $ ParseError { msg: err, raw: body }
       Right a -> pure a
   else
     throwError $ HttpError { status: response.status, body }
@@ -119,7 +119,7 @@ post reqCodec resCodec config path reqBody = runExceptT do
   responseBody <- lift response.text
   if response.status >= 200 && response.status < 300 then
     case parseResponse resCodec responseBody of
-      Left err -> throwError $ ParseError err
+      Left err -> throwError $ ParseError { msg: err, raw: responseBody }
       Right a -> pure a
   else
     throwError $ HttpError { status: response.status, body: responseBody }

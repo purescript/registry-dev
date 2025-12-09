@@ -1,7 +1,8 @@
-module Registry.App.Server.JobExecutor where
+module Registry.App.Server.JobExecutor (runJobExecutor) where
 
 import Registry.App.Prelude hiding ((/))
 
+import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
 import Control.Parallel as Parallel
 import Data.DateTime (DateTime)
 import Effect.Aff (Milliseconds(..))
@@ -21,31 +22,21 @@ data JobDetails
   | MatrixJob MatrixJobDetails
   | PackageSetJob PackageSetJobDetails
 
-findNextAvailableJob :: forall r. Run (DB + EXCEPT String + r) (Maybe JobDetails)
-findNextAvailableJob =
-  Db.selectNextPackageJob >>= case _ of
-    Just job -> pure $ Just $ PackageJob job
-    Nothing -> Db.selectNextMatrixJob >>= case _ of
-      Just job -> pure $ Just $ MatrixJob job
-      Nothing -> Db.selectNextPackageSetJob >>= case _ of
-        Just job -> pure $ Just $ PackageSetJob job
-        Nothing -> pure Nothing
-
 runJobExecutor :: ServerEnv -> Aff (Either Aff.Error Unit)
 runJobExecutor env = runEffects env do
+  Log.info "Starting Job Executor"
   Db.deleteIncompleteJobs
   loop
   where
   loop = do
-    mJob <- findNextAvailableJob
-    case mJob of
+    maybeJob <- findNextAvailableJob
+    case maybeJob of
       Nothing -> do
-        liftAff $ Aff.delay (Milliseconds 100.0)
+        liftAff $ Aff.delay (Milliseconds 1000.0)
         loop
 
       Just job -> do
         now <- nowUTC
-
         let
           jobId = case job of
             PackageJob details -> details.jobId
@@ -77,6 +68,12 @@ runJobExecutor env = runEffects env do
 
         Db.finishJob { jobId, finishedAt: now, success }
         loop
+
+findNextAvailableJob :: forall r. Run (DB + EXCEPT String + r) (Maybe JobDetails)
+findNextAvailableJob = runMaybeT
+  $ (PackageJob <$> MaybeT Db.selectNextPackageJob)
+  <|> (MatrixJob <$> MaybeT Db.selectNextMatrixJob)
+  <|> (PackageSetJob <$> MaybeT Db.selectNextPackageSetJob)
 
 executeJob :: DateTime -> JobDetails -> Run ServerEffects Unit
 executeJob _ = case _ of

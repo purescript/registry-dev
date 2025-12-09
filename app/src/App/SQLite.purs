@@ -83,6 +83,9 @@ type ConnectOptions =
 connect :: ConnectOptions -> Effect SQLite
 connect { database, logger } = Uncurried.runEffectFn2 connectImpl database (Uncurried.mkEffectFn1 logger)
 
+--------------------------------------------------------------------------------
+-- job_info table
+
 -- | Metadata about a particular package, package set, or matrix job.
 type JobInfo =
   { jobId :: JobId
@@ -124,27 +127,6 @@ selectJobInfo db (JobId jobId) = do
   maybeJobInfo <- map toMaybe $ Uncurried.runEffectFn2 selectJobInfoImpl db jobId
   pure $ traverse jobInfoFromJSRep maybeJobInfo
 
-type FinishJob =
-  { jobId :: JobId
-  , success :: Boolean
-  , finishedAt :: DateTime
-  }
-
-type JSFinishJob =
-  { jobId :: String
-  , success :: Int
-  , finishedAt :: String
-  }
-
-finishJobToJSRep :: FinishJob -> JSFinishJob
-finishJobToJSRep { jobId, success, finishedAt } =
-  { jobId: un JobId jobId
-  , success: if success then 1 else 0
-  , finishedAt: DateTime.format Internal.Format.iso8601DateTime finishedAt
-  }
-
-foreign import finishJobImpl :: EffectFn2 SQLite JSFinishJob Unit
-
 finishJob :: SQLite -> FinishJob -> Effect Unit
 finishJob db = Uncurried.runEffectFn2 finishJobImpl db <<< finishJobToJSRep
 
@@ -169,10 +151,73 @@ foreign import startJobImpl :: EffectFn2 SQLite JSStartJob Unit
 startJob :: SQLite -> StartJob -> Effect Unit
 startJob db = Uncurried.runEffectFn2 startJobImpl db <<< startJobToJSRep
 
+type FinishJob =
+  { jobId :: JobId
+  , success :: Boolean
+  , finishedAt :: DateTime
+  }
+
+type JSFinishJob =
+  { jobId :: String
+  , success :: Int
+  , finishedAt :: String
+  }
+
+finishJobToJSRep :: FinishJob -> JSFinishJob
+finishJobToJSRep { jobId, success, finishedAt } =
+  { jobId: un JobId jobId
+  , success: if success then 1 else 0
+  , finishedAt: DateTime.format Internal.Format.iso8601DateTime finishedAt
+  }
+
+foreign import finishJobImpl :: EffectFn2 SQLite JSFinishJob Unit
+
 foreign import deleteIncompleteJobsImpl :: EffectFn1 SQLite Unit
 
+-- TODO: we shouldn't delete them I think? just remove the startedAt so they
+-- can be retried
 deleteIncompleteJobs :: SQLite -> Effect Unit
 deleteIncompleteJobs = Uncurried.runEffectFn1 deleteIncompleteJobsImpl
+
+--------------------------------------------------------------------------------
+-- package_jobs table
+
+type PackageJobDetails =
+  { jobId :: JobId
+  , packageName :: PackageName
+  , payload :: PackageOperation
+  , createdAt :: DateTime
+  , startedAt :: Maybe DateTime
+  }
+
+type JSPackageJobDetails =
+  { jobId :: String
+  , packageName :: String
+  , payload :: String
+  , createdAt :: String
+  , startedAt :: Nullable String
+  }
+
+packageJobDetailsFromJSRep :: JSPackageJobDetails -> Either String PackageJobDetails
+packageJobDetailsFromJSRep { jobId, packageName, payload, createdAt, startedAt } = do
+  name <- PackageName.parse packageName
+  created <- DateTime.unformat Internal.Format.iso8601DateTime createdAt
+  started <- traverse (DateTime.unformat Internal.Format.iso8601DateTime) (toMaybe startedAt)
+  parsed <- lmap JSON.DecodeError.print $ parseJson Operation.packageOperationCodec payload
+  pure
+    { jobId: JobId jobId
+    , packageName: name
+    , payload: parsed
+    , createdAt: created
+    , startedAt: started
+    }
+
+foreign import selectNextPackageJobImpl :: EffectFn1 SQLite (Nullable JSPackageJobDetails)
+
+selectNextPackageJob :: SQLite -> Effect (Either String (Maybe PackageJobDetails))
+selectNextPackageJob db = do
+  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn1 selectNextPackageJobImpl db
+  pure $ traverse packageJobDetailsFromJSRep maybeJobDetails
 
 type InsertPackageJob =
   { jobId :: JobId
@@ -182,24 +227,35 @@ type InsertPackageJob =
 type JSInsertPackageJob =
   { jobId :: String
   , jobType :: String
+  , packageName :: String
   , payload :: String
+  , createdAt :: String
   }
 
-insertPackageJobToJSRep :: InsertPackageJob -> JSInsertPackageJob
-insertPackageJobToJSRep { jobId, payload } =
+insertPackageJobToJSRep :: DateTime -> InsertPackageJob -> JSInsertPackageJob
+insertPackageJobToJSRep now { jobId, payload } =
   { jobId: un JobId jobId
-  , jobType: JobType.print case payload of
-      Operation.Publish _ -> JobType.PublishJob
-      Operation.Authenticated { payload: Operation.Unpublish _ } -> JobType.UnpublishJob
-      Operation.Authenticated { payload: Operation.Transfer _ } -> JobType.TransferJob
+  , jobType: JobType.print jobType
+  , packageName: PackageName.print name
   , payload: stringifyJson Operation.packageOperationCodec payload
+  , createdAt: DateTime.format Internal.Format.iso8601DateTime now
   }
+  where
+  { jobType, name } = case payload of
+    Operation.Publish { name } -> { jobType: JobType.PublishJob, name }
+    Operation.Authenticated { payload: Operation.Unpublish { name } } -> { jobType: JobType.UnpublishJob, name }
+    Operation.Authenticated { payload: Operation.Transfer { name } } -> { jobType: JobType.TransferJob, name }
 
 foreign import insertPackageJobImpl :: EffectFn2 SQLite JSInsertPackageJob Unit
 
 -- | Insert a new package job, ie. a publish, unpublish, or transfer.
 insertPackageJob :: SQLite -> InsertPackageJob -> Effect Unit
-insertPackageJob db = Uncurried.runEffectFn2 insertPackageJobImpl db <<< insertPackageJobToJSRep
+insertPackageJob db job = do
+  now <- nowUTC
+  Uncurried.runEffectFn2 insertPackageJobImpl db $ insertPackageJobToJSRep now job
+
+--------------------------------------------------------------------------------
+-- matrix_jobs table
 
 type InsertMatrixJob =
   { jobId :: JobId
@@ -224,68 +280,6 @@ foreign import insertMatrixJobImpl :: EffectFn2 SQLite JSInsertMatrixJob Unit
 
 insertMatrixJob :: SQLite -> InsertMatrixJob -> Effect Unit
 insertMatrixJob db = Uncurried.runEffectFn2 insertMatrixJobImpl db <<< insertMatrixJobToJSRep
-
-type InsertPackageSetJob =
-  { jobId :: JobId
-  , payload :: PackageSetOperation
-  }
-
-type JSInsertPackageSetJob =
-  { jobId :: String
-  , payload :: String
-  }
-
-insertPackageSetJobToJSRep :: InsertPackageSetJob -> JSInsertPackageSetJob
-insertPackageSetJobToJSRep { jobId, payload } =
-  { jobId: un JobId jobId
-  , payload: stringifyJson Operation.packageSetOperationCodec payload
-  }
-
-foreign import insertPackageSetJobImpl :: EffectFn2 SQLite JSInsertPackageSetJob Unit
-
-insertPackageSetJob :: SQLite -> InsertPackageSetJob -> Effect Unit
-insertPackageSetJob db = Uncurried.runEffectFn2 insertPackageSetJobImpl db <<< insertPackageSetJobToJSRep
-
-type PackageJobDetails =
-  { jobId :: JobId
-  , packageName :: PackageName
-  , packageVersion :: Version
-  , payload :: PackageOperation
-  , createdAt :: DateTime
-  , startedAt :: Maybe DateTime
-  }
-
-type JSPackageJobDetails =
-  { jobId :: String
-  , packageName :: String
-  , packageVersion :: String
-  , payload :: String
-  , createdAt :: String
-  , startedAt :: Nullable String
-  }
-
-packageJobDetailsFromJSRep :: JSPackageJobDetails -> Either String PackageJobDetails
-packageJobDetailsFromJSRep { jobId, packageName, packageVersion, payload, createdAt, startedAt } = do
-  name <- PackageName.parse packageName
-  version <- Version.parse packageVersion
-  created <- DateTime.unformat Internal.Format.iso8601DateTime createdAt
-  started <- traverse (DateTime.unformat Internal.Format.iso8601DateTime) (toMaybe startedAt)
-  parsed <- lmap JSON.DecodeError.print $ parseJson Operation.packageOperationCodec payload
-  pure
-    { jobId: JobId jobId
-    , packageName: name
-    , packageVersion: version
-    , payload: parsed
-    , createdAt: created
-    , startedAt: started
-    }
-
-foreign import selectNextPackageJobImpl :: EffectFn1 SQLite (Nullable JSPackageJobDetails)
-
-selectNextPackageJob :: SQLite -> Effect (Either String (Maybe PackageJobDetails))
-selectNextPackageJob db = do
-  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn1 selectNextPackageJobImpl db
-  pure $ traverse packageJobDetailsFromJSRep maybeJobDetails
 
 type MatrixJobDetails =
   { jobId :: JobId
@@ -332,6 +326,9 @@ selectNextMatrixJob db = do
   maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn1 selectNextMatrixJobImpl db
   pure $ traverse matrixJobDetailsFromJSRep maybeJobDetails
 
+--------------------------------------------------------------------------------
+-- package_set_jobs table
+
 type PackageSetJobDetails =
   { jobId :: JobId
   , payload :: PackageSetOperation
@@ -364,6 +361,30 @@ selectNextPackageSetJob :: SQLite -> Effect (Either String (Maybe PackageSetJobD
 selectNextPackageSetJob db = do
   maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn1 selectNextPackageSetJobImpl db
   pure $ traverse packageSetJobDetailsFromJSRep maybeJobDetails
+
+type InsertPackageSetJob =
+  { jobId :: JobId
+  , payload :: PackageSetOperation
+  }
+
+type JSInsertPackageSetJob =
+  { jobId :: String
+  , payload :: String
+  }
+
+insertPackageSetJobToJSRep :: InsertPackageSetJob -> JSInsertPackageSetJob
+insertPackageSetJobToJSRep { jobId, payload } =
+  { jobId: un JobId jobId
+  , payload: stringifyJson Operation.packageSetOperationCodec payload
+  }
+
+foreign import insertPackageSetJobImpl :: EffectFn2 SQLite JSInsertPackageSetJob Unit
+
+insertPackageSetJob :: SQLite -> InsertPackageSetJob -> Effect Unit
+insertPackageSetJob db = Uncurried.runEffectFn2 insertPackageSetJobImpl db <<< insertPackageSetJobToJSRep
+
+--------------------------------------------------------------------------------
+-- logs table
 
 type JSLogLine =
   { level :: Int

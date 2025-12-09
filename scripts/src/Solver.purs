@@ -17,7 +17,6 @@ import Data.DateTime.Instant as Instant
 import Data.Foldable (foldMap)
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
-import Data.Newtype (unwrap)
 import Data.String as String
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Class.Console as Aff

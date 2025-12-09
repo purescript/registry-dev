@@ -10,7 +10,6 @@ CREATE TABLE package_jobs (
   jobId TEXT PRIMARY KEY NOT NULL,
   jobType TEXT NOT NULL,
   packageName TEXT NOT NULL,
-  packageVersion TEXT NOT NULL,
   payload JSON NOT NULL,
   FOREIGN KEY (jobId) REFERENCES job_info (jobId) ON DELETE CASCADE
 );
