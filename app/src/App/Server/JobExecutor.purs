@@ -73,7 +73,8 @@ runJobExecutor env = runEffects env do
             Log.info $ "Job " <> unwrap jobId <> " succeeded."
             pure true
 
-        Db.finishJob { jobId, finishedAt: now, success }
+        finishedAt <- nowUTC
+        Db.finishJob { jobId, finishedAt, success }
         loop
 
 -- TODO: here we only get a single package for each operation, but really we should
