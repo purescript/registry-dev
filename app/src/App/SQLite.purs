@@ -238,6 +238,8 @@ insertPackageJob db job = do
 
 type InsertMatrixJob =
   { jobId :: JobId
+  , packageName :: PackageName
+  , packageVersion :: Version
   , compilerVersion :: Version
   -- TODO this is missing a buncha stuff
   , payload :: Map PackageName Version
@@ -245,6 +247,8 @@ type InsertMatrixJob =
 
 type JSInsertMatrixJob =
   { jobId :: String
+  , packageName :: String
+  , packageVersion :: String
   , compilerVersion :: String
   , payload :: String
   }
@@ -252,6 +256,8 @@ type JSInsertMatrixJob =
 insertMatrixJobToJSRep :: InsertMatrixJob -> JSInsertMatrixJob
 insertMatrixJobToJSRep { jobId, compilerVersion, payload } =
   { jobId: un JobId jobId
+  , packageName: PackageName.print packageName
+  , packageVersion: Version.print packageVersion
   , compilerVersion: Version.print compilerVersion
   , payload: stringifyJson (Internal.Codec.packageMap Version.codec) payload
   }
