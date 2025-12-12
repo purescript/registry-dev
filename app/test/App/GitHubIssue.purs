@@ -106,6 +106,7 @@ preludeAdditionString =
   {
     "name": "prelude",
     "ref": "v5.0.0",
+    "version": "5.0.0",
     "location": {
       "githubOwner": "purescript",
       "githubRepo": "purescript-prelude"
@@ -124,6 +125,7 @@ packageNameTooLongString =
   {
     "name": "packagenamewayyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyytoolong",
     "ref": "v5.0.0",
+    "version": "5.0.0",
     "location": {
       "githubOwner": "purescript",
       "githubRepo": "purescript-prelude"
