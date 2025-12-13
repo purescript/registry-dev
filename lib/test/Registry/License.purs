@@ -29,7 +29,6 @@ spec = do
         ]
 
   Spec.it "joinWith creates valid parseable license expressions" do
-    -- Test that joinWith creates expressions that can be re-parsed
     let
       licenses = [ License.parse "MIT", License.parse "Apache-2.0" ]
       { fail, success } = Utils.partitionEithers licenses

@@ -181,7 +181,7 @@ in
       ++ prev.lib.optionals prev.stdenv.isDarwin [ prev.darwin.cctools ];
 
     # To update: run `nix build .#server` and copy the hash from the error
-    npmDepsHash = "sha256-UMfHv8TTYVtk5e0JQvfpGA0cRQY5mHM1DL5rFTo1ErM=";
+    npmDepsHash = "sha256-iWHvXmTcWr4A/VerriuewnH0qNIYBtYkQnqv1VO8Jhs=";
 
     installPhase = ''
       mkdir -p $out
