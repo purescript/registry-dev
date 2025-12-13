@@ -149,9 +149,6 @@ let
     };
 in
 {
-  # Use Node.js 20 LTS for all registry components
-  nodejs = prev.nodejs_20;
-
   # Pin spago to the version we use
   spago = prev.spago-bin.spago-0_93_44;
 
@@ -173,6 +170,7 @@ in
     version = "0.0.1";
     src = npmSrc;
     dontNpmBuild = true;
+    npmFlags = [ "--omit=optional" ];
 
     nativeBuildInputs =
       with prev;
@@ -183,7 +181,7 @@ in
       ++ prev.lib.optionals prev.stdenv.isDarwin [ prev.darwin.cctools ];
 
     # To update: run `nix build .#server` and copy the hash from the error
-    npmDepsHash = "sha256-vm6k4DUDWUgPcPeym3YhA1hIg1LbHCDRBSH+7Zs52Uw=";
+    npmDepsHash = "sha256-iWHvXmTcWr4A/VerriuewnH0qNIYBtYkQnqv1VO8Jhs=";
 
     installPhase = ''
       mkdir -p $out
