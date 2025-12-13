@@ -1,4 +1,4 @@
-import jsonrepair from "jsonrepair";
+import { jsonrepair } from "jsonrepair";
 
 export const repairImpl = (onError, onSuccess, input) => {
   try {

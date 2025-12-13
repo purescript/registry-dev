@@ -11,7 +11,7 @@
     "fast-glob": "^3.3.3",
     "fs-extra": "^11.3.2",
     "fuse.js": "^6.6.2",
-    "jsonrepair": "^2.2.1",
+    "jsonrepair": "^3.13.1",
     "registry-lib": "file:../lib",
     "semver": "^7.7.3",
     "tar": "^6.2.1",
