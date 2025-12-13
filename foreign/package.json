@@ -10,7 +10,7 @@
     "better-sqlite3": "^12.4.0",
     "fast-glob": "^3.3.3",
     "fs-extra": "^11.3.2",
-    "fuse.js": "^6.6.2",
+    "fuse.js": "^7.1.0",
     "jsonrepair": "^3.13.1",
     "registry-lib": "file:../lib",
     "semver": "^7.7.3",
