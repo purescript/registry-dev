@@ -3,6 +3,7 @@ module Test.Registry.License (spec) where
 import Prelude
 
 import Data.Array as Array
+import Data.Either (Either(..))
 import Data.String as String
 import Registry.License as License
 import Registry.Test.Assert as Assert
@@ -26,6 +27,23 @@ spec = do
         [ "Some malformed package names were not parsed correctly:"
         , Array.foldMap (append "\n  - " <<< License.print) success
         ]
+
+  Spec.it "joinWith creates valid parseable license expressions" do
+    -- Test that joinWith creates expressions that can be re-parsed
+    let
+      licenses = [ License.parse "MIT", License.parse "Apache-2.0" ]
+      { fail, success } = Utils.partitionEithers licenses
+
+    unless (Array.null fail) do
+      Assert.fail "Failed to parse test licenses"
+
+    let
+      joined = License.joinWith License.And success
+      reparsed = License.parse (License.print joined)
+
+    case reparsed of
+      Left err -> Assert.fail $ "joinWith created unparseable expression: " <> License.print joined <> " - Error: " <> err
+      Right _ -> pure unit
 
 valid :: Array String
 valid =
