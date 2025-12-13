@@ -170,7 +170,7 @@ in
     version = "0.0.1";
     src = npmSrc;
     dontNpmBuild = true;
-    npmFlags = [ "--no-optional" ];
+    npmFlags = [ "--omit=optional" ];
 
     nativeBuildInputs =
       with prev;
