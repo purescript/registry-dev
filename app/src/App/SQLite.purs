@@ -3,27 +3,6 @@
 -- | the bindings here are still quite low-level and simply exist to provide a
 -- | nicer interface with PureScript types for higher-level modules to use.
 
--- TOMORROW:
---
--- * Add the job executor to server startup
--- * Move the various job details to the API.V1 module since it'll be returned by the UI
--- * Update the router to just create a job when received, and on lookup to return relevant details from the db
--- * Update the router to have an endpoint for creating a package set job and compiler matrix job using the
---   same authentication requirements as for GitHub today.
--- * Move the compiler matrix out of publish into its own functionality so it can be called. We want to
---   be able to spawn a matrix job at any time for a compiler/package version pair, but need a helper to
---   do the whole toposort thing.
--- * Update job execution to actually call the relevant publish/unpublish/transfer/package set API fn
---
--- LATER
--- * Update tests that refer to the DB effect
--- * Adjust the integration test(s) to verify we're getting enforced concurrency control
--- * Update the GitHub issue module so it only submits a request to the registry and returns
---   a job id, rather than actually running the fns directly. Poll for a result still and
---   comment when the job completes.
---
--- FOLLOWUP
--- * Punt on the squash commit until later.
 module Registry.App.SQLite
   ( SQLite
   , ConnectOptions
@@ -40,7 +19,7 @@ module Registry.App.SQLite
   , finishJob
   , StartJob
   , startJob
-  , deleteIncompleteJobs
+  , resetIncompleteJobs
   , insertLogLine
   , selectLogsByJob
   , PackageJobDetails
@@ -172,12 +151,12 @@ finishJobToJSRep { jobId, success, finishedAt } =
 
 foreign import finishJobImpl :: EffectFn2 SQLite JSFinishJob Unit
 
-foreign import deleteIncompleteJobsImpl :: EffectFn1 SQLite Unit
+foreign import resetIncompleteJobsImpl :: EffectFn1 SQLite Unit
 
 -- TODO: we shouldn't delete them I think? just remove the startedAt so they
 -- can be retried
-deleteIncompleteJobs :: SQLite -> Effect Unit
-deleteIncompleteJobs = Uncurried.runEffectFn1 deleteIncompleteJobsImpl
+resetIncompleteJobs :: SQLite -> Effect Unit
+resetIncompleteJobs = Uncurried.runEffectFn1 resetIncompleteJobsImpl
 
 --------------------------------------------------------------------------------
 -- package_jobs table
@@ -260,6 +239,7 @@ insertPackageJob db job = do
 type InsertMatrixJob =
   { jobId :: JobId
   , compilerVersion :: Version
+  -- TODO this is missing a buncha stuff
   , payload :: Map PackageName Version
   }
 

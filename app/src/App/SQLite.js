@@ -138,7 +138,8 @@ export const finishJobImpl = (db, args) => {
   return stmt.run(args);
 }
 
-export const deleteIncompleteJobsImpl = (db) => {
+// TODO this needs to be an update, no deletes
+export const resetIncompleteJobsImpl = (db) => {
   const stmt = db.prepare(`DELETE FROM ${JOB_INFO_TABLE} WHERE finishedAt IS NULL`);
   return stmt.run();
 };

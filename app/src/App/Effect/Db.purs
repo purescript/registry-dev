@@ -36,7 +36,7 @@ data Db a
   | SelectNextPackageSetJob (Either String (Maybe PackageSetJobDetails) -> a)
   | InsertLogLine LogLine a
   | SelectLogsByJob JobId LogLevel (Maybe DateTime) (Array LogLine -> a)
-  | DeleteIncompleteJobs a
+  | ResetIncompleteJobs a
 
 derive instance Functor Db
 
@@ -91,8 +91,8 @@ selectNextPackageSetJob :: forall r. Run (DB + EXCEPT String + r) (Maybe Package
 selectNextPackageSetJob = Run.lift _db (SelectNextPackageSetJob identity) >>= Except.rethrow
 
 -- | Delete all incomplete jobs from the database.
-deleteIncompleteJobs :: forall r. Run (DB + r) Unit
-deleteIncompleteJobs = Run.lift _db (DeleteIncompleteJobs unit)
+resetIncompleteJobs :: forall r. Run (DB + r) Unit
+resetIncompleteJobs = Run.lift _db (ResetIncompleteJobs unit)
 
 interpret :: forall r a. (Db ~> Run r) -> Run (DB + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _db handler Run.send)
@@ -148,6 +148,6 @@ handleSQLite env = case _ of
       Log.warn $ "Some logs are not readable: " <> String.joinWith "\n" fail
     pure $ reply success
 
-  DeleteIncompleteJobs next -> do
-    Run.liftEffect $ SQLite.deleteIncompleteJobs env.db
+  ResetIncompleteJobs next -> do
+    Run.liftEffect $ SQLite.resetIncompleteJobs env.db
     pure next

@@ -19,6 +19,7 @@ import Data.List.NonEmpty as NEL
 import Data.Map (Map, SemigroupMap(..))
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe, maybe, maybe')
+import Data.Maybe as Maybe
 import Data.Monoid.Disj (Disj(..))
 import Data.Monoid.Endo (Endo(..))
 import Data.Newtype (class Newtype, over, un, unwrap, wrap)
@@ -81,11 +82,11 @@ buildCompilerIndex pursCompilers index metadata = CompilerIndex do
 -- | Solve the given dependencies using a dependency index that includes compiler
 -- | versions, such that the solution prunes results that would fall outside
 -- | a compiler range accepted by all dependencies.
-solveWithCompiler :: Range -> CompilerIndex -> Map PackageName Range -> Either SolverErrors (Tuple (Maybe Version) (Map PackageName Version))
+solveWithCompiler :: Range -> CompilerIndex -> Map PackageName Range -> Either SolverErrors (Tuple Version (Map PackageName Version))
 solveWithCompiler pursRange (CompilerIndex index) required = do
   let purs = Either.fromRight' (\_ -> Partial.unsafeCrashWith "Invalid package name!") (PackageName.parse "purs")
   results <- solveFull { registry: initializeRegistry index, required: initializeRequired (Map.insert purs pursRange required) }
-  let pursVersion = Map.lookup purs results
+  let pursVersion = Maybe.fromMaybe' (\_ -> Partial.unsafeCrashWith "Produced a compiler-derived build plan with no compiler!") $ Map.lookup purs results
   pure $ Tuple pursVersion $ Map.delete purs results
 
 -- | Data from the registry index, listing dependencies for each version of

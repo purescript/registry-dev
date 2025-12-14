@@ -7,11 +7,13 @@
 -- | https://github.com/purescript/registry-index
 module Registry.ManifestIndex
   ( ManifestIndex
+  , IncludeRanges(..)
+  , delete
+  , dependants
   , empty
   , fromSet
   , insert
   , insertIntoEntryFile
-  , delete
   , lookup
   , maximalIndex
   , packageEntryDirectory
@@ -21,9 +23,8 @@ module Registry.ManifestIndex
   , readEntryFile
   , removeFromEntryFile
   , toMap
-  , toSortedArray
   , topologicalSort
-  , IncludeRanges(..)
+  , toSortedArray
   , writeEntryFile
   ) where
 
@@ -45,7 +46,7 @@ import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Maybe as Maybe
-import Data.Newtype (un)
+import Data.Newtype (un, unwrap)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Set.NonEmpty (NonEmptySet)
@@ -66,6 +67,7 @@ import Node.Path as Path
 import Partial.Unsafe (unsafeCrashWith)
 import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
+import Registry.Operation (packageName)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
@@ -198,6 +200,13 @@ topologicalSort includeRanges manifests =
         ConsiderRanges -> Array.filter (Range.includes range) versions
         IgnoreRanges -> versions
       [ Tuple dependency included ]
+
+dependants :: ManifestIndex -> PackageName -> Version -> Array Manifest
+dependants idx packageName version = idx
+  # toSortedArray ConsiderRanges
+  # Array.filter \(Manifest { dependencies }) -> case Map.lookup packageName dependencies of
+      Nothing -> false
+      Just range -> Range.includes range version
 
 -- | Calculate the directory containing this package in the registry index,
 -- | using the following format:

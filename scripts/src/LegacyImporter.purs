@@ -76,6 +76,7 @@ import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestVali
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
 import Registry.App.Manifest.SpagoYaml as SpagoYaml
+import Registry.App.Server.MatrixBuilder as MatrixBuilder
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (Address, Tag)
 import Registry.Foreign.Octokit as Octokit
@@ -300,7 +301,7 @@ runLegacyImport logs = do
         Just ref -> pure ref
 
       Log.debug "Building dependency index with compiler versions..."
-      compilerIndex <- API.readCompilerIndex
+      compilerIndex <- MatrixBuilder.readCompilerIndex
 
       Log.debug $ "Solving dependencies for " <> formatted
       eitherResolutions <- do
@@ -405,7 +406,7 @@ runLegacyImport logs = do
                   Log.debug "Downloading dependencies..."
                   let installDir = Path.concat [ tmp, ".registry" ]
                   FS.Extra.ensureDirectory installDir
-                  API.installBuildPlan resolutions installDir
+                  MatrixBuilder.installBuildPlan resolutions installDir
                   Log.debug $ "Installed to " <> installDir
                   Log.debug "Trying compilers one-by-one..."
                   selected <- findFirstCompiler

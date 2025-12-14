@@ -22,6 +22,12 @@ main = do
       case env.vars.resourceEnv.healthchecksUrl of
         Nothing -> Console.log "HEALTHCHECKS_URL not set, healthcheck pinging disabled"
         Just healthchecksUrl -> Aff.launchAff_ $ healthcheck healthchecksUrl
+      -- TODO: here before starting the executor we should check if we need to run
+      -- a whole-registry-compiler update.
+      -- To do that, we ask PursVersions what the compilers are, then we ask in the
+      -- metadata what the compilers for the latest prelude are, and if the latest
+      -- compiler is missing we enqueue a "compile everything", so that the executor
+      -- can pick it up first thing
       Aff.launchAff_ $ jobExecutor env
       Router.runRouter env
   where
