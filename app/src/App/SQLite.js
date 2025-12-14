@@ -138,9 +138,15 @@ export const finishJobImpl = (db, args) => {
   return stmt.run(args);
 }
 
-// TODO this needs to be an update, no deletes
+// TODO I think we should keep track of this somehow. So either we save
+// how many times this is being retried and give up at some point, notifying
+// the trustees, or we notify right away for any retry so we can look at them
 export const resetIncompleteJobsImpl = (db) => {
-  const stmt = db.prepare(`DELETE FROM ${JOB_INFO_TABLE} WHERE finishedAt IS NULL`);
+  const stmt = db.prepare(`
+    UPDATE ${JOB_INFO_TABLE}
+    SET startedAt = NULL
+    WHERE finishedAt IS NULL
+    AND startedAt IS NOT NULL`);
   return stmt.run();
 };
 

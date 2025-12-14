@@ -153,8 +153,6 @@ foreign import finishJobImpl :: EffectFn2 SQLite JSFinishJob Unit
 
 foreign import resetIncompleteJobsImpl :: EffectFn1 SQLite Unit
 
--- TODO: we shouldn't delete them I think? just remove the startedAt so they
--- can be retried
 resetIncompleteJobs :: SQLite -> Effect Unit
 resetIncompleteJobs = Uncurried.runEffectFn1 resetIncompleteJobsImpl
 
