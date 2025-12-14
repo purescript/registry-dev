@@ -46,7 +46,7 @@ import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Maybe as Maybe
-import Data.Newtype (un, unwrap)
+import Data.Newtype (un)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Set.NonEmpty (NonEmptySet)
@@ -67,7 +67,6 @@ import Node.Path as Path
 import Partial.Unsafe (unsafeCrashWith)
 import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
-import Registry.Operation (packageName)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)

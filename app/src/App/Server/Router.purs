@@ -4,12 +4,11 @@ import Registry.App.Prelude hiding ((/))
 
 import Control.Monad.Cont (ContT)
 import Data.Codec.JSON as CJ
-import Data.UUID.Random as UUID
 import Effect.Aff as Aff
 import HTTPurple (Method(..), Request, Response)
 import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
-import Registry.API.V1 (JobId(..), LogLevel(..), Route(..))
+import Registry.API.V1 (LogLevel(..), Route(..))
 import Registry.API.V1 as V1
 import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Env as Env

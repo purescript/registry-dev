@@ -7,7 +7,9 @@ import Registry.App.Prelude hiding ((/))
 
 import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
 import Control.Parallel as Parallel
+import Data.Array as Array
 import Data.DateTime (DateTime)
+import Data.Set as Set
 import Data.UUID.Random as UUID
 import Effect.Aff (Milliseconds(..))
 import Effect.Aff as Aff
@@ -19,8 +21,9 @@ import Registry.App.Effect.Log as Log
 import Registry.App.SQLite (MatrixJobDetails, PackageJobDetails, PackageSetJobDetails)
 import Registry.App.Server.Env (ServerEffects, ServerEnv, runEffects)
 import Registry.App.Server.MatrixBuilder as MatrixBuilder
-import Registry.ManifestIndex as ManifestIndex
 import Registry.Operation as Operation
+import Registry.PackageName as PackageName
+import Registry.Version as Version
 import Run (Run)
 import Run.Except (EXCEPT)
 
@@ -93,7 +96,7 @@ newJobId = do
 
 executeJob :: DateTime -> JobDetails -> Run ServerEffects Unit
 executeJob _ = case _ of
-  PackageJob { payload: Operation.Publish payload@{ compiler, name, version } } -> do
+  PackageJob { payload: Operation.Publish payload@{ name, version } } -> do
     maybeDependencies <- API.publish Nothing payload
     -- The above operation will throw if not successful, and return a map of
     -- dependencies of the package only if it has not been published before.
@@ -103,19 +106,52 @@ executeJob _ = case _ of
       -- compilers, and (2) same compiler, all packages that depend on this one
       -- TODO here we are building the compiler index, but we should really cache it
       compilerIndex <- MatrixBuilder.readCompilerIndex
-      let solverData = { compiler, name, version, dependencies, compilerIndex }
+      let solverData = { compiler: payload.compiler, name, version, dependencies, compilerIndex }
       samePackageAllCompilers <- MatrixBuilder.solveForAllCompilers solverData
       sameCompilerAllDependants <- MatrixBuilder.solveDependantsForCompiler solverData
-      for (samePackageAllCompilers <> sameCompilerAllDependants) \matrixJob -> do
-        Log.info $ "Enqueuing matrix job" -- TODO print details
-        jobId <- newJobId
-        Db.insertMatrixJob { jobId, payload: matrixJob }
+      for (Array.fromFoldable $ Set.union samePackageAllCompilers sameCompilerAllDependants)
+        \{ compiler: solvedCompiler, resolutions, name: solvedPackage, version: solvedVersion } -> do
+          Log.info $ "Enqueuing matrix job: compiler "
+            <> Version.print solvedCompiler
+            <> ", package "
+            <> PackageName.print solvedPackage
+            <> "@"
+            <> Version.print solvedVersion
+          jobId <- newJobId
+          Db.insertMatrixJob
+            { jobId
+            , payload: resolutions
+            , compilerVersion: solvedCompiler
+            , packageName: solvedPackage
+            , packageVersion: solvedVersion
+            }
   PackageJob { payload: Operation.Authenticated auth } ->
     API.authenticated auth
-  MatrixJob details ->
-    -- TODO this job should return the success result, because if successful we need
-    -- to enqueue more matrix jobs: all its dependents for this same compiler version
-    MatrixBuilder.runMatrixJob details
+  MatrixJob details@{ packageName, packageVersion } -> do
+    maybeDependencies <- MatrixBuilder.runMatrixJob details
+    -- Unlike the publishing case, after verifying a compilation here we only need
+    -- to followup with trying to compile the packages that depend on this one
+    for_ maybeDependencies \dependencies -> do
+      -- TODO here we are building the compiler index, but we should really cache it
+      compilerIndex <- MatrixBuilder.readCompilerIndex
+      let solverData = { compiler: details.compilerVersion, name: packageName, version: packageVersion, dependencies, compilerIndex }
+      sameCompilerAllDependants <- MatrixBuilder.solveDependantsForCompiler solverData
+      for (Array.fromFoldable sameCompilerAllDependants)
+        \{ compiler: solvedCompiler, resolutions, name: solvedPackage, version: solvedVersion } -> do
+          Log.info $ "Enqueuing matrix job: compiler "
+            <> Version.print solvedCompiler
+            <> ", package "
+            <> PackageName.print solvedPackage
+            <> "@"
+            <> Version.print solvedVersion
+          jobId <- newJobId
+          Db.insertMatrixJob
+            { jobId
+            , payload: resolutions
+            , compilerVersion: solvedCompiler
+            , packageName: solvedPackage
+            , packageVersion: solvedVersion
+            }
   PackageSetJob _details ->
     -- TODO: need to pass in the package_sets effect
     -- API.packageSetUpdate2 details

@@ -241,21 +241,22 @@ type InsertMatrixJob =
   , packageName :: PackageName
   , packageVersion :: Version
   , compilerVersion :: Version
-  -- TODO this is missing a buncha stuff
   , payload :: Map PackageName Version
   }
 
 type JSInsertMatrixJob =
   { jobId :: String
+  , createdAt :: String
   , packageName :: String
   , packageVersion :: String
   , compilerVersion :: String
   , payload :: String
   }
 
-insertMatrixJobToJSRep :: InsertMatrixJob -> JSInsertMatrixJob
-insertMatrixJobToJSRep { jobId, compilerVersion, payload } =
+insertMatrixJobToJSRep :: DateTime -> InsertMatrixJob -> JSInsertMatrixJob
+insertMatrixJobToJSRep now { jobId, packageName, packageVersion, compilerVersion, payload } =
   { jobId: un JobId jobId
+  , createdAt: DateTime.format Internal.Format.iso8601DateTime now
   , packageName: PackageName.print packageName
   , packageVersion: Version.print packageVersion
   , compilerVersion: Version.print compilerVersion
@@ -265,7 +266,9 @@ insertMatrixJobToJSRep { jobId, compilerVersion, payload } =
 foreign import insertMatrixJobImpl :: EffectFn2 SQLite JSInsertMatrixJob Unit
 
 insertMatrixJob :: SQLite -> InsertMatrixJob -> Effect Unit
-insertMatrixJob db = Uncurried.runEffectFn2 insertMatrixJobImpl db <<< insertMatrixJobToJSRep
+insertMatrixJob db job = do
+  now <- nowUTC
+  Uncurried.runEffectFn2 insertMatrixJobImpl db $ insertMatrixJobToJSRep now job
 
 type MatrixJobDetails =
   { jobId :: JobId
@@ -355,19 +358,23 @@ type InsertPackageSetJob =
 
 type JSInsertPackageSetJob =
   { jobId :: String
+  , createdAt :: String
   , payload :: String
   }
 
-insertPackageSetJobToJSRep :: InsertPackageSetJob -> JSInsertPackageSetJob
-insertPackageSetJobToJSRep { jobId, payload } =
+insertPackageSetJobToJSRep :: DateTime -> InsertPackageSetJob -> JSInsertPackageSetJob
+insertPackageSetJobToJSRep now { jobId, payload } =
   { jobId: un JobId jobId
+  , createdAt: DateTime.format Internal.Format.iso8601DateTime now
   , payload: stringifyJson Operation.packageSetOperationCodec payload
   }
 
 foreign import insertPackageSetJobImpl :: EffectFn2 SQLite JSInsertPackageSetJob Unit
 
 insertPackageSetJob :: SQLite -> InsertPackageSetJob -> Effect Unit
-insertPackageSetJob db = Uncurried.runEffectFn2 insertPackageSetJobImpl db <<< insertPackageSetJobToJSRep
+insertPackageSetJob db job = do
+  now <- nowUTC
+  Uncurried.runEffectFn2 insertPackageSetJobImpl db $ insertPackageSetJobToJSRep now job
 
 --------------------------------------------------------------------------------
 -- logs table

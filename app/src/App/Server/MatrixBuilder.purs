@@ -12,6 +12,7 @@ import Registry.App.Prelude
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Map as Map
+import Data.Set as Set
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Effect.Aff as Aff
@@ -41,7 +42,7 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
-runMatrixJob :: forall r. MatrixJobDetails -> Run (REGISTRY + STORAGE + LOG + AFF + EFFECT + EXCEPT String + r) Unit
+runMatrixJob :: forall r. MatrixJobDetails -> Run (REGISTRY + STORAGE + LOG + AFF + EFFECT + EXCEPT String + r) (Maybe (Map PackageName Range))
 runMatrixJob { compilerVersion, packageName, packageVersion, payload: buildPlan } = do
   workdir <- Tmp.mkTmpDir
   let installed = Path.concat [ workdir, ".registry" ]
@@ -58,13 +59,14 @@ runMatrixJob { compilerVersion, packageName, packageVersion, payload: buildPlan 
       Log.info $ "Compilation failed with compiler " <> Version.print compilerVersion
         <> ":\n"
         <> printCompilerFailure compilerVersion err
+      pure Nothing
     Right _ -> do
       Log.info $ "Compilation succeeded with compiler " <> Version.print compilerVersion
 
       Registry.readMetadata packageName >>= case _ of
         Nothing -> do
           Log.error $ "No existing metadata for " <> PackageName.print packageName
-          Except.throw $ "Cannot run Matrix Job for " <> PackageName.print packageName
+          pure Nothing
         Just (Metadata metadata) -> do
           let
             metadataWithCompilers = metadata
@@ -79,6 +81,11 @@ runMatrixJob { compilerVersion, packageName, packageVersion, payload: buildPlan 
           Log.debug $ "Wrote new metadata " <> printJson Metadata.codec (Metadata metadataWithCompilers)
 
           Log.info "Wrote completed metadata to the registry!"
+          Registry.readManifest packageName packageVersion >>= case _ of
+            Just (Manifest manifest) -> pure (Just manifest.dependencies)
+            Nothing -> do
+              Log.error $ "No existing metadata for " <> PackageName.print packageName <> "@" <> Version.print packageVersion
+              pure Nothing
 
 -- TODO feels like we should be doing this at startup and use the cache instead
 -- of reading files all over again
@@ -140,8 +147,15 @@ type MatrixSolverData =
   , dependencies :: Map PackageName Range
   }
 
-solveForAllCompilers :: forall r. MatrixSolverData -> Run (AFF + EXCEPT String + LOG + r) (Map Version (Map PackageName Version))
-solveForAllCompilers { compilerIndex, name, compiler, dependencies } = do
+type MatrixSolverResult =
+  { name :: PackageName
+  , version :: Version
+  , compiler :: Version
+  , resolutions :: Map PackageName Version
+  }
+
+solveForAllCompilers :: forall r. MatrixSolverData -> Run (AFF + EXCEPT String + LOG + r) (Set MatrixSolverResult)
+solveForAllCompilers { compilerIndex, name, version, compiler, dependencies } = do
   -- remove the compiler we tested with from the set of all of them
   compilers <- (Array.filter (_ /= compiler) <<< NonEmptyArray.toArray) <$> PursVersions.pursVersions
   newJobs <- for compilers \target -> do
@@ -151,8 +165,8 @@ solveForAllCompilers { compilerIndex, name, compiler, dependencies } = do
         Log.info $ "Failed to solve with compiler " <> Version.print target
         -- Log.debug $ Solver.printSolverError solverErrors
         pure Nothing
-      Right res@(Tuple solvedCompiler _resolutions) -> case solvedCompiler == target of
-        true -> pure $ Just res
+      Right (Tuple solvedCompiler resolutions) -> case solvedCompiler == target of
+        true -> pure $ Just { compiler: target, resolutions, name, version }
         false -> do
           Log.debug $ Array.fold
             [ "Produced a compiler-derived build plan that selects a compiler ("
@@ -162,9 +176,9 @@ solveForAllCompilers { compilerIndex, name, compiler, dependencies } = do
             , ")."
             ]
           pure Nothing
-  pure $ Map.fromFoldable $ Array.catMaybes newJobs
+  pure $ Set.fromFoldable $ Array.catMaybes newJobs
 
-solveDependantsForCompiler :: forall r. MatrixSolverData -> Run (EXCEPT String + LOG + REGISTRY + r) (Map Version (Map PackageName Version))
+solveDependantsForCompiler :: forall r. MatrixSolverData -> Run (EXCEPT String + LOG + REGISTRY + r) (Set MatrixSolverResult)
 solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
   manifestIndex <- Registry.readAllManifests
   let dependentManifests = ManifestIndex.dependants manifestIndex name version
@@ -188,8 +202,8 @@ solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
             Log.info $ "Failed to solve with compiler " <> Version.print compiler
             -- Log.debug $ Solver.printSolverError solverErrors
             pure Nothing
-          Right res@(Tuple solvedCompiler _resolutions) -> case compiler == solvedCompiler of
-            true -> pure $ Just res
+          Right (Tuple solvedCompiler resolutions) -> case compiler == solvedCompiler of
+            true -> pure $ Just { compiler, resolutions, name: manifest.name, version: manifest.version }
             false -> do
               Log.debug $ Array.fold
                 [ "Produced a compiler-derived build plan that selects a compiler ("
@@ -199,4 +213,4 @@ solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
                 , ")."
                 ]
               pure Nothing
-  pure $ Map.fromFoldable $ Array.catMaybes newJobs
+  pure $ Set.fromFoldable $ Array.catMaybes newJobs

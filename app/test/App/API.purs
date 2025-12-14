@@ -102,7 +102,7 @@ spec = do
 
         -- First, we publish the package.
         Registry.readAllManifests >>= \idx ->
-          API.publish (Just (toLegacyIndex idx)) publishArgs
+          void $ API.publish (Just (toLegacyIndex idx)) publishArgs
 
         -- Then, we can check that it did make it to "Pursuit" as expected
         Pursuit.getPublishedVersions name >>= case _ of
@@ -163,7 +163,7 @@ spec = do
             , resolutions: Nothing
             }
         Registry.readAllManifests >>= \idx ->
-          API.publish (Just (toLegacyIndex idx)) pursuitOnlyPublishArgs
+          void $ API.publish (Just (toLegacyIndex idx)) pursuitOnlyPublishArgs
 
         -- We can also verify that transitive dependencies are added for legacy
         -- packages.
@@ -178,7 +178,7 @@ spec = do
             , resolutions: Nothing
             }
         Registry.readAllManifests >>= \idx ->
-          API.publish (Just (toLegacyIndex idx)) transitivePublishArgs
+          void $ API.publish (Just (toLegacyIndex idx)) transitivePublishArgs
 
         -- We should verify the resulting metadata file is correct
         Metadata transitiveMetadata <- Registry.readMetadata transitive.name >>= case _ of
