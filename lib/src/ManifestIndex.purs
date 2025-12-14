@@ -22,6 +22,7 @@ module Registry.ManifestIndex
   , printEntry
   , readEntryFile
   , removeFromEntryFile
+  , toArray
   , toMap
   , topologicalSort
   , toSortedArray
@@ -88,12 +89,17 @@ empty = ManifestIndex Map.empty
 toMap :: ManifestIndex -> Map PackageName (Map Version Manifest)
 toMap (ManifestIndex index) = index
 
--- | Produce an array of manifests topologically sorted by dependencies.
-toSortedArray :: IncludeRanges -> ManifestIndex -> Array Manifest
-toSortedArray includeRanges (ManifestIndex index) = topologicalSort includeRanges $ Set.fromFoldable do
+-- | Produce an array of all the manifests
+toArray :: ManifestIndex -> Array Manifest
+toArray (ManifestIndex index) = do
   Tuple _ versions <- Map.toUnfoldableUnordered index
   Tuple _ manifest <- Map.toUnfoldableUnordered versions
   [ manifest ]
+
+-- | Produce an array of all the manifests, topologically sorted by dependencies.
+toSortedArray :: IncludeRanges -> ManifestIndex -> Array Manifest
+toSortedArray includeRanges index =
+  topologicalSort includeRanges $ Set.fromFoldable $ toArray index
 
 -- | Look up a package version's manifest in the manifest index.
 lookup :: PackageName -> Version -> ManifestIndex -> Maybe Manifest

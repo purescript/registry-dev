@@ -1,6 +1,5 @@
 module Registry.App.Server.JobExecutor
   ( runJobExecutor
-  , newJobId
   ) where
 
 import Registry.App.Prelude hiding ((/))
@@ -9,18 +8,21 @@ import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
 import Control.Parallel as Parallel
 import Data.Array as Array
 import Data.DateTime (DateTime)
+import Data.Map as Map
 import Data.Set as Set
-import Data.UUID.Random as UUID
 import Effect.Aff (Milliseconds(..))
 import Effect.Aff as Aff
-import Registry.API.V1 (JobId(..))
 import Registry.App.API as API
 import Registry.App.Effect.Db (DB)
 import Registry.App.Effect.Db as Db
+import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry as Registry
 import Registry.App.SQLite (MatrixJobDetails, PackageJobDetails, PackageSetJobDetails)
 import Registry.App.Server.Env (ServerEffects, ServerEnv, runEffects)
 import Registry.App.Server.MatrixBuilder as MatrixBuilder
+import Registry.ManifestIndex as ManifestIndex
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
 import Registry.Version as Version
@@ -35,6 +37,18 @@ data JobDetails
 runJobExecutor :: ServerEnv -> Aff (Either Aff.Error Unit)
 runJobExecutor env = runEffects env do
   Log.info "Starting Job Executor"
+  -- Before starting the executor we check if we need to run a whole-registry
+  -- compiler update: whenever a new compiler is published we need to see which
+  -- packages are compatible with it; this is a responsibility of the MatrixBuilder,
+  -- but it needs to be triggered to know there's a new version out.
+  -- To do that, we ask PursVersions what the compilers are, then we look for
+  -- the compatibility list of the latest `prelude` version. If the new compiler
+  -- is missing, then we know that we have not attempted to check compatibility
+  -- with it (since the latest `prelude` has to be compatible by definition),
+  -- and we can enqueue a "compile everything" here, which will be the first
+  -- thing that the JobExecutor picks up
+  void $ MatrixBuilder.checkIfNewCompiler
+    >>= traverse upgradeRegistryToNewCompiler
   Db.resetIncompleteJobs
   loop
   where
@@ -82,17 +96,12 @@ runJobExecutor env = runEffects env do
 
 -- TODO: here we only get a single package for each operation, but really we should
 -- have all of them and toposort them. There is something in ManifestIndex but not
--- sure that's what we need
+-- sure that's what we need 
 findNextAvailableJob :: forall r. Run (DB + EXCEPT String + r) (Maybe JobDetails)
 findNextAvailableJob = runMaybeT
   $ (PackageJob <$> MaybeT Db.selectNextPackageJob)
   <|> (MatrixJob <$> MaybeT Db.selectNextMatrixJob)
   <|> (PackageSetJob <$> MaybeT Db.selectNextPackageSetJob)
-
-newJobId :: forall m. MonadEffect m => m JobId
-newJobId = do
-  id <- UUID.make
-  pure $ JobId $ UUID.toString id
 
 executeJob :: DateTime -> JobDetails -> Run ServerEffects Unit
 executeJob _ = case _ of
@@ -117,10 +126,8 @@ executeJob _ = case _ of
             <> PackageName.print solvedPackage
             <> "@"
             <> Version.print solvedVersion
-          jobId <- newJobId
           Db.insertMatrixJob
-            { jobId
-            , payload: resolutions
+            { payload: resolutions
             , compilerVersion: solvedCompiler
             , packageName: solvedPackage
             , packageVersion: solvedVersion
@@ -144,10 +151,8 @@ executeJob _ = case _ of
             <> PackageName.print solvedPackage
             <> "@"
             <> Version.print solvedVersion
-          jobId <- newJobId
           Db.insertMatrixJob
-            { jobId
-            , payload: resolutions
+            { payload: resolutions
             , compilerVersion: solvedCompiler
             , packageName: solvedPackage
             , packageVersion: solvedVersion
@@ -156,3 +161,24 @@ executeJob _ = case _ of
     -- TODO: need to pass in the package_sets effect
     -- API.packageSetUpdate2 details
     pure unit
+
+upgradeRegistryToNewCompiler :: forall r. Version -> Run (DB + LOG + EXCEPT String + REGISTRY + r) Unit
+upgradeRegistryToNewCompiler newCompilerVersion = do
+  allManifests <- Registry.readAllManifests
+  for_ (ManifestIndex.toArray allManifests) \(Manifest manifest) -> do
+    -- Note: we enqueue compilation jobs only for packages with no dependencies,
+    -- because from them we should be able to reach the whole of the registry,
+    -- as they complete new jobs for their dependants will be queued up.
+    when (not (Map.isEmpty manifest.dependencies)) do
+      Log.info $ "Enqueuing matrix job for _new_ compiler "
+        <> Version.print newCompilerVersion
+        <> ", package "
+        <> PackageName.print manifest.name
+        <> "@"
+        <> Version.print manifest.version
+      void $ Db.insertMatrixJob
+        { payload: Map.empty
+        , compilerVersion: newCompilerVersion
+        , packageName: manifest.name
+        , packageVersion: manifest.version
+        }

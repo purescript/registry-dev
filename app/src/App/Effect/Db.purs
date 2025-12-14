@@ -25,9 +25,9 @@ import Run.Except as Except
 -- be part of app code we want to test.
 
 data Db a
-  = InsertPackageJob InsertPackageJob a
-  | InsertMatrixJob InsertMatrixJob a
-  | InsertPackageSetJob InsertPackageSetJob a
+  = InsertPackageJob InsertPackageJob (JobId -> a)
+  | InsertMatrixJob InsertMatrixJob (JobId -> a)
+  | InsertPackageSetJob InsertPackageSetJob (JobId -> a)
   | FinishJob FinishJob a
   | StartJob StartJob a
   | SelectJobInfo JobId (Either String (Maybe JobInfo) -> a)
@@ -63,16 +63,16 @@ selectJobInfo :: forall r. JobId -> Run (DB + EXCEPT String + r) (Maybe JobInfo)
 selectJobInfo jobId = Run.lift _db (SelectJobInfo jobId identity) >>= Except.rethrow
 
 -- | Insert a new package job into the database.
-insertPackageJob :: forall r. InsertPackageJob -> Run (DB + r) Unit
-insertPackageJob job = Run.lift _db (InsertPackageJob job unit)
+insertPackageJob :: forall r. InsertPackageJob -> Run (DB + r) JobId
+insertPackageJob job = Run.lift _db (InsertPackageJob job identity)
 
 -- | Insert a new matrix job into the database.
-insertMatrixJob :: forall r. InsertMatrixJob -> Run (DB + r) Unit
-insertMatrixJob job = Run.lift _db (InsertMatrixJob job unit)
+insertMatrixJob :: forall r. InsertMatrixJob -> Run (DB + r) JobId
+insertMatrixJob job = Run.lift _db (InsertMatrixJob job identity)
 
 -- | Insert a new package set job into the database.
-insertPackageSetJob :: forall r. InsertPackageSetJob -> Run (DB + r) Unit
-insertPackageSetJob job = Run.lift _db (InsertPackageSetJob job unit)
+insertPackageSetJob :: forall r. InsertPackageSetJob -> Run (DB + r) JobId
+insertPackageSetJob job = Run.lift _db (InsertPackageSetJob job identity)
 
 -- | Start a job in the database.
 startJob :: forall r. StartJob -> Run (DB + r) Unit
@@ -102,17 +102,17 @@ type SQLiteEnv = { db :: SQLite }
 -- | Interpret DB by interacting with the SQLite database on disk.
 handleSQLite :: forall r a. SQLiteEnv -> Db a -> Run (LOG + EFFECT + r) a
 handleSQLite env = case _ of
-  InsertPackageJob job next -> do
-    Run.liftEffect $ SQLite.insertPackageJob env.db job
-    pure next
+  InsertPackageJob job reply -> do
+    result <- Run.liftEffect $ SQLite.insertPackageJob env.db job
+    pure $ reply result
 
-  InsertMatrixJob job next -> do
-    Run.liftEffect $ SQLite.insertMatrixJob env.db job
-    pure next
+  InsertMatrixJob job reply -> do
+    result <- Run.liftEffect $ SQLite.insertMatrixJob env.db job
+    pure $ reply result
 
-  InsertPackageSetJob job next -> do
-    Run.liftEffect $ SQLite.insertPackageSetJob env.db job
-    pure next
+  InsertPackageSetJob job reply -> do
+    result <- Run.liftEffect $ SQLite.insertPackageSetJob env.db job
+    pure $ reply result
 
   FinishJob job next -> do
     Run.liftEffect $ SQLite.finishJob env.db job

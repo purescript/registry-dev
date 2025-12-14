@@ -1,5 +1,6 @@
 module Registry.App.Server.MatrixBuilder
-  ( installBuildPlan
+  ( checkIfNewCompiler
+  , installBuildPlan
   , printCompilerFailure
   , readCompilerIndex
   , runMatrixJob
@@ -214,3 +215,16 @@ solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
                 ]
               pure Nothing
   pure $ Set.fromFoldable $ Array.catMaybes newJobs
+
+checkIfNewCompiler :: forall r. Run (EXCEPT String + LOG + REGISTRY + AFF + r) (Maybe Version)
+checkIfNewCompiler = do
+  Log.info "Checking if there's a new compiler in town..."
+  latestCompiler <- NonEmptyArray.foldr1 max <$> PursVersions.pursVersions
+  maybeMetadata <- Registry.readMetadata $ unsafeFromRight $ PackageName.parse "prelude"
+  pure $ maybeMetadata >>= \(Metadata metadata) ->
+    Map.findMax metadata.published
+      >>= \{ key: _version, value: { compilers } } -> do
+        case all (_ < latestCompiler) compilers of
+          -- all compilers compatible with the latest prelude are older than this one
+          true -> Just latestCompiler
+          false -> Nothing

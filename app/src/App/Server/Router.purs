@@ -14,7 +14,6 @@ import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log as Log
 import Registry.App.Server.Env (ServerEffects, ServerEnv, jsonDecoder, jsonOk, runEffects)
-import Registry.App.Server.JobExecutor as JobExecutor
 import Registry.Operation (PackageOperation)
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
@@ -100,7 +99,6 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
   insertPackageJob :: PackageOperation -> ContT Response (Run _) Response
   insertPackageJob operation = do
     lift $ Log.info $ "Enqueuing job for package " <> PackageName.print (Operation.packageName operation)
-    jobId <- JobExecutor.newJobId
-    lift $ Db.insertPackageJob { jobId, payload: operation }
+    jobId <- lift $ Db.insertPackageJob { payload: operation }
     jsonOk V1.jobCreatedResponseCodec { jobId }
 
