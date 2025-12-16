@@ -175,6 +175,7 @@ in
     nativeBuildInputs =
       with prev;
       [
+        # needed for better-sqlite
         python3
         nodePackages.node-gyp
       ]
