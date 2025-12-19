@@ -10,7 +10,7 @@ export const getToplevelDirImpl = (filename) => () => {
       var topLevel = /^[^\/]+\/$/;
       return topLevel.exec(path);
     },
-    onentry: (entry) => {
+    onReadEntry: (entry) => {
       entries.push(entry.path);
     },
   });

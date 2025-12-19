@@ -149,11 +149,8 @@ let
     };
 in
 {
-  # Use Node.js 20 LTS for all registry components
-  nodejs = prev.nodejs_20;
-
-  # Pin spago to the version we use
-  spago = prev.spago-bin.spago-0_93_44;
+  # Use the latest spago from purescript-overlay
+  spago = prev.spago-unstable;
 
   # Spago lock: compiled PureScript dependencies for the entire workspace
   registry-spago-lock = prev.mkSpagoDerivation {
@@ -173,17 +170,19 @@ in
     version = "0.0.1";
     src = npmSrc;
     dontNpmBuild = true;
+    npmFlags = [ "--omit=optional" ];
 
     nativeBuildInputs =
       with prev;
       [
+        # needed for better-sqlite
         python3
         nodePackages.node-gyp
       ]
       ++ prev.lib.optionals prev.stdenv.isDarwin [ prev.darwin.cctools ];
 
     # To update: run `nix build .#server` and copy the hash from the error
-    npmDepsHash = "sha256-Ju7R6Sa+NIHD8fkxLxicqToPLxLD4RM4wvl6bktE/7Y=";
+    npmDepsHash = "sha256-iWHvXmTcWr4A/VerriuewnH0qNIYBtYkQnqv1VO8Jhs=";
 
     installPhase = ''
       mkdir -p $out
