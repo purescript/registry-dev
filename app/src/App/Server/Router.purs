@@ -66,8 +66,8 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
 
   -- TODO return jobs
   Jobs, Get -> do
-    now <- liftEffect nowUTC
-    jsonOk (CJ.array V1.jobCodec) [ { jobId: wrap "foo", createdAt: now, finishedAt: Nothing, success: true, logs: [] } ]
+    _now <- liftEffect nowUTC
+    jsonOk (CJ.array V1.jobCodec) []
 
   Job jobId { level: maybeLogLevel, since }, Get -> do
     let logLevel = fromMaybe Error maybeLogLevel
@@ -101,4 +101,3 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
     lift $ Log.info $ "Enqueuing job for package " <> PackageName.print (Operation.packageName operation)
     jobId <- lift $ Db.insertPackageJob { payload: operation }
     jsonOk V1.jobCreatedResponseCodec { jobId }
-
