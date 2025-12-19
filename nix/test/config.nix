@@ -357,38 +357,39 @@ let
   '';
 
   # Script to set up git fixtures
-  setupGitFixtures = pkgs.writeShellScriptBin "setup-git-fixtures" ''
-    set -e
-    FIXTURES_DIR="''${1:-${defaultStateDir}/repo-fixtures}"
+  setupGitFixtures = pkgs.writeShellApplication {
+    name = "setup-git-fixtures";
+    runtimeInputs = [ pkgs.git ];
+    text = ''
+      FIXTURES_DIR="''${1:-${defaultStateDir}/repo-fixtures}"
 
-    # Remove any existing fixtures (they may have wrong permissions from nix store copy)
-    rm -rf "$FIXTURES_DIR/purescript" 2>/dev/null || true
+      # Run git as pacchettibotti
+      gitbot() {
+        GIT_AUTHOR_NAME="pacchettibotti" GIT_AUTHOR_EMAIL="pacchettibotti@purescript.org" \
+        GIT_COMMITTER_NAME="pacchettibotti" GIT_COMMITTER_EMAIL="pacchettibotti@purescript.org" \
+          git "$@"
+      }
 
-    mkdir -p "$FIXTURES_DIR/purescript"
+      # Remove any existing fixtures (they may have wrong permissions from nix store copy)
+      rm -rf "$FIXTURES_DIR/purescript" 2>/dev/null || true
+      mkdir -p "$FIXTURES_DIR/purescript"
 
-    # Use env vars instead of --global to avoid polluting user's git config
-    export GIT_AUTHOR_NAME="pacchettibotti"
-    export GIT_AUTHOR_EMAIL="pacchettibotti@purescript.org"
-    export GIT_COMMITTER_NAME="pacchettibotti"
-    export GIT_COMMITTER_EMAIL="pacchettibotti@purescript.org"
+      # Copy fixtures and make writable (nix store files are read-only)
+      cp -r ${rootPath}/app/fixtures/{registry-index,registry,package-sets} "$FIXTURES_DIR/purescript/"
+      cp -r ${rootPath}/app/fixtures/github-packages/effect-4.0.0 "$FIXTURES_DIR/purescript/purescript-effect"
+      chmod -R u+w "$FIXTURES_DIR/purescript"
 
-    # Copy fixtures and make writable (nix store files are read-only)
-    cp -r ${rootPath}/app/fixtures/{registry-index,registry,package-sets} "$FIXTURES_DIR/purescript/"
-    cp -r ${rootPath}/app/fixtures/github-packages/effect-4.0.0 "$FIXTURES_DIR/purescript/purescript-effect"
-    chmod -R u+w "$FIXTURES_DIR/purescript"
+      for repo in "$FIXTURES_DIR"/purescript/*/; do
+        cd "$repo"
+        git init -b master && git add .
+        gitbot commit -m "Fixture commit"
+        git config receive.denyCurrentBranch ignore
+      done
 
-    for repo in "$FIXTURES_DIR"/purescript/*/; do
-      cd "$repo"
-      git init -b master && git add .
-      GIT_AUTHOR_NAME="pacchettibotti" GIT_AUTHOR_EMAIL="pacchettibotti@purescript.org" \
-      GIT_COMMITTER_NAME="pacchettibotti" GIT_COMMITTER_EMAIL="pacchettibotti@purescript.org" \
-        git commit -m "Fixture commit"
-      git config receive.denyCurrentBranch ignore
-    done
-
-    git -C "$FIXTURES_DIR/purescript/package-sets" tag -m "psc-0.15.9-20230105" psc-0.15.9-20230105
-    git -C "$FIXTURES_DIR/purescript/purescript-effect" tag -m "v4.0.0" v4.0.0
-  '';
+      gitbot -C "$FIXTURES_DIR/purescript/package-sets" tag -m "psc-0.15.9-20230105" psc-0.15.9-20230105
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-effect" tag -m "v4.0.0" v4.0.0
+    '';
+  };
 
   # Publish payload for testing
   publishPayload = pkgs.writeText "publish-effect.json" (
