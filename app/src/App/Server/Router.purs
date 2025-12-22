@@ -2,21 +2,18 @@ module Registry.App.Server.Router where
 
 import Registry.App.Prelude hiding ((/))
 
-import Control.Monad.Cont (ContT)
 import Data.Codec.JSON as CJ
 import Effect.Aff as Aff
 import HTTPurple (Method(..), Request, Response)
 import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
-import Registry.API.V1 (LogLevel(..), Route(..))
+import Registry.API.V1 (Route(..))
 import Registry.API.V1 as V1
 import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log as Log
 import Registry.App.Server.Env (ServerEffects, ServerEnv, jsonDecoder, jsonOk, runEffects)
-import Registry.Operation (PackageOperation)
 import Registry.Operation as Operation
-import Registry.PackageName as PackageName
 import Run (Run)
 import Run.Except as Run.Except
 
@@ -44,14 +41,20 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
   Publish, Post -> do
     publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
     lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
-    insertPackageJob $ Operation.Publish publish
+    jobId <- lift $ Db.insertPublishJob { payload: publish }
+    jsonOk V1.jobCreatedResponseCodec { jobId }
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
     case auth.payload of
       Operation.Unpublish payload -> do
         lift $ Log.info $ "Received Unpublish request: " <> printJson Operation.unpublishCodec payload
-        insertPackageJob $ Operation.Authenticated auth
+        jobId <- lift $ Db.insertUnpublishJob
+          { payload: payload
+          , rawPayload: auth.rawPayload
+          , signature: auth.signature
+          }
+        jsonOk V1.jobCreatedResponseCodec { jobId }
       _ ->
         HTTPurple.badRequest "Expected unpublish operation."
 
@@ -60,7 +63,12 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
     case auth.payload of
       Operation.Transfer payload -> do
         lift $ Log.info $ "Received Transfer request: " <> printJson Operation.transferCodec payload
-        insertPackageJob $ Operation.Authenticated auth
+        jobId <- lift $ Db.insertTransferJob
+          { payload: payload
+          , rawPayload: auth.rawPayload
+          , signature: auth.signature
+          }
+        jsonOk V1.jobCreatedResponseCodec { jobId }
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
@@ -70,22 +78,14 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
     jsonOk (CJ.array V1.jobCodec) []
 
   Job jobId { level: maybeLogLevel, since }, Get -> do
-    let logLevel = fromMaybe Error maybeLogLevel
-    logs <- lift $ Db.selectLogsByJob jobId logLevel since
-    lift (Run.Except.runExcept $ Db.selectJobInfo jobId) >>= case _ of
+    now <- liftEffect nowUTC
+    lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since: fromMaybe now since }) >>= case _ of
       Left err -> do
         lift $ Log.error $ "Error while fetching job: " <> err
         HTTPurple.notFound
       Right Nothing -> do
         HTTPurple.notFound
-      Right (Just job) ->
-        jsonOk V1.jobCodec
-          { jobId
-          , createdAt: job.createdAt
-          , finishedAt: job.finishedAt
-          , success: job.success
-          , logs
-          }
+      Right (Just job) -> jsonOk V1.jobCodec job
 
   Status, Get ->
     HTTPurple.emptyResponse Status.ok
@@ -95,9 +95,3 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
 
   _, _ ->
     HTTPurple.notFound
-  where
-  insertPackageJob :: PackageOperation -> ContT Response (Run _) Response
-  insertPackageJob operation = do
-    lift $ Log.info $ "Enqueuing job for package " <> PackageName.print (Operation.packageName operation)
-    jobId <- lift $ Db.insertPackageJob { payload: operation }
-    jsonOk V1.jobCreatedResponseCodec { jobId }

@@ -175,6 +175,6 @@ pollJob config jobId = go 1
         case result of
           Left err -> throwError $ toError err
           Right job ->
-            case job.finishedAt of
+            case (V1.jobInfo job).finishedAt of
               Just _ -> pure job
               Nothing -> go (attempt + 1)

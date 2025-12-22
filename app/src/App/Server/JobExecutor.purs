@@ -12,6 +12,9 @@ import Data.Map as Map
 import Data.Set as Set
 import Effect.Aff (Milliseconds(..))
 import Effect.Aff as Aff
+import Record as Record
+import Registry.API.V1 (Job(..))
+import Registry.API.V1 as V1
 import Registry.App.API as API
 import Registry.App.Effect.Db (DB)
 import Registry.App.Effect.Db as Db
@@ -19,20 +22,13 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
-import Registry.App.SQLite (MatrixJobDetails, PackageJobDetails, PackageSetJobDetails)
 import Registry.App.Server.Env (ServerEffects, ServerEnv, runEffects)
 import Registry.App.Server.MatrixBuilder as MatrixBuilder
 import Registry.ManifestIndex as ManifestIndex
-import Registry.Operation as Operation
 import Registry.PackageName as PackageName
 import Registry.Version as Version
 import Run (Run)
 import Run.Except (EXCEPT)
-
-data JobDetails
-  = PackageJob PackageJobDetails
-  | MatrixJob MatrixJobDetails
-  | PackageSetJob PackageSetJobDetails
 
 runJobExecutor :: ServerEnv -> Aff (Either Aff.Error Unit)
 runJobExecutor env = runEffects env do
@@ -62,10 +58,7 @@ runJobExecutor env = runEffects env do
       Just job -> do
         now <- nowUTC
         let
-          jobId = case job of
-            PackageJob details -> details.jobId
-            MatrixJob details -> details.jobId
-            PackageSetJob details -> details.jobId
+          jobId = (V1.jobInfo job).jobId
 
         Db.startJob { jobId, startedAt: now }
 
@@ -96,20 +89,22 @@ runJobExecutor env = runEffects env do
 
 -- TODO: here we only get a single package for each operation, but really we should
 -- have all of them and toposort them. There is something in ManifestIndex but not
--- sure that's what we need 
-findNextAvailableJob :: forall r. Run (DB + EXCEPT String + r) (Maybe JobDetails)
+-- sure that's what we need
+findNextAvailableJob :: forall r. Run (DB + EXCEPT String + r) (Maybe Job)
 findNextAvailableJob = runMaybeT
-  $ (PackageJob <$> MaybeT Db.selectNextPackageJob)
-  <|> (MatrixJob <$> MaybeT Db.selectNextMatrixJob)
-  <|> (PackageSetJob <$> MaybeT Db.selectNextPackageSetJob)
+  $ (PublishJob <<< Record.merge { logs: [], jobType: Proxy :: _ "publish" } <$> MaybeT Db.selectNextPublishJob)
+  <|> (UnpublishJob <<< Record.merge { logs: [], jobType: Proxy :: _ "unpublish" } <$> MaybeT Db.selectNextUnpublishJob)
+  <|> (TransferJob <<< Record.merge { logs: [], jobType: Proxy :: _ "transfer" } <$> MaybeT Db.selectNextTransferJob)
+  <|> (MatrixJob <<< Record.merge { logs: [], jobType: Proxy :: _ "matrix" } <$> MaybeT Db.selectNextMatrixJob)
+  <|> (PackageSetJob <<< Record.merge { logs: [], jobType: Proxy :: _ "packageset" } <$> MaybeT Db.selectNextPackageSetJob)
 
-executeJob :: DateTime -> JobDetails -> Run ServerEffects Unit
+executeJob :: DateTime -> Job -> Run ServerEffects Unit
 executeJob _ = case _ of
-  PackageJob { payload: Operation.Publish payload@{ name, version } } -> do
-    maybeDependencies <- API.publish Nothing payload
+  PublishJob { payload: payload@{ name } } -> do
+    maybeResult <- API.publish Nothing payload
     -- The above operation will throw if not successful, and return a map of
     -- dependencies of the package only if it has not been published before.
-    for_ maybeDependencies \dependencies -> do
+    for_ maybeResult \{ dependencies, version } -> do
       -- At this point this package has been verified with one compiler only.
       -- So we need to enqueue compilation jobs for (1) same package, all the other
       -- compilers, and (2) same compiler, all packages that depend on this one
@@ -132,8 +127,8 @@ executeJob _ = case _ of
             , packageName: solvedPackage
             , packageVersion: solvedVersion
             }
-  PackageJob { payload: Operation.Authenticated auth } ->
-    API.authenticated auth
+  UnpublishJob { payload } -> API.authenticated payload
+  TransferJob { payload } -> API.authenticated payload
   MatrixJob details@{ packageName, packageVersion } -> do
     maybeDependencies <- MatrixBuilder.runMatrixJob details
     -- Unlike the publishing case, after verifying a compilation here we only need

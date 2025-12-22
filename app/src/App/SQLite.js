@@ -2,7 +2,9 @@ import Database from "better-sqlite3";
 
 const JOB_INFO_TABLE = 'job_info'
 const LOGS_TABLE = 'logs'
-const PACKAGE_JOBS_TABLE = 'package_jobs';
+const PUBLISH_JOBS_TABLE = 'publish_jobs';
+const UNPUBLISH_JOBS_TABLE = 'unpublish_jobs';
+const TRANSFER_JOBS_TABLE = 'transfer_jobs';
 const MATRIX_JOBS_TABLE = 'matrix_jobs';
 const PACKAGE_SET_JOBS_TABLE = 'package_set_jobs';
 
@@ -66,9 +68,19 @@ const _insertJob = (db, table, columns, job) => {
   return insert(job);
 };
 
-export const insertPackageJobImpl = (db, job) => {
-  const columns = ['jobId', 'jobType', 'packageName', 'payload']
-  return _insertJob(db, PACKAGE_JOBS_TABLE, columns, job);
+export const insertPublishJobImpl = (db, job) => {
+  const columns = ['jobId', 'packageName', 'packageVersion', 'payload']
+  return _insertJob(db, PUBLISH_JOBS_TABLE, columns, job);
+};
+
+export const insertUnpublishJobImpl = (db, job) => {
+  const columns = ['jobId', 'packageName', 'packageVersion', 'payload']
+  return _insertJob(db, UNPUBLISH_JOBS_TABLE, columns, job);
+};
+
+export const insertTransferJobImpl = (db, job) => {
+  const columns = ['jobId', 'packageName', 'payload']
+  return _insertJob(db, TRANSFER_JOBS_TABLE, columns, job);
 };
 
 export const insertMatrixJobImpl = (db, job) => {
@@ -81,43 +93,44 @@ export const insertPackageSetJobImpl = (db, job) => {
   return _insertJob(db, PACKAGE_SET_JOBS_TABLE, columns, job);
 };
 
-export const selectNextPackageJobImpl = (db) => {
-  const stmt = db.prepare(`
-    SELECT job.*, info.createdAt, info.startedAt
-    FROM ${PACKAGE_JOBS_TABLE} job
+const _selectJob = (db, { table, jobId }) => {
+  let query = `
+    SELECT job.*, info.*
+    FROM ${table} job
     JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
-    WHERE info.finishedAt IS NULL
-    AND info.startedAt IS NULL
-    ORDER BY info.createdAt DESC
-    LIMIT 1
-  `);
-  return stmt.get();
+  `;
+
+  if (jobId === null) {
+    query += ` WHERE info.finishedAt IS NULL AND info.startedAt IS NULL`;
+  } else {
+    query += ` WHERE info.jobId = ?`;
+    params.push(jobId);
+  }
+
+  query += ` ORDER BY info.createdAt ASC LIMIT 1`;
+  const stmt = db.prepare(query);
+
+  return stmt.get(...params);
+}
+
+export const selectPublishJobImpl = (db, jobId) => {
+  return _selectJob(db, { table: PUBLISH_JOBS_TABLE, jobId });
 };
 
-export const selectNextMatrixJobImpl = (db) => {
-  const stmt = db.prepare(`
-    SELECT job.*, info.createdAt, info.startedAt
-    FROM ${MATRIX_JOBS_TABLE} job
-    JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
-    WHERE info.finishedAt IS NULL
-    AND info.startedAt IS NULL
-    ORDER BY info.createdAt DESC
-    LIMIT 1
-  `);
-  return stmt.get();
+export const selectUnpublishJobImpl = (db, jobId) => {
+  return _selectJob(db, { table: UNPUBLISH_JOBS_TABLE, jobId });
 };
 
-export const selectNextPackageSetJobImpl = (db) => {
-  const stmt = db.prepare(`
-    SELECT job.*, info.createdAt, info.startedAt
-    FROM ${PACKAGE_SET_JOBS_TABLE} job
-    JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
-    WHERE info.finishedAt IS NULL
-    AND info.startedAt IS NULL
-    ORDER BY info.createdAt DESC
-    LIMIT 1
-  `);
-  return stmt.get();
+export const selectTransferJobImpl = (db, jobId) => {
+  return _selectJob(db, { table: TRANSFER_JOBS_TABLE, jobId });
+};
+
+export const selectMatrixJobImpl = (db, jobId) => {
+  return _selectJob(db, { table: MATRIX_JOBS_TABLE, jobId });
+};
+
+export const selectPackageSetJobImpl = (db, jobId) => {
+  return _selectJob(db, { table: PACKAGE_SET_JOBS_TABLE, jobId });
 };
 
 export const startJobImpl = (db, args) => {
@@ -161,18 +174,10 @@ export const insertLogLineImpl = (db, logLine) => {
 export const selectLogsByJobImpl = (db, jobId, logLevel, since) => {
   let query = `
     SELECT * FROM ${LOGS_TABLE}
-    WHERE jobId = ? AND level >= ?
+    WHERE jobId = ? AND level >= ? AND timestamp >= ?
+    ORDER BY timestamp ASC LIMIT 100
   `;
 
-  const params = [jobId, logLevel];
-
-  if (since !== null) {
-    query += ' AND timestamp >= ?';
-    params.push(since);
-  }
-
-  query += ' ORDER BY timestamp ASC';
-
   const stmt = db.prepare(query);
-  return stmt.all(...params);
+  return stmt.all(jobId, logLevel, since);
 };

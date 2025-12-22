@@ -19,6 +19,7 @@ import Data.String as String
 import Effect.Aff as Aff
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
+import Registry.API.V1 (MatrixJobData)
 import Registry.App.CLI.Purs (CompilerFailure(..))
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.PursVersions as PursVersions
@@ -29,7 +30,6 @@ import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
-import Registry.App.SQLite (MatrixJobDetails)
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Tmp as Tmp
 import Registry.ManifestIndex as ManifestIndex
@@ -43,7 +43,7 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
-runMatrixJob :: forall r. MatrixJobDetails -> Run (REGISTRY + STORAGE + LOG + AFF + EFFECT + EXCEPT String + r) (Maybe (Map PackageName Range))
+runMatrixJob :: forall r. MatrixJobData -> Run (REGISTRY + STORAGE + LOG + AFF + EFFECT + EXCEPT String + r) (Maybe (Map PackageName Range))
 runMatrixJob { compilerVersion, packageName, packageVersion, payload: buildPlan } = do
   workdir <- Tmp.mkTmpDir
   let installed = Path.concat [ workdir, ".registry" ]

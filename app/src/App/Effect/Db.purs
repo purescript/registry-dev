@@ -5,10 +5,25 @@ import Registry.App.Prelude
 import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.String as String
-import Registry.API.V1 (JobId, LogLevel, LogLine)
+import Registry.API.V1 (Job, JobId, LogLevel, LogLine)
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.SQLite (FinishJob, InsertMatrixJob, InsertPackageJob, InsertPackageSetJob, JobInfo, MatrixJobDetails, PackageJobDetails, PackageSetJobDetails, SQLite, StartJob)
+import Registry.App.SQLite
+  ( FinishJob
+  , InsertMatrixJob
+  , InsertPackageSetJob
+  , InsertPublishJob
+  , InsertTransferJob
+  , InsertUnpublishJob
+  , MatrixJobDetails
+  , PackageSetJobDetails
+  , PublishJobDetails
+  , SQLite
+  , SelectJobRequest
+  , StartJob
+  , TransferJobDetails
+  , UnpublishJobDetails
+  )
 import Registry.App.SQLite as SQLite
 import Run (EFFECT, Run)
 import Run as Run
@@ -25,17 +40,21 @@ import Run.Except as Except
 -- be part of app code we want to test.
 
 data Db a
-  = InsertPackageJob InsertPackageJob (JobId -> a)
+  = InsertPublishJob InsertPublishJob (JobId -> a)
+  | InsertUnpublishJob InsertUnpublishJob (JobId -> a)
+  | InsertTransferJob InsertTransferJob (JobId -> a)
   | InsertMatrixJob InsertMatrixJob (JobId -> a)
   | InsertPackageSetJob InsertPackageSetJob (JobId -> a)
   | FinishJob FinishJob a
   | StartJob StartJob a
-  | SelectJobInfo JobId (Either String (Maybe JobInfo) -> a)
-  | SelectNextPackageJob (Either String (Maybe PackageJobDetails) -> a)
+  | SelectJob SelectJobRequest (Either String (Maybe Job) -> a)
+  | SelectNextPublishJob (Either String (Maybe PublishJobDetails) -> a)
+  | SelectNextUnpublishJob (Either String (Maybe UnpublishJobDetails) -> a)
+  | SelectNextTransferJob (Either String (Maybe TransferJobDetails) -> a)
   | SelectNextMatrixJob (Either String (Maybe MatrixJobDetails) -> a)
   | SelectNextPackageSetJob (Either String (Maybe PackageSetJobDetails) -> a)
   | InsertLogLine LogLine a
-  | SelectLogsByJob JobId LogLevel (Maybe DateTime) (Array LogLine -> a)
+  | SelectLogsByJob JobId LogLevel DateTime (Array LogLine -> a)
   | ResetIncompleteJobs a
 
 derive instance Functor Db
@@ -51,7 +70,7 @@ insertLog :: forall r. LogLine -> Run (DB + r) Unit
 insertLog log = Run.lift _db (InsertLogLine log unit)
 
 -- | Select all logs for a given job, filtered by loglevel.
-selectLogsByJob :: forall r. JobId -> LogLevel -> Maybe DateTime -> Run (DB + r) (Array LogLine)
+selectLogsByJob :: forall r. JobId -> LogLevel -> DateTime -> Run (DB + r) (Array LogLine)
 selectLogsByJob jobId logLevel since = Run.lift _db (SelectLogsByJob jobId logLevel since identity)
 
 -- | Set a job in the database to the 'finished' state.
@@ -59,12 +78,20 @@ finishJob :: forall r. FinishJob -> Run (DB + r) Unit
 finishJob job = Run.lift _db (FinishJob job unit)
 
 -- | Select a job by ID from the database.
-selectJobInfo :: forall r. JobId -> Run (DB + EXCEPT String + r) (Maybe JobInfo)
-selectJobInfo jobId = Run.lift _db (SelectJobInfo jobId identity) >>= Except.rethrow
+selectJob :: forall r. SelectJobRequest -> Run (DB + EXCEPT String + r) (Maybe Job)
+selectJob request = Run.lift _db (SelectJob request identity) >>= Except.rethrow
 
--- | Insert a new package job into the database.
-insertPackageJob :: forall r. InsertPackageJob -> Run (DB + r) JobId
-insertPackageJob job = Run.lift _db (InsertPackageJob job identity)
+-- | Insert a new publish job into the database.
+insertPublishJob :: forall r. InsertPublishJob -> Run (DB + r) JobId
+insertPublishJob job = Run.lift _db (InsertPublishJob job identity)
+
+-- | Insert a new unpublish job into the database.
+insertUnpublishJob :: forall r. InsertUnpublishJob -> Run (DB + r) JobId
+insertUnpublishJob job = Run.lift _db (InsertUnpublishJob job identity)
+
+-- | Insert a new transfer job into the database.
+insertTransferJob :: forall r. InsertTransferJob -> Run (DB + r) JobId
+insertTransferJob job = Run.lift _db (InsertTransferJob job identity)
 
 -- | Insert a new matrix job into the database.
 insertMatrixJob :: forall r. InsertMatrixJob -> Run (DB + r) JobId
@@ -78,9 +105,17 @@ insertPackageSetJob job = Run.lift _db (InsertPackageSetJob job identity)
 startJob :: forall r. StartJob -> Run (DB + r) Unit
 startJob job = Run.lift _db (StartJob job unit)
 
--- | Select the next package job from the database.
-selectNextPackageJob :: forall r. Run (DB + EXCEPT String + r) (Maybe PackageJobDetails)
-selectNextPackageJob = Run.lift _db (SelectNextPackageJob identity) >>= Except.rethrow
+-- | Select the next publish job from the database.
+selectNextPublishJob :: forall r. Run (DB + EXCEPT String + r) (Maybe PublishJobDetails)
+selectNextPublishJob = Run.lift _db (SelectNextPublishJob identity) >>= Except.rethrow
+
+-- | Select the next unpublish job from the database.
+selectNextUnpublishJob :: forall r. Run (DB + EXCEPT String + r) (Maybe UnpublishJobDetails)
+selectNextUnpublishJob = Run.lift _db (SelectNextUnpublishJob identity) >>= Except.rethrow
+
+-- | Select the next transfer job from the database.
+selectNextTransferJob :: forall r. Run (DB + EXCEPT String + r) (Maybe TransferJobDetails)
+selectNextTransferJob = Run.lift _db (SelectNextTransferJob identity) >>= Except.rethrow
 
 -- | Select the next matrix job from the database.
 selectNextMatrixJob :: forall r. Run (DB + EXCEPT String + r) (Maybe MatrixJobDetails)
@@ -102,8 +137,16 @@ type SQLiteEnv = { db :: SQLite }
 -- | Interpret DB by interacting with the SQLite database on disk.
 handleSQLite :: forall r a. SQLiteEnv -> Db a -> Run (LOG + EFFECT + r) a
 handleSQLite env = case _ of
-  InsertPackageJob job reply -> do
-    result <- Run.liftEffect $ SQLite.insertPackageJob env.db job
+  InsertPublishJob job reply -> do
+    result <- Run.liftEffect $ SQLite.insertPublishJob env.db job
+    pure $ reply result
+
+  InsertUnpublishJob job reply -> do
+    result <- Run.liftEffect $ SQLite.insertUnpublishJob env.db job
+    pure $ reply result
+
+  InsertTransferJob job reply -> do
+    result <- Run.liftEffect $ SQLite.insertTransferJob env.db job
     pure $ reply result
 
   InsertMatrixJob job reply -> do
@@ -122,12 +165,20 @@ handleSQLite env = case _ of
     Run.liftEffect $ SQLite.startJob env.db job
     pure next
 
-  SelectJobInfo jobId reply -> do
-    result <- Run.liftEffect $ SQLite.selectJobInfo env.db jobId
+  SelectJob request reply -> do
+    result <- Run.liftEffect $ SQLite.selectJob env.db request
     pure $ reply result
 
-  SelectNextPackageJob reply -> do
-    result <- Run.liftEffect $ SQLite.selectNextPackageJob env.db
+  SelectNextPublishJob reply -> do
+    result <- Run.liftEffect $ SQLite.selectNextPublishJob env.db
+    pure $ reply result
+
+  SelectNextUnpublishJob reply -> do
+    result <- Run.liftEffect $ SQLite.selectNextUnpublishJob env.db
+    pure $ reply result
+
+  SelectNextTransferJob reply -> do
+    result <- Run.liftEffect $ SQLite.selectNextTransferJob env.db
     pure $ reply result
 
   SelectNextMatrixJob reply -> do

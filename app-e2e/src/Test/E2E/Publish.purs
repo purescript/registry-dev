@@ -68,18 +68,18 @@ spec = do
           job <- Client.pollJob config jobId
 
           -- If job failed, print logs for debugging
-          unless job.success do
+          unless (V1.jobInfo job).success do
             Console.log "Job failed! Logs:"
-            let logMessages = map (\l -> "[" <> V1.printLogLevel l.level <> "] " <> l.message) job.logs
+            let logMessages = map (\l -> "[" <> V1.printLogLevel l.level <> "] " <> l.message) (V1.jobInfo job).logs
             Console.log $ String.joinWith "\n" logMessages
 
           -- Verify job completed successfully
-          when (not job.success) do
-            let errorLogs = Array.filter (\l -> l.level == V1.Error) job.logs
+          when (not (V1.jobInfo job).success) do
+            let errorLogs = Array.filter (\l -> l.level == V1.Error) (V1.jobInfo job).logs
             let errorMessages = map _.message errorLogs
             Assert.fail $ "Job failed with errors:\n" <> String.joinWith "\n" errorMessages
 
-          Assert.shouldSatisfy job.finishedAt isJust
+          Assert.shouldSatisfy (V1.jobInfo job).finishedAt isJust
 -- Assert.shouldEqual job.jobType JobType.PublishJob
 -- Assert.shouldEqual job.packageName (Utils.unsafePackageName "effect")
 -- Assert.shouldEqual job.ref "v4.0.0"

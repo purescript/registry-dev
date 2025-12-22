@@ -344,7 +344,7 @@ type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + 
 -- The legacyIndex argument contains the unverified manifests produced by the
 -- legacy importer; these manifests can be used on legacy packages to conform
 -- them to the registry rule that transitive dependencies are not allowed.
-publish :: forall r. Maybe Solver.TransitivizedRegistry -> PublishData -> Run (PublishEffects + r) (Maybe (Map PackageName Range))
+publish :: forall r. Maybe Solver.TransitivizedRegistry -> PublishData -> Run (PublishEffects + r) (Maybe { dependencies :: Map PackageName Range, version :: Version })
 publish maybeLegacyIndex payload = do
   let printedName = PackageName.print payload.name
 
@@ -806,7 +806,7 @@ publish maybeLegacyIndex payload = do
         Comment.comment "Wrote completed metadata to the registry!"
 
       FS.Extra.remove tmp
-      pure $ Just (un Manifest manifest).dependencies
+      pure $ Just { dependencies: (un Manifest manifest).dependencies, version: (un Manifest manifest).version }
 
 -- | Verify the build plan for the package. If the user provided a build plan,
 -- | we ensure that the provided versions are within the ranges listed in the

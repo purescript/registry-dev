@@ -96,7 +96,7 @@ spec = do
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-effect", subdir: Nothing }
             , name
             , ref
-            , version
+            , version: version
             , resolutions: Nothing
             }
 

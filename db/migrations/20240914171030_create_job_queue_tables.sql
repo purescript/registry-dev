@@ -9,16 +9,33 @@ CREATE TABLE job_info (
   success INTEGER NOT NULL DEFAULT 0
 );
 
--- Package-oriented jobs (publish/unpublish/transfer)
-CREATE TABLE package_jobs (
+-- Publishing jobs
+CREATE TABLE publish_jobs (
   jobId TEXT PRIMARY KEY NOT NULL,
-  jobType TEXT NOT NULL,
+  packageName TEXT NOT NULL,
+  packageVersion TEXT NOT NULL,
+  payload JSON NOT NULL,
+  FOREIGN KEY (jobId) REFERENCES job_info (jobId) ON DELETE CASCADE
+);
+
+-- Unpublishing jobs
+CREATE TABLE unpublish_jobs (
+  jobId TEXT PRIMARY KEY NOT NULL,
+  packageName TEXT NOT NULL,
+  packageVersion TEXT NOT NULL,
+  payload JSON NOT NULL,
+  FOREIGN KEY (jobId) REFERENCES job_info (jobId) ON DELETE CASCADE
+);
+
+-- Package transfer jobs
+CREATE TABLE transfer_jobs (
+  jobId TEXT PRIMARY KEY NOT NULL,
   packageName TEXT NOT NULL,
   payload JSON NOT NULL,
   FOREIGN KEY (jobId) REFERENCES job_info (jobId) ON DELETE CASCADE
 );
 
--- Compiler matrix jobs (one compiler, all packages)
+-- Compiler matrix jobs
 CREATE TABLE matrix_jobs (
   jobId TEXT PRIMARY KEY NOT NULL,
   packageName TEXT NOT NULL,
@@ -49,7 +66,9 @@ CREATE TABLE IF NOT EXISTS logs (
 -- migrate:down
 
 DROP TABLE job_info;
-DROP TABLE package_jobs;
+DROP TABLE publish_jobs;
+DROP TABLE unpublish_jobs;
+DROP TABLE transfer_jobs;
 DROP TABLE matrix_jobs;
 DROP TABLE package_set_jobs;
 DROP TABLE logs;

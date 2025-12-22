@@ -243,7 +243,7 @@ deleteVersion arguments name version = do
               { location: Just oldMetadata.location
               , name: name
               , ref: specificPackageMetadata.ref
-              , version
+              , version: version
               , compiler: unsafeFromRight $ Version.parse "0.15.4"
               , resolutions: Nothing
               }
