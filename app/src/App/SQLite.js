@@ -94,6 +94,7 @@ export const insertPackageSetJobImpl = (db, job) => {
 };
 
 const _selectJob = (db, { table, jobId }) => {
+  const params = [];
   let query = `
     SELECT job.*, info.*
     FROM ${table} job

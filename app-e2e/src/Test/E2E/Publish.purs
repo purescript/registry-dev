@@ -6,16 +6,16 @@ import Prelude
 
 import Data.Array as Array
 import Data.Either (Either(..))
+import Data.Foldable (for_)
 import Data.Maybe (Maybe(..), isJust)
 import Data.String as String
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
 import Effect.Class.Console as Console
 import Registry.API.V1 as V1
-import Registry.Location as Registry.Location
 import Registry.Test.Assert as Assert
 import Registry.Test.E2E.Client as Client
-import Registry.Test.Utils as Utils
+import Registry.Test.E2E.Fixtures as Fixtures
 import Test.Spec (Spec)
 import Test.Spec as Spec
 
@@ -41,26 +41,11 @@ spec = do
         Right _ -> pure unit -- Jobs list may not be empty if other tests ran
 
   Spec.describe "Publish workflow" do
-    Spec.it "can publish effect@4.0.0" do
+    Spec.it "can publish effect@4.0.0 and filter logs" do
       config <- getConfig
-      let
-        -- Location must match what's in the fixture metadata
-        effectLocation = Registry.Location.GitHub
-          { owner: "purescript"
-          , repo: "purescript-effect"
-          , subdir: Nothing
-          }
-        publishData =
-          { name: Utils.unsafePackageName "effect"
-          , location: Just effectLocation
-          , ref: "v4.0.0"
-          , compiler: Utils.unsafeVersion "0.15.9"
-          , resolutions: Nothing
-          , version: Utils.unsafeVersion "4.0.0"
-          }
 
       -- Submit publish request
-      publishResult <- Client.publish config publishData
+      publishResult <- Client.publish config Fixtures.effectPublishData
       case publishResult of
         Left err -> Assert.fail $ "Failed to submit publish request: " <> Client.printClientError err
         Right { jobId } -> do
@@ -80,6 +65,40 @@ spec = do
             Assert.fail $ "Job failed with errors:\n" <> String.joinWith "\n" errorMessages
 
           Assert.shouldSatisfy (V1.jobInfo job).finishedAt isJust
--- Assert.shouldEqual job.jobType JobType.PublishJob
--- Assert.shouldEqual job.packageName (Utils.unsafePackageName "effect")
--- Assert.shouldEqual job.ref "v4.0.0"
+
+          -- Test log level filtering
+          allLogsResult <- Client.getJob config jobId (Just V1.Debug) Nothing
+          case allLogsResult of
+            Left err -> Assert.fail $ "Failed to get job with DEBUG level: " <> Client.printClientError err
+            Right allLogsJob -> do
+              let allLogs = (V1.jobInfo allLogsJob).logs
+
+              infoLogsResult <- Client.getJob config jobId (Just V1.Info) Nothing
+              case infoLogsResult of
+                Left err -> Assert.fail $ "Failed to get job with INFO level: " <> Client.printClientError err
+                Right infoLogsJob -> do
+                  let infoLogs = (V1.jobInfo infoLogsJob).logs
+                  let debugOnlyLogs = Array.filter (\l -> l.level == V1.Debug) allLogs
+
+                  -- INFO logs should not contain any DEBUG logs
+                  let infoContainsDebug = Array.any (\l -> l.level == V1.Debug) infoLogs
+                  when infoContainsDebug do
+                    Assert.fail "INFO level filter returned DEBUG logs"
+
+                  -- If there were DEBUG logs, INFO result should be smaller
+                  when (Array.length debugOnlyLogs > 0) do
+                    Assert.shouldSatisfy (Array.length infoLogs) (_ < Array.length allLogs)
+
+          -- Test timestamp filtering
+          let logs = (V1.jobInfo job).logs
+          when (Array.length logs >= 2) do
+            case Array.index logs 0 of
+              Nothing -> pure unit
+              Just firstLog -> do
+                sinceResult <- Client.getJob config jobId (Just V1.Debug) (Just firstLog.timestamp)
+                case sinceResult of
+                  Left err -> Assert.fail $ "Failed to get job with since filter: " <> Client.printClientError err
+                  Right sinceJob -> do
+                    let sinceLogs = (V1.jobInfo sinceJob).logs
+                    for_ sinceLogs \l ->
+                      Assert.shouldSatisfy l.timestamp (_ >= firstLog.timestamp)

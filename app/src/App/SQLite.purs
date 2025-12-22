@@ -42,6 +42,7 @@ module Registry.App.SQLite
 import Registry.App.Prelude
 
 import Codec.JSON.DecodeError as JSON.DecodeError
+import Data.Array as Array
 import Control.Monad.Except (runExceptT)
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime as DateTime
@@ -191,15 +192,22 @@ selectJob db { level: maybeLogLevel, since, jobId: JobId jobId } = do
   let logLevel = fromMaybe Error maybeLogLevel
   { fail, success: logs } <- selectLogsByJob db (JobId jobId) logLevel since
   case fail of
-    [] -> runExceptT
-      ( selectPublishJob logs
-          <|> selectMatrixJob logs
-          <|> selectTransferJob logs
-          <|> selectPackageSetJob logs
-          <|> selectUnpublishJob logs
-      )
+    [] -> runExceptT $ firstJust
+      [ selectPublishJob logs
+      , selectMatrixJob logs
+      , selectTransferJob logs
+      , selectPackageSetJob logs
+      , selectUnpublishJob logs
+      ]
     _ -> pure $ Left $ "Some logs are not readable: " <> String.joinWith "\n" fail
   where
+  firstJust :: Array (ExceptT String Effect (Maybe Job)) -> ExceptT String Effect (Maybe Job)
+  firstJust = Array.foldl go (pure Nothing)
+    where
+    go acc next = acc >>= case _ of
+      Just job -> pure (Just job)
+      Nothing -> next
+
   selectPublishJob logs = ExceptT do
     maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPublishJobImpl db (Nullable.notNull jobId)
     pure $ traverse

@@ -95,7 +95,8 @@ let
   testEnvScript = pkgs.writeShellScriptBin "test-env" ''
     set -e
 
-    export SERVER_PORT="${toString ports.server}"
+    # Export test environment variables for E2E test runners
+    ${testConfig.testRunnerExports}
 
     if [ -z "''${STATE_DIR:-}" ]; then
       STATE_DIR="$(mktemp -d)"

@@ -64,8 +64,10 @@ runJobExecutor env = runEffects env do
 
         -- We race the job execution against a timeout; if the timeout happens first,
         -- we kill the job and move on to the next one.
+        -- Note: we set env.jobId so that logs are written to the database.
         jobResult <- liftAff do
-          let execute = Just <$> (runEffects env $ executeJob now job)
+          let envWithJobId = env { jobId = Just jobId }
+          let execute = Just <$> (runEffects envWithJobId $ executeJob now job)
           let delay = 1000.0 * 60.0 * 5.0 -- 5 minutes
           let timeout = Aff.delay (Milliseconds delay) $> Nothing
           Parallel.sequential $ Parallel.parallel execute <|> Parallel.parallel timeout

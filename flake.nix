@@ -216,9 +216,12 @@
           name = "registry-dev";
           inherit GIT_LFS_SKIP_SMUDGE;
 
-          # Development defaults from .env.example
           SERVER_PORT = envDefaults.SERVER_PORT;
           DATABASE_URL = envDefaults.DATABASE_URL;
+
+          # NOTE: Test-specific env vars (REGISTRY_API_URL, GITHUB_API_URL, PACCHETTIBOTTI_*)
+          # are NOT set here to avoid conflicting with .env files used by production scripts
+          # like legacy-importer. Use `nix run .#test-env` to run E2E tests with mocked services.
 
           packages =
             with pkgs;

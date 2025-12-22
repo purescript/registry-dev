@@ -30,6 +30,7 @@ let
 
   # Mock service URLs for test environment
   mockUrls = {
+    registry = "http://localhost:${toString ports.server}/api";
     github = "http://localhost:${toString ports.github}";
     s3 = "http://localhost:${toString ports.s3}";
     bucket = "http://localhost:${toString ports.bucket}";
@@ -43,6 +44,7 @@ let
   # implemented in the script directly.
   testEnv = envDefaults // {
     # Mock service URLs (override production endpoints)
+    REGISTRY_API_URL = mockUrls.registry;
     GITHUB_API_URL = mockUrls.github;
     S3_API_URL = mockUrls.s3;
     S3_BUCKET_URL = mockUrls.bucket;
@@ -53,6 +55,16 @@ let
   envToExports =
     env:
     lib.concatStringsSep "\n" (lib.mapAttrsToList (name: value: ''export ${name}="${value}"'') env);
+
+  # Pre-built shell exports for E2E test runners (used by test-env.nix and integration.nix)
+  testRunnerExports = ''
+    export SERVER_PORT="${toString ports.server}"
+    export REGISTRY_API_URL="${testEnv.REGISTRY_API_URL}"
+    export GITHUB_API_URL="${testEnv.GITHUB_API_URL}"
+    export PACCHETTIBOTTI_TOKEN="${testEnv.PACCHETTIBOTTI_TOKEN}"
+    export PACCHETTIBOTTI_ED25519_PUB="${testEnv.PACCHETTIBOTTI_ED25519_PUB}"
+    export PACCHETTIBOTTI_ED25519="${testEnv.PACCHETTIBOTTI_ED25519}"
+  '';
 
   # Git mock that redirects URLs to local fixtures; this is necessary because otherwise
   # commands would reach out to GitHub or the other package origins.
@@ -151,6 +163,51 @@ let
             url = "https://api.github.com/repos/purescript/package-sets/commits/090897c992b2b310b1456506308db789672adac1";
           };
         };
+      };
+    }
+    # Accept issue comment creation (used by GitHubIssue workflow)
+    {
+      request = {
+        method = "POST";
+        urlPattern = "/repos/purescript/registry/issues/[0-9]+/comments";
+      };
+      response = {
+        status = 201;
+        headers."Content-Type" = "application/json";
+        jsonBody = {
+          id = 1;
+          body = "ok";
+        };
+      };
+    }
+    # Accept issue closing (used by GitHubIssue workflow)
+    {
+      request = {
+        method = "PATCH";
+        urlPattern = "/repos/purescript/registry/issues/[0-9]+";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/json";
+        jsonBody = {
+          id = 1;
+          state = "closed";
+        };
+      };
+    }
+    # GitHub Teams API for trustee verification (used by GitHubIssue workflow)
+    {
+      request = {
+        method = "GET";
+        urlPattern = "/orgs/purescript/teams/packaging/members.*";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/json";
+        # Return packaging-team-user as a packaging team member for trustee re-signing tests
+        jsonBody = [
+          { login = "packaging-team-user"; id = 1; }
+        ];
       };
     }
   ];
@@ -477,6 +534,7 @@ in
     defaultStateDir
     mockUrls
     testEnv
+    testRunnerExports
     envToExports
     gitMock
     gitMockOverlay

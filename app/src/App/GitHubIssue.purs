@@ -1,3 +1,12 @@
+-- | A thin client that proxies GitHub issue operations to the registry API server.
+-- |
+-- | When a GitHub issue is created or commented on in the purescript/registry repo,
+-- | this module:
+-- | 1. Parses the issue body to determine the operation type
+-- | 2. Re-signs authenticated operations with pacchettibotti keys if submitted by a trustee
+-- | 3. POSTs the operation to the registry API server
+-- | 4. Polls for job completion, posting logs as GitHub comments
+-- | 5. Closes the issue on success
 module Registry.App.GitHubIssue where
 
 import Registry.App.Prelude
@@ -5,121 +14,245 @@ import Registry.App.Prelude
 import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
 import Data.Codec.JSON as CJ
-import Data.Foldable (traverse_)
+import Data.DateTime (DateTime)
+import Data.Formatter.DateTime as DateTime
 import Data.String as String
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
-import Effect.Ref as Ref
+import Fetch (Method(..))
+import Fetch as Fetch
 import JSON as JSON
 import JSON.Object as CJ.Object
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
+import Registry.API.V1 as V1
 import Registry.App.API as API
 import Registry.App.Auth as Auth
-import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment as Comment
-import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
+import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV, RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.PackageSets as PackageSets
-import Registry.App.Effect.Pursuit as Pursuit
-import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Source as Source
-import Registry.App.Effect.Storage as Storage
-import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.Constants as Constants
-import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit (GitHubToken, IssueNumber(..), Octokit)
 import Registry.Foreign.Octokit as Octokit
-import Registry.Foreign.S3 (SpaceKey)
-import Registry.Operation (AuthenticatedData, PackageOperation(..), PackageSetOperation(..))
+import Registry.Internal.Format as Internal.Format
+import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageOperation(..), PackageSetOperation(..))
 import Registry.Operation as Operation
-import Run (Run)
+import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
 main :: Effect Unit
 main = launchAff_ $ do
-  -- For now we only support GitHub events, and no formal API, so we'll jump
-  -- straight into the GitHub event workflow.
-  initializeGitHub >>= traverse_ \env -> do
-    let
-      run = case env.operation of
-        Left packageSetOperation -> case packageSetOperation of
-          PackageSetUpdate payload ->
-            API.packageSetUpdate payload
+  initializeGitHub >>= case _ of
+    Nothing -> pure unit
+    Just env -> do
+      result <- runGitHubIssue env
+      case result of
+        Left err -> do
+          -- Post error as comment and exit with failure
+          void $ Octokit.request env.octokit $ Octokit.createCommentRequest
+            { address: Constants.registry
+            , issue: env.issue
+            , body: "❌ " <> err
+            }
+          liftEffect $ Process.exit' 1
+        Right _ ->
+          -- Issue closing is handled inside runGitHubIssue
+          pure unit
 
-        Right packageOperation -> case packageOperation of
-          Publish payload ->
-            void $ API.publish Nothing payload
-          Authenticated payload -> do
-            -- If we receive an authenticated operation via GitHub, then we
-            -- re-sign it with pacchettibotti credentials if and only if the
-            -- operation was opened by a trustee.
-            signed <- signPacchettiBottiIfTrustee payload
-            API.authenticated signed
+runGitHubIssue :: GitHubEventEnv -> Aff (Either String Boolean)
+runGitHubIssue env = do
+  let cache = Path.concat [ scratchDir, ".cache" ]
+  githubCacheRef <- Cache.newCacheRef
 
-    -- Caching
-    let cache = Path.concat [ scratchDir, ".cache" ]
-    FS.Extra.ensureDirectory cache
-    githubCacheRef <- Cache.newCacheRef
-    legacyCacheRef <- Cache.newCacheRef
-    registryCacheRef <- Cache.newCacheRef
-
-    -- Registry env
-    debouncer <- Registry.newDebouncer
-    let
-      registryEnv :: Registry.RegistryEnv
-      registryEnv =
-        { repos: Registry.defaultRepos
-        , pull: Git.ForceClean
-        , write: Registry.CommitAs (Git.pacchettibottiCommitter env.token)
-        , workdir: scratchDir
-        , debouncer
-        , cacheRef: registryCacheRef
-        }
-
-    --  Package sets
-    let workdir = Path.concat [ scratchDir, "package-sets-work" ]
-    FS.Extra.ensureDirectory workdir
-
-    thrownRef <- liftEffect $ Ref.new false
-
-    run
-      -- App effects
-      # PackageSets.interpret (PackageSets.handle { workdir })
-      # Registry.interpret (Registry.handle registryEnv)
-      # Storage.interpret (Storage.handleS3 { s3: env.spacesConfig, cache })
-      # Pursuit.interpret (Pursuit.handleAff env.token)
-      # Source.interpret (Source.handle Source.Recent)
+  let
+    run :: forall a. Run (GITHUB + RESOURCE_ENV + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + LOG + EXCEPT String + AFF + EFFECT + ()) a -> Aff (Either String a)
+    run action = action
       # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache, ref: githubCacheRef })
-      -- Caching & logging
-      # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
-      # Cache.interpret API._compilerCache (Cache.handleFs cache)
-      # Except.catch (\msg -> Log.error msg *> Comment.comment msg *> Run.liftEffect (Ref.write true thrownRef))
-      # Comment.interpret (Comment.handleGitHub { octokit: env.octokit, issue: env.issue, registry: Registry.defaultRepos.registry })
-      # Log.interpret (Log.handleTerminal Verbose)
-      -- Environments
+      # Except.runExcept
       # Env.runResourceEnv env.resourceEnv
       # Env.runGitHubEventEnv { username: env.username, issue: env.issue }
       # Env.runPacchettiBottiEnv { publicKey: env.publicKey, privateKey: env.privateKey }
-      -- Base effects
+      # Log.interpret (Log.handleTerminal env.logVerbosity)
       # Run.runBaseAff'
 
-    liftEffect (Ref.read thrownRef) >>= case _ of
-      true ->
-        liftEffect $ Process.exit' 1
-      _ -> do
-        -- After the run, close the issue. If an exception was thrown then the issue will remain open.
-        _ <- Octokit.request env.octokit (Octokit.closeIssueRequest { address: Constants.registry, issue: env.issue })
-        pure unit
+  run do
+    -- Determine endpoint and prepare the JSON payload
+    { endpoint, jsonBody } <- case env.operation of
+      Left (PackageSetUpdate payload) -> pure
+        { endpoint: "/v1/package-sets"
+        , jsonBody: JSON.print $ CJ.encode Operation.packageSetUpdateCodec payload
+        }
+
+      Right (Publish payload) -> pure
+        { endpoint: "/v1/publish"
+        , jsonBody: JSON.print $ CJ.encode Operation.publishCodec payload
+        }
+
+      Right (Authenticated auth) -> do
+        -- Re-sign with pacchettibotti if submitter is a trustee
+        signed <- signPacchettiBottiIfTrustee auth
+        let endpoint = case signed.payload of
+              Unpublish _ -> "/v1/unpublish"
+              Transfer _ -> "/v1/transfer"
+        pure { endpoint, jsonBody: JSON.print $ CJ.encode Operation.authenticatedCodec signed }
+
+    -- Submit to the registry API
+    let registryApiUrl = env.resourceEnv.registryApiUrl
+    Log.debug $ "Submitting to " <> registryApiUrl <> endpoint
+    submitResult <- Run.liftAff $ submitJob (registryApiUrl <> endpoint) jsonBody
+    case submitResult of
+      Left err -> Except.throw $ "Failed to submit job: " <> err
+      Right { jobId } -> do
+        let jobIdStr = unwrap jobId
+        Log.debug $ "Job created: " <> jobIdStr
+
+        -- Post initial comment with job ID
+        Run.liftAff $ void $ Octokit.request env.octokit $ Octokit.createCommentRequest
+          { address: Constants.registry
+          , issue: env.issue
+          , body: "Job started: `" <> jobIdStr <> "`\nLogs: " <> registryApiUrl <> "/v1/jobs/" <> jobIdStr
+          }
+
+        -- Poll for completion, posting logs as comments
+        pollAndReport env.octokit env.issue env.pollConfig registryApiUrl jobId
+
+-- | Submit a job to the registry API
+submitJob :: String -> String -> Aff (Either String V1.JobCreatedResponse)
+submitJob url body = do
+  result <- Aff.attempt $ Fetch.fetch url
+    { method: POST
+    , headers: { "Content-Type": "application/json" }
+    , body
+    }
+  case result of
+    Left err -> pure $ Left $ "Network error: " <> Aff.message err
+    Right response -> do
+      responseBody <- response.text
+      if response.status >= 200 && response.status < 300 then
+        case JSON.parse responseBody >>= \json -> lmap CJ.DecodeError.print (CJ.decode V1.jobCreatedResponseCodec json) of
+          Left err -> pure $ Left $ "Failed to parse response: " <> err
+          Right r -> pure $ Right r
+      else
+        pure $ Left $ "HTTP " <> show response.status <> ": " <> responseBody
+
+-- | Poll a job until it completes, posting logs as GitHub comments.
+-- | Returns true if the job succeeded, false otherwise.
+pollAndReport
+  :: forall r
+   . Octokit
+  -> IssueNumber
+  -> PollConfig
+  -> URL
+  -> V1.JobId
+  -> Run (LOG + EXCEPT String + AFF + r) Boolean
+pollAndReport octokit issue pollConfig registryApiUrl jobId = go Nothing 0 0
+  where
+  maxConsecutiveErrors :: Int
+  maxConsecutiveErrors = 5
+
+  go :: Maybe DateTime -> Int -> Int -> Run (LOG + EXCEPT String + AFF + r) Boolean
+  go lastTimestamp attempt consecutiveErrors
+    | attempt >= pollConfig.maxAttempts = do
+        Run.liftAff $ void $ Octokit.request octokit $ Octokit.createCommentRequest
+          { address: Constants.registry
+          , issue
+          , body: "⏱️ Job timed out"
+          }
+        pure false
+    | consecutiveErrors >= maxConsecutiveErrors = do
+        Run.liftAff $ void $ Octokit.request octokit $ Octokit.createCommentRequest
+          { address: Constants.registry
+          , issue
+          , body: "❌ Failed to poll job status after " <> show maxConsecutiveErrors <> " consecutive errors"
+          }
+        pure false
+    | otherwise = do
+        Run.liftAff $ Aff.delay pollConfig.interval
+        result <- Run.liftAff $ fetchJob registryApiUrl jobId lastTimestamp
+        case result of
+          Left err -> do
+            Log.error $ "Error polling job: " <> err
+            go lastTimestamp (attempt + 1) (consecutiveErrors + 1)
+          Right job -> do
+            let info = V1.jobInfo job
+
+            -- Post any new logs (filtered to Info level and above, and after lastTimestamp)
+            let
+              newLogs = Array.filter isNewLog info.logs
+              isNewLog l = l.level >= V1.Info && case lastTimestamp of
+                Nothing -> true
+                Just ts -> l.timestamp > ts
+            unless (Array.null newLogs) do
+              let
+                formatLog l = "[" <> V1.printLogLevel l.level <> "] " <> l.message
+                logText = String.joinWith "\n" $ map formatLog newLogs
+              Run.liftAff $ void $ Octokit.request octokit $ Octokit.createCommentRequest
+                { address: Constants.registry
+                , issue
+                , body: "```\n" <> logText <> "\n```"
+                }
+
+            -- Check if job is done
+            case info.finishedAt of
+              Just _ -> do
+                let statusMsg = if info.success then "✅ Job completed successfully" else "❌ Job failed"
+                Run.liftAff $ void $ Octokit.request octokit $ Octokit.createCommentRequest
+                  { address: Constants.registry
+                  , issue
+                  , body: statusMsg
+                  }
+                -- Close the issue on success, leave open on failure
+                when info.success do
+                  Run.liftAff $ void $ Octokit.request octokit $ Octokit.closeIssueRequest
+                    { address: Constants.registry
+                    , issue
+                    }
+                pure info.success
+              Nothing -> do
+                -- Continue polling with updated timestamp, reset consecutive errors on success
+                let newTimestamp = Array.last newLogs <#> _.timestamp
+                go (newTimestamp <|> lastTimestamp) (attempt + 1) 0
+
+-- | Fetch job status from the API
+fetchJob :: String -> V1.JobId -> Maybe DateTime -> Aff (Either String V1.Job)
+fetchJob registryApiUrl (V1.JobId jobId) since = do
+  let
+    baseUrl = registryApiUrl <> "/v1/jobs/" <> jobId
+    url = case since of
+      Nothing -> baseUrl <> "?level=INFO"
+      Just ts -> baseUrl <> "?level=INFO&since=" <> DateTime.format Internal.Format.iso8601DateTime ts
+  result <- Aff.attempt $ Fetch.fetch url { method: GET }
+  case result of
+    Left err -> pure $ Left $ "Network error: " <> Aff.message err
+    Right response -> do
+      responseBody <- response.text
+      if response.status == 200 then
+        case JSON.parse responseBody >>= \json -> lmap CJ.DecodeError.print (CJ.decode V1.jobCodec json) of
+          Left err -> pure $ Left $ "Failed to parse job: " <> err
+          Right job -> pure $ Right job
+      else
+        pure $ Left $ "HTTP " <> show response.status <> ": " <> responseBody
+
+-- | Configuration for polling job status
+type PollConfig =
+  { maxAttempts :: Int
+  , interval :: Aff.Milliseconds
+  }
+
+-- | Default poll config: 30 minutes at 5 second intervals
+defaultPollConfig :: PollConfig
+defaultPollConfig =
+  { maxAttempts: 360
+  , interval: Aff.Milliseconds 5000.0
+  }
 
 type GitHubEventEnv =
   { octokit :: Octokit
@@ -127,10 +260,11 @@ type GitHubEventEnv =
   , issue :: IssueNumber
   , username :: String
   , operation :: Either PackageSetOperation PackageOperation
-  , spacesConfig :: SpaceKey
   , publicKey :: String
   , privateKey :: String
   , resourceEnv :: Env.ResourceEnv
+  , pollConfig :: PollConfig
+  , logVerbosity :: LogVerbosity
   }
 
 initializeGitHub :: Aff (Maybe GitHubEventEnv)
@@ -138,17 +272,12 @@ initializeGitHub = do
   token <- Env.lookupRequired Env.pacchettibottiToken
   publicKey <- Env.lookupRequired Env.pacchettibottiED25519Pub
   privateKey <- Env.lookupRequired Env.pacchettibottiED25519
-  spacesKey <- Env.lookupRequired Env.spacesKey
-  spacesSecret <- Env.lookupRequired Env.spacesSecret
   resourceEnv <- Env.lookupResourceEnv
   eventPath <- Env.lookupRequired Env.githubEventPath
 
   octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
 
   readOperation eventPath >>= case _ of
-    -- If the issue body is not just a JSON string, then we don't consider it
-    -- to be an attempted operation and it is presumably just an issue on the
-    -- registry repository.
     NotJson ->
       pure Nothing
 
@@ -173,10 +302,11 @@ initializeGitHub = do
         , issue
         , username
         , operation
-        , spacesConfig: { key: spacesKey, secret: spacesSecret }
         , publicKey
         , privateKey
         , resourceEnv
+        , pollConfig: defaultPollConfig
+        , logVerbosity: Verbose
         }
 
 data OperationDecoding
@@ -192,16 +322,11 @@ readOperation eventPath = do
 
   IssueEvent { issueNumber, body, username } <- case JSON.parse fileContents >>= decodeIssueEvent of
     Left err ->
-      -- If we don't receive a valid event path or the contents can't be decoded
-      -- then this is a catastrophic error and we exit the workflow.
       Aff.throwError $ Aff.error $ "Error while parsing json from " <> eventPath <> " : " <> err
     Right event ->
       pure event
 
   let
-    -- TODO: Right now we parse all operations from GitHub issues, but we should
-    -- in the future only parse out package set operations. The others should be
-    -- handled via a HTTP API.
     decodeOperation :: JSON -> Either CJ.DecodeError (Either PackageSetOperation PackageOperation)
     decodeOperation json = do
       object <- CJ.decode CJ.jobject json
@@ -230,10 +355,6 @@ readOperation eventPath = do
       Right operation ->
         pure $ DecodedOperation issueNumber username operation
 
--- | Users may submit issues with contents wrapped in code fences, perhaps with
--- | a language specifier, trailing lines, and other issues. This rudimentary
--- | cleanup pass retrieves all contents within an opening { and closing }
--- | delimiter.
 firstObject :: String -> String
 firstObject input = fromMaybe input do
   before <- String.indexOf (String.Pattern "{") input
@@ -241,9 +362,6 @@ firstObject input = fromMaybe input do
   after <- String.lastIndexOf (String.Pattern "}") start
   pure (String.take (after + 1) start)
 
--- | An event triggered by a GitHub workflow, specifically via an issue comment
--- | or issue creation.
--- | https://docs.github.com/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#issue_comment
 newtype IssueEvent = IssueEvent
   { issueNumber :: IssueNumber
   , body :: String
@@ -260,22 +378,9 @@ decodeIssueEvent json = lmap CJ.DecodeError.print do
   issueObject <- Octokit.atKey "issue" CJ.jobject object
   issueNumber <- Octokit.atKey "number" CJ.int issueObject
 
-  -- We accept issue creation and issue comment events, but both contain an
-  -- 'issue' field. However, only comments contain a 'comment' field. For that
-  -- reason we first try to parse the comment and fall back to the issue if
-  -- that fails.
   body <- Octokit.atKey "body" CJ.string =<< Octokit.atKey "comment" CJ.jobject object <|> pure issueObject
   pure $ IssueEvent { body, username, issueNumber: IssueNumber issueNumber }
 
--- | Re-sign a payload as pacchettibotti if the authenticated operation was
--- | submitted by a registry trustee.
---
--- @pacchettibotti is considered an 'owner' of all packages for authenticated
--- operations. Registry trustees can ask pacchettibotti to perform an action on
--- behalf of a package by submitting a payload with an empty signature. If the
--- payload was submitted by a trustee (ie. a member of the packaging team) then
--- pacchettibotti will re-sign it and add itself as an owner before continuing
--- with the authenticated operation.
 signPacchettiBottiIfTrustee
   :: forall r
    . AuthenticatedData

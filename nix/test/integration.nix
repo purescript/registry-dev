@@ -57,7 +57,10 @@ else
       set -e
       export HOME=$TMPDIR
       export STATE_DIR=$TMPDIR/state
-      export SERVER_PORT=${toString ports.server}
+
+      # Export test environment variables for E2E test runners
+      ${testEnv.testConfig.testRunnerExports}
+
       mkdir -p $STATE_DIR
 
       # Start wiremock services

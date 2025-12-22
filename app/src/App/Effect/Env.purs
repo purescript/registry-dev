@@ -30,6 +30,7 @@ type ResourceEnv =
   , s3BucketUrl :: URL
   , githubApiUrl :: URL
   , pursuitApiUrl :: URL
+  , registryApiUrl :: URL
   , healthchecksUrl :: Maybe URL
   }
 
@@ -55,6 +56,7 @@ lookupResourceEnv = do
   s3BucketUrlEnv <- lookupWithDefault s3BucketUrl productionS3BucketUrl
   githubApiUrlEnv <- lookupWithDefault githubApiUrl productionGitHubApiUrl
   pursuitApiUrlEnv <- lookupWithDefault pursuitApiUrl productionPursuitApiUrl
+  registryApiUrlEnv <- lookupWithDefault registryApiUrl productionRegistryApiUrl
 
   -- Optional - if not set, healthcheck pinging is disabled
   healthchecksUrlEnv <- lookupOptional healthchecksUrl
@@ -65,6 +67,7 @@ lookupResourceEnv = do
     , s3BucketUrl: s3BucketUrlEnv
     , githubApiUrl: githubApiUrlEnv
     , pursuitApiUrl: pursuitApiUrlEnv
+    , registryApiUrl: registryApiUrlEnv
     , healthchecksUrl: healthchecksUrlEnv
     }
 
@@ -209,6 +212,12 @@ githubApiUrl = EnvKey { key: "GITHUB_API_URL", decode: pure }
 pursuitApiUrl :: EnvKey URL
 pursuitApiUrl = EnvKey { key: "PURSUIT_API_URL", decode: pure }
 
+-- | Override for the Registry API URL.
+-- | If not set, uses productionRegistryApiUrl.
+-- | Set this to point to the local server during testing.
+registryApiUrl :: EnvKey URL
+registryApiUrl = EnvKey { key: "REGISTRY_API_URL", decode: pure }
+
 -- Production URL defaults (only used by the app, not exposed to library users)
 
 -- | The URL of the package storage backend (S3-compatible)
@@ -226,6 +235,10 @@ productionGitHubApiUrl = "https://api.github.com"
 -- | The Pursuit documentation hosting API base URL
 productionPursuitApiUrl :: URL
 productionPursuitApiUrl = "https://pursuit.purescript.org"
+
+-- | The Registry API base URL
+productionRegistryApiUrl :: URL
+productionRegistryApiUrl = "https://registry.purescript.org/api"
 
 -- | The URL of the health checks endpoint.
 -- | Optional - if not set, healthcheck pinging is disabled.
