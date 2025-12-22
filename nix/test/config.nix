@@ -38,6 +38,15 @@ let
     healthchecks = "http://localhost:${toString ports.healthchecks}";
   };
 
+  # Valid ED25519 test keypair for pacchettibotti (used for signing authenticated operations).
+  # These are test-only keys, not used in production.
+  testKeys = {
+    # ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHXE9ia5mQG5dPyS6pirU9PSWFP8hPglwChJERBpMoki pacchettibotti@purescript.org
+    public = "c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSUhYRTlpYTVtUUc1ZFB5UzZwaXJVOVBTV0ZQOGhQZ2x3Q2hKRVJCcE1va2kgcGFjY2hldHRpYm90dGlAcHVyZXNjcmlwdC5vcmcK";
+    # OpenSSH format private key
+    private = "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUFNd0FBQUF0emMyZ3RaVwpReU5UVXhPUUFBQUNCMXhQWW11WmtCdVhUOGt1cVlxMVBUMGxoVC9JVDRKY0FvU1JFUWFUS0pJZ0FBQUtBMVFMT3NOVUN6CnJBQUFBQXR6YzJndFpXUXlOVFV4T1FBQUFDQjF4UFltdVprQnVYVDhrdXFZcTFQVDBsaFQvSVQ0SmNBb1NSRVFhVEtKSWcKQUFBRUJ1dUErV2NqODlTcjR2RUZnU043ZVF5SGFCWlYvc0F2YVhvVGRKa2lwanlYWEU5aWE1bVFHNWRQeVM2cGlyVTlQUwpXRlA4aFBnbHdDaEpFUkJwTW9raUFBQUFIWEJoWTJOb1pYUjBhV0p2ZEhScFFIQjFjbVZ6WTNKcGNIUXViM0puCi0tLS0tRU5EIE9QRU5TU0ggUFJJVkFURSBLRVktLS0tLQo=";
+  };
+
   # Complete test environment - starts with .env.example defaults which include
   # mock secrets, then overrides external services with mock URLs. The DATABASE_URL
   # and REPO_FIXTURES_DIR vars are derived from STATE_DIR at runtime so those are
@@ -50,21 +59,13 @@ let
     S3_BUCKET_URL = mockUrls.bucket;
     PURSUIT_API_URL = mockUrls.pursuit;
     HEALTHCHECKS_URL = mockUrls.healthchecks;
+    PACCHETTIBOTTI_ED25519_PUB = testKeys.public;
+    PACCHETTIBOTTI_ED25519 = testKeys.private;
   };
 
   envToExports =
     env:
     lib.concatStringsSep "\n" (lib.mapAttrsToList (name: value: ''export ${name}="${value}"'') env);
-
-  # Pre-built shell exports for E2E test runners (used by test-env.nix and integration.nix)
-  testRunnerExports = ''
-    export SERVER_PORT="${toString ports.server}"
-    export REGISTRY_API_URL="${testEnv.REGISTRY_API_URL}"
-    export GITHUB_API_URL="${testEnv.GITHUB_API_URL}"
-    export PACCHETTIBOTTI_TOKEN="${testEnv.PACCHETTIBOTTI_TOKEN}"
-    export PACCHETTIBOTTI_ED25519_PUB="${testEnv.PACCHETTIBOTTI_ED25519_PUB}"
-    export PACCHETTIBOTTI_ED25519="${testEnv.PACCHETTIBOTTI_ED25519}"
-  '';
 
   # Git mock that redirects URLs to local fixtures; this is necessary because otherwise
   # commands would reach out to GitHub or the other package origins.
@@ -206,7 +207,10 @@ let
         headers."Content-Type" = "application/json";
         # Return packaging-team-user as a packaging team member for trustee re-signing tests
         jsonBody = [
-          { login = "packaging-team-user"; id = 1; }
+          {
+            login = "packaging-team-user";
+            id = 1;
+          }
         ];
       };
     }
@@ -534,7 +538,6 @@ in
     defaultStateDir
     mockUrls
     testEnv
-    testRunnerExports
     envToExports
     gitMock
     gitMockOverlay

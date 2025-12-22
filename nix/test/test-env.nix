@@ -96,7 +96,7 @@ let
     set -e
 
     # Export test environment variables for E2E test runners
-    ${testConfig.testRunnerExports}
+    ${testConfig.envToExports testConfig.testEnv}
 
     if [ -z "''${STATE_DIR:-}" ]; then
       STATE_DIR="$(mktemp -d)"

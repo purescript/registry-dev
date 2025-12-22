@@ -99,9 +99,10 @@ runGitHubIssue env = do
       Right (Authenticated auth) -> do
         -- Re-sign with pacchettibotti if submitter is a trustee
         signed <- signPacchettiBottiIfTrustee auth
-        let endpoint = case signed.payload of
-              Unpublish _ -> "/v1/unpublish"
-              Transfer _ -> "/v1/transfer"
+        let
+          endpoint = case signed.payload of
+            Unpublish _ -> "/v1/unpublish"
+            Transfer _ -> "/v1/transfer"
         pure { endpoint, jsonBody: JSON.print $ CJ.encode Operation.authenticatedCodec signed }
 
     -- Submit to the registry API

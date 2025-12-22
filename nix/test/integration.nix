@@ -59,7 +59,7 @@ else
       export STATE_DIR=$TMPDIR/state
 
       # Export test environment variables for E2E test runners
-      ${testEnv.testConfig.testRunnerExports}
+      ${testEnv.testConfig.envToExports testEnv.testConfig.testEnv}
 
       mkdir -p $STATE_DIR
 
