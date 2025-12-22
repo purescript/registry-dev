@@ -323,6 +323,8 @@ readOperation eventPath = do
 
   IssueEvent { issueNumber, body, username } <- case JSON.parse fileContents >>= decodeIssueEvent of
     Left err ->
+      -- If we don't receive a valid event path or the contents can't be decoded
+      -- then this is a catastrophic error and we exit the workflow.
       Aff.throwError $ Aff.error $ "Error while parsing json from " <> eventPath <> " : " <> err
     Right event ->
       pure event
@@ -356,6 +358,10 @@ readOperation eventPath = do
       Right operation ->
         pure $ DecodedOperation issueNumber username operation
 
+-- | Users may submit issues with contents wrapped in code fences, perhaps with
+-- | a language specifier, trailing lines, and other issues. This rudimentary
+-- | cleanup pass retrieves all contents within an opening { and closing }
+-- | delimiter.
 firstObject :: String -> String
 firstObject input = fromMaybe input do
   before <- String.indexOf (String.Pattern "{") input
@@ -363,6 +369,9 @@ firstObject input = fromMaybe input do
   after <- String.lastIndexOf (String.Pattern "}") start
   pure (String.take (after + 1) start)
 
+-- | An event triggered by a GitHub workflow, specifically via an issue commentAdd a comment on  line L244Add diff commentMarkdown input:  edit mode selected.WritePreviewHeadingBoldItalicQuoteCodeLinkUnordered listNumbered listTask listMentionReferenceSaved repliesAdd FilesPaste, drop, or click to add filesCancelCommentStart a reviewReturn to code
+-- | or issue creation.
+-- | https://docs.github.com/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#issue_comment
 newtype IssueEvent = IssueEvent
   { issueNumber :: IssueNumber
   , body :: String
@@ -379,9 +388,22 @@ decodeIssueEvent json = lmap CJ.DecodeError.print do
   issueObject <- Octokit.atKey "issue" CJ.jobject object
   issueNumber <- Octokit.atKey "number" CJ.int issueObject
 
+  -- We accept issue creation and issue comment events, but both contain an
+  -- 'issue' field. However, only comments contain a 'comment' field. For that
+  -- reason we first try to parse the comment and fall back to the issue if
+  -- that fails.
   body <- Octokit.atKey "body" CJ.string =<< Octokit.atKey "comment" CJ.jobject object <|> pure issueObject
   pure $ IssueEvent { body, username, issueNumber: IssueNumber issueNumber }
 
+-- | Re-sign a payload as pacchettibotti if the authenticated operation was
+-- | submitted by a registry trustee.
+--
+-- @pacchettibotti is considered an 'owner' of all packages for authenticated
+-- operations. Registry trustees can ask pacchettibotti to perform an action on
+-- behalf of a package by submitting a payload with an empty signature. If the
+-- payload was submitted by a trustee (ie. a member of the packaging team) then
+-- pacchettibotti will re-sign it and add itself as an owner before continuing
+-- with the authenticated operation.
 signPacchettiBottiIfTrustee
   :: forall r
    . AuthenticatedData
