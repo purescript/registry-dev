@@ -14,8 +14,6 @@ import Registry.App.API (COMPILER_CACHE, _compilerCache)
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment (COMMENT)
-import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Db (DB)
 import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV, RESOURCE_ENV, ResourceEnv)
@@ -120,7 +118,7 @@ createServerEnv = do
     , jobId: Nothing
     }
 
-type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + REGISTRY + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMPILER_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + REGISTRY + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMPILER_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer
   :: ServerEnv
@@ -174,7 +172,6 @@ runEffects env operation = Aff.attempt do
             Log.error msg *> Run.liftAff (Aff.throwError (Aff.error msg))
         )
     # Db.interpret (Db.handleSQLite { db: env.db })
-    # Comment.interpret Comment.handleLog
     # Log.interpret
         ( \log -> case env.jobId of
             Nothing -> Log.handleTerminal Verbose log *> Log.handleFs Verbose logPath log

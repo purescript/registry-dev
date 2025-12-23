@@ -20,7 +20,6 @@ import Registry.App.API (_compilerCache)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
@@ -158,7 +157,6 @@ main = launchAff_ do
         >>> Pursuit.interpret Pursuit.handlePure
         >>> Cache.interpret _legacyCache (Cache.handleMemoryFs { ref: legacyCacheRef, cache })
         >>> Cache.interpret _compilerCache (Cache.handleFs cache)
-        >>> Comment.interpret Comment.handleLog
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
         >>> Env.runResourceEnv resourceEnv
         >>> Run.runBaseAff'

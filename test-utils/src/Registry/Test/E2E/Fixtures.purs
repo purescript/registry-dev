@@ -2,7 +2,7 @@
 -- | Contains package operation data used across multiple test suites.
 module Registry.Test.E2E.Fixtures
   ( effectPublishData
-  , failingPublishData
+  , failingTransferData
   , trusteeAuthenticatedData
   ) where
 
@@ -12,14 +12,14 @@ import Data.Codec.JSON as CJ
 import Data.Maybe (Maybe(..))
 import JSON as JSON
 import Registry.Location as Location
-import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PublishData, UnpublishData)
+import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), TransferData, UnpublishData)
 import Registry.Operation as Operation
 import Registry.SSH (Signature(..))
 import Registry.Test.Utils as Utils
 
 -- | Standard publish data for effect@4.0.0, used by E2E tests.
 -- | This matches the fixtures in app/fixtures/github-packages/effect-4.0.0
-effectPublishData :: PublishData
+effectPublishData :: Operation.PublishData
 effectPublishData =
   { name: Utils.unsafePackageName "effect"
   , location: Just $ Location.GitHub
@@ -33,21 +33,27 @@ effectPublishData =
   , version: Utils.unsafeVersion "4.0.0"
   }
 
--- | Publish data for prelude@6.0.1, which already exists in metadata fixtures.
--- | Used to test failure scenarios (duplicate publish) in E2E tests.
-failingPublishData :: PublishData
-failingPublishData =
-  { name: Utils.unsafePackageName "prelude"
-  , location: Just $ Location.GitHub
-      { owner: "purescript"
-      , repo: "purescript-prelude"
-      , subdir: Nothing
+-- | Authenticated transfer data for prelude, which has no owners in fixtures.
+-- | Used to test failure scenarios in E2E tests - will fail because no owners
+-- | are listed to verify the signature against.
+failingTransferData :: AuthenticatedData
+failingTransferData =
+  let
+    transferPayload :: TransferData
+    transferPayload =
+      { name: Utils.unsafePackageName "prelude"
+      , newLocation: Location.GitHub
+          { owner: "someone-else"
+          , repo: "purescript-prelude"
+          , subdir: Nothing
+          }
       }
-  , ref: "v6.0.1"
-  , compiler: Utils.unsafeVersion "0.15.9"
-  , resolutions: Nothing
-  , version: Utils.unsafeVersion "6.0.1"
-  }
+    rawPayload = JSON.print $ CJ.encode Operation.transferCodec transferPayload
+  in
+    { payload: Transfer transferPayload
+    , rawPayload
+    , signature: Signature "invalid-signature-for-testing"
+    }
 
 -- | Authenticated data with an intentionally invalid signature.
 -- | When submitted by a trustee (packaging-team-user), pacchettibotti will re-sign it.

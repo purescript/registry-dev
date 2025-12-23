@@ -42,8 +42,8 @@ module Registry.App.SQLite
 import Registry.App.Prelude
 
 import Codec.JSON.DecodeError as JSON.DecodeError
-import Data.Array as Array
 import Control.Monad.Except (runExceptT)
+import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime as DateTime
 import Data.Nullable as Nullable

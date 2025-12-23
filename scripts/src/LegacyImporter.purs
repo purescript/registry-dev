@@ -59,7 +59,6 @@ import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -189,7 +188,6 @@ main = launchAff_ do
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
     # Cache.interpret API._compilerCache (Cache.handleFs cache)
     # Run.Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
-    # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'

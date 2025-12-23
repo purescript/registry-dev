@@ -185,10 +185,10 @@ pollAndReport octokit issue pollConfig registryApiUrl jobId = go Nothing 0 0
           Right job -> do
             let info = V1.jobInfo job
 
-            -- Post any new logs (filtered to Info level and above, and after lastTimestamp)
+            -- Post any new logs (filtered to Notice level and above, and after lastTimestamp)
             let
               newLogs = Array.filter isNewLog info.logs
-              isNewLog l = l.level >= V1.Info && case lastTimestamp of
+              isNewLog l = l.level >= V1.Notice && case lastTimestamp of
                 Nothing -> true
                 Just ts -> l.timestamp > ts
             unless (Array.null newLogs) do
@@ -228,8 +228,8 @@ fetchJob registryApiUrl (V1.JobId jobId) since = do
   let
     baseUrl = registryApiUrl <> "/v1/jobs/" <> jobId
     url = case since of
-      Nothing -> baseUrl <> "?level=INFO"
-      Just ts -> baseUrl <> "?level=INFO&since=" <> DateTime.format Internal.Format.iso8601DateTime ts
+      Nothing -> baseUrl <> "?level=NOTICE"
+      Just ts -> baseUrl <> "?level=NOTICE&since=" <> DateTime.format Internal.Format.iso8601DateTime ts
   result <- Aff.attempt $ Fetch.fetch url { method: GET }
   case result of
     Left err -> pure $ Left $ "Network error: " <> Aff.message err

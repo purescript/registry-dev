@@ -301,7 +301,7 @@ logLineCodec = CJ.named "LogLine" $ CJ.Record.object
   , timestamp: Internal.Codec.iso8601DateTime
   }
 
-data LogLevel = Debug | Info | Warn | Error
+data LogLevel = Debug | Info | Warn | Notice | Error
 
 derive instance Eq LogLevel
 derive instance Ord LogLevel
@@ -311,6 +311,7 @@ printLogLevel = case _ of
   Debug -> "DEBUG"
   Info -> "INFO"
   Warn -> "WARN"
+  Notice -> "NOTICE"
   Error -> "ERROR"
 
 -- These numbers are not consecutive so that we can insert new log levels if need be
@@ -319,6 +320,7 @@ logLevelToPriority = case _ of
   Debug -> 0
   Info -> 10
   Warn -> 20
+  Notice -> 25
   Error -> 30
 
 logLevelFromPriority :: Int -> Either String LogLevel
@@ -326,6 +328,7 @@ logLevelFromPriority = case _ of
   0 -> Right Debug
   10 -> Right Info
   20 -> Right Warn
+  25 -> Right Notice
   30 -> Right Error
   other -> Left $ "Invalid log level priority: " <> show other
 
@@ -334,5 +337,6 @@ parseLogLevel = case _ of
   "DEBUG" -> Right Debug
   "INFO" -> Right Info
   "WARN" -> Right Warn
+  "NOTICE" -> Right Notice
   "ERROR" -> Right Error
   other -> Left $ "Invalid log level: " <> other

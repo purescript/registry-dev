@@ -58,8 +58,6 @@ import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Cache (class FsEncodable, Cache)
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment (COMMENT)
-import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV, RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
@@ -115,7 +113,7 @@ import Run.Except (EXCEPT)
 import Run.Except as Except
 import Safe.Coerce as Safe.Coerce
 
-type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + COMMENT + LOG + EXCEPT String + r)
+type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + LOG + EXCEPT String + r)
 
 packageSetUpdate2 :: forall r. PackageSetJobDetails -> Run (PackageSetUpdateEffects + r) Unit
 packageSetUpdate2 {} = do
@@ -228,18 +226,18 @@ packageSetUpdate payload = do
       Except.throw "No packages in the suggested batch can be processed (all failed validation checks) and the compiler version was not upgraded, so there is no upgrade to perform."
 
   let changeSet = candidates.accepted <#> maybe Remove Update
-  Comment.comment "Attempting to build package set update."
+  Log.notice "Attempting to build package set update."
   PackageSets.upgradeAtomic latestPackageSet (fromMaybe prevCompiler payload.compiler) changeSet >>= case _ of
     Left error ->
       Except.throw $ "The package set produced from this suggested update does not compile:\n\n" <> error
     Right packageSet -> do
       let commitMessage = PackageSets.commitMessage latestPackageSet changeSet (un PackageSet packageSet).version
       Registry.writePackageSet packageSet commitMessage
-      Comment.comment "Built and released a new package set! Now mirroring to the package-sets repo..."
+      Log.notice "Built and released a new package set! Now mirroring to the package-sets repo..."
       Registry.mirrorPackageSet packageSet
-      Comment.comment "Mirrored a new legacy package set."
+      Log.notice "Mirrored a new legacy package set."
 
-type AuthenticatedEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + COMMENT + LOG + EXCEPT String + AFF + EFFECT + r)
+type AuthenticatedEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Run an authenticated package operation, ie. an unpublish or a transfer.
 authenticated :: forall r. AuthenticatedData -> Run (AuthenticatedEffects + r) Unit
@@ -299,7 +297,7 @@ authenticated auth = case auth.payload of
         Storage.delete payload.name payload.version
         Registry.writeMetadata payload.name updated
         Registry.deleteManifest payload.name payload.version
-        Comment.comment $ "Unpublished " <> formatted <> "!"
+        Log.notice $ "Unpublished " <> formatted <> "!"
 
   Transfer payload -> do
     Log.debug $ "Processing authorized transfer operation with payload: " <> stringifyJson Operation.authenticatedCodec auth
@@ -330,11 +328,11 @@ authenticated auth = case auth.payload of
         Log.debug $ "Successfully authenticated ownership of " <> PackageName.print payload.name <> ", transferring..."
         let updated = metadata # over Metadata _ { location = payload.newLocation }
         Registry.writeMetadata payload.name updated
-        Comment.comment "Successfully transferred your package!"
+        Log.notice "Successfully transferred your package!"
         Registry.mirrorLegacyRegistry payload.name payload.newLocation
-        Comment.comment "Mirrored registry operation to the legacy registry."
+        Log.notice "Mirrored registry operation to the legacy registry."
 
-type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + COMPILER_CACHE + LEGACY_CACHE + COMMENT + LOG + EXCEPT String + AFF + EFFECT + r)
+type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + COMPILER_CACHE + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Publish a package via the 'publish' operation. If the package has not been
 -- | published before then it will be registered and the given version will be
@@ -450,13 +448,13 @@ publish maybeLegacyIndex payload = do
               pure manifest
 
     else if hasSpagoYaml then do
-      Comment.comment $ "Package source does not have a purs.json file, creating one from your spago.yaml file..."
+      Log.notice $ "Package source does not have a purs.json file, creating one from your spago.yaml file..."
       SpagoYaml.readSpagoYaml packageSpagoYaml >>= case _ of
         Left readErr -> Except.throw $ "Could not publish your package - a spago.yaml was present, but it was not possible to read it:\n" <> readErr
         Right config -> case SpagoYaml.spagoYamlToManifest config of
           Left err -> Except.throw $ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:\n" <> err
           Right manifest -> do
-            Comment.comment $ Array.fold
+            Log.notice $ Array.fold
               [ "Converted your spago.yaml into a purs.json manifest to use for publishing:"
               , "\n```json\n"
               , printJson Manifest.codec manifest
@@ -465,7 +463,7 @@ publish maybeLegacyIndex payload = do
             pure manifest
 
     else do
-      Comment.comment $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
+      Log.notice $ "Package source does not have a purs.json file. Creating one from your bower.json and/or spago.dhall files..."
 
       version <- case LenientVersion.parse payload.ref of
         Left _ -> Except.throw $ "The provided ref " <> payload.ref <> " is not a version of the form X.Y.Z or vX.Y.Z, so it cannot be used."
@@ -481,7 +479,7 @@ publish maybeLegacyIndex payload = do
         Right legacyManifest -> do
           Log.debug $ "Successfully produced a legacy manifest from the package source."
           let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location legacyManifest
-          Comment.comment $ Array.fold
+          Log.notice $ Array.fold
             [ "Converted your legacy manifest(s) into a purs.json manifest to use for publishing:"
             , "\n```json\n"
             , printJson Manifest.codec manifest
@@ -556,7 +554,7 @@ publish maybeLegacyIndex payload = do
             ]
 
         Nothing | payload.compiler < Purs.minPursuitPublish -> do
-          Comment.comment $ Array.fold
+          Log.notice $ Array.fold
             [ "This version has already been published to the registry, but the docs have not been "
             , "uploaded to Pursuit. Unfortunately, it is not possible to publish to Pursuit via the "
             , "registry using compiler versions prior to " <> Version.print Purs.minPursuitPublish
@@ -565,7 +563,7 @@ publish maybeLegacyIndex payload = do
           pure Nothing
 
         Nothing -> do
-          Comment.comment $ Array.fold
+          Log.notice $ Array.fold
             [ "This version has already been published to the registry, but the docs have not been "
             , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
             ]
@@ -596,7 +594,7 @@ publish maybeLegacyIndex payload = do
                 Left publishErr -> Except.throw publishErr
                 Right _ -> do
                   FS.Extra.remove tmp
-                  Comment.comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+                  Log.notice "Successfully uploaded package docs to Pursuit! 🎉 🚀"
               pure Nothing
 
     -- In this case the package version has not been published, so we proceed
@@ -606,7 +604,7 @@ publish maybeLegacyIndex payload = do
       compilerIndex <- MatrixBuilder.readCompilerIndex
       validatedResolutions <- verifyResolutions compilerIndex payload.compiler (Manifest receivedManifest) payload.resolutions
 
-      Comment.comment "Verifying unused and/or missing dependencies..."
+      Log.notice "Verifying unused and/or missing dependencies..."
 
       -- First we install the resolutions and call 'purs graph' to adjust the
       -- manifest as needed, but we defer compilation until after this check
@@ -695,7 +693,7 @@ publish maybeLegacyIndex payload = do
 
       -- Now that we have the package source contents we can verify we can compile
       -- the package with exactly what is going to be uploaded.
-      Comment.comment $ Array.fold
+      Log.notice $ Array.fold
         [ "Verifying package compiles using compiler "
         , Version.print payload.compiler
         , " and resolutions:\n"
@@ -720,7 +718,7 @@ publish maybeLegacyIndex payload = do
           Except.throw $ "Publishing failed due to a compiler error:\n\n" <> error
         Right _ -> pure unit
 
-      Comment.comment "Package source is verified! Packaging tarball and uploading to the storage backend..."
+      Log.notice "Package source is verified! Packaging tarball and uploading to the storage backend..."
       let tarballName = packageDirname <> ".tar.gz"
       let tarballPath = Path.concat [ tmp, tarballName ]
       Tar.create { cwd: tmp, folderName: packageDirname }
@@ -731,7 +729,7 @@ publish maybeLegacyIndex payload = do
         Operation.Validation.ExceedsMaximum maxPackageBytes ->
           Except.throw $ "Package tarball is " <> show bytes <> " bytes, which exceeds the maximum size of " <> show maxPackageBytes <> " bytes."
         Operation.Validation.WarnPackageSize maxWarnBytes ->
-          Comment.comment $ "WARNING: Package tarball is " <> show bytes <> "bytes, which exceeds the warning threshold of " <> show maxWarnBytes <> " bytes."
+          Log.notice $ "WARNING: Package tarball is " <> show bytes <> "bytes, which exceeds the warning threshold of " <> show maxWarnBytes <> " bytes."
 
       -- If a package has under ~30 bytes it's about guaranteed that packaging the
       -- tarball failed. This can happen if the system running the API has a non-
@@ -750,7 +748,7 @@ publish maybeLegacyIndex payload = do
       let newMetadata = metadata { published = Map.insert (un Manifest manifest).version newPublishedVersion metadata.published }
 
       Registry.writeMetadata (un Manifest manifest).name (Metadata newMetadata)
-      Comment.comment "Successfully uploaded package to the registry! 🎉 🚀"
+      Log.notice "Successfully uploaded package to the registry! 🎉 🚀"
 
       -- We write to the registry index if possible. If this fails, the packaging
       -- team should manually insert the entry.
@@ -758,7 +756,7 @@ publish maybeLegacyIndex payload = do
       Registry.writeManifest manifest
 
       Registry.mirrorLegacyRegistry payload.name newMetadata.location
-      Comment.comment "Mirrored registry operation to the legacy registry!"
+      Log.notice "Mirrored registry operation to the legacy registry!"
 
       Log.debug "Uploading package documentation to Pursuit"
       if payload.compiler >= Purs.minPursuitPublish then
@@ -768,11 +766,11 @@ publish maybeLegacyIndex payload = do
         publishToPursuit { source: downloadedPackage, compiler: payload.compiler, resolutions, installedResolutions } >>= case _ of
           Left publishErr -> do
             Log.error publishErr
-            Comment.comment $ "Failed to publish package docs to Pursuit: " <> publishErr
+            Log.notice $ "Failed to publish package docs to Pursuit: " <> publishErr
           Right _ ->
-            Comment.comment "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+            Log.notice "Successfully uploaded package docs to Pursuit! 🎉 🚀"
       else do
-        Comment.comment $ Array.fold
+        Log.notice $ Array.fold
           [ "Skipping Pursuit publishing because this package was published with a pre-0.14.7 compiler ("
           , Version.print payload.compiler
           , "). If you want to publish documentation, please try again with a later compiler."
@@ -782,7 +780,7 @@ publish maybeLegacyIndex payload = do
       -- when running the server) this will be taken care of by followup jobs invoking
       -- the MatrixBuilder for each compiler version
       for_ maybeLegacyIndex \_idx -> do
-        Comment.comment "Determining all valid compiler versions for this package..."
+        Log.notice "Determining all valid compiler versions for this package..."
         allCompilers <- PursVersions.pursVersions
         { failed: invalidCompilers, succeeded: validCompilers } <- case NonEmptyArray.fromFoldable $ NonEmptyArray.delete payload.compiler allCompilers of
           Nothing -> pure { failed: Map.empty, succeeded: NonEmptySet.singleton payload.compiler }
@@ -797,13 +795,13 @@ publish maybeLegacyIndex payload = do
         unless (Map.isEmpty invalidCompilers) do
           Log.debug $ "Some compilers failed: " <> String.joinWith ", " (map Version.print (Set.toUnfoldable (Map.keys invalidCompilers)))
 
-        Comment.comment $ "Found compatible compilers: " <> String.joinWith ", " (map (\v -> "`" <> Version.print v <> "`") (NonEmptySet.toUnfoldable validCompilers))
+        Log.notice $ "Found compatible compilers: " <> String.joinWith ", " (map (\v -> "`" <> Version.print v <> "`") (NonEmptySet.toUnfoldable validCompilers))
         let metadataWithCompilers = newMetadata { published = Map.update (Just <<< (_ { compilers = NonEmptySet.toUnfoldable1 validCompilers })) (un Manifest manifest).version newMetadata.published }
 
         Registry.writeMetadata (un Manifest manifest).name (Metadata metadataWithCompilers)
         Log.debug $ "Wrote new metadata " <> printJson Metadata.codec (Metadata metadataWithCompilers)
 
-        Comment.comment "Wrote completed metadata to the registry!"
+        Log.notice "Wrote completed metadata to the registry!"
 
       FS.Extra.remove tmp
       pure $ Just { dependencies: (un Manifest manifest).dependencies, version: (un Manifest manifest).version }
@@ -969,7 +967,7 @@ type PublishToPursuit =
 publishToPursuit
   :: forall r
    . PublishToPursuit
-  -> Run (PURSUIT + COMMENT + LOG + AFF + EFFECT + r) (Either String Unit)
+  -> Run (PURSUIT + LOG + AFF + EFFECT + r) (Either String Unit)
 publishToPursuit { source, compiler, resolutions, installedResolutions } = Except.runExcept do
   Log.debug "Generating a resolutions file"
   tmp <- Tmp.mkTmpDir
@@ -1170,7 +1168,7 @@ conformLegacyManifest
   -> CompilerIndex
   -> Solver.TransitivizedRegistry
   -> ValidateDepsError
-  -> Run (COMMENT + LOG + EXCEPT String + r) (Tuple Manifest (Map PackageName Version))
+  -> Run (LOG + EXCEPT String + r) (Tuple Manifest (Map PackageName Version))
 conformLegacyManifest (Manifest manifest) compiler currentIndex legacyRegistry problem = do
   let
     manifestRequired :: SemigroupMap PackageName Intersection
@@ -1267,7 +1265,7 @@ conformLegacyManifest (Manifest manifest) compiler currentIndex legacyRegistry p
     UnusedDependencies names -> do
       Tuple deps resolutions <- fixUnused names (Manifest manifest)
       let newManifest = Manifest (manifest { dependencies = deps })
-      Comment.comment $ Array.fold
+      Log.notice $ Array.fold
         [ previousDepsMessage
         , "\nWe have removed the following packages: " <> String.joinWith ", " (map PackageName.print (NonEmptySet.toUnfoldable names)) <> "\n"
         , newDepsMessage newManifest
@@ -1276,7 +1274,7 @@ conformLegacyManifest (Manifest manifest) compiler currentIndex legacyRegistry p
     MissingDependencies names -> do
       Tuple deps resolutions <- fixMissing names (Manifest manifest)
       let newManifest = Manifest (manifest { dependencies = deps })
-      Comment.comment $ Array.fold
+      Log.notice $ Array.fold
         [ previousDepsMessage
         , "\nWe have added the following packages: " <> String.joinWith ", " (map PackageName.print (NonEmptySet.toUnfoldable names)) <> "\n"
         , newDepsMessage newManifest
@@ -1287,7 +1285,7 @@ conformLegacyManifest (Manifest manifest) compiler currentIndex legacyRegistry p
       let trimmed = Map.difference manifest.dependencies unused'
       Tuple newDeps newResolutions <- fixMissing missing (Manifest (manifest { dependencies = trimmed }))
       let newManifest = Manifest (manifest { dependencies = newDeps })
-      Comment.comment $ Array.fold
+      Log.notice $ Array.fold
         [ previousDepsMessage
         , "\nWe have removed the following packages: " <> String.joinWith ", " (map PackageName.print (NonEmptySet.toUnfoldable unused)) <> "\n"
         , "We have added the following packages: " <> String.joinWith ", " (map PackageName.print (NonEmptySet.toUnfoldable missing)) <> "\n"

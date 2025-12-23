@@ -40,7 +40,7 @@ spec = do
         assertIssueClosed result
 
       Spec.it "posts failure comment and leaves issue open when job fails" \_ -> do
-        result <- runWorkflowWithEvent $ mkGitHubPublishEvent Fixtures.failingPublishData
+        result <- runWorkflowWithEvent $ mkGitHubAuthenticatedEventFrom "random-user" Fixtures.failingTransferData
 
         assertJobFailed result
         assertHasComment jobStartedText result
@@ -102,11 +102,14 @@ mkGitHubPublishEvent publishData =
     JSON.print $ CJ.encode githubEventCodec event
 
 mkGitHubAuthenticatedEvent :: AuthenticatedData -> String
-mkGitHubAuthenticatedEvent authData =
+mkGitHubAuthenticatedEvent = mkGitHubAuthenticatedEventFrom packagingTeamUsername
+
+mkGitHubAuthenticatedEventFrom :: String -> AuthenticatedData -> String
+mkGitHubAuthenticatedEventFrom username authData =
   let
     authJson = JSON.print $ CJ.encode Operation.authenticatedCodec authData
     body = "```json\n" <> authJson <> "\n```"
-    event = { sender: { login: packagingTeamUsername }, issue: { number: testIssueNumber, body } }
+    event = { sender: { login: username }, issue: { number: testIssueNumber, body } }
   in
     JSON.print $ CJ.encode githubEventCodec event
 

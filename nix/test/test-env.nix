@@ -131,8 +131,8 @@ in
     wiremockStartScript
     serverStartScript
     setupGitFixtures
-    envVars
-    envFile
+    testEnv
+    envToExports
     ;
 
   # Full testConfig still available for less common access patterns
