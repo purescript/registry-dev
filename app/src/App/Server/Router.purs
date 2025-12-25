@@ -41,7 +41,14 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
   Publish, Post -> do
     publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
     lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
-    jobId <- lift $ Db.insertPublishJob { payload: publish }
+
+    jobId <- lift (Db.selectPublishJob publish.name publish.version) >>= case _ of
+      Just job -> do
+        lift $ Log.warn $ "Duplicate publish job insertion, returning existing one: " <> unwrap job.jobId
+        pure job.jobId
+      Nothing -> do
+        lift $ Db.insertPublishJob { payload: publish }
+
     jsonOk V1.jobCreatedResponseCodec { jobId }
 
   Unpublish, Post -> do
@@ -49,11 +56,18 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
     case auth.payload of
       Operation.Unpublish payload -> do
         lift $ Log.info $ "Received Unpublish request: " <> printJson Operation.unpublishCodec payload
-        jobId <- lift $ Db.insertUnpublishJob
-          { payload: payload
-          , rawPayload: auth.rawPayload
-          , signature: auth.signature
-          }
+
+        jobId <- lift (Db.selectUnpublishJob payload.name payload.version) >>= case _ of
+          Just job -> do
+            lift $ Log.warn $ "Duplicate unpublish job insertion, returning existing one: " <> unwrap job.jobId
+            pure job.jobId
+          Nothing -> do
+            lift $ Db.insertUnpublishJob
+              { payload: payload
+              , rawPayload: auth.rawPayload
+              , signature: auth.signature
+              }
+
         jsonOk V1.jobCreatedResponseCodec { jobId }
       _ ->
         HTTPurple.badRequest "Expected unpublish operation."
@@ -63,11 +77,18 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
     case auth.payload of
       Operation.Transfer payload -> do
         lift $ Log.info $ "Received Transfer request: " <> printJson Operation.transferCodec payload
-        jobId <- lift $ Db.insertTransferJob
-          { payload: payload
-          , rawPayload: auth.rawPayload
-          , signature: auth.signature
-          }
+
+        jobId <- lift (Db.selectTransferJob payload.name) >>= case _ of
+          Just job -> do
+            lift $ Log.warn $ "Duplicate transfer job insertion, returning existing one: " <> unwrap job.jobId
+            pure job.jobId
+          Nothing -> do
+            lift $ Db.insertTransferJob
+              { payload: payload
+              , rawPayload: auth.rawPayload
+              , signature: auth.signature
+              }
+
         jsonOk V1.jobCreatedResponseCodec { jobId }
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
@@ -95,6 +116,8 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
       Right Nothing -> do
         HTTPurple.notFound
       Right (Just job) -> jsonOk V1.jobCodec job
+
+  -- TODO packageset jobs?
 
   Status, Get ->
     HTTPurple.emptyResponse Status.ok

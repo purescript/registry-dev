@@ -93,7 +93,7 @@ export const insertPackageSetJobImpl = (db, job) => {
   return _insertJob(db, PACKAGE_SET_JOBS_TABLE, columns, job);
 };
 
-const _selectJob = (db, { table, jobId }) => {
+const _selectJob = (db, { table, jobId, packageName, packageVersion }) => {
   const params = [];
   let query = `
     SELECT job.*, info.*
@@ -101,11 +101,18 @@ const _selectJob = (db, { table, jobId }) => {
     JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
   `;
 
-  if (jobId === null) {
-    query += ` WHERE info.finishedAt IS NULL AND info.startedAt IS NULL`;
-  } else {
+  if (jobId !== null) {
     query += ` WHERE info.jobId = ?`;
     params.push(jobId);
+  } else if (packageName !== null) {
+    query += ` WHERE job.packageName = ?`;
+    params.push(packageName);
+    if (packageVersion !== null) {
+      query += ` AND job.packageVersion = ?`;
+      params.push(packageVersion);
+    }
+  } else {
+    query += ` WHERE info.finishedAt IS NULL AND info.startedAt IS NULL`;
   }
 
   query += ` ORDER BY info.createdAt ASC LIMIT 1`;
@@ -114,16 +121,16 @@ const _selectJob = (db, { table, jobId }) => {
   return stmt.get(...params);
 }
 
-export const selectPublishJobImpl = (db, jobId) => {
-  return _selectJob(db, { table: PUBLISH_JOBS_TABLE, jobId });
+export const selectPublishJobImpl = (db, { jobId, packageName, packageVersion }) => {
+  return _selectJob(db, { table: PUBLISH_JOBS_TABLE, jobId, packageName, packageVersion });
 };
 
-export const selectUnpublishJobImpl = (db, jobId) => {
-  return _selectJob(db, { table: UNPUBLISH_JOBS_TABLE, jobId });
+export const selectUnpublishJobImpl = (db, { jobId, packageName, packageVersion }) => {
+  return _selectJob(db, { table: UNPUBLISH_JOBS_TABLE, jobId, packageName, packageVersion });
 };
 
-export const selectTransferJobImpl = (db, jobId) => {
-  return _selectJob(db, { table: TRANSFER_JOBS_TABLE, jobId });
+export const selectTransferJobImpl = (db, { jobId, packageName }) => {
+  return _selectJob(db, { table: TRANSFER_JOBS_TABLE, jobId, packageName });
 };
 
 export const selectMatrixJobImpl = (db, jobId) => {

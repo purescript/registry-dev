@@ -38,6 +38,9 @@ module Registry.App.SQLite
   , selectNextPublishJob
   , selectNextTransferJob
   , selectNextUnpublishJob
+  , selectPublishJob
+  , selectTransferJob
+  , selectUnpublishJob
   , startJob
   ) where
 
@@ -50,6 +53,7 @@ import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime as DateTime
 import Data.Function (on)
+import Data.Nullable (notNull, null)
 import Data.Nullable as Nullable
 import Data.String as String
 import Data.UUID.Random as UUID
@@ -198,11 +202,11 @@ selectJob db { level: maybeLogLevel, since, jobId: JobId jobId } = do
   { fail, success: logs } <- selectLogsByJob db (JobId jobId) logLevel since
   case fail of
     [] -> runExceptT $ firstJust
-      [ selectPublishJob logs
-      , selectMatrixJob logs
-      , selectTransferJob logs
-      , selectPackageSetJob logs
-      , selectUnpublishJob logs
+      [ selectPublishJobById logs
+      , selectMatrixJobById logs
+      , selectTransferJobById logs
+      , selectPackageSetJobById logs
+      , selectUnpublishJobById logs
       ]
     _ -> pure $ Left $ "Some logs are not readable: " <> String.joinWith "\n" fail
   where
@@ -213,31 +217,34 @@ selectJob db { level: maybeLogLevel, since, jobId: JobId jobId } = do
       Just job -> pure (Just job)
       Nothing -> next
 
-  selectPublishJob logs = ExceptT do
-    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPublishJobImpl db (Nullable.notNull jobId)
+  selectPublishJobById logs = ExceptT do
+    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPublishJobImpl db
+      { jobId: notNull jobId, packageName: null, packageVersion: null }
     pure $ traverse
       ( map (PublishJob <<< Record.merge { logs, jobType: Proxy :: _ "publish" })
           <<< publishJobDetailsFromJSRep
       )
       maybeJobDetails
 
-  selectUnpublishJob logs = ExceptT do
-    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectUnpublishJobImpl db (Nullable.notNull jobId)
+  selectUnpublishJobById logs = ExceptT do
+    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectUnpublishJobImpl db
+      { jobId: notNull jobId, packageName: null, packageVersion: null }
     pure $ traverse
       ( map (UnpublishJob <<< Record.merge { logs, jobType: Proxy :: _ "unpublish" })
           <<< unpublishJobDetailsFromJSRep
       )
       maybeJobDetails
 
-  selectTransferJob logs = ExceptT do
-    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectTransferJobImpl db (Nullable.notNull jobId)
+  selectTransferJobById logs = ExceptT do
+    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectTransferJobImpl db
+      { jobId: notNull jobId, packageName: null }
     pure $ traverse
       ( map (TransferJob <<< Record.merge { logs, jobType: Proxy :: _ "transfer" })
           <<< transferJobDetailsFromJSRep
       )
       maybeJobDetails
 
-  selectMatrixJob logs = ExceptT do
+  selectMatrixJobById logs = ExceptT do
     maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectMatrixJobImpl db (Nullable.notNull jobId)
     pure $ traverse
       ( map (MatrixJob <<< Record.merge { logs, jobType: Proxy :: _ "matrix" })
@@ -245,7 +252,7 @@ selectJob db { level: maybeLogLevel, since, jobId: JobId jobId } = do
       )
       maybeJobDetails
 
-  selectPackageSetJob logs = ExceptT do
+  selectPackageSetJobById logs = ExceptT do
     maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPackageSetJobImpl db (Nullable.notNull jobId)
     pure $ traverse
       ( map (PackageSetJob <<< Record.merge { logs, jobType: Proxy :: _ "packageset" })
@@ -336,13 +343,28 @@ publishJobDetailsFromJSRep { jobId, packageName, packageVersion, payload, create
     , payload: parsed
     }
 
-foreign import selectPublishJobImpl :: EffectFn2 SQLite (Nullable String) (Nullable JSPublishJobDetails)
+type SelectPublishParams =
+  { jobId :: Nullable String
+  , packageName :: Nullable String
+  , packageVersion :: Nullable String
+  }
+
+foreign import selectPublishJobImpl :: EffectFn2 SQLite SelectPublishParams (Nullable JSPublishJobDetails)
 
 foreign import selectPublishJobsImpl :: EffectFn3 SQLite String Boolean (Array JSPublishJobDetails)
 
 selectNextPublishJob :: SQLite -> Effect (Either String (Maybe PublishJobDetails))
 selectNextPublishJob db = do
-  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPublishJobImpl db Nullable.null
+  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPublishJobImpl db { jobId: null, packageName: null, packageVersion: null }
+  pure $ traverse publishJobDetailsFromJSRep maybeJobDetails
+
+selectPublishJob :: SQLite -> PackageName -> Version -> Effect (Either String (Maybe PublishJobDetails))
+selectPublishJob db packageName packageVersion = do
+  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPublishJobImpl db
+    { jobId: null
+    , packageName: notNull $ PackageName.print packageName
+    , packageVersion: notNull $ Version.print packageVersion
+    }
   pure $ traverse publishJobDetailsFromJSRep maybeJobDetails
 
 type InsertPublishJob =
@@ -421,13 +443,28 @@ unpublishJobDetailsFromJSRep { jobId, packageName, packageVersion, payload, crea
     , payload: parsed
     }
 
-foreign import selectUnpublishJobImpl :: EffectFn2 SQLite (Nullable String) (Nullable JSUnpublishJobDetails)
+type SelectUnpublishParams =
+  { jobId :: Nullable String
+  , packageName :: Nullable String
+  , packageVersion :: Nullable String
+  }
+
+foreign import selectUnpublishJobImpl :: EffectFn2 SQLite SelectUnpublishParams (Nullable JSUnpublishJobDetails)
 
 foreign import selectUnpublishJobsImpl :: EffectFn3 SQLite String Boolean (Array JSUnpublishJobDetails)
 
 selectNextUnpublishJob :: SQLite -> Effect (Either String (Maybe UnpublishJobDetails))
 selectNextUnpublishJob db = do
-  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectUnpublishJobImpl db Nullable.null
+  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectUnpublishJobImpl db { jobId: null, packageName: null, packageVersion: null }
+  pure $ traverse unpublishJobDetailsFromJSRep maybeJobDetails
+
+selectUnpublishJob :: SQLite -> PackageName -> Version -> Effect (Either String (Maybe UnpublishJobDetails))
+selectUnpublishJob db packageName packageVersion = do
+  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectUnpublishJobImpl db
+    { jobId: null
+    , packageName: notNull $ PackageName.print packageName
+    , packageVersion: notNull $ Version.print packageVersion
+    }
   pure $ traverse unpublishJobDetailsFromJSRep maybeJobDetails
 
 type InsertUnpublishJob =
@@ -508,13 +545,23 @@ transferJobDetailsFromJSRep { jobId, packageName, payload, createdAt, startedAt,
     , payload: parsed
     }
 
-foreign import selectTransferJobImpl :: EffectFn2 SQLite (Nullable String) (Nullable JSTransferJobDetails)
+type SelectTransferParams = { jobId :: Nullable String, packageName :: Nullable String }
+
+foreign import selectTransferJobImpl :: EffectFn2 SQLite SelectTransferParams (Nullable JSTransferJobDetails)
 
 foreign import selectTransferJobsImpl :: EffectFn3 SQLite String Boolean (Array JSTransferJobDetails)
 
 selectNextTransferJob :: SQLite -> Effect (Either String (Maybe TransferJobDetails))
 selectNextTransferJob db = do
-  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectTransferJobImpl db Nullable.null
+  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectTransferJobImpl db { jobId: null, packageName: null }
+  pure $ traverse transferJobDetailsFromJSRep maybeJobDetails
+
+selectTransferJob :: SQLite -> PackageName -> Effect (Either String (Maybe TransferJobDetails))
+selectTransferJob db packageName = do
+  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectTransferJobImpl db
+    { jobId: null
+    , packageName: notNull $ PackageName.print packageName
+    }
   pure $ traverse transferJobDetailsFromJSRep maybeJobDetails
 
 type InsertTransferJob =

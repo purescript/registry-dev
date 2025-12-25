@@ -39,6 +39,9 @@ data Db a
   | SelectNextTransferJob (Either String (Maybe TransferJobDetails) -> a)
   | SelectNextMatrixJob (Either String (Maybe MatrixJobDetails) -> a)
   | SelectNextPackageSetJob (Either String (Maybe PackageSetJobDetails) -> a)
+  | SelectPublishJob PackageName Version (Either String (Maybe PublishJobDetails) -> a)
+  | SelectUnpublishJob PackageName Version (Either String (Maybe UnpublishJobDetails) -> a)
+  | SelectTransferJob PackageName (Either String (Maybe TransferJobDetails) -> a)
   | InsertLogLine LogLine a
   | SelectLogsByJob JobId LogLevel DateTime (Array LogLine -> a)
   | ResetIncompleteJobs a
@@ -115,6 +118,18 @@ selectNextMatrixJob = Run.lift _db (SelectNextMatrixJob identity) >>= Except.ret
 selectNextPackageSetJob :: forall r. Run (DB + EXCEPT String + r) (Maybe PackageSetJobDetails)
 selectNextPackageSetJob = Run.lift _db (SelectNextPackageSetJob identity) >>= Except.rethrow
 
+-- | Lookup a publish job from the database by name and version.
+selectPublishJob :: forall r. PackageName -> Version -> Run (DB + EXCEPT String + r) (Maybe PublishJobDetails)
+selectPublishJob packageName packageVersion = Run.lift _db (SelectPublishJob packageName packageVersion identity) >>= Except.rethrow
+
+-- | Lookup an unpublish job from the database by name and version.
+selectUnpublishJob :: forall r. PackageName -> Version -> Run (DB + EXCEPT String + r) (Maybe UnpublishJobDetails)
+selectUnpublishJob packageName packageVersion = Run.lift _db (SelectUnpublishJob packageName packageVersion identity) >>= Except.rethrow
+
+-- | Lookop a transfer job from the database by name.
+selectTransferJob :: forall r. PackageName -> Run (DB + EXCEPT String + r) (Maybe TransferJobDetails)
+selectTransferJob packageName = Run.lift _db (SelectTransferJob packageName identity) >>= Except.rethrow
+
 -- | Delete all incomplete jobs from the database.
 resetIncompleteJobs :: forall r. Run (DB + r) Unit
 resetIncompleteJobs = Run.lift _db (ResetIncompleteJobs unit)
@@ -183,6 +198,18 @@ handleSQLite env = case _ of
 
   SelectNextPackageSetJob reply -> do
     result <- Run.liftEffect $ SQLite.selectNextPackageSetJob env.db
+    pure $ reply result
+
+  SelectPublishJob packageName packageVersion reply -> do
+    result <- Run.liftEffect $ SQLite.selectPublishJob env.db packageName packageVersion
+    pure $ reply result
+
+  SelectUnpublishJob packageName packageVersion reply -> do
+    result <- Run.liftEffect $ SQLite.selectUnpublishJob env.db packageName packageVersion
+    pure $ reply result
+
+  SelectTransferJob packageName reply -> do
+    result <- Run.liftEffect $ SQLite.selectTransferJob env.db packageName
     pure $ reply result
 
   InsertLogLine log next -> do
