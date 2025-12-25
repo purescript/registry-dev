@@ -8,22 +8,7 @@ import Data.String as String
 import Registry.API.V1 (Job, JobId, LogLevel, LogLine)
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.SQLite
-  ( FinishJob
-  , InsertMatrixJob
-  , InsertPackageSetJob
-  , InsertPublishJob
-  , InsertTransferJob
-  , InsertUnpublishJob
-  , MatrixJobDetails
-  , PackageSetJobDetails
-  , PublishJobDetails
-  , SQLite
-  , SelectJobRequest
-  , StartJob
-  , TransferJobDetails
-  , UnpublishJobDetails
-  )
+import Registry.App.SQLite (FinishJob, InsertMatrixJob, InsertPackageSetJob, InsertPublishJob, InsertTransferJob, InsertUnpublishJob, MatrixJobDetails, PackageSetJobDetails, PublishJobDetails, SQLite, SelectJobRequest, SelectJobsRequest, StartJob, TransferJobDetails, UnpublishJobDetails)
 import Registry.App.SQLite as SQLite
 import Run (EFFECT, Run)
 import Run as Run
@@ -48,6 +33,7 @@ data Db a
   | FinishJob FinishJob a
   | StartJob StartJob a
   | SelectJob SelectJobRequest (Either String (Maybe Job) -> a)
+  | SelectJobs SelectJobsRequest (Array Job -> a)
   | SelectNextPublishJob (Either String (Maybe PublishJobDetails) -> a)
   | SelectNextUnpublishJob (Either String (Maybe UnpublishJobDetails) -> a)
   | SelectNextTransferJob (Either String (Maybe TransferJobDetails) -> a)
@@ -80,6 +66,10 @@ finishJob job = Run.lift _db (FinishJob job unit)
 -- | Select a job by ID from the database.
 selectJob :: forall r. SelectJobRequest -> Run (DB + EXCEPT String + r) (Maybe Job)
 selectJob request = Run.lift _db (SelectJob request identity) >>= Except.rethrow
+
+-- | Select a list of the latest jobs from the database
+selectJobs :: forall r. SelectJobsRequest -> Run (DB + EXCEPT String + r) (Array Job)
+selectJobs request = Run.lift _db (SelectJobs request identity)
 
 -- | Insert a new publish job into the database.
 insertPublishJob :: forall r. InsertPublishJob -> Run (DB + r) JobId
@@ -168,6 +158,12 @@ handleSQLite env = case _ of
   SelectJob request reply -> do
     result <- Run.liftEffect $ SQLite.selectJob env.db request
     pure $ reply result
+
+  SelectJobs request reply -> do
+    { failed, jobs } <- Run.liftEffect $ SQLite.selectJobs env.db request
+    unless (Array.null failed) do
+      Log.warn $ "Some jobs were not readable: " <> String.joinWith "\n" failed
+    pure $ reply jobs
 
   SelectNextPublishJob reply -> do
     result <- Run.liftEffect $ SQLite.selectNextPublishJob env.db

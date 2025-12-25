@@ -72,17 +72,26 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
-  -- TODO return jobs
-  Jobs, Get -> do
-    _now <- liftEffect nowUTC
-    jsonOk (CJ.array V1.jobCodec) []
+  Jobs { since, include_completed }, Get -> do
+    -- TODO should probably be 1h ago instead of now
+    now <- liftEffect nowUTC
+    lift
+      ( Run.Except.runExcept $ Db.selectJobs
+          { includeCompleted: fromMaybe false include_completed
+          , since: fromMaybe now since
+          }
+      ) >>= case _ of
+      Left err -> do
+        lift $ Log.error $ "Error while fetching jobs: " <> err
+        HTTPurple.internalServerError $ "Error while fetching jobs: " <> err
+      Right jobs -> jsonOk (CJ.array V1.jobCodec) jobs
 
   Job jobId { level: maybeLogLevel, since }, Get -> do
     now <- liftEffect nowUTC
     lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since: fromMaybe now since }) >>= case _ of
       Left err -> do
         lift $ Log.error $ "Error while fetching job: " <> err
-        HTTPurple.notFound
+        HTTPurple.internalServerError $ "Error while fetching job: " <> err
       Right Nothing -> do
         HTTPurple.notFound
       Right (Just job) -> jsonOk V1.jobCodec job

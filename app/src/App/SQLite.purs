@@ -17,6 +17,7 @@ module Registry.App.SQLite
   , PublishJobDetails
   , SQLite
   , SelectJobRequest
+  , SelectJobsRequest
   , StartJob
   , TransferJobDetails
   , UnpublishJobDetails
@@ -30,6 +31,7 @@ module Registry.App.SQLite
   , insertUnpublishJob
   , resetIncompleteJobs
   , selectJob
+  , selectJobs
   , selectLogsByJob
   , selectNextMatrixJob
   , selectNextPackageSetJob
@@ -43,17 +45,20 @@ import Registry.App.Prelude
 
 import Codec.JSON.DecodeError as JSON.DecodeError
 import Control.Monad.Except (runExceptT)
+import Data.Array (sortBy, take)
 import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime as DateTime
+import Data.Function (on)
 import Data.Nullable as Nullable
 import Data.String as String
 import Data.UUID.Random as UUID
-import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn4)
+import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, EffectFn4)
 import Effect.Uncurried as Uncurried
 import Record as Record
 import Registry.API.V1 (Job(..), JobId(..), LogLevel(..), LogLine)
 import Registry.API.V1 as API.V1
+import Registry.API.V1 as V1
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
 import Registry.Operation (AuthenticatedData, PackageSetOperation, PublishData, TransferData, UnpublishData)
@@ -248,6 +253,44 @@ selectJob db { level: maybeLogLevel, since, jobId: JobId jobId } = do
       )
       maybeJobDetails
 
+type SelectJobsRequest =
+  { since :: DateTime
+  , includeCompleted :: Boolean
+  }
+
+selectJobs :: SQLite -> SelectJobsRequest -> Effect { failed :: Array String, jobs :: Array Job }
+selectJobs db { since, includeCompleted } = do
+  publishJobs <- selectPublishJobs
+  unpublishJobs <- selectUnpublishJobs
+  transferJobs <- selectTransferJobs
+  matrixJobs <- selectMatrixJobs
+  packageSetJobs <- selectPackageSetJobs
+  let
+    { fail: failedJobs, success: allJobs } = partitionEithers
+      (publishJobs <> unpublishJobs <> transferJobs <> matrixJobs <> packageSetJobs)
+  pure { failed: failedJobs, jobs: take 100 $ sortBy (compare `on` (V1.jobInfo >>> _.createdAt)) allJobs }
+
+  where
+  selectPublishJobs = do
+    jobs <- Uncurried.runEffectFn3 selectPublishJobsImpl db (DateTime.format Internal.Format.iso8601DateTime since) includeCompleted
+    pure $ map (map (PublishJob <<< Record.merge { logs: [], jobType: Proxy :: _ "publish" }) <<< publishJobDetailsFromJSRep) jobs
+
+  selectUnpublishJobs = do
+    jobs <- Uncurried.runEffectFn3 selectUnpublishJobsImpl db (DateTime.format Internal.Format.iso8601DateTime since) includeCompleted
+    pure $ map (map (UnpublishJob <<< Record.merge { logs: [], jobType: Proxy :: _ "unpublish" }) <<< unpublishJobDetailsFromJSRep) jobs
+
+  selectTransferJobs = do
+    jobs <- Uncurried.runEffectFn3 selectTransferJobsImpl db (DateTime.format Internal.Format.iso8601DateTime since) includeCompleted
+    pure $ map (map (TransferJob <<< Record.merge { logs: [], jobType: Proxy :: _ "transfer" }) <<< transferJobDetailsFromJSRep) jobs
+
+  selectMatrixJobs = do
+    jobs <- Uncurried.runEffectFn3 selectMatrixJobsImpl db (DateTime.format Internal.Format.iso8601DateTime since) includeCompleted
+    pure $ map (map (MatrixJob <<< Record.merge { logs: [], jobType: Proxy :: _ "matrix" }) <<< matrixJobDetailsFromJSRep) jobs
+
+  selectPackageSetJobs = do
+    jobs <- Uncurried.runEffectFn3 selectPackageSetJobsImpl db (DateTime.format Internal.Format.iso8601DateTime since) includeCompleted
+    pure $ map (map (PackageSetJob <<< Record.merge { logs: [], jobType: Proxy :: _ "packageset" }) <<< packageSetJobDetailsFromJSRep) jobs
+
 --------------------------------------------------------------------------------
 -- publish_jobs table
 
@@ -294,6 +337,8 @@ publishJobDetailsFromJSRep { jobId, packageName, packageVersion, payload, create
     }
 
 foreign import selectPublishJobImpl :: EffectFn2 SQLite (Nullable String) (Nullable JSPublishJobDetails)
+
+foreign import selectPublishJobsImpl :: EffectFn3 SQLite String Boolean (Array JSPublishJobDetails)
 
 selectNextPublishJob :: SQLite -> Effect (Either String (Maybe PublishJobDetails))
 selectNextPublishJob db = do
@@ -377,6 +422,8 @@ unpublishJobDetailsFromJSRep { jobId, packageName, packageVersion, payload, crea
     }
 
 foreign import selectUnpublishJobImpl :: EffectFn2 SQLite (Nullable String) (Nullable JSUnpublishJobDetails)
+
+foreign import selectUnpublishJobsImpl :: EffectFn3 SQLite String Boolean (Array JSUnpublishJobDetails)
 
 selectNextUnpublishJob :: SQLite -> Effect (Either String (Maybe UnpublishJobDetails))
 selectNextUnpublishJob db = do
@@ -462,6 +509,8 @@ transferJobDetailsFromJSRep { jobId, packageName, payload, createdAt, startedAt,
     }
 
 foreign import selectTransferJobImpl :: EffectFn2 SQLite (Nullable String) (Nullable JSTransferJobDetails)
+
+foreign import selectTransferJobsImpl :: EffectFn3 SQLite String Boolean (Array JSTransferJobDetails)
 
 selectNextTransferJob :: SQLite -> Effect (Either String (Maybe TransferJobDetails))
 selectNextTransferJob db = do
@@ -586,6 +635,8 @@ matrixJobDetailsFromJSRep { jobId, packageName, packageVersion, compilerVersion,
 
 foreign import selectMatrixJobImpl :: EffectFn2 SQLite (Nullable String) (Nullable JSMatrixJobDetails)
 
+foreign import selectMatrixJobsImpl :: EffectFn3 SQLite String Boolean (Array JSMatrixJobDetails)
+
 selectNextMatrixJob :: SQLite -> Effect (Either String (Maybe MatrixJobDetails))
 selectNextMatrixJob db = do
   maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectMatrixJobImpl db Nullable.null
@@ -629,6 +680,8 @@ packageSetJobDetailsFromJSRep { jobId, payload, createdAt, startedAt, finishedAt
     }
 
 foreign import selectPackageSetJobImpl :: EffectFn2 SQLite (Nullable String) (Nullable JSPackageSetJobDetails)
+
+foreign import selectPackageSetJobsImpl :: EffectFn3 SQLite String Boolean (Array JSPackageSetJobDetails)
 
 selectNextPackageSetJob :: SQLite -> Effect (Either String (Maybe PackageSetJobDetails))
 selectNextPackageSetJob db = do

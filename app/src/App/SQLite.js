@@ -134,6 +134,45 @@ export const selectPackageSetJobImpl = (db, jobId) => {
   return _selectJob(db, { table: PACKAGE_SET_JOBS_TABLE, jobId });
 };
 
+const _selectJobs = (db, { table, since, includeCompleted }) => {
+  let query = `
+    SELECT job.*, info.*
+    FROM ${table} job
+    JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
+    WHERE timestamp >= ?
+  `;
+  let params = [since];
+
+  if (includeCompleted === false) {
+    query += ` AND info.finishedAt IS NULL`;
+  }
+
+  query += ` ORDER BY info.createdAt ASC LIMIT 100`;
+  const stmt = db.prepare(query);
+
+  return stmt.all(...params);
+}
+
+export const selectPublishJobsImpl = (db, since, includeCompleted) => {
+  return _selectJobs(db, { table: PUBLISH_JOBS_TABLE, since, includeCompleted });
+};
+
+export const selectUnpublishJobsImpl = (db, since, includeCompleted) => {
+  return _selectJobs(db, { table: UNPUBLISH_JOBS_TABLE, since, includeCompleted });
+};
+
+export const selectTransferJobsImpl = (db, since, includeCompleted) => {
+  return _selectJobs(db, { table: TRANSFER_JOBS_TABLE, since, includeCompleted });
+};
+
+export const selectMatrixJobsImpl = (db, since, includeCompleted) => {
+  return _selectJobs(db, { table: MATRIX_JOBS_TABLE, since, includeCompleted });
+};
+
+export const selectPackageSetJobsImpl = (db, since, includeCompleted) => {
+  return _selectJobs(db, { table: PACKAGE_SET_JOBS_TABLE, since, includeCompleted });
+};
+
 export const startJobImpl = (db, args) => {
   const stmt = db.prepare(`
     UPDATE ${JOB_INFO_TABLE}
