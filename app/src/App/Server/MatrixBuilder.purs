@@ -167,7 +167,9 @@ solveForAllCompilers { compilerIndex, name, version, compiler, dependencies } = 
         -- Log.debug $ Solver.printSolverError solverErrors
         pure Nothing
       Right (Tuple solvedCompiler resolutions) -> case solvedCompiler == target of
-        true -> pure $ Just { compiler: target, resolutions, name, version }
+        true -> do
+          Log.debug $ "Solved with compiler " <> Version.print solvedCompiler
+          pure $ Just { compiler: target, resolutions, name, version }
         false -> do
           Log.debug $ Array.fold
             [ "Produced a compiler-derived build plan that selects a compiler ("
@@ -204,7 +206,9 @@ solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
             -- Log.debug $ Solver.printSolverError solverErrors
             pure Nothing
           Right (Tuple solvedCompiler resolutions) -> case compiler == solvedCompiler of
-            true -> pure $ Just { compiler, resolutions, name: manifest.name, version: manifest.version }
+            true -> do
+              Log.debug $ "Solved with compiler " <> Version.print solvedCompiler
+              pure $ Just { compiler, resolutions, name: manifest.name, version: manifest.version }
             false -> do
               Log.debug $ Array.fold
                 [ "Produced a compiler-derived build plan that selects a compiler ("

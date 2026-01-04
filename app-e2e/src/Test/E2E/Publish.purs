@@ -5,6 +5,7 @@ module Test.E2E.Publish (spec) where
 import Prelude
 
 import Data.Array as Array
+import Data.Codec.JSON as CJ
 import Data.Either (Either(..))
 import Data.Foldable (for_)
 import Data.Maybe (Maybe(..), isJust)
@@ -12,10 +13,18 @@ import Data.String as String
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
 import Effect.Class.Console as Console
+import JSON as JSON
+import Registry.API.V1 (Job(..))
 import Registry.API.V1 as V1
+import Registry.Internal.Codec as Internal.Codec
+import Registry.Operation as Operation
+import Registry.PackageName (PackageName)
 import Registry.Test.Assert as Assert
 import Registry.Test.E2E.Client as Client
 import Registry.Test.E2E.Fixtures as Fixtures
+import Registry.Test.Utils (unsafePackageName, unsafeVersion)
+import Registry.Version (Version)
+import Registry.Version as Version
 import Test.Spec (Spec)
 import Test.Spec as Spec
 
@@ -102,3 +111,80 @@ spec = do
                     let sinceLogs = (V1.jobInfo sinceJob).logs
                     for_ sinceLogs \l ->
                       Assert.shouldSatisfy l.timestamp (_ >= firstLog.timestamp)
+
+    Spec.it "kicks off a matrix job for 0.15.10 once the package is published" do
+      config <- getConfig
+      maybeJobs <- Client.getJobs config
+      case maybeJobs of
+        Left err -> Assert.fail $ "Failed to get jobs: " <> Client.printClientError err
+        Right jobs -> do
+          let
+            expectedJobs =
+              [ { jobType: "publish"
+                , packageName: Just $ unsafePackageName "effect"
+                , packageVersion: Just $ unsafeVersion "4.0.0"
+                , compilerVersion: Nothing
+                , payload: """{"compiler":"0.15.9","location":{"githubOwner":"purescript","githubRepo":"purescript-effect"},"name":"effect","ref":"v4.0.0","version":"4.0.0"}"""
+                , success: true
+                }
+              , { jobType: "matrix"
+                , packageName: Just $ unsafePackageName "effect"
+                , packageVersion: Just $ unsafeVersion "4.0.0"
+                , compilerVersion: Just $ unsafeVersion "0.15.10"
+                , payload: """{"prelude":"6.0.1"}"""
+                , success: true
+                }
+              ]
+          Assert.shouldEqual expectedJobs (map deterministicJob jobs)
+
+type DeterministicJob =
+  { jobType :: String
+  , packageName :: Maybe PackageName
+  , packageVersion :: Maybe Version
+  , compilerVersion :: Maybe Version
+  , payload :: String
+  , success :: Boolean
+  }
+
+deterministicJob :: Job -> DeterministicJob
+deterministicJob = case _ of
+  PublishJob { success, packageName, packageVersion, payload } ->
+    { jobType: "publish"
+    , packageName: Just packageName
+    , packageVersion: Just packageVersion
+    , compilerVersion: Nothing
+    , success
+    , payload: JSON.print $ CJ.encode Operation.publishCodec payload
+    }
+  UnpublishJob { success, packageName, packageVersion, payload } ->
+    { jobType: "unpublish"
+    , packageName: Just packageName
+    , packageVersion: Just packageVersion
+    , compilerVersion: Nothing
+    , success
+    , payload: JSON.print $ CJ.encode Operation.authenticatedCodec payload
+    }
+  TransferJob { success, packageName, payload } ->
+    { jobType: "transfer"
+    , packageName: Just packageName
+    , packageVersion: Nothing
+    , compilerVersion: Nothing
+    , success
+    , payload: JSON.print $ CJ.encode Operation.authenticatedCodec payload
+    }
+  MatrixJob { success, packageName, packageVersion, compilerVersion, payload } ->
+    { jobType: "matrix"
+    , packageName: Just packageName
+    , packageVersion: Just packageVersion
+    , compilerVersion: Just compilerVersion
+    , success
+    , payload: JSON.print $ CJ.encode (Internal.Codec.packageMap Version.codec) payload
+    }
+  PackageSetJob { success, payload } ->
+    { jobType: "packageset"
+    , packageName: Nothing
+    , packageVersion: Nothing
+    , compilerVersion: Nothing
+    , success
+    , payload: JSON.print $ CJ.encode Operation.packageSetOperationCodec payload
+    }

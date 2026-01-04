@@ -6,9 +6,22 @@ CREATE TABLE job_info (
   finishedAt TEXT,
   success INTEGER NOT NULL DEFAULT 0
 );
-CREATE TABLE package_jobs (
+CREATE TABLE publish_jobs (
   jobId TEXT PRIMARY KEY NOT NULL,
-  jobType TEXT NOT NULL,
+  packageName TEXT NOT NULL,
+  packageVersion TEXT NOT NULL,
+  payload JSON NOT NULL,
+  FOREIGN KEY (jobId) REFERENCES job_info (jobId) ON DELETE CASCADE
+);
+CREATE TABLE unpublish_jobs (
+  jobId TEXT PRIMARY KEY NOT NULL,
+  packageName TEXT NOT NULL,
+  packageVersion TEXT NOT NULL,
+  payload JSON NOT NULL,
+  FOREIGN KEY (jobId) REFERENCES job_info (jobId) ON DELETE CASCADE
+);
+CREATE TABLE transfer_jobs (
+  jobId TEXT PRIMARY KEY NOT NULL,
   packageName TEXT NOT NULL,
   payload JSON NOT NULL,
   FOREIGN KEY (jobId) REFERENCES job_info (jobId) ON DELETE CASCADE

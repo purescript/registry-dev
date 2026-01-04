@@ -3,7 +3,10 @@ module Registry.App.Server.Router where
 import Registry.App.Prelude hiding ((/))
 
 import Data.Codec.JSON as CJ
+import Data.DateTime as DateTime
+import Data.Time.Duration (Hours(..), negateDuration)
 import Effect.Aff as Aff
+import Effect.Class.Console as Console
 import HTTPurple (Method(..), Request, Response)
 import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
@@ -33,7 +36,9 @@ runRouter env = do
   runServer request = do
     result <- runEffects env (router request)
     case result of
-      Left error -> HTTPurple.badRequest (Aff.message error)
+      Left error -> do
+        Console.log $ "Bad request: " <> Aff.message error
+        HTTPurple.badRequest (Aff.message error)
       Right response -> pure response
 
 router :: Request Route -> Run ServerEffects Response
@@ -94,12 +99,12 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
         HTTPurple.badRequest "Expected transfer operation."
 
   Jobs { since, include_completed }, Get -> do
-    -- TODO should probably be 1h ago instead of now
     now <- liftEffect nowUTC
+    let oneHourAgo = fromMaybe now $ DateTime.adjust (negateDuration (Hours 1.0)) now
     lift
       ( Run.Except.runExcept $ Db.selectJobs
           { includeCompleted: fromMaybe false include_completed
-          , since: fromMaybe now since
+          , since: fromMaybe oneHourAgo since
           }
       ) >>= case _ of
       Left err -> do
@@ -109,7 +114,8 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
 
   Job jobId { level: maybeLogLevel, since }, Get -> do
     now <- liftEffect nowUTC
-    lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since: fromMaybe now since }) >>= case _ of
+    let oneHourAgo = fromMaybe now $ DateTime.adjust (negateDuration (Hours 1.0)) now
+    lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since: fromMaybe oneHourAgo since }) >>= case _ of
       Left err -> do
         lift $ Log.error $ "Error while fetching job: " <> err
         HTTPurple.internalServerError $ "Error while fetching job: " <> err

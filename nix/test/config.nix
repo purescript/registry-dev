@@ -221,6 +221,17 @@ let
     {
       request = {
         method = "GET";
+        url = "/effect/4.0.0.tar.gz";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/octet-stream";
+        bodyFileName = "effect-4.0.0.tar.gz";
+      };
+    }
+    {
+      request = {
+        method = "GET";
         url = "/prelude/6.0.1.tar.gz";
       };
       response = {
@@ -243,6 +254,10 @@ let
   ];
 
   s3Files = [
+    {
+      name = "effect-4.0.0.tar.gz";
+      path = rootPath + "/app/fixtures/registry-storage/effect-4.0.0.tar.gz";
+    }
     {
       name = "prelude-6.0.1.tar.gz";
       path = rootPath + "/app/fixtures/registry-storage/prelude-6.0.1.tar.gz";

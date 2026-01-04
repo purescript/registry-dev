@@ -101,13 +101,13 @@ const _selectJob = (db, { table, jobId, packageName, packageVersion }) => {
     JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
   `;
 
-  if (jobId !== null) {
+  if (jobId != null) {
     query += ` WHERE info.jobId = ?`;
     params.push(jobId);
-  } else if (packageName !== null) {
+  } else if (packageName != null) {
     query += ` WHERE job.packageName = ?`;
     params.push(packageName);
-    if (packageVersion !== null) {
+    if (packageVersion != null) {
       query += ` AND job.packageVersion = ?`;
       params.push(packageVersion);
     }
@@ -146,7 +146,7 @@ const _selectJobs = (db, { table, since, includeCompleted }) => {
     SELECT job.*, info.*
     FROM ${table} job
     JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
-    WHERE timestamp >= ?
+    WHERE info.createdAt >= ?
   `;
   let params = [since];
 

@@ -126,7 +126,7 @@ post reqCodec resCodec config path reqBody = runExceptT do
 
 -- | Get the list of jobs
 getJobs :: Config -> Aff (Either ClientError (Array Job))
-getJobs config = get (CJ.array V1.jobCodec) config "/api/v1/jobs"
+getJobs config = get (CJ.array V1.jobCodec) config "/api/v1/jobs?include_completed=true"
 
 -- | Get a specific job by ID, with optional log filtering
 getJob :: Config -> JobId -> Maybe LogLevel -> Maybe DateTime -> Aff (Either ClientError Job)
