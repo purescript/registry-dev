@@ -161,12 +161,14 @@ executeJob _ = case _ of
 
 upgradeRegistryToNewCompiler :: forall r. Version -> Run (DB + LOG + EXCEPT String + REGISTRY + r) Unit
 upgradeRegistryToNewCompiler newCompilerVersion = do
+  Log.info $ "New compiler found: " <> Version.print newCompilerVersion
+  Log.info "Starting upgrade of the whole registry to the new compiler..."
   allManifests <- Registry.readAllManifests
   for_ (ManifestIndex.toArray allManifests) \(Manifest manifest) -> do
     -- Note: we enqueue compilation jobs only for packages with no dependencies,
     -- because from them we should be able to reach the whole of the registry,
     -- as they complete new jobs for their dependants will be queued up.
-    when (not (Map.isEmpty manifest.dependencies)) do
+    when (Map.isEmpty manifest.dependencies) do
       Log.info $ "Enqueuing matrix job for _new_ compiler "
         <> Version.print newCompilerVersion
         <> ", package "

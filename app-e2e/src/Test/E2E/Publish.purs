@@ -42,12 +42,12 @@ spec = do
         Left err -> Assert.fail $ "Failed to reach status endpoint: " <> Client.printClientError err
         Right _ -> pure unit
 
-    Spec.it "can list jobs (initially empty)" do
+    Spec.it "can list jobs (initially only compiler-upgrade matrix jobs)" do
       config <- getConfig
       result <- Client.getJobs config
       case result of
         Left err -> Assert.fail $ "Failed to list jobs: " <> Client.printClientError err
-        Right _ -> pure unit -- Jobs list may not be empty if other tests ran
+        Right jobs -> Assert.shouldEqual initialJobs (map deterministicJob jobs)
 
   Spec.describe "Publish workflow" do
     Spec.it "can publish effect@4.0.0 and filter logs" do
@@ -112,14 +112,14 @@ spec = do
                     for_ sinceLogs \l ->
                       Assert.shouldSatisfy l.timestamp (_ >= firstLog.timestamp)
 
-    Spec.it "kicks off a matrix job for 0.15.10 once the package is published" do
+    Spec.it "kicks off matrix jobs for effect@4.0.0 once the package is published" do
       config <- getConfig
       maybeJobs <- Client.getJobs config
       case maybeJobs of
         Left err -> Assert.fail $ "Failed to get jobs: " <> Client.printClientError err
         Right jobs -> do
           let
-            expectedJobs =
+            expectedJobs = initialJobs <>
               [ { jobType: "publish"
                 , packageName: Just $ unsafePackageName "effect"
                 , packageVersion: Just $ unsafeVersion "4.0.0"
@@ -133,6 +133,41 @@ spec = do
                 , compilerVersion: Just $ unsafeVersion "0.15.10"
                 , payload: """{"prelude":"6.0.1"}"""
                 , success: true
+                }
+              , { jobType: "matrix"
+                , packageName: Just $ unsafePackageName "effect"
+                , packageVersion: Just $ unsafeVersion "4.0.0"
+                , compilerVersion: Just $ unsafeVersion "0.15.11"
+                , payload: """{"prelude":"6.0.1"}"""
+                , success: false
+                }
+              , { jobType: "matrix"
+                , packageName: Just $ unsafePackageName "effect"
+                , packageVersion: Just $ unsafeVersion "4.0.0"
+                , compilerVersion: Just $ unsafeVersion "0.15.12"
+                , payload: """{"prelude":"6.0.1"}"""
+                , success: false
+                }
+              , { jobType: "matrix"
+                , packageName: Just $ unsafePackageName "effect"
+                , packageVersion: Just $ unsafeVersion "4.0.0"
+                , compilerVersion: Just $ unsafeVersion "0.15.13"
+                , payload: """{"prelude":"6.0.1"}"""
+                , success: false
+                }
+              , { jobType: "matrix"
+                , packageName: Just $ unsafePackageName "effect"
+                , packageVersion: Just $ unsafeVersion "4.0.0"
+                , compilerVersion: Just $ unsafeVersion "0.15.14"
+                , payload: """{"prelude":"6.0.1"}"""
+                , success: false
+                }
+              , { jobType: "matrix"
+                , packageName: Just $ unsafePackageName "effect"
+                , packageVersion: Just $ unsafeVersion "4.0.0"
+                , compilerVersion: Just $ unsafeVersion "0.15.15"
+                , payload: """{"prelude":"6.0.1"}"""
+                , success: false
                 }
               ]
           Assert.shouldEqual expectedJobs (map deterministicJob jobs)
@@ -188,3 +223,21 @@ deterministicJob = case _ of
     , success
     , payload: JSON.print $ CJ.encode Operation.packageSetOperationCodec payload
     }
+
+initialJobs :: Array DeterministicJob
+initialJobs =
+  [ { jobType: "matrix"
+    , packageName: Just $ unsafePackageName "prelude"
+    , packageVersion: Just $ unsafeVersion "6.0.1"
+    , compilerVersion: Just $ unsafeVersion "0.15.15"
+    , payload: """{}"""
+    , success: true
+    }
+  , { jobType: "matrix"
+    , packageName: Just $ unsafePackageName "type-equality"
+    , packageVersion: Just $ unsafeVersion "4.0.1"
+    , compilerVersion: Just $ unsafeVersion "0.15.15"
+    , payload: """{}"""
+    , success: true
+    }
+  ]
