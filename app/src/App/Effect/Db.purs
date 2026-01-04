@@ -171,8 +171,10 @@ handleSQLite env = case _ of
     pure next
 
   SelectJob request reply -> do
-    result <- Run.liftEffect $ SQLite.selectJob env.db request
-    pure $ reply result
+    { unreadableLogs, job } <- Run.liftEffect $ SQLite.selectJob env.db request
+    unless (Array.null unreadableLogs) do
+      Log.warn $ "Some logs were not readable: " <> String.joinWith "\n" unreadableLogs
+    pure $ reply job
 
   SelectJobs request reply -> do
     { failed, jobs } <- Run.liftEffect $ SQLite.selectJobs env.db request

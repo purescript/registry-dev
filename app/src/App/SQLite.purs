@@ -55,7 +55,6 @@ import Data.Formatter.DateTime as DateTime
 import Data.Function (on)
 import Data.Nullable (notNull, null)
 import Data.Nullable as Nullable
-import Data.String as String
 import Data.UUID.Random as UUID
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, EffectFn4)
 import Effect.Uncurried as Uncurried
@@ -196,19 +195,20 @@ type SelectJobRequest =
   , jobId :: JobId
   }
 
-selectJob :: SQLite -> SelectJobRequest -> Effect (Either String (Maybe Job))
+selectJob :: SQLite -> SelectJobRequest -> Effect { unreadableLogs :: Array String, job :: Either String (Maybe Job) }
 selectJob db { level: maybeLogLevel, since, jobId: JobId jobId } = do
   let logLevel = fromMaybe Error maybeLogLevel
-  { fail, success: logs } <- selectLogsByJob db (JobId jobId) logLevel since
-  case fail of
-    [] -> runExceptT $ firstJust
-      [ selectPublishJobById logs
-      , selectMatrixJobById logs
-      , selectTransferJobById logs
-      , selectPackageSetJobById logs
-      , selectUnpublishJobById logs
-      ]
-    _ -> pure $ Left $ "Some logs are not readable: " <> String.joinWith "\n" fail
+  { fail: unreadableLogs, success: logs } <- selectLogsByJob db (JobId jobId) logLevel since
+  -- Failing to decode a log should not prevent us from returning a job, so we pass
+  -- failures through to be handled by application code
+  job <- runExceptT $ firstJust
+    [ selectPublishJobById logs
+    , selectMatrixJobById logs
+    , selectTransferJobById logs
+    , selectPackageSetJobById logs
+    , selectUnpublishJobById logs
+    ]
+  pure { job, unreadableLogs }
   where
   firstJust :: Array (ExceptT String Effect (Maybe Job)) -> ExceptT String Effect (Maybe Job)
   firstJust = Array.foldl go (pure Nothing)
