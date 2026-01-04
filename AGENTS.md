@@ -1,6 +1,6 @@
 # AGENTS.md
 
-The PureScript Registry implements a package registry for PureScript. See SPEC.md for the registry specification and CONTRIBUTING.md for detailed contributor documentation.
+The PureScript Registry implements a package registry for PureScript. See @SPEC.md for the registry specification and @CONTRIBUTING.md for detailed contributor documentation.
 
 ## Development Environment
 
@@ -78,7 +78,7 @@ The `scripts/` directory contains modules run as daily jobs by the purescript/re
 - `PackageTransferrer` — handles package transfers
 - `PackageSetUpdater` — automatic daily package set updates
 
-Run scripts via Nix: `nix run .#<kebab-case-name>` (e.g., `nix run .#legacy-importer`).
+Run scripts via Nix: `nix run .#<kebab-case-name>` (e.g., `nix run .#legacy-importer`). All scripts support `--help` for usage information.
 
 ## Scratch Directory & Caching
 

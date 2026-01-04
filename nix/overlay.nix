@@ -50,6 +50,10 @@ let
 
   # Map of script name -> { module, description }
   scripts = {
+    archive-seeder = {
+      module = "Registry.Scripts.ArchiveSeeder";
+      description = "Seed the registry archive with tarballs for deleted GitHub repos";
+    };
     legacy-importer = {
       module = "Registry.Scripts.LegacyImporter";
       description = "Import packages from legacy registries (bower, psc-package, etc.)";

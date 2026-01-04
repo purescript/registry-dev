@@ -4,12 +4,51 @@
 -- | It can be run in different modes depending on whether you want to generate
 -- | the registry from scratch, including uploading packages to the backend or
 -- | you just want to iteratively pick up new releases.
+-- |
+-- | The legacy importer clones the registry and registry-index repositories into
+-- | `scratch/registry` and `scratch/registry-index`. After a run, you can diff
+-- | against the upstream to see what changed:
+-- |
+-- | ```sh
+-- | cd scratch/registry
+-- | git diff origin/main -- metadata/
+-- | ```
+-- |
+-- | For a fresh re-upload, reset the local clones first, then delete the
+-- | metadata and index contents so the importer sees an empty registry:
+-- |
+-- | ```sh
+-- | cd scratch/registry && git reset --hard origin/main
+-- | rm -rf scratch/registry/metadata/*
+-- | cd scratch/registry-index && git reset --hard origin/main
+-- | rm -rf scratch/registry-index/*/
+-- | ```
+-- |
+-- | To also recompute all cached manifests and compilation results, remove the
+-- | cache directory, or you can remove specific cache files as needed.
+-- |
+-- | ```sh
+-- | rm -rf scratch/.cache
+-- | ```
+-- |
+-- | The script writes several files to `scratch`:
+-- |
+-- | - `import-stats.txt` - Aggregate counts of import results
+-- | - `package-failures.json` - Package-level failures (e.g., repo not found)
+-- | - `version-failures.json` - Version-level failures (e.g., invalid manifest)
+-- | - `publish-failures.json` - Publish-level failures (e.g., no valid compiler)
+-- | - `publish-stats.txt` - Aggregate counts of publish results
+-- | - `reserved-packages.txt` - Packages reserved due to 0.13 or org status
+-- | - `removed-packages.txt` - Packages that fully failed and will be removed
+-- | - `sorted-packages.txt` - All packages in topological order for publishing
+-- | - `logs/` - Detailed logs from each run
 module Registry.Scripts.LegacyImporter where
 
 import Registry.App.Prelude
 
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Control.Apply (lift2)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
@@ -18,7 +57,7 @@ import Data.Codec.JSON.Common as CJ.Common
 import Data.Codec.JSON.Record as CJ.Record
 import Data.Codec.JSON.Variant as CJ.Variant
 import Data.Compactable (separate)
-import Data.DateTime (Date, Month(..))
+import Data.DateTime (Date, DateTime, Month(..))
 import Data.DateTime as DateTime
 import Data.Enum (toEnum)
 import Data.Exists as Exists
@@ -41,7 +80,13 @@ import Data.String.CodeUnits as String.CodeUnits
 import Data.These (These(..))
 import Data.Tuple (uncurry)
 import Data.Variant as Variant
+import Effect.Aff as Aff
 import Effect.Class.Console as Console
+import Effect.Exception as Exception
+import Fetch.Retry as Fetch
+import JSON as JSON
+import JSON.Object as JSON.Object
+import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
@@ -57,6 +102,7 @@ import Registry.App.CLI.Git as Git
 import Registry.App.CLI.Purs (CompilerFailure, compilerFailureCodec)
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.PursVersions as PursVersions
+import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Comment as Comment
@@ -66,6 +112,7 @@ import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
+import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE)
@@ -76,9 +123,11 @@ import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestVali
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
 import Registry.App.Manifest.SpagoYaml as SpagoYaml
+import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (Address, Tag)
 import Registry.Foreign.Octokit as Octokit
+import Registry.Foreign.Tar as Foreign.Tar
 import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Codec (packageMap, versionMap)
 import Registry.Internal.Codec as Internal.Codec
@@ -291,9 +340,10 @@ runLegacyImport logs = do
       pure range
 
   let
-    publishLegacyPackage :: Solver.TransitivizedRegistry -> Manifest -> Run _ Unit
-    publishLegacyPackage legacyIndex (Manifest manifest) = do
+    publishLegacyPackage :: Solver.TransitivizedRegistry -> Set PackageName -> Manifest -> Run _ Unit
+    publishLegacyPackage legacyIndex archivePackages (Manifest manifest) = do
       let formatted = formatPackageVersion manifest.name manifest.version
+      let isArchiveBacked = manifest.name `Set.member` archivePackages
       Log.info $ "\n----------\nPUBLISHING: " <> formatted <> "\n----------\n"
       RawVersion ref <- case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
         Nothing -> Run.Except.throw $ "Unable to recover package ref for " <> formatted
@@ -400,7 +450,14 @@ runLegacyImport logs = do
                   Log.debug $ "No cached compilation for " <> formatted <> ", so compiling with all compilers to find first working one."
                   Log.debug "Fetching source and installing dependencies to test compilers"
                   tmp <- Tmp.mkTmpDir
-                  { path } <- Source.fetch tmp manifest.location ref
+                  path <-
+                    if isArchiveBacked then do
+                      Log.info $ "Using registry archive for " <> formatted <> " instead of GitHub clone."
+                      { path: archivePath } <- fetchFromArchive tmp manifest.name manifest.version
+                      pure archivePath
+                    else do
+                      { path: sourcePath } <- Source.fetch tmp manifest.location ref
+                      pure sourcePath
                   Log.debug $ "Downloaded source to " <> path
                   Log.debug "Downloading dependencies..."
                   let installDir = Path.concat [ tmp, ".registry" ]
@@ -498,7 +555,8 @@ runLegacyImport logs = do
           $ Solver.initializeRegistry
           $ map (map (un Manifest >>> _.dependencies)) (ManifestIndex.toMap importedIndex.registryIndex)
 
-      void $ for manifests (publishLegacyPackage legacyIndex)
+      let archivePackages = importedIndex.archivePackages
+      void $ for manifests (publishLegacyPackage legacyIndex archivePackages)
 
   Log.info "Finished publishing! Collecting all publish failures and writing to disk."
   let
@@ -542,6 +600,7 @@ type ImportedIndex =
   , removedPackages :: Map PackageName Location
   , registryIndex :: ManifestIndex
   , packageRefs :: Map PackageName (Map Version RawVersion)
+  , archivePackages :: Set PackageName
   }
 
 -- | Construct a valid registry index containing manifests for all packages from
@@ -554,13 +613,16 @@ importLegacyRegistry legacyRegistry = do
   manifests <- forWithIndex legacyRegistry buildLegacyPackageManifests
 
   let
-    separatedPackages :: { left :: Map RawPackageName PackageValidationError, right :: Map RawPackageName (Map RawVersion _) }
+    separatedPackages :: { left :: Map RawPackageName PackageValidationError, right :: Map RawPackageName PackageManifests }
     separatedPackages = separate manifests
+
+    archiveBackedByRaw :: Map RawPackageName Boolean
+    archiveBackedByRaw = separatedPackages.right <#> _.archiveBacked
 
     separatedVersions :: { left :: Map RawPackageName (Map RawVersion VersionValidationError), right :: Map RawPackageName (Map RawVersion Manifest) }
     separatedVersions =
       separatedPackages.right # flip foldlWithIndex { left: Map.empty, right: Map.empty } \key acc next -> do
-        let { left, right } = separate next
+        let { left, right } = separate next.versions
         { left: if Map.isEmpty left then acc.left else Map.insert key left acc.left
         , right: if Map.isEmpty right then acc.right else Map.insert key right acc.right
         }
@@ -614,13 +676,28 @@ importLegacyRegistry legacyRegistry = do
             [ { package: RawPackageName (PackageName.print name), version: ref, dependencies: Array.fromFoldable $ Map.keys deps } ]
       Map.unionWith Map.union separatedVersions.left dependencyFailures
 
+    archivePackages :: Set PackageName
+    archivePackages =
+      Set.fromFoldable do
+        Tuple rawName isArchive <- Map.toUnfoldable archiveBackedByRaw
+        guard isArchive
+        let (RawPackageName raw) = rawName
+        name <- Array.fromFoldable (hush $ PackageName.parse raw)
+        pure name
+
   pure
     { failedPackages: packageFailures
     , failedVersions: versionFailures
     , removedPackages: removedPackages
     , registryIndex: validIndex
     , packageRefs
+    , archivePackages
     }
+
+type PackageManifests =
+  { archiveBacked :: Boolean
+  , versions :: Map RawVersion (Either VersionValidationError Manifest)
+  }
 
 -- | Attempt to build valid manifests for all releases associated with the given
 -- | legacy package. This will result in a package error if versions could not
@@ -630,7 +707,7 @@ buildLegacyPackageManifests
   :: forall r
    . RawPackageName
   -> String
-  -> Run (API.PublishEffects + IMPORT_CACHE + r) (Either PackageValidationError (Map RawVersion (Either VersionValidationError Manifest)))
+  -> Run (API.PublishEffects + IMPORT_CACHE + r) (Either PackageValidationError PackageManifests)
 buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPackage do
   Log.info $ "Processing " <> un RawPackageName rawPackage
   package <- validatePackage rawPackage rawUrl
@@ -645,34 +722,49 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
       Cache.get _importCache (ImportManifest package.name (RawVersion tag.name)) >>= case _ of
         Just cached -> exceptVersion cached
         Nothing -> do
-          -- While technically not 'legacy', we do need to handle packages with
-          -- spago.yaml files because they've begun to pop up since the registry
-          -- alpha began and we don't want to drop them when doing a re-import.
-          fetchSpagoYaml package.address (RawVersion tag.name) >>= case _ of
-            Just manifest -> do
-              Log.debug $ "Built manifest from discovered spago.yaml file."
-              Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) (Right manifest)
-              pure manifest
-            Nothing -> do
-              Log.debug $ "Building manifest in legacy import because there is no registry entry, spago.yaml, or cached result: " <> formatPackageVersion package.name (LenientVersion.version version)
-              manifest <- Run.Except.runExceptAt _exceptVersion do
-                exceptVersion $ validateVersionDisabled package.name version
-                legacyManifest <- do
-                  Legacy.Manifest.fetchLegacyManifest package.name package.address (RawVersion tag.name) >>= case _ of
-                    Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
-                    Right result -> pure result
-                pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
-              case manifest of
-                Left err -> Log.info $ "Failed to build manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ": " <> printJson versionValidationErrorCodec err
-                Right val -> Log.info $ "Built manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ":\n" <> printJson Manifest.codec val
-              Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) manifest
-              exceptVersion manifest
+          -- For archive-backed packages (where GitHub repo is unavailable),
+          -- fetch the manifest directly from the registry archive tarball.
+          if package.archiveBacked then do
+            Log.debug $ "Package is archive-backed, fetching manifest from archive for " <> formatPackageVersion package.name (LenientVersion.version version)
+            manifest <- Run.Except.runExceptAt _exceptVersion do
+              exceptVersion $ validateVersionDisabled package.name version
+              Run.Except.runExcept (fetchManifestFromArchive package.name (LenientVersion.version version)) >>= case _ of
+                Left error -> throwVersion { error: InvalidManifest { error: NoManifests, reason: error }, reason: "Failed to fetch manifest from archive." }
+                Right result -> pure result
+            case manifest of
+              Left err -> Log.info $ "Failed to build manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ": " <> printJson versionValidationErrorCodec err
+              Right val -> Log.info $ "Built manifest from archive for " <> PackageName.print package.name <> "@" <> tag.name <> ":\n" <> printJson Manifest.codec val
+            Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) manifest
+            exceptVersion manifest
+          else do
+            -- While technically not 'legacy', we do need to handle packages with
+            -- spago.yaml files because they've begun to pop up since the registry
+            -- alpha began and we don't want to drop them when doing a re-import.
+            fetchSpagoYaml package.address (RawVersion tag.name) >>= case _ of
+              Just manifest -> do
+                Log.debug $ "Built manifest from discovered spago.yaml file."
+                Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) (Right manifest)
+                pure manifest
+              Nothing -> do
+                Log.debug $ "Building manifest in legacy import because there is no registry entry, spago.yaml, or cached result: " <> formatPackageVersion package.name (LenientVersion.version version)
+                manifest <- Run.Except.runExceptAt _exceptVersion do
+                  exceptVersion $ validateVersionDisabled package.name version
+                  legacyManifest <- do
+                    Legacy.Manifest.fetchLegacyManifest package.name package.address (RawVersion tag.name) >>= case _ of
+                      Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
+                      Right result -> pure result
+                  pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
+                case manifest of
+                  Left err -> Log.info $ "Failed to build manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ": " <> printJson versionValidationErrorCodec err
+                  Right val -> Log.info $ "Built manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ":\n" <> printJson Manifest.codec val
+                Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) manifest
+                exceptVersion manifest
 
   manifests <- for package.tags \tag -> do
     manifest <- buildManifestForVersion tag
     pure (Tuple (RawVersion tag.name) manifest)
 
-  pure $ Map.fromFoldable manifests
+  pure { archiveBacked: package.archiveBacked, versions: Map.fromFoldable manifests }
 
 data PublishError
   = SolveFailedDependencies String
@@ -920,6 +1012,12 @@ type PackageResult =
   { name :: PackageName
   , address :: Address
   , tags :: Array Tag
+  , archiveBacked :: Boolean
+  }
+
+type FetchTagsResult =
+  { tags :: Array Tag
+  , archiveBacked :: Boolean
   }
 
 type PackagesMetadata = { address :: Address, lastPublished :: Date }
@@ -930,7 +1028,7 @@ packagesMetadataCodec = CJ.named "PackagesMetadata" $ CJ.Record.object
   , lastPublished: Internal.Codec.iso8601Date
   }
 
-getPackagesMetadata :: forall r. Map RawPackageName String -> Run (EXCEPT String + GITHUB + r) (Map PackageName PackagesMetadata)
+getPackagesMetadata :: forall r. Map RawPackageName String -> Run (REGISTRY + LOG + EXCEPT String + GITHUB + r) (Map PackageName PackagesMetadata)
 getPackagesMetadata legacyRegistry = do
   associated <- for (Map.toUnfoldableUnordered legacyRegistry) \(Tuple rawName rawUrl) -> do
     Run.Except.runExceptAt (Proxy :: _ "exceptPackage") (validatePackage rawName rawUrl) >>= case _ of
@@ -972,26 +1070,47 @@ writePackagesMetadata pkgs = do
 readPackagesMetadata :: forall r. Run (AFF + r) (Either String (Map PackageName PackagesMetadata))
 readPackagesMetadata = Run.liftAff $ readJsonFile (packageMap packagesMetadataCodec) (Path.concat [ scratchDir, "packages-metadata.json" ])
 
-validatePackage :: forall r. RawPackageName -> String -> Run (GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) PackageResult
+validatePackage :: forall r. RawPackageName -> String -> Run (REGISTRY + LOG + GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) PackageResult
 validatePackage rawPackage rawUrl = do
   name <- exceptPackage $ validatePackageName rawPackage
   exceptPackage $ validatePackageDisabled name
   address <- exceptPackage $ validatePackageAddress rawUrl
-  tags <- fetchPackageTags address
+  { tags, archiveBacked } <- fetchPackageTags name address
   -- We do not allow packages that redirect from their registered location elsewhere. The package
   -- transferrer will handle automatically transferring these packages.
+  -- Skip URL redirect validation for archive-backed packages since they have no valid tag URLs.
   case Array.head tags of
-    Nothing -> pure { name, address, tags }
+    Nothing -> pure { name, address, tags, archiveBacked }
+    Just _ | archiveBacked -> pure { name, address, tags, archiveBacked }
     Just tag -> do
       tagAddress <- exceptPackage case tagUrlToRepoUrl tag.url of
         Nothing -> Left { error: InvalidPackageURL tag.url, reason: "Failed to format redirected " <> tag.url <> " as a GitHub.Address." }
         Just formatted -> Right formatted
       exceptPackage $ validatePackageLocation { registered: address, received: tagAddress }
-      pure { name, address, tags }
+      pure { name, address, tags, archiveBacked }
 
-fetchPackageTags :: forall r. Address -> Run (GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) (Array Tag)
-fetchPackageTags address = GitHub.listTags address >>= case _ of
+fetchPackageTags :: forall r. PackageName -> Address -> Run (REGISTRY + LOG + GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) FetchTagsResult
+fetchPackageTags name address = GitHub.listTags address >>= case _ of
   Left err -> case err of
+    Octokit.APIError apiError | apiError.statusCode == 404 -> do
+      let printed = PackageName.print name
+      Log.debug $ "GitHub 404 for " <> printed <> ", attempting to synthesize tags from metadata (local, then remote)"
+      versions <- Registry.readMetadata name >>= case _ of
+        Just (Metadata metadata) -> do
+          Log.debug $ "Found metadata for " <> printed <> " in local registry checkout."
+          pure $ Set.toUnfoldable $ Map.keys metadata.published
+        Nothing -> do
+          Log.debug $ "No local metadata for " <> printed <> ", fetching versions from remote registry main branch..."
+          fetchRemoteRegistryVersions name
+      case versions of
+        [] -> do
+          let error = CannotAccessRepo address
+          let reason = "GitHub 404 and no metadata found locally or in remote purescript/registry main branch to construct archive tags."
+          throwPackage { error, reason }
+        _ -> do
+          let tags = versions <#> \v -> { name: "v" <> Version.print v, sha: "", url: "" }
+          Log.info $ "Synthesized " <> show (Array.length tags) <> " tags from metadata for archive-backed package " <> printed
+          pure { tags, archiveBacked: true }
     Octokit.APIError apiError | apiError.statusCode >= 400 -> do
       let error = CannotAccessRepo address
       let reason = "GitHub API error with status code " <> show apiError.statusCode
@@ -1002,7 +1121,49 @@ fetchPackageTags address = GitHub.listTags address >>= case _ of
         , Octokit.printGitHubError err
         ]
   Right tags ->
-    pure tags
+    pure { tags, archiveBacked: false }
+
+-- | Fetch published versions for a package directly from the remote registry repo (main branch).
+-- | Used as a fallback when the local registry checkout has been cleared (e.g., during reuploads).
+-- | Only extracts the version keys from the "published" field without fully parsing metadata,
+-- | since the remote registry may have a different schema (e.g., missing 'compilers' field).
+fetchRemoteRegistryVersions :: forall r. PackageName -> Run (GITHUB + LOG + r) (Array Version)
+fetchRemoteRegistryVersions name = do
+  let
+    printed = PackageName.print name
+    ref = RawVersion "main"
+    path = Path.concat [ Constants.metadataDirectory, printed <> ".json" ]
+  Log.debug $ "Fetching published versions for " <> printed <> " from remote registry repo at path " <> path
+  GitHub.getContent Constants.registry ref path >>= case _ of
+    Left err -> case err of
+      Octokit.APIError apiError | apiError.statusCode == 404 -> do
+        Log.debug $ "No metadata found in remote registry repo for " <> printed <> " (404)"
+        pure []
+      _ -> do
+        Log.warn $ "Failed to fetch metadata for " <> printed <> " from remote registry repo: " <> Octokit.printGitHubError err
+        pure []
+    Right content -> case JSON.parse content of
+      Left parseErr -> do
+        Log.warn $ "Failed to parse metadata JSON for " <> printed <> ": " <> parseErr
+        pure []
+      Right json -> case JSON.toJObject json of
+        Nothing -> do
+          Log.warn $ "Metadata for " <> printed <> " is not a JSON object"
+          pure []
+        Just obj -> case JSON.Object.lookup "published" obj of
+          Nothing -> do
+            Log.debug $ "No 'published' field in metadata for " <> printed
+            pure []
+          Just publishedJson -> case JSON.toJObject publishedJson of
+            Nothing -> do
+              Log.warn $ "'published' field for " <> printed <> " is not a JSON object"
+              pure []
+            Just publishedObj -> do
+              let versionStrings = JSON.Object.keys publishedObj
+              let parseResults = versionStrings <#> \v -> Version.parse v
+              let versions = Array.mapMaybe hush parseResults
+              Log.debug $ "Extracted " <> show (Array.length versions) <> " versions from remote metadata for " <> printed
+              pure versions
 
 validatePackageLocation :: { registered :: Address, received :: Address } -> Either PackageValidationError Unit
 validatePackageLocation addresses = do
@@ -1389,3 +1550,147 @@ instance FsEncodable ImportCache where
     PublishFailure name version next -> do
       let codec = publishErrorCodec
       Exists.mkExists $ AsJson ("PublishFailure__" <> PackageName.print name <> "__" <> Version.print version) codec next
+
+registryArchiveRawUrl :: String
+registryArchiveRawUrl = "https://raw.githubusercontent.com/purescript/registry-archive/main"
+
+-- | Fetch a manifest directly from the registry archive tarball.
+-- | Used for archive-backed packages where the original GitHub repo is unavailable.
+fetchManifestFromArchive :: forall r. PackageName -> Version -> Run (LOG + EXCEPT String + AFF + EFFECT + r) Manifest
+fetchManifestFromArchive name version = do
+  let formatted = formatPackageVersion name version
+  Log.debug $ "Fetching manifest from archive for " <> formatted
+  tmp <- Tmp.mkTmpDir
+  let
+    nameStr = PackageName.print name
+    versionStr = Version.print version
+    tarballName = versionStr <> ".tar.gz"
+    absoluteTarballPath = Path.concat [ tmp, tarballName ]
+    archiveUrl = registryArchiveRawUrl <> "/" <> nameStr <> "/" <> versionStr <> ".tar.gz"
+
+  Log.debug $ "Fetching archive tarball from: " <> archiveUrl
+  response <- Run.liftAff $ Fetch.withRetryRequest archiveUrl {}
+
+  case response of
+    Cancelled -> do
+      FS.Extra.remove tmp
+      Run.Except.throw $ "Could not download archive tarball from " <> archiveUrl
+    Failed (Fetch.FetchError error) -> do
+      FS.Extra.remove tmp
+      Log.error $ "HTTP error when fetching archive: " <> Exception.message error
+      Run.Except.throw $ "Could not download archive tarball from " <> archiveUrl
+    Failed (Fetch.StatusError { status, arrayBuffer: arrayBufferAff }) -> do
+      arrayBuffer <- Run.liftAff arrayBufferAff
+      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
+      bodyString <- Run.liftEffect $ Buffer.toString UTF8 (buffer :: Buffer)
+      FS.Extra.remove tmp
+      Log.error $ "Bad status (" <> show status <> ") when fetching archive with body: " <> bodyString
+      Run.Except.throw $ "Could not download archive tarball from " <> archiveUrl <> " (status " <> show status <> ")"
+    Succeeded { arrayBuffer: arrayBufferAff } -> do
+      arrayBuffer <- Run.liftAff arrayBufferAff
+      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
+      Run.liftAff (Aff.attempt (FS.Aff.writeFile absoluteTarballPath buffer)) >>= case _ of
+        Left error -> do
+          FS.Extra.remove tmp
+          Log.error $ "Downloaded archive but failed to write to " <> absoluteTarballPath <> ": " <> Aff.message error
+          Run.Except.throw $ "Could not save archive tarball for " <> formatted
+        Right _ ->
+          Log.debug $ "Tarball downloaded to " <> absoluteTarballPath
+
+      Foreign.Tar.getToplevelDir absoluteTarballPath >>= case _ of
+        Nothing -> do
+          FS.Extra.remove tmp
+          Run.Except.throw $ "Downloaded archive tarball for " <> formatted <> " has no top-level directory."
+        Just extractedPath -> do
+          Log.debug "Extracting archive tarball..."
+          Tar.extract { cwd: tmp, archive: tarballName }
+          let pursJsonPath = Path.concat [ tmp, extractedPath, "purs.json" ]
+          Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 pursJsonPath)) >>= case _ of
+            Left error -> do
+              FS.Extra.remove tmp
+              Log.error $ "Failed to read purs.json from archive: " <> Aff.message error
+              Run.Except.throw $ "No purs.json found in archive for " <> formatted
+            Right contents -> case JSON.parse contents of
+              Left parseErr -> do
+                FS.Extra.remove tmp
+                Log.error $ "Failed to parse purs.json as JSON: " <> parseErr
+                Run.Except.throw $ "Invalid purs.json in archive for " <> formatted
+              Right json -> case CJ.decode Manifest.codec json of
+                Left decodeErr -> do
+                  FS.Extra.remove tmp
+                  Log.error $ "Failed to decode purs.json manifest: " <> CJ.DecodeError.print decodeErr
+                  Run.Except.throw $ "Could not decode purs.json manifest for " <> formatted
+                Right manifest -> do
+                  FS.Extra.remove tmp
+                  Log.debug $ "Successfully fetched manifest from archive for " <> formatted
+                  pure manifest
+
+type ArchiveFetchedSource =
+  { path :: FilePath
+  , published :: DateTime
+  }
+
+fetchFromArchive
+  :: forall r
+   . FilePath
+  -> PackageName
+  -> Version
+  -> Run (REGISTRY + LOG + EXCEPT String + AFF + EFFECT + r) ArchiveFetchedSource
+fetchFromArchive destination name version = do
+  let
+    nameStr = PackageName.print name
+    versionStr = Version.print version
+    tarballName = versionStr <> ".tar.gz"
+    absoluteTarballPath = Path.concat [ destination, tarballName ]
+    archiveUrl = registryArchiveRawUrl <> "/" <> nameStr <> "/" <> versionStr <> ".tar.gz"
+
+  Log.debug $ "Fetching archive tarball from: " <> archiveUrl
+
+  response <- Run.liftAff $ Fetch.withRetryRequest archiveUrl {}
+
+  case response of
+    Cancelled ->
+      Run.Except.throw $ "Could not download archive tarball from " <> archiveUrl
+    Failed (Fetch.FetchError error) -> do
+      Log.error $ "HTTP error when fetching archive: " <> Exception.message error
+      Run.Except.throw $ "Could not download archive tarball from " <> archiveUrl
+    Failed (Fetch.StatusError { status, arrayBuffer: arrayBufferAff }) -> do
+      arrayBuffer <- Run.liftAff arrayBufferAff
+      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
+      bodyString <- Run.liftEffect $ Buffer.toString UTF8 (buffer :: Buffer)
+      Log.error $ "Bad status (" <> show status <> ") when fetching archive with body: " <> bodyString
+      Run.Except.throw $ "Could not download archive tarball from " <> archiveUrl <> " (status " <> show status <> ")"
+    Succeeded { arrayBuffer: arrayBufferAff } -> do
+      arrayBuffer <- Run.liftAff arrayBufferAff
+      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
+      Run.liftAff (Aff.attempt (FS.Aff.writeFile absoluteTarballPath buffer)) >>= case _ of
+        Left error -> do
+          Log.error $ "Downloaded archive but failed to write to " <> absoluteTarballPath <> ": " <> Aff.message error
+          Run.Except.throw $ "Could not save archive tarball for " <> formatPackageVersion name version
+        Right _ ->
+          Log.debug $ "Tarball downloaded to " <> absoluteTarballPath
+
+  Foreign.Tar.getToplevelDir absoluteTarballPath >>= case _ of
+    Nothing ->
+      Run.Except.throw $ "Downloaded archive tarball for " <> formatPackageVersion name version <> " has no top-level directory."
+    Just extractedPath -> do
+      Log.debug "Extracting archive tarball..."
+      Tar.extract { cwd: destination, archive: tarballName }
+      publishedTime <- lookupPublishedTime name version
+      pure { path: Path.concat [ destination, extractedPath ], published: publishedTime }
+
+lookupPublishedTime
+  :: forall r
+   . PackageName
+  -> Version
+  -> Run (REGISTRY + EXCEPT String + r) DateTime
+lookupPublishedTime name version = do
+  Registry.readMetadata name >>= case _ of
+    Nothing ->
+      Run.Except.throw $ "No metadata found for " <> PackageName.print name
+    Just (Metadata m) ->
+      case Map.lookup version m.published of
+        Nothing ->
+          Run.Except.throw $ "No published metadata for " <> formatPackageVersion name version
+        Just publishedMeta ->
+          pure publishedMeta.publishedTime
