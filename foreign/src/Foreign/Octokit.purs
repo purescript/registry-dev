@@ -28,6 +28,7 @@ module Registry.Foreign.Octokit
   , getRefCommitRequest
   , githubApiErrorCodec
   , githubErrorCodec
+  , isPermanentGitHubError
   , listTagsRequest
   , listTeamMembersRequest
   , newOctokit
@@ -389,6 +390,25 @@ printGitHubError = case _ of
     [ "Decoding error: "
     , error
     ]
+
+-- | Returns true if the error represents a permanent failure that is safe to
+-- | cache across runs. Transient errors (rate limits, network issues, server
+-- | errors) return false and should be retried.
+-- |
+-- | Permanent errors:
+-- | - 404 Not Found: Resource doesn't exist at this ref/path
+-- | - DecodeError: Content exists but is malformed (immutable at a given tag)
+-- |
+-- | Transient errors (should NOT be cached):
+-- | - UnexpectedError: Network issues, DNS, TLS problems
+-- | - 401/403: Auth or rate limit issues
+-- | - 5xx: Server-side problems
+-- | - Any other status codes
+isPermanentGitHubError :: GitHubError -> Boolean
+isPermanentGitHubError = case _ of
+  APIError { statusCode: 404 } -> true
+  DecodeError _ -> true
+  _ -> false
 
 atKey :: forall a. String -> CJ.Codec a -> JSON.JObject -> Either CJ.DecodeError a
 atKey key codec object =

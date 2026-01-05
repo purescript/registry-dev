@@ -484,7 +484,12 @@ fetchLegacyPackageSets = Run.Except.runExceptAt _legacyPackageSetsError do
           Nothing -> do
             Log.debug $ "Cache miss for legacy package set " <> refStr <> ", refetching..."
             result <- GitHub.getJsonFile Legacy.PackageSet.legacyPackageSetsRepo ref legacyPackageSetCodec "packages.json"
-            Cache.put _legacyCache (LegacySet ref) result
+            -- Only cache permanent errors (404, decode errors) and successes.
+            -- Transient errors (rate limits, network issues) should be retried.
+            case result of
+              Right _ -> Cache.put _legacyCache (LegacySet ref) result
+              Left err | Octokit.isPermanentGitHubError err -> Cache.put _legacyCache (LegacySet ref) result
+              Left _ -> pure unit
             pure result
           Just value ->
             pure value

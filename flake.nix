@@ -60,11 +60,6 @@
         }
       }/Prelude/package.dhall";
 
-      # We disable git-lfs files explicitly, as this is intended for large files
-      # (typically >4GB), and source packgaes really ought not be shipping large
-      # files — just source code.
-      GIT_LFS_SKIP_SMUDGE = 1;
-
       # We disable git from entering interactive mode at any time, as there is no
       # one there to answer prompts.
       GIT_TERMINAL_PROMPT = 0;
@@ -214,7 +209,6 @@
 
         devShells.default = pkgs.mkShell {
           name = "registry-dev";
-          inherit GIT_LFS_SKIP_SMUDGE;
 
           SERVER_PORT = envDefaults.SERVER_PORT;
           DATABASE_URL = envDefaults.DATABASE_URL;
@@ -276,7 +270,6 @@
                     inherit
                       DHALL_PRELUDE
                       DHALL_TYPES
-                      GIT_LFS_SKIP_SMUDGE
                       GIT_TERMINAL_PROMPT
                       ;
                   };

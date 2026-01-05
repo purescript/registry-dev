@@ -110,8 +110,23 @@ handle importType = case _ of
               cloneUrl =
                 Array.fold [ "https://github.com/", owner, "/", repo ]
 
+              -- We disable Git LFS smudging because package sources should not
+              -- contain large binary files. This avoids downloading LFS objects
+              -- from misconfigured packages.
               cloneArgs =
-                [ "clone", cloneUrl, "--branch", ref, "--single-branch", "-c", "advice.detachedHead=false", repoDir ]
+                [ "-c"
+                , "filter.lfs.smudge=cat"
+                , "-c"
+                , "filter.lfs.process=cat"
+                , "clone"
+                , cloneUrl
+                , "--branch"
+                , ref
+                , "--single-branch"
+                , "-c"
+                , "advice.detachedHead=false"
+                , repoDir
+                ]
 
               clonePackageAtTag =
                 withRetry retryOpts (Git.gitCLI cloneArgs Nothing) >>= case _ of
