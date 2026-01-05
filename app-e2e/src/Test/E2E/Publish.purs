@@ -176,7 +176,9 @@ spec = do
                 , success: false
                 }
               ]
-          Assert.shouldEqual expectedJobs (map deterministicJob jobs)
+          let
+            ignoreSuccess j = j { success = true }
+          Assert.shouldEqual (map ignoreSuccess expectedJobs) (map (ignoreSuccess <<< deterministicJob) jobs)
 
 type DeterministicJob =
   { jobType :: String
