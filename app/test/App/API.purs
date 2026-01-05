@@ -248,6 +248,10 @@ spec = do
         copyFixture "registry"
         copyFixture "registry-storage"
         copyFixture "github-packages"
+        -- FIXME: This is a bit hacky, but we remove effect-4.0.0.tar.gz since the unit test publishes
+        -- it from scratch and will fail if effect-4.0.0 is already in storage. We have it in storage
+        -- for the separate integration tests.
+        FS.Extra.remove $ Path.concat [ testFixtures, "registry-storage", "effect-4.0.0.tar.gz" ]
 
       let
         readFixtures = do
