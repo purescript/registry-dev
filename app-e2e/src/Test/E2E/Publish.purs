@@ -50,8 +50,10 @@ spec = do
         -- We ignore success status because the job executor runs asynchronously
         -- and jobs may not have completed by the time we query.
         Right jobs ->
-          let ignoreSuccess j = j { success = true }
-          in Assert.shouldEqual (map ignoreSuccess initialJobs) (map (ignoreSuccess <<< deterministicJob) jobs)
+          let
+            ignoreSuccess j = j { success = true }
+          in
+            Assert.shouldEqual (map ignoreSuccess initialJobs) (map (ignoreSuccess <<< deterministicJob) jobs)
 
   Spec.describe "Publish workflow" do
     Spec.it "can publish effect@4.0.0 and filter logs" do
