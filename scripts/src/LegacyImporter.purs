@@ -276,8 +276,8 @@ runLegacyImport logs = do
 
   Log.info $ "Read " <> show (Set.size (Map.keys legacyRegistry)) <> " package names from the legacy registry."
 
-  Log.info "Reading reserved 0.13 packages..."
-  reserved0_13 <- readPackagesMetadata >>= case _ of
+  Log.info "Reading packages eligible for reservation (post-0.13 or trusted orgs)..."
+  eligibleForReservation <- readPackagesMetadata >>= case _ of
     Left err -> do
       Log.warn $ "Could not read reserved packages: " <> err
       Log.warn $ "Determining reserved packages..."
@@ -287,15 +287,7 @@ runLegacyImport logs = do
       pure cutoff
     Right cutoff -> pure cutoff
 
-  Log.info $ "Reserving metadata files for 0.13 and purs/metadata packages"
-  forWithIndex_ reserved0_13 \package { address } -> Registry.readMetadata package >>= case _ of
-    Nothing -> do
-      Log.info $ "Writing empty metadata file for reserved 0.13 package " <> PackageName.print package
-      let location = GitHub { owner: address.owner, repo: address.repo, subdir: Nothing }
-      let entry = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
-      Registry.writeMetadata package entry
-    Just _ -> Log.debug $ PackageName.print package <> " already reserved."
-
+  -- Reserve the 'metadata', 'purs', and 'purescript' package names
   let metadataPackage = unsafeFromRight (PackageName.parse "metadata")
   let pursPackage = unsafeFromRight (PackageName.parse "purs")
   let purescriptPackage = unsafeFromRight (PackageName.parse "purescript")
@@ -309,6 +301,18 @@ runLegacyImport logs = do
       Just _ -> pure unit
 
   importedIndex <- importLegacyRegistry legacyRegistry
+
+  -- Reserve metadata files for post-0.13 packages that failed to import (no usable versions).
+  -- Pre-0.13 packages and explicitly freed packages are NOT reserved.
+  Log.info "Reserving metadata files for post-0.13 packages that failed import..."
+  let
+    packagesToReserve = Map.filterWithKey (\name _ -> Map.member name eligibleForReservation) importedIndex.removedPackages
+  forWithIndex_ packagesToReserve \package location -> Registry.readMetadata package >>= case _ of
+    Nothing -> do
+      Log.info $ "Writing empty metadata file for reserved package " <> PackageName.print package
+      let entry = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
+      Registry.writeMetadata package entry
+    Just _ -> Log.debug $ PackageName.print package <> " already reserved."
 
   Log.info "Writing package and version failures to disk..."
   Run.liftAff $ writePackageFailures importedIndex.failedPackages
@@ -567,7 +571,7 @@ runLegacyImport logs = do
   failures <- Array.foldM collectError Map.empty allIndexPackages
   Run.liftAff $ writePublishFailures failures
 
-  let publishStats = collectPublishFailureStats importStats (map _.address reserved0_13) importedIndex.registryIndex failures
+  let publishStats = collectPublishFailureStats importStats (map _.address eligibleForReservation) importedIndex.registryIndex failures
   let publishStatsMessage = formatPublishFailureStats publishStats
   Log.info publishStatsMessage
   Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "publish-stats.txt" ]) publishStatsMessage
@@ -805,7 +809,7 @@ type PublishFailureStats =
   }
 
 collectPublishFailureStats :: ImportStats -> Map PackageName Address -> ManifestIndex -> Map PackageName (Map Version PublishError) -> PublishFailureStats
-collectPublishFailureStats importStats reserved0_13 importedIndex failures = do
+collectPublishFailureStats importStats eligibleForReservation importedIndex failures = do
   let
     index :: Map PackageName (Map Version Manifest)
     index = ManifestIndex.toMap importedIndex
@@ -844,7 +848,7 @@ collectPublishFailureStats importStats reserved0_13 importedIndex failures = do
     -- Packages that are eligible for removal — but are reserved due to 0.13 or
     -- organization status — are the 'reserved packages'.
     reservedPackages :: Set PackageName
-    reservedPackages = Set.intersection removedPackages (Map.keys reserved0_13)
+    reservedPackages = Set.intersection removedPackages (Map.keys eligibleForReservation)
 
     countByFailure :: Map String Int
     countByFailure = do
@@ -1131,39 +1135,32 @@ fetchRemoteRegistryVersions :: forall r. PackageName -> Run (GITHUB + LOG + r) (
 fetchRemoteRegistryVersions name = do
   let
     printed = PackageName.print name
-    ref = RawVersion "main"
     path = Path.concat [ Constants.metadataDirectory, printed <> ".json" ]
-  Log.debug $ "Fetching published versions for " <> printed <> " from remote registry repo at path " <> path
-  GitHub.getContent Constants.registry ref path >>= case _ of
-    Left err -> case err of
-      Octokit.APIError apiError | apiError.statusCode == 404 -> do
-        Log.debug $ "No metadata found in remote registry repo for " <> printed <> " (404)"
-        pure []
-      _ -> do
-        Log.warn $ "Failed to fetch metadata for " <> printed <> " from remote registry repo: " <> Octokit.printGitHubError err
-        pure []
-    Right content -> case JSON.parse content of
-      Left parseErr -> do
-        Log.warn $ "Failed to parse metadata JSON for " <> printed <> ": " <> parseErr
-        pure []
-      Right json -> case JSON.toJObject json of
+  Log.debug $ "Fetching published versions for " <> printed <> " from remote registry"
+  GitHub.getContent Constants.registry (RawVersion "main") path >>= case _ of
+    Left err -> do
+      case err of
+        Octokit.APIError apiError | apiError.statusCode == 404 ->
+          Log.debug $ "No metadata found in remote registry for " <> printed <> " (404)"
+        _ ->
+          Log.warn $ "Failed to fetch remote metadata for " <> printed <> ": " <> Octokit.printGitHubError err
+      pure []
+    Right content -> do
+      let
+        parsed = do
+          json <- hush $ JSON.parse content
+          obj <- JSON.toJObject json
+          publishedJson <- JSON.Object.lookup "published" obj
+          publishedObj <- JSON.toJObject publishedJson
+          let versionStrings = JSON.Object.keys publishedObj
+          pure $ Array.mapMaybe (hush <<< Version.parse) versionStrings
+      case parsed of
         Nothing -> do
-          Log.warn $ "Metadata for " <> printed <> " is not a JSON object"
+          Log.warn $ "Could not extract versions from remote metadata for " <> printed
           pure []
-        Just obj -> case JSON.Object.lookup "published" obj of
-          Nothing -> do
-            Log.debug $ "No 'published' field in metadata for " <> printed
-            pure []
-          Just publishedJson -> case JSON.toJObject publishedJson of
-            Nothing -> do
-              Log.warn $ "'published' field for " <> printed <> " is not a JSON object"
-              pure []
-            Just publishedObj -> do
-              let versionStrings = JSON.Object.keys publishedObj
-              let parseResults = versionStrings <#> \v -> Version.parse v
-              let versions = Array.mapMaybe hush parseResults
-              Log.debug $ "Extracted " <> show (Array.length versions) <> " versions from remote metadata for " <> printed
-              pure versions
+        Just versions -> do
+          Log.debug $ "Extracted " <> show (Array.length versions) <> " versions from remote metadata for " <> printed
+          pure versions
 
 validatePackageLocation :: { registered :: Address, received :: Address } -> Either PackageValidationError Unit
 validatePackageLocation addresses = do
@@ -1206,14 +1203,52 @@ validatePackageDisabled package =
   disabledPackages = Map.fromFoldable
     [ Tuple "metadata" reservedPackage
     , Tuple "purs" reservedPackage
+
     , Tuple "bitstrings" noSrcDirectory
     , Tuple "purveyor" noSrcDirectory
     , Tuple "styled-components" noSrcDirectory
     , Tuple "styled-system" noSrcDirectory
+
+    , Tuple "arb-instances" freedPackage
+    , Tuple "big-integer" freedPackage
+    , Tuple "chosen" freedPackage
+    , Tuple "chosen-halogen" freedPackage
+    , Tuple "combinators" freedPackage
+    , Tuple "constraint-kanren" freedPackage
+    , Tuple "datareify" freedPackage
+    , Tuple "dynamic" freedPackage
+    , Tuple "flux-store" freedPackage
+    , Tuple "focus-ui" freedPackage
+    , Tuple "fussy" freedPackage
+    , Tuple "globals-safe" freedPackage
+    , Tuple "hashable" freedPackage
+    , Tuple "hubot" freedPackage
+    , Tuple "mdcss" freedPackage
+    , Tuple "node-args" freedPackage
+    , Tuple "node-readline-question" freedPackage
+    , Tuple "nunjucks" freedPackage
+    , Tuple "org" freedPackage
+    , Tuple "phantomjs" freedPackage
+    , Tuple "photons" freedPackage
+    , Tuple "pouchdb-ffi" freedPackage
+    , Tuple "pux-router" freedPackage
+    , Tuple "reactive" freedPackage
+    , Tuple "reactive-jquery" freedPackage
+    , Tuple "skull" freedPackage
+    , Tuple "slack" freedPackage
+    , Tuple "stablename" freedPackage
+    , Tuple "stm" freedPackage
+    , Tuple "stuff" freedPackage
+    , Tuple "subtype" freedPackage
+    , Tuple "toastr" freedPackage
+    , Tuple "uport" freedPackage
+    , Tuple "yaml" freedPackage
+    , Tuple "zmq" freedPackage
     ]
     where
     reservedPackage = "Reserved package which cannot be uploaded."
     noSrcDirectory = "No version contains a 'src' directory."
+    freedPackage = "Abandoned package whose name has been freed for reuse."
 
 -- | Validate that a package name parses. Expects the package to already have
 -- | had its 'purescript-' prefix removed.
@@ -1635,7 +1670,7 @@ fetchFromArchive
    . FilePath
   -> PackageName
   -> Version
-  -> Run (REGISTRY + LOG + EXCEPT String + AFF + EFFECT + r) ArchiveFetchedSource
+  -> Run (REGISTRY + GITHUB + LOG + EXCEPT String + AFF + EFFECT + r) ArchiveFetchedSource
 fetchFromArchive destination name version = do
   let
     nameStr = PackageName.print name
@@ -1676,7 +1711,8 @@ fetchFromArchive destination name version = do
     Just extractedPath -> do
       Log.debug "Extracting archive tarball..."
       Tar.extract { cwd: destination, archive: tarballName }
-      publishedTime <- lookupPublishedTime name version
+      -- Archive-backed packages may not have local metadata, so fetch from remote registry
+      publishedTime <- lookupRemotePublishedTime name version
       pure { path: Path.concat [ destination, extractedPath ], published: publishedTime }
 
 lookupPublishedTime
@@ -1694,3 +1730,56 @@ lookupPublishedTime name version = do
           Run.Except.throw $ "No published metadata for " <> formatPackageVersion name version
         Just publishedMeta ->
           pure publishedMeta.publishedTime
+
+-- | Look up published time, falling back to remote registry if local metadata is missing.
+-- | Used for archive-backed packages where the local checkout may not have metadata.
+lookupRemotePublishedTime
+  :: forall r
+   . PackageName
+  -> Version
+  -> Run (REGISTRY + GITHUB + LOG + EXCEPT String + r) DateTime
+lookupRemotePublishedTime name version = do
+  Registry.readMetadata name >>= case _ of
+    Just (Metadata m) ->
+      case Map.lookup version m.published of
+        Nothing ->
+          Run.Except.throw $ "No published metadata for " <> formatPackageVersion name version
+        Just publishedMeta ->
+          pure publishedMeta.publishedTime
+    Nothing -> do
+      Log.debug $ "No local metadata for " <> PackageName.print name <> ", fetching from remote registry..."
+      fetchRemotePublishedTime name version >>= case _ of
+        Nothing -> Run.Except.throw $ "No metadata found for " <> PackageName.print name
+        Just time -> pure time
+
+-- | Fetch the published time for a specific version from the remote registry repo (main branch).
+-- | Used as a fallback when the local registry checkout doesn't have metadata for archive-backed packages.
+fetchRemotePublishedTime :: forall r. PackageName -> Version -> Run (GITHUB + LOG + r) (Maybe DateTime)
+fetchRemotePublishedTime name version = do
+  let
+    printed = PackageName.print name
+    path = Path.concat [ Constants.metadataDirectory, printed <> ".json" ]
+  Log.debug $ "Fetching published time for " <> formatPackageVersion name version <> " from remote registry"
+  GitHub.getContent Constants.registry (RawVersion "main") path >>= case _ of
+    Left err -> do
+      Log.warn $ "Failed to fetch remote metadata for " <> printed <> ": " <> Octokit.printGitHubError err
+      pure Nothing
+    Right content -> do
+      let
+        parsed = do
+          json <- hush $ JSON.parse content
+          obj <- JSON.toJObject json
+          publishedJson <- JSON.Object.lookup "published" obj
+          publishedObj <- JSON.toJObject publishedJson
+          versionJson <- JSON.Object.lookup (Version.print version) publishedObj
+          versionObj <- JSON.toJObject versionJson
+          timeJson <- JSON.Object.lookup "publishedTime" versionObj
+          timeStr <- JSON.toString timeJson
+          hush $ Formatter.DateTime.unformat Internal.Format.iso8601DateTime timeStr
+      case parsed of
+        Nothing -> do
+          Log.warn $ "Could not extract publishedTime for " <> formatPackageVersion name version <> " from remote metadata"
+          pure Nothing
+        Just dt -> do
+          Log.debug $ "Fetched published time for " <> formatPackageVersion name version <> " from remote registry"
+          pure $ Just dt
