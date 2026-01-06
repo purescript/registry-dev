@@ -38,6 +38,18 @@ shouldNotContain container elem =
   when (elem `Foldable.elem` container) do
     fail (Utils.unsafeStringify elem <> "\n\nshould not be a member of\n\n" <> Utils.unsafeStringify container)
 
+-- | Assert that all elements in `expected` are present in `actual`.
+-- | This is a subset check, not an equality check - `actual` may contain
+-- | additional elements.
+-- |
+-- | Useful for E2E tests where a shared database means we can't predict
+-- | exact contents, only that certain expected items are present.
+shouldContainAll :: forall m a. MonadThrow Error m => Eq a => Array a -> Array a -> m Unit
+shouldContainAll actual expected =
+  Foldable.for_ expected \elem ->
+    when (elem `Foldable.notElem` actual) do
+      fail ("Expected element not found:\n" <> Utils.unsafeStringify elem <> "\n\nin array:\n" <> Utils.unsafeStringify actual)
+
 shouldSatisfy :: forall m a. MonadThrow Error m => a -> (a -> Boolean) -> m Unit
 shouldSatisfy a predicate =
   unless (predicate a) do

@@ -2,15 +2,24 @@
 -- |
 -- | This module provides helpers to query WireMock's request journal, allowing
 -- | tests to assert on what HTTP requests were made to mock services.
-module Registry.Test.E2E.WireMock
+-- |
+-- | Also provides helpers for managing WireMock scenarios (stateful mocking).
+-- | Scenarios allow responses to change based on state transitions - e.g., a
+-- | package tarball returns 404 until it's been "uploaded" via PUT, after which
+-- | it returns 200.
+module Test.E2E.Support.WireMock
   ( WireMockConfig
   , WireMockRequest
   , WireMockError(..)
   , configFromEnv
+  , configForService
+  , configForStorage
   , getRequests
   , getRequestsOrFail
   , clearRequests
   , clearRequestsOrFail
+  , resetScenarios
+  , resetScenariosOrFail
   , filterByMethod
   , filterByUrlContaining
   , printWireMockError
@@ -20,6 +29,7 @@ module Registry.Test.E2E.WireMock
 
 import Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Control.Monad.Error.Class (class MonadThrow, throwError)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Trans.Class (lift)
@@ -34,13 +44,12 @@ import Data.String as String
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Aff as Aff
+import Effect.Exception (Error)
 import Effect.Exception as Effect.Exception
 import Fetch (Method(..))
 import Fetch as Fetch
-import Effect.Exception (Error)
 import JSON as JSON
 import Node.Process as Process
-import Codec.JSON.DecodeError as CJ.DecodeError
 
 -- | Configuration for connecting to WireMock admin API
 type WireMockConfig =
@@ -68,11 +77,22 @@ printWireMockError = case _ of
 -- | Convenience for tests that need to inspect GitHub mock requests.
 -- | Each WireMock instance has its own admin API on the same port.
 configFromEnv :: Effect WireMockConfig
-configFromEnv = do
-  maybeUrl <- Process.lookupEnv "GITHUB_API_URL"
+configFromEnv = configForService "GITHUB_API_URL"
+
+-- | Create config from a specific environment variable.
+-- | Useful for accessing different WireMock services (S3, Pursuit, etc.)
+configForService :: String -> Effect WireMockConfig
+configForService envVar = do
+  maybeUrl <- Process.lookupEnv envVar
   case maybeUrl of
-    Nothing -> Effect.Exception.throw "GITHUB_API_URL environment variable is not set."
+    Nothing -> Effect.Exception.throw $ envVar <> " environment variable is not set."
     Just baseUrl -> pure { baseUrl }
+
+-- | Create config for the unified storage WireMock instance.
+-- | The storage instance handles S3, bucket, and Pursuit APIs with stateful scenarios.
+-- | Use this for scenario resets and storage-related request assertions.
+configForStorage :: Effect WireMockConfig
+configForStorage = configForService "S3_API_URL"
 
 -- | Codec for a single request entry in WireMock's response
 requestCodec :: CJ.Codec WireMockRequest
@@ -139,6 +159,28 @@ clearRequestsOrFail config = do
   case result of
     Left err ->
       Aff.throwError $ Aff.error $ "Failed to clear WireMock journal: " <> printWireMockError err
+    Right _ ->
+      pure unit
+
+-- | Reset all WireMock scenarios to their initial state ("Started").
+-- | This is essential for test isolation when using stateful mocking.
+-- | After reset, unpublished packages return 404, published packages return 200.
+resetScenarios :: WireMockConfig -> Aff (Either WireMockError Unit)
+resetScenarios config = runExceptT do
+  response <- lift $ Fetch.fetch (config.baseUrl <> "/__admin/scenarios/reset") { method: POST }
+  if response.status == 200 then
+    pure unit
+  else do
+    body <- lift response.text
+    throwError $ HttpError { status: response.status, body }
+
+-- | Reset scenarios, throwing on error. Useful in test setup/teardown.
+resetScenariosOrFail :: WireMockConfig -> Aff Unit
+resetScenariosOrFail config = do
+  result <- resetScenarios config
+  case result of
+    Left err ->
+      Aff.throwError $ Aff.error $ "Failed to reset WireMock scenarios: " <> printWireMockError err
     Right _ ->
       pure unit
 

@@ -268,6 +268,7 @@ jobInfo = case _ of
 newtype JobId = JobId String
 
 derive instance Newtype JobId _
+derive newtype instance Eq JobId
 
 jobIdCodec :: CJ.Codec JobId
 jobIdCodec = Profunctor.wrapIso JobId CJ.string

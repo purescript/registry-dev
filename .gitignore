@@ -18,6 +18,7 @@ result*
 
 TODO.md
 .spec-results
+test-env-link
 
 # Keep it secret, keep it safe.
 .env

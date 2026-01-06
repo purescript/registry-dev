@@ -8,7 +8,9 @@
       "bytes": 2179,
       "compilers": [
         "0.15.9",
-        "0.15.10"
+        "0.15.10",
+        "0.15.11",
+        "0.15.12"
       ],
       "hash": "sha256-3lDTQdbTM6/0oxav/0V8nW9fWn3lsSM3b2XxwreDxqs=",
       "publishedTime": "2022-04-27T18:00:18.000Z",

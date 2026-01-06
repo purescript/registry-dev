@@ -1,14 +1,17 @@
 -- | HTTP client for making requests to the registry server during E2E tests.
 -- | This module provides typed helpers for interacting with the Registry API.
-module Registry.Test.E2E.Client
+module Test.E2E.Support.Client
   ( Config
   , ClientError(..)
   , defaultConfig
   , configFromEnv
   , getJobs
+  , getJobsWith
   , getJob
   , getStatus
   , publish
+  , unpublish
+  , transfer
   , pollJob
   , printClientError
   ) where
@@ -31,6 +34,7 @@ import Data.Newtype (unwrap)
 import Effect (Effect)
 import Effect.Aff (Aff, Milliseconds(..), delay)
 import Effect.Aff.Class (class MonadAff, liftAff)
+import Effect.Class.Console as Console
 import Effect.Exception (Error, error)
 import Effect.Exception as Effect.Exception
 import Fetch (Method(..))
@@ -40,13 +44,12 @@ import Node.Process as Process
 import Registry.API.V1 (Job, JobId(..), LogLevel)
 import Registry.API.V1 as V1
 import Registry.Internal.Format as Internal.Format
-import Registry.Operation (PublishData)
+import Registry.Operation (AuthenticatedData, PublishData)
 import Registry.Operation as Operation
 
 -- | Configuration for the E2E test client
 type Config =
   { baseUrl :: String
-  , timeout :: Milliseconds
   , pollInterval :: Milliseconds
   , maxPollAttempts :: Int
   }
@@ -55,7 +58,6 @@ type Config =
 defaultConfig :: Config
 defaultConfig =
   { baseUrl: "http://localhost:8080"
-  , timeout: Milliseconds 30000.0
   , pollInterval: Milliseconds 2000.0
   , maxPollAttempts: 30
   }
@@ -124,9 +126,17 @@ post reqCodec resCodec config path reqBody = runExceptT do
   else
     throwError $ HttpError { status: response.status, body: responseBody }
 
--- | Get the list of jobs
+-- | Get the list of jobs with a configurable include_completed flag
+getJobsWith :: Boolean -> Config -> Aff (Either ClientError (Array Job))
+getJobsWith includeCompleted config =
+  let
+    flag = if includeCompleted then "true" else "false"
+  in
+    get (CJ.array V1.jobCodec) config ("/api/v1/jobs?include_completed=" <> flag)
+
+-- | Get the list of jobs (includes completed jobs)
 getJobs :: Config -> Aff (Either ClientError (Array Job))
-getJobs config = get (CJ.array V1.jobCodec) config "/api/v1/jobs?include_completed=true"
+getJobs = getJobsWith true
 
 -- | Get a specific job by ID, with optional log filtering
 getJob :: Config -> JobId -> Maybe LogLevel -> Maybe DateTime -> Aff (Either ClientError Job)
@@ -153,17 +163,22 @@ getStatus config = runExceptT do
 
 -- | Publish a package
 publish :: Config -> PublishData -> Aff (Either ClientError V1.JobCreatedResponse)
-publish config publishData =
-  post Operation.publishCodec V1.jobCreatedResponseCodec config "/api/v1/publish" publishData
+publish config = post Operation.publishCodec V1.jobCreatedResponseCodec config "/api/v1/publish"
 
--- | Poll a job until it completes or times out
-pollJob
-  :: forall m
-   . MonadAff m
-  => MonadThrow Error m
-  => Config
-  -> JobId
-  -> m Job
+-- | Unpublish a package (requires authentication)
+unpublish :: Config -> AuthenticatedData -> Aff (Either ClientError V1.JobCreatedResponse)
+unpublish config = post Operation.authenticatedCodec V1.jobCreatedResponseCodec config "/api/v1/unpublish"
+
+-- | Transfer a package to a new location (requires authentication)
+transfer :: Config -> AuthenticatedData -> Aff (Either ClientError V1.JobCreatedResponse)
+transfer config = post Operation.authenticatedCodec V1.jobCreatedResponseCodec config "/api/v1/transfer"
+
+-- | Poll a job until it completes or times out.
+-- |
+-- | This is the recommended way to wait for job completion in E2E tests.
+-- | Do not implement custom polling loops; use this function or the higher-level
+-- | helpers in Test.E2E.Support.Env (pollJobOrFail, pollJobExpectFailure).
+pollJob :: forall m. MonadAff m => MonadThrow Error m => Config -> JobId -> m Job
 pollJob config jobId = go 1
   where
   go attempt
@@ -177,4 +192,7 @@ pollJob config jobId = go 1
           Right job ->
             case (V1.jobInfo job).finishedAt of
               Just _ -> pure job
-              Nothing -> go (attempt + 1)
+              Nothing -> do
+                when (attempt `mod` 10 == 0) do
+                  liftAff $ Console.log $ "Polling job " <> unwrap jobId <> " (attempt " <> Int.toStringAs Int.decimal attempt <> ")"
+                go (attempt + 1)

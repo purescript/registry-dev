@@ -388,6 +388,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
 
       Right Git.Changed -> do
         Log.info "Registry repo has changed, clearing metadata cache..."
+        Cache.delete _registryCache AllMetadata
         resetFromDisk
 
   WriteMetadata name metadata reply -> map (map reply) Except.runExcept do
@@ -733,17 +734,30 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
             result <- Git.gitPull { address, pullMode: env.pull } path
             pure result
 
-    now <- nowUTC
-    debouncers <- Run.liftEffect $ Ref.read env.debouncer
-    case Map.lookup path debouncers of
-      -- We will be behind the upstream by at most this amount of time.
-      Just prev | DateTime.diff now prev <= Duration.Minutes 1.0 ->
-        pure $ Right Git.NoChange
-      -- If we didn't debounce, then we should fetch the upstream.
-      _ -> do
+    -- Check if the repo directory exists before consulting the debouncer.
+    -- This ensures that if the scratch directory is deleted (e.g., for test
+    -- isolation), we always re-clone rather than returning a stale NoChange.
+    repoExists <- Run.liftAff $ Aff.attempt (FS.Aff.stat path)
+    case repoExists of
+      Left _ -> do
+        -- Repo doesn't exist, bypass debouncer entirely and clone fresh
         result <- fetchLatest
+        now <- nowUTC
         Run.liftEffect $ Ref.modify_ (Map.insert path now) env.debouncer
         pure result
+      Right _ -> do
+        -- Repo exists, check debouncer
+        now <- nowUTC
+        debouncers <- Run.liftEffect $ Ref.read env.debouncer
+        case Map.lookup path debouncers of
+          -- We will be behind the upstream by at most this amount of time.
+          Just prev | DateTime.diff now prev <= Duration.Minutes 1.0 ->
+            pure $ Right Git.NoChange
+          -- If we didn't debounce, then we should fetch the upstream.
+          _ -> do
+            result <- fetchLatest
+            Run.liftEffect $ Ref.modify_ (Map.insert path now) env.debouncer
+            pure result
 
   -- | Commit the file(s) indicated by the commit key with a commit message.
   commit :: CommitKey -> String -> Run _ (Either String GitResult)

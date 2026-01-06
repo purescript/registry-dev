@@ -142,7 +142,7 @@ spec = do
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to be in metadata."
           Just published -> do
             let many' = NonEmptyArray.toArray published.compilers
-            let expected = map Utils.unsafeVersion [ "0.15.9", "0.15.10" ]
+            let expected = map Utils.unsafeVersion [ "0.15.9", "0.15.10", "0.15.11", "0.15.12" ]
             unless (many' == expected) do
               Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
 
@@ -191,7 +191,7 @@ spec = do
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to be in metadata."
           Just published -> do
             let many' = NonEmptyArray.toArray published.compilers
-            let expected = map Utils.unsafeVersion [ "0.15.9", "0.15.10" ]
+            let expected = map Utils.unsafeVersion [ "0.15.9", "0.15.10", "0.15.11", "0.15.12" ]
             unless (many' == expected) do
               Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
 

@@ -76,7 +76,8 @@ nix build .#checks.x86_64-linux.smoke -L
 # Terminal 1: Start the test environment (wiremock mocks + registry server)
 nix run .#test-env
 
-# Terminal 2: Once the server is ready, run the E2E tests
+# Terminal 2: Source the env file, then run E2E tests
+source test-env-link/test-env.sh
 spago run -p registry-app-e2e
 ```
 
@@ -84,6 +85,7 @@ The test environment:
 - Starts wiremock services mocking GitHub, S3, Pursuit, etc.
 - Starts the registry server on port 9000 with a temporary SQLite database
 - Uses fixture data from `app/fixtures/`
+- Creates a `test-env-link` symlink pointing to the state directory with a `test-env.sh` file containing all environment variables needed by E2E tests
 
 Press `Ctrl+C` in Terminal 1 to stop all services. State is cleaned up automatically.
 

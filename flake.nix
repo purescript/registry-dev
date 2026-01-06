@@ -198,7 +198,8 @@
 
           # Integration test - exercises the server API
           integration = import ./nix/test/integration.nix {
-            inherit pkgs spagoSrc testEnv;
+            inherit pkgs spagoSrc;
+            testSupport = testEnv;
           };
 
           # VM smoke test - verifies deployment without full API testing
@@ -232,6 +233,7 @@
               nodejs
               jq
               dbmate
+              sqlite
               purs
               spago
               purs-tidy-unstable

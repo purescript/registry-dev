@@ -5,17 +5,26 @@ package:
   dependencies:
     - aff
     - arrays
+    - b64
+    - bifunctors
     - codec-json
     - console
     - datetime
     - effect
     - either
-    - foldable-traversable
+    - exceptions
+    - fetch
+    - formatters
+    - integers
     - json
     - maybe
+    - newtype
+    - node-child-process
+    - node-execa
     - node-fs
     - node-path
     - node-process
+    - ordered-collections
     - prelude
     - registry-app
     - registry-foreign
@@ -24,5 +33,6 @@ package:
     - spec
     - spec-node
     - strings
+    - transformers
   run:
     main: Test.E2E.Main
