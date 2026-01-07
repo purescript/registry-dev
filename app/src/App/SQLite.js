@@ -218,13 +218,13 @@ export const insertLogLineImpl = (db, logLine) => {
   return stmt.run(logLine);
 };
 
-export const selectLogsByJobImpl = (db, jobId, logLevel, since, limit) => {
+export const selectLogsByJobImpl = (db, jobId, logLevel, since) => {
   let query = `
     SELECT * FROM ${LOGS_TABLE}
     WHERE jobId = ? AND level >= ? AND timestamp >= ?
-    ORDER BY timestamp ASC LIMIT ?
+    ORDER BY timestamp ASC LIMIT 100
   `;
 
   const stmt = db.prepare(query);
-  return stmt.all(jobId, logLevel, since, limit);
+  return stmt.all(jobId, logLevel, since);
 };

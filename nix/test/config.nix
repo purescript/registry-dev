@@ -24,8 +24,9 @@ let
     healthchecks = serverPort + 3;
   };
 
-  # Default state directory for tests
-  defaultStateDir = "/var/lib/registry-server";
+  # Fixed state directory for tests - not configurable to avoid mismatch between
+  # test-env and spago-test-e2e shells. The test-env script cleans this up on start.
+  stateDir = "/tmp/registry-test-env";
 
   # Mock service URLs for test environment
   # All storage-related APIs (s3, bucket, pursuit) now share a single WireMock instance
@@ -46,12 +47,13 @@ let
   };
 
   # Complete test environment - starts with .env.example defaults which include
-  # mock secrets, then overrides external services with mock URLs. The DATABASE_URL
-  # and REPO_FIXTURES_DIR vars are derived from STATE_DIR at runtime so those are
-  # implemented in the script directly.
-  #
+  # mock secrets, then overrides external services with mock URLs.
   # All storage-related APIs share a single WireMock instance for stateful scenarios.
   testEnv = envDefaults // {
+    # State directory and derived paths
+    STATE_DIR = stateDir;
+    REPO_FIXTURES_DIR = "${stateDir}/repo-fixtures";
+    DATABASE_URL = "sqlite:${stateDir}/db/registry.sqlite3";
     # Mock service URLs (override production endpoints)
     REGISTRY_API_URL = mockUrls.registry;
     GITHUB_API_URL = mockUrls.github;
@@ -776,7 +778,7 @@ let
     name = "setup-git-fixtures";
     runtimeInputs = [ pkgs.git ];
     text = ''
-      FIXTURES_DIR="''${1:-${defaultStateDir}/repo-fixtures}"
+      FIXTURES_DIR="''${1:-${stateDir}/repo-fixtures}"
 
       # Run git as pacchettibotti
       gitbot() {
@@ -893,7 +895,7 @@ in
 {
   inherit
     ports
-    defaultStateDir
+    stateDir
     mockUrls
     testEnv
     envToExports

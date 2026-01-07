@@ -124,18 +124,18 @@ getJobs :: E2E (Array Job)
 getJobs = getJobsWith IncludeCompleted
 
 -- | Get a specific job by ID, with optional log filtering
-getJob :: JobId -> Maybe LogLevel -> Maybe DateTime -> Maybe Int -> E2E Job
-getJob jobId level since limit = do
+getJob :: JobId -> Maybe LogLevel -> Maybe DateTime -> E2E Job
+getJob jobId level since = do
   { clientConfig } <- ask
-  let route = Job jobId { level, since, limit }
+  let route = Job jobId { level, since }
   liftAff $ get V1.jobCodec clientConfig.baseUrl (printRoute route)
 
 -- | Try to get a specific job by ID, returning Left on HTTP/parse errors.
 -- | Use this when testing error responses (e.g., expecting 404).
-tryGetJob :: JobId -> Maybe LogLevel -> Maybe DateTime -> Maybe Int -> E2E (Either ClientError Job)
-tryGetJob jobId level since limit = do
+tryGetJob :: JobId -> Maybe LogLevel -> Maybe DateTime -> E2E (Either ClientError Job)
+tryGetJob jobId level since = do
   { clientConfig } <- ask
-  let route = Job jobId { level, since, limit }
+  let route = Job jobId { level, since }
   liftAff $ tryGet V1.jobCodec clientConfig.baseUrl (printRoute route)
 
 -- | Check if the server is healthy
@@ -183,7 +183,7 @@ pollJob jobId = do
         liftAff $ throw $ Timeout $ "Job " <> unwrap jobId <> " did not complete after " <> Int.toStringAs Int.decimal config.maxPollAttempts <> " attempts"
     | otherwise = do
         liftAff $ delay config.pollInterval
-        job <- getJob jobId (Just V1.Debug) Nothing Nothing
+        job <- getJob jobId (Just V1.Debug) Nothing
         case (V1.jobInfo job).finishedAt of
           Just _ -> pure job
           Nothing -> do

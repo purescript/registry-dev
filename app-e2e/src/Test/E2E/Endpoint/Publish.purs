@@ -3,8 +3,11 @@ module Test.E2E.Endpoint.Publish (spec) where
 import Registry.App.Prelude
 
 import Data.Array as Array
+import Data.Array.NonEmpty as NEA
 import Data.Map as Map
+import Data.Set as Set
 import Data.String as String
+import Registry.API.V1 (Job(..))
 import Registry.API.V1 as V1
 import Registry.Manifest (Manifest(..))
 import Registry.Metadata (Metadata(..))
@@ -42,9 +45,28 @@ spec = do
       unless hasVersion do
         Assert.fail $ "Expected version " <> Version.print Fixtures.effect.version <> " in manifest index"
 
-      -- TODO: This should verify the compilers made it into the metadata? How do we know what compilers should
-      -- be added though?
       Env.waitForAllMatrixJobs Fixtures.effect
+
+      -- Collect the compilers from the matrix jobs that ran for this package
+      allJobs <- Client.getJobsWith Client.IncludeCompleted
+      let
+        matrixCompilers = Array.mapMaybe
+          ( case _ of
+              MatrixJob { packageName, packageVersion, compilerVersion } ->
+                if packageName == Fixtures.effect.name && packageVersion == Fixtures.effect.version then Just compilerVersion
+                else Nothing
+              _ -> Nothing
+          )
+          allJobs
+        -- The expected compilers are: the publish compiler + all matrix job compilers
+        expectedCompilers = Set.fromFoldable $ Array.cons Fixtures.effectPublishData.compiler matrixCompilers
+
+      Metadata metadataAfter <- Env.readMetadata Fixtures.effect.name
+      case Map.lookup Fixtures.effect.version metadataAfter.published of
+        Nothing -> Assert.fail "Version missing after matrix jobs"
+        Just publishedMetaAfter -> do
+          let actualCompilers = Set.fromFoldable $ NEA.toArray publishedMetaAfter.compilers
+          Assert.shouldEqual actualCompilers expectedCompilers
 
   Spec.describe "Publish state machine" do
     Spec.it "returns same jobId for duplicate publish requests" do

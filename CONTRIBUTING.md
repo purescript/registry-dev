@@ -72,22 +72,29 @@ nix build .#checks.x86_64-linux.smoke -L
 
 ### Integration Test
 
+You can run the integration tests with the following on Linux:
+
+```sh
+nix build .#checks.x86_64-linux.integration -L
+```
+
+On macOS or for iterative development, you can instead start the test environment and run the tests separately.
+
 ```sh
 # Terminal 1: Start the test environment (wiremock mocks + registry server)
 nix run .#test-env
 
-# Terminal 2: Source the env file, then run E2E tests
-source test-env-link/test-env.sh
-spago run -p registry-app-e2e
+# Terminal 2: Run E2E tests once server is ready
+spago-test-e2e
 ```
 
 The test environment:
 - Starts wiremock services mocking GitHub, S3, Pursuit, etc.
-- Starts the registry server on port 9000 with a temporary SQLite database
+- Starts the registry server with a temporary SQLite database
 - Uses fixture data from `app/fixtures/`
-- Creates a `test-env-link` symlink pointing to the state directory with a `test-env.sh` file containing all environment variables needed by E2E tests
+- State is stored in `/tmp/registry-test-env` and cleaned up on each `nix run .#test-env`
 
-Press `Ctrl+C` in Terminal 1 to stop all services. State is cleaned up automatically.
+Press `Ctrl+C` in Terminal 1 to stop all services.
 
 All arguments after `--` are passed directly to process-compose:
 
@@ -103,7 +110,11 @@ process-compose attach           # Attach TUI
 process-compose down             # Stop all services
 ```
 
-You can also set `STATE_DIR` to use a persistent state directory instead of a temp dir.
+To examine state after a test run (e.g., for debugging), stop the test-env but don't restart it. The state remains in `/tmp/registry-test-env`:
+- `db/registry.sqlite3` — SQLite database
+- `scratch/registry/` — Local registry clone with metadata
+- `scratch/registry-index/` — Local manifest index clone
+- `repo-fixtures/` — Git fixture repositories
 
 ## Available Nix Commands
 

@@ -296,8 +296,10 @@ authenticated auth = case auth.payload of
             { published = Map.delete payload.version prev.published
             , unpublished = Map.insert payload.version unpublished prev.unpublished
             }
-        -- Delete manifest first to check for dependents before any side effects.
-        -- This ensures we don't delete from storage if other packages depend on this one.
+        -- Delete the manifest entry first so ManifestIndex.delete can fail if other
+        -- packages still depend on this version. This way, we detect dependency
+        -- violations before performing any irreversible side effects like deleting
+        -- the tarball from storage.
         Registry.deleteManifest payload.name payload.version
         Storage.delete payload.name payload.version
         Registry.writeMetadata payload.name updated

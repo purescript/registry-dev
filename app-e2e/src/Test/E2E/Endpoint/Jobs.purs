@@ -50,10 +50,26 @@ spec = do
             Assert.fail $ "Completed job " <> unwrap jobId <> " should be excluded from include_completed=false results"
         Nothing -> pure unit
 
+  Spec.describe "Job query parameters" do
+    Spec.it "accepts level and since parameters" do
+      { jobId } <- Client.publish Fixtures.effectPublishData
+      job <- Env.pollJobOrFail jobId
+      let info = V1.jobInfo job
+
+      baseJob <- Client.getJob jobId Nothing Nothing
+      Assert.shouldEqual (V1.jobInfo baseJob).jobId info.jobId
+
+      debugJob <- Client.getJob jobId (Just V1.Debug) Nothing
+      Assert.shouldEqual (V1.jobInfo debugJob).jobId info.jobId
+
+      let sinceTime = fromMaybe info.createdAt info.finishedAt
+      sinceJob <- Client.getJob jobId Nothing (Just sinceTime)
+      Assert.shouldEqual (V1.jobInfo sinceJob).jobId info.jobId
+
   Spec.describe "Jobs API error handling" do
     Spec.it "returns HTTP 404 for non-existent job ID" do
       let fakeJobId = JobId "nonexistent-job-id-12345"
-      result <- Client.tryGetJob fakeJobId Nothing Nothing Nothing
+      result <- Client.tryGetJob fakeJobId Nothing Nothing
       case result of
         Right _ ->
           Assert.fail "Expected HTTP 404 for non-existent job"

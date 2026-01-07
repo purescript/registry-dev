@@ -38,11 +38,12 @@ Alternately, they can be run on macOS or for more iterative development of tests
 nix run .#test-env
 
 # Terminal 2: Run E2E tests once server is ready
-source test-env-link/test-env.sh
-spago run -p registry-app-e2e
+spago-test-e2e
 ```
 
 Options: `nix run .#test-env -- --tui` for interactive TUI, `-- --detached` for background mode to use a single terminal.
+
+State is stored in `/tmp/registry-test-env` and cleaned up on each `nix run .#test-env`. To examine state after a test run (for debugging), stop the test-env but don't restart it.
 
 #### Smoke Test (Linux only)
 

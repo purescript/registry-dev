@@ -62,7 +62,7 @@ data Route
   | Unpublish
   | Transfer
   | Jobs { since :: Maybe DateTime, include_completed :: Maybe Boolean }
-  | Job JobId { level :: Maybe LogLevel, since :: Maybe DateTime, limit :: Maybe Int }
+  | Job JobId { level :: Maybe LogLevel, since :: Maybe DateTime }
   | Status
 
 derive instance Generic Route _
@@ -80,7 +80,6 @@ routes = Routing.root $ Routing.prefix "api" $ Routing.prefix "v1" $ RoutingG.su
       ( jobIdS ?
           { level: Routing.optional <<< logLevelP <<< Routing.string
           , since: Routing.optional <<< timestampP <<< Routing.string
-          , limit: Routing.optional <<< Routing.int
           }
       )
   , "Status": "status" / RoutingG.noArgs

@@ -112,10 +112,10 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
         HTTPurple.internalServerError $ "Error while fetching jobs: " <> err
       Right jobs -> jsonOk (CJ.array V1.jobCodec) jobs
 
-  Job jobId { level: maybeLogLevel, since, limit }, Get -> do
+  Job jobId { level: maybeLogLevel, since }, Get -> do
     now <- liftEffect nowUTC
     let oneHourAgo = fromMaybe now $ DateTime.adjust (negateDuration (Hours 1.0)) now
-    lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since: fromMaybe oneHourAgo since, limit: fromMaybe 100 limit }) >>= case _ of
+    lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since: fromMaybe oneHourAgo since }) >>= case _ of
       Left err -> do
         lift $ Log.error $ "Error while fetching job: " <> err
         HTTPurple.internalServerError $ "Error while fetching job: " <> err
