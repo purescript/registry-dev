@@ -22,8 +22,8 @@ main = do
   runSpecAndExitProcess' config [ consoleReporter ] $ hoistE2E env do
     Spec.before_ resetTestState $ Spec.after_ assertReposClean $ Spec.describe "E2E Tests" do
       Spec.describe "Endpoints" do
-        Spec.describe "Jobs" Jobs.spec
         Spec.describe "Publish" Publish.spec
+        Spec.describe "Jobs" Jobs.spec
         Spec.describe "Unpublish" Unpublish.spec
         Spec.describe "Transfer" Transfer.spec
 
