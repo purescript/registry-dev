@@ -56,7 +56,7 @@ import Data.Function (on)
 import Data.Nullable (notNull, null)
 import Data.Nullable as Nullable
 import Data.UUID.Random as UUID
-import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, EffectFn4)
+import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, EffectFn5)
 import Effect.Uncurried as Uncurried
 import Record as Record
 import Registry.API.V1 (Job(..), JobId(..), LogLevel(..), LogLine)
@@ -192,13 +192,14 @@ toSuccess success = case success of
 type SelectJobRequest =
   { level :: Maybe LogLevel
   , since :: DateTime
+  , limit :: Int
   , jobId :: JobId
   }
 
 selectJob :: SQLite -> SelectJobRequest -> Effect { unreadableLogs :: Array String, job :: Either String (Maybe Job) }
-selectJob db { level: maybeLogLevel, since, jobId: JobId jobId } = do
+selectJob db { level: maybeLogLevel, since, limit, jobId: JobId jobId } = do
   let logLevel = fromMaybe Error maybeLogLevel
-  { fail: unreadableLogs, success: logs } <- selectLogsByJob db (JobId jobId) logLevel since
+  { fail: unreadableLogs, success: logs } <- selectLogsByJob db (JobId jobId) logLevel since limit
   -- Failing to decode a log should not prevent us from returning a job, so we pass
   -- failures through to be handled by application code
   job <- runExceptT $ firstJust
@@ -795,18 +796,20 @@ foreign import insertLogLineImpl :: EffectFn2 SQLite JSLogLine Unit
 insertLogLine :: SQLite -> LogLine -> Effect Unit
 insertLogLine db = Uncurried.runEffectFn2 insertLogLineImpl db <<< logLineToJSRep
 
-foreign import selectLogsByJobImpl :: EffectFn4 SQLite String Int String (Array JSLogLine)
+foreign import selectLogsByJobImpl :: EffectFn5 SQLite String Int String Int (Array JSLogLine)
 
 -- | Select all logs for a given job at or above the indicated log level. To get all
--- | logs, pass the DEBUG log level.
-selectLogsByJob :: SQLite -> JobId -> LogLevel -> DateTime -> Effect { fail :: Array String, success :: Array LogLine }
-selectLogsByJob db jobId level since = do
+-- | logs, pass the DEBUG log level. The limit parameter controls the maximum number
+-- | of logs returned (defaults to 100).
+selectLogsByJob :: SQLite -> JobId -> LogLevel -> DateTime -> Int -> Effect { fail :: Array String, success :: Array LogLine }
+selectLogsByJob db jobId level since limit = do
   let timestamp = DateTime.format Internal.Format.iso8601DateTime since
   jsLogLines <-
-    Uncurried.runEffectFn4
+    Uncurried.runEffectFn5
       selectLogsByJobImpl
       db
       (un JobId jobId)
       (API.V1.logLevelToPriority level)
       timestamp
+      limit
   pure $ partitionEithers $ map logLineFromJSRep jsLogLines

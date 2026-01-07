@@ -24,10 +24,10 @@ spec = do
         Assert.shouldSatisfy (V1.jobInfo job).finishedAt isJust
 
         -- Verify log level filtering
-        allLogsJob <- Env.expectRight "get job with DEBUG level" =<< Client.getJob config jobId (Just V1.Debug) Nothing
+        allLogsJob <- Env.expectRight "get job with DEBUG level" =<< Client.getJob config jobId (Just V1.Debug) Nothing Nothing
         let allLogs = (V1.jobInfo allLogsJob).logs
 
-        infoLogsJob <- Env.expectRight "get job with INFO level" =<< Client.getJob config jobId (Just V1.Info) Nothing
+        infoLogsJob <- Env.expectRight "get job with INFO level" =<< Client.getJob config jobId (Just V1.Info) Nothing Nothing
         let infoLogs = (V1.jobInfo infoLogsJob).logs
         let debugOnlyLogs = Array.filter (\l -> l.level == V1.Debug) allLogs
 
@@ -39,31 +39,26 @@ spec = do
           Assert.shouldSatisfy (Array.length infoLogs) (_ < Array.length allLogs)
 
         -- Verify timestamp filtering excludes earlier logs
-        -- The since filter should only return logs at or after the given timestamp.
-        -- Note: We can't compare counts because the API has a LIMIT of 100 logs,
-        -- and publish jobs often exceed that limit.
-        let logs = (V1.jobInfo job).logs
+        -- Use a high limit to ensure we get all logs for accurate count comparison
+        allLogsUnlimited <- Env.expectRight "get all logs" =<< Client.getJob config jobId (Just V1.Debug) Nothing (Just 10000)
+        let logs = (V1.jobInfo allLogsUnlimited).logs
         for_ (Array.index logs 1) \middleLog -> do
-          sinceJob <- Env.expectRight "get job with since filter" =<< Client.getJob config jobId (Just V1.Debug) (Just middleLog.timestamp)
+          sinceJob <- Env.expectRight "get job with since filter" =<< Client.getJob config jobId (Just V1.Debug) (Just middleLog.timestamp) (Just 10000)
           let sinceLogs = (V1.jobInfo sinceJob).logs
           -- All returned logs should be at or after the filter timestamp
           for_ sinceLogs \l ->
             Assert.shouldSatisfy l.timestamp (_ >= middleLog.timestamp)
           -- Verify we actually got some logs back (the filter is working, not just empty)
           Assert.shouldSatisfy (Array.length sinceLogs) (_ > 0)
+          -- The since filter should return fewer logs than the full set
+          Assert.shouldSatisfy (Array.length sinceLogs) (_ < Array.length logs)
 
   Spec.describe "Publish state machine" do
     Spec.it "returns same jobId for duplicate publish requests" do
       config <- Env.getConfig
 
       -- Submit same publish request twice
-      first <- Client.publish config Fixtures.effectPublishData
-      second <- Client.publish config Fixtures.effectPublishData
+      { jobId: id1 } <- Env.expectRight "first publish" =<< Client.publish config Fixtures.effectPublishData
+      { jobId: id2 } <- Env.expectRight "second publish" =<< Client.publish config Fixtures.effectPublishData
 
-      case first, second of
-        Right { jobId: id1 }, Right { jobId: id2 } ->
-          Assert.shouldEqual id1 id2
-        Left err, _ ->
-          Assert.fail $ "First publish failed: " <> Client.printClientError err
-        _, Left err ->
-          Assert.fail $ "Second publish failed: " <> Client.printClientError err
+      Assert.shouldEqual id1 id2

@@ -121,10 +121,12 @@ spec = do
             Nothing -> false
             Just consoleFinishTime -> Array.any
               ( \j ->
-                  let info = V1.jobInfo j
-                  in case info.finishedAt of
-                    Nothing -> true
-                    Just matrixFinishTime -> matrixFinishTime > consoleFinishTime
+                  let
+                    info = V1.jobInfo j
+                  in
+                    case info.finishedAt of
+                      Nothing -> true
+                      Just matrixFinishTime -> matrixFinishTime > consoleFinishTime
               )
               effectMatrixJobs
 

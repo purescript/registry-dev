@@ -139,12 +139,13 @@ getJobs :: Config -> Aff (Either ClientError (Array Job))
 getJobs = getJobsWith true
 
 -- | Get a specific job by ID, with optional log filtering
-getJob :: Config -> JobId -> Maybe LogLevel -> Maybe DateTime -> Aff (Either ClientError Job)
-getJob config (JobId jobId) level since = do
+getJob :: Config -> JobId -> Maybe LogLevel -> Maybe DateTime -> Maybe Int -> Aff (Either ClientError Job)
+getJob config (JobId jobId) level since limit = do
   let
     params = Array.catMaybes
       [ level <#> \l -> "level=" <> V1.printLogLevel l
       , since <#> \s -> "since=" <> Formatter.DateTime.format Internal.Format.iso8601DateTime s
+      , limit <#> \n -> "limit=" <> Int.toStringAs Int.decimal n
       ]
     query = case params of
       [] -> ""
@@ -186,7 +187,7 @@ pollJob config jobId = go 1
         throwError $ toError $ Timeout $ "Job " <> unwrap jobId <> " did not complete after " <> Int.toStringAs Int.decimal config.maxPollAttempts <> " attempts"
     | otherwise = do
         liftAff $ delay config.pollInterval
-        result <- liftAff $ getJob config jobId (Just V1.Debug) Nothing
+        result <- liftAff $ getJob config jobId (Just V1.Debug) Nothing Nothing
         case result of
           Left err -> throwError $ toError err
           Right job ->
