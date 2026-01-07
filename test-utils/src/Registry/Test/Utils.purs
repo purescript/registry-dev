@@ -148,6 +148,7 @@ unsafeManifest name version dependencies = Manifest
       { url: "https://github.com/purescript/purescript-" <> name <> ".git"
       , subdir: Nothing
       }
+  , ref: "v" <> version
   , description: Nothing
   , owners: Nothing
   , includeFiles: Nothing

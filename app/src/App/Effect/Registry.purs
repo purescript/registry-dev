@@ -502,10 +502,9 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
     Log.info $ "Mirroring legacy package set " <> name <> " to the legacy package sets repo"
 
     manifests <- Except.rethrow =<< handle env (ReadAllManifests identity)
-    metadata <- Except.rethrow =<< handle env (ReadAllMetadata identity)
 
     Log.debug $ "Converting package set..."
-    converted <- case Legacy.PackageSet.convertPackageSet manifests metadata set of
+    converted <- case Legacy.PackageSet.convertPackageSet manifests set of
       Left error -> Except.throw $ "Failed to convert package set " <> name <> " to a legacy package set: " <> error
       Right converted -> pure converted
 

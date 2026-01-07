@@ -151,9 +151,9 @@ spec = do
 
 contextEntry :: String
 contextEntry =
-  """{"name":"context","version":"0.0.1","license":"MIT","location":{"githubOwner":"Fresheyeball","githubRepo":"purescript-owner"},"dependencies":{}}
-{"name":"context","version":"0.0.2","license":"MIT","location":{"githubOwner":"Fresheyeball","githubRepo":"purescript-owner"},"dependencies":{}}
-{"name":"context","version":"0.0.3","license":"MIT","location":{"githubOwner":"Fresheyeball","githubRepo":"purescript-owner"},"dependencies":{}}
+  """{"name":"context","version":"0.0.1","license":"MIT","location":{"githubOwner":"Fresheyeball","githubRepo":"purescript-owner"},"ref":"v0.0.1","dependencies":{}}
+{"name":"context","version":"0.0.2","license":"MIT","location":{"githubOwner":"Fresheyeball","githubRepo":"purescript-owner"},"ref":"v0.0.2","dependencies":{}}
+{"name":"context","version":"0.0.3","license":"MIT","location":{"githubOwner":"Fresheyeball","githubRepo":"purescript-owner"},"ref":"v0.0.3","dependencies":{}}
 """
 
 testIndex
@@ -242,6 +242,7 @@ manifestCodec' = Profunctor.dimap to from $ CJ.named "ManifestRep" $ CJ.Record.o
         { url: "https://github.com/purescript/purescript-" <> PackageName.print name <> ".git"
         , subdir: Nothing
         }
+    , ref: "v" <> Version.print version
     , description: Nothing
     , owners: Nothing
     , includeFiles: Nothing
