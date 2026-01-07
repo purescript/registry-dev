@@ -28,6 +28,9 @@ import Registry.API.V1 (LogLevel)
 import Registry.App.API (COMPILER_CACHE)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
+import Registry.App.CLI.Tar as Tar
+import Registry.App.Effect.Archive (ARCHIVE)
+import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV, RESOURCE_ENV)
@@ -51,6 +54,7 @@ import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Prelude as Either
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubError(..), IssueNumber(..))
+import Registry.Foreign.Tar as Foreign.Tar
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Test.Utils as Utils
@@ -80,6 +84,7 @@ type TEST_EFFECTS =
       + PACKAGE_SETS
       + STORAGE
       + SOURCE
+      + ARCHIVE
       + GITHUB
       + PACCHETTIBOTTI_ENV
       + GITHUB_EVENT_ENV
@@ -101,6 +106,7 @@ type TestEnv =
   , index :: Ref ManifestIndex
   , pursuitExcludes :: Set PackageName
   , storage :: FilePath
+  , archive :: FilePath
   , github :: FilePath
   , username :: String
   }
@@ -116,6 +122,7 @@ runTestEffects env operation = Aff.attempt do
     # PackageSets.interpret handlePackageSetsMock
     # Storage.interpret (handleStorageMock { storage: env.storage })
     # Source.interpret (handleSourceMock { github: env.github })
+    # Archive.interpret (handleArchiveMock { metadataRef: env.metadata, archive: env.archive })
     # GitHub.interpret (handleGitHubMock { github: env.github })
     -- Environments
     # Env.runGitHubEventEnv { username: env.username, issue: IssueNumber 1 }
@@ -307,7 +314,7 @@ handleSourceMock env = case _ of
     case location of
       Git _ -> pure $ reply $ Left GitHubOnly
       GitHub { subdir } | isJust subdir -> pure $ reply $ Left NoSubdir
-      GitHub { repo } -> do
+      GitHub { owner, repo } -> do
         let
           name = stripPureScriptPrefix repo
           fixedRef = fromMaybe ref $ String.stripPrefix (String.Pattern "v") ref
@@ -315,7 +322,7 @@ handleSourceMock env = case _ of
           localPath = Path.concat [ env.github, dirname ]
           destinationPath = Path.concat [ destination, dirname <> "-checkout" ]
         Run.liftAff (Aff.attempt (FS.Aff.stat localPath)) >>= case _ of
-          Left _ -> pure $ reply $ Left $ Fatal $ "Cannot copy " <> localPath <> " because it does not exist."
+          Left _ -> pure $ reply $ Left $ InaccessibleRepo { owner, repo }
           Right _ -> do
             Run.liftAff $ FS.Extra.copy { from: localPath, to: destinationPath, preserveTimestamps: true }
             case pursPublishMethod of
@@ -387,3 +394,73 @@ handleGitHubMock env = case _ of
   -- currently used in tests.
   GetCommitDate _address _ref reply ->
     pure $ reply $ Left $ UnexpectedError "Unimplemented"
+
+type ArchiveMockEnv =
+  { metadataRef :: Ref (Map PackageName Metadata)
+  , archive :: FilePath
+  }
+
+-- | A mock implementation for the ARCHIVE effect that uses the registry-archive
+-- | fixtures as the archive source. Archive tarballs are expected to be in the
+-- | same format as storage tarballs (name-version.tar.gz).
+handleArchiveMock :: forall r a. ArchiveMockEnv -> Archive.Archive a -> Run (AFF + EFFECT + r) a
+handleArchiveMock env = case _ of
+  Archive.Fetch destination name version reply -> map (map reply) Except.runExcept do
+    -- For testing, we look up publishedTime from metadata if available, but
+    -- fall back to current time if not (to support tests where metadata has
+    -- been modified but tarballs still exist).
+    now <- Run.liftEffect Now.nowDateTime
+    metadata <- Run.liftEffect (Ref.read env.metadataRef)
+    let
+      publishedTime = fromMaybe now do
+        Metadata m <- Map.lookup name metadata
+        publishedMeta <- Map.lookup version m.published
+        pure publishedMeta.publishedTime
+
+    let
+      tarballName = Version.print version <> ".tar.gz"
+      sourcePath = Path.concat [ env.archive, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
+      absoluteTarballPath = Path.concat [ destination, tarballName ]
+
+    Run.liftAff (Aff.attempt (FS.Aff.stat sourcePath)) >>= case _ of
+      Left _ ->
+        Except.throw $ Archive.DownloadFailed name version "Tarball not found in mock archive"
+      Right _ ->
+        Run.liftAff (Aff.attempt (FS.Aff.copyFile sourcePath absoluteTarballPath)) >>= case _ of
+          Left error ->
+            Except.throw $ Archive.DownloadFailed name version (Aff.message error)
+          Right _ ->
+            pure unit
+
+    extractedPath <- Run.liftAff $ Foreign.Tar.getToplevelDir absoluteTarballPath
+    case extractedPath of
+      Nothing ->
+        Except.throw $ Archive.ExtractionFailed name version "Tarball has no top-level directory"
+      Just path -> do
+        Run.liftAff $ Tar.extract { cwd: destination, archive: tarballName }
+        -- Rename to avoid conflict with packaging directory (same as source mock's "-checkout" suffix)
+        -- Strip trailing slash if present
+        let cleanPath = fromMaybe path $ String.stripSuffix (String.Pattern "/") path
+        let extractedDir = Path.concat [ destination, cleanPath ]
+        let finalPath = Path.concat [ destination, cleanPath <> "-archive" ]
+        Run.liftAff $ FS.Aff.rename extractedDir finalPath
+
+        -- Initialize a git repo for purs publish (same as source mock)
+        -- We do this inside liftAff to avoid EXCEPT type mismatch with Git.withGit
+        Run.liftAff $ case pursPublishMethod of
+          LegacyPursPublish -> do
+            FS.Aff.writeTextFile UTF8 (Path.concat [ finalPath, ".gitignore" ]) "output"
+            let exec args = void $ Git.gitCLI args (Just finalPath)
+            let ref = "v" <> Version.print version
+            exec [ "init" ]
+            exec [ "config", "user.name", "test-user" ]
+            exec [ "config", "user.email", "test-user@aol.com" ]
+            exec [ "config", "commit.gpgSign", "false" ]
+            exec [ "config", "tag.gpgSign", "false" ]
+            exec [ "add", "." ]
+            exec [ "commit", "-m", "Initial commit" ]
+            exec [ "tag", "-m", ref, ref ]
+          PursPublish ->
+            pure unit
+
+        pure { path: finalPath, published: publishedTime }

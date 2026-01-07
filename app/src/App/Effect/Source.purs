@@ -67,7 +67,11 @@ printFetchError = case _ of
 
 -- | Fetch the provided location to the provided destination path.
 fetch :: forall r. FilePath -> Location -> String -> Run (SOURCE + EXCEPT String + r) FetchedSource
-fetch destination location ref = (Except.rethrow <<< lmap printFetchError) =<< Run.lift _source (Fetch destination location ref identity)
+fetch destination location ref = (Except.rethrow <<< lmap printFetchError) =<< fetchEither destination location ref
+
+-- | Fetch the provided location, returning the typed FetchError on failure.
+fetchEither :: forall r. FilePath -> Location -> String -> Run (SOURCE + r) (Either FetchError FetchedSource)
+fetchEither destination location ref = Run.lift _source (Fetch destination location ref identity)
 
 -- | Run the SOURCE effect given a handler.
 interpret :: forall r a. (Source ~> Run r) -> Run (SOURCE + r) a -> Run r a

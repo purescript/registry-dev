@@ -213,6 +213,9 @@
           SERVER_PORT = envDefaults.SERVER_PORT;
           DATABASE_URL = envDefaults.DATABASE_URL;
 
+          # Dhall environment variables needed for manifest typechecking
+          inherit DHALL_TYPES DHALL_PRELUDE GIT_TERMINAL_PROMPT;
+
           # NOTE: Test-specific env vars (REGISTRY_API_URL, GITHUB_API_URL, PACCHETTIBOTTI_*)
           # are NOT set here to avoid conflicting with .env files used by production scripts
           # like legacy-importer. Use `nix run .#test-env` to run E2E tests with mocked services.

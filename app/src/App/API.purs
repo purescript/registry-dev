@@ -56,6 +56,8 @@ import Registry.App.CLI.Purs (CompilerFailure(..), compilerFailureCodec)
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.CLI.Tar as Tar
+import Registry.App.Effect.Archive (ARCHIVE)
+import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache (class FsEncodable, Cache)
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV, RESOURCE_ENV)
@@ -332,7 +334,7 @@ authenticated auth = case auth.payload of
         Registry.mirrorLegacyRegistry payload.name payload.newLocation
         Log.notice "Mirrored registry operation to the legacy registry."
 
-type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + COMPILER_CACHE + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
+type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + ARCHIVE + GITHUB + COMPILER_CACHE + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Publish a package via the 'publish' operation. If the package has not been
 -- | published before then it will be registered and the given version will be
@@ -389,7 +391,33 @@ publish maybeLegacyIndex payload = do
   -- the package directory along with its detected publish time.
   Log.debug "Metadata validated. Fetching package source code..."
   tmp <- Tmp.mkTmpDir
-  { path: downloadedPackage, published: publishedTime } <- Source.fetch tmp existingMetadata.location payload.ref
+
+  -- Legacy imports may encounter packages whose GitHub repositories no longer
+  -- exist but whose tarballs are stored in the registry-archive. When Source.fetch
+  -- fails with InaccessibleRepo during a legacy import, we fall back to fetching
+  -- from the registry-archive instead.
+  { path: downloadedPackage, published: publishedTime } <-
+    Source.fetchEither tmp existingMetadata.location payload.ref >>= case _ of
+      Right result ->
+        pure result
+      Left (Source.InaccessibleRepo address) | isJust maybeLegacyIndex -> do
+        Log.warn $ Array.fold
+          [ "GitHub repository inaccessible during legacy import: "
+          , address.owner
+          , "/"
+          , address.repo
+          ]
+        Log.info "Falling back to registry-archive tarball..."
+        version <- case LenientVersion.parse payload.ref of
+          Left _ -> Except.throw $ Array.fold
+            [ "Cannot fall back to archive: ref "
+            , payload.ref
+            , " is not a valid version"
+            ]
+          Right v -> pure $ LenientVersion.version v
+        Archive.fetch tmp payload.name version
+      Left err ->
+        Except.throw $ Source.printFetchError err
 
   Log.debug $ "Package downloaded to " <> downloadedPackage <> ", verifying it contains a src directory with valid modules..."
   Internal.Path.readPursFiles (Path.concat [ downloadedPackage, "src" ]) >>= case _ of

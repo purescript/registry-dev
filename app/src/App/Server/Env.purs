@@ -16,6 +16,8 @@ import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Db (DB)
 import Registry.App.Effect.Db as Db
+import Registry.App.Effect.Archive (ARCHIVE)
+import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV, RESOURCE_ENV, ResourceEnv)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
@@ -118,7 +120,7 @@ createServerEnv = do
     , jobId: Nothing
     }
 
-type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + REGISTRY + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMPILER_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + ARCHIVE + REGISTRY + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMPILER_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer
   :: ServerEnv
@@ -156,6 +158,7 @@ runEffects env operation = Aff.attempt do
             , cacheRef: env.registryCacheRef
             }
         )
+    # Archive.interpret Archive.handle
     # Pursuit.interpret (Pursuit.handleAff env.vars.token)
     # Storage.interpret (Storage.handleS3 { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }, cache: env.cacheDir })
     # Source.interpret (Source.handle Source.Recent)

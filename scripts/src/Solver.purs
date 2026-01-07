@@ -30,6 +30,7 @@ import Parsing as Parsing
 import Registry.App.API (_compilerCache)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
+import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
@@ -124,6 +125,7 @@ main = launchAff_ do
   let
     runAppEffects =
       Registry.interpret (Registry.handle (registryEnv Git.Autostash Registry.ReadOnly))
+        >>> Archive.interpret Archive.handle
         >>> Storage.interpret (Storage.handleReadOnly cache)
         >>> Pursuit.interpret Pursuit.handlePure
         >>> Source.interpret (Source.handle Source.Old)
