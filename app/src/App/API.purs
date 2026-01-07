@@ -296,9 +296,13 @@ authenticated auth = case auth.payload of
             { published = Map.delete payload.version prev.published
             , unpublished = Map.insert payload.version unpublished prev.unpublished
             }
+        -- Delete the manifest entry first so ManifestIndex.delete can fail if other
+        -- packages still depend on this version. This way, we detect dependency
+        -- violations before performing any irreversible side effects like deleting
+        -- the tarball from storage.
+        Registry.deleteManifest payload.name payload.version
         Storage.delete payload.name payload.version
         Registry.writeMetadata payload.name updated
-        Registry.deleteManifest payload.name payload.version
         Log.notice $ "Unpublished " <> formatted <> "!"
 
   Transfer payload -> do
@@ -479,7 +483,7 @@ publish maybeLegacyIndex payload = do
       Log.notice $ "Package source does not have a purs.json file, creating one from your spago.yaml file..."
       SpagoYaml.readSpagoYaml packageSpagoYaml >>= case _ of
         Left readErr -> Except.throw $ "Could not publish your package - a spago.yaml was present, but it was not possible to read it:\n" <> readErr
-        Right config -> case SpagoYaml.spagoYamlToManifest config of
+        Right config -> case SpagoYaml.spagoYamlToManifest payload.ref config of
           Left err -> Except.throw $ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:\n" <> err
           Right manifest -> do
             Log.notice $ Array.fold
@@ -506,7 +510,7 @@ publish maybeLegacyIndex payload = do
             ]
         Right legacyManifest -> do
           Log.debug $ "Successfully produced a legacy manifest from the package source."
-          let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location legacyManifest
+          let manifest = Legacy.Manifest.toManifest payload.name version existingMetadata.location payload.ref legacyManifest
           Log.notice $ Array.fold
             [ "Converted your legacy manifest(s) into a purs.json manifest to use for publishing:"
             , "\n```json\n"
@@ -772,7 +776,7 @@ publish maybeLegacyIndex payload = do
 
       Storage.upload (un Manifest manifest).name (un Manifest manifest).version tarballPath
       Log.debug $ "Adding the new version " <> Version.print (un Manifest manifest).version <> " to the package metadata file."
-      let newPublishedVersion = { hash, ref: payload.ref, compilers: NonEmptyArray.singleton payload.compiler, publishedTime, bytes }
+      let newPublishedVersion = { hash, compilers: NonEmptyArray.singleton payload.compiler, publishedTime, bytes }
       let newMetadata = metadata { published = Map.insert (un Manifest manifest).version newPublishedVersion metadata.published }
 
       Registry.writeMetadata (un Manifest manifest).name (Metadata newMetadata)

@@ -214,8 +214,8 @@ gitCommit { address: { owner, repo }, committer, commit, message } cwd = Except.
   -- Git will error if we try to commit without any changes actually staged,
   -- so the below command lists file paths (--name-only) that have changed
   -- between the index and current HEAD (--cached), only including files that
-  -- have been added or modified (--diff-filter=AM).
-  staged <- exec [ "diff", "--name-only", "--cached", "--diff-filter=AM" ] \error ->
+  -- have been added, modified, or deleted (--diff-filter=AMD).
+  staged <- exec [ "diff", "--name-only", "--cached", "--diff-filter=AMD" ] \error ->
     "Failed to check whether any changes are staged " <> inRepoErr error
 
   -- If there are no staged files, then we have nothing to commit.

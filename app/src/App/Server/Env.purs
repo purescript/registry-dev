@@ -12,12 +12,12 @@ import Node.Path as Path
 import Registry.API.V1 (JobId, Route)
 import Registry.App.API (COMPILER_CACHE, _compilerCache)
 import Registry.App.CLI.Git as Git
+import Registry.App.Effect.Archive (ARCHIVE)
+import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Db (DB)
 import Registry.App.Effect.Db as Db
-import Registry.App.Effect.Archive (ARCHIVE)
-import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV, RESOURCE_ENV, ResourceEnv)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)

@@ -2,15 +2,19 @@
 -- |
 -- | This module provides helpers to query WireMock's request journal, allowing
 -- | tests to assert on what HTTP requests were made to mock services.
-module Registry.Test.E2E.WireMock
-  ( WireMockConfig
-  , WireMockRequest
+-- |
+-- | Also provides helpers for managing WireMock scenarios (stateful mocking).
+-- | Scenarios allow responses to change based on state transitions - e.g., a
+-- | package tarball returns 404 until it's been "uploaded" via PUT, after which
+-- | it returns 200.
+module Test.E2E.Support.WireMock
+  ( WireMockRequest
   , WireMockError(..)
-  , configFromEnv
-  , getRequests
-  , getRequestsOrFail
-  , clearRequests
-  , clearRequestsOrFail
+  , getGithubRequests
+  , getStorageRequests
+  , clearGithubRequests
+  , clearStorageRequests
+  , resetStorageScenarios
   , filterByMethod
   , filterByUrlContaining
   , printWireMockError
@@ -18,34 +22,24 @@ module Registry.Test.E2E.WireMock
   , failWithRequests
   ) where
 
-import Prelude
+import Registry.App.Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Control.Monad.Error.Class (class MonadThrow, throwError)
 import Control.Monad.Except (runExceptT)
-import Control.Monad.Trans.Class (lift)
+import Control.Monad.Reader (ask)
 import Data.Array as Array
-import Data.Bifunctor (lmap)
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Record as CJ.Record
-import Data.Either (Either(..))
 import Data.Int as Int
-import Data.Maybe (Maybe(..))
 import Data.String as String
-import Effect (Effect)
-import Effect.Aff (Aff)
 import Effect.Aff as Aff
+import Effect.Exception (Error)
 import Effect.Exception as Effect.Exception
 import Fetch (Method(..))
 import Fetch as Fetch
-import Effect.Exception (Error)
 import JSON as JSON
-import Node.Process as Process
-import Codec.JSON.DecodeError as CJ.DecodeError
-
--- | Configuration for connecting to WireMock admin API
-type WireMockConfig =
-  { baseUrl :: String
-  }
+import Test.E2E.Support.Types (E2E)
 
 -- | A recorded request from WireMock's journal
 type WireMockRequest =
@@ -63,16 +57,6 @@ printWireMockError :: WireMockError -> String
 printWireMockError = case _ of
   HttpError { status, body } -> "HTTP Error " <> Int.toStringAs Int.decimal status <> ": " <> body
   ParseError { msg, raw } -> "Parse Error: " <> msg <> "\nOriginal: " <> raw
-
--- | Create config from GITHUB_API_URL environment variable.
--- | Convenience for tests that need to inspect GitHub mock requests.
--- | Each WireMock instance has its own admin API on the same port.
-configFromEnv :: Effect WireMockConfig
-configFromEnv = do
-  maybeUrl <- Process.lookupEnv "GITHUB_API_URL"
-  case maybeUrl of
-    Nothing -> Effect.Exception.throw "GITHUB_API_URL environment variable is not set."
-    Just baseUrl -> pure { baseUrl }
 
 -- | Codec for a single request entry in WireMock's response
 requestCodec :: CJ.Codec WireMockRequest
@@ -100,10 +84,10 @@ parseResponse codec body = do
   json <- lmap (append "JSON parse error: ") $ JSON.parse body
   lmap CJ.DecodeError.print $ CJ.decode codec json
 
--- | Get all recorded requests from WireMock's journal
-getRequests :: WireMockConfig -> Aff (Either WireMockError (Array WireMockRequest))
-getRequests config = runExceptT do
-  response <- lift $ Fetch.fetch (config.baseUrl <> "/__admin/requests") { method: GET }
+-- | Get all recorded requests from a WireMock instance
+getRequestsFrom :: String -> Aff (Either WireMockError (Array WireMockRequest))
+getRequestsFrom baseUrl = runExceptT do
+  response <- lift $ Fetch.fetch (baseUrl <> "/__admin/requests") { method: GET }
   body <- lift response.text
   if response.status == 200 then
     case parseResponse journalCodec body of
@@ -112,35 +96,61 @@ getRequests config = runExceptT do
   else
     throwError $ HttpError { status: response.status, body }
 
--- | Clear all recorded requests from WireMock's journal
-clearRequests :: WireMockConfig -> Aff (Either WireMockError Unit)
-clearRequests config = runExceptT do
-  response <- lift $ Fetch.fetch (config.baseUrl <> "/__admin/requests") { method: DELETE }
+-- | Clear all recorded requests from a WireMock instance
+clearRequestsFrom :: String -> Aff (Either WireMockError Unit)
+clearRequestsFrom baseUrl = runExceptT do
+  response <- lift $ Fetch.fetch (baseUrl <> "/__admin/requests") { method: DELETE }
   if response.status == 200 then
     pure unit
   else do
     body <- lift response.text
     throwError $ HttpError { status: response.status, body }
 
--- | Get requests, throwing on error. Useful in tests where failure should abort.
-getRequestsOrFail :: WireMockConfig -> Aff (Array WireMockRequest)
-getRequestsOrFail config = do
-  result <- getRequests config
-  case result of
-    Left err ->
-      throwError $ Aff.error $ "Failed to get WireMock requests: " <> printWireMockError err
-    Right rs ->
-      pure rs
+-- | Reset all scenarios to initial state on a WireMock instance
+resetScenariosOn :: String -> Aff (Either WireMockError Unit)
+resetScenariosOn baseUrl = runExceptT do
+  response <- lift $ Fetch.fetch (baseUrl <> "/__admin/scenarios/reset") { method: POST }
+  if response.status == 200 then
+    pure unit
+  else do
+    body <- lift response.text
+    throwError $ HttpError { status: response.status, body }
 
--- | Clear requests, throwing on error. Useful in test setup.
-clearRequestsOrFail :: WireMockConfig -> Aff Unit
-clearRequestsOrFail config = do
-  result <- clearRequests config
-  case result of
-    Left err ->
-      Aff.throwError $ Aff.error $ "Failed to clear WireMock journal: " <> printWireMockError err
-    Right _ ->
-      pure unit
+-- | Helper to run a WireMock operation and throw on error
+orFail :: forall a. String -> Either WireMockError a -> Aff a
+orFail context = case _ of
+  Left err -> Aff.throwError $ Aff.error $ context <> ": " <> printWireMockError err
+  Right a -> pure a
+
+-- | Get captured requests from the GitHub WireMock.
+getGithubRequests :: E2E (Array WireMockRequest)
+getGithubRequests = do
+  { githubWireMock } <- ask
+  liftAff $ getRequestsFrom githubWireMock.baseUrl >>= orFail "Failed to get GitHub WireMock requests"
+
+-- | Get captured requests from the storage WireMock (S3, Pursuit).
+getStorageRequests :: E2E (Array WireMockRequest)
+getStorageRequests = do
+  { storageWireMock } <- ask
+  liftAff $ getRequestsFrom storageWireMock.baseUrl >>= orFail "Failed to get storage WireMock requests"
+
+-- | Clear the GitHub WireMock request journal.
+clearGithubRequests :: E2E Unit
+clearGithubRequests = do
+  { githubWireMock } <- ask
+  liftAff $ clearRequestsFrom githubWireMock.baseUrl >>= orFail "Failed to clear GitHub WireMock requests"
+
+-- | Clear the storage WireMock request journal.
+clearStorageRequests :: E2E Unit
+clearStorageRequests = do
+  { storageWireMock } <- ask
+  liftAff $ clearRequestsFrom storageWireMock.baseUrl >>= orFail "Failed to clear storage WireMock requests"
+
+-- | Reset all storage WireMock scenarios to their initial state.
+resetStorageScenarios :: E2E Unit
+resetStorageScenarios = do
+  { storageWireMock } <- ask
+  liftAff $ resetScenariosOn storageWireMock.baseUrl >>= orFail "Failed to reset storage WireMock scenarios"
 
 -- | Filter requests by HTTP method
 filterByMethod :: String -> Array WireMockRequest -> Array WireMockRequest
@@ -152,13 +162,12 @@ filterByUrlContaining substring = Array.filter (\r -> String.contains (String.Pa
 
 -- | Format an array of requests for debugging output
 formatRequests :: Array WireMockRequest -> String
-formatRequests requests = String.joinWith "\n" $ map formatRequest requests
+formatRequests = String.joinWith "\n" <<< map formatRequest
   where
-  formatRequest r = r.method <> " " <> r.url <> case r.body of
+  formatRequest req = req.method <> " " <> req.url <> case req.body of
     Nothing -> ""
-    Just b -> "\n  Body: " <> b
+    Just body -> "\n  Body: " <> body
 
 -- | Fail a test with a message and debug info about captured requests.
 failWithRequests :: forall m a. MonadThrow Error m => String -> Array WireMockRequest -> m a
-failWithRequests msg requests = throwError $ Effect.Exception.error $
-  msg <> "\n\nCaptured requests:\n" <> formatRequests requests
+failWithRequests msg requests = throwError $ Effect.Exception.error $ String.joinWith "\n" [ msg, "\nCaptured requests:", formatRequests requests ]

@@ -7,6 +7,7 @@
     "githubOwner": "purescript",
     "githubRepo": "purescript-prelude"
   },
+  "ref": "v4.1.1",
   "owners": [
     {
       "keytype": "ed-25519",

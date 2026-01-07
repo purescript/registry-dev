@@ -10,6 +10,10 @@ This project uses Nix with direnv. You should already be in the Nix shell automa
 nix develop
 ```
 
+Watch out for these Nix quirks:
+- If Nix tries to fetch from git during a build, it is likely that spago.yaml files were changed but the lock file was not updated; if so, update the lockfile with `spago build`
+- If a Nix build appears to be stale, then it is likely files were modified but are untracked by Git; if so, add modified files with `git add` and retry.
+
 ### Build and Test
 
 The registry is implemented in PureScript. Use spago to build it and run PureScript tests. These are cheap and fast and should be used when working on the registry packages.
@@ -19,17 +23,27 @@ spago build  # Build all PureScript code
 spago test   # Run unit tests
 ```
 
-Integration tests require two terminals (or the use of test-env in detached mode). The integration tests are only necessary to run if working on the server (app).
+#### End-to-End Tests
+
+The end-to-end (integration) tests are in `app-e2e`. They can be run via Nix on Linux:
+
+```
+nix build .#checks.x86_64-linux.integration
+```
+
+Alternately, they can be run on macOS or for more iterative development of tests using two terminals: one to start the test env, and one to execute the tests.
 
 ```sh
 # Terminal 1: Start test environment (wiremock mocks + registry server on port 9000)
 nix run .#test-env
 
 # Terminal 2: Run E2E tests once server is ready
-spago run -p registry-app-e2e
+spago-test-e2e
 ```
 
-Options: `nix run .#test-env -- --tui` for interactive TUI, `-- --detached` for background mode.
+Options: `nix run .#test-env -- --tui` for interactive TUI, `-- --detached` for background mode to use a single terminal.
+
+State is stored in `/tmp/registry-test-env` and cleaned up on each `nix run .#test-env`. To examine state after a test run (for debugging), stop the test-env but don't restart it.
 
 #### Smoke Test (Linux only)
 

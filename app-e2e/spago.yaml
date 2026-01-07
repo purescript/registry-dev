@@ -8,21 +8,24 @@ package:
     - codec-json
     - console
     - datetime
-    - effect
-    - either
-    - foldable-traversable
+    - exceptions
+    - fetch
+    - integers
     - json
-    - maybe
+    - node-child-process
+    - node-execa
     - node-fs
     - node-path
     - node-process
-    - prelude
+    - ordered-collections
     - registry-app
     - registry-foreign
     - registry-lib
     - registry-test-utils
+    - routing-duplex
     - spec
     - spec-node
     - strings
+    - transformers
   run:
     main: Test.E2E.Main

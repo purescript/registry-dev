@@ -285,6 +285,16 @@ pacchettibottiED25519Pub = EnvKey
 githubEventPath :: EnvKey FilePath
 githubEventPath = EnvKey { key: "GITHUB_EVENT_PATH", decode: pure }
 
+-- Test environment variables (used by E2E tests)
+
+-- | Root directory for test state (database, scratch repos, etc).
+stateDir :: EnvKey FilePath
+stateDir = EnvKey { key: "STATE_DIR", decode: pure }
+
+-- | Directory containing git repository fixtures for tests.
+repoFixturesDir :: EnvKey FilePath
+repoFixturesDir = EnvKey { key: "REPO_FIXTURES_DIR", decode: pure }
+
 decodeDatabaseUrl :: String -> Either String DatabaseUrl
 decodeDatabaseUrl input = do
   let prefix = "sqlite:"

@@ -761,7 +761,7 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
                     Legacy.Manifest.fetchLegacyManifest package.name package.address (RawVersion tag.name) >>= case _ of
                       Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
                       Right result -> pure result
-                  pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
+                  pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location tag.name legacyManifest
                 case manifest of
                   Left err -> Log.info $ "Failed to build manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ": " <> printJson versionValidationErrorCodec err
                   Right val -> Log.info $ "Built manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ":\n" <> printJson Manifest.codec val
@@ -1463,7 +1463,7 @@ fetchSpagoYaml address ref = do
           | location /= GitHub { owner: address.owner, repo: address.repo, subdir: Nothing } -> do
               Log.warn "spago.yaml file does not use the same location it was fetched from, this is disallowed..."
               pure Nothing
-        Right config -> case SpagoYaml.spagoYamlToManifest config of
+        Right config -> case SpagoYaml.spagoYamlToManifest (un RawVersion ref) config of
           Left err -> do
             Log.warn $ "Failed to convert parsed spago.yaml file to purs.json " <> contents <> "\nwith errors:\n" <> err
             pure Nothing

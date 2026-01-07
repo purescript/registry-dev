@@ -198,7 +198,8 @@
 
           # Integration test - exercises the server API
           integration = import ./nix/test/integration.nix {
-            inherit pkgs spagoSrc testEnv;
+            inherit pkgs spagoSrc;
+            testSupport = testEnv;
           };
 
           # VM smoke test - verifies deployment without full API testing
@@ -232,11 +233,19 @@
               nodejs
               jq
               dbmate
+              sqlite
               purs
               spago
               purs-tidy-unstable
               purs-backend-es-unstable
               process-compose
+
+              # E2E test runner script - uses same fixed test environment as test-env
+              (writeShellScriptBin "spago-test-e2e" ''
+                set -euo pipefail
+                ${testEnv.envToExports testEnv.testEnv}
+                exec spago run -p registry-app-e2e
+              '')
             ];
         };
       }

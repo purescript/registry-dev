@@ -59,18 +59,15 @@ let
     version = "0.5";
     processes = {
       wiremock-github = mkWiremockProcess "github" ports.github;
-      wiremock-s3 = mkWiremockProcess "s3" ports.s3;
-      wiremock-bucket = mkWiremockProcess "bucket" ports.bucket;
-      wiremock-pursuit = mkWiremockProcess "pursuit" ports.pursuit;
+      # Unified storage WireMock instance for S3 + bucket + Pursuit with stateful scenarios
+      wiremock-storage = mkWiremockProcess "storage" ports.storage;
       wiremock-healthchecks = mkWiremockProcess "healthchecks" ports.healthchecks;
 
       registry-server = {
         command = "${serverStartScript}/bin/start-server";
         depends_on = {
           wiremock-github.condition = "process_healthy";
-          wiremock-s3.condition = "process_healthy";
-          wiremock-bucket.condition = "process_healthy";
-          wiremock-pursuit.condition = "process_healthy";
+          wiremock-storage.condition = "process_healthy";
           wiremock-healthchecks.condition = "process_healthy";
         };
         readiness_probe = {
@@ -92,22 +89,26 @@ let
 
   processComposeYaml = pkgs.writeText "process-compose.yaml" (builtins.toJSON processComposeConfig);
 
+  testEnvExports = testConfig.envToExports testConfig.testEnv;
+
+  # The state directory is fixed (not configurable) to avoid mismatch between
+  # the test-env and spago-test-e2e shells.
+  stateDir = testConfig.testEnv.STATE_DIR;
+
   testEnvScript = pkgs.writeShellScriptBin "test-env" ''
     set -e
 
-    # Export test environment variables for E2E test runners
-    ${testConfig.envToExports testConfig.testEnv}
+    # Clean up previous test state and create fresh directory
+    rm -rf ${stateDir}
+    mkdir -p ${stateDir}
 
-    if [ -z "''${STATE_DIR:-}" ]; then
-      STATE_DIR="$(mktemp -d)"
-      export STATE_DIR
-      echo "Using temporary directory: $STATE_DIR"
-      trap 'echo "Cleaning up $STATE_DIR..."; rm -rf "$STATE_DIR"' EXIT
-    else
-      export STATE_DIR
-    fi
+    # Export all test environment variables
+    ${testEnvExports}
 
-    mkdir -p "$STATE_DIR"
+    echo
+    echo "[test-env] State directory: ${stateDir}"
+    echo "[test-env] In another terminal, run: spago-test-e2e"
+    echo
 
     exec ${pkgs.process-compose}/bin/process-compose up \
       -f ${processComposeYaml} \

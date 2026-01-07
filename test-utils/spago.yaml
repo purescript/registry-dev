@@ -3,22 +3,16 @@ package:
   build:
     pedanticPackages: true
   dependencies:
-    - aff
     - arrays
     - bifunctors
     - codec-json
     - datetime
-    - effect
     - either
     - exceptions
-    - fetch
     - foldable-traversable
     - formatters
-    - integers
     - json
     - maybe
-    - newtype
-    - node-process
     - ordered-collections
     - partial
     - prelude
