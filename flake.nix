@@ -132,6 +132,7 @@
           spago-test =
             pkgs.runCommand "spago-test"
               {
+                inherit DHALL_TYPES DHALL_PRELUDE;
                 nativeBuildInputs =
                   with pkgs;
                   [
