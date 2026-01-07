@@ -18,6 +18,7 @@ import Node.Process as Process
 import Registry.App.API as API
 import Registry.App.Auth as Auth
 import Registry.App.CLI.Git as Git
+import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV)
@@ -96,6 +97,7 @@ main = launchAff_ $ do
       -- App effects
       # PackageSets.interpret (PackageSets.handle { workdir })
       # Registry.interpret (Registry.handle registryEnv)
+      # Archive.interpret Archive.handle
       # Storage.interpret (Storage.handleS3 { s3: env.spacesConfig, cache })
       # Pursuit.interpret (Pursuit.handleAff env.token)
       # Source.interpret (Source.handle Source.Recent)

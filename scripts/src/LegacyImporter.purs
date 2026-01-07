@@ -57,7 +57,7 @@ import Data.Codec.JSON.Common as CJ.Common
 import Data.Codec.JSON.Record as CJ.Record
 import Data.Codec.JSON.Variant as CJ.Variant
 import Data.Compactable (separate)
-import Data.DateTime (Date, DateTime, Month(..))
+import Data.DateTime (Date, Month(..))
 import Data.DateTime as DateTime
 import Data.Enum (toEnum)
 import Data.Exists as Exists
@@ -103,6 +103,7 @@ import Registry.App.CLI.Purs (CompilerFailure, compilerFailureCodec)
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.CLI.Tar as Tar
+import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Comment as Comment
@@ -195,6 +196,7 @@ main = launchAff_ do
         octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
         pure do
           Registry.interpret (Registry.handle (registryEnv Git.Autostash Registry.ReadOnly))
+            >>> Archive.interpret Archive.handle
             >>> Storage.interpret (Storage.handleReadOnly cache)
             >>> Pursuit.interpret Pursuit.handlePure
             >>> Source.interpret (Source.handle Source.Old)
@@ -206,6 +208,7 @@ main = launchAff_ do
         octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
         pure do
           Registry.interpret (Registry.handle (registryEnv Git.Autostash (Registry.CommitAs (Git.pacchettibottiCommitter token))))
+            >>> Archive.interpret Archive.handle
             >>> Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret Pursuit.handlePure
             >>> Source.interpret (Source.handle Source.Old)
@@ -217,6 +220,7 @@ main = launchAff_ do
         octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
         pure do
           Registry.interpret (Registry.handle (registryEnv Git.ForceClean (Registry.CommitAs (Git.pacchettibottiCommitter token))))
+            >>> Archive.interpret Archive.handle
             >>> Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret (Pursuit.handleAff token)
             >>> Source.interpret (Source.handle Source.Recent)
@@ -457,7 +461,7 @@ runLegacyImport logs = do
                   path <-
                     if isArchiveBacked then do
                       Log.info $ "Using registry archive for " <> formatted <> " instead of GitHub clone."
-                      { path: archivePath } <- fetchFromArchive tmp manifest.name manifest.version
+                      { path: archivePath } <- Archive.fetch tmp manifest.name manifest.version
                       pure archivePath
                     else do
                       { path: sourcePath } <- Source.fetch tmp manifest.location ref
@@ -1586,9 +1590,6 @@ instance FsEncodable ImportCache where
       let codec = publishErrorCodec
       Exists.mkExists $ AsJson ("PublishFailure__" <> PackageName.print name <> "__" <> Version.print version) codec next
 
-registryArchiveRawUrl :: String
-registryArchiveRawUrl = "https://raw.githubusercontent.com/purescript/registry-archive/main"
-
 -- | Fetch a manifest directly from the registry archive tarball.
 -- | Used for archive-backed packages where the original GitHub repo is unavailable.
 fetchManifestFromArchive :: forall r. PackageName -> Version -> Run (LOG + EXCEPT String + AFF + EFFECT + r) Manifest
@@ -1601,7 +1602,7 @@ fetchManifestFromArchive name version = do
     versionStr = Version.print version
     tarballName = versionStr <> ".tar.gz"
     absoluteTarballPath = Path.concat [ tmp, tarballName ]
-    archiveUrl = registryArchiveRawUrl <> "/" <> nameStr <> "/" <> versionStr <> ".tar.gz"
+    archiveUrl = Archive.registryArchiveUrl <> "/" <> nameStr <> "/" <> versionStr <> ".tar.gz"
 
   Log.debug $ "Fetching archive tarball from: " <> archiveUrl
   response <- Run.liftAff $ Fetch.withRetryRequest archiveUrl {}
@@ -1659,127 +1660,3 @@ fetchManifestFromArchive name version = do
                   FS.Extra.remove tmp
                   Log.debug $ "Successfully fetched manifest from archive for " <> formatted
                   pure manifest
-
-type ArchiveFetchedSource =
-  { path :: FilePath
-  , published :: DateTime
-  }
-
-fetchFromArchive
-  :: forall r
-   . FilePath
-  -> PackageName
-  -> Version
-  -> Run (REGISTRY + GITHUB + LOG + EXCEPT String + AFF + EFFECT + r) ArchiveFetchedSource
-fetchFromArchive destination name version = do
-  let
-    nameStr = PackageName.print name
-    versionStr = Version.print version
-    tarballName = versionStr <> ".tar.gz"
-    absoluteTarballPath = Path.concat [ destination, tarballName ]
-    archiveUrl = registryArchiveRawUrl <> "/" <> nameStr <> "/" <> versionStr <> ".tar.gz"
-
-  Log.debug $ "Fetching archive tarball from: " <> archiveUrl
-
-  response <- Run.liftAff $ Fetch.withRetryRequest archiveUrl {}
-
-  case response of
-    Cancelled ->
-      Run.Except.throw $ "Could not download archive tarball from " <> archiveUrl
-    Failed (Fetch.FetchError error) -> do
-      Log.error $ "HTTP error when fetching archive: " <> Exception.message error
-      Run.Except.throw $ "Could not download archive tarball from " <> archiveUrl
-    Failed (Fetch.StatusError { status, arrayBuffer: arrayBufferAff }) -> do
-      arrayBuffer <- Run.liftAff arrayBufferAff
-      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
-      bodyString <- Run.liftEffect $ Buffer.toString UTF8 (buffer :: Buffer)
-      Log.error $ "Bad status (" <> show status <> ") when fetching archive with body: " <> bodyString
-      Run.Except.throw $ "Could not download archive tarball from " <> archiveUrl <> " (status " <> show status <> ")"
-    Succeeded { arrayBuffer: arrayBufferAff } -> do
-      arrayBuffer <- Run.liftAff arrayBufferAff
-      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
-      Run.liftAff (Aff.attempt (FS.Aff.writeFile absoluteTarballPath buffer)) >>= case _ of
-        Left error -> do
-          Log.error $ "Downloaded archive but failed to write to " <> absoluteTarballPath <> ": " <> Aff.message error
-          Run.Except.throw $ "Could not save archive tarball for " <> formatPackageVersion name version
-        Right _ ->
-          Log.debug $ "Tarball downloaded to " <> absoluteTarballPath
-
-  Foreign.Tar.getToplevelDir absoluteTarballPath >>= case _ of
-    Nothing ->
-      Run.Except.throw $ "Downloaded archive tarball for " <> formatPackageVersion name version <> " has no top-level directory."
-    Just extractedPath -> do
-      Log.debug "Extracting archive tarball..."
-      Tar.extract { cwd: destination, archive: tarballName }
-      -- Archive-backed packages may not have local metadata, so fetch from remote registry
-      publishedTime <- lookupRemotePublishedTime name version
-      pure { path: Path.concat [ destination, extractedPath ], published: publishedTime }
-
-lookupPublishedTime
-  :: forall r
-   . PackageName
-  -> Version
-  -> Run (REGISTRY + EXCEPT String + r) DateTime
-lookupPublishedTime name version = do
-  Registry.readMetadata name >>= case _ of
-    Nothing ->
-      Run.Except.throw $ "No metadata found for " <> PackageName.print name
-    Just (Metadata m) ->
-      case Map.lookup version m.published of
-        Nothing ->
-          Run.Except.throw $ "No published metadata for " <> formatPackageVersion name version
-        Just publishedMeta ->
-          pure publishedMeta.publishedTime
-
--- | Look up published time, falling back to remote registry if local metadata is missing.
--- | Used for archive-backed packages where the local checkout may not have metadata.
-lookupRemotePublishedTime
-  :: forall r
-   . PackageName
-  -> Version
-  -> Run (REGISTRY + GITHUB + LOG + EXCEPT String + r) DateTime
-lookupRemotePublishedTime name version = do
-  Registry.readMetadata name >>= case _ of
-    Just (Metadata m) ->
-      case Map.lookup version m.published of
-        Nothing ->
-          Run.Except.throw $ "No published metadata for " <> formatPackageVersion name version
-        Just publishedMeta ->
-          pure publishedMeta.publishedTime
-    Nothing -> do
-      Log.debug $ "No local metadata for " <> PackageName.print name <> ", fetching from remote registry..."
-      fetchRemotePublishedTime name version >>= case _ of
-        Nothing -> Run.Except.throw $ "No metadata found for " <> PackageName.print name
-        Just time -> pure time
-
--- | Fetch the published time for a specific version from the remote registry repo (main branch).
--- | Used as a fallback when the local registry checkout doesn't have metadata for archive-backed packages.
-fetchRemotePublishedTime :: forall r. PackageName -> Version -> Run (GITHUB + LOG + r) (Maybe DateTime)
-fetchRemotePublishedTime name version = do
-  let
-    printed = PackageName.print name
-    path = Path.concat [ Constants.metadataDirectory, printed <> ".json" ]
-  Log.debug $ "Fetching published time for " <> formatPackageVersion name version <> " from remote registry"
-  GitHub.getContent Constants.registry (RawVersion "main") path >>= case _ of
-    Left err -> do
-      Log.warn $ "Failed to fetch remote metadata for " <> printed <> ": " <> Octokit.printGitHubError err
-      pure Nothing
-    Right content -> do
-      let
-        parsed = do
-          json <- hush $ JSON.parse content
-          obj <- JSON.toJObject json
-          publishedJson <- JSON.Object.lookup "published" obj
-          publishedObj <- JSON.toJObject publishedJson
-          versionJson <- JSON.Object.lookup (Version.print version) publishedObj
-          versionObj <- JSON.toJObject versionJson
-          timeJson <- JSON.Object.lookup "publishedTime" versionObj
-          timeStr <- JSON.toString timeJson
-          hush $ Formatter.DateTime.unformat Internal.Format.iso8601DateTime timeStr
-      case parsed of
-        Nothing -> do
-          Log.warn $ "Could not extract publishedTime for " <> formatPackageVersion name version <> " from remote metadata"
-          pure Nothing
-        Just dt -> do
-          Log.debug $ "Fetched published time for " <> formatPackageVersion name version <> " from remote registry"
-          pure $ Just dt

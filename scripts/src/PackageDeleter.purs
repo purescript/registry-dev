@@ -19,6 +19,7 @@ import Node.Process as Process
 import Registry.App.API (_compilerCache)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
+import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
@@ -152,6 +153,7 @@ main = launchAff_ do
   let
     interpret =
       Registry.interpret (Registry.handle registryEnv)
+        >>> Archive.interpret Archive.handle
         >>> Storage.interpret (if arguments.upload then Storage.handleS3 { s3, cache } else Storage.handleReadOnly cache)
         >>> Source.interpret (Source.handle Source.Old)
         >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })

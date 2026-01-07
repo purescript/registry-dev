@@ -214,6 +214,9 @@
           SERVER_PORT = envDefaults.SERVER_PORT;
           DATABASE_URL = envDefaults.DATABASE_URL;
 
+          # Dhall environment variables needed for manifest typechecking
+          inherit DHALL_TYPES DHALL_PRELUDE GIT_TERMINAL_PROMPT;
+
           packages =
             with pkgs;
             registry-runtime-deps
