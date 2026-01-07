@@ -77,17 +77,22 @@ let
     exec ${pkgs.nodejs}/bin/node ${./git-mock.mjs} "$@"
   '';
 
-  # Apply git mock overlay to get registry packages with mocked git.
+  # Test overlay: mocks git and limits compilers for faster tests.
   # Using pkgs.extend avoids a second nixpkgs instantiation (more efficient).
-  # This substitutes gitMock for git in registry-runtime-deps, which causes
-  # registry-server to be rebuilt with the mock baked into its PATH wrapper.
-  gitMockOverlay = _: prev: {
+  testOverlay = _: prev: {
+    # Substitute gitMock for git in registry-runtime-deps
     registry-runtime-deps = map (
       pkg: if pkg == prev.git then gitMock else pkg
     ) prev.registry-runtime-deps;
+
+    # Limit to 2 compilers for faster matrix job tests.
+    # These versions match the compilers referenced in app/fixtures.
+    registry-supported-compilers = lib.filterAttrs (
+      name: _: name == "purs-0_15_10" || name == "purs-0_15_11"
+    ) prev.registry-supported-compilers;
   };
 
-  registryPkgs = pkgs.extend gitMockOverlay;
+  registryPkgs = pkgs.extend testOverlay;
 
   # Helper to create GitHub contents API response, as it returns base64-encoded content
   base64Response =
@@ -900,7 +905,7 @@ in
     testEnv
     envToExports
     gitMock
-    gitMockOverlay
+    testOverlay
     wiremockConfigs
     combinedWiremockRoot
     setupGitFixtures

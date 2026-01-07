@@ -20,7 +20,7 @@ spec = do
     Spec.it "can publish effect@4.0.0 then unpublish it with full state verification" do
       { jobId: publishJobId } <- Client.publish Fixtures.effectPublishData
       _ <- Env.pollJobOrFail publishJobId
-      Env.waitForAllMatrixJobs Fixtures.effect
+      -- Note: we don't wait for matrix jobs - unpublish only modifies metadata/storage
 
       existsBefore <- Env.manifestIndexEntryExists Fixtures.effect
       unless existsBefore do

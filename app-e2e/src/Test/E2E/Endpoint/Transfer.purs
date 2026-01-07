@@ -21,7 +21,7 @@ spec = do
     Spec.it "can transfer effect to a new location with full state verification" do
       { jobId: publishJobId } <- Client.publish Fixtures.effectPublishData
       _ <- Env.pollJobOrFail publishJobId
-      Env.waitForAllMatrixJobs Fixtures.effect
+      -- Note: we don't wait for matrix jobs - transfer only modifies metadata
 
       Metadata originalMetadata <- Env.readMetadata Fixtures.effect.name
       case originalMetadata.location of

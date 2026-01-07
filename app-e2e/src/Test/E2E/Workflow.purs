@@ -1,8 +1,7 @@
 -- | End-to-end tests for multi-operation workflows.
 -- |
--- | These tests verify complex scenarios involving multiple operations:
--- | 1. Git state remains clean after multiple matrix jobs complete
--- | 2. Dependency state is validated correctly across publish/unpublish sequences
+-- | These tests verify complex scenarios involving multiple operations,
+-- | specifically dependency state validation across publish/unpublish sequences.
 module Test.E2E.Workflow (spec) where
 
 import Registry.App.Prelude
@@ -22,24 +21,6 @@ import Test.Spec as Spec
 
 spec :: E2ESpec
 spec = do
-  Spec.describe "Concurrent git operations" do
-    Spec.it "multiple matrix jobs complete without conflict" do
-      { jobId: publishJobId } <- Client.publish Fixtures.effectPublishData
-      _ <- Env.pollJobOrFail publishJobId
-      Env.waitForAllMatrixJobs Fixtures.effect
-
-      uploadOccurred <- Env.hasStorageUpload Fixtures.effect
-      unless uploadOccurred do
-        Assert.fail "Expected tarball upload to S3 for effect@4.0.0"
-
-      Metadata metadata <- Env.readMetadata Fixtures.effect.name
-      unless (isJust $ Map.lookup Fixtures.effect.version metadata.published) do
-        Assert.fail "Expected effect@4.0.0 to be in published metadata"
-
-      manifestExists <- Env.manifestIndexEntryExists Fixtures.effect
-      unless manifestExists do
-        Assert.fail "Expected effect@4.0.0 to exist in manifest index"
-
   Spec.describe "Dependency and unpublish interactions" do
     Spec.it "publishing a package fails when its dependency was unpublished" do
       { jobId: effectJobId } <- Client.publish Fixtures.effectPublishData

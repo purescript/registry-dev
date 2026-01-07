@@ -105,11 +105,6 @@ let
     # Export all test environment variables
     ${testEnvExports}
 
-    echo
-    echo "[test-env] State directory: ${stateDir}"
-    echo "[test-env] In another terminal, run: spago-test-e2e"
-    echo
-
     exec ${pkgs.process-compose}/bin/process-compose up \
       -f ${processComposeYaml} \
       --ordered-shutdown \

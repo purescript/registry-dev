@@ -78,7 +78,7 @@ else
       ];
 
       # Apply the git mock overlay on top of the standard overlays
-      nixpkgs.overlays = overlays ++ [ testConfig.gitMockOverlay ];
+      nixpkgs.overlays = overlays ++ [ testConfig.testOverlay ];
 
       virtualisation = {
         graphics = false;
