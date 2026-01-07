@@ -1,7 +1,11 @@
 -- | Test fixtures for E2E tests.
 -- | Contains package operation data used across multiple test suites.
 module Test.E2E.Support.Fixtures
-  ( effectPublishData
+  ( PackageFixture
+  , effect
+  , console
+  , prelude
+  , effectPublishData
   , effectPublishDataDifferentLocation
   , consolePublishData
   , failingTransferData
@@ -16,26 +20,38 @@ module Test.E2E.Support.Fixtures
   , invalidJsonIssueEvent
   ) where
 
-import Prelude
+import Registry.App.Prelude
 
-import Data.Bifunctor (lmap)
 import Data.Codec.JSON as CJ
-import Data.Either (Either)
-import Data.Maybe (Maybe(..))
 import JSON as JSON
-import Registry.Location as Location
+import Registry.Location (Location(..))
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), TransferData, UnpublishData)
 import Registry.Operation as Operation
+import Registry.PackageName (PackageName)
 import Registry.SSH as SSH
-import Registry.Test.Fixtures as Fixtures
 import Registry.Test.Utils as Utils
+import Registry.Version (Version)
+
+type PackageFixture = { name :: PackageName, version :: Version }
+
+-- | effect@4.0.0 fixture package
+effect :: PackageFixture
+effect = { name: Utils.unsafePackageName "effect", version: Utils.unsafeVersion "4.0.0" }
+
+-- | console@6.1.0 fixture package
+console :: PackageFixture
+console = { name: Utils.unsafePackageName "console", version: Utils.unsafeVersion "6.1.0" }
+
+-- | prelude@6.0.1 fixture package
+prelude :: PackageFixture
+prelude = { name: Utils.unsafePackageName "prelude", version: Utils.unsafeVersion "6.0.1" }
 
 -- | Standard publish data for effect@4.0.0, used by E2E tests.
 -- | This matches the fixtures in app/fixtures/github-packages/effect-4.0.0
 effectPublishData :: Operation.PublishData
 effectPublishData =
-  { name: Fixtures.effect.name
-  , location: Just $ Location.GitHub
+  { name: effect.name
+  , location: Just $ GitHub
       { owner: "purescript"
       , repo: "purescript-effect"
       , subdir: Nothing
@@ -43,7 +59,7 @@ effectPublishData =
   , ref: "v4.0.0"
   , compiler: Utils.unsafeVersion "0.15.9"
   , resolutions: Nothing
-  , version: Fixtures.effect.version
+  , version: effect.version
   }
 
 -- | Publish data for effect@99.0.0 with a DIFFERENT location.
@@ -52,7 +68,7 @@ effectPublishData =
 effectPublishDataDifferentLocation :: Operation.PublishData
 effectPublishDataDifferentLocation =
   effectPublishData
-    { location = Just $ Location.GitHub
+    { location = Just $ GitHub
         { owner: "someone-else"
         , repo: "purescript-effect"
         , subdir: Nothing
@@ -66,8 +82,8 @@ effectPublishDataDifferentLocation =
 -- | This matches the fixtures in app/fixtures/github-packages/console-6.1.0
 consolePublishData :: Operation.PublishData
 consolePublishData =
-  { name: Fixtures.console.name
-  , location: Just $ Location.GitHub
+  { name: console.name
+  , location: Just $ GitHub
       { owner: "purescript"
       , repo: "purescript-console"
       , subdir: Nothing
@@ -75,14 +91,14 @@ consolePublishData =
   , ref: "v6.1.0"
   , compiler: Utils.unsafeVersion "0.15.9"
   , resolutions: Nothing
-  , version: Fixtures.console.version
+  , version: console.version
   }
 
 -- | Unpublish data for effect@4.0.0, used for publish-then-unpublish tests.
 effectUnpublishData :: UnpublishData
 effectUnpublishData =
-  { name: Fixtures.effect.name
-  , version: Fixtures.effect.version
+  { name: effect.name
+  , version: effect.version
   , reason: "Testing unpublish flow"
   }
 
@@ -90,8 +106,8 @@ effectUnpublishData =
 -- | Transfers effect to a different GitHub owner.
 effectTransferData :: TransferData
 effectTransferData =
-  { name: Fixtures.effect.name
-  , newLocation: Location.GitHub
+  { name: effect.name
+  , newLocation: GitHub
       { owner: "new-owner"
       , repo: "purescript-effect"
       , subdir: Nothing
@@ -112,8 +128,8 @@ nonexistentUnpublishData =
 -- | the 48-hour time limit check.
 preludeUnpublishData :: UnpublishData
 preludeUnpublishData =
-  { name: Fixtures.prelude.name
-  , version: Fixtures.prelude.version
+  { name: prelude.name
+  , version: prelude.version
   , reason: "Testing 48-hour limit enforcement"
   }
 
@@ -135,43 +151,45 @@ signUnpublish privateKey unpublishData = do
 -- | Used to test failure scenarios in E2E tests - will fail because no owners
 -- | are listed to verify the signature against.
 failingTransferData :: AuthenticatedData
-failingTransferData =
+failingTransferData = do
   let
     transferPayload :: TransferData
     transferPayload =
-      { name: Fixtures.prelude.name
-      , newLocation: Location.GitHub
+      { name: prelude.name
+      , newLocation: GitHub
           { owner: "someone-else"
           , repo: "purescript-prelude"
           , subdir: Nothing
           }
       }
+
+    rawPayload :: String
     rawPayload = JSON.print $ CJ.encode Operation.transferCodec transferPayload
-  in
-    { payload: Transfer transferPayload
-    , rawPayload
-    , signature: SSH.Signature "invalid-signature-for-testing"
-    }
+
+  { payload: Transfer transferPayload
+  , rawPayload
+  , signature: SSH.Signature "invalid-signature-for-testing"
+  }
 
 -- | Authenticated data with an intentionally invalid signature.
 -- | When submitted by a trustee (packaging-team-user), pacchettibotti will re-sign it.
 -- | If re-signing works, the job succeeds; if not, signature verification fails.
 -- | Uses prelude@6.0.1 which exists in app/fixtures/registry/metadata/prelude.json.
 trusteeAuthenticatedData :: AuthenticatedData
-trusteeAuthenticatedData =
+trusteeAuthenticatedData = do
   let
     unpublishPayload :: UnpublishData
     unpublishPayload =
-      { name: Fixtures.prelude.name
-      , version: Fixtures.prelude.version
+      { name: prelude.name
+      , version: prelude.version
       , reason: "Testing trustee re-signing"
       }
     rawPayload = JSON.print $ CJ.encode Operation.unpublishCodec unpublishPayload
-  in
-    { payload: Unpublish unpublishPayload
-    , rawPayload
-    , signature: SSH.Signature "invalid-signature-for-testing"
-    }
+
+  { payload: Unpublish unpublishPayload
+  , rawPayload
+  , signature: SSH.Signature "invalid-signature-for-testing"
+  }
 
 -- | Transfer data for a nonexistent package.
 -- | Used to test error handling when transferring an unknown package.
@@ -179,7 +197,7 @@ trusteeAuthenticatedData =
 nonexistentTransferData :: TransferData
 nonexistentTransferData =
   { name: Utils.unsafePackageName "nonexistent-package"
-  , newLocation: Location.GitHub
+  , newLocation: GitHub
       { owner: "someone"
       , repo: "purescript-nonexistent"
       , subdir: Nothing
@@ -191,8 +209,7 @@ nonexistentTransferData =
 signTransfer :: String -> TransferData -> Either String AuthenticatedData
 signTransfer privateKey transferData = do
   let rawPayload = JSON.print $ CJ.encode Operation.transferCodec transferData
-  private <- SSH.parsePrivateKey { key: privateKey, passphrase: Nothing }
-    # lmap SSH.printPrivateKeyParseError
+  private <- lmap SSH.printPrivateKeyParseError $ SSH.parsePrivateKey { key: privateKey, passphrase: Nothing }
   let signature = SSH.sign private rawPayload
   pure
     { payload: Transfer transferData

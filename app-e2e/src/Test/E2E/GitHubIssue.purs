@@ -5,12 +5,12 @@ module Test.E2E.GitHubIssue (spec) where
 
 import Registry.App.Prelude
 
+import Control.Monad.Reader (ask)
 import Data.Array as Array
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Record as CJ.Record
 import Data.String as String
 import Effect.Aff (Milliseconds(..))
-import Effect.Aff as Aff
 import JSON as JSON
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
@@ -19,41 +19,36 @@ import Registry.App.GitHubIssue as GitHubIssue
 import Registry.Foreign.Tmp as Tmp
 import Registry.Operation as Operation
 import Test.E2E.Support.Client as Client
-import Test.E2E.Support.Env as Env
+import Test.E2E.Support.Env (E2E, E2ESpec)
 import Test.E2E.Support.Fixtures as Fixtures
 import Test.E2E.Support.WireMock as WireMock
-import Test.Spec (Spec)
 import Test.Spec as Spec
 
-spec :: Spec Unit
+spec :: E2ESpec
 spec = do
   Spec.describe "GitHubIssue end-to-end" do
-    -- Clear both WireMock journal and filesystem cache before each test
-    -- to ensure fresh API calls are captured for verification
-    Spec.before_ (Env.clearGithubRequests *> Env.resetGitHubRequestCache) do
+    Spec.it "handles publish via GitHub issue, posts comments, and closes issue on success" do
+      requests <- runWorkflow $ mkPublishEvent Fixtures.effectPublishData
+      assertComment "Job started" requests
+      assertComment "Job completed successfully" requests
+      assertClosed requests
 
-      Spec.it "handles publish via GitHub issue, posts comments, and closes issue on success" do
-        requests <- runWorkflow $ mkPublishEvent Fixtures.effectPublishData
-        assertComment "Job started" requests
-        assertComment "Job completed successfully" requests
-        assertClosed requests
+    Spec.it "posts failure comment and leaves issue open when job fails" do
+      requests <- runWorkflow $ mkAuthenticatedEvent "random-user" Fixtures.failingTransferData
+      assertComment "Job started" requests
+      assertComment "Job failed" requests
+      assertNoComment "Job completed successfully" requests
+      assertOpen requests
 
-      Spec.it "posts failure comment and leaves issue open when job fails" do
-        requests <- runWorkflow $ mkAuthenticatedEvent "random-user" Fixtures.failingTransferData
-        assertComment "Job started" requests
-        assertComment "Job failed" requests
-        assertNoComment "Job completed successfully" requests
-        assertOpen requests
+    Spec.it "calls Teams API to verify trustee membership for authenticated operation" do
+      requests <- runWorkflow $ mkAuthenticatedEvent packagingTeamUser Fixtures.trusteeAuthenticatedData
+      assertComment "Job started" requests
+      assertTeamsApiCalled requests
 
-      Spec.it "calls Teams API to verify trustee membership for authenticated operation" do
-        requests <- runWorkflow $ mkAuthenticatedEvent packagingTeamUser Fixtures.trusteeAuthenticatedData
-        assertComment "Job started" requests
-        assertTeamsApiCalled requests
-
-      Spec.it "posts error comment when issue body contains invalid JSON" do
-        requests <- runWorkflow Fixtures.invalidJsonIssueEvent
-        assertComment "malformed" requests
-        assertOpen requests
+    Spec.it "posts error comment when issue body contains invalid JSON" do
+      requests <- runWorkflow Fixtures.invalidJsonIssueEvent
+      assertComment "malformed" requests
+      assertOpen requests
 
 -- Constants
 testIssueNumber :: Int
@@ -86,40 +81,31 @@ mkAuthenticatedEvent username authData =
       { sender: { login: username }, issue: { number: testIssueNumber, body } }
 
 -- Workflow runner
-runWorkflow :: String -> Aff (Array WireMock.WireMockRequest)
+runWorkflow :: String -> E2E (Array WireMock.WireMockRequest)
 runWorkflow eventJson = do
-  -- Verify server and write event file
-  config <- Env.getConfig
-  Client.getStatus config >>= case _ of
-    Left err -> Aff.throwError $ Aff.error $ "Server not reachable: " <> Client.printClientError err
-    Right _ -> pure unit
+  { stateDir } <- ask
 
-  tmpDir <- Tmp.mkTmpDir
+  Client.getStatus
+
+  tmpDir <- liftAff Tmp.mkTmpDir
   let eventPath = Path.concat [ tmpDir, "github-event.json" ]
-  FS.Aff.writeTextFile UTF8 eventPath eventJson
+  liftAff $ FS.Aff.writeTextFile UTF8 eventPath eventJson
   liftEffect $ Process.setEnv "GITHUB_EVENT_PATH" eventPath
 
-  -- GitHubIssue uses a relative "scratch" path, so we need to cd to STATE_DIR
-  -- just like the server does. This ensures cache/logs go to the right place.
-  stateDir <- Env.getStateDir
   originalCwd <- liftEffect Process.cwd
   liftEffect $ Process.chdir stateDir
 
-  -- Run workflow (may return Nothing for parse errors, which is fine)
-  envResult <- GitHubIssue.initializeGitHub
+  envResult <- liftAff GitHubIssue.initializeGitHub
   for_ envResult \env -> do
     let testEnv = env { pollConfig = { maxAttempts: 60, interval: Milliseconds 500.0 }, logVerbosity = Quiet }
-    void $ GitHubIssue.runGitHubIssue testEnv
+    liftAff $ void $ GitHubIssue.runGitHubIssue testEnv
 
-  -- Restore original working directory
   liftEffect $ Process.chdir originalCwd
 
-  -- Capture and return requests
-  wmConfig <- liftEffect WireMock.configFromEnv
-  WireMock.getRequestsOrFail wmConfig
+  WireMock.getGithubRequests
 
 -- Assertions (all operate on captured requests)
-assertComment :: String -> Array WireMock.WireMockRequest -> Aff Unit
+assertComment :: String -> Array WireMock.WireMockRequest -> E2E Unit
 assertComment text requests = do
   let
     comments = requests # Array.filter \r ->
@@ -127,7 +113,7 @@ assertComment text requests = do
   unless (Array.any (bodyContains text) comments) do
     WireMock.failWithRequests ("Expected '" <> text <> "' comment but not found") requests
 
-assertNoComment :: String -> Array WireMock.WireMockRequest -> Aff Unit
+assertNoComment :: String -> Array WireMock.WireMockRequest -> E2E Unit
 assertNoComment text requests = do
   let
     comments = requests # Array.filter \r ->
@@ -135,7 +121,7 @@ assertNoComment text requests = do
   when (Array.any (bodyContains text) comments) do
     WireMock.failWithRequests ("Did not expect '" <> text <> "' comment") requests
 
-assertClosed :: Array WireMock.WireMockRequest -> Aff Unit
+assertClosed :: Array WireMock.WireMockRequest -> E2E Unit
 assertClosed requests = do
   let
     closes = requests # Array.filter \r ->
@@ -143,7 +129,7 @@ assertClosed requests = do
   when (Array.null closes) do
     WireMock.failWithRequests "Expected issue to be closed" requests
 
-assertOpen :: Array WireMock.WireMockRequest -> Aff Unit
+assertOpen :: Array WireMock.WireMockRequest -> E2E Unit
 assertOpen requests = do
   let
     closes = requests # Array.filter \r ->
@@ -151,7 +137,7 @@ assertOpen requests = do
   unless (Array.null closes) do
     WireMock.failWithRequests "Expected issue to remain open" requests
 
-assertTeamsApiCalled :: Array WireMock.WireMockRequest -> Aff Unit
+assertTeamsApiCalled :: Array WireMock.WireMockRequest -> E2E Unit
 assertTeamsApiCalled requests = do
   let
     teams = requests # Array.filter \r ->

@@ -2,51 +2,51 @@ module Test.E2E.Endpoint.Unpublish (spec) where
 
 import Registry.App.Prelude
 
-import Data.Array as Array
 import Data.Map as Map
 import Data.String as String
 import Registry.API.V1 as V1
 import Registry.Metadata (Metadata(..))
 import Registry.Test.Assert as Assert
-import Registry.Test.Fixtures as Fixtures
 import Test.E2E.Support.Client as Client
+import Test.E2E.Support.Env (E2ESpec)
 import Test.E2E.Support.Env as Env
-import Test.E2E.Support.Fixtures as E2E.Fixtures
-import Test.Spec (Spec)
+import Test.E2E.Support.Fixtures as Fixtures
+import Test.E2E.Support.WireMock as WireMock
 import Test.Spec as Spec
 
-spec :: Spec Unit
+spec :: E2ESpec
 spec = do
   Spec.describe "Publish-Unpublish workflow" do
-    Spec.before_ Env.resetTestState do
+    Spec.it "can publish effect@4.0.0 then unpublish it with full state verification" do
+      { jobId: publishJobId } <- Client.publish Fixtures.effectPublishData
+      _ <- Env.pollJobOrFail publishJobId
+      Env.waitForAllMatrixJobs Fixtures.effect
 
-      Spec.it "can publish effect@4.0.0 then unpublish it" do
-        config <- Env.getConfig
+      existsBefore <- Env.manifestIndexEntryExists Fixtures.effect
+      unless existsBefore do
+        Assert.fail "Expected version to exist in manifest index before unpublish"
 
-        -- Publish
-        { jobId: publishJobId } <- Env.expectRight "submit publish" =<< Client.publish config E2E.Fixtures.effectPublishData
-        _ <- Env.pollJobOrFail config publishJobId
+      authData <- Env.signUnpublishOrFail Fixtures.effectUnpublishData
+      { jobId: unpublishJobId } <- Client.unpublish authData
+      unpublishJob <- Env.pollJobOrFail unpublishJobId
+      Assert.shouldSatisfy (V1.jobInfo unpublishJob).finishedAt isJust
 
-        -- Unpublish
-        authData <- Env.signUnpublishOrFail E2E.Fixtures.effectUnpublishData
-        { jobId: unpublishJobId } <- Env.expectRight "submit unpublish" =<< Client.unpublish config authData
-        unpublishJob <- Env.pollJobOrFail config unpublishJobId
-        Assert.shouldSatisfy (V1.jobInfo unpublishJob).finishedAt isJust
+      Metadata metadata <- Env.readMetadata Fixtures.effect.name
 
-        -- Verify metadata shows version as unpublished
-        Metadata metadata <- Env.readMetadata Fixtures.effect.name
+      case Map.lookup Fixtures.effect.version metadata.unpublished of
+        Nothing ->
+          Assert.fail "Expected version 4.0.0 to be in 'unpublished' metadata"
+        Just unpublishedInfo ->
+          Assert.shouldSatisfy unpublishedInfo.reason (not <<< String.null)
 
-        case Map.lookup Fixtures.effect.version metadata.unpublished of
-          Nothing ->
-            Assert.fail "Expected version 4.0.0 to be in 'unpublished' metadata"
-          Just unpublishedInfo ->
-            Assert.shouldSatisfy unpublishedInfo.reason (not <<< String.null)
+      when (Map.member Fixtures.effect.version metadata.published) do
+        Assert.fail "Version 4.0.0 should not be in 'published' metadata after unpublish"
 
-        when (Map.member Fixtures.effect.version metadata.published) do
-          Assert.fail "Version 4.0.0 should not be in 'published' metadata after unpublish"
+      deleteOccurred <- Env.hasStorageDelete Fixtures.effect
+      unless deleteOccurred do
+        storageRequests <- WireMock.getStorageRequests
+        WireMock.failWithRequests "Expected S3 DELETE for effect/4.0.0.tar.gz" storageRequests
 
-        -- Verify S3 DELETE was called
-        storageRequests <- Env.getStorageRequests
-        let deleteRequests = Array.filter (\r -> r.method == "DELETE" && String.contains (String.Pattern "effect") r.url) storageRequests
-        when (Array.null deleteRequests) do
-          Assert.fail "Expected S3 DELETE request for effect tarball"
+      existsAfter <- Env.manifestIndexEntryExists Fixtures.effect
+      when existsAfter do
+        Assert.fail "Expected version to be removed from manifest index after unpublish"

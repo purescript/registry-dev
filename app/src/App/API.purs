@@ -296,9 +296,11 @@ authenticated auth = case auth.payload of
             { published = Map.delete payload.version prev.published
             , unpublished = Map.insert payload.version unpublished prev.unpublished
             }
+        -- Delete manifest first to check for dependents before any side effects.
+        -- This ensures we don't delete from storage if other packages depend on this one.
+        Registry.deleteManifest payload.name payload.version
         Storage.delete payload.name payload.version
         Registry.writeMetadata payload.name updated
-        Registry.deleteManifest payload.name payload.version
         Log.notice $ "Unpublished " <> formatted <> "!"
 
   Transfer payload -> do

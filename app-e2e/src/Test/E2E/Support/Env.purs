@@ -1,47 +1,46 @@
 -- | Shared environment and helper functions for E2E tests.
 -- |
--- | This module centralizes common operations needed across E2E test suites:
--- | - Environment configuration from env vars
+-- | This module provides:
+-- | - TestEnv type and E2E monad for test helpers (re-exported from Types)
+-- | - Environment construction from env vars (mkTestEnv)
 -- | - WireMock reset helpers for test isolation
 -- | - Job polling with automatic failure handling
+-- | - Git and metadata state inspection
 -- |
--- | Use these helpers instead of defining local versions in each test module.
+-- | All functions operate in the E2E monad (ReaderT TestEnv Aff), so they
+-- | have access to the shared test environment without explicit passing.
 module Test.E2E.Support.Env
-  ( getConfig
-  , getStateDir
-  , getPrivateKey
+  ( module ReExports
+  , mkTestEnv
+  , runE2E
   , resetTestState
-  , resetStorageMock
-  , clearGithubRequests
-  , clearStorageRequests
-  , getStorageRequests
   , resetDatabase
   , resetGitFixtures
   , resetLogs
   , resetGitHubRequestCache
   , pollJobOrFail
   , pollJobExpectFailure
-  , expectRight
   , signUnpublishOrFail
   , signTransferOrFail
   , gitStatus
   , isCleanGitStatus
   , waitForAllMatrixJobs
-  , waitForMatrixJobStart
   , isMatrixJobFor
   , readMetadata
+  , readManifestIndexEntry
+  , manifestIndexEntryExists
+  , assertReposClean
+  , hasStorageUpload
+  , hasStorageDelete
   ) where
 
-import Prelude
+import Registry.App.Prelude
 
+import Control.Monad.Reader (ask, runReaderT)
 import Data.Array as Array
-import Data.Either (Either(..))
-import Data.Maybe (Maybe(..), isJust, isNothing)
-import Data.Traversable (for_)
 import Data.String as String
-import Effect.Aff (Aff, Milliseconds(..))
+import Effect.Aff (Milliseconds(..))
 import Effect.Aff as Aff
-import Effect.Class (liftEffect)
 import Effect.Class.Console as Console
 import Node.ChildProcess.Types (Exit(..))
 import Node.FS.Aff as FS.Aff
@@ -49,147 +48,124 @@ import Node.Library.Execa as Execa
 import Node.Path as Path
 import Registry.API.V1 (Job(..))
 import Registry.API.V1 as V1
+import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Env as Env
-import Registry.App.Prelude (readJsonFile)
 import Registry.Foreign.FSExtra as FS.Extra
+import Registry.Manifest (Manifest(..))
+import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata (Metadata)
 import Registry.Metadata as Metadata
 import Registry.Operation (AuthenticatedData, TransferData, UnpublishData)
-import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Test.Assert as Assert
-import Registry.Version (Version)
+import Registry.Version as Version
 import Test.E2E.Support.Client as Client
+import Test.E2E.Support.Fixtures (PackageFixture)
 import Test.E2E.Support.Fixtures as Fixtures
+import Test.E2E.Support.Types (ClientConfig, E2E, E2ESpec, TestEnv, WireMockConfig) as ReExports
+import Test.E2E.Support.Types (E2E, TestEnv)
 import Test.E2E.Support.WireMock as WireMock
 
--- | Get client config from environment.
--- | Reads SERVER_PORT to construct the base URL.
-getConfig :: Aff Client.Config
-getConfig = liftEffect Client.configFromEnv
+-- | Build the test environment from environment variables.
+-- | Called once at startup in Main, before running any tests.
+mkTestEnv :: Effect TestEnv
+mkTestEnv = do
+  port <- Env.lookupRequired Env.serverPort
+  let
+    clientConfig =
+      { baseUrl: "http://localhost:" <> show port
+      , pollInterval: Milliseconds 2000.0
+      , maxPollAttempts: 30
+      }
 
--- | Get the pacchettibotti private key from environment (base64-decoded).
--- | Used for signing authenticated operations in E2E tests.
-getPrivateKey :: Aff String
-getPrivateKey = liftEffect $ Env.lookupRequired Env.pacchettibottiED25519
+  githubUrl <- Env.lookupRequired Env.githubApiUrl
+  storageUrl <- Env.lookupRequired Env.s3ApiUrl
+  let
+    githubWireMock = { baseUrl: githubUrl }
+    storageWireMock = { baseUrl: storageUrl }
+
+  stateDir <- Env.lookupRequired Env.stateDir
+  privateKey <- Env.lookupRequired Env.pacchettibottiED25519
+
+  pure { clientConfig, githubWireMock, storageWireMock, stateDir, privateKey }
+
+-- | Run an E2E computation with a given environment.
+-- | Primarily used by hoistSpec in Main.
+runE2E :: forall a. TestEnv -> E2E a -> Aff a
+runE2E env = flip runReaderT env
 
 -- | Reset all test state for isolation between tests.
 -- | This is the recommended way to set up test isolation in Spec.before_.
 -- | Resets: database, git fixtures, storage mock, and logs.
-resetTestState :: Aff Unit
+resetTestState :: E2E Unit
 resetTestState = do
   resetDatabase
   resetGitFixtures
-  resetStorageMock
+  WireMock.clearStorageRequests
+  WireMock.resetStorageScenarios
+  WireMock.clearGithubRequests
+  resetGitHubRequestCache
   resetLogs
-
--- | Reset the unified storage WireMock instance (S3, bucket, Pursuit).
--- | Clears request journal and resets all scenarios to "Started" state.
-resetStorageMock :: Aff Unit
-resetStorageMock = do
-  storageConfig <- liftEffect WireMock.configForStorage
-  WireMock.clearRequestsOrFail storageConfig
-  WireMock.resetScenariosOrFail storageConfig
-
--- | Clear the GitHub WireMock request journal.
--- | Use this when you need to inspect GitHub API requests in isolation.
-clearGithubRequests :: Aff Unit
-clearGithubRequests = do
-  wmConfig <- liftEffect WireMock.configFromEnv
-  WireMock.clearRequestsOrFail wmConfig
-
--- | Clear the storage WireMock request journal (S3, Pursuit).
--- | Use this when you need to inspect storage API requests in isolation.
-clearStorageRequests :: Aff Unit
-clearStorageRequests = do
-  storageConfig <- liftEffect WireMock.configForStorage
-  WireMock.clearRequestsOrFail storageConfig
-
--- | Get captured requests from the storage WireMock (S3, Pursuit).
--- | Use this to verify S3 uploads/deletes or Pursuit API calls.
-getStorageRequests :: Aff (Array WireMock.WireMockRequest)
-getStorageRequests = do
-  storageConfig <- liftEffect WireMock.configForStorage
-  WireMock.getRequestsOrFail storageConfig
 
 -- | Reset the database by clearing all job-related tables.
 -- |
 -- | This works because all job tables (publish_jobs, unpublish_jobs, transfer_jobs,
 -- | matrix_jobs, package_set_jobs, logs) have foreign keys to job_info with
 -- | ON DELETE CASCADE. See db/schema.sql for the schema definition.
--- |
--- | If new tables are added that don't cascade from job_info, they must be
--- | explicitly deleted here.
-resetDatabase :: Aff Unit
+resetDatabase :: E2E Unit
 resetDatabase = do
-  stateDirPath <- getStateDir
-  let dbPath = Path.concat [ stateDirPath, "db", "registry.sqlite3" ]
-  result <- _.getResult =<< Execa.execa "sqlite3" [ dbPath, "DELETE FROM job_info;" ] identity
+  { stateDir } <- ask
+  let dbPath = Path.concat [ stateDir, "db", "registry.sqlite3" ]
+  result <- liftAff $ _.getResult =<< Execa.execa "sqlite3" [ dbPath, "DELETE FROM job_info;" ] identity
   case result.exit of
     Normally 0 -> pure unit
-    _ -> Aff.throwError $ Aff.error $ "Failed to reset database: " <> result.stderr
+    _ -> liftAff $ Aff.throwError $ Aff.error $ "Failed to reset database: " <> result.stderr
 
 -- | Reset the git fixtures to restore original state.
 -- | This restores metadata files modified by unpublish/transfer operations.
--- | 
+-- |
 -- | Strategy: Reset the origin repos to their initial-fixture tag (created during
 -- | setup), then delete the server's scratch git clones. The server will
 -- | re-clone fresh copies on the next operation, ensuring a clean cache state.
--- | Note: We only delete the git repo clones, not the entire scratch directory,
--- | to preserve the logs subdirectory which the server expects to exist.
-resetGitFixtures :: Aff Unit
+resetGitFixtures :: E2E Unit
 resetGitFixtures = do
-  stateDirPath <- getStateDir
+  { stateDir } <- ask
   fixturesDir <- liftEffect $ Env.lookupRequired Env.repoFixturesDir
   let
     registryOrigin = Path.concat [ fixturesDir, "purescript", "registry" ]
     registryIndexOrigin = Path.concat [ fixturesDir, "purescript", "registry-index" ]
-    scratchDir = Path.concat [ stateDirPath, "scratch" ]
+    scratchDir = Path.concat [ stateDir, "scratch" ]
   resetOrigin registryOrigin
   resetOrigin registryIndexOrigin
   deleteGitClones scratchDir
   where
   resetOrigin dir = do
-    resetResult <- _.getResult =<< Execa.execa "git" [ "reset", "--hard", "initial-fixture" ] (_ { cwd = Just dir })
-    case resetResult.exit of
-      Normally 0 -> pure unit
-      _ -> Aff.throwError $ Aff.error $ "Failed to reset git repo " <> dir <> ": " <> resetResult.stderr
-    cleanResult <- _.getResult =<< Execa.execa "git" [ "clean", "-fd" ] (_ { cwd = Just dir })
-    case cleanResult.exit of
-      Normally 0 -> pure unit
-      _ -> Aff.throwError $ Aff.error $ "Failed to clean git repo " <> dir <> ": " <> cleanResult.stderr
+    void $ gitOrFail [ "reset", "--hard", "initial-fixture" ] dir
+    void $ gitOrFail [ "clean", "-fd" ] dir
+
   deleteGitClones scratchDir = do
-    let registryClone = Path.concat [ scratchDir, "registry" ]
-    let registryIndexClone = Path.concat [ scratchDir, "registry-index" ]
-    deleteDir registryClone
-    deleteDir registryIndexClone
-  deleteDir dir = do
-    result <- _.getResult =<< Execa.execa "rm" [ "-rf", dir ] identity
-    case result.exit of
-      Normally 0 -> pure unit
-      _ -> Aff.throwError $ Aff.error $ "Failed to delete directory " <> dir <> ": " <> result.stderr
+    liftAff $ FS.Extra.remove $ Path.concat [ scratchDir, "registry" ]
+    liftAff $ FS.Extra.remove $ Path.concat [ scratchDir, "registry-index" ]
 
 -- | Clear server log files for test isolation.
 -- | Deletes *.log files from the scratch/logs directory but preserves the directory itself.
-resetLogs :: Aff Unit
+resetLogs :: E2E Unit
 resetLogs = do
-  stateDir <- getStateDir
+  { stateDir } <- ask
   let logsDir = Path.concat [ stateDir, "scratch", "logs" ]
-  -- Quote path to handle spaces or special characters safely
   let cmd = "rm -f '" <> logsDir <> "'/*.log 2>/dev/null || true"
-  result <- _.getResult =<< Execa.execa "sh" [ "-c", cmd ] identity
+  result <- liftAff $ _.getResult =<< Execa.execa "sh" [ "-c", cmd ] identity
   case result.exit of
     Normally _ -> pure unit
     _ -> pure unit
 
 -- | Clear cached GitHub API requests from the scratch cache directory.
 -- | This ensures each test makes fresh API calls rather than using cached responses.
--- | Important for tests that verify specific API calls were made (e.g., Teams API).
-resetGitHubRequestCache :: Aff Unit
+resetGitHubRequestCache :: E2E Unit
 resetGitHubRequestCache = do
-  stateDir <- getStateDir
+  { stateDir } <- ask
   let cacheDir = Path.concat [ stateDir, "scratch", ".cache" ]
-  Aff.attempt (FS.Aff.readdir cacheDir) >>= case _ of
+  liftAff $ Aff.attempt (FS.Aff.readdir cacheDir) >>= case _ of
     Left _ -> pure unit
     Right files -> for_ files \file ->
       when (String.Pattern "Request__" `String.contains` file) do
@@ -197,12 +173,9 @@ resetGitHubRequestCache = do
 
 -- | Poll a job until completion, failing the test if the job fails.
 -- | Prints error logs on failure for debugging.
--- |
--- | This is the recommended way to wait for job completion in E2E tests.
--- | Do not implement custom polling loops; use this helper instead.
-pollJobOrFail :: Client.Config -> V1.JobId -> Aff V1.Job
-pollJobOrFail config jobId = do
-  job <- Client.pollJob config jobId
+pollJobOrFail :: V1.JobId -> E2E V1.Job
+pollJobOrFail jobId = do
+  job <- Client.pollJob jobId
   unless (V1.jobInfo job).success do
     Console.log "Job failed! Logs:"
     let logMessages = map (\l -> "[" <> V1.printLogLevel l.level <> "] " <> l.message) (V1.jobInfo job).logs
@@ -214,130 +187,126 @@ pollJobOrFail config jobId = do
 
 -- | Poll a job until completion, expecting it to fail.
 -- | Returns the job for further assertions on error messages.
--- | Fails the test if the job unexpectedly succeeds.
-pollJobExpectFailure :: Client.Config -> V1.JobId -> Aff V1.Job
-pollJobExpectFailure config jobId = do
-  job <- Client.pollJob config jobId
+pollJobExpectFailure :: V1.JobId -> E2E V1.Job
+pollJobExpectFailure jobId = do
+  job <- Client.pollJob jobId
   when (V1.jobInfo job).success do
     Assert.fail "Expected job to fail, but it succeeded"
   pure job
 
--- | Unwrap an Either, failing the test with a descriptive message on Left.
--- | Use this to reduce boilerplate when handling client responses.
--- |
--- | Example:
--- | ```purescript
--- | { jobId } <- expectRight "publish effect" =<< Client.publish config publishData
--- | ```
-expectRight :: forall a. String -> Either Client.ClientError a -> Aff a
-expectRight context = case _ of
-  Left err -> Aff.throwError $ Aff.error $ context <> ": " <> Client.printClientError err
-  Right a -> pure a
-
 -- | Sign an unpublish operation using the pacchettibotti private key from environment.
--- | Fails the test if signing fails.
-signUnpublishOrFail :: UnpublishData -> Aff AuthenticatedData
+signUnpublishOrFail :: UnpublishData -> E2E AuthenticatedData
 signUnpublishOrFail unpublishData = do
-  privateKey <- getPrivateKey
+  { privateKey } <- ask
   case Fixtures.signUnpublish privateKey unpublishData of
-    Left err -> Aff.throwError $ Aff.error $ "Failed to sign unpublish: " <> err
+    Left err -> liftAff $ Aff.throwError $ Aff.error $ "Failed to sign unpublish: " <> err
     Right authData -> pure authData
 
 -- | Sign a transfer operation using the pacchettibotti private key from environment.
--- | Fails the test if signing fails.
-signTransferOrFail :: TransferData -> Aff AuthenticatedData
+signTransferOrFail :: TransferData -> E2E AuthenticatedData
 signTransferOrFail transferData = do
-  privateKey <- getPrivateKey
+  { privateKey } <- ask
   case Fixtures.signTransfer privateKey transferData of
-    Left err -> Aff.throwError $ Aff.error $ "Failed to sign transfer: " <> err
+    Left err -> liftAff $ Aff.throwError $ Aff.error $ "Failed to sign transfer: " <> err
     Right authData -> pure authData
 
--- | Get the STATE_DIR environment variable.
--- | This is the root directory for test state (database, scratch repos, etc).
-getStateDir :: Aff String
-getStateDir = liftEffect $ Env.lookupRequired Env.stateDir
-
 -- | Run git status --porcelain in a directory and return the output.
--- | Empty output means clean working tree. Uses the git CLI directly.
-gitStatus :: String -> Aff String
-gitStatus cwd = do
-  result <- _.getResult =<< Execa.execa "git" [ "status", "--porcelain" ] (_ { cwd = Just cwd })
-  case result.exit of
-    Normally 0 -> pure $ String.trim result.stdout
-    _ -> Aff.throwError $ Aff.error $ "git status failed in " <> cwd <> ": " <> result.stderr
+gitStatus :: String -> E2E String
+gitStatus cwd = gitOrFail [ "status", "--porcelain" ] cwd
+
+-- | Run a git command, throwing an exception on failure.
+gitOrFail :: Array String -> FilePath -> E2E String
+gitOrFail args cwd = liftAff $ Git.gitCLI args (Just cwd) >>= case _ of
+  Left err -> Aff.throwError $ Aff.error err
+  Right out -> pure out
 
 -- | Check if git status output indicates a clean working tree (no changes).
 isCleanGitStatus :: String -> Boolean
 isCleanGitStatus status = String.null status
 
--- | Wait for all matrix jobs for a package version to complete.
--- | Matrix jobs are created when a package is published to test it against
--- | multiple compiler versions. This helper polls until at least one matrix job
--- | exists and all have finished. Dynamically detects how many jobs were spawned.
-waitForAllMatrixJobs :: Client.Config -> PackageName -> Version -> Aff Unit
-waitForAllMatrixJobs config packageName packageVersion = go 120 0
+-- | Wait for all matrix jobs for a package to complete.
+waitForAllMatrixJobs :: PackageFixture -> E2E Unit
+waitForAllMatrixJobs pkg = go 120 0
   where
-  go :: Int -> Int -> Aff Unit
-  go 0 _ = Aff.throwError $ Aff.error "Timed out waiting for matrix jobs to complete"
+  go :: Int -> Int -> E2E Unit
+  go 0 _ = liftAff $ Aff.throwError $ Aff.error "Timed out waiting for matrix jobs to complete"
   go attempts lastCount = do
-    jobsResult <- Client.getJobs config
-    case jobsResult of
-      Left err -> Aff.throwError $ Aff.error $ "Failed to get jobs: " <> Client.printClientError err
-      Right jobs -> do
-        let
-          matrixJobs = Array.filter (isMatrixJobFor packageName packageVersion) jobs
-          totalCount = Array.length matrixJobs
-          finishedCount = Array.length $ Array.filter (\j -> isJust (V1.jobInfo j).finishedAt) matrixJobs
-          allFinished = finishedCount == totalCount
-          -- Jobs are still being created if count increased since last poll
-          stillCreating = totalCount > lastCount
-        if totalCount >= 1 && allFinished && not stillCreating then
-          pure unit
-        else do
-          when (attempts `mod` 10 == 0) do
-            Console.log $ "Waiting for matrix jobs: " <> show finishedCount <> "/" <> show totalCount <> " finished"
-          Aff.delay (Milliseconds 1000.0)
-          go (attempts - 1) totalCount
+    jobs <- Client.getJobs
+    let
+      matrixJobs = Array.filter (isMatrixJobFor pkg) jobs
+      totalCount = Array.length matrixJobs
+      finishedCount = Array.length $ Array.filter (\j -> isJust (V1.jobInfo j).finishedAt) matrixJobs
+      allFinished = finishedCount == totalCount
+      stillCreating = totalCount > lastCount
+    if totalCount >= 1 && allFinished && not stillCreating then
+      pure unit
+    else do
+      when (attempts `mod` 10 == 0) do
+        Console.log $ "Waiting for matrix jobs: " <> show finishedCount <> "/" <> show totalCount <> " finished"
+      liftAff $ Aff.delay (Milliseconds 1000.0)
+      go (attempts - 1) totalCount
 
--- | Wait until at least one matrix job has started (has startedAt but no finishedAt).
--- | Useful for testing job priority - submit a publish job while matrix jobs are running.
-waitForMatrixJobStart :: Client.Config -> PackageName -> Version -> Aff Unit
-waitForMatrixJobStart config packageName packageVersion = go 30
-  where
-  go :: Int -> Aff Unit
-  go 0 = Aff.throwError $ Aff.error "Timed out waiting for matrix job to start"
-  go attempts = do
-    jobsResult <- Client.getJobs config
-    case jobsResult of
-      Left err -> Aff.throwError $ Aff.error $ "Failed to get jobs: " <> Client.printClientError err
-      Right jobs -> do
-        let
-          matrixJobs = Array.filter (isMatrixJobFor packageName packageVersion) jobs
-          startedNotFinished = Array.any
-            (\j -> isJust (V1.jobInfo j).startedAt && isNothing (V1.jobInfo j).finishedAt)
-            matrixJobs
-        if startedNotFinished then
-          pure unit
-        else do
-          when (attempts `mod` 10 == 0) do
-            Console.log $ "Waiting for matrix job to start (" <> show (Array.length matrixJobs) <> " jobs found)"
-          Aff.delay (Milliseconds 200.0)
-          go (attempts - 1)
-
--- | Check if a job is a matrix job for the given package and version.
-isMatrixJobFor :: PackageName -> Version -> Job -> Boolean
-isMatrixJobFor expectedName expectedVersion = case _ of
+-- | Check if a job is a matrix job for the given package.
+isMatrixJobFor :: PackageFixture -> Job -> Boolean
+isMatrixJobFor pkg = case _ of
   MatrixJob { packageName, packageVersion } ->
-    packageName == expectedName && packageVersion == expectedVersion
+    packageName == pkg.name && packageVersion == pkg.version
   _ -> false
 
 -- | Read and parse the metadata file for a package from the server's scratch clone.
--- | Returns a typed Metadata value.
--- | Use this to verify metadata changes after publish/unpublish/transfer operations.
-readMetadata :: PackageName -> Aff Metadata
+readMetadata :: PackageName -> E2E Metadata
 readMetadata packageName = do
-  stateDir <- getStateDir
+  { stateDir } <- ask
   let metadataPath = Path.concat [ stateDir, "scratch", "registry", "metadata", PackageName.print packageName <> ".json" ]
-  readJsonFile Metadata.codec metadataPath >>= case _ of
-    Left err -> Aff.throwError $ Aff.error $ "Failed to read metadata for " <> PackageName.print packageName <> ": " <> err
+  liftAff (readJsonFile Metadata.codec metadataPath) >>= case _ of
+    Left err -> liftAff $ Aff.throwError $ Aff.error $ "Failed to read metadata for " <> PackageName.print packageName <> ": " <> err
     Right metadata -> pure metadata
+
+-- | Read and parse the manifest index entry for a package from the server's scratch clone.
+readManifestIndexEntry :: PackageName -> E2E (Array Manifest)
+readManifestIndexEntry packageName = do
+  { stateDir } <- ask
+  let indexPath = Path.concat [ stateDir, "scratch", "registry-index" ]
+  liftAff $ ManifestIndex.readEntryFile indexPath packageName >>= case _ of
+    Left err -> Aff.throwError $ Aff.error $ "Failed to read manifest index for " <> PackageName.print packageName <> ": " <> err
+    Right manifests -> pure $ Array.fromFoldable manifests
+
+-- | Check if a specific package version exists in the manifest index.
+manifestIndexEntryExists :: PackageFixture -> E2E Boolean
+manifestIndexEntryExists pkg = do
+  { stateDir } <- ask
+  let indexPath = Path.concat [ stateDir, "scratch", "registry-index" ]
+  liftAff $ ManifestIndex.readEntryFile indexPath pkg.name >>= case _ of
+    Left _ -> pure false
+    Right manifests -> pure $ Array.any (\(Manifest m) -> m.version == pkg.version) $ Array.fromFoldable manifests
+
+-- | Assert that both git repos (registry and registry-index) have no uncommitted changes.
+assertReposClean :: E2E Unit
+assertReposClean = do
+  { stateDir } <- ask
+  let scratchRegistry = Path.concat [ stateDir, "scratch", "registry" ]
+  let scratchRegistryIndex = Path.concat [ stateDir, "scratch", "registry-index" ]
+  registryStatus <- gitStatus scratchRegistry
+  registryIndexStatus <- gitStatus scratchRegistryIndex
+  unless (isCleanGitStatus registryStatus) do
+    Assert.fail $ "registry repo has uncommitted changes:\n" <> registryStatus
+  unless (isCleanGitStatus registryIndexStatus) do
+    Assert.fail $ "registry-index repo has uncommitted changes:\n" <> registryIndexStatus
+
+-- | Check if a storage upload (PUT) occurred for a specific package.
+hasStorageUpload :: PackageFixture -> E2E Boolean
+hasStorageUpload pkg = do
+  requests <- WireMock.getStorageRequests
+  let
+    expectedPath = PackageName.print pkg.name <> "/" <> Version.print pkg.version <> ".tar.gz"
+    putRequests = WireMock.filterByMethod "PUT" requests
+  pure $ Array.any (\r -> String.contains (String.Pattern expectedPath) r.url) putRequests
+
+-- | Check if a storage delete (DELETE) occurred for a specific package.
+hasStorageDelete :: PackageFixture -> E2E Boolean
+hasStorageDelete pkg = do
+  requests <- WireMock.getStorageRequests
+  let
+    expectedPath = PackageName.print pkg.name <> "/" <> Version.print pkg.version <> ".tar.gz"
+    deleteRequests = WireMock.filterByMethod "DELETE" requests
+  pure $ Array.any (\r -> String.contains (String.Pattern expectedPath) r.url) deleteRequests
