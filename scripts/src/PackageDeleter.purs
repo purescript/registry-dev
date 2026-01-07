@@ -228,21 +228,24 @@ deleteVersion arguments name version = do
           Just published, Nothing -> pure (Just (Right published))
           Nothing, Just unpublished -> pure (Just (Left unpublished))
           Nothing, Nothing -> pure Nothing
+      -- Read manifest before deleting it (needed for reimport)
+      maybeManifest <- Registry.readManifest name version
       let
         newMetadata = Metadata $ oldMetadata { published = Map.delete version oldMetadata.published, unpublished = Map.delete version oldMetadata.unpublished }
       Registry.writeMetadata name newMetadata
       Registry.deleteManifest name version
       -- --reimport
       when arguments.reimport do
-        case publishment of
-          Nothing -> Log.error "Cannot reimport a version that was not published"
-          Just (Left _) -> Log.error "Cannot reimport a version that was specifically unpublished"
-          Just (Right specificPackageMetadata) -> do
+        case publishment, maybeManifest of
+          Nothing, _ -> Log.error "Cannot reimport a version that was not published"
+          Just (Left _), _ -> Log.error "Cannot reimport a version that was specifically unpublished"
+          Just (Right _), Nothing -> Log.error $ "Cannot reimport: manifest not found for " <> formatted
+          Just (Right _), Just (Manifest manifest) -> do
             -- Obtains `newMetadata` via cache
             void $ API.publish Nothing
               { location: Just oldMetadata.location
               , name: name
-              , ref: specificPackageMetadata.ref
+              , ref: manifest.ref
               , version: version
               , compiler: unsafeFromRight $ Version.parse "0.15.4"
               , resolutions: Nothing

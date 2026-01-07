@@ -13,6 +13,7 @@ let Manifest =
     , license : License
     , version : Version
     , location : ./Location.dhall
+    , ref : Text
     , owners : Optional (List ./Owner.dhall)
     , description : Optional Text
     , includeFiles : Optional (List Text)

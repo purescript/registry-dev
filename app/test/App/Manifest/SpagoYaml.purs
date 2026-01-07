@@ -19,6 +19,6 @@ spec = do
       config <- SpagoYaml.readSpagoYaml (Path.concat [ fixturesPath, path ]) >>= case _ of
         Left err -> Aff.throwError $ Aff.error err
         Right config -> pure config
-      case SpagoYaml.spagoYamlToManifest config of
+      case SpagoYaml.spagoYamlToManifest "v1.0.0" config of
         Left err -> Assert.fail $ path <> " failed: " <> err
         Right _ -> pure unit

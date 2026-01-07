@@ -48,6 +48,7 @@ newtype Manifest = Manifest
   , version :: Version
   , license :: License
   , location :: Location
+  , ref :: String
   , owners :: Maybe (NonEmptyArray Owner)
   , description :: Maybe String
   , includeFiles :: Maybe (NonEmptyArray NonEmptyString)
@@ -77,6 +78,7 @@ codec = Profunctor.wrapIso Manifest $ CJ.named "Manifest" $ CJ.object
   $ CJ.recordProp @"license" License.codec
   $ CJ.recordPropOptional @"description" (Internal.Codec.limitedString 300)
   $ CJ.recordProp @"location" Location.codec
+  $ CJ.recordProp @"ref" CJ.string
   $ CJ.recordPropOptional @"owners" (CJ.Common.nonEmptyArray Owner.codec)
   $ CJ.recordPropOptional @"includeFiles" (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
   $ CJ.recordPropOptional @"excludeFiles" (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
