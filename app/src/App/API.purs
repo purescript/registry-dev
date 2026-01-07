@@ -9,8 +9,8 @@ module Registry.App.API
   , copyPackageSourceFiles
   , findAllCompilers
   , formatPursuitResolutions
+  , getPacchettiBotti
   , packageSetUpdate
-  , packageSetUpdate2
   , packagingTeam
   , publish
   , removeIgnoredTarballFiles
@@ -51,6 +51,7 @@ import Parsing as Parsing
 import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
+import Registry.API.V1 (PackageSetJobData)
 import Registry.App.Auth as Auth
 import Registry.App.CLI.Purs (CompilerFailure(..), compilerFailureCodec)
 import Registry.App.CLI.Purs as Purs
@@ -60,10 +61,9 @@ import Registry.App.Effect.Archive (ARCHIVE)
 import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache (class FsEncodable, Cache)
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV, RESOURCE_ENV)
+import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV, RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
-import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
@@ -82,20 +82,18 @@ import Registry.App.Legacy.Manifest (LEGACY_CACHE)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec)
 import Registry.App.Manifest.SpagoYaml as SpagoYaml
-import Registry.App.SQLite (PackageSetJobDetails)
 import Registry.App.Server.MatrixBuilder as MatrixBuilder
 import Registry.Constants (ignoredDirectories, ignoredFiles, ignoredGlobs, includedGlobs, includedInsensitiveGlobs)
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
-import Registry.Foreign.Octokit (IssueNumber(..), Team)
-import Registry.Foreign.Octokit as Octokit
+import Registry.Foreign.Octokit (Team)
 import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Path as Internal.Path
 import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.Metadata as Metadata
-import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageSetUpdateData, PublishData)
+import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PublishData)
 import Registry.Operation as Operation
 import Registry.Operation.Validation (UnpublishError(..), ValidateDepsError(..), validateNoExcludedObligatoryFiles)
 import Registry.Operation.Validation as Operation.Validation
@@ -115,23 +113,17 @@ import Run.Except (EXCEPT)
 import Run.Except as Except
 import Safe.Coerce as Safe.Coerce
 
-type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + GITHUB + GITHUB_EVENT_ENV + LOG + EXCEPT String + r)
+-- | Effect row for package set updates. Authentication is done at the API
+-- | boundary, so we don't need GITHUB or GITHUB_EVENT_ENV effects here.
+type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + LOG + EXCEPT String + r)
 
-packageSetUpdate2 :: forall r. PackageSetJobDetails -> Run (PackageSetUpdateEffects + r) Unit
-packageSetUpdate2 {} = do
-  -- TODO: have github call into this
-  pure unit
+-- | Process a package set update from a queued job. Authentication has already
+-- | been verified at the API boundary, so we don't need to check team membership.
+packageSetUpdate :: forall r. PackageSetJobData -> Run (PackageSetUpdateEffects + r) Unit
+packageSetUpdate details = do
+  let Operation.PackageSetUpdate payload = details.payload
 
--- | Process a package set update. Package set updates are only processed via
--- | GitHub and not the HTTP API, so they require access to the GitHub env.
-packageSetUpdate :: forall r. PackageSetUpdateData -> Run (PackageSetUpdateEffects + r) Unit
-packageSetUpdate payload = do
-  { issue, username } <- Env.askGitHubEvent
-
-  Log.debug $ Array.fold
-    [ "Package set update created from issue " <> show (un IssueNumber issue) <> " by user " <> username
-    , " with payload:\n" <> stringifyJson Operation.packageSetUpdateCodec payload
-    ]
+  Log.debug $ "Package set update job starting with payload:\n" <> stringifyJson Operation.packageSetUpdateCodec payload
 
   latestPackageSet <- Registry.readLatestPackageSet >>= case _ of
     Nothing -> do
@@ -143,34 +135,8 @@ packageSetUpdate payload = do
   let prevCompiler = (un PackageSet latestPackageSet).compiler
   let prevPackages = (un PackageSet latestPackageSet).packages
 
-  Log.debug "Determining whether authentication is required (the compiler changed or packages were removed)..."
-  let didChangeCompiler = maybe false (not <<< eq prevCompiler) payload.compiler
-  let didRemovePackages = any isNothing payload.packages
-
-  -- Changing the compiler version or removing packages are both restricted
-  -- to only the packaging team. We throw here if this is an authenticated
-  -- operation and we can't verify they are a member of the packaging team.
-  when (didChangeCompiler || didRemovePackages) do
-    Log.debug "Authentication is required. Verifying the user can take authenticated actions..."
-    GitHub.listTeamMembers packagingTeam >>= case _ of
-      Left githubError -> do
-        Log.error $ "Failed to retrieve the members of the packaging team from GitHub: " <> Octokit.printGitHubError githubError
-        Except.throw $ Array.fold
-          [ "This package set update changes the compiler version or removes a "
-          , "package from the package set. Only members of the "
-          , "@purescript/packaging team can take these actions, but we were "
-          , "unable to authenticate your account."
-          ]
-      Right members -> do
-        unless (Array.elem username members) do
-          Log.error $ "Username " <> username <> " is not a member of the packaging team, aborting..."
-          Except.throw $ Array.fold
-            [ "This package set update changes the compiler version or "
-            , "removes a package from the package set. Only members of the "
-            , "@purescript/packaging team can take these actions, but your "
-            , "username is not a member of the packaging team."
-            ]
-        Log.debug $ "Authentication verified for package set update by user " <> username
+  -- Note: authentication for restricted operations (compiler change, package removal)
+  -- is handled at the API boundary in the Router, not here.
 
   -- The compiler version cannot be downgraded.
   for_ payload.compiler \version -> when (version < prevCompiler) do

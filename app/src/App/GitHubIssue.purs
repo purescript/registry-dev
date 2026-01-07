@@ -86,10 +86,13 @@ runGitHubIssue env = do
   run do
     -- Determine endpoint and prepare the JSON payload
     { endpoint, jsonBody } <- case env.operation of
-      Left (PackageSetUpdate payload) -> pure
-        { endpoint: "/v1/package-sets"
-        , jsonBody: JSON.print $ CJ.encode Operation.packageSetUpdateCodec payload
-        }
+      Left packageSetOp@(PackageSetUpdate payload) -> do
+        -- Sign with pacchettibotti if submitter is a trustee
+        request <- signPackageSetIfTrustee packageSetOp payload
+        pure
+          { endpoint: "/v1/package-sets"
+          , jsonBody: JSON.print $ CJ.encode Operation.packageSetUpdateRequestCodec request
+          }
 
       Right (Publish payload) -> pure
         { endpoint: "/v1/publish"
@@ -428,3 +431,32 @@ signPacchettiBottiIfTrustee auth = do
       else do
         Log.info "Authenticated payload not submitted by a registry trustee, continuing with original signature."
         pure auth
+
+-- | Sign a package set update with pacchettibotti's key if the submitter is a trustee.
+-- | Non-trustees get an unsigned request (signature = Nothing).
+signPackageSetIfTrustee
+  :: forall r
+   . PackageSetOperation
+  -> Operation.PackageSetUpdateData
+  -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + LOG + EXCEPT String + r) Operation.PackageSetUpdateRequest
+signPackageSetIfTrustee packageSetOp payload = do
+  let rawPayload = JSON.print $ CJ.encode Operation.packageSetUpdateCodec payload
+  GitHub.listTeamMembers API.packagingTeam >>= case _ of
+    Left githubError -> do
+      Log.warn $ Array.fold
+        [ "Unable to fetch members of packaging team, not signing package set request: "
+        , Octokit.printGitHubError githubError
+        ]
+      pure { payload: packageSetOp, rawPayload, signature: Nothing }
+    Right members -> do
+      { username } <- Env.askGitHubEvent
+      if Array.elem username members then do
+        Log.info "Package set update submitted by a registry trustee, signing with pacchettibotti keys."
+        { privateKey } <- Env.askPacchettiBotti
+        signature <- case Auth.signPayload { privateKey, rawPayload } of
+          Left _ -> Except.throw "Error signing package set update. cc: @purescript/packaging"
+          Right sig -> pure sig
+        pure { payload: packageSetOp, rawPayload, signature: Just signature }
+      else do
+        Log.info "Package set update not submitted by a registry trustee, sending unsigned request."
+        pure { payload: packageSetOp, rawPayload, signature: Nothing }

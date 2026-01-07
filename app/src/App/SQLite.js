@@ -89,7 +89,7 @@ export const insertMatrixJobImpl = (db, job) => {
 };
 
 export const insertPackageSetJobImpl = (db, job) => {
-  const columns = ['jobId', 'payload']
+  const columns = ['jobId', 'payload', 'rawPayload', 'signature']
   return _insertJob(db, PACKAGE_SET_JOBS_TABLE, columns, job);
 };
 
@@ -139,6 +139,18 @@ export const selectMatrixJobImpl = (db, jobId) => {
 
 export const selectPackageSetJobImpl = (db, jobId) => {
   return _selectJob(db, { table: PACKAGE_SET_JOBS_TABLE, jobId });
+};
+
+// Find a pending package set job by payload (for duplicate detection)
+export const selectPackageSetJobByPayloadImpl = (db, payload) => {
+  const stmt = db.prepare(`
+    SELECT job.*, info.*
+    FROM ${PACKAGE_SET_JOBS_TABLE} job
+    JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
+    WHERE job.payload = ? AND info.finishedAt IS NULL
+    ORDER BY info.createdAt ASC LIMIT 1
+  `);
+  return stmt.get(payload);
 };
 
 const _selectJobs = (db, { table, since, includeCompleted }) => {

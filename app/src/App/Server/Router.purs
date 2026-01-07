@@ -12,12 +12,16 @@ import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
 import Registry.API.V1 (Route(..))
 import Registry.API.V1 as V1
+import Registry.App.API as API
+import Registry.App.Auth as Auth
 import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log as Log
 import Registry.App.Server.Env (ServerEffects, ServerEnv, jsonDecoder, jsonOk, runEffects)
+import Registry.Operation (PackageSetOperation(..))
 import Registry.Operation as Operation
 import Run (Run)
+import Run as Run
 import Run.Except as Run.Except
 
 runRouter :: ServerEnv -> Effect Unit
@@ -123,7 +127,46 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
         HTTPurple.notFound
       Right (Just job) -> jsonOk V1.jobCodec job
 
-  -- TODO packageset jobs?
+  PackageSets, Post -> do
+    request <- HTTPurple.fromJson (jsonDecoder Operation.packageSetUpdateRequestCodec) body
+    lift $ Log.info $ "Received PackageSet request: " <> request.rawPayload
+
+    -- Check if the operation requires authentication (compiler change or package removal)
+    let
+      PackageSetUpdate payload = request.payload
+      didChangeCompiler = isJust payload.compiler
+      didRemovePackages = any isNothing payload.packages
+      requiresAuth = didChangeCompiler || didRemovePackages
+
+    -- If restricted operation, verify pacchettibotti signature
+    authResult <-
+      if requiresAuth then do
+        pacchettiBotti <- lift API.getPacchettiBotti
+        lift $ Run.liftAff $ Auth.verifyPackageSetPayload pacchettiBotti request
+      else
+        pure (Right unit)
+
+    case authResult of
+      Left err -> do
+        lift $ Log.error $ "Package set authentication failed: " <> err
+        HTTPurple.badRequest err
+      Right _ -> do
+        when requiresAuth do
+          lift $ Log.info "Package set authentication successful."
+
+        -- Check for duplicate pending job with the same payload
+        jobId <- lift (Db.selectPackageSetJobByPayload request.payload) >>= case _ of
+          Just job -> do
+            lift $ Log.warn $ "Duplicate package set job insertion, returning existing one: " <> unwrap job.jobId
+            pure job.jobId
+          Nothing -> do
+            lift $ Db.insertPackageSetJob
+              { payload: request.payload
+              , rawPayload: request.rawPayload
+              , signature: request.signature
+              }
+
+        jsonOk V1.jobCreatedResponseCodec { jobId }
 
   Status, Get ->
     HTTPurple.emptyResponse Status.ok

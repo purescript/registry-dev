@@ -154,10 +154,7 @@ executeJob _ = case _ of
             , packageName: solvedPackage
             , packageVersion: solvedVersion
             }
-  PackageSetJob _details ->
-    -- TODO: need to pass in the package_sets effect
-    -- API.packageSetUpdate2 details
-    pure unit
+  PackageSetJob payload -> API.packageSetUpdate payload
 
 upgradeRegistryToNewCompiler :: forall r. Version -> Run (DB + LOG + EXCEPT String + REGISTRY + r) Unit
 upgradeRegistryToNewCompiler newCompilerVersion = do

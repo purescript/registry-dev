@@ -10,6 +10,7 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.SQLite (FinishJob, InsertMatrixJob, InsertPackageSetJob, InsertPublishJob, InsertTransferJob, InsertUnpublishJob, MatrixJobDetails, PackageSetJobDetails, PublishJobDetails, SQLite, SelectJobRequest, SelectJobsRequest, StartJob, TransferJobDetails, UnpublishJobDetails)
 import Registry.App.SQLite as SQLite
+import Registry.Operation (PackageSetOperation)
 import Run (EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
@@ -42,6 +43,7 @@ data Db a
   | SelectPublishJob PackageName Version (Either String (Maybe PublishJobDetails) -> a)
   | SelectUnpublishJob PackageName Version (Either String (Maybe UnpublishJobDetails) -> a)
   | SelectTransferJob PackageName (Either String (Maybe TransferJobDetails) -> a)
+  | SelectPackageSetJobByPayload PackageSetOperation (Either String (Maybe PackageSetJobDetails) -> a)
   | InsertLogLine LogLine a
   | SelectLogsByJob JobId LogLevel DateTime (Array LogLine -> a)
   | ResetIncompleteJobs a
@@ -130,6 +132,10 @@ selectUnpublishJob packageName packageVersion = Run.lift _db (SelectUnpublishJob
 selectTransferJob :: forall r. PackageName -> Run (DB + EXCEPT String + r) (Maybe TransferJobDetails)
 selectTransferJob packageName = Run.lift _db (SelectTransferJob packageName identity) >>= Except.rethrow
 
+-- | Lookup a pending package set job from the database by payload (for duplicate detection).
+selectPackageSetJobByPayload :: forall r. PackageSetOperation -> Run (DB + EXCEPT String + r) (Maybe PackageSetJobDetails)
+selectPackageSetJobByPayload payload = Run.lift _db (SelectPackageSetJobByPayload payload identity) >>= Except.rethrow
+
 -- | Delete all incomplete jobs from the database.
 resetIncompleteJobs :: forall r. Run (DB + r) Unit
 resetIncompleteJobs = Run.lift _db (ResetIncompleteJobs unit)
@@ -212,6 +218,10 @@ handleSQLite env = case _ of
 
   SelectTransferJob packageName reply -> do
     result <- Run.liftEffect $ SQLite.selectTransferJob env.db packageName
+    pure $ reply result
+
+  SelectPackageSetJobByPayload payload reply -> do
+    result <- Run.liftEffect $ SQLite.selectPackageSetJobByPayload env.db payload
     pure $ reply result
 
   InsertLogLine log next -> do

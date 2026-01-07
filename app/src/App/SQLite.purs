@@ -38,6 +38,7 @@ module Registry.App.SQLite
   , selectNextPublishJob
   , selectNextTransferJob
   , selectNextUnpublishJob
+  , selectPackageSetJobByPayload
   , selectPublishJob
   , selectTransferJob
   , selectUnpublishJob
@@ -67,7 +68,7 @@ import Registry.Internal.Format as Internal.Format
 import Registry.Operation (AuthenticatedData, PackageSetOperation, PublishData, TransferData, UnpublishData)
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
-import Registry.SSH (Signature)
+import Registry.SSH (Signature(..))
 import Registry.Version as Version
 
 -- | An active database connection acquired with `connect`
@@ -253,7 +254,7 @@ selectJob db { level: maybeLogLevel, since, jobId: JobId jobId } = do
       maybeJobDetails
 
   selectPackageSetJobById logs = ExceptT do
-    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPackageSetJobImpl db (Nullable.notNull jobId)
+    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPackageSetJobImpl db (notNull jobId)
     pure $ traverse
       ( map (PackageSetJob <<< Record.merge { logs, jobType: Proxy :: _ "packageset" })
           <<< packageSetJobDetailsFromJSRep
@@ -728,28 +729,43 @@ packageSetJobDetailsFromJSRep { jobId, payload, createdAt, startedAt, finishedAt
 
 foreign import selectPackageSetJobImpl :: EffectFn2 SQLite (Nullable String) (Nullable JSPackageSetJobDetails)
 
+foreign import selectPackageSetJobByPayloadImpl :: EffectFn2 SQLite String (Nullable JSPackageSetJobDetails)
+
 foreign import selectPackageSetJobsImpl :: EffectFn3 SQLite String Boolean (Array JSPackageSetJobDetails)
 
 selectNextPackageSetJob :: SQLite -> Effect (Either String (Maybe PackageSetJobDetails))
 selectNextPackageSetJob db = do
-  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPackageSetJobImpl db Nullable.null
+  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPackageSetJobImpl db null
+  pure $ traverse packageSetJobDetailsFromJSRep maybeJobDetails
+
+-- | Find a pending package set job by payload (for duplicate detection)
+selectPackageSetJobByPayload :: SQLite -> PackageSetOperation -> Effect (Either String (Maybe PackageSetJobDetails))
+selectPackageSetJobByPayload db payload = do
+  let payloadStr = stringifyJson Operation.packageSetOperationCodec payload
+  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPackageSetJobByPayloadImpl db payloadStr
   pure $ traverse packageSetJobDetailsFromJSRep maybeJobDetails
 
 type InsertPackageSetJob =
   { payload :: PackageSetOperation
+  , rawPayload :: String
+  , signature :: Maybe Signature
   }
 
 type JSInsertPackageSetJob =
   { jobId :: String
   , createdAt :: String
   , payload :: String
+  , rawPayload :: String
+  , signature :: Nullable String
   }
 
 insertPackageSetJobToJSRep :: JobId -> DateTime -> InsertPackageSetJob -> JSInsertPackageSetJob
-insertPackageSetJobToJSRep jobId now { payload } =
+insertPackageSetJobToJSRep jobId now { payload, rawPayload, signature } =
   { jobId: un JobId jobId
   , createdAt: DateTime.format Internal.Format.iso8601DateTime now
   , payload: stringifyJson Operation.packageSetOperationCodec payload
+  , rawPayload
+  , signature: Nullable.toNullable $ map (\(Signature s) -> s) signature
   }
 
 foreign import insertPackageSetJobImpl :: EffectFn2 SQLite JSInsertPackageSetJob Unit

@@ -4,6 +4,7 @@ import Registry.App.Prelude
 
 import Data.Time.Duration (Milliseconds(..))
 import Test.E2E.Endpoint.Jobs as Jobs
+import Test.E2E.Endpoint.PackageSets as PackageSets
 import Test.E2E.Endpoint.Publish as Publish
 import Test.E2E.Endpoint.Transfer as Transfer
 import Test.E2E.Endpoint.Unpublish as Unpublish
@@ -26,6 +27,7 @@ main = do
         Spec.describe "Jobs" Jobs.spec
         Spec.describe "Unpublish" Unpublish.spec
         Spec.describe "Transfer" Transfer.spec
+        Spec.describe "PackageSets" PackageSets.spec
 
       Spec.describe "Workflows" do
         Spec.describe "GitHubIssue" GitHubIssue.spec

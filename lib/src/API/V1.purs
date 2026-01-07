@@ -61,6 +61,7 @@ data Route
   = Publish
   | Unpublish
   | Transfer
+  | PackageSets
   | Jobs { since :: Maybe DateTime, include_completed :: Maybe Boolean }
   | Job JobId { level :: Maybe LogLevel, since :: Maybe DateTime }
   | Status
@@ -72,6 +73,7 @@ routes = Routing.root $ Routing.prefix "api" $ Routing.prefix "v1" $ RoutingG.su
   { "Publish": "publish" / RoutingG.noArgs
   , "Unpublish": "unpublish" / RoutingG.noArgs
   , "Transfer": "transfer" / RoutingG.noArgs
+  , "PackageSets": "package-sets" / RoutingG.noArgs
   , "Jobs": "jobs" ?
       { since: Routing.optional <<< timestampP <<< Routing.string
       , include_completed: Routing.optional <<< Routing.boolean

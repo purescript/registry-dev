@@ -17,15 +17,20 @@ module Test.E2E.Support.Fixtures
   , preludeUnpublishData
   , signUnpublish
   , signTransfer
+  , packageSetAddRequest
+  , packageSetCompilerChangeRequest
+  , packageSetRemoveRequest
+  , signPackageSet
   , invalidJsonIssueEvent
   ) where
 
 import Registry.App.Prelude
 
 import Data.Codec.JSON as CJ
+import Data.Map as Map
 import JSON as JSON
 import Registry.Location (Location(..))
-import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), TransferData, UnpublishData)
+import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageSetOperation(..), PackageSetUpdateRequest, TransferData, UnpublishData)
 import Registry.Operation as Operation
 import Registry.PackageName (PackageName)
 import Registry.SSH as SSH
@@ -216,6 +221,61 @@ signTransfer privateKey transferData = do
     , rawPayload
     , signature
     }
+
+-- | type-equality@4.0.1 fixture package (exists in registry-index but not in initial package set)
+typeEquality :: PackageFixture
+typeEquality = { name: Utils.unsafePackageName "type-equality", version: Utils.unsafeVersion "4.0.1" }
+
+-- | Package set request to add type-equality@4.0.1.
+-- | This is an unauthenticated request (no signature) since adding packages
+-- | doesn't require trustee authentication.
+packageSetAddRequest :: PackageSetUpdateRequest
+packageSetAddRequest =
+  let
+    payload = PackageSetUpdate
+      { compiler: Nothing
+      , packages: Map.singleton typeEquality.name (Just typeEquality.version)
+      }
+    rawPayload = JSON.print $ CJ.encode Operation.packageSetOperationCodec payload
+  in
+    { payload, rawPayload, signature: Nothing }
+
+-- | Package set request to change the compiler version.
+-- | This requires authentication (pacchettibotti signature) since changing
+-- | the compiler is a restricted operation.
+packageSetCompilerChangeRequest :: PackageSetUpdateRequest
+packageSetCompilerChangeRequest =
+  let
+    payload = PackageSetUpdate
+      { compiler: Just (Utils.unsafeVersion "0.15.10")
+      , packages: Map.empty
+      }
+    rawPayload = JSON.print $ CJ.encode Operation.packageSetOperationCodec payload
+  in
+    { payload, rawPayload, signature: Nothing }
+
+-- | Package set request to remove a package.
+-- | This requires authentication (pacchettibotti signature) since removing
+-- | packages is a restricted operation.
+packageSetRemoveRequest :: PackageSetUpdateRequest
+packageSetRemoveRequest =
+  let
+    payload = PackageSetUpdate
+      { compiler: Nothing
+      , packages: Map.singleton effect.name Nothing
+      }
+    rawPayload = JSON.print $ CJ.encode Operation.packageSetOperationCodec payload
+  in
+    { payload, rawPayload, signature: Nothing }
+
+-- | Sign a package set update request using the given private key.
+-- | The private key should be the base64-decoded PACCHETTIBOTTI_ED25519 env var.
+signPackageSet :: String -> PackageSetUpdateRequest -> Either String PackageSetUpdateRequest
+signPackageSet privateKey request = do
+  private <- SSH.parsePrivateKey { key: privateKey, passphrase: Nothing }
+    # lmap SSH.printPrivateKeyParseError
+  let signature = SSH.sign private request.rawPayload
+  pure request { signature = Just signature }
 
 -- | GitHub issue event with invalid JSON in the body.
 -- | Used to test that malformed JSON is handled gracefully with an error comment.

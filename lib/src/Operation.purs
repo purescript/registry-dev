@@ -19,6 +19,7 @@ module Registry.Operation
   , PackageOperation(..)
   , PackageSetOperation(..)
   , PackageSetUpdateData
+  , PackageSetUpdateRequest
   , PublishData
   , TransferData
   , UnpublishData
@@ -27,6 +28,7 @@ module Registry.Operation
   , packageOperationCodec
   , packageSetOperationCodec
   , packageSetUpdateCodec
+  , packageSetUpdateRequestCodec
   , publishCodec
   , transferCodec
   , unpublishCodec
@@ -228,3 +230,33 @@ packageSetUpdateCodec = CJ.named "PackageSetUpdate" $ CJ.Record.object
   -- `Compat` version of the `maybe` codec.
   , packages: Internal.Codec.packageMap (CJ.Common.nullable Version.codec)
   }
+
+-- | A package set update request that can be optionally authenticated.
+-- |
+-- | Non-trustees can submit add/upgrade operations without authentication.
+-- | Trustees must sign requests for restricted operations (compiler changes,
+-- | package removals) with pacchettibotti's key.
+type PackageSetUpdateRequest =
+  { payload :: PackageSetOperation
+  , rawPayload :: String
+  , signature :: Maybe Signature
+  }
+
+-- | A codec for encoding and decoding a `PackageSetUpdateRequest` as JSON.
+packageSetUpdateRequestCodec :: CJ.Codec PackageSetUpdateRequest
+packageSetUpdateRequestCodec = CJ.named "PackageSetUpdateRequest" $ Codec.codec' decode encode
+  where
+  decode json = do
+    rep <- Codec.decode repCodec json
+    payloadJson <- except $ lmap JSON.DecodeError.basic $ JSON.parse rep.payload
+    operation <- Codec.decode packageSetOperationCodec payloadJson
+    pure { payload: operation, rawPayload: rep.payload, signature: map Signature rep.signature }
+
+  encode { rawPayload, signature } =
+    CJ.encode repCodec { payload: rawPayload, signature: map (\(Signature s) -> s) signature }
+
+  repCodec :: CJ.Codec { payload :: String, signature :: Maybe String }
+  repCodec = CJ.named "PackageSetUpdateRequestRep" $ CJ.Record.object
+    { payload: CJ.string
+    , signature: CJ.Record.optional CJ.string
+    }

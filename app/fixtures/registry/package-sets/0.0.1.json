@@ -1,0 +1,8 @@
+{
+  "version": "0.0.1",
+  "compiler": "0.15.9",
+  "published": "2024-01-01",
+  "packages": {
+    "prelude": "6.0.1"
+  }
+}

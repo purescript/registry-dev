@@ -24,6 +24,8 @@ import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.PackageSets (PACKAGE_SETS)
+import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit (PURSUIT)
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY)
@@ -120,7 +122,7 @@ createServerEnv = do
     , jobId: Nothing
     }
 
-type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + ARCHIVE + REGISTRY + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMPILER_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + ARCHIVE + REGISTRY + PACKAGE_SETS + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMPILER_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer
   :: ServerEnv
@@ -148,6 +150,7 @@ runEffects env operation = Aff.attempt do
   let logFile = String.take 10 (Formatter.DateTime.format Internal.Format.iso8601Date today) <> ".log"
   let logPath = Path.concat [ env.logsDir, logFile ]
   operation
+    # PackageSets.interpret (PackageSets.handle { workdir: scratchDir })
     # Registry.interpret
         ( Registry.handle
             { repos: Registry.defaultRepos

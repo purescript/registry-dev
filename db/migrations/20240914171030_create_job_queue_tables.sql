@@ -52,6 +52,8 @@ CREATE TABLE matrix_jobs (
 CREATE TABLE package_set_jobs (
   jobId TEXT PRIMARY KEY NOT NULL,
   payload JSON NOT NULL,
+  rawPayload TEXT NOT NULL,
+  signature TEXT,
   FOREIGN KEY (jobId) REFERENCES job_info (jobId) ON DELETE CASCADE
 );
 
