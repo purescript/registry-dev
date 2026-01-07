@@ -8,10 +8,10 @@ import Data.String as String
 import Registry.API.V1 as V1
 import Registry.Metadata (Metadata(..))
 import Registry.Test.Assert as Assert
-import Registry.Test.Utils (unsafePackageName, unsafeVersion)
+import Registry.Test.Fixtures as Fixtures
 import Test.E2E.Support.Client as Client
 import Test.E2E.Support.Env as Env
-import Test.E2E.Support.Fixtures as Fixtures
+import Test.E2E.Support.Fixtures as E2E.Fixtures
 import Test.Spec (Spec)
 import Test.Spec as Spec
 
@@ -24,26 +24,25 @@ spec = do
         config <- Env.getConfig
 
         -- Publish
-        { jobId: publishJobId } <- Env.expectRight "submit publish" =<< Client.publish config Fixtures.effectPublishData
+        { jobId: publishJobId } <- Env.expectRight "submit publish" =<< Client.publish config E2E.Fixtures.effectPublishData
         _ <- Env.pollJobOrFail config publishJobId
 
         -- Unpublish
-        authData <- Env.signUnpublishOrFail Fixtures.effectUnpublishData
+        authData <- Env.signUnpublishOrFail E2E.Fixtures.effectUnpublishData
         { jobId: unpublishJobId } <- Env.expectRight "submit unpublish" =<< Client.unpublish config authData
         unpublishJob <- Env.pollJobOrFail config unpublishJobId
         Assert.shouldSatisfy (V1.jobInfo unpublishJob).finishedAt isJust
 
         -- Verify metadata shows version as unpublished
-        Metadata metadata <- Env.readMetadata (unsafePackageName "effect")
-        let version = unsafeVersion "4.0.0"
+        Metadata metadata <- Env.readMetadata Fixtures.effect.name
 
-        case Map.lookup version metadata.unpublished of
+        case Map.lookup Fixtures.effect.version metadata.unpublished of
           Nothing ->
             Assert.fail "Expected version 4.0.0 to be in 'unpublished' metadata"
           Just unpublishedInfo ->
             Assert.shouldSatisfy unpublishedInfo.reason (not <<< String.null)
 
-        when (Map.member version metadata.published) do
+        when (Map.member Fixtures.effect.version metadata.published) do
           Assert.fail "Version 4.0.0 should not be in 'published' metadata after unpublish"
 
         -- Verify S3 DELETE was called

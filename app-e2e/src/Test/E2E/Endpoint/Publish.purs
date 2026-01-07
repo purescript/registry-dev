@@ -28,10 +28,10 @@ spec = do
         let allLogs = (V1.jobInfo allLogsJob).logs
 
         infoLogsJob <- Env.expectRight "get job with INFO level" =<< Client.getJob config jobId (Just V1.Info) Nothing Nothing
-        let infoLogs = (V1.jobInfo infoLogsJob).logs
-        let debugOnlyLogs = Array.filter (\l -> l.level == V1.Debug) allLogs
-
-        let infoContainsDebug = Array.any (\l -> l.level == V1.Debug) infoLogs
+        let
+          infoLogs = (V1.jobInfo infoLogsJob).logs
+          debugOnlyLogs = Array.filter (\l -> l.level == V1.Debug) allLogs
+          infoContainsDebug = Array.any (\l -> l.level == V1.Debug) infoLogs
         when infoContainsDebug do
           Assert.fail "INFO level filter returned DEBUG logs"
 

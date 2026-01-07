@@ -5,18 +5,12 @@ import Registry.App.Prelude
 import Data.Array as Array
 import Registry.API.V1 (Job(..), JobId(..))
 import Registry.API.V1 as V1
-import Registry.PackageName (PackageName)
 import Registry.Test.Assert as Assert
-import Registry.Test.Utils (unsafePackageName)
+import Registry.Test.Fixtures as Fixtures
 import Test.E2E.Support.Client as Client
 import Test.E2E.Support.Env as Env
 import Test.Spec (Spec)
 import Test.Spec as Spec
-
--- FIXME: These seeded packages are used by the test environment to have pre-existing
--- jobs. We may need to remove these once we have a better test data setup approach.
-seededPackages :: Array PackageName
-seededPackages = [ unsafePackageName "prelude", unsafePackageName "type-equality" ]
 
 spec :: Spec Unit
 spec = do
@@ -31,17 +25,19 @@ spec = do
       config <- Env.getConfig
 
       -- Get jobs with and without include_completed
-      recentJobs <- Env.expectRight "get recent jobs" =<< Client.getJobsWith false config
-      allJobs <- Env.expectRight "get all jobs" =<< Client.getJobsWith true config
+      recentJobs <- Env.expectRight "get recent jobs" =<< Client.getJobsWith Client.ActiveOnly config
+      allJobs <- Env.expectRight "get all jobs" =<< Client.getJobsWith Client.IncludeCompleted config
 
-      let recentCount = Array.length recentJobs
-      let allCount = Array.length allJobs
+      let
+        recentCount = Array.length recentJobs
+        allCount = Array.length allJobs
 
       Assert.shouldSatisfy allCount (_ > 0)
       Assert.shouldSatisfy recentCount (_ <= allCount)
 
-      -- Verify seeded matrix jobs exist
+      -- Verify seeded matrix jobs exist (prelude and type-equality are seeded by test env)
       let
+        seededPackages = [ Fixtures.prelude.name, Fixtures.typeEquality.name ]
         isSeededMatrixJob j = case j of
           MatrixJob { packageName } -> Array.elem packageName seededPackages
           _ -> false
@@ -52,8 +48,9 @@ spec = do
       let completedJob = Array.find (\j -> isJust (V1.jobInfo j).finishedAt) allJobs
       case completedJob of
         Just job -> do
-          let jobId = (V1.jobInfo job).jobId
-          let inRecent = Array.any (\j -> (V1.jobInfo j).jobId == jobId) recentJobs
+          let
+            jobId = (V1.jobInfo job).jobId
+            inRecent = Array.any (\j -> (V1.jobInfo j).jobId == jobId) recentJobs
           when inRecent do
             Assert.fail $ "Completed job " <> unwrap jobId <> " should be excluded from include_completed=false results"
         Nothing -> pure unit

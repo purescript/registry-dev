@@ -15,7 +15,8 @@ import Registry.Manifest (Manifest(..))
 import Registry.Metadata (Metadata(..))
 import Registry.Operation.Validation (UnpublishError(..), forbiddenModules, getUnresolvedDependencies, validatePursModule, validateUnpublish)
 import Registry.Test.Assert as Assert
-import Registry.Test.Utils (defaultHash, defaultLocation, fromJust, unsafeDateTime, unsafeManifest, unsafePackageName, unsafeVersion)
+import Registry.Test.Fixtures (defaultHash, defaultLocation)
+import Registry.Test.Utils (fromJust, unsafeDateTime, unsafeManifest, unsafePackageName, unsafeVersion)
 import Test.Spec (Spec)
 import Test.Spec as Spec
 

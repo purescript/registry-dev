@@ -12,7 +12,7 @@ module Test.E2E.Support.WireMock
   , WireMockRequest
   , WireMockError(..)
   , configFromEnv
-  , configForService
+  , configForGithub
   , configForStorage
   , getRequests
   , getRequestsOrFail
@@ -49,7 +49,7 @@ import Effect.Exception as Effect.Exception
 import Fetch (Method(..))
 import Fetch as Fetch
 import JSON as JSON
-import Node.Process as Process
+import Registry.App.Effect.Env as Env
 
 -- | Configuration for connecting to WireMock admin API
 type WireMockConfig =
@@ -77,22 +77,21 @@ printWireMockError = case _ of
 -- | Convenience for tests that need to inspect GitHub mock requests.
 -- | Each WireMock instance has its own admin API on the same port.
 configFromEnv :: Effect WireMockConfig
-configFromEnv = configForService "GITHUB_API_URL"
+configFromEnv = configForGithub
 
--- | Create config from a specific environment variable.
--- | Useful for accessing different WireMock services (S3, Pursuit, etc.)
-configForService :: String -> Effect WireMockConfig
-configForService envVar = do
-  maybeUrl <- Process.lookupEnv envVar
-  case maybeUrl of
-    Nothing -> Effect.Exception.throw $ envVar <> " environment variable is not set."
-    Just baseUrl -> pure { baseUrl }
+-- | Create config for the GitHub WireMock instance.
+configForGithub :: Effect WireMockConfig
+configForGithub = do
+  baseUrl <- Env.lookupRequired Env.githubApiUrl
+  pure { baseUrl }
 
 -- | Create config for the unified storage WireMock instance.
 -- | The storage instance handles S3, bucket, and Pursuit APIs with stateful scenarios.
 -- | Use this for scenario resets and storage-related request assertions.
 configForStorage :: Effect WireMockConfig
-configForStorage = configForService "S3_API_URL"
+configForStorage = do
+  baseUrl <- Env.lookupRequired Env.s3ApiUrl
+  pure { baseUrl }
 
 -- | Codec for a single request entry in WireMock's response
 requestCodec :: CJ.Codec WireMockRequest

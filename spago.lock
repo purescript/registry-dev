@@ -303,7 +303,6 @@
           "dependencies": [
             "aff",
             "arrays",
-            "b64",
             "bifunctors",
             "codec-json",
             "console",

@@ -27,13 +27,14 @@ import Registry.Location as Location
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), TransferData, UnpublishData)
 import Registry.Operation as Operation
 import Registry.SSH as SSH
+import Registry.Test.Fixtures as Fixtures
 import Registry.Test.Utils as Utils
 
 -- | Standard publish data for effect@4.0.0, used by E2E tests.
 -- | This matches the fixtures in app/fixtures/github-packages/effect-4.0.0
 effectPublishData :: Operation.PublishData
 effectPublishData =
-  { name: Utils.unsafePackageName "effect"
+  { name: Fixtures.effect.name
   , location: Just $ Location.GitHub
       { owner: "purescript"
       , repo: "purescript-effect"
@@ -42,7 +43,7 @@ effectPublishData =
   , ref: "v4.0.0"
   , compiler: Utils.unsafeVersion "0.15.9"
   , resolutions: Nothing
-  , version: Utils.unsafeVersion "4.0.0"
+  , version: Fixtures.effect.version
   }
 
 -- | Publish data for effect@99.0.0 with a DIFFERENT location.
@@ -65,7 +66,7 @@ effectPublishDataDifferentLocation =
 -- | This matches the fixtures in app/fixtures/github-packages/console-6.1.0
 consolePublishData :: Operation.PublishData
 consolePublishData =
-  { name: Utils.unsafePackageName "console"
+  { name: Fixtures.console.name
   , location: Just $ Location.GitHub
       { owner: "purescript"
       , repo: "purescript-console"
@@ -74,14 +75,14 @@ consolePublishData =
   , ref: "v6.1.0"
   , compiler: Utils.unsafeVersion "0.15.9"
   , resolutions: Nothing
-  , version: Utils.unsafeVersion "6.1.0"
+  , version: Fixtures.console.version
   }
 
 -- | Unpublish data for effect@4.0.0, used for publish-then-unpublish tests.
 effectUnpublishData :: UnpublishData
 effectUnpublishData =
-  { name: Utils.unsafePackageName "effect"
-  , version: Utils.unsafeVersion "4.0.0"
+  { name: Fixtures.effect.name
+  , version: Fixtures.effect.version
   , reason: "Testing unpublish flow"
   }
 
@@ -89,7 +90,7 @@ effectUnpublishData =
 -- | Transfers effect to a different GitHub owner.
 effectTransferData :: TransferData
 effectTransferData =
-  { name: Utils.unsafePackageName "effect"
+  { name: Fixtures.effect.name
   , newLocation: Location.GitHub
       { owner: "new-owner"
       , repo: "purescript-effect"
@@ -111,8 +112,8 @@ nonexistentUnpublishData =
 -- | the 48-hour time limit check.
 preludeUnpublishData :: UnpublishData
 preludeUnpublishData =
-  { name: Utils.unsafePackageName "prelude"
-  , version: Utils.unsafeVersion "6.0.1"
+  { name: Fixtures.prelude.name
+  , version: Fixtures.prelude.version
   , reason: "Testing 48-hour limit enforcement"
   }
 
@@ -138,7 +139,7 @@ failingTransferData =
   let
     transferPayload :: TransferData
     transferPayload =
-      { name: Utils.unsafePackageName "prelude"
+      { name: Fixtures.prelude.name
       , newLocation: Location.GitHub
           { owner: "someone-else"
           , repo: "purescript-prelude"
@@ -161,8 +162,8 @@ trusteeAuthenticatedData =
   let
     unpublishPayload :: UnpublishData
     unpublishPayload =
-      { name: Utils.unsafePackageName "prelude"
-      , version: Utils.unsafeVersion "6.0.1"
+      { name: Fixtures.prelude.name
+      , version: Fixtures.prelude.version
       , reason: "Testing trustee re-signing"
       }
     rawPayload = JSON.print $ CJ.encode Operation.unpublishCodec unpublishPayload

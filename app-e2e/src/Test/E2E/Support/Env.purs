@@ -38,18 +38,16 @@ import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), isJust, isNothing)
 import Data.String as String
-import Data.String.Base64 as Base64
 import Effect.Aff (Aff, Milliseconds(..))
 import Effect.Aff as Aff
 import Effect.Class (liftEffect)
 import Effect.Class.Console as Console
-import Effect.Exception as Exception
 import Node.ChildProcess.Types (Exit(..))
 import Node.Library.Execa as Execa
 import Node.Path as Path
-import Node.Process as Process
 import Registry.API.V1 (Job(..))
 import Registry.API.V1 as V1
+import Registry.App.Effect.Env as Env
 import Registry.App.Prelude (readJsonFile)
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Metadata (Metadata)
@@ -71,14 +69,7 @@ getConfig = liftEffect Client.configFromEnv
 -- | Get the pacchettibotti private key from environment (base64-decoded).
 -- | Used for signing authenticated operations in E2E tests.
 getPrivateKey :: Aff String
-getPrivateKey = do
-  maybeKey <- liftEffect $ Process.lookupEnv "PACCHETTIBOTTI_ED25519"
-  case maybeKey of
-    Nothing -> Aff.throwError $ Aff.error "PACCHETTIBOTTI_ED25519 environment variable is not set"
-    Just base64Key ->
-      case Base64.decode base64Key of
-        Left err -> Aff.throwError $ Aff.error $ "Failed to decode private key: " <> Exception.message err
-        Right key -> pure key
+getPrivateKey = liftEffect $ Env.lookupRequired Env.pacchettibottiED25519
 
 -- | Reset all test state for isolation between tests.
 -- | This is the recommended way to set up test isolation in Spec.before_.
@@ -120,13 +111,18 @@ getStorageRequests = do
   WireMock.getRequestsOrFail storageConfig
 
 -- | Reset the database by clearing all job-related tables.
--- | NOTE: If new job tables are added in migrations, update this list to keep test isolation correct.
+-- |
+-- | This works because all job tables (publish_jobs, unpublish_jobs, transfer_jobs,
+-- | matrix_jobs, package_set_jobs, logs) have foreign keys to job_info with
+-- | ON DELETE CASCADE. See db/schema.sql for the schema definition.
+-- |
+-- | If new tables are added that don't cascade from job_info, they must be
+-- | explicitly deleted here.
 resetDatabase :: Aff Unit
 resetDatabase = do
-  stateDir <- getStateDir
-  let dbPath = Path.concat [ stateDir, "db", "registry.sqlite3" ]
-  let sql = "DELETE FROM logs; DELETE FROM publish_jobs; DELETE FROM unpublish_jobs; DELETE FROM transfer_jobs; DELETE FROM matrix_jobs; DELETE FROM package_set_jobs; DELETE FROM job_info;"
-  result <- _.getResult =<< Execa.execa "sqlite3" [ dbPath, sql ] identity
+  stateDirPath <- getStateDir
+  let dbPath = Path.concat [ stateDirPath, "db", "registry.sqlite3" ]
+  result <- _.getResult =<< Execa.execa "sqlite3" [ dbPath, "DELETE FROM job_info;" ] identity
   case result.exit of
     Normally 0 -> pure unit
     _ -> Aff.throwError $ Aff.error $ "Failed to reset database: " <> result.stderr
@@ -141,18 +137,15 @@ resetDatabase = do
 -- | to preserve the logs subdirectory which the server expects to exist.
 resetGitFixtures :: Aff Unit
 resetGitFixtures = do
-  stateDir <- getStateDir
-  maybeFixturesDir <- liftEffect $ Process.lookupEnv "REPO_FIXTURES_DIR"
-  case maybeFixturesDir of
-    Nothing -> Aff.throwError $ Aff.error "REPO_FIXTURES_DIR environment variable is not set"
-    Just fixturesDir -> do
-      let
-        registryOrigin = Path.concat [ fixturesDir, "purescript", "registry" ]
-        registryIndexOrigin = Path.concat [ fixturesDir, "purescript", "registry-index" ]
-        scratchDir = Path.concat [ stateDir, "scratch" ]
-      resetOrigin registryOrigin
-      resetOrigin registryIndexOrigin
-      deleteGitClones scratchDir
+  stateDirPath <- getStateDir
+  fixturesDir <- liftEffect $ Env.lookupRequired Env.repoFixturesDir
+  let
+    registryOrigin = Path.concat [ fixturesDir, "purescript", "registry" ]
+    registryIndexOrigin = Path.concat [ fixturesDir, "purescript", "registry-index" ]
+    scratchDir = Path.concat [ stateDirPath, "scratch" ]
+  resetOrigin registryOrigin
+  resetOrigin registryIndexOrigin
+  deleteGitClones scratchDir
   where
   resetOrigin dir = do
     resetResult <- _.getResult =<< Execa.execa "git" [ "reset", "--hard", "initial-fixture" ] (_ { cwd = Just dir })
@@ -256,11 +249,7 @@ signTransferOrFail transferData = do
 -- | Get the STATE_DIR environment variable.
 -- | This is the root directory for test state (database, scratch repos, etc).
 getStateDir :: Aff String
-getStateDir = do
-  maybeDir <- liftEffect $ Process.lookupEnv "STATE_DIR"
-  case maybeDir of
-    Nothing -> Aff.throwError $ Aff.error "STATE_DIR environment variable is not set"
-    Just dir -> pure dir
+getStateDir = liftEffect $ Env.lookupRequired Env.stateDir
 
 -- | Run git status --porcelain in a directory and return the output.
 -- | Empty output means clean working tree. Uses the git CLI directly.

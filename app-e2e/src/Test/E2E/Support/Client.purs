@@ -3,6 +3,7 @@
 module Test.E2E.Support.Client
   ( Config
   , ClientError(..)
+  , JobFilter(..)
   , defaultConfig
   , configFromEnv
   , getJobs
@@ -36,13 +37,12 @@ import Effect.Aff (Aff, Milliseconds(..), delay)
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class.Console as Console
 import Effect.Exception (Error, error)
-import Effect.Exception as Effect.Exception
 import Fetch (Method(..))
 import Fetch as Fetch
 import JSON as JSON
-import Node.Process as Process
 import Registry.API.V1 (Job, JobId(..), LogLevel)
 import Registry.API.V1 as V1
+import Registry.App.Effect.Env as Env
 import Registry.Internal.Format as Internal.Format
 import Registry.Operation (AuthenticatedData, PublishData)
 import Registry.Operation as Operation
@@ -68,10 +68,8 @@ defaultConfig =
 -- | See `nix/lib/env.nix` for the centralized environment configuration.
 configFromEnv :: Effect Config
 configFromEnv = do
-  maybePort <- Process.lookupEnv "SERVER_PORT"
-  case maybePort of
-    Nothing -> Effect.Exception.throw "SERVER_PORT environment variable is not set. Run tests via 'nix run .#test-env' or 'nix build .#checks.x86_64-linux.integration'."
-    Just port -> pure $ defaultConfig { baseUrl = "http://localhost:" <> port }
+  port <- Env.lookupRequired Env.serverPort
+  pure $ defaultConfig { baseUrl = "http://localhost:" <> show port }
 
 -- | Errors that can occur during client operations
 data ClientError
@@ -126,17 +124,21 @@ post reqCodec resCodec config path reqBody = runExceptT do
   else
     throwError $ HttpError { status: response.status, body: responseBody }
 
--- | Get the list of jobs with a configurable include_completed flag
-getJobsWith :: Boolean -> Config -> Aff (Either ClientError (Array Job))
-getJobsWith includeCompleted config =
+data JobFilter = ActiveOnly | IncludeCompleted
+
+-- | Get the list of jobs with a configurable filter
+getJobsWith :: JobFilter -> Config -> Aff (Either ClientError (Array Job))
+getJobsWith filter config =
   let
-    flag = if includeCompleted then "true" else "false"
+    flag = case filter of
+      ActiveOnly -> "false"
+      IncludeCompleted -> "true"
   in
     get (CJ.array V1.jobCodec) config ("/api/v1/jobs?include_completed=" <> flag)
 
 -- | Get the list of jobs (includes completed jobs)
 getJobs :: Config -> Aff (Either ClientError (Array Job))
-getJobs = getJobsWith true
+getJobs = getJobsWith IncludeCompleted
 
 -- | Get a specific job by ID, with optional log filtering
 getJob :: Config -> JobId -> Maybe LogLevel -> Maybe DateTime -> Maybe Int -> Aff (Either ClientError Job)
