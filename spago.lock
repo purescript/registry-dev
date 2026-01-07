@@ -311,6 +311,7 @@
             "either",
             "exceptions",
             "fetch",
+            "foldable-traversable",
             "formatters",
             "integers",
             "json",

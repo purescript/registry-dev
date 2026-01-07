@@ -18,7 +18,7 @@ module Test.E2E.Support.Env
   , resetDatabase
   , resetGitFixtures
   , resetLogs
-  , resetCache
+  , resetGitHubRequestCache
   , pollJobOrFail
   , pollJobExpectFailure
   , expectRight
@@ -37,12 +37,14 @@ import Prelude
 import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), isJust, isNothing)
+import Data.Traversable (for_)
 import Data.String as String
 import Effect.Aff (Aff, Milliseconds(..))
 import Effect.Aff as Aff
 import Effect.Class (liftEffect)
 import Effect.Class.Console as Console
 import Node.ChildProcess.Types (Exit(..))
+import Node.FS.Aff as FS.Aff
 import Node.Library.Execa as Execa
 import Node.Path as Path
 import Registry.API.V1 (Job(..))
@@ -180,14 +182,18 @@ resetLogs = do
     Normally _ -> pure unit
     _ -> pure unit
 
--- | Clear the scratch cache directory.
+-- | Clear cached GitHub API requests from the scratch cache directory.
 -- | This ensures each test makes fresh API calls rather than using cached responses.
 -- | Important for tests that verify specific API calls were made (e.g., Teams API).
-resetCache :: Aff Unit
-resetCache = do
+resetGitHubRequestCache :: Aff Unit
+resetGitHubRequestCache = do
   stateDir <- getStateDir
   let cacheDir = Path.concat [ stateDir, "scratch", ".cache" ]
-  FS.Extra.remove cacheDir
+  Aff.attempt (FS.Aff.readdir cacheDir) >>= case _ of
+    Left _ -> pure unit
+    Right files -> for_ files \file ->
+      when (String.Pattern "Request__" `String.contains` file) do
+        FS.Extra.remove (Path.concat [ cacheDir, file ])
 
 -- | Poll a job until completion, failing the test if the job fails.
 -- | Prints error logs on failure for debugging.

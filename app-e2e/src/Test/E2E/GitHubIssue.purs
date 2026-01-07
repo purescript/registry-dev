@@ -30,7 +30,7 @@ spec = do
   Spec.describe "GitHubIssue end-to-end" do
     -- Clear both WireMock journal and filesystem cache before each test
     -- to ensure fresh API calls are captured for verification
-    Spec.before_ (Env.clearGithubRequests *> Env.resetCache) do
+    Spec.before_ (Env.clearGithubRequests *> Env.resetGitHubRequestCache) do
 
       Spec.it "handles publish via GitHub issue, posts comments, and closes issue on success" do
         requests <- runWorkflow $ mkPublishEvent Fixtures.effectPublishData
