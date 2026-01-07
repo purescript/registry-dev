@@ -43,7 +43,12 @@ spago-test-e2e
 
 Options: `nix run .#test-env -- --tui` for interactive TUI, `-- --detached` for background mode to use a single terminal.
 
-State is stored in `/tmp/registry-test-env` and cleaned up on each `nix run .#test-env`. To examine state after a test run (for debugging), stop the test-env but don't restart it.
+State is stored in `/tmp/registry-test-env` and cleaned up on each `nix run .#test-env`. To examine state after a test run (for debugging), stop the test-env but don't restart it. This is useful, for example, to read the logs of the most recent run. For example:
+
+```sh
+# after a test run, see the logs (log name is today's date)
+cat /tmp/registry-test-env/scratch/logs/*.log
+```
 
 #### Smoke Test (Linux only)
 
