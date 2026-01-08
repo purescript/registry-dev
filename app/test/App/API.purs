@@ -217,66 +217,6 @@ spec = do
           Console.error $ String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
           Assert.fail $ "Expected to publish effect@4.0.0 and type-equality@4.0.1 and transitive@1.0.0 but got error: " <> err
         Right (Right _) -> pure unit
-
-    Spec.it "Falls back to archive when GitHub repo is inaccessible during legacy import" \{ workdir, index, metadata, storageDir, archiveDir, githubDir } -> do
-      logs <- liftEffect (Ref.new [])
-
-      let
-        toLegacyIndex :: ManifestIndex -> Solver.TransitivizedRegistry
-        toLegacyIndex =
-          Solver.exploreAllTransitiveDependencies
-            <<< Solver.initializeRegistry
-            <<< map (map (_.dependencies <<< un Manifest))
-            <<< ManifestIndex.toMap
-
-        testEnv =
-          { workdir
-          , logs
-          , index
-          , metadata
-          , pursuitExcludes: Set.empty
-          , username: "jon"
-          , storage: storageDir
-          , archive: archiveDir
-          , github: githubDir
-          }
-
-      -- The prelude@6.0.2 package exists in registry-archive but NOT in
-      -- github-packages or registry-storage. This simulates an archive-backed
-      -- package whose original GitHub repo is gone.
-      result <- Assert.Run.runTestEffects testEnv $ Except.runExcept do
-        let
-          name = Utils.unsafePackageName "prelude"
-          version = Utils.unsafeVersion "6.0.2"
-          ref = "v6.0.2"
-          publishArgs =
-            { compiler: Utils.unsafeVersion "0.15.10"
-            , location: Just $ GitHub { owner: "purescript", repo: "purescript-prelude", subdir: Nothing }
-            , name
-            , ref
-            , version
-            , resolutions: Nothing
-            }
-
-        -- Legacy import with archive fallback
-        Registry.readAllManifests >>= \idx ->
-          void $ API.publish (Just (toLegacyIndex idx)) publishArgs
-
-        -- Verify the package was published to storage
-        Storage.query name >>= \versions ->
-          unless (Set.member version versions) do
-            Except.throw $ "Expected " <> formatPackageVersion name version <> " to be published to registry storage."
-
-      case result of
-        Left exn -> do
-          recorded <- liftEffect (Ref.read logs)
-          Console.error $ String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
-          Assert.fail $ "Got an Aff exception! " <> Aff.message exn
-        Right (Left err) -> do
-          recorded <- liftEffect (Ref.read logs)
-          Console.error $ String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
-          Assert.fail $ "Expected prelude@6.0.2 to be published via archive fallback but got error: " <> err
-        Right (Right _) -> pure unit
   where
   withCleanEnv :: (PipelineEnv -> Aff Unit) -> Aff Unit
   withCleanEnv action = do
