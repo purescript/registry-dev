@@ -4,16 +4,16 @@
 -- | nicer interface with PureScript types for higher-level modules to use.
 
 module Registry.App.SQLite
-  ( ConnectOptions
+  ( AdminJobDetails
+  , ConnectOptions
   , FinishJob
+  , InsertAdminJob
   , InsertMatrixJob
-  , InsertPackageSetJob
   , InsertPublishJob
   , InsertTransferJob
   , InsertUnpublishJob
   , JobInfo
   , MatrixJobDetails
-  , PackageSetJobDetails
   , PublishJobDetails
   , SQLite
   , SelectJobRequest
@@ -23,18 +23,19 @@ module Registry.App.SQLite
   , UnpublishJobDetails
   , connect
   , finishJob
+  , insertAdminJob
   , insertLogLine
   , insertMatrixJob
-  , insertPackageSetJob
   , insertPublishJob
   , insertTransferJob
   , insertUnpublishJob
   , resetIncompleteJobs
   , selectJob
   , selectJobs
+  , selectRecentAdminJobs
   , selectLogsByJob
+  , selectNextAdminJob
   , selectNextMatrixJob
-  , selectNextPackageSetJob
   , selectNextPublishJob
   , selectNextTransferJob
   , selectNextUnpublishJob
@@ -60,7 +61,7 @@ import Data.UUID.Random as UUID
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, EffectFn4)
 import Effect.Uncurried as Uncurried
 import Record as Record
-import Registry.API.V1 (Job(..), JobId(..), LogLevel(..), LogLine)
+import Registry.API.V1 (AdminJobType, Job(..), JobId(..), LogLevel(..), LogLine)
 import Registry.API.V1 as API.V1
 import Registry.API.V1 as V1
 import Registry.Internal.Codec as Internal.Codec
@@ -206,7 +207,7 @@ selectJob db { level: maybeLogLevel, since, jobId: JobId jobId } = do
     [ selectPublishJobById logs
     , selectMatrixJobById logs
     , selectTransferJobById logs
-    , selectPackageSetJobById logs
+    , selectAdminJobById logs
     , selectUnpublishJobById logs
     ]
   pure { job, unreadableLogs }
@@ -253,11 +254,11 @@ selectJob db { level: maybeLogLevel, since, jobId: JobId jobId } = do
       )
       maybeJobDetails
 
-  selectPackageSetJobById logs = ExceptT do
-    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPackageSetJobImpl db (notNull jobId)
+  selectAdminJobById logs = ExceptT do
+    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectAdminJobImpl db (notNull jobId)
     pure $ traverse
-      ( map (PackageSetJob <<< Record.merge { logs, jobType: Proxy :: _ "packageset" })
-          <<< packageSetJobDetailsFromJSRep
+      ( map (AdminJob <<< Record.merge { logs, jobType: Proxy :: _ "admin" })
+          <<< adminJobDetailsFromJSRep
       )
       maybeJobDetails
 
@@ -272,10 +273,10 @@ selectJobs db { since, includeCompleted } = do
   unpublishJobs <- selectUnpublishJobs
   transferJobs <- selectTransferJobs
   matrixJobs <- selectMatrixJobs
-  packageSetJobs <- selectPackageSetJobs
+  adminJobs <- selectAdminJobs
   let
     { fail: failedJobs, success: allJobs } = partitionEithers
-      (publishJobs <> unpublishJobs <> transferJobs <> matrixJobs <> packageSetJobs)
+      (publishJobs <> unpublishJobs <> transferJobs <> matrixJobs <> adminJobs)
   pure { failed: failedJobs, jobs: take 100 $ sortBy (compare `on` (V1.jobInfo >>> _.createdAt)) allJobs }
 
   where
@@ -295,9 +296,9 @@ selectJobs db { since, includeCompleted } = do
     jobs <- Uncurried.runEffectFn3 selectMatrixJobsImpl db (DateTime.format Internal.Format.iso8601DateTime since) includeCompleted
     pure $ map (map (MatrixJob <<< Record.merge { logs: [], jobType: Proxy :: _ "matrix" }) <<< matrixJobDetailsFromJSRep) jobs
 
-  selectPackageSetJobs = do
-    jobs <- Uncurried.runEffectFn3 selectPackageSetJobsImpl db (DateTime.format Internal.Format.iso8601DateTime since) includeCompleted
-    pure $ map (map (PackageSetJob <<< Record.merge { logs: [], jobType: Proxy :: _ "packageset" }) <<< packageSetJobDetailsFromJSRep) jobs
+  selectAdminJobs = do
+    jobs <- Uncurried.runEffectFn3 selectAdminJobsImpl db (DateTime.format Internal.Format.iso8601DateTime since) includeCompleted
+    pure $ map (map (AdminJob <<< Record.merge { logs: [], jobType: Proxy :: _ "admin" }) <<< adminJobDetailsFromJSRep) jobs
 
 --------------------------------------------------------------------------------
 -- publish_jobs table
@@ -691,90 +692,103 @@ selectNextMatrixJob db = do
   pure $ traverse matrixJobDetailsFromJSRep maybeJobDetails
 
 --------------------------------------------------------------------------------
--- package_set_jobs table
+-- admin_jobs table
 
-type PackageSetJobDetails =
+type AdminJobDetails =
   { jobId :: JobId
   , createdAt :: DateTime
   , startedAt :: Maybe DateTime
   , finishedAt :: Maybe DateTime
   , success :: Boolean
-  , payload :: PackageSetOperation
+  , adminJobType :: AdminJobType
   }
 
-type JSPackageSetJobDetails =
+type JSAdminJobDetails =
   { jobId :: String
   , createdAt :: String
   , startedAt :: Nullable String
   , finishedAt :: Nullable String
   , success :: Int
+  , adminJobType :: String
   , payload :: String
   }
 
-packageSetJobDetailsFromJSRep :: JSPackageSetJobDetails -> Either String PackageSetJobDetails
-packageSetJobDetailsFromJSRep { jobId, payload, createdAt, startedAt, finishedAt, success } = do
+adminJobDetailsFromJSRep :: JSAdminJobDetails -> Either String AdminJobDetails
+adminJobDetailsFromJSRep { jobId, payload, createdAt, startedAt, finishedAt, success } = do
   created <- DateTime.unformat Internal.Format.iso8601DateTime createdAt
   started <- traverse (DateTime.unformat Internal.Format.iso8601DateTime) (toMaybe startedAt)
   finished <- traverse (DateTime.unformat Internal.Format.iso8601DateTime) (toMaybe finishedAt)
   s <- toSuccess success
-  parsed <- lmap JSON.DecodeError.print $ parseJson Operation.packageSetOperationCodec payload
+  parsedAdminJobType <- lmap JSON.DecodeError.print $ parseJson API.V1.adminJobTypeCodec payload
   pure
     { jobId: JobId jobId
     , createdAt: created
     , startedAt: started
     , finishedAt: finished
     , success: s
-    , payload: parsed
+    , adminJobType: parsedAdminJobType
     }
 
-foreign import selectPackageSetJobImpl :: EffectFn2 SQLite (Nullable String) (Nullable JSPackageSetJobDetails)
+foreign import selectAdminJobImpl :: EffectFn2 SQLite (Nullable String) (Nullable JSAdminJobDetails)
 
-foreign import selectPackageSetJobByPayloadImpl :: EffectFn2 SQLite String (Nullable JSPackageSetJobDetails)
+foreign import selectPackageSetJobByPayloadImpl :: EffectFn2 SQLite String (Nullable JSAdminJobDetails)
 
-foreign import selectPackageSetJobsImpl :: EffectFn3 SQLite String Boolean (Array JSPackageSetJobDetails)
+foreign import selectAdminJobsImpl :: EffectFn3 SQLite String Boolean (Array JSAdminJobDetails)
 
-selectNextPackageSetJob :: SQLite -> Effect (Either String (Maybe PackageSetJobDetails))
-selectNextPackageSetJob db = do
-  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPackageSetJobImpl db null
-  pure $ traverse packageSetJobDetailsFromJSRep maybeJobDetails
+foreign import selectRecentAdminJobsImpl :: EffectFn2 SQLite String (Array JSAdminJobDetails)
 
--- | Find a pending package set job by payload (for duplicate detection)
-selectPackageSetJobByPayload :: SQLite -> PackageSetOperation -> Effect (Either String (Maybe PackageSetJobDetails))
+selectNextAdminJob :: SQLite -> Effect (Either String (Maybe AdminJobDetails))
+selectNextAdminJob db = do
+  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectAdminJobImpl db null
+  pure $ traverse adminJobDetailsFromJSRep maybeJobDetails
+
+-- | Find a pending package set job by payload (for duplicate detection at API boundary)
+-- | This is only used when a manual package set operation is submitted via the API.
+selectPackageSetJobByPayload :: SQLite -> PackageSetOperation -> Effect (Either String (Maybe AdminJobDetails))
 selectPackageSetJobByPayload db payload = do
   let payloadStr = stringifyJson Operation.packageSetOperationCodec payload
   maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPackageSetJobByPayloadImpl db payloadStr
-  pure $ traverse packageSetJobDetailsFromJSRep maybeJobDetails
+  pure $ traverse adminJobDetailsFromJSRep maybeJobDetails
 
-type InsertPackageSetJob =
-  { payload :: PackageSetOperation
-  , rawPayload :: String
+-- | Returns recent admin jobs since a given timestamp (for scheduler)
+selectRecentAdminJobs :: SQLite -> DateTime -> Effect (Either String (Array AdminJobDetails))
+selectRecentAdminJobs db since = do
+  let sinceStr = DateTime.format Internal.Format.iso8601DateTime since
+  jobs <- Uncurried.runEffectFn2 selectRecentAdminJobsImpl db sinceStr
+  pure $ traverse adminJobDetailsFromJSRep jobs
+
+type InsertAdminJob =
+  { adminJobType :: AdminJobType
+  , rawPayload :: Maybe String
   , signature :: Maybe Signature
   }
 
-type JSInsertPackageSetJob =
+type JSInsertAdminJob =
   { jobId :: String
   , createdAt :: String
+  , adminJobType :: String
   , payload :: String
-  , rawPayload :: String
+  , rawPayload :: Nullable String
   , signature :: Nullable String
   }
 
-insertPackageSetJobToJSRep :: JobId -> DateTime -> InsertPackageSetJob -> JSInsertPackageSetJob
-insertPackageSetJobToJSRep jobId now { payload, rawPayload, signature } =
+insertAdminJobToJSRep :: JobId -> DateTime -> InsertAdminJob -> JSInsertAdminJob
+insertAdminJobToJSRep jobId now { adminJobType, rawPayload, signature } =
   { jobId: un JobId jobId
   , createdAt: DateTime.format Internal.Format.iso8601DateTime now
-  , payload: stringifyJson Operation.packageSetOperationCodec payload
-  , rawPayload
+  , adminJobType: API.V1.adminJobTypeKey adminJobType
+  , payload: stringifyJson API.V1.adminJobTypeCodec adminJobType
+  , rawPayload: Nullable.toNullable rawPayload
   , signature: Nullable.toNullable $ map (\(Signature s) -> s) signature
   }
 
-foreign import insertPackageSetJobImpl :: EffectFn2 SQLite JSInsertPackageSetJob Unit
+foreign import insertAdminJobImpl :: EffectFn2 SQLite JSInsertAdminJob Unit
 
-insertPackageSetJob :: SQLite -> InsertPackageSetJob -> Effect JobId
-insertPackageSetJob db job = do
+insertAdminJob :: SQLite -> InsertAdminJob -> Effect JobId
+insertAdminJob db job = do
   jobId <- newJobId
   now <- nowUTC
-  Uncurried.runEffectFn2 insertPackageSetJobImpl db $ insertPackageSetJobToJSRep jobId now job
+  Uncurried.runEffectFn2 insertAdminJobImpl db $ insertAdminJobToJSRep jobId now job
   pure jobId
 
 --------------------------------------------------------------------------------

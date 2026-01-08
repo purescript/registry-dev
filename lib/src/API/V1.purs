@@ -1,24 +1,31 @@
 module Registry.API.V1
-  ( JobCreatedResponse
+  ( AdminJobData
+  , AdminJobType(..)
+  , JobCreatedResponse
   , JobId(..)
   , JobInfo
   , JobType(..)
   , Job(..)
+  , LegacyImportMode(..)
   , LogLevel(..)
   , LogLine
   , MatrixJobData
-  , PackageSetJobData
+  , PackageSetUpdateMode(..)
   , PublishJobData
   , Route(..)
   , TransferJobData
   , UnpublishJobData
+  , adminJobTypeCodec
+  , adminJobTypeKey
   , jobInfo
   , jobCodec
   , jobCreatedResponseCodec
   , logLevelFromPriority
   , logLevelToPriority
   , printJobType
+  , printLegacyImportMode
   , printLogLevel
+  , printPackageSetUpdateMode
   , routes
   ) where
 
@@ -37,7 +44,7 @@ import Data.Formatter.DateTime as DateTime
 import Data.Generic.Rep (class Generic)
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Map (Map)
-import Data.Maybe (Maybe)
+import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Profunctor as Profunctor
 import Data.Symbol (class IsSymbol)
@@ -109,7 +116,7 @@ data Job
   | UnpublishJob UnpublishJobData
   | TransferJob TransferJobData
   | MatrixJob MatrixJobData
-  | PackageSetJob PackageSetJobData
+  | AdminJob AdminJobData
 
 type JobInfo r =
   { jobId :: JobId
@@ -149,9 +156,34 @@ type MatrixJobData = JobInfo
   , jobType :: Proxy "matrix"
   )
 
-type PackageSetJobData = JobInfo
-  ( payload :: PackageSetOperation
-  , jobType :: Proxy "packageset"
+-- | Admin job types for scheduled operations and manual package set updates
+data AdminJobType
+  = AdminPackageTransfer
+  | AdminLegacyImport LegacyImportMode
+  | AdminPackageSetUpdate PackageSetUpdateMode
+  | AdminPackageSetOperation PackageSetOperation -- For manual API requests
+
+derive instance Eq AdminJobType
+
+data LegacyImportMode = DryRun | GenerateRegistry | UpdateRegistry
+
+derive instance Eq LegacyImportMode
+
+data PackageSetUpdateMode = GeneratePackageSet | CommitPackageSet
+
+derive instance Eq PackageSetUpdateMode
+
+-- | Returns the key used in the database for an admin job type
+adminJobTypeKey :: AdminJobType -> String
+adminJobTypeKey = case _ of
+  AdminPackageTransfer -> "package_transfer"
+  AdminLegacyImport _ -> "legacy_import"
+  AdminPackageSetUpdate _ -> "package_set_update"
+  AdminPackageSetOperation _ -> "package_set_operation"
+
+type AdminJobData = JobInfo
+  ( adminJobType :: AdminJobType
+  , jobType :: Proxy "admin"
   )
 
 jobCodec :: CJ.Codec Job
@@ -164,7 +196,7 @@ jobCodec = Codec.codec' decode encode
       <|> map UnpublishJob (Codec.decode unpublishJobDataCodec json)
       <|> map TransferJob (Codec.decode transferJobDataCodec json)
       <|> map MatrixJob (Codec.decode matrixJobDataCodec json)
-      <|> map PackageSetJob (Codec.decode packageSetJobDataCodec json)
+      <|> map AdminJob (Codec.decode adminJobDataCodec json)
 
   encode :: Job -> JSON
   encode = case _ of
@@ -172,7 +204,7 @@ jobCodec = Codec.codec' decode encode
     UnpublishJob j -> CJ.encode unpublishJobDataCodec j
     TransferJob j -> CJ.encode transferJobDataCodec j
     MatrixJob j -> CJ.encode matrixJobDataCodec j
-    PackageSetJob j -> CJ.encode packageSetJobDataCodec j
+    AdminJob j -> CJ.encode adminJobDataCodec j
 
 publishJobDataCodec :: CJ.Codec PublishJobData
 publishJobDataCodec = CJ.named "PublishJob" $ CJ.Record.object
@@ -242,17 +274,78 @@ matrixJobDataCodec = CJ.named "MatrixJob" $ CJ.Record.object
   , payload: Internal.Codec.packageMap Version.codec
   }
 
-packageSetJobDataCodec :: CJ.Codec PackageSetJobData
-packageSetJobDataCodec = CJ.named "PackageSetJob" $ CJ.Record.object
+adminJobDataCodec :: CJ.Codec AdminJobData
+adminJobDataCodec = CJ.named "AdminJob" $ CJ.Record.object
   { jobId: jobIdCodec
-  , jobType: symbolCodec (Proxy :: _ "packageset")
+  , jobType: symbolCodec (Proxy :: _ "admin")
   , createdAt: Internal.Codec.iso8601DateTime
   , startedAt: CJ.Record.optional Internal.Codec.iso8601DateTime
   , finishedAt: CJ.Record.optional Internal.Codec.iso8601DateTime
   , success: CJ.boolean
   , logs: CJ.array logLineCodec
-  , payload: Operation.packageSetOperationCodec
+  , adminJobType: adminJobTypeCodec
   }
+
+adminJobTypeCodec :: CJ.Codec AdminJobType
+adminJobTypeCodec = Codec.codec' decode encode
+  where
+  decode :: JSON -> Except CJ.DecodeError AdminJobType
+  decode json = do
+    obj <- Codec.decode (CJ.Record.object { type: CJ.string }) json
+    case obj.type of
+      "package_transfer" -> pure AdminPackageTransfer
+      "legacy_import" ->
+        map (\{ mode } -> AdminLegacyImport mode)
+          (Codec.decode (CJ.Record.object { mode: legacyImportModeCodec }) json)
+      "package_set_update" ->
+        map (\{ mode } -> AdminPackageSetUpdate mode)
+          (Codec.decode (CJ.Record.object { mode: packageSetUpdateModeCodec }) json)
+      "package_set_operation" ->
+        map (\{ payload } -> AdminPackageSetOperation payload)
+          (Codec.decode (CJ.Record.object { payload: Operation.packageSetOperationCodec }) json)
+      other -> except $ Left $ CJ.DecodeError.basic $ "Unknown admin job type: " <> other
+
+  encode :: AdminJobType -> JSON
+  encode = case _ of
+    AdminPackageTransfer ->
+      CJ.encode (CJ.Record.object { type: CJ.string }) { type: "package_transfer" }
+    AdminLegacyImport mode ->
+      CJ.encode (CJ.Record.object { type: CJ.string, mode: legacyImportModeCodec })
+        { type: "legacy_import", mode }
+    AdminPackageSetUpdate mode ->
+      CJ.encode (CJ.Record.object { type: CJ.string, mode: packageSetUpdateModeCodec })
+        { type: "package_set_update", mode }
+    AdminPackageSetOperation payload ->
+      CJ.encode (CJ.Record.object { type: CJ.string, payload: Operation.packageSetOperationCodec })
+        { type: "package_set_operation", payload }
+
+legacyImportModeCodec :: CJ.Codec LegacyImportMode
+legacyImportModeCodec = CJ.Sum.enumSum printLegacyImportMode parseLegacyImportMode
+  where
+  parseLegacyImportMode = case _ of
+    "dry_run" -> Just DryRun
+    "generate_registry" -> Just GenerateRegistry
+    "update_registry" -> Just UpdateRegistry
+    _ -> Nothing
+
+printLegacyImportMode :: LegacyImportMode -> String
+printLegacyImportMode = case _ of
+  DryRun -> "dry_run"
+  GenerateRegistry -> "generate_registry"
+  UpdateRegistry -> "update_registry"
+
+packageSetUpdateModeCodec :: CJ.Codec PackageSetUpdateMode
+packageSetUpdateModeCodec = CJ.Sum.enumSum printPackageSetUpdateMode parsePackageSetUpdateMode
+  where
+  parsePackageSetUpdateMode = case _ of
+    "generate" -> Just GeneratePackageSet
+    "commit" -> Just CommitPackageSet
+    _ -> Nothing
+
+printPackageSetUpdateMode :: PackageSetUpdateMode -> String
+printPackageSetUpdateMode = case _ of
+  GeneratePackageSet -> "generate"
+  CommitPackageSet -> "commit"
 
 jobInfo :: Job -> JobInfo ()
 jobInfo = case _ of
@@ -264,7 +357,7 @@ jobInfo = case _ of
     { jobId, createdAt, startedAt, finishedAt, success, logs }
   MatrixJob { jobId, createdAt, startedAt, finishedAt, success, logs } ->
     { jobId, createdAt, startedAt, finishedAt, success, logs }
-  PackageSetJob { jobId, createdAt, startedAt, finishedAt, success, logs } ->
+  AdminJob { jobId, createdAt, startedAt, finishedAt, success, logs } ->
     { jobId, createdAt, startedAt, finishedAt, success, logs }
 
 newtype JobId = JobId String
@@ -280,7 +373,7 @@ data JobType
   | UnpublishJobType
   | TransferJobType
   | MatrixJobType
-  | PackageSetJobType
+  | AdminJobType
 
 derive instance Eq JobType
 
@@ -290,7 +383,7 @@ printJobType = case _ of
   UnpublishJobType -> "unpublish"
   TransferJobType -> "transfer"
   MatrixJobType -> "matrix"
-  PackageSetJobType -> "packageset"
+  AdminJobType -> "admin"
 
 type LogLine =
   { level :: LogLevel

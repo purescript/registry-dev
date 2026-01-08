@@ -8,7 +8,7 @@ import Data.String as String
 import Registry.API.V1 (Job, JobId, LogLevel, LogLine)
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.SQLite (FinishJob, InsertMatrixJob, InsertPackageSetJob, InsertPublishJob, InsertTransferJob, InsertUnpublishJob, MatrixJobDetails, PackageSetJobDetails, PublishJobDetails, SQLite, SelectJobRequest, SelectJobsRequest, StartJob, TransferJobDetails, UnpublishJobDetails)
+import Registry.App.SQLite (AdminJobDetails, FinishJob, InsertAdminJob, InsertMatrixJob, InsertPublishJob, InsertTransferJob, InsertUnpublishJob, MatrixJobDetails, PublishJobDetails, SQLite, SelectJobRequest, SelectJobsRequest, StartJob, TransferJobDetails, UnpublishJobDetails)
 import Registry.App.SQLite as SQLite
 import Registry.Operation (PackageSetOperation)
 import Run (EFFECT, Run)
@@ -30,7 +30,7 @@ data Db a
   | InsertUnpublishJob InsertUnpublishJob (JobId -> a)
   | InsertTransferJob InsertTransferJob (JobId -> a)
   | InsertMatrixJob InsertMatrixJob (JobId -> a)
-  | InsertPackageSetJob InsertPackageSetJob (JobId -> a)
+  | InsertAdminJob InsertAdminJob (JobId -> a)
   | FinishJob FinishJob a
   | StartJob StartJob a
   | SelectJob SelectJobRequest (Either String (Maybe Job) -> a)
@@ -39,11 +39,12 @@ data Db a
   | SelectNextUnpublishJob (Either String (Maybe UnpublishJobDetails) -> a)
   | SelectNextTransferJob (Either String (Maybe TransferJobDetails) -> a)
   | SelectNextMatrixJob (Either String (Maybe MatrixJobDetails) -> a)
-  | SelectNextPackageSetJob (Either String (Maybe PackageSetJobDetails) -> a)
+  | SelectNextAdminJob (Either String (Maybe AdminJobDetails) -> a)
+  | SelectRecentAdminJobs DateTime (Either String (Array AdminJobDetails) -> a)
   | SelectPublishJob PackageName Version (Either String (Maybe PublishJobDetails) -> a)
   | SelectUnpublishJob PackageName Version (Either String (Maybe UnpublishJobDetails) -> a)
   | SelectTransferJob PackageName (Either String (Maybe TransferJobDetails) -> a)
-  | SelectPackageSetJobByPayload PackageSetOperation (Either String (Maybe PackageSetJobDetails) -> a)
+  | SelectPackageSetJobByPayload PackageSetOperation (Either String (Maybe AdminJobDetails) -> a)
   | InsertLogLine LogLine a
   | SelectLogsByJob JobId LogLevel DateTime (Array LogLine -> a)
   | ResetIncompleteJobs a
@@ -92,9 +93,9 @@ insertTransferJob job = Run.lift _db (InsertTransferJob job identity)
 insertMatrixJob :: forall r. InsertMatrixJob -> Run (DB + r) JobId
 insertMatrixJob job = Run.lift _db (InsertMatrixJob job identity)
 
--- | Insert a new package set job into the database.
-insertPackageSetJob :: forall r. InsertPackageSetJob -> Run (DB + r) JobId
-insertPackageSetJob job = Run.lift _db (InsertPackageSetJob job identity)
+-- | Insert a new admin job into the database.
+insertAdminJob :: forall r. InsertAdminJob -> Run (DB + r) JobId
+insertAdminJob job = Run.lift _db (InsertAdminJob job identity)
 
 -- | Start a job in the database.
 startJob :: forall r. StartJob -> Run (DB + r) Unit
@@ -116,9 +117,13 @@ selectNextTransferJob = Run.lift _db (SelectNextTransferJob identity) >>= Except
 selectNextMatrixJob :: forall r. Run (DB + EXCEPT String + r) (Maybe MatrixJobDetails)
 selectNextMatrixJob = Run.lift _db (SelectNextMatrixJob identity) >>= Except.rethrow
 
--- | Select the next package set job from the database.
-selectNextPackageSetJob :: forall r. Run (DB + EXCEPT String + r) (Maybe PackageSetJobDetails)
-selectNextPackageSetJob = Run.lift _db (SelectNextPackageSetJob identity) >>= Except.rethrow
+-- | Select the next admin job from the database.
+selectNextAdminJob :: forall r. Run (DB + EXCEPT String + r) (Maybe AdminJobDetails)
+selectNextAdminJob = Run.lift _db (SelectNextAdminJob identity) >>= Except.rethrow
+
+-- | Returns recent admin jobs since a given timestamp (for scheduler).
+selectRecentAdminJobs :: forall r. DateTime -> Run (DB + EXCEPT String + r) (Array AdminJobDetails)
+selectRecentAdminJobs since = Run.lift _db (SelectRecentAdminJobs since identity) >>= Except.rethrow
 
 -- | Lookup a publish job from the database by name and version.
 selectPublishJob :: forall r. PackageName -> Version -> Run (DB + EXCEPT String + r) (Maybe PublishJobDetails)
@@ -132,8 +137,9 @@ selectUnpublishJob packageName packageVersion = Run.lift _db (SelectUnpublishJob
 selectTransferJob :: forall r. PackageName -> Run (DB + EXCEPT String + r) (Maybe TransferJobDetails)
 selectTransferJob packageName = Run.lift _db (SelectTransferJob packageName identity) >>= Except.rethrow
 
--- | Lookup a pending package set job from the database by payload (for duplicate detection).
-selectPackageSetJobByPayload :: forall r. PackageSetOperation -> Run (DB + EXCEPT String + r) (Maybe PackageSetJobDetails)
+-- | Lookup a pending package set job from the database by payload (for duplicate detection at API boundary).
+-- | This is only used when a manual package set operation is submitted via the API.
+selectPackageSetJobByPayload :: forall r. PackageSetOperation -> Run (DB + EXCEPT String + r) (Maybe AdminJobDetails)
 selectPackageSetJobByPayload payload = Run.lift _db (SelectPackageSetJobByPayload payload identity) >>= Except.rethrow
 
 -- | Delete all incomplete jobs from the database.
@@ -164,8 +170,8 @@ handleSQLite env = case _ of
     result <- Run.liftEffect $ SQLite.insertMatrixJob env.db job
     pure $ reply result
 
-  InsertPackageSetJob job reply -> do
-    result <- Run.liftEffect $ SQLite.insertPackageSetJob env.db job
+  InsertAdminJob job reply -> do
+    result <- Run.liftEffect $ SQLite.insertAdminJob env.db job
     pure $ reply result
 
   FinishJob job next -> do
@@ -204,8 +210,12 @@ handleSQLite env = case _ of
     result <- Run.liftEffect $ SQLite.selectNextMatrixJob env.db
     pure $ reply result
 
-  SelectNextPackageSetJob reply -> do
-    result <- Run.liftEffect $ SQLite.selectNextPackageSetJob env.db
+  SelectNextAdminJob reply -> do
+    result <- Run.liftEffect $ SQLite.selectNextAdminJob env.db
+    pure $ reply result
+
+  SelectRecentAdminJobs since reply -> do
+    result <- Run.liftEffect $ SQLite.selectRecentAdminJobs env.db since
     pure $ reply result
 
   SelectPublishJob packageName packageVersion reply -> do

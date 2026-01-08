@@ -6,7 +6,7 @@ const PUBLISH_JOBS_TABLE = 'publish_jobs';
 const UNPUBLISH_JOBS_TABLE = 'unpublish_jobs';
 const TRANSFER_JOBS_TABLE = 'transfer_jobs';
 const MATRIX_JOBS_TABLE = 'matrix_jobs';
-const PACKAGE_SET_JOBS_TABLE = 'package_set_jobs';
+const ADMIN_JOBS_TABLE = 'admin_jobs';
 
 export const connectImpl = (path, logger) => {
   logger("Connecting to database at " + path);
@@ -88,9 +88,9 @@ export const insertMatrixJobImpl = (db, job) => {
   return _insertJob(db, MATRIX_JOBS_TABLE, columns, job);
 };
 
-export const insertPackageSetJobImpl = (db, job) => {
-  const columns = ['jobId', 'payload', 'rawPayload', 'signature']
-  return _insertJob(db, PACKAGE_SET_JOBS_TABLE, columns, job);
+export const insertAdminJobImpl = (db, job) => {
+  const columns = ['jobId', 'adminJobType', 'payload', 'rawPayload', 'signature']
+  return _insertJob(db, ADMIN_JOBS_TABLE, columns, job);
 };
 
 const _selectJob = (db, { table, jobId, packageName, packageVersion }) => {
@@ -137,17 +137,21 @@ export const selectMatrixJobImpl = (db, jobId) => {
   return _selectJob(db, { table: MATRIX_JOBS_TABLE, jobId });
 };
 
-export const selectPackageSetJobImpl = (db, jobId) => {
-  return _selectJob(db, { table: PACKAGE_SET_JOBS_TABLE, jobId });
+export const selectAdminJobImpl = (db, jobId) => {
+  return _selectJob(db, { table: ADMIN_JOBS_TABLE, jobId });
 };
 
-// Find a pending package set job by payload (for duplicate detection)
+// Find a pending package set job by payload (for duplicate detection at API boundary)
+// Note: This function is kept for checking duplicates when a manual package set
+// operation is submitted via the API. It only looks for package_set_operation type jobs.
 export const selectPackageSetJobByPayloadImpl = (db, payload) => {
   const stmt = db.prepare(`
     SELECT job.*, info.*
-    FROM ${PACKAGE_SET_JOBS_TABLE} job
+    FROM ${ADMIN_JOBS_TABLE} job
     JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
-    WHERE job.payload = ? AND info.finishedAt IS NULL
+    WHERE job.adminJobType = 'package_set_operation'
+      AND job.payload = ?
+      AND info.finishedAt IS NULL
     ORDER BY info.createdAt ASC LIMIT 1
   `);
   return stmt.get(payload);
@@ -188,8 +192,8 @@ export const selectMatrixJobsImpl = (db, since, includeCompleted) => {
   return _selectJobs(db, { table: MATRIX_JOBS_TABLE, since, includeCompleted });
 };
 
-export const selectPackageSetJobsImpl = (db, since, includeCompleted) => {
-  return _selectJobs(db, { table: PACKAGE_SET_JOBS_TABLE, since, includeCompleted });
+export const selectAdminJobsImpl = (db, since, includeCompleted) => {
+  return _selectJobs(db, { table: ADMIN_JOBS_TABLE, since, includeCompleted });
 };
 
 export const startJobImpl = (db, args) => {
@@ -239,4 +243,15 @@ export const selectLogsByJobImpl = (db, jobId, logLevel, since) => {
 
   const stmt = db.prepare(query);
   return stmt.all(jobId, logLevel, since);
+};
+
+// Returns recent admin jobs since a given timestamp (for scheduler)
+export const selectRecentAdminJobsImpl = (db, since) => {
+  const stmt = db.prepare(`
+    SELECT job.*, info.*
+    FROM ${ADMIN_JOBS_TABLE} job
+    JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
+    WHERE info.createdAt >= ?
+  `);
+  return stmt.all(since);
 };

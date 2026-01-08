@@ -10,7 +10,7 @@ import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.Map as Map
 import Data.Set as Set
-import Effect.Aff (Milliseconds(..))
+import Data.Time.Duration (Hours(..), Minutes(..), Seconds(..), fromDuration)
 import Effect.Aff as Aff
 import Record as Record
 import Registry.API.V1 (Job(..))
@@ -22,6 +22,7 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Server.AdminJobs as AdminJobs
 import Registry.App.Server.Env (ServerEffects, ServerEnv, runEffects)
 import Registry.App.Server.MatrixBuilder as MatrixBuilder
 import Registry.ManifestIndex as ManifestIndex
@@ -52,7 +53,7 @@ runJobExecutor env = runEffects env do
     maybeJob <- findNextAvailableJob
     case maybeJob of
       Nothing -> do
-        liftAff $ Aff.delay (Milliseconds 1000.0)
+        liftAff $ Aff.delay $ fromDuration (Seconds 1.0)
         loop
 
       Just job -> do
@@ -68,8 +69,13 @@ runJobExecutor env = runEffects env do
         jobResult <- liftAff do
           let envWithJobId = env { jobId = Just jobId }
           let execute = Just <$> (runEffects envWithJobId $ executeJob now job)
-          let delay = 1000.0 * 60.0 * 5.0 -- 5 minutes
-          let timeout = Aff.delay (Milliseconds delay) $> Nothing
+          -- Admin jobs get a long timeout (they can run for a long time,
+          -- e.g. LegacyImporter), while other jobs a much shorter one
+          let
+            delay = case job of
+              AdminJob _ -> fromDuration (Hours 4.0)
+              _ -> fromDuration (Minutes 5.0)
+          let timeout = Aff.delay delay $> Nothing
           Parallel.sequential $ Parallel.parallel execute <|> Parallel.parallel timeout
 
         success <- case jobResult of
@@ -98,7 +104,7 @@ findNextAvailableJob = runMaybeT
   <|> (UnpublishJob <<< Record.merge { logs: [], jobType: Proxy :: _ "unpublish" } <$> MaybeT Db.selectNextUnpublishJob)
   <|> (TransferJob <<< Record.merge { logs: [], jobType: Proxy :: _ "transfer" } <$> MaybeT Db.selectNextTransferJob)
   <|> (MatrixJob <<< Record.merge { logs: [], jobType: Proxy :: _ "matrix" } <$> MaybeT Db.selectNextMatrixJob)
-  <|> (PackageSetJob <<< Record.merge { logs: [], jobType: Proxy :: _ "packageset" } <$> MaybeT Db.selectNextPackageSetJob)
+  <|> (AdminJob <<< Record.merge { logs: [], jobType: Proxy :: _ "admin" } <$> MaybeT Db.selectNextAdminJob)
 
 executeJob :: DateTime -> Job -> Run ServerEffects Unit
 executeJob _ = case _ of
@@ -154,7 +160,7 @@ executeJob _ = case _ of
             , packageName: solvedPackage
             , packageVersion: solvedVersion
             }
-  PackageSetJob payload -> API.packageSetUpdate payload
+  AdminJob { adminJobType } -> AdminJobs.executeAdminJob adminJobType
 
 upgradeRegistryToNewCompiler :: forall r. Version -> Run (DB + LOG + EXCEPT String + REGISTRY + r) Unit
 upgradeRegistryToNewCompiler newCompilerVersion = do

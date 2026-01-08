@@ -48,11 +48,13 @@ CREATE TABLE matrix_jobs (
   FOREIGN KEY (jobId) REFERENCES job_info (jobId) ON DELETE CASCADE
 );
 
--- Package set jobs
-CREATE TABLE package_set_jobs (
+-- Admin jobs (scheduled tasks and manual package set operations)
+CREATE TABLE admin_jobs (
   jobId TEXT PRIMARY KEY NOT NULL,
+  adminJobType TEXT NOT NULL,  -- 'package_transfer', 'legacy_import', 'package_set_update', 'package_set_operation'
   payload JSON NOT NULL,
-  rawPayload TEXT NOT NULL,
+  -- Keep these for manual package set operations (authenticated API requests)
+  rawPayload TEXT,
   signature TEXT,
   FOREIGN KEY (jobId) REFERENCES job_info (jobId) ON DELETE CASCADE
 );
@@ -72,5 +74,5 @@ DROP TABLE publish_jobs;
 DROP TABLE unpublish_jobs;
 DROP TABLE transfer_jobs;
 DROP TABLE matrix_jobs;
-DROP TABLE package_set_jobs;
+DROP TABLE admin_jobs;
 DROP TABLE logs;
