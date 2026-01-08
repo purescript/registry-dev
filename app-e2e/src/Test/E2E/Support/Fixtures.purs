@@ -247,7 +247,7 @@ packageSetCompilerChangeRequest :: PackageSetUpdateRequest
 packageSetCompilerChangeRequest =
   let
     payload = PackageSetUpdate
-      { compiler: Just (Utils.unsafeVersion "0.15.10")
+      { compiler: Just (Utils.unsafeVersion "0.15.11")
       , packages: Map.empty
       }
     rawPayload = JSON.print $ CJ.encode Operation.packageSetOperationCodec payload

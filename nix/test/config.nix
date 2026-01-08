@@ -822,7 +822,7 @@ let
     builtins.toJSON {
       name = "effect";
       ref = "v4.0.0";
-      compiler = "0.15.9";
+      compiler = "0.15.10";
       location = {
         githubOwner = "purescript";
         githubRepo = "purescript-effect";

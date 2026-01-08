@@ -14,20 +14,38 @@ Watch out for these Nix quirks:
 - If Nix tries to fetch from git during a build, it is likely that spago.yaml files were changed but the lock file was not updated; if so, update the lockfile with `spago build`
 - If a Nix build appears to be stale, then it is likely files were modified but are untracked by Git; if so, add modified files with `git add` and retry.
 
-### Build and Test
+### Build
 
-The registry is implemented in PureScript. Use spago to build it and run PureScript tests. These are cheap and fast and should be used when working on the registry packages.
+The registry is implemented in PureScript. Use spago to build it.
 
 ```sh
 spago build  # Build all PureScript code
-spago test   # Run unit tests
+```
+
+The registry infrastructure is defined in Nix. Build it with Nix:
+
+```sh
+nix build .#server
+```
+
+### Test
+
+The registry contains a mixture of unit tests, e2e tests, and nix flake checks. When you complete a change you should generally run the unit tests. When working on the server, you should generally also run the e2e tests. If you are on a Linux system, you can run `nix flake check -L` to run the flake checks prior to committing code to ensure it works.
+
+#### Unit Tests
+
+Unit tests can be run with `spago`. They are fast and cheap.
+
+```sh
+spago test   # Run all unit tests
+spago test -p <package-name>  # Run tests for a specific package
 ```
 
 #### End-to-End Tests
 
 The end-to-end (integration) tests are in `app-e2e`. They can be run via Nix on Linux:
 
-```
+```sh
 nix build .#checks.x86_64-linux.integration
 ```
 
