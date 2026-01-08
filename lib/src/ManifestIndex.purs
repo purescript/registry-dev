@@ -7,11 +7,13 @@
 -- | https://github.com/purescript/registry-index
 module Registry.ManifestIndex
   ( ManifestIndex
+  , IncludeRanges(..)
+  , delete
+  , dependants
   , empty
   , fromSet
   , insert
   , insertIntoEntryFile
-  , delete
   , lookup
   , maximalIndex
   , packageEntryDirectory
@@ -20,10 +22,10 @@ module Registry.ManifestIndex
   , printEntry
   , readEntryFile
   , removeFromEntryFile
+  , toArray
   , toMap
-  , toSortedArray
   , topologicalSort
-  , IncludeRanges(..)
+  , toSortedArray
   , writeEntryFile
   ) where
 
@@ -87,12 +89,17 @@ empty = ManifestIndex Map.empty
 toMap :: ManifestIndex -> Map PackageName (Map Version Manifest)
 toMap (ManifestIndex index) = index
 
--- | Produce an array of manifests topologically sorted by dependencies.
-toSortedArray :: IncludeRanges -> ManifestIndex -> Array Manifest
-toSortedArray includeRanges (ManifestIndex index) = topologicalSort includeRanges $ Set.fromFoldable do
+-- | Produce an array of all the manifests
+toArray :: ManifestIndex -> Array Manifest
+toArray (ManifestIndex index) = do
   Tuple _ versions <- Map.toUnfoldableUnordered index
   Tuple _ manifest <- Map.toUnfoldableUnordered versions
   [ manifest ]
+
+-- | Produce an array of all the manifests, topologically sorted by dependencies.
+toSortedArray :: IncludeRanges -> ManifestIndex -> Array Manifest
+toSortedArray includeRanges index =
+  topologicalSort includeRanges $ Set.fromFoldable $ toArray index
 
 -- | Look up a package version's manifest in the manifest index.
 lookup :: PackageName -> Version -> ManifestIndex -> Maybe Manifest
@@ -198,6 +205,13 @@ topologicalSort includeRanges manifests =
         ConsiderRanges -> Array.filter (Range.includes range) versions
         IgnoreRanges -> versions
       [ Tuple dependency included ]
+
+dependants :: ManifestIndex -> PackageName -> Version -> Array Manifest
+dependants idx packageName version = idx
+  # toSortedArray ConsiderRanges
+  # Array.filter \(Manifest { dependencies }) -> case Map.lookup packageName dependencies of
+      Nothing -> false
+      Just range -> Range.includes range version
 
 -- | Calculate the directory containing this package in the registry index,
 -- | using the following format:

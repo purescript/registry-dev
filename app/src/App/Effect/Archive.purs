@@ -35,13 +35,13 @@ import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.CLI.Tar as Tar
-import Registry.Foreign.FSExtra as FS.Extra
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.Types (RawVersion(..))
 import Registry.Constants as Constants
+import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tar as Foreign.Tar
 import Registry.Internal.Format as Internal.Format

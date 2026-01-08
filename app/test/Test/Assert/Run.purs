@@ -33,8 +33,6 @@ import Registry.App.Effect.Archive (ARCHIVE)
 import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment (COMMENT)
-import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV, RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB, GITHUB_CACHE, GitHub(..))
@@ -94,7 +92,6 @@ type TEST_EFFECTS =
       + GITHUB_CACHE
       + LEGACY_CACHE
       + COMPILER_CACHE
-      + COMMENT
       + LOG
       + EXCEPT String
       + AFF
@@ -136,7 +133,6 @@ runTestEffects env operation = Aff.attempt do
     # runGitHubCacheMemory githubCache
     # runLegacyCacheMemory legacyCache
     -- Other effects
-    # Comment.interpret Comment.handleLog
     # Log.interpret (\(Log level msg next) -> Run.liftEffect (Ref.modify_ (_ <> [ Tuple level (Dodo.print Dodo.plainText Dodo.twoSpaces msg) ]) env.logs) *> pure next)
     -- Base effects
     # Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))

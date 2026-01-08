@@ -19,7 +19,6 @@ import Node.Path as Path
 import Node.Process as Process
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
@@ -114,7 +113,6 @@ main = Aff.launchAff_ do
     # Storage.interpret (Storage.handleReadOnly cache)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
-    # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'

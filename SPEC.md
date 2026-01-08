@@ -197,6 +197,7 @@ All packages in the registry contain a `purs.json` manifest file in their root d
 - `version`: a valid [`Version`](#version)
 - `license`: a valid [`License`](#license)
 - `location`: a valid [`Location`](#location)
+- `ref`: a `string` representing the reference (e.g., a Git commit or Git tag) at the `location` that was used to fetch this version's source code
 - `owners` (optional): a non-empty array of [`Owner`](#owner)
 - `description` (optional): a description of your library as a plain text string, not markdown, up to 300 characters
 - `includeFiles` (optional): a non-empty array of globs, where globs are used to match file paths (in addition to the `src` directory and other [always-included files](#always-included-files)) that you want included in your package tarball
@@ -221,6 +222,7 @@ For example:
     "githubOwner": "purescript",
     "githubRepo": "purescript-control"
   },
+  "ref": "v4.2.0",
   "include": ["test/**/*.purs"],
   "exclude": ["test/graphs"],
   "dependencies": { "newtype": ">=3.0.0 <4.0.0", "prelude": ">=4.0.0 <5.0.0" }

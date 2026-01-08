@@ -6,6 +6,7 @@
     "githubOwner": "purescript",
     "githubRepo": "purescript-aff"
   },
+  "ref": "v5.1.2",
   "dependencies": {
     "datetime": ">=4.0.0 <5.0.0",
     "effect": ">=2.0.0 <3.0.0",

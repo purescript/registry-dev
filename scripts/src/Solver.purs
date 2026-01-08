@@ -17,7 +17,6 @@ import Data.DateTime.Instant as Instant
 import Data.Foldable (foldMap)
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
-import Data.Newtype (unwrap)
 import Data.String as String
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Class.Console as Aff
@@ -33,7 +32,6 @@ import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
@@ -153,7 +151,6 @@ main = launchAff_ do
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
     # Cache.interpret _compilerCache (Cache.handleFs cache)
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
-    # Comment.interpret Comment.handleLog
     # Env.runResourceEnv resourceEnv
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Run.runBaseAff'

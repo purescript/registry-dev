@@ -199,6 +199,7 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
           Except.throw $ "Could not delete package " <> package <> " due to an error connecting to the storage backend."
         Succeeded _ -> do
           Log.debug $ "Deleted release of " <> package <> " from S3 at the path " <> packagePath
+          Cache.delete _storageCache (Package name version)
           pure unit
     else do
       Log.error $ packagePath <> " does not exist on S3 (available: " <> String.joinWith ", " published <> ")"

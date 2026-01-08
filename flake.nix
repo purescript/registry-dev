@@ -198,7 +198,8 @@
 
           # Integration test - exercises the server API
           integration = import ./nix/test/integration.nix {
-            inherit pkgs spagoSrc testEnv;
+            inherit pkgs spagoSrc;
+            testSupport = testEnv;
           };
 
           # VM smoke test - verifies deployment without full API testing
@@ -211,12 +212,15 @@
         devShells.default = pkgs.mkShell {
           name = "registry-dev";
 
-          # Development defaults from .env.example
           SERVER_PORT = envDefaults.SERVER_PORT;
           DATABASE_URL = envDefaults.DATABASE_URL;
 
           # Dhall environment variables needed for manifest typechecking
           inherit DHALL_TYPES DHALL_PRELUDE GIT_TERMINAL_PROMPT;
+
+          # NOTE: Test-specific env vars (REGISTRY_API_URL, GITHUB_API_URL, PACCHETTIBOTTI_*)
+          # are NOT set here to avoid conflicting with .env files used by production scripts
+          # like legacy-importer. Use `nix run .#test-env` to run E2E tests with mocked services.
 
           packages =
             with pkgs;
@@ -229,11 +233,19 @@
               nodejs
               jq
               dbmate
+              sqlite
               purs
               spago
               purs-tidy-unstable
               purs-backend-es-unstable
               process-compose
+
+              # E2E test runner script - uses same fixed test environment as test-env
+              (writeShellScriptBin "spago-test-e2e" ''
+                set -euo pipefail
+                ${testEnv.envToExports testEnv.testEnv}
+                exec spago run -p registry-app-e2e
+              '')
             ];
         };
       }

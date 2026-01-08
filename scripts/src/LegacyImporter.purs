@@ -106,7 +106,6 @@ import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -124,6 +123,7 @@ import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestVali
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
 import Registry.App.Manifest.SpagoYaml as SpagoYaml
+import Registry.App.Server.MatrixBuilder as MatrixBuilder
 import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (Address, Tag)
@@ -241,7 +241,6 @@ main = launchAff_ do
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
     # Cache.interpret API._compilerCache (Cache.handleFs cache)
     # Run.Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
-    # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
@@ -358,7 +357,7 @@ runLegacyImport logs = do
         Just ref -> pure ref
 
       Log.debug "Building dependency index with compiler versions..."
-      compilerIndex <- API.readCompilerIndex
+      compilerIndex <- MatrixBuilder.readCompilerIndex
 
       Log.debug $ "Solving dependencies for " <> formatted
       eitherResolutions <- do
@@ -470,7 +469,7 @@ runLegacyImport logs = do
                   Log.debug "Downloading dependencies..."
                   let installDir = Path.concat [ tmp, ".registry" ]
                   FS.Extra.ensureDirectory installDir
-                  API.installBuildPlan resolutions installDir
+                  MatrixBuilder.installBuildPlan resolutions installDir
                   Log.debug $ "Installed to " <> installDir
                   Log.debug "Trying compilers one-by-one..."
                   selected <- findFirstCompiler
@@ -536,6 +535,7 @@ runLegacyImport logs = do
                   { name: manifest.name
                   , location: Just manifest.location
                   , ref
+                  , version: manifest.version
                   , compiler
                   , resolutions: Just resolutions
                   }
@@ -761,7 +761,7 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
                     Legacy.Manifest.fetchLegacyManifest package.name package.address (RawVersion tag.name) >>= case _ of
                       Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
                       Right result -> pure result
-                  pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
+                  pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location tag.name legacyManifest
                 case manifest of
                   Left err -> Log.info $ "Failed to build manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ": " <> printJson versionValidationErrorCodec err
                   Right val -> Log.info $ "Built manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ":\n" <> printJson Manifest.codec val
@@ -1463,7 +1463,7 @@ fetchSpagoYaml address ref = do
           | location /= GitHub { owner: address.owner, repo: address.repo, subdir: Nothing } -> do
               Log.warn "spago.yaml file does not use the same location it was fetched from, this is disallowed..."
               pure Nothing
-        Right config -> case SpagoYaml.spagoYamlToManifest config of
+        Right config -> case SpagoYaml.spagoYamlToManifest (un RawVersion ref) config of
           Left err -> do
             Log.warn $ "Failed to convert parsed spago.yaml file to purs.json " <> contents <> "\nwith errors:\n" <> err
             pure Nothing

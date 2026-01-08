@@ -16,7 +16,6 @@ import Registry.App.API as API
 import Registry.App.Auth as Auth
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
@@ -87,7 +86,6 @@ main = launchAff_ do
     # Storage.interpret (Storage.handleReadOnly cache)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
-    # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Env.runPacchettiBottiEnv { privateKey, publicKey }
     # Env.runResourceEnv resourceEnv

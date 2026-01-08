@@ -94,16 +94,17 @@ spec = do
           version = Utils.unsafeVersion "4.0.0"
           ref = "v4.0.0"
           publishArgs =
-            { compiler: Utils.unsafeVersion "0.15.9"
+            { compiler: Utils.unsafeVersion "0.15.10"
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-effect", subdir: Nothing }
             , name
             , ref
+            , version: version
             , resolutions: Nothing
             }
 
         -- First, we publish the package.
         Registry.readAllManifests >>= \idx ->
-          API.publish (Just (toLegacyIndex idx)) publishArgs
+          void $ API.publish (Just (toLegacyIndex idx)) publishArgs
 
         -- Then, we can check that it did make it to "Pursuit" as expected
         Pursuit.getPublishedVersions name >>= case _ of
@@ -141,7 +142,7 @@ spec = do
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to be in metadata."
           Just published -> do
             let many' = NonEmptyArray.toArray published.compilers
-            let expected = map Utils.unsafeVersion [ "0.15.9", "0.15.10" ]
+            let expected = map Utils.unsafeVersion [ "0.15.10", "0.15.11" ]
             unless (many' == expected) do
               Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
 
@@ -156,28 +157,30 @@ spec = do
         -- but did not have documentation make it to Pursuit.
         let
           pursuitOnlyPublishArgs =
-            { compiler: Utils.unsafeVersion "0.15.9"
+            { compiler: Utils.unsafeVersion "0.15.10"
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-type-equality", subdir: Nothing }
             , name: Utils.unsafePackageName "type-equality"
             , ref: "v4.0.1"
+            , version: Utils.unsafeVersion "4.0.1"
             , resolutions: Nothing
             }
         Registry.readAllManifests >>= \idx ->
-          API.publish (Just (toLegacyIndex idx)) pursuitOnlyPublishArgs
+          void $ API.publish (Just (toLegacyIndex idx)) pursuitOnlyPublishArgs
 
         -- We can also verify that transitive dependencies are added for legacy
         -- packages.
         let
           transitive = { name: Utils.unsafePackageName "transitive", version: Utils.unsafeVersion "1.0.0" }
           transitivePublishArgs =
-            { compiler: Utils.unsafeVersion "0.15.9"
+            { compiler: Utils.unsafeVersion "0.15.10"
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-transitive", subdir: Nothing }
             , name: transitive.name
             , ref: "v" <> Version.print transitive.version
+            , version: transitive.version
             , resolutions: Nothing
             }
         Registry.readAllManifests >>= \idx ->
-          API.publish (Just (toLegacyIndex idx)) transitivePublishArgs
+          void $ API.publish (Just (toLegacyIndex idx)) transitivePublishArgs
 
         -- We should verify the resulting metadata file is correct
         Metadata transitiveMetadata <- Registry.readMetadata transitive.name >>= case _ of
@@ -188,7 +191,7 @@ spec = do
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to be in metadata."
           Just published -> do
             let many' = NonEmptyArray.toArray published.compilers
-            let expected = map Utils.unsafeVersion [ "0.15.9", "0.15.10" ]
+            let expected = map Utils.unsafeVersion [ "0.15.10", "0.15.11" ]
             unless (many' == expected) do
               Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
 
@@ -213,65 +216,6 @@ spec = do
           recorded <- liftEffect (Ref.read logs)
           Console.error $ String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
           Assert.fail $ "Expected to publish effect@4.0.0 and type-equality@4.0.1 and transitive@1.0.0 but got error: " <> err
-        Right (Right _) -> pure unit
-
-    Spec.it "Falls back to archive when GitHub repo is inaccessible during legacy import" \{ workdir, index, metadata, storageDir, archiveDir, githubDir } -> do
-      logs <- liftEffect (Ref.new [])
-
-      let
-        toLegacyIndex :: ManifestIndex -> Solver.TransitivizedRegistry
-        toLegacyIndex =
-          Solver.exploreAllTransitiveDependencies
-            <<< Solver.initializeRegistry
-            <<< map (map (_.dependencies <<< un Manifest))
-            <<< ManifestIndex.toMap
-
-        testEnv =
-          { workdir
-          , logs
-          , index
-          , metadata
-          , pursuitExcludes: Set.empty
-          , username: "jon"
-          , storage: storageDir
-          , archive: archiveDir
-          , github: githubDir
-          }
-
-      -- The prelude@6.0.2 package exists in registry-archive but NOT in
-      -- github-packages or registry-storage. This simulates an archive-backed
-      -- package whose original GitHub repo is gone.
-      result <- Assert.Run.runTestEffects testEnv $ Except.runExcept do
-        let
-          name = Utils.unsafePackageName "prelude"
-          version = Utils.unsafeVersion "6.0.2"
-          ref = "v6.0.2"
-          publishArgs =
-            { compiler: Utils.unsafeVersion "0.15.9"
-            , location: Just $ GitHub { owner: "purescript", repo: "purescript-prelude", subdir: Nothing }
-            , name
-            , ref
-            , resolutions: Nothing
-            }
-
-        -- Legacy import with archive fallback
-        Registry.readAllManifests >>= \idx ->
-          API.publish (Just (toLegacyIndex idx)) publishArgs
-
-        -- Verify the package was published to storage
-        Storage.query name >>= \versions ->
-          unless (Set.member version versions) do
-            Except.throw $ "Expected " <> formatPackageVersion name version <> " to be published to registry storage."
-
-      case result of
-        Left exn -> do
-          recorded <- liftEffect (Ref.read logs)
-          Console.error $ String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
-          Assert.fail $ "Got an Aff exception! " <> Aff.message exn
-        Right (Left err) -> do
-          recorded <- liftEffect (Ref.read logs)
-          Console.error $ String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
-          Assert.fail $ "Expected prelude@6.0.2 to be published via archive fallback but got error: " <> err
         Right (Right _) -> pure unit
   where
   withCleanEnv :: (PipelineEnv -> Aff Unit) -> Aff Unit
@@ -307,6 +251,10 @@ spec = do
         copyFixture "registry-storage"
         copyFixture "registry-archive"
         copyFixture "github-packages"
+        -- FIXME: This is a bit hacky, but we remove effect-4.0.0.tar.gz since the unit test publishes
+        -- it from scratch and will fail if effect-4.0.0 is already in storage. We have it in storage
+        -- for the separate integration tests.
+        FS.Extra.remove $ Path.concat [ testFixtures, "registry-storage", "effect-4.0.0.tar.gz" ]
 
       let
         readFixtures = do

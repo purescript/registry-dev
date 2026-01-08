@@ -21,7 +21,6 @@ import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
@@ -160,7 +159,6 @@ main = launchAff_ do
         >>> Pursuit.interpret Pursuit.handlePure
         >>> Cache.interpret _legacyCache (Cache.handleMemoryFs { ref: legacyCacheRef, cache })
         >>> Cache.interpret _compilerCache (Cache.handleFs cache)
-        >>> Comment.interpret Comment.handleLog
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
         >>> Env.runResourceEnv resourceEnv
         >>> Run.runBaseAff'
@@ -230,21 +228,25 @@ deleteVersion arguments name version = do
           Just published, Nothing -> pure (Just (Right published))
           Nothing, Just unpublished -> pure (Just (Left unpublished))
           Nothing, Nothing -> pure Nothing
+      -- Read manifest before deleting it (needed for reimport)
+      maybeManifest <- Registry.readManifest name version
       let
         newMetadata = Metadata $ oldMetadata { published = Map.delete version oldMetadata.published, unpublished = Map.delete version oldMetadata.unpublished }
       Registry.writeMetadata name newMetadata
       Registry.deleteManifest name version
       -- --reimport
       when arguments.reimport do
-        case publishment of
-          Nothing -> Log.error "Cannot reimport a version that was not published"
-          Just (Left _) -> Log.error "Cannot reimport a version that was specifically unpublished"
-          Just (Right specificPackageMetadata) -> do
+        case publishment, maybeManifest of
+          Nothing, _ -> Log.error "Cannot reimport a version that was not published"
+          Just (Left _), _ -> Log.error "Cannot reimport a version that was specifically unpublished"
+          Just (Right _), Nothing -> Log.error $ "Cannot reimport: manifest not found for " <> formatted
+          Just (Right _), Just (Manifest manifest) -> do
             -- Obtains `newMetadata` via cache
-            API.publish Nothing
+            void $ API.publish Nothing
               { location: Just oldMetadata.location
               , name: name
-              , ref: specificPackageMetadata.ref
+              , ref: manifest.ref
+              , version: version
               , compiler: unsafeFromRight $ Version.parse "0.15.4"
               , resolutions: Nothing
               }
