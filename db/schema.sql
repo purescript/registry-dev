@@ -37,13 +37,9 @@ CREATE TABLE matrix_jobs (
   payload JSON NOT NULL,
   FOREIGN KEY (jobId) REFERENCES job_info (jobId) ON DELETE CASCADE
 );
-CREATE TABLE admin_jobs (
+CREATE TABLE package_set_jobs (
   jobId TEXT PRIMARY KEY NOT NULL,
-  adminJobType TEXT NOT NULL,  -- 'package_transfer', 'legacy_import', 'package_set_update', 'package_set_operation'
   payload JSON NOT NULL,
-  -- Keep these for manual package set operations (authenticated API requests)
-  rawPayload TEXT,
-  signature TEXT,
   FOREIGN KEY (jobId) REFERENCES job_info (jobId) ON DELETE CASCADE
 );
 CREATE TABLE logs (

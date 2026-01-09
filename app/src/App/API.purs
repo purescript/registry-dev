@@ -51,6 +51,7 @@ import Parsing as Parsing
 import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
+import Registry.API.V1 (PackageSetJobData)
 import Registry.App.Auth as Auth
 import Registry.App.CLI.Purs (CompilerFailure(..), compilerFailureCodec)
 import Registry.App.CLI.Purs as Purs
@@ -92,7 +93,7 @@ import Registry.Internal.Path as Internal.Path
 import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.Metadata as Metadata
-import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageSetOperation(..), PublishData)
+import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PublishData)
 import Registry.Operation as Operation
 import Registry.Operation.Validation (UnpublishError(..), ValidateDepsError(..), validateNoExcludedObligatoryFiles)
 import Registry.Operation.Validation as Operation.Validation
@@ -118,9 +119,9 @@ type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + LOG + EXCEPT String 
 
 -- | Process a package set update from a queued job. Authentication has already
 -- | been verified at the API boundary, so we don't need to check team membership.
-packageSetUpdate :: forall r. PackageSetOperation -> Run (PackageSetUpdateEffects + r) Unit
-packageSetUpdate operation = do
-  let PackageSetUpdate payload = operation
+packageSetUpdate :: forall r. PackageSetJobData -> Run (PackageSetUpdateEffects + r) Unit
+packageSetUpdate details = do
+  let Operation.PackageSetUpdate payload = details.payload
 
   Log.debug $ "Package set update job starting with payload:\n" <> stringifyJson Operation.packageSetUpdateCodec payload
 

@@ -10,7 +10,7 @@ import Effect.Class.Console as Console
 import HTTPurple (Method(..), Request, Response)
 import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
-import Registry.API.V1 (AdminJobType(..), Route(..))
+import Registry.API.V1 (Route(..))
 import Registry.API.V1 as V1
 import Registry.App.API as API
 import Registry.App.Auth as Auth
@@ -160,9 +160,9 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
             lift $ Log.warn $ "Duplicate package set job insertion, returning existing one: " <> unwrap job.jobId
             pure job.jobId
           Nothing -> do
-            lift $ Db.insertAdminJob
-              { adminJobType: AdminPackageSetOperation request.payload
-              , rawPayload: Just request.rawPayload
+            lift $ Db.insertPackageSetJob
+              { payload: request.payload
+              , rawPayload: request.rawPayload
               , signature: request.signature
               }
 

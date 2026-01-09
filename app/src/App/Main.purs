@@ -3,15 +3,14 @@ module Registry.App.Main where
 import Registry.App.Prelude hiding ((/))
 
 import Data.DateTime (diff)
-import Data.Time.Duration (Minutes(..), Seconds(..), fromDuration)
+import Data.Time.Duration (Milliseconds(..), Seconds(..))
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Fetch.Retry as Fetch.Retry
 import Node.Process as Process
-import Registry.App.Server.Env (createServerEnv)
+import Registry.App.Server.Env (ServerEnv, createServerEnv)
 import Registry.App.Server.JobExecutor as JobExecutor
 import Registry.App.Server.Router as Router
-import Registry.App.Server.Scheduler as CronJobs
 
 main :: Effect Unit
 main = do
@@ -23,16 +22,15 @@ main = do
       case env.vars.resourceEnv.healthchecksUrl of
         Nothing -> Console.log "HEALTHCHECKS_URL not set, healthcheck pinging disabled"
         Just healthchecksUrl -> Aff.launchAff_ $ healthcheck healthchecksUrl
-      Aff.launchAff_ $ withRestartLoop "Scheduler" (CronJobs.runScheduler env)
-      Aff.launchAff_ $ withRestartLoop "Job executor" (JobExecutor.runJobExecutor env)
+      Aff.launchAff_ $ jobExecutor env
       Router.runRouter env
   where
   healthcheck :: String -> Aff Unit
   healthcheck healthchecksUrl = loop limit
     where
     limit = 10
-    oneMinute = fromDuration (Minutes 1.0)
-    fiveMinutes = fromDuration (Minutes 5.0)
+    oneMinute = Aff.Milliseconds (1000.0 * 60.0)
+    fiveMinutes = Aff.Milliseconds (1000.0 * 60.0 * 5.0)
 
     loop n = do
       Fetch.Retry.withRetryRequest healthchecksUrl {} >>= case _ of
@@ -65,24 +63,22 @@ main = do
         Succeeded _ -> do
           Console.error "Healthchecks returned non-200 status and failure limit reached, will not retry."
 
-  -- | Run an Aff action in an infinite loop with exponential backoff on failure.
-  -- | If the action keeps crashing immediately, restart delay doubles each time.
-  -- | Once the action runs for more than a minute, the delay resets.
-  withRestartLoop :: String -> Aff (Either Aff.Error Unit) -> Aff Unit
-  withRestartLoop name action = loop initialRestartDelay
+  jobExecutor :: ServerEnv -> Aff Unit
+  jobExecutor env = do
+    loop initialRestartDelay
     where
-    initialRestartDelay = fromDuration (Seconds 0.1)
+    initialRestartDelay = Milliseconds 100.0
 
     loop restartDelay = do
       start <- nowUTC
-      result <- action
+      result <- JobExecutor.runJobExecutor env
       end <- nowUTC
 
       Console.error case result of
-        Left error -> name <> " failed: " <> Aff.message error
-        Right _ -> name <> " exited for no reason."
+        Left error -> "Job executor failed: " <> Aff.message error
+        Right _ -> "Job executor exited for no reason."
 
-      -- This is a heuristic: if the fiber keeps crashing immediately, we
+      -- This is a heuristic: if the executor keeps crashing immediately, we
       -- restart with an exponentially increasing delay, but once the executor
       -- had a run longer than a minute, we start over with a small delay.
       let
