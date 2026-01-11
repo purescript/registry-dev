@@ -851,7 +851,10 @@ let
   # Script to set up git fixtures
   setupGitFixtures = pkgs.writeShellApplication {
     name = "setup-git-fixtures";
-    runtimeInputs = [ pkgs.git pkgs.jq ];
+    runtimeInputs = [
+      pkgs.git
+      pkgs.jq
+    ];
     text = ''
       FIXTURES_DIR="''${1:-${stateDir}/repo-fixtures}"
 
