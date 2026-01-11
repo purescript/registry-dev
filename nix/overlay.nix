@@ -62,14 +62,6 @@ let
       module = "Registry.Scripts.PackageDeleter";
       description = "Delete packages from the registry";
     };
-    package-set-updater = {
-      module = "Registry.Scripts.PackageSetUpdater";
-      description = "Update package sets";
-    };
-    package-transferrer = {
-      module = "Registry.Scripts.PackageTransferrer";
-      description = "Transfer packages between storage backends";
-    };
     solver = {
       module = "Registry.Scripts.Solver";
       description = "Run dependency solver against registry manifests";

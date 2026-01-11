@@ -205,6 +205,76 @@ let
         };
       };
     }
+    # Tags for prelude package (used by Scheduler tests)
+    # Includes v6.0.1 (already published) and v6.0.2 (new version for scheduler to discover)
+    {
+      request = {
+        method = "GET";
+        url = "/repos/purescript/purescript-prelude/tags";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/json";
+        jsonBody = [
+          {
+            name = "v6.0.1";
+            commit = {
+              sha = "abc123def456";
+              url = "https://api.github.com/repos/purescript/purescript-prelude/commits/abc123def456";
+            };
+          }
+          {
+            name = "v6.0.2";
+            commit = {
+              sha = "def456abc789";
+              url = "https://api.github.com/repos/purescript/purescript-prelude/commits/def456abc789";
+            };
+          }
+        ];
+      };
+    }
+    # Tags for type-equality package
+    {
+      request = {
+        method = "GET";
+        url = "/repos/purescript/purescript-type-equality/tags";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/json";
+        jsonBody = [
+          {
+            name = "v4.0.1";
+            commit = {
+              sha = "type-eq-sha-401";
+              url = "https://api.github.com/repos/purescript/purescript-type-equality/commits/type-eq-sha-401";
+            };
+          }
+        ];
+      };
+    }
+    # Tags for transferred package (scheduler transfer detection test)
+    # Metadata says old-owner but tags point to new-owner - triggers transfer detection
+    {
+      request = {
+        method = "GET";
+        url = "/repos/old-owner/purescript-transferred/tags";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/json";
+        jsonBody = [
+          {
+            name = "v1.0.0";
+            commit = {
+              sha = "transferred-sha-100";
+              # Points to NEW owner - scheduler should detect this transfer
+              url = "https://api.github.com/repos/new-owner/purescript-transferred/commits/transferred-sha-100";
+            };
+          }
+        ];
+      };
+    }
     # Accept issue comment creation (used by GitHubIssue workflow)
     {
       request = {
@@ -781,7 +851,7 @@ let
   # Script to set up git fixtures
   setupGitFixtures = pkgs.writeShellApplication {
     name = "setup-git-fixtures";
-    runtimeInputs = [ pkgs.git ];
+    runtimeInputs = [ pkgs.git pkgs.jq ];
     text = ''
       FIXTURES_DIR="''${1:-${stateDir}/repo-fixtures}"
 
@@ -801,6 +871,15 @@ let
       cp -r ${rootPath}/app/fixtures/github-packages/effect-4.0.0 "$FIXTURES_DIR/purescript/purescript-effect"
       cp -r ${rootPath}/app/fixtures/github-packages/console-6.1.0 "$FIXTURES_DIR/purescript/purescript-console"
       chmod -R u+w "$FIXTURES_DIR/purescript"
+
+      # Set type-equality publishedTime to current time for package set update test
+      # This makes type-equality appear as a "recent upload" so the scheduler will
+      # detect it and enqueue a package set update job
+      current_time=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+      jq --arg time "$current_time" \
+        '.published["4.0.1"].publishedTime = $time' \
+        "$FIXTURES_DIR/purescript/registry/metadata/type-equality.json" > temp.json && \
+        mv temp.json "$FIXTURES_DIR/purescript/registry/metadata/type-equality.json"
 
       for repo in "$FIXTURES_DIR"/purescript/*/; do
         cd "$repo"

@@ -195,11 +195,18 @@ packageSetUpdate details = do
 
   let changeSet = candidates.accepted <#> maybe Remove Update
   Log.notice "Attempting to build package set update."
-  PackageSets.upgradeAtomic latestPackageSet (fromMaybe prevCompiler payload.compiler) changeSet >>= case _ of
-    Left error ->
-      Except.throw $ "The package set produced from this suggested update does not compile:\n\n" <> error
-    Right packageSet -> do
-      let commitMessage = PackageSets.commitMessage latestPackageSet changeSet (un PackageSet packageSet).version
+  PackageSets.upgradeSequential latestPackageSet (fromMaybe prevCompiler payload.compiler) changeSet >>= case _ of
+    Nothing ->
+      Except.throw "No packages could be added to the package set. All packages failed to compile."
+    Just { failed, succeeded, result: packageSet } -> do
+      unless (Map.isEmpty failed) do
+        let
+          formatFailed = String.joinWith "\n" $ Array.catMaybes $ flip map (Map.toUnfoldable failed) \(Tuple name change) ->
+            case change of
+              PackageSets.Update version -> Just $ "  - " <> formatPackageVersion name version
+              PackageSets.Remove -> Nothing
+        Log.warn $ "Some packages could not be added to the set:\n" <> formatFailed
+      let commitMessage = PackageSets.commitMessage latestPackageSet succeeded (un PackageSet packageSet).version
       Registry.writePackageSet packageSet commitMessage
       Log.notice "Built and released a new package set! Now mirroring to the package-sets repo..."
       Registry.mirrorPackageSet packageSet
