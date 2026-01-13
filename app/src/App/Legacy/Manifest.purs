@@ -38,6 +38,9 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
 import Registry.App.Legacy.Types (LegacyPackageSet(..), LegacyPackageSetEntry, LegacyPackageSetUnion, RawPackageName(..), RawVersion(..), RawVersionRange(..), legacyPackageSetCodec, legacyPackageSetUnionCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionRangeCodec)
 import Registry.Foreign.Octokit (Address, GitHubError(..))
+import Registry.Internal.Codec as Internal.Codec
+import Registry.Location as Location
+import Registry.Owner as Owner
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
 import Registry.License as License
@@ -543,3 +546,24 @@ type LEGACY_CACHE r = (legacyCache :: Cache LegacyCache | r)
 
 _legacyCache :: Proxy "legacyCache"
 _legacyCache = Proxy
+
+-- | A codec for parsing legacy purs.json manifests that may not have a `ref`
+-- | field. If `ref` is missing, we use the provided fallback (typically the
+-- | version prefixed with "v", matching the convention used when building
+-- | manifests from legacy sources).
+legacyManifestCodec :: String -> CJ.Codec Manifest
+legacyManifestCodec fallbackRef = Profunctor.dimap toRep fromRep $ CJ.named "Manifest" $ CJ.object
+  $ CJ.recordProp @"name" PackageName.codec
+  $ CJ.recordProp @"version" Version.codec
+  $ CJ.recordProp @"license" License.codec
+  $ CJ.recordPropOptional @"description" (Internal.Codec.limitedString 300)
+  $ CJ.recordProp @"location" Location.codec
+  $ CJ.recordPropOptional @"ref" CJ.string
+  $ CJ.recordPropOptional @"owners" (CJ.Common.nonEmptyArray Owner.codec)
+  $ CJ.recordPropOptional @"includeFiles" (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
+  $ CJ.recordPropOptional @"excludeFiles" (CJ.Common.nonEmptyArray CJ.Common.nonEmptyString)
+  $ CJ.recordProp @"dependencies" (Internal.Codec.packageMap Range.codec)
+  $ CJ.record
+  where
+  toRep (Manifest m) = m { ref = Just m.ref }
+  fromRep r = Manifest r { ref = fromMaybe fallbackRef r.ref }

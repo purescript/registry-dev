@@ -133,6 +133,7 @@ import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Codec (packageMap, versionMap)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
+import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
@@ -1651,7 +1652,7 @@ fetchManifestFromArchive name version = do
                 FS.Extra.remove tmp
                 Log.error $ "Failed to parse purs.json as JSON: " <> parseErr
                 Run.Except.throw $ "Invalid purs.json in archive for " <> formatted
-              Right json -> case CJ.decode Manifest.codec json of
+              Right json -> case CJ.decode (Legacy.Manifest.legacyManifestCodec ("v" <> versionStr)) json of
                 Left decodeErr -> do
                   FS.Extra.remove tmp
                   Log.error $ "Failed to decode purs.json manifest: " <> CJ.DecodeError.print decodeErr
