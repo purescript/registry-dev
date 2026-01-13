@@ -102,6 +102,16 @@ handle importType = case _ of
             Log.debug $ "Using legacy Git clone to fetch package source at tag: " <> show { owner, repo, ref }
 
             let
+              cloneUrl =
+                Array.fold [ "https://github.com/", owner, "/", repo ]
+
+            Log.debug $ "Verifying repository is accessible: " <> cloneUrl
+            repoAccessible <- Run.liftAff $ Git.gitRepoIsAccessible cloneUrl
+            unless repoAccessible do
+              Log.error $ "Repository " <> owner <> "/" <> repo <> " is inaccessible or does not exist."
+              Except.throw $ InaccessibleRepo { owner, repo }
+
+            let
               repoDir = Path.concat [ destination, repo <> "-" <> ref ]
 
               -- If a git clone is cancelled by the timeout, but had partially-cloned, then it will
@@ -110,9 +120,6 @@ handle importType = case _ of
                 { cleanupOnCancel = FS.Extra.remove repoDir
                 , timeout = Milliseconds 15_000.0
                 }
-
-              cloneUrl =
-                Array.fold [ "https://github.com/", owner, "/", repo ]
 
               -- We disable Git LFS smudging because package sources should not
               -- contain large binary files. This avoids downloading LFS objects

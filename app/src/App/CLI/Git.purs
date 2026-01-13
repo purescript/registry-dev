@@ -89,6 +89,14 @@ gitCLI args cwd = do
     Normally 0 -> Right (String.trim result.stdout)
     _ -> Left (result.stdout <> result.stderr)
 
+-- | Check if a remote repository exists and is accessible using `git ls-remote`.
+-- | Returns true if the repository exists and is accessible.
+-- | Note: GIT_TERMINAL_PROMPT=0 is set globally in flake.nix to prevent credential prompts.
+gitRepoIsAccessible :: String -> Aff Boolean
+gitRepoIsAccessible url = do
+  result <- gitCLI [ "ls-remote", "--exit-code", url ] Nothing
+  pure $ isRight result
+
 -- | Run a git command with automatic retry on transient network errors.
 -- | Retries up to 3 times with exponential backoff.
 gitCLIWithRetry :: Array String -> Maybe FilePath -> Aff (Either String String)
