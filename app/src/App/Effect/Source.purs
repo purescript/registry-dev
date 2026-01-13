@@ -154,7 +154,7 @@ handle importType = case _ of
                 if String.contains (String.Pattern missingRepoErr) (Aff.message error) then
                   Except.throw $ InaccessibleRepo { owner, repo }
                 else
-                  Except.throw $ Fatal $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref
+                  Except.throw $ Fatal $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref <> ": " <> Aff.message error
 
             Log.debug $ "Getting published time..."
 

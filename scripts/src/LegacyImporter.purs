@@ -151,6 +151,27 @@ data ImportMode = DryRun | GenerateRegistry | UpdateRegistry
 
 derive instance Eq ImportMode
 
+-- | Check if an error message indicates an infrastructure problem (git, network, etc.)
+-- | that should not be cached because it may succeed on retry.
+isInfraError :: String -> Boolean
+isInfraError error =
+  -- Source.purs Fatal errors (HTTP failures, git clone failures)
+  String.contains (String.Pattern "Unrecoverable error") error
+    -- Registry git operation failures (from Registry.purs)
+    || String.contains (String.Pattern "Failed to write and commit") error
+    || String.contains (String.Pattern "Failed to delete and commit") error
+    || String.contains (String.Pattern "Failed to push") error
+    || String.contains (String.Pattern "Failed to write metadata") error
+    || String.contains (String.Pattern "Failed to write package set") error
+    -- Registry read failures - repo sync issues (from Registry.purs)
+    || String.contains (String.Pattern "repo could not be checked") error
+    || String.contains (String.Pattern "Could not read manifests") error
+    || String.contains (String.Pattern "Could not read metadata") error
+    || String.contains (String.Pattern "Could not read package set") error
+    || String.contains (String.Pattern "Could not read latest package set") error
+    -- Raw git/network errors that may leak through
+    || Git.isTransientGitError error
+
 parser :: ArgParser ImportMode
 parser = Arg.choose "command"
   [ Arg.flag [ "dry-run" ]
@@ -543,6 +564,10 @@ runLegacyImport logs = do
               Run.Except.runExcept (API.publish (Just legacyIndex) payload) >>= case _ of
                 Left error -> do
                   Log.error $ "Failed to publish " <> formatted <> ": " <> error
+                  -- Infrastructure errors (git failures, HTTP failures, etc.) should halt
+                  -- the importer rather than being cached
+                  when (isInfraError error) do
+                    Run.Except.throw $ "Halting importer due to infrastructure error: " <> error
                   Cache.put _importCache (PublishFailure manifest.name manifest.version) (PublishError error)
                 Right _ -> do
                   Log.info $ "Published " <> formatted
