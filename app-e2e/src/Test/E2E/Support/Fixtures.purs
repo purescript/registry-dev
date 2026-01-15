@@ -5,9 +5,11 @@ module Test.E2E.Support.Fixtures
   , effect
   , console
   , prelude
+  , unsafeCoerce
   , effectPublishData
   , effectPublishDataDifferentLocation
   , consolePublishData
+  , unsafeCoercePublishData
   , failingTransferData
   , nonexistentTransferData
   , trusteeAuthenticatedData
@@ -97,6 +99,22 @@ consolePublishData =
   , compiler: Utils.unsafeVersion "0.15.10"
   , resolutions: Nothing
   , version: console.version
+  }
+
+-- | Publish data for unsafe-coerce@6.0.0, used by package set tests.
+-- | Has no dependencies. Published first to create the tarball before adding to package set.
+unsafeCoercePublishData :: Operation.PublishData
+unsafeCoercePublishData =
+  { name: unsafeCoerce.name
+  , location: Just $ GitHub
+      { owner: "purescript"
+      , repo: "purescript-unsafe-coerce"
+      , subdir: Nothing
+      }
+  , ref: "v6.0.0"
+  , compiler: Utils.unsafeVersion "0.15.10"
+  , resolutions: Nothing
+  , version: unsafeCoerce.version
   }
 
 -- | Unpublish data for effect@4.0.0, used for publish-then-unpublish tests.
@@ -222,11 +240,11 @@ signTransfer privateKey transferData = do
     , signature
     }
 
--- | type-equality@4.0.1 fixture package (exists in registry-index but not in initial package set)
-typeEquality :: PackageFixture
-typeEquality = { name: Utils.unsafePackageName "type-equality", version: Utils.unsafeVersion "4.0.1" }
+-- | unsafe-coerce@6.0.0 fixture package (exists in registry-index but not in package set)
+unsafeCoerce :: PackageFixture
+unsafeCoerce = { name: Utils.unsafePackageName "unsafe-coerce", version: Utils.unsafeVersion "6.0.0" }
 
--- | Package set request to add type-equality@4.0.1.
+-- | Package set request to add unsafe-coerce@6.0.0.
 -- | This is an unauthenticated request (no signature) since adding packages
 -- | doesn't require trustee authentication.
 packageSetAddRequest :: PackageSetUpdateRequest
@@ -234,7 +252,7 @@ packageSetAddRequest =
   let
     payload = PackageSetUpdate
       { compiler: Nothing
-      , packages: Map.singleton typeEquality.name (Just typeEquality.version)
+      , packages: Map.singleton unsafeCoerce.name (Just unsafeCoerce.version)
       }
     rawPayload = JSON.print $ CJ.encode Operation.packageSetOperationCodec payload
   in

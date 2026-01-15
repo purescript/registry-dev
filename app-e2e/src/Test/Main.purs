@@ -10,7 +10,7 @@ import Test.E2E.Endpoint.Scheduler as Scheduler
 import Test.E2E.Endpoint.Transfer as Transfer
 import Test.E2E.Endpoint.Unpublish as Unpublish
 import Test.E2E.GitHubIssue as GitHubIssue
-import Test.E2E.Support.Env (assertReposClean, mkTestEnv, resetTestState, runE2E)
+import Test.E2E.Support.Env (assertReposClean, mkTestEnv, resetTestState, runE2E, stashGitFixtures, waitForAllPendingJobs)
 import Test.E2E.Workflow as Workflow
 import Test.Spec (hoistSpec)
 import Test.Spec as Spec
@@ -25,6 +25,15 @@ main = do
     -- The scheduler runs at startup and enqueues a bunch of jobs in the DB,
     -- so we need to run these tests without cleaning out the state first
     Spec.describe "Scheduler" Scheduler.spec
+
+    -- After scheduler tests, wait for startup jobs to complete and stash the
+    -- git fixtures state. This ensures that subsequent tests can reset to
+    -- a state where startup jobs (like new compiler matrix jobs) have already
+    -- updated the metadata.
+    Spec.describe "Setup" do
+      Spec.it "waits for startup jobs and stashes fixtures" do
+        waitForAllPendingJobs
+        stashGitFixtures
 
     Spec.before_ resetTestState $ Spec.after_ assertReposClean $ Spec.describe "E2E Tests" do
       Spec.describe "Endpoints" do

@@ -16,6 +16,7 @@ module Test.E2E.Support.Env
   , resetTestState
   , resetDatabase
   , resetGitFixtures
+  , stashGitFixtures
   , resetLogs
   , resetGitHubRequestCache
   , pollJobOrFail
@@ -25,6 +26,7 @@ module Test.E2E.Support.Env
   , gitStatus
   , isCleanGitStatus
   , waitForAllMatrixJobs
+  , waitForAllPendingJobs
   , isMatrixJobFor
   , readMetadata
   , readManifestIndexEntry
@@ -99,6 +101,10 @@ runE2E env = flip runReaderT env
 -- | Resets: database, git fixtures, storage mock, and logs.
 resetTestState :: E2E Unit
 resetTestState = do
+  -- Wait for any pending jobs to complete before clearing state.
+  -- This is important because startup jobs (like matrix jobs from new compiler
+  -- detection) may still be running when this is called.
+  waitForAllPendingJobs
   resetDatabase
   resetGitFixtures
   WireMock.clearStorageRequests
@@ -124,9 +130,10 @@ resetDatabase = do
 -- | Reset the git fixtures to restore original state.
 -- | This restores metadata files modified by unpublish/transfer operations.
 -- |
--- | Strategy: Reset the origin repos to their initial-fixture tag (created during
--- | setup), then delete the server's scratch git clones. The server will
--- | re-clone fresh copies on the next operation, ensuring a clean cache state.
+-- | Strategy: Reset the origin repos to the `post-startup` tag if it exists (created
+-- | by stashGitFixtures after startup jobs complete), otherwise fall back to the
+-- | `initial-fixture` tag. Then delete the server's scratch git clones so the
+-- | server will re-clone fresh copies on the next operation.
 resetGitFixtures :: E2E Unit
 resetGitFixtures = do
   { stateDir } <- ask
@@ -140,12 +147,40 @@ resetGitFixtures = do
   deleteGitClones scratchDir
   where
   resetOrigin dir = do
-    void $ gitOrFail [ "reset", "--hard", "initial-fixture" ] dir
+    -- Try to reset to post-startup tag first, fall back to initial-fixture
+    tag <- hasTag "post-startup" dir
+    let targetTag = if tag then "post-startup" else "initial-fixture"
+    void $ gitOrFail [ "reset", "--hard", targetTag ] dir
     void $ gitOrFail [ "clean", "-fd" ] dir
+
+  hasTag tagName dir = do
+    result <- liftAff $ Git.gitCLI [ "tag", "-l", tagName ] (Just dir)
+    pure $ case result of
+      Right output -> String.contains (String.Pattern tagName) output
+      Left _ -> false
 
   deleteGitClones scratchDir = do
     liftAff $ FS.Extra.remove $ Path.concat [ scratchDir, "registry" ]
     liftAff $ FS.Extra.remove $ Path.concat [ scratchDir, "registry-index" ]
+
+-- | Stash the current git fixtures state by creating a `post-startup` tag.
+-- | This should be called after startup jobs (like matrix jobs from new compiler
+-- | detection) have completed, so that resetGitFixtures can restore to this
+-- | state instead of the initial fixtures.
+stashGitFixtures :: E2E Unit
+stashGitFixtures = do
+  fixturesDir <- liftEffect $ Env.lookupRequired Env.repoFixturesDir
+  let
+    registryOrigin = Path.concat [ fixturesDir, "purescript", "registry" ]
+    registryIndexOrigin = Path.concat [ fixturesDir, "purescript", "registry-index" ]
+  createStashTag registryOrigin
+  createStashTag registryIndexOrigin
+  Console.log "Stashed git fixtures at post-startup tag"
+  where
+  createStashTag dir = do
+    -- Delete existing tag if present, then create new one at HEAD
+    void $ liftAff $ Git.gitCLI [ "tag", "-d", "post-startup" ] (Just dir)
+    void $ gitOrFail [ "tag", "post-startup" ] dir
 
 -- | Clear server log files for test isolation.
 -- | Deletes *.log files from the scratch/logs directory but preserves the directory itself.
@@ -245,6 +280,26 @@ waitForAllMatrixJobs pkg = go 120 0
         Console.log $ "Waiting for matrix jobs: " <> show finishedCount <> "/" <> show totalCount <> " finished"
       liftAff $ Aff.delay (Milliseconds 1000.0)
       go (attempts - 1) totalCount
+
+-- | Wait for all pending jobs (of any type) to complete.
+-- | Useful for ensuring startup jobs finish before running tests that clear the DB.
+waitForAllPendingJobs :: E2E Unit
+waitForAllPendingJobs = go 300 -- 5 minutes max
+  where
+  go :: Int -> E2E Unit
+  go 0 = liftAff $ Aff.throwError $ Aff.error "Timed out waiting for all jobs to complete"
+  go attempts = do
+    jobs <- Client.getJobs
+    let
+      pendingJobs = Array.filter (\j -> isNothing (V1.jobInfo j).finishedAt) jobs
+      pendingCount = Array.length pendingJobs
+    if pendingCount == 0 then
+      pure unit
+    else do
+      when (attempts `mod` 30 == 0) do
+        Console.log $ "Waiting for " <> show pendingCount <> " pending jobs to complete..."
+      liftAff $ Aff.delay (Milliseconds 1000.0)
+      go (attempts - 1)
 
 -- | Check if a job is a matrix job for the given package.
 isMatrixJobFor :: PackageFixture -> Job -> Boolean

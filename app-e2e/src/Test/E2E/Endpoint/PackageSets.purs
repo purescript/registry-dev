@@ -16,6 +16,10 @@ spec :: E2ESpec
 spec = do
   Spec.describe "Package Sets endpoint" do
     Spec.it "accepts unauthenticated add/upgrade requests" do
+      -- First publish unsafe-coerce to create the tarball in storage
+      { jobId: publishJobId } <- Client.publish Fixtures.unsafeCoercePublishData
+      _ <- Env.pollJobOrFail publishJobId
+      -- Now add it to the package set
       { jobId } <- Client.packageSets Fixtures.packageSetAddRequest
       job <- Env.pollJobOrFail jobId
       Assert.shouldSatisfy (V1.jobInfo job).finishedAt isJust
@@ -47,6 +51,10 @@ spec = do
           Assert.shouldSatisfy (V1.jobInfo job).finishedAt isJust
 
     Spec.it "returns existing job for duplicate requests" do
+      -- First publish unsafe-coerce so the package set request is valid
+      { jobId: publishJobId } <- Client.publish Fixtures.unsafeCoercePublishData
+      _ <- Env.pollJobOrFail publishJobId
+      -- Now test that duplicate requests return the same job ID
       { jobId: firstJobId } <- Client.packageSets Fixtures.packageSetAddRequest
       { jobId: secondJobId } <- Client.packageSets Fixtures.packageSetAddRequest
       Assert.shouldEqual firstJobId secondJobId

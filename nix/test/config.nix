@@ -172,6 +172,55 @@ let
     };
   };
 
+  # Unsafe-coerce package helpers (unsafe-coerce@6.0.0)
+  unsafeCoerceBase64Response =
+    fileName:
+    base64Response {
+      url = "/repos/purescript/purescript-unsafe-coerce/contents/${fileName}?ref=v6.0.0";
+      inherit fileName;
+      filePath = rootPath + "/app/fixtures/github-packages/unsafe-coerce-6.0.0/${fileName}";
+    };
+
+  unsafeCoerce404Response = fileName: {
+    request = {
+      method = "GET";
+      url = "/repos/purescript/purescript-unsafe-coerce/contents/${fileName}?ref=v6.0.0";
+    };
+    response = {
+      status = 404;
+      headers."Content-Type" = "application/json";
+      jsonBody = {
+        message = "Not Found";
+        documentation_url = "https://docs.github.com/rest/repos/contents#get-repository-content";
+      };
+    };
+  };
+
+  # Type-equality package helpers (type-equality@4.0.2)
+  # Note: Uses purescript owner (actual location) not old-owner (metadata location)
+  typeEqualityBase64Response =
+    fileName:
+    base64Response {
+      url = "/repos/purescript/purescript-type-equality/contents/${fileName}?ref=v4.0.2";
+      inherit fileName;
+      filePath = rootPath + "/app/fixtures/github-packages/type-equality-4.0.1/${fileName}";
+    };
+
+  typeEquality404Response = fileName: {
+    request = {
+      method = "GET";
+      url = "/repos/purescript/purescript-type-equality/contents/${fileName}?ref=v4.0.2";
+    };
+    response = {
+      status = 404;
+      headers."Content-Type" = "application/json";
+      jsonBody = {
+        message = "Not Found";
+        documentation_url = "https://docs.github.com/rest/repos/contents#get-repository-content";
+      };
+    };
+  };
+
   # GitHub API wiremock mappings
   githubMappings = [
     (effectBase64Response "bower.json")
@@ -188,6 +237,20 @@ let
     (console404Response "spago.dhall")
     (console404Response "purs.json")
     (console404Response "package.json")
+    # Unsafe-coerce package (unsafe-coerce@6.0.0)
+    (unsafeCoerceBase64Response "bower.json")
+    (unsafeCoerce404Response "LICENSE")
+    (unsafeCoerce404Response "spago.yaml")
+    (unsafeCoerce404Response "spago.dhall")
+    (unsafeCoerce404Response "purs.json")
+    (unsafeCoerce404Response "package.json")
+    # Type-equality package (type-equality@4.0.2 for legacy imports test)
+    (typeEqualityBase64Response "bower.json")
+    (typeEqualityBase64Response "LICENSE")
+    (typeEquality404Response "spago.yaml")
+    (typeEquality404Response "spago.dhall")
+    (typeEquality404Response "purs.json")
+    (typeEquality404Response "package.json")
     {
       request = {
         method = "GET";
@@ -205,8 +268,7 @@ let
         };
       };
     }
-    # Tags for prelude package (used by Scheduler tests)
-    # Includes v6.0.1 (already published) and v6.0.2 (new version for scheduler to discover)
+    # Tags for prelude package (only v6.0.1 which is already published)
     {
       request = {
         method = "GET";
@@ -223,21 +285,16 @@ let
               url = "https://api.github.com/repos/purescript/purescript-prelude/commits/abc123def456";
             };
           }
-          {
-            name = "v6.0.2";
-            commit = {
-              sha = "def456abc789";
-              url = "https://api.github.com/repos/purescript/purescript-prelude/commits/def456abc789";
-            };
-          }
         ];
       };
     }
-    # Tags for type-equality package
+    # Tags for type-equality package (used by two scheduler tests):
+    # 1. Transfer detection: metadata says old-owner, commit URLs point to purescript
+    # 2. Legacy imports: v4.0.2 is a new version not yet published
     {
       request = {
         method = "GET";
-        url = "/repos/purescript/purescript-type-equality/tags";
+        url = "/repos/old-owner/purescript-type-equality/tags";
       };
       response = {
         status = 200;
@@ -247,29 +304,16 @@ let
             name = "v4.0.1";
             commit = {
               sha = "type-eq-sha-401";
+              # Points to actual owner - scheduler detects this transfer
               url = "https://api.github.com/repos/purescript/purescript-type-equality/commits/type-eq-sha-401";
             };
           }
-        ];
-      };
-    }
-    # Tags for transferred package (scheduler transfer detection test)
-    # Metadata says old-owner but tags point to new-owner - triggers transfer detection
-    {
-      request = {
-        method = "GET";
-        url = "/repos/old-owner/purescript-transferred/tags";
-      };
-      response = {
-        status = 200;
-        headers."Content-Type" = "application/json";
-        jsonBody = [
           {
-            name = "v1.0.0";
+            name = "v4.0.2";
             commit = {
-              sha = "transferred-sha-100";
-              # Points to NEW owner - scheduler should detect this transfer
-              url = "https://api.github.com/repos/new-owner/purescript-transferred/commits/transferred-sha-100";
+              sha = "type-eq-sha-402";
+              # New version not yet published - scheduler detects for legacy import
+              url = "https://api.github.com/repos/purescript/purescript-type-equality/commits/type-eq-sha-402";
             };
           }
         ];
@@ -873,6 +917,8 @@ let
       cp -r ${rootPath}/app/fixtures/{registry-index,registry,package-sets} "$FIXTURES_DIR/purescript/"
       cp -r ${rootPath}/app/fixtures/github-packages/effect-4.0.0 "$FIXTURES_DIR/purescript/purescript-effect"
       cp -r ${rootPath}/app/fixtures/github-packages/console-6.1.0 "$FIXTURES_DIR/purescript/purescript-console"
+      cp -r ${rootPath}/app/fixtures/github-packages/unsafe-coerce-6.0.0 "$FIXTURES_DIR/purescript/purescript-unsafe-coerce"
+      cp -r ${rootPath}/app/fixtures/github-packages/type-equality-4.0.1 "$FIXTURES_DIR/purescript/purescript-type-equality"
       chmod -R u+w "$FIXTURES_DIR/purescript"
 
       # Set type-equality publishedTime to current time for package set update test
@@ -896,6 +942,9 @@ let
       gitbot -C "$FIXTURES_DIR/purescript/package-sets" tag -m "psc-0.15.9-20230105" psc-0.15.9-20230105
       gitbot -C "$FIXTURES_DIR/purescript/purescript-effect" tag -m "v4.0.0" v4.0.0
       gitbot -C "$FIXTURES_DIR/purescript/purescript-console" tag -m "v6.1.0" v6.1.0
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-unsafe-coerce" tag -m "v6.0.0" v6.0.0
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" tag -m "v4.0.1" v4.0.1
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" tag -m "v4.0.2" v4.0.2
     '';
   };
 
