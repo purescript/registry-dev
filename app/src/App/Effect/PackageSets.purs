@@ -570,20 +570,19 @@ updatePackageSetMetadata compiler { previous, pending: PackageSet pending } chan
 -- | set where A is updated (to no longer depend on B) and B is removed, then
 -- | A must be updated first so B's removal doesn't fail due to A's dependency.
 orderChanges :: ManifestIndex -> Map PackageName Version -> ChangeSet -> Array (Tuple PackageName Change)
-orderChanges index packages changes =
-  let
-    sortedPackages = ManifestIndex.toSortedArray ManifestIndex.IgnoreRanges index
-    -- Updates should be processed in topological order (dependencies first)
-    -- so that dependencies are updated before their dependents.
-    sortedUpdates = sortedPackages # Array.mapMaybe \(Manifest { name, version }) -> case Map.lookup name changes of
-      Just (Update updateVersion) | version == updateVersion -> Just (Tuple name (Update version))
-      _ -> Nothing
-    -- Removals should be processed in reverse topological order (dependents
-    -- first) so that dependents are removed before their dependencies.
-    sortedRemovals = sortedPackages # Array.reverse # Array.mapMaybe \(Manifest { name, version }) ->
-      case Map.lookup name changes, Map.lookup name packages of
-        Just Remove, Just prevVersion | version == prevVersion -> Just (Tuple name Remove)
-        _, _ -> Nothing
-  in
-    -- Process updates first, then removals
-    sortedUpdates <> sortedRemovals
+orderChanges index packages changes = sortedUpdates <> sortedRemovals
+  where
+  sortedPackages = ManifestIndex.toSortedArray ManifestIndex.IgnoreRanges index
+
+  -- Updates should be processed in topological order (dependencies first)
+  -- so that dependencies are updated before their dependents.
+  sortedUpdates = sortedPackages # Array.mapMaybe \(Manifest { name, version }) -> case Map.lookup name changes of
+    Just (Update updateVersion) | version == updateVersion -> Just (Tuple name (Update version))
+    _ -> Nothing
+
+  -- Removals should be processed in reverse topological order (dependents
+  -- first) so that dependents are removed before their dependencies.
+  sortedRemovals = sortedPackages # Array.reverse # Array.mapMaybe \(Manifest { name, version }) ->
+    case Map.lookup name changes, Map.lookup name packages of
+      Just Remove, Just prevVersion | version == prevVersion -> Just (Tuple name Remove)
+      _, _ -> Nothing
