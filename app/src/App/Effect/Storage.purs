@@ -212,10 +212,17 @@ handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< 
   Query _ reply -> do
     pure $ reply $ Left "Cannot query in read-only mode."
 
-  Upload name version _ reply -> do
+  Upload name version path reply -> map (map reply) Except.runExcept do
+    let package = formatPackageVersion name version
     packageUrl <- formatPackageUrl name version
-    Log.warn $ "Requested upload of " <> formatPackageVersion name version <> " to url " <> packageUrl <> " but this interpreter is read-only."
-    pure $ reply $ Right unit
+    Log.warn $ "Requested upload of " <> package <> " to url " <> packageUrl <> " but this interpreter is read-only. Caching tarball locally."
+    buffer <- Run.liftAff (Aff.attempt (FS.Aff.readFile path)) >>= case _ of
+      Left error -> do
+        Log.error $ "Failed to read tarball for " <> package <> " at path " <> path <> ": " <> Aff.message error
+        Except.throw $ "Could not cache package " <> package <> " due to a file system error."
+      Right buf ->
+        pure buf
+    Cache.put _storageCache (Package name version) buffer
 
   Delete name version reply -> do
     packageUrl <- formatPackageUrl name version

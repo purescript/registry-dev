@@ -714,7 +714,10 @@ publish maybeLegacyIndex payload = do
         Left compileFailure -> do
           let error = MatrixBuilder.printCompilerFailure payload.compiler compileFailure
           Except.throw $ "Publishing failed due to a compiler error:\n\n" <> error
-        Right _ -> pure unit
+        Right _ -> do
+          -- Cache the successful compilation so findAllCompilers can reuse it
+          Cache.put _compilerCache (Compilation manifest resolutions payload.compiler) { target: payload.compiler, result: Right unit }
+          pure unit
 
       Log.notice "Package source is verified! Packaging tarball and uploading to the storage backend..."
       let tarballName = packageDirname <> ".tar.gz"
