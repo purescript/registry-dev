@@ -128,18 +128,7 @@ handle env = case _ of
     Log.info $ "Performing sequential upgrade of package set " <> Version.print (un PackageSet oldSet).version
     index <- Registry.readAllManifests
 
-    let
-      sortedPackages = ManifestIndex.toSortedArray ManifestIndex.IgnoreRanges index
-      sortedBatch = sortedPackages # Array.mapMaybe \(Manifest { name, version }) -> do
-        update <- Map.lookup name changes
-        case update of
-          Remove -> do
-            prevVersion <- Map.lookup name packages
-            guard (version == prevVersion)
-            pure (Tuple name Remove)
-          Update updateVersion -> do
-            guard (version == updateVersion)
-            pure (Tuple name (Update version))
+    let sortedBatch = orderChanges index packages changes
 
     failRef <- Run.liftEffect $ Ref.new Map.empty
     successRef <- Run.liftEffect $ Ref.new Map.empty
@@ -180,7 +169,7 @@ handle env = case _ of
     case Map.size succeeded of
       0 -> pure $ Nothing
       _ -> do
-        newSet <- updatePackageSetMetadata compiler { previous: oldSet, pending } changes
+        newSet <- updatePackageSetMetadata compiler { previous: oldSet, pending } succeeded
         validatePackageSet newSet
         pure $ Just { failed, succeeded, result: newSet }
 
@@ -568,3 +557,33 @@ updatePackageSetMetadata compiler { previous, pending: PackageSet pending } chan
   now <- nowUTC
   let version = computeNewVersion compiler previous changes
   pure $ PackageSet (pending { compiler = compiler, version = version, published = DateTime.date now })
+
+-- | Order a set of changes for sequential processing. Updates are processed in
+-- | topological order (dependencies first), then removals are processed in
+-- | reverse topological order (dependents first). This ensures:
+-- | 1. Dependencies are updated before their dependents
+-- | 2. Dependents are removed before their dependencies
+-- |
+-- | Updates are processed before removals because updates can enable removals
+-- | (by removing dependencies on packages being removed), but removals never
+-- | enable updates. For example, if A depends on B and both are in the change
+-- | set where A is updated (to no longer depend on B) and B is removed, then
+-- | A must be updated first so B's removal doesn't fail due to A's dependency.
+orderChanges :: ManifestIndex -> Map PackageName Version -> ChangeSet -> Array (Tuple PackageName Change)
+orderChanges index packages changes =
+  let
+    sortedPackages = ManifestIndex.toSortedArray ManifestIndex.IgnoreRanges index
+    -- Updates should be processed in topological order (dependencies first)
+    -- so that dependencies are updated before their dependents.
+    sortedUpdates = sortedPackages # Array.mapMaybe \(Manifest { name, version }) -> case Map.lookup name changes of
+      Just (Update updateVersion) | version == updateVersion -> Just (Tuple name (Update version))
+      _ -> Nothing
+    -- Removals should be processed in reverse topological order (dependents
+    -- first) so that dependents are removed before their dependencies.
+    sortedRemovals = sortedPackages # Array.reverse # Array.mapMaybe \(Manifest { name, version }) ->
+      case Map.lookup name changes, Map.lookup name packages of
+        Just Remove, Just prevVersion | version == prevVersion -> Just (Tuple name Remove)
+        _, _ -> Nothing
+  in
+    -- Process updates first, then removals
+    sortedUpdates <> sortedRemovals

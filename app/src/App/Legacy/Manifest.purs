@@ -38,12 +38,12 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
 import Registry.App.Legacy.Types (LegacyPackageSet(..), LegacyPackageSetEntry, LegacyPackageSetUnion, RawPackageName(..), RawVersion(..), RawVersionRange(..), legacyPackageSetCodec, legacyPackageSetUnionCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionRangeCodec)
 import Registry.Foreign.Octokit (Address, GitHubError(..))
-import Registry.Internal.Codec as Internal.Codec
-import Registry.Location as Location
-import Registry.Owner as Owner
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
+import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
+import Registry.Location as Location
+import Registry.Owner as Owner
 import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Sha256 as Sha256
