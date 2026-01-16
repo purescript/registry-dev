@@ -8,6 +8,7 @@ import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Fetch.Retry as Fetch.Retry
 import Node.Process as Process
+import Registry.App.Effect.Registry as Registry
 import Registry.App.Server.Env (createServerEnv)
 import Registry.App.Server.JobExecutor as JobExecutor
 import Registry.App.Server.Router as Router
@@ -23,8 +24,8 @@ main = Aff.launchAff_ do
       case env.vars.resourceEnv.healthchecksUrl of
         Nothing -> Console.log "HEALTHCHECKS_URL not set, healthcheck pinging disabled"
         Just healthchecksUrl -> Aff.launchAff_ $ healthcheck healthchecksUrl
-      Aff.launchAff_ $ withRetryLoop "Scheduler" $ Scheduler.runScheduler env
-      Aff.launchAff_ $ withRetryLoop "Job executor" $ JobExecutor.runJobExecutor env
+      Aff.launchAff_ $ withRetryLoop "Scheduler" $ Scheduler.runScheduler (env { process = Registry.Scheduler })
+      Aff.launchAff_ $ withRetryLoop "Job executor" $ JobExecutor.runJobExecutor (env { process = Registry.JobExecutor })
       Router.runRouter env
   where
   healthcheck :: String -> Aff Unit
