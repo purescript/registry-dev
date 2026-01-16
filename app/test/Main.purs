@@ -10,6 +10,7 @@ import Test.Registry.App.CLI.Purs as Test.CLI.Purs
 import Test.Registry.App.CLI.PursVersions as Test.CLI.PursVersions
 import Test.Registry.App.CLI.Tar as Test.CLI.Tar
 import Test.Registry.App.Effect.PackageSets as Test.Effect.PackageSets
+import Test.Registry.App.Effect.Registry as Test.Effect.Registry
 import Test.Registry.App.GitHubIssue as Test.GitHubIssue
 import Test.Registry.App.Legacy.LenientRange as Test.Legacy.LenientRange
 import Test.Registry.App.Legacy.LenientVersion as Test.Legacy.LenientVersion
@@ -37,6 +38,7 @@ main = runSpecAndExitProcess' config [ consoleReporter ] do
 
   Spec.describe "Registry.App.Effect" do
     Test.Effect.PackageSets.spec
+    Test.Effect.Registry.spec
 
   Spec.describe "Registry.App.GitHubIssue" do
     Test.GitHubIssue.spec

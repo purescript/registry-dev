@@ -6,6 +6,7 @@ module Registry.App.Effect.Registry where
 import Registry.App.Prelude
 
 import Codec.JSON.DecodeError as CJ.DecodeError
+import Control.Parallel as Parallel
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.JSON as CJ
@@ -17,6 +18,7 @@ import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration as Duration
+import Effect.Aff (Milliseconds(..))
 import Effect.Aff as Aff
 import Effect.Aff.AVar (AVar)
 import Effect.Aff.AVar as AVar
@@ -24,19 +26,19 @@ import Effect.Ref as Ref
 import JSON as JSON
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
-import Registry.Foreign.FSExtra as FS.Extra
 import Registry.App.CLI.Git (GitResult)
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (class MemoryEncodable, Cache, CacheRef, MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
-import Registry.App.Effect.Log (LOG)
+import Registry.App.Effect.Log (LOG, Log)
 import Registry.App.Effect.Log as Log
 import Registry.App.Legacy.PackageSet (PscTag(..))
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
 import Registry.App.Legacy.Types (legacyPackageSetCodec)
 import Registry.Constants as Constants
+import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (Address)
 import Registry.Foreign.Octokit as Octokit
@@ -54,6 +56,7 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 import Safe.Coerce (coerce)
+import Type.Proxy (Proxy(..))
 
 data RegistryCache (c :: Type -> Type -> Type) a
   = AllManifests (c ManifestIndex a)
@@ -175,16 +178,17 @@ data Process
 
 derive instance Eq Process
 
-instance Show Process where
-  show Scheduler = "Scheduler"
-  show JobExecutor = "JobExecutor"
-  show API = "API"
-  show ScriptLegacyImporter = "ScriptLegacyImporter"
-  show ScriptPackageDeleter = "ScriptPackageDeleter"
-  show ScriptSolver = "ScriptSolver"
-  show ScriptVerifyIntegrity = "ScriptVerifyIntegrity"
-  show ScriptCompilerVersions = "ScriptCompilerVersions"
-  show ScriptArchiveSeeder = "ScriptArchiveSeeder"
+printProcess :: Process -> String
+printProcess = case _ of
+  Scheduler -> "Scheduler"
+  JobExecutor -> "JobExecutor"
+  API -> "API"
+  ScriptLegacyImporter -> "ScriptLegacyImporter"
+  ScriptPackageDeleter -> "ScriptPackageDeleter"
+  ScriptSolver -> "ScriptSolver"
+  ScriptVerifyIntegrity -> "ScriptVerifyIntegrity"
+  ScriptCompilerVersions -> "ScriptCompilerVersions"
+  ScriptArchiveSeeder -> "ScriptArchiveSeeder"
 
 -- | A lock for a single repository, tracking both the mutex and the owner.
 type RepoLock = { lock :: AVar Unit, owner :: Ref (Maybe Process) }
@@ -216,29 +220,64 @@ withRepoLock
    . Process
   -> RepoLocks
   -> RepoKey
-  -> Run (LOG + AFF + EFFECT + r) a
-  -> Run (LOG + AFF + EFFECT + r) a
+  -> Run (LOG + AFF + EFFECT + EXCEPT String + r) a
+  -> Run (LOG + AFF + EFFECT + EXCEPT String + r) a
 withRepoLock process locks key action = do
   repoLock <- Run.liftAff $ getOrCreateLock locks key
-  Run.liftAff $ AVar.take repoLock.lock
-  Run.liftEffect $ Ref.write (Just process) repoLock.owner
-  result <- action
-  Run.liftEffect $ Ref.write Nothing repoLock.owner
-  Run.liftAff $ AVar.put unit repoLock.lock
-  pure result
 
--- | Clear any locks owned by a specific process.
--- | Used to clean up orphaned locks when a process crashes and restarts.
-clearOwnLocks :: forall r. Process -> RepoLocks -> Run (LOG + AFF + EFFECT + r) Unit
-clearOwnLocks process locksRef = do
-  locks <- Run.liftEffect $ Ref.read locksRef
-  for_ (Map.toUnfoldable locks :: Array _) \(Tuple _ repoLock) -> do
-    owner <- Run.liftEffect $ Ref.read repoLock.owner
-    when (owner == Just process) do
-      Log.warn $ "Clearing orphaned lock for " <> show process
-      Run.liftEffect $ Ref.write Nothing repoLock.owner
-      -- Put the unit back to release the lock
-      Run.liftAff $ AVar.put unit repoLock.lock
+  -- It isn't possible to run exception-safe Aff code like `bracket` within
+  -- the extensible effects system. For the actions we need to support
+  -- behind a lock we only need to support the LOG effect, so we lower to
+  -- Aff, run the lock-guarded code safely, and aggregate the logs to be
+  -- flushed afterwards.
+  { logs, outcome } <- Run.liftAff do
+    logsRef <- liftEffect $ Ref.new []
+    outcome <- withRepoLockAff repoLock (Milliseconds 60_000.0) (runWithLogs logsRef action)
+    logs <- liftEffect $ Ref.read logsRef
+    pure { logs, outcome }
+
+  -- We replay the collected logs
+  for_ logs \log ->
+    Run.lift Log._log log
+
+  case outcome of
+    Nothing -> do
+      Log.warn $ "Repo lock timed out for " <> printProcess process
+      Run.liftAff $ Aff.throwError $ Aff.error "Repo lock timed out."
+    Just (Left err) ->
+      Run.liftAff $ Aff.throwError err
+    Just (Right value) ->
+      pure value
+  where
+  runWithLogs :: Ref (Array (Log Unit)) -> Run (LOG + AFF + EFFECT + EXCEPT String + r) a -> Aff (Either Aff.Error a)
+  runWithLogs ref = Aff.attempt <<< Run.runCont step pure
+    where
+    step =
+      Run.on Log._log handleLog
+        $ Run.on (Proxy @"aff") (\k -> k >>= identity)
+        $ Run.on (Proxy @"effect") (\k -> liftEffect k >>= identity)
+        $ Run.on Except._except (\k -> Aff.throwError (Aff.error (coerce k)))
+        $ Run.default (Aff.throwError $ Aff.error "withRepoLock: unexpected effect")
+
+    handleLog (Log.Log level message next) = do
+      liftEffect $ Ref.modify_ (\logs -> Array.snoc logs (Log.Log level message unit)) ref
+      next
+
+  -- | Acquire a lock, run the action, and release the lock, guarded by a bracket to clean the
+  -- | locks on exception. Action is cancelled after a configurable timeout
+  withRepoLockAff :: RepoLock -> Milliseconds -> Aff (Either Aff.Error a) -> Aff (Maybe (Either Aff.Error a))
+  withRepoLockAff repoLock timeout aff =
+    Aff.bracket acquire release \_ -> do
+      let race = Parallel.parallel (Just <$> aff) <|> Parallel.parallel (Aff.delay timeout $> Nothing)
+      Parallel.sequential race
+    where
+    acquire = do
+      AVar.take repoLock.lock
+      liftEffect $ Ref.write (Just process) repoLock.owner
+
+    release _ = do
+      liftEffect $ Ref.write Nothing repoLock.owner
+      AVar.put unit repoLock.lock
 
 -- | Validate that a repository is in a valid state.
 -- | If the repo is corrupted (e.g., from an interrupted clone), delete it.
