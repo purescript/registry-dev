@@ -215,6 +215,7 @@ getOrCreateLock locksRef key = do
 
 -- | Acquire a repository lock, run an action, and release the lock.
 -- | The lock prevents concurrent access to the same repository.
+-- | Defaults to a 60-second timeout.
 withRepoLock
   :: forall r a
    . Process
@@ -222,7 +223,19 @@ withRepoLock
   -> RepoKey
   -> Run (LOG + AFF + EFFECT + EXCEPT String + r) a
   -> Run (LOG + AFF + EFFECT + EXCEPT String + r) a
-withRepoLock process locks key action = do
+withRepoLock = withRepoLockTimeout (Milliseconds 60_000.0)
+
+-- | Acquire a repository lock, run an action, and release the lock.
+-- | The lock prevents concurrent access to the same repository.
+withRepoLockTimeout
+  :: forall r a
+   . Milliseconds
+  -> Process
+  -> RepoLocks
+  -> RepoKey
+  -> Run (LOG + AFF + EFFECT + EXCEPT String + r) a
+  -> Run (LOG + AFF + EFFECT + EXCEPT String + r) a
+withRepoLockTimeout timeout process locks key action = do
   repoLock <- Run.liftAff $ getOrCreateLock locks key
 
   -- It isn't possible to run exception-safe Aff code like `bracket` within
@@ -232,7 +245,7 @@ withRepoLock process locks key action = do
   -- flushed afterwards.
   { logs, outcome } <- Run.liftAff do
     logsRef <- liftEffect $ Ref.new []
-    outcome <- withRepoLockAff repoLock (Milliseconds 60_000.0) (runWithLogs logsRef action)
+    outcome <- withRepoLockAff repoLock timeout (runWithLogs logsRef action)
     logs <- liftEffect $ Ref.read logsRef
     pure { logs, outcome }
 
@@ -266,9 +279,9 @@ withRepoLock process locks key action = do
   -- | Acquire a lock, run the action, and release the lock, guarded by a bracket to clean the
   -- | locks on exception. Action is cancelled after a configurable timeout
   withRepoLockAff :: RepoLock -> Milliseconds -> Aff (Either Aff.Error a) -> Aff (Maybe (Either Aff.Error a))
-  withRepoLockAff repoLock timeout aff =
+  withRepoLockAff repoLock lockTimeout aff =
     Aff.bracket acquire release \_ -> do
-      let race = Parallel.parallel (Just <$> aff) <|> Parallel.parallel (Aff.delay timeout $> Nothing)
+      let race = Parallel.parallel (Just <$> aff) <|> Parallel.parallel (Aff.delay lockTimeout $> Nothing)
       Parallel.sequential race
     where
     acquire = do
