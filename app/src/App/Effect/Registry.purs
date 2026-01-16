@@ -221,7 +221,7 @@ withRepoLock
    . Process
   -> RepoLocks
   -> RepoKey
-  -> Run (LOG + AFF + EFFECT + EXCEPT String + r) a
+  -> Run (LOG + AFF + EFFECT + EXCEPT String + ()) a
   -> Run (LOG + AFF + EFFECT + EXCEPT String + r) a
 withRepoLock = withRepoLockTimeout (Milliseconds 60_000.0)
 
@@ -233,7 +233,7 @@ withRepoLockTimeout
   -> Process
   -> RepoLocks
   -> RepoKey
-  -> Run (LOG + AFF + EFFECT + EXCEPT String + r) a
+  -> Run (LOG + AFF + EFFECT + EXCEPT String + ()) a
   -> Run (LOG + AFF + EFFECT + EXCEPT String + r) a
 withRepoLockTimeout timeout process locks key action = do
   repoLock <- Run.liftAff $ getOrCreateLock locks key
@@ -262,15 +262,15 @@ withRepoLockTimeout timeout process locks key action = do
     Just (Right value) ->
       pure value
   where
-  runWithLogs :: Ref (Array (Log Unit)) -> Run (LOG + AFF + EFFECT + EXCEPT String + r) a -> Aff (Either Aff.Error a)
+  runWithLogs :: Ref (Array (Log Unit)) -> Run (LOG + AFF + EFFECT + EXCEPT String ()) a -> Aff (Either Aff.Error a)
   runWithLogs ref = Aff.attempt <<< Run.runCont step pure
     where
     step =
-      Run.on Log._log handleLog
-        $ Run.on (Proxy @"aff") (\k -> k >>= identity)
-        $ Run.on (Proxy @"effect") (\k -> liftEffect k >>= identity)
-        $ Run.on Except._except (\k -> Aff.throwError (Aff.error (coerce k)))
-        $ Run.default (Aff.throwError $ Aff.error "withRepoLock: unexpected effect")
+      Run.case_
+        # Run.on Log._log handleLog
+        # Run.on (Proxy @"aff") (\k -> k >>= identity)
+        # Run.on (Proxy @"effect") (\k -> liftEffect k >>= identity)
+        # Run.on Except._except (\k -> Aff.throwError (Aff.error (coerce k)))
 
     handleLog (Log.Log level message next) = do
       liftEffect $ Ref.modify_ (\logs -> Array.snoc logs (Log.Log level message unit)) ref
