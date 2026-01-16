@@ -395,10 +395,20 @@ let
     )
   );
 
-  # Metadata fixtures directory (to determine which packages are "published")
+  # Metadata fixtures directory (to determine which package versions are "published")
   metadataFixturesDir = rootPath + "/app/fixtures/registry/metadata";
   metadataFiles = builtins.attrNames (builtins.readDir metadataFixturesDir);
-  publishedPackageNames = map (f: lib.removeSuffix ".json" f) metadataFiles;
+
+  # Parse metadata files to get the actual published versions (not just package names)
+  # Returns a set like { "prelude-6.0.1" = true; "type-equality-4.0.1" = true; }
+  publishedVersions = lib.foldl' (acc: fileName:
+    let
+      packageName = lib.removeSuffix ".json" fileName;
+      metadata = builtins.fromJSON (builtins.readFile (metadataFixturesDir + "/${fileName}"));
+      versions = builtins.attrNames (metadata.published or {});
+    in
+    acc // lib.genAttrs (map (v: "${packageName}-${v}") versions) (_: true)
+  ) {} metadataFiles;
 
   # ============================================================================
   # UNIFIED STORAGE MAPPINGS WITH WIREMOCK SCENARIOS
@@ -412,9 +422,9 @@ let
   # Scenario design:
   # - One scenario per package-version (e.g., "effect-4.0.0")
   # - WireMock scenarios always start at state "Started"
-  # - Published packages (has metadata): "Started" means Present (tarball available)
+  # - Published versions (version exists in metadata.published): "Started" means Present
   #   - After DELETE, transitions to "Deleted" state (404 on GET)
-  # - Unpublished packages (no metadata): "Started" means Absent (tarball 404)
+  # - Unpublished versions (new version not in metadata): "Started" means Absent (404)
   #   - After PUT upload, transitions to "Present" state
   #   - After DELETE, transitions to "Deleted" state (404 on GET)
   #
@@ -430,7 +440,7 @@ let
     pkg:
     let
       scenario = "${pkg.name}-${pkg.version}";
-      isPublished = builtins.elem pkg.name publishedPackageNames;
+      isPublished = publishedVersions ? "${pkg.name}-${pkg.version}";
       tarPath = "/${pkg.name}/${pkg.version}.tar.gz";
     in
     if isPublished then
@@ -521,7 +531,7 @@ let
       pkg:
       let
         scenario = "${pkg.name}-${pkg.version}";
-        isPublished = builtins.elem pkg.name publishedPackageNames;
+        isPublished = publishedVersions ? "${pkg.name}-${pkg.version}";
         escapedName = lib.replaceStrings [ "-" ] [ "\\-" ] pkg.name;
         listUrlPattern = "/\\?.*prefix=${escapedName}.*";
         presentContents = ''<Contents><Key>${pkg.name}/${pkg.version}.tar.gz</Key><Size>1000</Size><ETag>"abc123"</ETag></Contents>'';
@@ -606,7 +616,7 @@ let
         pkg:
         let
           scenario = "${pkg.name}-${pkg.version}";
-          isPublished = builtins.elem pkg.name publishedPackageNames;
+          isPublished = publishedVersions ? "${pkg.name}-${pkg.version}";
           escapedVersion = lib.replaceStrings [ "." ] [ "\\." ] pkg.version;
           urlPattern = "/${pkg.name}/${escapedVersion}\\.tar\\.gz.*";
         in
@@ -732,7 +742,7 @@ let
       pkg:
       let
         scenario = "${pkg.name}-${pkg.version}";
-        isPublished = builtins.elem pkg.name publishedPackageNames;
+        isPublished = publishedVersions ? "${pkg.name}-${pkg.version}";
         versionsUrl = "/packages/purescript-${pkg.name}/available-versions";
         publishedVersionsBody = ''[["${pkg.version}","https://pursuit.purescript.org/packages/purescript-${pkg.name}/${pkg.version}"]]'';
       in

@@ -79,6 +79,7 @@ main = launchAff_ do
 
   -- Registry
   debouncer <- Registry.newDebouncer
+  repoLocks <- Registry.newRepoLocks
   let
     registryEnv :: Registry.RegistryEnv
     registryEnv =
@@ -88,6 +89,8 @@ main = launchAff_ do
       , workdir: scratchDir
       , debouncer
       , cacheRef: registryCacheRef
+      , repoLocks
+      , process: Registry.ScriptVerifyIntegrity
       }
 
   -- Logging

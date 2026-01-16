@@ -76,6 +76,7 @@ type ServerEnv =
   , octokit :: Octokit
   , vars :: ServerEnvVars
   , debouncer :: Registry.Debouncer
+  , repoLocks :: Registry.RepoLocks
   , db :: SQLite
   , jobId :: Maybe JobId
   }
@@ -94,6 +95,7 @@ createServerEnv = do
 
   octokit <- Octokit.newOctokit vars.token vars.resourceEnv.githubApiUrl
   debouncer <- Registry.newDebouncer
+  repoLocks <- Registry.newRepoLocks
 
   db <- liftEffect $ SQLite.connect
     { database: vars.resourceEnv.databaseUrl.path
@@ -111,6 +113,7 @@ createServerEnv = do
 
   pure
     { debouncer
+    , repoLocks
     , githubCacheRef
     , legacyCacheRef
     , registryCacheRef
@@ -159,6 +162,8 @@ runEffects env operation = Aff.attempt do
             , workdir: scratchDir
             , debouncer: env.debouncer
             , cacheRef: env.registryCacheRef
+            , repoLocks: env.repoLocks
+            , process: Registry.API
             }
         )
     # Archive.interpret Archive.handle

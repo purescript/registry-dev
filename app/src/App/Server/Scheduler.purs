@@ -9,6 +9,8 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.DateTime as DateTime
 import Data.Map as Map
 import Data.Set as Set
+import Data.Set.NonEmpty (NonEmptySet)
+import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Effect.Aff (Milliseconds(..))
@@ -28,6 +30,7 @@ import Registry.Location (Location(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
 import Registry.PackageSet (PackageSet(..))
+import Registry.Range as Range
 import Run (Run)
 
 -- | The scheduler loop runs immediately, then every 24 hours.
@@ -38,13 +41,13 @@ runScheduler env = runEffects env do
   Log.info "Starting Scheduler"
   loop
   where
-  sleepTime = Milliseconds (1000.0 * 60.0 * 60.0 * 12.0)
+  sleepTime = Milliseconds (1000.0 * 60.0 * 60.0 * 24.0)
 
   loop = do
     -- Run all scheduling checks
     scheduleTransfers
     schedulePackageSetUpdates
-    scheduleLegacyImports
+    scheduleDailyPublish
     Log.info "Scheduler cycle complete, sleeping for 24 hours..."
     -- Sleep for a while, then run again
     liftAff $ Aff.delay sleepTime
@@ -185,24 +188,20 @@ findRecentUploads limit = do
 
   let
     getLatestRecentVersion :: Metadata -> Maybe Version
-    getLatestRecentVersion (Metadata metadata) =
+    getLatestRecentVersion (Metadata metadata) = do
       let
-        recentVersions = Array.catMaybes $ flip map (Map.toUnfoldable metadata.published) \(Tuple version { publishedTime }) ->
-          let
-            diff = DateTime.diff now publishedTime
-          in
-            if diff <= limit then Just version else Nothing
-      in
-        Array.last $ Array.sort recentVersions
+        recentVersions = Array.catMaybes $ flip map (Map.toUnfoldable metadata.published)
+          \(Tuple version { publishedTime }) -> if (DateTime.diff now publishedTime) <= limit then Just version else Nothing
+      Array.last $ Array.sort recentVersions
 
   pure $ Map.fromFoldable $ Array.catMaybes $ flip map (Map.toUnfoldable allMetadata) \(Tuple name metadata) ->
     map (Tuple name) $ getLatestRecentVersion metadata
 
 -- | Check for new tags on existing packages and enqueue publish jobs for
 -- | versions not yet published. This allows the registry to automatically
--- | import new versions of packages that only have legacy manifests.
-scheduleLegacyImports :: Run ServerEffects Unit
-scheduleLegacyImports = do
+-- | publish new versions of packages that are already in the registry.
+scheduleDailyPublish :: Run ServerEffects Unit
+scheduleDailyPublish = do
   Log.info "Scheduler: checking for new package versions..."
 
   allMetadata <- Registry.readAllMetadata
@@ -234,35 +233,73 @@ scheduleLegacyImports = do
                       else Just { version, ref: tag.name }
 
             for_ newVersions \{ version, ref } ->
-              enqueuePublishJob name (Metadata metadata) version ref
-
-    -- Delay between packages to spread GitHub API load
-    liftAff $ Aff.delay (Milliseconds 500.0)
+              enqueuePublishJob allMetadata name (Metadata metadata) version ref
 
 -- | Enqueue a publish job for a new package version discovered by the scheduler.
--- | Uses the lowest compiler from the previous published version for compatibility,
--- | falling back to the latest compiler if no previous version exists.
-enqueuePublishJob :: PackageName -> Metadata -> Version -> String -> Run ServerEffects Unit
-enqueuePublishJob name (Metadata metadata) version ref = do
+-- | Attempts to find a compatible compiler by looking at the previous version's
+-- | dependencies. Falls back to the lowest compiler from the previous version if
+-- | no dependencies exist, or to the latest compiler if no previous version exists.
+enqueuePublishJob :: Map PackageName Metadata -> PackageName -> Metadata -> Version -> String -> Run ServerEffects Unit
+enqueuePublishJob allMetadata name (Metadata metadata) version ref = do
   -- Check if a publish job already exists for this package version
   existingJob <- Db.selectPublishJob name version
   case existingJob of
     Just _ -> Log.debug $ "Publish job already exists for " <> formatPackageVersion name version
     Nothing -> do
-      -- Use the lowest compiler from previous version for compatibility,
-      -- falling back to latest if no previous version exists
+      -- Try to find a compatible compiler by looking at the previous version's dependencies
       compiler <- case Map.findMax metadata.published of
-        Just { value: publishedInfo } ->
-          pure $ NonEmptyArray.head publishedInfo.compilers
-        Nothing -> NonEmptyArray.last <$> PursVersions.pursVersions
+        Just { key: prevVersion, value: publishedInfo } -> do
+          -- Look up the manifest for the previous version to get its dependencies
+          maybeManifest <- Registry.readManifest name prevVersion
+          case maybeManifest of
+            Just (Manifest manifest) | not (Map.isEmpty manifest.dependencies) -> do
+              -- Use previous version's dependencies to find compatible compilers
+              -- Find the highest published version of each dependency within its range
+              let
+                depVersions :: Map PackageName Version
+                depVersions = Map.mapMaybeWithKey (\depName range ->
+                  case Map.lookup depName allMetadata of
+                    Just (Metadata depMeta) ->
+                      Array.last $ Array.filter (Range.includes range) $ Array.sort $ Array.fromFoldable $ Map.keys depMeta.published
+                    Nothing -> Nothing
+                ) manifest.dependencies
+
+              case compatibleCompilers allMetadata depVersions of
+                Just compilerSet -> pure $ NonEmptySet.min compilerSet
+                -- No intersection found, fall back to lowest compiler from previous version
+                Nothing -> pure $ NonEmptyArray.head publishedInfo.compilers
+            -- No manifest or no dependencies, fall back to lowest compiler from previous version
+            _ -> pure $ NonEmptyArray.head publishedInfo.compilers
+        Nothing ->
+          NonEmptyArray.last <$> PursVersions.pursVersions
       let
         payload =
           { name
-          , location: Just metadata.location
+          -- Don't specify location - use current metadata location at publish time.
+          -- This avoids race conditions with transfer jobs that may update the location.
+          , location: Nothing
           , ref
           , version
           , compiler
           , resolutions: Nothing
           }
       jobId <- Db.insertPublishJob { payload }
-      Log.info $ "Enqueued legacy publish job " <> unwrap jobId <> " for " <> formatPackageVersion name version
+      Log.info $ "Enqueued publish job " <> unwrap jobId <> " for " <> formatPackageVersion name version
+
+-- | Given a set of package versions, determine the set of compilers that can be
+-- | used for all packages by intersecting their supported compiler ranges.
+compatibleCompilers :: Map PackageName Metadata -> Map PackageName Version -> Maybe (NonEmptySet Version)
+compatibleCompilers allMetadata resolutions = do
+  let
+    associated :: Array { compilers :: NonEmptyArray Version }
+    associated = Map.toUnfoldableUnordered resolutions # Array.mapMaybe \(Tuple depName depVersion) -> do
+      Metadata depMeta <- Map.lookup depName allMetadata
+      published <- Map.lookup depVersion depMeta.published
+      Just { compilers: published.compilers }
+
+  case Array.uncons associated of
+    Nothing -> Nothing
+    Just { head, tail: [] } -> Just $ NonEmptySet.fromFoldable1 head.compilers
+    Just { head, tail } -> do
+      let foldFn prev = Set.intersection prev <<< Set.fromFoldable <<< _.compilers
+      NonEmptySet.fromFoldable $ Array.foldl foldFn (Set.fromFoldable head.compilers) tail

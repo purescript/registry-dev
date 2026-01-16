@@ -189,7 +189,18 @@ main = launchAff_ do
   -- uploaded and manifests and metadata are written, committed, and pushed.
   runAppEffects <- do
     debouncer <- Registry.newDebouncer
-    let registryEnv pull write = { pull, write, repos: Registry.defaultRepos, workdir: scratchDir, debouncer, cacheRef: registryCacheRef }
+    repoLocks <- Registry.newRepoLocks
+    let
+      registryEnv pull write =
+        { pull
+        , write
+        , repos: Registry.defaultRepos
+        , workdir: scratchDir
+        , debouncer
+        , cacheRef: registryCacheRef
+        , repoLocks
+        , process: Registry.ScriptLegacyImporter
+        }
     case mode of
       DryRun -> do
         token <- Env.lookupRequired Env.githubToken

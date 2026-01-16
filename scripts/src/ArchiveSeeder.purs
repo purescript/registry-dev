@@ -95,7 +95,18 @@ main = launchAff_ do
 
   runAppEffects <- do
     debouncer <- Registry.newDebouncer
-    let registryEnv = { pull: Git.Autostash, write: Registry.ReadOnly, repos: Registry.defaultRepos, workdir: scratchDir, debouncer, cacheRef: registryCacheRef }
+    repoLocks <- Registry.newRepoLocks
+    let
+      registryEnv =
+        { pull: Git.Autostash
+        , write: Registry.ReadOnly
+        , repos: Registry.defaultRepos
+        , workdir: scratchDir
+        , debouncer
+        , cacheRef: registryCacheRef
+        , repoLocks
+        , process: Registry.ScriptArchiveSeeder
+        }
 
     token <- Env.lookupRequired Env.githubToken
     s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)

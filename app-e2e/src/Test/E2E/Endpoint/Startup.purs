@@ -1,5 +1,5 @@
 -- | E2E tests for the Scheduler and JobExecutor startup, covering:
--- | - scheduleLegacyImports: Detects new package versions via GitHub tags
+-- | - scheduleDailyPublish: Detects new package versions via GitHub tags
 -- | - scheduleTransfers: Detects packages that moved to new GitHub locations
 -- | - schedulePackageSetUpdates: Detects recent uploads for package set inclusion
 -- | - checkIfNewCompiler: Detects new compiler and enqueues matrix jobs
@@ -25,7 +25,7 @@ import Test.Spec as Spec
 
 spec :: E2ESpec
 spec = do
-  Spec.describe "scheduleLegacyImports" do
+  Spec.describe "scheduleDailyPublish" do
     Spec.it "enqueues publish jobs for new package versions discovered via GitHub tags" do
       -- The scheduler runs at server startup and should have already
       -- fetched tags for packages in the registry metadata.
@@ -46,8 +46,10 @@ spec = do
 
       case typeEqualityJob of
         Just (PublishJob { payload }) -> do
-          -- Verify the compiler is from previous version (type-equality@4.0.1 has compilers [0.15.10, 0.15.11])
-          -- The scheduler should use the lowest compiler from the previous version for compatibility
+          -- The scheduler determines a compatible compiler by looking at the previous
+          -- version's dependencies and finding the intersection of their supported compilers.
+          -- type-equality@4.0.1 has no dependencies, so the scheduler falls back to the
+          -- lowest compiler from the previous version (0.15.10).
           let expectedCompiler = unsafeFromRight (Version.parse "0.15.10")
           when (payload.compiler /= expectedCompiler) do
             Assert.fail $ "Expected compiler 0.15.10 but got " <> Version.print payload.compiler

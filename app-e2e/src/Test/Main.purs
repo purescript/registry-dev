@@ -6,7 +6,7 @@ import Data.Time.Duration (Milliseconds(..))
 import Test.E2E.Endpoint.Jobs as Jobs
 import Test.E2E.Endpoint.PackageSets as PackageSets
 import Test.E2E.Endpoint.Publish as Publish
-import Test.E2E.Endpoint.Scheduler as Scheduler
+import Test.E2E.Endpoint.Startup as Startup
 import Test.E2E.Endpoint.Transfer as Transfer
 import Test.E2E.Endpoint.Unpublish as Unpublish
 import Test.E2E.GitHubIssue as GitHubIssue
@@ -24,7 +24,7 @@ main = do
   runSpecAndExitProcess' config [ consoleReporter ] $ hoistE2E env do
     -- The scheduler runs at startup and enqueues a bunch of jobs in the DB,
     -- so we need to run these tests without cleaning out the state first
-    Spec.describe "Scheduler" Scheduler.spec
+    Spec.describe "Startup" Startup.spec
 
     -- After scheduler tests, wait for startup jobs to complete and stash the
     -- git fixtures state. This ensures that subsequent tests can reset to
