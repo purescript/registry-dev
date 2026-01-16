@@ -83,7 +83,7 @@ spec = do
 
   Spec.describe "scheduleTransfers" do
     Spec.it "enqueues transfer jobs when package location changes" do
-      -- type-equality metadata says old-owner, but tags point to purescript
+      -- type-equality metadata says purescript, but tags point to new-owner
       jobs <- Client.getJobs
       let
         isTypeEqualityTransferJob :: Job -> Boolean
@@ -101,8 +101,8 @@ spec = do
             Transfer { newLocation } ->
               case newLocation of
                 GitHub { owner } ->
-                  when (owner /= "purescript") do
-                    Assert.fail $ "Expected owner 'purescript' but got '" <> owner <> "'"
+                  when (owner /= "new-owner") do
+                    Assert.fail $ "Expected owner 'new-owner' but got '" <> owner <> "'"
                 _ -> Assert.fail "Expected GitHub location"
             _ -> Assert.fail "Expected Transfer payload"
         Just _ -> Assert.fail "Expected TransferJob but got different job type"

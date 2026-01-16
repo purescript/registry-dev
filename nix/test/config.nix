@@ -289,12 +289,12 @@ let
       };
     }
     # Tags for type-equality package (used by two scheduler tests):
-    # 1. Transfer detection: metadata says old-owner, commit URLs point to purescript
+    # 1. Transfer detection: metadata says purescript, commit URLs point to new-owner
     # 2. Legacy imports: v4.0.2 is a new version not yet published
     {
       request = {
         method = "GET";
-        url = "/repos/old-owner/purescript-type-equality/tags";
+        url = "/repos/purescript/purescript-type-equality/tags";
       };
       response = {
         status = 200;
@@ -304,8 +304,8 @@ let
             name = "v4.0.1";
             commit = {
               sha = "type-eq-sha-401";
-              # Points to actual owner - scheduler detects this transfer
-              url = "https://api.github.com/repos/purescript/purescript-type-equality/commits/type-eq-sha-401";
+              # Points to new owner - scheduler detects this transfer
+              url = "https://api.github.com/repos/new-owner/purescript-type-equality/commits/type-eq-sha-401";
             };
           }
           {
@@ -313,7 +313,7 @@ let
             commit = {
               sha = "type-eq-sha-402";
               # New version not yet published - scheduler detects for legacy import
-              url = "https://api.github.com/repos/purescript/purescript-type-equality/commits/type-eq-sha-402";
+              url = "https://api.github.com/repos/new-owner/purescript-type-equality/commits/type-eq-sha-402";
             };
           }
         ];
@@ -401,14 +401,15 @@ let
 
   # Parse metadata files to get the actual published versions (not just package names)
   # Returns a set like { "prelude-6.0.1" = true; "type-equality-4.0.1" = true; }
-  publishedVersions = lib.foldl' (acc: fileName:
+  publishedVersions = lib.foldl' (
+    acc: fileName:
     let
       packageName = lib.removeSuffix ".json" fileName;
       metadata = builtins.fromJSON (builtins.readFile (metadataFixturesDir + "/${fileName}"));
-      versions = builtins.attrNames (metadata.published or {});
+      versions = builtins.attrNames (metadata.published or { });
     in
     acc // lib.genAttrs (map (v: "${packageName}-${v}") versions) (_: true)
-  ) {} metadataFiles;
+  ) { } metadataFiles;
 
   # ============================================================================
   # UNIFIED STORAGE MAPPINGS WITH WIREMOCK SCENARIOS
