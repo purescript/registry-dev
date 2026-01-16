@@ -257,12 +257,14 @@ enqueuePublishJob allMetadata name (Metadata metadata) version ref = do
               -- Find the highest published version of each dependency within its range
               let
                 depVersions :: Map PackageName Version
-                depVersions = Map.mapMaybeWithKey (\depName range ->
-                  case Map.lookup depName allMetadata of
-                    Just (Metadata depMeta) ->
-                      Array.last $ Array.filter (Range.includes range) $ Array.sort $ Array.fromFoldable $ Map.keys depMeta.published
-                    Nothing -> Nothing
-                ) manifest.dependencies
+                depVersions = Map.mapMaybeWithKey
+                  ( \depName range ->
+                      case Map.lookup depName allMetadata of
+                        Just (Metadata depMeta) ->
+                          Array.last $ Array.filter (Range.includes range) $ Array.sort $ Array.fromFoldable $ Map.keys depMeta.published
+                        Nothing -> Nothing
+                  )
+                  manifest.dependencies
 
               case compatibleCompilers allMetadata depVersions of
                 Just compilerSet -> pure $ NonEmptySet.min compilerSet
