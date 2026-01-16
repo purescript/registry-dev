@@ -288,9 +288,10 @@ let
         ];
       };
     }
-    # Tags for type-equality package (used by two scheduler tests):
+    # Tags for type-equality package (used by scheduler tests):
     # 1. Transfer detection: metadata says old-owner, commit URLs point to purescript
-    # 2. Legacy imports: v4.0.2 is a new version not yet published
+    # 2. Daily publish: v4.0.2 is a new version not yet published
+    # We need two mappings: one for old-owner (pre-transfer) and one for purescript (post-transfer)
     {
       request = {
         method = "GET";
@@ -312,7 +313,34 @@ let
             name = "v4.0.2";
             commit = {
               sha = "type-eq-sha-402";
-              # New version not yet published - scheduler detects for legacy import
+              # New version not yet published - scheduler detects for daily publish
+              url = "https://api.github.com/repos/purescript/purescript-type-equality/commits/type-eq-sha-402";
+            };
+          }
+        ];
+      };
+    }
+    # Tags for type-equality after transfer (when scheduler checks for new versions)
+    {
+      request = {
+        method = "GET";
+        url = "/repos/purescript/purescript-type-equality/tags";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/json";
+        jsonBody = [
+          {
+            name = "v4.0.1";
+            commit = {
+              sha = "type-eq-sha-401";
+              url = "https://api.github.com/repos/purescript/purescript-type-equality/commits/type-eq-sha-401";
+            };
+          }
+          {
+            name = "v4.0.2";
+            commit = {
+              sha = "type-eq-sha-402";
               url = "https://api.github.com/repos/purescript/purescript-type-equality/commits/type-eq-sha-402";
             };
           }
@@ -954,6 +982,9 @@ let
       gitbot -C "$FIXTURES_DIR/purescript/purescript-console" tag -m "v6.1.0" v6.1.0
       gitbot -C "$FIXTURES_DIR/purescript/purescript-unsafe-coerce" tag -m "v6.0.0" v6.0.0
       gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" tag -m "v4.0.1" v4.0.1
+      # Create a new commit for v4.0.2 so it's on a different commit than v4.0.1
+      # (the registry rejects publishing when multiple version tags point to the same commit)
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" commit --allow-empty -m "v4.0.2 release"
       gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" tag -m "v4.0.2" v4.0.2
     '';
   };
@@ -1019,11 +1050,10 @@ let
 
     mkdir -p "$STATE_DIR/db"
 
-    # Set up git fixtures if needed
-    if [ ! -d "$REPO_FIXTURES_DIR/purescript" ]; then
-      echo "Setting up git fixtures..."
-      ${setupGitFixtures}/bin/setup-git-fixtures "$REPO_FIXTURES_DIR"
-    fi
+    # Always recreate git fixtures to ensure clean state
+    # (the setupGitFixtures script handles cleanup internally)
+    echo "Setting up git fixtures..."
+    ${setupGitFixtures}/bin/setup-git-fixtures "$REPO_FIXTURES_DIR"
 
     # Run database migrations
     echo "Running database migrations..."
