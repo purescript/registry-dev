@@ -256,9 +256,9 @@ withRepoLockTimeout timeout process locks key action = do
   case outcome of
     Nothing -> do
       Log.warn $ "Repo lock timed out for " <> printProcess process
-      Run.liftAff $ Aff.throwError $ Aff.error "Repo lock timed out."
+      Except.throw "Repo lock timed out."
     Just (Left err) ->
-      Run.liftAff $ Aff.throwError err
+      Except.throw $ "Repo action failed: " <> Aff.message err
     Just (Right value) ->
       pure value
   where
