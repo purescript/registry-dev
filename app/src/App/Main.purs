@@ -13,17 +13,16 @@ import Registry.App.Server.JobExecutor as JobExecutor
 import Registry.App.Server.Router as Router
 
 main :: Effect Unit
-main = Aff.launchAff_ do
-  Aff.attempt createServerEnv >>= case _ of
-    Left error -> liftEffect do
-      Console.log $ "Failed to start server: " <> Aff.message error
-      Process.exit' 1
-    Right env -> liftEffect do
-      case env.vars.resourceEnv.healthchecksUrl of
-        Nothing -> Console.log "HEALTHCHECKS_URL not set, healthcheck pinging disabled"
-        Just healthchecksUrl -> Aff.launchAff_ $ healthcheck healthchecksUrl
-      Aff.launchAff_ $ withRetryLoop "Job executor" $ JobExecutor.runJobExecutor env
-      Router.runRouter env
+main = createServerEnv # Aff.runAff_ case _ of
+  Left error -> liftEffect do
+    Console.log $ "Failed to start server: " <> Aff.message error
+    Process.exit' 1
+  Right env -> do
+    case env.vars.resourceEnv.healthchecksUrl of
+      Nothing -> Console.log "HEALTHCHECKS_URL not set, healthcheck pinging disabled"
+      Just healthchecksUrl -> Aff.launchAff_ $ healthcheck healthchecksUrl
+    Aff.launchAff_ $ withRetryLoop "Job executor" $ JobExecutor.runJobExecutor env
+    Router.runRouter env
   where
   healthcheck :: String -> Aff Unit
   healthcheck healthchecksUrl = loop limit

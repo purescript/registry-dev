@@ -21,6 +21,7 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.JSON as CJ
 import Data.Map as Map
 import Data.Set as Set
+import Data.String as String
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Fetch (Method(..))
@@ -41,7 +42,9 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Legacy.LenientVersion as LenientVersion
-import Registry.App.Legacy.Types (RawVersion(..))
+import Registry.App.Legacy.Manifest (Bowerfile(..), SpagoDhallJson(..))
+import Registry.App.Legacy.Manifest as Legacy.Manifest
+import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), RawVersionRange(..))
 import Registry.App.Manifest.SpagoYaml as SpagoYaml
 import Registry.Foreign.Octokit (Address)
 import Registry.Foreign.Octokit as Octokit
@@ -247,25 +250,62 @@ submitPublishJob mode registryApiUrl compilerIndex allCompilersRange name (Metad
     Nothing -> NonEmptyArray.last <$> PursVersions.pursVersions
 
 -- | Try to fetch and parse the new version's dependencies from GitHub.
--- | Tries purs.json first, then falls back to spago.yaml.
+-- | Tries purs.json, spago.yaml, bower.json, and spago.dhall in order.
 fetchNewVersionDeps :: Address -> String -> Run DailyImportEffects (Maybe (Map PackageName Range))
 fetchNewVersionDeps address ref = do
-  -- Try purs.json first using getJsonFile which handles JSON decoding
-  pursJsonResult <- GitHub.getJsonFile address (RawVersion ref) Manifest.codec "purs.json"
+  let rawRef = RawVersion ref
+  -- Try purs.json first
+  pursJsonResult <- GitHub.getJsonFile address rawRef Manifest.codec "purs.json"
   case pursJsonResult of
     Right (Manifest manifest) -> pure $ Just manifest.dependencies
-    Left _ -> do
-      -- Fall back to spago.yaml
-      spagoYamlResult <- GitHub.getContent address (RawVersion ref) "spago.yaml"
-      case spagoYamlResult of
-        Right contents ->
-          case parseYaml SpagoYaml.spagoYamlCodec contents of
-            Right { package: Just pkg } ->
-              case SpagoYaml.convertSpagoDependencies pkg.dependencies of
-                Right deps -> pure $ Just deps
-                Left _ -> pure Nothing
-            _ -> pure Nothing
-        Left _ -> pure Nothing
+    Left _ -> trySpagoYaml rawRef
+  where
+  trySpagoYaml rawRef = do
+    spagoYamlResult <- GitHub.getContent address rawRef "spago.yaml"
+    case spagoYamlResult of
+      Right contents ->
+        case parseYaml SpagoYaml.spagoYamlCodec contents of
+          Right { package: Just pkg } ->
+            case SpagoYaml.convertSpagoDependencies pkg.dependencies of
+              Right deps -> pure $ Just deps
+              Left _ -> tryBowerJson rawRef
+          _ -> tryBowerJson rawRef
+      Left _ -> tryBowerJson rawRef
+
+  tryBowerJson rawRef = do
+    bowerResult <- Legacy.Manifest.fetchBowerfile address rawRef
+    case bowerResult of
+      Right (Bowerfile { dependencies }) ->
+        -- Strip purescript- prefix and validate dependencies
+        let
+          convert = Map.mapMaybeWithKey \(RawPackageName p) range -> do
+            _ <- String.stripPrefix (String.Pattern "purescript-") p
+            pure range
+        in
+          case hush $ Legacy.Manifest.validateDependencies (convert dependencies) of
+            Just deps -> pure $ Just deps
+            Nothing -> trySpagoDhall rawRef
+      Left _ -> trySpagoDhall rawRef
+
+  trySpagoDhall rawRef = do
+    spagoDhallResult <- Legacy.Manifest.fetchSpagoDhallJson address rawRef
+    case spagoDhallResult of
+      Right (SpagoDhallJson { dependencies, packages }) ->
+        -- Convert spago.dhall dependencies to ranges using the packages map
+        let
+          fixedToRange (RawVersion fixed) = do
+            let parsedVersion = LenientVersion.parse fixed
+            let bump version = Version.print (Version.bumpHighest version)
+            let printRange version = Array.fold [ ">=", fixed, " <", bump version ]
+            RawVersionRange $ either (const fixed) (printRange <<< LenientVersion.version) parsedVersion
+
+          convert = do
+            let findPackage p = Map.lookup p packages
+            let foldFn deps p = maybe deps (\{ version } -> Map.insert p (fixedToRange version) deps) (findPackage p)
+            Array.foldl foldFn Map.empty dependencies
+        in
+          pure $ hush $ Legacy.Manifest.validateDependencies convert
+      Left _ -> pure Nothing
 
 -- | Use the solver to find a compatible compiler for the given dependencies.
 -- | Uses a pre-built compiler index and range covering all available compilers.

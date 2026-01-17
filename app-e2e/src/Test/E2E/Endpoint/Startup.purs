@@ -1,4 +1,4 @@
--- | E2E tests for server startup behavior (non-scheduler).
+-- | E2E tests for server startup behavior.
 -- |
 -- | IMPORTANT: These tests must run BEFORE resetTestState is called, since
 -- | the jobs are created at server startup and would be cleared.
@@ -18,7 +18,7 @@ import Test.Spec as Spec
 
 spec :: E2ESpec
 spec = do
-  Spec.describe "checkIfNewCompiler" do
+  Spec.describe "check if there's a new compiler" do
     Spec.it "enqueues matrix jobs for packages with no dependencies when new compiler detected" do
       -- The test env has compilers 0.15.10 and 0.15.11 available.
       -- prelude@6.0.1 fixture only has compiler 0.15.10 in metadata.

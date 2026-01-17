@@ -34,7 +34,6 @@ import Registry.App.Legacy.PackageSet (PscTag(..))
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
 import Registry.App.Legacy.Types (legacyPackageSetCodec)
 import Registry.Constants as Constants
-import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (Address)
 import Registry.Foreign.Octokit as Octokit
@@ -155,24 +154,6 @@ data RepoKey
   = RegistryRepo
   | ManifestIndexRepo
   | LegacyPackageSetsRepo
-
-derive instance Eq RepoKey
-derive instance Ord RepoKey
-
--- | Validate that a repository is in a valid state.
--- | If the repo is corrupted (e.g., from an interrupted clone), delete it.
-validateRepo :: forall r. FilePath -> Run (LOG + AFF + EFFECT + r) Unit
-validateRepo path = do
-  exists <- Run.liftAff $ Aff.attempt (FS.Aff.stat path)
-  case exists of
-    Left _ -> pure unit -- Doesn't exist, nothing to validate
-    Right _ -> do
-      result <- Run.liftAff $ Git.gitCLI [ "rev-parse", "--git-dir" ] (Just path)
-      case result of
-        Left _ -> do
-          Log.warn $ "Detected corrupted repo at " <> path <> ", deleting"
-          Run.liftAff $ FS.Extra.remove path
-        Right _ -> pure unit
 
 -- | A legend for values that can be committed. We know where each kind of value
 -- | ought to exist, so we can create a correct path for any given type ourselves.
