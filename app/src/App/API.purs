@@ -1366,59 +1366,48 @@ validateLicense packageDir manifestLicense = do
   detected <- Run.liftAff $ Licensee.detect packageDir
   case detected of
     Left err -> do
-      -- If license detection fails, we let the package through.
-      -- The manifest license is the source of truth.
       Log.warn $ "License detection failed, relying on manifest: " <> err
       pure Nothing
     Right detectedStrings -> do
       let
-        -- Parse detected license strings into License values
         parsedLicenses :: Array License
         parsedLicenses = Array.mapMaybe (hush <<< License.parse) detectedStrings
 
       Log.debug $ "Detected licenses: " <> String.joinWith ", " detectedStrings
 
-      -- If no licenses were detected, we can't validate - allow the package through
-      -- (the manifest license is the source of truth)
       if Array.null parsedLicenses then do
-        Log.debug "No licenses detected from repository files, skipping validation."
+        Log.debug "No licenses detected from repository files, nothing to validate."
         pure Nothing
-      else do
-        -- Extract all license IDs from the manifest license expression.
-        -- This properly handles compound expressions like "MIT AND Apache-2.0".
-        case License.extractIds manifestLicense of
-          Left err -> do
-            -- If we can't parse the manifest license, log a warning but allow through
-            -- (the manifest was already validated during parsing)
-            Log.warn $ "Could not extract license IDs from manifest: " <> err
+      else case License.extractIds manifestLicense of
+        Left err -> do
+          -- This shouldn't be possible (we have already validated the license)
+          -- as part of constructing the manifest
+          Log.warn $ "Could not extract license IDs from manifest: " <> err
+          pure Nothing
+        Right manifestIds -> do
+          let
+            manifestIdSet = Set.fromFoldable manifestIds
+
+            -- A detected license is covered if all its IDs are in the manifest IDs
+            isCovered :: License -> Boolean
+            isCovered license = case License.extractIds license of
+              Left _ -> false
+              Right ids -> Array.all (\id -> Set.member id manifestIdSet) ids
+
+            uncoveredLicenses :: Array License
+            uncoveredLicenses = Array.filter (not <<< isCovered) parsedLicenses
+
+          if Array.null uncoveredLicenses then do
+            Log.debug "All detected licenses are covered by the manifest license."
             pure Nothing
-          Right manifestIds -> do
-            -- Convert manifest IDs to a Set for efficient lookup
-            let manifestIdSet = Set.fromFoldable manifestIds
-
-            -- Extract and uppercase each detected license for case-insensitive comparison
-            let
-              getDetectedId :: License -> Maybe String
-              getDetectedId license = case License.extractIds license of
-                Right ids -> Array.head ids
-                Left _ -> Nothing
-
-              -- A detected license is covered if its ID (uppercased) is in the manifest IDs
-              isCovered :: License -> Boolean
-              isCovered license = case getDetectedId license of
-                Just detectedId -> Set.member detectedId manifestIdSet
-                Nothing -> false
-
-              uncoveredLicenses = Array.filter (not <<< isCovered) parsedLicenses
-
-            if Array.null uncoveredLicenses then do
-              Log.debug "All detected licenses are covered by the manifest license."
-              pure Nothing
-            else do
-              Log.warn $ "License mismatch detected: manifest has '" <> License.print manifestLicense
-                <> "' but detected "
-                <> String.joinWith ", " (map License.print parsedLicenses)
-              pure $ Just $ LicenseMismatch
-                { manifestLicense
-                , detectedLicenses: uncoveredLicenses
-                }
+          else do
+            Log.warn $ Array.fold
+              [ "License mismatch detected: manifest has '"
+              , License.print manifestLicense
+              , "' but detected "
+              , String.joinWith ", " (map License.print parsedLicenses)
+              ]
+            pure $ Just $ LicenseMismatch
+              { manifestLicense
+              , detectedLicenses: uncoveredLicenses
+              }
