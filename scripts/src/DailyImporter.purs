@@ -21,8 +21,6 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.JSON as CJ
 import Data.Map as Map
 import Data.Set as Set
-import Data.Set.NonEmpty (NonEmptySet)
-import Data.Set.NonEmpty as NonEmptySet
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Fetch (Method(..))
@@ -43,11 +41,17 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Legacy.LenientVersion as LenientVersion
+import Registry.App.Legacy.Types (RawVersion(..))
+import Registry.App.Manifest.SpagoYaml as SpagoYaml
+import Registry.Foreign.Octokit (Address)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Location (Location(..))
+import Registry.Manifest (Manifest(..))
+import Registry.Manifest as Manifest
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
 import Registry.Range as Range
+import Registry.Solver as Solver
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
@@ -121,6 +125,16 @@ runDailyImport mode registryApiUrl = do
   allMetadata <- Registry.readAllMetadata
   let packages = Map.toUnfoldable allMetadata :: Array (Tuple PackageName Metadata)
 
+  -- Build the compiler index once for all packages
+  Log.info "Building compiler index..."
+  pursVersions <- PursVersions.pursVersions
+  manifestIndex <- Registry.readAllManifests
+  let
+    compilerIndex = Solver.buildCompilerIndex pursVersions manifestIndex allMetadata
+    allCompilersRange = Range.mk
+      (NonEmptyArray.head pursVersions)
+      (Version.bumpPatch (NonEmptyArray.last pursVersions))
+
   Log.info $ "Checking " <> show (Array.length packages) <> " packages for new versions..."
 
   submitted <- for packages \(Tuple name (Metadata metadata)) -> do
@@ -151,7 +165,7 @@ runDailyImport mode registryApiUrl = do
 
             -- Submit publish jobs for new versions
             count <- for newVersions \{ version, ref } -> do
-              submitPublishJob mode registryApiUrl allMetadata name (Metadata metadata) version ref
+              submitPublishJob mode registryApiUrl compilerIndex allCompilersRange name (Metadata metadata) version ref
 
             pure $ Array.length $ Array.filter identity count
 
@@ -159,48 +173,45 @@ runDailyImport mode registryApiUrl = do
   Log.info $ "Daily Importer complete. Submitted " <> show totalSubmitted <> " publish jobs."
 
 -- | Submit a publish job for a new package version.
--- | Attempts to find a compatible compiler by looking at the previous version's
+-- | Attempts to find a compatible compiler by fetching the new version's manifest
+-- | from GitHub and using the solver to find a compiler that works with its
 -- | dependencies. Falls back to the lowest compiler from the previous version if
--- | no dependencies exist, or to the latest compiler if no previous version exists.
+-- | fetching/parsing fails or the package has no dependencies, or to the latest
+-- | compiler if no previous version exists.
 submitPublishJob
   :: Mode
   -> URL
-  -> Map PackageName Metadata
+  -> Solver.CompilerIndex
+  -> Maybe Range
   -> PackageName
   -> Metadata
   -> Version
   -> String
   -> Run DailyImportEffects Boolean
-submitPublishJob mode registryApiUrl allMetadata name (Metadata metadata) version ref = do
+submitPublishJob mode registryApiUrl compilerIndex allCompilersRange name (Metadata metadata) version ref = do
   let formatted = formatPackageVersion name version
 
-  -- Determine the appropriate compiler version
-  compiler <- case Map.findMax metadata.published of
-    Just { key: prevVersion, value: publishedInfo } -> do
-      -- Look up the manifest for the previous version to get its dependencies
-      maybeManifest <- Registry.readManifest name prevVersion
-      case maybeManifest of
-        Just (Manifest manifest) | not (Map.isEmpty manifest.dependencies) -> do
-          -- Use previous version's dependencies to find compatible compilers
-          let
-            depVersions :: Map PackageName Version
-            depVersions = Map.mapMaybeWithKey
-              ( \depName range ->
-                  case Map.lookup depName allMetadata of
-                    Just (Metadata depMeta) ->
-                      Array.last $ Array.filter (Range.includes range) $ Array.sort $ Array.fromFoldable $ Map.keys depMeta.published
-                    Nothing -> Nothing
-              )
-              manifest.dependencies
-
-          case compatibleCompilers allMetadata depVersions of
-            Just compilerSet -> pure $ NonEmptySet.min compilerSet
-            -- No intersection found, fall back to lowest compiler from previous version
-            Nothing -> pure $ NonEmptyArray.head publishedInfo.compilers
-        -- No manifest or no dependencies, fall back to lowest compiler from previous version
-        _ -> pure $ NonEmptyArray.head publishedInfo.compilers
-    Nothing ->
-      NonEmptyArray.last <$> PursVersions.pursVersions
+  -- Determine the appropriate compiler version by trying to use the new version's
+  -- manifest and the solver, falling back to previous version's compiler if needed.
+  compiler <- case metadata.location of
+    GitHub { owner, repo } -> do
+      let address = { owner, repo }
+      -- Try to fetch and parse the new version's dependencies from GitHub
+      maybeNewDeps <- fetchNewVersionDeps address ref
+      case maybeNewDeps of
+        Just deps | not (Map.isEmpty deps) -> do
+          -- Use solver to find a compatible compiler
+          case solveForCompiler compilerIndex allCompilersRange deps of
+            Just compilerVersion -> pure compilerVersion
+            Nothing -> do
+              Log.debug $ "Solver failed to find compiler for " <> formatted <> ", using fallback"
+              fallbackCompiler
+        _ -> do
+          Log.debug $ "No dependencies found for " <> formatted <> ", using fallback"
+          fallbackCompiler
+    Git _ ->
+      -- For non-GitHub packages, always use fallback
+      fallbackCompiler
 
   let
     payload :: Operation.PublishData
@@ -228,6 +239,45 @@ submitPublishJob mode registryApiUrl allMetadata name (Metadata metadata) versio
         Right { jobId } -> do
           Log.info $ "Submitted publish job " <> unwrap jobId <> " for " <> formatted
           pure true
+  where
+  -- Fall back to using the previous version's lowest compiler, or latest if no previous version
+  fallbackCompiler :: Run DailyImportEffects Version
+  fallbackCompiler = case Map.findMax metadata.published of
+    Just { value: publishedInfo } -> pure $ NonEmptyArray.head publishedInfo.compilers
+    Nothing -> NonEmptyArray.last <$> PursVersions.pursVersions
+
+-- | Try to fetch and parse the new version's dependencies from GitHub.
+-- | Tries purs.json first, then falls back to spago.yaml.
+fetchNewVersionDeps :: Address -> String -> Run DailyImportEffects (Maybe (Map PackageName Range))
+fetchNewVersionDeps address ref = do
+  -- Try purs.json first using getJsonFile which handles JSON decoding
+  pursJsonResult <- GitHub.getJsonFile address (RawVersion ref) Manifest.codec "purs.json"
+  case pursJsonResult of
+    Right (Manifest manifest) -> pure $ Just manifest.dependencies
+    Left _ -> do
+      -- Fall back to spago.yaml
+      spagoYamlResult <- GitHub.getContent address (RawVersion ref) "spago.yaml"
+      case spagoYamlResult of
+        Right contents ->
+          case parseYaml SpagoYaml.spagoYamlCodec contents of
+            Right { package: Just pkg } ->
+              case SpagoYaml.convertSpagoDependencies pkg.dependencies of
+                Right deps -> pure $ Just deps
+                Left _ -> pure Nothing
+            _ -> pure Nothing
+        Left _ -> pure Nothing
+
+-- | Use the solver to find a compatible compiler for the given dependencies.
+-- | Uses a pre-built compiler index and range covering all available compilers.
+-- | Returns Nothing if no compatible compiler can be found.
+solveForCompiler :: Solver.CompilerIndex -> Maybe Range -> Map PackageName Range -> Maybe Version
+solveForCompiler compilerIndex allCompilersRange deps =
+  case allCompilersRange of
+    Nothing -> Nothing
+    Just range ->
+      case Solver.solveWithCompiler range compilerIndex deps of
+        Right (Tuple compilerVersion _) -> Just compilerVersion
+        Left _ -> Nothing
 
 -- | Submit a job to the registry API
 submitJob :: String -> Operation.PublishData -> Aff (Either String V1.JobCreatedResponse)
@@ -248,21 +298,3 @@ submitJob url payload = do
           Right r -> pure $ Right r
       else
         pure $ Left $ "HTTP " <> show response.status <> ": " <> responseBody
-
--- | Given a set of package versions, determine the set of compilers that can be
--- | used for all packages by intersecting their supported compiler ranges.
-compatibleCompilers :: Map PackageName Metadata -> Map PackageName Version -> Maybe (NonEmptySet Version)
-compatibleCompilers allMetadata resolutions = do
-  let
-    associated :: Array { compilers :: NonEmptyArray Version }
-    associated = Map.toUnfoldableUnordered resolutions # Array.mapMaybe \(Tuple depName depVersion) -> do
-      Metadata depMeta <- Map.lookup depName allMetadata
-      published <- Map.lookup depVersion depMeta.published
-      Just { compilers: published.compilers }
-
-  case Array.uncons associated of
-    Nothing -> Nothing
-    Just { head, tail: [] } -> Just $ NonEmptySet.fromFoldable1 head.compilers
-    Just { head, tail } -> do
-      let foldFn prev = Set.intersection prev <<< Set.fromFoldable <<< _.compilers
-      NonEmptySet.fromFoldable $ Array.foldl foldFn (Set.fromFoldable head.compilers) tail
