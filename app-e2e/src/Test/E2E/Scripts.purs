@@ -34,7 +34,7 @@ import Registry.Version as Version
 import Run as Run
 import Run.Except as Except
 import Test.E2E.Support.Client as Client
-import Test.E2E.Support.Env (E2ESpec, E2E)
+import Test.E2E.Support.Env (E2E, E2ESpec)
 import Test.Spec as Spec
 
 spec :: E2ESpec
@@ -167,14 +167,14 @@ runDailyImporterScript = do
       , cacheRef: registryCacheRef
       }
 
-  result <- liftAff $
-    DailyImporter.runDailyImport DailyImporter.Submit resourceEnv.registryApiUrl
-      # Except.runExcept
-      # Registry.interpret (Registry.handle registryEnv)
-      # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-      # Log.interpret (Log.handleTerminal Quiet)
-      # Env.runResourceEnv resourceEnv
-      # Run.runBaseAff'
+  result <- liftAff
+    $ DailyImporter.runDailyImport DailyImporter.Submit resourceEnv.registryApiUrl
+    # Except.runExcept
+    # Registry.interpret (Registry.handle registryEnv)
+    # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+    # Log.interpret (Log.handleTerminal Quiet)
+    # Env.runResourceEnv resourceEnv
+    # Run.runBaseAff'
 
   case result of
     Left err -> liftAff $ Aff.throwError $ Aff.error $ "DailyImporter failed: " <> err
@@ -210,14 +210,14 @@ runPackageTransferrerScript = do
       , cacheRef: registryCacheRef
       }
 
-  result <- liftAff $
-    PackageTransferrer.runPackageTransferrer PackageTransferrer.Submit (Just privateKey) resourceEnv.registryApiUrl
-      # Except.runExcept
-      # Registry.interpret (Registry.handle registryEnv)
-      # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-      # Log.interpret (Log.handleTerminal Quiet)
-      # Env.runResourceEnv resourceEnv
-      # Run.runBaseAff'
+  result <- liftAff
+    $ PackageTransferrer.runPackageTransferrer PackageTransferrer.Submit (Just privateKey) resourceEnv.registryApiUrl
+    # Except.runExcept
+    # Registry.interpret (Registry.handle registryEnv)
+    # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+    # Log.interpret (Log.handleTerminal Quiet)
+    # Env.runResourceEnv resourceEnv
+    # Run.runBaseAff'
 
   case result of
     Left err -> liftAff $ Aff.throwError $ Aff.error $ "PackageTransferrer failed: " <> err
@@ -253,14 +253,14 @@ runPackageSetUpdaterScript = do
       , cacheRef: registryCacheRef
       }
 
-  result <- liftAff $
-    PackageSetUpdater.runPackageSetUpdater PackageSetUpdater.Submit (Just privateKey) resourceEnv.registryApiUrl
-      # Except.runExcept
-      # Registry.interpret (Registry.handle registryEnv)
-      # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-      # Log.interpret (Log.handleTerminal Quiet)
-      # Env.runResourceEnv resourceEnv
-      # Run.runBaseAff'
+  result <- liftAff
+    $ PackageSetUpdater.runPackageSetUpdater PackageSetUpdater.Submit (Just privateKey) resourceEnv.registryApiUrl
+    # Except.runExcept
+    # Registry.interpret (Registry.handle registryEnv)
+    # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+    # Log.interpret (Log.handleTerminal Quiet)
+    # Env.runResourceEnv resourceEnv
+    # Run.runBaseAff'
 
   case result of
     Left err -> liftAff $ Aff.throwError $ Aff.error $ "PackageSetUpdater failed: " <> err

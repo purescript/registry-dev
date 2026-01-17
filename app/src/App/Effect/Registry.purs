@@ -22,7 +22,6 @@ import Effect.Ref as Ref
 import JSON as JSON
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
-import Registry.Foreign.FSExtra as FS.Extra
 import Registry.App.CLI.Git (GitResult)
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (class MemoryEncodable, Cache, CacheRef, MemoryEncoding(..))
@@ -35,6 +34,7 @@ import Registry.App.Legacy.PackageSet (PscTag(..))
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
 import Registry.App.Legacy.Types (legacyPackageSetCodec)
 import Registry.Constants as Constants
+import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (Address)
 import Registry.Foreign.Octokit as Octokit
