@@ -244,6 +244,8 @@
               (writeShellScriptBin "spago-test-e2e" ''
                 set -euo pipefail
                 ${testEnv.envToExports testEnv.testEnv}
+                export PATH="${testEnv.testConfig.gitMock}/bin:$PATH"
+                export GIT_BINARY="${pkgs.git}/bin/git"
                 exec spago run -p registry-app-e2e
               '')
             ];

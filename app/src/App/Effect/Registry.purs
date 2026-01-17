@@ -18,8 +18,6 @@ import Data.Set as Set
 import Data.String as String
 import Data.Time.Duration as Duration
 import Effect.Aff as Aff
-import Effect.Aff.AVar (AVar)
-import Effect.Aff.AVar as AVar
 import Effect.Ref as Ref
 import JSON as JSON
 import Node.FS.Aff as FS.Aff
@@ -161,85 +159,6 @@ data RepoKey
 derive instance Eq RepoKey
 derive instance Ord RepoKey
 
--- | Identifies which process is using the registry, for lock ownership tracking.
-data Process
-  = Scheduler
-  | JobExecutor
-  | API
-  | ScriptLegacyImporter
-  | ScriptPackageDeleter
-  | ScriptSolver
-  | ScriptVerifyIntegrity
-  | ScriptCompilerVersions
-  | ScriptArchiveSeeder
-
-derive instance Eq Process
-
-instance Show Process where
-  show Scheduler = "Scheduler"
-  show JobExecutor = "JobExecutor"
-  show API = "API"
-  show ScriptLegacyImporter = "ScriptLegacyImporter"
-  show ScriptPackageDeleter = "ScriptPackageDeleter"
-  show ScriptSolver = "ScriptSolver"
-  show ScriptVerifyIntegrity = "ScriptVerifyIntegrity"
-  show ScriptCompilerVersions = "ScriptCompilerVersions"
-  show ScriptArchiveSeeder = "ScriptArchiveSeeder"
-
--- | A lock for a single repository, tracking both the mutex and the owner.
-type RepoLock = { lock :: AVar Unit, owner :: Ref (Maybe Process) }
-
--- | Per-repository locks to prevent concurrent access.
-type RepoLocks = Ref (Map RepoKey RepoLock)
-
--- | Create a new empty set of repo locks.
-newRepoLocks :: forall m. MonadEffect m => m RepoLocks
-newRepoLocks = liftEffect $ Ref.new Map.empty
-
--- | Get or create a lock for a repository.
-getOrCreateLock :: RepoLocks -> RepoKey -> Aff RepoLock
-getOrCreateLock locksRef key = do
-  locks <- liftEffect $ Ref.read locksRef
-  case Map.lookup key locks of
-    Just lock -> pure lock
-    Nothing -> do
-      lock <- AVar.new unit
-      owner <- liftEffect $ Ref.new Nothing
-      let repoLock = { lock, owner }
-      liftEffect $ Ref.modify_ (Map.insert key repoLock) locksRef
-      pure repoLock
-
--- | Acquire a repository lock, run an action, and release the lock.
--- | The lock prevents concurrent access to the same repository.
-withRepoLock
-  :: forall r a
-   . Process
-  -> RepoLocks
-  -> RepoKey
-  -> Run (LOG + AFF + EFFECT + r) a
-  -> Run (LOG + AFF + EFFECT + r) a
-withRepoLock process locks key action = do
-  repoLock <- Run.liftAff $ getOrCreateLock locks key
-  Run.liftAff $ AVar.take repoLock.lock
-  Run.liftEffect $ Ref.write (Just process) repoLock.owner
-  result <- action
-  Run.liftEffect $ Ref.write Nothing repoLock.owner
-  Run.liftAff $ AVar.put unit repoLock.lock
-  pure result
-
--- | Clear any locks owned by a specific process.
--- | Used to clean up orphaned locks when a process crashes and restarts.
-clearOwnLocks :: forall r. Process -> RepoLocks -> Run (LOG + AFF + EFFECT + r) Unit
-clearOwnLocks process locksRef = do
-  locks <- Run.liftEffect $ Ref.read locksRef
-  for_ (Map.toUnfoldable locks :: Array _) \(Tuple _ repoLock) -> do
-    owner <- Run.liftEffect $ Ref.read repoLock.owner
-    when (owner == Just process) do
-      Log.warn $ "Clearing orphaned lock for " <> show process
-      Run.liftEffect $ Ref.write Nothing repoLock.owner
-      -- Put the unit back to release the lock
-      Run.liftAff $ AVar.put unit repoLock.lock
-
 -- | Validate that a repository is in a valid state.
 -- | If the repo is corrupted (e.g., from an interrupted clone), delete it.
 validateRepo :: forall r. FilePath -> Run (LOG + AFF + EFFECT + r) Unit
@@ -307,8 +226,6 @@ type RegistryEnv =
   , write :: WriteMode
   , debouncer :: Debouncer
   , cacheRef :: CacheRef
-  , repoLocks :: RepoLocks
-  , process :: Process
   }
 
 type Debouncer = Ref (Map FilePath DateTime)
@@ -807,9 +724,8 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
 
   -- | Get the repository at the given key, recording whether the pull or clone
   -- | had any effect (ie. if the repo was already up-to-date).
-  -- | Uses per-repository locking to prevent race conditions during clone.
   pull :: RepoKey -> Run _ (Either String GitResult)
-  pull repoKey = withRepoLock env.process env.repoLocks repoKey do
+  pull repoKey = do
     let
       path = repoPath repoKey
       address = repoAddress repoKey

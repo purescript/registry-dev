@@ -28,7 +28,7 @@ import Registry.App.Effect.PackageSets (PACKAGE_SETS)
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit (PURSUIT)
 import Registry.App.Effect.Pursuit as Pursuit
-import Registry.App.Effect.Registry (Process, REGISTRY)
+import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Source (SOURCE)
 import Registry.App.Effect.Source as Source
@@ -76,8 +76,6 @@ type ServerEnv =
   , octokit :: Octokit
   , vars :: ServerEnvVars
   , debouncer :: Registry.Debouncer
-  , repoLocks :: Registry.RepoLocks
-  , process :: Process
   , db :: SQLite
   , jobId :: Maybe JobId
   }
@@ -96,7 +94,6 @@ createServerEnv = do
 
   octokit <- Octokit.newOctokit vars.token vars.resourceEnv.githubApiUrl
   debouncer <- Registry.newDebouncer
-  repoLocks <- Registry.newRepoLocks
 
   db <- liftEffect $ SQLite.connect
     { database: vars.resourceEnv.databaseUrl.path
@@ -114,7 +111,6 @@ createServerEnv = do
 
   pure
     { debouncer
-    , repoLocks
     , githubCacheRef
     , legacyCacheRef
     , registryCacheRef
@@ -123,7 +119,6 @@ createServerEnv = do
     , vars
     , octokit
     , db
-    , process: Registry.API
     , jobId: Nothing
     }
 
@@ -164,8 +159,6 @@ runEffects env operation = Aff.attempt do
             , workdir: scratchDir
             , debouncer: env.debouncer
             , cacheRef: env.registryCacheRef
-            , repoLocks: env.repoLocks
-            , process: env.process
             }
         )
     # Archive.interpret Archive.handle

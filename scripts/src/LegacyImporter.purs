@@ -189,7 +189,6 @@ main = launchAff_ do
   -- uploaded and manifests and metadata are written, committed, and pushed.
   runAppEffects <- do
     debouncer <- Registry.newDebouncer
-    repoLocks <- Registry.newRepoLocks
     let
       registryEnv pull write =
         { pull
@@ -198,8 +197,6 @@ main = launchAff_ do
         , workdir: scratchDir
         , debouncer
         , cacheRef: registryCacheRef
-        , repoLocks
-        , process: Registry.ScriptLegacyImporter
         }
     case mode of
       DryRun -> do

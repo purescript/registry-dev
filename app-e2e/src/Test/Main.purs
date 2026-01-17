@@ -10,6 +10,7 @@ import Test.E2E.Endpoint.Startup as Startup
 import Test.E2E.Endpoint.Transfer as Transfer
 import Test.E2E.Endpoint.Unpublish as Unpublish
 import Test.E2E.GitHubIssue as GitHubIssue
+import Test.E2E.Scripts as Scripts
 import Test.E2E.Support.Env (assertReposClean, mkTestEnv, resetTestState, runE2E, stashGitFixtures, waitForAllPendingJobs)
 import Test.E2E.Workflow as Workflow
 import Test.Spec (hoistSpec)
@@ -22,14 +23,10 @@ main :: Effect Unit
 main = do
   env <- mkTestEnv
   runSpecAndExitProcess' config [ consoleReporter ] $ hoistE2E env do
-    -- The scheduler runs at startup and enqueues a bunch of jobs in the DB,
-    -- so we need to run these tests without cleaning out the state first
+    -- Run startup tests FIRST, before jobs are processed
     Spec.describe "Startup" Startup.spec
 
-    -- After scheduler tests, wait for startup jobs to complete and stash the
-    -- git fixtures state. This ensures that subsequent tests can reset to
-    -- a state where startup jobs (like new compiler matrix jobs) have already
-    -- updated the metadata.
+    -- Then wait for pending jobs and stash the git fixtures
     Spec.describe "Setup" do
       Spec.it "waits for startup jobs and stashes fixtures" do
         waitForAllPendingJobs
@@ -46,6 +43,7 @@ main = do
       Spec.describe "Workflows" do
         Spec.describe "GitHubIssue" GitHubIssue.spec
         Spec.describe "Multi-operation" Workflow.spec
+        Spec.describe "Scripts" Scripts.spec
   where
   hoistE2E env = hoistSpec identity (\_ m -> runE2E env m)
   config =

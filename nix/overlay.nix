@@ -54,6 +54,10 @@ let
       module = "Registry.Scripts.ArchiveSeeder";
       description = "Seed the registry archive with tarballs for deleted GitHub repos";
     };
+    daily-importer = {
+      module = "Registry.Scripts.DailyImporter";
+      description = "Check for new package versions and submit publish jobs";
+    };
     legacy-importer = {
       module = "Registry.Scripts.LegacyImporter";
       description = "Import packages from legacy registries (bower, psc-package, etc.)";
@@ -61,6 +65,14 @@ let
     package-deleter = {
       module = "Registry.Scripts.PackageDeleter";
       description = "Delete packages from the registry";
+    };
+    package-set-updater = {
+      module = "Registry.Scripts.PackageSetUpdater";
+      description = "Check for recent uploads and submit package set update jobs";
+    };
+    package-transferrer = {
+      module = "Registry.Scripts.PackageTransferrer";
+      description = "Check for moved packages and submit transfer jobs";
     };
     solver = {
       module = "Registry.Scripts.Solver";

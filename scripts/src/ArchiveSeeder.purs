@@ -95,7 +95,6 @@ main = launchAff_ do
 
   runAppEffects <- do
     debouncer <- Registry.newDebouncer
-    repoLocks <- Registry.newRepoLocks
     let
       registryEnv =
         { pull: Git.Autostash
@@ -104,8 +103,6 @@ main = launchAff_ do
         , workdir: scratchDir
         , debouncer
         , cacheRef: registryCacheRef
-        , repoLocks
-        , process: Registry.ScriptArchiveSeeder
         }
 
     token <- Env.lookupRequired Env.githubToken
