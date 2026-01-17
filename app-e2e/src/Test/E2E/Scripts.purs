@@ -30,12 +30,26 @@ import Registry.Scripts.DailyImporter as DailyImporter
 import Registry.Scripts.PackageSetUpdater as PackageSetUpdater
 import Registry.Scripts.PackageTransferrer as PackageTransferrer
 import Registry.Test.Assert as Assert
+import Registry.Test.Utils as Utils
 import Registry.Version as Version
 import Run as Run
 import Run.Except as Except
 import Test.E2E.Support.Client as Client
 import Test.E2E.Support.Env (E2E, E2ESpec)
 import Test.Spec as Spec
+
+-- | Constants for repeated package names and versions in tests
+typeEqualityName :: PackageName.PackageName
+typeEqualityName = Utils.unsafePackageName "type-equality"
+
+typeEqualityV401 :: Version.Version
+typeEqualityV401 = Utils.unsafeVersion "4.0.1"
+
+typeEqualityV402 :: Version.Version
+typeEqualityV402 = Utils.unsafeVersion "4.0.2"
+
+compiler01510 :: Version.Version
+compiler01510 = Utils.unsafeVersion "0.15.10"
 
 spec :: E2ESpec
 spec = do
@@ -49,9 +63,7 @@ spec = do
         isTypeEqualityPublishJob :: Job -> Boolean
         isTypeEqualityPublishJob = case _ of
           PublishJob { packageName, packageVersion } ->
-            packageName == unsafeFromRight (PackageName.parse "type-equality")
-              && packageVersion
-              == unsafeFromRight (Version.parse "4.0.2")
+            packageName == typeEqualityName && packageVersion == typeEqualityV402
           _ -> false
 
         typeEqualityJob = Array.find isTypeEqualityPublishJob jobs
@@ -59,8 +71,7 @@ spec = do
       case typeEqualityJob of
         Just (PublishJob { payload }) -> do
           -- Verify compiler selection logic
-          let expectedCompiler = unsafeFromRight (Version.parse "0.15.10")
-          when (payload.compiler /= expectedCompiler) do
+          when (payload.compiler /= compiler01510) do
             Assert.fail $ "Expected compiler 0.15.10 but got " <> Version.print payload.compiler
         Just _ -> Assert.fail "Expected PublishJob but got different job type"
         Nothing -> do
@@ -79,9 +90,7 @@ spec = do
         isDuplicateJob :: Job -> Boolean
         isDuplicateJob = case _ of
           PublishJob { packageName, packageVersion } ->
-            packageName == unsafeFromRight (PackageName.parse "type-equality")
-              && packageVersion
-              == unsafeFromRight (Version.parse "4.0.1")
+            packageName == typeEqualityName && packageVersion == typeEqualityV401
           _ -> false
 
         duplicateJob = Array.find isDuplicateJob jobs
@@ -99,12 +108,12 @@ spec = do
         isTypeEqualityTransferJob :: Job -> Boolean
         isTypeEqualityTransferJob = case _ of
           TransferJob { packageName } ->
-            packageName == unsafeFromRight (PackageName.parse "type-equality")
+            packageName == typeEqualityName
           _ -> false
       case Array.find isTypeEqualityTransferJob jobs of
         Just (TransferJob { packageName, payload }) -> do
           -- Verify packageName
-          when (packageName /= unsafeFromRight (PackageName.parse "type-equality")) do
+          when (packageName /= typeEqualityName) do
             Assert.fail $ "Wrong package name: " <> PackageName.print packageName
           -- Verify newLocation in payload
           case payload.payload of
@@ -131,31 +140,34 @@ spec = do
         Just (PackageSetJob { payload }) ->
           case payload of
             Operation.PackageSetUpdate { packages } ->
-              case Map.lookup (unsafeFromRight $ PackageName.parse "type-equality") packages of
+              case Map.lookup typeEqualityName packages of
                 Just (Just _) -> pure unit
                 _ -> Assert.fail "Expected type-equality in package set update"
         Just _ -> Assert.fail "Expected PackageSetJob but got different job type"
         Nothing -> Assert.fail "Expected package set job to be enqueued"
 
--- | Run the DailyImporter script in Submit mode
-runDailyImporterScript :: E2E Unit
-runDailyImporterScript = do
-  { stateDir } <- ask
+-- | Common environment for running registry scripts in E2E tests
+type ScriptSetup =
+  { privateKey :: String
+  , resourceEnv :: Env.ResourceEnv
+  , registryEnv :: Registry.RegistryEnv
+  , octokit :: Octokit.Octokit
+  , cache :: FilePath
+  , githubCacheRef :: Cache.CacheRef
+  }
 
-  -- Set up environment
+-- | Set up common environment for running registry scripts
+setupScript :: E2E ScriptSetup
+setupScript = do
+  { stateDir, privateKey } <- ask
   liftEffect $ Process.chdir stateDir
-
-  -- Get resource env from environment variables
   resourceEnv <- liftEffect Env.lookupResourceEnv
   token <- liftEffect $ Env.lookupRequired Env.githubToken
-
   githubCacheRef <- liftAff Cache.newCacheRef
   registryCacheRef <- liftAff Cache.newCacheRef
   let cache = Path.concat [ stateDir, "scratch", ".cache" ]
-
   octokit <- liftAff $ Octokit.newOctokit token resourceEnv.githubApiUrl
   debouncer <- liftAff Registry.newDebouncer
-
   let
     registryEnv :: Registry.RegistryEnv
     registryEnv =
@@ -166,7 +178,12 @@ runDailyImporterScript = do
       , debouncer
       , cacheRef: registryCacheRef
       }
+  pure { privateKey, resourceEnv, registryEnv, octokit, cache, githubCacheRef }
 
+-- | Run the DailyImporter script in Submit mode
+runDailyImporterScript :: E2E Unit
+runDailyImporterScript = do
+  { resourceEnv, registryEnv, octokit, cache, githubCacheRef } <- setupScript
   result <- liftAff
     $ DailyImporter.runDailyImport DailyImporter.Submit resourceEnv.registryApiUrl
     # Except.runExcept
@@ -175,7 +192,6 @@ runDailyImporterScript = do
     # Log.interpret (Log.handleTerminal Quiet)
     # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
-
   case result of
     Left err -> liftAff $ Aff.throwError $ Aff.error $ "DailyImporter failed: " <> err
     Right _ -> pure unit
@@ -183,33 +199,7 @@ runDailyImporterScript = do
 -- | Run the PackageTransferrer script in Submit mode
 runPackageTransferrerScript :: E2E Unit
 runPackageTransferrerScript = do
-  { stateDir, privateKey } <- ask
-
-  -- Set up environment
-  liftEffect $ Process.chdir stateDir
-
-  -- Get resource env from environment variables
-  resourceEnv <- liftEffect Env.lookupResourceEnv
-  token <- liftEffect $ Env.lookupRequired Env.githubToken
-
-  githubCacheRef <- liftAff Cache.newCacheRef
-  registryCacheRef <- liftAff Cache.newCacheRef
-  let cache = Path.concat [ stateDir, "scratch", ".cache" ]
-
-  octokit <- liftAff $ Octokit.newOctokit token resourceEnv.githubApiUrl
-  debouncer <- liftAff Registry.newDebouncer
-
-  let
-    registryEnv :: Registry.RegistryEnv
-    registryEnv =
-      { pull: Git.Autostash
-      , write: Registry.ReadOnly
-      , repos: Registry.defaultRepos
-      , workdir: Path.concat [ stateDir, "scratch" ]
-      , debouncer
-      , cacheRef: registryCacheRef
-      }
-
+  { privateKey, resourceEnv, registryEnv, octokit, cache, githubCacheRef } <- setupScript
   result <- liftAff
     $ PackageTransferrer.runPackageTransferrer PackageTransferrer.Submit (Just privateKey) resourceEnv.registryApiUrl
     # Except.runExcept
@@ -218,7 +208,6 @@ runPackageTransferrerScript = do
     # Log.interpret (Log.handleTerminal Quiet)
     # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
-
   case result of
     Left err -> liftAff $ Aff.throwError $ Aff.error $ "PackageTransferrer failed: " <> err
     Right _ -> pure unit
@@ -226,33 +215,7 @@ runPackageTransferrerScript = do
 -- | Run the PackageSetUpdater script in Submit mode
 runPackageSetUpdaterScript :: E2E Unit
 runPackageSetUpdaterScript = do
-  { stateDir, privateKey } <- ask
-
-  -- Set up environment
-  liftEffect $ Process.chdir stateDir
-
-  -- Get resource env from environment variables
-  resourceEnv <- liftEffect Env.lookupResourceEnv
-  token <- liftEffect $ Env.lookupRequired Env.githubToken
-
-  githubCacheRef <- liftAff Cache.newCacheRef
-  registryCacheRef <- liftAff Cache.newCacheRef
-  let cache = Path.concat [ stateDir, "scratch", ".cache" ]
-
-  octokit <- liftAff $ Octokit.newOctokit token resourceEnv.githubApiUrl
-  debouncer <- liftAff Registry.newDebouncer
-
-  let
-    registryEnv :: Registry.RegistryEnv
-    registryEnv =
-      { pull: Git.Autostash
-      , write: Registry.ReadOnly
-      , repos: Registry.defaultRepos
-      , workdir: Path.concat [ stateDir, "scratch" ]
-      , debouncer
-      , cacheRef: registryCacheRef
-      }
-
+  { privateKey, resourceEnv, registryEnv, octokit, cache, githubCacheRef } <- setupScript
   result <- liftAff
     $ PackageSetUpdater.runPackageSetUpdater PackageSetUpdater.Submit (Just privateKey) resourceEnv.registryApiUrl
     # Except.runExcept
@@ -261,7 +224,6 @@ runPackageSetUpdaterScript = do
     # Log.interpret (Log.handleTerminal Quiet)
     # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
-
   case result of
     Left err -> liftAff $ Aff.throwError $ Aff.error $ "PackageSetUpdater failed: " <> err
     Right _ -> pure unit
