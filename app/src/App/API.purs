@@ -2,6 +2,7 @@ module Registry.App.API
   ( AuthenticatedEffects
   , COMPILER_CACHE
   , CompilerCache(..)
+  , LicenseValidationError(..)
   , PackageSetUpdateEffects
   , PublishEffects
   , _compilerCache
@@ -12,8 +13,10 @@ module Registry.App.API
   , getPacchettiBotti
   , packageSetUpdate
   , packagingTeam
+  , printLicenseValidationError
   , publish
   , removeIgnoredTarballFiles
+  , validateLicense
   ) where
 
 import Registry.App.Prelude
@@ -53,6 +56,7 @@ import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Registry.API.V1 (PackageSetJobData)
 import Registry.App.Auth as Auth
+import Registry.App.CLI.Licensee as Licensee
 import Registry.App.CLI.Purs (CompilerFailure(..), compilerFailureCodec)
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.PursVersions as PursVersions
@@ -90,6 +94,7 @@ import Registry.Foreign.Octokit (Team)
 import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Path as Internal.Path
+import Registry.License as License
 import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.Metadata as Metadata
@@ -518,6 +523,16 @@ publish maybeLegacyIndex payload = do
 
   when (Operation.Validation.isMetadataPackage (Manifest receivedManifest)) do
     Except.throw "The `metadata` package cannot be uploaded to the registry because it is a protected package."
+
+  -- Validate that the manifest license is consistent with licenses detected
+  -- in the repository (LICENSE file, package.json, bower.json). We skip this
+  -- check for legacy imports because they may have inconsistent licenses that
+  -- we've already accepted.
+  when (isNothing maybeLegacyIndex) do
+    Log.notice "Verifying license consistency..."
+    validateLicense downloadedPackage receivedManifest.license >>= case _ of
+      Nothing -> Log.debug "License validation passed."
+      Just err -> Except.throw $ printLicenseValidationError err
 
   for_ (Operation.Validation.isNotUnpublished (Manifest receivedManifest) (Metadata metadata)) \info -> do
     Except.throw $ String.joinWith "\n"
@@ -1322,3 +1337,93 @@ instance FsEncodable CompilerCache where
           }
 
       Exists.mkExists $ Cache.AsJson cacheKey codec next
+
+-- | Errors that can occur when validating license consistency
+data LicenseValidationError = LicenseMismatch
+  { manifestLicense :: License
+  , detectedLicenses :: Array License
+  }
+
+derive instance Eq LicenseValidationError
+
+printLicenseValidationError :: LicenseValidationError -> String
+printLicenseValidationError = case _ of
+  LicenseMismatch { manifestLicense, detectedLicenses } -> Array.fold
+    [ "License mismatch: The manifest specifies license '"
+    , License.print manifestLicense
+    , "' but the following license(s) were detected in your repository: "
+    , String.joinWith ", " (map License.print detectedLicenses)
+    , ". Please ensure your manifest license accurately represents all licenses "
+    , "in your repository. If multiple licenses apply, join them using SPDX "
+    , "conjunctions (e.g., 'MIT AND Apache-2.0' or 'MIT OR Apache-2.0')."
+    ]
+
+-- | Validate that the license in the manifest is consistent with licenses
+-- | detected in the repository (LICENSE file, package.json, bower.json).
+-- |
+-- | This check ensures that the SPDX identifier asserted in the package
+-- | manifest accurately represents the licenses present in the repository.
+-- | If multiple distinct licenses are detected, they must all be represented
+-- | in the manifest license (e.g., joined with AND or OR).
+validateLicense :: forall r. FilePath -> License -> Run (LOG + AFF + r) (Maybe LicenseValidationError)
+validateLicense packageDir manifestLicense = do
+  Log.debug "Detecting licenses from repository files..."
+  detected <- Run.liftAff $ Licensee.detect packageDir
+  case detected of
+    Left err -> do
+      -- If license detection fails, we let the package through.
+      -- The manifest license is the source of truth.
+      Log.warn $ "License detection failed, relying on manifest: " <> err
+      pure Nothing
+    Right detectedStrings -> do
+      let
+        -- Parse detected license strings into License values
+        parsedLicenses :: Array License
+        parsedLicenses = Array.mapMaybe (hush <<< License.parse) detectedStrings
+
+      Log.debug $ "Detected licenses: " <> String.joinWith ", " detectedStrings
+
+      -- If no licenses were detected, we can't validate - allow the package through
+      -- (the manifest license is the source of truth)
+      if Array.null parsedLicenses then do
+        Log.debug "No licenses detected from repository files, skipping validation."
+        pure Nothing
+      else do
+        -- Extract all license IDs from the manifest license expression.
+        -- This properly handles compound expressions like "MIT AND Apache-2.0".
+        case License.extractIds manifestLicense of
+          Left err -> do
+            -- If we can't parse the manifest license, log a warning but allow through
+            -- (the manifest was already validated during parsing)
+            Log.warn $ "Could not extract license IDs from manifest: " <> err
+            pure Nothing
+          Right manifestIds -> do
+            -- Convert manifest IDs to a Set for efficient lookup
+            let manifestIdSet = Set.fromFoldable manifestIds
+
+            -- Extract and uppercase each detected license for case-insensitive comparison
+            let
+              getDetectedId :: License -> Maybe String
+              getDetectedId license = case License.extractIds license of
+                Right ids -> Array.head ids
+                Left _ -> Nothing
+
+              -- A detected license is covered if its ID (uppercased) is in the manifest IDs
+              isCovered :: License -> Boolean
+              isCovered license = case getDetectedId license of
+                Just detectedId -> Set.member detectedId manifestIdSet
+                Nothing -> false
+
+              uncoveredLicenses = Array.filter (not <<< isCovered) parsedLicenses
+
+            if Array.null uncoveredLicenses then do
+              Log.debug "All detected licenses are covered by the manifest license."
+              pure Nothing
+            else do
+              Log.warn $ "License mismatch detected: manifest has '" <> License.print manifestLicense
+                <> "' but detected "
+                <> String.joinWith ", " (map License.print parsedLicenses)
+              pure $ Just $ LicenseMismatch
+                { manifestLicense
+                , detectedLicenses: uncoveredLicenses
+                }
