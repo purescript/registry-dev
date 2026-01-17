@@ -524,15 +524,10 @@ publish maybeLegacyIndex payload = do
   when (Operation.Validation.isMetadataPackage (Manifest receivedManifest)) do
     Except.throw "The `metadata` package cannot be uploaded to the registry because it is a protected package."
 
-  -- Validate that the manifest license is consistent with licenses detected
-  -- in the repository (LICENSE file, package.json, bower.json). We skip this
-  -- check for legacy imports because they may have inconsistent licenses that
-  -- we've already accepted.
-  when (isNothing maybeLegacyIndex) do
-    Log.notice "Verifying license consistency..."
-    validateLicense downloadedPackage receivedManifest.license >>= case _ of
-      Nothing -> Log.debug "License validation passed."
-      Just err -> Except.throw $ printLicenseValidationError err
+  Log.info "Verifying licenses are consistent among manifest files..."
+  validateLicense downloadedPackage receivedManifest.license >>= case _ of
+    Nothing -> Log.debug "License validation passed."
+    Just err -> Except.throw $ printLicenseValidationError err
 
   for_ (Operation.Validation.isNotUnpublished (Manifest receivedManifest) (Metadata metadata)) \info -> do
     Except.throw $ String.joinWith "\n"
