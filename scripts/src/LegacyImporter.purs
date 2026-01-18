@@ -432,6 +432,9 @@ runLegacyImport logs = do
         Right resolutionOptions -> do
           Log.info "Selecting usable compiler from resolutions..."
 
+          -- Read metadata once before the resolution-finding loop
+          allMetadata <- Registry.readAllMetadata
+
           let
             findFirstFromResolutions :: Map PackageName Version -> Run _ (Either (Map Version CompilerFailure) Version)
             findFirstFromResolutions resolutions = do
@@ -442,7 +445,6 @@ runLegacyImport logs = do
                   pure $ NonEmptySet.fromFoldable1 allCompilers
                 else do
                   Log.debug "No compiler version was produced by the solver, so all compilers are potentially compatible."
-                  allMetadata <- Registry.readAllMetadata
                   case compatibleCompilers allMetadata resolutions of
                     Left [] -> do
                       Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
@@ -491,7 +493,8 @@ runLegacyImport logs = do
                   Log.debug "Downloading dependencies..."
                   let installDir = Path.concat [ tmp, ".registry" ]
                   FS.Extra.ensureDirectory installDir
-                  MatrixBuilder.installBuildPlan resolutions installDir
+                  buildPlanForImport <- MatrixBuilder.resolutionsToBuildPlan resolutions
+                  MatrixBuilder.installBuildPlan buildPlanForImport installDir
                   Log.debug $ "Installed to " <> installDir
                   Log.debug "Trying compilers one-by-one..."
                   selected <- findFirstCompiler

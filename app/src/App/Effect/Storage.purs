@@ -1,6 +1,7 @@
 -- | An effect for reading and writing to the registry storage backend.
 module Registry.App.Effect.Storage
   ( S3Env
+  , IntegrityCheck
   , STORAGE
   , STORAGE_CACHE
   , Storage(..)
@@ -20,6 +21,7 @@ import Registry.App.Prelude
 
 import Data.Array as Array
 import Data.Exists as Exists
+import Data.Int as Int
 import Data.Set as Set
 import Data.String as String
 import Effect.Aff as Aff
@@ -35,17 +37,22 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.Foreign.S3 as S3
 import Registry.PackageName as PackageName
+import Registry.Sha256 (Sha256)
+import Registry.Sha256 as Sha256
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
+-- | Expected integrity values for downloaded packages.
+type IntegrityCheck = { hash :: Sha256, bytes :: Number }
+
 -- | The Storage effect, which describes uploading, downloading, and deleting
 -- | tarballs from the registry storage backend.
 data Storage a
   = Upload PackageName Version FilePath (Either String Unit -> a)
-  | Download PackageName Version FilePath (Either String Unit -> a)
+  | Download PackageName Version FilePath IntegrityCheck (Either String Unit -> a)
   | Delete PackageName Version (Either String Unit -> a)
   | Query PackageName (Either String (Set Version) -> a)
 
@@ -60,9 +67,10 @@ _storage = Proxy
 upload :: forall r. PackageName -> Version -> FilePath -> Run (STORAGE + EXCEPT String + r) Unit
 upload name version file = Except.rethrow =<< Run.lift _storage (Upload name version file identity)
 
--- | Download a package tarball from the storage backend to the given path.
-download :: forall r. PackageName -> Version -> FilePath -> Run (STORAGE + EXCEPT String + r) Unit
-download name version file = Except.rethrow =<< Run.lift _storage (Download name version file identity)
+-- | Download a package tarball from the storage backend to the given path,
+-- | verifying its integrity against the expected hash and size.
+download :: forall r. PackageName -> Version -> FilePath -> IntegrityCheck -> Run (STORAGE + EXCEPT String + r) Unit
+download name version file integrity = Except.rethrow =<< Run.lift _storage (Download name version file integrity identity)
 
 -- | Delete a package tarball from the storage backend.
 delete :: forall r. PackageName -> Version -> Run (STORAGE + EXCEPT String + r) Unit
@@ -132,11 +140,11 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
       { name: parsedName, version } <- Array.fromFoldable $ parsePackagePath resource
       version <$ guard (name == parsedName)
 
-  Download name version path reply -> map (map reply) Except.runExcept do
+  Download name version path integrity reply -> map (map reply) Except.runExcept do
     let package = formatPackageVersion name version
     buffer <- Cache.get _storageCache (Package name version) >>= case _ of
       Nothing -> do
-        buffer <- downloadS3 name version
+        buffer <- downloadS3 name version integrity
         Cache.put _storageCache (Package name version) buffer
         pure buffer
       Just cached ->
@@ -229,11 +237,11 @@ handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< 
     Log.warn $ "Requested deletion of " <> formatPackageVersion name version <> " from url " <> packageUrl <> " but this interpreter is read-only."
     pure $ reply $ Right unit
 
-  Download name version path reply -> map (map reply) Except.runExcept do
+  Download name version path integrity reply -> map (map reply) Except.runExcept do
     let package = formatPackageVersion name version
     buffer <- Cache.get _storageCache (Package name version) >>= case _ of
       Nothing -> do
-        buffer <- downloadS3 name version
+        buffer <- downloadS3 name version integrity
         Cache.put _storageCache (Package name version) buffer
         pure buffer
       Just cached ->
@@ -245,8 +253,9 @@ handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< 
       Right _ -> pure unit
 
 -- | An implementation for downloading packages from the registry using `Aff` requests.
-downloadS3 :: forall r. PackageName -> Version -> Run (RESOURCE_ENV + LOG + EXCEPT String + AFF + EFFECT + r) Buffer
-downloadS3 name version = do
+-- | Verifies the downloaded package's integrity against the expected hash and size.
+downloadS3 :: forall r. PackageName -> Version -> IntegrityCheck -> Run (RESOURCE_ENV + LOG + EXCEPT String + AFF + EFFECT + r) Buffer
+downloadS3 name version expected = do
   let package = formatPackageVersion name version
 
   packageUrl <- formatPackageUrl name version
@@ -254,8 +263,6 @@ downloadS3 name version = do
   Log.debug $ "Downloading " <> package <> " from " <> packageUrl
   response <- Run.liftAff $ Fetch.withRetryRequest packageUrl {}
 
-  -- TODO: Rely on the metadata to check the size and hash? Or do we not care
-  -- for registry-internal operations?
   case response of
     Cancelled -> do
       Log.error $ "Failed to download " <> package <> " from " <> packageUrl <> " because of a connection timeout."
@@ -274,6 +281,20 @@ downloadS3 name version = do
 
       Log.debug $ "Successfully downloaded " <> package <> " into a buffer."
       buffer :: Buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
+
+      -- Verify size
+      archiveSize <- Run.liftEffect $ Buffer.size buffer
+      unless (Int.toNumber archiveSize == expected.bytes) do
+        Log.error $ "Archive for " <> package <> " has size " <> show archiveSize <> " but expected " <> show expected.bytes
+        Except.throw $ "Integrity check failed for " <> package <> ": size mismatch"
+
+      -- Verify hash
+      archiveHash <- Run.liftEffect $ Sha256.hashBuffer buffer
+      unless (archiveHash == expected.hash) do
+        Log.error $ "Archive for " <> package <> " has hash " <> Sha256.print archiveHash <> " but expected " <> Sha256.print expected.hash
+        Except.throw $ "Integrity check failed for " <> package <> ": hash mismatch"
+
+      Log.debug $ "Verified integrity of " <> package
       pure buffer
 
 withRetryListObjects :: S3.Space -> PackageName -> Aff (Either String (Array String))

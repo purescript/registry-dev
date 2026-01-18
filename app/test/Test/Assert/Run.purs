@@ -49,6 +49,9 @@ import Registry.App.Effect.Source (FetchError(..), SOURCE, Source(..))
 import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE, Storage)
 import Registry.App.Effect.Storage as Storage
+import Registry.Sha256 as Sha256
+import Data.Int as Int
+import Node.Buffer as Buffer
 import Registry.App.Legacy.Manifest (LEGACY_CACHE)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Prelude as Either
@@ -269,7 +272,7 @@ type StorageMockEnv = { storage :: FilePath }
 
 -- We handle the storage effect by copying files to/from the provided
 -- upload/download directories, and listing versions based on the filenames.
-handleStorageMock :: forall r a. StorageMockEnv -> Storage a -> Run (AFF + r) a
+handleStorageMock :: forall r a. StorageMockEnv -> Storage a -> Run (AFF + EFFECT + r) a
 handleStorageMock env = case _ of
   Storage.Upload name version sourcePath reply -> do
     let destinationPath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
@@ -280,13 +283,26 @@ handleStorageMock env = case _ of
       Right _ ->
         pure $ reply $ Left $ "Cannot upload " <> formatPackageVersion name version <> " because it already exists in storage at path " <> destinationPath
 
-  Storage.Download name version destinationPath reply -> do
-    let sourcePath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
-    Run.liftAff (Aff.attempt (FS.Aff.stat sourcePath)) >>= case _ of
+  Storage.Download name version destinationPath integrity reply -> do
+    let
+      package = formatPackageVersion name version
+      sourcePath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
+    Run.liftAff (Aff.attempt (FS.Aff.readFile sourcePath)) >>= case _ of
       Left _ -> pure $ reply $ Left $ "Cannot copy " <> sourcePath <> " because it does not exist in download directory."
-      Right _ -> do
-        Run.liftAff $ FS.Extra.copy { from: sourcePath, to: destinationPath, preserveTimestamps: true }
-        pure $ reply $ Right unit
+      Right buffer -> do
+        -- Verify size
+        archiveSize <- Run.liftEffect $ Buffer.size buffer
+        if Int.toNumber archiveSize /= integrity.bytes then
+          pure $ reply $ Left $ "Integrity check failed for " <> package <> ": size mismatch (got " <> show archiveSize <> ", expected " <> show integrity.bytes <> ")"
+        else do
+          -- Verify hash
+          archiveHash <- Run.liftEffect $ Sha256.hashBuffer buffer
+          if archiveHash /= integrity.hash then
+            pure $ reply $ Left $ "Integrity check failed for " <> package <> ": hash mismatch (got " <> Sha256.print archiveHash <> ", expected " <> Sha256.print integrity.hash <> ")"
+          else do
+            -- Verification passed, copy the file
+            Run.liftAff $ FS.Aff.writeFile destinationPath buffer
+            pure $ reply $ Right unit
 
   Storage.Delete name version reply -> do
     let sourcePath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]

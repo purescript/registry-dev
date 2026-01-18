@@ -578,7 +578,8 @@ publish maybeLegacyIndex payload = do
           compilerIndex <- MatrixBuilder.readCompilerIndex
           verifiedResolutions <- verifyResolutions compilerIndex payload.compiler (Manifest receivedManifest) payload.resolutions
           let installedResolutions = Path.concat [ tmp, ".registry" ]
-          MatrixBuilder.installBuildPlan verifiedResolutions installedResolutions
+          buildPlan <- MatrixBuilder.resolutionsToBuildPlan verifiedResolutions
+          MatrixBuilder.installBuildPlan buildPlan installedResolutions
           compilationResult <- Run.liftAff $ Purs.callCompiler
             { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
             , version: Just payload.compiler
@@ -618,7 +619,8 @@ publish maybeLegacyIndex payload = do
       -- manifest as needed, but we defer compilation until after this check
       -- in case the package manifest and resolutions are adjusted.
       let installedResolutions = Path.concat [ tmp, ".registry" ]
-      MatrixBuilder.installBuildPlan validatedResolutions installedResolutions
+      buildPlan <- MatrixBuilder.resolutionsToBuildPlan validatedResolutions
+      MatrixBuilder.installBuildPlan buildPlan installedResolutions
 
       let srcGlobs = Path.concat [ downloadedPackage, "src", "**", "*.purs" ]
       let depGlobs = Path.concat [ installedResolutions, "*", "src", "**", "*.purs" ]
@@ -713,7 +715,8 @@ publish maybeLegacyIndex payload = do
       -- We clear the installation directory so that no old installed resolutions
       -- stick around.
       Run.liftAff $ FS.Extra.remove installedResolutions
-      MatrixBuilder.installBuildPlan resolutions installedResolutions
+      buildPlanForBuild <- MatrixBuilder.resolutionsToBuildPlan resolutions
+      MatrixBuilder.installBuildPlan buildPlanForBuild installedResolutions
       compilationResult <- Run.liftAff $ Purs.callCompiler
         { command: Purs.Compile { globs: [ Path.concat [ packageSource, "src/**/*.purs" ], Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
         , version: Just payload.compiler
@@ -923,7 +926,8 @@ findAllCompilers { source, manifest, compilers } = do
             workdir <- Tmp.mkTmpDir
             let installed = Path.concat [ workdir, ".registry" ]
             FS.Extra.ensureDirectory installed
-            MatrixBuilder.installBuildPlan resolutions installed
+            buildPlanForCompiler <- MatrixBuilder.resolutionsToBuildPlan resolutions
+            MatrixBuilder.installBuildPlan buildPlanForCompiler installed
             result <- Run.liftAff $ Purs.callCompiler
               { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }
               , version: Just target
