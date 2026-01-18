@@ -1,8 +1,10 @@
 module Registry.App.Server.MatrixBuilder
-  ( checkIfNewCompiler
+  ( BuildPlanEntry
+  , checkIfNewCompiler
   , installBuildPlan
   , printCompilerFailure
   , readCompilerIndex
+  , resolutionsToBuildPlan
   , runMatrixJob
   , solveForAllCompilers
   , solveDependantsForCompiler
@@ -36,6 +38,7 @@ import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata as Metadata
 import Registry.PackageName as PackageName
 import Registry.Range as Range
+import Registry.Sha256 (Sha256)
 import Registry.Solver as Solver
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
@@ -48,7 +51,12 @@ runMatrixJob { compilerVersion, packageName, packageVersion, payload: buildPlan 
   workdir <- Tmp.mkTmpDir
   let installed = Path.concat [ workdir, ".registry" ]
   FS.Extra.ensureDirectory installed
-  installBuildPlan (Map.insert packageName packageVersion buildPlan) installed
+
+  -- Read metadata to get integrity info for each package in the build plan
+  buildPlanWithIntegrity <- resolutionsToBuildPlan
+    (Map.insert packageName packageVersion buildPlan)
+
+  installBuildPlan buildPlanWithIntegrity installed
   result <- Run.liftAff $ Purs.callCompiler
     { command: Purs.Compile { globs: [ Path.concat [ installed, "*/src/**/*.purs" ] ] }
     , version: Just compilerVersion
@@ -97,20 +105,23 @@ readCompilerIndex = do
   allCompilers <- PursVersions.pursVersions
   pure $ Solver.buildCompilerIndex allCompilers manifests metadata
 
+-- | A build plan entry with integrity information for verification.
+type BuildPlanEntry = { version :: Version, hash :: Sha256, bytes :: Number }
+
 -- | Install all dependencies indicated by the build plan to the specified
 -- | directory. Packages will be installed at 'dir/package-name-x.y.z'.
-installBuildPlan :: forall r. Map PackageName Version -> FilePath -> Run (STORAGE + LOG + AFF + EXCEPT String + r) Unit
+installBuildPlan :: forall r. Map PackageName BuildPlanEntry -> FilePath -> Run (STORAGE + LOG + AFF + EXCEPT String + r) Unit
 installBuildPlan resolutions dependenciesDir = do
   Run.liftAff $ FS.Extra.ensureDirectory dependenciesDir
   -- We fetch every dependency at its resolved version, unpack the tarball, and
   -- store the resulting source code in a specified directory for dependencies.
-  forWithIndex_ resolutions \name version -> do
+  forWithIndex_ resolutions \name { version, hash, bytes } -> do
     let
       -- This filename uses the format the directory name will have once
       -- unpacked, ie. package-name-major.minor.patch
       filename = PackageName.print name <> "-" <> Version.print version <> ".tar.gz"
       filepath = Path.concat [ dependenciesDir, filename ]
-    Storage.download name version filepath
+    Storage.download name version filepath { hash, bytes }
     Run.liftAff (Aff.attempt (Tar.extract { cwd: dependenciesDir, archive: filename })) >>= case _ of
       Left error -> do
         Log.error $ "Failed to unpack " <> filename <> ": " <> Aff.message error
@@ -119,6 +130,18 @@ installBuildPlan resolutions dependenciesDir = do
         Log.debug $ "Unpacked " <> filename
     Run.liftAff $ FS.Aff.unlink filepath
     Log.debug $ "Installed " <> formatPackageVersion name version
+
+-- | Convert resolutions (Map PackageName Version) to build plan entries using metadata.
+-- | Fetches metadata for each package as needed.
+resolutionsToBuildPlan :: forall r. Map PackageName Version -> Run (REGISTRY + EXCEPT String + r) (Map PackageName BuildPlanEntry)
+resolutionsToBuildPlan resolutions =
+  forWithIndex resolutions \name version -> do
+    maybeMetadata <- Registry.readMetadata name
+    case maybeMetadata of
+      Nothing -> Except.throw $ "No metadata found for package " <> PackageName.print name
+      Just (Metadata meta) -> case Map.lookup version meta.published of
+        Nothing -> Except.throw $ "Version " <> Version.print version <> " not found in metadata for " <> PackageName.print name
+        Just { hash, bytes } -> pure { version, hash, bytes }
 
 printCompilerFailure :: Version -> CompilerFailure -> String
 printCompilerFailure compiler = case _ of

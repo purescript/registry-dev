@@ -208,11 +208,15 @@ handle env = case _ of
     let extractedPath = Path.concat [ packagesWorkDir, extractedName ]
     let installPath = Path.concat [ packagesWorkDir, formattedName ]
     unlessM (Run.liftEffect (FS.Sync.exists installPath)) $ do
-      Log.debug $ "Installing " <> formattedName
-      Storage.download name version tarballPath
-      Tar.extract { cwd: packagesWorkDir, archive: tarballName }
-      FS.Extra.remove tarballPath
-      Run.liftAff $ FS.Aff.rename extractedPath installPath
+      maybeMetadata <- Registry.readMetadata name
+      case maybeMetadata >>= \(Metadata m) -> Map.lookup version m.published of
+        Nothing -> Except.throw $ "No metadata found for " <> formattedName
+        Just { hash, bytes } -> do
+          Log.debug $ "Installing " <> formattedName
+          Storage.download name version tarballPath { hash, bytes }
+          Tar.extract { cwd: packagesWorkDir, archive: tarballName }
+          FS.Extra.remove tarballPath
+          Run.liftAff $ FS.Aff.rename extractedPath installPath
 
   -- Delete packages from the packages directory
   removePackages :: Map PackageName Version -> Run _ Unit

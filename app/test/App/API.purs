@@ -124,7 +124,14 @@ spec = do
 
         -- Let's verify the manifest does not include the unnecessary
         -- 'type-equality' dependency...
-        Storage.download name version "effect-result"
+        -- First, get the integrity info from metadata for the download
+        Metadata downloadMeta <- Registry.readMetadata name >>= case _ of
+          Nothing -> Except.throw $ "No metadata for " <> PackageName.print name
+          Just m -> pure m
+        { hash, bytes } <- case Map.lookup version downloadMeta.published of
+          Nothing -> Except.throw $ "Version " <> Version.print version <> " not in metadata"
+          Just p -> pure p
+        Storage.download name version "effect-result" { hash, bytes }
         Tar.extract { cwd: workdir, archive: "effect-result" }
         Run.liftAff (readJsonFile Manifest.codec (Path.concat [ "effect-4.0.0", "purs.json" ])) >>= case _ of
           Left err -> Except.throw $ "Expected effect@4.0.0 to be downloaded to effect-4.0.0 with a purs.json but received error " <> err

@@ -30,7 +30,7 @@ create { cwd, folderName } = liftEffect do
     -- They come from https://reproducible-builds.org/docs/archives/
     tarCmd = "tar " <> String.joinWith " "
       [ "--sort=name"
-      , "--mtime=1970-01-01 00:00:Z"
+      , "--mtime=@0"
       , "--owner=0"
       , "--group=0"
       , "--numeric-owner"
