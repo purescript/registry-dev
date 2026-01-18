@@ -15,6 +15,7 @@ import Data.Exists as Exists
 import Data.Foldable (class Foldable)
 import Data.Foldable as Foldable
 import Data.FunctorWithIndex (mapWithIndex)
+import Data.Int as Int
 import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
@@ -22,6 +23,7 @@ import Dodo as Dodo
 import Effect.Aff as Aff
 import Effect.Now as Now
 import Effect.Ref as Ref
+import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.API.V1 (LogLevel)
@@ -49,9 +51,6 @@ import Registry.App.Effect.Source (FetchError(..), SOURCE, Source(..))
 import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE, Storage)
 import Registry.App.Effect.Storage as Storage
-import Registry.Sha256 as Sha256
-import Data.Int as Int
-import Node.Buffer as Buffer
 import Registry.App.Legacy.Manifest (LEGACY_CACHE)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Prelude as Either
@@ -60,6 +59,7 @@ import Registry.Foreign.Octokit (GitHubError(..), IssueNumber(..))
 import Registry.Foreign.Tar as Foreign.Tar
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
+import Registry.Sha256 as Sha256
 import Registry.Test.Utils as Utils
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
