@@ -94,6 +94,27 @@ let
 
   registryPkgs = pkgs.extend testOverlay;
 
+  # Centralized test runtime dependencies - use this in nativeBuildInputs
+  # to ensure all required binaries are available
+  testRuntimeInputs = registryPkgs.registry-runtime-deps ++ [ gitMock ];
+
+  # Centralized test runtime exports - use this in shell scripts to set up
+  # the complete test environment including PATH and GIT_BINARY.
+  # This is the single source of truth for test Git overrides.
+  testRuntimeExports = ''
+    ${envToExports testEnv}
+    export PATH="${lib.makeBinPath testRuntimeInputs}:$PATH"
+    export GIT_BINARY="${pkgs.git}/bin/git"
+  '';
+
+  # Complete build inputs for integration tests - combines runtime inputs with
+  # orchestration scripts. Use this in nativeBuildInputs for test derivations.
+  testBuildInputs = testRuntimeInputs ++ [
+    wiremockStartScript
+    serverStartScript
+    setupGitFixtures
+  ];
+
   # Helper to create GitHub contents API response, as it returns base64-encoded content
   base64Response =
     {
@@ -1003,8 +1024,8 @@ let
   serverStartScript = pkgs.writeShellScriptBin "start-server" ''
     set -e
 
-    # Set all test environment variables (from envDefaults + mock URLs).
-    ${envToExports testEnv}
+    # Set all test environment variables, PATH, and GIT_BINARY
+    ${testRuntimeExports}
 
     # STATE_DIR is required
     if [ -z "''${STATE_DIR:-}" ]; then
@@ -1015,11 +1036,6 @@ let
     # Runtime paths (derived from STATE_DIR, can't be set statically)
     export DATABASE_URL="sqlite:$STATE_DIR/db/registry.sqlite3"
     export REPO_FIXTURES_DIR="$STATE_DIR/repo-fixtures"
-
-    # PATH setup for runtime deps and git mock
-    export PATH="${lib.makeBinPath registryPkgs.registry-runtime-deps}:$PATH"
-    export PATH="${gitMock}/bin:$PATH"
-    export GIT_BINARY="${pkgs.git}/bin/git"
 
     mkdir -p "$STATE_DIR/db"
 
@@ -1047,15 +1063,16 @@ in
     stateDir
     mockUrls
     testEnv
-    envToExports
-    gitMock
     testOverlay
+    testRuntimeInputs
+    testRuntimeExports
+    testBuildInputs
     wiremockConfigs
     combinedWiremockRoot
-    setupGitFixtures
     publishPayload
     wiremockStartScript
     serverStartScript
+    setupGitFixtures
     # For custom wiremock setups
     githubMappings
     storageMappings

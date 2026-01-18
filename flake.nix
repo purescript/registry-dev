@@ -243,9 +243,7 @@
               # E2E test runner script - uses same fixed test environment as test-env
               (writeShellScriptBin "spago-test-e2e" ''
                 set -euo pipefail
-                ${testEnv.envToExports testEnv.testEnv}
-                export PATH="${testEnv.testConfig.gitMock}/bin:$PATH"
-                export GIT_BINARY="${pkgs.git}/bin/git"
+                ${testEnv.testRuntimeExports}
                 exec spago run -p registry-app-e2e
               '')
             ];
