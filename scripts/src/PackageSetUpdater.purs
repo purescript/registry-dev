@@ -7,7 +7,6 @@
 -- |
 -- | Required environment variables:
 -- |   GITHUB_TOKEN - GitHub API token
--- |   PACCHETTIBOTTI_ED25519 - Private key for signing (only for --submit)
 -- |   REGISTRY_API_URL - Registry API URL (default: https://registry.purescript.org)
 module Registry.Scripts.PackageSetUpdater where
 
@@ -29,7 +28,6 @@ import JSON as JSON
 import Node.Path as Path
 import Node.Process as Process
 import Registry.API.V1 as V1
-import Registry.App.Auth as Auth
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env (RESOURCE_ENV)
@@ -79,11 +77,6 @@ main = launchAff_ do
   resourceEnv <- Env.lookupResourceEnv
   token <- Env.lookupRequired Env.githubToken
 
-  -- Only require pacchettibotti keys in submit mode
-  maybePrivateKey <- case mode of
-    DryRun -> pure Nothing
-    Submit -> Just <$> Env.lookupRequired Env.pacchettibottiED25519
-
   githubCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
   let cache = Path.concat [ scratchDir, ".cache" ]
@@ -102,7 +95,7 @@ main = launchAff_ do
       , cacheRef: registryCacheRef
       }
 
-  runPackageSetUpdater mode maybePrivateKey resourceEnv.registryApiUrl
+  runPackageSetUpdater mode resourceEnv.registryApiUrl
     # Except.runExcept
     # Registry.interpret (Registry.handle registryEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
@@ -117,8 +110,8 @@ main = launchAff_ do
 
 type PackageSetUpdaterEffects = (REGISTRY + GITHUB + LOG + RESOURCE_ENV + EXCEPT String + AFF + EFFECT + ())
 
-runPackageSetUpdater :: Mode -> Maybe String -> URL -> Run PackageSetUpdaterEffects Unit
-runPackageSetUpdater mode maybePrivateKey registryApiUrl = do
+runPackageSetUpdater :: Mode -> URL -> Run PackageSetUpdaterEffects Unit
+runPackageSetUpdater mode registryApiUrl = do
   Log.info "Package Set Updater: checking for recent uploads..."
 
   -- Get the current package set
@@ -175,22 +168,13 @@ runPackageSetUpdater mode maybePrivateKey registryApiUrl = do
               Log.info $ "  - " <> PackageName.print name <> "@" <> Version.print version
 
           Submit -> do
-            privateKey <- case maybePrivateKey of
-              Nothing -> Except.throw "PACCHETTIBOTTI_ED25519 required for --submit mode"
-              Just pk -> pure pk
-
-            -- Sign the payload with pacchettibotti keys
-            let rawPayload = JSON.print $ CJ.encode Operation.packageSetUpdateCodec payload
-            signature <- case Auth.signPayload { privateKey, rawPayload } of
-              Left err -> Except.throw $ "Error signing package set update: " <> err
-              Right sig -> pure sig
-
             let
+              rawPayload = JSON.print $ CJ.encode Operation.packageSetUpdateCodec payload
               request :: Operation.PackageSetUpdateRequest
               request =
                 { payload: PackageSetUpdate payload
                 , rawPayload
-                , signature: Just signature
+                , signature: Nothing
                 }
 
             Log.info $ "Submitting package set update..."

@@ -43,7 +43,6 @@ import Registry.Foreign.Octokit as Octokit
 import Registry.Location (Location(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
-import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)

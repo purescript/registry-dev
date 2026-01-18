@@ -218,9 +218,9 @@ runPackageTransferrerScript = do
 -- | Run the PackageSetUpdater script in Submit mode
 runPackageSetUpdaterScript :: E2E Unit
 runPackageSetUpdaterScript = do
-  { privateKey, resourceEnv, registryEnv, octokit, cache, githubCacheRef } <- setupScript
+  { resourceEnv, registryEnv, octokit, cache, githubCacheRef } <- setupScript
   result <- liftAff
-    $ PackageSetUpdater.runPackageSetUpdater PackageSetUpdater.Submit (Just privateKey) resourceEnv.registryApiUrl
+    $ PackageSetUpdater.runPackageSetUpdater PackageSetUpdater.Submit resourceEnv.registryApiUrl
     # Except.runExcept
     # Registry.interpret (Registry.handle registryEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
