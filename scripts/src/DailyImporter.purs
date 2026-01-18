@@ -152,16 +152,9 @@ runDailyImport mode registryApiUrl = do
   let totalSubmitted = Array.foldl (+) 0 submitted
   Log.info $ "Daily Importer complete. Submitted " <> show totalSubmitted <> " publish jobs."
 
--- | Submit a publish job for a new package version.
--- | The compiler is not specified; the registry API will discover the oldest
--- | compatible compiler based on the package's dependencies.
-submitPublishJob
-  :: Mode
-  -> URL
-  -> PackageName
-  -> Version
-  -> String
-  -> Run DailyImportEffects Boolean
+-- | Submit a publish job for a new package version. The compiler is not specified; the registry
+-- | API will discover the latest compatible compiler based on the package's dependencies.
+submitPublishJob :: Mode -> URL -> PackageName -> Version -> String -> Run DailyImportEffects Boolean
 submitPublishJob mode registryApiUrl name version ref = do
   let formatted = formatPackageVersion name version
 
@@ -172,7 +165,7 @@ submitPublishJob mode registryApiUrl name version ref = do
       , version
       , location: Nothing -- Use current metadata location at publish time
       , ref
-      , compiler: Nothing -- Let the API discover the oldest compatible compiler
+      , compiler: Nothing -- Let the API discover the latest compatible compiler
       , resolutions: Nothing
       }
 
