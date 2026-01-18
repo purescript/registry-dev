@@ -170,6 +170,7 @@ runPackageSetUpdater mode registryApiUrl = do
           Submit -> do
             let
               rawPayload = JSON.print $ CJ.encode Operation.packageSetUpdateCodec payload
+
               request :: Operation.PackageSetUpdateRequest
               request =
                 { payload: PackageSetUpdate payload

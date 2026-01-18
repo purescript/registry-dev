@@ -343,10 +343,8 @@ resolveCompilerAndDeps compilerIndex manifest@(Manifest { dependencies }) maybeC
     -- no compiler provided, we can figure it out. We only need one for publishing anyways
     Nothing -> do
       Log.debug "No compiler provided, solving for compiler and resolutions"
-      -- there is little difference for resolutions to be provided or not - we blend
-      -- everything in the solver anyways. The provided resolutions will mean less work
-      -- for the Solver since it will have a more precise range (spanning one version only)
-      -- to work with
+      -- If resolutions are provided, validate them against the manifest first
+      for_ maybeResolutions \provided -> validateResolutions manifest provided
       let deps = maybe dependencies (map Range.exact) maybeResolutions
       Tuple compiler resolutions <- do
         allCompilers <- PursVersions.pursVersions
