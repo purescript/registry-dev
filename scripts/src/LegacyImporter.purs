@@ -1065,7 +1065,7 @@ packagesMetadataCodec = CJ.named "PackagesMetadata" $ CJ.Record.object
   , lastPublished: Internal.Codec.iso8601Date
   }
 
-getPackagesMetadata :: forall r. Map RawPackageName String -> Run (REGISTRY + LOG + EXCEPT String + GITHUB + r) (Map PackageName PackagesMetadata)
+getPackagesMetadata :: forall r. Map RawPackageName String -> Run (REGISTRY + LOG + EXCEPT String + GITHUB + AFF + EFFECT + r) (Map PackageName PackagesMetadata)
 getPackagesMetadata legacyRegistry = do
   associated <- for (Map.toUnfoldableUnordered legacyRegistry) \(Tuple rawName rawUrl) -> do
     Run.Except.runExceptAt (Proxy :: _ "exceptPackage") (validatePackage rawName rawUrl) >>= case _ of
@@ -1075,9 +1075,36 @@ getPackagesMetadata legacyRegistry = do
         Just tag -> do
           result <- GitHub.getCommitDate address tag.sha
           case result of
-            Left error -> unsafeCrashWith ("Failed to get commit date for " <> PackageName.print name <> "@" <> tag.name <> ": " <> Octokit.printGitHubError error)
+            Left error -> case error of
+              Octokit.APIError { statusCode: 404 } -> do
+                Log.debug $ "Got 404 for " <> PackageName.print name <> ", checking registry-archive..."
+                inArchive <- checkPackageInArchive name
+                if inArchive then do
+                  Log.info $ "Package " <> PackageName.print name <> " found in registry-archive, using current date"
+                  now <- Run.liftEffect nowUTC
+                  pure $ Just $ Tuple name { address, lastPublished: DateTime.date now }
+                else do
+                  Log.info $ "Package " <> PackageName.print name <> " not in registry-archive, using epoch date"
+                  let epochDate = DateTime.canonicalDate (unsafeFromJust (toEnum 1970)) January (unsafeFromJust (toEnum 1))
+                  pure $ Just $ Tuple name { address, lastPublished: epochDate }
+              _ -> unsafeCrashWith ("Failed to get commit date for " <> PackageName.print name <> "@" <> tag.name <> ": " <> Octokit.printGitHubError error)
             Right date -> pure $ Just $ Tuple name { address, lastPublished: DateTime.date date }
   pure $ Map.fromFoldable $ Array.catMaybes associated
+
+checkPackageInArchive :: forall r. PackageName -> Run (LOG + AFF + r) Boolean
+checkPackageInArchive name = do
+  let
+    nameStr = PackageName.print name
+    indexUrl = Archive.registryArchiveUrl <> "/" <> nameStr
+  Log.debug $ "Checking if package exists in registry-archive: " <> indexUrl
+  response <- Run.liftAff $ Fetch.withRetryRequest indexUrl {}
+  case response of
+    Succeeded _ -> do
+      Log.debug $ "Package " <> nameStr <> " found in registry-archive"
+      pure true
+    _ -> do
+      Log.debug $ "Package " <> nameStr <> " not found in registry-archive"
+      pure false
 
 filterPackages_0_13 :: Map PackageName PackagesMetadata -> Map PackageName PackagesMetadata
 filterPackages_0_13 = do
