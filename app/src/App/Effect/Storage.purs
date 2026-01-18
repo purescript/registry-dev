@@ -147,8 +147,17 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
         buffer <- downloadS3 name version integrity
         Cache.put _storageCache (Package name version) buffer
         pure buffer
-      Just cached ->
-        pure cached
+      Just cached -> do
+        archiveHash <- Run.liftEffect $ Sha256.hashBuffer cached
+        archiveSize <- Run.liftEffect $ Buffer.size cached
+        if archiveHash == integrity.hash && Int.toNumber archiveSize == integrity.bytes then
+          pure cached
+        else do
+          Log.warn $ "Cached tarball for " <> package <> " failed integrity check, evicting and re-downloading..."
+          Cache.delete _storageCache (Package name version)
+          buffer <- downloadS3 name version integrity
+          Cache.put _storageCache (Package name version) buffer
+          pure buffer
     Run.liftAff (Aff.attempt (FS.Aff.writeFile path buffer)) >>= case _ of
       Left error -> do
         Log.error $ "Downloaded " <> package <> " but failed to write it to the file at path " <> path <> ":\n" <> Aff.message error
@@ -244,8 +253,17 @@ handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< 
         buffer <- downloadS3 name version integrity
         Cache.put _storageCache (Package name version) buffer
         pure buffer
-      Just cached ->
-        pure cached
+      Just cached -> do
+        archiveHash <- Run.liftEffect $ Sha256.hashBuffer cached
+        archiveSize <- Run.liftEffect $ Buffer.size cached
+        if archiveHash == integrity.hash && Int.toNumber archiveSize == integrity.bytes then
+          pure cached
+        else do
+          Log.warn $ "Cached tarball for " <> package <> " failed integrity check, evicting and re-downloading..."
+          Cache.delete _storageCache (Package name version)
+          buffer <- downloadS3 name version integrity
+          Cache.put _storageCache (Package name version) buffer
+          pure buffer
     Run.liftAff (Aff.attempt (FS.Aff.writeFile path buffer)) >>= case _ of
       Left error -> do
         Log.error $ "Downloaded " <> package <> " but failed to write it to the file at path " <> path <> ":\n" <> Aff.message error
