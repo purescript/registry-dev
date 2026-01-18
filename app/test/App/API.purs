@@ -94,7 +94,7 @@ spec = do
           version = Utils.unsafeVersion "4.0.0"
           ref = "v4.0.0"
           publishArgs =
-            { compiler: Utils.unsafeVersion "0.15.10"
+            { compiler: Just $ Utils.unsafeVersion "0.15.10"
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-effect", subdir: Nothing }
             , name
             , ref
@@ -159,7 +159,7 @@ spec = do
         -- but did not have documentation make it to Pursuit.
         let
           pursuitOnlyPublishArgs =
-            { compiler: Utils.unsafeVersion "0.15.10"
+            { compiler: Just $ Utils.unsafeVersion "0.15.10"
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-type-equality", subdir: Nothing }
             , name: Utils.unsafePackageName "type-equality"
             , ref: "v4.0.1"
@@ -174,7 +174,7 @@ spec = do
         let
           transitive = { name: Utils.unsafePackageName "transitive", version: Utils.unsafeVersion "1.0.0" }
           transitivePublishArgs =
-            { compiler: Utils.unsafeVersion "0.15.10"
+            { compiler: Just $ Utils.unsafeVersion "0.15.10"
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-transitive", subdir: Nothing }
             , name: transitive.name
             , ref: "v" <> Version.print transitive.version

@@ -59,7 +59,7 @@ spec = do
           )
           allJobs
         -- The expected compilers are: the publish compiler + all matrix job compilers
-        expectedCompilers = Set.fromFoldable $ Array.cons Fixtures.effectPublishData.compiler matrixCompilers
+        expectedCompilers = Set.fromFoldable $ maybe matrixCompilers (\c -> Array.cons c matrixCompilers) Fixtures.effectPublishData.compiler
 
       Metadata metadataAfter <- Env.readMetadata Fixtures.effect.name
       case Map.lookup Fixtures.effect.version metadataAfter.published of

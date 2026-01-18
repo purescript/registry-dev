@@ -99,7 +99,7 @@ type PublishData =
   , location :: Maybe Location
   , ref :: String
   , version :: Version
-  , compiler :: Version
+  , compiler :: Maybe Version
   , resolutions :: Maybe (Map PackageName Version)
   }
 
@@ -110,7 +110,7 @@ publishCodec = CJ.named "Publish" $ CJ.Record.object
   , location: CJ.Record.optional Location.codec
   , ref: CJ.string
   , version: Version.codec
-  , compiler: Version.codec
+  , compiler: CJ.Record.optional Version.codec
   , resolutions: CJ.Record.optional (Internal.Codec.packageMap Version.codec)
   }
 

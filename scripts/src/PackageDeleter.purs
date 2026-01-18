@@ -247,6 +247,6 @@ deleteVersion arguments name version = do
               , name: name
               , ref: manifest.ref
               , version: version
-              , compiler: unsafeFromRight $ Version.parse "0.15.4"
+              , compiler: Just $ unsafeFromRight $ Version.parse "0.15.4"
               , resolutions: Nothing
               }

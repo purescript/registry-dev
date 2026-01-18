@@ -64,7 +64,7 @@ effectPublishData =
       , subdir: Nothing
       }
   , ref: "v4.0.0"
-  , compiler: Utils.unsafeVersion "0.15.10"
+  , compiler: Just $ Utils.unsafeVersion "0.15.10"
   , resolutions: Nothing
   , version: effect.version
   }
@@ -96,7 +96,7 @@ consolePublishData =
       , subdir: Nothing
       }
   , ref: "v6.1.0"
-  , compiler: Utils.unsafeVersion "0.15.10"
+  , compiler: Just $ Utils.unsafeVersion "0.15.10"
   , resolutions: Nothing
   , version: console.version
   }
@@ -112,7 +112,7 @@ unsafeCoercePublishData =
       , subdir: Nothing
       }
   , ref: "v6.0.0"
-  , compiler: Utils.unsafeVersion "0.15.10"
+  , compiler: Just $ Utils.unsafeVersion "0.15.10"
   , resolutions: Nothing
   , version: unsafeCoerce.version
   }

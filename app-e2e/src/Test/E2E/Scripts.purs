@@ -70,9 +70,12 @@ spec = do
 
       case typeEqualityJob of
         Just (PublishJob { payload }) -> do
-          -- Verify compiler selection logic
-          when (payload.compiler /= compiler01510) do
-            Assert.fail $ "Expected compiler 0.15.10 but got " <> Version.print payload.compiler
+          -- Verify compiler is either Nothing (API will discover) or Just 0.15.10
+          case payload.compiler of
+            Nothing -> pure unit
+            Just c | c /= compiler01510 ->
+              Assert.fail $ "Expected compiler 0.15.10 or Nothing but got " <> Version.print c
+            _ -> pure unit
         Just _ -> Assert.fail "Expected PublishJob but got different job type"
         Nothing -> do
           let publishJobs = Array.filter isPublishJob jobs

@@ -544,7 +544,7 @@ runLegacyImport logs = do
                   , location: Just manifest.location
                   , ref
                   , version: manifest.version
-                  , compiler
+                  , compiler: Just compiler
                   , resolutions: Just resolutions
                   }
               Run.Except.runExcept (API.publish (Just legacyIndex) payload) >>= case _ of

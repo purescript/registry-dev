@@ -17,11 +17,9 @@ import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
-import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.JSON as CJ
 import Data.Map as Map
 import Data.Set as Set
-import Data.String as String
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Fetch (Method(..))
@@ -31,7 +29,6 @@ import Node.Path as Path
 import Node.Process as Process
 import Registry.API.V1 as V1
 import Registry.App.CLI.Git as Git
-import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env (RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
@@ -42,19 +39,10 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Legacy.LenientVersion as LenientVersion
-import Registry.App.Legacy.Manifest (Bowerfile(..), SpagoDhallJson(..))
-import Registry.App.Legacy.Manifest as Legacy.Manifest
-import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), RawVersionRange(..))
-import Registry.App.Manifest.SpagoYaml as SpagoYaml
-import Registry.Foreign.Octokit (Address)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Location (Location(..))
-import Registry.Manifest (Manifest(..))
-import Registry.Manifest as Manifest
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
-import Registry.Range as Range
-import Registry.Solver as Solver
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
@@ -128,16 +116,6 @@ runDailyImport mode registryApiUrl = do
   allMetadata <- Registry.readAllMetadata
   let packages = Map.toUnfoldable allMetadata :: Array (Tuple PackageName Metadata)
 
-  -- Build the compiler index once for all packages
-  Log.info "Building compiler index..."
-  pursVersions <- PursVersions.pursVersions
-  manifestIndex <- Registry.readAllManifests
-  let
-    compilerIndex = Solver.buildCompilerIndex pursVersions manifestIndex allMetadata
-    allCompilersRange = Range.mk
-      (NonEmptyArray.head pursVersions)
-      (Version.bumpPatch (NonEmptyArray.last pursVersions))
-
   Log.info $ "Checking " <> show (Array.length packages) <> " packages for new versions..."
 
   submitted <- for packages \(Tuple name (Metadata metadata)) -> do
@@ -168,7 +146,7 @@ runDailyImport mode registryApiUrl = do
 
             -- Submit publish jobs for new versions
             count <- for newVersions \{ version, ref } -> do
-              submitPublishJob mode registryApiUrl compilerIndex allCompilersRange name (Metadata metadata) version ref
+              submitPublishJob mode registryApiUrl name version ref
 
             pure $ Array.length $ Array.filter identity count
 
@@ -176,45 +154,17 @@ runDailyImport mode registryApiUrl = do
   Log.info $ "Daily Importer complete. Submitted " <> show totalSubmitted <> " publish jobs."
 
 -- | Submit a publish job for a new package version.
--- | Attempts to find a compatible compiler by fetching the new version's manifest
--- | from GitHub and using the solver to find a compiler that works with its
--- | dependencies. Falls back to the lowest compiler from the previous version if
--- | fetching/parsing fails or the package has no dependencies, or to the latest
--- | compiler if no previous version exists.
+-- | The compiler is not specified; the registry API will discover the oldest
+-- | compatible compiler based on the package's dependencies.
 submitPublishJob
   :: Mode
   -> URL
-  -> Solver.CompilerIndex
-  -> Maybe Range
   -> PackageName
-  -> Metadata
   -> Version
   -> String
   -> Run DailyImportEffects Boolean
-submitPublishJob mode registryApiUrl compilerIndex allCompilersRange name (Metadata metadata) version ref = do
+submitPublishJob mode registryApiUrl name version ref = do
   let formatted = formatPackageVersion name version
-
-  -- Determine the appropriate compiler version by trying to use the new version's
-  -- manifest and the solver, falling back to previous version's compiler if needed.
-  compiler <- case metadata.location of
-    GitHub { owner, repo } -> do
-      let address = { owner, repo }
-      -- Try to fetch and parse the new version's dependencies from GitHub
-      maybeNewDeps <- fetchNewVersionDeps address ref
-      case maybeNewDeps of
-        Just deps | not (Map.isEmpty deps) -> do
-          -- Use solver to find a compatible compiler
-          case solveForCompiler compilerIndex allCompilersRange deps of
-            Just compilerVersion -> pure compilerVersion
-            Nothing -> do
-              Log.debug $ "Solver failed to find compiler for " <> formatted <> ", using fallback"
-              fallbackCompiler
-        _ -> do
-          Log.debug $ "No dependencies found for " <> formatted <> ", using fallback"
-          fallbackCompiler
-    Git _ ->
-      -- For non-GitHub packages, always use fallback
-      fallbackCompiler
 
   let
     payload :: Operation.PublishData
@@ -223,17 +173,17 @@ submitPublishJob mode registryApiUrl compilerIndex allCompilersRange name (Metad
       , version
       , location: Nothing -- Use current metadata location at publish time
       , ref
-      , compiler
+      , compiler: Nothing -- Let the API discover the oldest compatible compiler
       , resolutions: Nothing
       }
 
   case mode of
     DryRun -> do
-      Log.info $ "[DRY RUN] Would submit publish job for " <> formatted <> " with compiler " <> Version.print compiler
+      Log.info $ "[DRY RUN] Would submit publish job for " <> formatted
       pure true
 
     Submit -> do
-      Log.info $ "Submitting publish job for " <> formatted <> " with compiler " <> Version.print compiler
+      Log.info $ "Submitting publish job for " <> formatted
       result <- Run.liftAff $ submitJob (registryApiUrl <> "/v1/publish") payload
       case result of
         Left err -> do
@@ -242,82 +192,6 @@ submitPublishJob mode registryApiUrl compilerIndex allCompilersRange name (Metad
         Right { jobId } -> do
           Log.info $ "Submitted publish job " <> unwrap jobId <> " for " <> formatted
           pure true
-  where
-  -- Fall back to using the previous version's lowest compiler, or latest if no previous version
-  fallbackCompiler :: Run DailyImportEffects Version
-  fallbackCompiler = case Map.findMax metadata.published of
-    Just { value: publishedInfo } -> pure $ NonEmptyArray.head publishedInfo.compilers
-    Nothing -> NonEmptyArray.last <$> PursVersions.pursVersions
-
--- | Try to fetch and parse the new version's dependencies from GitHub.
--- | Tries purs.json, spago.yaml, bower.json, and spago.dhall in order.
-fetchNewVersionDeps :: Address -> String -> Run DailyImportEffects (Maybe (Map PackageName Range))
-fetchNewVersionDeps address ref = do
-  let rawRef = RawVersion ref
-  -- Try purs.json first
-  pursJsonResult <- GitHub.getJsonFile address rawRef Manifest.codec "purs.json"
-  case pursJsonResult of
-    Right (Manifest manifest) -> pure $ Just manifest.dependencies
-    Left _ -> trySpagoYaml rawRef
-  where
-  trySpagoYaml rawRef = do
-    spagoYamlResult <- GitHub.getContent address rawRef "spago.yaml"
-    case spagoYamlResult of
-      Right contents ->
-        case parseYaml SpagoYaml.spagoYamlCodec contents of
-          Right { package: Just pkg } ->
-            case SpagoYaml.convertSpagoDependencies pkg.dependencies of
-              Right deps -> pure $ Just deps
-              Left _ -> tryBowerJson rawRef
-          _ -> tryBowerJson rawRef
-      Left _ -> tryBowerJson rawRef
-
-  tryBowerJson rawRef = do
-    bowerResult <- Legacy.Manifest.fetchBowerfile address rawRef
-    case bowerResult of
-      Right (Bowerfile { dependencies }) ->
-        -- Strip purescript- prefix and validate dependencies
-        let
-          convert = Map.mapMaybeWithKey \(RawPackageName p) range -> do
-            _ <- String.stripPrefix (String.Pattern "purescript-") p
-            pure range
-        in
-          case hush $ Legacy.Manifest.validateDependencies (convert dependencies) of
-            Just deps -> pure $ Just deps
-            Nothing -> trySpagoDhall rawRef
-      Left _ -> trySpagoDhall rawRef
-
-  trySpagoDhall rawRef = do
-    spagoDhallResult <- Legacy.Manifest.fetchSpagoDhallJson address rawRef
-    case spagoDhallResult of
-      Right (SpagoDhallJson { dependencies, packages }) ->
-        -- Convert spago.dhall dependencies to ranges using the packages map
-        let
-          fixedToRange (RawVersion fixed) = do
-            let parsedVersion = LenientVersion.parse fixed
-            let bump version = Version.print (Version.bumpHighest version)
-            let printRange version = Array.fold [ ">=", fixed, " <", bump version ]
-            RawVersionRange $ either (const fixed) (printRange <<< LenientVersion.version) parsedVersion
-
-          convert = do
-            let findPackage p = Map.lookup p packages
-            let foldFn deps p = maybe deps (\{ version } -> Map.insert p (fixedToRange version) deps) (findPackage p)
-            Array.foldl foldFn Map.empty dependencies
-        in
-          pure $ hush $ Legacy.Manifest.validateDependencies convert
-      Left _ -> pure Nothing
-
--- | Use the solver to find a compatible compiler for the given dependencies.
--- | Uses a pre-built compiler index and range covering all available compilers.
--- | Returns Nothing if no compatible compiler can be found.
-solveForCompiler :: Solver.CompilerIndex -> Maybe Range -> Map PackageName Range -> Maybe Version
-solveForCompiler compilerIndex allCompilersRange deps =
-  case allCompilersRange of
-    Nothing -> Nothing
-    Just range ->
-      case Solver.solveWithCompiler range compilerIndex deps of
-        Right (Tuple compilerVersion _) -> Just compilerVersion
-        Left _ -> Nothing
 
 -- | Submit a job to the registry API
 submitJob :: String -> Operation.PublishData -> Aff (Either String V1.JobCreatedResponse)
