@@ -94,6 +94,27 @@ let
 
   registryPkgs = pkgs.extend testOverlay;
 
+  # Centralized test runtime dependencies - use this in nativeBuildInputs
+  # to ensure all required binaries are available
+  testRuntimeInputs = registryPkgs.registry-runtime-deps ++ [ gitMock ];
+
+  # Centralized test runtime exports - use this in shell scripts to set up
+  # the complete test environment including PATH and GIT_BINARY.
+  # This is the single source of truth for test Git overrides.
+  testRuntimeExports = ''
+    ${envToExports testEnv}
+    export PATH="${lib.makeBinPath testRuntimeInputs}:$PATH"
+    export GIT_BINARY="${pkgs.git}/bin/git"
+  '';
+
+  # Complete build inputs for integration tests - combines runtime inputs with
+  # orchestration scripts. Use this in nativeBuildInputs for test derivations.
+  testBuildInputs = testRuntimeInputs ++ [
+    wiremockStartScript
+    serverStartScript
+    setupGitFixtures
+  ];
+
   # Helper to create GitHub contents API response, as it returns base64-encoded content
   base64Response =
     {
@@ -172,6 +193,55 @@ let
     };
   };
 
+  # Unsafe-coerce package helpers (unsafe-coerce@6.0.0)
+  unsafeCoerceBase64Response =
+    fileName:
+    base64Response {
+      url = "/repos/purescript/purescript-unsafe-coerce/contents/${fileName}?ref=v6.0.0";
+      inherit fileName;
+      filePath = rootPath + "/app/fixtures/github-packages/unsafe-coerce-6.0.0/${fileName}";
+    };
+
+  unsafeCoerce404Response = fileName: {
+    request = {
+      method = "GET";
+      url = "/repos/purescript/purescript-unsafe-coerce/contents/${fileName}?ref=v6.0.0";
+    };
+    response = {
+      status = 404;
+      headers."Content-Type" = "application/json";
+      jsonBody = {
+        message = "Not Found";
+        documentation_url = "https://docs.github.com/rest/repos/contents#get-repository-content";
+      };
+    };
+  };
+
+  # Type-equality package helpers (type-equality@4.0.2)
+  # Note: Uses purescript owner (actual location) not old-owner (metadata location)
+  typeEqualityBase64Response =
+    fileName:
+    base64Response {
+      url = "/repos/purescript/purescript-type-equality/contents/${fileName}?ref=v4.0.2";
+      inherit fileName;
+      filePath = rootPath + "/app/fixtures/github-packages/type-equality-4.0.1/${fileName}";
+    };
+
+  typeEquality404Response = fileName: {
+    request = {
+      method = "GET";
+      url = "/repos/purescript/purescript-type-equality/contents/${fileName}?ref=v4.0.2";
+    };
+    response = {
+      status = 404;
+      headers."Content-Type" = "application/json";
+      jsonBody = {
+        message = "Not Found";
+        documentation_url = "https://docs.github.com/rest/repos/contents#get-repository-content";
+      };
+    };
+  };
+
   # GitHub API wiremock mappings
   githubMappings = [
     (effectBase64Response "bower.json")
@@ -188,6 +258,20 @@ let
     (console404Response "spago.dhall")
     (console404Response "purs.json")
     (console404Response "package.json")
+    # Unsafe-coerce package (unsafe-coerce@6.0.0)
+    (unsafeCoerceBase64Response "bower.json")
+    (unsafeCoerce404Response "LICENSE")
+    (unsafeCoerce404Response "spago.yaml")
+    (unsafeCoerce404Response "spago.dhall")
+    (unsafeCoerce404Response "purs.json")
+    (unsafeCoerce404Response "package.json")
+    # Type-equality package (type-equality@4.0.2 for legacy imports test)
+    (typeEqualityBase64Response "bower.json")
+    (typeEqualityBase64Response "LICENSE")
+    (typeEquality404Response "spago.yaml")
+    (typeEquality404Response "spago.dhall")
+    (typeEquality404Response "purs.json")
+    (typeEquality404Response "package.json")
     {
       request = {
         method = "GET";
@@ -203,6 +287,57 @@ let
             url = "https://api.github.com/repos/purescript/package-sets/commits/090897c992b2b310b1456506308db789672adac1";
           };
         };
+      };
+    }
+    # Tags for prelude package (only v6.0.1 which is already published)
+    {
+      request = {
+        method = "GET";
+        url = "/repos/purescript/purescript-prelude/tags";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/json";
+        jsonBody = [
+          {
+            name = "v6.0.1";
+            commit = {
+              sha = "abc123def456";
+              url = "https://api.github.com/repos/purescript/purescript-prelude/commits/abc123def456";
+            };
+          }
+        ];
+      };
+    }
+    # Tags for type-equality package (used by two scheduler tests):
+    # 1. Transfer detection: metadata says purescript, commit URLs point to new-owner
+    # 2. Legacy imports: v4.0.2 is a new version not yet published
+    {
+      request = {
+        method = "GET";
+        url = "/repos/purescript/purescript-type-equality/tags";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/json";
+        jsonBody = [
+          {
+            name = "v4.0.1";
+            commit = {
+              sha = "type-eq-sha-401";
+              # Points to new owner - scheduler detects this transfer
+              url = "https://api.github.com/repos/new-owner/purescript-type-equality/commits/type-eq-sha-401";
+            };
+          }
+          {
+            name = "v4.0.2";
+            commit = {
+              sha = "type-eq-sha-402";
+              # New version not yet published - scheduler detects for legacy import
+              url = "https://api.github.com/repos/new-owner/purescript-type-equality/commits/type-eq-sha-402";
+            };
+          }
+        ];
       };
     }
     # Accept issue comment creation (used by GitHubIssue workflow)
@@ -281,10 +416,21 @@ let
     )
   );
 
-  # Metadata fixtures directory (to determine which packages are "published")
+  # Metadata fixtures directory (to determine which package versions are "published")
   metadataFixturesDir = rootPath + "/app/fixtures/registry/metadata";
   metadataFiles = builtins.attrNames (builtins.readDir metadataFixturesDir);
-  publishedPackageNames = map (f: lib.removeSuffix ".json" f) metadataFiles;
+
+  # Parse metadata files to get the actual published versions (not just package names)
+  # Returns a set like { "prelude-6.0.1" = true; "type-equality-4.0.1" = true; }
+  publishedVersions = lib.foldl' (
+    acc: fileName:
+    let
+      packageName = lib.removeSuffix ".json" fileName;
+      metadata = builtins.fromJSON (builtins.readFile (metadataFixturesDir + "/${fileName}"));
+      versions = builtins.attrNames (metadata.published or { });
+    in
+    acc // lib.genAttrs (map (v: "${packageName}-${v}") versions) (_: true)
+  ) { } metadataFiles;
 
   # ============================================================================
   # UNIFIED STORAGE MAPPINGS WITH WIREMOCK SCENARIOS
@@ -298,9 +444,9 @@ let
   # Scenario design:
   # - One scenario per package-version (e.g., "effect-4.0.0")
   # - WireMock scenarios always start at state "Started"
-  # - Published packages (has metadata): "Started" means Present (tarball available)
+  # - Published versions (version exists in metadata.published): "Started" means Present
   #   - After DELETE, transitions to "Deleted" state (404 on GET)
-  # - Unpublished packages (no metadata): "Started" means Absent (tarball 404)
+  # - Unpublished versions (new version not in metadata): "Started" means Absent (404)
   #   - After PUT upload, transitions to "Present" state
   #   - After DELETE, transitions to "Deleted" state (404 on GET)
   #
@@ -316,7 +462,7 @@ let
     pkg:
     let
       scenario = "${pkg.name}-${pkg.version}";
-      isPublished = builtins.elem pkg.name publishedPackageNames;
+      isPublished = publishedVersions ? "${pkg.name}-${pkg.version}";
       tarPath = "/${pkg.name}/${pkg.version}.tar.gz";
     in
     if isPublished then
@@ -407,7 +553,7 @@ let
       pkg:
       let
         scenario = "${pkg.name}-${pkg.version}";
-        isPublished = builtins.elem pkg.name publishedPackageNames;
+        isPublished = publishedVersions ? "${pkg.name}-${pkg.version}";
         escapedName = lib.replaceStrings [ "-" ] [ "\\-" ] pkg.name;
         listUrlPattern = "/\\?.*prefix=${escapedName}.*";
         presentContents = ''<Contents><Key>${pkg.name}/${pkg.version}.tar.gz</Key><Size>1000</Size><ETag>"abc123"</ETag></Contents>'';
@@ -492,7 +638,7 @@ let
         pkg:
         let
           scenario = "${pkg.name}-${pkg.version}";
-          isPublished = builtins.elem pkg.name publishedPackageNames;
+          isPublished = publishedVersions ? "${pkg.name}-${pkg.version}";
           escapedVersion = lib.replaceStrings [ "." ] [ "\\." ] pkg.version;
           urlPattern = "/${pkg.name}/${escapedVersion}\\.tar\\.gz.*";
         in
@@ -618,7 +764,7 @@ let
       pkg:
       let
         scenario = "${pkg.name}-${pkg.version}";
-        isPublished = builtins.elem pkg.name publishedPackageNames;
+        isPublished = publishedVersions ? "${pkg.name}-${pkg.version}";
         versionsUrl = "/packages/purescript-${pkg.name}/available-versions";
         publishedVersionsBody = ''[["${pkg.version}","https://pursuit.purescript.org/packages/purescript-${pkg.name}/${pkg.version}"]]'';
       in
@@ -781,7 +927,10 @@ let
   # Script to set up git fixtures
   setupGitFixtures = pkgs.writeShellApplication {
     name = "setup-git-fixtures";
-    runtimeInputs = [ pkgs.git ];
+    runtimeInputs = [
+      pkgs.git
+      pkgs.jq
+    ];
     text = ''
       FIXTURES_DIR="''${1:-${stateDir}/repo-fixtures}"
 
@@ -800,7 +949,18 @@ let
       cp -r ${rootPath}/app/fixtures/{registry-index,registry,package-sets} "$FIXTURES_DIR/purescript/"
       cp -r ${rootPath}/app/fixtures/github-packages/effect-4.0.0 "$FIXTURES_DIR/purescript/purescript-effect"
       cp -r ${rootPath}/app/fixtures/github-packages/console-6.1.0 "$FIXTURES_DIR/purescript/purescript-console"
+      cp -r ${rootPath}/app/fixtures/github-packages/unsafe-coerce-6.0.0 "$FIXTURES_DIR/purescript/purescript-unsafe-coerce"
+      cp -r ${rootPath}/app/fixtures/github-packages/type-equality-4.0.1 "$FIXTURES_DIR/purescript/purescript-type-equality"
       chmod -R u+w "$FIXTURES_DIR/purescript"
+
+      # Set type-equality publishedTime to current time for package set update test
+      # This makes type-equality appear as a "recent upload" so the scheduler will
+      # detect it and enqueue a package set update job
+      current_time=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+      jq --arg time "$current_time" \
+        '.published["4.0.1"].publishedTime = $time' \
+        "$FIXTURES_DIR/purescript/registry/metadata/type-equality.json" > temp.json && \
+        mv temp.json "$FIXTURES_DIR/purescript/registry/metadata/type-equality.json"
 
       for repo in "$FIXTURES_DIR"/purescript/*/; do
         cd "$repo"
@@ -814,6 +974,12 @@ let
       gitbot -C "$FIXTURES_DIR/purescript/package-sets" tag -m "psc-0.15.9-20230105" psc-0.15.9-20230105
       gitbot -C "$FIXTURES_DIR/purescript/purescript-effect" tag -m "v4.0.0" v4.0.0
       gitbot -C "$FIXTURES_DIR/purescript/purescript-console" tag -m "v6.1.0" v6.1.0
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-unsafe-coerce" tag -m "v6.0.0" v6.0.0
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" tag -m "v4.0.1" v4.0.1
+      # Create a new commit for v4.0.2 so it's on a different commit than v4.0.1
+      # (the registry rejects publishing when multiple version tags point to the same commit)
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" commit --allow-empty -m "v4.0.2 release"
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" tag -m "v4.0.2" v4.0.2
     '';
   };
 
@@ -858,8 +1024,8 @@ let
   serverStartScript = pkgs.writeShellScriptBin "start-server" ''
     set -e
 
-    # Set all test environment variables (from envDefaults + mock URLs).
-    ${envToExports testEnv}
+    # Set all test environment variables, PATH, and GIT_BINARY
+    ${testRuntimeExports}
 
     # STATE_DIR is required
     if [ -z "''${STATE_DIR:-}" ]; then
@@ -871,18 +1037,12 @@ let
     export DATABASE_URL="sqlite:$STATE_DIR/db/registry.sqlite3"
     export REPO_FIXTURES_DIR="$STATE_DIR/repo-fixtures"
 
-    # PATH setup for runtime deps and git mock
-    export PATH="${lib.makeBinPath registryPkgs.registry-runtime-deps}:$PATH"
-    export PATH="${gitMock}/bin:$PATH"
-    export GIT_BINARY="${pkgs.git}/bin/git"
-
     mkdir -p "$STATE_DIR/db"
 
-    # Set up git fixtures if needed
-    if [ ! -d "$REPO_FIXTURES_DIR/purescript" ]; then
-      echo "Setting up git fixtures..."
-      ${setupGitFixtures}/bin/setup-git-fixtures "$REPO_FIXTURES_DIR"
-    fi
+    # Always recreate git fixtures to ensure clean state
+    # (the setupGitFixtures script handles cleanup internally)
+    echo "Setting up git fixtures..."
+    ${setupGitFixtures}/bin/setup-git-fixtures "$REPO_FIXTURES_DIR"
 
     # Run database migrations
     echo "Running database migrations..."
@@ -903,15 +1063,16 @@ in
     stateDir
     mockUrls
     testEnv
-    envToExports
-    gitMock
     testOverlay
+    testRuntimeInputs
+    testRuntimeExports
+    testBuildInputs
     wiremockConfigs
     combinedWiremockRoot
-    setupGitFixtures
     publishPayload
     wiremockStartScript
     serverStartScript
+    setupGitFixtures
     # For custom wiremock setups
     githubMappings
     storageMappings

@@ -106,13 +106,13 @@ executeJob _ = case _ of
     maybeResult <- API.publish Nothing payload
     -- The above operation will throw if not successful, and return a map of
     -- dependencies of the package only if it has not been published before.
-    for_ maybeResult \{ dependencies, version } -> do
+    for_ maybeResult \{ compiler, dependencies, version } -> do
       -- At this point this package has been verified with one compiler only.
       -- So we need to enqueue compilation jobs for (1) same package, all the other
       -- compilers, and (2) same compiler, all packages that depend on this one
       -- TODO here we are building the compiler index, but we should really cache it
       compilerIndex <- MatrixBuilder.readCompilerIndex
-      let solverData = { compiler: payload.compiler, name, version, dependencies, compilerIndex }
+      let solverData = { compiler, name, version, dependencies, compilerIndex }
       samePackageAllCompilers <- MatrixBuilder.solveForAllCompilers solverData
       sameCompilerAllDependants <- MatrixBuilder.solveDependantsForCompiler solverData
       for (Array.fromFoldable $ Set.union samePackageAllCompilers sameCompilerAllDependants)

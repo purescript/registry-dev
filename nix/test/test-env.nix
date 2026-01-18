@@ -89,8 +89,6 @@ let
 
   processComposeYaml = pkgs.writeText "process-compose.yaml" (builtins.toJSON processComposeConfig);
 
-  testEnvExports = testConfig.envToExports testConfig.testEnv;
-
   # The state directory is fixed (not configurable) to avoid mismatch between
   # the test-env and spago-test-e2e shells.
   stateDir = testConfig.testEnv.STATE_DIR;
@@ -102,8 +100,8 @@ let
     rm -rf ${stateDir}
     mkdir -p ${stateDir}
 
-    # Export all test environment variables
-    ${testEnvExports}
+    # Export all test environment variables, PATH, and GIT_BINARY
+    ${testConfig.testRuntimeExports}
 
     exec ${pkgs.process-compose}/bin/process-compose up \
       -f ${processComposeYaml} \
@@ -122,13 +120,15 @@ in
     ;
 
   # Re-export commonly-used items from testConfig for convenience.
-  # This avoids verbose paths like `testEnv.testConfig.wiremockStartScript`.
+  # This avoids verbose paths like `testEnv.testConfig.testBuildInputs`.
   inherit (testConfig)
+    testEnv
+    testRuntimeInputs
+    testRuntimeExports
+    testBuildInputs
     wiremockStartScript
     serverStartScript
     setupGitFixtures
-    testEnv
-    envToExports
     ;
 
   # Full testConfig still available for less common access patterns

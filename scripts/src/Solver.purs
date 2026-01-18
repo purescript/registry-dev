@@ -117,7 +117,15 @@ main = launchAff_ do
   FS.Extra.ensureDirectory cache
 
   debouncer <- Registry.newDebouncer
-  let registryEnv pull write = { pull, write, repos: Registry.defaultRepos, workdir: scratchDir, debouncer, cacheRef: registryCacheRef }
+  let
+    registryEnv pull write =
+      { pull
+      , write
+      , repos: Registry.defaultRepos
+      , workdir: scratchDir
+      , debouncer
+      , cacheRef: registryCacheRef
+      }
   resourceEnv <- Env.lookupResourceEnv
   token <- Env.lookupRequired Env.githubToken
   octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl

@@ -211,7 +211,15 @@ main = launchAff_ do
   -- uploaded and manifests and metadata are written, committed, and pushed.
   runAppEffects <- do
     debouncer <- Registry.newDebouncer
-    let registryEnv pull write = { pull, write, repos: Registry.defaultRepos, workdir: scratchDir, debouncer, cacheRef: registryCacheRef }
+    let
+      registryEnv pull write =
+        { pull
+        , write
+        , repos: Registry.defaultRepos
+        , workdir: scratchDir
+        , debouncer
+        , cacheRef: registryCacheRef
+        }
     case mode of
       DryRun -> do
         token <- Env.lookupRequired Env.githubToken
@@ -561,7 +569,7 @@ runLegacyImport logs = do
                   , location: Just manifest.location
                   , ref
                   , version: manifest.version
-                  , compiler
+                  , compiler: Just compiler
                   , resolutions: Just resolutions
                   }
               Run.Except.runExcept (API.publish (Just legacyIndex) payload) >>= case _ of

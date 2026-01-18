@@ -39,13 +39,10 @@ else
         pkgs.nodejs
         pkgs.curl
         pkgs.jq
-        pkgs.git
         pkgs.sqlite
         pkgs.nss_wrapper
-        testSupport.wiremockStartScript
-        testSupport.serverStartScript
-        testSupport.setupGitFixtures
-      ];
+      ]
+      ++ testSupport.testBuildInputs;
       NODE_PATH = "${pkgs.registry-package-lock}/node_modules";
       # Use nss_wrapper to resolve S3 bucket subdomain in the Nix sandbox.
       # The AWS SDK uses virtual-hosted style URLs (bucket.endpoint/key), so
@@ -62,8 +59,8 @@ else
       export STATE_DIR=$TMPDIR/state
       export REPO_FIXTURES_DIR="$STATE_DIR/repo-fixtures"
 
-      # Export test environment variables for E2E test runners
-      ${testSupport.envToExports testSupport.testEnv}
+      # Export test environment variables, PATH, and GIT_BINARY
+      ${testSupport.testRuntimeExports}
 
       mkdir -p $STATE_DIR
 

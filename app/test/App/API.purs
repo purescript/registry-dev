@@ -99,7 +99,7 @@ spec = do
           version = Utils.unsafeVersion "4.0.0"
           ref = "v4.0.0"
           publishArgs =
-            { compiler: Utils.unsafeVersion "0.15.10"
+            { compiler: Just $ Utils.unsafeVersion "0.15.10"
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-effect", subdir: Nothing }
             , name
             , ref
@@ -154,7 +154,9 @@ spec = do
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to be in metadata."
           Just published -> do
             let many' = NonEmptyArray.toArray published.compilers
-            let expected = map Utils.unsafeVersion [ "0.15.10", "0.15.11" ]
+            -- Only 0.15.10 is expected because prelude only has 0.15.10 in metadata,
+            -- so the solver cannot find a solution for 0.15.11
+            let expected = map Utils.unsafeVersion [ "0.15.10" ]
             unless (many' == expected) do
               Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
 
@@ -169,7 +171,7 @@ spec = do
         -- but did not have documentation make it to Pursuit.
         let
           pursuitOnlyPublishArgs =
-            { compiler: Utils.unsafeVersion "0.15.10"
+            { compiler: Just $ Utils.unsafeVersion "0.15.10"
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-type-equality", subdir: Nothing }
             , name: Utils.unsafePackageName "type-equality"
             , ref: "v4.0.1"
@@ -184,7 +186,7 @@ spec = do
         let
           transitive = { name: Utils.unsafePackageName "transitive", version: Utils.unsafeVersion "1.0.0" }
           transitivePublishArgs =
-            { compiler: Utils.unsafeVersion "0.15.10"
+            { compiler: Just $ Utils.unsafeVersion "0.15.10"
             , location: Just $ GitHub { owner: "purescript", repo: "purescript-transitive", subdir: Nothing }
             , name: transitive.name
             , ref: "v" <> Version.print transitive.version
@@ -203,7 +205,8 @@ spec = do
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to be in metadata."
           Just published -> do
             let many' = NonEmptyArray.toArray published.compilers
-            let expected = map Utils.unsafeVersion [ "0.15.10", "0.15.11" ]
+            -- Only 0.15.10 is expected because prelude only has 0.15.10 in metadata
+            let expected = map Utils.unsafeVersion [ "0.15.10" ]
             unless (many' == expected) do
               Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
 
@@ -267,6 +270,11 @@ spec = do
         -- it from scratch and will fail if effect-4.0.0 is already in storage. We have it in storage
         -- for the separate integration tests.
         FS.Extra.remove $ Path.concat [ testFixtures, "registry-storage", "effect-4.0.0.tar.gz" ]
+        -- Similarly, we remove type-equality files since the unit test publishes it from scratch
+        -- and will fail if type-equality already has metadata or storage. We have these files for
+        -- the separate integration tests (scheduler transfer tests).
+        FS.Extra.remove $ Path.concat [ testFixtures, "registry", "metadata", "type-equality.json" ]
+        FS.Extra.remove $ Path.concat [ testFixtures, "registry-storage", "type-equality-4.0.1.tar.gz" ]
 
       let
         readFixtures = do

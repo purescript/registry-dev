@@ -200,11 +200,18 @@ packageSetUpdate details = do
 
   let changeSet = candidates.accepted <#> maybe Remove Update
   Log.notice "Attempting to build package set update."
-  PackageSets.upgradeAtomic latestPackageSet (fromMaybe prevCompiler payload.compiler) changeSet >>= case _ of
-    Left error ->
-      Except.throw $ "The package set produced from this suggested update does not compile:\n\n" <> error
-    Right packageSet -> do
-      let commitMessage = PackageSets.commitMessage latestPackageSet changeSet (un PackageSet packageSet).version
+  PackageSets.upgradeSequential latestPackageSet (fromMaybe prevCompiler payload.compiler) changeSet >>= case _ of
+    Nothing ->
+      Except.throw "No packages could be added to the package set. All packages failed to compile."
+    Just { failed, succeeded, result: packageSet } -> do
+      unless (Map.isEmpty failed) do
+        let
+          formatFailed = String.joinWith "\n" $ Array.catMaybes $ flip map (Map.toUnfoldable failed) \(Tuple name change) ->
+            case change of
+              PackageSets.Update version -> Just $ "  - " <> formatPackageVersion name version
+              PackageSets.Remove -> Nothing
+        Log.warn $ "Some packages could not be added to the set:\n" <> formatFailed
+      let commitMessage = PackageSets.commitMessage latestPackageSet succeeded (un PackageSet packageSet).version
       Registry.writePackageSet packageSet commitMessage
       Log.notice "Built and released a new package set! Now mirroring to the package-sets repo..."
       Registry.mirrorPackageSet packageSet
@@ -311,6 +318,66 @@ authenticated auth = case auth.payload of
 
 type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + ARCHIVE + GITHUB + COMPILER_CACHE + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
 
+-- | Resolve both compiler and resolutions for a publish operation.
+-- | Will come up with some sort of plan if not provided with a compiler and/or resolutions.
+resolveCompilerAndDeps
+  :: forall r
+   . CompilerIndex
+  -> Manifest
+  -> Maybe Version -- payload.compiler
+  -> Maybe (Map PackageName Version) -- payload.resolutions
+  -> Run (REGISTRY + LOG + AFF + EXCEPT String + r) { compiler :: Version, resolutions :: Map PackageName Version }
+resolveCompilerAndDeps compilerIndex manifest@(Manifest { dependencies }) maybeCompiler maybeResolutions = do
+  Log.debug "Resolving compiler and dependencies..."
+  case maybeCompiler of
+    -- if we have a compiler we can worry about the rest of the build plan
+    Just compiler -> do
+      Log.debug $ "Using provided compiler " <> Version.print compiler
+      resolutions <- case maybeResolutions of
+        -- resolutions are provided so we just check them over
+        Just provided -> do
+          validateResolutions manifest provided
+          pure provided
+        -- no resolutions, invoke the solver with the compiler + dependencies
+        Nothing ->
+          case Operation.Validation.validateDependenciesSolve compiler manifest compilerIndex of
+            Left errors -> Except.throw $ formatSolverErrors errors
+            Right resolutions -> pure resolutions
+      pure { compiler, resolutions }
+
+    -- no compiler provided, we can figure it out. We only need one for publishing anyways
+    Nothing -> do
+      Log.debug "No compiler provided, solving for compiler and resolutions"
+      -- If resolutions are provided, validate them against the manifest first
+      for_ maybeResolutions \provided -> validateResolutions manifest provided
+      let deps = maybe dependencies (map Range.exact) maybeResolutions
+      Tuple compiler resolutions <- do
+        allCompilers <- PursVersions.pursVersions
+        let
+          -- we pass in all compilers so the solver can pick one
+          allCompilersRange = Range.mk
+            (NonEmptyArray.head allCompilers)
+            (Version.bumpPatch (NonEmptyArray.last allCompilers))
+        case allCompilersRange of
+          Nothing -> Except.throw "Could not construct compiler range"
+          Just range ->
+            case Solver.solveWithCompiler range compilerIndex deps of
+              Left errors -> Except.throw $ formatSolverErrors errors
+              Right result -> pure result
+
+      Log.info $ "Discovered compiler " <> Version.print compiler
+      pure { compiler, resolutions }
+  where
+  formatSolverErrors errors = String.joinWith "\n"
+    [ "Could not produce valid dependencies for manifest."
+    , "```"
+    , errors # foldMapWithIndex \index error -> String.joinWith "\n"
+        [ "[Error " <> show (index + 1) <> "]"
+        , Solver.printSolverError error
+        ]
+    , "```"
+    ]
+
 -- | Publish a package via the 'publish' operation. If the package has not been
 -- | published before then it will be registered and the given version will be
 -- | upload. If it has been published before then the existing metadata will be
@@ -319,7 +386,7 @@ type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + 
 -- The legacyIndex argument contains the unverified manifests produced by the
 -- legacy importer; these manifests can be used on legacy packages to conform
 -- them to the registry rule that transitive dependencies are not allowed.
-publish :: forall r. Maybe Solver.TransitivizedRegistry -> PublishData -> Run (PublishEffects + r) (Maybe { dependencies :: Map PackageName Range, version :: Version })
+publish :: forall r. Maybe Solver.TransitivizedRegistry -> PublishData -> Run (PublishEffects + r) (Maybe { compiler :: Version, dependencies :: Map PackageName Range, version :: Version })
 publish maybeLegacyIndex payload = do
   let printedName = PackageName.print payload.name
 
@@ -394,30 +461,15 @@ publish maybeLegacyIndex payload = do
       Left err ->
         Except.throw $ Source.printFetchError err
 
-  Log.debug $ "Package downloaded to " <> downloadedPackage <> ", verifying it contains a src directory with valid modules..."
-  Internal.Path.readPursFiles (Path.concat [ downloadedPackage, "src" ]) >>= case _ of
+  Log.debug $ "Package downloaded to " <> downloadedPackage <> ", verifying it contains a src directory..."
+  srcPursFiles <- Internal.Path.readPursFiles (Path.concat [ downloadedPackage, "src" ]) >>= case _ of
     Nothing ->
       Except.throw $ Array.fold
         [ "This package has no PureScript files in its `src` directory. "
         , "All package sources must be in the `src` directory, with any additional "
         , "sources indicated by the `files` key in your manifest."
         ]
-    Just files ->
-      -- The 'validatePursModules' function uses language-cst-parser, which only
-      -- supports syntax back to 0.15.0. We'll still try to validate the package
-      -- but it may fail to parse.
-      Operation.Validation.validatePursModules files >>= case _ of
-        Left formattedError | payload.compiler < Purs.minLanguageCSTParser -> do
-          Log.debug $ "Package failed to parse in validatePursModules: " <> formattedError
-          Log.debug $ "Skipping check because package is published with a pre-0.15.0 compiler (" <> Version.print payload.compiler <> ")."
-        Left formattedError ->
-          Except.throw $ Array.fold
-            [ "This package has either malformed or disallowed PureScript module names "
-            , "in its source: "
-            , formattedError
-            ]
-        Right _ ->
-          Log.debug "Package contains well-formed .purs files in its src directory."
+    Just files -> pure files
 
   -- If the package doesn't have a purs.json we can try to make one - possible scenarios:
   --  - in case it has a spago.yaml then we know how to read that, and have all the info to move forward
@@ -538,81 +590,97 @@ publish maybeLegacyIndex payload = do
       , "```"
       ]
 
+  -- try to terminate early here: if the package is already published AND the docs
+  -- are on Pursuit, then we can wrap up here
+  for_ (Operation.Validation.isNotPublished (Manifest receivedManifest) (Metadata metadata)) \info -> do
+    published <- Pursuit.getPublishedVersions receivedManifest.name >>= case _ of
+      Left error -> Except.throw error
+      Right versions -> pure versions
+    for_ (Map.lookup receivedManifest.version published) \url ->
+      Except.throw $ String.joinWith "\n"
+        [ "You tried to upload a version that already exists: " <> Version.print receivedManifest.version
+        , ""
+        , "Its metadata is:"
+        , "```json"
+        , printJson Metadata.publishedMetadataCodec info
+        , "```"
+        , ""
+        , "and its documentation is available here:"
+        , url
+        ]
+
+  -- Resolve compiler and resolutions. If compiler was not provided,
+  -- discover a compatible compiler based on dependencies.
+  Log.info "Verifying the package build plan..."
+  compilerIndex <- MatrixBuilder.readCompilerIndex
+  { compiler, resolutions: validatedResolutions } <- resolveCompilerAndDeps compilerIndex (Manifest receivedManifest) payload.compiler payload.resolutions
+  Log.info $ "Using compiler " <> Version.print compiler
+
+  -- Validate PureScript module names now that we know the compiler.
+  -- language-cst-parser only supports syntax back to 0.15.0, so we skip for older compilers.
+  Operation.Validation.validatePursModules srcPursFiles >>= case _ of
+    Left formattedError | compiler < Purs.minLanguageCSTParser -> do
+      Log.debug $ "Package failed to parse in validatePursModules: " <> formattedError
+      Log.debug $ "Skipping check because package is published with a pre-0.15.0 compiler (" <> Version.print compiler <> ")."
+    Left formattedError ->
+      Except.throw $ Array.fold
+        [ "This package has either malformed or disallowed PureScript module names "
+        , "in its source: "
+        , formattedError
+        ]
+    Right _ ->
+      Log.debug "Package contains well-formed .purs files in its src directory."
+
   case Operation.Validation.isNotPublished (Manifest receivedManifest) (Metadata metadata) of
-    -- If the package has been published already, then we check whether the published
-    -- version has made it to Pursuit or not. If it has, then we terminate here. If
-    -- it hasn't then we publish to Pursuit and then terminate.
-    Just info -> do
-      published <- Pursuit.getPublishedVersions receivedManifest.name >>= case _ of
-        Left error -> Except.throw error
-        Right versions -> pure versions
+    -- If the package has been published already but docs for this version are missing
+    -- from Pursuit (we check earlier if the docs are there, so we end up here if they are not)
+    -- then upload to Pursuit and terminate
+    Just _ | compiler < Purs.minPursuitPublish -> do
+      Log.notice $ Array.fold
+        [ "This version has already been published to the registry, but the docs have not been "
+        , "uploaded to Pursuit. Unfortunately, it is not possible to publish to Pursuit via the "
+        , "registry using compiler versions prior to " <> Version.print Purs.minPursuitPublish
+        , ". Please try with a later compiler."
+        ]
+      pure Nothing
 
-      case Map.lookup receivedManifest.version published of
-        Just url -> do
-          Except.throw $ String.joinWith "\n"
-            [ "You tried to upload a version that already exists: " <> Version.print receivedManifest.version
-            , ""
-            , "Its metadata is:"
-            , "```json"
-            , printJson Metadata.publishedMetadataCodec info
-            , "```"
-            , ""
-            , "and its documentation is available here:"
-            , url
-            ]
-
-        Nothing | payload.compiler < Purs.minPursuitPublish -> do
-          Log.notice $ Array.fold
-            [ "This version has already been published to the registry, but the docs have not been "
-            , "uploaded to Pursuit. Unfortunately, it is not possible to publish to Pursuit via the "
-            , "registry using compiler versions prior to " <> Version.print Purs.minPursuitPublish
-            , ". Please try with a later compiler."
-            ]
-          pure Nothing
-
-        Nothing -> do
-          Log.notice $ Array.fold
-            [ "This version has already been published to the registry, but the docs have not been "
-            , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
-            ]
-          compilerIndex <- MatrixBuilder.readCompilerIndex
-          verifiedResolutions <- verifyResolutions compilerIndex payload.compiler (Manifest receivedManifest) payload.resolutions
-          let installedResolutions = Path.concat [ tmp, ".registry" ]
-          buildPlan <- MatrixBuilder.resolutionsToBuildPlan verifiedResolutions
-          MatrixBuilder.installBuildPlan buildPlan installedResolutions
-          compilationResult <- Run.liftAff $ Purs.callCompiler
-            { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
-            , version: Just payload.compiler
-            , cwd: Just downloadedPackage
-            }
-          case compilationResult of
-            Left compileFailure -> do
-              let error = MatrixBuilder.printCompilerFailure payload.compiler compileFailure
-              Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
-              Except.throw "Cannot publish to Pursuit because this package failed to compile."
+    Just _ -> do
+      Log.notice $ Array.fold
+        [ "This version has already been published to the registry, but the docs have not been "
+        , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
+        ]
+      let installedResolutions = Path.concat [ tmp, ".registry" ]
+      buildPlan <- MatrixBuilder.resolutionsToBuildPlan validatedResolutions
+      MatrixBuilder.installBuildPlan buildPlan installedResolutions
+      compilationResult <- Run.liftAff $ Purs.callCompiler
+        { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
+        , version: Just compiler
+        , cwd: Just downloadedPackage
+        }
+      case compilationResult of
+        Left compileFailure -> do
+          let error = MatrixBuilder.printCompilerFailure compiler compileFailure
+          Log.error $ "Compilation failed, cannot upload to pursuit: " <> error
+          Except.throw "Cannot publish to Pursuit because this package failed to compile."
+        Right _ -> do
+          Log.debug "Uploading to Pursuit"
+          -- While we have created a manifest from the package source, we
+          -- still need to ensure a purs.json file exists for 'purs publish'.
+          unless hadPursJson do
+            existingManifest <- ManifestIndex.readManifest receivedManifest.name receivedManifest.version
+            case existingManifest of
+              Nothing -> Except.throw "Version was previously published, but we could not find a purs.json file in the package source, and no existing manifest was found in the registry."
+              Just existing -> Run.liftAff $ writeJsonFile Manifest.codec packagePursJson existing
+          publishToPursuit { source: downloadedPackage, compiler, resolutions: validatedResolutions, installedResolutions } >>= case _ of
+            Left publishErr -> Except.throw publishErr
             Right _ -> do
-              Log.debug "Uploading to Pursuit"
-              -- While we have created a manifest from the package source, we
-              -- still need to ensure a purs.json file exists for 'purs publish'.
-              unless hadPursJson do
-                existingManifest <- ManifestIndex.readManifest receivedManifest.name receivedManifest.version
-                case existingManifest of
-                  Nothing -> Except.throw "Version was previously published, but we could not find a purs.json file in the package source, and no existing manifest was found in the registry."
-                  Just existing -> Run.liftAff $ writeJsonFile Manifest.codec packagePursJson existing
-              publishToPursuit { source: downloadedPackage, compiler: payload.compiler, resolutions: verifiedResolutions, installedResolutions } >>= case _ of
-                Left publishErr -> Except.throw publishErr
-                Right _ -> do
-                  FS.Extra.remove tmp
-                  Log.notice "Successfully uploaded package docs to Pursuit! 🎉 🚀"
-              pure Nothing
+              FS.Extra.remove tmp
+              Log.notice "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+          pure Nothing
 
     -- In this case the package version has not been published, so we proceed
     -- with ordinary publishing.
     Nothing -> do
-      Log.info "Verifying the package build plan..."
-      compilerIndex <- MatrixBuilder.readCompilerIndex
-      validatedResolutions <- verifyResolutions compilerIndex payload.compiler (Manifest receivedManifest) payload.resolutions
-
       Log.notice "Verifying unused and/or missing dependencies..."
 
       -- First we install the resolutions and call 'purs graph' to adjust the
@@ -627,7 +695,7 @@ publish maybeLegacyIndex payload = do
       let pursGraph = Purs.Graph { globs: [ srcGlobs, depGlobs ] }
 
       -- We need to use the minimum compiler version that supports 'purs graph'.
-      let pursGraphCompiler = if payload.compiler >= Purs.minPursGraph then payload.compiler else Purs.minPursGraph
+      let pursGraphCompiler = if compiler >= Purs.minPursGraph then compiler else Purs.minPursGraph
 
       -- In this step we run 'purs graph' to get a graph of the package source
       -- and installed dependencies and use that to determine if the manifest
@@ -681,7 +749,7 @@ publish maybeLegacyIndex payload = do
                     Except.throw $ "Failed to validate unused / missing dependencies: " <> Operation.Validation.printValidateDepsError depError
                   Just legacyIndex -> do
                     Log.info $ "Found fixable dependency errors: " <> Operation.Validation.printValidateDepsError depError
-                    conformLegacyManifest (Manifest receivedManifest) payload.compiler compilerIndex legacyIndex depError
+                    conformLegacyManifest (Manifest receivedManifest) compiler compilerIndex legacyIndex depError
 
                 -- If the check passes then we can simply return the manifest and
                 -- resolutions.
@@ -705,7 +773,7 @@ publish maybeLegacyIndex payload = do
       -- the package with exactly what is going to be uploaded.
       Log.notice $ Array.fold
         [ "Verifying package compiles using compiler "
-        , Version.print payload.compiler
+        , Version.print compiler
         , " and resolutions:\n"
         , "```json\n"
         , printJson (Internal.Codec.packageMap Version.codec) resolutions
@@ -719,17 +787,17 @@ publish maybeLegacyIndex payload = do
       MatrixBuilder.installBuildPlan buildPlanForBuild installedResolutions
       compilationResult <- Run.liftAff $ Purs.callCompiler
         { command: Purs.Compile { globs: [ Path.concat [ packageSource, "src/**/*.purs" ], Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
-        , version: Just payload.compiler
+        , version: Just compiler
         , cwd: Just tmp
         }
 
       case compilationResult of
         Left compileFailure -> do
-          let error = MatrixBuilder.printCompilerFailure payload.compiler compileFailure
+          let error = MatrixBuilder.printCompilerFailure compiler compileFailure
           Except.throw $ "Publishing failed due to a compiler error:\n\n" <> error
         Right _ -> do
           -- Cache the successful compilation so findAllCompilers can reuse it
-          Cache.put _compilerCache (Compilation manifest resolutions payload.compiler) { target: payload.compiler, result: Right unit }
+          Cache.put _compilerCache (Compilation manifest resolutions compiler) { target: compiler, result: Right unit }
           pure unit
 
       Log.notice "Package source is verified! Packaging tarball and uploading to the storage backend..."
@@ -758,7 +826,7 @@ publish maybeLegacyIndex payload = do
 
       Storage.upload (un Manifest manifest).name (un Manifest manifest).version tarballPath
       Log.debug $ "Adding the new version " <> Version.print (un Manifest manifest).version <> " to the package metadata file."
-      let newPublishedVersion = { hash, compilers: NonEmptyArray.singleton payload.compiler, publishedTime, bytes }
+      let newPublishedVersion = { hash, compilers: NonEmptyArray.singleton compiler, publishedTime, bytes }
       let newMetadata = metadata { published = Map.insert (un Manifest manifest).version newPublishedVersion metadata.published }
 
       Registry.writeMetadata (un Manifest manifest).name (Metadata newMetadata)
@@ -773,11 +841,11 @@ publish maybeLegacyIndex payload = do
       Log.notice "Mirrored registry operation to the legacy registry!"
 
       Log.debug "Uploading package documentation to Pursuit"
-      if payload.compiler >= Purs.minPursuitPublish then
+      if compiler >= Purs.minPursuitPublish then
         -- TODO: We must use the 'downloadedPackage' instead of 'packageSource'
         -- because Pursuit requires a git repository, and our tarball directory
         -- is not one. This should be changed once Pursuit no longer needs git.
-        publishToPursuit { source: downloadedPackage, compiler: payload.compiler, resolutions, installedResolutions } >>= case _ of
+        publishToPursuit { source: downloadedPackage, compiler, resolutions, installedResolutions } >>= case _ of
           Left publishErr -> do
             Log.error publishErr
             Log.notice $ "Failed to publish package docs to Pursuit: " <> publishErr
@@ -786,25 +854,25 @@ publish maybeLegacyIndex payload = do
       else do
         Log.notice $ Array.fold
           [ "Skipping Pursuit publishing because this package was published with a pre-0.14.7 compiler ("
-          , Version.print payload.compiler
+          , Version.print compiler
           , "). If you want to publish documentation, please try again with a later compiler."
           ]
 
       -- Note: this only runs for the Legacy Importer. In daily circumstances (i.e.
       -- when running the server) this will be taken care of by followup jobs invoking
       -- the MatrixBuilder for each compiler version
-      for_ maybeLegacyIndex \_idx -> do
+      when (isJust maybeLegacyIndex) do
         Log.notice "Determining all valid compiler versions for this package..."
         allCompilers <- PursVersions.pursVersions
-        { failed: invalidCompilers, succeeded: validCompilers } <- case NonEmptyArray.fromFoldable $ NonEmptyArray.delete payload.compiler allCompilers of
-          Nothing -> pure { failed: Map.empty, succeeded: NonEmptySet.singleton payload.compiler }
+        { failed: invalidCompilers, succeeded: validCompilers } <- case NonEmptyArray.fromFoldable $ NonEmptyArray.delete compiler allCompilers of
+          Nothing -> pure { failed: Map.empty, succeeded: NonEmptySet.singleton compiler }
           Just try -> do
             found <- findAllCompilers
               { source: packageSource
               , manifest
               , compilers: try
               }
-            pure { failed: found.failed, succeeded: NonEmptySet.cons payload.compiler found.succeeded }
+            pure { failed: found.failed, succeeded: NonEmptySet.cons compiler found.succeeded }
 
         unless (Map.isEmpty invalidCompilers) do
           Log.debug $ "Some compilers failed: " <> String.joinWith ", " (map Version.print (Set.toUnfoldable (Map.keys invalidCompilers)))
@@ -818,33 +886,7 @@ publish maybeLegacyIndex payload = do
         Log.notice "Wrote completed metadata to the registry!"
 
       FS.Extra.remove tmp
-      pure $ Just { dependencies: (un Manifest manifest).dependencies, version: (un Manifest manifest).version }
-
--- | Verify the build plan for the package. If the user provided a build plan,
--- | we ensure that the provided versions are within the ranges listed in the
--- | manifest. If not, we solve their manifest to produce a build plan.
-verifyResolutions :: forall r. CompilerIndex -> Version -> Manifest -> Maybe (Map PackageName Version) -> Run (REGISTRY + LOG + AFF + EXCEPT String + r) (Map PackageName Version)
-verifyResolutions compilerIndex compiler manifest resolutions = do
-  Log.debug "Check the submitted build plan matches the manifest"
-  case resolutions of
-    Nothing -> do
-      case Operation.Validation.validateDependenciesSolve compiler manifest compilerIndex of
-        Left errors -> do
-          let
-            printedError = String.joinWith "\n"
-              [ "Could not produce valid dependencies for manifest."
-              , "```"
-              , errors # foldMapWithIndex \index error -> String.joinWith "\n"
-                  [ "[Error " <> show (index + 1) <> "]"
-                  , Solver.printSolverError error
-                  ]
-              , "```"
-              ]
-          Except.throw printedError
-        Right solved -> pure solved
-    Just provided -> do
-      validateResolutions manifest provided
-      pure provided
+      pure $ Just { compiler, dependencies: (un Manifest manifest).dependencies, version: (un Manifest manifest).version }
 
 validateResolutions :: forall r. Manifest -> Map PackageName Version -> Run (EXCEPT String + r) Unit
 validateResolutions manifest resolutions = do

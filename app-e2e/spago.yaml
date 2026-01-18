@@ -21,8 +21,10 @@ package:
     - registry-app
     - registry-foreign
     - registry-lib
+    - registry-scripts
     - registry-test-utils
     - routing-duplex
+    - run
     - spec
     - spec-node
     - strings

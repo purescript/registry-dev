@@ -33,7 +33,7 @@ decodeEventsToOps = do
         { name: Utils.unsafePackageName "something"
         , ref: "v1.2.3"
         , version: Utils.unsafeVersion "1.2.3"
-        , compiler: Utils.unsafeVersion "0.15.0"
+        , compiler: Just $ Utils.unsafeVersion "0.15.0"
         , resolutions: Just $ Map.fromFoldable [ Utils.unsafePackageName "prelude" /\ Utils.unsafeVersion "1.0.0" ]
         , location: Nothing
         }
@@ -50,7 +50,7 @@ decodeEventsToOps = do
         , ref: "v5.0.0"
         , version: Utils.unsafeVersion "5.0.0"
         , location: Just $ GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
-        , compiler: Utils.unsafeVersion "0.15.0"
+        , compiler: Just $ Utils.unsafeVersion "0.15.0"
         , resolutions: Just $ Map.fromFoldable [ Utils.unsafePackageName "prelude" /\ Utils.unsafeVersion "1.0.0" ]
         }
 
@@ -79,7 +79,7 @@ decodeEventsToOps = do
         , ref: "v5.0.0"
         , version: Utils.unsafeVersion "5.0.0"
         , location: Just $ GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
-        , compiler: Utils.unsafeVersion "0.15.0"
+        , compiler: Just $ Utils.unsafeVersion "0.15.0"
         , resolutions: Nothing
         }
 
