@@ -129,6 +129,7 @@ in
     setupGitFixtures
     testEnv
     envToExports
+    gitMock
     ;
 
   # Full testConfig still available for less common access patterns

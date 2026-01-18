@@ -39,7 +39,7 @@ else
         pkgs.nodejs
         pkgs.curl
         pkgs.jq
-        pkgs.git
+        testSupport.gitMock
         pkgs.sqlite
         pkgs.nss_wrapper
         testSupport.wiremockStartScript
@@ -61,6 +61,7 @@ else
       export HOME=$TMPDIR
       export STATE_DIR=$TMPDIR/state
       export REPO_FIXTURES_DIR="$STATE_DIR/repo-fixtures"
+      export GIT_BINARY="${pkgs.git}/bin/git"
 
       # Export test environment variables for E2E test runners
       ${testSupport.envToExports testSupport.testEnv}
