@@ -133,6 +133,7 @@ import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Codec (packageMap, versionMap)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
+import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
@@ -149,6 +150,27 @@ import Type.Proxy (Proxy(..))
 data ImportMode = DryRun | GenerateRegistry | UpdateRegistry
 
 derive instance Eq ImportMode
+
+-- | Check if an error message indicates an infrastructure problem (git, network, etc.)
+-- | that should not be cached because it may succeed on retry.
+isInfraError :: String -> Boolean
+isInfraError error =
+  -- Source.purs Fatal errors (HTTP failures, git clone failures)
+  String.contains (String.Pattern "Unrecoverable error") error
+    -- Registry git operation failures (from Registry.purs)
+    || String.contains (String.Pattern "Failed to write and commit") error
+    || String.contains (String.Pattern "Failed to delete and commit") error
+    || String.contains (String.Pattern "Failed to push") error
+    || String.contains (String.Pattern "Failed to write metadata") error
+    || String.contains (String.Pattern "Failed to write package set") error
+    -- Registry read failures - repo sync issues (from Registry.purs)
+    || String.contains (String.Pattern "repo could not be checked") error
+    || String.contains (String.Pattern "Could not read manifests") error
+    || String.contains (String.Pattern "Could not read metadata") error
+    || String.contains (String.Pattern "Could not read package set") error
+    || String.contains (String.Pattern "Could not read latest package set") error
+    -- Raw git/network errors that may leak through
+    || Git.isTransientGitError error
 
 parser :: ArgParser ImportMode
 parser = Arg.choose "command"
@@ -418,6 +440,9 @@ runLegacyImport logs = do
         Right resolutionOptions -> do
           Log.info "Selecting usable compiler from resolutions..."
 
+          -- Read metadata once before the resolution-finding loop
+          allMetadata <- Registry.readAllMetadata
+
           let
             findFirstFromResolutions :: Map PackageName Version -> Run _ (Either (Map Version CompilerFailure) Version)
             findFirstFromResolutions resolutions = do
@@ -428,7 +453,6 @@ runLegacyImport logs = do
                   pure $ NonEmptySet.fromFoldable1 allCompilers
                 else do
                   Log.debug "No compiler version was produced by the solver, so all compilers are potentially compatible."
-                  allMetadata <- Registry.readAllMetadata
                   case compatibleCompilers allMetadata resolutions of
                     Left [] -> do
                       Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
@@ -477,7 +501,8 @@ runLegacyImport logs = do
                   Log.debug "Downloading dependencies..."
                   let installDir = Path.concat [ tmp, ".registry" ]
                   FS.Extra.ensureDirectory installDir
-                  MatrixBuilder.installBuildPlan resolutions installDir
+                  buildPlanForImport <- MatrixBuilder.resolutionsToBuildPlan resolutions
+                  MatrixBuilder.installBuildPlan buildPlanForImport installDir
                   Log.debug $ "Installed to " <> installDir
                   Log.debug "Trying compilers one-by-one..."
                   selected <- findFirstCompiler
@@ -550,6 +575,10 @@ runLegacyImport logs = do
               Run.Except.runExcept (API.publish (Just legacyIndex) payload) >>= case _ of
                 Left error -> do
                   Log.error $ "Failed to publish " <> formatted <> ": " <> error
+                  -- Infrastructure errors (git failures, HTTP failures, etc.) should halt
+                  -- the importer rather than being cached
+                  when (isInfraError error) do
+                    Run.Except.throw $ "Halting importer due to infrastructure error: " <> error
                   Cache.put _importCache (PublishFailure manifest.name manifest.version) (PublishError error)
                 Right _ -> do
                   Log.info $ "Published " <> formatted
@@ -1044,7 +1073,7 @@ packagesMetadataCodec = CJ.named "PackagesMetadata" $ CJ.Record.object
   , lastPublished: Internal.Codec.iso8601Date
   }
 
-getPackagesMetadata :: forall r. Map RawPackageName String -> Run (REGISTRY + LOG + EXCEPT String + GITHUB + r) (Map PackageName PackagesMetadata)
+getPackagesMetadata :: forall r. Map RawPackageName String -> Run (REGISTRY + LOG + EXCEPT String + GITHUB + AFF + EFFECT + r) (Map PackageName PackagesMetadata)
 getPackagesMetadata legacyRegistry = do
   associated <- for (Map.toUnfoldableUnordered legacyRegistry) \(Tuple rawName rawUrl) -> do
     Run.Except.runExceptAt (Proxy :: _ "exceptPackage") (validatePackage rawName rawUrl) >>= case _ of
@@ -1054,9 +1083,36 @@ getPackagesMetadata legacyRegistry = do
         Just tag -> do
           result <- GitHub.getCommitDate address tag.sha
           case result of
-            Left error -> unsafeCrashWith ("Failed to get commit date for " <> PackageName.print name <> "@" <> tag.name <> ": " <> Octokit.printGitHubError error)
+            Left error -> case error of
+              Octokit.APIError { statusCode: 404 } -> do
+                Log.debug $ "Got 404 for " <> PackageName.print name <> ", checking registry-archive..."
+                inArchive <- checkPackageInArchive name
+                if inArchive then do
+                  Log.info $ "Package " <> PackageName.print name <> " found in registry-archive, using current date"
+                  now <- Run.liftEffect nowUTC
+                  pure $ Just $ Tuple name { address, lastPublished: DateTime.date now }
+                else do
+                  Log.info $ "Package " <> PackageName.print name <> " not in registry-archive, using epoch date"
+                  let epochDate = DateTime.canonicalDate (unsafeFromJust (toEnum 1970)) January (unsafeFromJust (toEnum 1))
+                  pure $ Just $ Tuple name { address, lastPublished: epochDate }
+              _ -> unsafeCrashWith ("Failed to get commit date for " <> PackageName.print name <> "@" <> tag.name <> ": " <> Octokit.printGitHubError error)
             Right date -> pure $ Just $ Tuple name { address, lastPublished: DateTime.date date }
   pure $ Map.fromFoldable $ Array.catMaybes associated
+
+checkPackageInArchive :: forall r. PackageName -> Run (LOG + AFF + r) Boolean
+checkPackageInArchive name = do
+  let
+    nameStr = PackageName.print name
+    indexUrl = Archive.registryArchiveUrl <> "/" <> nameStr
+  Log.debug $ "Checking if package exists in registry-archive: " <> indexUrl
+  response <- Run.liftAff $ Fetch.withRetryRequest indexUrl {}
+  case response of
+    Succeeded _ -> do
+      Log.debug $ "Package " <> nameStr <> " found in registry-archive"
+      pure true
+    _ -> do
+      Log.debug $ "Package " <> nameStr <> " not found in registry-archive"
+      pure false
 
 filterPackages_0_13 :: Map PackageName PackagesMetadata -> Map PackageName PackagesMetadata
 filterPackages_0_13 = do
@@ -1659,7 +1715,7 @@ fetchManifestFromArchive name version = do
                 FS.Extra.remove tmp
                 Log.error $ "Failed to parse purs.json as JSON: " <> parseErr
                 Run.Except.throw $ "Invalid purs.json in archive for " <> formatted
-              Right json -> case CJ.decode Manifest.codec json of
+              Right json -> case CJ.decode (Legacy.Manifest.legacyManifestCodec ("v" <> versionStr)) json of
                 Left decodeErr -> do
                   FS.Extra.remove tmp
                   Log.error $ "Failed to decode purs.json manifest: " <> CJ.DecodeError.print decodeErr

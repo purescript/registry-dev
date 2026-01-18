@@ -6,6 +6,7 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.String as String
 import Data.String.CodeUnits as CodeUnits
+import Effect.Aff (Milliseconds(..))
 import Node.ChildProcess.Types (Exit(..))
 import Node.Library.Execa as Execa
 import Parsing as Parsing
@@ -21,6 +22,15 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 import Safe.Coerce (coerce)
+
+-- | Check if a git error message indicates a transient network issue that may succeed on retry.
+isTransientGitError :: String -> Boolean
+isTransientGitError error = do
+  let lower = String.toLower error
+  String.contains (String.Pattern "unable to access") lower
+    || String.contains (String.Pattern "failed to connect") lower
+    || String.contains (String.Pattern "connection timed out") lower
+    || String.contains (String.Pattern "could not connect") lower
 
 -- | The result of running a Git action that can have no effect. For example,
 -- | none of these will have an effect: committing an unchanged file path,
@@ -79,8 +89,36 @@ gitCLI args cwd = do
     Normally 0 -> Right (String.trim result.stdout)
     _ -> Left (result.stdout <> result.stderr)
 
+-- | Check if a remote repository exists and is accessible using `git ls-remote`.
+-- | Returns true if the repository exists and is accessible.
+-- | Note: GIT_TERMINAL_PROMPT=0 is set globally in flake.nix to prevent credential prompts.
+gitRepoIsAccessible :: String -> Aff Boolean
+gitRepoIsAccessible url = do
+  result <- gitCLI [ "ls-remote", "--exit-code", url ] Nothing
+  pure $ isRight result
+
+-- | Run a git command with automatic retry on transient network errors.
+-- | Retries up to 3 times with exponential backoff.
+gitCLIWithRetry :: Array String -> Maybe FilePath -> Aff (Either String String)
+gitCLIWithRetry args cwd = do
+  let
+    retryOpts = defaultRetry
+      { retryOnFailure = \attempt err -> attempt <= 3 && isTransientGitError err
+      , timeout = Milliseconds 30_000.0
+      }
+  withRetry retryOpts (gitCLI args cwd) >>= case _ of
+    Cancelled -> pure $ Left "Git operation timed out after retries"
+    Failed err -> pure $ Left err
+    Succeeded result -> pure $ Right result
+
 withGit :: forall r. FilePath -> Array String -> (String -> String) -> Run (AFF + EXCEPT String + r) String
 withGit cwd args onError = Run.liftAff (gitCLI args (Just cwd)) >>= case _ of
+  Left error -> Except.throw (onError error)
+  Right stdout -> pure stdout
+
+-- | Like withGit, but retries on transient network errors.
+withGitRetry :: forall r. FilePath -> Array String -> (String -> String) -> Run (AFF + EXCEPT String + r) String
+withGitRetry cwd args onError = Run.liftAff (gitCLIWithRetry args (Just cwd)) >>= case _ of
   Left error -> Except.throw (onError error)
   Right stdout -> pure stdout
 
@@ -140,7 +178,7 @@ gitPull { address: { owner, repo }, pullMode } cwd = Except.runExcept do
       case pullMode of
         Autostash -> do
           Log.debug $ "Pulling " <> formatted <> " in autostash mode, which preserves local changes."
-          _ <- exec [ "pull", "--rebase", "--autostash" ] \error ->
+          _ <- withGitRetry cwd [ "pull", "--rebase", "--autostash" ] \error ->
             "Failed to pull the latest changes" <> inRepoErr error
           Log.debug $ "Pulled the latest changes for " <> formatted
 
@@ -150,7 +188,7 @@ gitPull { address: { owner, repo }, pullMode } cwd = Except.runExcept do
 
         OnlyClean -> do
           Log.debug $ "Pulling " <> formatted <> " in only-clean mode."
-          _ <- exec [ "pull" ] \error ->
+          _ <- withGitRetry cwd [ "pull" ] \error ->
             "Failed to pull the latest changes" <> inRepoErr error
           Log.debug $ "Pulled the latest changes for " <> formatted
 
@@ -166,7 +204,7 @@ gitPull { address: { owner, repo }, pullMode } cwd = Except.runExcept do
             Log.debug $ "Cleaned local checkout."
 
           Log.debug $ "Pulling " <> formatted <> " in force-clean mode."
-          _ <- exec [ "pull" ] \error ->
+          _ <- withGitRetry cwd [ "pull" ] \error ->
             "Failed to pull the latest changes" <> inRepoErr error
           Log.debug $ "Pulled the latest changes for " <> formatted
 
@@ -266,7 +304,7 @@ gitPush { address, committer } cwd = Except.runExcept do
         authOrigin :: URL
         authOrigin = coerce (mkAuthOrigin address committer)
 
-      _ <- withGit cwd [ "push", authOrigin ] \error ->
+      _ <- withGitRetry cwd [ "push", authOrigin ] \error ->
         "Failed to push to " <> address.owner <> "/" <> address.repo <> " from " <> status.branch <> inRepoErr error
 
       pure Changed
@@ -284,7 +322,7 @@ gitStatus cwd = do
   let inRepoErr error = " in local checkout " <> cwd <> ": " <> error
 
   -- First we fetch the origin to make sure we're up-to-date.
-  _ <- exec [ "fetch", "origin" ] \error ->
+  _ <- withGitRetry cwd [ "fetch", "origin" ] \error ->
     "Failed to fetch origin " <> inRepoErr error
 
   -- Then we check the local status, which will return as its first line of

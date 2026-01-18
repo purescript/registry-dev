@@ -14,6 +14,7 @@ import Effect.Ref as Ref
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
+import Registry.App.API (LicenseValidationError(..), validateLicense)
 import Registry.App.API as API
 import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Env as Env
@@ -27,6 +28,7 @@ import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Codec as Internal.Codec
+import Registry.License as License
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
@@ -56,6 +58,9 @@ spec :: Spec.Spec Unit
 spec = do
   Spec.describe "Verifies build plans" do
     checkBuildPlanToResolutions
+
+  Spec.describe "Validates licenses match" do
+    licenseValidation
 
   Spec.describe "Includes correct files in tarballs" do
     removeIgnoredTarballFiles
@@ -119,7 +124,14 @@ spec = do
 
         -- Let's verify the manifest does not include the unnecessary
         -- 'type-equality' dependency...
-        Storage.download name version "effect-result"
+        -- First, get the integrity info from metadata for the download
+        Metadata downloadMeta <- Registry.readMetadata name >>= case _ of
+          Nothing -> Except.throw $ "No metadata for " <> PackageName.print name
+          Just m -> pure m
+        { hash, bytes } <- case Map.lookup version downloadMeta.published of
+          Nothing -> Except.throw $ "Version " <> Version.print version <> " not in metadata"
+          Just p -> pure p
+        Storage.download name version "effect-result" { hash, bytes }
         Tar.extract { cwd: workdir, archive: "effect-result" }
         Run.liftAff (readJsonFile Manifest.codec (Path.concat [ "effect-4.0.0", "purs.json" ])) >>= case _ of
           Left err -> Except.throw $ "Expected effect@4.0.0 to be downloaded to effect-4.0.0 with a purs.json but received error " <> err
@@ -449,3 +461,47 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runBaseEffects) $ Sp
       writeFiles = Run.liftAff <<< traverse_ (\path -> FS.Aff.writeTextFile UTF8 (inTmp path) "module Module where")
 
     pure { source: tmp, destination: destTmp, writeDirectories, writeFiles }
+
+licenseValidation :: Spec.Spec Unit
+licenseValidation = do
+  let fixtures = Path.concat [ "app", "fixtures", "licenses", "halogen-hooks" ]
+
+  Spec.describe "validateLicense" do
+    Spec.it "Passes when manifest license covers all detected licenses" do
+      -- The halogen-hooks fixture has MIT in LICENSE and Apache-2.0 in package.json
+      let manifestLicense = unsafeLicense "MIT AND Apache-2.0"
+      result <- Assert.Run.runBaseEffects $ validateLicense fixtures manifestLicense
+      Assert.shouldEqual Nothing result
+
+    Spec.it "Fails when manifest license does not cover a detected license" do
+      -- Manifest says MIT only, but Apache-2.0 is also in package.json
+      let manifestLicense = unsafeLicense "MIT"
+      result <- Assert.Run.runBaseEffects $ validateLicense fixtures manifestLicense
+      case result of
+        Just (LicenseMismatch { detectedLicenses }) ->
+          -- Should detect that Apache-2.0 is not covered
+          Assert.shouldContain (map License.print detectedLicenses) "Apache-2.0"
+        _ ->
+          Assert.fail "Expected LicenseMismatch error"
+
+    Spec.it "Fails when manifest has completely different license" do
+      -- Manifest says BSD-3-Clause, but fixture has MIT and Apache-2.0
+      let manifestLicense = unsafeLicense "BSD-3-Clause"
+      result <- Assert.Run.runBaseEffects $ validateLicense fixtures manifestLicense
+      case result of
+        Just (LicenseMismatch { manifestLicense: ml, detectedLicenses }) -> do
+          Assert.shouldEqual "BSD-3-Clause" (License.print ml)
+          -- Both MIT and Apache-2.0 should be in the detected licenses
+          Assert.shouldContain (map License.print detectedLicenses) "MIT"
+          Assert.shouldContain (map License.print detectedLicenses) "Apache-2.0"
+        _ ->
+          Assert.fail "Expected LicenseMismatch error"
+
+    Spec.it "Passes when manifest uses OR conjunction" do
+      -- OR conjunction is also valid - means either license applies
+      let manifestLicense = unsafeLicense "MIT OR Apache-2.0"
+      result <- Assert.Run.runBaseEffects $ validateLicense fixtures manifestLicense
+      Assert.shouldEqual Nothing result
+
+unsafeLicense :: String -> License
+unsafeLicense str = unsafeFromRight $ License.parse str

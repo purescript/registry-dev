@@ -2,6 +2,7 @@ module Registry.App.API
   ( AuthenticatedEffects
   , COMPILER_CACHE
   , CompilerCache(..)
+  , LicenseValidationError(..)
   , PackageSetUpdateEffects
   , PublishEffects
   , _compilerCache
@@ -12,8 +13,10 @@ module Registry.App.API
   , getPacchettiBotti
   , packageSetUpdate
   , packagingTeam
+  , printLicenseValidationError
   , publish
   , removeIgnoredTarballFiles
+  , validateLicense
   ) where
 
 import Registry.App.Prelude
@@ -53,6 +56,7 @@ import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Registry.API.V1 (PackageSetJobData)
 import Registry.App.Auth as Auth
+import Registry.App.CLI.Licensee as Licensee
 import Registry.App.CLI.Purs (CompilerFailure(..), compilerFailureCodec)
 import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.PursVersions as PursVersions
@@ -90,6 +94,7 @@ import Registry.Foreign.Octokit (Team)
 import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Path as Internal.Path
+import Registry.License as License
 import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.Metadata as Metadata
@@ -571,6 +576,11 @@ publish maybeLegacyIndex payload = do
   when (Operation.Validation.isMetadataPackage (Manifest receivedManifest)) do
     Except.throw "The `metadata` package cannot be uploaded to the registry because it is a protected package."
 
+  Log.info "Verifying licenses are consistent among manifest files..."
+  validateLicense downloadedPackage receivedManifest.license >>= case _ of
+    Nothing -> Log.debug "License validation passed."
+    Just err -> Except.throw $ printLicenseValidationError err
+
   for_ (Operation.Validation.isNotUnpublished (Manifest receivedManifest) (Metadata metadata)) \info -> do
     Except.throw $ String.joinWith "\n"
       [ "You tried to upload a version that has been unpublished: " <> Version.print receivedManifest.version
@@ -640,7 +650,8 @@ publish maybeLegacyIndex payload = do
         , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
         ]
       let installedResolutions = Path.concat [ tmp, ".registry" ]
-      MatrixBuilder.installBuildPlan validatedResolutions installedResolutions
+      buildPlan <- MatrixBuilder.resolutionsToBuildPlan validatedResolutions
+      MatrixBuilder.installBuildPlan buildPlan installedResolutions
       compilationResult <- Run.liftAff $ Purs.callCompiler
         { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
         , version: Just compiler
@@ -676,7 +687,8 @@ publish maybeLegacyIndex payload = do
       -- manifest as needed, but we defer compilation until after this check
       -- in case the package manifest and resolutions are adjusted.
       let installedResolutions = Path.concat [ tmp, ".registry" ]
-      MatrixBuilder.installBuildPlan validatedResolutions installedResolutions
+      buildPlan <- MatrixBuilder.resolutionsToBuildPlan validatedResolutions
+      MatrixBuilder.installBuildPlan buildPlan installedResolutions
 
       let srcGlobs = Path.concat [ downloadedPackage, "src", "**", "*.purs" ]
       let depGlobs = Path.concat [ installedResolutions, "*", "src", "**", "*.purs" ]
@@ -771,7 +783,8 @@ publish maybeLegacyIndex payload = do
       -- We clear the installation directory so that no old installed resolutions
       -- stick around.
       Run.liftAff $ FS.Extra.remove installedResolutions
-      MatrixBuilder.installBuildPlan resolutions installedResolutions
+      buildPlanForBuild <- MatrixBuilder.resolutionsToBuildPlan resolutions
+      MatrixBuilder.installBuildPlan buildPlanForBuild installedResolutions
       compilationResult <- Run.liftAff $ Purs.callCompiler
         { command: Purs.Compile { globs: [ Path.concat [ packageSource, "src/**/*.purs" ], Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
         , version: Just compiler
@@ -782,7 +795,10 @@ publish maybeLegacyIndex payload = do
         Left compileFailure -> do
           let error = MatrixBuilder.printCompilerFailure compiler compileFailure
           Except.throw $ "Publishing failed due to a compiler error:\n\n" <> error
-        Right _ -> pure unit
+        Right _ -> do
+          -- Cache the successful compilation so findAllCompilers can reuse it
+          Cache.put _compilerCache (Compilation manifest resolutions compiler) { target: compiler, result: Right unit }
+          pure unit
 
       Log.notice "Package source is verified! Packaging tarball and uploading to the storage backend..."
       let tarballName = packageDirname <> ".tar.gz"
@@ -845,7 +861,7 @@ publish maybeLegacyIndex payload = do
       -- Note: this only runs for the Legacy Importer. In daily circumstances (i.e.
       -- when running the server) this will be taken care of by followup jobs invoking
       -- the MatrixBuilder for each compiler version
-      for_ maybeLegacyIndex \_idx -> do
+      when (isJust maybeLegacyIndex) do
         Log.notice "Determining all valid compiler versions for this package..."
         allCompilers <- PursVersions.pursVersions
         { failed: invalidCompilers, succeeded: validCompilers } <- case NonEmptyArray.fromFoldable $ NonEmptyArray.delete compiler allCompilers of
@@ -952,7 +968,8 @@ findAllCompilers { source, manifest, compilers } = do
             workdir <- Tmp.mkTmpDir
             let installed = Path.concat [ workdir, ".registry" ]
             FS.Extra.ensureDirectory installed
-            MatrixBuilder.installBuildPlan resolutions installed
+            buildPlanForCompiler <- MatrixBuilder.resolutionsToBuildPlan resolutions
+            MatrixBuilder.installBuildPlan buildPlanForCompiler installed
             result <- Run.liftAff $ Purs.callCompiler
               { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }
               , version: Just target
@@ -1361,3 +1378,82 @@ instance FsEncodable CompilerCache where
           }
 
       Exists.mkExists $ Cache.AsJson cacheKey codec next
+
+-- | Errors that can occur when validating license consistency
+data LicenseValidationError = LicenseMismatch
+  { manifestLicense :: License
+  , detectedLicenses :: Array License
+  }
+
+derive instance Eq LicenseValidationError
+
+printLicenseValidationError :: LicenseValidationError -> String
+printLicenseValidationError = case _ of
+  LicenseMismatch { manifestLicense, detectedLicenses } -> Array.fold
+    [ "License mismatch: The manifest specifies license '"
+    , License.print manifestLicense
+    , "' but the following license(s) were detected in your repository: "
+    , String.joinWith ", " (map License.print detectedLicenses)
+    , ". Please ensure your manifest license accurately represents all licenses "
+    , "in your repository. If multiple licenses apply, join them using SPDX "
+    , "conjunctions (e.g., 'MIT AND Apache-2.0' or 'MIT OR Apache-2.0')."
+    ]
+
+-- | Validate that the license in the manifest is consistent with licenses
+-- | detected in the repository (LICENSE file, package.json, bower.json).
+-- |
+-- | This check ensures that the SPDX identifier asserted in the package
+-- | manifest accurately represents the licenses present in the repository.
+-- | If multiple distinct licenses are detected, they must all be represented
+-- | in the manifest license (e.g., joined with AND or OR).
+validateLicense :: forall r. FilePath -> License -> Run (LOG + AFF + r) (Maybe LicenseValidationError)
+validateLicense packageDir manifestLicense = do
+  Log.debug "Detecting licenses from repository files..."
+  detected <- Run.liftAff $ Licensee.detect packageDir
+  case detected of
+    Left err -> do
+      Log.warn $ "License detection failed, relying on manifest: " <> err
+      pure Nothing
+    Right detectedStrings -> do
+      let
+        parsedLicenses :: Array License
+        parsedLicenses = Array.mapMaybe (hush <<< License.parse) detectedStrings
+
+      Log.debug $ "Detected licenses: " <> String.joinWith ", " detectedStrings
+
+      if Array.null parsedLicenses then do
+        Log.debug "No licenses detected from repository files, nothing to validate."
+        pure Nothing
+      else case License.extractIds manifestLicense of
+        Left err -> do
+          -- This shouldn't be possible (we have already validated the license)
+          -- as part of constructing the manifest
+          Log.warn $ "Could not extract license IDs from manifest: " <> err
+          pure Nothing
+        Right manifestIds -> do
+          let
+            manifestIdSet = Set.fromFoldable manifestIds
+
+            -- A detected license is covered if all its IDs are in the manifest IDs
+            isCovered :: License -> Boolean
+            isCovered license = case License.extractIds license of
+              Left _ -> false
+              Right ids -> Array.all (\id -> Set.member id manifestIdSet) ids
+
+            uncoveredLicenses :: Array License
+            uncoveredLicenses = Array.filter (not <<< isCovered) parsedLicenses
+
+          if Array.null uncoveredLicenses then do
+            Log.debug "All detected licenses are covered by the manifest license."
+            pure Nothing
+          else do
+            Log.warn $ Array.fold
+              [ "License mismatch detected: manifest has '"
+              , License.print manifestLicense
+              , "' but detected "
+              , String.joinWith ", " (map License.print parsedLicenses)
+              ]
+            pure $ Just $ LicenseMismatch
+              { manifestLicense
+              , detectedLicenses: uncoveredLicenses
+              }

@@ -157,6 +157,10 @@ import Registry.Operation (AuthenticatedData)
 import Registry.SSH as SSH
 ```
 
+### Syntax
+
+- Never use `let/in` syntax unless in an `ado` block. Prefer `do/let`.
+
 ## Deployment
 
 Continuous deployment via GitHub Actions on master. Manual deploy:

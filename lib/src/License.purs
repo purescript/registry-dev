@@ -9,6 +9,7 @@ module Registry.License
   ( License
   , SPDXConjunction(..)
   , codec
+  , extractIds
   , joinWith
   , parse
   , print
@@ -51,6 +52,14 @@ foreign import parseSPDXLicenseIdImpl :: forall r. Fn3 (String -> r) (String -> 
 -- | Parse a string as a SPDX license identifier.
 parse :: String -> Either String License
 parse = runFn3 parseSPDXLicenseIdImpl Left (Right <<< License)
+
+foreign import extractLicenseIdsImpl :: forall r. Fn3 (String -> r) (Array String -> r) String r
+
+-- | Extract all license identifiers from a SPDX expression.
+-- | Returns an array of uppercase license IDs for case-insensitive comparison.
+-- | For example, "MIT AND Apache-2.0" returns ["MIT", "APACHE-2.0"].
+extractIds :: License -> Either String (Array String)
+extractIds (License expr) = runFn3 extractLicenseIdsImpl Left Right expr
 
 -- | A valid conjunction for SPDX license identifiers. AND means that both
 -- | licenses must be satisfied; OR means that at least one license must be

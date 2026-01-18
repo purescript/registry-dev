@@ -188,8 +188,15 @@ compilersForPackageVersion package version target = do
   let extractedPath = Path.concat [ tmp, extractedName ]
   let installPath = Path.concat [ tmp, formattedName ]
 
+  -- Look up metadata for integrity check
+  { hash, bytes } <- Registry.readMetadata package >>= case _ of
+    Nothing -> Except.throw $ "No metadata found for " <> PackageName.print package
+    Just (Metadata metadata) -> case Map.lookup version metadata.published of
+      Nothing -> Except.throw $ "Version " <> Version.print version <> " not published for " <> PackageName.print package
+      Just published -> pure published
+
   Log.debug $ "Installing " <> formattedName
-  Storage.download package version tarballPath
+  Storage.download package version tarballPath { hash, bytes }
   Run.liftEffect $ Tar.extract { cwd: tmp, archive: tarballName }
   Run.liftAff do
     FS.Extra.remove tarballPath
@@ -313,9 +320,13 @@ compilersForAllPackages target = do
       let
         filename = PackageName.print name <> "-" <> Version.print version <> ".tar.gz"
         filepath = Path.concat [ dependenciesDir, filename ]
-      Storage.download name version filepath
-      Tar.extract { cwd: dependenciesDir, archive: filename }
-      Run.liftAff $ FS.Aff.unlink filepath
+      maybeMetadata <- Registry.readMetadata name
+      case maybeMetadata >>= \(Metadata m) -> Map.lookup version m.published of
+        Nothing -> Except.throw $ "No metadata found for " <> formatPackageVersion name version
+        Just { hash, bytes } -> do
+          Storage.download name version filepath { hash, bytes }
+          Tar.extract { cwd: dependenciesDir, archive: filename }
+          Run.liftAff $ FS.Aff.unlink filepath
 
     Log.debug $ "Compiling with purs@" <> Version.print compiler <> " and globs " <> String.joinWith " " globs
     compilerOutput <- Run.liftAff $ Purs.callCompiler

@@ -5,11 +5,11 @@
   },
   "published": {
     "6.0.1": {
-      "bytes": 31129,
+      "bytes": 31125,
       "compilers": [
         "0.15.10"
       ],
-      "hash": "sha256-EbbFV0J5xV0WammfgCv6HRFSK7Zd803kkofE8aEoam0=",
+      "hash": "sha256-XaM78oJFCsdZxjlDbUHj8MnZidwQc4HSnfrLfliXuAc=",
       "publishedTime": "2022-08-18T20:04:00.000Z",
       "ref": "v6.0.1"
     }

@@ -4,7 +4,9 @@ import Registry.App.Prelude
 
 import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
+import Data.Codec.JSON as CJ
 import Registry.App.Legacy.Manifest as Legacy.Manifest
+import Registry.Manifest (Manifest(..))
 import Registry.Test.Assert as Assert
 import Test.Spec (Spec)
 import Test.Spec as Spec
@@ -12,6 +14,7 @@ import Test.Spec as Spec
 spec :: Spec Unit
 spec = do
   Spec.describe "Bowerfile" bowerfileSpec
+  Spec.describe "Legacy manifest codec" legacyManifestCodecSpec
 
 bowerfileSpec :: Spec Unit
 bowerfileSpec = do
@@ -96,3 +99,60 @@ bowerfileSpec = do
       , "dependencies": []
       }
       """
+
+legacyManifestCodecSpec :: Spec Unit
+legacyManifestCodecSpec = do
+  Spec.describe "Parses manifests with optional ref" do
+    Spec.it "Parses manifest without ref, using fallback" do
+      let
+        input =
+          """
+          { "name": "prelude"
+          , "version": "1.0.0"
+          , "license": "MIT"
+          , "location": { "githubOwner": "purescript", "githubRepo": "purescript-prelude" }
+          , "dependencies": {}
+          }
+          """
+        fallbackRef = "v1.0.0"
+      case parseJson (Legacy.Manifest.legacyManifestCodec fallbackRef) input of
+        Left err -> Assert.fail $ "Failed to parse manifest without ref:\n" <> CJ.DecodeError.print err
+        Right (Manifest m) -> m.ref `Assert.shouldEqual` fallbackRef
+
+    Spec.it "Parses manifest with ref, ignoring fallback" do
+      let
+        input =
+          """
+          { "name": "prelude"
+          , "version": "1.0.0"
+          , "license": "MIT"
+          , "location": { "githubOwner": "purescript", "githubRepo": "purescript-prelude" }
+          , "ref": "abc123"
+          , "dependencies": {}
+          }
+          """
+        fallbackRef = "v1.0.0"
+      case parseJson (Legacy.Manifest.legacyManifestCodec fallbackRef) input of
+        Left err -> Assert.fail $ "Failed to parse manifest with ref:\n" <> CJ.DecodeError.print err
+        Right (Manifest m) -> m.ref `Assert.shouldEqual` "abc123"
+
+    Spec.it "Roundtrips manifest with ref" do
+      let
+        input =
+          """
+          { "name": "prelude"
+          , "version": "1.0.0"
+          , "license": "MIT"
+          , "location": { "githubOwner": "purescript", "githubRepo": "purescript-prelude" }
+          , "ref": "v1.0.0"
+          , "dependencies": {}
+          }
+          """
+        fallbackRef = "unused"
+      case parseJson (Legacy.Manifest.legacyManifestCodec fallbackRef) input of
+        Left err -> Assert.fail $ "Failed to parse:\n" <> CJ.DecodeError.print err
+        Right manifest -> do
+          let encoded = CJ.encode (Legacy.Manifest.legacyManifestCodec fallbackRef) manifest
+          case CJ.decode (Legacy.Manifest.legacyManifestCodec fallbackRef) encoded of
+            Left err -> Assert.fail $ "Failed to decode roundtripped manifest:\n" <> CJ.DecodeError.print err
+            Right (Manifest m) -> m.ref `Assert.shouldEqual` "v1.0.0"

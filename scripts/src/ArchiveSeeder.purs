@@ -44,6 +44,7 @@ import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Format as Internal.Format
+import Registry.Metadata (PublishedMetadata)
 import Registry.PackageName as PackageName
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
@@ -236,7 +237,7 @@ runArchiveSeeder args logPath = do
               Log.debug $ PackageName.print name <> ": Cached as accessible, skipping"
             Just Repo404 -> do
               Log.debug $ PackageName.print name <> ": Cached as 404, processing..."
-              processDeletedPackage args statsRef name publishedVersions versionCount
+              processDeletedPackage args statsRef name metadata.published
             Nothing -> do
               -- Probe GitHub to check if the repo is accessible
               GitHub.listTags address >>= case _ of
@@ -246,7 +247,7 @@ runArchiveSeeder args logPath = do
                 Left (Octokit.APIError err) | err.statusCode == 404 -> do
                   Log.info $ PackageName.print name <> ": GitHub repo returns 404, caching and processing..."
                   Cache.put _seederCache (RepoStatusCache name) Repo404
-                  processDeletedPackage args statsRef name publishedVersions versionCount
+                  processDeletedPackage args statsRef name metadata.published
                 Left otherErr -> do
                   -- Transient error - do NOT cache, log for re-run
                   let errMsg = PackageName.print name <> ": " <> Octokit.printGitHubError otherErr
@@ -299,10 +300,11 @@ processDeletedPackage
    . Args
   -> Ref.Ref Stats
   -> PackageName
-  -> Set Version
-  -> Int
+  -> Map Version PublishedMetadata
   -> Run (SeedEffects r) Unit
-processDeletedPackage args statsRef name publishedVersions versionCount = do
+processDeletedPackage args statsRef name publishedMap = do
+  let publishedVersions = Map.keys publishedMap
+  let versionCount = Set.size publishedVersions
   liftEffect $ Ref.modify_ (\s -> s { packagesNeedingArchive = s.packagesNeedingArchive + 1 }) statsRef
   liftEffect $ Ref.modify_ (\s -> s { versionsNeedingArchive = s.versionsNeedingArchive + versionCount }) statsRef
 
@@ -330,16 +332,20 @@ processDeletedPackage args statsRef name publishedVersions versionCount = do
           if args.dryRun then do
             Log.info $ formatted <> ": Would download from S3 and write to archive (dry run)"
             liftEffect $ Ref.modify_ (\s -> s { tarballsWritten = s.tarballsWritten + 1 }) statsRef
-          else do
-            Log.info $ formatted <> ": Downloading from S3..."
-            Run.liftAff $ FS.Extra.ensureDirectory archiveSubdir
-            Except.runExcept (Storage.download name version archiveFile) >>= case _ of
-              Left downloadErr -> do
-                Log.warn $ formatted <> ": Failed to download: " <> downloadErr
-                liftEffect $ Ref.modify_ (\s -> s { tarballsMissing = s.tarballsMissing + 1 }) statsRef
-              Right _ -> do
-                Log.info $ formatted <> ": Written to archive"
-                liftEffect $ Ref.modify_ (\s -> s { tarballsWritten = s.tarballsWritten + 1 }) statsRef
+          else case Map.lookup version publishedMap of
+            Nothing -> do
+              Log.warn $ formatted <> ": No integrity info found in metadata"
+              liftEffect $ Ref.modify_ (\s -> s { tarballsMissing = s.tarballsMissing + 1 }) statsRef
+            Just { hash, bytes } -> do
+              Log.info $ formatted <> ": Downloading from S3..."
+              Run.liftAff $ FS.Extra.ensureDirectory archiveSubdir
+              Except.runExcept (Storage.download name version archiveFile { hash, bytes }) >>= case _ of
+                Left downloadErr -> do
+                  Log.warn $ formatted <> ": Failed to download: " <> downloadErr
+                  liftEffect $ Ref.modify_ (\s -> s { tarballsMissing = s.tarballsMissing + 1 }) statsRef
+                Right _ -> do
+                  Log.info $ formatted <> ": Written to archive"
+                  liftEffect $ Ref.modify_ (\s -> s { tarballsWritten = s.tarballsWritten + 1 }) statsRef
         else do
           Log.warn $ formatted <> ": Not available in S3"
           liftEffect $ Ref.modify_ (\s -> s { tarballsMissing = s.tarballsMissing + 1 }) statsRef
