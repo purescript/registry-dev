@@ -43,6 +43,7 @@ import Registry.Foreign.Octokit as Octokit
 import Registry.Location (Location(..))
 import Registry.Operation (AuthenticatedPackageOperation(..))
 import Registry.Operation as Operation
+import Registry.Operation.Validation as Operation.Validation
 import Registry.PackageName as PackageName
 import Run (AFF, EFFECT, Run)
 import Run as Run
@@ -141,11 +142,24 @@ runPackageTransferrer mode maybePrivateKey registryApiUrl = do
                       , newLocation: GitHub { owner: actual.owner, repo: actual.repo, subdir: registered.subdir }
                       }
 
-  case Array.length transfersNeeded of
+  uniqueTransfers <- Array.catMaybes <$> for transfersNeeded \transfer@{ name, newLocation } ->
+    if Operation.Validation.locationIsUnique newLocation allMetadata then
+      pure $ Just transfer
+    else do
+      Log.warn $ Array.fold
+        [ "Skipping transfer for "
+        , PackageName.print name
+        , " because location "
+        , formatLocation newLocation
+        , " is already registered."
+        ]
+      pure Nothing
+
+  case Array.length uniqueTransfers of
     0 -> Log.info "No packages require transferring."
     n -> do
       Log.info $ show n <> " packages need transferring"
-      for_ transfersNeeded \{ name, newLocation } ->
+      for_ uniqueTransfers \{ name, newLocation } ->
         submitTransferJob mode maybePrivateKey registryApiUrl name newLocation
 
 -- | Parse GitHub API tag URL to extract owner/repo
@@ -173,15 +187,13 @@ submitTransferJob
   -> Location
   -> Run PackageTransferrerEffects Unit
 submitTransferJob mode maybePrivateKey registryApiUrl name newLocation = do
-  let formatted = PackageName.print name
+  let
+    formatted = PackageName.print name
+    locationStr = formatLocation newLocation
 
   case mode of
     DryRun -> do
-      let
-        locStr = case newLocation of
-          GitHub { owner, repo } -> owner <> "/" <> repo
-          Git { url } -> url
-      Log.info $ "[DRY RUN] Would submit transfer job for " <> formatted <> " to " <> locStr
+      Log.info $ "[DRY RUN] Would submit transfer job for " <> formatted <> " to " <> locationStr
 
     Submit -> do
       privateKey <- case maybePrivateKey of
@@ -191,6 +203,7 @@ submitTransferJob mode maybePrivateKey registryApiUrl name newLocation = do
       let
         payload :: Operation.TransferData
         payload = { name, newLocation }
+
         rawPayload = JSON.print $ CJ.encode Operation.transferCodec payload
 
       -- Sign the payload with pacchettibotti keys
@@ -209,10 +222,15 @@ submitTransferJob mode maybePrivateKey registryApiUrl name newLocation = do
       Log.info $ "Submitting transfer job for " <> formatted
       result <- Run.liftAff $ submitJob (registryApiUrl <> "/v1/transfer") authenticatedData
       case result of
-        Left err -> do
+        Left err ->
           Log.error $ "Failed to submit transfer job for " <> formatted <> ": " <> err
-        Right { jobId } -> do
+        Right { jobId } ->
           Log.info $ "Submitted transfer job " <> unwrap jobId <> " for " <> formatted
+
+formatLocation :: Location -> String
+formatLocation = case _ of
+  GitHub { owner, repo } -> owner <> "/" <> repo
+  Git { url } -> url
 
 -- | Submit a transfer job to the registry API
 submitJob :: String -> Operation.AuthenticatedData -> Aff (Either String V1.JobCreatedResponse)
