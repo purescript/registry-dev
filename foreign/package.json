@@ -4,18 +4,18 @@
   "private": true,
   "license": "BSD-3-Clause",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.948.0",
+    "@aws-sdk/client-s3": "^3.971.0",
     "@octokit/plugin-retry": "^8.0.3",
     "@octokit/plugin-throttling": "^11.0.3",
     "@octokit/rest": "^22.0.1",
-    "better-sqlite3": "^12.4.0",
+    "better-sqlite3": "^12.6.2",
     "fast-glob": "^3.3.3",
-    "fs-extra": "^11.3.2",
+    "fs-extra": "^11.3.3",
     "fuse.js": "^7.1.0",
-    "jsonrepair": "^3.13.1",
+    "jsonrepair": "^3.13.2",
     "registry-lib": "file:../lib",
     "semver": "^7.7.3",
-    "tar": "^7.5.2",
+    "tar": "^7.5.3",
     "tmp": "^0.2.5",
     "yaml": "^2.8.2"
   }

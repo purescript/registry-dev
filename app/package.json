@@ -4,7 +4,7 @@
   "type": "module",
   "license": "BSD-3-Clause",
   "dependencies": {
-    "better-sqlite3": "^12.4.0",
+    "better-sqlite3": "^12.6.2",
     "registry-foreign": "file:../foreign",
     "registry-lib": "file:../lib",
     "yaml": "^2.8.2"
