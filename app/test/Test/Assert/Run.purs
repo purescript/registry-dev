@@ -27,7 +27,7 @@ import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.API.V1 (LogLevel)
-import Registry.App.API (COMPILER_CACHE)
+import Registry.App.API (COMPILER_CACHE, PURS_GRAPH_CACHE)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.CLI.Tar as Tar
@@ -95,6 +95,7 @@ type TEST_EFFECTS =
       + GITHUB_CACHE
       + LEGACY_CACHE
       + COMPILER_CACHE
+      + PURS_GRAPH_CACHE
       + LOG
       + EXCEPT String
       + AFF
@@ -133,6 +134,7 @@ runTestEffects env operation = Aff.attempt do
     # Env.runResourceEnv resourceEnv
     -- Caches
     # runCompilerCacheMock
+    # runPursGraphCacheMock
     # runGitHubCacheMemory githubCache
     # runLegacyCacheMemory legacyCache
     -- Other effects
@@ -157,6 +159,22 @@ runGitHubCacheMemory = Cache.interpret GitHub._githubCache <<< Cache.handleMemor
 
 runCompilerCacheMock :: forall r a. Run (COMPILER_CACHE + LOG + r) a -> Run (LOG + r) a
 runCompilerCacheMock = Cache.interpret API._compilerCache case _ of
+  Cache.Get key -> Exists.runExists getImpl (Cache.encodeFs key)
+  Cache.Put _ next -> pure next
+  Cache.Delete key -> Exists.runExists deleteImpl (Cache.encodeFs key)
+  where
+  getImpl :: forall x z. Cache.FsEncoding Cache.Reply x z -> Run _ x
+  getImpl = case _ of
+    Cache.AsBuffer _ (Cache.Reply reply) -> pure $ reply Nothing
+    Cache.AsJson _ _ (Cache.Reply reply) -> pure $ reply Nothing
+
+  deleteImpl :: forall x z. Cache.FsEncoding Cache.Ignore x z -> Run _ x
+  deleteImpl = case _ of
+    Cache.AsBuffer _ (Cache.Ignore next) -> pure next
+    Cache.AsJson _ _ (Cache.Ignore next) -> pure next
+
+runPursGraphCacheMock :: forall r a. Run (PURS_GRAPH_CACHE + LOG + r) a -> Run (LOG + r) a
+runPursGraphCacheMock = Cache.interpret API._pursGraphCache case _ of
   Cache.Get key -> Exists.runExists getImpl (Cache.encodeFs key)
   Cache.Put _ next -> pure next
   Cache.Delete key -> Exists.runExists deleteImpl (Cache.encodeFs key)

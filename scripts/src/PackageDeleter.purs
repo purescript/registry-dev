@@ -16,7 +16,7 @@ import Effect.Class.Console (log)
 import Effect.Class.Console as Console
 import Node.Path as Path
 import Node.Process as Process
-import Registry.App.API (_compilerCache)
+import Registry.App.API (_compilerCache, _pursGraphCache)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Archive as Archive
@@ -159,6 +159,7 @@ main = launchAff_ do
         >>> Pursuit.interpret Pursuit.handlePure
         >>> Cache.interpret _legacyCache (Cache.handleMemoryFs { ref: legacyCacheRef, cache })
         >>> Cache.interpret _compilerCache (Cache.handleFs cache)
+        >>> Cache.interpret _pursGraphCache (Cache.handleFs cache)
         >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
         >>> Env.runResourceEnv resourceEnv
         >>> Run.runBaseAff'

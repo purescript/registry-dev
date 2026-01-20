@@ -270,6 +270,7 @@ main = launchAff_ do
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
     # Cache.interpret API._compilerCache (Cache.handleFs cache)
+    # Cache.interpret API._pursGraphCache (Cache.handleFs cache)
     # Run.Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Env.runResourceEnv resourceEnv
@@ -487,32 +488,32 @@ runLegacyImport logs = do
                   pure $ Right selected
                 Nothing -> do
                   Log.debug $ "No cached compilation for " <> formatted <> ", so compiling with all compilers to find first working one."
-                  Log.debug "Fetching source and installing dependencies to test compilers"
-                  tmp <- Tmp.mkTmpDir
-                  path <-
+                  Log.debug $ "Fetching source: " <> formatted
+                  sourceTmp <- Tmp.mkTmpDir
+                  sourcePath <-
                     if isArchiveBacked then do
                       Log.info $ "Using registry archive for " <> formatted <> " instead of GitHub clone."
-                      { path: archivePath } <- Archive.fetch tmp manifest.name manifest.version
+                      { path: archivePath } <- Archive.fetch sourceTmp manifest.name manifest.version
                       pure archivePath
                     else do
-                      { path: sourcePath } <- Source.fetch tmp manifest.location ref
-                      pure sourcePath
-                  Log.debug $ "Downloaded source to " <> path
+                      { path } <- Source.fetch sourceTmp manifest.location ref
+                      pure path
+                  Log.debug $ "Downloaded source to " <> sourcePath
                   Log.debug "Downloading dependencies..."
-                  let installDir = Path.concat [ tmp, ".registry" ]
+                  let installDir = Path.concat [ sourceTmp, ".registry" ]
                   FS.Extra.ensureDirectory installDir
                   buildPlanForImport <- MatrixBuilder.resolutionsToBuildPlan resolutions
                   MatrixBuilder.installBuildPlan buildPlanForImport installDir
                   Log.debug $ "Installed to " <> installDir
                   Log.debug "Trying compilers one-by-one..."
                   selected <- findFirstCompiler
-                    { source: path
+                    { source: sourcePath
                     , installed: installDir
                     , compilers: NonEmptySet.toUnfoldable possibleCompilers
                     , resolutions
                     , manifest: Manifest manifest
                     }
-                  FS.Extra.remove tmp
+                  FS.Extra.remove sourceTmp
                   pure selected
 
           let
@@ -909,7 +910,8 @@ collectPublishFailureStats importStats eligibleForReservation importedIndex fail
   { packages:
       { total: startPackages
       , considered: consideredPackages
-      , partial: failedPackages
+      -- Packages that had some failures but not all versions failed
+      , partial: failedPackages - Set.size removedPackages
       , reserved: reservedPackages
       , failed: removedPackages
       }
@@ -928,7 +930,7 @@ formatPublishFailureStats { packages, versions } = String.joinWith "\n"
   , "--------------------"
   , ""
   , show packages.considered <> " of " <> show packages.total <> " total packages were considered for publishing (others had no manifests imported.)"
-  , "  - " <> show (packages.total - packages.partial - (Set.size packages.failed)) <> " out of " <> show packages.considered <> " packages fully succeeded."
+  , "  - " <> show (packages.considered - packages.partial - Set.size packages.failed) <> " out of " <> show packages.considered <> " packages fully succeeded."
   , "  - " <> show packages.partial <> " packages partially succeeded."
   , "  - " <> show (Set.size packages.reserved) <> " packages fully failed, but are reserved due to 0.13 or organization status."
   , "  - " <> show (Set.size packages.failed - Set.size packages.reserved) <> " packages had all versions fail and will be removed."

@@ -3,14 +3,18 @@ module Registry.App.API
   , COMPILER_CACHE
   , CompilerCache(..)
   , LicenseValidationError(..)
+  , PURS_GRAPH_CACHE
   , PackageSetUpdateEffects
   , PublishEffects
+  , PursGraphCache(..)
   , _compilerCache
+  , _pursGraphCache
   , authenticated
   , copyPackageSourceFiles
   , findAllCompilers
   , formatPursuitResolutions
   , getPacchettiBotti
+
   , packageSetUpdate
   , packagingTeam
   , printLicenseValidationError
@@ -316,7 +320,7 @@ authenticated auth = case auth.payload of
         Registry.mirrorLegacyRegistry payload.name payload.newLocation
         Log.notice "Mirrored registry operation to the legacy registry."
 
-type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + ARCHIVE + GITHUB + COMPILER_CACHE + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
+type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + ARCHIVE + GITHUB + COMPILER_CACHE + PURS_GRAPH_CACHE + LEGACY_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Resolve both compiler and resolutions for a publish operation.
 -- | Will come up with some sort of plan if not provided with a compiler and/or resolutions.
@@ -692,10 +696,22 @@ publish maybeLegacyIndex payload = do
 
       let srcGlobs = Path.concat [ downloadedPackage, "src", "**", "*.purs" ]
       let depGlobs = Path.concat [ installedResolutions, "*", "src", "**", "*.purs" ]
-      let pursGraph = Purs.Graph { globs: [ srcGlobs, depGlobs ] }
+      let pursGraphCmd = Purs.Graph { globs: [ srcGlobs, depGlobs ] }
 
       -- We need to use the minimum compiler version that supports 'purs graph'.
       let pursGraphCompiler = if compiler >= Purs.minPursGraph then compiler else Purs.minPursGraph
+
+      -- Path normalization for caching: we replace temporary directory paths
+      -- with placeholders so that cache hits work across runs.
+      let
+        depsPlaceholder = "$DEPS"
+        srcPlaceholder = "$SRC"
+        normalizePaths =
+          String.replaceAll (String.Pattern installedResolutions) (String.Replacement depsPlaceholder)
+            >>> String.replaceAll (String.Pattern downloadedPackage) (String.Replacement srcPlaceholder)
+        denormalizePaths =
+          String.replaceAll (String.Pattern depsPlaceholder) (String.Replacement installedResolutions)
+            >>> String.replaceAll (String.Pattern srcPlaceholder) (String.Replacement downloadedPackage)
 
       -- In this step we run 'purs graph' to get a graph of the package source
       -- and installed dependencies and use that to determine if the manifest
@@ -703,7 +719,18 @@ publish maybeLegacyIndex payload = do
       -- manifest then we fix it and return the result. If does and is a modern
       -- manifest (spago.yaml, purs.json, etc.) then we reject it. If it doesn't
       -- then we simply return the manifest and resolutions we already had.
-      Tuple manifest resolutions <- Run.liftAff (Purs.callCompiler { command: pursGraph, version: Just pursGraphCompiler, cwd: Nothing }) >>= case _ of
+      pursGraphResult <- Cache.get _pursGraphCache (PursGraph (Manifest receivedManifest) validatedResolutions pursGraphCompiler) >>= case _ of
+        Just cached -> do
+          Log.debug "Using cached purs graph result"
+          pure $ map denormalizePaths cached
+        Nothing -> do
+          Log.debug "No cached purs graph, running purs graph..."
+          result <- Run.liftAff (Purs.callCompiler { command: pursGraphCmd, version: Just pursGraphCompiler, cwd: Nothing })
+          let normalizedResult = map normalizePaths result
+          Cache.put _pursGraphCache (PursGraph (Manifest receivedManifest) validatedResolutions pursGraphCompiler) normalizedResult
+          pure result
+
+      Tuple manifest resolutions <- case pursGraphResult of
         Left err -> case err of
           UnknownError str -> Except.throw str
           MissingCompiler -> Except.throw $ "Missing compiler " <> Version.print pursGraphCompiler
@@ -780,25 +807,34 @@ publish maybeLegacyIndex payload = do
         , "\n```"
         ]
 
-      -- We clear the installation directory so that no old installed resolutions
-      -- stick around.
-      Run.liftAff $ FS.Extra.remove installedResolutions
-      buildPlanForBuild <- MatrixBuilder.resolutionsToBuildPlan resolutions
-      MatrixBuilder.installBuildPlan buildPlanForBuild installedResolutions
-      compilationResult <- Run.liftAff $ Purs.callCompiler
-        { command: Purs.Compile { globs: [ Path.concat [ packageSource, "src/**/*.purs" ], Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
-        , version: Just compiler
-        , cwd: Just tmp
-        }
+      -- Only reinstall dependencies if the resolutions changed after purs
+      -- graph / manifest adjustment. This avoids redundant downloads.
+      when (resolutions /= validatedResolutions) do
+        Log.debug "Resolutions changed after manifest adjustment, reinstalling dependencies..."
+        Run.liftAff $ FS.Extra.remove installedResolutions
+        buildPlanForBuild <- MatrixBuilder.resolutionsToBuildPlan resolutions
+        MatrixBuilder.installBuildPlan buildPlanForBuild installedResolutions
 
-      case compilationResult of
-        Left compileFailure -> do
-          let error = MatrixBuilder.printCompilerFailure compiler compileFailure
-          Except.throw $ "Publishing failed due to a compiler error:\n\n" <> error
-        Right _ -> do
-          -- Cache the successful compilation so findAllCompilers can reuse it
-          Cache.put _compilerCache (Compilation manifest resolutions compiler) { target: compiler, result: Right unit }
-          pure unit
+      -- Check compiler cache before compiling - if we have a cached successful
+      -- compilation with the same manifest/resolutions/compiler, skip compilation.
+      Cache.get _compilerCache (Compilation manifest resolutions compiler) >>= case _ of
+        Just { result: Right _ } -> do
+          Log.debug "Using cached successful compilation, skipping compilation step"
+        _ -> do
+          compilationResult <- Run.liftAff $ Purs.callCompiler
+            { command: Purs.Compile { globs: [ Path.concat [ packageSource, "src/**/*.purs" ], Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
+            , version: Just compiler
+            , cwd: Just tmp
+            }
+
+          case compilationResult of
+            Left compileFailure -> do
+              let error = MatrixBuilder.printCompilerFailure compiler compileFailure
+              Except.throw $ "Publishing failed due to a compiler error:\n\n" <> error
+            Right _ -> do
+              -- Cache the successful compilation so findAllCompilers can reuse it
+              Cache.put _compilerCache (Compilation manifest resolutions compiler) { target: compiler, result: Right unit }
+              pure unit
 
       Log.notice "Package source is verified! Packaging tarball and uploading to the storage backend..."
       let tarballName = packageDirname <> ".tar.gz"
@@ -840,23 +876,26 @@ publish maybeLegacyIndex payload = do
       Registry.mirrorLegacyRegistry payload.name newMetadata.location
       Log.notice "Mirrored registry operation to the legacy registry!"
 
-      Log.debug "Uploading package documentation to Pursuit"
-      if compiler >= Purs.minPursuitPublish then
-        -- TODO: We must use the 'downloadedPackage' instead of 'packageSource'
-        -- because Pursuit requires a git repository, and our tarball directory
-        -- is not one. This should be changed once Pursuit no longer needs git.
-        publishToPursuit { source: downloadedPackage, compiler, resolutions, installedResolutions } >>= case _ of
-          Left publishErr -> do
-            Log.error publishErr
-            Log.notice $ "Failed to publish package docs to Pursuit: " <> publishErr
-          Right _ ->
-            Log.notice "Successfully uploaded package docs to Pursuit! 🎉 🚀"
-      else do
-        Log.notice $ Array.fold
-          [ "Skipping Pursuit publishing because this package was published with a pre-0.14.7 compiler ("
-          , Version.print compiler
-          , "). If you want to publish documentation, please try again with a later compiler."
-          ]
+      -- Note: We don't publish to Pursuit when running the legacy importer with an
+      -- existing index, as that's the reupload path.
+      unless (isJust maybeLegacyIndex) do
+        Log.debug "Uploading package documentation to Pursuit"
+        if compiler >= Purs.minPursuitPublish then
+          -- TODO: We must use the 'downloadedPackage' instead of 'packageSource'
+          -- because Pursuit requires a git repository, and our tarball directory
+          -- is not one. This should be changed once Pursuit no longer needs git.
+          publishToPursuit { source: downloadedPackage, compiler, resolutions, installedResolutions } >>= case _ of
+            Left publishErr -> do
+              Log.error publishErr
+              Log.notice $ "Failed to publish package docs to Pursuit: " <> publishErr
+            Right _ ->
+              Log.notice "Successfully uploaded package docs to Pursuit! 🎉 🚀"
+        else
+          Log.notice $ Array.fold
+            [ "Skipping Pursuit publishing because this package was published with a pre-0.14.7 compiler ("
+            , Version.print compiler
+            , "). If you want to publish documentation, please try again with a later compiler."
+            ]
 
       -- Note: this only runs for the Legacy Importer. In daily circumstances (i.e.
       -- when running the server) this will be taken care of by followup jobs invoking
@@ -982,6 +1021,7 @@ findAllCompilers { source, manifest, compilers } = do
               Right _ -> do
                 Log.debug $ "Compilation succeeded with compiler " <> Version.print target
             Cache.put _compilerCache (Compilation manifest resolutions target) { target, result: map (const unit) result }
+
             pure $ bimap (Tuple target <<< Right) (const target) result
           Just { result } ->
             pure $ bimap (Tuple target <<< Right) (const target) result
@@ -1376,6 +1416,31 @@ instance FsEncodable CompilerCache where
           { target: Version.codec
           , result: CJ.Common.either compilerFailureCodec CJ.null
           }
+
+      Exists.mkExists $ Cache.AsJson cacheKey codec next
+
+type PURS_GRAPH_CACHE r = (pursGraphCache :: Cache PursGraphCache | r)
+
+_pursGraphCache :: Proxy "pursGraphCache"
+_pursGraphCache = Proxy
+
+data PursGraphCache :: (Type -> Type -> Type) -> Type -> Type
+data PursGraphCache c a = PursGraph Manifest (Map PackageName Version) Version (c (Either CompilerFailure String) a)
+
+instance Functor2 c => Functor (PursGraphCache c) where
+  map k (PursGraph manifest resolutions compiler a) = PursGraph manifest resolutions compiler (map2 k a)
+
+instance FsEncodable PursGraphCache where
+  encodeFs = case _ of
+    PursGraph (Manifest manifest) resolutions compiler next -> do
+      let
+        baseKey = "PursGraph__" <> PackageName.print manifest.name <> "__" <> Version.print manifest.version <> "__" <> Version.print compiler <> "__"
+        hashKey = do
+          let resolutions' = foldlWithIndex (\name prev version -> formatPackageVersion name version <> prev) "" resolutions
+          unsafePerformEffect $ Sha256.hashString resolutions'
+        cacheKey = baseKey <> Sha256.print hashKey
+
+      let codec = CJ.Common.either compilerFailureCodec CJ.string
 
       Exists.mkExists $ Cache.AsJson cacheKey codec next
 

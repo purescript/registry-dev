@@ -10,7 +10,7 @@ import HTTPurple (JsonDecoder(..), JsonEncoder(..), Request, Response)
 import HTTPurple as HTTPurple
 import Node.Path as Path
 import Registry.API.V1 (JobId, Route)
-import Registry.App.API (COMPILER_CACHE, _compilerCache)
+import Registry.App.API (COMPILER_CACHE, PURS_GRAPH_CACHE, _compilerCache, _pursGraphCache)
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Archive (ARCHIVE)
 import Registry.App.Effect.Archive as Archive
@@ -122,7 +122,7 @@ createServerEnv = do
     , jobId: Nothing
     }
 
-type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + ARCHIVE + REGISTRY + PACKAGE_SETS + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMPILER_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + ARCHIVE + REGISTRY + PACKAGE_SETS + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMPILER_CACHE + PURS_GRAPH_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer
   :: ServerEnv
@@ -168,6 +168,7 @@ runEffects env operation = Aff.attempt do
     # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache: env.cacheDir, ref: env.githubCacheRef })
     # Cache.interpret _legacyCache (Cache.handleMemoryFs { cache: env.cacheDir, ref: env.legacyCacheRef })
     # Cache.interpret _compilerCache (Cache.handleFs env.cacheDir)
+    # Cache.interpret _pursGraphCache (Cache.handleFs env.cacheDir)
     # Except.catch
         ( \msg -> do
             finishedAt <- nowUTC
