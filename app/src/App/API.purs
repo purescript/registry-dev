@@ -583,7 +583,14 @@ publish maybeLegacyIndex payload = do
   Log.info "Verifying licenses are consistent among manifest files..."
   validateLicense downloadedPackage receivedManifest.license >>= case _ of
     Nothing -> Log.debug "License validation passed."
-    Just err -> Except.throw $ printLicenseValidationError err
+    Just err ->
+      -- Skip license validation for legacy imports - these packages were already
+      -- published to Bower/the old registry without this check, and we don't want
+      -- to make legal assertions on behalf of package authors by auto-fixing.
+      if isJust maybeLegacyIndex then
+        Log.warn $ "Skipping license validation for legacy import: " <> printLicenseValidationError err
+      else
+        Except.throw $ printLicenseValidationError err
 
   for_ (Operation.Validation.isNotUnpublished (Manifest receivedManifest) (Metadata metadata)) \info -> do
     Except.throw $ String.joinWith "\n"

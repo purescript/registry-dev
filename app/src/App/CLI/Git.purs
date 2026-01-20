@@ -4,9 +4,11 @@ import Registry.App.Prelude
 
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
+import Data.Int as Int
 import Data.String as String
 import Data.String.CodeUnits as CodeUnits
 import Effect.Aff (Milliseconds(..))
+import Effect.Aff as Aff
 import Node.ChildProcess.Types (Exit(..))
 import Node.Library.Execa as Execa
 import Parsing as Parsing
@@ -31,6 +33,14 @@ isTransientGitError error = do
     || String.contains (String.Pattern "failed to connect") lower
     || String.contains (String.Pattern "connection timed out") lower
     || String.contains (String.Pattern "could not connect") lower
+
+-- | Check if a git error message indicates a definitive 404 (repo doesn't exist or is private).
+-- | When GIT_TERMINAL_PROMPT=0, GitHub returns this error for non-existent/private repos.
+isRepoNotFoundError :: String -> Boolean
+isRepoNotFoundError error = do
+  let lower = String.toLower error
+  String.contains (String.Pattern "terminal prompts disabled") lower
+    || String.contains (String.Pattern "could not read username") lower
 
 -- | The result of running a Git action that can have no effect. For example,
 -- | none of these will have an effect: committing an unchanged file path,
@@ -89,13 +99,45 @@ gitCLI args cwd = do
     Normally 0 -> Right (String.trim result.stdout)
     _ -> Left (result.stdout <> result.stderr)
 
+-- | The result of checking if a repository is accessible.
+data RepoAccessibility
+  = RepoAccessible
+  -- | The repository definitely does not exist (or is private/inaccessible).
+  | RepoNotFound
+  -- | A transient error occurred (network timeout, DNS failure, etc.) - should retry.
+  | RepoTransientError String
+
+derive instance Eq RepoAccessibility
+
 -- | Check if a remote repository exists and is accessible using `git ls-remote`.
--- | Returns true if the repository exists and is accessible.
+-- | Distinguishes between definitive 404s and transient network errors.
 -- | Note: GIT_TERMINAL_PROMPT=0 is set globally in flake.nix to prevent credential prompts.
-gitRepoIsAccessible :: String -> Aff Boolean
+gitRepoIsAccessible :: String -> Aff RepoAccessibility
 gitRepoIsAccessible url = do
   result <- gitCLI [ "ls-remote", "--exit-code", url ] Nothing
-  pure $ isRight result
+  pure case result of
+    Right _ -> RepoAccessible
+    Left err
+      | isRepoNotFoundError err -> RepoNotFound
+      | otherwise -> RepoTransientError err
+
+-- | Check if a remote repository exists and is accessible, with automatic retry
+-- | on transient network errors. Retries up to 3 times with exponential backoff.
+gitRepoIsAccessibleWithRetry :: String -> Aff RepoAccessibility
+gitRepoIsAccessibleWithRetry url = do
+  let
+    toEither = case _ of
+      RepoAccessible -> Right RepoAccessible
+      RepoNotFound -> Right RepoNotFound
+      RepoTransientError err -> Left err
+    retryOpts = defaultRetry
+      { retryOnFailure = \attempt _ -> attempt <= 3
+      , timeout = Milliseconds 60_000.0
+      }
+  withRetry retryOpts (toEither <$> gitRepoIsAccessible url) >>= case _ of
+    Cancelled -> pure $ RepoTransientError "Timed out checking repository accessibility"
+    Failed err -> pure $ RepoTransientError err
+    Succeeded result -> pure result
 
 -- | Run a git command with automatic retry on transient network errors.
 -- | Retries up to 3 times with exponential backoff.

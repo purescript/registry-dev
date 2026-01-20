@@ -54,6 +54,8 @@ data FetchError
   = GitHubOnly
   | NoSubdir
   | InaccessibleRepo Octokit.Address
+  -- | A transient network error occurred (timeout, DNS failure, etc.). The caller should retry later.
+  | TransientError { owner :: String, repo :: String, message :: String }
   | NoToplevelDir
   | Fatal String
 
@@ -62,6 +64,7 @@ printFetchError = case _ of
   GitHubOnly -> "Packages are only allowed to come from GitHub for now. See issue #15."
   NoSubdir -> "Monorepos and the `subdir` key are not supported yet. See issue #16."
   InaccessibleRepo { owner, repo } -> "Repository located at https://github.com/" <> owner <> "/" <> repo <> ".git is inaccessible or does not exist."
+  TransientError { owner, repo, message } -> "Transient error accessing repository " <> owner <> "/" <> repo <> ": " <> message <> ". This may succeed on retry."
   NoToplevelDir -> "Downloaded tarball has no top-level directory."
   Fatal err -> "Unrecoverable error. " <> err
 
@@ -106,10 +109,14 @@ handle importType = case _ of
                 Array.fold [ "https://github.com/", owner, "/", repo ]
 
             Log.debug $ "Verifying repository is accessible: " <> cloneUrl
-            repoAccessible <- Run.liftAff $ Git.gitRepoIsAccessible cloneUrl
-            unless repoAccessible do
-              Log.error $ "Repository " <> owner <> "/" <> repo <> " is inaccessible or does not exist."
-              Except.throw $ InaccessibleRepo { owner, repo }
+            Run.liftAff (Git.gitRepoIsAccessibleWithRetry cloneUrl) >>= case _ of
+              Git.RepoAccessible -> pure unit
+              Git.RepoNotFound -> do
+                Log.error $ "Repository " <> owner <> "/" <> repo <> " does not exist or is private."
+                Except.throw $ InaccessibleRepo { owner, repo }
+              Git.RepoTransientError err -> do
+                Log.error $ "Repository " <> owner <> "/" <> repo <> " could not be reached due to a transient error: " <> err
+                Except.throw $ TransientError { owner, repo, message: err }
 
             let
               repoDir = Path.concat [ destination, repo <> "-" <> ref ]
