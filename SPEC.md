@@ -201,11 +201,24 @@ Types alone can't capture the set of invariants applied to data processed by the
 
 ### 3.1 Compatibility Guarantees
 
-A description of our forward-compatibility guarantees and what that means.
+The registry guarantees forward compatibility for its core data types. Forward compatibility means that new clients will always be able to read data written by older clients. This guarantee is critical because package manifests are baked into immutable package tarballs forever—any client, including older ones, must always be able to read any manifest in the registry.
+
+The data types covered by this guarantee are:
+
+- [`Manifest`](#33-manifest): the `purs.json` manifest format
+- [`Metadata`](#34-metadata): the package metadata file format
+
+To maintain forward compatibility, the only permitted schema changes are:
+
+1. **Adding new fields**: New optional fields may be introduced; older clients will ignore them.
+2. **Removing optional fields**: Optional fields may be removed if no longer needed.
+3. **Relaxing constraints**: Constraints not enforced by the type system may be loosened (e.g., increasing a maximum length).
+
+Changes that would break forward compatibility (such as removing required fields, renaming fields, or changing the type of a field) are not permitted.
 
 ### 3.2 Atomic Data
 
-Schemas for `PackageName`, `Version`, `Range`, `Location`, `Sha256`, `Owner`, `License`, and other simple data used in the registry. Each is a subsection which includes its rules, the representations in Dhall and JSON, and a link to the PureScript implementation in `Schema.purs`.
+This section contains schemas for `PackageName`, `Version`, `Range`, `Location`, `Sha256`, `Owner`, `License`, and other simple data used in the registry. Each is a subsection which includes its rules, the representations in Dhall and JSON, and a link to the PureScript implementation in `Schema.purs`.
 
 #### PackageName
 
@@ -550,7 +563,8 @@ To submit a `Publish` operation, you are expected to POST a JSON object with the
 - `name`: A [`PackageName`](#packagename).
 - `location`: A [`Location`](#location). Optional if the package has had other versions published; required if this is the first version of the package to be published.
 - `ref`: A `string` representing a reference (for example, a Git commit or Git tag) at the target location to use to fetch the source code.
-- `compiler`: A [`Version`](#version) representing which compiler version to use to compile the package in the Registry verification checks.
+- `version`: A [`Version`](#version) representing the version being published.
+- `compiler`: An optional [`Version`](#version) representing which compiler version to use to compile the package. If not provided, the registry will discover a compatible compiler based on the package's dependencies.
 - `resolutions`: An optional `object` containing dependency resolutions, where keys are [`PackageName`](#packagename)s and values are [`Version`](#version)s.
 
 For example, in JSON:
@@ -558,8 +572,9 @@ For example, in JSON:
 ```json
 {
   "name": "prelude",
-  "location": { "githubOwner": "purescript", "githubRepo": "prelude" },
+  "location": { "githubOwner": "purescript", "githubRepo": "purescript-prelude" },
   "ref": "v5.0.0",
+  "version": "5.0.0",
   "compiler": "0.15.0"
 }
 ```
@@ -589,7 +604,7 @@ Next, the registry will verify the package source code.
 
 Finally, the registry will perform some processing on the source code, package the source into a tarball, and complete the publishing process. Along the way, we do some final verification:
 
-1. The package `src` directory, always-included files (listed below), and any files explicitly included via the manifest `files` key are copied into a temporary directory.
+1. The package `src` directory, always-included files (listed below), and any files explicitly included via the manifest `includeFiles` key are copied into a temporary directory.
 2. If the project only contained a `spago.yaml` file, then a `purs.json` file is generated and copied into the temporary directory. Package tarballs **always** include a `purs.json` file.
 3. Always-ignored files (listed below) are removed from the source code.
 4. The remaining code is packaged into a tarball. The tarball MUST NOT exceed 2,000kb, and a warning will be issued for packages over 200kb.
