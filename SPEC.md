@@ -1,6 +1,8 @@
 # Registry Spec
 
-The untitled first 1-2 paragraphs, which explain what the registry is and what major concepts the spec will cover.
+The PureScript Registry is a package registry for the PureScript programming language. It defines a standard manifest and a central index of packages, stores published package tarballs, and maintains curated package sets that list packages known to compile together. It also provides a PureScript library for ecosystem tooling to rely on when interacting with the registry. For example, package managers like Spago rely on the registry to publish packages, resolve dependencies, and download source code.
+
+This specification defines the data formats used by the registry, the operations supports, and how package managers and other tooling should integrate with registry infrastructure. If you are interested in contributing to the registry, please refer to [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## 1. Introduction
 
