@@ -68,7 +68,132 @@ Related ecosystem tools include:
 
 ## 2. Package Publishing
 
-A simple walkthrough of how a package is published, possibly including diagrams. Includes example JSON payloads going through the registry `Addition` operation, an example of the input manifest, the output metadata and package sets entry. All extremely minimal, but giving a sense of the data interchange beginning with the package manager and ending with the registry metadata, index, and storage backend.
+This section provides a high-level walkthrough of how a package is published to the registry. For detailed specifications of the data types involved, see [Section 3 (Schemas)](#3-schemas-data-type-representations-used-in-the-registry). For a complete description of verification steps and failure modes, see [Section 5.1 (Publish a Package)](#51-publish-a-package).
+
+### 2.1 Publishing Flow Overview
+
+Publishing a package begins with a package manager (such as Spago, or an open GitHub issue on the `registry` repository) sending a `Publish` request to the registry HTTP API. The registry then fetches the package source, validates it, creates a tarball, and updates its indexes.
+
+```mermaid
+sequenceDiagram
+    participant PM as Package Manager
+    participant API as Registry API
+    participant Source as Source Location
+    participant Storage as Package Storage
+    participant Repos as Registry Repositories
+    participant Pursuit as Pursuit
+
+    PM->>API: POST /api/v1/publish
+    API-->>PM: { jobId }
+    API->>Source: Fetch source at ref
+    Source-->>API: Package source
+    API->>API: Validate package, compile, create tarball
+    API->>Storage: Upload tarball
+    API->>Repos: Update metadata
+    API->>Repos: Update manifest index
+    API->>Pursuit: Publish documentation
+    API->>API: Enqueue compiler matrix jobs
+```
+
+### 2.2 Example: Publishing `effect@4.0.0`
+
+#### Step 1: Submit a Publish Request
+
+A package manager submits a POST request to `https://registry.purescript.org/api/v1/publish` with a JSON body:
+
+```json
+{
+  "name": "effect",
+  "location": {
+    "githubOwner": "purescript",
+    "githubRepo": "purescript-effect"
+  },
+  "ref": "v4.0.0",
+  "version": "4.0.0",
+  "compiler": "0.15.10"
+}
+```
+
+The registry responds immediately with a job ID that can be polled for status:
+
+```json
+{
+  "jobId": "01234567-89ab-cdef-0123-456789abcdef"
+}
+```
+
+#### Step 2: Source Fetched and Validated
+
+The registry fetches the package source from the specified location at the given ref. It expects to find a supported manifest format—currently `purs.json` or `spago.yaml`, though additional formats may be supported in the future. For example, a `purs.json` manifest:
+
+```json
+{
+  "name": "effect",
+  "version": "4.0.0",
+  "license": "BSD-3-Clause",
+  "location": {
+    "githubOwner": "purescript",
+    "githubRepo": "purescript-effect"
+  },
+  "ref": "v4.0.0",
+  "description": "Native side effects",
+  "dependencies": {
+    "prelude": ">=6.0.0 <7.0.0"
+  }
+}
+```
+
+The registry validates that the manifest matches the publish request, resolves dependencies, and compiles the package to verify it builds successfully.
+
+#### Step 3: Tarball Created and Uploaded
+
+The registry creates a tarball of the package source. The tarball always contains a `purs.json` file for compatibility—if the package only had a `spago.yaml`, a `purs.json` is generated and included. The tarball is uploaded to the storage backend at:
+
+```
+https://packages.registry.purescript.org/effect/4.0.0.tar.gz
+```
+
+#### Step 4: Indexes Updated
+
+The registry updates two repositories:
+
+**Metadata** (in `purescript/registry` at `metadata/effect.json`):
+
+```json
+{
+  "location": {
+    "githubOwner": "purescript",
+    "githubRepo": "purescript-effect"
+  },
+  "published": {
+    "4.0.0": {
+      "bytes": 3245,
+      "hash": "sha256-abc123...",
+      "publishedTime": "2024-01-15T10:30:00.0Z",
+      "compilers": ["0.15.10"]
+    }
+  },
+  "unpublished": {}
+}
+```
+
+**Manifest Index** (in `purescript/registry-index`):
+
+The manifest is appended as a JSON line to the appropriate index file (in this case `ef/fe/effect`), making it available for package managers to query.
+
+#### Step 5: Documentation Published
+
+The registry compiles documentation and uploads it to [Pursuit](https://pursuit.purescript.org). Documentation publishing requires a minimum compiler version (currently 0.14.7); packages published with older compilers will skip this step. A failure to publish documentation does not fail the overall publish operation.
+
+### 2.3 Compiler Compatibility Testing
+
+After a package is successfully published, the registry enqueues background jobs to test the package against other supported compiler versions. These "matrix jobs" run independently and update the `compilers` field in the package metadata as they complete. The registry also enqueues matrix jobs for packages that depend on the newly-published package, propagating compatibility testing through the dependency graph.
+
+This means the list of compatible compilers in metadata may be incomplete immediately after publishing, but will become accurate as the background jobs finish—typically within minutes to hours depending on registry load.
+
+### 2.4 Package Set Candidacy
+
+After a successful publish, the package version becomes a candidate for automatic inclusion in the next package set release. Package sets are updated daily; see [Section 6.3 (Publish to Package Sets)](#63-publish-to-package-sets) for details on how packages are added to the curated package set.
 
 ## 3. Schemas: Data Type Representations Used in the Registry
 
