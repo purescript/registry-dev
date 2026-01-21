@@ -3,6 +3,7 @@
 /output-es
 /scratch
 /.vscode
+/scripts/analysis
 
 result*
 
@@ -21,4 +22,3 @@ TODO.md
 
 # Keep it secret, keep it safe.
 .env
-
