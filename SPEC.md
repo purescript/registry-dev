@@ -6,15 +6,65 @@ This specification defines the data formats used by the registry, the operations
 
 ## 1. Introduction
 
-A longer summary of the registry, why it came to exist, its high-level design. Akin to the introduction to a book (in spirit, not in length!).
+The PureScript Registry is an independent package registry for PureScript. It was created after the Bower registry (which PureScript previously relied on for package distribution) stopped accepting new submissions in 2020. Initially package names were tracked in a simple `new-packages.json` file so that package managers like Spago and package sets tooling could continue to function. The full registry replaced this stopgap with a complete system.
 
-**1.1 Important Terminology**
+Packages from the Bower registry and `new-packages.json` file have been grandfathered into the registry so long as they satisfy registry requirements. The most restrictive requirement is that package versions compile with at least one compiler version from 0.13.0 onwards. This means packages published prior to May 2019 are not in the registry and can only be used with legacy package managers (Bower, legacy Spago).
 
-Quick definitions of words that will be used frequently throughout the document. Readers can breeze through this section and refer back to it if they forget to what a common term refers. Some of these terms are in common use (like "hash"), but they're included because we mean something specific when we use it (ie. "a base64-encoded subresource integrity hash using the SHA256 algorithm.")
+The registry addresses several limitations of Bower and introduces new features of its own:
 
-Terms include:
+- **Independence**: The registry is controlled by the PureScript core team and all third-party infrastructure is commodity (file storage, etc.)
+- **Immutability**: Published packages are stored permanently. Unlike Bower, which only pointed to upstream repositories, the registry stores package source code so dependencies cannot disappear or be altered after publication apart from a short period where unpublishing is supported.
+- **Content hashes**: Every package tarball is hashed (SHA256 in SRI format), allowing for integrity verification, and this hash is stored in a format suitable for build systems which require hashes such as Nix.
+- **Pull model**: Authors do not upload packages directly. Instead, they request that the registry fetch their code from a public location; this avoids user authentication and file uploads and lets the registry perform checks on the package before admitting it.
+- **Declarative manifests**: Package manifests declare properties about packages without imperative hooks like npm's `postinstall`
+- **Verified builds**: All packages are known to solve and compile with at least one supported compiler version. This enables features like Pursuit's compiler compatibility filter and allows solvers to produce build plans targeting a specific compiler.
+- **Location-agnostic publishing**: Packages can be published from any supported location type, including arbitrary git repositories, not just GitHub.
+- **Mono/polyrepo support**: A single repository can host multiple packages using the `subdir` field in package lo
+- **First-class package sets**: The registry curates sets of packages known to compile together, updated automatically on a daily schedule.
 
-"package", "package name", "package version", "version range", "SRI hash", "package location", "package manager", "registry", "metadata index", "manifest index", "storage backend", "registry trustee", "package set", "license"
+### 1.1 Important Terminology
+
+The following terms are used throughout this specification with specific meanings.
+
+**Core Data Types**
+
+- **Package**: A versioned unit of PureScript source code with a manifest, stored as an archive in the registry.
+- **Package name**: A unique identifier for a package (see [PackageName](#packagename)).
+- **Version**: A specific release of a package, identified by a semantic version (see [Version](#version)).
+- **Range**: A constraint specifying acceptable versions of a dependency (see [Range](#range)).
+- **Location**: The remote location from which the registry fetches package source code (see [Location](#location)).
+- **Ref**: An arbitrary reference identifying a particular snapshot of the code at a location—for Git locations this would be a Git ref such as a tag or commit hash.
+- **Owner**: An SSH public key whose holder is authorized to perform sensitive operations on a package.
+- **License**: An SPDX license identifier specifying the terms under which a package may be used and redistributed.
+- **Sha256**: A base64-encoded SHA256 hash in subresource integrity (SRI) format, used to verify archive integrity.
+
+**Registry Data Structures**
+
+- **Manifest**: A `purs.json` file declaring package properties such as name, version, license, location, and dependencies (see [Manifest](#33-manifest)).
+- **Metadata**: Information about a package maintained by the registry, including published versions, hashes, and ownership (see [Metadata](#34-metadata)).
+- **Package set**: A curated collection of package versions known to compile together with a specific compiler version (see [Package Set](#35-package-set)).
+- **Manifest index**: A cache of all package manifests stored in the registry-index repository (see [Manifest Index](#36-manifest-index)).
+- **Operation**: A request sent to the registry to perform an action. Package operations (publish, unpublish, transfer) are sent to the registry HTTP API; package set operations are submitted via GitHub issues.
+
+**Roles**
+
+- **Package manager**: A tool such as Spago that publishes packages to the registry and installs them for users.
+- **Registry Trustee**: A member of the [@purescript/packaging](https://github.com/orgs/purescript/teams/packaging) team with authority to perform administrative actions on behalf of the registry.
+
+### 1.2 Related Infrastructure
+
+The registry relies on several pieces of infrastructure:
+
+- **[purescript/registry](https://github.com/purescript/registry)**: The user-facing repository containing package metadata files and package set releases.
+- **[purescript/registry-index](https://github.com/purescript/registry-index)**: A cache of all package manifests, structured for efficient lookup by package managers.
+- **[packages.registry.purescript.org](https://packages.registry.purescript.org)**: The storage backend where package tarballs are hosted.
+- **[registry.purescript.org](https://registry.purescript.org)**: The registry HTTP API server.
+- **@pacchettibotti**: A bot account controlled by the Registry Trustees, used for automated registry operations.
+
+Related ecosystem tools include:
+
+- **[Spago](https://github.com/purescript/spago)**: The standard PureScript package manager and build tool, which integrates with the registry.
+- **[Pursuit](https://pursuit.purescript.org)**: The PureScript documentation hosting service; the registry publishes documentation to Pursuit after a successful publish.
 
 ## 2. Package Publishing
 
