@@ -509,25 +509,53 @@ All manifests for a given package in the registry are cached in the manifest ind
 
 ## 4. Registry Infrastructure
 
-A section specifying how the registry should relate to other infrastructure and the responsibility of that infrastructure as it relates to the registry.
+The registry consists of several infrastructure components that work together to store package data, serve requests, and maintain indexes. This section specifies the location, format, and purpose of each component.
 
-**4.1 Package Storage**
-Specifies how the storage backend works (data format, naming conventions, location)
+### 4.1 Package Storage
 
-**4.2 Manifest Index**
-Specifies how the manifest index works (data format, purpose of it existing, where it is located)
+Published package tarballs are stored at [packages.registry.purescript.org](https://packages.registry.purescript.org), an S3-compatible storage backend. Package managers download tarballs directly from this location.
 
-**4.3 Metadata Index**
-Specifies where package metadata is stored and in what format, naming conventions.
+Tarballs are stored using the following URL scheme:
 
-**4.4 Package Sets**
-Specifies where the package sets are stored and in what format, naming conventions.
+```
+https://packages.registry.purescript.org/{package-name}/{version}.tar.gz
+```
+
+For example, the tarball for `prelude@6.0.0` is located at:
+
+```
+https://packages.registry.purescript.org/prelude/6.0.0.tar.gz
+```
+
+Package managers should verify downloaded tarballs against the SHA256 hash stored in the package's [metadata](#34-metadata) before extracting.
+
+### 4.2 Registry API
+
+The registry HTTP API is hosted at [registry.purescript.org](https://registry.purescript.org). Package operations (publish, unpublish, transfer) are submitted to the API at:
+
+```
+https://registry.purescript.org/api/v1/{operation}
+```
+
+See [Section 5 (Registry Operations)](#5-registry-operations) for the full API specification.
+
+### 4.3 Metadata Repository
+
+Package metadata files are stored in the [purescript/registry](https://github.com/purescript/registry) repository under the `metadata/` directory. Each package has a single metadata file named `{package-name}.json`. For example, the metadata for the `aff` package is stored at:
+
+```
+metadata/aff.json
+```
+
+This repository also hosts package sets under the `package-sets/` directory. See [Section 3.4 (Metadata)](#34-metadata) for the metadata file format and [Section 3.5 (Package Set)](#35-package-set) for the package set format.
+
+### 4.4 Manifest Index Repository
+
+The manifest index is stored in the [purescript/registry-index](https://github.com/purescript/registry-index) repository. This index caches all package manifests in a structure optimized for efficient lookup by package managers. See [Section 3.6 (Manifest Index)](#36-manifest-index) for the index structure.
 
 ## 5. Registry Operations
 
 The big section! This builds on everything provided so far and summarizes the role of the API and its major operations. Each operation is detailed along with its failure modes.
-
-This is a good time for diagrams! (cc: @AndrewCondon, @JordanMartinez).Two notes:
 
 1. This section is only about _behavior_. The data types used in the API have already been described in prior sections.
 2. This section is only about _registry_ concerns. Actions taken after an operation (such as pushing to package sets, pursuit, the manifest index) are in the next section.
