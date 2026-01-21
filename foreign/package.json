@@ -15,7 +15,7 @@
     "jsonrepair": "^3.13.2",
     "registry-lib": "file:../lib",
     "semver": "^7.7.3",
-    "tar": "^7.5.3",
+    "tar": "^7.5.4",
     "tmp": "^0.2.5",
     "yaml": "^2.8.2"
   }
