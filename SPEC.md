@@ -19,7 +19,7 @@ The registry addresses several limitations of Bower and introduces new features 
 - **Declarative manifests**: Package manifests declare properties about packages without imperative hooks like npm's `postinstall`
 - **Verified builds**: All packages are known to solve and compile with at least one supported compiler version. This enables features like Pursuit's compiler compatibility filter and allows solvers to produce build plans targeting a specific compiler.
 - **Location-agnostic publishing**: Packages can be published from any supported location type, including arbitrary git repositories, not just GitHub.
-- **Mono/polyrepo support**: A single repository can host multiple packages using the `subdir` field in package lo
+- **Mono/polyrepo support**: A single repository can host multiple packages using the `subdir` field in the package location data
 - **First-class package sets**: The registry curates sets of packages known to compile together, updated automatically on a daily schedule.
 
 ### 1.1 Important Terminology
@@ -33,7 +33,7 @@ The following terms are used throughout this specification with specific meaning
 - **Version**: A specific release of a package, identified by a semantic version (see [Version](#version)).
 - **Range**: A constraint specifying acceptable versions of a dependency (see [Range](#range)).
 - **Location**: The remote location from which the registry fetches package source code (see [Location](#location)).
-- **Ref**: An arbitrary reference identifying a particular snapshot of the code at a location—for Git locations this would be a Git ref such as a tag or commit hash.
+- **Ref**: An arbitrary reference identifying a particular snapshot of the code at a location. For Git locations this would be a Git ref such as a tag or commit hash.
 - **Owner**: An SSH public key whose holder is authorized to perform sensitive operations on a package.
 - **License**: An SPDX license identifier specifying the terms under which a package may be used and redistributed.
 - **Sha256**: A base64-encoded SHA256 hash in subresource integrity (SRI) format, used to verify archive integrity.
@@ -201,7 +201,7 @@ Types alone can't capture the set of invariants applied to data processed by the
 
 ### 3.1 Compatibility Guarantees
 
-The registry guarantees forward compatibility for its core data types. Forward compatibility means that new clients will always be able to read data written by older clients. This guarantee is critical because package manifests are baked into immutable package tarballs forever—any client, including older ones, must always be able to read any manifest in the registry.
+The registry guarantees forward compatibility for its core data types. Forward compatibility means that older clients will always be able to read data written by newer clients. This guarantee is critical because package manifests are baked into immutable package tarballs forever: any client, including older ones, must always be able to read any manifest in the registry.
 
 The data types covered by this guarantee are:
 
@@ -210,11 +210,11 @@ The data types covered by this guarantee are:
 
 To maintain forward compatibility, the only permitted schema changes are:
 
-1. **Adding new fields**: New optional fields may be introduced; older clients will ignore them.
+1. **Adding new optional fields**: New optional fields may be introduced; older clients will ignore them.
 2. **Removing optional fields**: Optional fields may be removed if no longer needed.
 3. **Relaxing constraints**: Constraints not enforced by the type system may be loosened (e.g., increasing a maximum length).
 
-Changes that would break forward compatibility (such as removing required fields, renaming fields, or changing the type of a field) are not permitted.
+Changes that would break forward compatibility (such as removing required fields, renaming fields, or changing the type of a field) are not permitted **under any circumstances**.
 
 ### 3.2 Atomic Data
 
@@ -551,7 +551,7 @@ This repository also hosts package sets under the `package-sets/` directory. See
 
 ### 4.4 Manifest Index Repository
 
-The manifest index is stored in the [purescript/registry-index](https://github.com/purescript/registry-index) repository. This index caches all package manifests in a structure optimized for efficient lookup by package managers. See [Section 3.6 (Manifest Index)](#36-manifest-index) for the index structure.
+The manifest index is stored in the [purescript/registry-index](https://github.com/purescript/registry-index) repository. This index caches all package manifests in a structure optimized for efficient lookup by package managers, as downloading the archives just to peek at the manifests inside is wildly impractical. See [Section 3.6 (Manifest Index)](#36-manifest-index) for the index structure.
 
 ## 5. Registry Operations
 
@@ -909,8 +909,8 @@ The following endpoints are defined in [`Registry.Constants`](./lib/src/Constant
 
 | Resource | URL | Purpose |
 |----------|-----|---------|
-| Registry API | `https://registry.purescript.org/api` | Submit publish, unpublish, and transfer operations |
-| Package Storage | `https://packages.registry.purescript.org` | Download package tarballs |
+| Registry API | `registry.purescript.org/api` | Submit publish, unpublish, and transfer operations |
+| Package Storage | `packages.registry.purescript.org` | Download package tarballs |
 | Registry Repository | `github.com/purescript/registry` | Package metadata and package sets |
 | Manifest Index | `github.com/purescript/registry-index` | Cached package manifests |
 
@@ -1022,7 +1022,7 @@ The response contains job status and logs:
 }
 ```
 
-Poll until `finishedAt` is present, then check `success` to determine the outcome. Stream logs to the user by tracking the `since` timestamp.
+Poll until `finishedAt` is present, then check `success` to determine the outcome. The `since` parameter can be used for pagination, and to stream logs to the user.
 
 #### Authenticated Operations
 
