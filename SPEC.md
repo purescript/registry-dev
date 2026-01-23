@@ -1039,14 +1039,7 @@ The authenticated request body wraps the operation payload:
 
 ### 8.5 Dependency Resolution
 
-Package managers should implement a dependency solver that:
-
-1. Reads available versions from the manifest index
-2. Respects version ranges specified in manifests
-3. Ensures all transitive dependencies are satisfied
-4. Optionally constrains solutions to a specific compiler version using the `compilers` field in metadata
-
-The registry provides a solver implementation in [`Registry.Solver`](./lib/src/Solver.purs).
+Package managers which wish to use a solver (rather than an alternate dependency strategy, like package sets) may rely on the built-in [`Registry.Solver`](./lib/src/Solver.purs), or they can use it as a reference.
 
 ### 8.6 Recommended Caching Strategy
 
