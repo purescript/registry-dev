@@ -948,11 +948,11 @@ https://packages.registry.purescript.org/{package-name}/{version}.tar.gz
 
 For example: `https://packages.registry.purescript.org/prelude/6.0.1.tar.gz`
 
-**Verification**: Before extracting, verify the tarball's SHA256 hash and byte size against the values in the package's metadata. The hash is stored in SRI format (e.g., `sha256-abc123...`).
+Keep in mind the following:
 
-**Caching**: Package managers should cache downloaded tarballs locally. Since published packages are immutable, cached tarballs never need to be re-downloaded.
-
-**Retry Strategy**: The storage backend may return HTTP 503 during high load. Implement exponential backoff with retries.
+- **Verification**: Before extracting, verify the tarball's SHA256 hash and byte size against the values in the package's metadata. The hash is stored in SRI format (e.g., `sha256-abc123...`).
+- **Caching**: Package managers can cache downloaded tarballs locally. Since published packages are immutable, cached tarballs never need to be re-downloaded.
+- **Retry Strategy**: The storage backend may return HTTP 503 during high load. Implement exponential backoff with retries.
 
 ### 8.4 Submitting Operations
 
@@ -1052,19 +1052,6 @@ Package managers should maintain local caches for performance:
 | Metadata | Mutable (new versions added) | Refresh periodically |
 | Package sets | Immutable per version | Cache forever, check for new versions periodically |
 | Registry repositories | Mutable | Git pull periodically |
-
-### 8.7 Implementation Checklist
-
-To integrate with the PureScript Registry:
-
-- [ ] Clone and periodically update `purescript/registry` and `purescript/registry-index`
-- [ ] Implement manifest reading from the index file structure
-- [ ] Implement metadata reading from the `metadata/` directory
-- [ ] Implement package downloads from `packages.registry.purescript.org` with hash verification
-- [ ] Implement dependency solving using manifest dependency ranges
-- [ ] Implement the publish flow: POST to API, poll job status, display logs
-- [ ] (Optional) Implement SSH key management for authenticated operations
-- [ ] (Optional) Implement package set reading for curated dependency sets
 
 ## 9. Policies
 
