@@ -4,11 +4,9 @@ import Registry.App.Prelude
 
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Int as Int
 import Data.String as String
 import Data.String.CodeUnits as CodeUnits
 import Effect.Aff (Milliseconds(..))
-import Effect.Aff as Aff
 import Node.ChildProcess.Types (Exit(..))
 import Node.Library.Execa as Execa
 import Parsing as Parsing

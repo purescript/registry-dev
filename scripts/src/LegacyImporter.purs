@@ -753,12 +753,13 @@ writeUnifiedRemovals packageFailures versionFailures publishFailures = do
       Tuple ver err <- Map.toUnfoldable versions
       let formatted = formatPublishError err
       -- Simplify NoCompilersFound value to just show compiler versions tried
-      let simplifiedValue = case err of
-            NoCompilersFound compilerMap -> do
-              let compilerArrays = Set.toUnfoldable (Map.keys compilerMap) :: Array (NonEmptyArray Version)
-              let compilers = Array.sort $ Array.nub $ Array.concatMap NonEmptyArray.toArray compilerArrays
-              Just $ CJ.encode (CJ.array CJ.string) (map Version.print compilers)
-            _ -> formatted.value
+      let
+        simplifiedValue = case err of
+          NoCompilersFound compilerMap -> do
+            let compilerArrays = Set.toUnfoldable (Map.keys compilerMap) :: Array (NonEmptyArray Version)
+            let compilers = Array.sort $ Array.nub $ Array.concatMap NonEmptyArray.toArray compilerArrays
+            Just $ CJ.encode (CJ.array CJ.string) (map Version.print compilers)
+          _ -> formatted.value
       [ { package: PackageName.print pkg
         , version: Just (Version.print ver)
         , level: "publish"
@@ -775,8 +776,9 @@ writeUnifiedRemovals packageFailures versionFailures publishFailures = do
     tagCounts = Array.foldl (\acc r -> Map.insertWith (+) r.tag 1 acc) Map.empty allRejections
 
     sortedTagCounts :: Array { tag :: String, count :: Int }
-    sortedTagCounts = Array.sortBy (\a b -> compare b.count a.count) $
-      map (\(Tuple tag count) -> { tag, count }) $ Map.toUnfoldable tagCounts
+    sortedTagCounts = Array.sortBy (\a b -> compare b.count a.count)
+      $ map (\(Tuple tag count) -> { tag, count })
+      $ Map.toUnfoldable tagCounts
 
     output :: UnifiedRemovalsFile
     output =
@@ -1632,13 +1634,16 @@ formatVersionValidationError { error, reason } = case error of
   NoVersionsInRange deps -> do
     let
       formatVersionRange versions =
-        let min = NonEmptySet.min versions
-            max = NonEmptySet.max versions
-        in if min == max
-           then Version.print min
-           else Version.print min <> " to " <> Version.print max
+        let
+          min = NonEmptySet.min versions
+          max = NonEmptySet.max versions
+        in
+          if min == max then Version.print min
+          else Version.print min <> " to " <> Version.print max
       formatDep r = PackageName.print r.dependency <> " " <> Range.print r.range
-        <> " (available: " <> formatVersionRange r.availableVersions <> ")"
+        <> " (available: "
+        <> formatVersionRange r.availableVersions
+        <> ")"
       value = CJ.encode (CJ.array CJ.string) (map formatDep deps)
     { tag: "NoVersionsInRange", value: Just value, reason }
 
@@ -1670,17 +1675,17 @@ classifyInvalidDependencies deps reason = do
     isGitRef range =
       -- Git commit hashes (40 hex chars or shortened) - check for long hex-only strings
       (String.length range >= 7 && String.length range <= 40 && isLikelyCommitHash range)
-      -- Git URLs
-      || String.contains (String.Pattern "git://") range
-      || String.contains (String.Pattern "github.com") range
-      || String.contains (String.Pattern ".git") range
-      -- Owner/repo format (e.g., "owner/repo#ref")
-      || String.contains (String.Pattern "#") range
-      || String.contains (String.Pattern "/") range
-      -- Branch or tag names (contain path-like chars with specific patterns)
-      || String.contains (String.Pattern "master") range
-      || String.contains (String.Pattern "main") range
-      || String.contains (String.Pattern "compiler/") range
+        -- Git URLs
+        || String.contains (String.Pattern "git://") range
+        || String.contains (String.Pattern "github.com") range
+        || String.contains (String.Pattern ".git") range
+        -- Owner/repo format (e.g., "owner/repo#ref")
+        || String.contains (String.Pattern "#") range
+        || String.contains (String.Pattern "/") range
+        -- Branch or tag names (contain path-like chars with specific patterns)
+        || String.contains (String.Pattern "master") range
+        || String.contains (String.Pattern "main") range
+        || String.contains (String.Pattern "compiler/") range
 
     -- Simple heuristic: if the string doesn't contain typical range chars like
     -- >=, <, ., and is alphanumeric-ish, it's likely a commit hash
@@ -1738,11 +1743,13 @@ formatPublishError = case _ of
     , reason: details
     }
   SolveFailedUnregisteredResolutions resolutions ->
-    let formatted = map (\r -> formatPackageVersion r.name r.version) resolutions
-    in { tag: "SolveFailedUnregisteredResolutions"
-       , value: Just (CJ.encode (CJ.array CJ.string) formatted)
-       , reason: "Solved resolutions are not registered: " <> String.joinWith ", " formatted
-       }
+    let
+      formatted = map (\r -> formatPackageVersion r.name r.version) resolutions
+    in
+      { tag: "SolveFailedUnregisteredResolutions"
+      , value: Just (CJ.encode (CJ.array CJ.string) formatted)
+      , reason: "Solved resolutions are not registered: " <> String.joinWith ", " formatted
+      }
   NoCompilersFound versions ->
     { tag: "NoCompilersFound", value: Just (CJ.encode compilerFailureMapCodec versions), reason: "No valid compilers found for publishing." }
   UnsolvableDependencyCompilers failed ->
