@@ -396,13 +396,28 @@ runLegacyImport logs = do
         let isCompilerSolveError = String.contains (String.Pattern "Conflict in version ranges for purs:")
         let partitionIsCompiler = partitionEithers <<< map (\error -> if isCompilerSolveError error then Right error else Left error)
 
+        -- Extract the package name from "Conflict in version ranges for X:" error messages
+        let
+          extractConflictPackage :: String -> Maybe String
+          extractConflictPackage err = do
+            after <- String.stripPrefix (String.Pattern "Conflict in version ranges for ") err
+            pure $ String.CodeUnits.takeWhile (_ /= ':') after
+
+          classifySolverError :: Array String -> PublishError
+          classifySolverError errors = do
+            let joined = String.joinWith " " errors
+            let { fail: nonCompiler } = partitionIsCompiler errors
+            if Array.null nonCompiler then
+              SolveFailedCompiler joined
+            else case Array.head nonCompiler >>= extractConflictPackage of
+              Just pkg -> SolveFailedConflictingVersions { package: pkg, details: joined }
+              Nothing -> SolveFailedDependencies joined
+
         legacySolution <- case Solver.solveFull { registry: legacyIndex, required: Solver.initializeRequired manifest.dependencies } of
           Left unsolvable -> do
             let errors = toErrors unsolvable
-            let joined = String.joinWith " " errors
-            let { fail: nonCompiler } = partitionIsCompiler errors
             Log.warn $ "Could not solve with legacy index " <> formatted <> Array.foldMap (append "\n") errors
-            pure $ Left $ if Array.null nonCompiler then SolveFailedCompiler joined else SolveFailedDependencies joined
+            pure $ Left $ classifySolverError errors
           Right resolutions -> do
             Log.debug $ "Solved " <> formatted <> " with legacy index."
             -- The solutions do us no good if the dependencies don't exist. Note
@@ -412,18 +427,16 @@ runLegacyImport logs = do
             if (Array.null notRegistered) then
               pure $ Right resolutions
             else do
-              let missing = "Some resolutions from legacy index are not registered: " <> String.joinWith ", " (map (uncurry formatPackageVersion) notRegistered)
-              Log.warn missing
+              let unregistered = map (\(Tuple name version) -> { name, version }) notRegistered
+              Log.warn $ "Some resolutions from legacy index are not registered: " <> String.joinWith ", " (map (uncurry formatPackageVersion) notRegistered)
               Log.warn "Not using legacy index resolutions for this package."
-              pure $ Left $ SolveFailedDependencies missing
+              pure $ Left $ SolveFailedUnregisteredResolutions unregistered
 
         currentSolution <- case Solver.solveWithCompiler allCompilersRange compilerIndex manifest.dependencies of
           Left unsolvable -> do
             let errors = toErrors unsolvable
-            let joined = String.joinWith " " errors
-            let { fail: nonCompiler } = partitionIsCompiler errors
             Log.warn $ "Could not solve with current index " <> formatted <> Array.foldMap (append "\n") errors
-            pure $ Left $ if Array.null nonCompiler then SolveFailedCompiler joined else SolveFailedDependencies joined
+            pure $ Left $ classifySolverError errors
           Right (Tuple _ resolutions) -> do
             Log.debug $ "Solved " <> formatted <> " with contemporary index."
             pure $ Right resolutions
@@ -580,7 +593,8 @@ runLegacyImport logs = do
                   -- the importer rather than being cached
                   when (isInfraError error) do
                     Run.Except.throw $ "Halting importer due to infrastructure error: " <> error
-                  Cache.put _importCache (PublishFailure manifest.name manifest.version) (PublishError error)
+                  let classifiedError = classifyPublishError error
+                  Cache.put _importCache (PublishFailure manifest.name manifest.version) classifiedError
                 Right _ -> do
                   Log.info $ "Published " <> formatted
 
@@ -613,6 +627,10 @@ runLegacyImport logs = do
   failures <- Array.foldM collectError Map.empty allIndexPackages
   Run.liftAff $ writePublishFailures failures
 
+  -- Write the unified removed-packages.json file
+  Log.info "Writing unified removed-packages.json..."
+  Run.liftAff $ writeUnifiedRemovals importedIndex.failedPackages importedIndex.failedVersions failures
+
   let publishStats = collectPublishFailureStats importStats (map _.address eligibleForReservation) importedIndex.registryIndex failures
   let publishStatsMessage = formatPublishFailureStats publishStats
   Log.info publishStatsMessage
@@ -637,6 +655,155 @@ writeVersionFailures :: Map RawPackageName (Map RawVersion VersionValidationErro
 writeVersionFailures =
   writeJsonFile (rawPackageNameMapCodec (rawVersionMapCodec jsonValidationErrorCodec)) (Path.concat [ scratchDir, "version-failures.json" ])
     <<< map (map formatVersionValidationError)
+
+-- | A unified rejection entry combining package, version, and publish failures
+type UnifiedRejection =
+  { package :: String
+  , version :: Maybe String
+  , level :: String -- "package" | "version" | "publish"
+  , tag :: String
+  , reason :: String
+  , value :: Maybe JSON
+  }
+
+unifiedRejectionCodec :: CJ.Codec UnifiedRejection
+unifiedRejectionCodec = CJ.named "UnifiedRejection" $ CJ.Record.object
+  { package: CJ.string
+  , version: CJ.Record.optional CJ.string
+  , level: CJ.string
+  , tag: CJ.string
+  , reason: CJ.string
+  , value: CJ.Record.optional CJ.json
+  }
+
+type UnifiedRemovalsFile =
+  { description :: String
+  , generated_from :: Array String
+  , levels :: { package :: String, version :: String, publish :: String }
+  , summary ::
+      { total_rejections :: Int
+      , by_level :: { package :: Int, version :: Int, publish :: Int }
+      , by_tag :: Array { tag :: String, count :: Int }
+      }
+  , rejections :: Array UnifiedRejection
+  }
+
+unifiedRemovalsFileCodec :: CJ.Codec UnifiedRemovalsFile
+unifiedRemovalsFileCodec = CJ.named "UnifiedRemovalsFile" $ CJ.Record.object
+  { description: CJ.string
+  , generated_from: CJ.array CJ.string
+  , levels: CJ.Record.object
+      { package: CJ.string
+      , version: CJ.string
+      , publish: CJ.string
+      }
+  , summary: CJ.Record.object
+      { total_rejections: CJ.int
+      , by_level: CJ.Record.object
+          { package: CJ.int
+          , version: CJ.int
+          , publish: CJ.int
+          }
+      , by_tag: CJ.array (CJ.Record.object { tag: CJ.string, count: CJ.int })
+      }
+  , rejections: CJ.array unifiedRejectionCodec
+  }
+
+-- | Write the unified removed-packages.json file combining all failure sources
+writeUnifiedRemovals
+  :: Map RawPackageName PackageValidationError
+  -> Map RawPackageName (Map RawVersion VersionValidationError)
+  -> Map PackageName (Map Version PublishError)
+  -> Aff Unit
+writeUnifiedRemovals packageFailures versionFailures publishFailures = do
+  let
+    -- Convert package failures to unified format
+    packageRejections :: Array UnifiedRejection
+    packageRejections = do
+      Tuple (RawPackageName pkg) err <- Map.toUnfoldable packageFailures
+      let formatted = formatPackageValidationError err
+      [ { package: pkg
+        , version: Nothing
+        , level: "package"
+        , tag: formatted.tag
+        , reason: formatted.reason
+        , value: formatted.value
+        }
+      ]
+
+    -- Convert version failures to unified format
+    versionRejections :: Array UnifiedRejection
+    versionRejections = do
+      Tuple (RawPackageName pkg) versions <- Map.toUnfoldable versionFailures
+      Tuple (RawVersion ver) err <- Map.toUnfoldable versions
+      let formatted = formatVersionValidationError err
+      [ { package: pkg
+        , version: Just ver
+        , level: "version"
+        , tag: formatted.tag
+        , reason: formatted.reason
+        , value: formatted.value
+        }
+      ]
+
+    -- Convert publish failures to unified format
+    publishRejections :: Array UnifiedRejection
+    publishRejections = do
+      Tuple pkg versions <- Map.toUnfoldable publishFailures
+      Tuple ver err <- Map.toUnfoldable versions
+      let formatted = formatPublishError err
+      -- Simplify NoCompilersFound value to just show compiler versions tried
+      let simplifiedValue = case err of
+            NoCompilersFound compilerMap -> do
+              let compilerArrays = Set.toUnfoldable (Map.keys compilerMap) :: Array (NonEmptyArray Version)
+              let compilers = Array.sort $ Array.nub $ Array.concatMap NonEmptyArray.toArray compilerArrays
+              Just $ CJ.encode (CJ.array CJ.string) (map Version.print compilers)
+            _ -> formatted.value
+      [ { package: PackageName.print pkg
+        , version: Just (Version.print ver)
+        , level: "publish"
+        , tag: formatted.tag
+        , reason: formatted.reason
+        , value: simplifiedValue
+        }
+      ]
+
+    allRejections = packageRejections <> versionRejections <> publishRejections
+
+    -- Count by tag
+    tagCounts :: Map String Int
+    tagCounts = Array.foldl (\acc r -> Map.insertWith (+) r.tag 1 acc) Map.empty allRejections
+
+    sortedTagCounts :: Array { tag :: String, count :: Int }
+    sortedTagCounts = Array.sortBy (\a b -> compare b.count a.count) $
+      map (\(Tuple tag count) -> { tag, count }) $ Map.toUnfoldable tagCounts
+
+    output :: UnifiedRemovalsFile
+    output =
+      { description: "All package versions rejected by the PureScript registry"
+      , generated_from:
+          [ "scratch/package-failures.json"
+          , "scratch/version-failures.json"
+          , "scratch/publish-failures.json"
+          ]
+      , levels:
+          { package: "Entire package rejected (e.g., disabled, invalid name, repo issues)"
+          , version: "Specific version rejected during manifest parsing (e.g., invalid tag, missing license)"
+          , publish: "Version failed to publish (e.g., solver failure, no compatible compiler)"
+          }
+      , summary:
+          { total_rejections: Array.length allRejections
+          , by_level:
+              { package: Array.length packageRejections
+              , version: Array.length versionRejections
+              , publish: Array.length publishRejections
+              }
+          , by_tag: sortedTagCounts
+          }
+      , rejections: allRejections
+      }
+
+  writeJsonFile unifiedRemovalsFileCodec (Path.concat [ scratchDir, "removed-packages.json" ]) output
 
 type LegacyRegistry = Map RawPackageName String
 
@@ -711,15 +878,42 @@ importLegacyRegistry legacyRegistry = do
     versionFailures :: Map RawPackageName (Map RawVersion VersionValidationError)
     versionFailures = do
       let
-        foldFn acc fail = do
-          let error = { error: UnregisteredDependencies fail.dependencies, reason: "Contains dependencies that are not registered." }
-          Map.insertWith Map.union fail.package (Map.singleton fail.version error) acc
+        -- The final index tells us which packages have versions registered
+        finalIndexMap = ManifestIndex.toMap validIndex
+
+        -- Classify each unsatisfied dependency: is it truly unregistered, or
+        -- does it exist but with no versions matching the required range?
+        classifyDependency :: PackageName -> Range -> Either PackageName { dependency :: PackageName, range :: Range, availableVersions :: NonEmptySet Version }
+        classifyDependency dep range = case Map.lookup dep finalIndexMap of
+          Nothing -> Left dep
+          Just versions -> case NonEmptySet.fromSet (Map.keys versions) of
+            Nothing -> Left dep
+            Just availableVersions -> Right { dependency: dep, range, availableVersions }
+
+        mkError :: Array PackageName -> Array { dependency :: PackageName, range :: Range, availableVersions :: NonEmptySet Version } -> VersionValidationError
+        mkError unregistered noVersionsInRange = case unregistered, noVersionsInRange of
+          [], [] -> { error: UnregisteredDependencies [], reason: "No dependency errors (unexpected)." }
+          [], nvir -> { error: NoVersionsInRange nvir, reason: "Dependencies exist but no versions match required ranges." }
+          unreg, [] -> { error: UnregisteredDependencies unreg, reason: "Contains dependencies that are not registered." }
+          unreg, nvir ->
+            -- Both types of errors - report unregistered ones (the more severe case)
+            -- but include info about both in the reason
+            { error: UnregisteredDependencies unreg
+            , reason: "Contains unregistered dependencies. Additionally, some dependencies exist but have no versions in the required ranges: "
+                <> String.joinWith ", " (map (\r -> PackageName.print r.dependency <> " " <> Range.print r.range) nvir)
+            }
+
+        foldFn acc fail = Map.insertWith Map.union fail.package (Map.singleton fail.version fail.error) acc
+
         dependencyFailures =
           Array.foldl foldFn Map.empty do
             Tuple name versions <- Map.toUnfoldable unsatisfied
             Tuple version deps <- Map.toUnfoldable versions
-            let ref = unsafeFromJust (Map.lookup name packageRefs >>= Map.lookup version)
-            [ { package: RawPackageName (PackageName.print name), version: ref, dependencies: Array.fromFoldable $ Map.keys deps } ]
+            let
+              ref = unsafeFromJust (Map.lookup name packageRefs >>= Map.lookup version)
+              classified = separate $ map (uncurry classifyDependency) (Map.toUnfoldable deps :: Array _)
+              error = mkError classified.left classified.right
+            [ { package: RawPackageName (PackageName.print name), version: ref, error } ]
       Map.unionWith Map.union separatedVersions.left dependencyFailures
 
     archivePackages :: Set PackageName
@@ -814,36 +1008,94 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
 
 data PublishError
   = SolveFailedDependencies String
+  -- | Solver failed due to conflicting version ranges for a specific package
+  | SolveFailedConflictingVersions { package :: String, details :: String }
+  -- | Solver found resolutions but they don't exist in the registry
+  | SolveFailedUnregisteredResolutions (Array { name :: PackageName, version :: Version })
   | SolveFailedCompiler String
   | NoCompilersFound (Map (NonEmptyArray Version) CompilerFailure)
   | UnsolvableDependencyCompilers (Array GroupedByCompilers)
+  -- | Generic publish error (catch-all)
   | PublishError String
+  -- | spago.yaml could not be converted to purs.json
+  | PublishErrorSpagoConversion String
+  -- | Package contains malformed or disallowed module names
+  | PublishErrorMalformedModules String
+  -- | Resolutions not solvable due to compiler version conflicts
+  | PublishErrorResolutionsNotSolvable String
 
 derive instance Eq PublishError
+
+unregisteredResolutionCodec :: CJ.Codec { name :: PackageName, version :: Version }
+unregisteredResolutionCodec = CJ.named "UnregisteredResolution" $ CJ.Record.object
+  { name: PackageName.codec
+  , version: Version.codec
+  }
+
+conflictingVersionsCodec :: CJ.Codec { package :: String, details :: String }
+conflictingVersionsCodec = CJ.named "ConflictingVersions" $ CJ.Record.object
+  { package: CJ.string
+  , details: CJ.string
+  }
 
 publishErrorCodec :: CJ.Codec PublishError
 publishErrorCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantMatch
   { solveFailedCompiler: Right CJ.string
   , solveFailedDependencies: Right CJ.string
+  , solveFailedConflictingVersions: Right conflictingVersionsCodec
+  , solveFailedUnregisteredResolutions: Right (CJ.array unregisteredResolutionCodec)
   , noCompilersFound: Right compilerFailureMapCodec
   , unsolvableDependencyCompilers: Right (CJ.array groupedByCompilersCodec)
   , publishError: Right CJ.string
+  , publishErrorSpagoConversion: Right CJ.string
+  , publishErrorMalformedModules: Right CJ.string
+  , publishErrorResolutionsNotSolvable: Right CJ.string
   }
   where
   toVariant = case _ of
     SolveFailedDependencies error -> Variant.inj (Proxy :: _ "solveFailedDependencies") error
+    SolveFailedConflictingVersions info -> Variant.inj (Proxy :: _ "solveFailedConflictingVersions") info
+    SolveFailedUnregisteredResolutions resolutions -> Variant.inj (Proxy :: _ "solveFailedUnregisteredResolutions") resolutions
     SolveFailedCompiler error -> Variant.inj (Proxy :: _ "solveFailedCompiler") error
     NoCompilersFound failed -> Variant.inj (Proxy :: _ "noCompilersFound") failed
     UnsolvableDependencyCompilers group -> Variant.inj (Proxy :: _ "unsolvableDependencyCompilers") group
     PublishError error -> Variant.inj (Proxy :: _ "publishError") error
+    PublishErrorSpagoConversion error -> Variant.inj (Proxy :: _ "publishErrorSpagoConversion") error
+    PublishErrorMalformedModules error -> Variant.inj (Proxy :: _ "publishErrorMalformedModules") error
+    PublishErrorResolutionsNotSolvable error -> Variant.inj (Proxy :: _ "publishErrorResolutionsNotSolvable") error
 
   fromVariant = Variant.match
     { solveFailedDependencies: SolveFailedDependencies
+    , solveFailedConflictingVersions: SolveFailedConflictingVersions
+    , solveFailedUnregisteredResolutions: SolveFailedUnregisteredResolutions
     , solveFailedCompiler: SolveFailedCompiler
     , noCompilersFound: NoCompilersFound
     , unsolvableDependencyCompilers: UnsolvableDependencyCompilers
     , publishError: PublishError
+    , publishErrorSpagoConversion: PublishErrorSpagoConversion
+    , publishErrorMalformedModules: PublishErrorMalformedModules
+    , publishErrorResolutionsNotSolvable: PublishErrorResolutionsNotSolvable
     }
+
+-- | Classify a generic publish error string into a more specific error type
+-- | based on known error message patterns.
+classifyPublishError :: String -> PublishError
+classifyPublishError error
+  -- spago.yaml conversion errors
+  | String.contains (String.Pattern "converting your spago.yaml into a purs.json") error =
+      PublishErrorSpagoConversion error
+  | String.contains (String.Pattern "No 'publish' key found") error =
+      PublishErrorSpagoConversion error
+  -- Malformed module name errors
+  | String.contains (String.Pattern "malformed or disallowed PureScript module names") error =
+      PublishErrorMalformedModules error
+  | String.contains (String.Pattern "malformed or disallowed module names") error =
+      PublishErrorMalformedModules error
+  -- Resolutions not solvable (compiler version conflicts in resolutions)
+  | String.contains (String.Pattern "Resolutions not solvable") error =
+      PublishErrorResolutionsNotSolvable error
+  -- Fallback to generic PublishError
+  | otherwise = PublishError error
 
 type PublishFailureStats =
   { packages :: { total :: Int, considered :: Int, partial :: Int, failed :: Set PackageName, reserved :: Set PackageName }
@@ -897,10 +1149,15 @@ collectPublishFailureStats importStats eligibleForReservation importedIndex fail
       let
         toKey = case _ of
           SolveFailedDependencies _ -> "Solving failed (dependencies)"
+          SolveFailedConflictingVersions _ -> "Solving failed (conflicting versions)"
+          SolveFailedUnregisteredResolutions _ -> "Solving failed (unregistered resolutions)"
           SolveFailedCompiler _ -> "Solving failed (compiler)"
           NoCompilersFound _ -> "No compilers usable for publishing"
           UnsolvableDependencyCompilers _ -> "Dependency compiler conflict"
           PublishError _ -> "Publishing failed"
+          PublishErrorSpagoConversion _ -> "Publishing failed (spago.yaml conversion)"
+          PublishErrorMalformedModules _ -> "Publishing failed (malformed modules)"
+          PublishErrorResolutionsNotSolvable _ -> "Publishing failed (resolutions not solvable)"
 
         foldFn prev (Tuple _ versions) =
           Array.foldl (\prevCounts (Tuple _ error) -> Map.insertWith (+) (toKey error) 1 prevCounts) prev (Map.toUnfoldable versions)
@@ -977,6 +1234,7 @@ data VersionError
   | DisabledVersion
   | InvalidManifest LegacyManifestValidationError
   | UnregisteredDependencies (Array PackageName)
+  | NoVersionsInRange (Array { dependency :: PackageName, range :: Range, availableVersions :: NonEmptySet Version })
 
 versionErrorCodec :: CJ.Codec VersionError
 versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantMatch
@@ -991,6 +1249,11 @@ versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantM
       , reason: CJ.string
       }
   , unregisteredDependencies: Right (CJ.array PackageName.codec)
+  , noVersionsInRange: Right $ CJ.array $ CJ.Record.object
+      { dependency: PackageName.codec
+      , range: Range.codec
+      , availableVersions: CJ.Common.nonEmptySet Version.codec
+      }
   }
   where
   toVariant = case _ of
@@ -998,12 +1261,14 @@ versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantM
     DisabledVersion -> Variant.inj (Proxy :: _ "disabledVersion") unit
     InvalidManifest inner -> Variant.inj (Proxy :: _ "invalidManifest") inner
     UnregisteredDependencies inner -> Variant.inj (Proxy :: _ "unregisteredDependencies") inner
+    NoVersionsInRange inner -> Variant.inj (Proxy :: _ "noVersionsInRange") inner
 
   fromVariant = Variant.match
     { invalidTag: InvalidTag
     , disabledVersion: \_ -> DisabledVersion
     , invalidManifest: InvalidManifest
     , unregisteredDependencies: UnregisteredDependencies
+    , noVersionsInRange: NoVersionsInRange
     }
 
 validateVersionDisabled :: PackageName -> LenientVersion -> Either VersionValidationError Unit
@@ -1361,11 +1626,105 @@ formatVersionValidationError { error, reason } = case error of
     { tag: "InvalidTag", value: Just (CJ.encode CJ.string tag.name), reason }
   DisabledVersion ->
     { tag: "DisabledVersion", value: Nothing, reason }
-  InvalidManifest err -> do
-    let errorValue = Legacy.Manifest.printLegacyManifestError err.error
-    { tag: "InvalidManifest", value: Just (CJ.encode CJ.string errorValue), reason }
+  InvalidManifest err -> classifyInvalidManifest err
   UnregisteredDependencies names ->
     { tag: "UnregisteredDependencies", value: Just (CJ.encode (CJ.array PackageName.codec) names), reason }
+  NoVersionsInRange deps -> do
+    let
+      formatVersionRange versions =
+        let min = NonEmptySet.min versions
+            max = NonEmptySet.max versions
+        in if min == max
+           then Version.print min
+           else Version.print min <> " to " <> Version.print max
+      formatDep r = PackageName.print r.dependency <> " " <> Range.print r.range
+        <> " (available: " <> formatVersionRange r.availableVersions <> ")"
+      value = CJ.encode (CJ.array CJ.string) (map formatDep deps)
+    { tag: "NoVersionsInRange", value: Just value, reason }
+
+-- | Classify InvalidManifest errors into more specific sub-types based on the
+-- | underlying LegacyManifestError.
+classifyInvalidManifest :: Legacy.Manifest.LegacyManifestValidationError -> JsonValidationError
+classifyInvalidManifest err = case err.error of
+  Legacy.Manifest.NoManifests ->
+    { tag: "InvalidManifestNoManifests", value: Nothing, reason: err.reason }
+  Legacy.Manifest.MissingLicense ->
+    { tag: "InvalidManifestMissingLicense", value: Nothing, reason: err.reason }
+  Legacy.Manifest.InvalidLicense licenses ->
+    { tag: "InvalidManifestInvalidLicense"
+    , value: Just (CJ.encode (CJ.array CJ.string) licenses)
+    , reason: err.reason
+    }
+  Legacy.Manifest.InvalidDependencies deps ->
+    classifyInvalidDependencies deps err.reason
+
+-- | Classify InvalidDependencies errors based on the type of dependency error.
+-- | - InvalidDependencyRef: Git refs, commits, branches used as versions
+-- | - InvalidDependencyWildcard: Wildcard (*) or empty versions
+-- | - InvalidDependencyRange: Range parsing errors (missing >=, etc.)
+classifyInvalidDependencies :: Array { name :: String, range :: String, error :: String } -> String -> JsonValidationError
+classifyInvalidDependencies deps reason = do
+  let
+    -- Check if a range looks like a git ref (commit hash, branch name, URL)
+    isGitRef :: String -> Boolean
+    isGitRef range =
+      -- Git commit hashes (40 hex chars or shortened) - check for long hex-only strings
+      (String.length range >= 7 && String.length range <= 40 && isLikelyCommitHash range)
+      -- Git URLs
+      || String.contains (String.Pattern "git://") range
+      || String.contains (String.Pattern "github.com") range
+      || String.contains (String.Pattern ".git") range
+      -- Owner/repo format (e.g., "owner/repo#ref")
+      || String.contains (String.Pattern "#") range
+      || String.contains (String.Pattern "/") range
+      -- Branch or tag names (contain path-like chars with specific patterns)
+      || String.contains (String.Pattern "master") range
+      || String.contains (String.Pattern "main") range
+      || String.contains (String.Pattern "compiler/") range
+
+    -- Simple heuristic: if the string doesn't contain typical range chars like
+    -- >=, <, ., and is alphanumeric-ish, it's likely a commit hash
+    isLikelyCommitHash :: String -> Boolean
+    isLikelyCommitHash s =
+      not (String.contains (String.Pattern ">=") s)
+        && not (String.contains (String.Pattern "<") s)
+        && not (String.contains (String.Pattern ".") s)
+        && not (String.contains (String.Pattern " ") s)
+
+    isWildcard :: String -> Boolean
+    isWildcard range = range == "*" || range == "" || range == "latest"
+
+    -- Classify each dependency error
+    classified = deps # map \dep ->
+      if isGitRef dep.range then
+        { category: "gitRef", dep }
+      else if isWildcard dep.range then
+        { category: "wildcard", dep }
+      else
+        { category: "range", dep }
+
+    gitRefs = Array.filter (\d -> d.category == "gitRef") classified
+    wildcards = Array.filter (\d -> d.category == "wildcard") classified
+
+    formatDeps ds = map (\d -> d.dep.name <> ": " <> d.dep.range) ds
+    errorValue = Legacy.Manifest.printLegacyManifestError (Legacy.Manifest.InvalidDependencies deps)
+
+  -- Priority: git refs > wildcards > range errors
+  if not (Array.null gitRefs) then
+    { tag: "InvalidManifestGitRefDependency"
+    , value: Just (CJ.encode (CJ.array CJ.string) (formatDeps gitRefs))
+    , reason
+    }
+  else if not (Array.null wildcards) then
+    { tag: "InvalidManifestWildcardDependency"
+    , value: Just (CJ.encode (CJ.array CJ.string) (formatDeps wildcards))
+    , reason
+    }
+  else
+    { tag: "InvalidManifest"
+    , value: Just (CJ.encode CJ.string errorValue)
+    , reason
+    }
 
 formatPublishError :: PublishError -> JsonValidationError
 formatPublishError = case _ of
@@ -1373,12 +1732,29 @@ formatPublishError = case _ of
     { tag: "SolveFailedCompiler", value: Nothing, reason: error }
   SolveFailedDependencies error ->
     { tag: "SolveFailedDependencies", value: Nothing, reason: error }
+  SolveFailedConflictingVersions { package, details } ->
+    { tag: "SolveFailedConflictingVersions"
+    , value: Just (CJ.encode CJ.string package)
+    , reason: details
+    }
+  SolveFailedUnregisteredResolutions resolutions ->
+    let formatted = map (\r -> formatPackageVersion r.name r.version) resolutions
+    in { tag: "SolveFailedUnregisteredResolutions"
+       , value: Just (CJ.encode (CJ.array CJ.string) formatted)
+       , reason: "Solved resolutions are not registered: " <> String.joinWith ", " formatted
+       }
   NoCompilersFound versions ->
     { tag: "NoCompilersFound", value: Just (CJ.encode compilerFailureMapCodec versions), reason: "No valid compilers found for publishing." }
   UnsolvableDependencyCompilers failed ->
     { tag: "UnsolvableDependencyCompilers", value: Just (CJ.encode (CJ.array groupedByCompilersCodec) failed), reason: "Resolved dependencies cannot compile together" }
   PublishError error ->
     { tag: "PublishError", value: Nothing, reason: error }
+  PublishErrorSpagoConversion error ->
+    { tag: "PublishErrorSpagoConversion", value: Nothing, reason: error }
+  PublishErrorMalformedModules error ->
+    { tag: "PublishErrorMalformedModules", value: Nothing, reason: error }
+  PublishErrorResolutionsNotSolvable error ->
+    { tag: "PublishErrorResolutionsNotSolvable", value: Nothing, reason: error }
 
 type ImportStats =
   { packagesProcessed :: Int
@@ -1474,6 +1850,7 @@ calculateImportStats legacyRegistry imported = do
         DisabledVersion -> "Disabled Version"
         InvalidManifest err -> "Invalid Manifest (" <> innerKey err <> ")"
         UnregisteredDependencies _ -> "Unregistered Dependencies"
+        NoVersionsInRange _ -> "No Versions In Range"
 
       innerKey = _.error >>> case _ of
         NoManifests -> "No Manifests"
