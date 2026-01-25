@@ -1,6 +1,6 @@
 # PureScript Registry Development
 
-[![deploy](https://github.com/purescript/registry-dev/actions/workflows/deploy.yml/badge.svg)](https://github.com/purescript/registry-dev/actions/workflows/deploy.yml) [![tests](https://github.com/purescript/registry-dev/actions/workflows/main.yml/badge.svg)](https://github.com/purescript/registry-dev/actions/workflows/main.yml)
+[![deploy](https://github.com/purescript/registry-dev/actions/workflows/deploy.yml/badge.svg)](https://github.com/purescript/registry-dev/actions/workflows/deploy.yml)
 
 This repository hosts the code for the PureScript Registry and its affiliated projects. If you are new to the registry and are interested in its development, then the following should be helpful:
 
