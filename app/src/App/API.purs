@@ -494,17 +494,35 @@ publish maybeLegacyIndex payload = do
       Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 packagePursJson)) >>= case _ of
         Left error -> do
           Except.throw $ "Could not read purs.json from path " <> packagePursJson <> ": " <> Aff.message error
-        Right string -> Env.askResourceEnv >>= \{ dhallTypes } -> Run.liftAff (jsonToDhallManifest dhallTypes string) >>= case _ of
-          Left error -> do
-            Log.error $ "Manifest does not typecheck: " <> error
-            Except.throw $ "Found a valid purs.json file in the package source, but it does not typecheck."
-          Right _ -> case parseJson Manifest.codec string of
-            Left err -> do
-              Log.error $ "Failed to parse manifest: " <> CJ.DecodeError.print err
-              Except.throw $ "Found a purs.json file in the package source, but it could not be decoded."
-            Right manifest -> do
-              Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec manifest
-              pure manifest
+        Right string ->
+          -- We skip Dhall type-checks for legacy packages because they don't contain 'ref' fields
+          if isJust maybeLegacyIndex then do
+            json <- case JSON.parse string of
+              Left parseErr -> do
+                Log.error $ "Failed to parse manifest: " <> parseErr
+                Except.throw $ "Found a purs.json file in the package source, but it could not be parsed."
+              Right json -> pure json
+            manifest <- case CJ.decode (Legacy.Manifest.legacyManifestCodec payload.ref) json of
+              Left err -> do
+                Log.error $ "Failed to parse manifest: " <> CJ.DecodeError.print err
+                Except.throw $ "Found a purs.json file in the package source, but it could not be decoded."
+              Right manifest -> pure manifest
+            let manifestJson = printJson Manifest.codec manifest
+            Run.liftAff $ FS.Aff.writeTextFile UTF8 packagePursJson manifestJson
+            Log.debug $ "Rewrote purs.json for legacy package:\n" <> manifestJson
+            pure manifest
+          else
+            Env.askResourceEnv >>= \{ dhallTypes } -> Run.liftAff (jsonToDhallManifest dhallTypes string) >>= case _ of
+              Left error -> do
+                Log.error $ "Manifest does not typecheck: " <> error
+                Except.throw $ "Found a valid purs.json file in the package source, but it does not typecheck."
+              Right _ -> case parseJson Manifest.codec string of
+                Left err -> do
+                  Log.error $ "Failed to parse manifest: " <> CJ.DecodeError.print err
+                  Except.throw $ "Found a purs.json file in the package source, but it could not be decoded."
+                Right manifest -> do
+                  Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec manifest
+                  pure manifest
 
     else if hasSpagoYaml then do
       Log.notice $ "Package source does not have a purs.json file, creating one from your spago.yaml file..."
