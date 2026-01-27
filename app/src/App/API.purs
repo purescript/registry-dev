@@ -439,9 +439,10 @@ publish maybeLegacyIndex payload = do
   tmp <- Tmp.mkTmpDir
 
   -- Legacy imports may encounter packages whose GitHub repositories no longer
-  -- exist but whose tarballs are stored in the registry-archive. When Source.fetch
-  -- fails with InaccessibleRepo during a legacy import, we fall back to fetching
-  -- from the registry-archive instead.
+  -- exist or whose specific tags have been deleted but whose tarballs are stored
+  -- in the registry-archive. When Source.fetch fails with InaccessibleRepo or
+  -- Fatal (which includes missing tags) during a legacy import, we fall back to
+  -- fetching from the registry-archive instead.
   { path: downloadedPackage, published: publishedTime } <-
     Source.fetchEither tmp existingMetadata.location payload.ref >>= case _ of
       Right result ->
@@ -453,6 +454,17 @@ publish maybeLegacyIndex payload = do
           , "/"
           , address.repo
           ]
+        Log.info "Falling back to registry-archive tarball..."
+        version <- case LenientVersion.parse payload.ref of
+          Left _ -> Except.throw $ Array.fold
+            [ "Cannot fall back to archive: ref "
+            , payload.ref
+            , " is not a valid version"
+            ]
+          Right v -> pure $ LenientVersion.version v
+        Archive.fetch tmp payload.name version
+      Left (Source.Fatal errMsg) | isJust maybeLegacyIndex && isMissingTagError errMsg -> do
+        Log.warn $ "Git clone failed (likely missing tag): " <> errMsg
         Log.info "Falling back to registry-archive tarball..."
         version <- case LenientVersion.parse payload.ref of
           Left _ -> Except.throw $ Array.fold
@@ -530,7 +542,12 @@ publish maybeLegacyIndex payload = do
         Left readErr -> Except.throw $ "Could not publish your package - a spago.yaml was present, but it was not possible to read it:\n" <> readErr
         Right config -> case SpagoYaml.spagoYamlToManifest payload.ref config of
           Left err -> Except.throw $ "Could not publish your package - there was an error while converting your spago.yaml into a purs.json manifest:\n" <> err
-          Right manifest -> do
+          Right (Manifest m) -> do
+            -- Special case: the "debounce" package has a spago.yaml with name "debouncing"
+            -- but was registered under "debounce" in the legacy registry. Override the name
+            -- only for this specific package during legacy import.
+            let isDebouncePackage = isJust maybeLegacyIndex && payload.name == unsafeFromRight (PackageName.parse "debounce")
+            let manifest = if isDebouncePackage then Manifest (m { name = payload.name }) else Manifest m
             Log.notice $ Array.fold
               [ "Converted your spago.yaml into a purs.json manifest to use for publishing:"
               , "\n```json\n"
@@ -1547,3 +1564,11 @@ validateLicense packageDir manifestLicense = do
               { manifestLicense
               , detectedLicenses: uncoveredLicenses
               }
+
+-- | Check if a fatal error message indicates a missing tag/branch.
+-- | This is used to fall back to the registry-archive for legacy imports
+-- | where the GitHub repo exists but the specific tag has been deleted.
+isMissingTagError :: String -> Boolean
+isMissingTagError errMsg =
+  String.contains (String.Pattern "Remote branch") errMsg
+    && String.contains (String.Pattern "not found in upstream origin") errMsg

@@ -381,7 +381,15 @@ runLegacyImport logs = do
     publishLegacyPackage :: Solver.TransitivizedRegistry -> Set PackageName -> Manifest -> Run _ Unit
     publishLegacyPackage legacyIndex archivePackages (Manifest manifest) = do
       let formatted = formatPackageVersion manifest.name manifest.version
-      let isArchiveBacked = manifest.name `Set.member` archivePackages
+      -- A version is archive-backed if either the whole package is archive-backed
+      -- (GitHub 404) or if this specific version is listed in archiveBackedVersions
+      -- (GitHub repo exists but tag is missing)
+      let
+        packageIsArchiveBacked = manifest.name `Set.member` archivePackages
+        versionIsArchiveBacked = case Map.lookup manifest.name archiveBackedVersions of
+          Nothing -> false
+          Just versions -> manifest.version `Set.member` versions
+        isArchiveBacked = packageIsArchiveBacked || versionIsArchiveBacked
       Log.info $ "\n----------\nPUBLISHING: " <> formatted <> "\n----------\n"
       RawVersion ref <- case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
         Nothing -> Run.Except.throw $ "Unable to recover package ref for " <> formatted
@@ -983,7 +991,11 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
             -- spago.yaml files because they've begun to pop up since the registry
             -- alpha began and we don't want to drop them when doing a re-import.
             fetchSpagoYaml package.address (RawVersion tag.name) >>= case _ of
-              Just manifest -> do
+              Just (Manifest m) -> do
+                -- Special case: the "debounce" package has a spago.yaml with name "debouncing"
+                -- but was registered under "debounce" in the legacy registry.
+                let debouncePackage = unsafeFromRight (PackageName.parse "debounce")
+                let manifest = if package.name == debouncePackage then Manifest (m { name = package.name }) else Manifest m
                 Log.debug $ "Built manifest from discovered spago.yaml file."
                 Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) (Right manifest)
                 pure manifest
@@ -1461,8 +1473,25 @@ fetchPackageTags name address = GitHub.listTags address >>= case _ of
         [ "Unexpected GitHub error with a status <= 400"
         , Octokit.printGitHubError err
         ]
-  Right tags ->
-    pure { tags, archiveBacked: false }
+  Right githubTags -> do
+    -- Check if there are archive-backed versions that are missing from GitHub tags.
+    -- This handles the case where a GitHub repo exists but is missing some tags
+    -- for versions that were previously published and are now in the registry-archive.
+    let printed = PackageName.print name
+    case Map.lookup name archiveBackedVersions of
+      Nothing -> pure { tags: githubTags, archiveBacked: false }
+      Just archiveVersions -> do
+        let
+          parseTagVersion tag = String.stripPrefix (String.Pattern "v") tag.name >>= hush <<< Version.parse
+          githubVersions = Set.fromFoldable $ Array.mapMaybe parseTagVersion githubTags
+          missingFromGithub = Set.difference archiveVersions githubVersions
+        if Set.isEmpty missingFromGithub then
+          pure { tags: githubTags, archiveBacked: false }
+        else do
+          let syntheticTags = (Set.toUnfoldable missingFromGithub :: Array _) <#> \v -> { name: "v" <> Version.print v, sha: "", url: "" }
+          Log.info $ printed <> ": Merging " <> show (Array.length syntheticTags) <> " archive-backed versions missing from GitHub: "
+            <> String.joinWith ", " (map Version.print (Set.toUnfoldable missingFromGithub))
+          pure { tags: githubTags <> syntheticTags, archiveBacked: true }
 
 -- | Fetch published versions for a package directly from the remote registry repo (main branch).
 -- | Used as a fallback when the local registry checkout has been cleared (e.g., during reuploads).
@@ -1586,6 +1615,23 @@ validatePackageDisabled package =
     reservedPackage = "Reserved package which cannot be uploaded."
     noSrcDirectory = "No version contains a 'src' directory."
     freedPackage = "Abandoned package whose name has been freed for reuse."
+
+-- | Versions that exist in the registry-archive but are missing from GitHub tags.
+-- | These are packages where the GitHub repo exists but specific tags were deleted
+-- | or never created. The importer will synthesize tags for these versions and
+-- | fetch source from the registry-archive instead of GitHub.
+archiveBackedVersions :: Map PackageName (Set Version)
+archiveBackedVersions = Map.fromFoldable $ Array.mapMaybe parseEntry
+  [ Tuple "halogen-bootstrap5" [ "2.2.1", "2.3.0" ]
+  , Tuple "sparse-polynomials" [ "1.0.4", "1.0.5" ]
+  , Tuple "debounce" [ "0.1.0" ]
+  , Tuple "record-extra-srghma" [ "0.1.0", "0.1.1", "0.2.0", "0.2.2", "0.2.3", "0.2.4", "0.2.5", "0.2.6", "0.2.7", "0.2.8" ]
+  ]
+  where
+  parseEntry (Tuple nameStr versions) = do
+    name <- hush $ PackageName.parse nameStr
+    parsedVersions <- traverse (hush <<< Version.parse) versions
+    pure $ Tuple name (Set.fromFoldable parsedVersions)
 
 -- | Validate that a package name parses. Expects the package to already have
 -- | had its 'purescript-' prefix removed.
