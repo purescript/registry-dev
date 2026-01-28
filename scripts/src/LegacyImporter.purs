@@ -117,6 +117,8 @@ import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
+import Registry.App.Legacy.BoundWidening (LegacyPublishContext)
+import Registry.App.Legacy.BoundWidening as BoundWidening
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
@@ -171,6 +173,14 @@ isInfraError error =
     || String.contains (String.Pattern "Could not read latest package set") error
     -- Raw git/network errors that may leak through
     || Git.isTransientGitError error
+
+-- | Check if a fatal error message indicates a missing tag/branch.
+-- | This is used to fall back to the registry-archive for packages
+-- | where the GitHub repo exists but the specific tag has been deleted.
+isMissingTagError :: String -> Boolean
+isMissingTagError errMsg =
+  String.contains (String.Pattern "Remote branch") errMsg
+    && String.contains (String.Pattern "not found in upstream origin") errMsg
 
 parser :: ArgParser ImportMode
 parser = Arg.choose "command"
@@ -378,19 +388,28 @@ runLegacyImport logs = do
       pure range
 
   let
-    publishLegacyPackage :: Solver.TransitivizedRegistry -> Set PackageName -> Manifest -> Run _ Unit
-    publishLegacyPackage legacyIndex archivePackages (Manifest manifest) = do
+    publishLegacyPackage :: LegacyPublishContext -> Set PackageName -> Manifest -> Run _ Unit
+    publishLegacyPackage legacyContext archivePackages (Manifest manifest) = do
+      let legacyIndex = legacyContext.legacyIndex
       let formatted = formatPackageVersion manifest.name manifest.version
-      -- A version is archive-backed if either the whole package is archive-backed
-      -- (GitHub 404) or if this specific version is listed in archiveBackedVersions
-      -- (GitHub repo exists but tag is missing)
-      let
-        packageIsArchiveBacked = manifest.name `Set.member` archivePackages
-        versionIsArchiveBacked = case Map.lookup manifest.name archiveBackedVersions of
-          Nothing -> false
-          Just versions -> manifest.version `Set.member` versions
-        isArchiveBacked = packageIsArchiveBacked || versionIsArchiveBacked
+
+      -- Widen the manifest's dependency bounds using package set evidence.
+      -- This must happen before solving so packages with overly-strict bounds
+      -- can find solutions. The widened bounds will also be passed to API.publish.
+      let widenedDeps = BoundWidening.widenManifestDependencies legacyContext.packageSetEvidence manifest.name manifest.version manifest.dependencies
+      let widenedAnyDeps = widenedDeps /= manifest.dependencies
+
+      -- A package is archive-backed if its GitHub repo returns 404
+      let isArchiveBacked = manifest.name `Set.member` archivePackages
       Log.info $ "\n----------\nPUBLISHING: " <> formatted <> "\n----------\n"
+
+      -- Log widening after the PUBLISHING banner
+      when widenedAnyDeps do
+        Log.info $ "Widened dependency bounds for " <> formatted <> ":"
+        for_ (Map.toUnfoldable manifest.dependencies :: Array _) \(Tuple depName oldRange) ->
+          for_ (Map.lookup depName widenedDeps) \newRange ->
+            when (oldRange /= newRange) do
+              Log.info $ "  " <> PackageName.print depName <> ": " <> Range.print oldRange <> " → " <> Range.print newRange
       RawVersion ref <- case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
         Nothing -> Run.Except.throw $ "Unable to recover package ref for " <> formatted
         Just ref -> pure ref
@@ -421,7 +440,7 @@ runLegacyImport logs = do
               Just pkg -> SolveFailedConflictingVersions { package: pkg, details: joined }
               Nothing -> SolveFailedDependencies joined
 
-        legacySolution <- case Solver.solveFull { registry: legacyIndex, required: Solver.initializeRequired manifest.dependencies } of
+        legacySolution <- case Solver.solveFull { registry: legacyIndex, required: Solver.initializeRequired widenedDeps } of
           Left unsolvable -> do
             let errors = toErrors unsolvable
             Log.warn $ "Could not solve with legacy index " <> formatted <> Array.foldMap (append "\n") errors
@@ -440,7 +459,7 @@ runLegacyImport logs = do
               Log.warn "Not using legacy index resolutions for this package."
               pure $ Left $ SolveFailedUnregisteredResolutions unregistered
 
-        currentSolution <- case Solver.solveWithCompiler allCompilersRange compilerIndex manifest.dependencies of
+        currentSolution <- case Solver.solveWithCompiler allCompilersRange compilerIndex widenedDeps of
           Left unsolvable -> do
             let errors = toErrors unsolvable
             Log.warn $ "Could not solve with current index " <> formatted <> Array.foldMap (append "\n") errors
@@ -468,9 +487,9 @@ runLegacyImport logs = do
           let
             findFirstFromResolutions :: Map PackageName Version -> Run _ (Either (Map Version CompilerFailure) Version)
             findFirstFromResolutions resolutions = do
-              Log.debug $ "Finding compiler for " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions <> "\nfrom dependency list\n" <> printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
+              Log.debug $ "Finding compiler for " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions <> "\nfrom dependency list\n" <> printJson (Internal.Codec.packageMap Range.codec) widenedDeps
               possibleCompilers <-
-                if Map.isEmpty manifest.dependencies then do
+                if Map.isEmpty widenedDeps then do
                   Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
                   pure $ NonEmptySet.fromFoldable1 allCompilers
                 else do
@@ -517,8 +536,15 @@ runLegacyImport logs = do
                       { path: archivePath } <- Archive.fetch sourceTmp manifest.name manifest.version
                       pure archivePath
                     else do
-                      { path } <- Source.fetch sourceTmp manifest.location ref
-                      pure path
+                      -- Try GitHub first, fall back to archive if the tag is missing
+                      Source.fetchEither sourceTmp manifest.location ref >>= case _ of
+                        Right { path } -> pure path
+                        Left (Source.Fatal errMsg) | isMissingTagError errMsg -> do
+                          Log.warn $ "Git clone failed (missing tag): " <> errMsg
+                          Log.info $ "Falling back to registry archive for " <> formatted
+                          { path: archivePath } <- Archive.fetch sourceTmp manifest.name manifest.version
+                          pure archivePath
+                        Left err -> Run.Except.throw $ Source.printFetchError err
                   Log.debug $ "Downloaded source to " <> sourcePath
                   Log.debug "Downloading dependencies..."
                   let installDir = Path.concat [ sourceTmp, ".registry" ]
@@ -581,7 +607,56 @@ runLegacyImport logs = do
                     Left failures -> reportFailures failures
                     Right compiler -> pure $ Right $ Tuple compiler legacyResolutions
 
-          case eitherCompiler of
+          -- If compilation failed with widened deps, retry with original deps
+          eitherCompilerFinal <- case eitherCompiler of
+            Right result -> pure $ Right result
+            Left err | widenedAnyDeps -> do
+              Log.warn $ "Compilation failed with widened bounds for " <> formatted <> ". Retrying with original bounds..."
+              -- Re-solve with original deps
+              let solveOriginal = do
+                    legacy <- case Solver.solveFull { registry: legacyIndex, required: Solver.initializeRequired manifest.dependencies } of
+                      Left _ -> pure Nothing
+                      Right res -> do
+                        let lookup r = maybe (Left r) (\_ -> Right r) (Map.lookup (fst r) (un CompilerIndex compilerIndex) >>= Map.lookup (snd r))
+                        let { fail } = partitionEithers $ map lookup $ Map.toUnfoldable res
+                        pure $ if Array.null fail then Just res else Nothing
+                    current <- case Solver.solveWithCompiler allCompilersRange compilerIndex manifest.dependencies of
+                      Left _ -> pure Nothing
+                      Right (Tuple _ res) -> pure $ Just res
+                    pure $ case legacy, current of
+                      Nothing, Nothing -> Nothing
+                      Just res, Nothing -> Just $ This res
+                      Nothing, Just res -> Just $ That res
+                      Just l, Just c -> Just $ Both l c
+              solveOriginal >>= case _ of
+                Nothing -> do
+                  Log.warn "Could not solve with original bounds either."
+                  pure $ Left err
+                Just origResolutions -> do
+                  Log.info "Solved with original bounds. Trying compilation..."
+                  origCompiler <- case origResolutions of
+                    This legRes -> findFirstFromResolutions legRes >>= case _ of
+                      Left _ -> pure Nothing
+                      Right c -> pure $ Just $ Tuple c legRes
+                    That curRes -> findFirstFromResolutions curRes >>= case _ of
+                      Left _ -> pure Nothing
+                      Right c -> pure $ Just $ Tuple c curRes
+                    Both legRes curRes -> do
+                      findFirstFromResolutions curRes >>= case _ of
+                        Right c -> pure $ Just $ Tuple c curRes
+                        Left _ -> findFirstFromResolutions legRes >>= case _ of
+                          Right c -> pure $ Just $ Tuple c legRes
+                          Left _ -> pure Nothing
+                  case origCompiler of
+                    Nothing -> do
+                      Log.warn "Compilation also failed with original bounds."
+                      pure $ Left err
+                    Just result -> do
+                      Log.info $ "Compilation succeeded with original bounds for " <> formatted
+                      pure $ Right result
+            Left err -> pure $ Left err
+
+          case eitherCompilerFinal of
             Left err -> Cache.put _importCache (PublishFailure manifest.name manifest.version) err
             Right (Tuple compiler resolutions) -> do
               Log.debug $ "Selected " <> Version.print compiler <> " for publishing."
@@ -594,7 +669,7 @@ runLegacyImport logs = do
                   , compiler: Just compiler
                   , resolutions: Just resolutions
                   }
-              Run.Except.runExcept (API.publish (Just legacyIndex) payload) >>= case _ of
+              Run.Except.runExcept (API.publish (Just legacyContext) payload) >>= case _ of
                 Left error -> do
                   Log.error $ "Failed to publish " <> formatted <> ": " <> error
                   -- Infrastructure errors (git failures, HTTP failures, etc.) should halt
@@ -616,15 +691,28 @@ runLegacyImport logs = do
         , "----------"
         ]
 
+      Log.info "Reading package sets for bound widening evidence..."
+      allPackageSets <- Registry.readAllPackageSets
+      Log.info $ "Read " <> show (Map.size allPackageSets) <> " package sets."
+
+      Log.info "Building package set evidence map..."
+      let packageSetEvidence = BoundWidening.buildPackageSetEvidence allPackageSets importedIndex.registryIndex
+
       legacyIndex <- do
-        Log.info "Transitivizing legacy registry..."
+        Log.info "Transitivizing legacy registry with widened bounds..."
+        let rawDeps = map (map (un Manifest >>> _.dependencies)) (ManifestIndex.toMap importedIndex.registryIndex)
+        let widenedDeps = BoundWidening.widenLegacyIndex packageSetEvidence rawDeps
         pure
           $ Solver.exploreAllTransitiveDependencies
           $ Solver.initializeRegistry
-          $ map (map (un Manifest >>> _.dependencies)) (ManifestIndex.toMap importedIndex.registryIndex)
+          $ widenedDeps
+
+      let
+        legacyContext :: LegacyPublishContext
+        legacyContext = { legacyIndex, packageSetEvidence }
 
       let archivePackages = importedIndex.archivePackages
-      void $ for manifests (publishLegacyPackage legacyIndex archivePackages)
+      void $ for manifests (publishLegacyPackage legacyContext archivePackages)
 
   Log.info "Finished publishing! Collecting all publish failures and writing to disk."
   let
@@ -995,7 +1083,10 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
                 -- Special case: the "debounce" package has a spago.yaml with name "debouncing"
                 -- but was registered under "debounce" in the legacy registry.
                 let debouncePackage = unsafeFromRight (PackageName.parse "debounce")
-                let manifest = if package.name == debouncePackage then Manifest (m { name = package.name }) else Manifest m
+                -- We always use the location from the legacy registry, not whatever
+                -- was written in the manifest, since the legacy registry is the
+                -- source of truth for where packages are fetched from.
+                let manifest = Manifest (m { name = if package.name == debouncePackage then package.name else m.name, location = location })
                 Log.debug $ "Built manifest from discovered spago.yaml file."
                 Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) (Right manifest)
                 pure manifest
@@ -1474,24 +1565,27 @@ fetchPackageTags name address = GitHub.listTags address >>= case _ of
         , Octokit.printGitHubError err
         ]
   Right githubTags -> do
-    -- Check if there are archive-backed versions that are missing from GitHub tags.
-    -- This handles the case where a GitHub repo exists but is missing some tags
-    -- for versions that were previously published and are now in the registry-archive.
+    -- For packages where the repo exists, we also need to include versions that
+    -- are in the registry metadata but missing from GitHub tags. These will be
+    -- fetched from the registry-archive automatically when the source fetch fails.
     let printed = PackageName.print name
-    case Map.lookup name archiveBackedVersions of
-      Nothing -> pure { tags: githubTags, archiveBacked: false }
-      Just archiveVersions -> do
-        let
-          parseTagVersion tag = String.stripPrefix (String.Pattern "v") tag.name >>= hush <<< Version.parse
-          githubVersions = Set.fromFoldable $ Array.mapMaybe parseTagVersion githubTags
-          missingFromGithub = Set.difference archiveVersions githubVersions
-        if Set.isEmpty missingFromGithub then
-          pure { tags: githubTags, archiveBacked: false }
-        else do
-          let syntheticTags = (Set.toUnfoldable missingFromGithub :: Array _) <#> \v -> { name: "v" <> Version.print v, sha: "", url: "" }
-          Log.info $ printed <> ": Merging " <> show (Array.length syntheticTags) <> " archive-backed versions missing from GitHub: "
-            <> String.joinWith ", " (map Version.print (Set.toUnfoldable missingFromGithub))
-          pure { tags: githubTags <> syntheticTags, archiveBacked: true }
+    publishedVersions <- Registry.readMetadata name >>= case _ of
+      Just (Metadata metadata) -> pure $ Set.toUnfoldable $ Map.keys metadata.published
+      Nothing -> fetchRemoteRegistryVersions name
+    let
+      parseTagVersion tag =
+        let stripped = fromMaybe tag.name (String.stripPrefix (String.Pattern "v") tag.name)
+        in hush (Version.parse stripped)
+      githubVersions = Set.fromFoldable $ Array.mapMaybe parseTagVersion githubTags
+      publishedSet = Set.fromFoldable publishedVersions
+      missingFromGithub = Set.difference publishedSet githubVersions
+    if Set.isEmpty missingFromGithub then
+      pure { tags: githubTags, archiveBacked: false }
+    else do
+      let syntheticTags = (Set.toUnfoldable missingFromGithub :: Array _) <#> \v -> { name: "v" <> Version.print v, sha: "", url: "" }
+      Log.info $ printed <> ": Adding " <> show (Array.length syntheticTags) <> " versions from registry metadata missing from GitHub tags: "
+        <> String.joinWith ", " (map Version.print (Set.toUnfoldable missingFromGithub))
+      pure { tags: githubTags <> syntheticTags, archiveBacked: false }
 
 -- | Fetch published versions for a package directly from the remote registry repo (main branch).
 -- | Used as a fallback when the local registry checkout has been cleared (e.g., during reuploads).
@@ -1615,23 +1709,6 @@ validatePackageDisabled package =
     reservedPackage = "Reserved package which cannot be uploaded."
     noSrcDirectory = "No version contains a 'src' directory."
     freedPackage = "Abandoned package whose name has been freed for reuse."
-
--- | Versions that exist in the registry-archive but are missing from GitHub tags.
--- | These are packages where the GitHub repo exists but specific tags were deleted
--- | or never created. The importer will synthesize tags for these versions and
--- | fetch source from the registry-archive instead of GitHub.
-archiveBackedVersions :: Map PackageName (Set Version)
-archiveBackedVersions = Map.fromFoldable $ Array.mapMaybe parseEntry
-  [ Tuple "halogen-bootstrap5" [ "2.2.1", "2.3.0" ]
-  , Tuple "sparse-polynomials" [ "1.0.4", "1.0.5" ]
-  , Tuple "debounce" [ "0.1.0" ]
-  , Tuple "record-extra-srghma" [ "0.1.0", "0.1.1", "0.2.0", "0.2.2", "0.2.3", "0.2.4", "0.2.5", "0.2.6", "0.2.7", "0.2.8" ]
-  ]
-  where
-  parseEntry (Tuple nameStr versions) = do
-    name <- hush $ PackageName.parse nameStr
-    parsedVersions <- traverse (hush <<< Version.parse) versions
-    pure $ Tuple name (Set.fromFoldable parsedVersions)
 
 -- | Validate that a package name parses. Expects the package to already have
 -- | had its 'purescript-' prefix removed.
@@ -1955,10 +2032,6 @@ fetchSpagoYaml address ref = do
         Left error -> do
           Log.warn $ "Failed to parse spago.yaml file:\n" <> contents <> "\nwith errors:\n" <> error
           pure Nothing
-        Right { package: Just { publish: Just { location: Just location } } }
-          | location /= GitHub { owner: address.owner, repo: address.repo, subdir: Nothing } -> do
-              Log.warn "spago.yaml file does not use the same location it was fetched from, this is disallowed..."
-              pure Nothing
         Right config -> case SpagoYaml.spagoYamlToManifest (un RawVersion ref) config of
           Left err -> do
             Log.warn $ "Failed to convert parsed spago.yaml file to purs.json " <> contents <> "\nwith errors:\n" <> err

@@ -85,6 +85,8 @@ import Registry.App.Effect.Source (SOURCE)
 import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
+import Registry.App.Legacy.BoundWidening (LegacyPublishContext)
+import Registry.App.Legacy.BoundWidening as BoundWidening
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LEGACY_CACHE)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
@@ -387,11 +389,13 @@ resolveCompilerAndDeps compilerIndex manifest@(Manifest { dependencies }) maybeC
 -- | upload. If it has been published before then the existing metadata will be
 -- | updated with the new version.
 --
--- The legacyIndex argument contains the unverified manifests produced by the
--- legacy importer; these manifests can be used on legacy packages to conform
--- them to the registry rule that transitive dependencies are not allowed.
-publish :: forall r. Maybe Solver.TransitivizedRegistry -> PublishData -> Run (PublishEffects + r) (Maybe { compiler :: Version, dependencies :: Map PackageName Range, version :: Version })
-publish maybeLegacyIndex payload = do
+-- The legacyContext argument contains the unverified manifests produced by the
+-- legacy importer and package set evidence for bound widening; these are used
+-- on legacy packages to conform them to the registry rule that transitive
+-- dependencies are not allowed, and to widen overly-strict dependency bounds.
+publish :: forall r. Maybe LegacyPublishContext -> PublishData -> Run (PublishEffects + r) (Maybe { compiler :: Version, dependencies :: Map PackageName Range, version :: Version })
+publish maybeLegacyContext payload = do
+  let maybeLegacyIndex = map _.legacyIndex maybeLegacyContext
   let printedName = PackageName.print payload.name
 
   Log.debug $ "Publishing package " <> printedName <> " with payload:\n" <> stringifyJson Operation.publishCodec payload
@@ -581,6 +585,23 @@ publish maybeLegacyIndex payload = do
             ]
           pure manifest
 
+  -- Apply bound widening for legacy imports based on package set evidence.
+  -- We store original deps so we can fall back if widening causes solve failures.
+  let originalDeps = receivedManifest.dependencies
+  { manifest: widenedManifest, widened: widenedAnyDeps } <- case maybeLegacyContext of
+    Nothing -> pure { manifest: receivedManifest, widened: false }
+    Just { packageSetEvidence } -> do
+      let widenedDeps = BoundWidening.widenManifestDependencies packageSetEvidence receivedManifest.name receivedManifest.version receivedManifest.dependencies
+      if widenedDeps == receivedManifest.dependencies then
+        pure { manifest: receivedManifest, widened: false }
+      else do
+        Log.notice "Applying package-set-informed bound widening:"
+        for_ (Map.toUnfoldable receivedManifest.dependencies :: Array _) \(Tuple depName oldRange) ->
+          for_ (Map.lookup depName widenedDeps) \newRange ->
+            when (oldRange /= newRange) do
+              Log.notice $ "  " <> PackageName.print depName <> ": " <> Range.print oldRange <> " → " <> Range.print newRange
+        pure { manifest: receivedManifest { dependencies = widenedDeps }, widened: true }
+
   -- We trust the manifest for any changes to the 'owners' field, but for all
   -- other fields we trust the registry metadata.
   let metadata = existingMetadata { owners = receivedManifest.owners }
@@ -657,9 +678,26 @@ publish maybeLegacyIndex payload = do
 
   -- Resolve compiler and resolutions. If compiler was not provided,
   -- discover a compatible compiler based on dependencies.
+  -- If we widened bounds and solving fails, fall back to original bounds.
   Log.info "Verifying the package build plan..."
   compilerIndex <- MatrixBuilder.readCompilerIndex
-  { compiler, resolutions: validatedResolutions } <- resolveCompilerAndDeps compilerIndex (Manifest receivedManifest) payload.compiler payload.resolutions
+  { compiler, resolutions: validatedResolutions, manifest: solvedManifest } <- do
+    let tryResolve m = resolveCompilerAndDeps compilerIndex m payload.compiler payload.resolutions
+    Except.runExcept (tryResolve (Manifest widenedManifest)) >>= case _ of
+      Right result -> pure { compiler: result.compiler, resolutions: result.resolutions, manifest: widenedManifest }
+      Left widenedError
+        | widenedAnyDeps -> do
+            Log.warn $ "Solving failed with widened bounds, falling back to original bounds..."
+            Log.debug $ "Widened bounds error: " <> widenedError
+            let originalManifest = widenedManifest { dependencies = originalDeps }
+            Except.runExcept (tryResolve (Manifest originalManifest)) >>= case _ of
+              Right result -> do
+                Log.warn "Solving succeeded with original bounds. Bound widening did not help for this package."
+                pure { compiler: result.compiler, resolutions: result.resolutions, manifest: originalManifest }
+              Left originalError -> do
+                Log.error $ "Solving also failed with original bounds: " <> originalError
+                Except.throw widenedError
+        | otherwise -> Except.throw widenedError
   Log.info $ "Using compiler " <> Version.print compiler
 
   -- Validate PureScript module names now that we know the compiler.
@@ -677,7 +715,7 @@ publish maybeLegacyIndex payload = do
     Right _ ->
       Log.debug "Package contains well-formed .purs files in its src directory."
 
-  case Operation.Validation.isNotPublished (Manifest receivedManifest) (Metadata metadata) of
+  case Operation.Validation.isNotPublished (Manifest solvedManifest) (Metadata metadata) of
     -- If the package has been published already but docs for this version are missing
     -- from Pursuit (we check earlier if the docs are there, so we end up here if they are not)
     -- then upload to Pursuit and terminate
@@ -713,7 +751,7 @@ publish maybeLegacyIndex payload = do
           -- While we have created a manifest from the package source, we
           -- still need to ensure a purs.json file exists for 'purs publish'.
           unless hadPursJson do
-            existingManifest <- ManifestIndex.readManifest receivedManifest.name receivedManifest.version
+            existingManifest <- ManifestIndex.readManifest solvedManifest.name solvedManifest.version
             case existingManifest of
               Nothing -> Except.throw "Version was previously published, but we could not find a purs.json file in the package source, and no existing manifest was found in the registry."
               Just existing -> Run.liftAff $ writeJsonFile Manifest.codec packagePursJson existing
@@ -761,7 +799,7 @@ publish maybeLegacyIndex payload = do
       -- manifest then we fix it and return the result. If does and is a modern
       -- manifest (spago.yaml, purs.json, etc.) then we reject it. If it doesn't
       -- then we simply return the manifest and resolutions we already had.
-      pursGraphResult <- Cache.get _pursGraphCache (PursGraph (Manifest receivedManifest) validatedResolutions pursGraphCompiler) >>= case _ of
+      pursGraphResult <- Cache.get _pursGraphCache (PursGraph (Manifest solvedManifest) validatedResolutions pursGraphCompiler) >>= case _ of
         Just cached -> do
           Log.debug "Using cached purs graph result"
           pure $ map denormalizePaths cached
@@ -769,7 +807,7 @@ publish maybeLegacyIndex payload = do
           Log.debug "No cached purs graph, running purs graph..."
           result <- Run.liftAff (Purs.callCompiler { command: pursGraphCmd, version: Just pursGraphCompiler, cwd: Nothing })
           let normalizedResult = map normalizePaths result
-          Cache.put _pursGraphCache (PursGraph (Manifest receivedManifest) validatedResolutions pursGraphCompiler) normalizedResult
+          Cache.put _pursGraphCache (PursGraph (Manifest solvedManifest) validatedResolutions pursGraphCompiler) normalizedResult
           pure result
 
       Tuple manifest resolutions <- case pursGraphResult of
@@ -787,7 +825,7 @@ publish maybeLegacyIndex payload = do
             -- they could technically violate Registry rules around missing and
             -- unused dependencies. This only affects old packages and we know
             -- they compile, so we've decided it's an acceptable exception.
-            pure $ Tuple (Manifest receivedManifest) validatedResolutions
+            pure $ Tuple (Manifest solvedManifest) validatedResolutions
         Right output -> case JSON.parse output of
           Left parseErr -> Except.throw $ "Failed to parse purs graph output as JSON while finding unused dependencies: " <> parseErr
           Right json -> case CJ.decode PursGraph.pursGraphCodec json of
@@ -798,10 +836,10 @@ publish maybeLegacyIndex payload = do
                 pathParser path = map _.name $ case String.stripPrefix (String.Pattern installedResolutions) path of
                   Just trimmed -> parseModulePath trimmed
                   Nothing -> case String.stripPrefix (String.Pattern downloadedPackage) path of
-                    Just _ -> Right { name: receivedManifest.name, version: receivedManifest.version }
+                    Just _ -> Right { name: solvedManifest.name, version: solvedManifest.version }
                     Nothing -> Left $ "Failed to parse module path " <> path <> " because it is not in the package source or installed dependencies."
 
-              case Operation.Validation.noTransitiveOrMissingDeps (Manifest receivedManifest) graph pathParser of
+              case Operation.Validation.noTransitiveOrMissingDeps (Manifest solvedManifest) graph pathParser of
                 -- Association failures should always throw
                 Left (Left assocErrors) ->
                   Except.throw $ Array.fold
@@ -813,29 +851,32 @@ publish maybeLegacyIndex payload = do
                 -- FIXME: For now we attempt to fix packages if a legacy index
                 -- is provided (ie. the publish is via the importer) but we
                 -- should at some point make this a hard error.
-                Left (Right depError) -> case maybeLegacyIndex of
+                Left (Right depError) -> case maybeLegacyContext of
                   Nothing ->
                     Except.throw $ "Failed to validate unused / missing dependencies: " <> Operation.Validation.printValidateDepsError depError
-                  Just legacyIndex -> do
+                  Just { legacyIndex } -> do
                     Log.info $ "Found fixable dependency errors: " <> Operation.Validation.printValidateDepsError depError
-                    conformLegacyManifest (Manifest receivedManifest) compiler compilerIndex legacyIndex depError
+                    -- No additional widening needed here: solvedManifest already has widened bounds,
+                    -- conformLegacyManifest preserves existing bounds, and any newly-added deps
+                    -- derive their bounds from legacyIndex which is already widened.
+                    conformLegacyManifest (Manifest solvedManifest) compiler compilerIndex legacyIndex depError
 
                 -- If the check passes then we can simply return the manifest and
                 -- resolutions.
-                Right _ -> pure $ Tuple (Manifest receivedManifest) validatedResolutions
+                Right _ -> pure $ Tuple (Manifest solvedManifest) validatedResolutions
 
       -- Now that we've verified the package we can write the manifest to the
       -- source directory.
       Run.liftAff $ writeJsonFile Manifest.codec packagePursJson manifest
 
       Log.info "Creating packaging directory"
-      let packageDirname = PackageName.print receivedManifest.name <> "-" <> Version.print receivedManifest.version
+      let packageDirname = PackageName.print solvedManifest.name <> "-" <> Version.print solvedManifest.version
       let packageSource = Path.concat [ tmp, packageDirname ]
       FS.Extra.ensureDirectory packageSource
       -- We copy over all files that are always included (ie. src dir, purs.json file),
       -- and any files the user asked for via the 'files' key, and remove all files
       -- that should never be included (even if the user asked for them).
-      copyPackageSourceFiles { includeFiles: receivedManifest.includeFiles, excludeFiles: receivedManifest.excludeFiles, source: downloadedPackage, destination: packageSource }
+      copyPackageSourceFiles { includeFiles: solvedManifest.includeFiles, excludeFiles: solvedManifest.excludeFiles, source: downloadedPackage, destination: packageSource }
       removeIgnoredTarballFiles packageSource
 
       -- Now that we have the package source contents we can verify we can compile

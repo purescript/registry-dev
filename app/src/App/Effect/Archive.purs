@@ -136,66 +136,50 @@ fetchFromArchiveImpl destination name version = do
     nameStr = PackageName.print name
     versionStr = Version.print version
     tarballName = versionStr <> ".tar.gz"
-    -- Extract to a subdirectory to avoid path collisions with the packaging
-    -- directory (which uses the name-version format that archive tarballs
-    -- also use internally).
     extractDir = Path.concat [ destination, "archive" ]
     absoluteTarballPath = Path.concat [ extractDir, tarballName ]
-    archiveUrl = Array.fold
-      [ registryArchiveUrl
-      , "/"
-      , nameStr
-      , "/"
-      , versionStr
-      , ".tar.gz"
-      ]
+    archiveUrl = Array.fold [ registryArchiveUrl, "/", nameStr, "/", versionStr, ".tar.gz" ]
 
-  Log.debug $ "Fetching archive tarball from: " <> archiveUrl
   FS.Extra.ensureDirectory extractDir
 
-  response <- Run.liftAff $ Fetch.withRetryRequest archiveUrl {}
+  Log.debug $ "Fetching archive tarball from: " <> archiveUrl
+  result <- tryDownload archiveUrl absoluteTarballPath
 
+  case result of
+    Left err -> pure $ Left $ DownloadFailed name version err
+    Right _ -> do
+      Log.debug $ "Tarball downloaded to " <> absoluteTarballPath
+      Foreign.Tar.getToplevelDir absoluteTarballPath >>= case _ of
+        Nothing ->
+          pure $ Left $ ExtractionFailed name version "Tarball has no top-level directory"
+        Just extractedPath -> do
+          Log.debug "Extracting archive tarball..."
+          Tar.extract { cwd: extractDir, archive: tarballName }
+          fetchRemotePublishedTime name version >>= case _ of
+            Nothing -> pure $ Left $ PublishedTimeNotFound name version
+            Just publishedTime ->
+              pure $ Right { path: Path.concat [ extractDir, extractedPath ], published: publishedTime }
+
+-- | Try to download a file from a URL. Returns Left with error message on failure.
+tryDownload :: forall r. String -> FilePath -> Run (LOG + AFF + EFFECT + r) (Either String Unit)
+tryDownload url destPath = do
+  response <- Run.liftAff $ Fetch.withRetryRequest url {}
   case response of
-    Cancelled ->
-      pure $ Left $ DownloadFailed name version "Request was cancelled"
+    Cancelled -> pure $ Left "Request was cancelled"
     Failed (Fetch.FetchError error) -> do
-      Log.error $ "HTTP error when fetching archive: " <> Exception.message error
-      pure $ Left $ DownloadFailed name version (Exception.message error)
-    Failed (Fetch.StatusError { status, arrayBuffer: arrayBufferAff }) -> do
-      arrayBuffer <- Run.liftAff arrayBufferAff
-      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
-      bodyString <- Run.liftEffect $ Buffer.toString UTF8 (buffer :: Buffer)
-      Log.error $ Array.fold
-        [ "Bad status ("
-        , show status
-        , ") when fetching archive with body: "
-        , bodyString
-        ]
-      pure $ Left $ DownloadFailed name version ("HTTP status " <> show status)
+      Log.debug $ "HTTP error when fetching " <> url <> ": " <> Exception.message error
+      pure $ Left $ Exception.message error
+    Failed (Fetch.StatusError { status }) -> do
+      Log.debug $ "Bad status (" <> show status <> ") when fetching " <> url
+      pure $ Left $ "HTTP status " <> show status
     Succeeded { arrayBuffer: arrayBufferAff } -> do
       arrayBuffer <- Run.liftAff arrayBufferAff
       buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
-      Run.liftAff (Aff.attempt (FS.Aff.writeFile absoluteTarballPath buffer)) >>= case _ of
+      Run.liftAff (Aff.attempt (FS.Aff.writeFile destPath buffer)) >>= case _ of
         Left error -> do
-          Log.error $ Array.fold
-            [ "Downloaded archive but failed to write to "
-            , absoluteTarballPath
-            , ": "
-            , Aff.message error
-            ]
-          pure $ Left $ DownloadFailed name version "Failed to write tarball to disk"
-        Right _ -> do
-          Log.debug $ "Tarball downloaded to " <> absoluteTarballPath
-          Foreign.Tar.getToplevelDir absoluteTarballPath >>= case _ of
-            Nothing ->
-              pure $ Left $ ExtractionFailed name version "Tarball has no top-level directory"
-            Just extractedPath -> do
-              Log.debug "Extracting archive tarball..."
-              Tar.extract { cwd: extractDir, archive: tarballName }
-              fetchRemotePublishedTime name version >>= case _ of
-                Nothing -> pure $ Left $ PublishedTimeNotFound name version
-                Just publishedTime ->
-                  pure $ Right { path: Path.concat [ extractDir, extractedPath ], published: publishedTime }
+          Log.error $ "Downloaded but failed to write to " <> destPath <> ": " <> Aff.message error
+          pure $ Left "Failed to write tarball to disk"
+        Right _ -> pure $ Right unit
 
 -- | Fetch the published time for a specific version from the remote registry
 -- | repo (main branch). Used as a fallback when the local registry checkout

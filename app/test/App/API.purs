@@ -22,6 +22,7 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
+import Registry.App.Legacy.BoundWidening (LegacyPublishContext)
 import Registry.App.Legacy.Types (RawPackageName(..))
 import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
@@ -71,12 +72,15 @@ spec = do
       logs <- liftEffect (Ref.new [])
 
       let
-        toLegacyIndex :: ManifestIndex -> Solver.TransitivizedRegistry
-        toLegacyIndex =
-          Solver.exploreAllTransitiveDependencies
-            <<< Solver.initializeRegistry
-            <<< map (map (_.dependencies <<< un Manifest))
-            <<< ManifestIndex.toMap
+        toLegacyContext :: ManifestIndex -> LegacyPublishContext
+        toLegacyContext idx =
+          { legacyIndex:
+              Solver.exploreAllTransitiveDependencies
+                $ Solver.initializeRegistry
+                $ map (map (_.dependencies <<< un Manifest))
+                $ ManifestIndex.toMap idx
+          , packageSetEvidence: Map.empty
+          }
 
         testEnv =
           { workdir
@@ -109,7 +113,7 @@ spec = do
 
         -- First, we publish the package.
         Registry.readAllManifests >>= \idx ->
-          void $ API.publish (Just (toLegacyIndex idx)) publishArgs
+          void $ API.publish (Just (toLegacyContext idx)) publishArgs
 
         -- Then, we can check that it did make it to "Pursuit" as expected
         Pursuit.getPublishedVersions name >>= case _ of
@@ -179,7 +183,7 @@ spec = do
             , resolutions: Nothing
             }
         Registry.readAllManifests >>= \idx ->
-          void $ API.publish (Just (toLegacyIndex idx)) pursuitOnlyPublishArgs
+          void $ API.publish (Just (toLegacyContext idx)) pursuitOnlyPublishArgs
 
         -- We can also verify that transitive dependencies are added for legacy
         -- packages.
@@ -194,7 +198,7 @@ spec = do
             , resolutions: Nothing
             }
         Registry.readAllManifests >>= \idx ->
-          void $ API.publish (Just (toLegacyIndex idx)) transitivePublishArgs
+          void $ API.publish (Just (toLegacyContext idx)) transitivePublishArgs
 
         -- We should verify the resulting metadata file is correct
         Metadata transitiveMetadata <- Registry.readMetadata transitive.name >>= case _ of
