@@ -1,22 +1,199 @@
 # Registry Spec
 
-The untitled first 1-2 paragraphs, which explain what the registry is and what major concepts the spec will cover.
+The PureScript Registry is a package registry for the PureScript programming language. It defines a standard manifest and a central index of packages, stores published package tarballs, and maintains curated package sets that list packages known to compile together. It also provides a PureScript library for ecosystem tooling to rely on when interacting with the registry. For example, package managers like Spago rely on the registry to publish packages, resolve dependencies, and download source code.
+
+This specification defines the data formats used by the registry, the operations supports, and how package managers and other tooling should integrate with registry infrastructure. If you are interested in contributing to the registry, please refer to [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## 1. Introduction
 
-A longer summary of the registry, why it came to exist, its high-level design. Akin to the introduction to a book (in spirit, not in length!).
+The PureScript Registry is an independent package registry for PureScript. It was created after the Bower registry (which PureScript previously relied on for package distribution) stopped accepting new submissions in 2020. Initially package names were tracked in a simple `new-packages.json` file so that package managers like Spago and package sets tooling could continue to function. The full registry replaced this stopgap with a complete system.
 
-**1.1 Important Terminology**
+Packages from the Bower registry and `new-packages.json` file have been grandfathered into the registry so long as they satisfy registry requirements. The most restrictive requirement is that package versions compile with at least one compiler version from 0.13.0 onwards. This means packages published prior to May 2019 are not in the registry and can only be used with legacy package managers (Bower, legacy Spago).
 
-Quick definitions of words that will be used frequently throughout the document. Readers can breeze through this section and refer back to it if they forget to what a common term refers. Some of these terms are in common use (like "hash"), but they're included because we mean something specific when we use it (ie. "a base64-encoded subresource integrity hash using the SHA256 algorithm.")
+The registry addresses several limitations of Bower and introduces new features of its own:
 
-Terms include:
+- **Independence**: The registry is controlled by the PureScript core team and all third-party infrastructure is commodity (file storage, etc.)
+- **Immutability**: Published packages are stored permanently. Unlike Bower, which only pointed to upstream repositories, the registry stores package source code so dependencies cannot disappear or be altered after publication apart from a short period where unpublishing is supported.
+- **Content hashes**: Every package tarball is hashed (SHA256 in SRI format), allowing for integrity verification, and this hash is stored in a format suitable for build systems which require hashes such as Nix.
+- **Pull model**: Authors do not upload packages directly. Instead, they request that the registry fetch their code from a public location; this avoids user authentication and file uploads and lets the registry perform checks on the package before admitting it.
+- **Declarative manifests**: Package manifests declare properties about packages without imperative hooks like npm's `postinstall`
+- **Verified builds**: All packages are known to solve and compile with at least one supported compiler version. This enables features like Pursuit's compiler compatibility filter and allows solvers to produce build plans targeting a specific compiler.
+- **Location-agnostic publishing**: Packages can be published from any supported location type, including arbitrary git repositories, not just GitHub.
+- **Mono/polyrepo support**: A single repository can host multiple packages using the `subdir` field in the package location data
+- **First-class package sets**: The registry curates sets of packages known to compile together, updated automatically on a daily schedule.
 
-"package", "package name", "package version", "version range", "SRI hash", "package location", "package manager", "registry", "metadata index", "manifest index", "storage backend", "registry trustee", "package set", "license"
+### 1.1 Important Terminology
+
+The following terms are used throughout this specification with specific meanings.
+
+**Core Data Types**
+
+- **Package**: A versioned unit of PureScript source code with a manifest, stored as an archive in the registry.
+- **Package name**: A unique identifier for a package (see [PackageName](#packagename)).
+- **Version**: A specific release of a package, identified by a semantic version (see [Version](#version)).
+- **Range**: A constraint specifying acceptable versions of a dependency (see [Range](#range)).
+- **Location**: The remote location from which the registry fetches package source code (see [Location](#location)).
+- **Ref**: An arbitrary reference identifying a particular snapshot of the code at a location. For Git locations this would be a Git ref such as a tag or commit hash.
+- **Owner**: An SSH public key whose holder is authorized to perform sensitive operations on a package.
+- **License**: An SPDX license identifier specifying the terms under which a package may be used and redistributed.
+- **Sha256**: A base64-encoded SHA256 hash in subresource integrity (SRI) format, used to verify archive integrity.
+
+**Registry Data Structures**
+
+- **Manifest**: A `purs.json` file declaring package properties such as name, version, license, location, and dependencies (see [Manifest](#33-manifest)).
+- **Metadata**: Information about a package maintained by the registry, including published versions, hashes, and ownership (see [Metadata](#34-metadata)).
+- **Package set**: A curated collection of package versions known to compile together with a specific compiler version (see [Package Set](#35-package-set)).
+- **Manifest index**: A cache of all package manifests stored in the registry-index repository (see [Manifest Index](#36-manifest-index)).
+- **Operation**: A request sent to the registry to perform an action. Package operations (publish, unpublish, transfer) are sent to the registry HTTP API; package set operations are submitted via GitHub issues.
+
+**Roles**
+
+- **Package manager**: A tool such as Spago that publishes packages to the registry and installs them for users.
+- **Registry Trustee**: A member of the [@purescript/packaging](https://github.com/orgs/purescript/teams/packaging) team with authority to perform administrative actions on behalf of the registry.
+
+### 1.2 Related Infrastructure
+
+The registry relies on several pieces of infrastructure:
+
+- **[purescript/registry](https://github.com/purescript/registry)**: The user-facing repository containing package metadata files and package set releases.
+- **[purescript/registry-index](https://github.com/purescript/registry-index)**: A cache of all package manifests, structured for efficient lookup by package managers.
+- **[packages.registry.purescript.org](https://packages.registry.purescript.org)**: The storage backend where package tarballs are hosted.
+- **[registry.purescript.org](https://registry.purescript.org)**: The registry HTTP API server.
+- **@pacchettibotti**: A bot account controlled by the Registry Trustees, used for automated registry operations.
+
+Related ecosystem tools include:
+
+- **[Spago](https://github.com/purescript/spago)**: The standard PureScript package manager and build tool, which integrates with the registry.
+- **[Pursuit](https://pursuit.purescript.org)**: The PureScript documentation hosting service; the registry publishes documentation to Pursuit after a successful publish.
 
 ## 2. Package Publishing
 
-A simple walkthrough of how a package is published, possibly including diagrams. Includes example JSON payloads going through the registry `Addition` operation, an example of the input manifest, the output metadata and package sets entry. All extremely minimal, but giving a sense of the data interchange beginning with the package manager and ending with the registry metadata, index, and storage backend.
+This section provides a high-level walkthrough of how a package is published to the registry. For detailed specifications of the data types involved, see [Section 3 (Schemas)](#3-schemas-data-type-representations-used-in-the-registry). For a complete description of verification steps and failure modes, see [Section 5.1 (Publish a Package)](#51-publish-a-package).
+
+### 2.1 Publishing Flow Overview
+
+Publishing a package begins with a package manager (such as Spago, or an open GitHub issue on the `registry` repository) sending a `Publish` request to the registry HTTP API. The registry then fetches the package source, validates it, creates a tarball, and updates its indexes.
+
+```mermaid
+sequenceDiagram
+    participant PM as Package Manager
+    participant API as Registry API
+    participant Source as Source Location
+    participant Storage as Package Storage
+    participant Repos as Registry Repositories
+    participant Pursuit as Pursuit
+
+    PM->>API: POST /api/v1/publish
+    API-->>PM: { jobId }
+    API->>Source: Fetch source at ref
+    Source-->>API: Package source
+    API->>API: Validate package, compile, create tarball
+    API->>Storage: Upload tarball
+    API->>Repos: Update metadata
+    API->>Repos: Update manifest index
+    API->>Pursuit: Publish documentation
+    API->>API: Enqueue compiler matrix jobs
+```
+
+### 2.2 Example: Publishing `effect@4.0.0`
+
+#### Step 1: Submit a Publish Request
+
+A package manager submits a POST request to `https://registry.purescript.org/api/v1/publish` with a JSON body:
+
+```json
+{
+  "name": "effect",
+  "location": {
+    "githubOwner": "purescript",
+    "githubRepo": "purescript-effect"
+  },
+  "ref": "v4.0.0",
+  "version": "4.0.0",
+  "compiler": "0.15.10"
+}
+```
+
+The registry responds immediately with a job ID that can be polled for status:
+
+```json
+{
+  "jobId": "01234567-89ab-cdef-0123-456789abcdef"
+}
+```
+
+#### Step 2: Source Fetched and Validated
+
+The registry fetches the package source from the specified location at the given ref. It expects to find a supported manifest format—currently `purs.json` or `spago.yaml`, though additional formats may be supported in the future. For example, a `purs.json` manifest:
+
+```json
+{
+  "name": "effect",
+  "version": "4.0.0",
+  "license": "BSD-3-Clause",
+  "location": {
+    "githubOwner": "purescript",
+    "githubRepo": "purescript-effect"
+  },
+  "ref": "v4.0.0",
+  "description": "Native side effects",
+  "dependencies": {
+    "prelude": ">=6.0.0 <7.0.0"
+  }
+}
+```
+
+The registry validates that the manifest matches the publish request, resolves dependencies, and compiles the package to verify it builds successfully.
+
+#### Step 3: Tarball Created and Uploaded
+
+The registry creates a tarball of the package source. The tarball always contains a `purs.json` file for compatibility—if the package only had a `spago.yaml`, a `purs.json` is generated and included. The tarball is uploaded to the storage backend at:
+
+```
+https://packages.registry.purescript.org/effect/4.0.0.tar.gz
+```
+
+#### Step 4: Indexes Updated
+
+The registry updates two repositories:
+
+**Metadata** (in `purescript/registry` at `metadata/effect.json`):
+
+```json
+{
+  "location": {
+    "githubOwner": "purescript",
+    "githubRepo": "purescript-effect"
+  },
+  "published": {
+    "4.0.0": {
+      "bytes": 3245,
+      "hash": "sha256-abc123...",
+      "publishedTime": "2024-01-15T10:30:00.0Z",
+      "compilers": ["0.15.10"]
+    }
+  },
+  "unpublished": {}
+}
+```
+
+**Manifest Index** (in `purescript/registry-index`):
+
+The manifest is appended as a JSON line to the appropriate index file (in this case `ef/fe/effect`), making it available for package managers to query.
+
+#### Step 5: Documentation Published
+
+The registry compiles documentation and uploads it to [Pursuit](https://pursuit.purescript.org). Documentation publishing requires a minimum compiler version (currently 0.14.7); packages published with older compilers will skip this step. A failure to publish documentation does not fail the overall publish operation.
+
+### 2.3 Compiler Compatibility Testing
+
+After a package is successfully published, the registry enqueues background jobs to test the package against other supported compiler versions. These "matrix jobs" run independently and update the `compilers` field in the package metadata as they complete. The registry also enqueues matrix jobs for packages that depend on the newly-published package, propagating compatibility testing through the dependency graph.
+
+This means the list of compatible compilers in metadata may be incomplete immediately after publishing, but will become accurate as the background jobs finish—typically within minutes to hours depending on registry load.
+
+### 2.4 Package Set Candidacy
+
+After a successful publish, the package version becomes a candidate for automatic inclusion in the next package set release. Package sets are updated daily; see [Section 6.3 (Publish to Package Sets)](#63-publish-to-package-sets) for details on how packages are added to the curated package set.
 
 ## 3. Schemas: Data Type Representations Used in the Registry
 
@@ -24,11 +201,24 @@ Types alone can't capture the set of invariants applied to data processed by the
 
 ### 3.1 Compatibility Guarantees
 
-A description of our forward-compatibility guarantees and what that means.
+The registry guarantees forward compatibility for its core data types. Forward compatibility means that older clients will always be able to read data written by newer clients. This guarantee is critical because package manifests are baked into immutable package tarballs forever: any client, including older ones, must always be able to read any manifest in the registry.
+
+The data types covered by this guarantee are:
+
+- [`Manifest`](#33-manifest): the `purs.json` manifest format
+- [`Metadata`](#34-metadata): the package metadata file format
+
+To maintain forward compatibility, the only permitted schema changes are:
+
+1. **Adding new optional fields**: New optional fields may be introduced; older clients will ignore them.
+2. **Removing optional fields**: Optional fields may be removed if no longer needed.
+3. **Relaxing constraints**: Constraints not enforced by the type system may be loosened (e.g., increasing a maximum length).
+
+Changes that would break forward compatibility (such as removing required fields, renaming fields, or changing the type of a field) are not permitted **under any circumstances**.
 
 ### 3.2 Atomic Data
 
-Schemas for `PackageName`, `Version`, `Range`, `Location`, `Sha256`, `Owner`, `License`, and other simple data used in the registry. Each is a subsection which includes its rules, the representations in Dhall and JSON, and a link to the PureScript implementation in `Schema.purs`.
+This section contains schemas for `PackageName`, `Version`, `Range`, `Location`, `Sha256`, `Owner`, `License`, and other simple data used in the registry. Each is a subsection which includes its rules, the representations in Dhall and JSON, and a link to the PureScript implementation in `Schema.purs`.
 
 #### PackageName
 
@@ -322,25 +512,53 @@ All manifests for a given package in the registry are cached in the manifest ind
 
 ## 4. Registry Infrastructure
 
-A section specifying how the registry should relate to other infrastructure and the responsibility of that infrastructure as it relates to the registry.
+The registry consists of several infrastructure components that work together to store package data, serve requests, and maintain indexes. This section specifies the location, format, and purpose of each component.
 
-**4.1 Package Storage**
-Specifies how the storage backend works (data format, naming conventions, location)
+### 4.1 Package Storage
 
-**4.2 Manifest Index**
-Specifies how the manifest index works (data format, purpose of it existing, where it is located)
+Published package tarballs are stored at [packages.registry.purescript.org](https://packages.registry.purescript.org), an S3-compatible storage backend. Package managers download tarballs directly from this location.
 
-**4.3 Metadata Index**
-Specifies where package metadata is stored and in what format, naming conventions.
+Tarballs are stored using the following URL scheme:
 
-**4.4 Package Sets**
-Specifies where the package sets are stored and in what format, naming conventions.
+```
+https://packages.registry.purescript.org/{package-name}/{version}.tar.gz
+```
+
+For example, the tarball for `prelude@6.0.0` is located at:
+
+```
+https://packages.registry.purescript.org/prelude/6.0.0.tar.gz
+```
+
+Package managers should verify downloaded tarballs against the SHA256 hash stored in the package's [metadata](#34-metadata) before extracting.
+
+### 4.2 Registry API
+
+The registry HTTP API is hosted at [registry.purescript.org](https://registry.purescript.org). Package operations (publish, unpublish, transfer) are submitted to the API at:
+
+```
+https://registry.purescript.org/api/v1/{operation}
+```
+
+See [Section 5 (Registry Operations)](#5-registry-operations) for the full API specification.
+
+### 4.3 Metadata Repository
+
+Package metadata files are stored in the [purescript/registry](https://github.com/purescript/registry) repository under the `metadata/` directory. Each package has a single metadata file named `{package-name}.json`. For example, the metadata for the `aff` package is stored at:
+
+```
+metadata/aff.json
+```
+
+This repository also hosts package sets under the `package-sets/` directory. See [Section 3.4 (Metadata)](#34-metadata) for the metadata file format and [Section 3.5 (Package Set)](#35-package-set) for the package set format.
+
+### 4.4 Manifest Index Repository
+
+The manifest index is stored in the [purescript/registry-index](https://github.com/purescript/registry-index) repository. This index caches all package manifests in a structure optimized for efficient lookup by package managers, as downloading the archives just to peek at the manifests inside is wildly impractical. See [Section 3.6 (Manifest Index)](#36-manifest-index) for the index structure.
 
 ## 5. Registry Operations
 
 The big section! This builds on everything provided so far and summarizes the role of the API and its major operations. Each operation is detailed along with its failure modes.
-
-This is a good time for diagrams! (cc: @AndrewCondon, @JordanMartinez).Two notes:
 
 1. This section is only about _behavior_. The data types used in the API have already been described in prior sections.
 2. This section is only about _registry_ concerns. Actions taken after an operation (such as pushing to package sets, pursuit, the manifest index) are in the next section.
@@ -373,7 +591,8 @@ To submit a `Publish` operation, you are expected to POST a JSON object with the
 - `name`: A [`PackageName`](#packagename).
 - `location`: A [`Location`](#location). Optional if the package has had other versions published; required if this is the first version of the package to be published.
 - `ref`: A `string` representing a reference (for example, a Git commit or Git tag) at the target location to use to fetch the source code.
-- `compiler`: A [`Version`](#version) representing which compiler version to use to compile the package in the Registry verification checks.
+- `version`: A [`Version`](#version) representing the version being published.
+- `compiler`: An optional [`Version`](#version) representing which compiler version to use to compile the package. If not provided, the registry will discover a compatible compiler based on the package's dependencies.
 - `resolutions`: An optional `object` containing dependency resolutions, where keys are [`PackageName`](#packagename)s and values are [`Version`](#version)s.
 
 For example, in JSON:
@@ -381,8 +600,9 @@ For example, in JSON:
 ```json
 {
   "name": "prelude",
-  "location": { "githubOwner": "purescript", "githubRepo": "prelude" },
+  "location": { "githubOwner": "purescript", "githubRepo": "purescript-prelude" },
   "ref": "v5.0.0",
+  "version": "5.0.0",
   "compiler": "0.15.0"
 }
 ```
@@ -412,7 +632,7 @@ Next, the registry will verify the package source code.
 
 Finally, the registry will perform some processing on the source code, package the source into a tarball, and complete the publishing process. Along the way, we do some final verification:
 
-1. The package `src` directory, always-included files (listed below), and any files explicitly included via the manifest `files` key are copied into a temporary directory.
+1. The package `src` directory, always-included files (listed below), and any files explicitly included via the manifest `includeFiles` key are copied into a temporary directory.
 2. If the project only contained a `spago.yaml` file, then a `purs.json` file is generated and copied into the temporary directory. Package tarballs **always** include a `purs.json` file.
 3. Always-ignored files (listed below) are removed from the source code.
 4. The remaining code is packaged into a tarball. The tarball MUST NOT exceed 2,000kb, and a warning will be issued for packages over 200kb.
@@ -612,15 +832,45 @@ For example, if the previous release was `2.1.1`, and the package set update add
 
 ## 6. Post-Publishing Operations
 
-Summarizes what operations the registry will take after a package is published, transferred, or unpublished. This section _could_ be folded back into the previous section, but I worry that doing so would make that section too long and unfocused.
+The registry takes several actions after a package is published, transferred, or unpublished.
 
 #### 6.1 Update Manifest Index
 
-A spec of how the registry attempts to update the manifest index.
+After a successful publish or unpublish operation, the registry updates the manifest index in the [purescript/registry-index](https://github.com/purescript/registry-index) repository.
+
+**On Publish**
+
+When a package version is published, the registry inserts the package manifest into the manifest index. Before insertion, the registry verifies that all dependencies listed in the manifest can be satisfied by packages already in the index. If any dependency cannot be satisfied, the insertion fails and the publish operation is aborted.
+
+The manifest is appended to the package's entry file (a JSON Lines file) and the entry file is committed and pushed to the registry-index repository. See [Section 3.6 (Manifest Index)](#36-manifest-index) for the file structure and naming conventions.
+
+**On Unpublish**
+
+When a package version is unpublished, the registry removes the manifest from the package's entry file in the manifest index. Before deletion, the registry verifies that removing the manifest will not leave other packages in the index with unsatisfied dependencies. Only the specified version is removed.
+
+**Failure Handling**
+
+A failure to update the manifest index will cause the overall operation to fail. The registry does not proceed with subsequent steps (such as documentation publishing) until the manifest index has been successfully updated.
 
 #### 6.2 Publish to Pursuit
 
-A spec of how the registry attempts to publish to Pursuit, including compiling the documentation using the user-provided build plan, and any checks we perform. A note that if this step fails you can retry by resubmitting a publish operation.
+After a package is successfully published to the registry, the registry attempts to publish its documentation to [Pursuit](https://pursuit.purescript.org). Documentation publishing is a best-effort operation: a failure does not roll back the package publication, but the registry logs a notice and continues.
+
+**Compiler Version Requirement**
+
+Documentation can only be published to Pursuit using compiler version 0.14.7 or later. Packages published with older compilers will skip this step. If documentation publishing was skipped due to an older compiler, you can retry by resubmitting a publish operation with a supported compiler version.
+
+**Publishing Process**
+
+To publish documentation, the registry:
+
+1. Generates a `resolutions.json` file mapping each dependency to its installed location on disk.
+2. Invokes the PureScript compiler with the `publish` command, which compiles the package and produces a JSON documentation payload.
+3. Compresses the JSON payload with gzip and POSTs it to Pursuit's `/packages` endpoint.
+
+**Retrying Failed Documentation Uploads**
+
+If documentation publishing fails (for example, due to a transient network error), you can retry by resubmitting a publish operation for the same package version. The registry will detect that the version is already published and skip the tarball upload, but will retry the Pursuit upload if documentation is missing.
 
 #### 6.3 Publish to Package Sets
 
@@ -648,27 +898,209 @@ Fourth, we release the new package set (if we could produce one). Automatic pack
 
 ## 7. Non-JavaScript Backends
 
-A section summarizing the aliasing solution used to support alternate backends, along with a status note stating that this is currently un-implemented.
+> **Status**: This feature is not yet implemented. See https://github.com/purescript/registry-dev/issues/354
 
 ## 8. Package Managers
 
-Specifies how package managers should relate to the registry, ie. open a GitHub issue with a payload according to the `Operation` data type, get package information from `registry-index`, download packages from the storage backend, etc. Refer to the 'constants' module.
+This section specifies how package managers should integrate with the registry. It is meant to be reasonably self-contained, so someone writing a new package manager can understand what they need to do and what resources they have available in one place.
 
-This section is meant to be reasonably self-contained, so someone writing a new package manager can understand what they need to do and what resources they have available in one place.
+The reference implementation is [Spago](https://github.com/purescript/spago), the standard PureScript package manager. The registry also provides a PureScript library ([`registry-lib`](./lib)) containing types, codecs, and utilities for working with registry data.
+
+### 8.1 Infrastructure Endpoints
+
+The following endpoints are defined in [`Registry.Constants`](./lib/src/Constants.purs):
+
+| Resource | URL | Purpose |
+|----------|-----|---------|
+| Registry API | `registry.purescript.org/api` | Submit publish, unpublish, and transfer operations |
+| Package Storage | `packages.registry.purescript.org` | Download package tarballs |
+| Registry Repository | `github.com/purescript/registry` | Package metadata and package sets |
+| Manifest Index | `github.com/purescript/registry-index` | Cached package manifests |
+
+### 8.2 Reading Package Data
+
+Package managers need to read three kinds of data from the registry: manifests, metadata, and package sets.
+
+#### Manifest Index
+
+The manifest index ([`purescript/registry-index`](https://github.com/purescript/registry-index)) provides efficient access to package manifests. Clone this repository locally and keep it updated. See [Section 3.6 (Manifest Index)](#36-manifest-index) for the directory structure.
+
+To look up a manifest:
+
+1. Determine the index file path based on the package name (see Section 3.6)
+2. Read the file as JSON Lines (one manifest per line)
+3. Parse each line as a [`Manifest`](#33-manifest) and find the desired version
+
+#### Metadata
+
+Metadata files are stored in the [`purescript/registry`](https://github.com/purescript/registry) repository under the `metadata/` directory. Each package has a file named `{package-name}.json` containing a [`Metadata`](#34-metadata) object.
+
+The metadata provides:
+- The package's current location
+- All published and unpublished versions
+- SHA256 hashes and byte sizes for integrity verification
+- Compatible compiler versions
+
+### 8.3 Downloading Packages
+
+Package tarballs are available at:
+
+```
+https://packages.registry.purescript.org/{package-name}/{version}.tar.gz
+```
+
+For example: `https://packages.registry.purescript.org/prelude/6.0.1.tar.gz`
+
+Keep in mind the following:
+
+- **Verification**: Before extracting, verify the tarball's SHA256 hash and byte size against the values in the package's metadata. The hash is stored in SRI format (e.g., `sha256-abc123...`).
+- **Caching**: Package managers can cache downloaded tarballs locally. Since published packages are immutable, cached tarballs never need to be re-downloaded.
+- **Retry Strategy**: The storage backend may return HTTP 503 during high load. Implement exponential backoff with retries.
+
+### 8.4 Submitting Operations
+
+Package operations are submitted to the registry API as JSON POST requests.
+
+#### API Routes
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/v1/publish` | POST | Publish a package version |
+| `/api/v1/unpublish` | POST | Unpublish a package version (authenticated) |
+| `/api/v1/transfer` | POST | Transfer a package to a new location (authenticated) |
+| `/api/v1/package-sets` | POST | Submit a package set update |
+| `/api/v1/jobs/{jobId}` | GET | Poll job status |
+| `/api/v1/jobs` | GET | List jobs |
+| `/api/v1/status` | GET | Check API health |
+
+#### Submitting a Publish Operation
+
+POST to `/api/v1/publish` with a JSON body matching the [`PublishData`](#51-publish-a-package) schema:
+
+```json
+{
+  "name": "my-package",
+  "location": { "githubOwner": "my-org", "githubRepo": "purescript-my-package" },
+  "ref": "v1.0.0",
+  "version": "1.0.0",
+  "compiler": "0.15.10",
+  "resolutions": { "prelude": "6.0.1", "effect": "4.0.0" }
+}
+```
+
+The response contains a job ID:
+
+```json
+{ "jobId": "01234567-89ab-cdef-0123-456789abcdef" }
+```
+
+#### Polling Job Status
+
+GET `/api/v1/jobs/{jobId}` with optional query parameters:
+
+- `since`: ISO 8601 timestamp to get logs after this time
+- `level`: Minimum log level (`DEBUG`, `INFO`, `WARN`, `NOTICE`, `ERROR`)
+
+The response contains job status and logs:
+
+```json
+{
+  "jobId": "...",
+  "jobType": "publish",
+  "createdAt": "2024-01-15T10:30:00.0Z",
+  "startedAt": "2024-01-15T10:30:01.0Z",
+  "finishedAt": "2024-01-15T10:31:00.0Z",
+  "success": true,
+  "logs": [
+    {
+      "level": "INFO",
+      "message": "Fetching package source...",
+      "jobId": "...",
+      "timestamp": "2024-01-15T10:30:02.0Z"
+    }
+  ],
+  "packageName": "my-package",
+  "packageVersion": "1.0.0",
+  "payload": { ... }
+}
+```
+
+Poll until `finishedAt` is present, then check `success` to determine the outcome. The `since` parameter can be used for pagination, and to stream logs to the user.
+
+#### Authenticated Operations
+
+Unpublish and transfer operations require SSH signature authentication. See [Section 5.2 (Authentication)](#52-authentication) for the signing process.
+
+The authenticated request body wraps the operation payload:
+
+```json
+{
+  "payload": "{\"name\":\"my-package\",\"version\":\"1.0.0\",\"reason\":\"...\"}",
+  "signature": "1f4967eaa5de1076..."
+}
+```
+
+### 8.5 Dependency Resolution
+
+Package managers which wish to use a solver (rather than an alternate dependency strategy, like package sets) may rely on the built-in [`Registry.Solver`](./lib/src/Solver.purs), or they can use it as a reference.
+
+### 8.6 Recommended Caching Strategy
+
+Package managers should maintain local caches for performance:
+
+| Data | Mutability | Cache Strategy |
+|------|------------|----------------|
+| Package tarballs | Immutable | Cache forever |
+| Manifests | Immutable | Cache forever |
+| Metadata | Mutable (new versions added) | Refresh periodically |
+| Package sets | Immutable per version | Cache forever, check for new versions periodically |
+| Registry repositories | Mutable | Git pull periodically |
 
 ## 9. Policies
 
-Policies followed by the registry — though maybe these are better-suited to be stored as separate specs apart from this document.
-
 ### 9.1 Registry Trustees
 
-A summary of the actions that registry trustees are permitted to take and when they should be taken.
+Registry Trustees are members of the [@purescript/packaging](https://github.com/orgs/purescript/teams/packaging) team. Trustees are authorized to:
+
+- Unpublish any package version at any time for policy violations
+- Transfer packages when necessary (e.g., abandoned packages, security issues)
+- Perform package set updates that remove or downgrade packages
+- Act on behalf of any package using the @pacchettibotti SSH keys
+
+Trustees should document their reasoning when taking administrative actions.
 
 ### 9.2 Name Squatting & Reassigning Names
 
-Our policy on changing package names
+Package names may be reassigned if a Trustee determines the name is being squatted. A package is considered squatted if:
 
-### 9.3 Package Sets
+- It has no meaningful functionality
+- It exists primarily to reserve a desirable name
+- The author is unresponsive to transfer requests for an extended period
+
+Authors may request reassignment of abandoned package names by contacting the Trustees.
+
+### 9.3 Malicious Code
+
+The registry prohibits packages containing:
+
+- Malware, viruses, or code designed to harm users or systems
+- Code that exfiltrates data without user consent
+- Cryptocurrency miners or similar resource-hijacking code
+- Obfuscated code intended to hide malicious behavior
+
+Trustees will unpublish packages found to contain malicious code immediately, regardless of the normal 48-hour unpublish window.
+
+### 9.4 Legal Compliance
+
+The registry will remove packages in response to:
+
+- Valid DMCA takedown notices
+- Court orders
+- Other legally binding requests
+
+Package authors are responsible for ensuring their packages do not infringe on intellectual property rights.
+
+### 9.5 Package Sets
 
 The registry provides a curated package set that lists packages known to build together with a particular compiler version. Package managers such as Spago use this package set to decide what versions of your dependencies to install. To learn more about the package set file format and where package sets are stored, see the [3.5 Package Set](#35-package-set) specification.
 
