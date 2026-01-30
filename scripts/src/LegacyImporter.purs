@@ -1410,6 +1410,7 @@ validateVersionDisabled package version =
     , Tuple (disabled "endpoints-express" "0.0.1") noSrcDirectory
     , Tuple (disabled "argonaut-aeson-generic" "0.4.0") "Does not compile."
     , Tuple (disabled "batteries-core" "0.3.0") "Does not solve."
+    , Tuple (disabled "yoga-tree-utils" "1.0.0") "Tag 1.0.0 has spago.yaml claiming version 2.0.0; already published a v1.0.0 tag for package"
     ]
     where
     noSrcDirectory = "Does not contain a 'src' directory."
@@ -1594,36 +1595,42 @@ fetchPackageTags name address = GitHub.listTags address >>= case _ of
         ]
   Right githubTags -> do
     -- For packages where the repo exists, we also need to include versions that
-    -- are in the registry metadata but missing from GitHub tags. These will be
-    -- fetched from the registry-archive automatically when the source fetch fails.
+    -- are in the registry metadata but which have no matching GitHub version tag.
+    -- This may be a genuine miss, or it may be that they were published to the
+    -- registry with a tag different from a version tag; for these, instead of
+    -- fetching from GitHub we fetch from teh registry-archive.
     let printed = PackageName.print name
-    publishedVersions <- Registry.readMetadata name >>= case _ of
-      Just (Metadata metadata) -> pure $ Set.toUnfoldable $ Map.keys metadata.published
-      Nothing -> fetchRemoteRegistryVersions name
+    publishedVersions <- fetchRemoteRegistryVersions name
     let
-      parseTagVersion tag =
-        let
-          stripped = fromMaybe tag.name (String.stripPrefix (String.Pattern "v") tag.name)
-        in
-          hush (Version.parse stripped)
+      parseTagVersion tag = do
+        let stripped = fromMaybe tag.name (String.stripPrefix (String.Pattern "v") tag.name)
+        hush (Version.parse stripped)
+      -- All git tags found on GitHub
       githubVersions = Set.fromFoldable $ Array.mapMaybe parseTagVersion githubTags
+      -- All versions found in the registry archive
       publishedSet = Set.fromFoldable publishedVersions
       missingFromGithub = Set.difference publishedSet githubVersions
     if Set.isEmpty missingFromGithub then
       pure { tags: githubTags, archiveBacked: false }
     else do
       let syntheticTags = (Set.toUnfoldable missingFromGithub :: Array _) <#> \v -> { name: "v" <> Version.print v, sha: "", url: "" }
-      Log.info $ printed <> ": Adding " <> show (Array.length syntheticTags) <> " versions from registry metadata missing from GitHub tags: "
-        <> String.joinWith ", " (map Version.print (Set.toUnfoldable missingFromGithub))
-      -- If GitHub returned 0 tags but we have versions in metadata, all tags are synthetic
+      Log.info $ Array.fold
+        [ printed
+        , ": Adding "
+        , show (Array.length syntheticTags)
+        , " versions from registry metadata missing from GitHub tags: "
+        , String.joinWith ", " (map Version.print (Set.toUnfoldable missingFromGithub))
+        ]
+      -- If GitHub returned 0 tags but we have versions in the archive, all tags are synthetic
       -- and we need to fetch manifests from the registry archive, not GitHub.
       let allSynthetic = Array.null githubTags
       when allSynthetic do
         Log.info $ printed <> ": All tags are synthetic (GitHub returned 0 tags), marking as archive-backed"
       pure { tags: githubTags <> syntheticTags, archiveBacked: allSynthetic }
 
--- | Fetch published versions for a package directly from the remote registry repo (main branch).
--- | Used as a fallback when the local registry checkout has been cleared (e.g., during reuploads).
+-- | Fetch published versions for a package directly from the remote registry repo.
+-- | We use a pinned commit rather than main because during re-uploads we are actively
+-- | modifying metadata, so we need a stable snapshot of what was previously published.
 -- | Only extracts the version keys from the "published" field without fully parsing metadata,
 -- | since the remote registry may have a different schema (e.g., missing 'compilers' field).
 fetchRemoteRegistryVersions :: forall r. PackageName -> Run (GITHUB + LOG + r) (Array Version)
@@ -1631,8 +1638,10 @@ fetchRemoteRegistryVersions name = do
   let
     printed = PackageName.print name
     path = Path.concat [ Constants.metadataDirectory, printed <> ".json" ]
+    -- Pinned commit from before re-upload began, to get stable view of published versions
+    pinnedCommit = RawVersion "9f7c3ce457d78fc2fe8add20b18499a1815e8a54"
   Log.debug $ "Fetching published versions for " <> printed <> " from remote registry"
-  GitHub.getContent Constants.registry (RawVersion "main") path >>= case _ of
+  GitHub.getContent Constants.registry pinnedCommit path >>= case _ of
     Left err -> do
       case err of
         Octokit.APIError apiError | apiError.statusCode == 404 ->
