@@ -346,18 +346,6 @@ runLegacyImport logs = do
 
   importedIndex <- importLegacyRegistry legacyRegistry
 
-  -- Reserve metadata files for post-0.13 packages that failed to import (no usable versions).
-  -- Pre-0.13 packages and explicitly freed packages are NOT reserved.
-  Log.info "Reserving metadata files for post-0.13 packages that failed import..."
-  let
-    packagesToReserve = Map.filterWithKey (\name _ -> Map.member name eligibleForReservation) importedIndex.removedPackages
-  forWithIndex_ packagesToReserve \package location -> Registry.readMetadata package >>= case _ of
-    Nothing -> do
-      Log.info $ "Writing empty metadata file for reserved package " <> PackageName.print package
-      let entry = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
-      Registry.writeMetadata package entry
-    Just _ -> Log.debug $ PackageName.print package <> " already reserved."
-
   Log.info "Writing package and version failures to disk..."
   Run.liftAff $ writePackageFailures importedIndex.failedPackages
   Run.liftAff $ writeVersionFailures importedIndex.failedVersions
@@ -734,6 +722,29 @@ runLegacyImport logs = do
   Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "publish-stats.txt" ]) publishStatsMessage
   Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "reserved-packages.txt" ]) (String.joinWith "\n" (map PackageName.print (Set.toUnfoldable publishStats.packages.reserved)))
   Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "removed-packages.txt" ]) (String.joinWith "\n" (map PackageName.print (Set.toUnfoldable (Set.difference publishStats.packages.failed publishStats.packages.reserved))))
+
+  -- Write empty metadata files for reserved packages (post-0.13 packages that failed).
+  -- This includes both import-phase failures (no usable versions) and publish-phase failures
+  -- (all versions failed to publish). Pre-0.13 packages are NOT reserved.
+  Log.info "Reserving metadata files for post-0.13 packages that failed..."
+  let
+    -- Import-phase failures: packages with no versions in the manifest index
+    importFailuresEligible = Map.filterWithKey (\name _ -> Map.member name eligibleForReservation) importedIndex.removedPackages
+    -- Publish-phase failures: packages where all versions failed to publish
+    publishFailuresEligible = Map.fromFoldable do
+      package <- Set.toUnfoldable publishStats.packages.reserved
+      { address } <- Array.fromFoldable $ Map.lookup package eligibleForReservation
+      pure $ Tuple package (GitHub { owner: address.owner, repo: address.repo, subdir: Nothing })
+    -- Combine both sources (publish failures take precedence if somehow in both)
+    allReserved = Map.union publishFailuresEligible importFailuresEligible
+
+  forWithIndex_ allReserved \package location ->
+    Registry.readMetadata package >>= case _ of
+      Nothing -> do
+        Log.info $ "Writing empty metadata file for reserved package " <> PackageName.print package
+        let entry = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
+        Registry.writeMetadata package entry
+      Just _ -> Log.debug $ PackageName.print package <> " already has metadata."
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePublishFailures :: Map PackageName (Map Version PublishError) -> Aff Unit
