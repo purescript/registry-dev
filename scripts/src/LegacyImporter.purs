@@ -1060,9 +1060,17 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
       Cache.get _importCache (ImportManifest package.name (RawVersion tag.name)) >>= case _ of
         Just cached -> exceptVersion cached
         Nothing -> do
-          -- For archive-backed packages (where GitHub repo is unavailable),
+          -- A version is archive-backed if either:
+          -- 1. The whole package is archive-backed (GitHub returned 404 for repo)
+          -- 2. This specific tag is synthetic (has empty URL, meaning it came from
+          --    registry metadata because the ref doesn't exist on GitHub)
+          let isSyntheticTag = tag.url == ""
+          let isVersionArchiveBacked = package.archiveBacked || isSyntheticTag
+          when (isSyntheticTag && not package.archiveBacked) do
+            Log.debug $ "Tag " <> tag.name <> " is synthetic (empty URL), will fetch manifest from archive"
+          -- For archive-backed versions (where GitHub ref is unavailable),
           -- fetch the manifest directly from the registry archive tarball.
-          if package.archiveBacked then do
+          if isVersionArchiveBacked then do
             Log.debug $ "Package is archive-backed, fetching manifest from archive for " <> formatPackageVersion package.name (LenientVersion.version version)
             manifest <- Run.Except.runExceptAt _exceptVersion do
               exceptVersion $ validateVersionDisabled package.name version
@@ -1080,13 +1088,13 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
             -- alpha began and we don't want to drop them when doing a re-import.
             fetchSpagoYaml package.address (RawVersion tag.name) >>= case _ of
               Just (Manifest m) -> do
-                -- Special case: the "debounce" package has a spago.yaml with name "debouncing"
-                -- but was registered under "debounce" in the legacy registry.
-                let debouncePackage = unsafeFromRight (PackageName.parse "debounce")
-                -- We always use the location from the legacy registry, not whatever
-                -- was written in the manifest, since the legacy registry is the
-                -- source of truth for where packages are fetched from.
-                let manifest = Manifest (m { name = if package.name == debouncePackage then package.name else m.name, location = location })
+                -- We always use the package name and location from the legacy registry,
+                -- not whatever was written in the manifest, since the legacy registry
+                -- is the source of truth for package identity. This handles cases like:
+                -- - "debounce" (spago.yaml says "debouncing")
+                -- - "react-basic-dom-beta" (spago.yaml says "yoga-react-dom")
+                -- - "web-intl" (spago.yaml says "js-intl")
+                let manifest = Manifest (m { name = package.name, location = location })
                 Log.debug $ "Built manifest from discovered spago.yaml file."
                 Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) (Right manifest)
                 pure manifest
@@ -1520,17 +1528,25 @@ validatePackage rawPackage rawUrl = do
   exceptPackage $ validatePackageDisabled name
   address <- exceptPackage $ validatePackageAddress rawUrl
   { tags, archiveBacked } <- fetchPackageTags name address
-  -- We do not allow packages that redirect from their registered location elsewhere. The package
-  -- transferrer will handle automatically transferring these packages.
-  -- Skip URL redirect validation for archive-backed packages since they have no valid tag URLs.
+  -- For archive-backed packages or packages with no tags, skip redirect validation.
+  -- For packages that redirect, we now warn but continue processing. This allows
+  -- old package names (like heterogeneous-extrablatt) to be published even when
+  -- their repos have been renamed (to record-studio). Old package sets depend on
+  -- these old names.
   case Array.head tags of
     Nothing -> pure { name, address, tags, archiveBacked }
     Just _ | archiveBacked -> pure { name, address, tags, archiveBacked }
     Just tag -> do
-      tagAddress <- exceptPackage case tagUrlToRepoUrl tag.url of
-        Nothing -> Left { error: InvalidPackageURL tag.url, reason: "Failed to format redirected " <> tag.url <> " as a GitHub.Address." }
-        Just formatted -> Right formatted
-      exceptPackage $ validatePackageLocation { registered: address, received: tagAddress }
+      -- For synthetic tags (empty URL), use the registered address for validation.
+      -- For real tags, parse the URL to get the actual repo location.
+      let
+        tagAddress = case tag.url of
+          "" -> address  -- Synthetic tag from metadata, trust the registered address
+          url -> fromMaybe address (tagUrlToRepoUrl url)
+      -- Warn on redirects but don't fail - we need old package names for old package sets
+      case validatePackageLocation { registered: address, received: tagAddress } of
+        Left { reason } -> Log.warn $ "Package " <> PackageName.print name <> " has a redirect: " <> reason
+        Right _ -> pure unit
       pure { name, address, tags, archiveBacked }
 
 fetchPackageTags :: forall r. PackageName -> Address -> Run (REGISTRY + LOG + GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) FetchTagsResult
@@ -1585,7 +1601,12 @@ fetchPackageTags name address = GitHub.listTags address >>= case _ of
       let syntheticTags = (Set.toUnfoldable missingFromGithub :: Array _) <#> \v -> { name: "v" <> Version.print v, sha: "", url: "" }
       Log.info $ printed <> ": Adding " <> show (Array.length syntheticTags) <> " versions from registry metadata missing from GitHub tags: "
         <> String.joinWith ", " (map Version.print (Set.toUnfoldable missingFromGithub))
-      pure { tags: githubTags <> syntheticTags, archiveBacked: false }
+      -- If GitHub returned 0 tags but we have versions in metadata, all tags are synthetic
+      -- and we need to fetch manifests from the registry archive, not GitHub.
+      let allSynthetic = Array.null githubTags
+      when allSynthetic do
+        Log.info $ printed <> ": All tags are synthetic (GitHub returned 0 tags), marking as archive-backed"
+      pure { tags: githubTags <> syntheticTags, archiveBacked: allSynthetic }
 
 -- | Fetch published versions for a package directly from the remote registry repo (main branch).
 -- | Used as a fallback when the local registry checkout has been cleared (e.g., during reuploads).

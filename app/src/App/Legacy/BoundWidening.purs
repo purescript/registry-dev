@@ -1,5 +1,5 @@
 -- | Evidence-based manifest correction using package set data.
--- | 
+-- |
 -- | This module provides helpers for widening dependency bounds in legacy
 -- | packages based on evidence from package sets. If a package compiled with
 -- | a specific dependency version in a package set, that provides proof the
@@ -21,6 +21,7 @@ import Data.FunctorWithIndex (mapWithIndex)
 import Data.Map as Map
 import Data.Set as Set
 import Registry.ManifestIndex as ManifestIndex
+import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Solver as Solver
 import Registry.Version as Version
@@ -117,7 +118,11 @@ widenManifestDependencies
   -> Map PackageName Range
   -> Map PackageName Range
 widenManifestDependencies evidence pkgName pkgVersion deps =
-  case lookupEvidenceWithFallback of
+  -- First widen based on evidence, then apply manual overrides to narrow
+  -- upper bounds for known-incompatible versions
+  applyBoundOverrides pkgName pkgVersion widenedDeps
+  where
+  widenedDeps = case lookupEvidenceWithFallback of
     Nothing -> deps
     Just depEvidence ->
       mapWithIndex
@@ -127,7 +132,7 @@ widenManifestDependencies evidence pkgName pkgVersion deps =
               Just observedVersions -> widenRangeWithEvidence range observedVersions
         )
         deps
-  where
+
   -- Try exact version first, then fall back to aggregated same-major evidence
   lookupEvidenceWithFallback :: Maybe (Map PackageName (Set Version))
   lookupEvidenceWithFallback =
@@ -181,3 +186,42 @@ widenLegacyIndex evidence =
   mapWithIndex \pkgName ->
     mapWithIndex \pkgVersion deps ->
       widenManifestDependencies evidence pkgName pkgVersion deps
+
+-- | Manual bound overrides for packages where automatic widening picks
+-- | incompatible versions. These are cases where a dependency made breaking
+-- | changes without a major version bump.
+-- |
+-- | Format: Map of (package, version) -> Map of (dependency -> upper bound)
+boundOverrides :: Map (Tuple PackageName Version) (Map PackageName Version)
+boundOverrides = Map.fromFoldable
+  [ -- pirates-charm 0.0.1 only compiles with hyrule <2.4.0
+    -- hyrule 2.4.0 changed Event internals (STFn2 vs EffectFn2)
+    Tuple
+      (Tuple (unsafeFromRight $ PackageName.parse "pirates-charm") (unsafeFromRight $ Version.parse "0.0.1"))
+      (Map.singleton (unsafeFromRight $ PackageName.parse "hyrule") (unsafeFromRight $ Version.parse "2.4.0"))
+  ]
+
+-- | Apply manual bound overrides to narrow upper bounds for known-incompatible
+-- | dependency versions.
+applyBoundOverrides
+  :: PackageName
+  -> Version
+  -> Map PackageName Range
+  -> Map PackageName Range
+applyBoundOverrides pkgName pkgVersion deps =
+  case Map.lookup (Tuple pkgName pkgVersion) boundOverrides of
+    Nothing -> deps
+    Just overrides ->
+      deps # mapWithIndex \depName range ->
+        case Map.lookup depName overrides of
+          Nothing -> range
+          Just maxVersion -> do
+            -- Narrow upper bound to < maxVersion if current upper is higher
+            let
+              currentUpper = Range.lessThan range
+              currentLower = Range.greaterThanOrEq range
+
+            if currentUpper > maxVersion then
+              Range.mk currentLower maxVersion # fromMaybe range
+            else
+              range
