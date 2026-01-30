@@ -481,6 +481,18 @@ publish maybeLegacyContext payload = do
       Left err ->
         Except.throw $ Source.printFetchError err
 
+  -- Legacy packages may contain src/Main.purs which is not allowed for libraries.
+  -- We remove it during legacy import only.
+  when (isJust maybeLegacyIndex) do
+    let mainPursPath = Path.concat [ downloadedPackage, "src", "Main.purs" ]
+    mainExists <- Run.liftEffect $ FS.Sync.exists mainPursPath
+    when mainExists do
+      Log.warn "Removed src/Main.purs (Main module not allowed in libraries)"
+      unlinkResult <- Run.liftAff $ Aff.attempt (FS.Aff.unlink mainPursPath)
+      case unlinkResult of
+        Left err -> Log.warn $ "Failed to remove src/Main.purs: " <> Aff.message err
+        Right _ -> pure unit
+
   Log.debug $ "Package downloaded to " <> downloadedPackage <> ", verifying it contains a src directory..."
   srcPursFiles <- Internal.Path.readPursFiles (Path.concat [ downloadedPackage, "src" ]) >>= case _ of
     Nothing ->

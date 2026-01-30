@@ -613,21 +613,22 @@ runLegacyImport logs = do
             Left err | widenedAnyDeps -> do
               Log.warn $ "Compilation failed with widened bounds for " <> formatted <> ". Retrying with original bounds..."
               -- Re-solve with original deps
-              let solveOriginal = do
-                    legacy <- case Solver.solveFull { registry: legacyIndex, required: Solver.initializeRequired manifest.dependencies } of
-                      Left _ -> pure Nothing
-                      Right res -> do
-                        let lookup r = maybe (Left r) (\_ -> Right r) (Map.lookup (fst r) (un CompilerIndex compilerIndex) >>= Map.lookup (snd r))
-                        let { fail } = partitionEithers $ map lookup $ Map.toUnfoldable res
-                        pure $ if Array.null fail then Just res else Nothing
-                    current <- case Solver.solveWithCompiler allCompilersRange compilerIndex manifest.dependencies of
-                      Left _ -> pure Nothing
-                      Right (Tuple _ res) -> pure $ Just res
-                    pure $ case legacy, current of
-                      Nothing, Nothing -> Nothing
-                      Just res, Nothing -> Just $ This res
-                      Nothing, Just res -> Just $ That res
-                      Just l, Just c -> Just $ Both l c
+              let
+                solveOriginal = do
+                  legacy <- case Solver.solveFull { registry: legacyIndex, required: Solver.initializeRequired manifest.dependencies } of
+                    Left _ -> pure Nothing
+                    Right res -> do
+                      let lookup r = maybe (Left r) (\_ -> Right r) (Map.lookup (fst r) (un CompilerIndex compilerIndex) >>= Map.lookup (snd r))
+                      let { fail } = partitionEithers $ map lookup $ Map.toUnfoldable res
+                      pure $ if Array.null fail then Just res else Nothing
+                  current <- case Solver.solveWithCompiler allCompilersRange compilerIndex manifest.dependencies of
+                    Left _ -> pure Nothing
+                    Right (Tuple _ res) -> pure $ Just res
+                  pure $ case legacy, current of
+                    Nothing, Nothing -> Nothing
+                    Just res, Nothing -> Just $ This res
+                    Nothing, Just res -> Just $ That res
+                    Just l, Just c -> Just $ Both l c
               solveOriginal >>= case _ of
                 Nothing -> do
                   Log.warn "Could not solve with original bounds either."
@@ -1541,7 +1542,7 @@ validatePackage rawPackage rawUrl = do
       -- For real tags, parse the URL to get the actual repo location.
       let
         tagAddress = case tag.url of
-          "" -> address  -- Synthetic tag from metadata, trust the registered address
+          "" -> address -- Synthetic tag from metadata, trust the registered address
           url -> fromMaybe address (tagUrlToRepoUrl url)
       -- Warn on redirects but don't fail - we need old package names for old package sets
       case validatePackageLocation { registered: address, received: tagAddress } of
@@ -1590,8 +1591,10 @@ fetchPackageTags name address = GitHub.listTags address >>= case _ of
       Nothing -> fetchRemoteRegistryVersions name
     let
       parseTagVersion tag =
-        let stripped = fromMaybe tag.name (String.stripPrefix (String.Pattern "v") tag.name)
-        in hush (Version.parse stripped)
+        let
+          stripped = fromMaybe tag.name (String.stripPrefix (String.Pattern "v") tag.name)
+        in
+          hush (Version.parse stripped)
       githubVersions = Set.fromFoldable $ Array.mapMaybe parseTagVersion githubTags
       publishedSet = Set.fromFoldable publishedVersions
       missingFromGithub = Set.difference publishedSet githubVersions

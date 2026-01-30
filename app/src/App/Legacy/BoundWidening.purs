@@ -199,6 +199,18 @@ boundOverrides = Map.fromFoldable
     Tuple
       (Tuple (unsafeFromRight $ PackageName.parse "pirates-charm") (unsafeFromRight $ Version.parse "0.0.1"))
       (Map.singleton (unsafeFromRight $ PackageName.parse "hyrule") (unsafeFromRight $ Version.parse "2.4.0"))
+  , -- rito@0.3.2 is incompatible with deku 0.9.x (kind mismatch in Rito.Core)
+    Tuple
+      (Tuple (unsafeFromRight $ PackageName.parse "rito") (unsafeFromRight $ Version.parse "0.3.2"))
+      (Map.singleton (unsafeFromRight $ PackageName.parse "deku") (unsafeFromRight $ Version.parse "0.9.0"))
+  , -- postgresql@1.6.3 uses fromBufferWritable/fromBufferReadable which were removed in node-stream-pipes@1.4.0
+    Tuple
+      (Tuple (unsafeFromRight $ PackageName.parse "postgresql") (unsafeFromRight $ Version.parse "1.6.3"))
+      (Map.singleton (unsafeFromRight $ PackageName.parse "node-stream-pipes") (unsafeFromRight $ Version.parse "1.4.0"))
+  , -- tecton-halogen@0.1.0 uses BuildFromScratch which only exists in tecton@0.1.0
+    Tuple
+      (Tuple (unsafeFromRight $ PackageName.parse "tecton-halogen") (unsafeFromRight $ Version.parse "0.1.0"))
+      (Map.singleton (unsafeFromRight $ PackageName.parse "tecton") (unsafeFromRight $ Version.parse "0.1.1"))
   ]
 
 -- | Apply manual bound overrides to narrow upper bounds for known-incompatible

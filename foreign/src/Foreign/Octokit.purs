@@ -66,7 +66,6 @@ import Data.Newtype (class Newtype, unwrap)
 import Data.Profunctor as Profunctor
 import Data.String as String
 import Data.String.Base64 as Base64
-import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Data.Variant as Variant
 import Effect.Aff as Aff
@@ -106,9 +105,11 @@ derive instance Newtype Base64Content _
 
 decodeBase64Content :: Base64Content -> Either String String
 decodeBase64Content (Base64Content string) =
-  case traverse Base64.decode $ String.split (String.Pattern "\n") string of
+  -- Join base64 chunks before decoding to avoid splitting multi-byte UTF-8
+  -- sequences. GitHub's API returns base64 with embedded newlines.
+  case Base64.decode $ String.replaceAll (String.Pattern "\n") (String.Replacement "") string of
     Left error -> Left $ Aff.message error
-    Right values -> Right $ Array.fold values
+    Right value -> Right value
 
 -- | The address of a GitHub repository as a owner/repo pair.
 type Address = { owner :: String, repo :: String }

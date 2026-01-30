@@ -37,6 +37,7 @@ import Registry.App.Legacy.LenientRange as LenientRange
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.PackageSet as Legacy.PackageSet
 import Registry.App.Legacy.Types (LegacyPackageSet(..), LegacyPackageSetEntry, LegacyPackageSetUnion, RawPackageName(..), RawVersion(..), RawVersionRange(..), legacyPackageSetCodec, legacyPackageSetUnionCodec, rawPackageNameMapCodec, rawVersionCodec, rawVersionRangeCodec)
+import Registry.App.Manifest.SpagoYaml as SpagoYaml
 import Registry.Foreign.Octokit (Address, GitHubError(..))
 import Registry.Foreign.Octokit as Octokit
 import Registry.Foreign.Tmp as Tmp
@@ -285,11 +286,33 @@ detectLicenses
 detectLicenses address ref = do
   packageJsonFile <- GitHub.getContent address ref "package.json"
   licenseFile <- GitHub.getContent address ref "LICENSE"
+  spagoYamlLicense <- fetchSpagoYamlLicense address ref
   let packageJsonInput = { name: "package.json", contents: _ } <$> hush packageJsonFile
   let licenseInput = { name: "LICENSE", contents: _ } <$> hush licenseFile
-  Run.liftAff (Licensee.detectFiles (Array.catMaybes [ packageJsonInput, licenseInput ])) >>= case _ of
+  licenseeResults <- Run.liftAff (Licensee.detectFiles (Array.catMaybes [ packageJsonInput, licenseInput ])) >>= case _ of
     Left err -> Log.warn ("Licensee decoding error, ignoring: " <> err) $> []
     Right licenses -> pure $ Array.mapMaybe NonEmptyString.fromString licenses
+  pure $ Array.nub $ licenseeResults <> Array.catMaybes [ spagoYamlLicense ]
+
+-- | Attempt to extract license from spago.yaml file.
+fetchSpagoYamlLicense
+  :: forall r
+   . Address
+  -> RawVersion
+  -> Run (GITHUB + LOG + r) (Maybe NonEmptyString)
+fetchSpagoYamlLicense address (RawVersion ref) = do
+  eitherContent <- GitHub.getContent address (RawVersion ref) "spago.yaml"
+  case eitherContent of
+    Left _ -> pure Nothing
+    Right contents -> case parseYaml SpagoYaml.spagoYamlCodec contents of
+      Left err -> do
+        Log.debug $ "Failed to parse spago.yaml: " <> err
+        pure Nothing
+      Right spagoYaml -> case spagoYaml.package of
+        Nothing -> pure Nothing
+        Just package -> case package.publish of
+          Nothing -> pure Nothing
+          Just publish -> pure $ NonEmptyString.fromString $ License.print publish.license
 
 validateLicense :: Array NonEmptyString -> Either LegacyManifestValidationError License
 validateLicense licenses = do
@@ -440,6 +463,21 @@ bowerfileCodec = Profunctor.dimap toRep fromRep $ CJ.named "Bowerfile" $ CJ.Reco
 -- | remote repository at the given ref.
 fetchBowerfile :: forall r. Address -> RawVersion -> Run (GITHUB + r) (Either GitHubError Bowerfile)
 fetchBowerfile address ref = GitHub.getJsonFile address ref bowerfileCodec "bower.json"
+
+-- | Attempt to fetch and parse a spago.yaml file from a remote repository.
+-- | Returns the parsed SpagoYaml if successful.
+fetchSpagoYaml
+  :: forall r
+   . Address
+  -> RawVersion
+  -> Run (GITHUB + LOG + r) (Either GitHubError SpagoYaml.SpagoYaml)
+fetchSpagoYaml address (RawVersion ref) = do
+  eitherContent <- GitHub.getContent address (RawVersion ref) "spago.yaml"
+  pure $ case eitherContent of
+    Left err -> Left err
+    Right contents -> case parseYaml SpagoYaml.spagoYamlCodec contents of
+      Left err -> Left $ Octokit.DecodeError err
+      Right spagoYaml -> Right spagoYaml
 
 -- | Attempt to fetch all package sets from the package-sets repo and union them
 -- | into a map, where keys are packages in the sets and values are a map of
