@@ -1,13 +1,14 @@
--- | This script checks for new package versions by fetching GitHub tags for all
--- | packages in the registry. When a new version is discovered (a tag that hasn't
--- | been published or unpublished), it submits a publish job to the registry API.
+-- | This script checks for new package versions by fetching commits from the last
+-- | 24 hours for all packages in the registry. When a recent commit is found that
+-- | corresponds to an unpublished version tag, it submits a publish job to the
+-- | registry API.
 -- |
 -- | Run via Nix:
 -- |   nix run .#daily-importer -- --dry-run     # Log what would be submitted
 -- |   nix run .#daily-importer -- --submit      # Actually submit to the API
 -- |
 -- | Required environment variables:
--- |   GITHUB_TOKEN - GitHub API token for fetching tags
+-- |   GITHUB_TOKEN - GitHub API token for fetching commits and tags
 -- |   REGISTRY_API_URL - Registry API URL (default: https://registry.purescript.org)
 module Registry.Scripts.DailyImporter where
 
@@ -18,10 +19,13 @@ import ArgParse.Basic as Arg
 import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
 import Data.Codec.JSON as CJ
+import Data.DateTime as DateTime
 import Data.Map as Map
 import Data.Set as Set
+import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
+import Effect.Now as Now
 import Fetch (Method(..))
 import Fetch as Fetch
 import JSON as JSON
@@ -112,45 +116,62 @@ runDailyImport :: Mode -> URL -> Run DailyImportEffects Unit
 runDailyImport mode registryApiUrl = do
   Log.info "Daily Importer: checking for new package versions..."
 
+  now <- Run.liftEffect Now.nowDateTime
+  let since = fromMaybe now $ DateTime.adjust (Hours (-24.0)) now
+
   allMetadata <- Registry.readAllMetadata
   let packages = Map.toUnfoldable allMetadata :: Array (Tuple PackageName Metadata)
 
-  Log.info $ "Checking " <> show (Array.length packages) <> " packages for new versions..."
+  Log.info $ "Checking " <> show (Array.length packages) <> " packages for commits in the last 24 hours..."
 
   submitted <- for packages \(Tuple name (Metadata metadata)) -> do
     case metadata.location of
       Git _ -> pure 0 -- Skip non-GitHub packages for now
       GitHub { owner, repo } -> do
-        GitHub.listTags { owner, repo } >>= case _ of
+        let address = { owner, repo }
+        -- First, check if there are any recent commits
+        GitHub.listCommitsSince address since >>= case _ of
           Left err -> do
-            Log.debug $ "Failed to fetch tags for " <> PackageName.print name <> ": " <> Octokit.printGitHubError err
+            Log.debug $ "Failed to fetch commits for " <> PackageName.print name <> ": " <> Octokit.printGitHubError err
             pure 0
-          Right tags -> do
-            let
-              -- Combine published and unpublished versions into a set
-              publishedVersions = Set.fromFoldable
-                $ Map.keys metadata.published
-                <> Map.keys metadata.unpublished
+          Right [] -> do
+            -- No recent commits, skip fetching tags
+            pure 0
+          Right recentCommitShas -> do
+            let recentShas = Set.fromFoldable recentCommitShas
+            -- There are recent commits, now fetch tags to see if any point to them
+            GitHub.listTags address >>= case _ of
+              Left err -> do
+                Log.debug $ "Failed to fetch tags for " <> PackageName.print name <> ": " <> Octokit.printGitHubError err
+                pure 0
+              Right tags -> do
+                let
+                  publishedVersions = combinedPublishedVersions { published: metadata.published, unpublished: metadata.unpublished }
+                  newVersions = findNewVersions tags recentShas publishedVersions
 
-              -- Parse tags as versions and filter out already published ones
-              newVersions = Array.catMaybes $ tags <#> \tag ->
-                case LenientVersion.parse tag.name of
-                  Left _ -> Nothing -- Not a valid version tag
-                  Right result ->
-                    let
-                      version = LenientVersion.version result
-                    in
-                      if Set.member version publishedVersions then Nothing
-                      else Just { version, ref: tag.name }
+                -- Submit publish jobs for new versions
+                count <- for newVersions \{ version, ref } -> do
+                  submitPublishJob mode registryApiUrl name version ref
 
-            -- Submit publish jobs for new versions
-            count <- for newVersions \{ version, ref } -> do
-              submitPublishJob mode registryApiUrl name version ref
-
-            pure $ Array.length $ Array.filter identity count
+                pure $ Array.length $ Array.filter identity count
 
   let totalSubmitted = Array.foldl (+) 0 submitted
   Log.info $ "Daily Importer complete. Submitted " <> show totalSubmitted <> " publish jobs."
+
+-- | Combine published and unpublished versions into a set
+combinedPublishedVersions :: forall a b. { published :: Map Version a, unpublished :: Map Version b } -> Set Version
+combinedPublishedVersions metadata = Set.fromFoldable $ Map.keys metadata.published <> Map.keys metadata.unpublished
+
+-- | Find new version tags that point to recent commits and haven't been published
+findNewVersions :: Array Octokit.Tag -> Set String -> Set Version -> Array { version :: Version, ref :: String }
+findNewVersions tags recentShas publishedVersions = Array.catMaybes $ tags <#> \tag ->
+  case LenientVersion.parse tag.name of
+    Left _ -> Nothing -- Not a valid version tag
+    Right result -> do
+      let version = LenientVersion.version result
+      if not (Set.member tag.sha recentShas) then Nothing -- Tag doesn't point to a recent commit
+      else if Set.member version publishedVersions then Nothing -- Already published
+      else Just { version, ref: tag.name }
 
 -- | Submit a publish job for a new package version. The compiler is not specified; the registry
 -- | API will discover the latest compatible compiler based on the package's dependencies.

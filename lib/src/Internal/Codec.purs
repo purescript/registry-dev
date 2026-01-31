@@ -1,5 +1,6 @@
 module Registry.Internal.Codec
-  ( iso8601Date
+  ( formatIso8601
+  , iso8601Date
   , iso8601DateTime
   , limitedString
   , packageMap
@@ -39,6 +40,12 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Version (Version)
 import Registry.Version as Version
+
+-- | INTERNAL
+-- |
+-- | Format a DateTime as an ISO8601 string.
+formatIso8601 :: DateTime -> String
+formatIso8601 = Formatter.DateTime.format Internal.Format.iso8601DateTime
 
 -- | INTERNAL
 -- |

@@ -29,8 +29,10 @@ module Registry.Foreign.Octokit
   , githubApiErrorCodec
   , githubErrorCodec
   , isPermanentGitHubError
+  , listCommitsSinceRequest
   , listTagsRequest
   , listTeamMembersRequest
+  , CommitSha
   , newOctokit
   , noArgs
   , printGitHubError
@@ -157,6 +159,19 @@ listTagsRequest address =
   where
   toJsonRep { name, sha, url } = { name, commit: { sha, url } }
   fromJsonRep { name, commit } = { name, sha: commit.sha, url: commit.url }
+
+type CommitSha = { sha :: String }
+
+-- | List repository commits since a given date
+-- | https://docs.github.com/en/rest/commits/commits#list-commits
+listCommitsSinceRequest :: { address :: Address, since :: DateTime } -> Request (Array CommitSha)
+listCommitsSinceRequest { address, since } =
+  { route: GitHubRoute GET [ "repos", address.owner, address.repo, "commits" ] (Map.singleton "since" (Internal.Codec.formatIso8601 since))
+  , headers: Object.empty
+  , args: noArgs
+  , paginate: true
+  , codec: CJ.array $ CJ.named "CommitSha" $ CJ.Record.object { sha: CJ.string }
+  }
 
 -- | Fetch a specific file  from the provided repository at the given ref and
 -- | filepath. Filepaths should lead to a single file from the root of the repo.

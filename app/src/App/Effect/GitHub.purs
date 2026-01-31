@@ -12,6 +12,7 @@ module Registry.App.Effect.GitHub
   , getRefCommit
   , handle
   , interpret
+  , listCommitsSince
   , listTags
   , listTeamMembers
   ) where
@@ -73,6 +74,7 @@ instance FsEncodable GitHubCache where
 
 data GitHub a
   = ListTags Address (Either GitHubError (Array Tag) -> a)
+  | ListCommitsSince Address DateTime (Either GitHubError (Array String) -> a)
   | ListTeamMembers Team (Either GitHubError (Array String) -> a)
   | GetContent Address String FilePath (Either GitHubError String -> a)
   | GetRefCommit Address String (Either GitHubError String -> a)
@@ -89,6 +91,10 @@ _github = Proxy
 -- | List all tags published to the provided repo.
 listTags :: forall r. Address -> Run (GITHUB + r) (Either GitHubError (Array Tag))
 listTags address = Run.lift _github (ListTags address identity)
+
+-- | List commits since a given date. Returns an array of commit SHAs.
+listCommitsSince :: forall r. Address -> DateTime -> Run (GITHUB + r) (Either GitHubError (Array String))
+listCommitsSince address since = Run.lift _github (ListCommitsSince address since identity)
 
 -- | List the members of the provided team. Requires that the authorization on
 -- | the request has read rights for the given organization and team.
@@ -138,6 +144,11 @@ handle env = Cache.interpret _githubCache (Cache.handleMemoryFs { cache: env.cac
     Log.debug $ "Listing tags for " <> address.owner <> "/" <> address.repo
     result <- request env.octokit (Octokit.listTagsRequest address)
     pure $ reply result
+
+  ListCommitsSince address since reply -> do
+    Log.debug $ "Listing commits since " <> Internal.Codec.formatIso8601 since <> " for " <> address.owner <> "/" <> address.repo
+    result <- request env.octokit (Octokit.listCommitsSinceRequest { address, since })
+    pure $ reply $ map (map _.sha) result
 
   ListTeamMembers team reply -> do
     Log.debug $ "Listing members of team " <> team.org <> "/" <> team.team
