@@ -626,14 +626,17 @@ insertMatrixJobToJSRep jobId now { packageName, packageVersion, compilerVersion,
   , payload: stringifyJson (Internal.Codec.packageMap Version.codec) payload
   }
 
-foreign import insertMatrixJobImpl :: EffectFn2 SQLite JSInsertMatrixJob Unit
+foreign import insertMatrixJobImpl :: EffectFn2 SQLite JSInsertMatrixJob String
 
+-- | Insert a new matrix job, or return the existing job ID if a job for this
+-- | package/version/compiler combination already exists.
 insertMatrixJob :: SQLite -> InsertMatrixJob -> Effect JobId
 insertMatrixJob db job = do
   jobId <- newJobId
   now <- nowUTC
-  Uncurried.runEffectFn2 insertMatrixJobImpl db $ insertMatrixJobToJSRep jobId now job
-  pure jobId
+  -- The FFI returns the jobId of either the newly inserted job or an existing one
+  resultJobId <- Uncurried.runEffectFn2 insertMatrixJobImpl db $ insertMatrixJobToJSRep jobId now job
+  pure $ JobId resultJobId
 
 type MatrixJobDetails =
   { jobId :: JobId

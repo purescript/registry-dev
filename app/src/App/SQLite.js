@@ -84,8 +84,23 @@ export const insertTransferJobImpl = (db, job) => {
 };
 
 export const insertMatrixJobImpl = (db, job) => {
-  const columns = ['jobId', 'packageName', 'packageVersion', 'compilerVersion', 'payload']
-  return _insertJob(db, MATRIX_JOBS_TABLE, columns, job);
+  const columns = ['jobId', 'packageName', 'packageVersion', 'compilerVersion', 'payload'];
+
+  // Check if a matrix job already exists for this package/version/compiler
+  // (either pending or completed - we don't want to re-run completed jobs either)
+  const existingJob = db.prepare(`
+    SELECT job.jobId FROM ${MATRIX_JOBS_TABLE} job
+    WHERE job.packageName = ? AND job.packageVersion = ? AND job.compilerVersion = ?
+    LIMIT 1
+  `).get(job.packageName, job.packageVersion, job.compilerVersion);
+
+  if (existingJob) {
+    // Return the existing job's ID instead of inserting a duplicate
+    return existingJob.jobId;
+  }
+
+  _insertJob(db, MATRIX_JOBS_TABLE, columns, job);
+  return job.jobId;
 };
 
 export const insertPackageSetJobImpl = (db, job) => {
