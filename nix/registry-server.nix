@@ -117,6 +117,8 @@ in
         "multi-user.target"
         "nginx.service"
       ];
+      after = [ "network-online.target" ];
+      wants = [ "network-online.target" ];
       serviceConfig = {
         ExecStart = "${serverInit}/bin/registry-server-init";
         Type = "simple";
