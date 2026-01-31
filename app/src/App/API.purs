@@ -957,7 +957,9 @@ publish maybeLegacyContext payload = do
 
       Storage.upload (un Manifest manifest).name (un Manifest manifest).version tarballPath
       Log.debug $ "Adding the new version " <> Version.print (un Manifest manifest).version <> " to the package metadata file."
-      let newPublishedVersion = { hash, compilers: NonEmptyArray.singleton compiler, publishedTime, bytes }
+      -- NOTE: The `ref` field is DEPRECATED and will be removed after 2027-01-31.
+      -- We always write `Just ""` for backwards compatibility with older package managers.
+      let newPublishedVersion = { hash, compilers: NonEmptyArray.singleton compiler, publishedTime, bytes, ref: Just "" }
       let newMetadata = metadata { published = Map.insert (un Manifest manifest).version newPublishedVersion metadata.published }
 
       Registry.writeMetadata (un Manifest manifest).name (Metadata newMetadata)

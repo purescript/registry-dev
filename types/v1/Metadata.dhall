@@ -11,11 +11,15 @@ let Sha256 = Text
 
 let ISO8601String = Text
 
+-- NOTE: The `ref` field is DEPRECATED and WILL BE REMOVED after 2027-01-31.
+-- It is only present for backwards compatibility with older package managers.
+-- Do not rely on its presence!
 let PublishedMetadata =
       { hash : Sha256
       , bytes : Natural
       , publishedTime : ISO8601String
       , compilers : NonEmpty Version
+      , ref : Optional Text
       }
 
 let UnpublishedMetadata =

@@ -63,11 +63,16 @@ codec = Profunctor.wrapIso Metadata $ CJ.named "Metadata" $ CJ.object
   $ CJ.record
 
 -- | Metadata about a published package version.
+-- |
+-- | NOTE: The `ref` field is DEPRECATED and WILL BE REMOVED after 2027-01-31.
+-- | It is only present for backwards compatibility with older package managers.
+-- | Do not rely on its presence!
 type PublishedMetadata =
   { bytes :: Number
   , compilers :: NonEmptyArray Version
   , hash :: Sha256
   , publishedTime :: DateTime
+  , ref :: Maybe String
   }
 
 publishedMetadataCodec :: CJ.Codec PublishedMetadata
@@ -76,6 +81,7 @@ publishedMetadataCodec = CJ.named "PublishedMetadata" $ CJ.Record.object
   , compilers: CJ.Common.nonEmptyArray Version.codec
   , hash: Sha256.codec
   , publishedTime: Internal.Codec.iso8601DateTime
+  , ref: CJ.Record.optional CJ.string
   }
 
 -- | Metadata about an unpublished package version.
