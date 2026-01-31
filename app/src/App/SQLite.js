@@ -225,16 +225,29 @@ export const finishJobImpl = (db, args) => {
   return stmt.run(args);
 }
 
-// TODO I think we should keep track of this somehow. So either we save
-// how many times this is being retried and give up at some point, notifying
-// the trustees, or we notify right away for any retry so we can look at them
+// Reset incomplete jobs, incrementing their resetCount.
+// Returns the list of job IDs that have been reset 3+ times (livelocked).
 export const resetIncompleteJobsImpl = (db) => {
-  const stmt = db.prepare(`
+  const LIVELOCK_THRESHOLD = 3;
+
+  // Reset incomplete jobs and increment their resetCount
+  const updateStmt = db.prepare(`
     UPDATE ${JOB_INFO_TABLE}
-    SET startedAt = NULL
+    SET startedAt = NULL, resetCount = resetCount + 1
     WHERE finishedAt IS NULL
-    AND startedAt IS NOT NULL`);
-  return stmt.run();
+    AND startedAt IS NOT NULL
+  `);
+  updateStmt.run();
+
+  // Return jobs that have hit the livelock threshold
+  const selectStmt = db.prepare(`
+    SELECT jobId FROM ${JOB_INFO_TABLE}
+    WHERE finishedAt IS NULL
+    AND resetCount >= ?
+  `);
+  const livelockedJobIds = selectStmt.all(LIVELOCK_THRESHOLD).map(row => row.jobId);
+
+  return livelockedJobIds;
 };
 
 export const insertLogLineImpl = (db, logLine) => {

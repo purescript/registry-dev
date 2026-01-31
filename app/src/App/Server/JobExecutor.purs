@@ -45,7 +45,19 @@ runJobExecutor env = runEffects env do
   -- thing that the JobExecutor picks up
   void $ MatrixBuilder.checkIfNewCompiler
     >>= traverse upgradeRegistryToNewCompiler
-  Db.resetIncompleteJobs
+
+  -- Reset incomplete jobs. The DB tracks how many times each job has been reset.
+  -- Returns job IDs that have been reset 3+ times (livelocked).
+  livelockedJobIds <- Db.resetIncompleteJobs
+  unless (Array.null livelockedJobIds) do
+    -- FIXME: Add proper alerting to trustees (webhook, email, etc.)
+    for_ livelockedJobIds \jobId ->
+      Log.error $ "LIVELOCK DETECTED: Job " <> unwrap jobId
+        <> " has been reset 3+ times. This indicates a persistent failure "
+        <> "that requires investigation."
+    Log.error $ "Pausing job processing for 5 minutes to allow investigation..."
+    liftAff $ Aff.delay (Milliseconds (1000.0 * 60.0 * 5.0))
+
   loop
   where
   loop = do

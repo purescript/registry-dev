@@ -4,7 +4,10 @@ CREATE TABLE job_info (
   createdAt TEXT NOT NULL,
   startedAt TEXT,
   finishedAt TEXT,
-  success INTEGER NOT NULL DEFAULT 0
+  success INTEGER NOT NULL DEFAULT 0,
+  -- Tracks how many times this job has been reset (started but not finished
+  -- when the server restarted). Used for livelock detection.
+  resetCount INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE publish_jobs (
   jobId TEXT PRIMARY KEY NOT NULL,

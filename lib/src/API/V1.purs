@@ -271,6 +271,7 @@ newtype JobId = JobId String
 
 derive instance Newtype JobId _
 derive newtype instance Eq JobId
+derive newtype instance Ord JobId
 
 jobIdCodec :: CJ.Codec JobId
 jobIdCodec = Profunctor.wrapIso JobId CJ.string

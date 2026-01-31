@@ -46,7 +46,7 @@ data Db a
   | SelectPackageSetJobByPayload PackageSetOperation (Either String (Maybe PackageSetJobDetails) -> a)
   | InsertLogLine LogLine a
   | SelectLogsByJob JobId LogLevel DateTime (Array LogLine -> a)
-  | ResetIncompleteJobs a
+  | ResetIncompleteJobs (Array JobId -> a)
 
 derive instance Functor Db
 
@@ -136,9 +136,9 @@ selectTransferJob packageName = Run.lift _db (SelectTransferJob packageName iden
 selectPackageSetJobByPayload :: forall r. PackageSetOperation -> Run (DB + EXCEPT String + r) (Maybe PackageSetJobDetails)
 selectPackageSetJobByPayload payload = Run.lift _db (SelectPackageSetJobByPayload payload identity) >>= Except.rethrow
 
--- | Delete all incomplete jobs from the database.
-resetIncompleteJobs :: forall r. Run (DB + r) Unit
-resetIncompleteJobs = Run.lift _db (ResetIncompleteJobs unit)
+-- | Reset all incomplete jobs in the database, returning the IDs of the jobs that were reset.
+resetIncompleteJobs :: forall r. Run (DB + r) (Array JobId)
+resetIncompleteJobs = Run.lift _db (ResetIncompleteJobs identity)
 
 interpret :: forall r a. (Db ~> Run r) -> Run (DB + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _db handler Run.send)
@@ -234,6 +234,6 @@ handleSQLite env = case _ of
       Log.warn $ "Some logs are not readable: " <> String.joinWith "\n" fail
     pure $ reply success
 
-  ResetIncompleteJobs next -> do
-    Run.liftEffect $ SQLite.resetIncompleteJobs env.db
-    pure next
+  ResetIncompleteJobs reply -> do
+    result <- Run.liftEffect $ SQLite.resetIncompleteJobs env.db
+    pure $ reply result

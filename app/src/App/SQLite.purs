@@ -171,10 +171,10 @@ finishJobToJSRep { jobId, success, finishedAt } =
 
 foreign import finishJobImpl :: EffectFn2 SQLite JSFinishJob Unit
 
-foreign import resetIncompleteJobsImpl :: EffectFn1 SQLite Unit
+foreign import resetIncompleteJobsImpl :: EffectFn1 SQLite (Array String)
 
-resetIncompleteJobs :: SQLite -> Effect Unit
-resetIncompleteJobs = Uncurried.runEffectFn1 resetIncompleteJobsImpl
+resetIncompleteJobs :: SQLite -> Effect (Array JobId)
+resetIncompleteJobs db = map JobId <$> Uncurried.runEffectFn1 resetIncompleteJobsImpl db
 
 newJobId :: forall m. MonadEffect m => m JobId
 newJobId = do

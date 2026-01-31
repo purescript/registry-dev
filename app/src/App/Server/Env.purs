@@ -103,12 +103,6 @@ createServerEnv = do
     , logger: mempty
     }
 
-  -- At server startup we clean out all the jobs that are not completed,
-  -- because they are stale runs from previous startups of the server.
-  -- We can just remove the jobs, and all the logs belonging to them will be
-  -- removed automatically by the foreign key constraint.
-  liftEffect $ SQLite.resetIncompleteJobs db
-
   pure
     { debouncer
     , githubCacheRef
