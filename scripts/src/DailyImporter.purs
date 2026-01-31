@@ -22,10 +22,10 @@ import Data.Codec.JSON as CJ
 import Data.DateTime as DateTime
 import Data.Map as Map
 import Data.Set as Set
+import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
-import Effect.Now as Now
 import Fetch (Method(..))
 import Fetch as Fetch
 import JSON as JSON
@@ -101,7 +101,7 @@ main = launchAff_ do
     # Except.runExcept
     # Registry.interpret (Registry.handle registryEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-    # Log.interpret (Log.handleTerminal Normal)
+    # Log.interpret (Log.handleTerminal Verbose)
     # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
     >>= case _ of
@@ -116,7 +116,7 @@ runDailyImport :: Mode -> URL -> Run DailyImportEffects Unit
 runDailyImport mode registryApiUrl = do
   Log.info "Daily Importer: checking for new package versions..."
 
-  now <- Run.liftEffect Now.nowDateTime
+  now <- Run.liftEffect nowUTC
   let since = fromMaybe now $ DateTime.adjust (Hours (-24.0)) now
 
   allMetadata <- Registry.readAllMetadata
@@ -136,6 +136,7 @@ runDailyImport mode registryApiUrl = do
             pure 0
           Right [] -> do
             -- No recent commits, skip fetching tags
+            Log.debug $ "No recent commits for " <> PackageName.print name
             pure 0
           Right recentCommitShas -> do
             let recentShas = Set.fromFoldable recentCommitShas
@@ -145,6 +146,7 @@ runDailyImport mode registryApiUrl = do
                 Log.debug $ "Failed to fetch tags for " <> PackageName.print name <> ": " <> Octokit.printGitHubError err
                 pure 0
               Right tags -> do
+                Log.debug $ "Fetched " <> show (Array.length tags) <> " tags for " <> PackageName.print name <> ": " <> String.joinWith ", " (map _.name tags)
                 let
                   publishedVersions = combinedPublishedVersions { published: metadata.published, unpublished: metadata.unpublished }
                   newVersions = findNewVersions tags recentShas publishedVersions
