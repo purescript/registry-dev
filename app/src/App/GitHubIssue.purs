@@ -340,7 +340,7 @@ readOperation eventPath = do
       let hasKeys = all (flip Array.elem keys)
       if hasKeys [ "packages" ] then
         map (Left <<< PackageSetUpdate) (CJ.decode Operation.packageSetUpdateCodec json)
-      else if hasKeys [ "name", "ref", "compiler" ] then
+      else if hasKeys [ "name", "ref", "version" ] then
         map (Right <<< Publish) (CJ.decode Operation.publishCodec json)
       else if hasKeys [ "payload", "signature" ] then
         map (Right <<< Authenticated) (CJ.decode Operation.authenticatedCodec json)
