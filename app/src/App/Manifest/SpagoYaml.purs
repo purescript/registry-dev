@@ -155,10 +155,12 @@ convertSpagoDependencies dependencies = do
 -- | (an unbounded range) or a valid Registry range.
 data SpagoRange = Unbounded | Bounded Range
 
+derive instance Eq SpagoRange
+
 parseSpagoRange :: String -> Either String SpagoRange
 parseSpagoRange = case _ of
   "*" -> Right Unbounded
-  range -> Bounded <$> Range.parse range
+  str -> Bounded <$> (Range.parse str <|> map Range.exact (Version.parse str))
 
 printSpagoRange :: SpagoRange -> String
 printSpagoRange = case _ of
