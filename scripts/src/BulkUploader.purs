@@ -1,7 +1,4 @@
--- | This script clears the S3 bucket and uploads all tarballs from local cache.
--- |
--- | WARNING: This is a destructive operation! It will delete ALL existing
--- | objects in the S3 bucket before uploading the local tarballs.
+-- | This script manages S3 bucket contents for bulk operations.
 -- |
 -- | Unlike the legacy importer or package deleter's --reimport flag, this script
 -- | does NOT re-fetch sources, re-solve dependencies, or re-compile packages.
@@ -11,16 +8,12 @@
 -- | the remote without risking spurious failures from re-running the publish
 -- | pipeline.
 -- |
--- | The script:
--- | 1. Clears the entire S3 bucket
--- | 2. Reads the manifest index in topological order
--- | 3. Uploads each tarball from local cache
--- |
 -- | Example usage:
 -- |
 -- | ```sh
 -- | nix run .#bulk-uploader -- dry-run  # See what would be uploaded
--- | nix run .#bulk-uploader -- upload   # Upload all tarballs
+-- | nix run .#bulk-uploader -- clean    # Delete all objects from S3 bucket
+-- | nix run .#bulk-uploader -- upload   # Upload all tarballs to S3
 -- | ```
 module Registry.Scripts.BulkUploader where
 
@@ -52,7 +45,7 @@ import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except as Except
 
-data Mode = DryRun | Upload
+data Mode = DryRun | Clean | Upload
 
 derive instance Eq Mode
 
@@ -61,6 +54,9 @@ parser = Arg.choose "command"
   [ Arg.flag [ "dry-run" ]
       "Log what would be uploaded without actually uploading."
       $> DryRun
+  , Arg.flag [ "clean" ]
+      "Delete all objects from the S3 bucket."
+      $> Clean
   , Arg.flag [ "upload" ]
       "Upload all tarballs to S3."
       $> Upload
@@ -128,15 +124,19 @@ runBulkUpload mode env = do
       Log.info ""
       Log.info "Run with 'upload' to actually upload."
 
+    Clean -> do
+      Log.info "Connecting to S3..."
+      s3 <- connectS3 env.s3Key env.s3BucketUrl
+      Log.info "Clearing existing bucket contents..."
+      clearBucket s3
+      Log.info ""
+      Log.info "Clean complete. Bucket is now empty."
+      Log.info "Run with 'upload' to upload local tarballs."
+
     Upload -> do
       Log.info "Connecting to S3..."
       s3 <- connectS3 env.s3Key env.s3BucketUrl
 
-      -- Step 1: Clear the entire bucket
-      Log.info "Clearing existing bucket contents..."
-      clearBucket s3
-
-      -- Step 2: Upload all tarballs
       Log.info "Uploading tarballs..."
 
       forWithIndex_ manifests \idx (Manifest { name, version }) -> do
