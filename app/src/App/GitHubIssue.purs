@@ -285,6 +285,10 @@ initializeGitHub = do
     NotJson ->
       pure Nothing
 
+    DecodedOperation _ "pacchettibotti" _ -> do
+      Console.log "Skipping operation from pacchettibotti to avoid feedback loops."
+      pure Nothing
+
     MalformedJson issue err -> do
       let
         comment = String.joinWith "\n"
@@ -345,7 +349,16 @@ readOperation eventPath = do
       else if hasKeys [ "payload", "signature" ] then
         map (Right <<< Authenticated) (CJ.decode Operation.authenticatedCodec json)
       else
-        Left $ CJ.DecodeError.basic "Operation: Expected a valid registry operation, but provided object did not match any operation decoder."
+        Left $ CJ.DecodeError.basic $ String.joinWith "\n"
+          [ "Could not match JSON keys to a registry operation."
+          , ""
+          , "Received keys: " <> String.joinWith ", " keys
+          , ""
+          , "Expected one of:"
+          , "  - Package set update: { packages, compiler? }"
+          , "  - Publish: { name, ref, compiler, version, location?, resolutions? }"
+          , "  - Authenticated (unpublish/transfer): { payload, signature }"
+          ]
 
   case JSON.parse (JsonRepair.tryRepair (firstObject body)) of
     Left err -> do
