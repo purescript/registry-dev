@@ -309,6 +309,33 @@ let
         ];
       };
     }
+    # Commits endpoint for prelude - return empty (no recent commits)
+    {
+      request = {
+        method = "GET";
+        urlPattern = "/repos/purescript/purescript-prelude/commits\\?since=.*";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/json";
+        jsonBody = [ ];
+      };
+    }
+    # Commits endpoint for type-equality - return the v4.0.2 commit sha
+    # This makes the DailyImporter detect that v4.0.2 is a recent commit
+    {
+      request = {
+        method = "GET";
+        urlPattern = "/repos/purescript/purescript-type-equality/commits\\?since=.*";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/json";
+        jsonBody = [
+          { sha = "type-eq-sha-402"; }
+        ];
+      };
+    }
     # Tags for type-equality package (used by two scheduler tests):
     # 1. Transfer detection: metadata says purescript, commit URLs point to new-owner
     # 2. Legacy imports: v4.0.2 is a new version not yet published
