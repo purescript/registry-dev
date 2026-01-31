@@ -114,15 +114,13 @@ resetTestState = do
   resetLogs
 
 -- | Reset the database by clearing all job-related tables.
--- |
--- | This works because all job tables (publish_jobs, unpublish_jobs, transfer_jobs,
--- | matrix_jobs, package_set_jobs, logs) have foreign keys to job_info with
--- | ON DELETE CASCADE. See db/schema.sql for the schema definition.
+-- | We enable foreign keys and delete from job_info, which cascades to all job tables.
 resetDatabase :: E2E Unit
 resetDatabase = do
   { stateDir } <- ask
   let dbPath = Path.concat [ stateDir, "db", "registry.sqlite3" ]
-  result <- liftAff $ _.getResult =<< Execa.execa "sqlite3" [ dbPath, "DELETE FROM job_info;" ] identity
+  let sql = "PRAGMA foreign_keys = ON; DELETE FROM job_info;"
+  result <- liftAff $ _.getResult =<< Execa.execa "sqlite3" [ dbPath, sql ] identity
   case result.exit of
     Normally 0 -> pure unit
     _ -> liftAff $ Aff.throwError $ Aff.error $ "Failed to reset database: " <> result.stderr
