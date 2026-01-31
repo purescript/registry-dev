@@ -1,4 +1,7 @@
--- | This script uploads all tarballs from the local cache to S3.
+-- | This script clears the S3 bucket and uploads all tarballs from local cache.
+-- |
+-- | WARNING: This is a destructive operation! It will delete ALL existing
+-- | objects in the S3 bucket before uploading the local tarballs.
 -- |
 -- | Unlike the legacy importer or package deleter's --reimport flag, this script
 -- | does NOT re-fetch sources, re-solve dependencies, or re-compile packages.
@@ -8,8 +11,10 @@
 -- | the remote without risking spurious failures from re-running the publish
 -- | pipeline.
 -- |
--- | The script reads the manifest index in topological order and uploads each
--- | tarball, deleting existing S3 objects first to allow overwrites.
+-- | The script:
+-- | 1. Clears the entire S3 bucket
+-- | 2. Reads the manifest index in topological order
+-- | 3. Uploads each tarball from local cache
 -- |
 -- | Example usage:
 -- |
@@ -126,6 +131,12 @@ runBulkUpload mode env = do
     Upload -> do
       Log.info "Connecting to S3..."
       s3 <- connectS3 env.s3Key env.s3BucketUrl
+
+      -- Step 1: Clear the entire bucket
+      Log.info "Clearing existing bucket contents..."
+      clearBucket s3
+
+      -- Step 2: Upload all tarballs
       Log.info "Uploading tarballs..."
 
       forWithIndex_ manifests \idx (Manifest { name, version }) -> do
@@ -139,12 +150,6 @@ runBulkUpload mode env = do
         exists <- Run.liftAff (Aff.attempt (FS.Aff.stat tarballPath)) <#> isRight
         unless exists do
           Except.throw $ "Missing local tarball: " <> tarballPath
-
-        -- Delete existing on S3 if present, then upload
-        existsOnS3 <- checkS3Exists s3 name s3Path
-        when existsOnS3 do
-          Log.debug $ "Deleting existing " <> formatted <> " from S3..."
-          deleteFromS3 s3 s3Path
 
         Log.info $ progress <> "Uploading " <> formatted
         buffer <- Run.liftAff $ FS.Aff.readFile tarballPath
@@ -171,26 +176,18 @@ connectS3 key space = do
       Log.debug "Connected to S3"
       pure conn
 
--- | Check if an object exists in S3 with retry
-checkS3Exists :: forall r. S3.Space -> PackageName -> String -> Run (LOG + AFF + r) Boolean
-checkS3Exists s3 name s3Path = do
-  result <- Run.liftAff $ withRetryOnTimeout $ Aff.attempt $ S3.listObjects s3 { prefix: PackageName.print name <> "/" }
+-- | Clear all objects from the S3 bucket
+clearBucket :: forall r. S3.Space -> Run (LOG + Except.EXCEPT String + AFF + r) Unit
+clearBucket s3 = do
+  Log.info "Deleting all objects in bucket..."
+  result <- Run.liftAff $ Aff.attempt $ S3.deleteAllObjects s3
   case result of
-    Cancelled -> pure false
-    Failed _ -> pure false
-    Succeeded objects -> pure $ Array.any (\obj -> obj.key == s3Path) objects
-
--- | Delete an object from S3 with retry
-deleteFromS3 :: forall r. S3.Space -> String -> Run (LOG + Except.EXCEPT String + AFF + r) Unit
-deleteFromS3 s3 s3Path = do
-  Run.liftAff (withRetryOnTimeout (Aff.attempt (S3.deleteObject s3 { key: s3Path }))) >>= case _ of
-    Cancelled -> do
-      Log.error $ "Timed out deleting " <> s3Path
-      Except.throw $ "Could not delete " <> s3Path
-    Failed err -> do
-      Log.error $ "Failed to delete " <> s3Path <> ": " <> Aff.message err
-      Except.throw $ "Could not delete " <> s3Path
-    Succeeded _ -> pure unit
+    Left err -> Except.throw $ "Failed to clear bucket: " <> Aff.message err
+    Right count ->
+      if count == 0 then
+        Log.info "Bucket was already empty"
+      else
+        Log.info $ "Deleted " <> show count <> " objects from bucket"
 
 -- | Upload a buffer to S3 with retry
 uploadToS3 :: forall r. S3.Space -> String -> Buffer -> Run (LOG + Except.EXCEPT String + AFF + r) Unit
