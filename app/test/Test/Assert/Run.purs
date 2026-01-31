@@ -403,6 +403,9 @@ handleGitHubMock env = case _ of
 
     pure $ reply $ Right tags
 
+  ListCommitsSince _address _since reply ->
+    pure $ reply $ Left $ UnexpectedError "Unimplemented"
+
   ListTeamMembers team reply -> pure $ reply $ case team of
     { org: "purescript", team: "packaging" } -> Right [ "pacchettibotti", "f-f", "thomashoneyman" ]
     _ -> Left $ APIError { statusCode: 404, message: "No fixture provided for team " <> team.org <> "/" <> team.team }

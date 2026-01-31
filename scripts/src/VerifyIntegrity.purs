@@ -12,9 +12,9 @@ import Data.Either (isLeft)
 import Data.Foldable (class Foldable, foldM, intercalate)
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
-import Effect.Aff as Aff
 import Data.Set as Set
 import Data.String as String
+import Effect.Aff as Aff
 import Effect.Class.Console (log)
 import Effect.Class.Console as Console
 import Node.FS.Aff as FS.Aff
