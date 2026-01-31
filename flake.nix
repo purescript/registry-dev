@@ -11,6 +11,9 @@
     mkSpagoDerivation.url = "github:jeslie0/mkSpagoDerivation";
     mkSpagoDerivation.inputs.nixpkgs.follows = "nixpkgs";
     mkSpagoDerivation.inputs.ps-overlay.follows = "purescript-overlay";
+    # FIXME: Remove as soon as mkSpagoDerivation has the new registry
+    mkSpagoDerivation.inputs.registry.url = "github:purescript/registry/a671816865ced88b888f31b8341f987aa7214027";
+    mkSpagoDerivation.inputs.registry-index.url = "github:purescript/registry-index/d37611d409c5dd95793cc80066ef9400f36f66b0";
   };
 
   outputs =

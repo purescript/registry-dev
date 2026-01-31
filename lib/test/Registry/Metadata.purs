@@ -2,8 +2,15 @@ module Test.Registry.Metadata (spec) where
 
 import Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
+import Data.Codec.JSON as CJ
+import Data.Either (Either(..))
+import Data.Maybe (Maybe(..))
+import Data.String as String
+import JSON as JSON
 import Registry.Metadata as Metadata
 import Registry.Test.Assert as Assert
+import Registry.Test.Utils as Utils
 import Test.Spec (Spec)
 import Test.Spec as Spec
 
@@ -13,6 +20,40 @@ spec = do
     Assert.shouldRoundTrip "Metadata" Metadata.codec
       [ { label: "record-studio", value: recordStudio }
       ]
+
+  Spec.describe "PublishedMetadata ref field (deprecated)" do
+    Spec.it "Decodes metadata without ref field" do
+      let json = Utils.fromRight "Failed to parse JSON" $ JSON.parse publishedWithoutRef
+      case CJ.decode Metadata.publishedMetadataCodec json of
+        Left err -> Assert.fail $ "Failed to decode: " <> CJ.DecodeError.print err
+        Right meta -> meta.ref `Assert.shouldEqual` Nothing
+
+    Spec.it "Decodes metadata with ref field" do
+      let json = Utils.fromRight "Failed to parse JSON" $ JSON.parse publishedWithRef
+      case CJ.decode Metadata.publishedMetadataCodec json of
+        Left err -> Assert.fail $ "Failed to decode: " <> CJ.DecodeError.print err
+        Right meta -> meta.ref `Assert.shouldEqual` (Just "v1.0.0")
+
+    Spec.it "Encodes Nothing as missing field (no ref in output)" do
+      let json = Utils.fromRight "Failed to parse JSON" $ JSON.parse publishedWithoutRef
+      case CJ.decode Metadata.publishedMetadataCodec json of
+        Left err -> Assert.fail $ "Failed to decode: " <> CJ.DecodeError.print err
+        Right meta -> do
+          let encoded = CJ.encode Metadata.publishedMetadataCodec meta
+          let jsonStr = JSON.printIndented encoded
+          -- Nothing should result in the field being omitted
+          String.contains (String.Pattern "\"ref\"") jsonStr `Assert.shouldEqual` false
+
+    Spec.it "Encodes Just \"\" as present field" do
+      let json = Utils.fromRight "Failed to parse JSON" $ JSON.parse publishedWithRef
+      case CJ.decode Metadata.publishedMetadataCodec json of
+        Left err -> Assert.fail $ "Failed to decode: " <> CJ.DecodeError.print err
+        Right meta -> do
+          let withEmptyRef = meta { ref = Just "" }
+          let encoded = CJ.encode Metadata.publishedMetadataCodec withEmptyRef
+          let jsonStr = JSON.printIndented encoded
+          -- Just "" should result in the field being present (with "ref": "" pattern)
+          String.contains (String.Pattern "\"ref\": \"\"") jsonStr `Assert.shouldEqual` true
 
 recordStudio :: String
 recordStudio =
@@ -64,4 +105,27 @@ recordStudio =
       "unpublishedTime": "2022-11-04T12:21:00.000Z"
     }
   }
+}"""
+
+-- PublishedMetadata without ref field (should decode with ref = Nothing)
+publishedWithoutRef :: String
+publishedWithoutRef =
+  """
+{
+  "bytes": 3438,
+  "compilers": ["0.15.10"],
+  "hash": "sha256-LPRUC8ozZc7VCeRhKa4CtSgAfNqgAoVs2lH+7mYEcTk=",
+  "publishedTime": "2021-03-27T10:03:46.000Z"
+}"""
+
+-- PublishedMetadata with ref field (should decode with ref = Just "v1.0.0")
+publishedWithRef :: String
+publishedWithRef =
+  """
+{
+  "bytes": 3438,
+  "compilers": ["0.15.10"],
+  "hash": "sha256-LPRUC8ozZc7VCeRhKa4CtSgAfNqgAoVs2lH+7mYEcTk=",
+  "publishedTime": "2021-03-27T10:03:46.000Z",
+  "ref": "v1.0.0"
 }"""

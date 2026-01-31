@@ -67,7 +67,7 @@ spec = do
       inRange = unsafeDateTime "2022-12-11T12:00:00.000Z"
       compilers = NonEmptyArray.singleton (unsafeVersion "0.13.0")
 
-      publishedMetadata = { bytes: 100.0, hash: defaultHash, publishedTime: outOfRange, compilers }
+      publishedMetadata = { bytes: 100.0, hash: defaultHash, publishedTime: outOfRange, compilers, ref: Just "" }
 
       metadata = Metadata
         { location: defaultLocation
