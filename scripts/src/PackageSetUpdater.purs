@@ -1,194 +1,225 @@
+-- | This script checks for packages recently uploaded to the registry and
+-- | submits package set update jobs to add them to the package set.
+-- |
+-- | Run via Nix:
+-- |   nix run .#package-set-updater -- --dry-run   # Log what would be submitted
+-- |   nix run .#package-set-updater -- --submit    # Actually submit to the API
+-- |
+-- | Required environment variables:
+-- |   GITHUB_TOKEN - GitHub API token
+-- |   REGISTRY_API_URL - Registry API URL (default: https://registry.purescript.org)
 module Registry.Scripts.PackageSetUpdater where
 
 import Registry.App.Prelude
 
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
-import Data.Array.NonEmpty as NonEmptyArray
+import Data.Codec.JSON as CJ
 import Data.DateTime as DateTime
-import Data.FoldableWithIndex (foldMapWithIndex)
-import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
-import Data.Number.Format as Number.Format
-import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
+import Fetch (Method(..))
+import Fetch as Fetch
+import JSON as JSON
 import Node.Path as Path
 import Node.Process as Process
+import Registry.API.V1 as V1
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment as Comment
+import Registry.App.Effect.Env (RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
+import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Storage as Storage
-import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
-import Registry.Internal.Format as Internal.Format
+import Registry.Operation (PackageSetOperation(..))
+import Registry.Operation as Operation
+import Registry.PackageName as PackageName
+import Registry.PackageSet (PackageSet(..))
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
-data PublishMode = GeneratePackageSet | CommitPackageSet
+data Mode = DryRun | Submit
 
-derive instance Eq PublishMode
+derive instance Eq Mode
 
-parser :: ArgParser PublishMode
+parser :: ArgParser Mode
 parser = Arg.choose "command"
-  [ Arg.flag [ "generate" ]
-      "Generate a new package set without committing the results."
-      $> GeneratePackageSet
-  , Arg.flag [ "commit" ]
-      "Generate a new package set and commit the results."
-      $> CommitPackageSet
+  [ Arg.flag [ "dry-run" ]
+      "Log what would be submitted without actually calling the API."
+      $> DryRun
+  , Arg.flag [ "submit" ]
+      "Submit package set update jobs to the registry API."
+      $> Submit
   ]
 
 main :: Effect Unit
-main = Aff.launchAff_ do
+main = launchAff_ do
   args <- Array.drop 2 <$> liftEffect Process.argv
-  let description = "A script for updating the package sets."
+
+  let description = "Check for recent uploads and submit package set update jobs to the registry API."
   mode <- case Arg.parseArgs "package-set-updater" description parser args of
     Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit' 1)
     Right command -> pure command
 
-  -- Environment
-  _ <- Env.loadEnvFile ".env"
-
-  { token, write } <- case mode of
-    GeneratePackageSet -> do
-      Env.lookupOptional Env.githubToken >>= case _ of
-        Nothing -> do
-          token <- Env.lookupRequired Env.pacchettibottiToken
-          pure { token, write: Registry.ReadOnly }
-        Just token ->
-          pure { token, write: Registry.ReadOnly }
-    CommitPackageSet -> do
-      token <- Env.lookupRequired Env.pacchettibottiToken
-      pure { token, write: Registry.CommitAs (Git.pacchettibottiCommitter token) }
-
-  -- Package sets
-  let packageSetsEnv = { workdir: Path.concat [ scratchDir, "package-set-build" ] }
-
-  -- GitHub
+  Env.loadEnvFile ".env"
   resourceEnv <- Env.lookupResourceEnv
-  octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
+  token <- Env.lookupRequired Env.githubToken
 
-  -- Caching
-  let cache = Path.concat [ scratchDir, ".cache" ]
-  FS.Extra.ensureDirectory cache
   githubCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
+  let cache = Path.concat [ scratchDir, ".cache" ]
 
-  -- Registry
+  octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
   debouncer <- Registry.newDebouncer
+
   let
     registryEnv :: Registry.RegistryEnv
     registryEnv =
-      { write
-      , pull: Git.ForceClean
+      { pull: Git.Autostash
+      , write: Registry.ReadOnly
       , repos: Registry.defaultRepos
       , workdir: scratchDir
       , debouncer
       , cacheRef: registryCacheRef
       }
 
-  -- Logging
-  now <- nowUTC
-  let logDir = Path.concat [ scratchDir, "logs" ]
-  FS.Extra.ensureDirectory logDir
-  let logFile = "package-set-updater-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
-  let logPath = Path.concat [ logDir, logFile ]
-
-  updater
-    # PackageSets.interpret (PackageSets.handle packageSetsEnv)
+  runPackageSetUpdater mode resourceEnv.registryApiUrl
+    # Except.runExcept
     # Registry.interpret (Registry.handle registryEnv)
-    # Storage.interpret (Storage.handleReadOnly cache)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-    # Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
-    # Comment.interpret Comment.handleLog
-    # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+    # Log.interpret (Log.handleTerminal Normal)
     # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
+    >>= case _ of
+      Left err -> do
+        Console.error $ "Error: " <> err
+        liftEffect $ Process.exit' 1
+      Right _ -> pure unit
 
-updater :: forall r. Run (REGISTRY + PACKAGE_SETS + LOG + EXCEPT String + AFF + EFFECT + r) Unit
-updater = do
-  prevPackageSet <- Registry.readLatestPackageSet >>= case _ of
-    Nothing -> Except.throw "No previous package set found, cannot continue."
-    Just set -> pure set
+type PackageSetUpdaterEffects = (REGISTRY + GITHUB + LOG + RESOURCE_ENV + EXCEPT String + AFF + EFFECT + ())
 
-  PackageSets.validatePackageSet prevPackageSet
+runPackageSetUpdater :: Mode -> URL -> Run PackageSetUpdaterEffects Unit
+runPackageSetUpdater mode registryApiUrl = do
+  Log.info "Package Set Updater: checking for recent uploads..."
 
-  let compiler = (un PackageSet prevPackageSet).compiler
+  -- Get the current package set
+  latestPackageSet <- Registry.readLatestPackageSet >>= case _ of
+    Nothing -> do
+      Log.warn "No package set found, skipping package set updates"
+      pure Nothing
+    Just set -> pure (Just set)
 
-  Log.info $ "Using compiler " <> Version.print compiler
+  for_ latestPackageSet \packageSet -> do
+    let currentPackages = (un PackageSet packageSet).packages
 
-  let uploadHours = 24.0
-  recentUploads <- findRecentUploads (Hours uploadHours)
+    -- Find packages uploaded in the last 24 hours
+    recentUploads <- findRecentUploads (Hours 24.0)
+    let
+      -- Filter out packages already in the set at the same or newer version
+      newOrUpdated = recentUploads # Map.filterWithKey \name version ->
+        case Map.lookup name currentPackages of
+          Nothing -> true -- new package
+          Just currentVersion -> version > currentVersion -- upgrade
 
-  manifestIndex <- Registry.readAllManifests
-  let candidates = PackageSets.validatePackageSetCandidates manifestIndex prevPackageSet (map Just recentUploads.eligible)
-  unless (Map.isEmpty candidates.rejected) do
-    Log.info $ "Some packages uploaded in the last " <> Number.Format.toString uploadHours <> " hours are not eligible for the automated package sets."
-    Log.info $ PackageSets.printRejections candidates.rejected
+    if Map.isEmpty newOrUpdated then
+      Log.info "No new packages for package set update."
+    else do
+      Log.info $ "Found " <> show (Map.size newOrUpdated) <> " candidates to validate"
 
-  if Map.isEmpty candidates.accepted then do
-    Log.info "No eligible additions, updates, or removals to produce a new package set."
-  else do
-    -- You can't remove packages via the automatic updater.
-    let eligible = Map.catMaybes candidates.accepted
-    let listPackages = foldMapWithIndex \name version -> [ formatPackageVersion name version ]
-    Log.info $ "Found package versions eligible for inclusion in package set: " <> Array.foldMap (append "\n  - ") (listPackages eligible)
-    PackageSets.upgradeSequential prevPackageSet compiler (map (maybe Remove Update) candidates.accepted) >>= case _ of
-      Nothing -> do
-        Log.info "No packages could be added to the set. All packages failed."
-      Just { failed, succeeded, result } -> do
+      -- Pre-validate candidates to filter out packages with missing dependencies
+      manifestIndex <- Registry.readAllManifests
+      let candidates = PackageSets.validatePackageSetCandidates manifestIndex packageSet (map Just newOrUpdated)
+
+      unless (Map.isEmpty candidates.rejected) do
+        Log.info $ "Some packages are not eligible for the package set:\n" <> PackageSets.printRejections candidates.rejected
+
+      -- Only include accepted packages (filter out removals, keep only updates)
+      let accepted = Map.catMaybes candidates.accepted
+
+      if Map.isEmpty accepted then
+        Log.info "No packages passed validation for package set update."
+      else do
+        Log.info $ "Validated " <> show (Map.size accepted) <> " packages for package set update"
+
+        -- Create a package set update payload
         let
-          listChanges = foldMapWithIndex \name -> case _ of
-            Remove -> []
-            Update version -> [ formatPackageVersion name version ]
-        unless (Map.isEmpty failed) do
-          Log.info $ "Some packages could not be added to the set: " <> Array.foldMap (append "\n  - ") (listChanges failed)
-        Log.info $ "New packages were added to the set: " <> Array.foldMap (append "\n  - ") (listChanges succeeded)
-        -- We only include the successful changes in the commit message.
-        let commitMessage = PackageSets.commitMessage prevPackageSet succeeded (un PackageSet result).version
-        Registry.writePackageSet result commitMessage
-        Log.info "Built and released a new package set! Now mirroring to the package-sets repo..."
-        Registry.mirrorPackageSet result
-        Log.info "Mirrored a new legacy package set."
+          payload :: Operation.PackageSetUpdateData
+          payload =
+            { compiler: Nothing -- Use current compiler
+            , packages: map Just accepted -- Just version = add/update
+            }
 
-type RecentUploads =
-  { eligible :: Map PackageName Version
-  , ineligible :: Map PackageName (NonEmptyArray Version)
-  }
+        case mode of
+          DryRun -> do
+            Log.info $ "[DRY RUN] Would submit package set update with packages:"
+            for_ (Map.toUnfoldable accepted :: Array _) \(Tuple name version) ->
+              Log.info $ "  - " <> PackageName.print name <> "@" <> Version.print version
 
-findRecentUploads :: forall r. Hours -> Run (REGISTRY + EXCEPT String + EFFECT + r) RecentUploads
+          Submit -> do
+            let
+              rawPayload = JSON.print $ CJ.encode Operation.packageSetUpdateCodec payload
+
+              request :: Operation.PackageSetUpdateRequest
+              request =
+                { payload: PackageSetUpdate payload
+                , rawPayload
+                , signature: Nothing
+                }
+
+            Log.info $ "Submitting package set update..."
+            result <- Run.liftAff $ submitPackageSetJob (registryApiUrl <> "/v1/package-sets") request
+            case result of
+              Left err -> do
+                Log.error $ "Failed to submit package set job: " <> err
+              Right { jobId } -> do
+                Log.info $ "Submitted package set job " <> unwrap jobId
+
+-- | Find the latest version of each package uploaded within the time limit
+findRecentUploads :: Hours -> Run PackageSetUpdaterEffects (Map PackageName Version)
 findRecentUploads limit = do
   allMetadata <- Registry.readAllMetadata
   now <- nowUTC
 
   let
-    uploads = Map.fromFoldable do
-      Tuple name (Metadata metadata) <- Map.toUnfoldable allMetadata
-      versions <- Array.fromFoldable $ NonEmptyArray.fromArray do
-        Tuple version { publishedTime } <- Map.toUnfoldable metadata.published
-        let diff = DateTime.diff now publishedTime
-        guard (diff <= limit)
-        pure version
-      pure (Tuple name versions)
+    getLatestRecentVersion :: Metadata -> Maybe Version
+    getLatestRecentVersion (Metadata metadata) = do
+      let
+        recentVersions = Array.catMaybes $ flip map (Map.toUnfoldable metadata.published)
+          \(Tuple version { publishedTime }) ->
+            if (DateTime.diff now publishedTime) <= limit then Just version else Nothing
+      Array.last $ Array.sort recentVersions
 
-    deduplicated = uploads # flip foldlWithIndex { ineligible: Map.empty, eligible: Map.empty } \name acc versions -> do
-      let { init, last } = NonEmptyArray.unsnoc versions
-      case NonEmptyArray.fromArray init of
-        Nothing -> acc { eligible = Map.insert name last acc.eligible }
-        Just entries -> acc { eligible = Map.insert name last acc.eligible, ineligible = Map.insert name entries acc.ineligible }
+  pure $ Map.fromFoldable $ Array.catMaybes $ flip map (Map.toUnfoldable allMetadata) \(Tuple name metadata) ->
+    map (Tuple name) $ getLatestRecentVersion metadata
 
-  pure deduplicated
+-- | Submit a package set job to the registry API
+submitPackageSetJob :: String -> Operation.PackageSetUpdateRequest -> Aff (Either String V1.JobCreatedResponse)
+submitPackageSetJob url request = do
+  let body = JSON.print $ CJ.encode Operation.packageSetUpdateRequestCodec request
+  result <- Aff.attempt $ Fetch.fetch url
+    { method: POST
+    , headers: { "Content-Type": "application/json" }
+    , body
+    }
+  case result of
+    Left err -> pure $ Left $ "Network error: " <> Aff.message err
+    Right response -> do
+      responseBody <- response.text
+      if response.status >= 200 && response.status < 300 then
+        case JSON.parse responseBody >>= \json -> lmap CJ.DecodeError.print (CJ.decode V1.jobCreatedResponseCodec json) of
+          Left err -> pure $ Left $ "Failed to parse response: " <> err
+          Right r -> pure $ Right r
+      else
+        pure $ Left $ "HTTP " <> show response.status <> ": " <> responseBody

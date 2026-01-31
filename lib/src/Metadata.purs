@@ -37,6 +37,7 @@ import Registry.Owner as Owner
 import Registry.Sha256 (Sha256)
 import Registry.Sha256 as Sha256
 import Registry.Version (Version)
+import Registry.Version as Version
 
 -- | A record of all published and unpublished versions of a package, along with
 -- | the last-used location and any owners (public keys) authorized to take
@@ -62,22 +63,19 @@ codec = Profunctor.wrapIso Metadata $ CJ.named "Metadata" $ CJ.object
   $ CJ.record
 
 -- | Metadata about a published package version.
--- |
--- | NOTE: The `ref` field is UNSPECIFIED and WILL BE REMOVED in the future. Do
--- | not rely on its presence!
 type PublishedMetadata =
   { bytes :: Number
+  , compilers :: NonEmptyArray Version
   , hash :: Sha256
   , publishedTime :: DateTime
-  , ref :: String
   }
 
 publishedMetadataCodec :: CJ.Codec PublishedMetadata
 publishedMetadataCodec = CJ.named "PublishedMetadata" $ CJ.Record.object
   { bytes: CJ.number
+  , compilers: CJ.Common.nonEmptyArray Version.codec
   , hash: Sha256.codec
   , publishedTime: Internal.Codec.iso8601DateTime
-  , ref: CJ.string
   }
 
 -- | Metadata about an unpublished package version.

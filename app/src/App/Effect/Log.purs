@@ -1,6 +1,6 @@
 -- | A general logging effect suitable for recording events as they happen in
--- | the application, including debugging logs. Should not be used to report
--- | important events to registry users; for that, use the Comment effect.
+-- | the application, including debugging logs. Use the `notice` level to report
+-- | important events to registry users (these are posted as GitHub comments).
 module Registry.App.Effect.Log where
 
 import Registry.App.Prelude
@@ -65,6 +65,9 @@ info = log Info <<< toLog
 warn :: forall a r. Loggable a => a -> Run (LOG + r) Unit
 warn = log Warn <<< toLog
 
+notice :: forall a r. Loggable a => a -> Run (LOG + r) Unit
+notice = log Notice <<< toLog
+
 error :: forall a r. Loggable a => a -> Run (LOG + r) Unit
 error = log Error <<< toLog
 
@@ -80,6 +83,7 @@ handleTerminal verbosity = case _ of
         Debug -> Ansi.foreground Ansi.Blue message
         Info -> message
         Warn -> Ansi.foreground Ansi.Yellow (Dodo.text "[WARNING] ") <> message
+        Notice -> Ansi.foreground Ansi.BrightBlue (Dodo.text "[NOTICE] ") <> message
         Error -> Ansi.foreground Ansi.Red (Dodo.text "[ERROR] ") <> message
 
     Run.liftEffect case verbosity of
@@ -134,5 +138,5 @@ handleDb env = case _ of
     let
       msg = Dodo.print Dodo.plainText Dodo.twoSpaces (toLog message)
       row = { timestamp, level, jobId: env.job, message: msg }
-    Run.liftEffect $ SQLite.insertLog env.db row
+    Run.liftEffect $ SQLite.insertLogLine env.db row
     pure next

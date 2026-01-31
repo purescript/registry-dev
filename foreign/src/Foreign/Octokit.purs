@@ -28,6 +28,7 @@ module Registry.Foreign.Octokit
   , getRefCommitRequest
   , githubApiErrorCodec
   , githubErrorCodec
+  , isPermanentGitHubError
   , listTagsRequest
   , listTeamMembersRequest
   , newOctokit
@@ -65,7 +66,6 @@ import Data.Newtype (class Newtype, unwrap)
 import Data.Profunctor as Profunctor
 import Data.String as String
 import Data.String.Base64 as Base64
-import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Data.Variant as Variant
 import Effect.Aff as Aff
@@ -105,9 +105,11 @@ derive instance Newtype Base64Content _
 
 decodeBase64Content :: Base64Content -> Either String String
 decodeBase64Content (Base64Content string) =
-  case traverse Base64.decode $ String.split (String.Pattern "\n") string of
+  -- Join base64 chunks before decoding to avoid splitting multi-byte UTF-8
+  -- sequences. GitHub's API returns base64 with embedded newlines.
+  case Base64.decode $ String.replaceAll (String.Pattern "\n") (String.Replacement "") string of
     Left error -> Left $ Aff.message error
-    Right values -> Right $ Array.fold values
+    Right value -> Right value
 
 -- | The address of a GitHub repository as a owner/repo pair.
 type Address = { owner :: String, repo :: String }
@@ -207,12 +209,17 @@ getCommitDateRequest { address, commitSha } =
   , headers: Object.empty
   , args: noArgs
   , paginate: false
-  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "Commit" $ CJ.Record.object
-      { committer: CJ.Record.object { date: Internal.Codec.iso8601DateTime } }
+  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "CommitData" $ CJ.Record.object
+      { data: CJ.named "Commit" $ CJ.Record.object
+          { committer: CJ.named "Commit.committer" $ CJ.Record.object
+              { date: Internal.Codec.iso8601DateTime
+              }
+          }
+      }
   }
   where
-  toJsonRep date = { committer: { date } }
-  fromJsonRep = _.committer.date
+  toJsonRep date = { data: { committer: { date } } }
+  fromJsonRep = _.data.committer.date
 
 -- | Create a comment on an issue. Requires authentication.
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/issues/createComment.md
@@ -384,6 +391,25 @@ printGitHubError = case _ of
     [ "Decoding error: "
     , error
     ]
+
+-- | Returns true if the error represents a permanent failure that is safe to
+-- | cache across runs. Transient errors (rate limits, network issues, server
+-- | errors) return false and should be retried.
+-- |
+-- | Permanent errors:
+-- | - 404 Not Found: Resource doesn't exist at this ref/path
+-- | - DecodeError: Content exists but is malformed (immutable at a given tag)
+-- |
+-- | Transient errors (should NOT be cached):
+-- | - UnexpectedError: Network issues, DNS, TLS problems
+-- | - 401/403: Auth or rate limit issues
+-- | - 5xx: Server-side problems
+-- | - Any other status codes
+isPermanentGitHubError :: GitHubError -> Boolean
+isPermanentGitHubError = case _ of
+  APIError { statusCode: 404 } -> true
+  DecodeError _ -> true
+  _ -> false
 
 atKey :: forall a. String -> CJ.Codec a -> JSON.JObject -> Either CJ.DecodeError a
 atKey key codec object =

@@ -51,14 +51,18 @@
         fileset.fileFilter (f: f.name == "package.json" || f.name == "package-lock.json") ./.
       );
 
+      # The location of the Dhall type specifications, used to type-check manifests.
       DHALL_TYPES = ./types;
-      GIT_LFS_SKIP_SMUDGE = 1;
       DHALL_PRELUDE = "${
         builtins.fetchGit {
           url = "https://github.com/dhall-lang/dhall-lang";
-          rev = "e35f69d966f205fdc0d6a5e8d0209e7b600d90b3";
+          rev = "25cf020ab307cb2d66826b0d1ddac8bc89241e27";
         }
       }/Prelude/package.dhall";
+
+      # We disable git from entering interactive mode at any time, as there is no
+      # one there to answer prompts.
+      GIT_TERMINAL_PROMPT = 0;
 
       # Build sources with filesets
       spagoSrc = fileset.toSource {
@@ -128,6 +132,7 @@
           spago-test =
             pkgs.runCommand "spago-test"
               {
+                inherit DHALL_TYPES DHALL_PRELUDE;
                 nativeBuildInputs =
                   with pkgs;
                   [
@@ -193,7 +198,8 @@
 
           # Integration test - exercises the server API
           integration = import ./nix/test/integration.nix {
-            inherit pkgs spagoSrc testEnv;
+            inherit pkgs spagoSrc;
+            testSupport = testEnv;
           };
 
           # VM smoke test - verifies deployment without full API testing
@@ -205,11 +211,16 @@
 
         devShells.default = pkgs.mkShell {
           name = "registry-dev";
-          inherit GIT_LFS_SKIP_SMUDGE;
 
-          # Development defaults from .env.example
           SERVER_PORT = envDefaults.SERVER_PORT;
           DATABASE_URL = envDefaults.DATABASE_URL;
+
+          # Dhall environment variables needed for manifest typechecking
+          inherit DHALL_TYPES DHALL_PRELUDE GIT_TERMINAL_PROMPT;
+
+          # NOTE: Test-specific env vars (REGISTRY_API_URL, GITHUB_API_URL, PACCHETTIBOTTI_*)
+          # are NOT set here to avoid conflicting with .env files used by production scripts
+          # like legacy-importer. Use `nix run .#test-env` to run E2E tests with mocked services.
 
           packages =
             with pkgs;
@@ -222,11 +233,19 @@
               nodejs
               jq
               dbmate
+              sqlite
               purs
               spago
               purs-tidy-unstable
               purs-backend-es-unstable
               process-compose
+
+              # E2E test runner script - uses same fixed test environment as test-env
+              (writeShellScriptBin "spago-test-e2e" ''
+                set -euo pipefail
+                ${testEnv.testRuntimeExports}
+                exec spago run -p registry-app-e2e
+              '')
             ];
         };
       }
@@ -261,7 +280,11 @@
                     # These env vars are known to Nix so we set them in advance.
                     # Others, like credentials, must be set in a .env file in
                     # the state directory, unless there are viable defaults.
-                    inherit DHALL_PRELUDE DHALL_TYPES GIT_LFS_SKIP_SMUDGE;
+                    inherit
+                      DHALL_PRELUDE
+                      DHALL_TYPES
+                      GIT_TERMINAL_PROMPT
+                      ;
                   };
                 };
                 system.stateVersion = "24.05";

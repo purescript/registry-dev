@@ -252,7 +252,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
     let formatted = formatPackageVersion name version
     Log.info $ "Writing manifest for " <> formatted <> ":\n" <> printJson Manifest.codec manifest
     index <- Except.rethrow =<< handle env (ReadAllManifests identity)
-    case ManifestIndex.insert manifest index of
+    case ManifestIndex.insert ManifestIndex.ConsiderRanges manifest index of
       Left error ->
         Except.throw $ Array.fold
           [ "Can't insert " <> formatted <> " into manifest index because it has unsatisfied dependencies:"
@@ -275,7 +275,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
     let formatted = formatPackageVersion name version
     Log.info $ "Deleting manifest for " <> formatted
     index <- Except.rethrow =<< handle env (ReadAllManifests identity)
-    case ManifestIndex.delete name version index of
+    case ManifestIndex.delete ManifestIndex.ConsiderRanges name version index of
       Left error ->
         Except.throw $ Array.fold
           [ "Can't delete " <> formatted <> " from manifest index because it would produce unsatisfied dependencies:"
@@ -359,7 +359,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
 
         Just metadata -> do
           Log.debug $ "Successfully read metadata for " <> printedName <> " from path " <> path
-          Log.debug $ "Setting metadata cache to singleton entry (as cache was previosuly empty)."
+          Log.debug $ "Setting metadata cache to singleton entry (as cache was previously empty)."
           Cache.put _registryCache AllMetadata (Map.singleton name metadata)
           pure $ Just metadata
 
@@ -388,6 +388,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
 
       Right Git.Changed -> do
         Log.info "Registry repo has changed, clearing metadata cache..."
+        Cache.delete _registryCache AllMetadata
         resetFromDisk
 
   WriteMetadata name metadata reply -> map (map reply) Except.runExcept do
@@ -501,10 +502,9 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
     Log.info $ "Mirroring legacy package set " <> name <> " to the legacy package sets repo"
 
     manifests <- Except.rethrow =<< handle env (ReadAllManifests identity)
-    metadata <- Except.rethrow =<< handle env (ReadAllMetadata identity)
 
     Log.debug $ "Converting package set..."
-    converted <- case Legacy.PackageSet.convertPackageSet manifests metadata set of
+    converted <- case Legacy.PackageSet.convertPackageSet manifests set of
       Left error -> Except.throw $ "Failed to convert package set " <> name <> " to a legacy package set: " <> error
       Right converted -> pure converted
 
@@ -733,17 +733,30 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
             result <- Git.gitPull { address, pullMode: env.pull } path
             pure result
 
-    now <- nowUTC
-    debouncers <- Run.liftEffect $ Ref.read env.debouncer
-    case Map.lookup path debouncers of
-      -- We will be behind the upstream by at most this amount of time.
-      Just prev | DateTime.diff now prev <= Duration.Minutes 1.0 ->
-        pure $ Right Git.NoChange
-      -- If we didn't debounce, then we should fetch the upstream.
-      _ -> do
+    -- Check if the repo directory exists before consulting the debouncer.
+    -- This ensures that if the scratch directory is deleted (e.g., for test
+    -- isolation), we always re-clone rather than returning a stale NoChange.
+    repoExists <- Run.liftAff $ Aff.attempt (FS.Aff.stat path)
+    case repoExists of
+      Left _ -> do
+        -- Repo doesn't exist, bypass debouncer entirely and clone fresh
         result <- fetchLatest
+        now <- nowUTC
         Run.liftEffect $ Ref.modify_ (Map.insert path now) env.debouncer
         pure result
+      Right _ -> do
+        -- Repo exists, check debouncer
+        now <- nowUTC
+        debouncers <- Run.liftEffect $ Ref.read env.debouncer
+        case Map.lookup path debouncers of
+          -- We will be behind the upstream by at most this amount of time.
+          Just prev | DateTime.diff now prev <= Duration.Minutes 1.0 ->
+            pure $ Right Git.NoChange
+          -- If we didn't debounce, then we should fetch the upstream.
+          _ -> do
+            result <- fetchLatest
+            Run.liftEffect $ Ref.modify_ (Map.insert path now) env.debouncer
+            pure result
 
   -- | Commit the file(s) indicated by the commit key with a commit message.
   commit :: CommitKey -> String -> Run _ (Either String GitResult)
@@ -836,8 +849,9 @@ readManifestIndexFromDisk root = do
 
   entries <- map partitionEithers $ for packages.success (ManifestIndex.readEntryFile root)
   case entries.fail of
-    [] -> case ManifestIndex.fromSet $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray entries.success of
+    [] -> case ManifestIndex.fromSet ManifestIndex.ConsiderRanges $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray entries.success of
       Left errors -> do
+        Log.debug $ "Could not read a valid manifest index from entry files: " <> Array.foldMap (Array.foldMap (\(Manifest { name, version }) -> "\n  - " <> formatPackageVersion name version) <<< NonEmptyArray.toArray) entries.success
         Except.throw $ append "Unable to read manifest index (some packages are not satisfiable): " $ Array.foldMap (append "\n  - ") do
           Tuple name versions <- Map.toUnfoldable errors
           Tuple version dependency <- Map.toUnfoldable versions
@@ -878,10 +892,10 @@ readAllMetadataFromDisk metadataDir = do
 
   entries <- Run.liftAff $ map partitionEithers $ for packages.success \name -> do
     result <- readJsonFile Metadata.codec (Path.concat [ metadataDir, PackageName.print name <> ".json" ])
-    pure $ map (Tuple name) result
+    pure $ bimap (Tuple name) (Tuple name) result
 
   unless (Array.null entries.fail) do
-    Except.throw $ append "Could not read metadata for all packages because the metadata directory is invalid (some package metadata cannot be decoded):" $ Array.foldMap (append "\n  - ") entries.fail
+    Except.throw $ append "Could not read metadata for all packages because the metadata directory is invalid (some package metadata cannot be decoded):" $ Array.foldMap (\(Tuple name err) -> "\n  - " <> PackageName.print name <> ": " <> err) entries.fail
 
   Log.debug "Successfully read metadata entries."
   pure $ Map.fromFoldable entries.success

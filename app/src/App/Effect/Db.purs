@@ -5,13 +5,16 @@ import Registry.App.Prelude
 import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.String as String
-import Registry.API.V1 (JobId, LogLevel, LogLine)
+import Registry.API.V1 (Job, JobId, LogLevel, LogLine)
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.SQLite (JobResult, NewJob, SQLite)
+import Registry.App.SQLite (FinishJob, InsertMatrixJob, InsertPackageSetJob, InsertPublishJob, InsertTransferJob, InsertUnpublishJob, MatrixJobDetails, PackageSetJobDetails, PublishJobDetails, SQLite, SelectJobRequest, SelectJobsRequest, StartJob, TransferJobDetails, UnpublishJobDetails)
 import Registry.App.SQLite as SQLite
+import Registry.Operation (PackageSetOperation)
 import Run (EFFECT, Run)
 import Run as Run
+import Run.Except (EXCEPT)
+import Run.Except as Except
 
 -- We could separate these by database if it grows too large. Also, for now these
 -- simply lift their Effect-based equivalents in the SQLite module, but ideally
@@ -21,13 +24,29 @@ import Run as Run
 -- Also, this does not currently include setup and teardown (those are handled
 -- outside the effect), but we may wish to add those in the future if they'll
 -- be part of app code we want to test.
+
 data Db a
-  = InsertLog LogLine a
-  | SelectLogsByJob JobId LogLevel (Maybe DateTime) (Array LogLine -> a)
-  | CreateJob NewJob a
-  | FinishJob JobResult a
-  | SelectJob JobId (Either String SQLite.Job -> a)
-  | RunningJobForPackage PackageName (Either String SQLite.Job -> a)
+  = InsertPublishJob InsertPublishJob (JobId -> a)
+  | InsertUnpublishJob InsertUnpublishJob (JobId -> a)
+  | InsertTransferJob InsertTransferJob (JobId -> a)
+  | InsertMatrixJob InsertMatrixJob (JobId -> a)
+  | InsertPackageSetJob InsertPackageSetJob (JobId -> a)
+  | FinishJob FinishJob a
+  | StartJob StartJob a
+  | SelectJob SelectJobRequest (Either String (Maybe Job) -> a)
+  | SelectJobs SelectJobsRequest (Array Job -> a)
+  | SelectNextPublishJob (Either String (Maybe PublishJobDetails) -> a)
+  | SelectNextUnpublishJob (Either String (Maybe UnpublishJobDetails) -> a)
+  | SelectNextTransferJob (Either String (Maybe TransferJobDetails) -> a)
+  | SelectNextMatrixJob (Either String (Maybe MatrixJobDetails) -> a)
+  | SelectNextPackageSetJob (Either String (Maybe PackageSetJobDetails) -> a)
+  | SelectPublishJob PackageName Version (Either String (Maybe PublishJobDetails) -> a)
+  | SelectUnpublishJob PackageName Version (Either String (Maybe UnpublishJobDetails) -> a)
+  | SelectTransferJob PackageName (Either String (Maybe TransferJobDetails) -> a)
+  | SelectPackageSetJobByPayload PackageSetOperation (Either String (Maybe PackageSetJobDetails) -> a)
+  | InsertLogLine LogLine a
+  | SelectLogsByJob JobId LogLevel DateTime (Array LogLine -> a)
+  | ResetIncompleteJobs (Array JobId -> a)
 
 derive instance Functor Db
 
@@ -39,28 +58,87 @@ _db = Proxy
 
 -- | Insert a new log line into the database.
 insertLog :: forall r. LogLine -> Run (DB + r) Unit
-insertLog log = Run.lift _db (InsertLog log unit)
+insertLog log = Run.lift _db (InsertLogLine log unit)
 
--- | Select all logs for a given job, filtered by loglevel and a time cutoff.
-selectLogsByJob :: forall r. JobId -> LogLevel -> Maybe DateTime -> Run (DB + r) (Array LogLine)
+-- | Select all logs for a given job, filtered by loglevel.
+selectLogsByJob :: forall r. JobId -> LogLevel -> DateTime -> Run (DB + r) (Array LogLine)
 selectLogsByJob jobId logLevel since = Run.lift _db (SelectLogsByJob jobId logLevel since identity)
 
--- | Create a new job in the database.
-createJob :: forall r. NewJob -> Run (DB + r) Unit
-createJob newJob = Run.lift _db (CreateJob newJob unit)
-
 -- | Set a job in the database to the 'finished' state.
-finishJob :: forall r. JobResult -> Run (DB + r) Unit
-finishJob jobResult = Run.lift _db (FinishJob jobResult unit)
+finishJob :: forall r. FinishJob -> Run (DB + r) Unit
+finishJob job = Run.lift _db (FinishJob job unit)
 
 -- | Select a job by ID from the database.
-selectJob :: forall r. JobId -> Run (DB + r) (Either String SQLite.Job)
-selectJob jobId = Run.lift _db (SelectJob jobId identity)
+selectJob :: forall r. SelectJobRequest -> Run (DB + EXCEPT String + r) (Maybe Job)
+selectJob request = Run.lift _db (SelectJob request identity) >>= Except.rethrow
 
--- | Select a job by package name from the database, failing if there is no
--- | current job available for that package name.
-runningJobForPackage :: forall r. PackageName -> Run (DB + r) (Either String SQLite.Job)
-runningJobForPackage name = Run.lift _db (RunningJobForPackage name identity)
+-- | Select a list of the latest jobs from the database
+selectJobs :: forall r. SelectJobsRequest -> Run (DB + EXCEPT String + r) (Array Job)
+selectJobs request = Run.lift _db (SelectJobs request identity)
+
+-- | Insert a new publish job into the database.
+insertPublishJob :: forall r. InsertPublishJob -> Run (DB + r) JobId
+insertPublishJob job = Run.lift _db (InsertPublishJob job identity)
+
+-- | Insert a new unpublish job into the database.
+insertUnpublishJob :: forall r. InsertUnpublishJob -> Run (DB + r) JobId
+insertUnpublishJob job = Run.lift _db (InsertUnpublishJob job identity)
+
+-- | Insert a new transfer job into the database.
+insertTransferJob :: forall r. InsertTransferJob -> Run (DB + r) JobId
+insertTransferJob job = Run.lift _db (InsertTransferJob job identity)
+
+-- | Insert a new matrix job into the database.
+insertMatrixJob :: forall r. InsertMatrixJob -> Run (DB + r) JobId
+insertMatrixJob job = Run.lift _db (InsertMatrixJob job identity)
+
+-- | Insert a new package set job into the database.
+insertPackageSetJob :: forall r. InsertPackageSetJob -> Run (DB + r) JobId
+insertPackageSetJob job = Run.lift _db (InsertPackageSetJob job identity)
+
+-- | Start a job in the database.
+startJob :: forall r. StartJob -> Run (DB + r) Unit
+startJob job = Run.lift _db (StartJob job unit)
+
+-- | Select the next publish job from the database.
+selectNextPublishJob :: forall r. Run (DB + EXCEPT String + r) (Maybe PublishJobDetails)
+selectNextPublishJob = Run.lift _db (SelectNextPublishJob identity) >>= Except.rethrow
+
+-- | Select the next unpublish job from the database.
+selectNextUnpublishJob :: forall r. Run (DB + EXCEPT String + r) (Maybe UnpublishJobDetails)
+selectNextUnpublishJob = Run.lift _db (SelectNextUnpublishJob identity) >>= Except.rethrow
+
+-- | Select the next transfer job from the database.
+selectNextTransferJob :: forall r. Run (DB + EXCEPT String + r) (Maybe TransferJobDetails)
+selectNextTransferJob = Run.lift _db (SelectNextTransferJob identity) >>= Except.rethrow
+
+-- | Select the next matrix job from the database.
+selectNextMatrixJob :: forall r. Run (DB + EXCEPT String + r) (Maybe MatrixJobDetails)
+selectNextMatrixJob = Run.lift _db (SelectNextMatrixJob identity) >>= Except.rethrow
+
+-- | Select the next package set job from the database.
+selectNextPackageSetJob :: forall r. Run (DB + EXCEPT String + r) (Maybe PackageSetJobDetails)
+selectNextPackageSetJob = Run.lift _db (SelectNextPackageSetJob identity) >>= Except.rethrow
+
+-- | Lookup a publish job from the database by name and version.
+selectPublishJob :: forall r. PackageName -> Version -> Run (DB + EXCEPT String + r) (Maybe PublishJobDetails)
+selectPublishJob packageName packageVersion = Run.lift _db (SelectPublishJob packageName packageVersion identity) >>= Except.rethrow
+
+-- | Lookup an unpublish job from the database by name and version.
+selectUnpublishJob :: forall r. PackageName -> Version -> Run (DB + EXCEPT String + r) (Maybe UnpublishJobDetails)
+selectUnpublishJob packageName packageVersion = Run.lift _db (SelectUnpublishJob packageName packageVersion identity) >>= Except.rethrow
+
+-- | Lookop a transfer job from the database by name.
+selectTransferJob :: forall r. PackageName -> Run (DB + EXCEPT String + r) (Maybe TransferJobDetails)
+selectTransferJob packageName = Run.lift _db (SelectTransferJob packageName identity) >>= Except.rethrow
+
+-- | Lookup a pending package set job from the database by payload (for duplicate detection).
+selectPackageSetJobByPayload :: forall r. PackageSetOperation -> Run (DB + EXCEPT String + r) (Maybe PackageSetJobDetails)
+selectPackageSetJobByPayload payload = Run.lift _db (SelectPackageSetJobByPayload payload identity) >>= Except.rethrow
+
+-- | Reset all incomplete jobs in the database, returning the IDs of the jobs that were reset.
+resetIncompleteJobs :: forall r. Run (DB + r) (Array JobId)
+resetIncompleteJobs = Run.lift _db (ResetIncompleteJobs identity)
 
 interpret :: forall r a. (Db ~> Run r) -> Run (DB + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _db handler Run.send)
@@ -70,28 +148,92 @@ type SQLiteEnv = { db :: SQLite }
 -- | Interpret DB by interacting with the SQLite database on disk.
 handleSQLite :: forall r a. SQLiteEnv -> Db a -> Run (LOG + EFFECT + r) a
 handleSQLite env = case _ of
-  InsertLog log next -> do
-    Run.liftEffect $ SQLite.insertLog env.db log
+  InsertPublishJob job reply -> do
+    result <- Run.liftEffect $ SQLite.insertPublishJob env.db job
+    pure $ reply result
+
+  InsertUnpublishJob job reply -> do
+    result <- Run.liftEffect $ SQLite.insertUnpublishJob env.db job
+    pure $ reply result
+
+  InsertTransferJob job reply -> do
+    result <- Run.liftEffect $ SQLite.insertTransferJob env.db job
+    pure $ reply result
+
+  InsertMatrixJob job reply -> do
+    result <- Run.liftEffect $ SQLite.insertMatrixJob env.db job
+    pure $ reply result
+
+  InsertPackageSetJob job reply -> do
+    result <- Run.liftEffect $ SQLite.insertPackageSetJob env.db job
+    pure $ reply result
+
+  FinishJob job next -> do
+    Run.liftEffect $ SQLite.finishJob env.db job
+    pure next
+
+  StartJob job next -> do
+    Run.liftEffect $ SQLite.startJob env.db job
+    pure next
+
+  SelectJob request reply -> do
+    { unreadableLogs, job } <- Run.liftEffect $ SQLite.selectJob env.db request
+    unless (Array.null unreadableLogs) do
+      Log.warn $ "Some logs were not readable: " <> String.joinWith "\n" unreadableLogs
+    pure $ reply job
+
+  SelectJobs request reply -> do
+    { failed, jobs } <- Run.liftEffect $ SQLite.selectJobs env.db request
+    unless (Array.null failed) do
+      Log.warn $ "Some jobs were not readable: " <> String.joinWith "\n" failed
+    pure $ reply jobs
+
+  SelectNextPublishJob reply -> do
+    result <- Run.liftEffect $ SQLite.selectNextPublishJob env.db
+    pure $ reply result
+
+  SelectNextUnpublishJob reply -> do
+    result <- Run.liftEffect $ SQLite.selectNextUnpublishJob env.db
+    pure $ reply result
+
+  SelectNextTransferJob reply -> do
+    result <- Run.liftEffect $ SQLite.selectNextTransferJob env.db
+    pure $ reply result
+
+  SelectNextMatrixJob reply -> do
+    result <- Run.liftEffect $ SQLite.selectNextMatrixJob env.db
+    pure $ reply result
+
+  SelectNextPackageSetJob reply -> do
+    result <- Run.liftEffect $ SQLite.selectNextPackageSetJob env.db
+    pure $ reply result
+
+  SelectPublishJob packageName packageVersion reply -> do
+    result <- Run.liftEffect $ SQLite.selectPublishJob env.db packageName packageVersion
+    pure $ reply result
+
+  SelectUnpublishJob packageName packageVersion reply -> do
+    result <- Run.liftEffect $ SQLite.selectUnpublishJob env.db packageName packageVersion
+    pure $ reply result
+
+  SelectTransferJob packageName reply -> do
+    result <- Run.liftEffect $ SQLite.selectTransferJob env.db packageName
+    pure $ reply result
+
+  SelectPackageSetJobByPayload payload reply -> do
+    result <- Run.liftEffect $ SQLite.selectPackageSetJobByPayload env.db payload
+    pure $ reply result
+
+  InsertLogLine log next -> do
+    Run.liftEffect $ SQLite.insertLogLine env.db log
     pure next
 
   SelectLogsByJob jobId logLevel since reply -> do
-    logs <- Run.liftEffect $ SQLite.selectLogsByJob env.db jobId logLevel since
-    unless (Array.null logs.fail) do
-      Log.warn $ "Some logs are not readable: " <> String.joinWith "\n" logs.fail
-    pure $ reply logs.success
+    { fail, success } <- Run.liftEffect $ SQLite.selectLogsByJob env.db jobId logLevel since
+    unless (Array.null fail) do
+      Log.warn $ "Some logs are not readable: " <> String.joinWith "\n" fail
+    pure $ reply success
 
-  CreateJob newJob next -> do
-    Run.liftEffect $ SQLite.createJob env.db newJob
-    pure next
-
-  FinishJob jobResult next -> do
-    Run.liftEffect $ SQLite.finishJob env.db jobResult
-    pure next
-
-  SelectJob jobId reply -> do
-    job <- Run.liftEffect $ SQLite.selectJob env.db jobId
-    pure $ reply job
-
-  RunningJobForPackage name reply -> do
-    job <- Run.liftEffect $ SQLite.runningJobForPackage env.db name
-    pure $ reply job
+  ResetIncompleteJobs reply -> do
+    result <- Run.liftEffect $ SQLite.resetIncompleteJobs env.db
+    pure $ reply result

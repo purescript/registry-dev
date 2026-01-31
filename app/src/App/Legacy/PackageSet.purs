@@ -102,8 +102,8 @@ printPscTag (PscTag { compiler, date }) =
     , Format.DateTime.format pscDateFormat (DateTime date bottom)
     ]
 
-convertPackageSet :: ManifestIndex -> Map PackageName Metadata -> PackageSet -> Either String ConvertedLegacyPackageSet
-convertPackageSet index metadataMap (PackageSet { compiler, packages, published, version }) = do
+convertPackageSet :: ManifestIndex -> PackageSet -> Either String ConvertedLegacyPackageSet
+convertPackageSet index (PackageSet { compiler, packages, published, version }) = do
   converted <- case separate $ mapWithIndex convertPackage packages of
     { left, right } | Map.isEmpty left -> Right right
     { left } -> do
@@ -130,17 +130,14 @@ convertPackageSet index metadataMap (PackageSet { compiler, packages, published,
     versions <- note noIndexPackageError $ Map.lookup packageName $ ManifestIndex.toMap index
     Manifest manifest <- note noIndexVersionError $ Map.lookup packageVersion versions
 
-    Metadata metadata <- note noMetadataPackageError $ Map.lookup packageName metadataMap
-    { ref } <- note noMetadataVersionError $ Map.lookup packageVersion metadata.published
-
-    repo <- case metadata.location of
+    repo <- case manifest.location of
       GitHub { owner, repo, subdir: Nothing } -> Right $ "https://github.com/" <> owner <> "/" <> repo <> ".git"
       Git { url, subdir: Nothing } -> Right url
       GitHub _ -> Left usesSubdirError
       Git _ -> Left usesSubdirError
 
     pure
-      { version: RawVersion ref
+      { version: RawVersion manifest.ref
       , dependencies: Array.fromFoldable $ Map.keys $ manifest.dependencies
       , repo
       }
@@ -149,8 +146,6 @@ convertPackageSet index metadataMap (PackageSet { compiler, packages, published,
     versionStr = Version.print packageVersion
     noIndexPackageError = "No registry index entry found for " <> nameStr
     noIndexVersionError = "Found registry index entry for " <> nameStr <> " but none for version " <> versionStr
-    noMetadataPackageError = "No metadata entry found for " <> nameStr
-    noMetadataVersionError = "Found metadata entry for " <> nameStr <> " but no published version for " <> versionStr
     usesSubdirError = "Package " <> nameStr <> " uses the 'subdir' key, which is not supported for legacy package sets."
 
 printDhall :: LegacyPackageSet -> String

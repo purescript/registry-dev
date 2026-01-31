@@ -5,10 +5,10 @@ import Prelude
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
+import Data.Bifunctor as Bifunctor
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Either (Either(..))
-import Data.List.NonEmpty (NonEmptyList)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), maybe)
@@ -20,7 +20,7 @@ import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.Time.Duration (Hours(..))
 import Data.Traversable (traverse)
-import Data.Tuple (Tuple(..), uncurry)
+import Data.Tuple (Tuple(..), snd, uncurry)
 import Data.Tuple.Nested (type (/\), (/\))
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff)
@@ -32,14 +32,15 @@ import PureScript.CST.Errors as CST.Errors
 import PureScript.CST.Types as CST.Types
 import Registry.Location (Location)
 import Registry.Manifest (Manifest(..))
-import Registry.ManifestIndex (ManifestIndex)
-import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata (Metadata(..), PublishedMetadata, UnpublishedMetadata)
 import Registry.Operation (PublishData)
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.PursGraph (AssociatedError, ModuleName, PursGraph)
+import Registry.PursGraph as PursGraph
 import Registry.Range (Range)
 import Registry.Range as Range
+import Registry.Solver (CompilerIndex)
 import Registry.Solver as Solver
 import Registry.Version (Version)
 
@@ -71,11 +72,63 @@ isNotUnpublished :: Manifest -> Metadata -> Maybe UnpublishedMetadata
 isNotUnpublished (Manifest { version }) (Metadata { unpublished }) =
   Map.lookup version unpublished
 
+data ValidateDepsError
+  = UnusedDependencies (NonEmptySet PackageName)
+  | MissingDependencies (NonEmptySet PackageName)
+  | UnusedAndMissing { unused :: NonEmptySet PackageName, missing :: NonEmptySet PackageName }
+
+derive instance Eq ValidateDepsError
+
+printValidateDepsError :: ValidateDepsError -> String
+printValidateDepsError = case _ of
+  UnusedDependencies unused ->
+    "Unused dependencies (" <> printPackages unused <> ")"
+  MissingDependencies missing ->
+    "Missing dependencies (" <> printPackages missing <> ")"
+  UnusedAndMissing { unused, missing } ->
+    "Unused dependencies (" <> printPackages unused <> ") and missing dependencies (" <> printPackages missing <> ")"
+  where
+  printPackages :: NonEmptySet PackageName -> String
+  printPackages = String.joinWith ", " <<< map PackageName.print <<< NonEmptySet.toUnfoldable
+
+-- | Verifies that the manifest lists dependencies imported in the source code,
+-- | no more (ie. unused) and no less (ie. transitive). The graph passed to this
+-- | function should be the output of 'purs graph' executed on the 'output'
+-- | directory of the package compiled with its dependencies.
+noTransitiveOrMissingDeps :: Manifest -> PursGraph -> (FilePath -> Either String PackageName) -> Either (Either (NonEmptyArray AssociatedError) ValidateDepsError) Unit
+noTransitiveOrMissingDeps (Manifest manifest) graph parser = do
+  associated <- Bifunctor.lmap Left $ PursGraph.associateModules parser graph
+
+  let
+    packageModules :: Set ModuleName
+    packageModules = Map.keys $ Map.filter (_ == manifest.name) associated
+
+    directImportModules :: Set ModuleName
+    directImportModules = PursGraph.directDependenciesOf packageModules graph
+
+    directImportPackages :: Set PackageName
+    directImportPackages = Set.mapMaybe (flip Map.lookup associated) directImportModules
+
+    -- Unused packages are those which are listed in the manifest dependencies
+    -- but which are not imported by the package source code.
+    unusedDependencies :: Set PackageName
+    unusedDependencies = Set.filter (not <<< flip Set.member directImportPackages) (Map.keys manifest.dependencies)
+
+    -- Missing packages are those which are imported by the package source code
+    -- but which are not listed in its dependencies.
+    missingDependencies :: Set PackageName
+    missingDependencies = Set.filter (not <<< flip Map.member manifest.dependencies) directImportPackages
+
+  case NonEmptySet.fromSet unusedDependencies, NonEmptySet.fromSet missingDependencies of
+    Nothing, Nothing -> Right unit
+    Just unused, Nothing -> Left $ Right $ UnusedDependencies unused
+    Nothing, Just missing -> Left $ Right $ MissingDependencies missing
+    Just unused, Just missing -> Left $ Right $ UnusedAndMissing { unused, missing }
+
 -- | Verifies that the manifest dependencies are solvable by the registry solver.
-validateDependenciesSolve :: Manifest -> ManifestIndex -> Either (NonEmptyList Solver.SolverError) (Map PackageName Version)
-validateDependenciesSolve manifest manifestIndex = do
-  let getDependencies = _.dependencies <<< un Manifest
-  Solver.solve (map (map getDependencies) (ManifestIndex.toMap manifestIndex)) (getDependencies manifest)
+validateDependenciesSolve :: Version -> Manifest -> CompilerIndex -> Either Solver.SolverErrors (Map PackageName Version)
+validateDependenciesSolve compiler (Manifest manifest) compilerIndex =
+  map snd $ Solver.solveWithCompiler (Range.exact compiler) compilerIndex manifest.dependencies
 
 -- | Verifies that all dependencies in the manifest are present in the build
 -- | plan, and the version listed in the build plan is within the range provided
@@ -96,23 +149,6 @@ getUnresolvedDependencies (Manifest { dependencies }) resolutions =
       Just version
         | not (Range.includes dependencyRange version) -> Just $ Right $ dependencyName /\ dependencyRange /\ version
         | otherwise -> Nothing
-
--- | Discovers dependencies listed in the manifest that are not actually used
--- | by the solved dependencies. This should not produce an error, but it
--- | indicates an over-constrained manifest.
-getUnusedDependencies :: Manifest -> Map PackageName Version -> Set PackageName -> Maybe (NonEmptySet PackageName)
-getUnusedDependencies (Manifest { dependencies }) resolutions discovered = do
-  let
-    -- There may be too many resolved dependencies because the manifest includes
-    -- e.g. test dependencies, so we start by only considering resolved deps
-    -- that are actually used.
-    inUse = Set.filter (flip Set.member discovered) (Map.keys resolutions)
-
-    -- Next, we can determine which dependencies are unused by looking at the
-    -- difference between the manifest dependencies and the resolved packages
-    unused = Set.filter (not <<< flip Set.member inUse) (Map.keys dependencies)
-
-  NonEmptySet.fromSet unused
 
 data TarballSizeResult
   = ExceedsMaximum Number

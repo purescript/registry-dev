@@ -5,9 +5,12 @@ import Prelude
 
 import Control.Alternative (guard)
 import Data.Array as Array
+import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
+import Data.Either as Either
 import Data.Foldable (fold, foldMap, intercalate)
 import Data.FoldableWithIndex (anyWithIndex, foldMapWithIndex, foldlWithIndex, forWithIndex_)
 import Data.Functor.App (App(..))
@@ -16,10 +19,12 @@ import Data.List.NonEmpty as NEL
 import Data.Map (Map, SemigroupMap(..))
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe, maybe, maybe')
+import Data.Maybe as Maybe
 import Data.Monoid.Disj (Disj(..))
 import Data.Monoid.Endo (Endo(..))
 import Data.Newtype (class Newtype, over, un, unwrap, wrap)
 import Data.Semigroup.Foldable (intercalateMap)
+import Data.Semigroup.Foldable as Foldable1
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Set.NonEmpty (NonEmptySet)
@@ -27,6 +32,11 @@ import Data.Set.NonEmpty as NES
 import Data.Traversable (for, sequence, traverse)
 import Data.TraversableWithIndex (forWithIndex, traverseWithIndex)
 import Data.Tuple (Tuple(..), fst, snd)
+import Partial.Unsafe as Partial
+import Registry.Manifest (Manifest(..))
+import Registry.ManifestIndex (ManifestIndex)
+import Registry.ManifestIndex as ManifestIndex
+import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
@@ -38,6 +48,46 @@ import Safe.Coerce (coerce)
 --------------------------------------------------------------------------------
 -- Public API
 --------------------------------------------------------------------------------
+
+-- | A 'DependencyIndex' enriched to include the compiler versions supported by
+-- | each package version as a dependency.
+newtype CompilerIndex = CompilerIndex DependencyIndex
+
+derive instance Newtype CompilerIndex _
+
+-- | Associate the compiler versions supported by each package version by
+-- | inserting them as a range in the version's dependencies.
+buildCompilerIndex :: NonEmptyArray Version -> ManifestIndex -> Map PackageName Metadata -> CompilerIndex
+buildCompilerIndex pursCompilers index metadata = CompilerIndex do
+  let
+    purs = Either.fromRight' (\_ -> Partial.unsafeCrashWith "Invalid package name!") (PackageName.parse "purs")
+
+    getDependencies (Manifest manifest) = fromMaybe manifest.dependencies do
+      Metadata { published } <- Map.lookup manifest.name metadata
+      { compilers } <- Map.lookup manifest.version published
+      -- Construct a maximal range for the compilers the
+      -- indicated package version supports.
+      let
+        min = Foldable1.minimum compilers
+        max = Version.bumpPatch $ Foldable1.maximum compilers
+      pursRange <- Range.mk min max
+      pure $ Map.insert purs pursRange manifest.dependencies
+
+    newPurs version = Map.singleton purs (Map.singleton version Map.empty)
+    pursVersions = Array.foldl (\acc compiler -> Map.unionWith Map.union (newPurs compiler) acc) Map.empty (NonEmptyArray.toArray pursCompilers)
+    dependencyIndex = map (map getDependencies) (ManifestIndex.toMap index)
+
+  Map.unionWith Map.union pursVersions dependencyIndex
+
+-- | Solve the given dependencies using a dependency index that includes compiler
+-- | versions, such that the solution prunes results that would fall outside
+-- | a compiler range accepted by all dependencies.
+solveWithCompiler :: Range -> CompilerIndex -> Map PackageName Range -> Either SolverErrors (Tuple Version (Map PackageName Version))
+solveWithCompiler pursRange (CompilerIndex index) required = do
+  let purs = Either.fromRight' (\_ -> Partial.unsafeCrashWith "Invalid package name!") (PackageName.parse "purs")
+  results <- solveFull { registry: initializeRegistry index, required: initializeRequired (Map.insert purs pursRange required) }
+  let pursVersion = Maybe.fromMaybe' (\_ -> Partial.unsafeCrashWith "Produced a compiler-derived build plan with no compiler!") $ Map.lookup purs results
+  pure $ Tuple pursVersion $ Map.delete purs results
 
 -- | Data from the registry index, listing dependencies for each version of
 -- | each package
@@ -146,6 +196,7 @@ intersectionFromRange' package range =
 --------------------------------------------------------------------------------
 
 type SolverErrors = NEL.NonEmptyList SolverError
+
 data SolverError
   = Conflicts (Map PackageName Intersection)
   | WhileSolving PackageName (Map Version SolverError)

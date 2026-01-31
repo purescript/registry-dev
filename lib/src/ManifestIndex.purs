@@ -7,11 +7,13 @@
 -- | https://github.com/purescript/registry-index
 module Registry.ManifestIndex
   ( ManifestIndex
+  , IncludeRanges(..)
+  , delete
+  , dependants
   , empty
   , fromSet
   , insert
   , insertIntoEntryFile
-  , delete
   , lookup
   , maximalIndex
   , packageEntryDirectory
@@ -20,10 +22,10 @@ module Registry.ManifestIndex
   , printEntry
   , readEntryFile
   , removeFromEntryFile
+  , toArray
   , toMap
-  , toSortedArray
   , topologicalSort
-  , IncludeRanges(..)
+  , toSortedArray
   , writeEntryFile
   ) where
 
@@ -87,12 +89,17 @@ empty = ManifestIndex Map.empty
 toMap :: ManifestIndex -> Map PackageName (Map Version Manifest)
 toMap (ManifestIndex index) = index
 
--- | Produce an array of manifests topologically sorted by dependencies.
-toSortedArray :: IncludeRanges -> ManifestIndex -> Array Manifest
-toSortedArray includeRanges (ManifestIndex index) = topologicalSort includeRanges $ Set.fromFoldable do
+-- | Produce an array of all the manifests
+toArray :: ManifestIndex -> Array Manifest
+toArray (ManifestIndex index) = do
   Tuple _ versions <- Map.toUnfoldableUnordered index
   Tuple _ manifest <- Map.toUnfoldableUnordered versions
   [ manifest ]
+
+-- | Produce an array of all the manifests, topologically sorted by dependencies.
+toSortedArray :: IncludeRanges -> ManifestIndex -> Array Manifest
+toSortedArray includeRanges index =
+  topologicalSort includeRanges $ Set.fromFoldable $ toArray index
 
 -- | Look up a package version's manifest in the manifest index.
 lookup :: PackageName -> Version -> ManifestIndex -> Maybe Manifest
@@ -103,25 +110,18 @@ lookup name version (ManifestIndex index) =
 -- | Insert a new manifest into the manifest index, failing if the manifest
 -- | indicates dependencies that cannot be satisfied. Dependencies are not
 -- | satisfied if the package is not in the index.
-insert :: Manifest -> ManifestIndex -> Either (Map PackageName Range) ManifestIndex
-insert manifest@(Manifest { name, version, dependencies }) (ManifestIndex index) = do
+insert :: IncludeRanges -> Manifest -> ManifestIndex -> Either (Map PackageName Range) ManifestIndex
+insert consider manifest@(Manifest { name, version, dependencies }) (ManifestIndex index) = do
   let
     unsatisfied :: Map PackageName Range
     unsatisfied = Map.fromFoldable do
       Tuple dependency range <- Map.toUnfoldable dependencies
       case Map.lookup dependency index of
-        Just _versions ->
-          -- Ideally we would enforce that inserting a manifest requires that
-          -- at least one version exists in the index in the given range already
-          -- Array.any (Range.includes range) (Set.toUnfoldable (Map.keys versions)) ->
-          --
-          -- However, to be somewhat lenient on what packages can be admitted to
-          -- the official index, we just look to see the package name exists.
-          --
-          -- Note that if we _do_ add this check later on, we will need to
-          -- produce an alternate version that does not check version bounds for
-          -- use in validatiing package sets, ie. 'maximalIndexIgnoringBounds'
-          []
+        Just versions -> case consider of
+          IgnoreRanges -> []
+          ConsiderRanges
+            | Array.any (Range.includes range) (Set.toUnfoldable (Map.keys versions)) -> []
+            | otherwise -> [ Tuple dependency range ]
         _ ->
           [ Tuple dependency range ]
 
@@ -137,12 +137,12 @@ insert manifest@(Manifest { name, version, dependencies }) (ManifestIndex index)
 -- | package names (and not package versions), it is always acceptable to delete
 -- | a package version so long as it has at least 2 versions. However, removing
 -- | a package altogether incurs a full validation check.
-delete :: PackageName -> Version -> ManifestIndex -> Either (Map PackageName (Map Version (Map PackageName Range))) ManifestIndex
-delete name version (ManifestIndex index) = do
+delete :: IncludeRanges -> PackageName -> Version -> ManifestIndex -> Either (Map PackageName (Map Version (Map PackageName Range))) ManifestIndex
+delete consider name version (ManifestIndex index) = do
   case Map.lookup name index of
     Nothing -> pure (ManifestIndex index)
     Just versionsMap | Map.size versionsMap == 1 ->
-      fromSet $ Set.fromFoldable do
+      fromSet consider $ Set.fromFoldable do
         Tuple _ versions <- Map.toUnfoldableUnordered (Map.delete name index)
         Tuple _ manifest <- Map.toUnfoldableUnordered versions
         [ manifest ]
@@ -151,21 +151,21 @@ delete name version (ManifestIndex index) = do
 
 -- | Convert a set of manifests into a `ManifestIndex`. Reports all failures
 -- | encountered rather than short-circuiting.
-fromSet :: Set Manifest -> Either (Map PackageName (Map Version (Map PackageName Range))) ManifestIndex
-fromSet manifests = do
-  let Tuple failed index = maximalIndex manifests
+fromSet :: IncludeRanges -> Set Manifest -> Either (Map PackageName (Map Version (Map PackageName Range))) ManifestIndex
+fromSet consider manifests = do
+  let Tuple failed index = maximalIndex consider manifests
   if Map.isEmpty failed then Right index else Left failed
 
 -- | Produce the maximal `ManifestIndex` possible for the given set of
 -- | `Manifest`s, collecting failures along the way.
-maximalIndex :: Set Manifest -> Tuple (Map PackageName (Map Version (Map PackageName Range))) ManifestIndex
-maximalIndex manifests = do
+maximalIndex :: IncludeRanges -> Set Manifest -> Tuple (Map PackageName (Map Version (Map PackageName Range))) ManifestIndex
+maximalIndex consider manifests = do
   let
-    insertManifest (Tuple failed index) manifest@(Manifest { name, version }) = case insert manifest index of
+    insertManifest (Tuple failed index) manifest@(Manifest { name, version }) = case insert consider manifest index of
       Left errors -> Tuple (Map.insertWith Map.union name (Map.singleton version errors) failed) index
       Right newIndex -> Tuple failed newIndex
 
-  Array.foldl insertManifest (Tuple Map.empty empty) (topologicalSort IgnoreRanges manifests)
+  Array.foldl insertManifest (Tuple Map.empty empty) (topologicalSort consider manifests)
 
 data IncludeRanges
   = ConsiderRanges
@@ -205,6 +205,13 @@ topologicalSort includeRanges manifests =
         ConsiderRanges -> Array.filter (Range.includes range) versions
         IgnoreRanges -> versions
       [ Tuple dependency included ]
+
+dependants :: ManifestIndex -> PackageName -> Version -> Array Manifest
+dependants idx packageName version = idx
+  # toSortedArray ConsiderRanges
+  # Array.filter \(Manifest { dependencies }) -> case Map.lookup packageName dependencies of
+      Nothing -> false
+      Just range -> Range.includes range version
 
 -- | Calculate the directory containing this package in the registry index,
 -- | using the following format:

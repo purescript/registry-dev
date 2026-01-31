@@ -4,6 +4,7 @@ import Registry.App.Prelude
 
 import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
+import Data.Codec as Codec
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Common as CJ.Common
 import Data.Codec.JSON.Record as CJ.Record
@@ -12,6 +13,16 @@ import Data.String as String
 import Node.ChildProcess.Types (Exit(..))
 import Node.Library.Execa as Execa
 import Registry.Version as Version
+
+-- | The minimum compiler version that supports 'purs graph'
+minPursGraph :: Version
+minPursGraph = unsafeFromRight (Version.parse "0.14.0")
+
+minPursuitPublish :: Version
+minPursuitPublish = unsafeFromRight (Version.parse "0.14.7")
+
+minLanguageCSTParser :: Version
+minLanguageCSTParser = unsafeFromRight (Version.parse "0.15.0")
 
 -- | Call a specific version of the PureScript compiler
 callCompiler_ :: { version :: Maybe Version, command :: PursCommand, cwd :: Maybe FilePath } -> Aff Unit
@@ -23,6 +34,22 @@ data CompilerFailure
   | MissingCompiler
 
 derive instance Eq CompilerFailure
+derive instance Ord CompilerFailure
+
+compilerFailureCodec :: CJ.Codec CompilerFailure
+compilerFailureCodec = Codec.codec' decode encode
+  where
+  decode :: JSON -> Except CJ.DecodeError CompilerFailure
+  decode json = except do
+    map CompilationError (CJ.decode (CJ.array compilerErrorCodec) json)
+      <|> map UnknownError (CJ.decode CJ.string json)
+      <|> map (const MissingCompiler) (CJ.decode CJ.null json)
+
+  encode :: CompilerFailure -> JSON
+  encode = case _ of
+    CompilationError errors -> CJ.encode (CJ.array compilerErrorCodec) errors
+    UnknownError message -> CJ.encode CJ.string message
+    MissingCompiler -> CJ.encode CJ.null unit
 
 type CompilerError =
   { position :: SourcePosition

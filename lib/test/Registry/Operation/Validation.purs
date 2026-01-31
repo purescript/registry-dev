@@ -2,6 +2,7 @@ module Test.Registry.Operation.Validation where
 
 import Prelude
 
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either (Either(..))
 import Data.Either as Either
 import Data.Foldable (for_)
@@ -14,7 +15,8 @@ import Registry.Manifest (Manifest(..))
 import Registry.Metadata (Metadata(..))
 import Registry.Operation.Validation (UnpublishError(..), forbiddenModules, getUnresolvedDependencies, validatePursModule, validateUnpublish)
 import Registry.Test.Assert as Assert
-import Registry.Test.Utils (defaultHash, defaultLocation, fromJust, unsafeDateTime, unsafeManifest, unsafePackageName, unsafeVersion)
+import Registry.Test.Fixtures (defaultHash, defaultLocation)
+import Registry.Test.Utils (fromJust, unsafeDateTime, unsafeManifest, unsafePackageName, unsafeVersion)
 import Test.Spec (Spec)
 import Test.Spec as Spec
 
@@ -63,8 +65,9 @@ spec = do
       now = unsafeDateTime "2022-12-12T12:00:00.000Z"
       outOfRange = unsafeDateTime "2022-12-10T11:00:00.000Z"
       inRange = unsafeDateTime "2022-12-11T12:00:00.000Z"
+      compilers = NonEmptyArray.singleton (unsafeVersion "0.13.0")
 
-      publishedMetadata = { bytes: 100.0, hash: defaultHash, publishedTime: outOfRange, ref: "" }
+      publishedMetadata = { bytes: 100.0, hash: defaultHash, publishedTime: outOfRange, compilers }
 
       metadata = Metadata
         { location: defaultLocation

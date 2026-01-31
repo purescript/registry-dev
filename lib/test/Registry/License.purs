@@ -44,6 +44,49 @@ spec = do
       Left err -> Assert.fail $ "joinWith created unparseable expression: " <> License.print joined <> " - Error: " <> err
       Right _ -> pure unit
 
+  Spec.describe "extractIds" do
+    Spec.it "extracts single license ID" do
+      case License.parse "MIT" of
+        Left err -> Assert.fail err
+        Right license -> case License.extractIds license of
+          Left err -> Assert.fail err
+          Right ids -> Assert.shouldEqual [ "MIT" ] ids
+
+    Spec.it "extracts IDs from AND expression" do
+      case License.parse "MIT AND Apache-2.0" of
+        Left err -> Assert.fail err
+        Right license -> case License.extractIds license of
+          Left err -> Assert.fail err
+          Right ids -> do
+            Assert.shouldContain ids "MIT"
+            Assert.shouldContain ids "APACHE-2.0"
+
+    Spec.it "extracts IDs from OR expression" do
+      case License.parse "MIT OR BSD-3-Clause" of
+        Left err -> Assert.fail err
+        Right license -> case License.extractIds license of
+          Left err -> Assert.fail err
+          Right ids -> do
+            Assert.shouldContain ids "MIT"
+            Assert.shouldContain ids "BSD-3-CLAUSE"
+
+    Spec.it "extracts IDs from nested expression" do
+      case License.parse "MIT AND (Apache-2.0 OR BSD-3-Clause)" of
+        Left err -> Assert.fail err
+        Right license -> case License.extractIds license of
+          Left err -> Assert.fail err
+          Right ids -> do
+            Assert.shouldContain ids "MIT"
+            Assert.shouldContain ids "APACHE-2.0"
+            Assert.shouldContain ids "BSD-3-CLAUSE"
+
+    Spec.it "normalizes license IDs to uppercase" do
+      case License.parse "mit" of
+        Left err -> Assert.fail err
+        Right license -> case License.extractIds license of
+          Left err -> Assert.fail err
+          Right ids -> Assert.shouldEqual [ "MIT" ] ids
+
 valid :: Array String
 valid =
   [ "MIT"

@@ -4,17 +4,17 @@
 module Registry.Range
   ( Range
   , caret
-  , exact
   , codec
+  , exact
   , greaterThanOrEq
   , includes
   , intersect
   , lessThan
+  , mk
   , parse
   , parser
   , print
   , union
-  , mk
   ) where
 
 import Prelude

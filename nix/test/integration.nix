@@ -1,7 +1,9 @@
 {
   pkgs,
   spagoSrc,
-  testEnv,
+  # Test support module from test-env.nix. Named 'testSupport' to avoid confusion
+  # with testSupport.testEnv (the environment variables attribute set).
+  testSupport,
 }:
 if pkgs.stdenv.isDarwin then
   pkgs.runCommand "integration-skip" { } ''
@@ -29,7 +31,7 @@ else
       '';
     };
 
-    ports = testEnv.ports;
+    ports = testSupport.ports;
   in
   pkgs.runCommand "e2e-integration"
     {
@@ -37,12 +39,10 @@ else
         pkgs.nodejs
         pkgs.curl
         pkgs.jq
-        pkgs.git
+        pkgs.sqlite
         pkgs.nss_wrapper
-        testEnv.wiremockStartScript
-        testEnv.serverStartScript
-        testEnv.setupGitFixtures
-      ];
+      ]
+      ++ testSupport.testBuildInputs;
       NODE_PATH = "${pkgs.registry-package-lock}/node_modules";
       # Use nss_wrapper to resolve S3 bucket subdomain in the Nix sandbox.
       # The AWS SDK uses virtual-hosted style URLs (bucket.endpoint/key), so
@@ -57,7 +57,11 @@ else
       set -e
       export HOME=$TMPDIR
       export STATE_DIR=$TMPDIR/state
-      export SERVER_PORT=${toString ports.server}
+      export REPO_FIXTURES_DIR="$STATE_DIR/repo-fixtures"
+
+      # Export test environment variables, PATH, and GIT_BINARY
+      ${testSupport.testRuntimeExports}
+
       mkdir -p $STATE_DIR
 
       # Start wiremock services
@@ -65,8 +69,8 @@ else
       start-wiremock &
       WIREMOCK_PID=$!
 
-      # Wait for wiremock (github, bucket, s3, pursuit)
-      for port in ${toString ports.github} ${toString ports.bucket} ${toString ports.s3} ${toString ports.pursuit}; do
+      # Wait for wiremock (github, storage, healthchecks)
+      for port in ${toString ports.github} ${toString ports.storage} ${toString ports.healthchecks}; do
         until curl -s "http://localhost:$port/__admin" > /dev/null 2>&1; do
           sleep 0.5
         done

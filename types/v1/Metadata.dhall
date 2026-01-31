@@ -1,4 +1,5 @@
 let Map = (./Prelude.dhall).Map.Type
+let NonEmpty = (./Prelude.dhall).NonEmpty.Type
 
 let Owner = ./Owner.dhall
 
@@ -14,6 +15,7 @@ let PublishedMetadata =
       { hash : Sha256
       , bytes : Natural
       , publishedTime : ISO8601String
+      , compilers : NonEmpty Version
       }
 
 let UnpublishedMetadata =

@@ -11,22 +11,30 @@ module Registry.Test.Assert.Run
 import Registry.App.Prelude
 
 import Data.Array as Array
+import Data.Exists as Exists
 import Data.Foldable (class Foldable)
 import Data.Foldable as Foldable
 import Data.FunctorWithIndex (mapWithIndex)
+import Data.Int as Int
 import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
+import Dodo as Dodo
 import Effect.Aff as Aff
 import Effect.Now as Now
 import Effect.Ref as Ref
+import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
+import Registry.API.V1 (LogLevel)
+import Registry.App.API (COMPILER_CACHE, PURS_GRAPH_CACHE)
+import Registry.App.API as API
 import Registry.App.CLI.Git as Git
+import Registry.App.CLI.Tar as Tar
+import Registry.App.Effect.Archive (ARCHIVE)
+import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment (COMMENT)
-import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env (GITHUB_EVENT_ENV, PACCHETTIBOTTI_ENV, RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB, GITHUB_CACHE, GitHub(..))
@@ -39,7 +47,7 @@ import Registry.App.Effect.Pursuit (PURSUIT, Pursuit(..))
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY, Registry(..))
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Source (SOURCE, Source(..))
+import Registry.App.Effect.Source (FetchError(..), SOURCE, Source(..))
 import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE, Storage)
 import Registry.App.Effect.Storage as Storage
@@ -48,8 +56,10 @@ import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Prelude as Either
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubError(..), IssueNumber(..))
+import Registry.Foreign.Tar as Foreign.Tar
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
+import Registry.Sha256 as Sha256
 import Registry.Test.Utils as Utils
 import Registry.Version as Version
 import Run (AFF, EFFECT, Run)
@@ -77,13 +87,15 @@ type TEST_EFFECTS =
       + PACKAGE_SETS
       + STORAGE
       + SOURCE
+      + ARCHIVE
       + GITHUB
       + PACCHETTIBOTTI_ENV
       + GITHUB_EVENT_ENV
       + RESOURCE_ENV
       + GITHUB_CACHE
       + LEGACY_CACHE
-      + COMMENT
+      + COMPILER_CACHE
+      + PURS_GRAPH_CACHE
       + LOG
       + EXCEPT String
       + AFF
@@ -93,16 +105,18 @@ type TEST_EFFECTS =
 
 type TestEnv =
   { workdir :: FilePath
+  , logs :: Ref (Array (Tuple LogLevel String))
   , metadata :: Ref (Map PackageName Metadata)
   , index :: Ref ManifestIndex
   , pursuitExcludes :: Set PackageName
   , storage :: FilePath
+  , archive :: FilePath
   , github :: FilePath
   , username :: String
   }
 
-runTestEffects :: forall a. TestEnv -> Run TEST_EFFECTS a -> Aff a
-runTestEffects env operation = do
+runTestEffects :: forall a. TestEnv -> Run TEST_EFFECTS a -> Aff (Either Aff.Error a)
+runTestEffects env operation = Aff.attempt do
   resourceEnv <- Env.lookupResourceEnv
   githubCache <- liftEffect Cache.newCacheRef
   legacyCache <- liftEffect Cache.newCacheRef
@@ -112,24 +126,26 @@ runTestEffects env operation = do
     # PackageSets.interpret handlePackageSetsMock
     # Storage.interpret (handleStorageMock { storage: env.storage })
     # Source.interpret (handleSourceMock { github: env.github })
+    # Archive.interpret (handleArchiveMock { metadataRef: env.metadata, archive: env.archive })
     # GitHub.interpret (handleGitHubMock { github: env.github })
     -- Environments
     # Env.runGitHubEventEnv { username: env.username, issue: IssueNumber 1 }
     # Env.runPacchettiBottiEnv { publicKey: "Unimplemented", privateKey: "Unimplemented" }
     # Env.runResourceEnv resourceEnv
     -- Caches
+    # runCompilerCacheMock
+    # runPursGraphCacheMock
     # runGitHubCacheMemory githubCache
     # runLegacyCacheMemory legacyCache
     -- Other effects
-    # Comment.interpret Comment.handleLog
-    # Log.interpret (\(Log _ _ next) -> pure next)
+    # Log.interpret (\(Log level msg next) -> Run.liftEffect (Ref.modify_ (_ <> [ Tuple level (Dodo.print Dodo.plainText Dodo.twoSpaces msg) ]) env.logs) *> pure next)
     -- Base effects
     # Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
     # Run.runBaseAff'
 
 -- | For testing simple Run functions that don't need the whole environment.
 runBaseEffects :: forall a. Run (LOG + EXCEPT String + AFF + EFFECT + ()) a -> Aff a
-runBaseEffects =
+runBaseEffects = do
   Log.interpret (\(Log _ _ next) -> pure next)
     -- Base effects
     >>> Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
@@ -140,6 +156,38 @@ runLegacyCacheMemory = Cache.interpret Legacy.Manifest._legacyCache <<< Cache.ha
 
 runGitHubCacheMemory :: forall r a. CacheRef -> Run (GITHUB_CACHE + LOG + EFFECT + r) a -> Run (LOG + EFFECT + r) a
 runGitHubCacheMemory = Cache.interpret GitHub._githubCache <<< Cache.handleMemory
+
+runCompilerCacheMock :: forall r a. Run (COMPILER_CACHE + LOG + r) a -> Run (LOG + r) a
+runCompilerCacheMock = Cache.interpret API._compilerCache case _ of
+  Cache.Get key -> Exists.runExists getImpl (Cache.encodeFs key)
+  Cache.Put _ next -> pure next
+  Cache.Delete key -> Exists.runExists deleteImpl (Cache.encodeFs key)
+  where
+  getImpl :: forall x z. Cache.FsEncoding Cache.Reply x z -> Run _ x
+  getImpl = case _ of
+    Cache.AsBuffer _ (Cache.Reply reply) -> pure $ reply Nothing
+    Cache.AsJson _ _ (Cache.Reply reply) -> pure $ reply Nothing
+
+  deleteImpl :: forall x z. Cache.FsEncoding Cache.Ignore x z -> Run _ x
+  deleteImpl = case _ of
+    Cache.AsBuffer _ (Cache.Ignore next) -> pure next
+    Cache.AsJson _ _ (Cache.Ignore next) -> pure next
+
+runPursGraphCacheMock :: forall r a. Run (PURS_GRAPH_CACHE + LOG + r) a -> Run (LOG + r) a
+runPursGraphCacheMock = Cache.interpret API._pursGraphCache case _ of
+  Cache.Get key -> Exists.runExists getImpl (Cache.encodeFs key)
+  Cache.Put _ next -> pure next
+  Cache.Delete key -> Exists.runExists deleteImpl (Cache.encodeFs key)
+  where
+  getImpl :: forall x z. Cache.FsEncoding Cache.Reply x z -> Run _ x
+  getImpl = case _ of
+    Cache.AsBuffer _ (Cache.Reply reply) -> pure $ reply Nothing
+    Cache.AsJson _ _ (Cache.Reply reply) -> pure $ reply Nothing
+
+  deleteImpl :: forall x z. Cache.FsEncoding Cache.Ignore x z -> Run _ x
+  deleteImpl = case _ of
+    Cache.AsBuffer _ (Cache.Ignore next) -> pure next
+    Cache.AsJson _ _ (Cache.Ignore next) -> pure next
 
 type PursuitMockEnv =
   { excludes :: Set PackageName
@@ -179,7 +227,7 @@ handleRegistryMock env = case _ of
 
   WriteManifest manifest reply -> do
     index <- Run.liftEffect (Ref.read env.indexRef)
-    case ManifestIndex.insert manifest index of
+    case ManifestIndex.insert ManifestIndex.ConsiderRanges manifest index of
       Left err -> pure $ reply $ Left $ "Failed to insert manifest:\n" <> Utils.unsafeStringify manifest <> " due to an error:\n" <> Utils.unsafeStringify err
       Right index' -> do
         Run.liftEffect (Ref.write index' env.indexRef)
@@ -187,7 +235,7 @@ handleRegistryMock env = case _ of
 
   DeleteManifest name version reply -> do
     index <- Run.liftEffect (Ref.read env.indexRef)
-    case ManifestIndex.delete name version index of
+    case ManifestIndex.delete ManifestIndex.ConsiderRanges name version index of
       Left err -> pure $ reply $ Left $ "Failed to delete entry for :\n" <> Utils.formatPackageVersion name version <> " due to an error:\n" <> Utils.unsafeStringify err
       Right index' -> do
         Run.liftEffect (Ref.write index' env.indexRef)
@@ -242,7 +290,7 @@ type StorageMockEnv = { storage :: FilePath }
 
 -- We handle the storage effect by copying files to/from the provided
 -- upload/download directories, and listing versions based on the filenames.
-handleStorageMock :: forall r a. StorageMockEnv -> Storage a -> Run (AFF + r) a
+handleStorageMock :: forall r a. StorageMockEnv -> Storage a -> Run (AFF + EFFECT + r) a
 handleStorageMock env = case _ of
   Storage.Upload name version sourcePath reply -> do
     let destinationPath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
@@ -253,13 +301,26 @@ handleStorageMock env = case _ of
       Right _ ->
         pure $ reply $ Left $ "Cannot upload " <> formatPackageVersion name version <> " because it already exists in storage at path " <> destinationPath
 
-  Storage.Download name version destinationPath reply -> do
-    let sourcePath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
-    Run.liftAff (Aff.attempt (FS.Aff.stat sourcePath)) >>= case _ of
+  Storage.Download name version destinationPath integrity reply -> do
+    let
+      package = formatPackageVersion name version
+      sourcePath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
+    Run.liftAff (Aff.attempt (FS.Aff.readFile sourcePath)) >>= case _ of
       Left _ -> pure $ reply $ Left $ "Cannot copy " <> sourcePath <> " because it does not exist in download directory."
-      Right _ -> do
-        Run.liftAff $ FS.Extra.copy { from: sourcePath, to: destinationPath, preserveTimestamps: true }
-        pure $ reply $ Right unit
+      Right buffer -> do
+        -- Verify size
+        archiveSize <- Run.liftEffect $ Buffer.size buffer
+        if Int.toNumber archiveSize /= integrity.bytes then
+          pure $ reply $ Left $ "Integrity check failed for " <> package <> ": size mismatch (got " <> show archiveSize <> ", expected " <> show integrity.bytes <> ")"
+        else do
+          -- Verify hash
+          archiveHash <- Run.liftEffect $ Sha256.hashBuffer buffer
+          if archiveHash /= integrity.hash then
+            pure $ reply $ Left $ "Integrity check failed for " <> package <> ": hash mismatch (got " <> Sha256.print archiveHash <> ", expected " <> Sha256.print integrity.hash <> ")"
+          else do
+            -- Verification passed, copy the file
+            Run.liftAff $ FS.Aff.writeFile destinationPath buffer
+            pure $ reply $ Right unit
 
   Storage.Delete name version reply -> do
     let sourcePath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
@@ -282,12 +343,12 @@ type SourceMockEnv = { github :: FilePath }
 
 handleSourceMock :: forall r a. SourceMockEnv -> Source a -> Run (EXCEPT String + AFF + EFFECT + r) a
 handleSourceMock env = case _ of
-  Fetch _source destination location ref reply -> do
+  Fetch destination location ref reply -> do
     now <- Run.liftEffect Now.nowDateTime
     case location of
-      Git _ -> pure $ reply $ Left "Packages cannot be published from Git yet (only GitHub)."
-      GitHub { subdir } | isJust subdir -> pure $ reply $ Left "Packages cannot use the 'subdir' key yet."
-      GitHub { repo } -> do
+      Git _ -> pure $ reply $ Left GitHubOnly
+      GitHub { subdir } | isJust subdir -> pure $ reply $ Left NoSubdir
+      GitHub { owner, repo } -> do
         let
           name = stripPureScriptPrefix repo
           fixedRef = fromMaybe ref $ String.stripPrefix (String.Pattern "v") ref
@@ -295,7 +356,7 @@ handleSourceMock env = case _ of
           localPath = Path.concat [ env.github, dirname ]
           destinationPath = Path.concat [ destination, dirname <> "-checkout" ]
         Run.liftAff (Aff.attempt (FS.Aff.stat localPath)) >>= case _ of
-          Left _ -> pure $ reply $ Left $ "Cannot copy " <> localPath <> " because it does not exist."
+          Left _ -> pure $ reply $ Left $ InaccessibleRepo { owner, repo }
           Right _ -> do
             Run.liftAff $ FS.Extra.copy { from: localPath, to: destinationPath, preserveTimestamps: true }
             case pursPublishMethod of
@@ -367,3 +428,73 @@ handleGitHubMock env = case _ of
   -- currently used in tests.
   GetCommitDate _address _ref reply ->
     pure $ reply $ Left $ UnexpectedError "Unimplemented"
+
+type ArchiveMockEnv =
+  { metadataRef :: Ref (Map PackageName Metadata)
+  , archive :: FilePath
+  }
+
+-- | A mock implementation for the ARCHIVE effect that uses the registry-archive
+-- | fixtures as the archive source. Archive tarballs are expected to be in the
+-- | same format as storage tarballs (name-version.tar.gz).
+handleArchiveMock :: forall r a. ArchiveMockEnv -> Archive.Archive a -> Run (AFF + EFFECT + r) a
+handleArchiveMock env = case _ of
+  Archive.Fetch destination name version reply -> map (map reply) Except.runExcept do
+    -- For testing, we look up publishedTime from metadata if available, but
+    -- fall back to current time if not (to support tests where metadata has
+    -- been modified but tarballs still exist).
+    now <- Run.liftEffect Now.nowDateTime
+    metadata <- Run.liftEffect (Ref.read env.metadataRef)
+    let
+      publishedTime = fromMaybe now do
+        Metadata m <- Map.lookup name metadata
+        publishedMeta <- Map.lookup version m.published
+        pure publishedMeta.publishedTime
+
+    let
+      tarballName = Version.print version <> ".tar.gz"
+      sourcePath = Path.concat [ env.archive, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
+      absoluteTarballPath = Path.concat [ destination, tarballName ]
+
+    Run.liftAff (Aff.attempt (FS.Aff.stat sourcePath)) >>= case _ of
+      Left _ ->
+        Except.throw $ Archive.DownloadFailed name version "Tarball not found in mock archive"
+      Right _ ->
+        Run.liftAff (Aff.attempt (FS.Aff.copyFile sourcePath absoluteTarballPath)) >>= case _ of
+          Left error ->
+            Except.throw $ Archive.DownloadFailed name version (Aff.message error)
+          Right _ ->
+            pure unit
+
+    extractedPath <- Run.liftAff $ Foreign.Tar.getToplevelDir absoluteTarballPath
+    case extractedPath of
+      Nothing ->
+        Except.throw $ Archive.ExtractionFailed name version "Tarball has no top-level directory"
+      Just path -> do
+        Run.liftAff $ Tar.extract { cwd: destination, archive: tarballName }
+        -- Rename to avoid conflict with packaging directory (same as source mock's "-checkout" suffix)
+        -- Strip trailing slash if present
+        let cleanPath = fromMaybe path $ String.stripSuffix (String.Pattern "/") path
+        let extractedDir = Path.concat [ destination, cleanPath ]
+        let finalPath = Path.concat [ destination, cleanPath <> "-archive" ]
+        Run.liftAff $ FS.Aff.rename extractedDir finalPath
+
+        -- Initialize a git repo for purs publish (same as source mock)
+        -- We do this inside liftAff to avoid EXCEPT type mismatch with Git.withGit
+        Run.liftAff $ case pursPublishMethod of
+          LegacyPursPublish -> do
+            FS.Aff.writeTextFile UTF8 (Path.concat [ finalPath, ".gitignore" ]) "output"
+            let exec args = void $ Git.gitCLI args (Just finalPath)
+            let ref = "v" <> Version.print version
+            exec [ "init" ]
+            exec [ "config", "user.name", "test-user" ]
+            exec [ "config", "user.email", "test-user@aol.com" ]
+            exec [ "config", "commit.gpgSign", "false" ]
+            exec [ "config", "tag.gpgSign", "false" ]
+            exec [ "add", "." ]
+            exec [ "commit", "-m", "Initial commit" ]
+            exec [ "tag", "-m", ref, ref ]
+          PursPublish ->
+            pure unit
+
+        pure { path: finalPath, published: publishedTime }

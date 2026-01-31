@@ -25,7 +25,6 @@ import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.SSH as SSH
-import Registry.Sha256 (Sha256)
 import Registry.Sha256 as Sha256
 import Registry.Version (Version)
 import Registry.Version as Version
@@ -149,6 +148,7 @@ unsafeManifest name version dependencies = Manifest
       { url: "https://github.com/purescript/purescript-" <> name <> ".git"
       , subdir: Nothing
       }
+  , ref: "v" <> version
   , description: Nothing
   , owners: Nothing
   , includeFiles: Nothing
@@ -158,11 +158,3 @@ unsafeManifest name version dependencies = Manifest
 -- | Format a package version as a string in the form 'name@X.Y.Z'
 formatPackageVersion :: PackageName -> Version -> String
 formatPackageVersion name version = PackageName.print name <> "@" <> Version.print version
-
--- | A Location for use within tests.
-defaultLocation :: Location
-defaultLocation = GitHub { owner: "purescript", repo: "registry-dev", subdir: Nothing }
-
--- | A Sha256 for use within tests.
-defaultHash :: Sha256
-defaultHash = fromRight "Failed to parse Sha256" $ Sha256.parse "sha256-fN9RUAzN21ZY4Y0UwqUSxwUPVz1g7/pcqoDvbJZoT04="

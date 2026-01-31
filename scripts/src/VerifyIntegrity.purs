@@ -1,4 +1,5 @@
 -- | Script for verifying that the registry and registry-index repos match each other and S3
+-- | (or locally cached tarballs with --local)
 module Registry.Scripts.VerifyIntegrity where
 
 import Registry.App.Prelude
@@ -7,15 +8,17 @@ import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
 import Control.Apply (lift2)
 import Data.Array as Array
-import Data.Codec.JSON as CJ
 import Data.Either (isLeft)
-import Data.Foldable (class Foldable, foldMap, intercalate)
+import Data.Foldable (class Foldable, foldM, intercalate)
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Map as Map
+import Effect.Aff as Aff
 import Data.Set as Set
 import Data.String as String
 import Effect.Class.Console (log)
 import Effect.Class.Console as Console
+import Node.FS.Aff as FS.Aff
+import Node.FS.Stats as Stats
 import Node.Path as Path
 import Node.Process as Process
 import Registry.App.CLI.Git as Git
@@ -31,51 +34,33 @@ import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Format as Internal.Format
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
+import Registry.Sha256 as Sha256
 import Registry.Version as Version
-import Run (Run)
+import Run (AFF, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
-data InputMode = File FilePath | Package PackageName | All
-
-derive instance Eq InputMode
-
-parser :: ArgParser InputMode
-parser = Arg.choose "input (--file or --package)"
-  [ Arg.argument [ "--file" ]
-      """Verify packages from a JSON file like: [ "prelude", "console" ]"""
-      # Arg.unformat "FILE_PATH" pure
-      # map File
-  , Arg.argument [ "--package" ]
-      "Verify the indicated package"
-      # Arg.unformat "NAME" PackageName.parse
-      # map Package
-  , Arg.flag [ "--all" ] "Verify all packages" $> All
-  ]
+parser :: ArgParser Boolean
+parser = Arg.flag [ "--local" ] "Verify against local cache in scratch/ instead of S3" # Arg.boolean # Arg.default false
 
 main :: Effect Unit
 main = launchAff_ do
   args <- Array.drop 2 <$> liftEffect Process.argv
-  let description = "A script for verifying that the registry and registry-index repos match each other and S3."
-  arguments <- case Arg.parseArgs "package-verify" description parser args of
+  let description = "A script for verifying that the registry and registry-index repos match each other and S3 (or local cache with --local)."
+  localMode <- case Arg.parseArgs "verify-integrity" description parser args of
     Left err -> Console.log (Arg.printArgError err) *> liftEffect (Process.exit' 1)
     Right command -> pure command
 
   -- Environment
   _ <- Env.loadEnvFile ".env"
-  token <- Env.lookupRequired Env.pacchettibottiToken
   resourceEnv <- Env.lookupResourceEnv
-  s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
 
   -- Caching
   let cache = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cache
   githubCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
-
-  -- GitHub
-  octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
 
   -- Registry
   debouncer <- Registry.newDebouncer
@@ -98,55 +83,78 @@ main = launchAff_ do
   let logPath = Path.concat [ logDir, logFile ]
   log $ "Logs available at " <> logPath
 
-  selectedPackages <- case arguments of
-    -- --package name@version
-    Package name -> pure (Just [ name ])
-    -- --file packagesversions.json
-    File path -> liftAff (readJsonFile (CJ.array PackageName.codec) path) >>= case _ of
-      Left err -> Console.log err *> liftEffect (Process.exit' 1)
-      Right values -> pure (Just values)
-    All -> pure Nothing
+  if localMode then do
+    token <- Env.lookupRequired Env.pacchettibottiToken
+    octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
 
-  let
-    interpret =
-      Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit' 1))
-        >>> Registry.interpret (Registry.handle registryEnv)
-        >>> Storage.interpret (Storage.handleS3 { s3, cache })
-        >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-        >>> Env.runResourceEnv resourceEnv
-        >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
-        >>> Run.runBaseAff'
-
-  interpret do
-    allMetadata <- Registry.readAllMetadata
-    allManifests <- Registry.readAllManifests
     let
-      packages = case selectedPackages of
-        Just ps -> ps
-        Nothing -> do
-          Array.fromFoldable
-            $ Map.keys allMetadata
-            <> Map.keys (ManifestIndex.toMap allManifests)
-    Log.info $ Array.fold
-      [ "Verifying package versions:"
-      , do
-          let foldFn name = "\n  - " <> PackageName.print name
-          foldMap foldFn packages
-      ]
+      interpret =
+        Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit' 1))
+          >>> Registry.interpret (Registry.handle registryEnv)
+          >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+          >>> Env.runResourceEnv resourceEnv
+          >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+          >>> Run.runBaseAff'
 
-    results <- for packages \name -> do
-      result <- Except.runExcept do
-        published <- Storage.query name
-        verifyPackage allMetadata allManifests (Set.fromFoldable published) name
-      result <$ case result of
-        Left err -> do
-          Log.error $ "Failed to verify " <> PackageName.print name <> ": " <> err
-        Right _ ->
-          Log.info $ "Verified " <> PackageName.print name
+    interpret do
+      allMetadata <- Registry.readAllMetadata
+      allManifests <- Registry.readAllManifests
+      let
+        packages = Array.fromFoldable
+          $ Map.keys allMetadata
+          <> Map.keys (ManifestIndex.toMap allManifests)
+      Log.info $ "Verifying " <> show (Array.length packages) <> " packages (local mode)"
 
-    Log.info "Finished."
-    when (any isLeft results) do
-      liftEffect $ Process.exit' 1
+      results <- for packages \name -> do
+        result <- Except.runExcept do
+          verifyPackageLocal cache allMetadata allManifests name
+        result <$ case result of
+          Left err -> do
+            Log.error $ "Failed to verify " <> PackageName.print name <> ": " <> err
+          Right _ ->
+            Log.info $ "Verified " <> PackageName.print name
+
+      Log.info "Finished."
+      when (any isLeft results) do
+        liftEffect $ Process.exit' 1
+
+  else do
+    token <- Env.lookupRequired Env.pacchettibottiToken
+    s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
+    octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
+
+    let
+      interpret =
+        Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit' 1))
+          >>> Registry.interpret (Registry.handle registryEnv)
+          >>> Storage.interpret (Storage.handleS3 { s3, cache })
+          >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+          >>> Env.runResourceEnv resourceEnv
+          >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
+          >>> Run.runBaseAff'
+
+    interpret do
+      allMetadata <- Registry.readAllMetadata
+      allManifests <- Registry.readAllManifests
+      let
+        packages = Array.fromFoldable
+          $ Map.keys allMetadata
+          <> Map.keys (ManifestIndex.toMap allManifests)
+      Log.info $ "Verifying " <> show (Array.length packages) <> " packages"
+
+      results <- for packages \name -> do
+        result <- Except.runExcept do
+          published <- Storage.query name
+          verifyPackage allMetadata allManifests (Set.fromFoldable published) name
+        result <$ case result of
+          Left err -> do
+            Log.error $ "Failed to verify " <> PackageName.print name <> ": " <> err
+          Right _ ->
+            Log.info $ "Verified " <> PackageName.print name
+
+      Log.info "Finished."
+      when (any isLeft results) do
+        liftEffect $ Process.exit' 1
 
 intercalateMap :: forall f a d. Monoid d => Foldable f => d -> (a -> d) -> f a -> d
 intercalateMap s f = intercalate s <<< map f <<< Array.fromFoldable
@@ -197,3 +205,64 @@ verifyPackage allMetadata allManifests publishedS3 name = do
   for_ (dblDiff publishedS3 versions) \diff -> do
     Except.throw $ printDblDiff Version.print { left: "S3", right: "manifests/metadata" } diff
   pure unit
+
+-- | Verify a package using local cache instead of S3. Checks that:
+-- | 1. The list of package versions in metadata matches the manifest index
+-- | 2. Each cached tarball exists and has the correct size (bytes)
+-- | 3. Each cached tarball has the correct hash
+verifyPackageLocal :: forall r. FilePath -> Map PackageName Metadata -> ManifestIndex -> PackageName -> Run (EXCEPT String + LOG + AFF + r) Unit
+verifyPackageLocal cacheDir allMetadata allManifests name = do
+  let formatted = PackageName.print name
+  Log.info $ "Checking versions for " <> formatted <> " (local mode)"
+
+  Metadata { published } <- case Map.lookup name allMetadata of
+    Nothing -> Except.throw $ "Missing metadata for " <> formatted
+    Just m -> pure m
+
+  let metadataVersions = Map.keys published
+
+  manifestVersions <- case Map.lookup name $ ManifestIndex.toMap allManifests of
+    Nothing ->
+      if Set.isEmpty metadataVersions then pure Set.empty
+      else Except.throw $ "Missing manifests for " <> formatted
+    Just manifests -> pure $ Map.keys manifests
+
+  for_ (dblDiff metadataVersions manifestVersions) \diff -> do
+    Except.throw $ printDblDiff Version.print { left: "metadata", right: "manifests" } diff
+
+  -- Collect cached tarball versions
+  let versions = Array.fromFoldable metadataVersions
+  cachedVersions <- Run.liftAff $ foldM (collectCached name) Set.empty versions
+
+  for_ (dblDiff metadataVersions cachedVersions) \diff -> do
+    Except.throw $ printDblDiff Version.print { left: "metadata", right: "cache" } diff
+
+  -- Verify integrity of each cached tarball
+  for_ versions \version -> do
+    let
+      tarballPath = Path.concat [ cacheDir, PackageName.print name <> "-" <> Version.print version ]
+      pkgVersion = formatPackageVersion name version
+
+    case Map.lookup version published of
+      Nothing -> Except.throw $ "Version " <> Version.print version <> " not in metadata for " <> formatted
+      Just { bytes: expectedBytes, hash: expectedHash } -> do
+        -- Check file size
+        stats <- Run.liftAff $ FS.Aff.stat tarballPath
+        let actualBytes = Stats.size stats
+        unless (actualBytes == expectedBytes) do
+          Except.throw $ "Size mismatch for " <> pkgVersion <> ": expected " <> show expectedBytes <> " bytes, got " <> show actualBytes
+
+        -- Check hash
+        actualHash <- Run.liftAff $ Sha256.hashFile tarballPath
+        unless (actualHash == expectedHash) do
+          Except.throw $ "Hash mismatch for " <> pkgVersion <> ": expected " <> Sha256.print expectedHash <> ", got " <> Sha256.print actualHash
+
+        Log.debug $ "Verified integrity: " <> pkgVersion
+  where
+  collectCached :: PackageName -> Set Version -> Version -> Aff (Set Version)
+  collectCached pkgName acc version = do
+    let tarballPath = Path.concat [ cacheDir, PackageName.print pkgName <> "-" <> Version.print version ]
+    result <- Aff.attempt $ FS.Aff.stat tarballPath
+    pure $ case result of
+      Left _ -> acc
+      Right _ -> Set.insert version acc

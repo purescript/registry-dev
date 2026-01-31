@@ -14,16 +14,21 @@
 -- | are well-formed, and JSON codecs package managers can use to construct the
 -- | requests necessary to send to the Registry API or publish in a GitHub issue.
 module Registry.Operation
-  ( AuthenticatedPackageOperation(..)
-  , AuthenticatedData
+  ( AuthenticatedData
+  , AuthenticatedPackageOperation(..)
   , PackageOperation(..)
   , PackageSetOperation(..)
   , PackageSetUpdateData
+  , PackageSetUpdateRequest
   , PublishData
   , TransferData
   , UnpublishData
   , authenticatedCodec
+  , packageName
+  , packageOperationCodec
+  , packageSetOperationCodec
   , packageSetUpdateCodec
+  , packageSetUpdateRequestCodec
   , publishCodec
   , transferCodec
   , unpublishCodec
@@ -58,6 +63,25 @@ data PackageOperation
 
 derive instance Eq PackageOperation
 
+packageName :: PackageOperation -> PackageName
+packageName = case _ of
+  Publish { name } -> name
+  Authenticated { payload } -> case payload of
+    Unpublish { name } -> name
+    Transfer { name } -> name
+
+-- | A codec for encoding and decoding a `PackageOperation` as JSON.
+packageOperationCodec :: CJ.Codec PackageOperation
+packageOperationCodec = CJ.named "PackageOperation" $ Codec.codec' decode encode
+  where
+  decode json =
+    map Publish (Codec.decode publishCodec json)
+      <|> map Authenticated (Codec.decode authenticatedCodec json)
+
+  encode = case _ of
+    Publish publish -> CJ.encode publishCodec publish
+    Authenticated authenticated -> CJ.encode authenticatedCodec authenticated
+
 -- | An operation supported by the registry HTTP API for package operations and
 -- | which must be authenticated.
 data AuthenticatedPackageOperation
@@ -74,7 +98,8 @@ type PublishData =
   { name :: PackageName
   , location :: Maybe Location
   , ref :: String
-  , compiler :: Version
+  , version :: Version
+  , compiler :: Maybe Version
   , resolutions :: Maybe (Map PackageName Version)
   }
 
@@ -84,7 +109,8 @@ publishCodec = CJ.named "Publish" $ CJ.Record.object
   { name: PackageName.codec
   , location: CJ.Record.optional Location.codec
   , ref: CJ.string
-  , compiler: Version.codec
+  , version: Version.codec
+  , compiler: CJ.Record.optional Version.codec
   , resolutions: CJ.Record.optional (Internal.Codec.packageMap Version.codec)
   }
 
@@ -178,6 +204,13 @@ data PackageSetOperation = PackageSetUpdate PackageSetUpdateData
 
 derive instance Eq PackageSetOperation
 
+-- | A codec for encoding and decoding a `PackageSetOperation` as JSON.
+packageSetOperationCodec :: CJ.Codec PackageSetOperation
+packageSetOperationCodec = CJ.named "PackageSetOperation" $ Codec.codec' decode encode
+  where
+  decode json = map PackageSetUpdate (Codec.decode packageSetUpdateCodec json)
+  encode (PackageSetUpdate update) = CJ.encode packageSetUpdateCodec update
+
 -- | Submit a batch update to the most recent package set.
 -- |
 -- | For full details, see the registry spec:
@@ -197,3 +230,33 @@ packageSetUpdateCodec = CJ.named "PackageSetUpdate" $ CJ.Record.object
   -- `Compat` version of the `maybe` codec.
   , packages: Internal.Codec.packageMap (CJ.Common.nullable Version.codec)
   }
+
+-- | A package set update request that can be optionally authenticated.
+-- |
+-- | Non-trustees can submit add/upgrade operations without authentication.
+-- | Trustees must sign requests for restricted operations (compiler changes,
+-- | package removals) with pacchettibotti's key.
+type PackageSetUpdateRequest =
+  { payload :: PackageSetOperation
+  , rawPayload :: String
+  , signature :: Maybe Signature
+  }
+
+-- | A codec for encoding and decoding a `PackageSetUpdateRequest` as JSON.
+packageSetUpdateRequestCodec :: CJ.Codec PackageSetUpdateRequest
+packageSetUpdateRequestCodec = CJ.named "PackageSetUpdateRequest" $ Codec.codec' decode encode
+  where
+  decode json = do
+    rep <- Codec.decode repCodec json
+    payloadJson <- except $ lmap JSON.DecodeError.basic $ JSON.parse rep.payload
+    operation <- Codec.decode packageSetOperationCodec payloadJson
+    pure { payload: operation, rawPayload: rep.payload, signature: map Signature rep.signature }
+
+  encode { rawPayload, signature } =
+    CJ.encode repCodec { payload: rawPayload, signature: map (\(Signature s) -> s) signature }
+
+  repCodec :: CJ.Codec { payload :: String, signature :: Maybe String }
+  repCodec = CJ.named "PackageSetUpdateRequestRep" $ CJ.Record.object
+    { payload: CJ.string
+    , signature: CJ.Record.optional CJ.string
+    }

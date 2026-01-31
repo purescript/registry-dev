@@ -6,6 +6,7 @@ import Effect (Effect)
 import Test.Registry.Foreign.FastGlob as Foreign.FastGlob
 import Test.Registry.Foreign.Gzip as Foreign.Gzip
 import Test.Registry.Foreign.JsonRepair as Foreign.JsonRepair
+import Test.Registry.Foreign.Octokit as Foreign.Octokit
 import Test.Registry.Foreign.SPDX as Foreign.SPDX
 import Test.Spec as Spec
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -18,3 +19,4 @@ main = runSpecAndExitProcess [ consoleReporter ] do
     Spec.describe "JsonRepair" Foreign.JsonRepair.spec
     Spec.describe "FastGlob" Foreign.FastGlob.spec
     Spec.describe "Gzip" Foreign.Gzip.spec
+    Spec.describe "Octokit" Foreign.Octokit.spec

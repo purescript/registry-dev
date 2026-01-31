@@ -7,18 +7,19 @@ import Data.Either (Either(..))
 import Data.Foldable (for_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.List.NonEmpty as NonEmptyList
-import Data.Map (Map)
+import Data.Map (Map, SemigroupMap(..))
 import Data.Map as Map
-import Data.Maybe (Maybe(..))
-import Data.Newtype (wrap)
+import Data.Maybe (Maybe(..), fromMaybe')
+import Data.Newtype (un, wrap)
 import Data.Semigroup.Foldable (intercalateMap)
 import Data.Set as Set
 import Data.Set.NonEmpty as NES
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
+import Partial.Unsafe (unsafeCrashWith)
 import Registry.PackageName as PackageName
 import Registry.Range as Range
-import Registry.Solver (Intersection(..), LocalSolverPosition(..), SolverError(..), SolverPosition(..), Sourced(..), printSolverError, solve)
+import Registry.Solver (Intersection(..), LocalSolverPosition(..), SolverError(..), SolverPosition(..), Sourced(..), initializeRegistry, initializeRequired, lowerBound, printSolverError, solve, solveSeed, solveSteps, upperBound)
 import Registry.Test.Assert as Assert
 import Registry.Test.Utils (fromRight)
 import Registry.Types (PackageName, Range, Version)
@@ -30,6 +31,11 @@ spec = do
   let
     shouldSucceed goals result = pure unit >>= \_ ->
       solve solverIndex (Map.fromFoldable goals) `Assert.shouldContain` (Map.fromFoldable result)
+
+    shouldSucceedSteps goals result = pure unit >>= \_ -> do
+      let solved = solveSteps (solveSeed { registry: initializeRegistry solverIndex, required: initializeRequired (Map.fromFoldable goals) })
+      let toRange intersect = fromMaybe' (\_ -> unsafeCrashWith "Bad intersection") (Range.mk (lowerBound intersect) (upperBound intersect))
+      map toRange (un SemigroupMap solved.required) `Assert.shouldEqual` Map.fromFoldable result
 
     shouldFail goals errors = pure unit >>= \_ -> case solve solverIndex (Map.fromFoldable goals) of
       Left solverErrors -> do
@@ -102,6 +108,22 @@ spec = do
         [ simple.package /\ version 1
         , prelude.package /\ version 1
         ]
+
+  Spec.describe "Single-step expands bounds" do
+    Spec.it "Simple range" do
+      shouldSucceedSteps
+        [ simple.package /\ range 0 1 ]
+        [ simple.package /\ range 0 1, prelude.package /\ range 0 1 ]
+
+    Spec.it "Multi-version range" do
+      shouldSucceedSteps
+        [ simple.package /\ range 0 2 ]
+        [ simple.package /\ range 0 2, prelude.package /\ range 0 2 ]
+
+    Spec.it "Transitive" do
+      shouldSucceedSteps
+        [ onlySimple.package /\ range 0 1 ]
+        [ onlySimple.package /\ range 0 1, simple.package /\ range 0 1, prelude.package /\ range 0 1 ]
 
   Spec.describe "Valid dependency ranges containing some invalid versions solve" do
     Spec.it "Proceeds past broken ranges to find a later valid range" do

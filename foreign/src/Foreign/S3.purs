@@ -4,6 +4,7 @@ module Registry.Foreign.S3
   , Space
   , SpaceKey
   , connect
+  , deleteAllObjects
   , deleteObject
   , listObjects
   , putObject
@@ -119,3 +120,16 @@ deleteObject space params = do
     , versionId: result."VersionId"
     , requestCharged: result."RequestCharged"
     }
+
+type JSDeleteAllParams = { "Bucket" :: String }
+type JSDeleteAllResponse = { deleted :: Int }
+
+foreign import deleteAllObjectsImpl :: EffectFn2 S3 JSDeleteAllParams (Promise JSDeleteAllResponse)
+
+-- | Delete all objects in a bucket. Lists with pagination and deletes in batches of 1000.
+-- | Returns the total number of objects deleted.
+deleteAllObjects :: forall m. MonadAff m => Space -> m Int
+deleteAllObjects space = do
+  let jsParams = { "Bucket": space.bucket }
+  result <- liftAff $ Promise.toAffE (runEffectFn2 deleteAllObjectsImpl space.conn jsParams)
+  pure result.deleted

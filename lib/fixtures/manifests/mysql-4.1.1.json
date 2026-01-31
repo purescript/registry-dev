@@ -6,6 +6,7 @@
     "githubOwner": "oreshinya",
     "githubRepo": "purescript-mysql"
   },
+  "ref": "v4.1.1",
   "dependencies": {
     "aff": ">=5.0.2 <6.0.0",
     "js-date": ">=6.0.0 <7.0.0",

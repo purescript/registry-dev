@@ -5,16 +5,29 @@ package:
   dependencies:
     - aff
     - arrays
+    - codec-json
     - console
     - datetime
-    - effect
-    - either
-    - maybe
-    - prelude
+    - exceptions
+    - fetch
+    - integers
+    - json
+    - node-child-process
+    - node-execa
+    - node-fs
+    - node-path
+    - node-process
+    - ordered-collections
+    - registry-app
+    - registry-foreign
     - registry-lib
+    - registry-scripts
     - registry-test-utils
+    - routing-duplex
+    - run
     - spec
     - spec-node
     - strings
+    - transformers
   run:
     main: Test.E2E.Main

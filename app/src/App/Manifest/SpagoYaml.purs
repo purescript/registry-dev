@@ -27,9 +27,10 @@ import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.Version as Version
 
--- | Attempt to convert a spago.yaml file to a Manifest
-spagoYamlToManifest :: SpagoYaml -> Either String Manifest
-spagoYamlToManifest config = do
+-- | Attempt to convert a spago.yaml file to a Manifest. The ref parameter is
+-- | the Git reference (tag or commit) used to fetch this version's source.
+spagoYamlToManifest :: String -> SpagoYaml -> Either String Manifest
+spagoYamlToManifest ref config = do
   package@{ name, description, dependencies: spagoDependencies } <- note "No 'package' key found in config." config.package
   publish@{ version, license, owners } <- note "No 'publish' key found under the 'package' key in config." package.publish
   location <- note "No 'location' key found under the 'publish' key in config." publish.location
@@ -43,6 +44,7 @@ spagoYamlToManifest config = do
     , description
     , license
     , location
+    , ref
     , owners
     , includeFiles
     , excludeFiles
@@ -153,10 +155,12 @@ convertSpagoDependencies dependencies = do
 -- | (an unbounded range) or a valid Registry range.
 data SpagoRange = Unbounded | Bounded Range
 
+derive instance Eq SpagoRange
+
 parseSpagoRange :: String -> Either String SpagoRange
 parseSpagoRange = case _ of
   "*" -> Right Unbounded
-  range -> Bounded <$> Range.parse range
+  str -> Bounded <$> (Range.parse str <|> map Range.exact (Version.parse str))
 
 printSpagoRange :: SpagoRange -> String
 printSpagoRange = case _ of

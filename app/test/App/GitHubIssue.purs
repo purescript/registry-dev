@@ -32,7 +32,8 @@ decodeEventsToOps = do
       operation = Publish
         { name: Utils.unsafePackageName "something"
         , ref: "v1.2.3"
-        , compiler: Utils.unsafeVersion "0.15.0"
+        , version: Utils.unsafeVersion "1.2.3"
+        , compiler: Just $ Utils.unsafeVersion "0.15.0"
         , resolutions: Just $ Map.fromFoldable [ Utils.unsafePackageName "prelude" /\ Utils.unsafeVersion "1.0.0" ]
         , location: Nothing
         }
@@ -47,8 +48,9 @@ decodeEventsToOps = do
       operation = Publish
         { name: Utils.unsafePackageName "prelude"
         , ref: "v5.0.0"
+        , version: Utils.unsafeVersion "5.0.0"
         , location: Just $ GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
-        , compiler: Utils.unsafeVersion "0.15.0"
+        , compiler: Just $ Utils.unsafeVersion "0.15.0"
         , resolutions: Just $ Map.fromFoldable [ Utils.unsafePackageName "prelude" /\ Utils.unsafeVersion "1.0.0" ]
         }
 
@@ -75,8 +77,9 @@ decodeEventsToOps = do
       operation = Publish
         { name: Utils.unsafePackageName "prelude"
         , ref: "v5.0.0"
+        , version: Utils.unsafeVersion "5.0.0"
         , location: Just $ GitHub { subdir: Nothing, owner: "purescript", repo: "purescript-prelude" }
-        , compiler: Utils.unsafeVersion "0.15.0"
+        , compiler: Just $ Utils.unsafeVersion "0.15.0"
         , resolutions: Nothing
         }
 
@@ -103,6 +106,7 @@ preludeAdditionString =
   {
     "name": "prelude",
     "ref": "v5.0.0",
+    "version": "5.0.0",
     "location": {
       "githubOwner": "purescript",
       "githubRepo": "purescript-prelude"
@@ -121,6 +125,7 @@ packageNameTooLongString =
   {
     "name": "packagenamewayyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyytoolong",
     "ref": "v5.0.0",
+    "version": "5.0.0",
     "location": {
       "githubOwner": "purescript",
       "githubRepo": "purescript-prelude"

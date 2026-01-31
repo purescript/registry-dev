@@ -54,7 +54,8 @@ minimalPublish =
 {
   "compiler": "0.15.6",
   "name": "my-package",
-  "ref": "v1.0.0"
+  "ref": "v1.0.0",
+  "version": "1.0.0"
 }"""
 
 fullPublish :: String
@@ -67,7 +68,8 @@ fullPublish =
     "subdir": "core"
   },
   "name": "my-package",
-  "ref": "c23snabhsrib39"
+  "ref": "c23snabhsrib39",
+  "version": "1.0.0"
 }"""
 
 unpublish :: String

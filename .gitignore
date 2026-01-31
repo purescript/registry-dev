@@ -3,6 +3,7 @@
 /output-es
 /scratch
 /.vscode
+/scripts/analysis
 
 result*
 
@@ -15,6 +16,8 @@ result*
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
+
+TODO.md
 .spec-results
 
 # Keep it secret, keep it safe.

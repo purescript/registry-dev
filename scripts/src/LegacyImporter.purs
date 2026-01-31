@@ -4,34 +4,90 @@
 -- | It can be run in different modes depending on whether you want to generate
 -- | the registry from scratch, including uploading packages to the backend or
 -- | you just want to iteratively pick up new releases.
+-- |
+-- | The legacy importer clones the registry and registry-index repositories into
+-- | `scratch/registry` and `scratch/registry-index`. After a run, you can diff
+-- | against the upstream to see what changed:
+-- |
+-- | ```sh
+-- | cd scratch/registry
+-- | git diff origin/main -- metadata/
+-- | ```
+-- |
+-- | For a fresh re-upload, reset the local clones first, then delete the
+-- | metadata and index contents so the importer sees an empty registry:
+-- |
+-- | ```sh
+-- | cd scratch/registry && git reset --hard origin/main
+-- | rm -rf scratch/registry/metadata/*
+-- | cd scratch/registry-index && git reset --hard origin/main
+-- | rm -rf scratch/registry-index/*/
+-- | ```
+-- |
+-- | To also recompute all cached manifests and compilation results, remove the
+-- | cache directory, or you can remove specific cache files as needed.
+-- |
+-- | ```sh
+-- | rm -rf scratch/.cache
+-- | ```
+-- |
+-- | The script writes several files to `scratch`:
+-- |
+-- | - `import-stats.txt` - Aggregate counts of import results
+-- | - `package-failures.json` - Package-level failures (e.g., repo not found)
+-- | - `version-failures.json` - Version-level failures (e.g., invalid manifest)
+-- | - `publish-failures.json` - Publish-level failures (e.g., no valid compiler)
+-- | - `publish-stats.txt` - Aggregate counts of publish results
+-- | - `reserved-packages.txt` - Packages reserved due to 0.13 or org status
+-- | - `removed-packages.txt` - Packages that fully failed and will be removed
+-- | - `sorted-packages.txt` - All packages in topological order for publishing
+-- | - `logs/` - Detailed logs from each run
 module Registry.Scripts.LegacyImporter where
 
 import Registry.App.Prelude
 
 import ArgParse.Basic (ArgParser)
 import ArgParse.Basic as Arg
+import Codec.JSON.DecodeError as CJ.DecodeError
 import Control.Apply (lift2)
 import Data.Array as Array
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Common as CJ.Common
 import Data.Codec.JSON.Record as CJ.Record
 import Data.Codec.JSON.Variant as CJ.Variant
 import Data.Compactable (separate)
+import Data.DateTime (Date, Month(..))
+import Data.DateTime as DateTime
+import Data.Enum (toEnum)
 import Data.Exists as Exists
 import Data.Filterable (partition)
 import Data.Foldable (foldMap)
 import Data.Foldable as Foldable
 import Data.Formatter.DateTime as Formatter.DateTime
+import Data.Function (on)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.List as List
+import Data.List.NonEmpty as NonEmptyList
 import Data.Map as Map
 import Data.Ordering (invert)
 import Data.Profunctor as Profunctor
 import Data.Set as Set
+import Data.Set.NonEmpty (NonEmptySet)
+import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.String.CodeUnits as String.CodeUnits
+import Data.These (These(..))
+import Data.Tuple (uncurry)
 import Data.Variant as Variant
+import Effect.Aff as Aff
 import Effect.Class.Console as Console
+import Effect.Exception as Exception
+import Fetch.Retry as Fetch
+import JSON as JSON
+import JSON.Object as JSON.Object
+import Node.Buffer as Buffer
+import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
 import Parsing (Parser)
@@ -40,44 +96,91 @@ import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
 import Parsing.String.Basic as Parsing.String.Basic
+import Registry.App.API (COMPILER_CACHE)
 import Registry.App.API as API
 import Registry.App.CLI.Git as Git
+import Registry.App.CLI.Purs (CompilerFailure, compilerFailureCodec)
+import Registry.App.CLI.Purs as Purs
+import Registry.App.CLI.PursVersions as PursVersions
+import Registry.App.CLI.Tar as Tar
+import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Comment as Comment
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
+import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
+import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Source as Source
+import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
+import Registry.App.Legacy.BoundWidening (LegacyPublishContext)
+import Registry.App.Legacy.BoundWidening as BoundWidening
 import Registry.App.Legacy.LenientVersion (LenientVersion)
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Manifest (LegacyManifestError(..), LegacyManifestValidationError)
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), rawPackageNameMapCodec, rawVersionMapCodec)
+import Registry.App.Manifest.SpagoYaml as SpagoYaml
+import Registry.App.Server.MatrixBuilder as MatrixBuilder
+import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (Address, Tag)
 import Registry.Foreign.Octokit as Octokit
+import Registry.Foreign.Tar as Foreign.Tar
+import Registry.Foreign.Tmp as Tmp
+import Registry.Internal.Codec (packageMap, versionMap)
+import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Format as Internal.Format
-import Registry.Location as Location
+import Registry.Manifest (Manifest(..))
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
-import Registry.Operation (PublishData)
 import Registry.PackageName as PackageName
+import Registry.Range as Range
+import Registry.Solver (CompilerIndex(..))
+import Registry.Solver as Solver
 import Registry.Version as Version
-import Run (Run)
+import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Run.Except
-import Spago.Generated.BuildInfo as BuildInfo
 import Type.Proxy (Proxy(..))
 
 data ImportMode = DryRun | GenerateRegistry | UpdateRegistry
 
 derive instance Eq ImportMode
+
+-- | Check if an error message indicates an infrastructure problem (git, network, etc.)
+-- | that should not be cached because it may succeed on retry.
+isInfraError :: String -> Boolean
+isInfraError error =
+  -- Source.purs Fatal errors (HTTP failures, git clone failures)
+  String.contains (String.Pattern "Unrecoverable error") error
+    -- Registry git operation failures (from Registry.purs)
+    || String.contains (String.Pattern "Failed to write and commit") error
+    || String.contains (String.Pattern "Failed to delete and commit") error
+    || String.contains (String.Pattern "Failed to push") error
+    || String.contains (String.Pattern "Failed to write metadata") error
+    || String.contains (String.Pattern "Failed to write package set") error
+    -- Registry read failures - repo sync issues (from Registry.purs)
+    || String.contains (String.Pattern "repo could not be checked") error
+    || String.contains (String.Pattern "Could not read manifests") error
+    || String.contains (String.Pattern "Could not read metadata") error
+    || String.contains (String.Pattern "Could not read package set") error
+    || String.contains (String.Pattern "Could not read latest package set") error
+    -- Raw git/network errors that may leak through
+    || Git.isTransientGitError error
+
+-- | Check if a fatal error message indicates a missing tag/branch.
+-- | This is used to fall back to the registry-archive for packages
+-- | where the GitHub repo exists but the specific tag has been deleted.
+isMissingTagError :: String -> Boolean
+isMissingTagError errMsg =
+  String.contains (String.Pattern "Remote branch") errMsg
+    && String.contains (String.Pattern "not found in upstream origin") errMsg
 
 parser :: ArgParser ImportMode
 parser = Arg.choose "command"
@@ -118,16 +221,25 @@ main = launchAff_ do
   -- uploaded and manifests and metadata are written, committed, and pushed.
   runAppEffects <- do
     debouncer <- Registry.newDebouncer
-    let registryEnv pull write = { pull, write, repos: Registry.defaultRepos, workdir: scratchDir, debouncer, cacheRef: registryCacheRef }
+    let
+      registryEnv pull write =
+        { pull
+        , write
+        , repos: Registry.defaultRepos
+        , workdir: scratchDir
+        , debouncer
+        , cacheRef: registryCacheRef
+        }
     case mode of
       DryRun -> do
         token <- Env.lookupRequired Env.githubToken
         octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
         pure do
           Registry.interpret (Registry.handle (registryEnv Git.Autostash Registry.ReadOnly))
+            >>> Archive.interpret Archive.handle
             >>> Storage.interpret (Storage.handleReadOnly cache)
             >>> Pursuit.interpret Pursuit.handlePure
-            >>> Source.interpret Source.handle
+            >>> Source.interpret (Source.handle Source.Old)
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
 
       GenerateRegistry -> do
@@ -136,9 +248,10 @@ main = launchAff_ do
         octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
         pure do
           Registry.interpret (Registry.handle (registryEnv Git.Autostash (Registry.CommitAs (Git.pacchettibottiCommitter token))))
+            >>> Archive.interpret Archive.handle
             >>> Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret Pursuit.handlePure
-            >>> Source.interpret Source.handle
+            >>> Source.interpret (Source.handle Source.Old)
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
 
       UpdateRegistry -> do
@@ -147,9 +260,10 @@ main = launchAff_ do
         octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
         pure do
           Registry.interpret (Registry.handle (registryEnv Git.ForceClean (Registry.CommitAs (Git.pacchettibottiCommitter token))))
+            >>> Archive.interpret Archive.handle
             >>> Storage.interpret (Storage.handleS3 { s3, cache })
             >>> Pursuit.interpret (Pursuit.handleAff token)
-            >>> Source.interpret Source.handle
+            >>> Source.interpret (Source.handle Source.Recent)
             >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
 
   -- Logging setup
@@ -161,18 +275,19 @@ main = launchAff_ do
     logFile = "legacy-importer-" <> String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now) <> ".log"
     logPath = Path.concat [ logDir, logFile ]
 
-  runLegacyImport mode logPath
+  runLegacyImport logPath
     # runAppEffects
     # Cache.interpret Legacy.Manifest._legacyCache (Cache.handleMemoryFs { cache, ref: legacyCacheRef })
     # Cache.interpret _importCache (Cache.handleMemoryFs { cache, ref: importCacheRef })
+    # Cache.interpret API._compilerCache (Cache.handleFs cache)
+    # Cache.interpret API._pursGraphCache (Cache.handleFs cache)
     # Run.Except.catch (\msg -> Log.error msg *> Run.liftEffect (Process.exit' 1))
-    # Comment.interpret Comment.handleLog
     # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
     # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
 
-runLegacyImport :: forall r. ImportMode -> FilePath -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit
-runLegacyImport mode logs = do
+runLegacyImport :: forall r. FilePath -> Run (API.PublishEffects + IMPORT_CACHE + r) Unit
+runLegacyImport logs = do
   Log.info "Starting legacy import!"
   Log.info $ "Logs available at " <> logs
 
@@ -204,108 +319,438 @@ runLegacyImport mode logs = do
     pure $ fixupNames allPackages
 
   Log.info $ "Read " <> show (Set.size (Map.keys legacyRegistry)) <> " package names from the legacy registry."
+
+  Log.info "Reading packages eligible for reservation (post-0.13 or trusted orgs)..."
+  eligibleForReservation <- readPackagesMetadata >>= case _ of
+    Left err -> do
+      Log.warn $ "Could not read reserved packages: " <> err
+      Log.warn $ "Determining reserved packages..."
+      metadata <- getPackagesMetadata legacyRegistry
+      let cutoff = filterPackages_0_13 metadata
+      writePackagesMetadata cutoff
+      pure cutoff
+    Right cutoff -> pure cutoff
+
+  -- Reserve the 'metadata', 'purs', and 'purescript' package names
+  let metadataPackage = unsafeFromRight (PackageName.parse "metadata")
+  let pursPackage = unsafeFromRight (PackageName.parse "purs")
+  let purescriptPackage = unsafeFromRight (PackageName.parse "purescript")
+  for_ [ metadataPackage, pursPackage, purescriptPackage ] \package ->
+    Registry.readMetadata package >>= case _ of
+      Nothing -> do
+        Log.info $ "Writing empty metadata file for " <> PackageName.print package
+        let location = GitHub { owner: "purescript", repo: "purescript-" <> PackageName.print package, subdir: Nothing }
+        let entry = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
+        Registry.writeMetadata package entry
+      Just _ -> pure unit
+
   importedIndex <- importLegacyRegistry legacyRegistry
 
   Log.info "Writing package and version failures to disk..."
   Run.liftAff $ writePackageFailures importedIndex.failedPackages
   Run.liftAff $ writeVersionFailures importedIndex.failedVersions
 
-  Log.info "Writing empty metadata files for legacy packages that can't be registered..."
-  void $ forWithIndex importedIndex.reservedPackages \package location -> do
-    Registry.readMetadata package >>= case _ of
-      Nothing -> do
-        let metadata = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
-        Registry.writeMetadata package metadata
-      Just _ -> pure unit
-
   Log.info "Ready for upload!"
-
-  Log.info $ formatImportStats $ calculateImportStats legacyRegistry importedIndex
+  let importStats = calculateImportStats legacyRegistry importedIndex
+  let formattedStats = formatImportStats importStats
+  Log.info formattedStats
+  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "import-stats.txt" ]) formattedStats
 
   Log.info "Sorting packages for upload..."
-  let allIndexPackages = ManifestIndex.toSortedArray ManifestIndex.IgnoreRanges importedIndex.registryIndex
+  let allIndexPackages = ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges importedIndex.registryIndex
+  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "sorted-packages.txt" ]) $ String.joinWith "\n" $ map (\(Manifest { name, version }) -> PackageName.print name <> "@" <> Version.print version) allIndexPackages
 
-  Log.info "Removing packages that previously failed publish"
-  indexPackages <- allIndexPackages # Array.filterA \(Manifest { name, version }) ->
-    isNothing <$> Cache.get _importCache (PublishFailure name version)
+  Log.info "Removing packages that previously failed publish or have been published"
+  publishable <- do
+    allMetadata <- Registry.readAllMetadata
+    allIndexPackages # Array.filterA \(Manifest { name, version }) -> do
+      Cache.get _importCache (PublishFailure name version) >>= case _ of
+        Nothing -> pure $ not $ hasMetadata allMetadata name version
+        Just _ -> pure false
 
-  allMetadata <- Registry.readAllMetadata
-
-  -- This record comes from the build directory (.spago) and records information
-  -- from the most recent build.
-  let compiler = unsafeFromRight (Version.parse BuildInfo.pursVersion)
-
-  -- Just a safety check to ensure the compiler used in the pipeline is not too
-  -- low. Should be bumped from time to time to the latest compiler.
-  let minCompiler = unsafeFromRight (Version.parse "0.15.7")
-  when (compiler < minCompiler) do
-    Run.Except.throw $ "Local compiler " <> Version.print compiler <> " is too low (min: " <> Version.print minCompiler <> ")."
-
-  Log.info $ "Using compiler " <> Version.print compiler
+  allCompilers <- PursVersions.pursVersions
+  allCompilersRange <- case Range.mk (NonEmptyArray.head allCompilers) (Version.bumpPatch (NonEmptyArray.last allCompilers)) of
+    Nothing -> Run.Except.throw $ "Failed to construct a compiler range from " <> Version.print (NonEmptyArray.head allCompilers) <> " and " <> Version.print (NonEmptyArray.last allCompilers)
+    Just range -> do
+      Log.info $ "All available compilers range: " <> Range.print range
+      pure range
 
   let
-    isPublished { name, version } = hasMetadata allMetadata name version
-    notPublished = indexPackages # Array.filter \(Manifest manifest) -> not (isPublished manifest)
+    publishLegacyPackage :: LegacyPublishContext -> Set PackageName -> Manifest -> Run _ Unit
+    publishLegacyPackage legacyContext archivePackages (Manifest manifest) = do
+      let legacyIndex = legacyContext.legacyIndex
+      let formatted = formatPackageVersion manifest.name manifest.version
 
-    mkOperation :: Manifest -> Run _ PublishData
-    mkOperation (Manifest manifest) =
-      case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
-        Nothing -> do
-          let formatted = formatPackageVersion manifest.name manifest.version
-          Log.error $ "Unable to recover package ref for " <> formatted
-          Run.Except.throw $ "Failed to create publish operation for " <> formatted
-        Just ref ->
-          pure
-            { location: Just manifest.location
-            , name: manifest.name
-            , ref: un RawVersion ref
-            , compiler
-            , resolutions: Nothing
-            }
+      -- Widen the manifest's dependency bounds using package set evidence.
+      -- This must happen before solving so packages with overly-strict bounds
+      -- can find solutions. The widened bounds will also be passed to API.publish.
+      let widenedDeps = BoundWidening.widenManifestDependencies legacyContext.packageSetEvidence manifest.name manifest.version manifest.dependencies
+      let widenedAnyDeps = widenedDeps /= manifest.dependencies
 
-  case notPublished of
+      -- A package is archive-backed if its GitHub repo returns 404
+      let isArchiveBacked = manifest.name `Set.member` archivePackages
+      Log.info $ "\n----------\nPUBLISHING: " <> formatted <> "\n----------\n"
+
+      -- Log widening after the PUBLISHING banner
+      when widenedAnyDeps do
+        Log.info $ "Widened dependency bounds for " <> formatted <> ":"
+        for_ (Map.toUnfoldable manifest.dependencies :: Array _) \(Tuple depName oldRange) ->
+          for_ (Map.lookup depName widenedDeps) \newRange ->
+            when (oldRange /= newRange) do
+              Log.info $ "  " <> PackageName.print depName <> ": " <> Range.print oldRange <> " → " <> Range.print newRange
+      RawVersion ref <- case Map.lookup manifest.version =<< Map.lookup manifest.name importedIndex.packageRefs of
+        Nothing -> Run.Except.throw $ "Unable to recover package ref for " <> formatted
+        Just ref -> pure ref
+
+      Log.debug "Building dependency index with compiler versions..."
+      compilerIndex <- MatrixBuilder.readCompilerIndex
+
+      Log.debug $ "Solving dependencies for " <> formatted
+      eitherResolutions <- do
+        let toErrors = map Solver.printSolverError <<< NonEmptyList.toUnfoldable
+        let isCompilerSolveError = String.contains (String.Pattern "Conflict in version ranges for purs:")
+        let partitionIsCompiler = partitionEithers <<< map (\error -> if isCompilerSolveError error then Right error else Left error)
+
+        -- Extract the package name from "Conflict in version ranges for X:" error messages
+        let
+          extractConflictPackage :: String -> Maybe String
+          extractConflictPackage err = do
+            after <- String.stripPrefix (String.Pattern "Conflict in version ranges for ") err
+            pure $ String.CodeUnits.takeWhile (_ /= ':') after
+
+          classifySolverError :: Array String -> PublishError
+          classifySolverError errors = do
+            let joined = String.joinWith " " errors
+            let { fail: nonCompiler } = partitionIsCompiler errors
+            if Array.null nonCompiler then
+              SolveFailedCompiler joined
+            else case Array.head nonCompiler >>= extractConflictPackage of
+              Just pkg -> SolveFailedConflictingVersions { package: pkg, details: joined }
+              Nothing -> SolveFailedDependencies joined
+
+        legacySolution <- case Solver.solveFull { registry: legacyIndex, required: Solver.initializeRequired widenedDeps } of
+          Left unsolvable -> do
+            let errors = toErrors unsolvable
+            Log.warn $ "Could not solve with legacy index " <> formatted <> Array.foldMap (append "\n") errors
+            pure $ Left $ classifySolverError errors
+          Right resolutions -> do
+            Log.debug $ "Solved " <> formatted <> " with legacy index."
+            -- The solutions do us no good if the dependencies don't exist. Note
+            -- the compiler index is updated on every publish.
+            let lookupInRegistry res = maybe (Left res) (\_ -> Right res) (Map.lookup (fst res) (un CompilerIndex compilerIndex) >>= Map.lookup (snd res))
+            let { fail: notRegistered } = partitionEithers $ map lookupInRegistry $ Map.toUnfoldable resolutions
+            if (Array.null notRegistered) then
+              pure $ Right resolutions
+            else do
+              let unregistered = map (\(Tuple name version) -> { name, version }) notRegistered
+              Log.warn $ "Some resolutions from legacy index are not registered: " <> String.joinWith ", " (map (uncurry formatPackageVersion) notRegistered)
+              Log.warn "Not using legacy index resolutions for this package."
+              pure $ Left $ SolveFailedUnregisteredResolutions unregistered
+
+        currentSolution <- case Solver.solveWithCompiler allCompilersRange compilerIndex widenedDeps of
+          Left unsolvable -> do
+            let errors = toErrors unsolvable
+            Log.warn $ "Could not solve with current index " <> formatted <> Array.foldMap (append "\n") errors
+            pure $ Left $ classifySolverError errors
+          Right (Tuple _ resolutions) -> do
+            Log.debug $ "Solved " <> formatted <> " with contemporary index."
+            pure $ Right resolutions
+
+        pure $ case legacySolution, currentSolution of
+          Left err, Left _ -> Left err
+          Right resolutions, Left _ -> Right $ This resolutions
+          Left _, Right resolutions -> Right $ That resolutions
+          Right legacyResolutions, Right currentResolutions -> Right $ Both legacyResolutions currentResolutions
+
+      case eitherResolutions of
+        -- We skip if we couldn't solve (but we write the error to cache).
+        Left err ->
+          Cache.put _importCache (PublishFailure manifest.name manifest.version) err
+        Right resolutionOptions -> do
+          Log.info "Selecting usable compiler from resolutions..."
+
+          -- Read metadata once before the resolution-finding loop
+          allMetadata <- Registry.readAllMetadata
+
+          let
+            findFirstFromResolutions :: Map PackageName Version -> Run _ (Either (Map Version CompilerFailure) Version)
+            findFirstFromResolutions resolutions = do
+              Log.debug $ "Finding compiler for " <> formatted <> " with resolutions " <> printJson (Internal.Codec.packageMap Version.codec) resolutions <> "\nfrom dependency list\n" <> printJson (Internal.Codec.packageMap Range.codec) widenedDeps
+              possibleCompilers <-
+                if Map.isEmpty widenedDeps then do
+                  Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
+                  pure $ NonEmptySet.fromFoldable1 allCompilers
+                else do
+                  Log.debug "No compiler version was produced by the solver, so all compilers are potentially compatible."
+                  case compatibleCompilers allMetadata resolutions of
+                    Left [] -> do
+                      Log.debug "No dependencies to determine ranges, so all compilers are potentially compatible."
+                      pure $ NonEmptySet.fromFoldable1 allCompilers
+                    Left errors -> do
+                      let
+                        printError { packages, compilers } = do
+                          let key = String.joinWith ", " $ foldlWithIndex (\name prev version -> Array.cons (formatPackageVersion name version) prev) [] packages
+                          let val = String.joinWith ", " $ map Version.print $ NonEmptySet.toUnfoldable compilers
+                          key <> " support compilers " <> val
+                      Log.warn $ Array.fold
+                        [ "Resolutions admit no overlapping compiler versions:\n"
+                        , Array.foldMap (append "\n  - " <<< printError) errors
+                        ]
+                      pure $ NonEmptySet.fromFoldable1 allCompilers
+                    Right compilers -> do
+                      Log.debug $ "Compatible compilers for resolutions of " <> formatted <> ": " <> stringifyJson (CJ.array Version.codec) (NonEmptySet.toUnfoldable compilers)
+                      pure compilers
+
+              cached <- do
+                cached <- for (NonEmptySet.toUnfoldable possibleCompilers) \compiler ->
+                  Cache.get API._compilerCache (API.Compilation (Manifest manifest) resolutions compiler) >>= case _ of
+                    Nothing -> pure Nothing
+                    Just { result: Left _ } -> pure Nothing
+                    Just { target, result: Right _ } -> pure $ Just target
+                pure $ NonEmptyArray.fromArray $ Array.catMaybes cached
+
+              case cached of
+                Just prev -> do
+                  let selected = NonEmptyArray.last prev
+                  Log.debug $ "Found successful cached compilation for " <> formatted <> " and chose " <> Version.print selected
+                  pure $ Right selected
+                Nothing -> do
+                  Log.debug $ "No cached compilation for " <> formatted <> ", so compiling with all compilers to find first working one."
+                  Log.debug $ "Fetching source: " <> formatted
+                  sourceTmp <- Tmp.mkTmpDir
+                  sourcePath <-
+                    if isArchiveBacked then do
+                      Log.info $ "Using registry archive for " <> formatted <> " instead of GitHub clone."
+                      { path: archivePath } <- Archive.fetch sourceTmp manifest.name manifest.version
+                      pure archivePath
+                    else do
+                      -- Try GitHub first, fall back to archive if the tag is missing
+                      Source.fetchEither sourceTmp manifest.location ref >>= case _ of
+                        Right { path } -> pure path
+                        Left (Source.Fatal errMsg) | isMissingTagError errMsg -> do
+                          Log.warn $ "Git clone failed (missing tag): " <> errMsg
+                          Log.info $ "Falling back to registry archive for " <> formatted
+                          { path: archivePath } <- Archive.fetch sourceTmp manifest.name manifest.version
+                          pure archivePath
+                        Left err -> Run.Except.throw $ Source.printFetchError err
+                  Log.debug $ "Downloaded source to " <> sourcePath
+                  Log.debug "Downloading dependencies..."
+                  let installDir = Path.concat [ sourceTmp, ".registry" ]
+                  FS.Extra.ensureDirectory installDir
+                  buildPlanForImport <- MatrixBuilder.resolutionsToBuildPlan resolutions
+                  MatrixBuilder.installBuildPlan buildPlanForImport installDir
+                  Log.debug $ "Installed to " <> installDir
+                  Log.debug "Trying compilers one-by-one..."
+                  selected <- findFirstCompiler
+                    { source: sourcePath
+                    , installed: installDir
+                    , compilers: NonEmptySet.toUnfoldable possibleCompilers
+                    , resolutions
+                    , manifest: Manifest manifest
+                    }
+                  FS.Extra.remove sourceTmp
+                  pure selected
+
+          let
+            collectCompilerErrors :: Map Version CompilerFailure -> Map (NonEmptyArray Version) CompilerFailure
+            collectCompilerErrors failures = do
+              let
+                foldFn prev xs = do
+                  let Tuple _ failure = NonEmptyArray.head xs
+                  let key = map fst xs
+                  Map.insert key failure prev
+              Array.foldl foldFn Map.empty $ Array.groupAllBy (compare `on` snd) (Map.toUnfoldable failures)
+
+            reportFailures :: forall a. _ -> Run _ (Either PublishError a)
+            reportFailures failures = do
+              let collected = collectCompilerErrors failures
+              Log.error $ "Failed to find any valid compilers for publishing:\n" <> printJson compilerFailureMapCodec collected
+              pure $ Left $ NoCompilersFound collected
+
+          -- Here, we finally attempt to find a suitable compiler. If we only
+          -- got one set of working resolutions that's what we use. If we got
+          -- solutions with both the legacy and adjusted-manifest indices, then
+          -- we try the adjusted index first since that's what is used in the
+          -- publish pipeline.
+          eitherCompiler <- case resolutionOptions of
+            This legacyResolutions -> do
+              selected <- findFirstFromResolutions legacyResolutions
+              case selected of
+                Left failures -> reportFailures failures
+                Right compiler -> pure $ Right $ Tuple compiler legacyResolutions
+            That currentResolutions -> do
+              selected <- findFirstFromResolutions currentResolutions
+              case selected of
+                Left failures -> reportFailures failures
+                Right compiler -> pure $ Right $ Tuple compiler currentResolutions
+            Both legacyResolutions currentResolutions -> do
+              selectedCurrent <- findFirstFromResolutions currentResolutions
+              case selectedCurrent of
+                Right compiler -> pure $ Right $ Tuple compiler currentResolutions
+                Left currentFailures | legacyResolutions == currentResolutions -> reportFailures currentFailures
+                Left _ -> do
+                  Log.info $ "Could not find suitable compiler from current index, trying legacy solution..."
+                  selectedLegacy <- findFirstFromResolutions legacyResolutions
+                  case selectedLegacy of
+                    Left failures -> reportFailures failures
+                    Right compiler -> pure $ Right $ Tuple compiler legacyResolutions
+
+          -- If compilation failed with widened deps, retry with original deps
+          eitherCompilerFinal <- case eitherCompiler of
+            Right result -> pure $ Right result
+            Left err | widenedAnyDeps -> do
+              Log.warn $ "Compilation failed with widened bounds for " <> formatted <> ". Retrying with original bounds..."
+              -- Re-solve with original deps
+              let
+                solveOriginal = do
+                  legacy <- case Solver.solveFull { registry: legacyIndex, required: Solver.initializeRequired manifest.dependencies } of
+                    Left _ -> pure Nothing
+                    Right res -> do
+                      let lookup r = maybe (Left r) (\_ -> Right r) (Map.lookup (fst r) (un CompilerIndex compilerIndex) >>= Map.lookup (snd r))
+                      let { fail } = partitionEithers $ map lookup $ Map.toUnfoldable res
+                      pure $ if Array.null fail then Just res else Nothing
+                  current <- case Solver.solveWithCompiler allCompilersRange compilerIndex manifest.dependencies of
+                    Left _ -> pure Nothing
+                    Right (Tuple _ res) -> pure $ Just res
+                  pure $ case legacy, current of
+                    Nothing, Nothing -> Nothing
+                    Just res, Nothing -> Just $ This res
+                    Nothing, Just res -> Just $ That res
+                    Just l, Just c -> Just $ Both l c
+              solveOriginal >>= case _ of
+                Nothing -> do
+                  Log.warn "Could not solve with original bounds either."
+                  pure $ Left err
+                Just origResolutions -> do
+                  Log.info "Solved with original bounds. Trying compilation..."
+                  origCompiler <- case origResolutions of
+                    This legRes -> findFirstFromResolutions legRes >>= case _ of
+                      Left _ -> pure Nothing
+                      Right c -> pure $ Just $ Tuple c legRes
+                    That curRes -> findFirstFromResolutions curRes >>= case _ of
+                      Left _ -> pure Nothing
+                      Right c -> pure $ Just $ Tuple c curRes
+                    Both legRes curRes -> do
+                      findFirstFromResolutions curRes >>= case _ of
+                        Right c -> pure $ Just $ Tuple c curRes
+                        Left _ -> findFirstFromResolutions legRes >>= case _ of
+                          Right c -> pure $ Just $ Tuple c legRes
+                          Left _ -> pure Nothing
+                  case origCompiler of
+                    Nothing -> do
+                      Log.warn "Compilation also failed with original bounds."
+                      pure $ Left err
+                    Just result -> do
+                      Log.info $ "Compilation succeeded with original bounds for " <> formatted
+                      pure $ Right result
+            Left err -> pure $ Left err
+
+          case eitherCompilerFinal of
+            Left err -> Cache.put _importCache (PublishFailure manifest.name manifest.version) err
+            Right (Tuple compiler resolutions) -> do
+              Log.debug $ "Selected " <> Version.print compiler <> " for publishing."
+              let
+                payload =
+                  { name: manifest.name
+                  , location: Just manifest.location
+                  , ref
+                  , version: manifest.version
+                  , compiler: Just compiler
+                  , resolutions: Just resolutions
+                  }
+              Run.Except.runExcept (API.publish (Just legacyContext) payload) >>= case _ of
+                Left error -> do
+                  Log.error $ "Failed to publish " <> formatted <> ": " <> error
+                  -- Infrastructure errors (git failures, HTTP failures, etc.) should halt
+                  -- the importer rather than being cached
+                  when (isInfraError error) do
+                    Run.Except.throw $ "Halting importer due to infrastructure error: " <> error
+                  let classifiedError = classifyPublishError error
+                  Cache.put _importCache (PublishFailure manifest.name manifest.version) classifiedError
+                Right _ -> do
+                  Log.info $ "Published " <> formatted
+
+  case publishable of
     [] -> Log.info "No packages to publish."
     manifests -> do
-      let printPackage (Manifest { name, version }) = formatPackageVersion name version
       Log.info $ Array.foldMap (append "\n")
         [ "----------"
         , "AVAILABLE TO PUBLISH"
-        , ""
-        , "  using purs " <> Version.print compiler
-        , ""
+        , Array.foldMap (\(Manifest { name, version }) -> "\n  - " <> formatPackageVersion name version) manifests
         , "----------"
-        , Array.foldMap (append "\n  - " <<< printPackage) manifests
         ]
 
+      Log.info "Reading package sets for bound widening evidence..."
+      allPackageSets <- Registry.readAllPackageSets
+      Log.info $ "Read " <> show (Map.size allPackageSets) <> " package sets."
+
+      Log.info "Building package set evidence map..."
+      let packageSetEvidence = BoundWidening.buildPackageSetEvidence allPackageSets importedIndex.registryIndex
+
+      legacyIndex <- do
+        Log.info "Transitivizing legacy registry with widened bounds..."
+        let rawDeps = map (map (un Manifest >>> _.dependencies)) (ManifestIndex.toMap importedIndex.registryIndex)
+        let widenedDeps = BoundWidening.widenLegacyIndex packageSetEvidence rawDeps
+        pure
+          $ Solver.exploreAllTransitiveDependencies
+          $ Solver.initializeRegistry
+          $ widenedDeps
+
       let
-        source = case mode of
-          DryRun -> LegacyPackage
-          GenerateRegistry -> LegacyPackage
-          UpdateRegistry -> CurrentPackage
+        legacyContext :: LegacyPublishContext
+        legacyContext = { legacyIndex, packageSetEvidence }
 
-      void $ for notPublished \(Manifest manifest) -> do
-        let formatted = formatPackageVersion manifest.name manifest.version
-        Log.info $ Array.foldMap (append "\n")
-          [ "----------"
-          , "PUBLISHING: " <> formatted
-          , stringifyJson Location.codec manifest.location
-          , "----------"
-          ]
-        operation <- mkOperation (Manifest manifest)
+      let archivePackages = importedIndex.archivePackages
+      void $ for manifests (publishLegacyPackage legacyContext archivePackages)
 
-        result <- Run.Except.runExcept $ API.publish source operation
-        -- TODO: Some packages will fail because the legacy importer does not
-        -- perform all the same validation checks that the publishing flow does.
-        -- What should we do when a package has a valid manifest but fails for
-        -- other reasons? Should they be added to the package validation
-        -- failures and we defer writing the package failures until the import
-        -- has completed?
-        case result of
-          Left error -> do
-            Log.error $ "Failed to publish " <> formatted <> ": " <> error
-            Cache.put _importCache (PublishFailure manifest.name manifest.version) error
-          Right _ -> do
-            Log.info $ "Published " <> formatted
+  Log.info "Finished publishing! Collecting all publish failures and writing to disk."
+  let
+    collectError prev (Manifest { name, version }) = do
+      Cache.get _importCache (PublishFailure name version) >>= case _ of
+        Nothing -> pure prev
+        Just error -> pure $ Map.insertWith Map.union name (Map.singleton version error) prev
+  failures <- Array.foldM collectError Map.empty allIndexPackages
+  Run.liftAff $ writePublishFailures failures
+
+  -- Write the unified removed-packages.json file
+  Log.info "Writing unified removed-packages.json..."
+  Run.liftAff $ writeUnifiedRemovals importedIndex.failedPackages importedIndex.failedVersions failures
+
+  let publishStats = collectPublishFailureStats importStats (map _.address eligibleForReservation) importedIndex.registryIndex failures
+  let publishStatsMessage = formatPublishFailureStats publishStats
+  Log.info publishStatsMessage
+  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "publish-stats.txt" ]) publishStatsMessage
+  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "reserved-packages.txt" ]) (String.joinWith "\n" (map PackageName.print (Set.toUnfoldable publishStats.packages.reserved)))
+  Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ scratchDir, "removed-packages.txt" ]) (String.joinWith "\n" (map PackageName.print (Set.toUnfoldable (Set.difference publishStats.packages.failed publishStats.packages.reserved))))
+
+  -- Write empty metadata files for reserved packages (post-0.13 packages that failed).
+  -- This includes both import-phase failures (no usable versions) and publish-phase failures
+  -- (all versions failed to publish). Pre-0.13 packages are NOT reserved.
+  Log.info "Reserving metadata files for post-0.13 packages that failed..."
+  let
+    -- Import-phase failures: packages with no versions in the manifest index
+    importFailuresEligible = Map.filterWithKey (\name _ -> Map.member name eligibleForReservation) importedIndex.removedPackages
+    -- Publish-phase failures: packages where all versions failed to publish
+    publishFailuresEligible = Map.fromFoldable do
+      package <- Set.toUnfoldable publishStats.packages.reserved
+      { address } <- Array.fromFoldable $ Map.lookup package eligibleForReservation
+      pure $ Tuple package (GitHub { owner: address.owner, repo: address.repo, subdir: Nothing })
+    -- Combine both sources (publish failures take precedence if somehow in both)
+    allReserved = Map.union publishFailuresEligible importFailuresEligible
+
+  forWithIndex_ allReserved \package location ->
+    Registry.readMetadata package >>= case _ of
+      Nothing -> do
+        Log.info $ "Writing empty metadata file for reserved package " <> PackageName.print package
+        let entry = Metadata { location, owners: Nothing, published: Map.empty, unpublished: Map.empty }
+        Registry.writeMetadata package entry
+      Just _ -> Log.debug $ PackageName.print package <> " already has metadata."
+
+-- | Record all package failures to the 'package-failures.json' file.
+writePublishFailures :: Map PackageName (Map Version PublishError) -> Aff Unit
+writePublishFailures =
+  writeJsonFile (packageMap (versionMap jsonValidationErrorCodec)) (Path.concat [ scratchDir, "publish-failures.json" ])
+    <<< map (map formatPublishError)
 
 -- | Record all package failures to the 'package-failures.json' file.
 writePackageFailures :: Map RawPackageName PackageValidationError -> Aff Unit
@@ -319,14 +764,166 @@ writeVersionFailures =
   writeJsonFile (rawPackageNameMapCodec (rawVersionMapCodec jsonValidationErrorCodec)) (Path.concat [ scratchDir, "version-failures.json" ])
     <<< map (map formatVersionValidationError)
 
+-- | A unified rejection entry combining package, version, and publish failures
+type UnifiedRejection =
+  { package :: String
+  , version :: Maybe String
+  , level :: String -- "package" | "version" | "publish"
+  , tag :: String
+  , reason :: String
+  , value :: Maybe JSON
+  }
+
+unifiedRejectionCodec :: CJ.Codec UnifiedRejection
+unifiedRejectionCodec = CJ.named "UnifiedRejection" $ CJ.Record.object
+  { package: CJ.string
+  , version: CJ.Record.optional CJ.string
+  , level: CJ.string
+  , tag: CJ.string
+  , reason: CJ.string
+  , value: CJ.Record.optional CJ.json
+  }
+
+type UnifiedRemovalsFile =
+  { description :: String
+  , generated_from :: Array String
+  , levels :: { package :: String, version :: String, publish :: String }
+  , summary ::
+      { total_rejections :: Int
+      , by_level :: { package :: Int, version :: Int, publish :: Int }
+      , by_tag :: Array { tag :: String, count :: Int }
+      }
+  , rejections :: Array UnifiedRejection
+  }
+
+unifiedRemovalsFileCodec :: CJ.Codec UnifiedRemovalsFile
+unifiedRemovalsFileCodec = CJ.named "UnifiedRemovalsFile" $ CJ.Record.object
+  { description: CJ.string
+  , generated_from: CJ.array CJ.string
+  , levels: CJ.Record.object
+      { package: CJ.string
+      , version: CJ.string
+      , publish: CJ.string
+      }
+  , summary: CJ.Record.object
+      { total_rejections: CJ.int
+      , by_level: CJ.Record.object
+          { package: CJ.int
+          , version: CJ.int
+          , publish: CJ.int
+          }
+      , by_tag: CJ.array (CJ.Record.object { tag: CJ.string, count: CJ.int })
+      }
+  , rejections: CJ.array unifiedRejectionCodec
+  }
+
+-- | Write the unified removed-packages.json file combining all failure sources
+writeUnifiedRemovals
+  :: Map RawPackageName PackageValidationError
+  -> Map RawPackageName (Map RawVersion VersionValidationError)
+  -> Map PackageName (Map Version PublishError)
+  -> Aff Unit
+writeUnifiedRemovals packageFailures versionFailures publishFailures = do
+  let
+    -- Convert package failures to unified format
+    packageRejections :: Array UnifiedRejection
+    packageRejections = do
+      Tuple (RawPackageName pkg) err <- Map.toUnfoldable packageFailures
+      let formatted = formatPackageValidationError err
+      [ { package: pkg
+        , version: Nothing
+        , level: "package"
+        , tag: formatted.tag
+        , reason: formatted.reason
+        , value: formatted.value
+        }
+      ]
+
+    -- Convert version failures to unified format
+    versionRejections :: Array UnifiedRejection
+    versionRejections = do
+      Tuple (RawPackageName pkg) versions <- Map.toUnfoldable versionFailures
+      Tuple (RawVersion ver) err <- Map.toUnfoldable versions
+      let formatted = formatVersionValidationError err
+      [ { package: pkg
+        , version: Just ver
+        , level: "version"
+        , tag: formatted.tag
+        , reason: formatted.reason
+        , value: formatted.value
+        }
+      ]
+
+    -- Convert publish failures to unified format
+    publishRejections :: Array UnifiedRejection
+    publishRejections = do
+      Tuple pkg versions <- Map.toUnfoldable publishFailures
+      Tuple ver err <- Map.toUnfoldable versions
+      let formatted = formatPublishError err
+      -- Simplify NoCompilersFound value to just show compiler versions tried
+      let
+        simplifiedValue = case err of
+          NoCompilersFound compilerMap -> do
+            let compilerArrays = Set.toUnfoldable (Map.keys compilerMap) :: Array (NonEmptyArray Version)
+            let compilers = Array.sort $ Array.nub $ Array.concatMap NonEmptyArray.toArray compilerArrays
+            Just $ CJ.encode (CJ.array CJ.string) (map Version.print compilers)
+          _ -> formatted.value
+      [ { package: PackageName.print pkg
+        , version: Just (Version.print ver)
+        , level: "publish"
+        , tag: formatted.tag
+        , reason: formatted.reason
+        , value: simplifiedValue
+        }
+      ]
+
+    allRejections = packageRejections <> versionRejections <> publishRejections
+
+    -- Count by tag
+    tagCounts :: Map String Int
+    tagCounts = Array.foldl (\acc r -> Map.insertWith (+) r.tag 1 acc) Map.empty allRejections
+
+    sortedTagCounts :: Array { tag :: String, count :: Int }
+    sortedTagCounts = Array.sortBy (\a b -> compare b.count a.count)
+      $ map (\(Tuple tag count) -> { tag, count })
+      $ Map.toUnfoldable tagCounts
+
+    output :: UnifiedRemovalsFile
+    output =
+      { description: "All package versions rejected by the PureScript registry"
+      , generated_from:
+          [ "scratch/package-failures.json"
+          , "scratch/version-failures.json"
+          , "scratch/publish-failures.json"
+          ]
+      , levels:
+          { package: "Entire package rejected (e.g., disabled, invalid name, repo issues)"
+          , version: "Specific version rejected during manifest parsing (e.g., invalid tag, missing license)"
+          , publish: "Version failed to publish (e.g., solver failure, no compatible compiler)"
+          }
+      , summary:
+          { total_rejections: Array.length allRejections
+          , by_level:
+              { package: Array.length packageRejections
+              , version: Array.length versionRejections
+              , publish: Array.length publishRejections
+              }
+          , by_tag: sortedTagCounts
+          }
+      , rejections: allRejections
+      }
+
+  writeJsonFile unifiedRemovalsFileCodec (Path.concat [ scratchDir, "removed-packages.json" ]) output
+
 type LegacyRegistry = Map RawPackageName String
 
 type ImportedIndex =
   { failedPackages :: Map RawPackageName PackageValidationError
   , failedVersions :: Map RawPackageName (Map RawVersion VersionValidationError)
-  , reservedPackages :: Map PackageName Location
+  , removedPackages :: Map PackageName Location
   , registryIndex :: ManifestIndex
   , packageRefs :: Map PackageName (Map Version RawVersion)
+  , archivePackages :: Set PackageName
   }
 
 -- | Construct a valid registry index containing manifests for all packages from
@@ -339,13 +936,16 @@ importLegacyRegistry legacyRegistry = do
   manifests <- forWithIndex legacyRegistry buildLegacyPackageManifests
 
   let
-    separatedPackages :: { left :: Map RawPackageName PackageValidationError, right :: Map RawPackageName (Map RawVersion _) }
+    separatedPackages :: { left :: Map RawPackageName PackageValidationError, right :: Map RawPackageName PackageManifests }
     separatedPackages = separate manifests
+
+    archiveBackedByRaw :: Map RawPackageName Boolean
+    archiveBackedByRaw = separatedPackages.right <#> _.archiveBacked
 
     separatedVersions :: { left :: Map RawPackageName (Map RawVersion VersionValidationError), right :: Map RawPackageName (Map RawVersion Manifest) }
     separatedVersions =
       separatedPackages.right # flip foldlWithIndex { left: Map.empty, right: Map.empty } \key acc next -> do
-        let { left, right } = separate next
+        let { left, right } = separate next.versions
         { left: if Map.isEmpty left then acc.left else Map.insert key left acc.left
         , right: if Map.isEmpty right then acc.right else Map.insert key right acc.right
         }
@@ -362,16 +962,15 @@ importLegacyRegistry legacyRegistry = do
 
     -- A 'checked' index is one where we have verified that all dependencies
     -- are self-contained within the registry.
-    Tuple unsatisfied validIndex = ManifestIndex.maximalIndex validLegacyManifests
+    Tuple unsatisfied validIndex = ManifestIndex.maximalIndex ManifestIndex.ConsiderRanges validLegacyManifests
 
     -- The list of all packages that were present in the legacy registry files,
-    -- but which have no versions present in the fully-imported registry. These
-    -- packages still need to have empty metadata files written for them.
-    reservedPackages :: Map PackageName Location
-    reservedPackages =
-      Map.fromFoldable $ Array.mapMaybe reserved $ Map.toUnfoldable legacyRegistry
+    -- but which have no versions present in the fully-imported registry.
+    removedPackages :: Map PackageName Location
+    removedPackages =
+      Map.fromFoldable $ Array.mapMaybe removed $ Map.toUnfoldable legacyRegistry
       where
-      reserved (Tuple (RawPackageName name) address) = do
+      removed (Tuple (RawPackageName name) address) = do
         packageName <- hush $ PackageName.parse name
         guard $ isNothing $ Map.lookup packageName $ ManifestIndex.toMap validIndex
         { owner, repo } <- hush $ Parsing.runParser address legacyRepoParser
@@ -389,24 +988,66 @@ importLegacyRegistry legacyRegistry = do
     versionFailures :: Map RawPackageName (Map RawVersion VersionValidationError)
     versionFailures = do
       let
-        foldFn acc fail = do
-          let error = { error: UnregisteredDependencies fail.dependencies, reason: "Contains dependencies that are not registered." }
-          Map.insertWith Map.union fail.package (Map.singleton fail.version error) acc
+        -- The final index tells us which packages have versions registered
+        finalIndexMap = ManifestIndex.toMap validIndex
+
+        -- Classify each unsatisfied dependency: is it truly unregistered, or
+        -- does it exist but with no versions matching the required range?
+        classifyDependency :: PackageName -> Range -> Either PackageName { dependency :: PackageName, range :: Range, availableVersions :: NonEmptySet Version }
+        classifyDependency dep range = case Map.lookup dep finalIndexMap of
+          Nothing -> Left dep
+          Just versions -> case NonEmptySet.fromSet (Map.keys versions) of
+            Nothing -> Left dep
+            Just availableVersions -> Right { dependency: dep, range, availableVersions }
+
+        mkError :: Array PackageName -> Array { dependency :: PackageName, range :: Range, availableVersions :: NonEmptySet Version } -> VersionValidationError
+        mkError unregistered noVersionsInRange = case unregistered, noVersionsInRange of
+          [], [] -> { error: UnregisteredDependencies [], reason: "No dependency errors (unexpected)." }
+          [], nvir -> { error: NoVersionsInRange nvir, reason: "Dependencies exist but no versions match required ranges." }
+          unreg, [] -> { error: UnregisteredDependencies unreg, reason: "Contains dependencies that are not registered." }
+          unreg, nvir ->
+            -- Both types of errors - report unregistered ones (the more severe case)
+            -- but include info about both in the reason
+            { error: UnregisteredDependencies unreg
+            , reason: "Contains unregistered dependencies. Additionally, some dependencies exist but have no versions in the required ranges: "
+                <> String.joinWith ", " (map (\r -> PackageName.print r.dependency <> " " <> Range.print r.range) nvir)
+            }
+
+        foldFn acc fail = Map.insertWith Map.union fail.package (Map.singleton fail.version fail.error) acc
+
         dependencyFailures =
           Array.foldl foldFn Map.empty do
             Tuple name versions <- Map.toUnfoldable unsatisfied
             Tuple version deps <- Map.toUnfoldable versions
-            let ref = unsafeFromJust (Map.lookup name packageRefs >>= Map.lookup version)
-            [ { package: RawPackageName (PackageName.print name), version: ref, dependencies: Array.fromFoldable $ Map.keys deps } ]
+            let
+              ref = unsafeFromJust (Map.lookup name packageRefs >>= Map.lookup version)
+              classified = separate $ map (uncurry classifyDependency) (Map.toUnfoldable deps :: Array _)
+              error = mkError classified.left classified.right
+            [ { package: RawPackageName (PackageName.print name), version: ref, error } ]
       Map.unionWith Map.union separatedVersions.left dependencyFailures
+
+    archivePackages :: Set PackageName
+    archivePackages =
+      Set.fromFoldable do
+        Tuple rawName isArchive <- Map.toUnfoldable archiveBackedByRaw
+        guard isArchive
+        let (RawPackageName raw) = rawName
+        name <- Array.fromFoldable (hush $ PackageName.parse raw)
+        pure name
 
   pure
     { failedPackages: packageFailures
     , failedVersions: versionFailures
-    , reservedPackages: reservedPackages
+    , removedPackages: removedPackages
     , registryIndex: validIndex
     , packageRefs
+    , archivePackages
     }
+
+type PackageManifests =
+  { archiveBacked :: Boolean
+  , versions :: Map RawVersion (Either VersionValidationError Manifest)
+  }
 
 -- | Attempt to build valid manifests for all releases associated with the given
 -- | legacy package. This will result in a package error if versions could not
@@ -416,7 +1057,7 @@ buildLegacyPackageManifests
   :: forall r
    . RawPackageName
   -> String
-  -> Run (API.PublishEffects + IMPORT_CACHE + r) (Either PackageValidationError (Map RawVersion (Either VersionValidationError Manifest)))
+  -> Run (API.PublishEffects + IMPORT_CACHE + r) (Either PackageValidationError PackageManifests)
 buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPackage do
   Log.info $ "Processing " <> un RawPackageName rawPackage
   package <- validatePackage rawPackage rawUrl
@@ -428,37 +1069,270 @@ buildLegacyPackageManifests rawPackage rawUrl = Run.Except.runExceptAt _exceptPa
     buildManifestForVersion :: Tag -> Run _ (Either VersionValidationError Manifest)
     buildManifestForVersion tag = Run.Except.runExceptAt _exceptVersion do
       version <- exceptVersion $ validateVersion tag
-
-      -- TODO: This will use the manifest for the package version from the
-      -- registry, without trying to produce a legacy manifest. However, we may
-      -- want to always attempt to produce a legacy manifest. If we can produce
-      -- one we compare it to the existing entry, failing if there is a
-      -- difference; if we can't, we warn and fall back to the existing entry.
-      Registry.readManifest package.name (LenientVersion.version version) >>= case _ of
+      Cache.get _importCache (ImportManifest package.name (RawVersion tag.name)) >>= case _ of
+        Just cached -> exceptVersion cached
         Nothing -> do
-          Cache.get _importCache (ImportManifest package.name (RawVersion tag.name)) >>= case _ of
-            Nothing -> do
-              Log.debug $ "Building manifest in legacy import because it was not found in cache: " <> formatPackageVersion package.name (LenientVersion.version version)
-              manifest <- Run.Except.runExceptAt _exceptVersion do
-                exceptVersion $ validateVersionDisabled package.name version
-                legacyManifest <- do
-                  Legacy.Manifest.fetchLegacyManifest package.name package.address (RawVersion tag.name) >>= case _ of
-                    Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
-                    Right result -> pure result
-                pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location legacyManifest
-              Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) manifest
-              exceptVersion manifest
-            Just cached ->
-              exceptVersion cached
-
-        Just manifest ->
-          exceptVersion $ Right manifest
+          -- A version is archive-backed if either:
+          -- 1. The whole package is archive-backed (GitHub returned 404 for repo)
+          -- 2. This specific tag is synthetic (has empty URL, meaning it came from
+          --    registry metadata because the ref doesn't exist on GitHub)
+          let isSyntheticTag = tag.url == ""
+          let isVersionArchiveBacked = package.archiveBacked || isSyntheticTag
+          when (isSyntheticTag && not package.archiveBacked) do
+            Log.debug $ "Tag " <> tag.name <> " is synthetic (empty URL), will fetch manifest from archive"
+          -- For archive-backed versions (where GitHub ref is unavailable),
+          -- fetch the manifest directly from the registry archive tarball.
+          if isVersionArchiveBacked then do
+            Log.debug $ "Package is archive-backed, fetching manifest from archive for " <> formatPackageVersion package.name (LenientVersion.version version)
+            manifest <- Run.Except.runExceptAt _exceptVersion do
+              exceptVersion $ validateVersionDisabled package.name version
+              Run.Except.runExcept (fetchManifestFromArchive package.name (LenientVersion.version version)) >>= case _ of
+                Left error -> throwVersion { error: InvalidManifest { error: NoManifests, reason: error }, reason: "Failed to fetch manifest from archive." }
+                Right result -> pure result
+            case manifest of
+              Left err -> Log.info $ "Failed to build manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ": " <> printJson versionValidationErrorCodec err
+              Right val -> Log.info $ "Built manifest from archive for " <> PackageName.print package.name <> "@" <> tag.name <> ":\n" <> printJson Manifest.codec val
+            Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) manifest
+            exceptVersion manifest
+          else do
+            -- While technically not 'legacy', we do need to handle packages with
+            -- spago.yaml files because they've begun to pop up since the registry
+            -- alpha began and we don't want to drop them when doing a re-import.
+            fetchSpagoYaml package.address (RawVersion tag.name) >>= case _ of
+              Just (Manifest m) -> do
+                -- We always use the package name and location from the legacy registry,
+                -- not whatever was written in the manifest, since the legacy registry
+                -- is the source of truth for package identity. This handles cases like:
+                -- - "debounce" (spago.yaml says "debouncing")
+                -- - "react-basic-dom-beta" (spago.yaml says "yoga-react-dom")
+                -- - "web-intl" (spago.yaml says "js-intl")
+                let manifest = Manifest (m { name = package.name, location = location })
+                Log.debug $ "Built manifest from discovered spago.yaml file."
+                Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) (Right manifest)
+                pure manifest
+              Nothing -> do
+                Log.debug $ "Building manifest in legacy import because there is no registry entry, spago.yaml, or cached result: " <> formatPackageVersion package.name (LenientVersion.version version)
+                manifest <- Run.Except.runExceptAt _exceptVersion do
+                  exceptVersion $ validateVersionDisabled package.name version
+                  legacyManifest <- do
+                    Legacy.Manifest.fetchLegacyManifest package.name package.address (RawVersion tag.name) >>= case _ of
+                      Left error -> throwVersion { error: InvalidManifest error, reason: "Legacy manifest could not be parsed." }
+                      Right result -> pure result
+                  pure $ Legacy.Manifest.toManifest package.name (LenientVersion.version version) location tag.name legacyManifest
+                case manifest of
+                  Left err -> Log.info $ "Failed to build manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ": " <> printJson versionValidationErrorCodec err
+                  Right val -> Log.info $ "Built manifest for " <> PackageName.print package.name <> "@" <> tag.name <> ":\n" <> printJson Manifest.codec val
+                Cache.put _importCache (ImportManifest package.name (RawVersion tag.name)) manifest
+                exceptVersion manifest
 
   manifests <- for package.tags \tag -> do
     manifest <- buildManifestForVersion tag
     pure (Tuple (RawVersion tag.name) manifest)
 
-  pure $ Map.fromFoldable manifests
+  pure { archiveBacked: package.archiveBacked, versions: Map.fromFoldable manifests }
+
+data PublishError
+  = SolveFailedDependencies String
+  -- | Solver failed due to conflicting version ranges for a specific package
+  | SolveFailedConflictingVersions { package :: String, details :: String }
+  -- | Solver found resolutions but they don't exist in the registry
+  | SolveFailedUnregisteredResolutions (Array { name :: PackageName, version :: Version })
+  | SolveFailedCompiler String
+  | NoCompilersFound (Map (NonEmptyArray Version) CompilerFailure)
+  | UnsolvableDependencyCompilers (Array GroupedByCompilers)
+  -- | Generic publish error (catch-all)
+  | PublishError String
+  -- | spago.yaml could not be converted to purs.json
+  | PublishErrorSpagoConversion String
+  -- | Package contains malformed or disallowed module names
+  | PublishErrorMalformedModules String
+  -- | Resolutions not solvable due to compiler version conflicts
+  | PublishErrorResolutionsNotSolvable String
+
+derive instance Eq PublishError
+
+unregisteredResolutionCodec :: CJ.Codec { name :: PackageName, version :: Version }
+unregisteredResolutionCodec = CJ.named "UnregisteredResolution" $ CJ.Record.object
+  { name: PackageName.codec
+  , version: Version.codec
+  }
+
+conflictingVersionsCodec :: CJ.Codec { package :: String, details :: String }
+conflictingVersionsCodec = CJ.named "ConflictingVersions" $ CJ.Record.object
+  { package: CJ.string
+  , details: CJ.string
+  }
+
+publishErrorCodec :: CJ.Codec PublishError
+publishErrorCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantMatch
+  { solveFailedCompiler: Right CJ.string
+  , solveFailedDependencies: Right CJ.string
+  , solveFailedConflictingVersions: Right conflictingVersionsCodec
+  , solveFailedUnregisteredResolutions: Right (CJ.array unregisteredResolutionCodec)
+  , noCompilersFound: Right compilerFailureMapCodec
+  , unsolvableDependencyCompilers: Right (CJ.array groupedByCompilersCodec)
+  , publishError: Right CJ.string
+  , publishErrorSpagoConversion: Right CJ.string
+  , publishErrorMalformedModules: Right CJ.string
+  , publishErrorResolutionsNotSolvable: Right CJ.string
+  }
+  where
+  toVariant = case _ of
+    SolveFailedDependencies error -> Variant.inj (Proxy :: _ "solveFailedDependencies") error
+    SolveFailedConflictingVersions info -> Variant.inj (Proxy :: _ "solveFailedConflictingVersions") info
+    SolveFailedUnregisteredResolutions resolutions -> Variant.inj (Proxy :: _ "solveFailedUnregisteredResolutions") resolutions
+    SolveFailedCompiler error -> Variant.inj (Proxy :: _ "solveFailedCompiler") error
+    NoCompilersFound failed -> Variant.inj (Proxy :: _ "noCompilersFound") failed
+    UnsolvableDependencyCompilers group -> Variant.inj (Proxy :: _ "unsolvableDependencyCompilers") group
+    PublishError error -> Variant.inj (Proxy :: _ "publishError") error
+    PublishErrorSpagoConversion error -> Variant.inj (Proxy :: _ "publishErrorSpagoConversion") error
+    PublishErrorMalformedModules error -> Variant.inj (Proxy :: _ "publishErrorMalformedModules") error
+    PublishErrorResolutionsNotSolvable error -> Variant.inj (Proxy :: _ "publishErrorResolutionsNotSolvable") error
+
+  fromVariant = Variant.match
+    { solveFailedDependencies: SolveFailedDependencies
+    , solveFailedConflictingVersions: SolveFailedConflictingVersions
+    , solveFailedUnregisteredResolutions: SolveFailedUnregisteredResolutions
+    , solveFailedCompiler: SolveFailedCompiler
+    , noCompilersFound: NoCompilersFound
+    , unsolvableDependencyCompilers: UnsolvableDependencyCompilers
+    , publishError: PublishError
+    , publishErrorSpagoConversion: PublishErrorSpagoConversion
+    , publishErrorMalformedModules: PublishErrorMalformedModules
+    , publishErrorResolutionsNotSolvable: PublishErrorResolutionsNotSolvable
+    }
+
+-- | Classify a generic publish error string into a more specific error type
+-- | based on known error message patterns.
+classifyPublishError :: String -> PublishError
+classifyPublishError error
+  -- spago.yaml conversion errors
+  | String.contains (String.Pattern "converting your spago.yaml into a purs.json") error =
+      PublishErrorSpagoConversion error
+  | String.contains (String.Pattern "No 'publish' key found") error =
+      PublishErrorSpagoConversion error
+  -- Malformed module name errors
+  | String.contains (String.Pattern "malformed or disallowed PureScript module names") error =
+      PublishErrorMalformedModules error
+  | String.contains (String.Pattern "malformed or disallowed module names") error =
+      PublishErrorMalformedModules error
+  -- Resolutions not solvable (compiler version conflicts in resolutions)
+  | String.contains (String.Pattern "Resolutions not solvable") error =
+      PublishErrorResolutionsNotSolvable error
+  -- Fallback to generic PublishError
+  | otherwise = PublishError error
+
+type PublishFailureStats =
+  { packages :: { total :: Int, considered :: Int, partial :: Int, failed :: Set PackageName, reserved :: Set PackageName }
+  , versions :: { total :: Int, considered :: Int, failed :: Int, reason :: Map String Int }
+  }
+
+collectPublishFailureStats :: ImportStats -> Map PackageName Address -> ManifestIndex -> Map PackageName (Map Version PublishError) -> PublishFailureStats
+collectPublishFailureStats importStats eligibleForReservation importedIndex failures = do
+  let
+    index :: Map PackageName (Map Version Manifest)
+    index = ManifestIndex.toMap importedIndex
+
+    countVersions :: forall a. Map PackageName (Map Version a) -> Int
+    countVersions = Array.foldl (\prev (Tuple _ versions) -> prev + Map.size versions) 0 <<< Map.toUnfoldable
+
+    startPackages :: Int
+    startPackages = importStats.packagesProcessed
+
+    consideredPackages :: Int
+    consideredPackages = Map.size index
+
+    startVersions :: Int
+    startVersions = importStats.versionsProcessed
+
+    consideredVersions :: Int
+    consideredVersions = countVersions index
+
+    failedPackages :: Int
+    failedPackages = Map.size failures
+
+    failedVersions :: Int
+    failedVersions = countVersions failures
+
+    removedPackages :: Set PackageName
+    removedPackages = do
+      let
+        foldFn package prev versions = fromMaybe prev do
+          allVersions <- Map.lookup package index
+          guard (Map.keys allVersions == Map.keys versions)
+          pure $ Set.insert package prev
+
+      foldlWithIndex foldFn Set.empty failures
+
+    -- Packages that are eligible for removal — but are reserved due to 0.13 or
+    -- organization status — are the 'reserved packages'.
+    reservedPackages :: Set PackageName
+    reservedPackages = Set.intersection removedPackages (Map.keys eligibleForReservation)
+
+    countByFailure :: Map String Int
+    countByFailure = do
+      let
+        toKey = case _ of
+          SolveFailedDependencies _ -> "Solving failed (dependencies)"
+          SolveFailedConflictingVersions _ -> "Solving failed (conflicting versions)"
+          SolveFailedUnregisteredResolutions _ -> "Solving failed (unregistered resolutions)"
+          SolveFailedCompiler _ -> "Solving failed (compiler)"
+          NoCompilersFound _ -> "No compilers usable for publishing"
+          UnsolvableDependencyCompilers _ -> "Dependency compiler conflict"
+          PublishError _ -> "Publishing failed"
+          PublishErrorSpagoConversion _ -> "Publishing failed (spago.yaml conversion)"
+          PublishErrorMalformedModules _ -> "Publishing failed (malformed modules)"
+          PublishErrorResolutionsNotSolvable _ -> "Publishing failed (resolutions not solvable)"
+
+        foldFn prev (Tuple _ versions) =
+          Array.foldl (\prevCounts (Tuple _ error) -> Map.insertWith (+) (toKey error) 1 prevCounts) prev (Map.toUnfoldable versions)
+
+      Array.foldl foldFn Map.empty (Map.toUnfoldable failures)
+
+  { packages:
+      { total: startPackages
+      , considered: consideredPackages
+      -- Packages that had some failures but not all versions failed
+      , partial: failedPackages - Set.size removedPackages
+      , reserved: reservedPackages
+      , failed: removedPackages
+      }
+  , versions:
+      { total: startVersions
+      , considered: consideredVersions
+      , failed: failedVersions
+      , reason: countByFailure
+      }
+  }
+
+formatPublishFailureStats :: PublishFailureStats -> String
+formatPublishFailureStats { packages, versions } = String.joinWith "\n"
+  [ "--------------------"
+  , "PUBLISH FAILURES"
+  , "--------------------"
+  , ""
+  , show packages.considered <> " of " <> show packages.total <> " total packages were considered for publishing (others had no manifests imported.)"
+  , "  - " <> show (packages.considered - packages.partial - Set.size packages.failed) <> " out of " <> show packages.considered <> " packages fully succeeded."
+  , "  - " <> show packages.partial <> " packages partially succeeded."
+  , "  - " <> show (Set.size packages.reserved) <> " packages fully failed, but are reserved due to 0.13 or organization status."
+  , "  - " <> show (Set.size packages.failed - Set.size packages.reserved) <> " packages had all versions fail and will be removed."
+  , ""
+  , show versions.considered <> " of " <> show versions.total <> " total versions were considered for publishing.\n  - " <> show versions.failed <> " out of " <> show versions.total <> " versions failed."
+  , Array.foldMap (\(Tuple key val) -> "\n    - " <> key <> ": " <> show val) (Array.sortBy (comparing snd) (Map.toUnfoldable versions.reason))
+  ]
+
+compilerFailureMapCodec :: CJ.Codec (Map (NonEmptyArray Version) CompilerFailure)
+compilerFailureMapCodec = do
+  let
+    print = NonEmptyArray.intercalate "," <<< map Version.print
+    parse input = do
+      let versions = String.split (String.Pattern ",") input
+      let { fail, success } = partitionEithers $ map Version.parse versions
+      case NonEmptyArray.fromArray success of
+        Nothing | Array.null fail -> Left "No versions"
+        Nothing -> Left $ "No versions parsed, some failed: " <> String.joinWith ", " fail
+        Just result -> pure result
+  Internal.Codec.strMap "CompilerFailureMap" parse print compilerFailureCodec
 
 type EXCEPT_VERSION :: Row (Type -> Type) -> Row (Type -> Type)
 type EXCEPT_VERSION r = (exceptVersion :: Run.Except.Except VersionValidationError | r)
@@ -485,6 +1359,7 @@ data VersionError
   | DisabledVersion
   | InvalidManifest LegacyManifestValidationError
   | UnregisteredDependencies (Array PackageName)
+  | NoVersionsInRange (Array { dependency :: PackageName, range :: Range, availableVersions :: NonEmptySet Version })
 
 versionErrorCodec :: CJ.Codec VersionError
 versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantMatch
@@ -499,6 +1374,11 @@ versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantM
       , reason: CJ.string
       }
   , unregisteredDependencies: Right (CJ.array PackageName.codec)
+  , noVersionsInRange: Right $ CJ.array $ CJ.Record.object
+      { dependency: PackageName.codec
+      , range: Range.codec
+      , availableVersions: CJ.Common.nonEmptySet Version.codec
+      }
   }
   where
   toVariant = case _ of
@@ -506,12 +1386,14 @@ versionErrorCodec = Profunctor.dimap toVariant fromVariant $ CJ.Variant.variantM
     DisabledVersion -> Variant.inj (Proxy :: _ "disabledVersion") unit
     InvalidManifest inner -> Variant.inj (Proxy :: _ "invalidManifest") inner
     UnregisteredDependencies inner -> Variant.inj (Proxy :: _ "unregisteredDependencies") inner
+    NoVersionsInRange inner -> Variant.inj (Proxy :: _ "noVersionsInRange") inner
 
   fromVariant = Variant.match
     { invalidTag: InvalidTag
     , disabledVersion: \_ -> DisabledVersion
     , invalidManifest: InvalidManifest
     , unregisteredDependencies: UnregisteredDependencies
+    , noVersionsInRange: NoVersionsInRange
     }
 
 validateVersionDisabled :: PackageName -> LenientVersion -> Either VersionValidationError Unit
@@ -528,6 +1410,7 @@ validateVersionDisabled package version =
     , Tuple (disabled "endpoints-express" "0.0.1") noSrcDirectory
     , Tuple (disabled "argonaut-aeson-generic" "0.4.0") "Does not compile."
     , Tuple (disabled "batteries-core" "0.3.0") "Does not solve."
+    , Tuple (disabled "yoga-tree-utils" "1.0.0") "Tag 1.0.0 has spago.yaml claiming version 2.0.0; already published a v1.0.0 tag for package"
     ]
     where
     noSrcDirectory = "Does not contain a 'src' directory."
@@ -567,28 +1450,140 @@ type PackageResult =
   { name :: PackageName
   , address :: Address
   , tags :: Array Tag
+  , archiveBacked :: Boolean
   }
 
-validatePackage :: forall r. RawPackageName -> String -> Run (GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) PackageResult
+type FetchTagsResult =
+  { tags :: Array Tag
+  , archiveBacked :: Boolean
+  }
+
+type PackagesMetadata = { address :: Address, lastPublished :: Date }
+
+packagesMetadataCodec :: CJ.Codec PackagesMetadata
+packagesMetadataCodec = CJ.named "PackagesMetadata" $ CJ.Record.object
+  { address: CJ.named "Address" $ CJ.Record.object { owner: CJ.string, repo: CJ.string }
+  , lastPublished: Internal.Codec.iso8601Date
+  }
+
+getPackagesMetadata :: forall r. Map RawPackageName String -> Run (REGISTRY + LOG + EXCEPT String + GITHUB + AFF + EFFECT + r) (Map PackageName PackagesMetadata)
+getPackagesMetadata legacyRegistry = do
+  associated <- for (Map.toUnfoldableUnordered legacyRegistry) \(Tuple rawName rawUrl) -> do
+    Run.Except.runExceptAt (Proxy :: _ "exceptPackage") (validatePackage rawName rawUrl) >>= case _ of
+      Left _ -> pure Nothing
+      Right { name, address, tags } -> case Array.head tags of
+        Nothing -> pure Nothing
+        Just tag -> do
+          result <- GitHub.getCommitDate address tag.sha
+          case result of
+            Left error -> case error of
+              Octokit.APIError { statusCode: 404 } -> do
+                Log.debug $ "Got 404 for " <> PackageName.print name <> ", checking registry-archive..."
+                inArchive <- checkPackageInArchive name
+                if inArchive then do
+                  Log.info $ "Package " <> PackageName.print name <> " found in registry-archive, using current date"
+                  now <- Run.liftEffect nowUTC
+                  pure $ Just $ Tuple name { address, lastPublished: DateTime.date now }
+                else do
+                  Log.info $ "Package " <> PackageName.print name <> " not in registry-archive, using epoch date"
+                  let epochDate = DateTime.canonicalDate (unsafeFromJust (toEnum 1970)) January (unsafeFromJust (toEnum 1))
+                  pure $ Just $ Tuple name { address, lastPublished: epochDate }
+              _ -> unsafeCrashWith ("Failed to get commit date for " <> PackageName.print name <> "@" <> tag.name <> ": " <> Octokit.printGitHubError error)
+            Right date -> pure $ Just $ Tuple name { address, lastPublished: DateTime.date date }
+  pure $ Map.fromFoldable $ Array.catMaybes associated
+
+checkPackageInArchive :: forall r. PackageName -> Run (LOG + AFF + r) Boolean
+checkPackageInArchive name = do
+  let
+    nameStr = PackageName.print name
+    indexUrl = Archive.registryArchiveUrl <> "/" <> nameStr
+  Log.debug $ "Checking if package exists in registry-archive: " <> indexUrl
+  response <- Run.liftAff $ Fetch.withRetryRequest indexUrl {}
+  case response of
+    Succeeded _ -> do
+      Log.debug $ "Package " <> nameStr <> " found in registry-archive"
+      pure true
+    _ -> do
+      Log.debug $ "Package " <> nameStr <> " not found in registry-archive"
+      pure false
+
+filterPackages_0_13 :: Map PackageName PackagesMetadata -> Map PackageName PackagesMetadata
+filterPackages_0_13 = do
+  let
+    -- 0.13 release date
+    cutoff = DateTime.canonicalDate (unsafeFromJust (toEnum 2019)) May (unsafeFromJust (toEnum 29))
+    organizations =
+      [ "purescript"
+      , "purescript-contrib"
+      , "purescript-node"
+      , "purescript-web"
+      , "rowtype-yoga"
+      , "purescript-halogen"
+      , "purescript-deprecated"
+      ]
+
+  Map.filterWithKey \_ metadata -> do
+    let { owner } = metadata.address
+    owner `Array.elem` organizations || metadata.lastPublished >= cutoff
+
+writePackagesMetadata :: forall r. Map PackageName PackagesMetadata -> Run (LOG + AFF + r) Unit
+writePackagesMetadata pkgs = do
+  let path = Path.concat [ scratchDir, "packages-metadata.json" ]
+  Log.info $ "Writing packages metadata to " <> path
+  Run.liftAff $ writeJsonFile (packageMap packagesMetadataCodec) path pkgs
+
+readPackagesMetadata :: forall r. Run (AFF + r) (Either String (Map PackageName PackagesMetadata))
+readPackagesMetadata = Run.liftAff $ readJsonFile (packageMap packagesMetadataCodec) (Path.concat [ scratchDir, "packages-metadata.json" ])
+
+validatePackage :: forall r. RawPackageName -> String -> Run (REGISTRY + LOG + GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) PackageResult
 validatePackage rawPackage rawUrl = do
   name <- exceptPackage $ validatePackageName rawPackage
   exceptPackage $ validatePackageDisabled name
   address <- exceptPackage $ validatePackageAddress rawUrl
-  tags <- fetchPackageTags address
-  -- We do not allow packages that redirect from their registered location elsewhere. The package
-  -- transferrer will handle automatically transferring these packages.
+  { tags, archiveBacked } <- fetchPackageTags name address
+  -- For archive-backed packages or packages with no tags, skip redirect validation.
+  -- For packages that redirect, we now warn but continue processing. This allows
+  -- old package names (like heterogeneous-extrablatt) to be published even when
+  -- their repos have been renamed (to record-studio). Old package sets depend on
+  -- these old names.
   case Array.head tags of
-    Nothing -> pure { name, address, tags }
+    Nothing -> pure { name, address, tags, archiveBacked }
+    Just _ | archiveBacked -> pure { name, address, tags, archiveBacked }
     Just tag -> do
-      tagAddress <- exceptPackage case tagUrlToRepoUrl tag.url of
-        Nothing -> Left { error: InvalidPackageURL tag.url, reason: "Failed to format redirected " <> tag.url <> " as a GitHub.Address." }
-        Just formatted -> Right formatted
-      exceptPackage $ validatePackageLocation { registered: address, received: tagAddress }
-      pure { name, address, tags }
+      -- For synthetic tags (empty URL), use the registered address for validation.
+      -- For real tags, parse the URL to get the actual repo location.
+      let
+        tagAddress = case tag.url of
+          "" -> address -- Synthetic tag from metadata, trust the registered address
+          url -> fromMaybe address (tagUrlToRepoUrl url)
+      -- Warn on redirects but don't fail - we need old package names for old package sets
+      case validatePackageLocation { registered: address, received: tagAddress } of
+        Left { reason } -> Log.warn $ "Package " <> PackageName.print name <> " has a redirect: " <> reason
+        Right _ -> pure unit
+      pure { name, address, tags, archiveBacked }
 
-fetchPackageTags :: forall r. Address -> Run (GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) (Array Tag)
-fetchPackageTags address = GitHub.listTags address >>= case _ of
+fetchPackageTags :: forall r. PackageName -> Address -> Run (REGISTRY + LOG + GITHUB + EXCEPT_PACKAGE + EXCEPT String + r) FetchTagsResult
+fetchPackageTags name address = GitHub.listTags address >>= case _ of
   Left err -> case err of
+    Octokit.APIError apiError | apiError.statusCode == 404 -> do
+      let printed = PackageName.print name
+      Log.debug $ "GitHub 404 for " <> printed <> ", attempting to synthesize tags from metadata (local, then remote)"
+      versions <- Registry.readMetadata name >>= case _ of
+        Just (Metadata metadata) -> do
+          Log.debug $ "Found metadata for " <> printed <> " in local registry checkout."
+          pure $ Set.toUnfoldable $ Map.keys metadata.published
+        Nothing -> do
+          Log.debug $ "No local metadata for " <> printed <> ", fetching versions from remote registry main branch..."
+          fetchRemoteRegistryVersions name
+      case versions of
+        [] -> do
+          let error = CannotAccessRepo address
+          let reason = "GitHub 404 and no metadata found locally or in remote purescript/registry main branch to construct archive tags."
+          throwPackage { error, reason }
+        _ -> do
+          let tags = versions <#> \v -> { name: "v" <> Version.print v, sha: "", url: "" }
+          Log.info $ "Synthesized " <> show (Array.length tags) <> " tags from metadata for archive-backed package " <> printed
+          pure { tags, archiveBacked: true }
     Octokit.APIError apiError | apiError.statusCode >= 400 -> do
       let error = CannotAccessRepo address
       let reason = "GitHub API error with status code " <> show apiError.statusCode
@@ -598,8 +1593,78 @@ fetchPackageTags address = GitHub.listTags address >>= case _ of
         [ "Unexpected GitHub error with a status <= 400"
         , Octokit.printGitHubError err
         ]
-  Right tags ->
-    pure tags
+  Right githubTags -> do
+    -- For packages where the repo exists, we also need to include versions that
+    -- are in the registry metadata but which have no matching GitHub version tag.
+    -- This may be a genuine miss, or it may be that they were published to the
+    -- registry with a tag different from a version tag; for these, instead of
+    -- fetching from GitHub we fetch from teh registry-archive.
+    let printed = PackageName.print name
+    publishedVersions <- fetchRemoteRegistryVersions name
+    let
+      parseTagVersion tag = do
+        let stripped = fromMaybe tag.name (String.stripPrefix (String.Pattern "v") tag.name)
+        hush (Version.parse stripped)
+      -- All git tags found on GitHub
+      githubVersions = Set.fromFoldable $ Array.mapMaybe parseTagVersion githubTags
+      -- All versions found in the registry archive
+      publishedSet = Set.fromFoldable publishedVersions
+      missingFromGithub = Set.difference publishedSet githubVersions
+    if Set.isEmpty missingFromGithub then
+      pure { tags: githubTags, archiveBacked: false }
+    else do
+      let syntheticTags = (Set.toUnfoldable missingFromGithub :: Array _) <#> \v -> { name: "v" <> Version.print v, sha: "", url: "" }
+      Log.info $ Array.fold
+        [ printed
+        , ": Adding "
+        , show (Array.length syntheticTags)
+        , " versions from registry metadata missing from GitHub tags: "
+        , String.joinWith ", " (map Version.print (Set.toUnfoldable missingFromGithub))
+        ]
+      -- If GitHub returned 0 tags but we have versions in the archive, all tags are synthetic
+      -- and we need to fetch manifests from the registry archive, not GitHub.
+      let allSynthetic = Array.null githubTags
+      when allSynthetic do
+        Log.info $ printed <> ": All tags are synthetic (GitHub returned 0 tags), marking as archive-backed"
+      pure { tags: githubTags <> syntheticTags, archiveBacked: allSynthetic }
+
+-- | Fetch published versions for a package directly from the remote registry repo.
+-- | We use a pinned commit rather than main because during re-uploads we are actively
+-- | modifying metadata, so we need a stable snapshot of what was previously published.
+-- | Only extracts the version keys from the "published" field without fully parsing metadata,
+-- | since the remote registry may have a different schema (e.g., missing 'compilers' field).
+fetchRemoteRegistryVersions :: forall r. PackageName -> Run (GITHUB + LOG + r) (Array Version)
+fetchRemoteRegistryVersions name = do
+  let
+    printed = PackageName.print name
+    path = Path.concat [ Constants.metadataDirectory, printed <> ".json" ]
+    -- Pinned commit from before re-upload began, to get stable view of published versions
+    pinnedCommit = RawVersion "9f7c3ce457d78fc2fe8add20b18499a1815e8a54"
+  Log.debug $ "Fetching published versions for " <> printed <> " from remote registry"
+  GitHub.getContent Constants.registry pinnedCommit path >>= case _ of
+    Left err -> do
+      case err of
+        Octokit.APIError apiError | apiError.statusCode == 404 ->
+          Log.debug $ "No metadata found in remote registry for " <> printed <> " (404)"
+        _ ->
+          Log.warn $ "Failed to fetch remote metadata for " <> printed <> ": " <> Octokit.printGitHubError err
+      pure []
+    Right content -> do
+      let
+        parsed = do
+          json <- hush $ JSON.parse content
+          obj <- JSON.toJObject json
+          publishedJson <- JSON.Object.lookup "published" obj
+          publishedObj <- JSON.toJObject publishedJson
+          let versionStrings = JSON.Object.keys publishedObj
+          pure $ Array.mapMaybe (hush <<< Version.parse) versionStrings
+      case parsed of
+        Nothing -> do
+          Log.warn $ "Could not extract versions from remote metadata for " <> printed
+          pure []
+        Just versions -> do
+          Log.debug $ "Extracted " <> show (Array.length versions) <> " versions from remote metadata for " <> printed
+          pure versions
 
 validatePackageLocation :: { registered :: Address, received :: Address } -> Either PackageValidationError Unit
 validatePackageLocation addresses = do
@@ -641,14 +1706,53 @@ validatePackageDisabled package =
   disabledPackages :: Map String String
   disabledPackages = Map.fromFoldable
     [ Tuple "metadata" reservedPackage
+    , Tuple "purs" reservedPackage
+
     , Tuple "bitstrings" noSrcDirectory
     , Tuple "purveyor" noSrcDirectory
     , Tuple "styled-components" noSrcDirectory
     , Tuple "styled-system" noSrcDirectory
+
+    , Tuple "arb-instances" freedPackage
+    , Tuple "big-integer" freedPackage
+    , Tuple "chosen" freedPackage
+    , Tuple "chosen-halogen" freedPackage
+    , Tuple "combinators" freedPackage
+    , Tuple "constraint-kanren" freedPackage
+    , Tuple "datareify" freedPackage
+    , Tuple "dynamic" freedPackage
+    , Tuple "flux-store" freedPackage
+    , Tuple "focus-ui" freedPackage
+    , Tuple "fussy" freedPackage
+    , Tuple "globals-safe" freedPackage
+    , Tuple "hashable" freedPackage
+    , Tuple "hubot" freedPackage
+    , Tuple "mdcss" freedPackage
+    , Tuple "node-args" freedPackage
+    , Tuple "node-readline-question" freedPackage
+    , Tuple "nunjucks" freedPackage
+    , Tuple "org" freedPackage
+    , Tuple "phantomjs" freedPackage
+    , Tuple "photons" freedPackage
+    , Tuple "pouchdb-ffi" freedPackage
+    , Tuple "pux-router" freedPackage
+    , Tuple "reactive" freedPackage
+    , Tuple "reactive-jquery" freedPackage
+    , Tuple "skull" freedPackage
+    , Tuple "slack" freedPackage
+    , Tuple "stablename" freedPackage
+    , Tuple "stm" freedPackage
+    , Tuple "stuff" freedPackage
+    , Tuple "subtype" freedPackage
+    , Tuple "toastr" freedPackage
+    , Tuple "uport" freedPackage
+    , Tuple "yaml" freedPackage
+    , Tuple "zmq" freedPackage
     ]
     where
     reservedPackage = "Reserved package which cannot be uploaded."
     noSrcDirectory = "No version contains a 'src' directory."
+    freedPackage = "Abandoned package whose name has been freed for reuse."
 
 -- | Validate that a package name parses. Expects the package to already have
 -- | had its 'purescript-' prefix removed.
@@ -661,14 +1765,14 @@ validatePackageName (RawPackageName name) =
 
 type JsonValidationError =
   { tag :: String
-  , value :: Maybe String
+  , value :: Maybe JSON
   , reason :: String
   }
 
 jsonValidationErrorCodec :: CJ.Codec JsonValidationError
 jsonValidationErrorCodec = CJ.named "JsonValidationError" $ CJ.Record.object
   { tag: CJ.string
-  , value: CJ.Record.optional CJ.string
+  , value: CJ.Record.optional CJ.json
   , reason: CJ.string
   }
 
@@ -677,31 +1781,159 @@ formatPackageValidationError { error, reason } = case error of
   InvalidPackageName ->
     { tag: "InvalidPackageName", value: Nothing, reason }
   InvalidPackageURL url ->
-    { tag: "InvalidPackageURL", value: Just url, reason }
+    { tag: "InvalidPackageURL", value: Just (CJ.encode CJ.string url), reason }
   PackageURLRedirects { registered } ->
-    { tag: "PackageURLRedirects", value: Just (registered.owner <> "/" <> registered.repo), reason }
+    { tag: "PackageURLRedirects", value: Just (CJ.encode CJ.string (registered.owner <> "/" <> registered.repo)), reason }
   CannotAccessRepo address ->
-    { tag: "CannotAccessRepo", value: Just (address.owner <> "/" <> address.repo), reason }
+    { tag: "CannotAccessRepo", value: Just (CJ.encode CJ.string (address.owner <> "/" <> address.repo)), reason }
   DisabledPackage ->
     { tag: "DisabledPackage", value: Nothing, reason }
 
 formatVersionValidationError :: VersionValidationError -> JsonValidationError
 formatVersionValidationError { error, reason } = case error of
   InvalidTag tag ->
-    { tag: "InvalidTag", value: Just tag.name, reason }
+    { tag: "InvalidTag", value: Just (CJ.encode CJ.string tag.name), reason }
   DisabledVersion ->
     { tag: "DisabledVersion", value: Nothing, reason }
-  InvalidManifest err -> do
-    let errorValue = Legacy.Manifest.printLegacyManifestError err.error
-    { tag: "InvalidManifest", value: Just errorValue, reason }
-  UnregisteredDependencies names -> do
-    let errorValue = String.joinWith ", " $ map PackageName.print names
-    { tag: "UnregisteredDependencies", value: Just errorValue, reason }
+  InvalidManifest err -> classifyInvalidManifest err
+  UnregisteredDependencies names ->
+    { tag: "UnregisteredDependencies", value: Just (CJ.encode (CJ.array PackageName.codec) names), reason }
+  NoVersionsInRange deps -> do
+    let
+      formatVersionRange versions =
+        let
+          min = NonEmptySet.min versions
+          max = NonEmptySet.max versions
+        in
+          if min == max then Version.print min
+          else Version.print min <> " to " <> Version.print max
+      formatDep r = PackageName.print r.dependency <> " " <> Range.print r.range
+        <> " (available: "
+        <> formatVersionRange r.availableVersions
+        <> ")"
+      value = CJ.encode (CJ.array CJ.string) (map formatDep deps)
+    { tag: "NoVersionsInRange", value: Just value, reason }
+
+-- | Classify InvalidManifest errors into more specific sub-types based on the
+-- | underlying LegacyManifestError.
+classifyInvalidManifest :: Legacy.Manifest.LegacyManifestValidationError -> JsonValidationError
+classifyInvalidManifest err = case err.error of
+  Legacy.Manifest.NoManifests ->
+    { tag: "InvalidManifestNoManifests", value: Nothing, reason: err.reason }
+  Legacy.Manifest.MissingLicense ->
+    { tag: "InvalidManifestMissingLicense", value: Nothing, reason: err.reason }
+  Legacy.Manifest.InvalidLicense licenses ->
+    { tag: "InvalidManifestInvalidLicense"
+    , value: Just (CJ.encode (CJ.array CJ.string) licenses)
+    , reason: err.reason
+    }
+  Legacy.Manifest.InvalidDependencies deps ->
+    classifyInvalidDependencies deps err.reason
+
+-- | Classify InvalidDependencies errors based on the type of dependency error.
+-- | - InvalidDependencyRef: Git refs, commits, branches used as versions
+-- | - InvalidDependencyWildcard: Wildcard (*) or empty versions
+-- | - InvalidDependencyRange: Range parsing errors (missing >=, etc.)
+classifyInvalidDependencies :: Array { name :: String, range :: String, error :: String } -> String -> JsonValidationError
+classifyInvalidDependencies deps reason = do
+  let
+    -- Check if a range looks like a git ref (commit hash, branch name, URL)
+    isGitRef :: String -> Boolean
+    isGitRef range =
+      -- Git commit hashes (40 hex chars or shortened) - check for long hex-only strings
+      (String.length range >= 7 && String.length range <= 40 && isLikelyCommitHash range)
+        -- Git URLs
+        || String.contains (String.Pattern "git://") range
+        || String.contains (String.Pattern "github.com") range
+        || String.contains (String.Pattern ".git") range
+        -- Owner/repo format (e.g., "owner/repo#ref")
+        || String.contains (String.Pattern "#") range
+        || String.contains (String.Pattern "/") range
+        -- Branch or tag names (contain path-like chars with specific patterns)
+        || String.contains (String.Pattern "master") range
+        || String.contains (String.Pattern "main") range
+        || String.contains (String.Pattern "compiler/") range
+
+    -- Simple heuristic: if the string doesn't contain typical range chars like
+    -- >=, <, ., and is alphanumeric-ish, it's likely a commit hash
+    isLikelyCommitHash :: String -> Boolean
+    isLikelyCommitHash s =
+      not (String.contains (String.Pattern ">=") s)
+        && not (String.contains (String.Pattern "<") s)
+        && not (String.contains (String.Pattern ".") s)
+        && not (String.contains (String.Pattern " ") s)
+
+    isWildcard :: String -> Boolean
+    isWildcard range = range == "*" || range == "" || range == "latest"
+
+    -- Classify each dependency error
+    classified = deps # map \dep ->
+      if isGitRef dep.range then
+        { category: "gitRef", dep }
+      else if isWildcard dep.range then
+        { category: "wildcard", dep }
+      else
+        { category: "range", dep }
+
+    gitRefs = Array.filter (\d -> d.category == "gitRef") classified
+    wildcards = Array.filter (\d -> d.category == "wildcard") classified
+
+    formatDeps ds = map (\d -> d.dep.name <> ": " <> d.dep.range) ds
+    errorValue = Legacy.Manifest.printLegacyManifestError (Legacy.Manifest.InvalidDependencies deps)
+
+  -- Priority: git refs > wildcards > range errors
+  if not (Array.null gitRefs) then
+    { tag: "InvalidManifestGitRefDependency"
+    , value: Just (CJ.encode (CJ.array CJ.string) (formatDeps gitRefs))
+    , reason
+    }
+  else if not (Array.null wildcards) then
+    { tag: "InvalidManifestWildcardDependency"
+    , value: Just (CJ.encode (CJ.array CJ.string) (formatDeps wildcards))
+    , reason
+    }
+  else
+    { tag: "InvalidManifest"
+    , value: Just (CJ.encode CJ.string errorValue)
+    , reason
+    }
+
+formatPublishError :: PublishError -> JsonValidationError
+formatPublishError = case _ of
+  SolveFailedCompiler error ->
+    { tag: "SolveFailedCompiler", value: Nothing, reason: error }
+  SolveFailedDependencies error ->
+    { tag: "SolveFailedDependencies", value: Nothing, reason: error }
+  SolveFailedConflictingVersions { package, details } ->
+    { tag: "SolveFailedConflictingVersions"
+    , value: Just (CJ.encode CJ.string package)
+    , reason: details
+    }
+  SolveFailedUnregisteredResolutions resolutions ->
+    let
+      formatted = map (\r -> formatPackageVersion r.name r.version) resolutions
+    in
+      { tag: "SolveFailedUnregisteredResolutions"
+      , value: Just (CJ.encode (CJ.array CJ.string) formatted)
+      , reason: "Solved resolutions are not registered: " <> String.joinWith ", " formatted
+      }
+  NoCompilersFound versions ->
+    { tag: "NoCompilersFound", value: Just (CJ.encode compilerFailureMapCodec versions), reason: "No valid compilers found for publishing." }
+  UnsolvableDependencyCompilers failed ->
+    { tag: "UnsolvableDependencyCompilers", value: Just (CJ.encode (CJ.array groupedByCompilersCodec) failed), reason: "Resolved dependencies cannot compile together" }
+  PublishError error ->
+    { tag: "PublishError", value: Nothing, reason: error }
+  PublishErrorSpagoConversion error ->
+    { tag: "PublishErrorSpagoConversion", value: Nothing, reason: error }
+  PublishErrorMalformedModules error ->
+    { tag: "PublishErrorMalformedModules", value: Nothing, reason: error }
+  PublishErrorResolutionsNotSolvable error ->
+    { tag: "PublishErrorResolutionsNotSolvable", value: Nothing, reason: error }
 
 type ImportStats =
   { packagesProcessed :: Int
   , versionsProcessed :: Int
-  , packageNamesReserved :: Int
+  , packageNamesRemoved :: Int
   , packageResults :: { success :: Int, partial :: Int, fail :: Int }
   , versionResults :: { success :: Int, fail :: Int }
   , packageErrors :: Map String Int
@@ -714,7 +1946,7 @@ formatImportStats stats = String.joinWith "\n"
   , show stats.packagesProcessed <> " packages processed:"
   , indent $ show stats.packageResults.success <> " fully successful"
   , indent $ show stats.packageResults.partial <> " partially successful"
-  , indent $ show (stats.packageNamesReserved - stats.packageResults.fail) <> " reserved (no usable versions)"
+  , indent $ show (stats.packageNamesRemoved - stats.packageResults.fail) <> " omitted (no usable versions)"
   , indent $ show stats.packageResults.fail <> " fully failed"
   , indent "---"
   , formatErrors stats.packageErrors
@@ -747,8 +1979,8 @@ calculateImportStats legacyRegistry imported = do
     packagesProcessed =
       Map.size legacyRegistry
 
-    packageNamesReserved =
-      Map.size imported.reservedPackages
+    packageNamesRemoved =
+      Map.size imported.removedPackages
 
     packageResults = do
       let succeeded = Map.keys registryIndex
@@ -792,6 +2024,7 @@ calculateImportStats legacyRegistry imported = do
         DisabledVersion -> "Disabled Version"
         InvalidManifest err -> "Invalid Manifest (" <> innerKey err <> ")"
         UnregisteredDependencies _ -> "Unregistered Dependencies"
+        NoVersionsInRange _ -> "No Versions In Range"
 
       innerKey = _.error >>> case _ of
         NoManifests -> "No Manifests"
@@ -801,7 +2034,7 @@ calculateImportStats legacyRegistry imported = do
 
   { packagesProcessed
   , versionsProcessed
-  , packageNamesReserved
+  , packageNamesRemoved
   , packageResults
   , versionResults
   , packageErrors
@@ -830,12 +2063,125 @@ legacyRepoParser = do
 
   pure { owner, repo }
 
+fetchSpagoYaml :: forall r. Address -> RawVersion -> Run (GITHUB + LOG + EXCEPT String + r) (Maybe Manifest)
+fetchSpagoYaml address ref = do
+  eitherSpagoYaml <- GitHub.getContent address ref "spago.yaml"
+  case eitherSpagoYaml of
+    Left err -> do
+      Log.debug $ "No spago.yaml found: " <> Octokit.printGitHubError err
+      pure Nothing
+    Right contents -> do
+      Log.debug $ "Found spago.yaml file\n" <> contents
+      case parseYaml SpagoYaml.spagoYamlCodec contents of
+        Left error -> do
+          Log.warn $ "Failed to parse spago.yaml file:\n" <> contents <> "\nwith errors:\n" <> error
+          pure Nothing
+        Right config -> case SpagoYaml.spagoYamlToManifest (un RawVersion ref) config of
+          Left err -> do
+            Log.warn $ "Failed to convert parsed spago.yaml file to purs.json " <> contents <> "\nwith errors:\n" <> err
+            pure Nothing
+          Right manifest -> do
+            Log.debug "Successfully converted a spago.yaml into a purs.json manifest"
+            pure $ Just manifest
+
+-- | Find the first compiler that can compile the package source code and
+-- | installed resolutions from the given array of compilers. Begins with the
+-- | latest compiler and works backwards to older compilers.
+findFirstCompiler
+  :: forall r
+   . { compilers :: Array Version
+     , manifest :: Manifest
+     , resolutions :: Map PackageName Version
+     , source :: FilePath
+     , installed :: FilePath
+     }
+  -> Run (COMPILER_CACHE + STORAGE + LOG + AFF + EFFECT + r) (Either (Map Version CompilerFailure) Version)
+findFirstCompiler { source, manifest, resolutions, compilers, installed } = do
+  search <- Run.Except.runExcept $ for (Array.reverse (Array.sort compilers)) \target -> do
+    result <- Cache.get API._compilerCache (API.Compilation manifest resolutions target) >>= case _ of
+      Nothing -> do
+        Log.info $ "Not cached, trying compiler " <> Version.print target
+        workdir <- Tmp.mkTmpDir
+        result <- Run.liftAff $ Purs.callCompiler
+          { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }
+          , version: Just target
+          , cwd: Just workdir
+          }
+        FS.Extra.remove workdir
+        let cache = { result: map (const unit) result, target }
+        Cache.put API._compilerCache (API.Compilation manifest resolutions target) cache
+        pure cache.result
+      Just cached ->
+        pure cached.result
+
+    case result of
+      Left error -> pure $ Tuple target error
+      Right _ -> Run.Except.throw target
+
+  case search of
+    Left worked -> pure $ Right worked
+    Right others -> pure $ Left $ Map.fromFoldable others
+
+type GroupedByCompilers =
+  { packages :: Map PackageName Version
+  , compilers :: NonEmptySet Version
+  }
+
+groupedByCompilersCodec :: CJ.Codec GroupedByCompilers
+groupedByCompilersCodec = CJ.named "GroupedByCompilers" $ CJ.Record.object
+  { compilers: CJ.Common.nonEmptySet Version.codec
+  , packages: Internal.Codec.packageMap Version.codec
+  }
+
+-- | Given a set of package versions, determine the set of compilers that can be
+-- | used for all packages.
+compatibleCompilers :: Map PackageName Metadata -> Map PackageName Version -> Either (Array GroupedByCompilers) (NonEmptySet Version)
+compatibleCompilers allMetadata resolutions = do
+  let
+    associated :: Array { name :: PackageName, version :: Version, compilers :: NonEmptyArray Version }
+    associated = Map.toUnfoldableUnordered resolutions # Array.mapMaybe \(Tuple name version) -> do
+      Metadata metadata <- Map.lookup name allMetadata
+      published <- Map.lookup version metadata.published
+      Just { name, version, compilers: published.compilers }
+
+  case Array.uncons associated of
+    Nothing ->
+      Left []
+    Just { head, tail: [] } ->
+      Right $ NonEmptySet.fromFoldable1 head.compilers
+    Just { head, tail } -> do
+      let foldFn prev = Set.intersection prev <<< Set.fromFoldable <<< _.compilers
+      case NonEmptySet.fromFoldable $ Array.foldl foldFn (Set.fromFoldable head.compilers) tail of
+        -- An empty intersection means there are no shared compilers among the
+        -- resolved dependencies.
+        Nothing -> do
+          let
+            grouped :: Array (NonEmptyArray { name :: PackageName, version :: Version, compilers :: NonEmptyArray Version })
+            grouped = Array.groupAllBy (compare `on` _.compilers) (Array.cons head tail)
+
+            collect :: NonEmptyArray { name :: PackageName, version :: Version, compilers :: NonEmptyArray Version } -> GroupedByCompilers
+            collect vals =
+              { packages: Map.fromFoldable (map (\{ name, version } -> Tuple name version) vals)
+              -- We've already grouped by compilers, so those must all be equal
+              -- and we can take just the first value.
+              , compilers: NonEmptySet.fromFoldable1 (NonEmptyArray.head vals).compilers
+              }
+          Left $ Array.foldl (\prev -> Array.snoc prev <<< collect) [] grouped
+
+        Just set ->
+          Right set
+
+type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)
+
+_importCache :: Proxy "importCache"
+_importCache = Proxy
+
 -- | A key type for the storage cache. Only supports packages identified by
 -- | their name and version.
 data ImportCache :: (Type -> Type -> Type) -> Type -> Type
 data ImportCache c a
   = ImportManifest PackageName RawVersion (c (Either VersionValidationError Manifest) a)
-  | PublishFailure PackageName Version (c String a)
+  | PublishFailure PackageName Version (c PublishError a)
 
 instance Functor2 c => Functor (ImportCache c) where
   map k (ImportManifest name version a) = ImportManifest name version (map2 k a)
@@ -846,7 +2192,7 @@ instance MemoryEncodable ImportCache where
     ImportManifest name (RawVersion version) next ->
       Exists.mkExists $ Key ("ImportManifest__" <> PackageName.print name <> "__" <> version) next
     PublishFailure name version next -> do
-      Exists.mkExists $ Key ("PublishFailureCache__" <> PackageName.print name <> "__" <> Version.print version) next
+      Exists.mkExists $ Key ("PublishFailure__" <> PackageName.print name <> "__" <> Version.print version) next
 
 instance FsEncodable ImportCache where
   encodeFs = case _ of
@@ -854,10 +2200,76 @@ instance FsEncodable ImportCache where
       let codec = CJ.Common.either versionValidationErrorCodec Manifest.codec
       Exists.mkExists $ AsJson ("ImportManifest__" <> PackageName.print name <> "__" <> version) codec next
     PublishFailure name version next -> do
-      let codec = CJ.string
-      Exists.mkExists $ AsJson ("PublishFailureCache__" <> PackageName.print name <> "__" <> Version.print version) codec next
+      let codec = publishErrorCodec
+      Exists.mkExists $ AsJson ("PublishFailure__" <> PackageName.print name <> "__" <> Version.print version) codec next
 
-type IMPORT_CACHE r = (importCache :: Cache ImportCache | r)
+-- | Fetch a manifest directly from the registry archive tarball.
+-- | Used for archive-backed packages where the original GitHub repo is unavailable.
+fetchManifestFromArchive :: forall r. PackageName -> Version -> Run (LOG + EXCEPT String + AFF + EFFECT + r) Manifest
+fetchManifestFromArchive name version = do
+  let formatted = formatPackageVersion name version
+  Log.debug $ "Fetching manifest from archive for " <> formatted
+  tmp <- Tmp.mkTmpDir
+  let
+    nameStr = PackageName.print name
+    versionStr = Version.print version
+    tarballName = versionStr <> ".tar.gz"
+    absoluteTarballPath = Path.concat [ tmp, tarballName ]
+    archiveUrl = Archive.registryArchiveUrl <> "/" <> nameStr <> "/" <> versionStr <> ".tar.gz"
 
-_importCache :: Proxy "importCache"
-_importCache = Proxy
+  Log.debug $ "Fetching archive tarball from: " <> archiveUrl
+  response <- Run.liftAff $ Fetch.withRetryRequest archiveUrl {}
+
+  case response of
+    Cancelled -> do
+      FS.Extra.remove tmp
+      Run.Except.throw $ "Could not download archive tarball from " <> archiveUrl
+    Failed (Fetch.FetchError error) -> do
+      FS.Extra.remove tmp
+      Log.error $ "HTTP error when fetching archive: " <> Exception.message error
+      Run.Except.throw $ "Could not download archive tarball from " <> archiveUrl
+    Failed (Fetch.StatusError { status, arrayBuffer: arrayBufferAff }) -> do
+      arrayBuffer <- Run.liftAff arrayBufferAff
+      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
+      bodyString <- Run.liftEffect $ Buffer.toString UTF8 (buffer :: Buffer)
+      FS.Extra.remove tmp
+      Log.error $ "Bad status (" <> show status <> ") when fetching archive with body: " <> bodyString
+      Run.Except.throw $ "Could not download archive tarball from " <> archiveUrl <> " (status " <> show status <> ")"
+    Succeeded { arrayBuffer: arrayBufferAff } -> do
+      arrayBuffer <- Run.liftAff arrayBufferAff
+      buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
+      Run.liftAff (Aff.attempt (FS.Aff.writeFile absoluteTarballPath buffer)) >>= case _ of
+        Left error -> do
+          FS.Extra.remove tmp
+          Log.error $ "Downloaded archive but failed to write to " <> absoluteTarballPath <> ": " <> Aff.message error
+          Run.Except.throw $ "Could not save archive tarball for " <> formatted
+        Right _ ->
+          Log.debug $ "Tarball downloaded to " <> absoluteTarballPath
+
+      Foreign.Tar.getToplevelDir absoluteTarballPath >>= case _ of
+        Nothing -> do
+          FS.Extra.remove tmp
+          Run.Except.throw $ "Downloaded archive tarball for " <> formatted <> " has no top-level directory."
+        Just extractedPath -> do
+          Log.debug "Extracting archive tarball..."
+          Tar.extract { cwd: tmp, archive: tarballName }
+          let pursJsonPath = Path.concat [ tmp, extractedPath, "purs.json" ]
+          Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 pursJsonPath)) >>= case _ of
+            Left error -> do
+              FS.Extra.remove tmp
+              Log.error $ "Failed to read purs.json from archive: " <> Aff.message error
+              Run.Except.throw $ "No purs.json found in archive for " <> formatted
+            Right contents -> case JSON.parse contents of
+              Left parseErr -> do
+                FS.Extra.remove tmp
+                Log.error $ "Failed to parse purs.json as JSON: " <> parseErr
+                Run.Except.throw $ "Invalid purs.json in archive for " <> formatted
+              Right json -> case CJ.decode (Legacy.Manifest.legacyManifestCodec ("v" <> versionStr)) json of
+                Left decodeErr -> do
+                  FS.Extra.remove tmp
+                  Log.error $ "Failed to decode purs.json manifest: " <> CJ.DecodeError.print decodeErr
+                  Run.Except.throw $ "Could not decode purs.json manifest for " <> formatted
+                Right manifest -> do
+                  FS.Extra.remove tmp
+                  Log.debug $ "Successfully fetched manifest from archive for " <> formatted
+                  pure manifest

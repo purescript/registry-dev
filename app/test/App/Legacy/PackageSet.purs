@@ -2,7 +2,6 @@ module Test.Registry.App.Legacy.PackageSet (spec) where
 
 import Registry.App.Prelude
 
-import Data.DateTime (DateTime(..))
 import Data.Either as Either
 import Data.Map as Map
 import Data.Set as Set
@@ -13,7 +12,6 @@ import Registry.App.Legacy.PackageSet as Legacy.PackageSet
 import Registry.App.Legacy.Types (legacyPackageSetCodec)
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
-import Registry.Sha256 as Sha256
 import Registry.Test.Assert as Assert
 import Registry.Test.Utils as Utils
 import Registry.Version as Version
@@ -92,22 +90,15 @@ packageSet = PackageSet
 
 convertedPackageSet :: ConvertedLegacyPackageSet
 convertedPackageSet =
-  case Legacy.PackageSet.convertPackageSet index metadata packageSet of
+  case Legacy.PackageSet.convertPackageSet index packageSet of
     Left err -> unsafeCrashWith err
     Right value -> value
   where
-  index = unsafeFromRight $ ManifestIndex.fromSet $ Set.fromFoldable
+  index = unsafeFromRight $ ManifestIndex.fromSet ManifestIndex.ConsiderRanges $ Set.fromFoldable
     [ mkManifest assert [ console, effect, prelude ]
     , mkManifest console [ effect, prelude ]
     , mkManifest effect [ prelude ]
     , mkManifest prelude []
-    ]
-
-  metadata = Map.fromFoldable
-    [ unsafeMetadataEntry assert
-    , unsafeMetadataEntry console
-    , unsafeMetadataEntry effect
-    , unsafeMetadataEntry prelude
     ]
 
 legacyPackageSetJson :: String
@@ -200,22 +191,3 @@ mkManifest (Tuple name version) deps = do
     (PackageName.print name)
     (LenientVersion.print version)
     (map (bimap PackageName.print (LenientVersion.version >>> toRange)) deps)
-
-unsafeMetadataEntry :: Tuple PackageName LenientVersion -> Tuple PackageName Metadata
-unsafeMetadataEntry (Tuple name version) = do
-  let
-    published =
-      { ref: LenientVersion.raw version
-      , hash: unsafeFromRight $ Sha256.parse "sha256-gb24ZRec6mgR8TFBVR2eIh5vsMdhuL+zK9VKjWP74Cw="
-      , bytes: 0.0
-      , publishedTime: DateTime (Utils.unsafeDate "2022-07-07") bottom
-      }
-
-    metadata = Metadata
-      { location: GitHub { owner: "purescript", repo: "purescript-" <> PackageName.print name, subdir: Nothing }
-      , owners: Nothing
-      , published: Map.singleton (LenientVersion.version version) published
-      , unpublished: Map.empty
-      }
-
-  Tuple name metadata

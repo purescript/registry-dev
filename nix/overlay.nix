@@ -50,33 +50,29 @@ let
 
   # Map of script name -> { module, description }
   scripts = {
+    bulk-uploader = {
+      module = "Registry.Scripts.BulkUploader";
+      description = "Upload local tarballs to S3 and push registry repos without re-publishing";
+    };
+    daily-importer = {
+      module = "Registry.Scripts.DailyImporter";
+      description = "Check for new package versions and submit publish jobs";
+    };
     legacy-importer = {
       module = "Registry.Scripts.LegacyImporter";
       description = "Import packages from legacy registries (bower, psc-package, etc.)";
     };
-    package-deleter = {
-      module = "Registry.Scripts.PackageDeleter";
-      description = "Delete packages from the registry";
-    };
     package-set-updater = {
       module = "Registry.Scripts.PackageSetUpdater";
-      description = "Update package sets";
+      description = "Check for recent uploads and submit package set update jobs";
     };
     package-transferrer = {
       module = "Registry.Scripts.PackageTransferrer";
-      description = "Transfer packages between storage backends";
-    };
-    solver = {
-      module = "Registry.Scripts.Solver";
-      description = "Run dependency solver against registry manifests";
+      description = "Check for moved packages and submit transfer jobs";
     };
     verify-integrity = {
       module = "Registry.Scripts.VerifyIntegrity";
       description = "Verify registry and registry-index consistency";
-    };
-    compiler-versions = {
-      module = "Registry.Scripts.CompilerVersions";
-      description = "List supported compiler versions";
     };
   };
 
@@ -235,7 +231,7 @@ in
 
   registry-server = prev.callPackage (buildRegistryPackage {
     name = "registry-server";
-    module = "Registry.App.Server";
+    module = "Registry.App.Main";
     description = "PureScript Registry API server";
     src = ../app;
     spagoLock = app;
