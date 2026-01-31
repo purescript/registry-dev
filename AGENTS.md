@@ -1,20 +1,24 @@
 # AGENTS.md
 
-The PureScript Registry implements a package registry for PureScript. See @SPEC.md for the registry specification and @CONTRIBUTING.md for detailed contributor documentation.
+The PureScript Registry implements a package registry for PureScript.
+
+- @SPEC.md contains the registry specification. Use this to understand the core data types and operations of the registry.
+- @CONTRIBUTING.md describes the structure of the registry codebase, what the various packages in the monorepo represent, and how to build and test the registry code.
 
 ## Development Environment
 
-This project uses Nix with direnv. You should already be in the Nix shell automatically when entering the directory. If not, run:
+We use Nix with direnv. Expect to be in a Nix shell automatically, but if you are not, you can enter one:
 
 ```sh
 nix develop
 ```
 
-Watch out for these Nix quirks:
-- If Nix tries to fetch from git during a build, it is likely that spago.yaml files were changed but the lock file was not updated; if so, update the lockfile with `spago build`
-- If a Nix build appears to be stale, then it is likely files were modified but are untracked by Git; if so, add modified files with `git add` and retry.
+### Nix Quirks
 
-### Build
+- If Nix tries to fetch from git during a build and fails, then most likely `spago.yaml` files have been changed but the lockfiles were not updated. Update them with `spago build`.
+- If a Nix build appears to be stale, then most likely files were modified but not tracked by Git. Nix flakes only consider Git-tracked files. Add modified files with `git add` and retry.
+
+### Build & Test Commands
 
 The registry is implemented in PureScript. Use spago to build it.
 
@@ -22,26 +26,13 @@ The registry is implemented in PureScript. Use spago to build it.
 spago build  # Build all PureScript code
 ```
 
-The registry infrastructure is defined in Nix. Build it with Nix:
+The registry contains unit tests, end-to-end tests, and nix flake checks.
 
-```sh
-nix build .#server
-```
+- Run unit tests when you complete a change with `spago test` or `spago test -p <package-name>`.
+- Run end-to-end tests when working on the registry server in `app`. 
+- On Linux systems you can run all flake checks (the tests run in CI) using `nix flake check -L`.
 
-### Test
-
-The registry contains a mixture of unit tests, e2e tests, and nix flake checks. When you complete a change you should generally run the unit tests. When working on the server, you should generally also run the e2e tests. If you are on a Linux system, you can run `nix flake check -L` to run the flake checks prior to committing code to ensure it works.
-
-#### Unit Tests
-
-Unit tests can be run with `spago`. They are fast and cheap.
-
-```sh
-spago test   # Run all unit tests
-spago test -p <package-name>  # Run tests for a specific package
-```
-
-#### End-to-End Tests
+### End-to-End Tests
 
 The end-to-end (integration) tests are in `app-e2e`. They can be run via Nix on Linux:
 
@@ -76,14 +67,6 @@ The smoke test verifies that the server comes up properly and tests deployment. 
 nix build .#checks.x86_64-linux.smoke -L
 ```
 
-#### Continuous Integration via Nix Checks 
-
-There is a full suite of checks implemented with Nix which verify that packages build, formatting is correct, registry types are Dhall-conformant, and more. This is the primary check run in CI.
-
-```sh
-nix flake check -L
-```
-
 ## Formatting
 
 ```sh
@@ -106,16 +89,6 @@ nixfmt *.nix nix/**/*.nix
 - `db/` — SQLite schemas and migrations (use `dbmate up` to initialize).
 - `types/` — Dhall type specifications.
 - `nix/` — Nix build and deployment configuration.
-
-## Scripts & Daily Workflows
-
-The `scripts/` directory contains modules run as daily jobs by the purescript/registry repository:
-
-- `LegacyImporter` — imports package versions from legacy Bower registry
-- `PackageTransferrer` — handles package transfers
-- `PackageSetUpdater` — automatic daily package set updates
-
-Run scripts via Nix: `nix run .#<kebab-case-name>` (e.g., `nix run .#legacy-importer`). All scripts support `--help` for usage information.
 
 ## Scratch Directory & Caching
 
@@ -159,12 +132,16 @@ import Registry.SSH as SSH
 
 ### Syntax
 
-- Never use `let/in` syntax unless in an `ado` block. Prefer `do/let`.
+Never use `let/in` syntax unless in an `ado` block. Always `do/let`.
 
-## Deployment
+```purs
+func =
+  -- NEVER use let/in syntax
+  let x = 1
+   in x + x
 
-Continuous deployment via GitHub Actions on master. Manual deploy:
-
-```sh
-colmena apply
+func = do
+  -- ALWAYS use do/let syntax
+  let x = 1
+  x + x
 ```
