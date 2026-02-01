@@ -137,9 +137,6 @@ let
     };
 in
 {
-  # Use the latest spago from purescript-overlay
-  spago = prev.spago-unstable;
-
   # Spago lock: compiled PureScript dependencies for the entire workspace
   registry-spago-lock = prev.mkSpagoDerivation {
     name = "registry";
