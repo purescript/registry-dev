@@ -46,7 +46,7 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
-runMatrixJob :: forall r. MatrixJobData -> Run (REGISTRY + STORAGE + LOG + AFF + EFFECT + EXCEPT String + r) (Maybe (Map PackageName Range))
+runMatrixJob :: forall r. MatrixJobData -> Run (REGISTRY + STORAGE + LOG + AFF + EFFECT + EXCEPT String + r) (Map PackageName Range)
 runMatrixJob { compilerVersion, packageName, packageVersion, payload: buildPlan } = do
   workdir <- Tmp.mkTmpDir
   let installed = Path.concat [ workdir, ".registry" ]
@@ -57,25 +57,27 @@ runMatrixJob { compilerVersion, packageName, packageVersion, payload: buildPlan 
     (Map.insert packageName packageVersion buildPlan)
 
   installBuildPlan buildPlanWithIntegrity installed
-  result <- Run.liftAff $ Purs.callCompiler
-    { command: Purs.Compile { globs: [ Path.concat [ installed, "*/src/**/*.purs" ] ] }
+  result <- Purs.compile
+    { globs: [ Path.concat [ installed, "*/src/**/*.purs" ] ]
     , version: Just compilerVersion
     , cwd: Just workdir
     }
   FS.Extra.remove workdir
   case result of
     Left err -> do
-      Log.info $ "Compilation failed with compiler " <> Version.print compilerVersion
-        <> ":\n"
-        <> printCompilerFailure compilerVersion err
-      pure Nothing
+      Log.info $ Array.fold
+        [ "Compilation failed with compiler " <> Version.print compilerVersion
+        , ":\n"
+        , printCompilerFailure compilerVersion err
+        ]
+      Except.throw $ "Compilation failed with compiler " <> Version.print compilerVersion
     Right _ -> do
       Log.info $ "Compilation succeeded with compiler " <> Version.print compilerVersion
 
       Registry.readMetadata packageName >>= case _ of
         Nothing -> do
           Log.error $ "No existing metadata for " <> PackageName.print packageName
-          pure Nothing
+          Except.throw $ "No metadata found for " <> PackageName.print packageName
         Just (Metadata metadata) -> do
           let
             metadataWithCompilers = metadata
@@ -91,10 +93,10 @@ runMatrixJob { compilerVersion, packageName, packageVersion, payload: buildPlan 
 
           Log.info "Wrote completed metadata to the registry!"
           Registry.readManifest packageName packageVersion >>= case _ of
-            Just (Manifest manifest) -> pure (Just manifest.dependencies)
+            Just (Manifest manifest) -> pure manifest.dependencies
             Nothing -> do
               Log.error $ "No existing metadata for " <> PackageName.print packageName <> "@" <> Version.print packageVersion
-              pure Nothing
+              Except.throw $ "No manifest found for " <> PackageName.print packageName <> "@" <> Version.print packageVersion
 
 -- TODO feels like we should be doing this at startup and use the cache instead
 -- of reading files all over again

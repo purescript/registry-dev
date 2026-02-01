@@ -12,7 +12,11 @@ import Data.Foldable (foldMap)
 import Data.String as String
 import Node.ChildProcess.Types (Exit(..))
 import Node.Library.Execa as Execa
+import Registry.App.Effect.Log (LOG)
+import Registry.App.Effect.Log as Log
 import Registry.Version as Version
+import Run (AFF, Run)
+import Run as Run
 
 -- | The minimum compiler version that supports 'purs graph'
 minPursGraph :: Version
@@ -169,3 +173,34 @@ callCompiler compilerArgs = do
             Right ({ errors } :: { errors :: Array CompilerError })
               | Array.null errors -> UnknownError "Non-normal exit code, but no errors reported."
               | otherwise -> CompilationError errors
+
+-- | The error message pattern indicating a race condition in the PureScript
+-- | compiler's parallel compilation. This is a transient error that can be
+-- | resolved by retrying.
+compilerRaceConditionError :: String
+compilerRaceConditionError = "Unexpected end of JSON input"
+
+-- | Check if a compiler failure is due to the known race condition bug.
+isCompilerRaceCondition :: CompilerFailure -> Boolean
+isCompilerRaceCondition = case _ of
+  UnknownError err -> String.contains (String.Pattern compilerRaceConditionError) err
+  _ -> false
+
+-- | Compile PureScript source files with automatic retry for transient errors.
+-- | Retries up to 3 times when the "Unexpected end of JSON input" race condition occurs.
+compile
+  :: forall r
+   . { globs :: Array FilePath, version :: Maybe Version, cwd :: Maybe FilePath }
+  -> Run (LOG + AFF + r) (Either CompilerFailure String)
+compile { globs, version, cwd } = go 1
+  where
+  maxRetries = 3
+
+  go :: Int -> Run (LOG + AFF + r) (Either CompilerFailure String)
+  go attempt = do
+    result <- Run.liftAff $ callCompiler { command: Compile { globs }, version, cwd }
+    case result of
+      Left err | isCompilerRaceCondition err && attempt < maxRetries -> do
+        Log.warn $ "Compiler race condition detected (attempt " <> show attempt <> "/" <> show maxRetries <> "), retrying..."
+        go (attempt + 1)
+      _ -> pure result
