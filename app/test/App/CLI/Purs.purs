@@ -7,6 +7,7 @@ import Data.Array as Array
 import Data.Codec.JSON as CJ
 import Data.Foldable (traverse_)
 import Data.Map as Map
+import Data.String as String
 import JSON as JSON
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
@@ -20,6 +21,7 @@ import Registry.Test.Utils (filterAvailableCompilers)
 import Registry.Test.Utils as Utils
 import Registry.Version as Version
 import Test.Spec as Spec
+import Test.Spec.Assertions as Assertions
 
 spec :: Spec.Spec Unit
 spec = do
@@ -35,6 +37,41 @@ spec = do
   traverse_ (testMissingVersion <<< Utils.unsafeVersion) [ "0.13.1", "0.13.7", "0.15.1", "0.12.0", "0.14.12345" ]
   traverse_ testCompilationError (filterMaybeVersions [ Just "0.13.0", Just "0.13.8", Just "0.14.0", Just "0.15.0", Nothing ])
   traverse_ testGraph (filterMaybeVersions [ Just "0.14.0", Just "0.15.0", Nothing ])
+
+  Spec.describe "Compiler Race Condition Detection" do
+    Spec.it "Detects race condition error in UnknownError" do
+      let
+        raceConditionError = UnknownError $ String.joinWith "\n"
+          [ "[ 1 of 226] Compiling Unsafe.Coerce"
+          , "[ 2 of 226] Compiling Type.Row"
+          , "JSON: Unexpected end of JSON input"
+          ]
+      Purs.isCompilerRaceCondition raceConditionError `Assertions.shouldEqual` true
+
+    Spec.it "Detects race condition error with surrounding text" do
+      let err = UnknownError "Some prefix text\nJSON: Unexpected end of JSON input\nSome suffix"
+      Purs.isCompilerRaceCondition err `Assertions.shouldEqual` true
+
+    Spec.it "Does not detect race condition for normal UnknownError" do
+      let err = UnknownError "Some other compiler error message"
+      Purs.isCompilerRaceCondition err `Assertions.shouldEqual` false
+
+    Spec.it "Does not detect race condition for CompilationError" do
+      let
+        err = CompilationError
+          [ { position: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }
+            , message: "Unknown module ModuleB"
+            , errorCode: "UnknownModule"
+            , errorLink: "https://example.com"
+            , filename: "test.purs"
+            , moduleName: Just "ModuleA"
+            }
+          ]
+      Purs.isCompilerRaceCondition err `Assertions.shouldEqual` false
+
+    Spec.it "Does not detect race condition for unrelated JSON error" do
+      let err = UnknownError "JSON parse error: invalid syntax at line 5"
+      Purs.isCompilerRaceCondition err `Assertions.shouldEqual` false
   where
   testVersion version =
     Spec.it ("Calls compiler version " <> Version.print version) do

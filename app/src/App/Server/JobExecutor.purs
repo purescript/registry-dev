@@ -115,9 +115,11 @@ findNextAvailableJob = runMaybeT
 executeJob :: DateTime -> Job -> Run ServerEffects Unit
 executeJob _ = case _ of
   PublishJob { payload: payload@{ name } } -> do
+    -- `publish` will throw on error, or return `Nothing` if the pipeline
+    -- exited with a valid status but without publishing a package (for instance,
+    -- the package already existed), or return `Just` if a new version was
+    -- published and we need to queue matrix jobs.
     maybeResult <- API.publish payload
-    -- The above operation will throw if not successful, and return a map of
-    -- dependencies of the package only if it has not been published before.
     for_ maybeResult \{ compiler, dependencies, version } -> do
       -- At this point this package has been verified with one compiler only.
       -- So we need to enqueue compilation jobs for (1) same package, all the other
@@ -127,45 +129,48 @@ executeJob _ = case _ of
       let solverData = { compiler, name, version, dependencies, compilerIndex }
       samePackageAllCompilers <- MatrixBuilder.solveForAllCompilers solverData
       sameCompilerAllDependants <- MatrixBuilder.solveDependantsForCompiler solverData
-      for (Array.fromFoldable $ Set.union samePackageAllCompilers sameCompilerAllDependants)
-        \{ compiler: solvedCompiler, resolutions, name: solvedPackage, version: solvedVersion } -> do
-          Log.info $ "Enqueuing matrix job: compiler "
-            <> Version.print solvedCompiler
-            <> ", package "
-            <> PackageName.print solvedPackage
-            <> "@"
-            <> Version.print solvedVersion
-          Db.insertMatrixJob
-            { payload: resolutions
-            , compilerVersion: solvedCompiler
-            , packageName: solvedPackage
-            , packageVersion: solvedVersion
-            }
+      for (Array.fromFoldable $ Set.union samePackageAllCompilers sameCompilerAllDependants) \{ compiler: solvedCompiler, resolutions, name: solvedPackage, version: solvedVersion } -> do
+        Log.info $ Array.fold
+          [ "Enqueuing matrix job: compiler "
+          , Version.print solvedCompiler
+          , ", package "
+          , PackageName.print solvedPackage
+          , "@"
+          , Version.print solvedVersion
+          ]
+        Db.insertMatrixJob
+          { payload: resolutions
+          , compilerVersion: solvedCompiler
+          , packageName: solvedPackage
+          , packageVersion: solvedVersion
+          }
   UnpublishJob { payload } -> API.authenticated payload
   TransferJob { payload } -> API.authenticated payload
   MatrixJob details@{ packageName, packageVersion } -> do
-    maybeDependencies <- MatrixBuilder.runMatrixJob details
-    -- Unlike the publishing case, after verifying a compilation here we only need
-    -- to followup with trying to compile the packages that depend on this one
-    for_ maybeDependencies \dependencies -> do
-      -- TODO here we are building the compiler index, but we should really cache it
-      compilerIndex <- MatrixBuilder.readCompilerIndex
-      let solverData = { compiler: details.compilerVersion, name: packageName, version: packageVersion, dependencies, compilerIndex }
-      sameCompilerAllDependants <- MatrixBuilder.solveDependantsForCompiler solverData
-      for (Array.fromFoldable sameCompilerAllDependants)
-        \{ compiler: solvedCompiler, resolutions, name: solvedPackage, version: solvedVersion } -> do
-          Log.info $ "Enqueuing matrix job: compiler "
-            <> Version.print solvedCompiler
-            <> ", package "
-            <> PackageName.print solvedPackage
-            <> "@"
-            <> Version.print solvedVersion
-          Db.insertMatrixJob
-            { payload: resolutions
-            , compilerVersion: solvedCompiler
-            , packageName: solvedPackage
-            , packageVersion: solvedVersion
-            }
+    -- After publishing a matrix job, we check if any dependents need to also have
+    -- a job queued (for instance a new compiler version came out, we want to have
+    -- packages trigger jobs for their dependents so it cascades through the registry)
+    dependencies <- MatrixBuilder.runMatrixJob details
+
+    -- TODO here we are building the compiler index, but we should really cache it
+    compilerIndex <- MatrixBuilder.readCompilerIndex
+    let solverData = { compiler: details.compilerVersion, name: packageName, version: packageVersion, dependencies, compilerIndex }
+    sameCompilerAllDependants <- MatrixBuilder.solveDependantsForCompiler solverData
+    for_ (Array.fromFoldable sameCompilerAllDependants) \{ compiler: solvedCompiler, resolutions, name: solvedPackage, version: solvedVersion } -> do
+      Log.info $ Array.fold
+        [ "Enqueuing matrix job: compiler "
+        , Version.print solvedCompiler
+        , ", package "
+        , PackageName.print solvedPackage
+        , "@"
+        , Version.print solvedVersion
+        ]
+      Db.insertMatrixJob
+        { payload: resolutions
+        , compilerVersion: solvedCompiler
+        , packageName: solvedPackage
+        , packageVersion: solvedVersion
+        }
   PackageSetJob payload -> API.packageSetUpdate payload
 
 upgradeRegistryToNewCompiler :: forall r. Version -> Run (DB + LOG + EXCEPT String + REGISTRY + r) Unit
@@ -178,12 +183,14 @@ upgradeRegistryToNewCompiler newCompilerVersion = do
     -- because from them we should be able to reach the whole of the registry,
     -- as they complete new jobs for their dependants will be queued up.
     when (Map.isEmpty manifest.dependencies) do
-      Log.info $ "Enqueuing matrix job for _new_ compiler "
-        <> Version.print newCompilerVersion
-        <> ", package "
-        <> PackageName.print manifest.name
-        <> "@"
-        <> Version.print manifest.version
+      Log.info $ Array.fold
+        [ "Enqueuing matrix job for _new_ compiler "
+        , Version.print newCompilerVersion
+        , ", package "
+        , PackageName.print manifest.name
+        , "@"
+        , Version.print manifest.version
+        ]
       void $ Db.insertMatrixJob
         { payload: Map.empty
         , compilerVersion: newCompilerVersion

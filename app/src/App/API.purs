@@ -713,8 +713,8 @@ publish payload = do
       let installedResolutions = Path.concat [ tmp, ".registry" ]
       buildPlan <- MatrixBuilder.resolutionsToBuildPlan validatedResolutions
       MatrixBuilder.installBuildPlan buildPlan installedResolutions
-      compilationResult <- Run.liftAff $ Purs.callCompiler
-        { command: Purs.Compile { globs: [ "src/**/*.purs", Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
+      compilationResult <- Purs.compile
+        { globs: [ "src/**/*.purs", Path.concat [ installedResolutions, "*/src/**/*.purs" ] ]
         , version: Just compiler
         , cwd: Just downloadedPackage
         }
@@ -861,8 +861,8 @@ publish payload = do
         Just { result: Right _ } -> do
           Log.debug "Using cached successful compilation, skipping compilation step"
         _ -> do
-          compilationResult <- Run.liftAff $ Purs.callCompiler
-            { command: Purs.Compile { globs: [ Path.concat [ packageSource, "src/**/*.purs" ], Path.concat [ installedResolutions, "*/src/**/*.purs" ] ] }
+          compilationResult <- Purs.compile
+            { globs: [ Path.concat [ packageSource, "src/**/*.purs" ], Path.concat [ installedResolutions, "*/src/**/*.purs" ] ]
             , version: Just compiler
             , cwd: Just tmp
             }
@@ -1018,8 +1018,8 @@ findAllCompilers { source, manifest, compilers } = do
             FS.Extra.ensureDirectory installed
             buildPlanForCompiler <- MatrixBuilder.resolutionsToBuildPlan resolutions
             MatrixBuilder.installBuildPlan buildPlanForCompiler installed
-            result <- Run.liftAff $ Purs.callCompiler
-              { command: Purs.Compile { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ] }
+            result <- Purs.compile
+              { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ]
               , version: Just target
               , cwd: Just workdir
               }
