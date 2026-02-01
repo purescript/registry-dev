@@ -84,7 +84,7 @@ nixfmt *.nix nix/**/*.nix
 - `app-e2e/` — E2E tests for the server API.
 - `lib/` — **Public library** for consumers (Spago, Pursuit, etc.). Only types and functions useful to external tools belong here. Avoid implementation-specific code.
 - `foreign/` — FFI bindings to JavaScript libraries.
-- `scripts/` — Runnable modules for registry tasks (LegacyImporter, PackageTransferrer, PackageSetUpdater, etc.). Run via `nix run .#legacy-importer`, etc.
+- `scripts/` — Runnable modules for registry tasks (PackageTransferrer, PackageSetUpdater, DailyImporter, etc.). Run via `nix run .#package-transferrer`, etc.
 - `test-utils/` — Shared test utilities.
 - `db/` — SQLite schemas and migrations (use `dbmate up` to initialize).
 - `types/` — Dhall type specifications.

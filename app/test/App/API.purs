@@ -16,25 +16,18 @@ import Node.Path as Path
 import Node.Process as Process
 import Registry.App.API (LicenseValidationError(..), validateLicense)
 import Registry.App.API as API
-import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
-import Registry.App.Legacy.BoundWidening (LegacyPublishContext)
 import Registry.App.Legacy.Types (RawPackageName(..))
 import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Tmp as Tmp
-import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
-import Registry.Manifest as Manifest
-import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
-import Registry.Range as Range
-import Registry.Solver as Solver
 import Registry.Test.Assert as Assert
 import Registry.Test.Assert.Run as Assert.Run
 import Registry.Test.Utils as Utils
@@ -51,7 +44,6 @@ type PipelineEnv =
   , metadata :: Ref (Map PackageName Metadata)
   , index :: Ref ManifestIndex
   , storageDir :: FilePath
-  , archiveDir :: FilePath
   , githubDir :: FilePath
   }
 
@@ -68,43 +60,31 @@ spec = do
     copySourceFiles
 
   Spec.describe "API pipelines run correctly" $ Spec.around withCleanEnv do
-    Spec.it "Publish a legacy-converted package with unused deps" \{ workdir, index, metadata, storageDir, archiveDir, githubDir } -> do
+    Spec.it "Publish a package successfully" \{ workdir, index, metadata, storageDir, githubDir } -> do
       logs <- liftEffect (Ref.new [])
 
       let
-        toLegacyContext :: ManifestIndex -> LegacyPublishContext
-        toLegacyContext idx =
-          { legacyIndex:
-              Solver.exploreAllTransitiveDependencies
-                $ Solver.initializeRegistry
-                $ map (map (_.dependencies <<< un Manifest))
-                $ ManifestIndex.toMap idx
-          , packageSetEvidence: Map.empty
-          }
-
         testEnv =
           { workdir
           , logs
           , index
           , metadata
-          , pursuitExcludes: Set.singleton (Utils.unsafePackageName "type-equality")
+          , pursuitExcludes: Set.empty
           , username: "jon"
           , storage: storageDir
-          , archive: archiveDir
           , github: githubDir
           }
 
       result <- Assert.Run.runTestEffects testEnv $ Except.runExcept do
-        -- We'll publish effect@4.0.0 from the fixtures/github-packages
-        -- directory, which has an unnecessary dependency on 'type-equality'
-        -- inserted into it.
+        -- We'll publish type-equality@4.0.1 from the fixtures/github-packages
+        -- directory, which has a proper purs.json manifest.
         let
-          name = Utils.unsafePackageName "effect"
-          version = Utils.unsafeVersion "4.0.0"
-          ref = "v4.0.0"
+          name = Utils.unsafePackageName "type-equality"
+          version = Utils.unsafeVersion "4.0.1"
+          ref = "v4.0.1"
           publishArgs =
             { compiler: Just $ Utils.unsafeVersion "0.15.10"
-            , location: Just $ GitHub { owner: "purescript", repo: "purescript-effect", subdir: Nothing }
+            , location: Just $ GitHub { owner: "purescript", repo: "purescript-type-equality", subdir: Nothing }
             , name
             , ref
             , version: version
@@ -112,8 +92,7 @@ spec = do
             }
 
         -- First, we publish the package.
-        Registry.readAllManifests >>= \idx ->
-          void $ API.publish (Just (toLegacyContext idx)) publishArgs
+        void $ API.publish publishArgs
 
         -- Then, we can check that it did make it to "Pursuit" as expected
         Pursuit.getPublishedVersions name >>= case _ of
@@ -126,35 +105,12 @@ spec = do
           unless (Set.member version versions) do
             Except.throw $ "Expected " <> formatPackageVersion name version <> " to be published to registry storage."
 
-        -- Let's verify the manifest does not include the unnecessary
-        -- 'type-equality' dependency...
-        -- First, get the integrity info from metadata for the download
-        Metadata downloadMeta <- Registry.readMetadata name >>= case _ of
-          Nothing -> Except.throw $ "No metadata for " <> PackageName.print name
-          Just m -> pure m
-        { hash, bytes } <- case Map.lookup version downloadMeta.published of
-          Nothing -> Except.throw $ "Version " <> Version.print version <> " not in metadata"
-          Just p -> pure p
-        Storage.download name version "effect-result" { hash, bytes }
-        Tar.extract { cwd: workdir, archive: "effect-result" }
-        Run.liftAff (readJsonFile Manifest.codec (Path.concat [ "effect-4.0.0", "purs.json" ])) >>= case _ of
-          Left err -> Except.throw $ "Expected effect@4.0.0 to be downloaded to effect-4.0.0 with a purs.json but received error " <> err
-          Right (Manifest manifest) -> do
-            let expectedDeps = Map.singleton (Utils.unsafePackageName "prelude") (Utils.unsafeRange ">=6.0.0 <7.0.0")
-            when (manifest.dependencies /= expectedDeps) do
-              Except.throw $ String.joinWith "\n"
-                [ "Expected effect@4.0.0 to have dependencies"
-                , printJson (Internal.Codec.packageMap Range.codec) expectedDeps
-                , "\nbut got"
-                , printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
-                ]
-
         -- We should verify the resulting metadata file is correct
-        Metadata effectMetadata <- Registry.readMetadata name >>= case _ of
+        Metadata typeEqualityMetadata <- Registry.readMetadata name >>= case _ of
           Nothing -> Except.throw $ "Expected " <> PackageName.print name <> " to be in metadata."
           Just m -> pure m
 
-        case Map.lookup version effectMetadata.published of
+        case Map.lookup version typeEqualityMetadata.published of
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to be in metadata."
           Just published -> do
             let many' = NonEmptyArray.toArray published.compilers
@@ -166,65 +122,9 @@ spec = do
 
         -- Finally, we can verify that publishing the package again should fail
         -- since it already exists.
-        Except.runExcept (API.publish Nothing publishArgs) >>= case _ of
+        Except.runExcept (API.publish publishArgs) >>= case _ of
           Left _ -> pure unit
           Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to fail."
-
-        -- If we got here then the new published package is fine. There is one
-        -- other successful code path: publishing a package that already exists
-        -- but did not have documentation make it to Pursuit.
-        let
-          pursuitOnlyPublishArgs =
-            { compiler: Just $ Utils.unsafeVersion "0.15.10"
-            , location: Just $ GitHub { owner: "purescript", repo: "purescript-type-equality", subdir: Nothing }
-            , name: Utils.unsafePackageName "type-equality"
-            , ref: "v4.0.1"
-            , version: Utils.unsafeVersion "4.0.1"
-            , resolutions: Nothing
-            }
-        Registry.readAllManifests >>= \idx ->
-          void $ API.publish (Just (toLegacyContext idx)) pursuitOnlyPublishArgs
-
-        -- We can also verify that transitive dependencies are added for legacy
-        -- packages.
-        let
-          transitive = { name: Utils.unsafePackageName "transitive", version: Utils.unsafeVersion "1.0.0" }
-          transitivePublishArgs =
-            { compiler: Just $ Utils.unsafeVersion "0.15.10"
-            , location: Just $ GitHub { owner: "purescript", repo: "purescript-transitive", subdir: Nothing }
-            , name: transitive.name
-            , ref: "v" <> Version.print transitive.version
-            , version: transitive.version
-            , resolutions: Nothing
-            }
-        Registry.readAllManifests >>= \idx ->
-          void $ API.publish (Just (toLegacyContext idx)) transitivePublishArgs
-
-        -- We should verify the resulting metadata file is correct
-        Metadata transitiveMetadata <- Registry.readMetadata transitive.name >>= case _ of
-          Nothing -> Except.throw $ "Expected " <> PackageName.print transitive.name <> " to be in metadata."
-          Just m -> pure m
-
-        case Map.lookup transitive.version transitiveMetadata.published of
-          Nothing -> Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to be in metadata."
-          Just published -> do
-            let many' = NonEmptyArray.toArray published.compilers
-            -- Only 0.15.10 is expected because prelude only has 0.15.10 in metadata
-            let expected = map Utils.unsafeVersion [ "0.15.10" ]
-            unless (many' == expected) do
-              Except.throw $ "Expected " <> formatPackageVersion transitive.name transitive.version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
-
-        Registry.readManifest transitive.name transitive.version >>= case _ of
-          Nothing -> Except.throw $ "Expected " <> PackageName.print transitive.name <> " to be in manifest index."
-          Just (Manifest manifest) -> do
-            let expectedDeps = Map.singleton (Utils.unsafePackageName "prelude") (Utils.unsafeRange ">=6.0.0 <7.0.0")
-            when (manifest.dependencies /= expectedDeps) do
-              Except.throw $ String.joinWith "\n"
-                [ "Expected transitive@1.0.0 to have dependencies"
-                , printJson (Internal.Codec.packageMap Range.codec) expectedDeps
-                , "\nbut got"
-                , printJson (Internal.Codec.packageMap Range.codec) manifest.dependencies
-                ]
 
       case result of
         Left exn -> do
@@ -234,7 +134,7 @@ spec = do
         Right (Left err) -> do
           recorded <- liftEffect (Ref.read logs)
           Console.error $ String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
-          Assert.fail $ "Expected to publish effect@4.0.0 and type-equality@4.0.1 and transitive@1.0.0 but got error: " <> err
+          Assert.fail $ "Expected to publish type-equality@4.0.1 but got error: " <> err
         Right (Right _) -> pure unit
   where
   withCleanEnv :: (PipelineEnv -> Aff Unit) -> Aff Unit
@@ -268,7 +168,6 @@ spec = do
         copyFixture "registry-index"
         copyFixture "registry"
         copyFixture "registry-storage"
-        copyFixture "registry-archive"
         copyFixture "github-packages"
         -- FIXME: This is a bit hacky, but we remove effect-4.0.0.tar.gz since the unit test publishes
         -- it from scratch and will fail if effect-4.0.0 is already in storage. We have it in storage
@@ -299,7 +198,6 @@ spec = do
         , metadata: fixtures.metadata
         , index: fixtures.index
         , storageDir: Path.concat [ testFixtures, "registry-storage" ]
-        , archiveDir: Path.concat [ testFixtures, "registry-archive" ]
         , githubDir: Path.concat [ testFixtures, "github-packages" ]
         }
 

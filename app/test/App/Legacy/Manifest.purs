@@ -14,6 +14,8 @@ import Test.Spec as Spec
 spec :: Spec Unit
 spec = do
   Spec.describe "Bowerfile" bowerfileSpec
+  Spec.describe "bowerfileToPursJson" bowerfileToPursJsonSpec
+  Spec.describe "spagoDhallToPursJson" spagoDhallToPursJsonSpec
   Spec.describe "Legacy manifest codec" legacyManifestCodecSpec
 
 bowerfileSpec :: Spec Unit
@@ -99,6 +101,131 @@ bowerfileSpec = do
       , "dependencies": []
       }
       """
+
+bowerfileToPursJsonSpec :: Spec Unit
+bowerfileToPursJsonSpec = do
+  Spec.describe "Converts valid Bowerfiles" do
+    Spec.it "Converts a simple bowerfile with MIT license" do
+      let
+        input =
+          """
+          { "license": "MIT"
+          , "dependencies": { "purescript-prelude": "^6.0.0" }
+          }
+          """
+      case parseJson Legacy.Manifest.bowerfileCodec input of
+        Left err -> Assert.fail $ "Failed to parse bowerfile:\n" <> CJ.DecodeError.print err
+        Right bowerfile -> case Legacy.Manifest.bowerfileToPursJson bowerfile of
+          Left err -> Assert.fail $ "Failed to convert bowerfile:\n" <> err
+          Right result -> do
+            result.description `Assert.shouldEqual` Nothing
+
+    Spec.it "Strips purescript- prefix from dependency names" do
+      let
+        input =
+          """
+          { "license": "BSD-3-Clause"
+          , "dependencies": { "purescript-effect": "^4.0.0" }
+          }
+          """
+      case parseJson Legacy.Manifest.bowerfileCodec input of
+        Left err -> Assert.fail $ "Failed to parse bowerfile:\n" <> CJ.DecodeError.print err
+        Right bowerfile -> case Legacy.Manifest.bowerfileToPursJson bowerfile of
+          Left err -> Assert.fail $ "Failed to convert bowerfile:\n" <> err
+          Right _ -> pure unit
+
+  Spec.describe "Rejects invalid Bowerfiles" do
+    Spec.it "Fails on missing license" do
+      let
+        input =
+          """
+          { "dependencies": { "purescript-prelude": "^6.0.0" }
+          }
+          """
+      case parseJson Legacy.Manifest.bowerfileCodec input of
+        Left _ -> pure unit
+        Right bowerfile -> case Legacy.Manifest.bowerfileToPursJson bowerfile of
+          Left _ -> pure unit
+          Right _ -> Assert.fail "Expected conversion to fail for missing license"
+
+spagoDhallToPursJsonSpec :: Spec Unit
+spagoDhallToPursJsonSpec = do
+  Spec.describe "Converts valid SpagoDhallJson" do
+    Spec.it "Converts spago.dhall with license and dependencies" do
+      let
+        input =
+          """
+          { "license": "MIT"
+          , "dependencies": [ "prelude", "effect" ]
+          , "packages": { "prelude": { "version": "v6.0.0" }, "effect": { "version": "v4.0.0" } }
+          }
+          """
+      case parseJson Legacy.Manifest.spagoDhallJsonCodec input of
+        Left err -> Assert.fail $ "Failed to parse spago.dhall JSON:\n" <> CJ.DecodeError.print err
+        Right spagoDhall -> case Legacy.Manifest.spagoDhallToPursJson spagoDhall of
+          Left err -> Assert.fail $ "Failed to convert spago.dhall:\n" <> err
+          Right result -> do
+            result.description `Assert.shouldEqual` Nothing
+
+    Spec.it "Handles purescript- prefix in package names" do
+      let
+        input =
+          """
+          { "license": "BSD-3-Clause"
+          , "dependencies": [ "purescript-prelude" ]
+          , "packages": { "purescript-prelude": { "version": "v6.0.0" } }
+          }
+          """
+      case parseJson Legacy.Manifest.spagoDhallJsonCodec input of
+        Left err -> Assert.fail $ "Failed to parse:\n" <> CJ.DecodeError.print err
+        Right spagoDhall -> case Legacy.Manifest.spagoDhallToPursJson spagoDhall of
+          Left err -> Assert.fail $ "Failed to convert:\n" <> err
+          Right _ -> pure unit
+
+    Spec.it "Handles versions without v prefix" do
+      let
+        input =
+          """
+          { "license": "Apache-2.0"
+          , "dependencies": [ "prelude" ]
+          , "packages": { "prelude": { "version": "6.0.0" } }
+          }
+          """
+      case parseJson Legacy.Manifest.spagoDhallJsonCodec input of
+        Left err -> Assert.fail $ "Failed to parse:\n" <> CJ.DecodeError.print err
+        Right spagoDhall -> case Legacy.Manifest.spagoDhallToPursJson spagoDhall of
+          Left err -> Assert.fail $ "Failed to convert:\n" <> err
+          Right _ -> pure unit
+
+  Spec.describe "Rejects invalid SpagoDhallJson" do
+    Spec.it "Fails on missing license" do
+      let
+        input =
+          """
+          { "dependencies": [ "prelude" ]
+          , "packages": { "prelude": { "version": "v6.0.0" } }
+          }
+          """
+      case parseJson Legacy.Manifest.spagoDhallJsonCodec input of
+        Left _ -> pure unit
+        Right spagoDhall -> case Legacy.Manifest.spagoDhallToPursJson spagoDhall of
+          Left _ -> pure unit
+          Right _ -> Assert.fail "Expected conversion to fail for missing license"
+
+    Spec.it "Fails when dependency is not in packages" do
+      let
+        input =
+          """
+          { "license": "MIT"
+          , "dependencies": [ "prelude", "missing" ]
+          , "packages": { "prelude": { "version": "v6.0.0" } }
+          }
+          """
+      case parseJson Legacy.Manifest.spagoDhallJsonCodec input of
+        Left err -> Assert.fail $ "Failed to parse:\n" <> CJ.DecodeError.print err
+        Right spagoDhall -> case Legacy.Manifest.spagoDhallToPursJson spagoDhall of
+          Left _ -> pure unit
+          Right _ -> Assert.fail "Expected conversion to fail for missing package"
 
 legacyManifestCodecSpec :: Spec Unit
 legacyManifestCodecSpec = do

@@ -6,9 +6,9 @@ This specification defines the data formats used by the registry, the operations
 
 ## 1. Introduction
 
-The PureScript Registry is an independent package registry for PureScript. It was created after the Bower registry (which PureScript previously relied on for package distribution) stopped accepting new submissions in 2020. Initially package names were tracked in a simple `new-packages.json` file so that package managers like Spago and package sets tooling could continue to function. The full registry replaced this stopgap with a complete system.
+The PureScript Registry is an independent package registry for PureScript. It was created after the Bower registry (which PureScript previously relied on for package distribution) stopped accepting new submissions in 2020.
 
-Packages from the Bower registry and `new-packages.json` file have been grandfathered into the registry so long as they satisfy registry requirements. The most restrictive requirement is that package versions compile with at least one compiler version from 0.13.0 onwards. This means packages published prior to May 2019 are not in the registry and can only be used with legacy package managers (Bower, legacy Spago).
+Packages from the Bower registry have been grandfathered into the registry so long as they satisfy registry requirements. The most restrictive requirement is that package versions compile with at least one compiler version from 0.13.0 onwards. This means packages published prior to May 2019 are not in the registry and can only be used with legacy package managers (Bower, legacy Spago).
 
 The registry addresses several limitations of Bower and introduces new features of its own:
 

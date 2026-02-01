@@ -115,7 +115,7 @@ findNextAvailableJob = runMaybeT
 executeJob :: DateTime -> Job -> Run ServerEffects Unit
 executeJob _ = case _ of
   PublishJob { payload: payload@{ name } } -> do
-    maybeResult <- API.publish Nothing payload
+    maybeResult <- API.publish payload
     -- The above operation will throw if not successful, and return a map of
     -- dependencies of the package only if it has not been published before.
     for_ maybeResult \{ compiler, dependencies, version } -> do
