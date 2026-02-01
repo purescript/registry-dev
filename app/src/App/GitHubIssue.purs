@@ -289,7 +289,11 @@ initializeGitHub = do
       Console.log "Skipping operation from pacchettibotti to avoid feedback loops."
       pure Nothing
 
-    MalformedJson issue err -> do
+    MalformedJson _ "pacchettibotti" _ -> do
+      Console.log "Skipping malformed JSON from pacchettibotti to avoid feedback loops."
+      pure Nothing
+
+    MalformedJson issue _ err -> do
       let
         comment = String.joinWith "\n"
           [ "The JSON input for this package update is malformed:"
@@ -319,7 +323,7 @@ initializeGitHub = do
 
 data OperationDecoding
   = NotJson
-  | MalformedJson IssueNumber String
+  | MalformedJson IssueNumber String String
   | DecodedOperation IssueNumber String (Either PackageSetOperation PackageOperation)
 
 derive instance Eq OperationDecoding
@@ -370,7 +374,7 @@ readOperation eventPath = do
         let printedError = CJ.DecodeError.print jsonError
         Console.log $ "Malformed JSON:\n" <> printedError
         Console.log $ "Received body:\n" <> body
-        pure $ MalformedJson issueNumber printedError
+        pure $ MalformedJson issueNumber username printedError
       Right operation ->
         pure $ DecodedOperation issueNumber username operation
 
