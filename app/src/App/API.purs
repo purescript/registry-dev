@@ -410,6 +410,7 @@ detectManifestOrigin packageDir = do
 
   if hasPursJson then pure FromPursJson
   else if hasSpagoYaml then pure FromSpagoYaml
+  -- These are legacy formats which will be removed at some point after August 1, 2026
   else if hasBowerJson then pure FromBowerJson
   else if hasSpagoDhall && hasPackagesDhall then pure FromSpagoDhall
   else if hasSpagoDhall then
