@@ -114,7 +114,7 @@ slugPublishData :: Operation.PublishData
 slugPublishData =
   { name: slug.name
   , location: Just $ GitHub
-      { owner: "thomashoneyman"
+      { owner: "purescript"
       , repo: "purescript-slug"
       , subdir: Nothing
       }

@@ -246,7 +246,7 @@ let
   slugBase64Response =
     fileName:
     base64Response {
-      url = "/repos/thomashoneyman/purescript-slug/contents/${fileName}?ref=v3.0.0";
+      url = "/repos/purescript/purescript-slug/contents/${fileName}?ref=v3.0.0";
       inherit fileName;
       filePath = rootPath + "/app/fixtures/github-packages/slug-3.0.0/${fileName}";
     };
@@ -254,7 +254,7 @@ let
   slug404Response = fileName: {
     request = {
       method = "GET";
-      url = "/repos/thomashoneyman/purescript-slug/contents/${fileName}?ref=v3.0.0";
+      url = "/repos/purescript/purescript-slug/contents/${fileName}?ref=v3.0.0";
     };
     response = {
       status = 404;
@@ -1001,8 +1001,8 @@ let
       }
 
       # Remove any existing fixtures (they may have wrong permissions from nix store copy)
-      rm -rf "$FIXTURES_DIR/purescript" "$FIXTURES_DIR/thomashoneyman" 2>/dev/null || true
-      mkdir -p "$FIXTURES_DIR/purescript" "$FIXTURES_DIR/thomashoneyman"
+      rm -rf "$FIXTURES_DIR/purescript" 2>/dev/null || true
+      mkdir -p "$FIXTURES_DIR/purescript"
 
       # Copy fixtures and make writable (nix store files are read-only)
       cp -r ${rootPath}/app/fixtures/{registry-index,registry,package-sets} "$FIXTURES_DIR/purescript/"
@@ -1010,8 +1010,8 @@ let
       cp -r ${rootPath}/app/fixtures/github-packages/console-6.1.0 "$FIXTURES_DIR/purescript/purescript-console"
       cp -r ${rootPath}/app/fixtures/github-packages/unsafe-coerce-6.0.0 "$FIXTURES_DIR/purescript/purescript-unsafe-coerce"
       cp -r ${rootPath}/app/fixtures/github-packages/type-equality-4.0.1 "$FIXTURES_DIR/purescript/purescript-type-equality"
-      cp -r ${rootPath}/app/fixtures/github-packages/slug-3.0.0 "$FIXTURES_DIR/thomashoneyman/purescript-slug"
-      chmod -R u+w "$FIXTURES_DIR/purescript" "$FIXTURES_DIR/thomashoneyman"
+      cp -r ${rootPath}/app/fixtures/github-packages/slug-3.0.0 "$FIXTURES_DIR/purescript/purescript-slug"
+      chmod -R u+w "$FIXTURES_DIR/purescript"
 
       # Set type-equality publishedTime to current time for package set update test
       # This makes type-equality appear as a "recent upload" so the scheduler will
@@ -1031,15 +1031,6 @@ let
         gitbot tag -m "initial-fixture" initial-fixture
       done
 
-      # Initialize thomashoneyman repos
-      for repo in "$FIXTURES_DIR"/thomashoneyman/*/; do
-        cd "$repo"
-        git init -b master && git add .
-        gitbot commit -m "Fixture commit"
-        git config receive.denyCurrentBranch ignore
-        gitbot tag -m "initial-fixture" initial-fixture
-      done
-
       gitbot -C "$FIXTURES_DIR/purescript/package-sets" tag -m "psc-0.15.9-20230105" psc-0.15.9-20230105
       gitbot -C "$FIXTURES_DIR/purescript/purescript-effect" tag -m "v4.0.0" v4.0.0
       gitbot -C "$FIXTURES_DIR/purescript/purescript-console" tag -m "v6.1.0" v6.1.0
@@ -1049,7 +1040,7 @@ let
       # (the registry rejects publishing when multiple version tags point to the same commit)
       gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" commit --allow-empty -m "v4.0.2 release"
       gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" tag -m "v4.0.2" v4.0.2
-      gitbot -C "$FIXTURES_DIR/thomashoneyman/purescript-slug" tag -m "v3.0.0" v3.0.0
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-slug" tag -m "v3.0.0" v3.0.0
     '';
   };
 

@@ -76,15 +76,15 @@ spec = do
           }
 
       result <- Assert.Run.runTestEffects testEnv $ Except.runExcept do
-        -- We'll publish type-equality@4.0.1 from the fixtures/github-packages
-        -- directory, which has a proper purs.json manifest.
+        -- We'll publish effect@4.0.0 from the fixtures/github-packages
+        -- directory, which has a bower.json manifest.
         let
-          name = Utils.unsafePackageName "type-equality"
-          version = Utils.unsafeVersion "4.0.1"
-          ref = "v4.0.1"
+          name = Utils.unsafePackageName "effect"
+          version = Utils.unsafeVersion "4.0.0"
+          ref = "v4.0.0"
           publishArgs =
             { compiler: Just $ Utils.unsafeVersion "0.15.10"
-            , location: Just $ GitHub { owner: "purescript", repo: "purescript-type-equality", subdir: Nothing }
+            , location: Just $ GitHub { owner: "purescript", repo: "purescript-effect", subdir: Nothing }
             , name
             , ref
             , version: version
@@ -106,11 +106,11 @@ spec = do
             Except.throw $ "Expected " <> formatPackageVersion name version <> " to be published to registry storage."
 
         -- We should verify the resulting metadata file is correct
-        Metadata typeEqualityMetadata <- Registry.readMetadata name >>= case _ of
+        Metadata effectMetadata <- Registry.readMetadata name >>= case _ of
           Nothing -> Except.throw $ "Expected " <> PackageName.print name <> " to be in metadata."
           Just m -> pure m
 
-        case Map.lookup version typeEqualityMetadata.published of
+        case Map.lookup version effectMetadata.published of
           Nothing -> Except.throw $ "Expected " <> formatPackageVersion name version <> " to be in metadata."
           Just published -> do
             let many' = NonEmptyArray.toArray published.compilers
@@ -134,7 +134,7 @@ spec = do
         Right (Left err) -> do
           recorded <- liftEffect (Ref.read logs)
           Console.error $ String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
-          Assert.fail $ "Expected to publish type-equality@4.0.1 but got error: " <> err
+          Assert.fail $ "Expected to publish effect@4.0.0 but got error: " <> err
         Right (Right _) -> pure unit
   where
   withCleanEnv :: (PipelineEnv -> Aff Unit) -> Aff Unit
@@ -169,15 +169,10 @@ spec = do
         copyFixture "registry"
         copyFixture "registry-storage"
         copyFixture "github-packages"
-        -- FIXME: This is a bit hacky, but we remove effect-4.0.0.tar.gz since the unit test publishes
-        -- it from scratch and will fail if effect-4.0.0 is already in storage. We have it in storage
-        -- for the separate integration tests.
+        -- We remove effect-4.0.0.tar.gz since the unit test publishes it from
+        -- scratch and will fail if it's already in storage. We have it in
+        -- storage for the separate integration tests.
         FS.Extra.remove $ Path.concat [ testFixtures, "registry-storage", "effect-4.0.0.tar.gz" ]
-        -- Similarly, we remove type-equality files since the unit test publishes it from scratch
-        -- and will fail if type-equality already has metadata or storage. We have these files for
-        -- the separate integration tests (scheduler transfer tests).
-        FS.Extra.remove $ Path.concat [ testFixtures, "registry", "metadata", "type-equality.json" ]
-        FS.Extra.remove $ Path.concat [ testFixtures, "registry-storage", "type-equality-4.0.1.tar.gz" ]
 
       let
         readFixtures = do
