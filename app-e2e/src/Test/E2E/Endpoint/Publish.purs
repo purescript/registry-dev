@@ -68,6 +68,28 @@ spec = do
           let actualCompilers = Set.fromFoldable $ NEA.toArray publishedMetaAfter.compilers
           Assert.shouldEqual actualCompilers expectedCompilers
 
+  Spec.describe "Publish with spago.dhall manifest" do
+    Spec.it "can publish slug@3.0.0 which uses spago.dhall format" do
+      { jobId } <- Client.publish Fixtures.slugPublishData
+      job <- Env.pollJobOrFail jobId
+      Assert.shouldSatisfy (V1.jobInfo job).finishedAt isJust
+
+      uploadOccurred <- Env.hasStorageUpload Fixtures.slug
+      unless uploadOccurred do
+        storageRequests <- WireMock.getStorageRequests
+        WireMock.failWithRequests "Expected S3 PUT for slug/3.0.0.tar.gz" storageRequests
+
+      Metadata metadata <- Env.readMetadata Fixtures.slug.name
+      case Map.lookup Fixtures.slug.version metadata.published of
+        Nothing -> Assert.fail $ "Expected version " <> Version.print Fixtures.slug.version <> " in metadata published versions"
+        Just publishedMeta -> do
+          Assert.shouldSatisfy (Sha256.print publishedMeta.hash) (not <<< String.null)
+
+      manifestEntries <- Env.readManifestIndexEntry Fixtures.slug.name
+      let hasVersion = Array.any (\(Manifest m) -> m.version == Fixtures.slug.version) manifestEntries
+      unless hasVersion do
+        Assert.fail $ "Expected version " <> Version.print Fixtures.slug.version <> " in manifest index"
+
   Spec.describe "Publish state machine" do
     Spec.it "returns same jobId for duplicate publish requests" do
       { jobId: id1 } <- Client.publish Fixtures.effectPublishData

@@ -11,7 +11,6 @@ import Test.Registry.App.CLI.PursVersions as Test.CLI.PursVersions
 import Test.Registry.App.CLI.Tar as Test.CLI.Tar
 import Test.Registry.App.Effect.PackageSets as Test.Effect.PackageSets
 import Test.Registry.App.GitHubIssue as Test.GitHubIssue
-import Test.Registry.App.Legacy.BoundWidening as Test.Legacy.BoundWidening
 import Test.Registry.App.Legacy.LenientRange as Test.Legacy.LenientRange
 import Test.Registry.App.Legacy.LenientVersion as Test.Legacy.LenientVersion
 import Test.Registry.App.Legacy.Manifest as Test.Legacy.Manifest
@@ -43,11 +42,10 @@ main = runSpecAndExitProcess' config [ consoleReporter ] do
     Test.GitHubIssue.spec
 
   Spec.describe "Registry.App.Legacy" do
-    Spec.describe "Bound Widening" Test.Legacy.BoundWidening.spec
     Spec.describe "Lenient Version" Test.Legacy.LenientVersion.spec
     Spec.describe "Lenient Range" Test.Legacy.LenientRange.spec
     Spec.describe "Legacy Manifest" Test.Legacy.Manifest.spec
-    Spec.describe "Legacy Package Set" Test.Legacy.PackageSet.spec
+    Spec.describe "Legacy PackageSet" Test.Legacy.PackageSet.spec
 
   Spec.describe "Registry.App.Manifest" do
     Spec.describe "SpagoYaml" Test.Manifest.SpagoYaml.spec

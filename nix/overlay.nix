@@ -50,17 +50,9 @@ let
 
   # Map of script name -> { module, description }
   scripts = {
-    bulk-uploader = {
-      module = "Registry.Scripts.BulkUploader";
-      description = "Upload local tarballs to S3 and push registry repos without re-publishing";
-    };
     daily-importer = {
       module = "Registry.Scripts.DailyImporter";
       description = "Check for new package versions and submit publish jobs";
-    };
-    legacy-importer = {
-      module = "Registry.Scripts.LegacyImporter";
-      description = "Import packages from legacy registries (bower, psc-package, etc.)";
     };
     package-set-updater = {
       module = "Registry.Scripts.PackageSetUpdater";

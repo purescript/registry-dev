@@ -127,11 +127,11 @@ nix run .#server
 You can also run any of the modules listed in the [scripts](./scripts/) directory by converting the camel-case file name to kebab-case, such as:
 
 ```sh
-# To run `LegacyImporter.purs`
-nix run .#legacy-importer
-
 # To run `PackageTransferrer.purs`
 nix run .#package-transferrer
+
+# To run `DailyImporter.purs`
+nix run .#daily-importer
 ```
 
 ### Required Environment Variables
