@@ -513,7 +513,7 @@ parseSourceManifest { packageDir, name, version, ref, location } = do
               Except.throw $ "Could not convert spago.dhall to purs.json manifest: " <> err
             Right { license, description, dependencies } -> do
               let
-                m = Manifest
+                manifest = Manifest
                   { name
                   , version
                   , license
@@ -528,10 +528,10 @@ parseSourceManifest { packageDir, name, version, ref, location } = do
               Log.notice $ Array.fold
                 [ "Converted your spago.dhall into a purs.json manifest to use for publishing:"
                 , "\n```json\n"
-                , printJson Manifest.codec m
+                , printJson Manifest.codec manifest
                 , "\n```\n"
                 ]
-              pure m
+              pure manifest
 
   pure { manifest, origin }
 
