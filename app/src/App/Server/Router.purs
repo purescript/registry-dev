@@ -3,13 +3,17 @@ module Registry.App.Server.Router where
 import Registry.App.Prelude hiding ((/))
 
 import Data.Codec.JSON as CJ
+import Data.Date as Date
+import Data.DateTime (DateTime(..))
 import Data.DateTime as DateTime
+import Data.Enum as Enum
 import Data.Time.Duration (Hours(..), negateDuration)
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import HTTPurple (Method(..), Request, Response)
 import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
+import Partial.Unsafe (unsafePartial)
 import Registry.API.V1 (Route(..))
 import Registry.API.V1 as V1
 import Registry.App.API as API
@@ -23,6 +27,12 @@ import Registry.Operation as Operation
 import Run (Run)
 import Run as Run
 import Run.Except as Run.Except
+
+-- | The earliest date for which we have job logs (registry server launch date)
+registryLaunch :: DateTime
+registryLaunch = DateTime date bottom
+  where
+  date = Date.canonicalDate (unsafePartial fromJust $ Enum.toEnum 2026) Date.January (unsafePartial fromJust $ Enum.toEnum 31)
 
 runRouter :: ServerEnv -> Effect Unit
 runRouter env = do
@@ -117,9 +127,7 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
       Right jobs -> jsonOk (CJ.array V1.jobCodec) jobs
 
   Job jobId { level: maybeLogLevel, since }, Get -> do
-    now <- liftEffect nowUTC
-    let oneHourAgo = fromMaybe now $ DateTime.adjust (negateDuration (Hours 1.0)) now
-    lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since: fromMaybe oneHourAgo since }) >>= case _ of
+    lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since: fromMaybe registryLaunch since }) >>= case _ of
       Left err -> do
         lift $ Log.error $ "Error while fetching job: " <> err
         HTTPurple.internalServerError $ "Error while fetching job: " <> err
