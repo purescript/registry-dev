@@ -8,9 +8,10 @@ import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
 import Control.Parallel as Parallel
 import Data.Array as Array
 import Data.DateTime (DateTime)
+import Data.Int as Int
 import Data.Map as Map
 import Data.Set as Set
-import Effect.Aff (Milliseconds(..))
+import Data.Time.Duration as Duration
 import Effect.Aff as Aff
 import Record as Record
 import Registry.API.V1 (Job(..))
@@ -56,7 +57,7 @@ runJobExecutor env = runEffects env do
         <> " has been reset 3+ times. This indicates a persistent failure "
         <> "that requires investigation."
     Log.error $ "Pausing job processing for 5 minutes to allow investigation..."
-    liftAff $ Aff.delay (Milliseconds (1000.0 * 60.0 * 5.0))
+    liftAff $ Aff.delay $ Duration.fromDuration $ Duration.Minutes 5.0
 
   loop
   where
@@ -64,7 +65,7 @@ runJobExecutor env = runEffects env do
     maybeJob <- findNextAvailableJob
     case maybeJob of
       Nothing -> do
-        liftAff $ Aff.delay (Milliseconds 1000.0)
+        liftAff $ Aff.delay $ Duration.fromDuration $ Duration.Seconds 1.0
         loop
 
       Just job -> do
@@ -80,12 +81,16 @@ runJobExecutor env = runEffects env do
         jobResult <- liftAff do
           let envWithJobId = env { jobId = Just jobId }
           let execute = Just <$> (runEffects envWithJobId $ executeJob now job)
-          let delay = 1000.0 * 60.0 * 5.0 -- 5 minutes
-          let timeout = Aff.delay (Milliseconds delay) $> Nothing
+          let delay = Duration.fromDuration (jobTimeout job)
+          let timeout = Aff.delay delay $> Nothing
           Parallel.sequential $ Parallel.parallel execute <|> Parallel.parallel timeout
 
         success <- case jobResult of
           Nothing -> do
+            now' <- nowUTC
+            let Duration.Minutes mins = jobTimeout job
+            let message = "Job timed out after " <> show (Int.floor mins) <> " minutes."
+            Db.insertLog { level: V1.Error, message, jobId, timestamp: now' }
             Log.error $ "Job " <> unwrap jobId <> " timed out."
             pure false
 
@@ -111,6 +116,12 @@ findNextAvailableJob = runMaybeT
   <|> (TransferJob <<< Record.merge { logs: [], jobType: Proxy :: _ "transfer" } <$> MaybeT Db.selectNextTransferJob)
   <|> (MatrixJob <<< Record.merge { logs: [], jobType: Proxy :: _ "matrix" } <$> MaybeT Db.selectNextMatrixJob)
   <|> (PackageSetJob <<< Record.merge { logs: [], jobType: Proxy :: _ "packageset" } <$> MaybeT Db.selectNextPackageSetJob)
+
+jobTimeout :: Job -> Duration.Minutes
+jobTimeout = case _ of
+  PackageSetJob _ -> Duration.Minutes 30.0
+  PublishJob _ -> Duration.Minutes 10.0
+  _ -> Duration.Minutes 5.0
 
 executeJob :: DateTime -> Job -> Run ServerEffects Unit
 executeJob _ = case _ of
