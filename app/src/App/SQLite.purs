@@ -198,7 +198,7 @@ type SelectJobRequest =
 
 selectJob :: SQLite -> SelectJobRequest -> Effect { unreadableLogs :: Array String, job :: Either String (Maybe Job) }
 selectJob db { level: maybeLogLevel, since, jobId: JobId jobId } = do
-  let logLevel = fromMaybe Error maybeLogLevel
+  let logLevel = fromMaybe Info maybeLogLevel
   { fail: unreadableLogs, success: logs } <- selectLogsByJob db (JobId jobId) logLevel since
   -- Failing to decode a log should not prevent us from returning a job, so we pass
   -- failures through to be handled by application code
