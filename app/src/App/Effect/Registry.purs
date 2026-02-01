@@ -9,7 +9,6 @@ import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec.JSON as CJ
-import Data.Codec.JSON.Common as CJ.Common
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
 import Data.Exists as Exists
@@ -38,7 +37,6 @@ import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (Address)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Codec as Internal.Codec
-import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata as Metadata
@@ -80,10 +78,7 @@ data Registry a
   | ReadLatestPackageSet (Either String (Maybe PackageSet) -> a)
   | WritePackageSet PackageSet String (Either String Unit -> a)
   | ReadAllPackageSets (Either String (Map Version PackageSet) -> a)
-  -- Legacy operations
   | MirrorPackageSet PackageSet (Either String Unit -> a)
-  | ReadLegacyRegistry (Either String { bower :: Map String String, new :: Map String String } -> a)
-  | MirrorLegacyRegistry PackageName Location (Either String Unit -> a)
 
 derive instance Functor Registry
 
@@ -138,14 +133,6 @@ readAllPackageSets = Except.rethrow =<< Run.lift _registry (ReadAllPackageSets i
 mirrorPackageSet :: forall r. PackageSet -> Run (REGISTRY + EXCEPT String + r) Unit
 mirrorPackageSet set = Except.rethrow =<< Run.lift _registry (MirrorPackageSet set identity)
 
--- | Read the contents of the legacy registry.
-readLegacyRegistry :: forall r. Run (REGISTRY + EXCEPT String + r) { bower :: Map String String, new :: Map String String }
-readLegacyRegistry = Except.rethrow =<< Run.lift _registry (ReadLegacyRegistry identity)
-
--- | Mirror a package name and location to the legacy registry files.
-mirrorLegacyRegistry :: forall r. PackageName -> Location -> Run (REGISTRY + EXCEPT String + r) Unit
-mirrorLegacyRegistry name location = Except.rethrow =<< Run.lift _registry (MirrorLegacyRegistry name location identity)
-
 interpret :: forall r a. (Registry ~> Run r) -> Run (REGISTRY + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _registry handler Run.send)
 
@@ -163,7 +150,6 @@ data CommitKey
   | CommitManifestIndex
   | CommitMetadataIndex
   | CommitPackageSet Version
-  | CommitLegacyRegistry
   | CommitLegacyPackageSets (Array FilePath)
 
 -- | Get the pattern representing the paths that should be committed for each
@@ -181,8 +167,6 @@ commitKeyToPaths = coerce <<< case _ of
     [ Constants.metadataDirectory <> Path.sep <> "*.json" ]
   CommitPackageSet version ->
     [ Path.concat [ Constants.packageSetsDirectory, Version.print version <> ".json" ] ]
-  CommitLegacyRegistry ->
-    [ "bower-packages.json", "new-packages.json" ]
   CommitLegacyPackageSets paths ->
     paths
 
@@ -193,7 +177,6 @@ commitKeyToRepoKey = case _ of
   CommitManifestIndex -> ManifestIndexRepo
   CommitMetadataIndex -> RegistryRepo
   CommitPackageSet _ -> RegistryRepo
-  CommitLegacyRegistry -> RegistryRepo
   CommitLegacyPackageSets _ -> LegacyPackageSetsRepo
 
 data WriteMode = ReadOnly | CommitAs Git.Committer
@@ -599,68 +582,6 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
             Log.warn $ "Tried to push tags to legacy registry, but there was no effect (they already existed)."
           Right Git.Changed ->
             Log.info "Pushed new tags to legacy registry."
-
-  ReadLegacyRegistry reply -> map (map reply) Except.runExcept do
-    let dir = repoPath RegistryRepo
-    Log.info $ "Reading legacy registry from " <> dir
-    let readRegistryFile path = readJsonFile (CJ.Common.strMap CJ.string) (Path.concat [ dir, path ])
-    bower <- Run.liftAff (readRegistryFile "bower-packages.json") >>= case _ of
-      Left error -> Except.throw $ "Failed to read bower-packages.json file: " <> error
-      Right packages -> pure packages
-    new <- Run.liftAff (readRegistryFile "new-packages.json") >>= case _ of
-      Left error -> Except.throw $ "Failed to read new-packages.json file: " <> error
-      Right packages -> pure packages
-    pure { bower, new }
-
-  MirrorLegacyRegistry name location reply -> map (map reply) Except.runExcept do
-    Log.debug $ "Mirroring package " <> PackageName.print name <> " to location " <> stringifyJson Location.codec location
-    url <- case location of
-      GitHub { owner, repo, subdir: Nothing } ->
-        pure $ Array.fold [ "https://github.com/", owner, "/", repo, ".git" ]
-      GitHub { owner, repo, subdir: Just dir } ->
-        Except.throw $ Array.fold
-          [ "Cannot mirror location " <> owner <> "/" <> repo
-          , " to the legacy registry because it specifies a 'subdir' key (" <> dir
-          , "), and the legacy registry does not support monorepos."
-          ]
-      Git { url } ->
-        Except.throw $ "Cannot mirror location (Git " <> url <> ") because it is a Git location, and only GitHub packages are supported in the legacy registry."
-
-    { bower, new } <- Except.rethrow =<< handle env (ReadLegacyRegistry identity)
-
-    let rawPackageName = "purescript-" <> PackageName.print name
-
-    let
-      -- Here we determine which, if any, legacy registry file should be updated with this package.
-      -- If the package is new (ie. not listed in either registry file) then we insert it into the
-      -- new-packages.json file. If not (ie. we found it in one of the registry files), and the location
-      -- of the package in the registry file is different from its one in the registry metadata, then we
-      -- update the package in that registry file. If the package exists at the proper location already
-      -- then we do nothing.
-      targetFile = case Map.lookup rawPackageName new, Map.lookup rawPackageName bower of
-        Nothing, Nothing -> Just "new-packages.json"
-        Just existingUrl, _
-          | existingUrl /= url -> Just "new-packages.json"
-          | otherwise -> Nothing
-        _, Just existingUrl
-          | existingUrl /= url -> Just "bower-packages.json"
-          | otherwise -> Nothing
-
-    result <- writeCommitPush CommitLegacyRegistry \dir -> do
-      for_ targetFile \file -> do
-        let sourcePackages = if file == "new-packages.json" then new else bower
-        let packages = Map.insert rawPackageName url sourcePackages
-        let path = Path.concat [ dir, file ]
-        Run.liftAff $ writeJsonFile (CJ.Common.strMap CJ.string) path packages
-      pure $ Just $ "Sync " <> PackageName.print name <> " with legacy registry."
-
-    case result of
-      Left error ->
-        Except.throw $ "Failed to commit and push legacy registry files: " <> error
-      Right Git.NoChange ->
-        Log.info $ "Did not commit and push legacy registry files because there was no change."
-      Right Git.Changed ->
-        Log.info "Wrote and committed legacy registry files."
   where
   -- | Get the upstream address associated with a repository key
   repoAddress :: RepoKey -> Address

@@ -5,10 +5,12 @@ module Test.E2E.Support.Fixtures
   , effect
   , console
   , prelude
+  , slug
   , unsafeCoerce
   , effectPublishData
   , effectPublishDataDifferentLocation
   , consolePublishData
+  , slugPublishData
   , unsafeCoercePublishData
   , failingTransferData
   , nonexistentTransferData
@@ -52,6 +54,10 @@ console = { name: Utils.unsafePackageName "console", version: Utils.unsafeVersio
 -- | prelude@6.0.1 fixture package
 prelude :: PackageFixture
 prelude = { name: Utils.unsafePackageName "prelude", version: Utils.unsafeVersion "6.0.1" }
+
+-- | slug@3.0.0 fixture package (uses spago.dhall manifest format)
+slug :: PackageFixture
+slug = { name: Utils.unsafePackageName "slug", version: Utils.unsafeVersion "3.0.0" }
 
 -- | Standard publish data for effect@4.0.0, used by E2E tests.
 -- | This matches the fixtures in app/fixtures/github-packages/effect-4.0.0
@@ -99,6 +105,23 @@ consolePublishData =
   , compiler: Just $ Utils.unsafeVersion "0.15.10"
   , resolutions: Nothing
   , version: console.version
+  }
+
+-- | Publish data for slug@3.0.0, used for spago.dhall manifest format test.
+-- | Slug depends on prelude only and uses spago.dhall as its manifest format.
+-- | This matches the fixtures in app/fixtures/github-packages/slug-3.0.0
+slugPublishData :: Operation.PublishData
+slugPublishData =
+  { name: slug.name
+  , location: Just $ GitHub
+      { owner: "purescript"
+      , repo: "purescript-slug"
+      , subdir: Nothing
+      }
+  , ref: "v3.0.0"
+  , compiler: Just $ Utils.unsafeVersion "0.15.10"
+  , resolutions: Nothing
+  , version: slug.version
   }
 
 -- | Publish data for unsafe-coerce@6.0.0, used by package set tests.

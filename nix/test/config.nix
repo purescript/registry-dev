@@ -242,6 +242,30 @@ let
     };
   };
 
+  # Slug package helpers (slug@3.0.0) - uses spago.dhall manifest format
+  slugBase64Response =
+    fileName:
+    base64Response {
+      url = "/repos/purescript/purescript-slug/contents/${fileName}?ref=v3.0.0";
+      inherit fileName;
+      filePath = rootPath + "/app/fixtures/github-packages/slug-3.0.0/${fileName}";
+    };
+
+  slug404Response = fileName: {
+    request = {
+      method = "GET";
+      url = "/repos/purescript/purescript-slug/contents/${fileName}?ref=v3.0.0";
+    };
+    response = {
+      status = 404;
+      headers."Content-Type" = "application/json";
+      jsonBody = {
+        message = "Not Found";
+        documentation_url = "https://docs.github.com/rest/repos/contents#get-repository-content";
+      };
+    };
+  };
+
   # GitHub API wiremock mappings
   githubMappings = [
     (effectBase64Response "bower.json")
@@ -272,6 +296,14 @@ let
     (typeEquality404Response "spago.dhall")
     (typeEquality404Response "purs.json")
     (typeEquality404Response "package.json")
+    # Slug package (slug@3.0.0) - uses spago.dhall manifest format
+    (slugBase64Response "spago.dhall")
+    (slugBase64Response "packages.dhall")
+    (slugBase64Response "LICENSE")
+    (slug404Response "purs.json")
+    (slug404Response "spago.yaml")
+    (slug404Response "bower.json")
+    (slug404Response "package.json")
     {
       request = {
         method = "GET";
@@ -978,6 +1010,7 @@ let
       cp -r ${rootPath}/app/fixtures/github-packages/console-6.1.0 "$FIXTURES_DIR/purescript/purescript-console"
       cp -r ${rootPath}/app/fixtures/github-packages/unsafe-coerce-6.0.0 "$FIXTURES_DIR/purescript/purescript-unsafe-coerce"
       cp -r ${rootPath}/app/fixtures/github-packages/type-equality-4.0.1 "$FIXTURES_DIR/purescript/purescript-type-equality"
+      cp -r ${rootPath}/app/fixtures/github-packages/slug-3.0.0 "$FIXTURES_DIR/purescript/purescript-slug"
       chmod -R u+w "$FIXTURES_DIR/purescript"
 
       # Set type-equality publishedTime to current time for package set update test
@@ -1007,6 +1040,7 @@ let
       # (the registry rejects publishing when multiple version tags point to the same commit)
       gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" commit --allow-empty -m "v4.0.2 release"
       gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" tag -m "v4.0.2" v4.0.2
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-slug" tag -m "v3.0.0" v3.0.0
     '';
   };
 

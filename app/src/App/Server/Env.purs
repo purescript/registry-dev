@@ -12,8 +12,6 @@ import Node.Path as Path
 import Registry.API.V1 (JobId, Route)
 import Registry.App.API (COMPILER_CACHE, PURS_GRAPH_CACHE, _compilerCache, _pursGraphCache)
 import Registry.App.CLI.Git as Git
-import Registry.App.Effect.Archive (ARCHIVE)
-import Registry.App.Effect.Archive as Archive
 import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Db (DB)
@@ -34,7 +32,6 @@ import Registry.App.Effect.Source (SOURCE)
 import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
-import Registry.App.Legacy.Manifest (LEGACY_CACHE, _legacyCache)
 import Registry.App.SQLite (SQLite)
 import Registry.App.SQLite as SQLite
 import Registry.Foreign.FSExtra as FS.Extra
@@ -71,7 +68,6 @@ type ServerEnv =
   { cacheDir :: FilePath
   , logsDir :: FilePath
   , githubCacheRef :: CacheRef
-  , legacyCacheRef :: CacheRef
   , registryCacheRef :: CacheRef
   , octokit :: Octokit
   , vars :: ServerEnvVars
@@ -89,7 +85,6 @@ createServerEnv = do
   for_ [ cacheDir, logsDir ] FS.Extra.ensureDirectory
 
   githubCacheRef <- Cache.newCacheRef
-  legacyCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
 
   octokit <- Octokit.newOctokit vars.token vars.resourceEnv.githubApiUrl
@@ -106,7 +101,6 @@ createServerEnv = do
   pure
     { debouncer
     , githubCacheRef
-    , legacyCacheRef
     , registryCacheRef
     , cacheDir
     , logsDir
@@ -116,7 +110,7 @@ createServerEnv = do
     , jobId: Nothing
     }
 
-type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + ARCHIVE + REGISTRY + PACKAGE_SETS + STORAGE + PURSUIT + SOURCE + DB + GITHUB + LEGACY_CACHE + COMPILER_CACHE + PURS_GRAPH_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + REGISTRY + PACKAGE_SETS + STORAGE + PURSUIT + SOURCE + DB + GITHUB + COMPILER_CACHE + PURS_GRAPH_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer
   :: ServerEnv
@@ -155,12 +149,10 @@ runEffects env operation = Aff.attempt do
             , cacheRef: env.registryCacheRef
             }
         )
-    # Archive.interpret Archive.handle
     # Pursuit.interpret (Pursuit.handleAff env.vars.token)
     # Storage.interpret (Storage.handleS3 { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }, cache: env.cacheDir })
-    # Source.interpret (Source.handle Source.Recent)
+    # Source.interpret Source.handle
     # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache: env.cacheDir, ref: env.githubCacheRef })
-    # Cache.interpret _legacyCache (Cache.handleMemoryFs { cache: env.cacheDir, ref: env.legacyCacheRef })
     # Cache.interpret _compilerCache (Cache.handleFs env.cacheDir)
     # Cache.interpret _pursGraphCache (Cache.handleFs env.cacheDir)
     # Except.catch

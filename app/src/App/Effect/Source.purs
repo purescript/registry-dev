@@ -5,7 +5,6 @@ import Registry.App.Prelude
 
 import Data.Array as Array
 import Data.DateTime (DateTime)
-import Data.JSDate as JSDate
 import Data.String as String
 import Effect.Aff (Milliseconds(..))
 import Effect.Aff as Aff
@@ -30,13 +29,6 @@ import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
-
--- | Packages can be published via the legacy importer or a user via the API. We
--- | determine some information differently in these cases, such as the time the
--- | package was published.
-data ImportType = Old | Recent
-
-derive instance Eq ImportType
 
 -- | An effect for fetching package sources
 data Source a = Fetch FilePath Location String (Either FetchError FetchedSource -> a)
@@ -81,8 +73,8 @@ interpret :: forall r a. (Source ~> Run r) -> Run (SOURCE + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _source handler Run.send)
 
 -- | Handle the SOURCE effect by downloading package source to the file system.
-handle :: forall r a. ImportType -> Source a -> Run (GITHUB + LOG + AFF + EFFECT + r) a
-handle importType = case _ of
+handle :: forall r a. Source a -> Run (GITHUB + LOG + AFF + EFFECT + r) a
+handle = case _ of
   Fetch destination location ref reply -> map (map reply) Except.runExcept do
     Log.info $ "Fetching " <> printJson Location.codec location
     case location of
@@ -171,26 +163,7 @@ handle importType = case _ of
                   Except.throw $ Fatal $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref <> ": " <> Aff.message error
 
             Log.debug $ "Getting published time..."
-
-            let
-              getRefTime = case importType of
-                Old -> do
-                  timestamp <- (Except.rethrow <<< lmap Fatal) =<< Run.liftAff (Git.gitCLI [ "log", "-1", "--date=iso8601-strict", "--format=%cd", ref ] (Just repoDir))
-                  jsDate <- Run.liftEffect $ JSDate.parse timestamp
-                  dateTime <- case JSDate.toDateTime jsDate of
-                    Nothing -> Except.throw $ Fatal $ "Could not parse timestamp of git ref to a datetime given timestamp " <> timestamp <> " and parsed js date " <> JSDate.toUTCString jsDate
-                    Just parsed -> pure parsed
-                  pure dateTime
-                Recent ->
-                  Run.liftEffect Now.nowDateTime
-
-            -- Cloning will result in the `repo` name as the directory name
-            publishedTime <- Except.runExcept getRefTime >>= case _ of
-              Left error -> do
-                Log.error $ "Failed to get published time. " <> printFetchError error
-                Except.throw $ Fatal $ "Cloned repository " <> owner <> "/" <> repo <> " at ref " <> ref <> ", but could not read the published time from the ref."
-              Right value -> pure value
-
+            publishedTime <- Run.liftEffect Now.nowDateTime
             pure { path: repoDir, published: publishedTime }
 
           -- This method is not currently used (see the comment on LegacyPursPublish),
