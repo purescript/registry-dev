@@ -2,9 +2,16 @@ module Registry.App.Server where
 
 import Registry.App.Prelude hiding ((/))
 
+import Data.Array as Array
+import Data.Codec.Argonaut as CA
+import Data.Codec.Argonaut.Record as CA.Record
+import Data.DateTime (DateTime, diff)
+import Data.Exists as Exists
 import Data.Formatter.DateTime as Formatter.DateTime
+import Data.Time.Duration (Milliseconds)
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.String as String
+import Type.Proxy (Proxy(..))
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import HTTPurple (class Generic, JsonDecoder(..), Method(..), Request, Response, RouteDuplex', (/))
@@ -37,6 +44,9 @@ import Registry.Foreign.Octokit (GitHubToken, Octokit)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Format as Internal.Format
 import Registry.Operation as Operation
+import Registry.PackageName as PackageName
+import Registry.Sha256 as Sha256
+import Registry.Version as Version
 import Routing.Duplex as Routing
 import Routing.Duplex.Generic as RoutingG
 import Run (AFF, EFFECT, Run)
@@ -59,6 +69,52 @@ instance Newtype JobID String
 jobID :: RouteDuplex' JobID
 jobID = _Newtype Routing.segment
 
+-- | Generate a job ID from publish operation parameters to detect duplicates
+generateJobId :: Operation.PublishData -> JobID
+generateJobId payload = 
+  let
+    -- Create a deterministic hash based on package name, ref, and compiler
+    hashInput = Array.fold
+      [ PackageName.print payload.name
+      , payload.ref
+      , Version.print payload.compiler
+      ]
+    -- Use SHA256 to create a deterministic job ID, take first 8 chars for readability
+    jobHash = Sha256.hash hashInput # Sha256.print # String.take 8
+  in
+    JobID jobHash
+
+-- | Information about a job attempt
+type JobAttempt = 
+  { jobId :: JobID
+  , timestamp :: DateTime
+  , logFile :: String
+  }
+
+-- | Cache key for tracking job attempts
+data JobCacheKey c a = JobCacheKey String (c JobAttempt a)
+
+derive instance (Functor (c JobAttempt)) => Functor (JobCacheKey c)
+
+instance Cache.MemoryEncodable JobCacheKey where
+  encodeMemory (JobCacheKey id key) = Exists.mkExists (Cache.Key ("job-" <> id) key)
+
+instance Cache.FsEncodable JobCacheKey where
+  encodeFs (JobCacheKey id key) = Exists.mkExists (Cache.AsJson ("job-" <> id <> ".json") jobAttemptCodec key)
+
+jobAttemptCodec :: JsonCodec JobAttempt
+jobAttemptCodec = CA.Record.object "JobAttempt"
+  { jobId: JobID.codec
+  , timestamp: CA.datetime
+  , logFile: CA.string
+  }
+  where
+  JobID.codec = _Newtype CA.string
+
+-- | Proxy for the job cache
+_jobCache :: Proxy "jobCache"
+_jobCache = Proxy
+
 routes :: RouteDuplex' Route
 routes = Routing.root $ Routing.prefix "api" $ Routing.prefix "v1" $ RoutingG.sum
   { "Publish": "publish" / RoutingG.noArgs
@@ -71,18 +127,44 @@ router :: Request Route -> Run ServerEffects Response
 router { route, method, body } = HTTPurple.usingCont case route, method of
   Publish, Post -> do
     publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
-
-    -- TODO: This should really be a launchAff_ acknowledging receipt but
-    -- not actualy processing, once we validate the operation is OK, and we
-    -- can return the job ID for polling.
-    -- So we shall:
-    -- - fork the publishing in a fiber
-    -- - stash the fiber in a ref (so we can keep track of how many things are going)
-    -- - generate a job ID
-    -- - make a log file with that job ID
-    -- - change the Notify effect to write to that log file in a structured format (so we can read it back)
-    lift $ API.publish Current publish
-    HTTPurple.ok "Completed publish operation."
+    
+    -- Generate a deterministic job ID for duplicate detection
+    let jobId@(JobID jobIdStr) = generateJobId publish
+    
+    -- Check if this exact job has been attempted recently (within last 24 hours)
+    now <- nowUTC
+    existingJob <- lift $ Cache.get _jobCache (JobCacheKey jobIdStr)
+    
+    case existingJob of
+      Just attempt | timeDiffHours attempt.timestamp now < 24.0 -> do
+        -- This is a duplicate job from the last 24 hours
+        HTTPurple.badRequest $ String.joinWith "\n"
+          [ "This is a duplicate job - the exact same publish operation has already been attempted recently."
+          , ""
+          , "Job ID: " <> jobIdStr
+          , "Package: " <> PackageName.print publish.name <> "@" <> publish.ref
+          , "Compiler: " <> Version.print publish.compiler 
+          , "Previous attempt: " <> Internal.Format.printDateTime Internal.Format.iso8601DateTime attempt.timestamp
+          , "Logs: " <> attempt.logFile
+          , ""
+          , "If you need to retry this operation, please wait 24 hours or contact the packaging team."
+          ]
+      _ -> do
+        -- This is a new job or the previous attempt was more than 24 hours ago
+        now' <- nowUTC
+        let logFile = String.take 19 (Formatter.DateTime.format Internal.Format.iso8601DateTime now') <> "-" <> jobIdStr <> ".log"
+        
+        -- Store this job attempt
+        lift $ Cache.put _jobCache (JobCacheKey jobIdStr) { jobId, timestamp: now', logFile }
+        
+        -- Process the publish operation
+        lift $ API.publish Current publish
+        HTTPurple.ok "Completed publish operation."
+  where
+  timeDiffHours :: DateTime -> DateTime -> Number
+  timeDiffHours earlier later = 
+    let diffMs = unwrap (diff later earlier) 
+    in diffMs / 1000.0 / 60.0 / 60.0
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
@@ -131,6 +213,7 @@ type ServerEnv =
   , githubCacheRef :: CacheRef
   , legacyCacheRef :: CacheRef
   , registryCacheRef :: CacheRef
+  , jobCacheRef :: CacheRef
   , octokit :: Octokit
   , vars :: ServerEnvVars
   , debouncer :: Debouncer
@@ -147,13 +230,14 @@ createServerEnv = do
   githubCacheRef <- Cache.newCacheRef
   legacyCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
+  jobCacheRef <- Cache.newCacheRef
 
   octokit <- Octokit.newOctokit vars.token
   debouncer <- Git.newDebouncer
 
-  pure { debouncer, githubCacheRef, legacyCacheRef, registryCacheRef, cacheDir, logsDir, vars, octokit }
+  pure { debouncer, githubCacheRef, legacyCacheRef, registryCacheRef, jobCacheRef, cacheDir, logsDir, vars, octokit }
 
-type ServerEffects = (PACCHETTIBOTTI_ENV + REGISTRY + GITHUB + GIT + STORAGE + PURSUIT + LEGACY_CACHE + NOTIFY + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (PACCHETTIBOTTI_ENV + REGISTRY + GITHUB + GIT + STORAGE + PURSUIT + LEGACY_CACHE + Cache.Cache JobCacheKey + NOTIFY + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer :: ServerEnv -> (Request Route -> Run ServerEffects Response) -> Request Route -> Aff Response
 runServer env router' request = do
@@ -178,6 +262,7 @@ runServer env router' request = do
       # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache: env.cacheDir, ref: env.githubCacheRef })
       # Storage.interpret (Storage.handleS3 { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }, cache: env.cacheDir })
       # Cache.interpret _legacyCache (Cache.handleMemoryFs { cache: env.cacheDir, ref: env.legacyCacheRef })
+      # Cache.interpret _jobCache (Cache.handleMemoryFs { cache: env.cacheDir, ref: env.jobCacheRef })
       # Notify.interpret Notify.handleLog
       # Except.catch (\msg -> Log.error msg *> Run.liftAff (Aff.throwError (Aff.error msg)))
       # Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
