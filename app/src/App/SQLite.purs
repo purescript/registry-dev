@@ -57,10 +57,10 @@ import Data.Function (on)
 import Data.Nullable (notNull, null)
 import Data.Nullable as Nullable
 import Data.UUID.Random as UUID
-import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn4, EffectFn5)
+import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn5, EffectFn6)
 import Effect.Uncurried as Uncurried
 import Record as Record
-import Registry.API.V1 (Job(..), JobId(..), LogLevel(..), LogLine)
+import Registry.API.V1 (Job(..), JobId(..), LogLevel(..), LogLine, SortOrder(..))
 import Registry.API.V1 as API.V1
 import Registry.API.V1 as V1
 import Registry.Internal.Codec as Internal.Codec
@@ -192,15 +192,16 @@ toSuccess success = case success of
 
 type SelectJobRequest =
   { level :: Maybe LogLevel
-  , since :: Maybe DateTime
-  , until :: Maybe DateTime
+  , since :: DateTime
+  , until :: DateTime
+  , order :: SortOrder
   , jobId :: JobId
   }
 
 selectJob :: SQLite -> SelectJobRequest -> Effect { unreadableLogs :: Array String, job :: Either String (Maybe Job) }
-selectJob db { level: maybeLogLevel, since, until, jobId: JobId jobId } = do
+selectJob db { level: maybeLogLevel, since, until, order, jobId: JobId jobId } = do
   let logLevel = fromMaybe Info maybeLogLevel
-  { fail: unreadableLogs, success: logs } <- selectLogsByJob db (JobId jobId) logLevel since until
+  { fail: unreadableLogs, success: logs } <- selectLogsByJob db (JobId jobId) logLevel since until order
   -- Failing to decode a log should not prevent us from returning a job, so we pass
   -- failures through to be handled by application code
   job <- runExceptT $ firstJust
@@ -263,13 +264,14 @@ selectJob db { level: maybeLogLevel, since, until, jobId: JobId jobId } = do
       maybeJobDetails
 
 type SelectJobsRequest =
-  { since :: Maybe DateTime
-  , until :: Maybe DateTime
+  { since :: DateTime
+  , until :: DateTime
+  , order :: SortOrder
   , includeCompleted :: Boolean
   }
 
 selectJobs :: SQLite -> SelectJobsRequest -> Effect { failed :: Array String, jobs :: Array Job }
-selectJobs db { since, until, includeCompleted } = do
+selectJobs db { since, until, order, includeCompleted } = do
   publishJobs <- selectPublishJobs
   unpublishJobs <- selectUnpublishJobs
   transferJobs <- selectTransferJobs
@@ -278,30 +280,34 @@ selectJobs db { since, until, includeCompleted } = do
   let
     { fail: failedJobs, success: allJobs } = partitionEithers
       (publishJobs <> unpublishJobs <> transferJobs <> matrixJobs <> packageSetJobs)
-  pure { failed: failedJobs, jobs: take 100 $ sortBy (compare `on` (V1.jobInfo >>> _.createdAt)) allJobs }
+    cmp = case order of
+      ASC -> compare `on` (V1.jobInfo >>> _.createdAt)
+      DESC -> flip compare `on` (V1.jobInfo >>> _.createdAt)
+  pure { failed: failedJobs, jobs: take 100 $ sortBy cmp allJobs }
 
   where
-  sinceStr = Nullable.toNullable $ map (DateTime.format Internal.Format.iso8601DateTime) since
-  untilStr = Nullable.toNullable $ map (DateTime.format Internal.Format.iso8601DateTime) until
+  sinceStr = DateTime.format Internal.Format.iso8601DateTime since
+  untilStr = DateTime.format Internal.Format.iso8601DateTime until
+  orderStr = V1.printSortOrder order
 
   selectPublishJobs = do
-    jobs <- Uncurried.runEffectFn4 selectPublishJobsImpl db sinceStr untilStr includeCompleted
+    jobs <- Uncurried.runEffectFn5 selectPublishJobsImpl db sinceStr untilStr includeCompleted orderStr
     pure $ map (map (PublishJob <<< Record.merge { logs: [], jobType: Proxy :: _ "publish" }) <<< publishJobDetailsFromJSRep) jobs
 
   selectUnpublishJobs = do
-    jobs <- Uncurried.runEffectFn4 selectUnpublishJobsImpl db sinceStr untilStr includeCompleted
+    jobs <- Uncurried.runEffectFn5 selectUnpublishJobsImpl db sinceStr untilStr includeCompleted orderStr
     pure $ map (map (UnpublishJob <<< Record.merge { logs: [], jobType: Proxy :: _ "unpublish" }) <<< unpublishJobDetailsFromJSRep) jobs
 
   selectTransferJobs = do
-    jobs <- Uncurried.runEffectFn4 selectTransferJobsImpl db sinceStr untilStr includeCompleted
+    jobs <- Uncurried.runEffectFn5 selectTransferJobsImpl db sinceStr untilStr includeCompleted orderStr
     pure $ map (map (TransferJob <<< Record.merge { logs: [], jobType: Proxy :: _ "transfer" }) <<< transferJobDetailsFromJSRep) jobs
 
   selectMatrixJobs = do
-    jobs <- Uncurried.runEffectFn4 selectMatrixJobsImpl db sinceStr untilStr includeCompleted
+    jobs <- Uncurried.runEffectFn5 selectMatrixJobsImpl db sinceStr untilStr includeCompleted orderStr
     pure $ map (map (MatrixJob <<< Record.merge { logs: [], jobType: Proxy :: _ "matrix" }) <<< matrixJobDetailsFromJSRep) jobs
 
   selectPackageSetJobs = do
-    jobs <- Uncurried.runEffectFn4 selectPackageSetJobsImpl db sinceStr untilStr includeCompleted
+    jobs <- Uncurried.runEffectFn5 selectPackageSetJobsImpl db sinceStr untilStr includeCompleted orderStr
     pure $ map (map (PackageSetJob <<< Record.merge { logs: [], jobType: Proxy :: _ "packageset" }) <<< packageSetJobDetailsFromJSRep) jobs
 
 --------------------------------------------------------------------------------
@@ -357,7 +363,7 @@ type SelectPublishParams =
 
 foreign import selectPublishJobImpl :: EffectFn2 SQLite SelectPublishParams (Nullable JSPublishJobDetails)
 
-foreign import selectPublishJobsImpl :: EffectFn4 SQLite (Nullable String) (Nullable String) Boolean (Array JSPublishJobDetails)
+foreign import selectPublishJobsImpl :: EffectFn5 SQLite String String Boolean String (Array JSPublishJobDetails)
 
 selectNextPublishJob :: SQLite -> Effect (Either String (Maybe PublishJobDetails))
 selectNextPublishJob db = do
@@ -457,7 +463,7 @@ type SelectUnpublishParams =
 
 foreign import selectUnpublishJobImpl :: EffectFn2 SQLite SelectUnpublishParams (Nullable JSUnpublishJobDetails)
 
-foreign import selectUnpublishJobsImpl :: EffectFn4 SQLite (Nullable String) (Nullable String) Boolean (Array JSUnpublishJobDetails)
+foreign import selectUnpublishJobsImpl :: EffectFn5 SQLite String String Boolean String (Array JSUnpublishJobDetails)
 
 selectNextUnpublishJob :: SQLite -> Effect (Either String (Maybe UnpublishJobDetails))
 selectNextUnpublishJob db = do
@@ -555,7 +561,7 @@ type SelectTransferParams = { jobId :: Nullable String, packageName :: Nullable 
 
 foreign import selectTransferJobImpl :: EffectFn2 SQLite SelectTransferParams (Nullable JSTransferJobDetails)
 
-foreign import selectTransferJobsImpl :: EffectFn4 SQLite (Nullable String) (Nullable String) Boolean (Array JSTransferJobDetails)
+foreign import selectTransferJobsImpl :: EffectFn5 SQLite String String Boolean String (Array JSTransferJobDetails)
 
 selectNextTransferJob :: SQLite -> Effect (Either String (Maybe TransferJobDetails))
 selectNextTransferJob db = do
@@ -691,7 +697,7 @@ matrixJobDetailsFromJSRep { jobId, packageName, packageVersion, compilerVersion,
 
 foreign import selectMatrixJobImpl :: EffectFn2 SQLite (Nullable String) (Nullable JSMatrixJobDetails)
 
-foreign import selectMatrixJobsImpl :: EffectFn4 SQLite (Nullable String) (Nullable String) Boolean (Array JSMatrixJobDetails)
+foreign import selectMatrixJobsImpl :: EffectFn5 SQLite String String Boolean String (Array JSMatrixJobDetails)
 
 selectNextMatrixJob :: SQLite -> Effect (Either String (Maybe MatrixJobDetails))
 selectNextMatrixJob db = do
@@ -739,7 +745,7 @@ foreign import selectPackageSetJobImpl :: EffectFn2 SQLite (Nullable String) (Nu
 
 foreign import selectPackageSetJobByPayloadImpl :: EffectFn2 SQLite String (Nullable JSPackageSetJobDetails)
 
-foreign import selectPackageSetJobsImpl :: EffectFn4 SQLite (Nullable String) (Nullable String) Boolean (Array JSPackageSetJobDetails)
+foreign import selectPackageSetJobsImpl :: EffectFn5 SQLite String String Boolean String (Array JSPackageSetJobDetails)
 
 selectNextPackageSetJob :: SQLite -> Effect (Either String (Maybe PackageSetJobDetails))
 selectNextPackageSetJob db = do
@@ -819,21 +825,22 @@ foreign import insertLogLineImpl :: EffectFn2 SQLite JSLogLine Unit
 insertLogLine :: SQLite -> LogLine -> Effect Unit
 insertLogLine db = Uncurried.runEffectFn2 insertLogLineImpl db <<< logLineToJSRep
 
-foreign import selectLogsByJobImpl :: EffectFn5 SQLite String Int (Nullable String) (Nullable String) (Array JSLogLine)
+foreign import selectLogsByJobImpl :: EffectFn6 SQLite String Int String String String (Array JSLogLine)
 
 -- | Select all logs for a given job at or above the indicated log level. To get all
--- | logs, pass the DEBUG log level. Both since and until are optional; when provided
--- | they create a half-open [since, until) time window.
-selectLogsByJob :: SQLite -> JobId -> LogLevel -> Maybe DateTime -> Maybe DateTime -> Effect { fail :: Array String, success :: Array LogLine }
-selectLogsByJob db jobId level since until = do
-  let sinceTimestamp = Nullable.toNullable $ map (DateTime.format Internal.Format.iso8601DateTime) since
-  let untilTimestamp = Nullable.toNullable $ map (DateTime.format Internal.Format.iso8601DateTime) until
+-- | logs, pass the DEBUG log level. The since and until parameters define a
+-- | half-open [since, until) time window.
+selectLogsByJob :: SQLite -> JobId -> LogLevel -> DateTime -> DateTime -> SortOrder -> Effect { fail :: Array String, success :: Array LogLine }
+selectLogsByJob db jobId level since until order = do
+  let sinceTimestamp = DateTime.format Internal.Format.iso8601DateTime since
+  let untilTimestamp = DateTime.format Internal.Format.iso8601DateTime until
   jsLogLines <-
-    Uncurried.runEffectFn5
+    Uncurried.runEffectFn6
       selectLogsByJobImpl
       db
       (un JobId jobId)
       (API.V1.logLevelToPriority level)
       sinceTimestamp
       untilTimestamp
+      (V1.printSortOrder order)
   pure $ partitionEithers $ map logLineFromJSRep jsLogLines

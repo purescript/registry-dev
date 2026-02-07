@@ -122,7 +122,7 @@ getJobsWith filter = do
     includeCompleted = case filter of
       ActiveOnly -> Just false
       IncludeCompleted -> Just true
-    route = Jobs { since: Nothing, until: Nothing, include_completed: includeCompleted }
+    route = Jobs { since: Nothing, until: Nothing, order: Nothing, include_completed: includeCompleted }
   liftAff $ get (CJ.array V1.jobCodec) clientConfig.baseUrl (printRoute route)
 
 -- | Get the list of jobs (includes completed jobs)
@@ -133,7 +133,7 @@ getJobs = getJobsWith IncludeCompleted
 getJob :: JobId -> Maybe LogLevel -> Maybe DateTime -> E2E Job
 getJob jobId level since = do
   { clientConfig } <- ask
-  let route = Job jobId { level, since, until: Nothing }
+  let route = Job jobId { level, since, until: Nothing, order: Nothing }
   liftAff $ get V1.jobCodec clientConfig.baseUrl (printRoute route)
 
 -- | Try to get a specific job by ID, returning Left on HTTP/parse errors.
@@ -141,7 +141,7 @@ getJob jobId level since = do
 tryGetJob :: JobId -> Maybe LogLevel -> Maybe DateTime -> E2E (Either ClientError Job)
 tryGetJob jobId level since = do
   { clientConfig } <- ask
-  let route = Job jobId { level, since, until: Nothing }
+  let route = Job jobId { level, since, until: Nothing, order: Nothing }
   liftAff $ tryGet V1.jobCodec clientConfig.baseUrl (printRoute route)
 
 -- | Check if the server is healthy

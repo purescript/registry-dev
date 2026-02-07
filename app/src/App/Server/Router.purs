@@ -3,12 +3,16 @@ module Registry.App.Server.Router where
 import Registry.App.Prelude hiding ((/))
 
 import Data.Codec.JSON as CJ
+import Data.Date as Date
+import Data.DateTime (DateTime(..))
+import Data.Enum as Enum
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import HTTPurple (Method(..), Request, Response)
 import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
-import Registry.API.V1 (Route(..))
+import Partial.Unsafe (unsafePartial)
+import Registry.API.V1 (Route(..), SortOrder(..))
 import Registry.API.V1 as V1
 import Registry.App.API as API
 import Registry.App.Auth as Auth
@@ -21,6 +25,12 @@ import Registry.Operation as Operation
 import Run (Run)
 import Run as Run
 import Run.Except as Run.Except
+
+-- | The earliest date for which we have job logs (registry server launch date)
+registryLaunch :: DateTime
+registryLaunch = DateTime date bottom
+  where
+  date = Date.canonicalDate (unsafePartial fromJust $ Enum.toEnum 2026) Date.January (unsafePartial fromJust $ Enum.toEnum 31)
 
 runRouter :: ServerEnv -> Effect Unit
 runRouter env = do
@@ -121,16 +131,17 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
-  Jobs { since, until: until', include_completed }, Get -> do
-    -- If neither since nor until is provided, default until to now
-    until <- case since, until' of
-      Nothing, Nothing -> Just <$> liftEffect nowUTC
-      _, _ -> pure until'
+  Jobs { since: since', until: until', order: order', include_completed }, Get -> do
+    now <- liftEffect nowUTC
+    let since = fromMaybe registryLaunch since'
+    let until = fromMaybe now until'
+    let order = fromMaybe ASC order'
     lift
       ( Run.Except.runExcept $ Db.selectJobs
           { includeCompleted: fromMaybe false include_completed
           , since
           , until
+          , order
           }
       ) >>= case _ of
       Left err -> do
@@ -138,12 +149,12 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
         HTTPurple.internalServerError $ "Error while fetching jobs: " <> err
       Right jobs -> jsonOk (CJ.array V1.jobCodec) jobs
 
-  Job jobId { level: maybeLogLevel, since, until: until' }, Get -> do
-    -- If neither since nor until is provided, default until to now
-    until <- case since, until' of
-      Nothing, Nothing -> Just <$> liftEffect nowUTC
-      _, _ -> pure until'
-    lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since, until }) >>= case _ of
+  Job jobId { level: maybeLogLevel, since: since', until: until', order: order' }, Get -> do
+    now <- liftEffect nowUTC
+    let since = fromMaybe registryLaunch since'
+    let until = fromMaybe now until'
+    let order = fromMaybe ASC order'
+    lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since, until, order }) >>= case _ of
       Left err -> do
         lift $ Log.error $ "Error while fetching job: " <> err
         HTTPurple.internalServerError $ "Error while fetching job: " <> err
