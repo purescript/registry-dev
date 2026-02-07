@@ -45,7 +45,7 @@ data Db a
   | SelectTransferJob PackageName (Either String (Maybe TransferJobDetails) -> a)
   | SelectPackageSetJobByPayload PackageSetOperation (Either String (Maybe PackageSetJobDetails) -> a)
   | InsertLogLine LogLine a
-  | SelectLogsByJob JobId LogLevel DateTime (Array LogLine -> a)
+  | SelectLogsByJob JobId LogLevel (Maybe DateTime) (Maybe DateTime) (Array LogLine -> a)
   | ResetIncompleteJobs (Array JobId -> a)
 
 derive instance Functor Db
@@ -61,8 +61,8 @@ insertLog :: forall r. LogLine -> Run (DB + r) Unit
 insertLog log = Run.lift _db (InsertLogLine log unit)
 
 -- | Select all logs for a given job, filtered by loglevel.
-selectLogsByJob :: forall r. JobId -> LogLevel -> DateTime -> Run (DB + r) (Array LogLine)
-selectLogsByJob jobId logLevel since = Run.lift _db (SelectLogsByJob jobId logLevel since identity)
+selectLogsByJob :: forall r. JobId -> LogLevel -> Maybe DateTime -> Maybe DateTime -> Run (DB + r) (Array LogLine)
+selectLogsByJob jobId logLevel since until = Run.lift _db (SelectLogsByJob jobId logLevel since until identity)
 
 -- | Set a job in the database to the 'finished' state.
 finishJob :: forall r. FinishJob -> Run (DB + r) Unit
@@ -228,8 +228,8 @@ handleSQLite env = case _ of
     Run.liftEffect $ SQLite.insertLogLine env.db log
     pure next
 
-  SelectLogsByJob jobId logLevel since reply -> do
-    { fail, success } <- Run.liftEffect $ SQLite.selectLogsByJob env.db jobId logLevel since
+  SelectLogsByJob jobId logLevel since until reply -> do
+    { fail, success } <- Run.liftEffect $ SQLite.selectLogsByJob env.db jobId logLevel since until
     unless (Array.null fail) do
       Log.warn $ "Some logs are not readable: " <> String.joinWith "\n" fail
     pure $ reply success

@@ -62,8 +62,8 @@ data Route
   | Unpublish
   | Transfer
   | PackageSets
-  | Jobs { since :: Maybe DateTime, include_completed :: Maybe Boolean }
-  | Job JobId { level :: Maybe LogLevel, since :: Maybe DateTime }
+  | Jobs { since :: Maybe DateTime, until :: Maybe DateTime, include_completed :: Maybe Boolean }
+  | Job JobId { level :: Maybe LogLevel, since :: Maybe DateTime, until :: Maybe DateTime }
   | Status
 
 derive instance Generic Route _
@@ -76,12 +76,14 @@ routes = Routing.root $ Routing.prefix "api" $ Routing.prefix "v1" $ RoutingG.su
   , "PackageSets": "package-sets" / RoutingG.noArgs
   , "Jobs": "jobs" ?
       { since: Routing.optional <<< timestampP <<< Routing.string
+      , until: Routing.optional <<< timestampP <<< Routing.string
       , include_completed: Routing.optional <<< Routing.boolean
       }
   , "Job": "jobs" /
       ( jobIdS ?
           { level: Routing.optional <<< logLevelP <<< Routing.string
           , since: Routing.optional <<< timestampP <<< Routing.string
+          , until: Routing.optional <<< timestampP <<< Routing.string
           }
       )
   , "Status": "status" / RoutingG.noArgs

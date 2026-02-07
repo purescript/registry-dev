@@ -168,14 +168,24 @@ export const selectPackageSetJobByPayloadImpl = (db, payload) => {
   return stmt.get(payload);
 };
 
-const _selectJobs = (db, { table, since, includeCompleted }) => {
+const _selectJobs = (db, { table, since, until, includeCompleted }) => {
   let query = `
     SELECT job.*, info.*
     FROM ${table} job
     JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
-    WHERE info.createdAt >= ?
+    WHERE 1=1
   `;
-  let params = [since];
+  let params = [];
+
+  if (since != null) {
+    query += ` AND info.createdAt >= ?`;
+    params.push(since);
+  }
+
+  if (until != null) {
+    query += ` AND info.createdAt <= ?`;
+    params.push(until);
+  }
 
   if (includeCompleted === false) {
     query += ` AND info.finishedAt IS NULL`;
@@ -187,24 +197,24 @@ const _selectJobs = (db, { table, since, includeCompleted }) => {
   return stmt.all(...params);
 }
 
-export const selectPublishJobsImpl = (db, since, includeCompleted) => {
-  return _selectJobs(db, { table: PUBLISH_JOBS_TABLE, since, includeCompleted });
+export const selectPublishJobsImpl = (db, since, until, includeCompleted) => {
+  return _selectJobs(db, { table: PUBLISH_JOBS_TABLE, since, until, includeCompleted });
 };
 
-export const selectUnpublishJobsImpl = (db, since, includeCompleted) => {
-  return _selectJobs(db, { table: UNPUBLISH_JOBS_TABLE, since, includeCompleted });
+export const selectUnpublishJobsImpl = (db, since, until, includeCompleted) => {
+  return _selectJobs(db, { table: UNPUBLISH_JOBS_TABLE, since, until, includeCompleted });
 };
 
-export const selectTransferJobsImpl = (db, since, includeCompleted) => {
-  return _selectJobs(db, { table: TRANSFER_JOBS_TABLE, since, includeCompleted });
+export const selectTransferJobsImpl = (db, since, until, includeCompleted) => {
+  return _selectJobs(db, { table: TRANSFER_JOBS_TABLE, since, until, includeCompleted });
 };
 
-export const selectMatrixJobsImpl = (db, since, includeCompleted) => {
-  return _selectJobs(db, { table: MATRIX_JOBS_TABLE, since, includeCompleted });
+export const selectMatrixJobsImpl = (db, since, until, includeCompleted) => {
+  return _selectJobs(db, { table: MATRIX_JOBS_TABLE, since, until, includeCompleted });
 };
 
-export const selectPackageSetJobsImpl = (db, since, includeCompleted) => {
-  return _selectJobs(db, { table: PACKAGE_SET_JOBS_TABLE, since, includeCompleted });
+export const selectPackageSetJobsImpl = (db, since, until, includeCompleted) => {
+  return _selectJobs(db, { table: PACKAGE_SET_JOBS_TABLE, since, until, includeCompleted });
 };
 
 export const startJobImpl = (db, args) => {
@@ -258,13 +268,24 @@ export const insertLogLineImpl = (db, logLine) => {
   return stmt.run(logLine);
 };
 
-export const selectLogsByJobImpl = (db, jobId, logLevel, since) => {
+export const selectLogsByJobImpl = (db, jobId, logLevel, since, until) => {
   let query = `
     SELECT * FROM ${LOGS_TABLE}
-    WHERE jobId = ? AND level >= ? AND timestamp >= ?
-    ORDER BY timestamp ASC LIMIT 100
+    WHERE jobId = ? AND level >= ?
   `;
+  let params = [jobId, logLevel];
 
+  if (since != null) {
+    query += ` AND timestamp >= ?`;
+    params.push(since);
+  }
+
+  if (until != null) {
+    query += ` AND timestamp <= ?`;
+    params.push(until);
+  }
+
+  query += ` ORDER BY timestamp ASC LIMIT 100`;
   const stmt = db.prepare(query);
-  return stmt.all(jobId, logLevel, since);
+  return stmt.all(...params);
 };

@@ -3,17 +3,11 @@ module Registry.App.Server.Router where
 import Registry.App.Prelude hiding ((/))
 
 import Data.Codec.JSON as CJ
-import Data.Date as Date
-import Data.DateTime (DateTime(..))
-import Data.DateTime as DateTime
-import Data.Enum as Enum
-import Data.Time.Duration (Hours(..), negateDuration)
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import HTTPurple (Method(..), Request, Response)
 import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
-import Partial.Unsafe (unsafePartial)
 import Registry.API.V1 (Route(..))
 import Registry.API.V1 as V1
 import Registry.App.API as API
@@ -28,12 +22,6 @@ import Run (Run)
 import Run as Run
 import Run.Except as Run.Except
 
--- | The earliest date for which we have job logs (registry server launch date)
-registryLaunch :: DateTime
-registryLaunch = DateTime date bottom
-  where
-  date = Date.canonicalDate (unsafePartial fromJust $ Enum.toEnum 2026) Date.January (unsafePartial fromJust $ Enum.toEnum 31)
-
 runRouter :: ServerEnv -> Effect Unit
 runRouter env = do
   -- Read port from SERVER_PORT env var (optional, HTTPurple defaults to 8080)
@@ -43,7 +31,7 @@ runRouter env = do
     , port
     }
     { route: V1.routes
-    , router: runServer
+    , router: corsMiddleware runServer
     }
   where
   runServer :: Request Route -> Aff Response
@@ -54,6 +42,27 @@ runRouter env = do
         Console.log $ "Bad request: " <> Aff.message error
         HTTPurple.badRequest (Aff.message error)
       Right response -> pure response
+
+-- | CORS middleware that wraps the router.
+-- | - OPTIONS requests return a 204 preflight response
+-- | - All other responses have CORS headers appended
+corsMiddleware :: (Request Route -> Aff Response) -> Request Route -> Aff Response
+corsMiddleware next request = case request.method of
+  Options ->
+    HTTPurple.emptyResponse' Status.noContent preflightHeaders
+  _ -> do
+    response <- next request
+    pure $ response { headers = response.headers <> corsHeaders }
+  where
+  corsHeaders =
+    HTTPurple.header "Access-Control-Allow-Origin" "*"
+      <> HTTPurple.header "Access-Control-Allow-Methods" "GET, HEAD, POST, OPTIONS"
+      <> HTTPurple.header "Vary" "Origin"
+
+  preflightHeaders =
+    corsHeaders
+      <> HTTPurple.header "Access-Control-Allow-Headers" "Content-Type"
+      <> HTTPurple.header "Access-Control-Max-Age" "86400"
 
 router :: Request Route -> Run ServerEffects Response
 router { route, method, body } = HTTPurple.usingCont case route, method of
@@ -112,13 +121,16 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
-  Jobs { since, include_completed }, Get -> do
-    now <- liftEffect nowUTC
-    let oneHourAgo = fromMaybe now $ DateTime.adjust (negateDuration (Hours 1.0)) now
+  Jobs { since, until: until', include_completed }, Get -> do
+    -- If neither since nor until is provided, default until to now
+    until <- case since, until' of
+      Nothing, Nothing -> Just <$> liftEffect nowUTC
+      _, _ -> pure until'
     lift
       ( Run.Except.runExcept $ Db.selectJobs
           { includeCompleted: fromMaybe false include_completed
-          , since: fromMaybe oneHourAgo since
+          , since
+          , until
           }
       ) >>= case _ of
       Left err -> do
@@ -126,8 +138,12 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
         HTTPurple.internalServerError $ "Error while fetching jobs: " <> err
       Right jobs -> jsonOk (CJ.array V1.jobCodec) jobs
 
-  Job jobId { level: maybeLogLevel, since }, Get -> do
-    lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since: fromMaybe registryLaunch since }) >>= case _ of
+  Job jobId { level: maybeLogLevel, since, until: until' }, Get -> do
+    -- If neither since nor until is provided, default until to now
+    until <- case since, until' of
+      Nothing, Nothing -> Just <$> liftEffect nowUTC
+      _, _ -> pure until'
+    lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since, until }) >>= case _ of
       Left err -> do
         lift $ Log.error $ "Error while fetching job: " <> err
         HTTPurple.internalServerError $ "Error while fetching job: " <> err
