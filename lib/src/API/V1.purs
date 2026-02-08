@@ -1,3 +1,4 @@
+-- | Types, codecs, and routes for the Registry HTTP API (v1).
 module Registry.API.V1
   ( JobCreatedResponse
   , JobId(..)
@@ -10,6 +11,7 @@ module Registry.API.V1
   , PackageSetJobData
   , PublishJobData
   , Route(..)
+  , SortOrder(..)
   , TransferJobData
   , UnpublishJobData
   , jobInfo
@@ -19,6 +21,7 @@ module Registry.API.V1
   , logLevelToPriority
   , printJobType
   , printLogLevel
+  , printSortOrder
   , routes
   ) where
 
@@ -62,8 +65,8 @@ data Route
   | Unpublish
   | Transfer
   | PackageSets
-  | Jobs { since :: Maybe DateTime, include_completed :: Maybe Boolean }
-  | Job JobId { level :: Maybe LogLevel, since :: Maybe DateTime }
+  | Jobs { since :: Maybe DateTime, until :: Maybe DateTime, order :: Maybe SortOrder, include_completed :: Maybe Boolean }
+  | Job JobId { level :: Maybe LogLevel, since :: Maybe DateTime, until :: Maybe DateTime, order :: Maybe SortOrder }
   | Status
 
 derive instance Generic Route _
@@ -76,12 +79,16 @@ routes = Routing.root $ Routing.prefix "api" $ Routing.prefix "v1" $ RoutingG.su
   , "PackageSets": "package-sets" / RoutingG.noArgs
   , "Jobs": "jobs" ?
       { since: Routing.optional <<< timestampP <<< Routing.string
+      , until: Routing.optional <<< timestampP <<< Routing.string
+      , order: Routing.optional <<< sortOrderP <<< Routing.string
       , include_completed: Routing.optional <<< Routing.boolean
       }
   , "Job": "jobs" /
       ( jobIdS ?
           { level: Routing.optional <<< logLevelP <<< Routing.string
           , since: Routing.optional <<< timestampP <<< Routing.string
+          , until: Routing.optional <<< timestampP <<< Routing.string
+          , order: Routing.optional <<< sortOrderP <<< Routing.string
           }
       )
   , "Status": "status" / RoutingG.noArgs
@@ -98,6 +105,24 @@ timestampP = Routing.as printTimestamp parseTimestamp
   where
   printTimestamp t = DateTime.format Internal.Format.iso8601DateTime t
   parseTimestamp s = DateTime.unformat Internal.Format.iso8601DateTime s
+
+data SortOrder = ASC | DESC
+
+derive instance Eq SortOrder
+
+printSortOrder :: SortOrder -> String
+printSortOrder = case _ of
+  ASC -> "ASC"
+  DESC -> "DESC"
+
+parseSortOrder :: String -> Either String SortOrder
+parseSortOrder = case _ of
+  "ASC" -> Right ASC
+  "DESC" -> Right DESC
+  other -> Left $ "Invalid sort order: " <> other
+
+sortOrderP :: RouteDuplex' String -> RouteDuplex' SortOrder
+sortOrderP = Routing.as printSortOrder parseSortOrder
 
 type JobCreatedResponse = { jobId :: JobId }
 

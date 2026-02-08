@@ -5,16 +5,14 @@ import Registry.App.Prelude hiding ((/))
 import Data.Codec.JSON as CJ
 import Data.Date as Date
 import Data.DateTime (DateTime(..))
-import Data.DateTime as DateTime
 import Data.Enum as Enum
-import Data.Time.Duration (Hours(..), negateDuration)
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import HTTPurple (Method(..), Request, Response)
 import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
 import Partial.Unsafe (unsafePartial)
-import Registry.API.V1 (Route(..))
+import Registry.API.V1 (Route(..), SortOrder(..))
 import Registry.API.V1 as V1
 import Registry.App.API as API
 import Registry.App.Auth as Auth
@@ -43,7 +41,7 @@ runRouter env = do
     , port
     }
     { route: V1.routes
-    , router: runServer
+    , router: corsMiddleware runServer
     }
   where
   runServer :: Request Route -> Aff Response
@@ -54,6 +52,27 @@ runRouter env = do
         Console.log $ "Bad request: " <> Aff.message error
         HTTPurple.badRequest (Aff.message error)
       Right response -> pure response
+
+-- | CORS middleware that wraps the router.
+-- | - OPTIONS requests return a 204 preflight response
+-- | - All other responses have CORS headers appended
+corsMiddleware :: (Request Route -> Aff Response) -> Request Route -> Aff Response
+corsMiddleware next request = case request.method of
+  Options ->
+    HTTPurple.emptyResponse' Status.noContent preflightHeaders
+  _ -> do
+    response <- next request
+    pure $ response { headers = response.headers <> corsHeaders }
+  where
+  corsHeaders =
+    HTTPurple.header "Access-Control-Allow-Origin" "*"
+      <> HTTPurple.header "Access-Control-Allow-Methods" "GET, HEAD, POST, OPTIONS"
+      <> HTTPurple.header "Vary" "Origin"
+
+  preflightHeaders =
+    corsHeaders
+      <> HTTPurple.header "Access-Control-Allow-Headers" "Content-Type"
+      <> HTTPurple.header "Access-Control-Max-Age" "86400"
 
 router :: Request Route -> Run ServerEffects Response
 router { route, method, body } = HTTPurple.usingCont case route, method of
@@ -112,13 +131,17 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
-  Jobs { since, include_completed }, Get -> do
+  Jobs { since: since', until: until', order: order', include_completed }, Get -> do
     now <- liftEffect nowUTC
-    let oneHourAgo = fromMaybe now $ DateTime.adjust (negateDuration (Hours 1.0)) now
+    let since = fromMaybe registryLaunch since'
+    let until = fromMaybe now until'
+    let order = fromMaybe ASC order'
     lift
       ( Run.Except.runExcept $ Db.selectJobs
           { includeCompleted: fromMaybe false include_completed
-          , since: fromMaybe oneHourAgo since
+          , since
+          , until
+          , order
           }
       ) >>= case _ of
       Left err -> do
@@ -126,8 +149,12 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
         HTTPurple.internalServerError $ "Error while fetching jobs: " <> err
       Right jobs -> jsonOk (CJ.array V1.jobCodec) jobs
 
-  Job jobId { level: maybeLogLevel, since }, Get -> do
-    lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since: fromMaybe registryLaunch since }) >>= case _ of
+  Job jobId { level: maybeLogLevel, since: since', until: until', order: order' }, Get -> do
+    now <- liftEffect nowUTC
+    let since = fromMaybe registryLaunch since'
+    let until = fromMaybe now until'
+    let order = fromMaybe ASC order'
+    lift (Run.Except.runExcept $ Db.selectJob { jobId, level: maybeLogLevel, since, until, order }) >>= case _ of
       Left err -> do
         lift $ Log.error $ "Error while fetching job: " <> err
         HTTPurple.internalServerError $ "Error while fetching job: " <> err
