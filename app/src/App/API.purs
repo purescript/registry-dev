@@ -1308,23 +1308,27 @@ instance FsEncodable PursGraphCache where
       Exists.mkExists $ Cache.AsJson cacheKey codec next
 
 -- | Errors that can occur when validating license consistency
-data LicenseValidationError = LicenseMismatch
-  { manifestLicense :: License
-  , detectedLicenses :: Array License
-  }
+data LicenseValidationError
+  = LicenseMismatch { manifest :: License, detected :: Array License }
+  | LicenseParseError (Array { detected :: String, error :: String })
 
 derive instance Eq LicenseValidationError
 
 printLicenseValidationError :: LicenseValidationError -> String
 printLicenseValidationError = case _ of
-  LicenseMismatch { manifestLicense, detectedLicenses } -> Array.fold
+  LicenseMismatch licenses -> Array.fold
     [ "License mismatch: The manifest specifies license '"
-    , License.print manifestLicense
+    , License.print licenses.manifest
     , "' but the following license(s) were detected in your repository: "
-    , String.joinWith ", " (map License.print detectedLicenses)
+    , String.joinWith ", " (map License.print licenses.detected)
     , ". Please ensure your manifest license accurately represents all licenses "
     , "in your repository. If multiple licenses apply, join them using SPDX "
     , "conjunctions (e.g., 'MIT AND Apache-2.0' or 'MIT OR Apache-2.0')."
+    ]
+  LicenseParseError failures -> Array.fold
+    [ "License validation failed: one or more detected SPDX license expressions "
+    , "could not be canonicalized.\n"
+    , String.joinWith "\n" (failures <#> \{ detected, error } -> "  - " <> detected <> " (" <> error <> ")")
     ]
 
 -- | Validate that the license in the manifest is consistent with licenses
@@ -1344,44 +1348,55 @@ validateLicense packageDir manifestLicense = do
       pure Nothing
     Right detectedStrings -> do
       let
+        parseDetectedLicense :: String -> Either String License
+        parseDetectedLicense detectedLicense = do
+          canonicalized <- License.canonicalizeDetected detectedLicense
+          License.parse canonicalized
+
+        parsedDetectedLicenses :: Array (Tuple String (Either String License))
+        parsedDetectedLicenses =
+          detectedStrings <#> \detectedLicense ->
+            Tuple detectedLicense (parseDetectedLicense detectedLicense)
+
+        parseFailures :: Array { detected :: String, error :: String }
+        parseFailures =
+          parsedDetectedLicenses # Array.mapMaybe \(Tuple detectedLicense parsed) -> case parsed of
+            Left error -> Just { detected: detectedLicense, error }
+            Right _ -> Nothing
+
         parsedLicenses :: Array License
-        parsedLicenses = Array.mapMaybe (hush <<< License.parse) detectedStrings
+        parsedLicenses = parsedDetectedLicenses # Array.mapMaybe \(Tuple _ parsed) -> hush parsed
 
       Log.debug $ "Detected licenses: " <> String.joinWith ", " detectedStrings
 
-      if Array.null parsedLicenses then do
+      if not (Array.null parseFailures) then do
+        Log.warn "Some detected licenses could not be canonicalized."
+        pure $ Just $ LicenseParseError parseFailures
+      else if Array.null parsedLicenses then do
         Log.debug "No licenses detected from repository files, nothing to validate."
         pure Nothing
-      else case License.extractIds manifestLicense of
-        Left err -> do
-          -- This shouldn't be possible (we have already validated the license)
-          -- as part of constructing the manifest
-          Log.warn $ "Could not extract license IDs from manifest: " <> err
+      else do
+        let
+          manifestIds = License.extractIds manifestLicense
+          manifestIdSet = Set.fromFoldable manifestIds
+
+          -- A detected license is covered if all its IDs are in the manifest IDs
+          isCovered :: License -> Boolean
+          isCovered license =
+            License.extractIds license # Array.all \id ->
+              Set.member id manifestIdSet
+
+          uncoveredLicenses :: Array License
+          uncoveredLicenses = Array.filter (not <<< isCovered) parsedLicenses
+
+        if Array.null uncoveredLicenses then do
+          Log.debug "All detected licenses are covered by the manifest license."
           pure Nothing
-        Right manifestIds -> do
-          let
-            manifestIdSet = Set.fromFoldable manifestIds
-
-            -- A detected license is covered if all its IDs are in the manifest IDs
-            isCovered :: License -> Boolean
-            isCovered license = case License.extractIds license of
-              Left _ -> false
-              Right ids -> Array.all (\id -> Set.member id manifestIdSet) ids
-
-            uncoveredLicenses :: Array License
-            uncoveredLicenses = Array.filter (not <<< isCovered) parsedLicenses
-
-          if Array.null uncoveredLicenses then do
-            Log.debug "All detected licenses are covered by the manifest license."
-            pure Nothing
-          else do
-            Log.warn $ Array.fold
-              [ "License mismatch detected: manifest has '"
-              , License.print manifestLicense
-              , "' but detected "
-              , String.joinWith ", " (map License.print parsedLicenses)
-              ]
-            pure $ Just $ LicenseMismatch
-              { manifestLicense
-              , detectedLicenses: uncoveredLicenses
-              }
+        else do
+          Log.warn $ Array.fold
+            [ "License mismatch detected: manifest has '"
+            , License.print manifestLicense
+            , "' but detected "
+            , String.joinWith ", " (map License.print parsedLicenses)
+            ]
+          pure $ Just $ LicenseMismatch { manifest: manifestLicense, detected: uncoveredLicenses }

@@ -15,6 +15,7 @@ import Registry.App.Prelude
 
 import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec as Codec
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Common as CJ.Common
@@ -74,9 +75,18 @@ bowerfileToPursJson
   :: Bowerfile
   -> Either String { license :: License, description :: Maybe String, dependencies :: Map PackageName Range }
 bowerfileToPursJson (Bowerfile { description, dependencies, license }) = do
-  parsedLicense <- case Array.mapMaybe (hush <<< License.parse) license of
-    [] -> Left "No valid SPDX license found in bower.json"
-    multiple -> Right $ License.joinWith License.And multiple
+  let
+    parsedLicenses = license <#> \rawLicense ->
+      lmap (\err -> "  - " <> rawLicense <> ": " <> err) $ License.parse rawLicense
+    { fail: parseErrors, success: validLicenses } = partitionEithers parsedLicenses
+
+  parsedLicense <-
+    if not (Array.null parseErrors) then do
+      Left $ "Invalid SPDX license(s) in bower.json:\n" <> String.joinWith "\n" parseErrors
+    else do
+      case NonEmptyArray.fromArray validLicenses of
+        Nothing -> Left "No valid SPDX license found in bower.json"
+        Just multiple -> Right $ License.joinWith License.And multiple
 
   parsedDeps <- parseDependencies dependencies
 

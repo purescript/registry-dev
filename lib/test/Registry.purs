@@ -4,6 +4,7 @@ import Prelude
 
 import Effect (Effect)
 import Test.Registry.Internal as Test.Internal
+import Test.Registry.License as Test.License
 import Test.Registry.Manifest as Test.Manifest
 import Test.Registry.ManifestIndex as Test.ManifestIndex
 import Test.Registry.Metadata as Test.Metadata
@@ -31,6 +32,7 @@ main = runSpecAndExitProcess [ Spec.Reporter.consoleReporter ] do
     Spec.describe "PackageName" Test.PackageName.spec
     Spec.describe "Version" Test.Version.spec
     Spec.describe "Range" Test.Range.spec
+    Spec.describe "License" Test.License.spec
     Spec.describe "Manifest" Test.Manifest.spec
     Spec.describe "Metadata" Test.Metadata.spec
     Spec.describe "Package Set" Test.PackageSet.spec
