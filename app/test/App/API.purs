@@ -361,7 +361,10 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runBaseEffects) $ Sp
 
 licenseValidation :: Spec.Spec Unit
 licenseValidation = do
-  let fixtures = Path.concat [ "app", "fixtures", "licenses", "halogen-hooks" ]
+  let
+    fixtures = Path.concat [ "app", "fixtures", "licenses", "halogen-hooks" ]
+    deprecatedFixture = Path.concat [ "app", "fixtures", "licenses", "deprecated-agpl" ]
+    ambiguousFixture = Path.concat [ "app", "fixtures", "licenses", "ambiguous-gfdl" ]
 
   Spec.describe "validateLicense" do
     Spec.it "Passes when manifest license covers all detected licenses" do
@@ -375,9 +378,9 @@ licenseValidation = do
       let manifestLicense = unsafeLicense "MIT"
       result <- Assert.Run.runBaseEffects $ validateLicense fixtures manifestLicense
       case result of
-        Just (LicenseMismatch { detectedLicenses }) ->
+        Just (LicenseMismatch { detected }) ->
           -- Should detect that Apache-2.0 is not covered
-          Assert.shouldContain (map License.print detectedLicenses) "Apache-2.0"
+          Assert.shouldContain (map License.print detected) "Apache-2.0"
         _ ->
           Assert.fail "Expected LicenseMismatch error"
 
@@ -386,11 +389,11 @@ licenseValidation = do
       let manifestLicense = unsafeLicense "BSD-3-Clause"
       result <- Assert.Run.runBaseEffects $ validateLicense fixtures manifestLicense
       case result of
-        Just (LicenseMismatch { manifestLicense: ml, detectedLicenses }) -> do
+        Just (LicenseMismatch { manifest: ml, detected }) -> do
           Assert.shouldEqual "BSD-3-Clause" (License.print ml)
           -- Both MIT and Apache-2.0 should be in the detected licenses
-          Assert.shouldContain (map License.print detectedLicenses) "MIT"
-          Assert.shouldContain (map License.print detectedLicenses) "Apache-2.0"
+          Assert.shouldContain (map License.print detected) "MIT"
+          Assert.shouldContain (map License.print detected) "Apache-2.0"
         _ ->
           Assert.fail "Expected LicenseMismatch error"
 
@@ -399,6 +402,20 @@ licenseValidation = do
       let manifestLicense = unsafeLicense "MIT OR Apache-2.0"
       result <- Assert.Run.runBaseEffects $ validateLicense fixtures manifestLicense
       Assert.shouldEqual Nothing result
+
+    Spec.it "Canonicalizes deterministic deprecated detected licenses" do
+      let manifestLicense = unsafeLicense "AGPL-3.0-only"
+      result <- Assert.Run.runBaseEffects $ validateLicense deprecatedFixture manifestLicense
+      Assert.shouldEqual Nothing result
+
+    Spec.it "Fails when detected licenses have ambiguous deprecated identifiers" do
+      let manifestLicense = unsafeLicense "GFDL-1.3-only"
+      result <- Assert.Run.runBaseEffects $ validateLicense ambiguousFixture manifestLicense
+      case result of
+        Just (LicenseParseError failures) ->
+          Assert.shouldContain (map _.detected failures) "GFDL-1.3"
+        _ ->
+          Assert.fail "Expected UncanonicalizableDetectedLicenses error"
 
 unsafeLicense :: String -> License
 unsafeLicense str = unsafeFromRight $ License.parse str
