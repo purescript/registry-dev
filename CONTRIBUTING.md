@@ -138,6 +138,27 @@ nix run .#daily-importer
 
 The [.env.example](./.env.example) file lists out a number of environment variables that you can set. Scripts that require environment variables will fail at startup if the required env var is not found, so you can add only the ones you need to your .env file.
 
+## Upgrading the PureScript Compiler
+
+When a new compiler release is added to `purescript-overlay`, the registry needs a small set of changes:
+
+```sh
+# Update the Nix input that provides purs and the compiler binaries
+nix flake update purescript-overlay
+
+# Confirm the dev shell now exposes the expected compiler version
+nix develop --command purs --version
+```
+
+If the compiler bump causes source incompatibilities, fix them in the PureScript code and re-run the commands above. Then, update the expected compiler list in [`app/test/App/CLI/PursVersions.purs`](./app/test/App/CLI/PursVersions.purs). Once done, verify with `nix flake check`.
+
+Deploying the updated server is normally enough to start the registry-wide compiler matrix rollout. On server startup, the job executor checks whether the newest compiler known to `purs-versions` is missing from the latest `prelude` metadata; if so, it enqueues matrix jobs for packages without dependencies, and those jobs cascade through the rest of the registry.
+
+In practice this means:
+
+- Push the compiler upgrade to `master` and let the normal deploy workflow roll it out, or deploy manually with `colmena apply`.
+- After deploy, watch `journalctl -u server.service` or the jobs API if you want to confirm the new compiler matrix has started.
+
 ## Testing
 
 The usual PureScript testing workflow applies in the registry — from within a Nix shell, you can execute all tests:
