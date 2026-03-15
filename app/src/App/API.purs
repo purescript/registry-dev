@@ -1308,9 +1308,7 @@ instance FsEncodable PursGraphCache where
       Exists.mkExists $ Cache.AsJson cacheKey codec next
 
 -- | Errors that can occur when validating license consistency
-data LicenseValidationError
-  = LicenseMismatch { manifest :: License, detected :: Array License }
-  | LicenseParseError (Array { detected :: String, error :: String })
+data LicenseValidationError = LicenseMismatch { manifest :: License, detected :: Array License }
 
 derive instance Eq LicenseValidationError
 
@@ -1324,11 +1322,6 @@ printLicenseValidationError = case _ of
     , ". Please ensure your manifest license accurately represents all licenses "
     , "in your repository. If multiple licenses apply, join them using SPDX "
     , "conjunctions (e.g., 'MIT AND Apache-2.0' or 'MIT OR Apache-2.0')."
-    ]
-  LicenseParseError failures -> Array.fold
-    [ "License validation failed: one or more detected SPDX license expressions "
-    , "could not be canonicalized.\n"
-    , String.joinWith "\n" (failures <#> \{ detected, error } -> "  - " <> detected <> " (" <> error <> ")")
     ]
 
 -- | Validate that the license in the manifest is consistent with licenses
@@ -1348,31 +1341,17 @@ validateLicense packageDir manifestLicense = do
       pure Nothing
     Right detectedStrings -> do
       let
-        parseDetectedLicense :: String -> Either String License
-        parseDetectedLicense detectedLicense = do
-          canonicalized <- License.canonicalizeDetected detectedLicense
-          License.parse canonicalized
-
-        parsedDetectedLicenses :: Array (Tuple String (Either String License))
-        parsedDetectedLicenses =
-          detectedStrings <#> \detectedLicense ->
-            Tuple detectedLicense (parseDetectedLicense detectedLicense)
-
-        parseFailures :: Array { detected :: String, error :: String }
-        parseFailures =
-          parsedDetectedLicenses # Array.mapMaybe \(Tuple detectedLicense parsed) -> case parsed of
-            Left error -> Just { detected: detectedLicense, error }
-            Right _ -> Nothing
-
+        -- Best effort: keep detected licenses we can canonicalize and parse.
         parsedLicenses :: Array License
-        parsedLicenses = parsedDetectedLicenses # Array.mapMaybe \(Tuple _ parsed) -> hush parsed
+        parsedLicenses =
+          detectedStrings # Array.mapMaybe \detectedLicense ->
+            hush do
+              canonicalized <- License.canonicalizeDetected detectedLicense
+              License.parse canonicalized
 
       Log.debug $ "Detected licenses: " <> String.joinWith ", " detectedStrings
 
-      if not (Array.null parseFailures) then do
-        Log.warn "Some detected licenses could not be canonicalized."
-        pure $ Just $ LicenseParseError parseFailures
-      else if Array.null parsedLicenses then do
+      if Array.null parsedLicenses then do
         Log.debug "No licenses detected from repository files, nothing to validate."
         pure Nothing
       else do

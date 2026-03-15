@@ -408,14 +408,10 @@ licenseValidation = do
       result <- Assert.Run.runBaseEffects $ validateLicense deprecatedFixture manifestLicense
       Assert.shouldEqual Nothing result
 
-    Spec.it "Fails when detected licenses have ambiguous deprecated identifiers" do
-      let manifestLicense = unsafeLicense "GFDL-1.3-only"
+    Spec.it "Ignores ambiguous deprecated detected licenses during validation" do
+      let manifestLicense = unsafeLicense "MIT"
       result <- Assert.Run.runBaseEffects $ validateLicense ambiguousFixture manifestLicense
-      case result of
-        Just (LicenseParseError failures) ->
-          Assert.shouldContain (map _.detected failures) "GFDL-1.3"
-        _ ->
-          Assert.fail "Expected UncanonicalizableDetectedLicenses error"
+      Assert.shouldEqual Nothing result
 
 unsafeLicense :: String -> License
 unsafeLicense str = unsafeFromRight $ License.parse str

@@ -76,17 +76,13 @@ bowerfileToPursJson
   -> Either String { license :: License, description :: Maybe String, dependencies :: Map PackageName Range }
 bowerfileToPursJson (Bowerfile { description, dependencies, license }) = do
   let
-    parsedLicenses = license <#> \rawLicense ->
-      lmap (\err -> "  - " <> rawLicense <> ": " <> err) $ License.parse rawLicense
-    { fail: parseErrors, success: validLicenses } = partitionEithers parsedLicenses
+    -- Best effort: keep any licenses that parse cleanly and drop the rest.
+    validLicenses = Array.mapMaybe (hush <<< License.parse) license
 
   parsedLicense <-
-    if not (Array.null parseErrors) then do
-      Left $ "Invalid SPDX license(s) in bower.json:\n" <> String.joinWith "\n" parseErrors
-    else do
-      case NonEmptyArray.fromArray validLicenses of
-        Nothing -> Left "No valid SPDX license found in bower.json"
-        Just multiple -> Right $ License.joinWith License.And multiple
+    case NonEmptyArray.fromArray validLicenses of
+      Nothing -> Left "No valid SPDX license found in bower.json"
+      Just multiple -> Right $ License.joinWith License.And multiple
 
   parsedDeps <- parseDependencies dependencies
 
