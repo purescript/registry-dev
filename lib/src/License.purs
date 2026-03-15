@@ -5,14 +5,19 @@
 -- | This module relies on the 'spdx-expression-parse' NPM library, which you
 -- | must install if you are using parsing code from this module. Please see the
 -- | package.json file for exact versions.
+-- |
+-- | `parse` accepts canonical SPDX expressions and historical deprecated SPDX
+-- | expressions, canonicalizing them when SPDX provides a deterministic
+-- | replacement and otherwise preserving recognized deprecated identifiers.
+-- | Use `parseCanonical` when validating new user-authored manifest input.
 module Registry.License
   ( License
   , SPDXConjunction(..)
-  , canonicalizeDetected
   , codec
   , extractIds
   , joinWith
   , parse
+  , parseCanonical
   , print
   ) where
 
@@ -41,23 +46,27 @@ newtype License = License LicenseTree
 
 derive newtype instance Eq License
 
--- | A codec for encoding and decoding a `License` as JSON
+-- | A codec for encoding and decoding a `License` as JSON.
+-- | This decoder is backward-compatible with historical manifest data.
 codec :: CJ.Codec License
-codec = CJ.named "License" $ Codec.codec' decode encode
+codec = licenseCodec parse
+
+licenseCodec :: (String -> Either String License) -> CJ.Codec License
+licenseCodec parseLicense = CJ.named "License" $ Codec.codec' decode encode
   where
   decode :: JSON -> Except CJ.DecodeError License
-  decode = except <<< lmap CJ.DecodeError.basic <<< parse <=< Codec.decode CJ.string
+  decode = except <<< lmap CJ.DecodeError.basic <<< parseLicense <=< Codec.decode CJ.string
 
   encode :: License -> JSON
   encode = print >>> CJ.encode CJ.string
 
 data LicenseTree
-  = Leaf CanonicalLicenseLeaf
+  = Leaf LicenseLeaf
   | Branch SPDXConjunction LicenseTree LicenseTree
 
 derive instance Eq LicenseTree
 
-type CanonicalLicenseLeaf =
+type LicenseLeaf =
   { identifier :: String
   , exception :: Maybe String
   }
@@ -88,19 +97,22 @@ foreign import currentIds :: Array String
 foreign import deprecatedIds :: Array String
 
 -- | Parse a string as a SPDX license identifier.
+-- | This is backward-compatible with historical registry manifests and accepts
+-- | recognized deprecated SPDX identifiers, canonicalizing them when possible
+-- | and otherwise preserving them as written.
 parse :: String -> Either String License
 parse input = do
   parsedTree <- parseExpressionTree input
-  canonicalTree <- canonicalizeParsedTree canonicalizeStrictLeaf parsedTree
+  canonicalTree <- canonicalizeParsedTree canonicalizeLenientLeaf parsedTree
   pure $ License canonicalTree
 
--- | Canonicalize SPDX IDs detected from external tooling. This is lenient for
--- | deprecated SPDX IDs where the canonical replacement is unambiguous.
-canonicalizeDetected :: String -> Either String String
-canonicalizeDetected input = do
+-- | Parse a string as a canonical SPDX license identifier.
+-- | This is intended for validating newly authored manifest input.
+parseCanonical :: String -> Either String License
+parseCanonical input = do
   parsedTree <- parseExpressionTree input
-  canonicalTree <- canonicalizeParsedTree canonicalizeDetectedLeaf parsedTree
-  pure $ renderCanonicalTree canonicalTree
+  canonicalTree <- canonicalizeParsedTree canonicalizeStrictLeaf parsedTree
+  pure $ License canonicalTree
 
 parseExpressionTree :: String -> Either String ParsedLicenseTree
 parseExpressionTree =
@@ -120,7 +132,7 @@ parseExpressionTree =
   onOr left right = ParsedBranch Or <$> left <*> right
 
 canonicalizeParsedTree
-  :: (ParsedLicenseLeaf -> Either String CanonicalLicenseLeaf)
+  :: (ParsedLicenseLeaf -> Either String LicenseLeaf)
   -> ParsedLicenseTree
   -> Either String LicenseTree
 canonicalizeParsedTree canonicalizeLeaf = case _ of
@@ -131,50 +143,60 @@ canonicalizeParsedTree canonicalizeLeaf = case _ of
       <$> canonicalizeParsedTree canonicalizeLeaf left
       <*> canonicalizeParsedTree canonicalizeLeaf right
 
-canonicalizeStrictLeaf :: ParsedLicenseLeaf -> Either String CanonicalLicenseLeaf
+canonicalizeStrictLeaf :: ParsedLicenseLeaf -> Either String LicenseLeaf
 canonicalizeStrictLeaf rawLeaf = do
-  canonicalLeaf <- canonicalizeDetectedLeaf rawLeaf
-  if printParsedLeaf rawLeaf == printCanonicalLeaf canonicalLeaf then
+  canonicalLeaf <- canonicalizeCanonicalLeaf rawLeaf
+  if printParsedLeaf rawLeaf == printLicenseLeaf canonicalLeaf then
     Right canonicalLeaf
   else
     Left $ Array.fold
       [ "Non-canonical SPDX identifier '"
       , printParsedLeaf rawLeaf
       , "'. Use '"
-      , printCanonicalLeaf canonicalLeaf
+      , printLicenseLeaf canonicalLeaf
       , "'"
       ]
 
-canonicalizeDetectedLeaf :: ParsedLicenseLeaf -> Either String CanonicalLicenseLeaf
-canonicalizeDetectedLeaf { identifier, plus, exception } = do
+canonicalizeCanonicalLeaf :: ParsedLicenseLeaf -> Either String LicenseLeaf
+canonicalizeCanonicalLeaf { identifier, plus, exception } = do
   if isCurrent identifier then do
     canonicalIdentifier <- if plus then canonicalizePlusIdentifier identifier else Right identifier
     ensureCurrentIdentifier canonicalIdentifier identifier
     pure { identifier: canonicalIdentifier, exception }
   else if isDeprecated identifier then do
-    canonicalIdentifier <- canonicalizeDeprecatedIdentifier { identifier, plus }
-    pure { identifier: canonicalIdentifier, exception }
+    canonicalizeDeprecatedLeaf { identifier, plus, exception }
   else do
     Left $ "SPDX identifier '" <> identifier <> "' is not recognized in the current SPDX license list"
+
+canonicalizeLenientLeaf :: ParsedLicenseLeaf -> Either String LicenseLeaf
+canonicalizeLenientLeaf rawLeaf =
+  case canonicalizeCanonicalLeaf rawLeaf of
+    Right canonicalLeaf ->
+      Right canonicalLeaf
+    Left err
+      | isDeprecated rawLeaf.identifier && not rawLeaf.plus ->
+          Right { identifier: rawLeaf.identifier, exception: rawLeaf.exception }
+      | otherwise ->
+          Left err
 
 canonicalizeVersionedIdentifier :: { base :: String, plus :: Boolean } -> String
 canonicalizeVersionedIdentifier { base, plus } = if plus then base <> "-or-later" else base <> "-only"
 
-canonicalizeDeprecatedIdentifier :: { identifier :: String, plus :: Boolean } -> Either String String
-canonicalizeDeprecatedIdentifier { identifier, plus } = do
+canonicalizeDeprecatedLeaf :: ParsedLicenseLeaf -> Either String LicenseLeaf
+canonicalizeDeprecatedLeaf { identifier, plus, exception } = do
   let canonicalVersioned = canonicalizeVersionedIdentifier { base: identifier, plus }
   if plus && isCurrent canonicalVersioned then
-    Right canonicalVersioned
+    pure { identifier: canonicalVersioned, exception }
   else if Set.member identifier ambiguousDeprecatedIdentifiers then do
     Left $ "Deprecated SPDX identifier '" <> identifier <> "' does not have an unambiguous canonical replacement"
   else if isCurrent canonicalVersioned then
-    Right canonicalVersioned
-  else case Map.lookup identifier deprecatedIdentifierRenames of
+    pure { identifier: canonicalVersioned, exception }
+  else case Map.lookup identifier deprecatedIdentifierReplacements of
     Just replacement -> do
       if plus then
         Left $ "Deprecated SPDX identifier '" <> identifier <> "+' does not have an unambiguous canonical replacement"
       else do
-        ensureCurrentIdentifier replacement identifier
+        ensureCurrentIdentifier replacement.identifier identifier
         Right replacement
     Nothing ->
       Left $ "Deprecated SPDX identifier '" <> identifier <> "' does not have an unambiguous canonical replacement"
@@ -217,12 +239,19 @@ spdxIdentifierSets =
   , deprecated: Set.fromFoldable deprecatedIds
   }
 
--- Deprecated identifiers that have deterministic, non-versioned renames.
-deprecatedIdentifierRenames :: Map.Map String String
-deprecatedIdentifierRenames = Map.fromFoldable
-  [ Tuple "BSD-2-Clause-NetBSD" "BSD-2-Clause"
-  , Tuple "StandardML-NJ" "SMLNJ"
-  , Tuple "bzip2-1.0.5" "bzip2-1.0.6"
+-- Deprecated identifiers that have deterministic canonical replacements.
+deprecatedIdentifierReplacements :: Map.Map String LicenseLeaf
+deprecatedIdentifierReplacements = Map.fromFoldable
+  [ Tuple "BSD-2-Clause-NetBSD" { identifier: "BSD-2-Clause", exception: Nothing }
+  , Tuple "StandardML-NJ" { identifier: "SMLNJ", exception: Nothing }
+  , Tuple "bzip2-1.0.5" { identifier: "bzip2-1.0.6", exception: Nothing }
+  , Tuple "GPL-2.0-with-GCC-exception" { identifier: "GPL-2.0-only", exception: Just "GCC-exception-2.0" }
+  , Tuple "GPL-2.0-with-autoconf-exception" { identifier: "GPL-2.0-only", exception: Just "Autoconf-exception-2.0" }
+  , Tuple "GPL-2.0-with-bison-exception" { identifier: "GPL-2.0-only", exception: Just "Bison-exception-2.2" }
+  , Tuple "GPL-2.0-with-classpath-exception" { identifier: "GPL-2.0-only", exception: Just "Classpath-exception-2.0" }
+  , Tuple "GPL-2.0-with-font-exception" { identifier: "GPL-2.0-only", exception: Just "Font-exception-2.0" }
+  , Tuple "GPL-3.0-with-GCC-exception" { identifier: "GPL-3.0-only", exception: Just "GCC-exception-3.1" }
+  , Tuple "GPL-3.0-with-autoconf-exception" { identifier: "GPL-3.0-only", exception: Just "Autoconf-exception-3.0" }
   ]
 
 ambiguousDeprecatedIdentifiers :: Set.Set String
@@ -237,15 +266,15 @@ ambiguousDeprecatedIdentifiers = Set.fromFoldable
 
 -- | Print an SPDX license identifier as a string.
 print :: License -> String
-print (License tree) = renderCanonicalTree tree
+print (License tree) = renderLicenseTree tree
 
-renderCanonicalTree :: LicenseTree -> String
-renderCanonicalTree = go 0
+renderLicenseTree :: LicenseTree -> String
+renderLicenseTree = go 0
   where
   go :: Int -> LicenseTree -> String
   go parentPrecedence = case _ of
     Leaf leaf ->
-      printCanonicalLeaf leaf
+      printLicenseLeaf leaf
     Branch conjunction left right ->
       if conjunctionPrecedence conjunction < parentPrecedence then
         "(" <> renderBranch conjunction left right <> ")"
@@ -278,8 +307,8 @@ printParsedLeaf { identifier, plus, exception } = case exception of
   Just exceptionId ->
     (if plus then identifier <> "+" else identifier) <> " WITH " <> exceptionId
 
-printCanonicalLeaf :: CanonicalLicenseLeaf -> String
-printCanonicalLeaf { identifier, exception } = case exception of
+printLicenseLeaf :: LicenseLeaf -> String
+printLicenseLeaf { identifier, exception } = case exception of
   Nothing ->
     identifier
   Just exceptionId ->

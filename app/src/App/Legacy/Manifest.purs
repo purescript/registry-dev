@@ -77,7 +77,7 @@ bowerfileToPursJson
 bowerfileToPursJson (Bowerfile { description, dependencies, license }) = do
   let
     -- Best effort: keep any licenses that parse cleanly and drop the rest.
-    validLicenses = Array.mapMaybe (hush <<< License.parse) license
+    validLicenses = Array.mapMaybe (hush <<< License.parseCanonical) license
 
   parsedLicense <-
     case NonEmptyArray.fromArray validLicenses of
@@ -140,7 +140,7 @@ spagoDhallToPursJson
 spagoDhallToPursJson (SpagoDhallJson { license, dependencies, packages }) = do
   parsedLicense <- case license of
     Nothing -> Left "No license found in spago.dhall"
-    Just lic -> case License.parse (NonEmptyString.toString lic) of
+    Just lic -> case License.parseCanonical (NonEmptyString.toString lic) of
       Left _ -> Left $ "Invalid SPDX license in spago.dhall: " <> NonEmptyString.toString lic
       Right l -> Right l
 

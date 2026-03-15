@@ -7,6 +7,7 @@ import Data.Array as Array
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Record as CJ.Record
 import Data.Either (Either(..))
+import Data.Foldable (for_)
 import Data.Int as Int
 import Data.List as List
 import Data.Map (Map)
@@ -18,6 +19,7 @@ import Data.Profunctor as Profunctor
 import Data.Set as Set
 import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
+import Data.String.Pattern (Pattern(..), Replacement(..))
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
 import Effect.Exception (Error)
@@ -44,6 +46,14 @@ spec = do
   Spec.it "Round-trips package entry fixture" do
     let parsedContext = ManifestIndex.parseEntry contextEntry
     contextEntry `Assert.shouldEqualRight` map (ManifestIndex.printEntry <<< NonEmptySet.fromFoldable1) parsedContext
+
+  Spec.it "Parses historical manifest-index entries with deprecated SPDX identifiers" do
+    for_ historicalEntries \{ label, input, expected } -> do
+      case map (ManifestIndex.printEntry <<< NonEmptySet.fromFoldable1) (ManifestIndex.parseEntry input) of
+        Left err ->
+          Assert.fail $ "Failed to parse historical manifest-index entry for " <> label <> ": " <> err
+        Right printed ->
+          Assert.shouldEqual expected printed
 
   Spec.it "Produces correct entry file paths" do
     let
@@ -155,6 +165,37 @@ contextEntry =
 {"name":"context","version":"0.0.2","license":"MIT","location":{"githubOwner":"Fresheyeball","githubRepo":"purescript-owner"},"ref":"v0.0.2","dependencies":{}}
 {"name":"context","version":"0.0.3","license":"MIT","location":{"githubOwner":"Fresheyeball","githubRepo":"purescript-owner"},"ref":"v0.0.3","dependencies":{}}
 """
+
+historicalEntries :: Array { label :: String, input :: String, expected :: String }
+historicalEntries =
+  [ historicalEntry "AGPL-3.0" "jarilo" "1.0.1" "AGPL-3.0" "AGPL-3.0-only"
+  , historicalEntry "LGPL-3.0" "matrices" "5.0.0" "LGPL-3.0" "LGPL-3.0-only"
+  , historicalEntry "LGPL-3.0+" "test-unit" "17.0.0" "LGPL-3.0+" "LGPL-3.0-or-later"
+  , historicalEntry "GPL-3.0 AND MIT" "nano-id" "1.1.0" "GPL-3.0 AND MIT" "GPL-3.0-only AND MIT"
+  , historicalEntry "LGPL-2.1 AND LGPL-2.1-only" "bookhound" "0.1.1" "LGPL-2.1 AND LGPL-2.1-only" "LGPL-2.1-only AND LGPL-2.1-only"
+  ]
+
+historicalEntry :: String -> String -> String -> String -> String -> { label :: String, input :: String, expected :: String }
+historicalEntry label name version historical canonical =
+  { label
+  , input: historicalLine historical name version
+  , expected: historicalLine canonical name version
+  }
+  where
+  historicalLine license packageName packageVersion =
+    ( historicalManifestLineTemplate
+        # replace "__LICENSE__" license
+        # replace "__VERSION__" packageVersion
+        # replace "__NAME__" packageName
+    ) <> "\n"
+
+historicalManifestLineTemplate :: String
+historicalManifestLineTemplate =
+  """{"name":"__NAME__","version":"__VERSION__","license":"__LICENSE__","location":{"githubOwner":"purescript","githubRepo":"purescript-__NAME__"},"ref":"v__VERSION__","dependencies":{"prelude":">=6.0.0 <7.0.0"}}"""
+
+replace :: String -> String -> String -> String
+replace pattern replacement =
+  String.replaceAll (Pattern pattern) (Replacement replacement)
 
 testIndex
   :: forall m

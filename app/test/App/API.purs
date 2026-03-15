@@ -8,6 +8,7 @@ import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
+import Data.String.Pattern (Pattern(..))
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Effect.Ref as Ref
@@ -27,6 +28,7 @@ import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Tmp as Tmp
 import Registry.License as License
+import Registry.Location (Location(..))
 import Registry.PackageName as PackageName
 import Registry.Test.Assert as Assert
 import Registry.Test.Assert.Run as Assert.Run
@@ -51,6 +53,9 @@ spec :: Spec.Spec Unit
 spec = do
   Spec.describe "Verifies build plans" do
     checkBuildPlanToResolutions
+
+  Spec.describe "Parses source manifests" do
+    parseSourceManifestSpec
 
   Spec.describe "Validates licenses match" do
     licenseValidation
@@ -221,6 +226,38 @@ checkBuildPlanToResolutions = do
       bowerName = RawPackageName ("purescript-" <> PackageName.print packageName)
       path = Path.concat [ installedResolutions, PackageName.print packageName <> "-" <> Version.print version ]
     pure $ Tuple bowerName { path, version }
+
+parseSourceManifestSpec :: Spec.Spec Unit
+parseSourceManifestSpec = do
+  Spec.it "Rejects deprecated SPDX identifiers in purs.json" do
+    resourceEnv <- liftEffect Env.lookupResourceEnv
+    Aff.bracket Tmp.mkTmpDir FS.Extra.remove \packageDir -> do
+      let
+        manifestPath = Path.concat [ packageDir, "purs.json" ]
+        args =
+          { packageDir
+          , name: Utils.unsafePackageName "registry-lib"
+          , version: Utils.unsafeVersion "0.0.1"
+          , ref: "v0.0.1"
+          , location: GitHub { owner: "purescript", repo: "registry-dev", subdir: Nothing }
+          }
+
+      FS.Aff.writeTextFile UTF8 manifestPath
+        """{"name":"registry-lib","version":"0.0.1","license":"AGPL-3.0","location":{"githubOwner":"purescript","githubRepo":"registry-dev"},"ref":"v0.0.1","dependencies":{"prelude":">=6.0.0 <7.0.0"}}"""
+
+      result <-
+        API.parseSourceManifest args
+          # Env.runResourceEnv resourceEnv
+          # Log.interpret (\(Log.Log _ _ next) -> pure next)
+          # Except.runExcept
+          # Run.runBaseAff'
+
+      case result of
+        Left err ->
+          unless (String.contains (Pattern "license field is not canonical") err) do
+            Assert.fail $ "Expected a canonical license error, but got: " <> err
+        Right _ ->
+          Assert.fail "Expected parseSourceManifest to reject deprecated SPDX identifiers"
 
 removeIgnoredTarballFiles :: Spec.Spec Unit
 removeIgnoredTarballFiles = Spec.before runBefore do
@@ -403,15 +440,23 @@ licenseValidation = do
       result <- Assert.Run.runBaseEffects $ validateLicense fixtures manifestLicense
       Assert.shouldEqual Nothing result
 
-    Spec.it "Canonicalizes deterministic deprecated detected licenses" do
-      let manifestLicense = unsafeLicense "AGPL-3.0-only"
+    Spec.it "Canonicalizes deterministic deprecated detected licenses during validation" do
+      let manifestLicense = unsafeLicense "MIT"
       result <- Assert.Run.runBaseEffects $ validateLicense deprecatedFixture manifestLicense
-      Assert.shouldEqual Nothing result
+      case result of
+        Just (LicenseMismatch { detected }) ->
+          Assert.shouldContain (map License.print detected) "AGPL-3.0-only"
+        _ ->
+          Assert.fail "Expected LicenseMismatch error"
 
-    Spec.it "Ignores ambiguous deprecated detected licenses during validation" do
+    Spec.it "Preserves ambiguous deprecated detected licenses during validation" do
       let manifestLicense = unsafeLicense "MIT"
       result <- Assert.Run.runBaseEffects $ validateLicense ambiguousFixture manifestLicense
-      Assert.shouldEqual Nothing result
+      case result of
+        Just (LicenseMismatch { detected }) ->
+          Assert.shouldContain (map License.print detected) "GFDL-1.3"
+        _ ->
+          Assert.fail "Expected LicenseMismatch error"
 
 unsafeLicense :: String -> License
 unsafeLicense str = unsafeFromRight $ License.parse str

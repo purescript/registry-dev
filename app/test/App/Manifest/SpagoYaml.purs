@@ -26,6 +26,25 @@ spec = do
         Left err -> Assert.fail $ path <> " failed: " <> err
         Right _ -> pure unit
 
+  Spec.it "Rejects deprecated SPDX identifiers in publish config" do
+    let
+      input =
+        """
+        package:
+          name: registry-lib
+          publish:
+            version: 0.0.1
+            license: AGPL-3.0
+            location:
+              githubOwner: purescript
+              githubRepo: registry-dev
+              subdir: lib
+          dependencies:
+            - prelude: ">=1.0.0 <2.0.0"
+        """
+
+    parseYaml SpagoYaml.spagoYamlCodec input `Assert.shouldSatisfy` isLeft
+
   Spec.describe "parseSpagoRange" do
     Spec.it "parses unbounded range '*'" do
       SpagoYaml.parseSpagoRange "*" `Assert.shouldEqual` Right Unbounded

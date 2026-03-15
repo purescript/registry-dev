@@ -129,6 +129,20 @@ derive instance Eq ManifestOrigin
 -- | A parsed manifest along with which format it originated from.
 type ParsedManifest = { manifest :: Manifest, origin :: ManifestOrigin }
 
+type ManifestLicenseField = { license :: String }
+
+manifestLicenseFieldCodec :: CJ.Codec ManifestLicenseField
+manifestLicenseFieldCodec = CJ.named "ManifestLicenseField" $ CJ.Record.object
+  { license: CJ.string
+  }
+
+validateCanonicalManifestLicense :: String -> Either String Unit
+validateCanonicalManifestLicense input = do
+  { license } <- case parseJson manifestLicenseFieldCodec input of
+    Left err -> Left $ CJ.DecodeError.print err
+    Right decoded -> Right decoded
+  void $ License.parseCanonical license
+
 -- | Effect row for package set updates. Authentication is done at the API
 -- | boundary, so we don't need GITHUB_EVENT_ENV effects here.
 type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + LOG + EXCEPT String + r)
@@ -436,13 +450,17 @@ parseSourceManifest { packageDir, name, version, ref, location } = do
         Left error -> do
           Log.error $ "Manifest does not typecheck: " <> error
           Except.throw $ "Found a valid purs.json file in the package source, but it does not typecheck."
-        Right _ -> case parseJson Manifest.codec string of
+        Right _ -> case validateCanonicalManifestLicense string of
           Left err -> do
-            Log.error $ "Failed to parse manifest: " <> CJ.DecodeError.print err
-            Except.throw $ "Found a purs.json file in the package source, but it could not be decoded."
-          Right m -> do
-            Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec m
-            pure m
+            Log.error $ "Manifest license is not canonical: " <> err
+            Except.throw $ "Found a purs.json file in the package source, but its license field is not canonical."
+          Right _ -> case parseJson Manifest.codec string of
+            Left err -> do
+              Log.error $ "Failed to parse manifest: " <> CJ.DecodeError.print err
+              Except.throw $ "Found a purs.json file in the package source, but it could not be decoded."
+            Right m -> do
+              Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec m
+              pure m
 
     FromSpagoYaml -> do
       let spagoYamlPath = Path.concat [ packageDir, "spago.yaml" ]
@@ -1341,13 +1359,12 @@ validateLicense packageDir manifestLicense = do
       pure Nothing
     Right detectedStrings -> do
       let
-        -- Best effort: keep detected licenses we can canonicalize and parse.
+        -- Best effort: keep detected licenses that parse, which canonicalizes
+        -- deprecated IDs when possible and preserves recognized ambiguous
+        -- deprecated IDs for validation.
         parsedLicenses :: Array License
         parsedLicenses =
-          detectedStrings # Array.mapMaybe \detectedLicense ->
-            hush do
-              canonicalized <- License.canonicalizeDetected detectedLicense
-              License.parse canonicalized
+          detectedStrings # Array.mapMaybe (hush <<< License.parse)
 
       Log.debug $ "Detected licenses: " <> String.joinWith ", " detectedStrings
 

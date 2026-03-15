@@ -30,49 +30,69 @@ spec = do
         , Array.foldMap (append "\n  - " <<< License.print) success
         ]
 
-  Spec.it "Strict parsing rejects deprecated SPDX identifiers" do
-    let
-      rejected =
-        [ { input: "AGPL-3.0", expectedError: "AGPL-3.0-only" }
-        , { input: "GPL-2.0-with-classpath-exception", expectedError: "unambiguous canonical replacement" }
-        , { input: "GPL-2.0+", expectedError: "GPL-2.0-or-later" }
-        , { input: "GFDL-1.3", expectedError: "unambiguous canonical replacement" }
-        , { input: "GFDL-1.3+", expectedError: "GFDL-1.3-or-later" }
-        ]
-
-    for_ rejected \{ input, expectedError } ->
-      case License.parse input of
-        Right parsed ->
-          Assert.fail $ "Expected strict parse to reject " <> input <> ", but parsed as " <> License.print parsed
-        Left err ->
-          unless (String.contains (Pattern expectedError) err) do
-            Assert.fail $ "Expected parse error for " <> input <> " to mention " <> expectedError <> ", but got: " <> err
-
-  Spec.it "Canonicalizes deterministic deprecated IDs in detected output" do
+  Spec.it "Parses and canonicalizes deterministic deprecated SPDX identifiers" do
     let
       cases =
         [ { input: "AGPL-3.0", output: "AGPL-3.0-only" }
+        , { input: "AGPL-3.0+", output: "AGPL-3.0-or-later" }
+        , { input: "LGPL-2.1", output: "LGPL-2.1-only" }
+        , { input: "LGPL-3.0", output: "LGPL-3.0-only" }
+        , { input: "LGPL-3.0+", output: "LGPL-3.0-or-later" }
+        , { input: "GPL-3.0", output: "GPL-3.0-only" }
+        , { input: "GPL-2.0-with-classpath-exception", output: "GPL-2.0-only WITH Classpath-exception-2.0" }
         , { input: "GPL-2.0+", output: "GPL-2.0-or-later" }
+        , { input: "GPL-3.0 AND MIT", output: "GPL-3.0-only AND MIT" }
+        , { input: "LGPL-2.1 AND LGPL-2.1-only", output: "LGPL-2.1-only AND LGPL-2.1-only" }
         , { input: "GFDL-1.3+", output: "GFDL-1.3-or-later" }
         , { input: "BSD-2-Clause-NetBSD", output: "BSD-2-Clause" }
         , { input: "StandardML-NJ", output: "SMLNJ" }
         ]
 
     for_ cases \{ input, output } ->
-      case License.canonicalizeDetected input of
+      case License.parse input of
         Left err ->
-          Assert.fail $ "Expected canonicalization to succeed for " <> input <> ", but failed with: " <> err
-        Right canonicalized ->
-          Assert.shouldEqual output canonicalized
+          Assert.fail $ "Expected parse to succeed for " <> input <> ", but failed with: " <> err
+        Right parsed ->
+          Assert.shouldEqual output (License.print parsed)
 
-  Spec.it "Fails to canonicalize ambiguous deprecated IDs in detected output" do
-    for_ [ "BSD-2-Clause-FreeBSD", "GFDL-1.3", "Net-SNMP", "Nunit", "GPL-2.0-with-classpath-exception" ] \input ->
-      case License.canonicalizeDetected input of
-        Right canonicalized ->
-          Assert.fail $ "Expected canonicalization to fail for " <> input <> ", but got " <> canonicalized
+  Spec.it "Canonical parsing rejects deprecated SPDX identifiers" do
+    let
+      rejected =
+        [ { input: "AGPL-3.0", expectedError: "AGPL-3.0-only" }
+        , { input: "AGPL-3.0+", expectedError: "AGPL-3.0-or-later" }
+        , { input: "LGPL-2.1", expectedError: "LGPL-2.1-only" }
+        , { input: "LGPL-3.0", expectedError: "LGPL-3.0-only" }
+        , { input: "LGPL-3.0+", expectedError: "LGPL-3.0-or-later" }
+        , { input: "GPL-3.0", expectedError: "GPL-3.0-only" }
+        , { input: "GPL-2.0-with-classpath-exception", expectedError: "GPL-2.0-only WITH Classpath-exception-2.0" }
+        , { input: "GPL-2.0+", expectedError: "GPL-2.0-or-later" }
+        , { input: "GPL-3.0 AND MIT", expectedError: "GPL-3.0-only" }
+        , { input: "LGPL-2.1 AND LGPL-2.1-only", expectedError: "LGPL-2.1-only" }
+        , { input: "GFDL-1.3", expectedError: "unambiguous canonical replacement" }
+        , { input: "GFDL-1.3+", expectedError: "GFDL-1.3-or-later" }
+        ]
+
+    for_ rejected \{ input, expectedError } ->
+      case License.parseCanonical input of
+        Right parsed ->
+          Assert.fail $ "Expected canonical parse to reject " <> input <> ", but parsed as " <> License.print parsed
         Left err ->
-          unless (String.contains (Pattern "unambiguous canonical replacement") err) do
-            Assert.fail $ "Expected ambiguous canonicalization error for " <> input <> ", but got: " <> err
+          unless (String.contains (Pattern expectedError) err) do
+            Assert.fail $ "Expected parse error for " <> input <> " to mention " <> expectedError <> ", but got: " <> err
+
+  Spec.it "Parses ambiguous deprecated SPDX identifiers without canonicalization" do
+    let
+      cases =
+        [ { input: "GFDL-1.3", output: "GFDL-1.3" }
+        , { input: "Net-SNMP", output: "Net-SNMP" }
+        ]
+
+    for_ cases \{ input, output } ->
+      case License.parse input of
+        Left err ->
+          Assert.fail $ "Expected parse to succeed for " <> input <> ", but failed with: " <> err
+        Right parsed ->
+          Assert.shouldEqual output (License.print parsed)
 
   Spec.it "Prints canonical SPDX expressions" do
     case License.parse "MIT AND (Apache-2.0 OR BSD-3-Clause)" of
