@@ -245,6 +245,7 @@ deprecatedIdentifierReplacements = Map.fromFoldable
   [ Tuple "BSD-2-Clause-NetBSD" { identifier: "BSD-2-Clause", exception: Nothing }
   , Tuple "StandardML-NJ" { identifier: "SMLNJ", exception: Nothing }
   , Tuple "bzip2-1.0.5" { identifier: "bzip2-1.0.6", exception: Nothing }
+  , Tuple "eCos-2.0" { identifier: "GPL-2.0-or-later", exception: Just "eCos-exception-2.0" }
   , Tuple "GPL-2.0-with-GCC-exception" { identifier: "GPL-2.0-only", exception: Just "GCC-exception-2.0" }
   , Tuple "GPL-2.0-with-autoconf-exception" { identifier: "GPL-2.0-only", exception: Just "Autoconf-exception-2.0" }
   , Tuple "GPL-2.0-with-bison-exception" { identifier: "GPL-2.0-only", exception: Just "Bison-exception-2.2" }
@@ -252,6 +253,7 @@ deprecatedIdentifierReplacements = Map.fromFoldable
   , Tuple "GPL-2.0-with-font-exception" { identifier: "GPL-2.0-only", exception: Just "Font-exception-2.0" }
   , Tuple "GPL-3.0-with-GCC-exception" { identifier: "GPL-3.0-only", exception: Just "GCC-exception-3.1" }
   , Tuple "GPL-3.0-with-autoconf-exception" { identifier: "GPL-3.0-only", exception: Just "Autoconf-exception-3.0" }
+  , Tuple "wxWindows" { identifier: "LGPL-2.0-or-later", exception: Just "WxWindows-exception-3.1" }
   ]
 
 ambiguousDeprecatedIdentifiers :: Set.Set String

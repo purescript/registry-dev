@@ -35,6 +35,7 @@ spec = do
       cases =
         [ { input: "AGPL-3.0", output: "AGPL-3.0-only" }
         , { input: "AGPL-3.0+", output: "AGPL-3.0-or-later" }
+        , { input: "eCos-2.0", output: "GPL-2.0-or-later WITH eCos-exception-2.0" }
         , { input: "LGPL-2.1", output: "LGPL-2.1-only" }
         , { input: "LGPL-3.0", output: "LGPL-3.0-only" }
         , { input: "LGPL-3.0+", output: "LGPL-3.0-or-later" }
@@ -46,6 +47,7 @@ spec = do
         , { input: "GFDL-1.3+", output: "GFDL-1.3-or-later" }
         , { input: "BSD-2-Clause-NetBSD", output: "BSD-2-Clause" }
         , { input: "StandardML-NJ", output: "SMLNJ" }
+        , { input: "wxWindows", output: "LGPL-2.0-or-later WITH WxWindows-exception-3.1" }
         ]
 
     for_ cases \{ input, output } ->
@@ -60,6 +62,7 @@ spec = do
       rejected =
         [ { input: "AGPL-3.0", expectedError: "AGPL-3.0-only" }
         , { input: "AGPL-3.0+", expectedError: "AGPL-3.0-or-later" }
+        , { input: "eCos-2.0", expectedError: "GPL-2.0-or-later WITH eCos-exception-2.0" }
         , { input: "LGPL-2.1", expectedError: "LGPL-2.1-only" }
         , { input: "LGPL-3.0", expectedError: "LGPL-3.0-only" }
         , { input: "LGPL-3.0+", expectedError: "LGPL-3.0-or-later" }
@@ -70,6 +73,7 @@ spec = do
         , { input: "LGPL-2.1 AND LGPL-2.1-only", expectedError: "LGPL-2.1-only" }
         , { input: "GFDL-1.3", expectedError: "unambiguous canonical replacement" }
         , { input: "GFDL-1.3+", expectedError: "GFDL-1.3-or-later" }
+        , { input: "wxWindows", expectedError: "LGPL-2.0-or-later WITH WxWindows-exception-3.1" }
         ]
 
     for_ rejected \{ input, expectedError } ->
