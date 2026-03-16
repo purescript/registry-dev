@@ -91,13 +91,26 @@ handle env = case _ of
   UpgradeAtomic oldSet@(PackageSet { packages }) compiler changes reply -> reply <$> Except.runExcept do
     Log.info $ "Performing atomic upgrade of package set " <> Version.print (un PackageSet oldSet).version
 
-    -- It is possible to reuse a workdir when processing package set batches, so
-    -- we need to clean up before doing work.
-    for_ [ packagesWorkDir, outputWorkDir, backupWorkDir ] \dir -> do
-      exists <- Run.liftEffect $ FS.Sync.exists dir
+    -- Always clean up the backup directory, which is transient and may be
+    -- left over from a previous crashed job.
+    do
+      exists <- Run.liftEffect $ FS.Sync.exists backupWorkDir
       when exists do
-        Log.debug $ "Removing existing working directory " <> dir
-        FS.Extra.remove dir
+        Log.debug $ "Removing leftover backup directory " <> backupWorkDir
+        FS.Extra.remove backupWorkDir
+
+    -- Wipe the compiler output if the compiler version has changed, because
+    -- output from a different compiler version is not safe to reuse.
+    when (compiler /= (un PackageSet oldSet).compiler) do
+      outputExists <- Run.liftEffect $ FS.Sync.exists outputWorkDir
+      when outputExists do
+        Log.info $ "Compiler version changed, wiping output directory"
+        FS.Extra.remove outputWorkDir
+
+    -- Sync the packages directory: remove any extraneous packages left from
+    -- a previous job, then install missing ones. This lets the compiler do
+    -- incremental compilation when resubmitting the same or similar jobs.
+    syncPackages packages
 
     installPackages packages
     compileInstalledPackages compiler >>= case _ of
@@ -182,6 +195,19 @@ handle env = case _ of
 
   backupWorkDir :: FilePath
   backupWorkDir = Path.concat [ env.workdir, "output-backup" ]
+
+  -- | Remove directories in packages/ that don't correspond to a package
+  -- | in the target set. This prevents stale packages from being compiled.
+  syncPackages :: Map PackageName Version -> Run _ Unit
+  syncPackages targetPackages = do
+    packagesExist <- Run.liftEffect $ FS.Sync.exists packagesWorkDir
+    when packagesExist do
+      existingDirs <- Run.liftAff $ FS.Aff.readdir packagesWorkDir
+      let extraneous = extraneousPackageDirs targetPackages existingDirs
+      unless (Array.null extraneous) do
+        Log.info $ "Removing " <> show (Array.length extraneous) <> " extraneous packages from previous job: " <> String.joinWith ", " extraneous
+        for_ extraneous \dir ->
+          FS.Extra.remove (Path.concat [ packagesWorkDir, dir ])
 
   printMissingCompiler version = "Compilation failed because compiler " <> Version.print version <> " is missing."
   printUnknownError error = "Compilation failed because of an unknown error: " <> error
@@ -344,6 +370,13 @@ commitMessage (PackageSet set) accepted newVersion = String.joinWith "\n" $ fold
   removedLines = "Removed packages:\n" <> String.joinWith "\n" do
     Tuple packageName version <- removed
     pure $ Array.fold [ "  - ", formatPackageVersion packageName version ]
+
+-- | Compute directory names in packages/ that don't correspond to any package
+-- | in the target set and should be removed before compilation.
+extraneousPackageDirs :: Map PackageName Version -> Array String -> Array String
+extraneousPackageDirs targetPackages existingDirs = do
+  let expectedDirs = Set.fromFoldable $ map (\(Tuple name version) -> formatPackageVersion name version) (Map.toUnfoldable targetPackages :: Array _)
+  Array.filter (\dir -> not (Set.member dir expectedDirs)) existingDirs
 
 -- | Computes new package set version from old package set and version information of successfully added/updated packages.
 -- | Note: this must be called with the old `PackageSet` that has not had updates applied.
